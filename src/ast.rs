@@ -17,8 +17,7 @@ pub enum RefKind {
 pub enum Type {
     Number,
     Boolean,
-    Struct(String),
-    Enum(String),
+    Custom(String), // struct or enum type reference
     Fn(Vec<Type>),
     Ref(RefKind, Box<Type>),
 }

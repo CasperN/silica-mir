@@ -61,7 +61,7 @@ impl Parser {
         match node.kind() {
             "number" => Ok(Type::Number),
             "boolean" => Ok(Type::Boolean),
-            "identifier" => Ok(Type::Struct(self.get_text(node).to_string())),
+            "identifier" => Ok(Type::Custom(self.get_text(node).to_string())),
             "type" => {
                 let first_child = node.child(0).ok_or("Type node has no children")?;
                 let kind = first_child.kind();
@@ -459,7 +459,7 @@ mod tests {
             assert!(!e.markers.drop);
             assert_eq!(e.variants.len(), 2);
             assert_eq!(e.variants[0].0, "None");
-            assert_eq!(e.variants[0].1, Type::Struct("Option".to_string()));
+            assert_eq!(e.variants[0].1, Type::Custom("Option".to_string()));
             assert_eq!(e.variants[1].0, "Some");
             assert_eq!(e.variants[1].1, Type::Number);
         } else {

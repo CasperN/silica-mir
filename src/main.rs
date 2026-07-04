@@ -1,5 +1,6 @@
 mod ast;
 mod parser;
+mod tc;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -18,12 +19,30 @@ fn main() {
     };
 
     let p = parser::Parser::new(source);
-    match p.parse() {
-        Ok(program) => {
-            println!("{:#?}", program);
-        }
+    let program = match p.parse() {
+        Ok(program) => program,
         Err(err) => {
             eprintln!("Parse error: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    println!("AST parsed successfully.");
+
+    let env = match tc::Env::build(&program) {
+        Ok(env) => env,
+        Err(err) => {
+            eprintln!("Environment build error: {}", err);
+            std::process::exit(1);
+        }
+    };
+
+    match env.typecheck() {
+        Ok(()) => {
+            println!("Type checking successful!");
+        }
+        Err(err) => {
+            eprintln!("Type checking error: {}", err);
             std::process::exit(1);
         }
     }
