@@ -2,31 +2,35 @@ use crate::ast::*;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
+pub enum TypeDecl {
+    Struct(StructDecl),
+    Enum(EnumDecl),
+}
+
+#[derive(Debug, Clone)]
 pub struct Env {
-    pub structs: HashMap<String, StructDecl>,
-    pub enums: HashMap<String, EnumDecl>,
+    pub types: HashMap<String, TypeDecl>,
     pub functions: HashMap<String, Function>,
 }
 
 impl Env {
     pub fn build(program: &Program) -> Result<Self, String> {
-        let mut structs = HashMap::new();
-        let mut enums = HashMap::new();
+        let mut types = HashMap::new();
         let mut functions = HashMap::new();
 
         for decl in &program.declarations {
             match decl {
                 Declaration::Struct(s) => {
-                    if structs.contains_key(&s.name) || enums.contains_key(&s.name) {
+                    if types.contains_key(&s.name) {
                         return Err(format!("Duplicate declaration of type '{}'", s.name));
                     }
-                    structs.insert(s.name.clone(), s.clone());
+                    types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
                 }
                 Declaration::Enum(e) => {
-                    if structs.contains_key(&e.name) || enums.contains_key(&e.name) {
+                    if types.contains_key(&e.name) {
                         return Err(format!("Duplicate declaration of type '{}'", e.name));
                     }
-                    enums.insert(e.name.clone(), e.clone());
+                    types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
@@ -37,14 +41,14 @@ impl Env {
             }
         }
 
-        Ok(Env { structs, enums, functions })
+        Ok(Env { types, functions })
     }
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
             Type::Number | Type::Boolean => Ok(()),
             Type::Custom(name) => {
-                if self.structs.contains_key(name) || self.enums.contains_key(name) {
+                if self.types.contains_key(name) {
                     Ok(())
                 } else {
                     Err(format!("Use of undeclared type '{}'", name))
@@ -95,32 +99,36 @@ impl Env {
             }
             Place::Field(inner, field_name) => {
                 let inner_ty = self.infer_place_type(inner, locals)?;
-                match &inner_ty {
-                    Type::Custom(struct_name) => {
-                        let s_decl = self.structs.get(struct_name).ok_or_else(|| {
-                            format!("Undeclared struct '{}' during field projection", struct_name)
-                        })?;
-                        s_decl.fields.iter()
-                            .find(|(f_name, _)| f_name == field_name)
-                            .map(|(_, f_ty)| f_ty.clone())
-                            .ok_or_else(|| format!("Struct '{}' has no field '{}'", struct_name, field_name))
-                    }
-                    _ => Err(format!("Cannot project field '{}' of non-struct type {:?}", field_name, inner_ty))
+                let name = match &inner_ty {
+                    Type::Custom(n) => n,
+                    _ => return Err(format!("Cannot project field '{}' of non-struct type {:?}", field_name, inner_ty)),
+                };
+                match self.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => s.fields.iter()
+                        .find(|(f_name, _)| f_name == field_name)
+                        .map(|(_, f_ty)| f_ty.clone())
+                        .ok_or_else(|| format!("Struct '{}' has no field '{}'", name, field_name)),
+                    Some(TypeDecl::Enum(_)) => Err(format!(
+                        "Cannot project field '{}' of enum type '{}'", field_name, name
+                    )),
+                    None => Err(format!("Use of undeclared type '{}'", name)),
                 }
             }
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.infer_place_type(inner, locals)?;
-                match &inner_ty {
-                    Type::Custom(enum_name) => {
-                        let e_decl = self.enums.get(enum_name).ok_or_else(|| {
-                            format!("Undeclared enum '{}' during downcast", enum_name)
-                        })?;
-                        e_decl.variants.iter()
-                            .find(|(v_name, _)| v_name == variant_name)
-                            .map(|(_, v_ty)| v_ty.clone())
-                            .ok_or_else(|| format!("Enum '{}' has no variant '{}'", enum_name, variant_name))
-                    }
-                    _ => Err(format!("Cannot downcast non-enum type {:?}", inner_ty))
+                let name = match &inner_ty {
+                    Type::Custom(n) => n,
+                    _ => return Err(format!("Cannot downcast non-enum type {:?}", inner_ty)),
+                };
+                match self.types.get(name) {
+                    Some(TypeDecl::Enum(e)) => e.variants.iter()
+                        .find(|(v_name, _)| v_name == variant_name)
+                        .map(|(_, v_ty)| v_ty.clone())
+                        .ok_or_else(|| format!("Enum '{}' has no variant '{}'", name, variant_name)),
+                    Some(TypeDecl::Struct(_)) => Err(format!(
+                        "Cannot downcast struct type '{}'", name
+                    )),
+                    None => Err(format!("Use of undeclared type '{}'", name)),
                 }
             }
         }
@@ -149,33 +157,41 @@ impl Env {
                 Ok(Type::Ref(kind.clone(), Box::new(pointee_ty)))
             }
             RValue::EnumConstr(enum_name, variant_name, op) => {
-                let e_decl = self.enums.get(enum_name).ok_or_else(|| format!("Undeclared enum '{}'", enum_name))?;
+                let e_decl = match self.types.get(enum_name) {
+                    Some(TypeDecl::Enum(e)) => e,
+                    Some(TypeDecl::Struct(_)) => {
+                        return Err(format!("'{}' is a struct, not an enum", enum_name));
+                    }
+                    None => return Err(format!("Undeclared enum '{}'", enum_name)),
+                };
                 let (_, variant_ty) = e_decl.variants.iter()
                     .find(|(v, _)| v == variant_name)
                     .ok_or_else(|| format!("Enum '{}' has no variant '{}'", enum_name, variant_name))?;
-                
+
                 let op_ty = self.infer_operand_type(op, locals)?;
                 if !self.types_match(variant_ty, &op_ty) {
                     return Err(format!("Variant '{}' of enum '{}' expects type {:?}, found {:?}", variant_name, enum_name, variant_ty, op_ty));
                 }
-                
+
                 Ok(Type::Custom(enum_name.clone()))
             }
         }
     }
 
     pub fn typecheck(&self) -> Result<(), String> {
-        // Validate all struct fields
-        for s in self.structs.values() {
-            for (f_name, f_ty) in &s.fields {
-                self.validate_type(f_ty).map_err(|err| format!("In struct '{}', field '{}': {}", s.name, f_name, err))?;
-            }
-        }
-
-        // Validate all enum variants
-        for e in self.enums.values() {
-            for (v_name, v_ty) in &e.variants {
-                self.validate_type(v_ty).map_err(|err| format!("In enum '{}', variant '{}': {}", e.name, v_name, err))?;
+        // Validate struct fields and enum variants
+        for type_decl in self.types.values() {
+            match type_decl {
+                TypeDecl::Struct(s) => {
+                    for (f_name, f_ty) in &s.fields {
+                        self.validate_type(f_ty).map_err(|err| format!("In struct '{}', field '{}': {}", s.name, f_name, err))?;
+                    }
+                }
+                TypeDecl::Enum(e) => {
+                    for (v_name, v_ty) in &e.variants {
+                        self.validate_type(v_ty).map_err(|err| format!("In enum '{}', variant '{}': {}", e.name, v_name, err))?;
+                    }
+                }
             }
         }
 
@@ -298,7 +314,7 @@ impl Env {
             Terminator::SwitchEnum { place, cases } => {
                 let place_ty = self.infer_place_type(place, locals)
                     .map_err(|e| format!("In function '{}', block '{}', switchEnum place: {}", func.name, block.label, e))?;
-                
+
                 let enum_name = match &place_ty {
                     Type::Custom(name) => name,
                     _ => return Err(format!(
@@ -307,9 +323,17 @@ impl Env {
                     ))
                 };
 
-                let e_decl = self.enums.get(enum_name).ok_or_else(|| {
-                    format!("In function '{}', block '{}': Undeclared enum '{}' in switchEnum", func.name, block.label, enum_name)
-                })?;
+                let e_decl = match self.types.get(enum_name) {
+                    Some(TypeDecl::Enum(e)) => e,
+                    Some(TypeDecl::Struct(_)) => return Err(format!(
+                        "In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
+                        func.name, block.label, enum_name
+                    )),
+                    None => return Err(format!(
+                        "In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
+                        func.name, block.label, enum_name
+                    )),
+                };
 
                 for (variant, label) in cases {
                     if !e_decl.variants.iter().any(|(v, _)| v == variant) {
@@ -553,10 +577,7 @@ mod tests {
     }
 
     #[test]
-    fn place_field_on_enum_currently_reports_undeclared_struct() {
-        // Field projection on an enum-typed place currently falls through to a
-        // 'Undeclared struct' error rather than a dedicated 'not a struct' message.
-        // Pins current behavior; tighten if the message is improved.
+    fn place_field_on_enum_error() {
         assert_err(
             "
             enum E { A: number }
@@ -567,7 +588,7 @@ mod tests {
                 return
             }
             ",
-            "Undeclared struct 'E'",
+            "Cannot project field 'x' of enum type 'E'",
         );
     }
 
@@ -620,10 +641,7 @@ mod tests {
     }
 
     #[test]
-    fn place_downcast_on_struct_currently_reports_undeclared_enum() {
-        // Currently the checker looks up the type name in the enum table and
-        // reports 'Undeclared enum' rather than 'not an enum' for struct types.
-        // Pins current behavior; tighten if the message is improved.
+    fn place_downcast_on_struct_error() {
         assert_err(
             "
             struct S { x: number }
@@ -634,7 +652,7 @@ mod tests {
                 return
             }
             ",
-            "Undeclared enum 'S'",
+            "Cannot downcast struct type 'S'",
         );
     }
 
