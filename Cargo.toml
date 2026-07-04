@@ -1,0 +1,14 @@
+[package]
+name = "silica-mir"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+indexmap = "2.3.0"
+tree-sitter = "0.26.10"
+
+[build-dependencies]
+cc = "1.2.65"
+
+[patch.crates-io]
+indexmap = { git = "https://github.com/indexmap-rs/indexmap.git", tag = "2.3.0" }
