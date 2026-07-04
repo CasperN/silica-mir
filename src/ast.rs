@@ -83,11 +83,17 @@ pub struct BasicBlock {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Function {
-    pub name: String,
-    pub params: Vec<(String, Type)>,
+pub struct FunctionBody {
     pub locals: Vec<(String, Type)>,
     pub blocks: Vec<BasicBlock>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Function {
+    pub name: String,
+    pub is_extern: bool,
+    pub params: Vec<(String, Type)>,
+    pub body: Option<FunctionBody>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -105,17 +111,10 @@ pub struct EnumDecl {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ExternFn {
-    pub name: String,
-    pub params: Vec<(String, Type)>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Declaration {
     Struct(StructDecl),
     Enum(EnumDecl),
     Fn(Function),
-    ExternFn(ExternFn),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

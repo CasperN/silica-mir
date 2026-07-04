@@ -50,10 +50,7 @@ terminator =
 basic_block = label : (statement ;)* terminator
 
 function =
-    fn name ( var: type, ... ) {
-        (var: type ;)*   # locals
-        basic_block*     # CFG; first block is entry
-    }
+    [extern]? fn name ( var: type, ... ) ( { (var: type ;)* basic_block* } | ; )
 
 struct_decl =
     struct [Copy? Drop?] identifier { (field: type)* }
@@ -61,10 +58,7 @@ struct_decl =
 enum_decl =
     enum [Copy? Drop?] identifier { (Variant: type)* }
 
-extern_fn =
-    extern fn name ( var: type, ... ) ;   # signature only, no body
-
-declaration = struct_decl | enum_decl | function | extern_fn
+declaration = struct_decl | enum_decl | function
 
 program = (declaration ;)*
 ```

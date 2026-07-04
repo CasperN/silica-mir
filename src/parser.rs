@@ -53,7 +53,6 @@ impl Parser {
             "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child)?)),
             "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child)?)),
             "function_decl" => Ok(Declaration::Fn(self.map_function_decl(child)?)),
-            "extern_fn" => Ok(Declaration::ExternFn(self.map_extern_fn(child)?)),
             _ => Err(format!("Unknown declaration kind: {}", child.kind())),
         }
     }
@@ -365,32 +364,15 @@ impl Parser {
         Ok(EnumDecl { name, markers, variants })
     }
 
-    fn map_extern_fn(&self, node: Node) -> Result<ExternFn, String> {
-        let name_node = node.child_by_field_name("name").ok_or("Extern fn missing name")?;
-        let name = self.get_text(name_node).to_string();
-
-        let mut params = Vec::new();
-        let mut cursor = node.walk();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "param_decl" {
-                let p_name_node = child.child_by_field_name("name").ok_or("Param missing name")?;
-                let p_name = self.get_text(p_name_node).to_string();
-                let p_type_node = child.child_by_field_name("type").ok_or("Param missing type")?;
-                let p_type = self.map_type(p_type_node)?;
-                params.push((p_name, p_type));
-            }
-        }
-
-        Ok(ExternFn { name, params })
-    }
-
     fn map_function_decl(&self, node: Node) -> Result<Function, String> {
         let name_node = node.child_by_field_name("name").ok_or("Function missing name")?;
         let name = self.get_text(name_node).to_string();
+        let is_extern = self.get_text(node).starts_with("extern");
 
         let mut params = Vec::new();
         let mut locals = Vec::new();
         let mut blocks = Vec::new();
+        let mut has_body = false;
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -403,6 +385,7 @@ impl Parser {
                     params.push((p_name, p_type));
                 }
                 "local_decl" => {
+                    has_body = true;
                     let l_name_node = child.child_by_field_name("name").ok_or("Local missing name")?;
                     let l_name = self.get_text(l_name_node).to_string();
                     let l_type_node = child.child_by_field_name("type").ok_or("Local missing type")?;
@@ -410,13 +393,23 @@ impl Parser {
                     locals.push((l_name, l_type));
                 }
                 "basic_block" => {
+                    has_body = true;
                     blocks.push(self.map_basic_block(child)?);
+                }
+                "{" | "}" => {
+                    has_body = true;
                 }
                 _ => {}
             }
         }
 
-        Ok(Function { name, params, locals, blocks })
+        let body = if has_body {
+            Some(FunctionBody { locals, blocks })
+        } else {
+            None
+        };
+
+        Ok(Function { name, is_extern, params, body })
     }
 }
 
@@ -491,18 +484,41 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.name, "add");
+            assert!(!f.is_extern);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].0, "a");
             assert_eq!(f.params[0].1, Type::Number);
-            assert_eq!(f.locals.len(), 1);
-            assert_eq!(f.locals[0].0, "ret");
-            assert_eq!(f.blocks.len(), 1);
-            let block = &f.blocks[0];
+            
+            let body = f.body.as_ref().unwrap();
+            assert_eq!(body.locals.len(), 1);
+            assert_eq!(body.locals[0].0, "ret");
+            assert_eq!(body.blocks.len(), 1);
+            let block = &body.blocks[0];
             assert_eq!(block.label, "entry");
             assert_eq!(block.statements.len(), 3);
             assert_eq!(block.terminator, Terminator::Return);
         } else {
             panic!("Expected function declaration");
+        }
+    }
+
+    #[test]
+    fn test_parse_extern_fn() {
+        let source = "
+            extern fn add_impl(a: number, b: number);
+        ";
+        let parser = Parser::new(source.to_string());
+        let program = parser.parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+        if let Declaration::Fn(f) = &program.declarations[0] {
+            assert_eq!(f.name, "add_impl");
+            assert!(f.is_extern);
+            assert_eq!(f.params.len(), 2);
+            assert_eq!(f.params[0].0, "a");
+            assert_eq!(f.params[0].1, Type::Number);
+            assert!(f.body.is_none());
+        } else {
+            panic!("Expected extern function declaration");
         }
     }
 }

@@ -149,10 +149,6 @@
           "named": true
         },
         {
-          "type": "extern_fn",
-          "named": true
-        },
-        {
           "type": "function_decl",
           "named": true
         },
@@ -217,32 +213,6 @@
           }
         ]
       }
-    }
-  },
-  {
-    "type": "extern_fn",
-    "named": true,
-    "fields": {
-      "name": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "identifier",
-            "named": true
-          }
-        ]
-      }
-    },
-    "children": {
-      "multiple": true,
-      "required": false,
-      "types": [
-        {
-          "type": "param_decl",
-          "named": true
-        }
-      ]
     }
   },
   {
@@ -777,11 +747,11 @@
   },
   {
     "type": "number",
-    "named": true
+    "named": false
   },
   {
     "type": "number",
-    "named": false
+    "named": true
   },
   {
     "type": "payload",

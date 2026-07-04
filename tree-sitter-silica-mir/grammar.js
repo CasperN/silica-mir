@@ -14,8 +14,7 @@ module.exports = grammar({
     declaration: $ => choice(
       $.struct_decl,
       $.enum_decl,
-      $.function_decl,
-      $.extern_fn
+      $.function_decl
     ),
 
     comment: $ => /#.*/,
@@ -60,15 +59,7 @@ module.exports = grammar({
       seq('Drop', 'Copy')
     ),
 
-    extern_fn: $ => seq(
-      'extern',
-      'fn',
-      field('name', $.identifier),
-      '(',
-      commaSep($.param_decl),
-      ')',
-      ';'
-    ),
+
 
     param_decl: $ => seq(
       field('name', $.identifier),
@@ -84,15 +75,16 @@ module.exports = grammar({
     ),
 
     function_decl: $ => seq(
+      optional('extern'),
       'fn',
       field('name', $.identifier),
       '(',
       commaSep($.param_decl),
       ')',
-      '{',
-      repeat($.local_decl),
-      repeat($.basic_block),
-      '}'
+      choice(
+        seq('{', repeat($.local_decl), repeat($.basic_block), '}'),
+        ';'
+      )
     ),
 
     basic_block: $ => seq(
