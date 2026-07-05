@@ -17,6 +17,7 @@ pub enum RefKind {
 pub enum Type {
     Number,
     Boolean,
+    Unit,
     Custom(String), // struct or enum type reference
     Fn(Vec<Type>),
     Ref(RefKind, Box<Type>),
@@ -34,6 +35,7 @@ pub enum Place {
 pub enum ConstVal {
     Number(u64),
     Boolean(bool),
+    Unit,
     FnName(String),
 }
 

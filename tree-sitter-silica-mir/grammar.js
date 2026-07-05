@@ -182,6 +182,7 @@ module.exports = grammar({
       $.number,
       'true',
       'false',
+      'unit',
       $.identifier // fnName
     ),
 
@@ -198,6 +199,7 @@ module.exports = grammar({
     type: $ => choice(
       'number',
       'boolean',
+      'unit',
       prec(2, seq('&', $.type)),
       prec(2, seq('&mut', $.type)),
       prec(2, seq('&out', $.type)),

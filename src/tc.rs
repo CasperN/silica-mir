@@ -50,7 +50,7 @@ impl Env {
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
-            Type::Number | Type::Boolean => Ok(()),
+            Type::Number | Type::Boolean | Type::Unit => Ok(()),
             Type::Custom(name) => {
                 if self.types.contains_key(name) {
                     Ok(())
@@ -74,6 +74,7 @@ impl Env {
         match (t1, t2) {
             (Type::Number, Type::Number) => true,
             (Type::Boolean, Type::Boolean) => true,
+            (Type::Unit, Type::Unit) => true,
             (Type::Custom(a), Type::Custom(b)) => a == b,
             (Type::Fn(a), Type::Fn(b)) => {
                 if a.len() != b.len() {
@@ -144,6 +145,7 @@ impl Env {
             Operand::Const(c) => match c {
                 ConstVal::Number(_) => Ok(Type::Number),
                 ConstVal::Boolean(_) => Ok(Type::Boolean),
+                ConstVal::Unit => Ok(Type::Unit),
                 ConstVal::FnName(name) => {
                     let f = self.functions.get(name).ok_or_else(|| format!("Undeclared function name '{}'", name))?;
                     let param_tys = f.params.iter().map(|(_, t)| t.clone()).collect();
@@ -831,6 +833,50 @@ mod tests {
                 return
             }
             ",
+        );
+    }
+
+    #[test]
+    fn operand_unit_const_ok() {
+        assert_ok(
+            "
+            fn f() {
+              u: unit;
+              entry:
+                u = unit;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unit_as_enum_payload_ok() {
+        assert_ok(
+            "
+            enum Tag { A: unit B: number }
+            fn f() {
+              t: Tag;
+              entry:
+                t = Tag::A(unit);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unit_type_mismatch_error() {
+        assert_err(
+            "
+            fn f() {
+              n: number;
+              entry:
+                n = unit;
+                return
+            }
+            ",
+            "Type mismatch in assignment",
         );
     }
 

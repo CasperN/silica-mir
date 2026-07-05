@@ -61,11 +61,12 @@ impl Parser {
         match node.kind() {
             "number" => Ok(Type::Number),
             "boolean" => Ok(Type::Boolean),
+            "unit" => Ok(Type::Unit),
             "identifier" => Ok(Type::Custom(self.get_text(node).to_string())),
             "type" => {
                 let first_child = node.child(0).ok_or("Type node has no children")?;
                 let kind = first_child.kind();
-                if kind == "number" || kind == "boolean" || kind == "identifier" {
+                if kind == "number" || kind == "boolean" || kind == "unit" || kind == "identifier" {
                     return self.map_type(first_child);
                 }
 
@@ -175,6 +176,7 @@ impl Parser {
                 match text {
                     "true" => Ok(ConstVal::Boolean(true)),
                     "false" => Ok(ConstVal::Boolean(false)),
+                    "unit" => Ok(ConstVal::Unit),
                     _ => Ok(ConstVal::FnName(text.to_string())),
                 }
             }
