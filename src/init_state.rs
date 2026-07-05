@@ -23,9 +23,13 @@ use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitState {
-    Uninit,
+    /// Declared local, never assigned yet.
+    NeverInit,
+    /// Was `Init` at some point; consumed by a `move`.
+    Moved,
     Init,
-    /// Predecessors disagree: reads become "may be uninitialized" errors.
+    /// Predecessors disagree on the above. Reads become "may be used
+    /// before initialization or after move" errors.
     Diverged,
 }
 
@@ -38,7 +42,7 @@ type PointState = HashMap<String, InitState>;
 fn join(a: &PointState, b: &PointState) -> PointState {
     a.iter()
         .map(|(name, sa)| {
-            let sb = b.get(name).copied().unwrap_or(InitState::Uninit);
+            let sb = b.get(name).copied().unwrap_or(InitState::NeverInit);
             (name.clone(), join_state(*sa, sb))
         })
         .collect()
@@ -69,7 +73,7 @@ fn initial_state(func: &Function, body: &FunctionBody) -> PointState {
         s.insert(p.name.clone(), InitState::Init);
     }
     for l in &body.locals {
-        s.insert(l.name.clone(), InitState::Uninit);
+        s.insert(l.name.clone(), InitState::NeverInit);
     }
     s
 }
@@ -167,7 +171,7 @@ fn apply_rvalue_moves(rv: &RValue, state: &mut PointState) {
 fn apply_operand_move(op: &Operand, state: &mut PointState) {
     if let Operand::Move(place) = op {
         if let Some(root) = root_var(place) {
-            state.insert(root.to_string(), InitState::Uninit);
+            state.insert(root.to_string(), InitState::Moved);
         }
     }
 }
@@ -246,12 +250,16 @@ fn check_place_read(
     let Some(&s) = state.get(root) else { return; };
     match s {
         InitState::Init => {}
-        InitState::Uninit => d.errors.push(format!(
+        InitState::NeverInit => d.errors.push(format!(
             "at {}: In function '{}', block '{}': variable '{}' is used before initialization",
             span, func.name, block.label, root
         )),
+        InitState::Moved => d.errors.push(format!(
+            "at {}: In function '{}', block '{}': variable '{}' is used after move",
+            span, func.name, block.label, root
+        )),
         InitState::Diverged => d.errors.push(format!(
-            "at {}: In function '{}', block '{}': variable '{}' may be used before initialization (init state inconsistent across paths)",
+            "at {}: In function '{}', block '{}': variable '{}' may be used before initialization or after move (state inconsistent across paths)",
             span, func.name, block.label, root
         )),
     }
@@ -360,9 +368,9 @@ mod tests {
             }
             ",
         );
-        assert_one_error_contains_all(
+        assert_errors_contain(
             &errs,
-            &["variable 'x' is used before initialization"],
+            &["variable 'x' is used after move"],
         );
     }
 
