@@ -6,7 +6,7 @@
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::tc::Env;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
@@ -18,8 +18,7 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else { return; };
     if body.blocks.is_empty() { return; }
 
-    let blocks_by_label: HashMap<&str, &BasicBlock> =
-        body.blocks.iter().map(|b| (b.label.as_str(), b)).collect();
+    let blocks_by_label = body.blocks_by_label();
 
     let entry = body.blocks[0].label.as_str();
     let mut visited: HashSet<String> = HashSet::new();
@@ -29,7 +28,7 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
 
     while let Some(label) = worklist.pop_front() {
         let Some(block) = blocks_by_label.get(label.as_str()) else { continue; };
-        for succ in successors(&block.terminator) {
+        for succ in terminator_successors(&block.terminator) {
             if blocks_by_label.contains_key(succ) && visited.insert(succ.to_string()) {
                 worklist.push_back(succ.to_string());
             }
@@ -42,19 +41,6 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
                 "at {}: In function '{}': block '{}' is unreachable from entry",
                 block.label_span, func.name, block.label
             ));
-        }
-    }
-}
-
-fn successors(term: &Terminator) -> Vec<&str> {
-    match term {
-        Terminator::Goto(label) => vec![label.as_str()],
-        Terminator::Return | Terminator::Abort | Terminator::Unreachable => vec![],
-        Terminator::Branch { true_label, false_label, .. } => {
-            vec![true_label.as_str(), false_label.as_str()]
-        }
-        Terminator::SwitchEnum { cases, .. } => {
-            cases.iter().map(|(_, label)| label.as_str()).collect()
         }
     }
 }

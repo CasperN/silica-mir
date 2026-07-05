@@ -1,5 +1,6 @@
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
+use crate::{fmt_error, push_error};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -323,46 +324,44 @@ impl Env {
     ) -> Result<(), String> {
         match stmt {
             Statement::Assign(place, rvalue) => {
-                let lhs_ty = self.infer_place_type(place, locals).map_err(|e| {
-                    format!("at {}: In function '{}', block '{}', assignment LHS: {}", stmt_span, func.name, block.label, e)
-                })?;
-                let rhs_ty = self.infer_rvalue_type(rvalue, locals).map_err(|e| {
-                    format!("at {}: In function '{}', block '{}', assignment RHS: {}", stmt_span, func.name, block.label, e)
-                })?;
+                let lhs_ty = self.infer_place_type(place, locals)
+                    .map_err(|e| fmt_error!(stmt_span, func, block, "assignment LHS: {}", e))?;
+                let rhs_ty = self.infer_rvalue_type(rvalue, locals)
+                    .map_err(|e| fmt_error!(stmt_span, func, block, "assignment RHS: {}", e))?;
                 if !self.types_match(&lhs_ty, &rhs_ty) {
-                    return Err(format!(
-                        "at {}: In function '{}', block '{}': Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
-                        stmt_span, func.name, block.label, lhs_ty, rhs_ty
+                    return Err(fmt_error!(
+                        stmt_span, func, block,
+                        "Type mismatch in assignment. LHS is {:?}, RHS is {:?}", lhs_ty, rhs_ty
                     ));
                 }
                 Ok(())
             }
             Statement::Call(target, args) => {
-                let target_ty = self.infer_operand_type(target, locals).map_err(|e| {
-                    format!("at {}: In function '{}', block '{}', call target: {}", stmt_span, func.name, block.label, e)
-                })?;
+                let target_ty = self.infer_operand_type(target, locals)
+                    .map_err(|e| fmt_error!(stmt_span, func, block, "call target: {}", e))?;
 
                 let Type::Fn(param_tys) = target_ty else {
-                    return Err(format!(
-                        "at {}: In function '{}', block '{}': Call target is not a function type: {:?}",
-                        stmt_span, func.name, block.label, target_ty
+                    return Err(fmt_error!(
+                        stmt_span, func, block,
+                        "Call target is not a function type: {:?}", target_ty
                     ));
                 };
 
                 if args.len() != param_tys.len() {
-                    return Err(format!(
-                        "at {}: In function '{}', block '{}': Wrong number of arguments for call. Expected {}, found {}",
-                        stmt_span, func.name, block.label, param_tys.len(), args.len()
+                    return Err(fmt_error!(
+                        stmt_span, func, block,
+                        "Wrong number of arguments for call. Expected {}, found {}",
+                        param_tys.len(), args.len()
                     ));
                 }
                 for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                    let arg_ty = self.infer_operand_type(arg, locals).map_err(|e| {
-                        format!("at {}: In function '{}', block '{}', call arg {}: {}", stmt_span, func.name, block.label, i, e)
-                    })?;
+                    let arg_ty = self.infer_operand_type(arg, locals)
+                        .map_err(|e| fmt_error!(stmt_span, func, block, "call arg {}: {}", i, e))?;
                     if !self.types_match(param_ty, &arg_ty) {
-                        return Err(format!(
-                            "at {}: In function '{}', block '{}': Call argument {} type mismatch. Expected {:?}, found {:?}",
-                            stmt_span, func.name, block.label, i, param_ty, arg_ty
+                        return Err(fmt_error!(
+                            stmt_span, func, block,
+                            "Call argument {} type mismatch. Expected {:?}, found {:?}",
+                            i, param_ty, arg_ty
                         ));
                     }
                 }
@@ -383,36 +382,24 @@ impl Env {
         match &block.terminator {
             Terminator::Goto(label) => {
                 if !block_labels.contains(label) {
-                    d.errors.push(format!(
-                        "at {}: In function '{}', block '{}': goto targets undefined block '{}'",
-                        ts, func.name, block.label, label
-                    ));
+                    push_error!(d, ts, func, block, "goto targets undefined block '{}'", label);
                 }
             }
             Terminator::Return => {}
             Terminator::Branch { cond, true_label, false_label } => {
                 match self.infer_operand_type(cond, locals) {
-                    Ok(cond_ty) if cond_ty != Type::Boolean => d.errors.push(format!(
-                        "at {}: In function '{}', block '{}': branch condition must be boolean, found {:?}",
-                        ts, func.name, block.label, cond_ty
-                    )),
+                    Ok(cond_ty) if cond_ty != Type::Boolean => push_error!(
+                        d, ts, func, block,
+                        "branch condition must be boolean, found {:?}", cond_ty
+                    ),
                     Ok(_) => {}
-                    Err(e) => d.errors.push(format!(
-                        "at {}: In function '{}', block '{}', branch condition: {}",
-                        ts, func.name, block.label, e
-                    )),
+                    Err(e) => push_error!(d, ts, func, block, "branch condition: {}", e),
                 }
                 if !block_labels.contains(true_label) {
-                    d.errors.push(format!(
-                        "at {}: In function '{}', block '{}': branch true target undefined block '{}'",
-                        ts, func.name, block.label, true_label
-                    ));
+                    push_error!(d, ts, func, block, "branch true target undefined block '{}'", true_label);
                 }
                 if !block_labels.contains(false_label) {
-                    d.errors.push(format!(
-                        "at {}: In function '{}', block '{}': branch false target undefined block '{}'",
-                        ts, func.name, block.label, false_label
-                    ));
+                    push_error!(d, ts, func, block, "branch false target undefined block '{}'", false_label);
                 }
             }
             Terminator::SwitchEnum { place, cases } => {
@@ -423,32 +410,29 @@ impl Env {
                     Ok(Type::Custom(name)) => match self.types.get(&name) {
                         Some(TypeDecl::Enum(e)) => Some(e),
                         Some(TypeDecl::Struct(_)) => {
-                            d.errors.push(format!(
-                                "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
-                                ts, func.name, block.label, name
-                            ));
+                            push_error!(
+                                d, ts, func, block,
+                                "switchEnum place must be an enum type, found struct '{}'", name
+                            );
                             None
                         }
                         None => {
-                            d.errors.push(format!(
-                                "at {}: In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
-                                ts, func.name, block.label, name
-                            ));
+                            push_error!(
+                                d, ts, func, block,
+                                "Undeclared enum '{}' in switchEnum", name
+                            );
                             None
                         }
                     },
                     Ok(other) => {
-                        d.errors.push(format!(
-                            "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found {:?}",
-                            ts, func.name, block.label, other
-                        ));
+                        push_error!(
+                            d, ts, func, block,
+                            "switchEnum place must be an enum type, found {:?}", other
+                        );
                         None
                     }
                     Err(e) => {
-                        d.errors.push(format!(
-                            "at {}: In function '{}', block '{}', switchEnum place: {}",
-                            ts, func.name, block.label, e
-                        ));
+                        push_error!(d, ts, func, block, "switchEnum place: {}", e);
                         None
                     }
                 };
@@ -456,17 +440,18 @@ impl Env {
                 for (variant, label) in cases {
                     if let Some(e_decl) = enum_decl {
                         if !e_decl.variants.iter().any(|v| v.name == *variant) {
-                            d.errors.push(format!(
-                                "at {}: In function '{}', block '{}': variant '{}' is not part of enum '{}'",
-                                ts, func.name, block.label, variant, e_decl.name
-                            ));
+                            push_error!(
+                                d, ts, func, block,
+                                "variant '{}' is not part of enum '{}'", variant, e_decl.name
+                            );
                         }
                     }
                     if !block_labels.contains(label) {
-                        d.errors.push(format!(
-                            "at {}: In function '{}', block '{}': switchEnum variant '{}' targets undefined block '{}'",
-                            ts, func.name, block.label, variant, label
-                        ));
+                        push_error!(
+                            d, ts, func, block,
+                            "switchEnum variant '{}' targets undefined block '{}'",
+                            variant, label
+                        );
                     }
                 }
             }

@@ -21,6 +21,7 @@
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::tc::{Env, TypeDecl};
+use crate::{push_error, push_warning};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
 /// State at one program point: per-Var variant set. Absent = ⊤.
@@ -59,10 +60,14 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     }
 }
 
-fn operand_place(op: &Operand) -> Option<&Place> {
-    match op {
-        Operand::Copy(p) | Operand::Move(p) => Some(p),
-        Operand::Const(_) => None,
+/// Strict Var-only extraction. Unlike `ast::extract_path`, this returns
+/// `None` for any projection (field, downcast) — enum_variants tracks only
+/// top-level Var variant sets, so refinement/clobbering must not attribute
+/// sub-place operations to the root.
+fn root_var(place: &Place) -> Option<&str> {
+    match place {
+        Place::Var(name) => Some(name.as_str()),
+        _ => None,
     }
 }
 
@@ -160,10 +165,11 @@ fn check_downcast_refinement(
                 None => false, // ⊤: any declared variant possible
             };
             if !refined {
-                d.errors.push(format!(
-                    "at {}: In function '{}', block '{}': cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
-                    span, func.name, block.label, root, v, root, v
-                ));
+                push_error!(
+                    d, span, func, block,
+                    "cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
+                    root, v, root, v
+                );
             }
         }
     }
@@ -188,8 +194,7 @@ fn compute_entry_states(body: &FunctionBody) -> HashMap<String, PointState> {
     states.insert(entry_label.clone(), PointState::new());
     worklist.push_back(entry_label);
 
-    let blocks_by_label: HashMap<&str, &BasicBlock> =
-        body.blocks.iter().map(|b| (b.label.as_str(), b)).collect();
+    let blocks_by_label = body.blocks_by_label();
 
     while let Some(label) = worklist.pop_front() {
         let entry_state = states.get(&label).cloned().unwrap_or_default();
@@ -245,13 +250,6 @@ fn successor_edges(term: &Terminator) -> Vec<(String, Option<(String, String)>)>
                 })
                 .collect()
         }
-    }
-}
-
-fn root_var(place: &Place) -> Option<&str> {
-    match place {
-        Place::Var(name) => Some(name.as_str()),
-        _ => None,
     }
 }
 
@@ -333,10 +331,7 @@ fn check_switch(
 ) {
     let ts = block.terminator_span;
     if cases.is_empty() {
-        d.errors.push(format!(
-            "at {}: In function '{}', block '{}': switchEnum requires at least one arm",
-            ts, func.name, block.label
-        ));
+        push_error!(d, ts, func, block, "switchEnum requires at least one arm");
     }
 
     let Some(enum_decl) = resolve_enum_of_place(env, locals, place) else {
@@ -350,10 +345,10 @@ fn check_switch(
     // Exhaustiveness — report missing variants in declaration order.
     for variant in &declared {
         if !handled.contains(variant) {
-            d.errors.push(format!(
-                "at {}: In function '{}', block '{}': switchEnum on '{}' does not handle variant '{}'",
-                ts, func.name, block.label, enum_decl.name, variant
-            ));
+            push_error!(
+                d, ts, func, block,
+                "switchEnum on '{}' does not handle variant '{}'", enum_decl.name, variant
+            );
         }
     }
 
@@ -361,10 +356,10 @@ fn check_switch(
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for (variant, _) in cases {
         if !seen.insert(variant.as_str()) {
-            d.errors.push(format!(
-                "at {}: In function '{}', block '{}': switchEnum has duplicate arm for variant '{}'",
-                ts, func.name, block.label, variant
-            ));
+            push_error!(
+                d, ts, func, block,
+                "switchEnum has duplicate arm for variant '{}'", variant
+            );
         }
     }
 
@@ -372,8 +367,7 @@ fn check_switch(
     let root = root_var(place);
     let known: Option<&BTreeSet<String>> = root.and_then(|r| state.get(r));
 
-    let blocks_by_label: HashMap<&str, &BasicBlock> =
-        body.blocks.iter().map(|b| (b.label.as_str(), b)).collect();
+    let blocks_by_label = body.blocks_by_label();
 
     for (variant, label) in cases {
         // Skip arms for variants that don't belong to this enum (tc reports
@@ -390,14 +384,16 @@ fn check_switch(
         };
 
         match (target_unreachable, variant_reachable) {
-            (true, true) => d.errors.push(format!(
-                "at {}: In function '{}', block '{}': switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
-                ts, func.name, block.label, variant
-            )),
-            (false, false) => d.warnings.push(format!(
-                "at {}: In function '{}', block '{}': switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
-                ts, func.name, block.label, variant
-            )),
+            (true, true) => push_error!(
+                d, ts, func, block,
+                "switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
+                variant
+            ),
+            (false, false) => push_warning!(
+                d, ts, func, block,
+                "switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
+                variant
+            ),
             _ => {}
         }
     }

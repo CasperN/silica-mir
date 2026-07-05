@@ -22,6 +22,7 @@
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
+use crate::push_error;
 use crate::tc::{Env, TypeDecl};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
@@ -325,8 +326,7 @@ fn compute_entry_states(
     states.insert(entry_label.clone(), initial_state(func, body, ctx.env));
     worklist.push_back(entry_label);
 
-    let blocks_by_label: HashMap<&str, &BasicBlock> =
-        body.blocks.iter().map(|b| (b.label.as_str(), b)).collect();
+    let blocks_by_label = body.blocks_by_label();
 
     while let Some(label) = worklist.pop_front() {
         let block = blocks_by_label[label.as_str()];
@@ -336,7 +336,7 @@ fn compute_entry_states(
         }
         transfer_terminator(ctx, &block.terminator, &mut state);
 
-        for succ in successors(&block.terminator) {
+        for succ in terminator_successors(&block.terminator) {
             if !blocks_by_label.contains_key(succ) { continue; }
             let new_state = match states.get(succ) {
                 None => state.clone(),
@@ -350,19 +350,6 @@ fn compute_entry_states(
     }
 
     states
-}
-
-fn successors(term: &Terminator) -> Vec<&str> {
-    match term {
-        Terminator::Goto(label) => vec![label.as_str()],
-        Terminator::Return | Terminator::Abort | Terminator::Unreachable => vec![],
-        Terminator::Branch { true_label, false_label, .. } => {
-            vec![true_label.as_str(), false_label.as_str()]
-        }
-        Terminator::SwitchEnum { cases, .. } => {
-            cases.iter().map(|(_, label)| label.as_str()).collect()
-        }
-    }
 }
 
 // ---------- Transfer (state updates) ----------
@@ -534,10 +521,10 @@ fn check_lhs_downcast(
     let Some(root_state) = state.get(&root) else { return; };
     let prefix_state = read_at(root_state, &root_ty, &path[..idx], ctx.env);
     if !matches!(prefix_state, InitState::Init) {
-        d.errors.push(format!(
-            "at {}: In function '{}', block '{}': cannot write through variant projection: '{}' is not initialized here",
-            span, func.name, block.label, root
-        ));
+        push_error!(
+            d, span, func, block,
+            "cannot write through variant projection: '{}' is not initialized here", root
+        );
     }
 }
 
@@ -556,22 +543,22 @@ fn check_place_read(
     let leaf = read_at(root_state, &root_ty, &path, ctx.env);
     match leaf {
         InitState::Init => {}
-        InitState::NeverInit => d.errors.push(format!(
-            "at {}: In function '{}', block '{}': variable '{}' is used before initialization",
-            span, func.name, block.label, root
-        )),
-        InitState::Moved => d.errors.push(format!(
-            "at {}: In function '{}', block '{}': variable '{}' is used after move",
-            span, func.name, block.label, root
-        )),
-        InitState::Diverged => d.errors.push(format!(
-            "at {}: In function '{}', block '{}': variable '{}' may be used before initialization or after move (state inconsistent across paths)",
-            span, func.name, block.label, root
-        )),
-        InitState::Partial(_) => d.errors.push(format!(
-            "at {}: In function '{}', block '{}': variable '{}' is not fully initialized here",
-            span, func.name, block.label, root
-        )),
+        InitState::NeverInit => push_error!(
+            d, span, func, block,
+            "variable '{}' is used before initialization", root
+        ),
+        InitState::Moved => push_error!(
+            d, span, func, block,
+            "variable '{}' is used after move", root
+        ),
+        InitState::Diverged => push_error!(
+            d, span, func, block,
+            "variable '{}' may be used before initialization or after move (state inconsistent across paths)", root
+        ),
+        InitState::Partial(_) => push_error!(
+            d, span, func, block,
+            "variable '{}' is not fully initialized here", root
+        ),
     }
 }
 

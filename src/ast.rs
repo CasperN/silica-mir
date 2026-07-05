@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Markers {
     pub copy: bool,
@@ -74,6 +76,30 @@ pub fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
                 cur = inner;
             }
             Place::Deref(_) => return None,
+        }
+    }
+}
+
+/// The `Place` referenced by an operand's `copy`/`move`, or `None` for
+/// constants.
+pub fn operand_place(op: &Operand) -> Option<&Place> {
+    match op {
+        Operand::Copy(p) | Operand::Move(p) => Some(p),
+        Operand::Const(_) => None,
+    }
+}
+
+/// Labels of the blocks a terminator flows into. Empty for terminators
+/// with no successors (`return`, `abort`, `unreachable`).
+pub fn terminator_successors(term: &Terminator) -> Vec<&str> {
+    match term {
+        Terminator::Goto(label) => vec![label.as_str()],
+        Terminator::Return | Terminator::Abort | Terminator::Unreachable => vec![],
+        Terminator::Branch { true_label, false_label, .. } => {
+            vec![true_label.as_str(), false_label.as_str()]
+        }
+        Terminator::SwitchEnum { cases, .. } => {
+            cases.iter().map(|(_, label)| label.as_str()).collect()
         }
     }
 }
@@ -164,6 +190,13 @@ pub struct Local {
 pub struct FunctionBody {
     pub locals: Vec<Local>,
     pub blocks: Vec<BasicBlock>,
+}
+
+impl FunctionBody {
+    /// Index blocks by label for O(1) lookup during dataflow.
+    pub fn blocks_by_label(&self) -> HashMap<&str, &BasicBlock> {
+        self.blocks.iter().map(|b| (b.label.as_str(), b)).collect()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
