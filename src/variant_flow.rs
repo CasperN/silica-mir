@@ -105,6 +105,9 @@ fn check_places_in_stmt(
                 }
             }
         }
+        Statement::Drop(place) => {
+            check_downcast_refinement(env, func, locals, block, place, span, state, d);
+        }
     }
 }
 
@@ -300,6 +303,12 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
             // Return values flow through `&out` params; those references were
             // borrowed at some earlier assignment (which already clobbered
             // the underlying Var). Nothing to do here.
+        }
+        Statement::Drop(place) => {
+            // Drop consumes the place — kill any variant refinement.
+            if let Some(root) = root_var(place) {
+                state.remove(root);
+            }
         }
     }
 }

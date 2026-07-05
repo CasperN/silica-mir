@@ -366,6 +366,9 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
                 apply_operand_move(ctx, a, state);
             }
         }
+        Statement::Drop(place) => {
+            apply_move(ctx, place, state);
+        }
     }
 }
 
@@ -435,6 +438,13 @@ fn check_and_transfer_stmt(
             for a in args {
                 eval_operand(ctx, func, block, a, span, state, d);
             }
+        }
+        Statement::Drop(place) => {
+            // Read the place, then consume it. Same effect on state as
+            // `move`. The substructural checker (separate pass) is the
+            // one that will require the type to be `Drop`-classed.
+            check_place_read(ctx, func, block, place, span, state, d);
+            apply_move(ctx, place, state);
         }
     }
 }
@@ -1066,6 +1076,40 @@ mod tests {
             }
             ",
         );
+    }
+
+    // ---------- Drop statement ----------
+
+    #[test]
+    fn drop_consumes_like_move() {
+        // `drop x` behaves like a move for init tracking: subsequent read errors.
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              y: number;
+              entry:
+                drop x;
+                y = copy x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["variable 'x' is used after move"]);
+    }
+
+    #[test]
+    fn drop_of_uninit_error() {
+        let (errs, _) = run(
+            "
+            fn f() {
+              x: number;
+              entry:
+                drop x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["variable 'x' is used before initialization"]);
     }
 
     // ---------- Reassignment / move ordering ----------

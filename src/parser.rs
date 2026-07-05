@@ -250,6 +250,10 @@ impl Parser {
                 }
                 Ok(Statement::Call(func, args))
             }
+            "drop_stmt" => {
+                let place_node = child.child_by_field_name("place").ok_or("Drop missing place")?;
+                Ok(Statement::Drop(self.map_place(place_node)?))
+            }
             _ => Err(format!("Unknown statement kind: {}", child.kind())),
         }
     }

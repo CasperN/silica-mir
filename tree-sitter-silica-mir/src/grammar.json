@@ -468,6 +468,27 @@
         {
           "type": "SYMBOL",
           "name": "call"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "drop_stmt"
+        }
+      ]
+    },
+    "drop_stmt": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "drop"
+        },
+        {
+          "type": "FIELD",
+          "name": "place",
+          "content": {
+            "type": "SYMBOL",
+            "name": "place"
+          }
         }
       ]
     },

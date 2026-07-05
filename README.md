@@ -85,6 +85,9 @@ rvalue =
 statement =
     | place = rvalue
     | call operand ( operand, ... )
+    | drop place
+        # Marks the place as consumed/forgotten. No-op for scalars and POD types
+        # and lowers to call Drop::drop(&drop place) for custom destructors.
     | unborrow place
         # Mark the place as no longer borrowed. Inserted by the NLL pass.
         # Legal iff the loan on x has a fully dead lineage -- the reference and
@@ -210,3 +213,6 @@ payload sets the whole enum `Uninit`.
   variant). `switchEnum` arms must be syntactically total over the
   declaration (a declaration-level check).
 
+
+# Punch list
+- reachable/flow analysis for booleans too. Or should boolean be an enum?

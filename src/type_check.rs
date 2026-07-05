@@ -372,6 +372,13 @@ impl Env {
                 }
                 Ok(())
             }
+            Statement::Drop(place) => {
+                // Just resolve the place — any legality (Drop-classed,
+                // currently init) is enforced by the substructural checker.
+                self.infer_place_type(place, locals)
+                    .map_err(|e| fmt_error!(stmt_span, func, block, "drop: {}", e))?;
+                Ok(())
+            }
         }
     }
 
@@ -1493,6 +1500,36 @@ mod tests {
             }
             ",
             "targets undefined block 'nowhere'",
+        );
+    }
+
+    // ---------- drop statement ----------
+
+    #[test]
+    fn drop_statement_ok() {
+        // Syntactically well-formed drop on a param of Drop-classed type.
+        assert_ok(
+            "
+            fn f(x: number) {
+              entry:
+                drop x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn drop_of_undeclared_var_error() {
+        assert_err(
+            "
+            fn f() {
+              entry:
+                drop x;
+                return
+            }
+            ",
+            "Use of undeclared variable 'x'",
         );
     }
 

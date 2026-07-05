@@ -160,6 +160,22 @@
     }
   },
   {
+    "type": "drop_stmt",
+    "named": true,
+    "fields": {
+      "place": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "place",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "enum_decl",
     "named": true,
     "fields": {
@@ -452,6 +468,10 @@
         {
           "type": "call",
           "named": true
+        },
+        {
+          "type": "drop_stmt",
+          "named": true
         }
       ]
     }
@@ -717,6 +737,10 @@
   },
   {
     "type": "copy",
+    "named": false
+  },
+  {
+    "type": "drop",
     "named": false
   },
   {
