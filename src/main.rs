@@ -4,6 +4,7 @@ mod diagnostics;
 mod init_state;
 mod marker_composition;
 mod parser;
+mod substructural_check;
 mod type_check;
 mod variant_flow;
 
@@ -20,6 +21,7 @@ pub fn run_all_passes(program: &Program) -> Diagnostics {
     let env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
     marker_composition::check_program(&env, &mut d);
+    substructural_check::check_program(&env, &mut d);
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);

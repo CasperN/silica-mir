@@ -1004,10 +1004,11 @@ mod tests {
     #[test]
     fn empty_struct_local_starts_init() {
         // A struct with zero fields has no components to write, so a
-        // declared local of that type is trivially usable.
+        // declared local of that type is trivially usable. Marked
+        // `Copy Drop` so the substructural checker permits the copy.
         assert_no_diagnostics(
             "
-            struct Unit0 { }
+            struct Copy Drop Unit0 { }
             fn f() {
               u: Unit0;
               v: Unit0;
