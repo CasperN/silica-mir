@@ -670,6 +670,98 @@ mod tests {
         );
     }
 
+    #[test]
+    fn flow_out_borrow_clobbers_refinement() {
+        let (errs, _) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f() {
+              o: Option;
+              r: &out Option;
+              entry:
+                o = Option::None(unit);
+                r = &out o;
+                switchEnum(o) [None: n, Some: dead]
+              n: return
+              dead: unreachable
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variant 'Some' claims unreachable but variant is reachable"],
+        );
+    }
+
+    #[test]
+    fn flow_drop_borrow_clobbers_refinement() {
+        let (errs, _) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f() {
+              o: Option;
+              r: &drop Option;
+              entry:
+                o = Option::None(unit);
+                r = &drop o;
+                switchEnum(o) [None: n, Some: dead]
+              n: return
+              dead: unreachable
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variant 'Some' claims unreachable but variant is reachable"],
+        );
+    }
+
+    #[test]
+    fn flow_uninit_borrow_clobbers_refinement() {
+        let (errs, _) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f() {
+              o: Option;
+              r: &uninit Option;
+              entry:
+                o = Option::None(unit);
+                r = &uninit o;
+                switchEnum(o) [None: n, Some: dead]
+              n: return
+              dead: unreachable
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variant 'Some' claims unreachable but variant is reachable"],
+        );
+    }
+
+    #[test]
+    fn flow_arm_target_with_abort_is_not_an_impossibility_marker() {
+        // `abort` terminates the block but isn't the "impossible" marker —
+        // only `unreachable` is. So a variant provably-dead whose arm points
+        // at an `abort` block should be surfaced as dead-code (warning),
+        // not silently accepted as a proof of impossibility.
+        let (errs, warns) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f() {
+              o: Option;
+              entry:
+                o = Option::None(unit);
+                switchEnum(o) [None: n, Some: trap]
+              n: return
+              trap: abort
+            }
+            ",
+        );
+        assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
+        assert_warnings_contain(&warns, &["variant 'Some' is dead code"]);
+    }
+
     // ---------- Loops ----------
 
     #[test]

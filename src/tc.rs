@@ -784,6 +784,40 @@ mod tests {
     }
 
     #[test]
+    fn nested_reference_type_ok() {
+        // `&mut &mut T` — parser and tc handle both the type and the double
+        // deref on the read side.
+        assert_ok(
+            "
+            fn f(r: &mut &mut number) {
+              a: number;
+              entry:
+                a = copy **r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn zero_arity_fn_type_ok() {
+        // `fn()` as a local type — the operand chain and Type::Fn(vec![])
+        // round-trip through the checker cleanly.
+        assert_ok(
+            "
+            fn noop() { entry: return }
+            fn f() {
+              g: fn();
+              entry:
+                g = noop;
+                call copy g();
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
     fn place_deref_of_non_ref_error() {
         assert_err(
             "

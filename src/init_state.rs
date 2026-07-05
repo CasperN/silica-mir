@@ -451,34 +451,101 @@ fn apply_move(ctx: &Ctx, place: &Place, state: &mut PointState) {
 
 fn check_block(ctx: &Ctx, func: &Function, block: &BasicBlock, state: &mut PointState, d: &mut Diagnostics) {
     for (stmt, span) in &block.statements {
-        check_stmt(ctx, func, block, stmt, *span, state, d);
-        transfer_stmt(ctx, stmt, state);
+        check_and_transfer_stmt(ctx, func, block, stmt, *span, state, d);
     }
-    check_terminator(ctx, func, block, state, d);
-    transfer_terminator(ctx, &block.terminator, state);
+    check_and_transfer_terminator(ctx, func, block, state, d);
 }
 
-fn check_stmt(
+/// Combined check + transfer. Operands are consumed left-to-right so that a
+/// later operand in the same statement sees the state after prior moves —
+/// this is what makes `call f(move x, copy x)` correctly error on the second
+/// operand.
+fn check_and_transfer_stmt(
     ctx: &Ctx,
     func: &Function,
     block: &BasicBlock,
     stmt: &Statement,
     span: Span,
-    state: &PointState,
+    state: &mut PointState,
     d: &mut Diagnostics,
 ) {
     match stmt {
         Statement::Assign(target, rvalue) => {
-            check_rvalue_reads(ctx, func, block, rvalue, span, state, d);
+            eval_rvalue(ctx, func, block, rvalue, span, state, d);
             check_lhs_downcast(ctx, func, block, target, span, state, d);
+            apply_write(ctx, target, state, InitState::Init);
         }
         Statement::Call(target, args) => {
-            check_operand_read(ctx, func, block, target, span, state, d);
+            eval_operand(ctx, func, block, target, span, state, d);
             for a in args {
-                check_operand_read(ctx, func, block, a, span, state, d);
+                eval_operand(ctx, func, block, a, span, state, d);
             }
         }
     }
+}
+
+fn check_and_transfer_terminator(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    state: &mut PointState,
+    d: &mut Diagnostics,
+) {
+    let ts = block.terminator_span;
+    match &block.terminator {
+        Terminator::Branch { cond, .. } => eval_operand(ctx, func, block, cond, ts, state, d),
+        Terminator::SwitchEnum { place, .. } => {
+            // Discriminant read: no move, no consumption.
+            check_place_read(ctx, func, block, place, ts, state, d);
+        }
+        _ => {}
+    }
+}
+
+fn eval_rvalue(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    rv: &RValue,
+    span: Span,
+    state: &mut PointState,
+    d: &mut Diagnostics,
+) {
+    match rv {
+        RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+            eval_operand(ctx, func, block, op, span, state, d);
+        }
+        RValue::Ref(_, _) => {}
+    }
+}
+
+fn eval_operand(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    op: &Operand,
+    span: Span,
+    state: &mut PointState,
+    d: &mut Diagnostics,
+) {
+    check_operand_read(ctx, func, block, op, span, state, d);
+    apply_operand_move(ctx, op, state);
+}
+
+fn check_operand_read(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    op: &Operand,
+    span: Span,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    let place = match op {
+        Operand::Copy(p) | Operand::Move(p) => p,
+        Operand::Const(_) => return,
+    };
+    check_place_read(ctx, func, block, place, span, state, d);
 }
 
 /// If the LHS path contains a `Downcast`, the enum being downcast must be
@@ -504,39 +571,6 @@ fn check_lhs_downcast(
             span, func.name, block.label, root
         ));
     }
-}
-
-fn check_rvalue_reads(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    rv: &RValue,
-    span: Span,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
-            check_operand_read(ctx, func, block, op, span, state, d)
-        }
-        RValue::Ref(_, _) => {}
-    }
-}
-
-fn check_operand_read(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    op: &Operand,
-    span: Span,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    let place = match op {
-        Operand::Copy(p) | Operand::Move(p) => p,
-        Operand::Const(_) => return,
-    };
-    check_place_read(ctx, func, block, place, span, state, d);
 }
 
 fn check_place_read(
@@ -570,21 +604,6 @@ fn check_place_read(
             "at {}: In function '{}', block '{}': variable '{}' is not fully initialized here",
             span, func.name, block.label, root
         )),
-    }
-}
-
-fn check_terminator(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    let ts = block.terminator_span;
-    match &block.terminator {
-        Terminator::Branch { cond, .. } => check_operand_read(ctx, func, block, cond, ts, state, d),
-        Terminator::SwitchEnum { place, .. } => check_place_read(ctx, func, block, place, ts, state, d),
-        _ => {}
     }
 }
 
@@ -1090,6 +1109,76 @@ mod tests {
             ",
         );
     }
+
+    // ---------- Reassignment / move ordering ----------
+
+    #[test]
+    fn reassign_after_move_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              y: number;
+              z: number;
+              entry:
+                y = move x;
+                x = 42;
+                z = copy x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn move_then_move_error() {
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              y: number;
+              z: number;
+              entry:
+                y = move x;
+                z = move x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["variable 'x' is used after move"]);
+    }
+
+    #[test]
+    fn call_args_copy_then_move_ok() {
+        // Copy first, then move — the copy sees Init, the move consumes.
+        assert_no_diagnostics(
+            "
+            extern fn take_two(a: number, b: number);
+            fn f(x: number) {
+              entry:
+                call take_two(copy x, move x);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn call_args_move_then_copy_error() {
+        // Left-to-right operand evaluation: the second `copy` sees the
+        // already-moved state and errors.
+        let (errs, _) = run(
+            "
+            extern fn take_two(a: number, b: number);
+            fn f(x: number) {
+              entry:
+                call take_two(move x, copy x);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["variable 'x' is used after move"]);
+    }
+
+    // ---------- Loops ----------
 
     #[test]
     fn loop_may_reach_uninit_error() {
