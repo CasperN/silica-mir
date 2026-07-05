@@ -1,5 +1,5 @@
 //! Shared test helpers for the full check pipeline. Every helper builds on
-//! `run(src)`, which runs parse → tc::build → tc::typecheck → all analyses
+//! `run(src)`, which runs parse → type_check + all analyses
 //! against a single `Diagnostics`.
 
 use crate::parser::Parser;

@@ -1,11 +1,11 @@
 mod ast;
 mod block_reachability;
 mod diagnostics;
-mod enum_variants;
 mod init_state;
+mod marker_composition;
 mod parser;
-mod substructural;
-mod tc;
+mod type_check;
+mod variant_flow;
 
 #[cfg(test)]
 mod test_util;
@@ -17,10 +17,10 @@ use diagnostics::Diagnostics;
 /// diagnostics. Used both by `main` and by test helpers.
 pub fn run_all_passes(program: &Program) -> Diagnostics {
     let mut d = Diagnostics::default();
-    let env = tc::Env::build(program, &mut d);
+    let env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
-    substructural::check_program(&env, &mut d);
-    enum_variants::check_program(&env, &mut d);
+    marker_composition::check_program(&env, &mut d);
+    variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
     d

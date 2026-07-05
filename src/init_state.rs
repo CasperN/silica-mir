@@ -23,7 +23,7 @@
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::push_error;
-use crate::tc::{Env, TypeDecl};
+use crate::type_check::{Env, TypeDecl};
 use std::collections::{BTreeMap, HashMap, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

@@ -1,8 +1,17 @@
 //! Substructural class check for declared types.
 //!
+//! **Scope note:** this file is narrower than its subject suggests. Today
+//! it only verifies that a declaration's `Copy` / `Drop` markers are
+//! *compositionally* consistent — a struct marked `Copy` must not contain
+//! a non-Copy field, etc. It does **not** check that MIR statements respect
+//! substructural constraints (implicit copies, insertion of `drop`
+//! sequences, LIFO drop ordering, etc.). When those land they belong in a
+//! sibling module — likely under a `substructural/` directory alongside a
+//! renamed `substructural/composition.rs`.
+//!
 //! Silica's `Copy` / `Drop` markers on struct and enum declarations classify
 //! the type as (respectively) copyable and forgettable. This pass verifies
-//! that a declaration's markers are *compositionally* consistent: a struct
+//! that a declaration's markers are compositionally consistent: a struct
 //! marked `Copy` must not contain a non-Copy field, and same for `Drop` (and
 //! same for enum variants against their payload types).
 //!
@@ -19,7 +28,7 @@
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
-use crate::tc::{Env, TypeDecl};
+use crate::type_check::{Env, TypeDecl};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Class {

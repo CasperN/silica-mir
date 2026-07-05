@@ -5,7 +5,7 @@
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
-use crate::tc::Env;
+use crate::type_check::Env;
 use std::collections::{HashSet, VecDeque};
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {

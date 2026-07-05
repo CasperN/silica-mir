@@ -20,7 +20,7 @@
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
-use crate::tc::{Env, TypeDecl};
+use crate::type_check::{Env, TypeDecl};
 use crate::{push_error, push_warning};
 use std::collections::{BTreeSet, HashMap, VecDeque};
 
