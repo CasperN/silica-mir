@@ -756,10 +756,6 @@
     "named": false
   },
   {
-    "type": "payload",
-    "named": false
-  },
-  {
     "type": "return",
     "named": true
   },

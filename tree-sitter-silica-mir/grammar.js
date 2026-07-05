@@ -74,16 +74,18 @@ module.exports = grammar({
       ';'
     ),
 
-    function_decl: $ => seq(
-      optional('extern'),
-      'fn',
-      field('name', $.identifier),
-      '(',
-      commaSep($.param_decl),
-      ')',
-      choice(
-        seq('{', repeat($.local_decl), repeat($.basic_block), '}'),
+    function_decl: $ => choice(
+      seq(
+        'extern', 'fn',
+        field('name', $.identifier),
+        '(', commaSep($.param_decl), ')',
         ';'
+      ),
+      seq(
+        'fn',
+        field('name', $.identifier),
+        '(', commaSep($.param_decl), ')',
+        '{', repeat($.local_decl), repeat($.basic_block), '}'
       )
     ),
 
@@ -168,7 +170,7 @@ module.exports = grammar({
     place: $ => choice(
       $.identifier, // var
       prec.left(2, seq($.place, '.', field('field', $.identifier))),
-      prec.left(2, seq('(', $.place, 'as', field('variant', $.identifier), ')', '.', 'payload')),
+      prec.left(2, seq($.place, 'as', field('variant', $.identifier))),
       prec.left(1, seq('*', $.place))
     ),
 

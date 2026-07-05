@@ -673,7 +673,7 @@ mod tests {
             fn f(o: Option) {
               x: number;
               entry:
-                x = copy (o as Some).payload;
+                x = copy o as Some;
                 return
             }
             ",
@@ -688,7 +688,7 @@ mod tests {
             fn f(o: Option) {
               x: number;
               entry:
-                x = copy (o as Wat).payload;
+                x = copy o as Wat;
                 return
             }
             ",
@@ -705,7 +705,7 @@ mod tests {
             fn f(r: &number) {
               x: number;
               entry:
-                x = copy (r as Some).payload;
+                x = copy r as Some;
                 return
             }
             ",
@@ -721,7 +721,7 @@ mod tests {
             fn f(s: S) {
               x: number;
               entry:
-                x = copy (s as Some).payload;
+                x = copy s as Some;
                 return
             }
             ",
@@ -1075,7 +1075,7 @@ mod tests {
             enum Option { None: Option Some: number }
             fn f(o: Option) {
               entry:
-                (o as Some).payload = 7;
+                o as Some = 7;
                 return
             }
             ",

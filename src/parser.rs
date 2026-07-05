@@ -121,21 +121,20 @@ impl Parser {
                     return Ok(Place::Var(self.get_text(first_child).to_string()));
                 }
 
-                let text = self.get_text(first_child);
-                if text == "*" {
+                if self.get_text(first_child) == "*" {
                     let inner = node.child(1).ok_or("Deref missing inner place")?;
-                    Ok(Place::Deref(Box::new(self.map_place(inner)?)))
-                } else if text == "(" {
-                    let inner_place_node = node.child(1).ok_or("Downcast missing inner place")?;
-                    let inner_place = self.map_place(inner_place_node)?;
-                    let variant_node = node.child_by_field_name("variant").ok_or("Downcast missing variant")?;
+                    return Ok(Place::Deref(Box::new(self.map_place(inner)?)));
+                }
+
+                let inner_place = self.map_place(first_child)?;
+                if let Some(variant_node) = node.child_by_field_name("variant") {
                     let variant = self.get_text(variant_node).to_string();
                     Ok(Place::Downcast(Box::new(inner_place), variant))
-                } else {
-                    let inner_place = self.map_place(first_child)?;
-                    let field_node = node.child_by_field_name("field").ok_or("Field projection missing field name")?;
+                } else if let Some(field_node) = node.child_by_field_name("field") {
                     let field_name = self.get_text(field_node).to_string();
                     Ok(Place::Field(Box::new(inner_place), field_name))
+                } else {
+                    Err(format!("Unrecognized place suffix: {}", self.get_text(node)))
                 }
             }
             _ => Err(format!("Unexpected node kind in place: {}", node.kind())),
