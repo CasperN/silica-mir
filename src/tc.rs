@@ -1298,6 +1298,50 @@ mod tests {
         );
     }
 
+    // ---------- Sanity ----------
+
+    #[test]
+    fn empty_program_ok() {
+        // Zero declarations — every pass should silently succeed.
+        assert_no_diagnostics("");
+    }
+
+    #[test]
+    fn infinite_loop_function_ok() {
+        // No return; every analysis must terminate on the CFG cycle.
+        assert_no_diagnostics(
+            "
+            fn f() {
+              entry:
+                goto entry
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn cross_function_local_names_are_independent() {
+        // Two functions each define a local `x` and a block labeled `entry`.
+        // Nothing should cross-pollinate — same-named things in one function
+        // don't affect the other.
+        assert_no_diagnostics(
+            "
+            fn f() {
+              x: number;
+              entry:
+                x = 42;
+                return
+            }
+            fn g() {
+              x: number;
+              entry:
+                x = 7;
+                return
+            }
+            ",
+        );
+    }
+
     #[test]
     fn goto_label_defined_in_another_function_is_undefined() {
         // Labels are function-scoped; a label defined in one function is
