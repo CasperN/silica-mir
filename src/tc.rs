@@ -202,6 +202,12 @@ impl Env {
             }
 
             if let Some(body) = &f.body {
+                if body.blocks.is_empty() {
+                    return Err(format!(
+                        "Function '{}' has no entry block: body must contain at least one basic block",
+                        f.name
+                    ));
+                }
                 let mut locals_map = HashMap::new();
                 for (p_name, p_ty) in &f.params {
                     if locals_map.insert(p_name.clone(), p_ty.clone()).is_some() {
@@ -1316,12 +1322,10 @@ mod tests {
         );
     }
 
-    // ---------- Behavior placeholders (gaps to lock down current behavior) ----------
-
     #[test]
-    fn gap_unreachable_with_statements_currently_accepted() {
-        // README §Grammar: a block whose terminator is `unreachable` must have
-        // an empty statement list. The checker doesn't enforce this yet.
+    fn unreachable_with_statements_ok() {
+        // Intentionally allowed: an `unreachable` block can host debug/printf
+        // statements for when the compiler mispredicts unreachability.
         assert_ok(
             "
             fn f() {
@@ -1335,8 +1339,9 @@ mod tests {
     }
 
     #[test]
-    fn gap_switch_enum_non_exhaustive_currently_accepted() {
-        // README/checker: no exhaustiveness requirement yet.
+    fn switch_enum_non_exhaustive_ok() {
+        // Syntactic switchEnum does not require exhaustiveness; whether
+        // omitted variants are actually reachable is a flow-check concern.
         assert_ok(
             "
             enum Option { None: Option Some: number }
@@ -1351,9 +1356,8 @@ mod tests {
     }
 
     #[test]
-    fn gap_empty_function_body_currently_accepted() {
-        // No entry-block / non-empty-body requirement yet.
-        assert_ok("fn f() { }");
+    fn empty_function_body_error() {
+        assert_err("fn f() { }", "Function 'f' has no entry block");
     }
 }
 
