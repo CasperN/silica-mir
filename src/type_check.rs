@@ -1516,6 +1516,21 @@ mod tests {
                 return
             }
             ",
+        )
+    }
+     #[test]
+    fn double_drop_error() {
+        // Syntactically well-formed drop on a param of Drop-classed type.
+        assert_err(
+            "
+            fn f(x: number) {
+              entry:
+                drop x;
+                drop x;
+                return
+            }
+            ",
+            "In function 'f', block 'entry': variable 'x' is used after move",
         );
     }
 
