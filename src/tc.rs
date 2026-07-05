@@ -1,6 +1,7 @@
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::{fmt_error, push_error};
+use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -11,14 +12,18 @@ pub enum TypeDecl {
 
 #[derive(Debug, Clone)]
 pub struct Env {
-    pub types: HashMap<String, TypeDecl>,
-    pub functions: HashMap<String, Function>,
+    /// Struct and enum declarations, keyed by name. Uses `IndexMap` so
+    /// iteration order matches declaration order — analyses that iterate
+    /// (e.g. field validation) produce diagnostics deterministically.
+    pub types: IndexMap<String, TypeDecl>,
+    /// Function declarations, keyed by name. Same rationale as `types`.
+    pub functions: IndexMap<String, Function>,
 }
 
 impl Env {
     pub fn build(program: &Program, d: &mut Diagnostics) -> Self {
-        let mut types = HashMap::new();
-        let mut functions = HashMap::new();
+        let mut types = IndexMap::new();
+        let mut functions = IndexMap::new();
 
         for decl in &program.declarations {
             match decl {
