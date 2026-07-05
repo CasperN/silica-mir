@@ -2,6 +2,7 @@ mod ast;
 mod block_reachability;
 mod diagnostics;
 mod enum_variants;
+mod init_state;
 mod parser;
 mod tc;
 
@@ -19,6 +20,7 @@ pub fn run_all_passes(program: &Program) -> Diagnostics {
     env.typecheck(&mut d);
     enum_variants::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
+    init_state::check_program(&env, &mut d);
     d
 }
 
