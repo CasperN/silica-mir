@@ -63,7 +63,7 @@ fn check_function(env: &Env, func: &Function) -> Diagnostics {
         let Some(entry) = entry_states.get(&block.label) else { continue; };
 
         let mut state = entry.clone();
-        for stmt in &block.statements {
+        for (stmt, _) in &block.statements {
             transfer_stmt(stmt, &mut state);
         }
 
@@ -77,11 +77,11 @@ fn check_function(env: &Env, func: &Function) -> Diagnostics {
 
 fn collect_locals(func: &Function, body: &FunctionBody) -> HashMap<String, Type> {
     let mut locals = HashMap::new();
-    for (n, t) in &func.params {
-        locals.insert(n.clone(), t.clone());
+    for p in &func.params {
+        locals.insert(p.name.clone(), p.ty.clone());
     }
-    for (n, t) in &body.locals {
-        locals.insert(n.clone(), t.clone());
+    for l in &body.locals {
+        locals.insert(l.name.clone(), l.ty.clone());
     }
     locals
 }
@@ -102,7 +102,7 @@ fn compute_entry_states(body: &FunctionBody) -> HashMap<String, PointState> {
         let block = blocks_by_label[label.as_str()];
 
         let mut state = entry_state;
-        for stmt in &block.statements {
+        for (stmt, _) in &block.statements {
             transfer_stmt(stmt, &mut state);
         }
 
@@ -242,15 +242,16 @@ fn check_switch(
         return;
     };
 
-    let declared: Vec<&str> = enum_decl.variants.iter().map(|(v, _)| v.as_str()).collect();
+    let declared: Vec<&str> = enum_decl.variants.iter().map(|v| v.name.as_str()).collect();
     let handled: BTreeSet<&str> = cases.iter().map(|(v, _)| v.as_str()).collect();
+    let ts = block.terminator_span;
 
     // Exhaustiveness — report missing variants in declaration order.
     for variant in &declared {
         if !handled.contains(variant) {
             d.errors.push(format!(
-                "In function '{}', block '{}': switchEnum on '{}' does not handle variant '{}'",
-                func.name, block.label, enum_decl.name, variant
+                "at {}: In function '{}', block '{}': switchEnum on '{}' does not handle variant '{}'",
+                ts, func.name, block.label, enum_decl.name, variant
             ));
         }
     }
@@ -260,8 +261,8 @@ fn check_switch(
     for (variant, _) in cases {
         if !seen.insert(variant.as_str()) {
             d.errors.push(format!(
-                "In function '{}', block '{}': switchEnum has duplicate arm for variant '{}'",
-                func.name, block.label, variant
+                "at {}: In function '{}', block '{}': switchEnum has duplicate arm for variant '{}'",
+                ts, func.name, block.label, variant
             ));
         }
     }
@@ -289,12 +290,12 @@ fn check_switch(
 
         match (target_unreachable, variant_reachable) {
             (true, true) => d.errors.push(format!(
-                "In function '{}', block '{}': switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
-                func.name, block.label, variant
+                "at {}: In function '{}', block '{}': switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
+                ts, func.name, block.label, variant
             )),
             (false, false) => d.warnings.push(format!(
-                "In function '{}', block '{}': switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
-                func.name, block.label, variant
+                "at {}: In function '{}', block '{}': switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
+                ts, func.name, block.label, variant
             )),
             _ => {}
         }

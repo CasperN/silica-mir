@@ -4,6 +4,20 @@ pub struct Markers {
     pub drop: bool,
 }
 
+/// Source position (1-based line and column) of the syntax that a node
+/// represents. Used to prefix error messages with `at L:C:`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Span {
+    pub line: u32,
+    pub col: u32,
+}
+
+impl std::fmt::Display for Span {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}:{}", self.line, self.col)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefKind {
     Shared,   // &
@@ -79,36 +93,69 @@ pub enum Terminator {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
     pub label: String,
-    pub statements: Vec<Statement>,
+    pub label_span: Span,
+    pub statements: Vec<(Statement, Span)>,
     pub terminator: Terminator,
+    pub terminator_span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructField {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EnumVariant {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Param {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Local {
+    pub name: String,
+    pub ty: Type,
+    pub span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionBody {
-    pub locals: Vec<(String, Type)>,
+    pub locals: Vec<Local>,
     pub blocks: Vec<BasicBlock>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
     pub name: String,
+    pub name_span: Span,
     pub is_extern: bool,
-    pub params: Vec<(String, Type)>,
+    pub params: Vec<Param>,
     pub body: Option<FunctionBody>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructDecl {
     pub name: String,
+    pub name_span: Span,
     pub markers: Markers,
-    pub fields: Vec<(String, Type)>,
+    pub fields: Vec<StructField>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumDecl {
     pub name: String,
+    pub name_span: Span,
     pub markers: Markers,
-    pub variants: Vec<(String, Type)>,
+    pub variants: Vec<EnumVariant>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

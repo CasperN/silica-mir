@@ -23,21 +23,30 @@ impl Env {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
-                        errors.push(format!("Duplicate declaration of type '{}'", s.name));
+                        errors.push(format!(
+                            "at {}: Duplicate declaration of type '{}'",
+                            s.name_span, s.name
+                        ));
                     } else {
                         types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
                     }
                 }
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
-                        errors.push(format!("Duplicate declaration of type '{}'", e.name));
+                        errors.push(format!(
+                            "at {}: Duplicate declaration of type '{}'",
+                            e.name_span, e.name
+                        ));
                     } else {
                         types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
                     }
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
-                        errors.push(format!("Duplicate declaration of function '{}'", f.name));
+                        errors.push(format!(
+                            "at {}: Duplicate declaration of function '{}'",
+                            f.name_span, f.name
+                        ));
                     } else {
                         functions.insert(f.name.clone(), f.clone());
                     }
@@ -110,8 +119,8 @@ impl Env {
                 };
                 match self.types.get(name) {
                     Some(TypeDecl::Struct(s)) => s.fields.iter()
-                        .find(|(f_name, _)| f_name == field_name)
-                        .map(|(_, f_ty)| f_ty.clone())
+                        .find(|f| f.name == *field_name)
+                        .map(|f| f.ty.clone())
                         .ok_or_else(|| format!("Struct '{}' has no field '{}'", name, field_name)),
                     Some(TypeDecl::Enum(_)) => Err(format!(
                         "Cannot project field '{}' of enum type '{}'", field_name, name
@@ -127,8 +136,8 @@ impl Env {
                 };
                 match self.types.get(name) {
                     Some(TypeDecl::Enum(e)) => e.variants.iter()
-                        .find(|(v_name, _)| v_name == variant_name)
-                        .map(|(_, v_ty)| v_ty.clone())
+                        .find(|v| v.name == *variant_name)
+                        .map(|v| v.ty.clone())
                         .ok_or_else(|| format!("Enum '{}' has no variant '{}'", name, variant_name)),
                     Some(TypeDecl::Struct(_)) => Err(format!(
                         "Cannot downcast struct type '{}'", name
@@ -148,7 +157,7 @@ impl Env {
                 ConstVal::Unit => Ok(Type::Unit),
                 ConstVal::FnName(name) => {
                     let f = self.functions.get(name).ok_or_else(|| format!("Undeclared function name '{}'", name))?;
-                    let param_tys = f.params.iter().map(|(_, t)| t.clone()).collect();
+                    let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
                     Ok(Type::Fn(param_tys))
                 }
             }
@@ -170,13 +179,13 @@ impl Env {
                     }
                     None => return Err(format!("Undeclared enum '{}'", enum_name)),
                 };
-                let (_, variant_ty) = e_decl.variants.iter()
-                    .find(|(v, _)| v == variant_name)
+                let variant = e_decl.variants.iter()
+                    .find(|v| v.name == *variant_name)
                     .ok_or_else(|| format!("Enum '{}' has no variant '{}'", enum_name, variant_name))?;
 
                 let op_ty = self.infer_operand_type(op, locals)?;
-                if !self.types_match(variant_ty, &op_ty) {
-                    return Err(format!("Variant '{}' of enum '{}' expects type {:?}, found {:?}", variant_name, enum_name, variant_ty, op_ty));
+                if !self.types_match(&variant.ty, &op_ty) {
+                    return Err(format!("Variant '{}' of enum '{}' expects type {:?}, found {:?}", variant_name, enum_name, variant.ty, op_ty));
                 }
 
                 Ok(Type::Custom(enum_name.clone()))
@@ -191,16 +200,22 @@ impl Env {
         for type_decl in self.types.values() {
             match type_decl {
                 TypeDecl::Struct(s) => {
-                    for (f_name, f_ty) in &s.fields {
-                        if let Err(e) = self.validate_type(f_ty) {
-                            errors.push(format!("In struct '{}', field '{}': {}", s.name, f_name, e));
+                    for f in &s.fields {
+                        if let Err(e) = self.validate_type(&f.ty) {
+                            errors.push(format!(
+                                "at {}: In struct '{}', field '{}': {}",
+                                f.span, s.name, f.name, e
+                            ));
                         }
                     }
                 }
                 TypeDecl::Enum(e) => {
-                    for (v_name, v_ty) in &e.variants {
-                        if let Err(err) = self.validate_type(v_ty) {
-                            errors.push(format!("In enum '{}', variant '{}': {}", e.name, v_name, err));
+                    for v in &e.variants {
+                        if let Err(err) = self.validate_type(&v.ty) {
+                            errors.push(format!(
+                                "at {}: In enum '{}', variant '{}': {}",
+                                v.span, e.name, v.name, err
+                            ));
                         }
                     }
                 }
@@ -218,9 +233,12 @@ impl Env {
     fn typecheck_function(&self, f: &Function) -> Vec<String> {
         let mut errors = Vec::new();
 
-        for (p_name, p_ty) in &f.params {
-            if let Err(e) = self.validate_type(p_ty) {
-                errors.push(format!("In function '{}', parameter '{}': {}", f.name, p_name, e));
+        for p in &f.params {
+            if let Err(e) = self.validate_type(&p.ty) {
+                errors.push(format!(
+                    "at {}: In function '{}', parameter '{}': {}",
+                    p.span, f.name, p.name, e
+                ));
             }
         }
 
@@ -228,8 +246,8 @@ impl Env {
 
         if body.blocks.is_empty() {
             errors.push(format!(
-                "Function '{}' has no entry block: body must contain at least one basic block",
-                f.name
+                "at {}: Function '{}' has no entry block: body must contain at least one basic block",
+                f.name_span, f.name
             ));
             return errors;
         }
@@ -237,27 +255,30 @@ impl Env {
         // Build the locals map. On name conflict, keep the first binding and
         // record an error — later checks still see a consistent scope.
         let mut locals_map: HashMap<String, Type> = HashMap::new();
-        for (p_name, p_ty) in &f.params {
-            if locals_map.contains_key(p_name) {
+        for p in &f.params {
+            if locals_map.contains_key(&p.name) {
                 errors.push(format!(
-                    "Duplicate variable name '{}' in parameters of function '{}'",
-                    p_name, f.name
+                    "at {}: Duplicate variable name '{}' in parameters of function '{}'",
+                    p.span, p.name, f.name
                 ));
             } else {
-                locals_map.insert(p_name.clone(), p_ty.clone());
+                locals_map.insert(p.name.clone(), p.ty.clone());
             }
         }
-        for (l_name, l_ty) in &body.locals {
-            if let Err(e) = self.validate_type(l_ty) {
-                errors.push(format!("In function '{}', local '{}': {}", f.name, l_name, e));
-            }
-            if locals_map.contains_key(l_name) {
+        for l in &body.locals {
+            if let Err(e) = self.validate_type(&l.ty) {
                 errors.push(format!(
-                    "Duplicate variable name '{}' in locals/parameters of function '{}'",
-                    l_name, f.name
+                    "at {}: In function '{}', local '{}': {}",
+                    l.span, f.name, l.name, e
+                ));
+            }
+            if locals_map.contains_key(&l.name) {
+                errors.push(format!(
+                    "at {}: Duplicate variable name '{}' in locals/parameters of function '{}'",
+                    l.span, l.name, f.name
                 ));
             } else {
-                locals_map.insert(l_name.clone(), l_ty.clone());
+                locals_map.insert(l.name.clone(), l.ty.clone());
             }
         }
 
@@ -278,8 +299,8 @@ impl Env {
         block_labels: &HashSet<String>,
     ) -> Vec<String> {
         let mut errors = Vec::new();
-        for stmt in &block.statements {
-            if let Err(e) = self.typecheck_statement(func, block, stmt, locals) {
+        for (stmt, span) in &block.statements {
+            if let Err(e) = self.typecheck_statement(func, block, stmt, *span, locals) {
                 errors.push(e);
             }
         }
@@ -292,46 +313,51 @@ impl Env {
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
+        stmt_span: Span,
         locals: &HashMap<String, Type>,
     ) -> Result<(), String> {
         match stmt {
             Statement::Assign(place, rvalue) => {
-                let lhs_ty = self.infer_place_type(place, locals)
-                    .map_err(|e| format!("In function '{}', block '{}', assignment LHS: {}", func.name, block.label, e))?;
-                let rhs_ty = self.infer_rvalue_type(rvalue, locals)
-                    .map_err(|e| format!("In function '{}', block '{}', assignment RHS: {}", func.name, block.label, e))?;
+                let lhs_ty = self.infer_place_type(place, locals).map_err(|e| {
+                    format!("at {}: In function '{}', block '{}', assignment LHS: {}", stmt_span, func.name, block.label, e)
+                })?;
+                let rhs_ty = self.infer_rvalue_type(rvalue, locals).map_err(|e| {
+                    format!("at {}: In function '{}', block '{}', assignment RHS: {}", stmt_span, func.name, block.label, e)
+                })?;
                 if !self.types_match(&lhs_ty, &rhs_ty) {
                     return Err(format!(
-                        "In function '{}', block '{}': Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
-                        func.name, block.label, lhs_ty, rhs_ty
+                        "at {}: In function '{}', block '{}': Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
+                        stmt_span, func.name, block.label, lhs_ty, rhs_ty
                     ));
                 }
                 Ok(())
             }
             Statement::Call(target, args) => {
-                let target_ty = self.infer_operand_type(target, locals)
-                    .map_err(|e| format!("In function '{}', block '{}', call target: {}", func.name, block.label, e))?;
+                let target_ty = self.infer_operand_type(target, locals).map_err(|e| {
+                    format!("at {}: In function '{}', block '{}', call target: {}", stmt_span, func.name, block.label, e)
+                })?;
 
                 let Type::Fn(param_tys) = target_ty else {
                     return Err(format!(
-                        "In function '{}', block '{}': Call target is not a function type: {:?}",
-                        func.name, block.label, target_ty
+                        "at {}: In function '{}', block '{}': Call target is not a function type: {:?}",
+                        stmt_span, func.name, block.label, target_ty
                     ));
                 };
 
                 if args.len() != param_tys.len() {
                     return Err(format!(
-                        "In function '{}', block '{}': Wrong number of arguments for call. Expected {}, found {}",
-                        func.name, block.label, param_tys.len(), args.len()
+                        "at {}: In function '{}', block '{}': Wrong number of arguments for call. Expected {}, found {}",
+                        stmt_span, func.name, block.label, param_tys.len(), args.len()
                     ));
                 }
                 for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                    let arg_ty = self.infer_operand_type(arg, locals)
-                        .map_err(|e| format!("In function '{}', block '{}', call arg {}: {}", func.name, block.label, i, e))?;
+                    let arg_ty = self.infer_operand_type(arg, locals).map_err(|e| {
+                        format!("at {}: In function '{}', block '{}', call arg {}: {}", stmt_span, func.name, block.label, i, e)
+                    })?;
                     if !self.types_match(param_ty, &arg_ty) {
                         return Err(format!(
-                            "In function '{}', block '{}': Call argument {} type mismatch. Expected {:?}, found {:?}",
-                            func.name, block.label, i, param_ty, arg_ty
+                            "at {}: In function '{}', block '{}': Call argument {} type mismatch. Expected {:?}, found {:?}",
+                            stmt_span, func.name, block.label, i, param_ty, arg_ty
                         ));
                     }
                 }
@@ -348,12 +374,13 @@ impl Env {
         block_labels: &HashSet<String>,
     ) -> Vec<String> {
         let mut errors = Vec::new();
+        let ts = block.terminator_span;
         match &block.terminator {
             Terminator::Goto(label) => {
                 if !block_labels.contains(label) {
                     errors.push(format!(
-                        "In function '{}', block '{}': goto targets undefined block '{}'",
-                        func.name, block.label, label
+                        "at {}: In function '{}', block '{}': goto targets undefined block '{}'",
+                        ts, func.name, block.label, label
                     ));
                 }
             }
@@ -361,25 +388,25 @@ impl Env {
             Terminator::Branch { cond, true_label, false_label } => {
                 match self.infer_operand_type(cond, locals) {
                     Ok(cond_ty) if cond_ty != Type::Boolean => errors.push(format!(
-                        "In function '{}', block '{}': branch condition must be boolean, found {:?}",
-                        func.name, block.label, cond_ty
+                        "at {}: In function '{}', block '{}': branch condition must be boolean, found {:?}",
+                        ts, func.name, block.label, cond_ty
                     )),
                     Ok(_) => {}
                     Err(e) => errors.push(format!(
-                        "In function '{}', block '{}', branch condition: {}",
-                        func.name, block.label, e
+                        "at {}: In function '{}', block '{}', branch condition: {}",
+                        ts, func.name, block.label, e
                     )),
                 }
                 if !block_labels.contains(true_label) {
                     errors.push(format!(
-                        "In function '{}', block '{}': branch true target undefined block '{}'",
-                        func.name, block.label, true_label
+                        "at {}: In function '{}', block '{}': branch true target undefined block '{}'",
+                        ts, func.name, block.label, true_label
                     ));
                 }
                 if !block_labels.contains(false_label) {
                     errors.push(format!(
-                        "In function '{}', block '{}': branch false target undefined block '{}'",
-                        func.name, block.label, false_label
+                        "at {}: In function '{}', block '{}': branch false target undefined block '{}'",
+                        ts, func.name, block.label, false_label
                     ));
                 }
             }
@@ -392,30 +419,30 @@ impl Env {
                         Some(TypeDecl::Enum(e)) => Some((name, e)),
                         Some(TypeDecl::Struct(_)) => {
                             errors.push(format!(
-                                "In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
-                                func.name, block.label, name
+                                "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
+                                ts, func.name, block.label, name
                             ));
                             None
                         }
                         None => {
                             errors.push(format!(
-                                "In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
-                                func.name, block.label, name
+                                "at {}: In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
+                                ts, func.name, block.label, name
                             ));
                             None
                         }
                     },
                     Ok(other) => {
                         errors.push(format!(
-                            "In function '{}', block '{}': switchEnum place must be an enum type, found {:?}",
-                            func.name, block.label, other
+                            "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found {:?}",
+                            ts, func.name, block.label, other
                         ));
                         None
                     }
                     Err(e) => {
                         errors.push(format!(
-                            "In function '{}', block '{}', switchEnum place: {}",
-                            func.name, block.label, e
+                            "at {}: In function '{}', block '{}', switchEnum place: {}",
+                            ts, func.name, block.label, e
                         ));
                         None
                     }
@@ -423,17 +450,17 @@ impl Env {
 
                 for (variant, label) in cases {
                     if let Some((enum_name, e_decl)) = &enum_ctx {
-                        if !e_decl.variants.iter().any(|(v, _)| v == variant) {
+                        if !e_decl.variants.iter().any(|v| v.name == *variant) {
                             errors.push(format!(
-                                "In function '{}', block '{}': variant '{}' is not part of enum '{}'",
-                                func.name, block.label, variant, enum_name
+                                "at {}: In function '{}', block '{}': variant '{}' is not part of enum '{}'",
+                                ts, func.name, block.label, variant, enum_name
                             ));
                         }
                     }
                     if !block_labels.contains(label) {
                         errors.push(format!(
-                            "In function '{}', block '{}': switchEnum variant '{}' targets undefined block '{}'",
-                            func.name, block.label, variant, label
+                            "at {}: In function '{}', block '{}': switchEnum variant '{}' targets undefined block '{}'",
+                            ts, func.name, block.label, variant, label
                         ));
                     }
                 }
@@ -1498,6 +1525,24 @@ mod tests {
     #[test]
     fn empty_function_body_error() {
         assert_err("fn f() { }", "Function 'f' has no entry block");
+    }
+
+    // ---------- Source spans ----------
+
+    #[test]
+    fn error_includes_line_and_col() {
+        // A bad assignment on a specific line — verify the exact `at L:C:`
+        // shows up (not just some span). Line 4, col 17 for `x = true`.
+        let src = "fn f() {\n  x: number;\n  entry:\n                x = true;\n                return\n}";
+        let errs = errors_of(src);
+        assert_errors_contain(&errs, &["at 4:17:", "Type mismatch in assignment"]);
+    }
+
+    #[test]
+    fn distinct_errors_carry_distinct_spans() {
+        let src = "fn f() {\n  x: number;\n  y: number;\n  entry:\n    x = true;\n    y = true;\n    return\n}";
+        let errs = errors_of(src);
+        assert_errors_contain(&errs, &["at 5:5:", "at 6:5:"]);
     }
 
     fn errors_of(src: &str) -> Vec<String> {

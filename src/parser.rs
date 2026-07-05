@@ -9,9 +9,18 @@ pub fn language() -> tree_sitter::Language {
     unsafe { tree_sitter::Language::from_raw(tree_sitter_silica_mir() as *const _) }
 }
 
+fn span_of(node: Node) -> Span {
+    let p = node.start_position();
+    Span {
+        line: (p.row as u32).saturating_add(1),
+        col: (p.column as u32).saturating_add(1),
+    }
+}
+
 pub struct Parser {
     source: String,
 }
+
 
 impl Parser {
     pub fn new(source: String) -> Self {
@@ -295,24 +304,28 @@ impl Parser {
     fn map_basic_block(&self, node: Node) -> Result<BasicBlock, String> {
         let label_node = node.child_by_field_name("label").ok_or("Basic block missing label")?;
         let label = self.get_text(label_node).to_string();
+        let label_span = span_of(label_node);
 
         let mut statements = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "statement" {
-                statements.push(self.map_statement(child)?);
+                let span = span_of(child);
+                statements.push((self.map_statement(child)?, span));
             }
         }
 
         let term_node = node.children(&mut cursor).find(|c| c.kind() == "terminator").ok_or("Basic block missing terminator")?;
+        let terminator_span = span_of(term_node);
         let terminator = self.map_terminator(term_node)?;
 
-        Ok(BasicBlock { label, statements, terminator })
+        Ok(BasicBlock { label, label_span, statements, terminator, terminator_span })
     }
 
     fn map_struct_decl(&self, node: Node) -> Result<StructDecl, String> {
         let name_node = node.child_by_field_name("name").ok_or("Struct decl missing name")?;
         let name = self.get_text(name_node).to_string();
+        let name_span = span_of(name_node);
 
         let mut copy = false;
         let mut drop = false;
@@ -331,16 +344,17 @@ impl Parser {
                 let f_name = self.get_text(f_name_node).to_string();
                 let f_type_node = child.child_by_field_name("type").ok_or("Struct field missing type")?;
                 let f_type = self.map_type(f_type_node)?;
-                fields.push((f_name, f_type));
+                fields.push(StructField { name: f_name, ty: f_type, span: span_of(child) });
             }
         }
 
-        Ok(StructDecl { name, markers, fields })
+        Ok(StructDecl { name, name_span, markers, fields })
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, String> {
         let name_node = node.child_by_field_name("name").ok_or("Enum decl missing name")?;
         let name = self.get_text(name_node).to_string();
+        let name_span = span_of(name_node);
 
         let mut copy = false;
         let mut drop = false;
@@ -359,16 +373,17 @@ impl Parser {
                 let v_name = self.get_text(v_name_node).to_string();
                 let v_type_node = child.child_by_field_name("type").ok_or("Enum variant missing type")?;
                 let v_type = self.map_type(v_type_node)?;
-                variants.push((v_name, v_type));
+                variants.push(EnumVariant { name: v_name, ty: v_type, span: span_of(child) });
             }
         }
 
-        Ok(EnumDecl { name, markers, variants })
+        Ok(EnumDecl { name, name_span, markers, variants })
     }
 
     fn map_function_decl(&self, node: Node) -> Result<Function, String> {
         let name_node = node.child_by_field_name("name").ok_or("Function missing name")?;
         let name = self.get_text(name_node).to_string();
+        let name_span = span_of(name_node);
         let is_extern = self.get_text(node).starts_with("extern");
 
         let mut params = Vec::new();
@@ -384,7 +399,7 @@ impl Parser {
                     let p_name = self.get_text(p_name_node).to_string();
                     let p_type_node = child.child_by_field_name("type").ok_or("Param missing type")?;
                     let p_type = self.map_type(p_type_node)?;
-                    params.push((p_name, p_type));
+                    params.push(Param { name: p_name, ty: p_type, span: span_of(child) });
                 }
                 "local_decl" => {
                     has_body = true;
@@ -392,7 +407,7 @@ impl Parser {
                     let l_name = self.get_text(l_name_node).to_string();
                     let l_type_node = child.child_by_field_name("type").ok_or("Local missing type")?;
                     let l_type = self.map_type(l_type_node)?;
-                    locals.push((l_name, l_type));
+                    locals.push(Local { name: l_name, ty: l_type, span: span_of(child) });
                 }
                 "basic_block" => {
                     has_body = true;
@@ -411,7 +426,7 @@ impl Parser {
             None
         };
 
-        Ok(Function { name, is_extern, params, body })
+        Ok(Function { name, name_span, is_extern, params, body })
     }
 }
 
@@ -435,10 +450,10 @@ mod tests {
             assert!(s.markers.copy);
             assert!(s.markers.drop);
             assert_eq!(s.fields.len(), 2);
-            assert_eq!(s.fields[0].0, "x");
-            assert_eq!(s.fields[0].1, Type::Number);
-            assert_eq!(s.fields[1].0, "y");
-            assert_eq!(s.fields[1].1, Type::Number);
+            assert_eq!(s.fields[0].name, "x");
+            assert_eq!(s.fields[0].ty, Type::Number);
+            assert_eq!(s.fields[1].name, "y");
+            assert_eq!(s.fields[1].ty, Type::Number);
         } else {
             panic!("Expected struct declaration");
         }
@@ -460,10 +475,10 @@ mod tests {
             assert!(!e.markers.copy);
             assert!(!e.markers.drop);
             assert_eq!(e.variants.len(), 2);
-            assert_eq!(e.variants[0].0, "None");
-            assert_eq!(e.variants[0].1, Type::Custom("Option".to_string()));
-            assert_eq!(e.variants[1].0, "Some");
-            assert_eq!(e.variants[1].1, Type::Number);
+            assert_eq!(e.variants[0].name, "None");
+            assert_eq!(e.variants[0].ty, Type::Custom("Option".to_string()));
+            assert_eq!(e.variants[1].name, "Some");
+            assert_eq!(e.variants[1].ty, Type::Number);
         } else {
             panic!("Expected enum declaration");
         }
@@ -488,12 +503,12 @@ mod tests {
             assert_eq!(f.name, "add");
             assert!(!f.is_extern);
             assert_eq!(f.params.len(), 2);
-            assert_eq!(f.params[0].0, "a");
-            assert_eq!(f.params[0].1, Type::Number);
-            
+            assert_eq!(f.params[0].name, "a");
+            assert_eq!(f.params[0].ty, Type::Number);
+
             let body = f.body.as_ref().unwrap();
             assert_eq!(body.locals.len(), 1);
-            assert_eq!(body.locals[0].0, "ret");
+            assert_eq!(body.locals[0].name, "ret");
             assert_eq!(body.blocks.len(), 1);
             let block = &body.blocks[0];
             assert_eq!(block.label, "entry");
@@ -516,8 +531,8 @@ mod tests {
             assert_eq!(f.name, "add_impl");
             assert!(f.is_extern);
             assert_eq!(f.params.len(), 2);
-            assert_eq!(f.params[0].0, "a");
-            assert_eq!(f.params[0].1, Type::Number);
+            assert_eq!(f.params[0].name, "a");
+            assert_eq!(f.params[0].ty, Type::Number);
             assert!(f.body.is_none());
         } else {
             panic!("Expected extern function declaration");
