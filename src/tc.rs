@@ -508,6 +508,36 @@ mod tests {
         }
     }
 
+    /// Assert that at least one error contains all of the given substrings.
+    /// Useful for pinning "span + message" pairs to the same error line.
+    #[track_caller]
+    fn assert_one_error_contains_all(errs: &[String], needles: &[&str]) {
+        let matched = errs
+            .iter()
+            .any(|e| needles.iter().all(|n| e.contains(n)));
+        if !matched {
+            let needles_str = needles
+                .iter()
+                .map(|n| format!("  {:?}", n))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let errs_str = if errs.is_empty() {
+                "  (no errors)".to_string()
+            } else {
+                errs.iter()
+                    .map(|e| format!("  {}", e))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            panic!(
+                "no single error contained all substrings:\n{}\ngot {} error(s):\n{}",
+                needles_str,
+                errs.len(),
+                errs_str
+            );
+        }
+    }
+
     /// Assert that every needle appears as a substring in at least one error.
     /// Panics with a report of which needles were unmatched.
     #[track_caller]
@@ -1298,6 +1328,25 @@ mod tests {
     }
 
     #[test]
+    fn goto_label_defined_in_another_function_is_undefined() {
+        // Labels are function-scoped; a label defined in one function is
+        // invisible to gotos in another.
+        assert_err(
+            "
+            fn f() {
+              entry:
+                goto other
+            }
+            fn g() {
+              other:
+                return
+            }
+            ",
+            "goto targets undefined block 'other'",
+        );
+    }
+
+    #[test]
     fn goto_undefined_label_error() {
         assert_err(
             "
@@ -1617,15 +1666,24 @@ mod tests {
               entry:
                 branch(copy n) [true: nowhere1, false: nowhere2]
             }
+            fn g(n: number) {
+              entry:
+                branch(copy n) [true: nowhere1, false: nowhere2]
+              nowhere1:
+                return
+              nowhere2:
+                return
+            }
             ",
         );
-        assert_errors_contain(
+        assert_errors_contain(&errs, &["branch condition must be boolean"]);
+        assert_one_error_contains_all(
             &errs,
-            &[
-                "branch condition must be boolean",
-                "branch true target undefined block 'nowhere1'",
-                "branch false target undefined block 'nowhere2'",
-            ],
+            &["4:17", "branch true target undefined block 'nowhere1'"],
+        );
+        assert_one_error_contains_all(
+            &errs,
+            &["4:17", "branch false target undefined block 'nowhere2'"],
         );
     }
 

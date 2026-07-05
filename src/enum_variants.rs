@@ -19,21 +19,9 @@
 //! see what the borrower does.
 
 use crate::ast::*;
+use crate::diagnostics::Diagnostics;
 use crate::tc::{Env, TypeDecl};
 use std::collections::{BTreeSet, HashMap, VecDeque};
-
-#[derive(Debug, Default)]
-pub struct Diagnostics {
-    pub errors: Vec<String>,
-    pub warnings: Vec<String>,
-}
-
-impl Diagnostics {
-    fn extend(&mut self, other: Diagnostics) {
-        self.errors.extend(other.errors);
-        self.warnings.extend(other.warnings);
-    }
-}
 
 /// State at one program point: per-Var variant set. Absent = ⊤.
 type PointState = HashMap<String, BTreeSet<String>>;

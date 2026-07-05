@@ -1,4 +1,6 @@
 mod ast;
+mod block_reachability;
+mod diagnostics;
 mod enum_variants;
 mod parser;
 mod tc;
@@ -32,10 +34,17 @@ fn main() {
 
     let (env, mut errors) = tc::Env::build(&program);
     errors.extend(env.typecheck());
-    let ev_diag = enum_variants::check_program(&env);
-    errors.extend(ev_diag.errors);
+    let mut warnings: Vec<String> = Vec::new();
 
-    for w in &ev_diag.warnings {
+    let ev = enum_variants::check_program(&env);
+    errors.extend(ev.errors);
+    warnings.extend(ev.warnings);
+
+    let br = block_reachability::check_program(&env);
+    errors.extend(br.errors);
+    warnings.extend(br.warnings);
+
+    for w in &warnings {
         eprintln!("Warning: {}", w);
     }
 
@@ -43,12 +52,12 @@ fn main() {
         for e in &errors {
             eprintln!("Error: {}", e);
         }
-        eprintln!("{} error(s), {} warning(s)", errors.len(), ev_diag.warnings.len());
+        eprintln!("{} error(s), {} warning(s)", errors.len(), warnings.len());
         std::process::exit(1);
     }
 
     println!("Type checking successful!");
-    if !ev_diag.warnings.is_empty() {
-        println!("({} warning(s))", ev_diag.warnings.len());
+    if !warnings.is_empty() {
+        println!("({} warning(s))", warnings.len());
     }
 }
