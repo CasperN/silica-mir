@@ -29,21 +29,16 @@ fn main() {
 
     println!("AST parsed successfully.");
 
-    let env = match tc::Env::build(&program) {
-        Ok(env) => env,
-        Err(err) => {
-            eprintln!("Environment build error: {}", err);
-            std::process::exit(1);
-        }
-    };
+    let (env, mut errors) = tc::Env::build(&program);
+    errors.extend(env.typecheck());
 
-    match env.typecheck() {
-        Ok(()) => {
-            println!("Type checking successful!");
+    if errors.is_empty() {
+        println!("Type checking successful!");
+    } else {
+        for e in &errors {
+            eprintln!("Error: {}", e);
         }
-        Err(err) => {
-            eprintln!("Type checking error: {}", err);
-            std::process::exit(1);
-        }
+        eprintln!("{} error(s)", errors.len());
+        std::process::exit(1);
     }
 }

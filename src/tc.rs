@@ -14,7 +14,8 @@ pub struct Env {
 }
 
 impl Env {
-    pub fn build(program: &Program) -> Result<Self, String> {
+    pub fn build(program: &Program) -> (Self, Vec<String>) {
+        let mut errors = Vec::new();
         let mut types = HashMap::new();
         let mut functions = HashMap::new();
 
@@ -22,26 +23,29 @@ impl Env {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
-                        return Err(format!("Duplicate declaration of type '{}'", s.name));
+                        errors.push(format!("Duplicate declaration of type '{}'", s.name));
+                    } else {
+                        types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
                     }
-                    types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
                 }
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
-                        return Err(format!("Duplicate declaration of type '{}'", e.name));
+                        errors.push(format!("Duplicate declaration of type '{}'", e.name));
+                    } else {
+                        types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
                     }
-                    types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
-                        return Err(format!("Duplicate declaration of function '{}'", f.name));
+                        errors.push(format!("Duplicate declaration of function '{}'", f.name));
+                    } else {
+                        functions.insert(f.name.clone(), f.clone());
                     }
-                    functions.insert(f.name.clone(), f.clone());
                 }
             }
         }
 
-        Ok(Env { types, functions })
+        (Env { types, functions }, errors)
     }
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
@@ -178,18 +182,24 @@ impl Env {
         }
     }
 
-    pub fn typecheck(&self) -> Result<(), String> {
+    pub fn typecheck(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
             match type_decl {
                 TypeDecl::Struct(s) => {
                     for (f_name, f_ty) in &s.fields {
-                        self.validate_type(f_ty).map_err(|err| format!("In struct '{}', field '{}': {}", s.name, f_name, err))?;
+                        if let Err(e) = self.validate_type(f_ty) {
+                            errors.push(format!("In struct '{}', field '{}': {}", s.name, f_name, e));
+                        }
                     }
                 }
                 TypeDecl::Enum(e) => {
                     for (v_name, v_ty) in &e.variants {
-                        self.validate_type(v_ty).map_err(|err| format!("In enum '{}', variant '{}': {}", e.name, v_name, err))?;
+                        if let Err(err) = self.validate_type(v_ty) {
+                            errors.push(format!("In enum '{}', variant '{}': {}", e.name, v_name, err));
+                        }
                     }
                 }
             }
@@ -197,39 +207,65 @@ impl Env {
 
         // Validate all functions
         for f in self.functions.values() {
-            for (p_name, p_ty) in &f.params {
-                self.validate_type(p_ty).map_err(|err| format!("In function '{}', parameter '{}': {}", f.name, p_name, err))?;
-            }
+            errors.extend(self.typecheck_function(f));
+        }
 
-            if let Some(body) = &f.body {
-                if body.blocks.is_empty() {
-                    return Err(format!(
-                        "Function '{}' has no entry block: body must contain at least one basic block",
-                        f.name
-                    ));
-                }
-                let mut locals_map = HashMap::new();
-                for (p_name, p_ty) in &f.params {
-                    if locals_map.insert(p_name.clone(), p_ty.clone()).is_some() {
-                        return Err(format!("Duplicate variable name '{}' in parameters of function '{}'", p_name, f.name));
-                    }
-                }
-                for (l_name, l_ty) in &body.locals {
-                    self.validate_type(l_ty).map_err(|err| format!("In function '{}', local '{}': {}", f.name, l_name, err))?;
-                    if locals_map.insert(l_name.clone(), l_ty.clone()).is_some() {
-                        return Err(format!("Duplicate variable name '{}' in locals/parameters of function '{}'", l_name, f.name));
-                    }
-                }
+        errors
+    }
 
-                let block_labels: HashSet<String> = body.blocks.iter().map(|b| b.label.clone()).collect();
+    fn typecheck_function(&self, f: &Function) -> Vec<String> {
+        let mut errors = Vec::new();
 
-                for block in &body.blocks {
-                    self.typecheck_block(f, block, &locals_map, &block_labels)?;
-                }
+        for (p_name, p_ty) in &f.params {
+            if let Err(e) = self.validate_type(p_ty) {
+                errors.push(format!("In function '{}', parameter '{}': {}", f.name, p_name, e));
             }
         }
 
-        Ok(())
+        let Some(body) = &f.body else { return errors; };
+
+        if body.blocks.is_empty() {
+            errors.push(format!(
+                "Function '{}' has no entry block: body must contain at least one basic block",
+                f.name
+            ));
+            return errors;
+        }
+
+        // Build the locals map. On name conflict, keep the first binding and
+        // record an error — later checks still see a consistent scope.
+        let mut locals_map: HashMap<String, Type> = HashMap::new();
+        for (p_name, p_ty) in &f.params {
+            if locals_map.contains_key(p_name) {
+                errors.push(format!(
+                    "Duplicate variable name '{}' in parameters of function '{}'",
+                    p_name, f.name
+                ));
+            } else {
+                locals_map.insert(p_name.clone(), p_ty.clone());
+            }
+        }
+        for (l_name, l_ty) in &body.locals {
+            if let Err(e) = self.validate_type(l_ty) {
+                errors.push(format!("In function '{}', local '{}': {}", f.name, l_name, e));
+            }
+            if locals_map.contains_key(l_name) {
+                errors.push(format!(
+                    "Duplicate variable name '{}' in locals/parameters of function '{}'",
+                    l_name, f.name
+                ));
+            } else {
+                locals_map.insert(l_name.clone(), l_ty.clone());
+            }
+        }
+
+        let block_labels: HashSet<String> = body.blocks.iter().map(|b| b.label.clone()).collect();
+
+        for block in &body.blocks {
+            errors.extend(self.typecheck_block(f, block, &locals_map, &block_labels));
+        }
+
+        errors
     }
 
     fn typecheck_block(
@@ -238,57 +274,82 @@ impl Env {
         block: &BasicBlock,
         locals: &HashMap<String, Type>,
         block_labels: &HashSet<String>,
-    ) -> Result<(), String> {
+    ) -> Vec<String> {
+        let mut errors = Vec::new();
         for stmt in &block.statements {
-            match stmt {
-                Statement::Assign(place, rvalue) => {
-                    let lhs_ty = self.infer_place_type(place, locals)
-                        .map_err(|e| format!("In function '{}', block '{}', assignment LHS: {}", func.name, block.label, e))?;
-                    let rhs_ty = self.infer_rvalue_type(rvalue, locals)
-                        .map_err(|e| format!("In function '{}', block '{}', assignment RHS: {}", func.name, block.label, e))?;
-                    if !self.types_match(&lhs_ty, &rhs_ty) {
-                        return Err(format!(
-                            "In function '{}', block '{}': Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
-                            func.name, block.label, lhs_ty, rhs_ty
-                        ));
-                    }
-                }
-                Statement::Call(target, args) => {
-                    let target_ty = self.infer_operand_type(target, locals)
-                        .map_err(|e| format!("In function '{}', block '{}', call target: {}", func.name, block.label, e))?;
-                    
-                    if let Type::Fn(param_tys) = target_ty {
-                        if args.len() != param_tys.len() {
-                            return Err(format!(
-                                "In function '{}', block '{}': Wrong number of arguments for call. Expected {}, found {}",
-                                func.name, block.label, param_tys.len(), args.len()
-                            ));
-                        }
-                        for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                            let arg_ty = self.infer_operand_type(arg, locals)
-                                .map_err(|e| format!("In function '{}', block '{}', call arg {}: {}", func.name, block.label, i, e))?;
-                            if !self.types_match(param_ty, &arg_ty) {
-                                return Err(format!(
-                                    "In function '{}', block '{}': Call argument {} type mismatch. Expected {:?}, found {:?}",
-                                    func.name, block.label, i, param_ty, arg_ty
-                                ));
-                            }
-                        }
-                    } else {
-                        return Err(format!(
-                            "In function '{}', block '{}': Call target is not a function type: {:?}",
-                            func.name, block.label, target_ty
-                        ));
-                    }
-                }
+            if let Err(e) = self.typecheck_statement(func, block, stmt, locals) {
+                errors.push(e);
             }
         }
+        errors.extend(self.typecheck_terminator(func, block, locals, block_labels));
+        errors
+    }
 
-        // Typecheck terminator
+    fn typecheck_statement(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        stmt: &Statement,
+        locals: &HashMap<String, Type>,
+    ) -> Result<(), String> {
+        match stmt {
+            Statement::Assign(place, rvalue) => {
+                let lhs_ty = self.infer_place_type(place, locals)
+                    .map_err(|e| format!("In function '{}', block '{}', assignment LHS: {}", func.name, block.label, e))?;
+                let rhs_ty = self.infer_rvalue_type(rvalue, locals)
+                    .map_err(|e| format!("In function '{}', block '{}', assignment RHS: {}", func.name, block.label, e))?;
+                if !self.types_match(&lhs_ty, &rhs_ty) {
+                    return Err(format!(
+                        "In function '{}', block '{}': Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
+                        func.name, block.label, lhs_ty, rhs_ty
+                    ));
+                }
+                Ok(())
+            }
+            Statement::Call(target, args) => {
+                let target_ty = self.infer_operand_type(target, locals)
+                    .map_err(|e| format!("In function '{}', block '{}', call target: {}", func.name, block.label, e))?;
+
+                let Type::Fn(param_tys) = target_ty else {
+                    return Err(format!(
+                        "In function '{}', block '{}': Call target is not a function type: {:?}",
+                        func.name, block.label, target_ty
+                    ));
+                };
+
+                if args.len() != param_tys.len() {
+                    return Err(format!(
+                        "In function '{}', block '{}': Wrong number of arguments for call. Expected {}, found {}",
+                        func.name, block.label, param_tys.len(), args.len()
+                    ));
+                }
+                for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
+                    let arg_ty = self.infer_operand_type(arg, locals)
+                        .map_err(|e| format!("In function '{}', block '{}', call arg {}: {}", func.name, block.label, i, e))?;
+                    if !self.types_match(param_ty, &arg_ty) {
+                        return Err(format!(
+                            "In function '{}', block '{}': Call argument {} type mismatch. Expected {:?}, found {:?}",
+                            func.name, block.label, i, param_ty, arg_ty
+                        ));
+                    }
+                }
+                Ok(())
+            }
+        }
+    }
+
+    fn typecheck_terminator(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        locals: &HashMap<String, Type>,
+        block_labels: &HashSet<String>,
+    ) -> Vec<String> {
+        let mut errors = Vec::new();
         match &block.terminator {
             Terminator::Goto(label) => {
                 if !block_labels.contains(label) {
-                    return Err(format!(
+                    errors.push(format!(
                         "In function '{}', block '{}': goto targets undefined block '{}'",
                         func.name, block.label, label
                     ));
@@ -296,60 +357,79 @@ impl Env {
             }
             Terminator::Return => {}
             Terminator::Branch { cond, true_label, false_label } => {
-                let cond_ty = self.infer_operand_type(cond, locals)
-                    .map_err(|e| format!("In function '{}', block '{}', branch condition: {}", func.name, block.label, e))?;
-                if cond_ty != Type::Boolean {
-                    return Err(format!(
+                match self.infer_operand_type(cond, locals) {
+                    Ok(cond_ty) if cond_ty != Type::Boolean => errors.push(format!(
                         "In function '{}', block '{}': branch condition must be boolean, found {:?}",
                         func.name, block.label, cond_ty
-                    ));
+                    )),
+                    Ok(_) => {}
+                    Err(e) => errors.push(format!(
+                        "In function '{}', block '{}', branch condition: {}",
+                        func.name, block.label, e
+                    )),
                 }
                 if !block_labels.contains(true_label) {
-                    return Err(format!(
+                    errors.push(format!(
                         "In function '{}', block '{}': branch true target undefined block '{}'",
                         func.name, block.label, true_label
                     ));
                 }
                 if !block_labels.contains(false_label) {
-                    return Err(format!(
+                    errors.push(format!(
                         "In function '{}', block '{}': branch false target undefined block '{}'",
                         func.name, block.label, false_label
                     ));
                 }
             }
             Terminator::SwitchEnum { place, cases } => {
-                let place_ty = self.infer_place_type(place, locals)
-                    .map_err(|e| format!("In function '{}', block '{}', switchEnum place: {}", func.name, block.label, e))?;
-
-                let enum_name = match &place_ty {
-                    Type::Custom(name) => name,
-                    _ => return Err(format!(
-                        "In function '{}', block '{}': switchEnum place must be an enum type, found {:?}",
-                        func.name, block.label, place_ty
-                    ))
-                };
-
-                let e_decl = match self.types.get(enum_name) {
-                    Some(TypeDecl::Enum(e)) => e,
-                    Some(TypeDecl::Struct(_)) => return Err(format!(
-                        "In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
-                        func.name, block.label, enum_name
-                    )),
-                    None => return Err(format!(
-                        "In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
-                        func.name, block.label, enum_name
-                    )),
+                // Resolve the place to (enum_name, decl) or record an error.
+                // Variant-membership checks are skipped if this fails, but
+                // label-existence checks still run on every case.
+                let enum_ctx: Option<(String, &EnumDecl)> = match self.infer_place_type(place, locals) {
+                    Ok(Type::Custom(name)) => match self.types.get(&name) {
+                        Some(TypeDecl::Enum(e)) => Some((name, e)),
+                        Some(TypeDecl::Struct(_)) => {
+                            errors.push(format!(
+                                "In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
+                                func.name, block.label, name
+                            ));
+                            None
+                        }
+                        None => {
+                            errors.push(format!(
+                                "In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
+                                func.name, block.label, name
+                            ));
+                            None
+                        }
+                    },
+                    Ok(other) => {
+                        errors.push(format!(
+                            "In function '{}', block '{}': switchEnum place must be an enum type, found {:?}",
+                            func.name, block.label, other
+                        ));
+                        None
+                    }
+                    Err(e) => {
+                        errors.push(format!(
+                            "In function '{}', block '{}', switchEnum place: {}",
+                            func.name, block.label, e
+                        ));
+                        None
+                    }
                 };
 
                 for (variant, label) in cases {
-                    if !e_decl.variants.iter().any(|(v, _)| v == variant) {
-                        return Err(format!(
-                            "In function '{}', block '{}': variant '{}' is not part of enum '{}'",
-                            func.name, block.label, variant, enum_name
-                        ));
+                    if let Some((enum_name, e_decl)) = &enum_ctx {
+                        if !e_decl.variants.iter().any(|(v, _)| v == variant) {
+                            errors.push(format!(
+                                "In function '{}', block '{}': variant '{}' is not part of enum '{}'",
+                                func.name, block.label, variant, enum_name
+                            ));
+                        }
                     }
                     if !block_labels.contains(label) {
-                        return Err(format!(
+                        errors.push(format!(
                             "In function '{}', block '{}': switchEnum variant '{}' targets undefined block '{}'",
                             func.name, block.label, variant, label
                         ));
@@ -359,8 +439,7 @@ impl Env {
             Terminator::Abort => {}
             Terminator::Unreachable => {}
         }
-
-        Ok(())
+        errors
     }
 }
 
@@ -369,17 +448,23 @@ mod tests {
     use super::*;
     use crate::parser::Parser;
 
-    fn check(src: &str) -> Result<(), String> {
+    fn check(src: &str) -> Result<(), Vec<String>> {
         let program = Parser::new(src.to_string())
             .parse()
-            .map_err(|e| format!("parse error: {}", e))?;
-        Env::build(&program)?.typecheck()
+            .map_err(|e| vec![format!("parse error: {}", e)])?;
+        let (env, mut errors) = Env::build(&program);
+        errors.extend(env.typecheck());
+        if errors.is_empty() { Ok(()) } else { Err(errors) }
     }
 
     #[track_caller]
     fn assert_ok(src: &str) {
-        if let Err(e) = check(src) {
-            panic!("expected success, got error: {}\n--- source ---\n{}", e, src);
+        if let Err(errs) = check(src) {
+            panic!(
+                "expected success, got errors:\n  {}\n--- source ---\n{}",
+                errs.join("\n  "),
+                src
+            );
         }
     }
 
@@ -390,13 +475,39 @@ mod tests {
                 "expected error containing {:?}, got Ok\n--- source ---\n{}",
                 needle, src
             ),
-            Err(e) => assert!(
-                e.contains(needle),
-                "expected error containing {:?}, got: {}\n--- source ---\n{}",
-                needle,
-                e,
-                src
-            ),
+            Err(errs) => assert_errors_contain(&errs, &[needle]),
+        }
+    }
+
+    /// Assert that every needle appears as a substring in at least one error.
+    /// Panics with a report of which needles were unmatched.
+    #[track_caller]
+    fn assert_errors_contain(errs: &[String], needles: &[&str]) {
+        let missing: Vec<&str> = needles
+            .iter()
+            .copied()
+            .filter(|n| !errs.iter().any(|e| e.contains(n)))
+            .collect();
+        if !missing.is_empty() {
+            let missing_str = missing
+                .iter()
+                .map(|n| format!("  {:?}", n))
+                .collect::<Vec<_>>()
+                .join("\n");
+            let errs_str = if errs.is_empty() {
+                "  (no errors)".to_string()
+            } else {
+                errs.iter()
+                    .map(|e| format!("  {}", e))
+                    .collect::<Vec<_>>()
+                    .join("\n")
+            };
+            panic!(
+                "missing expected error substrings:\n{}\ngot {} error(s):\n{}",
+                missing_str,
+                errs.len(),
+                errs_str
+            );
         }
     }
 
@@ -1358,6 +1469,114 @@ mod tests {
     #[test]
     fn empty_function_body_error() {
         assert_err("fn f() { }", "Function 'f' has no entry block");
+    }
+
+    fn errors_of(src: &str) -> Vec<String> {
+        let program = Parser::new(src.to_string()).parse().unwrap();
+        let (env, mut errs) = Env::build(&program);
+        errs.extend(env.typecheck());
+        errs
+    }
+
+    #[test]
+    fn accumulate_env_build_duplicates() {
+        let errs = errors_of(
+            "
+            struct S { x: number }
+            struct S { y: number }
+            fn f() { entry: return }
+            fn f() { entry: return }
+            ",
+        );
+        assert_eq!(errs.len(), 2, "expected 2 errors, got: {:?}", errs);
+        assert_errors_contain(&errs, &["type 'S'", "function 'f'"]);
+    }
+
+    #[test]
+    fn accumulate_statement_errors_in_one_block() {
+        let errs = errors_of(
+            "
+            fn f() {
+              x: number;
+              y: number;
+              entry:
+                x = true;
+                y = true;
+                return
+            }
+            ",
+        );
+        // Two independent bad assigns in one block should both be reported.
+        assert_eq!(errs.len(), 2, "expected 2 errors, got: {:?}", errs);
+        assert!(errs.iter().all(|e| e.contains("Type mismatch in assignment")));
+    }
+
+    #[test]
+    fn accumulate_across_functions() {
+        let errs = errors_of(
+            "
+            fn f() {
+              x: number;
+              entry:
+                x = true;
+                return
+            }
+            fn g() {
+              y: number;
+              entry:
+                y = true;
+                return
+            }
+            ",
+        );
+        assert_eq!(errs.len(), 2, "expected 2 errors, got: {:?}", errs);
+        assert_errors_contain(&errs, &["'f'", "'g'"]);
+    }
+
+    #[test]
+    fn accumulate_branch_multi_error() {
+        // A single `branch` terminator can produce three independent errors:
+        // non-boolean cond and both labels undefined.
+        let errs = errors_of(
+            "
+            fn f(n: number) {
+              entry:
+                branch(copy n) [true: nowhere1, false: nowhere2]
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &[
+                "branch condition must be boolean",
+                "branch true target undefined block 'nowhere1'",
+                "branch false target undefined block 'nowhere2'",
+            ],
+        );
+    }
+
+    #[test]
+    fn accumulate_switch_enum_multi_error() {
+        // switchEnum with an unknown variant AND an undefined target should
+        // report both, and continue past the failed variant check.
+        let errs = errors_of(
+            "
+            enum Option { None: Option Some: number }
+            fn f(o: Option) {
+              entry:
+                switchEnum(o) [Wat: nowhere, None: end]
+              end:
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &[
+                "variant 'Wat' is not part of enum 'Option'",
+                "targets undefined block 'nowhere'",
+            ],
+        );
     }
 }
 
