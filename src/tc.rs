@@ -405,9 +405,9 @@ impl Env {
                 // Resolve the place to (enum_name, decl) or record an error.
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
-                let enum_ctx: Option<(String, &EnumDecl)> = match self.infer_place_type(place, locals) {
+                let enum_decl: Option<&EnumDecl> = match self.infer_place_type(place, locals) {
                     Ok(Type::Custom(name)) => match self.types.get(&name) {
-                        Some(TypeDecl::Enum(e)) => Some((name, e)),
+                        Some(TypeDecl::Enum(e)) => Some(e),
                         Some(TypeDecl::Struct(_)) => {
                             d.errors.push(format!(
                                 "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
@@ -440,11 +440,11 @@ impl Env {
                 };
 
                 for (variant, label) in cases {
-                    if let Some((enum_name, e_decl)) = &enum_ctx {
+                    if let Some(e_decl) = enum_decl {
                         if !e_decl.variants.iter().any(|v| v.name == *variant) {
                             d.errors.push(format!(
                                 "at {}: In function '{}', block '{}': variant '{}' is not part of enum '{}'",
-                                ts, func.name, block.label, variant, enum_name
+                                ts, func.name, block.label, variant, e_decl.name
                             ));
                         }
                     }
@@ -465,101 +465,7 @@ impl Env {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
-
-    fn check(src: &str) -> Result<(), Vec<String>> {
-        let program = Parser::new(src.to_string())
-            .parse()
-            .map_err(|e| vec![format!("parse error: {}", e)])?;
-        let mut d = Diagnostics::default();
-        let env = Env::build(&program, &mut d);
-        env.typecheck(&mut d);
-        if d.errors.is_empty() { Ok(()) } else { Err(d.errors) }
-    }
-
-    #[track_caller]
-    fn assert_ok(src: &str) {
-        if let Err(errs) = check(src) {
-            panic!(
-                "expected success, got errors:\n  {}\n--- source ---\n{}",
-                errs.join("\n  "),
-                src
-            );
-        }
-    }
-
-    #[track_caller]
-    fn assert_err(src: &str, needle: &str) {
-        match check(src) {
-            Ok(()) => panic!(
-                "expected error containing {:?}, got Ok\n--- source ---\n{}",
-                needle, src
-            ),
-            Err(errs) => assert_errors_contain(&errs, &[needle]),
-        }
-    }
-
-    /// Assert that at least one error contains all of the given substrings.
-    /// Useful for pinning "span + message" pairs to the same error line.
-    #[track_caller]
-    fn assert_one_error_contains_all(errs: &[String], needles: &[&str]) {
-        let matched = errs
-            .iter()
-            .any(|e| needles.iter().all(|n| e.contains(n)));
-        if !matched {
-            let needles_str = needles
-                .iter()
-                .map(|n| format!("  {:?}", n))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let errs_str = if errs.is_empty() {
-                "  (no errors)".to_string()
-            } else {
-                errs.iter()
-                    .map(|e| format!("  {}", e))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
-            panic!(
-                "no single error contained all substrings:\n{}\ngot {} error(s):\n{}",
-                needles_str,
-                errs.len(),
-                errs_str
-            );
-        }
-    }
-
-    /// Assert that every needle appears as a substring in at least one error.
-    /// Panics with a report of which needles were unmatched.
-    #[track_caller]
-    fn assert_errors_contain(errs: &[String], needles: &[&str]) {
-        let missing: Vec<&str> = needles
-            .iter()
-            .copied()
-            .filter(|n| !errs.iter().any(|e| e.contains(n)))
-            .collect();
-        if !missing.is_empty() {
-            let missing_str = missing
-                .iter()
-                .map(|n| format!("  {:?}", n))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let errs_str = if errs.is_empty() {
-                "  (no errors)".to_string()
-            } else {
-                errs.iter()
-                    .map(|e| format!("  {}", e))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
-            panic!(
-                "missing expected error substrings:\n{}\ngot {} error(s):\n{}",
-                missing_str,
-                errs.len(),
-                errs_str
-            );
-        }
-    }
+    use crate::test_util::*;
 
     // ---------- Env::build ----------
 
@@ -1583,14 +1489,6 @@ mod tests {
         let src = "fn f() {\n  x: number;\n  y: number;\n  entry:\n    x = true;\n    y = true;\n    return\n}";
         let errs = errors_of(src);
         assert_errors_contain(&errs, &["at 5:5:", "at 6:5:"]);
-    }
-
-    fn errors_of(src: &str) -> Vec<String> {
-        let program = Parser::new(src.to_string()).parse().unwrap();
-        let mut d = Diagnostics::default();
-        let env = Env::build(&program, &mut d);
-        env.typecheck(&mut d);
-        d.errors
     }
 
     #[test]

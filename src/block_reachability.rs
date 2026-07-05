@@ -61,54 +61,7 @@ fn successors(term: &Terminator) -> Vec<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::parser::Parser;
-    use crate::tc;
-
-    fn run(src: &str) -> (Vec<String>, Vec<String>) {
-        let program = Parser::new(src.to_string()).parse().unwrap_or_else(|e| {
-            panic!("parse error: {}\n--- source ---\n{}", e, src)
-        });
-        let mut d = Diagnostics::default();
-        let env = tc::Env::build(&program, &mut d);
-        env.typecheck(&mut d);
-        check_program(&env, &mut d);
-        (d.errors, d.warnings)
-    }
-
-    #[track_caller]
-    fn assert_no_diagnostics(src: &str) {
-        let (errors, warnings) = run(src);
-        if !errors.is_empty() || !warnings.is_empty() {
-            panic!(
-                "expected clean run, got:\nerrors:\n  {}\nwarnings:\n  {}\n--- source ---\n{}",
-                errors.join("\n  "),
-                warnings.join("\n  "),
-                src
-            );
-        }
-    }
-
-    #[track_caller]
-    fn assert_warnings_contain(warnings: &[String], needles: &[&str]) {
-        let missing: Vec<&str> = needles
-            .iter()
-            .copied()
-            .filter(|n| !warnings.iter().any(|w| w.contains(n)))
-            .collect();
-        if !missing.is_empty() {
-            panic!(
-                "missing expected warning substrings:\n  {}\ngot {} warning(s):\n  {}",
-                missing
-                    .iter()
-                    .map(|n| format!("{:?}", n))
-                    .collect::<Vec<_>>()
-                    .join("\n  "),
-                warnings.len(),
-                warnings.join("\n  ")
-            );
-        }
-    }
+    use crate::test_util::*;
 
     #[test]
     fn single_block_is_reachable() {

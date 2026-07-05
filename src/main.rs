@@ -5,6 +5,9 @@ mod enum_variants;
 mod parser;
 mod tc;
 
+#[cfg(test)]
+mod test_util;
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {

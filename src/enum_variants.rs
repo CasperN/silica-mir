@@ -300,91 +300,13 @@ fn resolve_enum_of_place<'a>(
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use crate::parser::Parser;
-    use crate::tc;
-
-    fn run(src: &str) -> (Vec<String>, Vec<String>) {
-        let program = Parser::new(src.to_string()).parse().unwrap_or_else(|e| {
-            panic!("parse error: {}\n--- source ---\n{}", e, src)
-        });
-        let mut d = Diagnostics::default();
-        let env = tc::Env::build(&program, &mut d);
-        env.typecheck(&mut d);
-        check_program(&env, &mut d);
-        (d.errors, d.warnings)
-    }
-
-    #[track_caller]
-    fn assert_no_warnings(src: &str) {
-        let (errors, warnings) = run(src);
-        if !errors.is_empty() || !warnings.is_empty() {
-            panic!(
-                "expected success with no warnings, got:\nerrors:\n  {}\nwarnings:\n  {}\n--- source ---\n{}",
-                errors.join("\n  "),
-                warnings.join("\n  "),
-                src
-            );
-        }
-    }
-
-    #[track_caller]
-    fn assert_errors_contain(errors: &[String], needles: &[&str]) {
-        let missing: Vec<&str> = needles
-            .iter()
-            .copied()
-            .filter(|n| !errors.iter().any(|e| e.contains(n)))
-            .collect();
-        if !missing.is_empty() {
-            let missing_str = missing
-                .iter()
-                .map(|n| format!("  {:?}", n))
-                .collect::<Vec<_>>()
-                .join("\n");
-            let errs_str = if errors.is_empty() {
-                "  (no errors)".to_string()
-            } else {
-                errors
-                    .iter()
-                    .map(|e| format!("  {}", e))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            };
-            panic!(
-                "missing expected error substrings:\n{}\ngot {} error(s):\n{}",
-                missing_str,
-                errors.len(),
-                errs_str
-            );
-        }
-    }
-
-    #[track_caller]
-    fn assert_warnings_contain(warnings: &[String], needles: &[&str]) {
-        let missing: Vec<&str> = needles
-            .iter()
-            .copied()
-            .filter(|n| !warnings.iter().any(|w| w.contains(n)))
-            .collect();
-        if !missing.is_empty() {
-            panic!(
-                "missing expected warning substrings:\n  {}\ngot {} warning(s):\n  {}",
-                missing
-                    .iter()
-                    .map(|n| format!("{:?}", n))
-                    .collect::<Vec<_>>()
-                    .join("\n  "),
-                warnings.len(),
-                warnings.join("\n  ")
-            );
-        }
-    }
+    use crate::test_util::*;
 
     // ---------- Coverage ----------
 
     #[test]
     fn coverage_all_variants_handled_ok() {
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f(o: Option) {
@@ -480,7 +402,7 @@ mod tests {
 
     #[test]
     fn flow_unreachable_after_construction_ok() {
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f() {
@@ -499,7 +421,7 @@ mod tests {
     fn flow_unreachable_after_prior_switch_ok() {
         // Inside the Some arm, o is refined to {Some}; the nested switch can
         // then claim None is unreachable.
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f(o: Option) {
@@ -519,7 +441,7 @@ mod tests {
     fn flow_unreachable_after_abort_join_ok() {
         // One predecessor of `join` aborts; the other assigns None. At `join`,
         // o is refined to {None} — Some arm is provably unreachable.
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f(b: boolean) {
@@ -544,7 +466,7 @@ mod tests {
     fn flow_unreachable_target_may_contain_statements_ok() {
         // A block that terminates in `unreachable` may carry debug/printf
         // statements; still counts as an unreachable-terminated arm target.
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f() {
@@ -731,7 +653,7 @@ mod tests {
     #[test]
     fn flow_shared_borrow_does_not_clobber() {
         // Shared borrow can't mutate; refinement survives.
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f() {
@@ -785,7 +707,7 @@ mod tests {
     #[test]
     fn flow_zero_variant_enum_ok() {
         // An enum with no variants must be switched with no arms — vacuous.
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum Void { }
             fn f(v: Void) {
@@ -798,7 +720,7 @@ mod tests {
 
     #[test]
     fn flow_single_variant_enum_requires_single_arm() {
-        assert_no_warnings(
+        assert_no_diagnostics(
             "
             enum One { Only: number }
             fn f(o: One) {

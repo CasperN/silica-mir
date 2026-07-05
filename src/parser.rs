@@ -80,27 +80,21 @@ impl Parser {
                 }
 
                 let text = self.get_text(first_child);
+                let ref_kind = match text {
+                    "&"       => Some(RefKind::Shared),
+                    "&mut"    => Some(RefKind::Mut),
+                    "&out"    => Some(RefKind::Out),
+                    "&drop"   => Some(RefKind::Drop),
+                    "&uninit" => Some(RefKind::Uninit),
+                    _         => None,
+                };
+                if let Some(kind) = ref_kind {
+                    let inner = node.child(1)
+                        .ok_or_else(|| format!("Missing inner type for {}", text))?;
+                    return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
+                }
+
                 match text {
-                    "&" => {
-                        let inner = node.child(1).ok_or("Missing inner type for &")?;
-                        Ok(Type::Ref(RefKind::Shared, Box::new(self.map_type(inner)?)))
-                    }
-                    "&mut" => {
-                        let inner = node.child(1).ok_or("Missing inner type for &mut")?;
-                        Ok(Type::Ref(RefKind::Mut, Box::new(self.map_type(inner)?)))
-                    }
-                    "&out" => {
-                        let inner = node.child(1).ok_or("Missing inner type for &out")?;
-                        Ok(Type::Ref(RefKind::Out, Box::new(self.map_type(inner)?)))
-                    }
-                    "&drop" => {
-                        let inner = node.child(1).ok_or("Missing inner type for &drop")?;
-                        Ok(Type::Ref(RefKind::Drop, Box::new(self.map_type(inner)?)))
-                    }
-                    "&uninit" => {
-                        let inner = node.child(1).ok_or("Missing inner type for &uninit")?;
-                        Ok(Type::Ref(RefKind::Uninit, Box::new(self.map_type(inner)?)))
-                    }
                     "fn" => {
                         let mut params = Vec::new();
                         let mut cursor = node.walk();
