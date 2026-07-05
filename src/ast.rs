@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Markers {
@@ -199,7 +199,7 @@ pub struct FunctionBody {
 
 impl FunctionBody {
     /// Index blocks by label for O(1) lookup during dataflow.
-    pub fn blocks_by_label(&self) -> HashMap<&str, &BasicBlock> {
+    pub fn blocks_by_label(&self) -> IndexMap<&str, &BasicBlock> {
         self.blocks.iter().map(|b| (b.label.as_str(), b)).collect()
     }
 }

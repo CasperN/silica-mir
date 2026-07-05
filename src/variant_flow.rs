@@ -22,10 +22,11 @@ use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::type_check::{Env, TypeDecl};
 use crate::{push_error, push_warning};
-use std::collections::{BTreeSet, HashMap, VecDeque};
+use indexmap::IndexMap;
+use std::collections::{BTreeSet, VecDeque};
 
 /// State at one program point: per-Var variant set. Absent = ⊤.
-type PointState = HashMap<String, BTreeSet<String>>;
+type PointState = IndexMap<String, BTreeSet<String>>;
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
@@ -74,7 +75,7 @@ fn root_var(place: &Place) -> Option<&str> {
 fn check_places_in_stmt(
     env: &Env,
     func: &Function,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     stmt: &Statement,
     span: Span,
@@ -114,7 +115,7 @@ fn check_places_in_stmt(
 fn check_places_in_terminator(
     env: &Env,
     func: &Function,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     state: &PointState,
     d: &mut Diagnostics,
@@ -141,7 +142,7 @@ fn check_places_in_terminator(
 fn check_downcast_refinement(
     env: &Env,
     func: &Function,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     place: &Place,
     span: Span,
@@ -178,8 +179,8 @@ fn check_downcast_refinement(
     }
 }
 
-fn collect_locals(func: &Function, body: &FunctionBody) -> HashMap<String, Type> {
-    let mut locals = HashMap::new();
+fn collect_locals(func: &Function, body: &FunctionBody) -> IndexMap<String, Type> {
+    let mut locals = IndexMap::new();
     for p in &func.params {
         locals.insert(p.name.clone(), p.ty.clone());
     }
@@ -189,8 +190,8 @@ fn collect_locals(func: &Function, body: &FunctionBody) -> HashMap<String, Type>
     locals
 }
 
-fn compute_entry_states(body: &FunctionBody) -> HashMap<String, PointState> {
-    let mut states: HashMap<String, PointState> = HashMap::new();
+fn compute_entry_states(body: &FunctionBody) -> IndexMap<String, PointState> {
+    let mut states: IndexMap<String, PointState> = IndexMap::new();
     let mut worklist: VecDeque<String> = VecDeque::new();
 
     let entry_label = body.blocks[0].label.clone();
@@ -331,7 +332,7 @@ fn check_switch(
     env: &Env,
     func: &Function,
     body: &FunctionBody,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     place: &Place,
     cases: &[(String, String)],
@@ -410,7 +411,7 @@ fn check_switch(
 
 fn resolve_enum_of_place<'a>(
     env: &'a Env,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     place: &Place,
 ) -> Option<&'a EnumDecl> {
     let ty = env.infer_place_type(place, locals).ok()?;

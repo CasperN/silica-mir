@@ -24,7 +24,8 @@ use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::push_error;
 use crate::type_check::{Env, TypeDecl};
-use std::collections::{BTreeMap, HashMap, VecDeque};
+use indexmap::IndexMap;
+use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum InitState {
@@ -38,11 +39,11 @@ enum InitState {
     Diverged,
 }
 
-type PointState = HashMap<String, InitState>;
+type PointState = IndexMap<String, InitState>;
 
 struct Ctx<'a> {
     env: &'a Env,
-    locals: &'a HashMap<String, Type>,
+    locals: &'a IndexMap<String, Type>,
 }
 
 // ---------- Type lookups ----------
@@ -280,8 +281,8 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     }
 }
 
-fn collect_locals(func: &Function, body: &FunctionBody) -> HashMap<String, Type> {
-    let mut m = HashMap::new();
+fn collect_locals(func: &Function, body: &FunctionBody) -> IndexMap<String, Type> {
+    let mut m = IndexMap::new();
     for p in &func.params { m.insert(p.name.clone(), p.ty.clone()); }
     for l in &body.locals { m.insert(l.name.clone(), l.ty.clone()); }
     m
@@ -319,8 +320,8 @@ fn compute_entry_states(
     ctx: &Ctx,
     func: &Function,
     body: &FunctionBody,
-) -> HashMap<String, PointState> {
-    let mut states: HashMap<String, PointState> = HashMap::new();
+) -> IndexMap<String, PointState> {
+    let mut states: IndexMap<String, PointState> = IndexMap::new();
     let mut worklist: VecDeque<String> = VecDeque::new();
     let entry_label = body.blocks[0].label.clone();
     states.insert(entry_label.clone(), initial_state(func, body, ctx.env));

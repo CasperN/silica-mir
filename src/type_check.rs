@@ -2,7 +2,7 @@ use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::{fmt_error, push_error};
 use indexmap::IndexMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 #[derive(Debug, Clone)]
 pub enum TypeDecl {
@@ -104,7 +104,7 @@ impl Env {
         }
     }
 
-    pub fn infer_place_type(&self, place: &Place, locals: &HashMap<String, Type>) -> Result<Type, String> {
+    pub fn infer_place_type(&self, place: &Place, locals: &IndexMap<String, Type>) -> Result<Type, String> {
         match place {
             Place::Var(name) => {
                 locals.get(name).cloned().ok_or_else(|| format!("Use of undeclared variable '{}'", name))
@@ -154,7 +154,7 @@ impl Env {
         }
     }
 
-    pub fn infer_operand_type(&self, op: &Operand, locals: &HashMap<String, Type>) -> Result<Type, String> {
+    pub fn infer_operand_type(&self, op: &Operand, locals: &IndexMap<String, Type>) -> Result<Type, String> {
         match op {
             Operand::Copy(place) | Operand::Move(place) => self.infer_place_type(place, locals),
             Operand::Const(c) => match c {
@@ -170,7 +170,7 @@ impl Env {
         }
     }
 
-    pub fn infer_rvalue_type(&self, rvalue: &RValue, locals: &HashMap<String, Type>) -> Result<Type, String> {
+    pub fn infer_rvalue_type(&self, rvalue: &RValue, locals: &IndexMap<String, Type>) -> Result<Type, String> {
         match rvalue {
             RValue::Use(op) => self.infer_operand_type(op, locals),
             RValue::Ref(kind, place) => {
@@ -268,7 +268,7 @@ impl Env {
 
         // Build the locals map. On name conflict, keep the first binding and
         // record an error — later checks still see a consistent scope.
-        let mut locals_map: HashMap<String, Type> = HashMap::new();
+        let mut locals_map: IndexMap<String, Type> = IndexMap::new();
         for p in &f.params {
             if locals_map.contains_key(&p.name) {
                 d.errors.push(format!(
@@ -307,7 +307,7 @@ impl Env {
         &self,
         func: &Function,
         block: &BasicBlock,
-        locals: &HashMap<String, Type>,
+        locals: &IndexMap<String, Type>,
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
@@ -325,7 +325,7 @@ impl Env {
         block: &BasicBlock,
         stmt: &Statement,
         stmt_span: Span,
-        locals: &HashMap<String, Type>,
+        locals: &IndexMap<String, Type>,
     ) -> Result<(), String> {
         match stmt {
             Statement::Assign(place, rvalue) => {
@@ -386,7 +386,7 @@ impl Env {
         &self,
         func: &Function,
         block: &BasicBlock,
-        locals: &HashMap<String, Type>,
+        locals: &IndexMap<String, Type>,
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {

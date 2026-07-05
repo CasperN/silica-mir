@@ -18,7 +18,7 @@ use crate::diagnostics::Diagnostics;
 use crate::marker_composition::class_of;
 use crate::push_error;
 use crate::type_check::Env;
-use std::collections::HashMap;
+use indexmap::IndexMap;
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
@@ -28,7 +28,7 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else { return; };
-    let mut locals: HashMap<String, Type> = HashMap::new();
+    let mut locals: IndexMap<String, Type> = IndexMap::new();
     for p in &func.params {
         locals.insert(p.name.clone(), p.ty.clone());
     }
@@ -48,7 +48,7 @@ fn check_stmt(
     env: &Env,
     func: &Function,
     block: &BasicBlock,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     stmt: &Statement,
     span: Span,
     d: &mut Diagnostics,
@@ -75,7 +75,7 @@ fn check_rvalue(
     env: &Env,
     func: &Function,
     block: &BasicBlock,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     rv: &RValue,
     span: Span,
     d: &mut Diagnostics,
@@ -92,7 +92,7 @@ fn check_operand(
     env: &Env,
     func: &Function,
     block: &BasicBlock,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     op: &Operand,
     span: Span,
     d: &mut Diagnostics,
@@ -110,7 +110,7 @@ fn check_terminator(
     env: &Env,
     func: &Function,
     block: &BasicBlock,
-    locals: &HashMap<String, Type>,
+    locals: &IndexMap<String, Type>,
     d: &mut Diagnostics,
 ) {
     // `branch` uses an operand; `switchEnum` reads a place but does not
