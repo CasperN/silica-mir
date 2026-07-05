@@ -26,19 +26,16 @@ use std::collections::{BTreeSet, HashMap, VecDeque};
 /// State at one program point: per-Var variant set. Absent = ⊤.
 type PointState = HashMap<String, BTreeSet<String>>;
 
-pub fn check_program(env: &Env) -> Diagnostics {
-    let mut d = Diagnostics::default();
+pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
-        d.extend(check_function(env, f));
+        check_function(env, f, d);
     }
-    d
 }
 
-fn check_function(env: &Env, func: &Function) -> Diagnostics {
-    let mut d = Diagnostics::default();
-    let Some(body) = &func.body else { return d; };
+fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
+    let Some(body) = &func.body else { return; };
     if body.blocks.is_empty() {
-        return d;
+        return;
     }
 
     let locals = collect_locals(func, body);
@@ -56,11 +53,9 @@ fn check_function(env: &Env, func: &Function) -> Diagnostics {
         }
 
         if let Terminator::SwitchEnum { place, cases } = &block.terminator {
-            check_switch(env, func, body, &locals, block, place, cases, &state, &mut d);
+            check_switch(env, func, body, &locals, block, place, cases, &state, d);
         }
     }
-
-    d
 }
 
 fn collect_locals(func: &Function, body: &FunctionBody) -> HashMap<String, Type> {
@@ -313,11 +308,11 @@ mod tests {
         let program = Parser::new(src.to_string()).parse().unwrap_or_else(|e| {
             panic!("parse error: {}\n--- source ---\n{}", e, src)
         });
-        let (env, mut errors) = tc::Env::build(&program);
-        errors.extend(env.typecheck());
-        let diag = check_program(&env);
-        errors.extend(diag.errors);
-        (errors, diag.warnings)
+        let mut d = Diagnostics::default();
+        let env = tc::Env::build(&program, &mut d);
+        env.typecheck(&mut d);
+        check_program(&env, &mut d);
+        (d.errors, d.warnings)
     }
 
     #[track_caller]

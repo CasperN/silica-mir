@@ -1,4 +1,5 @@
 use crate::ast::*;
+use crate::diagnostics::Diagnostics;
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -14,8 +15,7 @@ pub struct Env {
 }
 
 impl Env {
-    pub fn build(program: &Program) -> (Self, Vec<String>) {
-        let mut errors = Vec::new();
+    pub fn build(program: &Program, d: &mut Diagnostics) -> Self {
         let mut types = HashMap::new();
         let mut functions = HashMap::new();
 
@@ -23,7 +23,7 @@ impl Env {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
-                        errors.push(format!(
+                        d.errors.push(format!(
                             "at {}: Duplicate declaration of type '{}'",
                             s.name_span, s.name
                         ));
@@ -33,7 +33,7 @@ impl Env {
                 }
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
-                        errors.push(format!(
+                        d.errors.push(format!(
                             "at {}: Duplicate declaration of type '{}'",
                             e.name_span, e.name
                         ));
@@ -43,7 +43,7 @@ impl Env {
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
-                        errors.push(format!(
+                        d.errors.push(format!(
                             "at {}: Duplicate declaration of function '{}'",
                             f.name_span, f.name
                         ));
@@ -54,7 +54,7 @@ impl Env {
             }
         }
 
-        (Env { types, functions }, errors)
+        Env { types, functions }
     }
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
@@ -193,16 +193,14 @@ impl Env {
         }
     }
 
-    pub fn typecheck(&self) -> Vec<String> {
-        let mut errors = Vec::new();
-
+    pub fn typecheck(&self, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
             match type_decl {
                 TypeDecl::Struct(s) => {
                     for f in &s.fields {
                         if let Err(e) = self.validate_type(&f.ty) {
-                            errors.push(format!(
+                            d.errors.push(format!(
                                 "at {}: In struct '{}', field '{}': {}",
                                 f.span, s.name, f.name, e
                             ));
@@ -212,7 +210,7 @@ impl Env {
                 TypeDecl::Enum(e) => {
                     for v in &e.variants {
                         if let Err(err) = self.validate_type(&v.ty) {
-                            errors.push(format!(
+                            d.errors.push(format!(
                                 "at {}: In enum '{}', variant '{}': {}",
                                 v.span, e.name, v.name, err
                             ));
@@ -224,32 +222,28 @@ impl Env {
 
         // Validate all functions
         for f in self.functions.values() {
-            errors.extend(self.typecheck_function(f));
+            self.typecheck_function(f, d);
         }
-
-        errors
     }
 
-    fn typecheck_function(&self, f: &Function) -> Vec<String> {
-        let mut errors = Vec::new();
-
+    fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
         for p in &f.params {
             if let Err(e) = self.validate_type(&p.ty) {
-                errors.push(format!(
+                d.errors.push(format!(
                     "at {}: In function '{}', parameter '{}': {}",
                     p.span, f.name, p.name, e
                 ));
             }
         }
 
-        let Some(body) = &f.body else { return errors; };
+        let Some(body) = &f.body else { return; };
 
         if body.blocks.is_empty() {
-            errors.push(format!(
+            d.errors.push(format!(
                 "at {}: Function '{}' has no entry block: body must contain at least one basic block",
                 f.name_span, f.name
             ));
-            return errors;
+            return;
         }
 
         // Build the locals map. On name conflict, keep the first binding and
@@ -257,7 +251,7 @@ impl Env {
         let mut locals_map: HashMap<String, Type> = HashMap::new();
         for p in &f.params {
             if locals_map.contains_key(&p.name) {
-                errors.push(format!(
+                d.errors.push(format!(
                     "at {}: Duplicate variable name '{}' in parameters of function '{}'",
                     p.span, p.name, f.name
                 ));
@@ -267,13 +261,13 @@ impl Env {
         }
         for l in &body.locals {
             if let Err(e) = self.validate_type(&l.ty) {
-                errors.push(format!(
+                d.errors.push(format!(
                     "at {}: In function '{}', local '{}': {}",
                     l.span, f.name, l.name, e
                 ));
             }
             if locals_map.contains_key(&l.name) {
-                errors.push(format!(
+                d.errors.push(format!(
                     "at {}: Duplicate variable name '{}' in locals/parameters of function '{}'",
                     l.span, l.name, f.name
                 ));
@@ -285,10 +279,8 @@ impl Env {
         let block_labels: HashSet<String> = body.blocks.iter().map(|b| b.label.clone()).collect();
 
         for block in &body.blocks {
-            errors.extend(self.typecheck_block(f, block, &locals_map, &block_labels));
+            self.typecheck_block(f, block, &locals_map, &block_labels, d);
         }
-
-        errors
     }
 
     fn typecheck_block(
@@ -297,15 +289,14 @@ impl Env {
         block: &BasicBlock,
         locals: &HashMap<String, Type>,
         block_labels: &HashSet<String>,
-    ) -> Vec<String> {
-        let mut errors = Vec::new();
+        d: &mut Diagnostics,
+    ) {
         for (stmt, span) in &block.statements {
             if let Err(e) = self.typecheck_statement(func, block, stmt, *span, locals) {
-                errors.push(e);
+                d.errors.push(e);
             }
         }
-        errors.extend(self.typecheck_terminator(func, block, locals, block_labels));
-        errors
+        self.typecheck_terminator(func, block, locals, block_labels, d);
     }
 
     fn typecheck_statement(
@@ -372,13 +363,13 @@ impl Env {
         block: &BasicBlock,
         locals: &HashMap<String, Type>,
         block_labels: &HashSet<String>,
-    ) -> Vec<String> {
-        let mut errors = Vec::new();
+        d: &mut Diagnostics,
+    ) {
         let ts = block.terminator_span;
         match &block.terminator {
             Terminator::Goto(label) => {
                 if !block_labels.contains(label) {
-                    errors.push(format!(
+                    d.errors.push(format!(
                         "at {}: In function '{}', block '{}': goto targets undefined block '{}'",
                         ts, func.name, block.label, label
                     ));
@@ -387,24 +378,24 @@ impl Env {
             Terminator::Return => {}
             Terminator::Branch { cond, true_label, false_label } => {
                 match self.infer_operand_type(cond, locals) {
-                    Ok(cond_ty) if cond_ty != Type::Boolean => errors.push(format!(
+                    Ok(cond_ty) if cond_ty != Type::Boolean => d.errors.push(format!(
                         "at {}: In function '{}', block '{}': branch condition must be boolean, found {:?}",
                         ts, func.name, block.label, cond_ty
                     )),
                     Ok(_) => {}
-                    Err(e) => errors.push(format!(
+                    Err(e) => d.errors.push(format!(
                         "at {}: In function '{}', block '{}', branch condition: {}",
                         ts, func.name, block.label, e
                     )),
                 }
                 if !block_labels.contains(true_label) {
-                    errors.push(format!(
+                    d.errors.push(format!(
                         "at {}: In function '{}', block '{}': branch true target undefined block '{}'",
                         ts, func.name, block.label, true_label
                     ));
                 }
                 if !block_labels.contains(false_label) {
-                    errors.push(format!(
+                    d.errors.push(format!(
                         "at {}: In function '{}', block '{}': branch false target undefined block '{}'",
                         ts, func.name, block.label, false_label
                     ));
@@ -418,14 +409,14 @@ impl Env {
                     Ok(Type::Custom(name)) => match self.types.get(&name) {
                         Some(TypeDecl::Enum(e)) => Some((name, e)),
                         Some(TypeDecl::Struct(_)) => {
-                            errors.push(format!(
+                            d.errors.push(format!(
                                 "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found struct '{}'",
                                 ts, func.name, block.label, name
                             ));
                             None
                         }
                         None => {
-                            errors.push(format!(
+                            d.errors.push(format!(
                                 "at {}: In function '{}', block '{}': Undeclared enum '{}' in switchEnum",
                                 ts, func.name, block.label, name
                             ));
@@ -433,14 +424,14 @@ impl Env {
                         }
                     },
                     Ok(other) => {
-                        errors.push(format!(
+                        d.errors.push(format!(
                             "at {}: In function '{}', block '{}': switchEnum place must be an enum type, found {:?}",
                             ts, func.name, block.label, other
                         ));
                         None
                     }
                     Err(e) => {
-                        errors.push(format!(
+                        d.errors.push(format!(
                             "at {}: In function '{}', block '{}', switchEnum place: {}",
                             ts, func.name, block.label, e
                         ));
@@ -451,14 +442,14 @@ impl Env {
                 for (variant, label) in cases {
                     if let Some((enum_name, e_decl)) = &enum_ctx {
                         if !e_decl.variants.iter().any(|v| v.name == *variant) {
-                            errors.push(format!(
+                            d.errors.push(format!(
                                 "at {}: In function '{}', block '{}': variant '{}' is not part of enum '{}'",
                                 ts, func.name, block.label, variant, enum_name
                             ));
                         }
                     }
                     if !block_labels.contains(label) {
-                        errors.push(format!(
+                        d.errors.push(format!(
                             "at {}: In function '{}', block '{}': switchEnum variant '{}' targets undefined block '{}'",
                             ts, func.name, block.label, variant, label
                         ));
@@ -468,7 +459,6 @@ impl Env {
             Terminator::Abort => {}
             Terminator::Unreachable => {}
         }
-        errors
     }
 }
 
@@ -481,9 +471,10 @@ mod tests {
         let program = Parser::new(src.to_string())
             .parse()
             .map_err(|e| vec![format!("parse error: {}", e)])?;
-        let (env, mut errors) = Env::build(&program);
-        errors.extend(env.typecheck());
-        if errors.is_empty() { Ok(()) } else { Err(errors) }
+        let mut d = Diagnostics::default();
+        let env = Env::build(&program, &mut d);
+        env.typecheck(&mut d);
+        if d.errors.is_empty() { Ok(()) } else { Err(d.errors) }
     }
 
     #[track_caller]
@@ -1596,9 +1587,10 @@ mod tests {
 
     fn errors_of(src: &str) -> Vec<String> {
         let program = Parser::new(src.to_string()).parse().unwrap();
-        let (env, mut errs) = Env::build(&program);
-        errs.extend(env.typecheck());
-        errs
+        let mut d = Diagnostics::default();
+        let env = Env::build(&program, &mut d);
+        env.typecheck(&mut d);
+        d.errors
     }
 
     #[test]

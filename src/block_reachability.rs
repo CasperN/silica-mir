@@ -8,18 +8,15 @@ use crate::diagnostics::Diagnostics;
 use crate::tc::Env;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-pub fn check_program(env: &Env) -> Diagnostics {
-    let mut d = Diagnostics::default();
+pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
-        d.extend(check_function(f));
+        check_function(f, d);
     }
-    d
 }
 
-fn check_function(func: &Function) -> Diagnostics {
-    let mut d = Diagnostics::default();
-    let Some(body) = &func.body else { return d; };
-    if body.blocks.is_empty() { return d; }
+fn check_function(func: &Function, d: &mut Diagnostics) {
+    let Some(body) = &func.body else { return; };
+    if body.blocks.is_empty() { return; }
 
     let blocks_by_label: HashMap<&str, &BasicBlock> =
         body.blocks.iter().map(|b| (b.label.as_str(), b)).collect();
@@ -47,8 +44,6 @@ fn check_function(func: &Function) -> Diagnostics {
             ));
         }
     }
-
-    d
 }
 
 fn successors(term: &Terminator) -> Vec<&str> {
@@ -74,11 +69,11 @@ mod tests {
         let program = Parser::new(src.to_string()).parse().unwrap_or_else(|e| {
             panic!("parse error: {}\n--- source ---\n{}", e, src)
         });
-        let (env, mut errors) = tc::Env::build(&program);
-        errors.extend(env.typecheck());
-        let d = check_program(&env);
-        errors.extend(d.errors);
-        (errors, d.warnings)
+        let mut d = Diagnostics::default();
+        let env = tc::Env::build(&program, &mut d);
+        env.typecheck(&mut d);
+        check_program(&env, &mut d);
+        (d.errors, d.warnings)
     }
 
     #[track_caller]

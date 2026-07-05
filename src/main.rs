@@ -32,32 +32,26 @@ fn main() {
 
     println!("AST parsed successfully.");
 
-    let (env, mut errors) = tc::Env::build(&program);
-    errors.extend(env.typecheck());
-    let mut warnings: Vec<String> = Vec::new();
+    let mut d = diagnostics::Diagnostics::default();
+    let env = tc::Env::build(&program, &mut d);
+    env.typecheck(&mut d);
+    enum_variants::check_program(&env, &mut d);
+    block_reachability::check_program(&env, &mut d);
 
-    let ev = enum_variants::check_program(&env);
-    errors.extend(ev.errors);
-    warnings.extend(ev.warnings);
-
-    let br = block_reachability::check_program(&env);
-    errors.extend(br.errors);
-    warnings.extend(br.warnings);
-
-    for w in &warnings {
+    for w in &d.warnings {
         eprintln!("Warning: {}", w);
     }
 
-    if !errors.is_empty() {
-        for e in &errors {
+    if !d.errors.is_empty() {
+        for e in &d.errors {
             eprintln!("Error: {}", e);
         }
-        eprintln!("{} error(s), {} warning(s)", errors.len(), warnings.len());
+        eprintln!("{} error(s), {} warning(s)", d.errors.len(), d.warnings.len());
         std::process::exit(1);
     }
 
     println!("Type checking successful!");
-    if !warnings.is_empty() {
-        println!("({} warning(s))", warnings.len());
+    if !d.warnings.is_empty() {
+        println!("({} warning(s))", d.warnings.len());
     }
 }
