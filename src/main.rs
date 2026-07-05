@@ -4,6 +4,7 @@ mod diagnostics;
 mod enum_variants;
 mod init_state;
 mod parser;
+mod substructural;
 mod tc;
 
 #[cfg(test)]
@@ -18,6 +19,7 @@ pub fn run_all_passes(program: &Program) -> Diagnostics {
     let mut d = Diagnostics::default();
     let env = tc::Env::build(program, &mut d);
     env.typecheck(&mut d);
+    substructural::check_program(&env, &mut d);
     enum_variants::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
