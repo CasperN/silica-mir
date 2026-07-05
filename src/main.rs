@@ -1,4 +1,5 @@
 mod ast;
+mod enum_variants;
 mod parser;
 mod tc;
 
@@ -31,14 +32,23 @@ fn main() {
 
     let (env, mut errors) = tc::Env::build(&program);
     errors.extend(env.typecheck());
+    let ev_diag = enum_variants::check_program(&env);
+    errors.extend(ev_diag.errors);
 
-    if errors.is_empty() {
-        println!("Type checking successful!");
-    } else {
+    for w in &ev_diag.warnings {
+        eprintln!("Warning: {}", w);
+    }
+
+    if !errors.is_empty() {
         for e in &errors {
             eprintln!("Error: {}", e);
         }
-        eprintln!("{} error(s)", errors.len());
+        eprintln!("{} error(s), {} warning(s)", errors.len(), ev_diag.warnings.len());
         std::process::exit(1);
+    }
+
+    println!("Type checking successful!");
+    if !ev_diag.warnings.is_empty() {
+        println!("({} warning(s))", ev_diag.warnings.len());
     }
 }

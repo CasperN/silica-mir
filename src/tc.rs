@@ -1496,23 +1496,6 @@ mod tests {
     }
 
     #[test]
-    fn switch_enum_non_exhaustive_ok() {
-        // Syntactic switchEnum does not require exhaustiveness; whether
-        // omitted variants are actually reachable is a flow-check concern.
-        assert_ok(
-            "
-            enum Option { None: Option Some: number }
-            fn f(o: Option) {
-              entry:
-                switchEnum(o) [None: end]
-              end:
-                return
-            }
-            ",
-        );
-    }
-
-    #[test]
     fn empty_function_body_error() {
         assert_err("fn f() { }", "Function 'f' has no entry block");
     }
