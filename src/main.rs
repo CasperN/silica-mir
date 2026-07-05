@@ -8,6 +8,20 @@ mod tc;
 #[cfg(test)]
 mod test_util;
 
+use ast::Program;
+use diagnostics::Diagnostics;
+
+/// Run every post-parse check against `program` and return the collected
+/// diagnostics. Used both by `main` and by test helpers.
+pub fn run_all_passes(program: &Program) -> Diagnostics {
+    let mut d = Diagnostics::default();
+    let env = tc::Env::build(program, &mut d);
+    env.typecheck(&mut d);
+    enum_variants::check_program(&env, &mut d);
+    block_reachability::check_program(&env, &mut d);
+    d
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
@@ -35,11 +49,7 @@ fn main() {
 
     println!("AST parsed successfully.");
 
-    let mut d = diagnostics::Diagnostics::default();
-    let env = tc::Env::build(&program, &mut d);
-    env.typecheck(&mut d);
-    enum_variants::check_program(&env, &mut d);
-    block_reachability::check_program(&env, &mut d);
+    let d = run_all_passes(&program);
 
     for w in &d.warnings {
         eprintln!("Warning: {}", w);

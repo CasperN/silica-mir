@@ -2,20 +2,15 @@
 //! `run(src)`, which runs parse → tc::build → tc::typecheck → all analyses
 //! against a single `Diagnostics`.
 
-use crate::diagnostics::Diagnostics;
 use crate::parser::Parser;
-use crate::{block_reachability, enum_variants, tc};
+use crate::run_all_passes;
 
 /// Parse `src` and run every check. Returns `(errors, warnings)`.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     let program = Parser::new(src.to_string())
         .parse()
         .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
-    let mut d = Diagnostics::default();
-    let env = tc::Env::build(&program, &mut d);
-    env.typecheck(&mut d);
-    enum_variants::check_program(&env, &mut d);
-    block_reachability::check_program(&env, &mut d);
+    let d = run_all_passes(&program);
     (d.errors, d.warnings)
 }
 
