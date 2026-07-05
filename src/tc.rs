@@ -198,7 +198,14 @@ impl Env {
         for type_decl in self.types.values() {
             match type_decl {
                 TypeDecl::Struct(s) => {
+                    let mut seen: HashSet<&str> = HashSet::new();
                     for f in &s.fields {
+                        if !seen.insert(f.name.as_str()) {
+                            d.errors.push(format!(
+                                "at {}: In struct '{}', field '{}' is declared more than once",
+                                f.span, s.name, f.name
+                            ));
+                        }
                         if let Err(e) = self.validate_type(&f.ty) {
                             d.errors.push(format!(
                                 "at {}: In struct '{}', field '{}': {}",
@@ -208,7 +215,14 @@ impl Env {
                     }
                 }
                 TypeDecl::Enum(e) => {
+                    let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
+                        if !seen.insert(v.name.as_str()) {
+                            d.errors.push(format!(
+                                "at {}: In enum '{}', variant '{}' is declared more than once",
+                                v.span, e.name, v.name
+                            ));
+                        }
                         if let Err(err) = self.validate_type(&v.ty) {
                             d.errors.push(format!(
                                 "at {}: In enum '{}', variant '{}': {}",
@@ -478,6 +492,32 @@ mod tests {
             fn f() { entry: return }
             extern fn g();
             ",
+        );
+    }
+
+    #[test]
+    fn struct_duplicate_field_name_error() {
+        assert_err(
+            "
+            struct S {
+              x: number
+              x: boolean
+            }
+            ",
+            "field 'x' is declared more than once",
+        );
+    }
+
+    #[test]
+    fn enum_duplicate_variant_name_error() {
+        assert_err(
+            "
+            enum E {
+              A: unit
+              A: number
+            }
+            ",
+            "variant 'A' is declared more than once",
         );
     }
 

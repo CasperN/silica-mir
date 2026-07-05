@@ -318,15 +318,32 @@ fn collect_locals(func: &Function, body: &FunctionBody) -> HashMap<String, Type>
     m
 }
 
-fn initial_state(func: &Function, body: &FunctionBody) -> PointState {
+fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState {
     let mut s = PointState::new();
     for p in &func.params {
         s.insert(p.name.clone(), InitState::Init);
     }
     for l in &body.locals {
-        s.insert(l.name.clone(), InitState::NeverInit);
+        // A struct with zero declared fields is trivially initialized —
+        // there's nothing to write. Same for any type reducing to one.
+        let init = if is_trivially_init(&l.ty, env) {
+            InitState::Init
+        } else {
+            InitState::NeverInit
+        };
+        s.insert(l.name.clone(), init);
     }
     s
+}
+
+fn is_trivially_init(ty: &Type, env: &Env) -> bool {
+    match ty {
+        Type::Custom(name) => match env.types.get(name) {
+            Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
+            _ => false,
+        },
+        _ => false,
+    }
 }
 
 fn compute_entry_states(
@@ -337,7 +354,7 @@ fn compute_entry_states(
     let mut states: HashMap<String, PointState> = HashMap::new();
     let mut worklist: VecDeque<String> = VecDeque::new();
     let entry_label = body.blocks[0].label.clone();
-    states.insert(entry_label.clone(), initial_state(func, body));
+    states.insert(entry_label.clone(), initial_state(func, body, ctx.env));
     worklist.push_back(entry_label);
 
     let blocks_by_label: HashMap<&str, &BasicBlock> =
@@ -451,13 +468,41 @@ fn check_stmt(
     d: &mut Diagnostics,
 ) {
     match stmt {
-        Statement::Assign(_, rvalue) => check_rvalue_reads(ctx, func, block, rvalue, span, state, d),
+        Statement::Assign(target, rvalue) => {
+            check_rvalue_reads(ctx, func, block, rvalue, span, state, d);
+            check_lhs_downcast(ctx, func, block, target, span, state, d);
+        }
         Statement::Call(target, args) => {
             check_operand_read(ctx, func, block, target, span, state, d);
             for a in args {
                 check_operand_read(ctx, func, block, a, span, state, d);
             }
         }
+    }
+}
+
+/// If the LHS path contains a `Downcast`, the enum being downcast must be
+/// `Init` at that point — you can't refine an uninitialized enum by writing
+/// through a variant projection. Enum construction goes via `Name::V(...)`.
+fn check_lhs_downcast(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    place: &Place,
+    span: Span,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    let Some((root, path)) = extract_path(place) else { return; };
+    let Some(idx) = path.iter().position(|s| matches!(s, PathStep::Downcast(_))) else { return; };
+    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
+    let Some(root_state) = state.get(&root) else { return; };
+    let prefix_state = read_at(root_state, &root_ty, &path[..idx], ctx.env);
+    if !matches!(prefix_state, InitState::Init) {
+        d.errors.push(format!(
+            "at {}: In function '{}', block '{}': cannot write through variant projection: '{}' is not initialized here",
+            span, func.name, block.label, root
+        ));
     }
 }
 
@@ -908,7 +953,104 @@ mod tests {
         );
     }
 
+    // ---------- Downcast writes ----------
+
+    #[test]
+    fn downcast_write_on_init_enum_ok() {
+        // Existing behavior: writing through a variant projection is fine
+        // when the enum is already Init (param).
+        assert_no_diagnostics(
+            "
+            enum Option { None: unit Some: number }
+            fn f(o: Option) {
+              entry:
+                o as Some = 7;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn downcast_write_on_uninit_enum_error() {
+        // Enum construction goes via `Name::V(...)`; refining an uninit
+        // enum by writing a variant payload is not allowed.
+        let (errs, _) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f() {
+              o: Option;
+              entry:
+                o as Some = 7;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write through variant projection: 'o' is not initialized here"],
+        );
+    }
+
+    #[test]
+    fn downcast_write_on_moved_enum_error() {
+        let (errs, _) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f(o: Option) {
+              sink: Option;
+              entry:
+                sink = move o;
+                o as Some = 7;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write through variant projection: 'o' is not initialized here"],
+        );
+    }
+
+    // ---------- Empty struct ----------
+
+    #[test]
+    fn empty_struct_local_starts_init() {
+        // A struct with zero fields has no components to write, so a
+        // declared local of that type is trivially usable.
+        assert_no_diagnostics(
+            "
+            struct Unit0 { }
+            fn f() {
+              u: Unit0;
+              v: Unit0;
+              entry:
+                v = copy u;
+                return
+            }
+            ",
+        );
+    }
+
     // ---------- Calls ----------
+
+    #[test]
+    fn call_target_of_uninit_error() {
+        let (errs, _) = run(
+            "
+            fn f() {
+              g: fn(number);
+              entry:
+                call copy g(1);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variable 'g' is used before initialization"],
+        );
+    }
 
     #[test]
     fn call_arg_read_of_uninit_error() {
