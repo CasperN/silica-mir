@@ -37,43 +37,11 @@ enum InitState {
     Diverged,
 }
 
-/// A path from a root Var, expressed as a chain of projections. Trailing
-/// `Deref`s prevent extraction of a path (we don't track through references).
-#[derive(Debug, Clone)]
-enum PathStep {
-    Field(String),
-    Downcast(String),
-}
-
 type PointState = HashMap<String, InitState>;
 
 struct Ctx<'a> {
     env: &'a Env,
     locals: &'a HashMap<String, Type>,
-}
-
-// ---------- Path extraction ----------
-
-fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
-    let mut steps = Vec::new();
-    let mut cur = place;
-    loop {
-        match cur {
-            Place::Var(name) => {
-                steps.reverse();
-                return Some((name.clone(), steps));
-            }
-            Place::Field(inner, f) => {
-                steps.push(PathStep::Field(f.clone()));
-                cur = inner;
-            }
-            Place::Downcast(inner, v) => {
-                steps.push(PathStep::Downcast(v.clone()));
-                cur = inner;
-            }
-            Place::Deref(_) => return None,
-        }
-    }
 }
 
 // ---------- Type lookups ----------
@@ -976,15 +944,18 @@ mod tests {
 
     #[test]
     fn downcast_write_on_init_enum_ok() {
-        // Existing behavior: writing through a variant projection is fine
-        // when the enum is already Init (param).
+        // Writing through a variant projection is fine when the enum is
+        // Init AND refined to the correct variant.
         assert_no_diagnostics(
             "
             enum Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
+                switchEnum(o) [None: n, Some: s]
+              s:
                 o as Some = 7;
                 return
+              n: return
             }
             ",
         );

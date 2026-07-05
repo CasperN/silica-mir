@@ -48,12 +48,123 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         let Some(entry) = entry_states.get(&block.label) else { continue; };
 
         let mut state = entry.clone();
-        for (stmt, _) in &block.statements {
+        for (stmt, span) in &block.statements {
+            check_places_in_stmt(env, func, &locals, block, stmt, *span, &state, d);
             transfer_stmt(stmt, &mut state);
         }
-
+        check_places_in_terminator(env, func, &locals, block, &state, d);
         if let Terminator::SwitchEnum { place, cases } = &block.terminator {
             check_switch(env, func, body, &locals, block, place, cases, &state, d);
+        }
+    }
+}
+
+fn operand_place(op: &Operand) -> Option<&Place> {
+    match op {
+        Operand::Copy(p) | Operand::Move(p) => Some(p),
+        Operand::Const(_) => None,
+    }
+}
+
+fn check_places_in_stmt(
+    env: &Env,
+    func: &Function,
+    locals: &HashMap<String, Type>,
+    block: &BasicBlock,
+    stmt: &Statement,
+    span: Span,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    match stmt {
+        Statement::Assign(target, rvalue) => {
+            check_downcast_refinement(env, func, locals, block, target, span, state, d);
+            match rvalue {
+                RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+                    if let Some(p) = operand_place(op) {
+                        check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                    }
+                }
+                RValue::Ref(_, p) => {
+                    check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                }
+            }
+        }
+        Statement::Call(target, args) => {
+            if let Some(p) = operand_place(target) {
+                check_downcast_refinement(env, func, locals, block, p, span, state, d);
+            }
+            for a in args {
+                if let Some(p) = operand_place(a) {
+                    check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                }
+            }
+        }
+    }
+}
+
+fn check_places_in_terminator(
+    env: &Env,
+    func: &Function,
+    locals: &HashMap<String, Type>,
+    block: &BasicBlock,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    let ts = block.terminator_span;
+    match &block.terminator {
+        Terminator::Branch { cond, .. } => {
+            if let Some(p) = operand_place(cond) {
+                check_downcast_refinement(env, func, locals, block, p, ts, state, d);
+            }
+        }
+        Terminator::SwitchEnum { place, .. } => {
+            check_downcast_refinement(env, func, locals, block, place, ts, state, d);
+        }
+        _ => {}
+    }
+}
+
+/// Verify that every `Downcast(V)` step at the root position of `place` sits
+/// at a program point where the tracked variant set of the root is exactly
+/// `{V}` (i.e. refined by a preceding `switchEnum` → V edge).
+/// Deeper downcasts (`x.f as V`) require sub-place variant tracking and are
+/// silently skipped in this phase.
+fn check_downcast_refinement(
+    env: &Env,
+    func: &Function,
+    locals: &HashMap<String, Type>,
+    block: &BasicBlock,
+    place: &Place,
+    span: Span,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    let Some((root, path)) = extract_path(place) else { return; };
+    let Some(root_ty) = locals.get(&root) else { return; };
+    let root_is_enum = matches!(
+        root_ty,
+        Type::Custom(n) if matches!(env.types.get(n), Some(TypeDecl::Enum(_)))
+    );
+    if !root_is_enum { return; }
+
+    for (i, step) in path.iter().enumerate() {
+        if let PathStep::Downcast(v) = step {
+            if i > 0 { continue; } // deeper — not yet tracked
+            let known = state.get(&root);
+            let refined = match known {
+                // ⊥: variant set empty means the point is proven unreachable.
+                // Vacuously refined; any downcast satisfies.
+                Some(set) if set.is_empty() => true,
+                Some(set) => set.len() == 1 && set.contains(v),
+                None => false, // ⊤: any declared variant possible
+            };
+            if !refined {
+                d.errors.push(format!(
+                    "at {}: In function '{}', block '{}': cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
+                    span, func.name, block.label, root, v, root, v
+                ));
+            }
         }
     }
 }
@@ -220,6 +331,14 @@ fn check_switch(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
+    let ts = block.terminator_span;
+    if cases.is_empty() {
+        d.errors.push(format!(
+            "at {}: In function '{}', block '{}': switchEnum requires at least one arm",
+            ts, func.name, block.label
+        ));
+    }
+
     let Some(enum_decl) = resolve_enum_of_place(env, locals, place) else {
         // Non-enum place (or unresolvable local) — tc reports it. Skip flow.
         return;
@@ -227,7 +346,6 @@ fn check_switch(
 
     let declared: Vec<&str> = enum_decl.variants.iter().map(|v| v.name.as_str()).collect();
     let handled: BTreeSet<&str> = cases.iter().map(|(v, _)| v.as_str()).collect();
-    let ts = block.terminator_span;
 
     // Exhaustiveness — report missing variants in declaration order.
     for variant in &declared {
@@ -762,6 +880,71 @@ mod tests {
         assert_warnings_contain(&warns, &["variant 'Some' is dead code"]);
     }
 
+    // ---------- Downcast refinement (read-site) ----------
+
+    #[test]
+    fn downcast_read_without_refinement_error() {
+        // `o as Some` in a block where `o` is still ⊤ — the read might see
+        // the None variant's payload, so this is unsound.
+        let (errs, _) = run(
+            "
+            enum Option { None: unit Some: number }
+            fn f(o: Option) {
+              x: number;
+              entry:
+                x = copy o as Some;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'"],
+        );
+    }
+
+    #[test]
+    fn downcast_read_in_refined_arm_ok() {
+        // Inside the `Some` arm of a switchEnum on o, o is refined to {Some}
+        // and `o as Some` is valid.
+        assert_no_diagnostics(
+            "
+            enum Option { None: unit Some: number }
+            fn f(o: Option) {
+              x: number;
+              entry:
+                switchEnum(o) [None: n, Some: s]
+              s:
+                x = copy o as Some;
+                return
+              n: return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn downcast_in_switch_place_without_refinement_error() {
+        // switchEnum(o as X) itself is a read of `o as X` — refinement
+        // required.
+        let (errs, _) = run(
+            "
+            enum Inner { P: unit Q: unit }
+            enum Outer { X: Inner Y: unit }
+            fn f(o: Outer) {
+              entry:
+                switchEnum(o as X) [P: pb, Q: qb]
+              pb: return
+              qb: return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot downcast 'o as X' here: 'o' is not refined to variant 'X'"],
+        );
+    }
+
     // ---------- Loops ----------
 
     #[test]
@@ -797,9 +980,11 @@ mod tests {
     // ---------- Corner cases ----------
 
     #[test]
-    fn flow_zero_variant_enum_ok() {
-        // An enum with no variants must be switched with no arms — vacuous.
-        assert_no_diagnostics(
+    fn switch_with_no_arms_error() {
+        // `switchEnum(x) [ ]` doesn't terminate the block (no successors) —
+        // use `unreachable` instead. Values of zero-variant enums are
+        // uninspectable, which naturally follows.
+        let (errs, _) = run(
             "
             enum Void { }
             fn f(v: Void) {
@@ -808,6 +993,7 @@ mod tests {
             }
             ",
         );
+        assert_errors_contain(&errs, &["switchEnum requires at least one arm"]);
     }
 
     #[test]

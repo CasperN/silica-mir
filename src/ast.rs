@@ -45,6 +45,39 @@ pub enum Place {
     Deref(Box<Place>),
 }
 
+/// A single projection step from a root Var. Used by analyses that need to
+/// walk down a Place chain uniformly.
+#[derive(Debug, Clone)]
+pub enum PathStep {
+    Field(String),
+    Downcast(String),
+}
+
+/// Extract `(root_var, projection_steps)` from `place`, returning `None` if
+/// the chain passes through a `Deref` (we don't follow references at this
+/// level).
+pub fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
+    let mut steps = Vec::new();
+    let mut cur = place;
+    loop {
+        match cur {
+            Place::Var(name) => {
+                steps.reverse();
+                return Some((name.clone(), steps));
+            }
+            Place::Field(inner, f) => {
+                steps.push(PathStep::Field(f.clone()));
+                cur = inner;
+            }
+            Place::Downcast(inner, v) => {
+                steps.push(PathStep::Downcast(v.clone()));
+                cur = inner;
+            }
+            Place::Deref(_) => return None,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConstVal {
     Number(u64),

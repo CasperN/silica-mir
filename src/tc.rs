@@ -707,14 +707,19 @@ mod tests {
 
     #[test]
     fn place_downcast_ok() {
+        // Downcast reads are only legal in a block refined by a preceding
+        // switchEnum arm — enforced by `enum_variants`.
         assert_ok(
             "
-            enum Option { None: Option Some: number }
+            enum Option { None: unit Some: number }
             fn f(o: Option) {
               x: number;
               entry:
+                switchEnum(o) [None: n, Some: s]
+              s:
                 x = copy o as Some;
                 return
+              n: return
             }
             ",
         );
@@ -1144,13 +1149,17 @@ mod tests {
 
     #[test]
     fn assign_via_downcast_ok() {
+        // Downcast writes need the same refinement as reads.
         assert_ok(
             "
-            enum Option { None: Option Some: number }
+            enum Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
+                switchEnum(o) [None: n, Some: s]
+              s:
                 o as Some = 7;
                 return
+              n: return
             }
             ",
         );
