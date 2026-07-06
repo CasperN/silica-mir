@@ -584,12 +584,13 @@ mod tests {
     }
 
     #[test]
-    fn linear_struct_partial_init_one_field_leaks() {
-        // `p.x = 1` → Partial({x: Init, y: NeverInit}). P is linear, so
-        // its Partial state propagates strict semantics to descendants:
-        // p.x is Init and must be consumed (moved or explicitly dropped).
-        // Reports at the leaf path `p.x`.
-        assert_err(
+    fn linear_struct_partial_init_one_field_elaborated() {
+        // `p.x = 1` → Partial({x: Init, y: NeverInit}). Elaboration walks
+        // the partial state and inserts `drop p.x`; every leaf is then
+        // consumed and strict passes. This works even though P is linear
+        // because the container's linearity is redundant given all its
+        // fields are Drop.
+        assert_no_diagnostics(
             "
             struct P { x: number y: number }
             fn f() {
@@ -599,7 +600,6 @@ mod tests {
                 return
             }
             ",
-            "value 'p.x' of type Number is not consumed at return",
         );
     }
 
