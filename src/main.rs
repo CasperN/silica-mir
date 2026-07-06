@@ -1,5 +1,6 @@
 mod ast;
 mod block_reachability;
+mod dataflow;
 mod diagnostics;
 mod init_state;
 mod parser;
