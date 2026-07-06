@@ -464,6 +464,13 @@ fn compute_entry_states(
 fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
     match stmt {
         Statement::Assign(target, rvalue) => {
+            // Capture ref/loan entries to transfer via `move src` BEFORE
+            // apply_rvalue_moves removes them.
+            let move_source = ref_move_source(target, rvalue);
+            let carried = move_source.as_ref().and_then(|src| {
+                Some((state.refs.get(src).copied(), state.loans.get(src).cloned()))
+            });
+
             apply_rvalue_moves(ctx, rvalue, state);
             // Silent mirror of check_and_transfer_stmt's assign-side effects
             // for the fixpoint. Errors are emitted only by the diagnostic
@@ -489,6 +496,11 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
                         create_span: Span { line: 0, col: 0 },
                     });
                     apply_eager_borrow_transition(ctx, kind, place, state);
+                }
+                // Ref/loan transfer via `dst = move src`.
+                if let (Place::Var(dst), Some((refs, loan))) = (target, carried) {
+                    if let Some(rs) = refs { state.refs.insert(dst.clone(), rs); }
+                    if let Some(l) = loan { state.loans.insert(dst.clone(), l); }
                 }
             }
         }
@@ -760,6 +772,15 @@ fn apply_eager_borrow_transition(
     apply_write(ctx, place, state, leaf);
 }
 
+/// If the assign is `dst_var = move src_var`, returns `src_var`. This is
+/// the pattern where a reference's ref-state and loan should transfer
+/// from src to dst instead of being lost.
+fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<String> {
+    let Place::Var(_) = target else { return None; };
+    let RValue::Use(Operand::Move(Place::Var(src))) = rvalue else { return None; };
+    Some(src.clone())
+}
+
 /// Check whether accessing `place` in the given way conflicts with any
 /// active loan. Skips accesses through `Deref` (those go via the
 /// borrower and are always permitted).
@@ -819,6 +840,12 @@ fn check_and_transfer_stmt(
 ) {
     match stmt {
         Statement::Assign(target, rvalue) => {
+            // Capture ref/loan state to transfer via `move src` BEFORE
+            // eval_rvalue runs (which clears the source entry).
+            let carried = ref_move_source(target, rvalue).map(|src| {
+                (state.refs.get(&src).copied(), state.loans.get(&src).cloned())
+            });
+
             eval_rvalue(ctx, func, block, rvalue, span, state, d);
             check_lhs_downcast(ctx, func, block, target, span, state, d);
 
@@ -848,6 +875,11 @@ fn check_and_transfer_stmt(
                         create_span: span,
                     });
                     apply_eager_borrow_transition(ctx, kind, place, state);
+                }
+                // Ref/loan transfer via `dst = move src`.
+                if let (Place::Var(dst), Some((refs, loan))) = (target, carried) {
+                    if let Some(rs) = refs { state.refs.insert(dst.clone(), rs); }
+                    if let Some(l) = loan { state.loans.insert(dst.clone(), l); }
                 }
             }
         }
@@ -2626,6 +2658,108 @@ mod tests {
                 return
             }
             ",
+        );
+    }
+
+    // === Ref transfer via `dst = move src` ===
+
+    #[test]
+    fn ref_transfer_carries_obligation_ok() {
+        // Moving an &out param to a local: the local inherits the
+        // pointee obligation, satisfies it via *z = 42.
+        assert_no_diagnostics(
+            "
+            fn f(x: &out number) {
+              z: &out number;
+              entry:
+                z = move x;
+                *z = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn ref_transfer_leaves_source_moved_error_on_reuse() {
+        // After transfer, x is Moved — can't use it again.
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &out number);
+            fn f(x: &out number) {
+              z: &out number;
+              entry:
+                z = move x;
+                *z = 1;
+                call sink(move x);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["variable 'x' is used after move"]);
+    }
+
+    #[test]
+    fn ref_transfer_preserves_loan_conflict() {
+        // Local borrower r loans a. Transfer r to s. s still loans a;
+        // direct access to a should still conflict.
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(a: number) {
+              r: &mut number;
+              s: &mut number;
+              entry:
+                r = &mut a;
+                s = move r;
+                a = 1;
+                call sink(move s);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write to 'a': already borrowed by 's'"],
+        );
+    }
+
+    #[test]
+    fn branch_of_ref_moves_both_params_leak() {
+        // Program from a design discussion: which of x/y is initialized
+        // depends on b. In each branch we init only one of them via z,
+        // so the OTHER is a leak (its &out obligation is unmet on that
+        // path). This program should be rejected.
+        let (errs, _) = run(
+            "
+            fn f(x: &out number, y: &out number, b: boolean) {
+              z: &out number;
+              entry:
+                branch(copy b) [true: t, false: fbr]
+              t:
+                z = move x;
+                *z = 1;
+                goto end
+              fbr:
+                z = move y;
+                *z = 2;
+                goto end
+              end:
+                return
+            }
+            ",
+        );
+        // In `t`, y is untouched — unfulfilled obligation.
+        // In `fbr`, x is untouched — unfulfilled obligation.
+        // Both branches merge into `end` where refs are dropped from
+        // the join (each side has different entries) but the linear-
+        // leak scan catches Diverged params.
+        let has_leak = errs.iter().any(|e| e.contains("not consumed at return")
+            || e.contains("has unfulfilled obligation at return"));
+        assert!(
+            has_leak,
+            "expected some kind of leak/obligation error, got: {:?}",
+            errs
         );
     }
 
