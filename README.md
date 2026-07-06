@@ -218,8 +218,55 @@ payload sets the whole enum `Uninit`.
 - Requre `Move` to move, `Copy + Drop` is move.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 
+## Ref & loan tracking (next big system)
+- Basic loans: on `p = &kind q`, record that q is loaned by p; while the
+  loan is active, direct access to q (and prefixes/extensions) is
+  forbidden except through p. Detects the classic borrow conflicts.
+  Start with whole-function-lifetime loans; NLL comes later.
+- **Eager init transition at borrow, kept separate from loan tracking**:
+  when `&out p` is created, mark p as Init in the init tracker
+  immediately (symmetric: `&drop p` marks p Uninit). The init tracker
+  never needs a "frozen" or "init-pending-borrow" state. Access
+  restrictions during the loan are the loan tracker's responsibility;
+  the init tracker just sees the post state.
+- **Pointee refinement follows from loans**: in the known-pointee case
+  (single borrow, no join-of-different-borrows on the same ref), we can
+  attribute `*r` operations to the loaned place and refine its state.
+  Dynamic-pointee case (branch-of-borrows, ref parameters) stays as the
+  abstract (cur, post) tracking we already have.
+- **Multi-loan / branch of borrows**: a ref created by a branch (`r =
+  if c { &mut a } else { &mut b }`) loans the union `{a, b}`. Rust
+  handles this via region unification. In Silica the loan carries the
+  (cur, post) state, so `move *r` uniformly transitions all loaned
+  places — no need to know which one r "really" points to at any
+  interior point.
+- NLL: shrink loans to their actual liveness region.
+- `unborrow` statement + insertion at loan endpoints. Overlaps with the
+  join-edge splitting machinery below.
+
+## Elaboration gaps
+- Elaborator handles Diverged states at CFG joins — requires splitting
+  critical edges (same mechanism `unborrow` insertion will want).
+- Drop insertion order is by declaration, not initialization. LIFO by
+  initialization time needs per-write sequence numbers on statements.
+- If the frontend emits its own drops (per scope-exit rules), the drop
+  elaborator becomes reference/debug-only rather than authoritative.
+
+## Smaller gaps
+- Deep-deref tracking: `(*r).field = ...` and reads through `(*r).field`
+  aren't followed through the ref.
+- `switchEnum(o as V)` on an inline downcast doesn't refine — the outer
+  variant isn't proven before the inner switch reads its discriminant.
+
+## Doc hygiene
+- README: `unborrow`/`deref_move`/`deref_init` statements described in the
+  grammar aren't implemented; `Frozen(loan)` init state isn't implemented;
+  analysis pass description mentions inserting copies (unclear if planned).
+- `init_state.rs` module doc still says "borrow init preconditions deferred"
+  — done. Same for the docstring's mention of "freeze/thaw state" (not
+  done, but is what loan tracking will do).
+
 # Longer term
-- NLL
 - Lower to LLVM
 - Lambdas
 - Coroutines
