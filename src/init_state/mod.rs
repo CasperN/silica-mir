@@ -21,11 +21,12 @@
 //! README). Downcast-in-write does not change enum state.
 
 use crate::ast::*;
+use crate::dataflow;
 use crate::diagnostics::Diagnostics;
 use crate::push_error;
 use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitState {
@@ -372,7 +373,7 @@ pub fn states_before_returns<'a>(
 
     let locals = func.locals_map();
     let ctx = Ctx { env, locals: &locals };
-    let entry_states = compute_entry_states(&ctx, func, body);
+    let entry_states = run_fixpoint(&ctx, func, body);
 
     for block in &body.blocks {
         if !matches!(block.terminator, Terminator::Return) { continue; }
@@ -393,7 +394,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 
     let locals = func.locals_map();
     let ctx = Ctx { env, locals: &locals };
-    let entry_states = compute_entry_states(&ctx, func, body);
+    let entry_states = run_fixpoint(&ctx, func, body);
 
     for block in &body.blocks {
         let Some(entry) = entry_states.get(&block.label) else { continue; };
@@ -437,41 +438,38 @@ fn is_trivially_init(ty: &Type, env: &Env) -> bool {
     }
 }
 
-fn compute_entry_states(
+/// Bridge between init_state's per-function context and the generic
+/// dataflow framework. Instantiated per-function.
+struct InitAnalysis<'a> {
+    ctx: &'a Ctx<'a>,
+    initial: PointState,
+}
+
+impl<'a> dataflow::Analysis for InitAnalysis<'a> {
+    type State = PointState;
+    fn direction(&self) -> dataflow::Direction { dataflow::Direction::Forward }
+    fn initial_state(&self) -> Self::State { self.initial.clone() }
+    fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
+        join_point(a, b)
+    }
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+        transfer_stmt(self.ctx, stmt, state)
+    }
+    fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
+        transfer_terminator(self.ctx, term, state)
+    }
+}
+
+fn run_fixpoint(
     ctx: &Ctx,
     func: &Function,
     body: &FunctionBody,
 ) -> IndexMap<String, PointState> {
-    let mut states: IndexMap<String, PointState> = IndexMap::new();
-    let mut worklist: VecDeque<String> = VecDeque::new();
-    let entry_label = body.blocks[0].label.clone();
-    states.insert(entry_label.clone(), initial_state(func, body, ctx.env));
-    worklist.push_back(entry_label);
-
-    let blocks_by_label = body.blocks_by_label();
-
-    while let Some(label) = worklist.pop_front() {
-        let block = blocks_by_label[label.as_str()];
-        let mut state = states[&label].clone();
-        for (stmt, _) in &block.statements {
-            transfer_stmt(ctx, stmt, &mut state);
-        }
-        transfer_terminator(ctx, &block.terminator, &mut state);
-
-        for succ in terminator_successors(&block.terminator) {
-            if !blocks_by_label.contains_key(succ) { continue; }
-            let new_state = match states.get(succ) {
-                None => state.clone(),
-                Some(existing) => join_point(existing, &state),
-            };
-            if states.get(succ).map_or(true, |e| e != &new_state) {
-                states.insert(succ.to_string(), new_state);
-                worklist.push_back(succ.to_string());
-            }
-        }
-    }
-
-    states
+    let analysis = InitAnalysis {
+        ctx,
+        initial: initial_state(func, body, ctx.env),
+    };
+    dataflow::run(&analysis, body)
 }
 
 // ---------- Transfer (state updates) ----------
