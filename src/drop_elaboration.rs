@@ -3,7 +3,7 @@
 //! Inserts explicit `drop p` statements before each `return` for every
 //! variable whose init state is `Init` at that point and whose type is
 //! Drop. Turns implicit forgets into explicit consumption so a
-//! subsequent `LeakMode::Strict` check can validate the elaborated MIR.
+//! subsequent leak check can validate the elaborated MIR.
 //!
 //! Ordering: reverse combined declaration order (locals reverse first,
 //! then params reverse). TODO(elaboration): per-write sequence numbers
@@ -96,7 +96,7 @@ mod tests {
     use crate::diagnostics::Diagnostics;
     use crate::parser::Parser;
     use crate::pretty_print::pretty_print;
-    use crate::substructural_check::{check_return_leaks, LeakMode};
+    use crate::substructural_check::check_return_leaks;
     use crate::type_check;
 
     /// Run the full parse → typecheck → elaborate pipeline, returning the
@@ -134,13 +134,13 @@ mod tests {
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program, &mut d);
         env.typecheck(&mut d);
-        check_return_leaks(&env, &mut d, LeakMode::Strict);
+        check_return_leaks(&env, &mut d);
         let leak_errs: Vec<&String> = d.errors.iter()
             .filter(|e| e.contains("not consumed at return"))
             .collect();
         assert!(
             leak_errs.is_empty(),
-            "expected no strict leaks after elaboration; got:\n  {}",
+            "expected no leaks after elaboration; got:\n  {}",
             leak_errs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
         );
     }
@@ -780,7 +780,7 @@ fn f() {
         let mut d2 = Diagnostics::default();
         let env2 = type_check::Env::build(&program, &mut d2);
         env2.typecheck(&mut d2);
-        check_return_leaks(&env2, &mut d2, LeakMode::Strict);
+        check_return_leaks(&env2, &mut d2);
 
         assert!(
             d2.errors.iter().any(|e| e.contains("value 'x'") && e.contains("not consumed")),

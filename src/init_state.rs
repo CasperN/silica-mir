@@ -757,7 +757,8 @@ mod tests {
     #[test]
     fn move_of_field_leaves_other_fields_init_ok() {
         // Struct comes in fully-init from a param; moving one field must
-        // leave the other still readable.
+        // leave the other still readable. Explicit `drop p.y` at the end
+        // because the elaborator doesn't yet handle Partial-at-return.
         assert_no_diagnostics(
             "
             struct Copy Drop P { x: number y: number }
@@ -767,6 +768,7 @@ mod tests {
               entry:
                 a = move p.x;
                 b = copy p.y;
+                drop p.y;
                 return
             }
             ",

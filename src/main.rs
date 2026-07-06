@@ -16,9 +16,22 @@ mod test_util;
 use ast::Program;
 use diagnostics::Diagnostics;
 
-/// Run every post-parse check against `program` and return the collected
-/// diagnostics. Used both by `main` and by test helpers.
-pub fn run_all_passes(program: &Program) -> Diagnostics {
+/// Run every post-parse pass against `program` and return both the
+/// elaborated MIR and the collected diagnostics.
+///
+/// Pipeline:
+///   1. `type_check`, `marker_composition`, per-statement `substructural_check`
+///      class checks, `variant_flow`, `block_reachability`, `init_state`.
+///   2. If step 1 found errors, bail before elaboration (a broken program's
+///      init state is unreliable, so elaboration would be unsound).
+///   3. `drop_elaboration::elaborate` inserts drops on the returned
+///      program.
+///   4. `substructural_check::check_return_leaks` validates the elaborated
+///      MIR — surviving leaks indicate elaboration was insufficient (e.g.
+///      Partial or Diverged states the current elaborator doesn't touch).
+///
+/// Used by `main` and by test helpers.
+pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
@@ -27,7 +40,20 @@ pub fn run_all_passes(program: &Program) -> Diagnostics {
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
-    d
+
+    if !d.errors.is_empty() {
+        return (program.clone(), d);
+    }
+
+    let mut elaborated = program.clone();
+    drop_elaboration::elaborate(&mut elaborated, &env);
+
+    // Re-build env from elaborated program (inserted drops introduce new
+    // statements that init_state / leak check need to see accurately).
+    let env2 = type_check::Env::build(&elaborated, &mut d);
+    substructural_check::check_return_leaks(&env2, &mut d);
+
+    (elaborated, d)
 }
 
 fn main() {
@@ -57,7 +83,7 @@ fn main() {
 
     println!("AST parsed successfully.");
 
-    let d = run_all_passes(&program);
+    let (elaborated, d) = run_all_passes(&program);
 
     for w in &d.warnings {
         eprintln!("Warning: {}", w);
@@ -76,12 +102,6 @@ fn main() {
         println!("({} warning(s))", d.warnings.len());
     }
 
-    // Run drop elaboration and print the result so users can see the
-    // program's explicit-drop form.
-    let mut elaborated = program;
-    let mut d2 = Diagnostics::default();
-    let env2 = type_check::Env::build(&elaborated, &mut d2);
-    drop_elaboration::elaborate(&mut elaborated, &env2);
     println!("\n=== Elaborated MIR ===");
     print!("{}", pretty_print::pretty_print(&elaborated));
 }

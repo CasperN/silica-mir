@@ -5,12 +5,13 @@
 use crate::parser::Parser;
 use crate::run_all_passes;
 
-/// Parse `src` and run every check. Returns `(errors, warnings)`.
+/// Parse `src` and run the whole pipeline (check → elaborate → validate).
+/// Returns `(errors, warnings)`; the elaborated program is discarded.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     let program = Parser::new(src.to_string())
         .parse()
         .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
-    let d = run_all_passes(&program);
+    let (_, d) = run_all_passes(&program);
     (d.errors, d.warnings)
 }
 

@@ -1,22 +1,25 @@
 //! Substructural checker for MIR statements.
 //!
 //! Verifies (a) that statements respect the substructural class of the types
-//! they operate on and (b) that no *linear* value is silently forgotten at
-//! `return`. Drop leaks are permitted by default because the
-//! drop-elaboration pass will make them explicit; that leniency is opt-out
-//! via [`LeakMode::Strict`], which post-elaboration validation should use.
+//! they operate on and (b) that no value is silently forgotten at `return`.
 //!
 //! - `copy p` (operand position) requires `p`'s type to be `Copy`.
 //! - `drop p` requires `p`'s type to be `Drop`.
-//! - At `return`, any Init/Diverged/Partial path whose leaf type is not
-//!   Drop is a leak.
+//! - At `return`, any non-consumed path is a leak — no leniency for Drop
+//!   types; the drop-elaboration pass is expected to have inserted the
+//!   needed drops.
+//!
+//! The design is: `run_all_passes` runs the class checks *before*
+//! elaboration and the leak check *after* elaboration. Errors on
+//! elaborated output indicate the elaborator was unable to insert enough
+//! drops (currently: Partial or Diverged states).
 //!
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
-//! disagreement checks. Both share the same "when is a state leaked?"
-//! predicate implemented here.
+//! disagreement checks.
 //!
 //! This file will likely move to `substructural/check.rs` alongside a
-//! renamed `substructural/composition.rs` once elaboration machinery lands.
+//! renamed `substructural/composition.rs` once elaboration handles more
+//! cases.
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
@@ -26,27 +29,12 @@ use crate::push_error;
 use crate::type_check::Env;
 use indexmap::IndexMap;
 
-/// Whether the leak check permits Drop leaks.
-///
-/// * `Lenient` — the default for `run_all_passes`. Emits errors only for
-///   leaks whose leaf type is not Drop. Drop leaks are
-///   accepted because the drop-elaboration pass would make them explicit.
-/// * `Strict` — treats every Init/Diverged/Partial path at return as a
-///   leak. Use to validate post-elaboration MIR.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LeakMode {
-    Lenient,
-    Strict,
-}
-
+/// Class-precondition checks over statements (does not include leak-at-
+/// return, which callers run separately, typically after elaboration).
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
         check_function(env, f, d);
     }
-    // TODO(elaboration): after drop-elaboration runs, invoke
-    // `check_return_leaks(env, d, LeakMode::Strict)` here (or in a
-    // dedicated validation pass) to prove no implicit forgets remain.
-    check_return_leaks(env, d, LeakMode::Lenient);
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
@@ -145,14 +133,15 @@ fn check_terminator(
 
 // ---------- Leak-at-return ----------
 
-/// For each `return` in each function, check every variable's init state
-/// against `mode`. Emits errors for leaked paths.
-pub fn check_return_leaks(env: &Env, d: &mut Diagnostics, mode: LeakMode) {
+/// For each `return` in each function, verify that every variable is
+/// consumed (Moved or NeverInit) at that point. Any non-consumed path
+/// is reported as a leak — this is the "strict" post-elaboration check.
+pub fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
         let Some(body) = &f.body else { continue; };
         let locals = build_locals(f, body);
         for (block, state) in init_state::states_before_returns(env, f) {
-            check_leaks_in_state(env, f, block, &locals, &state, mode, d);
+            check_leaks_in_state(env, f, block, &locals, &state, d);
         }
     }
 }
@@ -174,52 +163,36 @@ fn check_leaks_in_state(
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
     state: &PointState,
-    mode: LeakMode,
     d: &mut Diagnostics,
 ) {
     for (var, s) in state {
         let Some(ty) = locals.get(var) else { continue; };
         let mut path = vec![var.clone()];
         let mut leaks = Vec::new();
-        find_leaks(env, s, ty, mode, &mut path, &mut leaks);
+        find_leaks(env, s, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
             push_error!(
                 d, block.terminator_span, func, block,
-                "value '{}' of type {:?} is not consumed at return (linear leak)",
+                "value '{}' of type {:?} is not consumed at return",
                 leaked_path, leaked_ty
             );
         }
     }
 }
 
-/// Walk the init state in lockstep with its type, collecting leaks.
-///
-/// Rules:
-///   * `NeverInit`/`Moved` — nothing to leak at this level.
-///   * Under **lenient**, a Drop container is silently forgettable
-///     regardless of its state (marker composition guarantees fields are
-///     Drop too, so any inner Init leaf can also be silently
-///     forgotten). Return early.
-///   * Otherwise (strict, or a non-Drop container under lenient):
-///     `Init`/`Diverged` here is a leak; `Partial` requires every leaf to
-///     be `Moved`/`NeverInit`, so we recurse into fields with **strict**
-///     semantics (the container's linearity propagates to descendants
-///     regardless of leaf-type class).
+/// Walk the init state in lockstep with its type, reporting every non-
+/// consumed leaf. `Init` and `Diverged` at a leaf are leaks; `Partial`
+/// recurses; `NeverInit`/`Moved` are consumed. No leniency for Drop —
+/// elaboration is expected to have inserted the necessary drops.
 fn find_leaks(
     env: &Env,
     state: &InitState,
     ty: &Type,
-    mode: LeakMode,
     path: &mut Vec<String>,
     out: &mut Vec<(String, Type)>,
 ) {
-    if matches!(state, InitState::NeverInit | InitState::Moved) {
-        return;
-    }
-    if matches!(mode, LeakMode::Lenient) && class_of(ty, env).drop {
-        return;
-    }
     match state {
+        InitState::NeverInit | InitState::Moved => {}
         InitState::Init | InitState::Diverged => {
             out.push((path.join("."), ty.clone()));
         }
@@ -227,14 +200,10 @@ fn find_leaks(
             for (field_name, field_state) in fields {
                 let Some(field_ty) = env.field_type(ty, field_name) else { continue; };
                 path.push(field_name.clone());
-                // Container is linear at this point (either strict mode or
-                // non-Drop container under lenient); propagate strict to
-                // descendants — every leaf must be consumed.
-                find_leaks(env, field_state, &field_ty, LeakMode::Strict, path, out);
+                find_leaks(env, field_state, &field_ty, path, out);
                 path.pop();
             }
         }
-        _ => {}
     }
 }
 
@@ -533,7 +502,7 @@ mod tests {
     #[test]
     fn scalar_param_untouched_is_lenient_ok() {
         // number is Copy Drop; leaving it Init at return is permitted under
-        // LeakMode::Lenient — the elaborator will drop it explicitly.
+        // the elaborator will insert an explicit drop.
         assert_no_diagnostics(
             "
             fn f(x: number) {
@@ -786,17 +755,19 @@ mod tests {
     }
 
     #[test]
-    fn strict_flags_drop_leak() {
+    fn direct_leak_check_flags_pre_elaboration_drop_leak() {
+        // Invoking check_return_leaks on a NON-elaborated program: any Init
+        // at return is a leak because nothing has inserted drops yet.
         use crate::diagnostics::Diagnostics;
         use crate::parser::Parser;
         use crate::type_check;
-        use super::{check_return_leaks, LeakMode};
+        use super::check_return_leaks;
 
         let src = "fn f(x: number) { entry: return }";
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program, &mut d);
-        check_return_leaks(&env, &mut d, LeakMode::Strict);
+        check_return_leaks(&env, &mut d);
         assert!(
             d.errors.iter().any(|e| e.contains("value 'x'") && e.contains("not consumed")),
             "expected leak error, got {:?}",
@@ -805,17 +776,17 @@ mod tests {
     }
 
     #[test]
-    fn strict_ok_when_explicitly_dropped() {
+    fn direct_leak_check_ok_when_explicitly_dropped() {
         use crate::diagnostics::Diagnostics;
         use crate::parser::Parser;
         use crate::type_check;
-        use super::{check_return_leaks, LeakMode};
+        use super::check_return_leaks;
 
         let src = "fn f(x: number) { entry: drop x; return }";
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program, &mut d);
-        check_return_leaks(&env, &mut d, LeakMode::Strict);
+        check_return_leaks(&env, &mut d);
         let leak_errs: Vec<_> = d.errors
             .iter()
             .filter(|e| e.contains("not consumed at return"))
