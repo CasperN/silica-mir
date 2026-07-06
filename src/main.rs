@@ -1,6 +1,7 @@
 mod ast;
 mod block_reachability;
 mod diagnostics;
+mod drop_elaboration;
 mod init_state;
 mod marker_composition;
 mod parser;
