@@ -1,4 +1,13 @@
-//! Drop elaboration pass — slice 1: return-leak drops.
+//! Drop elaboration pass.
+//!
+//! **TODO (design status):** in the final compiler pipeline, drop insertion
+//! is a *frontend* responsibility — the source language defines scoping
+//! rules (which drops run at which program points), and lowering to MIR
+//! emits them explicitly. This pass exists as (a) a reference
+//! implementation for validating a frontend's drop insertion, (b) a
+//! convenience for hand-written MIR test programs, and (c) an exercise
+//! target for the leak checker. It should not be relied on as the
+//! authoritative source of drop placement.
 //!
 //! Inserts explicit `drop p` statements before each `return` for every
 //! variable whose init state is `Init` at that point and whose type is
