@@ -2,11 +2,25 @@
 //! the entry block via terminator successor edges is dead code — reported
 //! as a warning (not an error: unsound code is caught elsewhere; dead code
 //! is only suspicious).
+//!
+//! Implemented as a trivial forward `dataflow::Analysis` with unit state.
+//! A block is reachable iff the fixpoint records a state for it.
 
 use crate::ast::*;
+use crate::dataflow::{self, Analysis, Direction};
 use crate::diagnostics::Diagnostics;
 use crate::type_check::Env;
-use std::collections::{HashSet, VecDeque};
+
+struct Reachability;
+
+impl Analysis for Reachability {
+    type State = ();
+    fn direction(&self) -> Direction { Direction::Forward }
+    fn initial_state(&self) -> Self::State {}
+    fn join(&self, _: &Self::State, _: &Self::State) -> Self::State {}
+    fn transfer_stmt(&self, _: &mut Self::State, _: &Statement) {}
+    fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
+}
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
@@ -18,25 +32,9 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else { return; };
     if body.blocks.is_empty() { return; }
 
-    let blocks_by_label = body.blocks_by_label();
-
-    let entry = body.blocks[0].label.as_str();
-    let mut visited: HashSet<String> = HashSet::new();
-    let mut worklist: VecDeque<String> = VecDeque::new();
-    visited.insert(entry.to_string());
-    worklist.push_back(entry.to_string());
-
-    while let Some(label) = worklist.pop_front() {
-        let Some(block) = blocks_by_label.get(label.as_str()) else { continue; };
-        for succ in terminator_successors(&block.terminator) {
-            if blocks_by_label.contains_key(succ) && visited.insert(succ.to_string()) {
-                worklist.push_back(succ.to_string());
-            }
-        }
-    }
-
+    let reached = dataflow::run(&Reachability, body);
     for block in &body.blocks {
-        if !visited.contains(&block.label) {
+        if !reached.contains_key(&block.label) {
             d.warnings.push(format!(
                 "at {}: In function '{}': block '{}' is unreachable from entry",
                 block.label_span, func.name, block.label
