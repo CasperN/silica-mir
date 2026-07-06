@@ -594,6 +594,173 @@ fn f(x: number) {
     }
 
     #[test]
+    fn strict_check_passes_after_elaboration_with_copy_drop_struct() {
+        assert_strict_clean_after_elaboration(
+            "
+            struct Copy Drop P { x: number y: number }
+            fn f(p: P) { entry: return }
+            ",
+        );
+    }
+
+    #[test]
+    fn strict_check_passes_after_elaboration_with_copy_drop_enum() {
+        assert_strict_clean_after_elaboration(
+            "
+            enum Copy Drop Option { None: unit Some: number }
+            fn f(o: Option) { entry: return }
+            ",
+        );
+    }
+
+    #[test]
+    fn strict_check_passes_after_elaboration_with_mut_ref() {
+        // `&mut T` is Drop (not Copy). Elaboration inserts a drop.
+        assert_strict_clean_after_elaboration(
+            "fn f(r: &mut number) { entry: return }",
+        );
+    }
+
+    #[test]
+    fn strict_check_passes_after_elaboration_with_multi_return() {
+        // Each return-block gets its own drops; strict validates both.
+        assert_strict_clean_after_elaboration(
+            "
+            fn f(b: boolean, x: number) {
+              entry:
+                branch(copy b) [true: t, false: fbr]
+              t: return
+              fbr: return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn strict_check_passes_after_elaboration_with_multi_block() {
+        // Local written in an intermediate block still gets dropped at
+        // the terminal return.
+        assert_strict_clean_after_elaboration(
+            "
+            fn f() {
+              y: number;
+              entry:
+                goto mid
+              mid:
+                y = 42;
+                goto end
+              end:
+                return
+            }
+            ",
+        );
+    }
+
+    // ---------- Idempotency (extended) ----------
+
+    /// Assert that elaborating `src` once and elaborating that result again
+    /// yields identical pretty-printed output.
+    #[track_caller]
+    fn assert_idempotent(src: &str) {
+        let once = elaborate_src(src);
+        let mut twice = once.clone();
+        let mut d = Diagnostics::default();
+        let env = type_check::Env::build(&twice, &mut d);
+        env.typecheck(&mut d);
+        elaborate(&mut twice, &env);
+        assert_eq!(
+            pretty_print(&once),
+            pretty_print(&twice),
+            "elaboration is not idempotent on:\n{}",
+            src
+        );
+    }
+
+    #[test]
+    fn idempotent_with_copy_drop_struct() {
+        assert_idempotent(
+            "
+            struct Copy Drop P { x: number y: number }
+            fn f(p: P) {
+              q: P;
+              entry:
+                q = copy p;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn idempotent_with_reassignment() {
+        // `x = 1; x = 2` leaves x Init at return. One drop suffices; a
+        // second pass finds x already scheduled to be dropped once.
+        assert_idempotent(
+            "
+            fn f() {
+              x: number;
+              entry:
+                x = 1;
+                x = 2;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn idempotent_with_multi_return() {
+        assert_idempotent(
+            "
+            fn f(b: boolean, x: number) {
+              entry:
+                branch(copy b) [true: t, false: fbr]
+              t: return
+              fbr: return
+            }
+            ",
+        );
+    }
+
+    // ---------- Known limitation ----------
+
+    #[test]
+    fn init_order_differs_from_decl_order_uses_decl_order() {
+        // The elaborator sorts drops by reverse combined declaration
+        // order (locals reverse, then params reverse). If the program
+        // *initializes* in a different order, the resulting drop order
+        // is NOT true LIFO by initialization time — this pins that
+        // limitation. Fix requires per-write sequence numbers.
+        //
+        // Here `b` is declared before `a` but initialized after; reverse
+        // decl gives us `drop b; drop a;` even though `b`'s value is
+        // "younger."
+        assert_elaborated_eq(
+            "
+            fn f() {
+              a: number;
+              b: number;
+              entry:
+                b = 1;
+                a = 2;
+                return
+            }
+            ",
+            "\
+fn f() {
+  a: number;
+  b: number;
+  entry:
+    b = 1;
+    a = 2;
+    drop b;
+    drop a;
+    return
+}",
+        );
+    }
+
+    #[test]
     fn strict_check_still_fails_for_linear_leak() {
         // Elaboration doesn't paper over linear leaks; strict should
         // still report them.
