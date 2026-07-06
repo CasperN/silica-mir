@@ -218,31 +218,29 @@ payload sets the whole enum `Uninit`.
 - Requre `Move` to move, `Copy + Drop` is move.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 
-## Ref & loan tracking (next big system)
-- Basic loans: on `p = &kind q`, record that q is loaned by p; while the
-  loan is active, direct access to q (and prefixes/extensions) is
-  forbidden except through p. Detects the classic borrow conflicts.
-  Start with whole-function-lifetime loans; NLL comes later.
-- **Eager init transition at borrow, kept separate from loan tracking**:
-  when `&out p` is created, mark p as Init in the init tracker
-  immediately (symmetric: `&drop p` marks p Uninit). The init tracker
-  never needs a "frozen" or "init-pending-borrow" state. Access
-  restrictions during the loan are the loan tracker's responsibility;
-  the init tracker just sees the post state.
-- **Pointee refinement follows from loans**: in the known-pointee case
-  (single borrow, no join-of-different-borrows on the same ref), we can
-  attribute `*r` operations to the loaned place and refine its state.
-  Dynamic-pointee case (branch-of-borrows, ref parameters) stays as the
-  abstract (cur, post) tracking we already have.
-- **Multi-loan / branch of borrows**: a ref created by a branch (`r =
-  if c { &mut a } else { &mut b }`) loans the union `{a, b}`. Rust
-  handles this via region unification. In Silica the loan carries the
-  (cur, post) state, so `move *r` uniformly transitions all loaned
-  places — no need to know which one r "really" points to at any
-  interior point.
-- NLL: shrink loans to their actual liveness region.
-- `unborrow` statement + insertion at loan endpoints. Overlaps with the
-  join-edge splitting machinery below.
+## Ref & loan tracking
+
+Basic loan tracking, eager init transition at borrow, multi-loan on
+branch-of-borrows: all implemented.
+
+Remaining, in intended order:
+
+1. **`lifetime::check` module** — verify a program with explicit
+   `unborrow` markers. Adds `unborrow place` to the grammar/AST/parser;
+   semantically it's what `close_ref_if_present` already does (check
+   cur == post, mark Moved, remove refs/loans). Mirrors the
+   substructural pattern of writing the checker first.
+2. **NLL inference**: compute where each borrower's last use is, and
+   treat the loan as active only through that region. Backward liveness
+   analysis. Initially in-place in `init_state`; extract to
+   `lifetime::` submodule once stable.
+3. **`lifetime::elaboration` module** — insert `unborrow` statements at
+   the last-use points inferred by (2). Post-elaboration, the checker
+   just observes unborrows and doesn't need to compute liveness.
+4. **Reborrow through `*r`**: `s = &kind *r` creates a nested loan that
+   suspends r's own access during s's lifetime and restores it (at
+   child's post state) when s expires. Real feature — needs suspension
+   semantics on the parent ref.
 
 ## Elaboration gaps
 - Elaborator handles Diverged states at CFG joins — requires splitting
