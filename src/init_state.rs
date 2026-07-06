@@ -503,7 +503,79 @@ fn eval_rvalue(
         RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
             eval_operand(ctx, func, block, op, span, state, d);
         }
-        RValue::Ref(_, _) => {}
+        RValue::Ref(kind, place) => {
+            check_borrow_precondition(ctx, func, block, kind, place, span, state, d);
+        }
+    }
+}
+
+/// Verify that the state of the borrowed place matches the reference kind's
+/// creation-cur:
+///   * `&`, `&mut`, `&drop` require the pointee to be Init.
+///   * `&out`, `&uninit` require the pointee to be uninitialized
+///     (NeverInit or Moved).
+///
+/// The check inspects the leaf state via [`read_at`]; partial and diverged
+/// states at the leaf never match either precondition, so they're rejected
+/// with a clear "not fully X" message.
+fn check_borrow_precondition(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    kind: &RefKind,
+    place: &Place,
+    span: Span,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    let Some((root, path)) = extract_path(place) else { return; };
+    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
+    let Some(root_state) = state.get(&root) else { return; };
+    let leaf = read_at(root_state, &root_ty, &path, ctx.env);
+
+    let (requires_init, kind_str) = match kind {
+        RefKind::Shared => (true,  "&"),
+        RefKind::Mut    => (true,  "&mut"),
+        RefKind::Drop   => (true,  "&drop"),
+        RefKind::Out    => (false, "&out"),
+        RefKind::Uninit => (false, "&uninit"),
+    };
+
+    let ok = if requires_init {
+        matches!(leaf, InitState::Init)
+    } else {
+        matches!(leaf, InitState::NeverInit | InitState::Moved)
+    };
+    if ok { return; }
+
+    let path_str = format_path(&root, &path);
+    let expected = if requires_init { "initialized" } else { "uninitialized" };
+    let actual = describe_state(&leaf);
+    push_error!(
+        d, span, func, block,
+        "cannot create {} of '{}': place must be {} at borrow, but is {}",
+        kind_str, path_str, expected, actual
+    );
+}
+
+fn format_path(root: &str, path: &[PathStep]) -> String {
+    let mut s = String::from(root);
+    for step in path {
+        match step {
+            PathStep::Field(f) => { s.push('.'); s.push_str(f); }
+            PathStep::Downcast(v) => { s.push_str(" as "); s.push_str(v); }
+        }
+    }
+    s
+}
+
+fn describe_state(s: &InitState) -> &'static str {
+    match s {
+        InitState::NeverInit => "not yet initialized",
+        InitState::Moved => "moved-from",
+        InitState::Init => "initialized",
+        InitState::Partial(_) => "partially initialized",
+        InitState::Diverged => "of inconsistent state across paths",
     }
 }
 
@@ -1097,6 +1169,337 @@ mod tests {
                 x = 1;
                 goto head
               done:
+                return
+            }
+            ",
+        );
+    }
+
+    // ---------- Borrow init preconditions ----------
+    //
+    // Each ref kind requires the borrowed place be in a specific init
+    // state at the point of borrow. Tests are organized by ref kind, then
+    // by the state combinations that are/aren't legal.
+
+    // === Scenario: `&q` (shared) — requires Init ===
+
+    #[test]
+    fn shared_borrow_of_init_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &number;
+              entry:
+                r = &x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn shared_borrow_of_never_init_error() {
+        let (errs, _) = run(
+            "
+            fn f() {
+              x: number;
+              r: &number;
+              entry:
+                r = &x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create & of 'x': place must be initialized at borrow, but is not yet initialized"],
+        );
+    }
+
+    #[test]
+    fn shared_borrow_of_moved_error() {
+        let (errs, _) = run(
+            "
+            extern fn sink(x: number);
+            fn f(x: number) {
+              r: &number;
+              entry:
+                call sink(move x);
+                r = &x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create & of 'x': place must be initialized at borrow, but is moved-from"],
+        );
+    }
+
+    // === Scenario: `&mut q` — requires Init ===
+
+    #[test]
+    fn mut_borrow_of_init_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn mut_borrow_of_never_init_error() {
+        let (errs, _) = run(
+            "
+            fn f() {
+              x: number;
+              r: &mut number;
+              entry:
+                r = &mut x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized"],
+        );
+    }
+
+    // === Scenario: `&drop q` — requires Init ===
+
+    #[test]
+    fn drop_borrow_of_init_ok() {
+        assert_no_diagnostics(
+            "
+            extern fn take_drop(r: &drop number);
+            fn f(x: number) {
+              r: &drop number;
+              entry:
+                r = &drop x;
+                call take_drop(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn drop_borrow_of_never_init_error() {
+        let (errs, _) = run(
+            "
+            fn f() {
+              x: number;
+              r: &drop number;
+              entry:
+                r = &drop x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized"],
+        );
+    }
+
+    // === Scenario: `&out q` — requires Uninit ===
+
+    #[test]
+    fn out_borrow_of_never_init_ok() {
+        // A declared but never-written local is the classic &out target.
+        // Slice 0a doesn't yet track that `init_number` initializes x via
+        // the &out — so x stays NeverInit locally, which is fine at return.
+        assert_no_diagnostics(
+            "
+            extern fn init_number(out: &out number);
+            fn f() {
+              x: number;
+              r: &out number;
+              entry:
+                r = &out x;
+                call init_number(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn out_borrow_of_moved_ok() {
+        // After moving out, the place is uninitialized again — legal
+        // target for &out. (Slice 0a doesn't track init through the &out
+        // — x stays Moved locally, which is fine at return.)
+        assert_no_diagnostics(
+            "
+            extern fn take(y: number);
+            extern fn init(out: &out number);
+            fn f(x: number) {
+              r: &out number;
+              entry:
+                call take(move x);
+                r = &out x;
+                call init(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn out_borrow_of_init_error() {
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              entry:
+                x = 1;
+                return
+            }
+            fn g(x: number) {
+              r: &out number;
+              entry:
+                r = &out x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &out of 'x': place must be uninitialized at borrow, but is initialized"],
+        );
+    }
+
+    // === Scenario: `&uninit q` — requires Uninit ===
+
+    #[test]
+    fn uninit_borrow_of_never_init_ok() {
+        assert_no_diagnostics(
+            "
+            extern fn discard(r: &uninit number);
+            fn f() {
+              x: number;
+              r: &uninit number;
+              entry:
+                r = &uninit x;
+                call discard(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn uninit_borrow_of_init_error() {
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              r: &uninit number;
+              entry:
+                r = &uninit x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized"],
+        );
+    }
+
+    // === Scenario: fields (Partial states) ===
+
+    #[test]
+    fn mut_borrow_of_init_field_ok() {
+        // Field-granular tracking: p.x is Init (from `p.x = 1`), so
+        // `&mut p.x` succeeds even though p is Partial as a whole.
+        assert_no_diagnostics(
+            "
+            struct Copy Drop P { x: number y: number }
+            extern fn use_mut(r: &mut number);
+            fn f() {
+              p: P;
+              r: &mut number;
+              entry:
+                p.x = 1;
+                r = &mut p.x;
+                call use_mut(move r);
+                drop p.x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn mut_borrow_of_never_init_field_error() {
+        let (errs, _) = run(
+            "
+            struct Copy Drop P { x: number y: number }
+            fn f() {
+              p: P;
+              entry:
+                p.x = 1;
+                p.y = copy p.x;
+                p.y = 2;
+                return
+            }
+            fn g() {
+              p: P;
+              r: &mut number;
+              entry:
+                p.x = 1;
+                r = &mut p.y;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized"],
+        );
+    }
+
+    #[test]
+    fn out_borrow_of_partial_error() {
+        // Borrowing the whole `p` when only `p.x` was written: the leaf
+        // read on `p` is Partial, not one of the accepted states.
+        let (errs, _) = run(
+            "
+            struct Copy Drop P { x: number y: number }
+            fn f() {
+              p: P;
+              r: &out P;
+              entry:
+                p.x = 1;
+                r = &out p;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized"],
+        );
+    }
+
+    // === Scenario: borrow through deref is not tracked (documents gap) ===
+
+    #[test]
+    fn borrow_through_deref_not_checked() {
+        // `*r` isn't a followed path in slice 0a. Any borrow whose base
+        // path contains a Deref is silently skipped. This documents the
+        // gap; a later slice will handle reference-through-reference.
+        assert_no_diagnostics(
+            "
+            fn f(r: &mut number) {
+              s: &number;
+              entry:
+                s = &*r;
                 return
             }
             ",
