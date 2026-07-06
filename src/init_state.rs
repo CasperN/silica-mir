@@ -488,6 +488,7 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
                         loaned: place.clone(),
                         create_span: Span { line: 0, col: 0 },
                     });
+                    apply_eager_borrow_transition(ctx, kind, place, state);
                 }
             }
         }
@@ -732,6 +733,33 @@ fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
         && matches!(access, AccessKind::Read | AccessKind::Borrow(RefKind::Shared))
 }
 
+/// The pointee's init state after the loan expires (post). Returned as an
+/// `InitState` so the eager-transition helper can apply it directly.
+fn loan_post_leaf(kind: &RefKind) -> Option<InitState> {
+    match kind {
+        // No transition: pointee already at post.
+        RefKind::Shared | RefKind::Mut | RefKind::Uninit => None,
+        // Uninit → Init: eagerly mark the loaned place initialized. The
+        // loan tracker blocks direct access until the loan expires, so
+        // this is sound.
+        RefKind::Out => Some(InitState::Init),
+        // Init → Uninit: eagerly consume.
+        RefKind::Drop => Some(InitState::Moved),
+    }
+}
+
+/// Apply the eager init transition on the loaned place. Called at borrow
+/// creation.
+fn apply_eager_borrow_transition(
+    ctx: &Ctx,
+    kind: &RefKind,
+    place: &Place,
+    state: &mut PointState,
+) {
+    let Some(leaf) = loan_post_leaf(kind) else { return; };
+    apply_write(ctx, place, state, leaf);
+}
+
 /// Check whether accessing `place` in the given way conflicts with any
 /// active loan. Skips accesses through `Deref` (those go via the
 /// borrower and are always permitted).
@@ -819,6 +847,7 @@ fn check_and_transfer_stmt(
                         loaned: place.clone(),
                         create_span: span,
                     });
+                    apply_eager_borrow_transition(ctx, kind, place, state);
                 }
             }
         }
@@ -2217,6 +2246,69 @@ mod tests {
         assert_errors_contain(
             &errs,
             &["cannot forget reference 'r': obligation not fulfilled"],
+        );
+    }
+
+    // ---------- Eager init transition at borrow ----------
+    //
+    // On borrow creation, the loaned place is eagerly transitioned to
+    // the loan's post state. This decouples init tracking from loan
+    // tracking: the init tracker never needs a "frozen" state — the
+    // loan tracker independently prevents direct access.
+
+    #[test]
+    fn out_borrow_of_local_marks_place_init() {
+        // Post-borrow, x is Init (per the eager transition). After the
+        // loan is consumed by the call, x remains Init and is dropped
+        // by the elaborator at return.
+        assert_no_diagnostics(
+            "
+            extern fn init(r: &out number);
+            fn f() {
+              x: number;
+              r: &out number;
+              entry:
+                r = &out x;
+                call init(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn drop_borrow_of_local_marks_place_moved() {
+        // `&drop x` post-borrow leaves x Moved: no re-init needed at
+        // return, and no leak.
+        assert_no_diagnostics(
+            "
+            extern fn consume(r: &drop number);
+            fn f(x: number) {
+              r: &drop number;
+              entry:
+                r = &drop x;
+                call consume(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn mut_borrow_does_not_change_place_state() {
+        // `&mut` has post = Init and pointee was already Init; no
+        // transition on the loaned place.
+        assert_no_diagnostics(
+            "
+            extern fn use_mut(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                call use_mut(move r);
+                return
+            }
+            ",
         );
     }
 
