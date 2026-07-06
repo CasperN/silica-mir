@@ -95,6 +95,7 @@ mod tests {
     use super::*;
     use crate::diagnostics::Diagnostics;
     use crate::parser::Parser;
+    use crate::pretty_print::pretty_print;
     use crate::substructural_check::{check_return_leaks, LeakMode};
     use crate::type_check;
 
@@ -109,27 +110,22 @@ mod tests {
         program
     }
 
-    /// Return the sequence of `Statement::Drop(Var(_))` names in each
-    /// return-terminated block of the given function, in insertion order.
-    fn drops_before_returns(program: &Program, func_name: &str) -> Vec<Vec<String>> {
-        let mut out = Vec::new();
-        for decl in &program.declarations {
-            let Declaration::Fn(func) = decl else { continue; };
-            if func.name != func_name { continue; }
-            let Some(body) = &func.body else { continue; };
-            for block in &body.blocks {
-                if !matches!(block.terminator, Terminator::Return) { continue; }
-                let names: Vec<String> = block.statements.iter().filter_map(|(s, _)| {
-                    if let Statement::Drop(Place::Var(n)) = s {
-                        Some(n.clone())
-                    } else {
-                        None
-                    }
-                }).collect();
-                out.push(names);
-            }
+    /// Assert that elaborating `before` yields a program whose
+    /// pretty-printed form equals `expected` (leading/trailing whitespace
+    /// stripped on each). This pins the exact position, ordering, and
+    /// content of inserted drops.
+    #[track_caller]
+    fn assert_elaborated_eq(before: &str, expected: &str) {
+        let program = elaborate_src(before);
+        let got = pretty_print(&program);
+        let a = got.trim();
+        let b = expected.trim();
+        if a != b {
+            panic!(
+                "elaborated output differs\n--- expected ---\n{}\n--- got ---\n{}",
+                b, a
+            );
         }
-        out
     }
 
     /// Check that the elaborated program passes strict leak-check.
@@ -137,8 +133,6 @@ mod tests {
         let program = elaborate_src(src);
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program, &mut d);
-        // A fresh typecheck shouldn't uncover new issues, but run it to
-        // populate any state consumers expect.
         env.typecheck(&mut d);
         check_return_leaks(&env, &mut d, LeakMode::Strict);
         let leak_errs: Vec<&String> = d.errors.iter()
@@ -155,15 +149,21 @@ mod tests {
 
     #[test]
     fn elaborates_single_drop_param() {
-        let program = elaborate_src("fn f(x: number) { entry: return }");
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["x".to_string()]]);
+        assert_elaborated_eq(
+            "fn f(x: number) { entry: return }",
+            "\
+fn f(x: number) {
+  entry:
+    drop x;
+    return
+}",
+        );
     }
 
     #[test]
     fn elaborates_multiple_vars_in_reverse_decl_order() {
-        // Params a, b, c in decl order; locals x, y in decl order.
-        // Reverse combined order = y, x, c, b, a.
-        let program = elaborate_src(
+        // Reverse combined order (locals first, then params): y, x, c, b, a.
+        assert_elaborated_eq(
             "
             fn f(a: number, b: number, c: number) {
               x: number;
@@ -174,24 +174,26 @@ mod tests {
                 return
             }
             ",
-        );
-        assert_eq!(
-            drops_before_returns(&program, "f"),
-            vec![vec![
-                "y".to_string(),
-                "x".to_string(),
-                "c".to_string(),
-                "b".to_string(),
-                "a".to_string(),
-            ]]
+            "\
+fn f(a: number, b: number, c: number) {
+  x: number;
+  y: number;
+  entry:
+    x = 1;
+    y = 2;
+    drop y;
+    drop x;
+    drop c;
+    drop b;
+    drop a;
+    return
+}",
         );
     }
 
     #[test]
     fn does_not_drop_linear_vars() {
-        // Linear types must be consumed explicitly; elaboration does not
-        // silently drop them.
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             struct Linear { r: &out number }
             extern fn sink(x: Linear);
@@ -201,14 +203,24 @@ mod tests {
                 return
             }
             ",
+            "\
+struct Linear {
+  r: &out number
+}
+
+extern fn sink(x: Linear);
+
+fn f(x: Linear) {
+  entry:
+    call sink(move x);
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![Vec::<String>::new()]);
     }
 
     #[test]
     fn does_not_drop_moved_vars() {
-        // `x` has been consumed by move — no drop needed.
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             extern fn take(a: number);
             fn f(x: number) {
@@ -217,14 +229,20 @@ mod tests {
                 return
             }
             ",
+            "\
+extern fn take(a: number);
+
+fn f(x: number) {
+  entry:
+    call take(move x);
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![Vec::<String>::new()]);
     }
 
     #[test]
     fn does_not_drop_never_init_locals() {
-        // Local declared but never assigned — no drop.
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             fn f() {
               x: number;
@@ -232,54 +250,86 @@ mod tests {
                 return
             }
             ",
+            "\
+fn f() {
+  x: number;
+  entry:
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![Vec::<String>::new()]);
     }
 
     // ---------- Different Drop types ----------
 
     #[test]
     fn elaborates_drop_struct() {
-        // A Copy Drop struct at whole-var Init is one drop.
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             struct Copy Drop P { x: number y: number }
             fn f(p: P) { entry: return }
             ",
+            "\
+struct Copy Drop P {
+  x: number
+  y: number
+}
+
+fn f(p: P) {
+  entry:
+    drop p;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["p".to_string()]]);
     }
 
     #[test]
     fn elaborates_drop_enum() {
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) { entry: return }
             ",
+            "\
+enum Copy Drop Option {
+  None: unit
+  Some: number
+}
+
+fn f(o: Option) {
+  entry:
+    drop o;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["o".to_string()]]);
     }
 
     #[test]
     fn elaborates_mut_ref_param() {
         // `&mut T` is Drop (though not Copy) — reference value may be
-        // forgotten. Elaboration should insert a drop for it.
-        let program = elaborate_src(
+        // forgotten. Elaboration inserts a drop for it.
+        assert_elaborated_eq(
             "fn f(r: &mut number) { entry: return }",
+            "\
+fn f(r: &mut number) {
+  entry:
+    drop r;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["r".to_string()]]);
     }
 
     #[test]
     fn does_not_drop_out_ref_param() {
-        // `&out T` is linear — never silently dropped.
-        // (Note: this program leaks under the checker; we're only
-        // verifying the elaborator's behavior, not overall soundness.)
-        let program = elaborate_src(
+        // `&out T` is linear — never silently dropped. (This program
+        // leaks under the checker; we're only verifying the elaborator.)
+        assert_elaborated_eq(
             "fn f(r: &out number) { entry: return }",
+            "\
+fn f(r: &out number) {
+  entry:
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![Vec::<String>::new()]);
     }
 
     // ---------- Interaction with existing statements ----------
@@ -287,7 +337,7 @@ mod tests {
     #[test]
     fn respects_explicit_user_drop() {
         // User already dropped `x` — elaboration doesn't add a second one.
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             fn f(x: number) {
               entry:
@@ -295,18 +345,20 @@ mod tests {
                 return
             }
             ",
+            "\
+fn f(x: number) {
+  entry:
+    drop x;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["x".to_string()]]);
     }
 
     #[test]
     fn reassignment_still_leaves_one_drop() {
         // `x = 1; x = 2;` is a single Init state at return — one drop.
-        // (This documents the phase-1 behavior; pre-overwrite drops are
-        // slice 2 — the first assignment's value is currently silently
-        // forgotten by the elaborator's absence, which the lenient
-        // checker permits for Drop types.)
-        let program = elaborate_src(
+        // Pre-overwrite drops are a future slice.
+        assert_elaborated_eq(
             "
             fn f() {
               x: number;
@@ -316,8 +368,16 @@ mod tests {
                 return
             }
             ",
+            "\
+fn f() {
+  x: number;
+  entry:
+    x = 1;
+    x = 2;
+    drop x;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["x".to_string()]]);
     }
 
     // ---------- Deferred behaviors (pins current phase-1 semantics) ----------
@@ -325,12 +385,11 @@ mod tests {
     #[test]
     fn diverged_state_not_elaborated_yet() {
         // Where predecessors disagree on a var's init state, the join
-        // yields `Diverged`. Slice 1 doesn't emit drops for those because
-        // an unconditional drop would be unsound on the Uninit predecessor.
-        // Future slice 3 will split edges and drop on the Init side.
-        // Here `x` is Diverged at the merge (`b`'s branch is copied, so
-        // `b` stays Init and *does* get dropped).
-        let program = elaborate_src(
+        // yields `Diverged`. Current elaborator doesn't emit drops for
+        // those; a future slice will split edges and drop on the Init
+        // side. Here `x` is Diverged at the merge; `b` (copy'd) stays
+        // Init and gets dropped.
+        assert_elaborated_eq(
             "
             fn f(b: boolean) {
               x: number;
@@ -345,25 +404,36 @@ mod tests {
                 return
             }
             ",
+            "\
+fn f(b: boolean) {
+  x: number;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    goto merge
+  merge:
+    drop b;
+    return
+}",
         );
-        // `b` (Init) is dropped; `x` (Diverged) is not.
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["b".to_string()]]);
     }
 
     #[test]
     fn extern_function_untouched() {
-        let program = elaborate_src(
+        assert_elaborated_eq(
+            "extern fn f(x: number);",
             "extern fn f(x: number);",
         );
-        // No body → no return blocks → no drops → nothing in the vector.
-        assert!(drops_before_returns(&program, "f").is_empty());
     }
 
     #[test]
     fn multi_block_return_sees_upstream_writes() {
         // Local `y` is written in `mid`; the return in `end` should still
         // find `y` Init and drop it.
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             fn f() {
               y: number;
@@ -376,15 +446,27 @@ mod tests {
                 return
             }
             ",
+            "\
+fn f() {
+  y: number;
+  entry:
+    goto mid
+  mid:
+    y = 42;
+    goto end
+  end:
+    drop y;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![vec!["y".to_string()]]);
     }
 
     // ---------- Multiple returns ----------
 
     #[test]
     fn elaborates_each_return_independently() {
-        let program = elaborate_src(
+        // Two returns, each drops x and b (reverse decl order).
+        assert_elaborated_eq(
             "
             fn f(b: boolean, x: number) {
               entry:
@@ -393,13 +475,20 @@ mod tests {
               fbr: return
             }
             ",
+            "\
+fn f(b: boolean, x: number) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    drop x;
+    drop b;
+    return
+  fbr:
+    drop x;
+    drop b;
+    return
+}",
         );
-        let drops = drops_before_returns(&program, "f");
-        // Two returns, each drops x and b (reverse decl order).
-        assert_eq!(drops.len(), 2);
-        for site in &drops {
-            assert_eq!(site, &vec!["x".to_string(), "b".to_string()]);
-        }
     }
 
     // ---------- Idempotency ----------
@@ -410,24 +499,24 @@ mod tests {
         let once = elaborate_src(src);
 
         // Elaborate the already-elaborated program a second time and
-        // compare.
+        // compare via pretty-printed forms.
         let mut twice = once.clone();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&twice, &mut d);
         env.typecheck(&mut d);
         elaborate(&mut twice, &env);
 
-        assert_eq!(once, twice);
+        assert_eq!(pretty_print(&once), pretty_print(&twice));
     }
 
     // ---------- Not-elaborated states ----------
 
     #[test]
     fn partial_state_not_elaborated_yet() {
-        // Slice 1 doesn't emit drops for Partial states. Verify this is
-        // the case: the partial-init `p` gets no drop even though its
-        // type is Drop.
-        let program = elaborate_src(
+        // Current elaborator doesn't emit drops for Partial states: the
+        // partial-init `p` gets no drop even though its type is Drop.
+        // Future slice will walk the field tree and emit per-leaf drops.
+        assert_elaborated_eq(
             "
             struct Copy Drop P { x: number y: number }
             fn f() {
@@ -437,34 +526,38 @@ mod tests {
                 return
             }
             ",
+            "\
+struct Copy Drop P {
+  x: number
+  y: number
+}
+
+fn f() {
+  p: P;
+  entry:
+    p.x = 1;
+    return
+}",
         );
-        assert_eq!(drops_before_returns(&program, "f"), vec![Vec::<String>::new()]);
     }
 
     #[test]
     fn only_return_blocks_get_drops() {
         // `abort` and `unreachable` are not `return` — no drops inserted
         // (they're the escape hatches; obligations are waived).
-        let program = elaborate_src(
+        assert_elaborated_eq(
             "
             fn f(x: number) {
               entry:
                 abort
             }
             ",
+            "\
+fn f(x: number) {
+  entry:
+    abort
+}",
         );
-        // No returns, so nothing to elaborate.
-        let mut return_count = 0;
-        if let Some(Declaration::Fn(func)) = program.declarations.first() {
-            if let Some(body) = &func.body {
-                for block in &body.blocks {
-                    if matches!(block.terminator, Terminator::Return) {
-                        return_count += 1;
-                    }
-                }
-            }
-        }
-        assert_eq!(return_count, 0);
     }
 
     // ---------- Post-elaboration strict check ----------
