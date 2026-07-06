@@ -166,15 +166,15 @@ fn check_leaks_in_state(
         }
     }
 
-    // Reference obligations: any ref var still Init with cur != post at
+    // Reference obligations: any ref var whose is_init != ends_init at
     // return leaks — the loan wasn't discharged.
     for (var, rs) in &state.refs {
         if rs.obligation_fulfilled() { continue; }
         let Some(ty) = locals.get(var) else { continue; };
         push_error!(
             d, block.terminator_span, func, block,
-            "reference '{}' of type {:?} has unfulfilled obligation at return (cur={:?}, post={:?})",
-            var, ty, rs.cur, rs.post
+            "reference '{}' of type {:?} has unfulfilled obligation at return (is_init={}, ends_init={})",
+            var, ty, rs.is_init, rs.ends_init
         );
     }
 }

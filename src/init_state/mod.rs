@@ -40,34 +40,47 @@ pub enum InitState {
     Diverged,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RefCur { Init, Uninit }
-
 /// Per-reference-variable state: the current and (post-expiry) required
 /// state of the pointee. Only tracked for exclusive reference kinds (`&mut`,
 /// `&out`, `&drop`, `&uninit`). Shared references (`&T`) don't carry an
 /// obligation — they're `Copy Drop`.
+///
+/// `is_init` is the pointee's current initialization state at this
+/// program point; `ends_init` is what the (cur, post) rule requires by
+/// the time the loan expires.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RefState {
-    pub cur: RefCur,
-    pub post: RefCur,
+    pub is_init: bool,
+    pub ends_init: bool,
 }
 
 impl RefState {
-    /// The (cur, post) at borrow creation for a given ref kind. Returns
-    /// `None` for shared borrows (which don't carry an obligation).
+    /// The (is_init, ends_init) at borrow creation for a given ref kind.
+    /// Returns `None` for shared borrows (no obligation).
     pub fn from_kind(kind: &RefKind) -> Option<Self> {
         match kind {
             RefKind::Shared => None,
-            RefKind::Mut    => Some(RefState { cur: RefCur::Init,   post: RefCur::Init }),
-            RefKind::Out    => Some(RefState { cur: RefCur::Uninit, post: RefCur::Init }),
-            RefKind::Drop   => Some(RefState { cur: RefCur::Init,   post: RefCur::Uninit }),
-            RefKind::Uninit => Some(RefState { cur: RefCur::Uninit, post: RefCur::Uninit }),
+            RefKind::Mut => Some(RefState {
+                is_init: true,
+                ends_init: true,
+            }),
+            RefKind::Out => Some(RefState {
+                is_init: false,
+                ends_init: true,
+            }),
+            RefKind::Drop => Some(RefState {
+                is_init: true,
+                ends_init: false,
+            }),
+            RefKind::Uninit => Some(RefState {
+                is_init: false,
+                ends_init: false,
+            }),
         }
     }
 
     pub fn obligation_fulfilled(&self) -> bool {
-        self.cur == self.post
+        self.is_init == self.ends_init
     }
 }
 
@@ -86,7 +99,11 @@ impl Loan {
     pub fn single(kind: RefKind, loaned: Place, create_span: Span) -> Self {
         let mut set = BTreeSet::new();
         set.insert(loaned);
-        Loan { kind, loaned: set, create_span }
+        Loan {
+            kind,
+            loaned: set,
+            create_span,
+        }
     }
 }
 
@@ -115,7 +132,9 @@ struct Ctx<'a> {
 // ---------- Type lookups ----------
 
 fn struct_fields_of<'a>(ty: &Type, env: &'a Env) -> Option<&'a [StructField]> {
-    let Type::Custom(name) = ty else { return None; };
+    let Type::Custom(name) = ty else {
+        return None;
+    };
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => Some(&s.fields),
         _ => None,
@@ -123,9 +142,13 @@ fn struct_fields_of<'a>(ty: &Type, env: &'a Env) -> Option<&'a [StructField]> {
 }
 
 fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
-    let Type::Custom(name) = ty else { return None; };
+    let Type::Custom(name) = ty else {
+        return None;
+    };
     match env.types.get(name) {
-        Some(TypeDecl::Enum(e)) => e.variants.iter()
+        Some(TypeDecl::Enum(e)) => e
+            .variants
+            .iter()
             .find(|v| v.name == variant)
             .map(|v| v.ty.clone()),
         _ => None,
@@ -176,9 +199,7 @@ fn join_state(a: &InitState, b: &InitState) -> InitState {
     }
     // Try to join field-wise when at least one side is Partial.
     match (a, b) {
-        (InitState::Partial(ma), InitState::Partial(mb)) => {
-            join_partials(ma, mb)
-        }
+        (InitState::Partial(ma), InitState::Partial(mb)) => join_partials(ma, mb),
         (InitState::Partial(ma), other) => {
             let mb = expand_from_partial_keys(other, ma);
             join_partials(ma, &mb)
@@ -201,10 +222,7 @@ fn expand_from_partial_keys(
         .collect()
 }
 
-fn join_partials(
-    ma: &BTreeMap<String, InitState>,
-    mb: &BTreeMap<String, InitState>,
-) -> InitState {
+fn join_partials(ma: &BTreeMap<String, InitState>, mb: &BTreeMap<String, InitState>) -> InitState {
     let mut out = BTreeMap::new();
     for (k, va) in ma {
         let vb = mb.get(k).cloned().unwrap_or(InitState::NeverInit);
@@ -219,7 +237,9 @@ fn join_partials(
 }
 
 fn join_point(a: &PointState, b: &PointState) -> PointState {
-    let locals: IndexMap<String, InitState> = a.locals.iter()
+    let locals: IndexMap<String, InitState> = a
+        .locals
+        .iter()
         .map(|(name, sa)| {
             let sb = b.locals.get(name).cloned().unwrap_or(InitState::NeverInit);
             (name.clone(), join_state(sa, &sb))
@@ -251,7 +271,11 @@ fn join_point(a: &PointState, b: &PointState) -> PointState {
             }
         }
     }
-    PointState { locals, refs, loans }
+    PointState {
+        locals,
+        refs,
+        loans,
+    }
 }
 
 // ---------- Path walks ----------
@@ -266,11 +290,16 @@ fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf
     }
     match &path[0] {
         PathStep::Field(f) => {
-            let Some(fields) = struct_fields_of(ty, env) else { return; };
+            let Some(fields) = struct_fields_of(ty, env) else {
+                return;
+            };
             if !matches!(state, InitState::Partial(_)) {
                 *state = InitState::Partial(expand_uniform(state, fields));
             }
-            let field_ty = fields.iter().find(|fd| fd.name == *f).map(|fd| fd.ty.clone());
+            let field_ty = fields
+                .iter()
+                .find(|fd| fd.name == *f)
+                .map(|fd| fd.ty.clone());
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(f) {
                     write_at(field_state, &field_ty, &path[1..], env, leaf_state);
@@ -295,11 +324,16 @@ fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env) {
     }
     match &path[0] {
         PathStep::Field(f) => {
-            let Some(fields) = struct_fields_of(ty, env) else { return; };
+            let Some(fields) = struct_fields_of(ty, env) else {
+                return;
+            };
             if !matches!(state, InitState::Partial(_)) {
                 *state = InitState::Partial(expand_uniform(state, fields));
             }
-            let field_ty = fields.iter().find(|fd| fd.name == *f).map(|fd| fd.ty.clone());
+            let field_ty = fields
+                .iter()
+                .find(|fd| fd.name == *f)
+                .map(|fd| fd.ty.clone());
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(f) {
                     move_at(field_state, &field_ty, &path[1..], env);
@@ -321,10 +355,9 @@ fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env) -> InitSt
     }
     match &path[0] {
         PathStep::Field(f) => match state {
-            InitState::Init
-            | InitState::NeverInit
-            | InitState::Moved
-            | InitState::Diverged => state.clone(),
+            InitState::Init | InitState::NeverInit | InitState::Moved | InitState::Diverged => {
+                state.clone()
+            }
             InitState::Partial(map) => {
                 let field_ty = struct_fields_of(ty, env)
                     .and_then(|fs| fs.iter().find(|fd| fd.name == *f))
@@ -368,19 +401,30 @@ pub fn states_before_returns<'a>(
     func: &'a Function,
 ) -> Vec<(&'a BasicBlock, PointState)> {
     let mut out = Vec::new();
-    let Some(body) = &func.body else { return out; };
-    if body.blocks.is_empty() { return out; }
+    let Some(body) = &func.body else {
+        return out;
+    };
+    if body.blocks.is_empty() {
+        return out;
+    }
 
     let locals = func.locals_map();
-    let ctx = Ctx { env, locals: &locals };
+    let ctx = Ctx {
+        env,
+        locals: &locals,
+    };
     let entry_states = run_fixpoint(&ctx, func, body);
 
     for block in &body.blocks {
-        if !matches!(block.terminator, Terminator::Return) { continue; }
-        let Some(entry) = entry_states.get(&block.label) else { continue; };
+        if !matches!(block.terminator, Terminator::Return) {
+            continue;
+        }
+        let Some(entry) = entry_states.get(&block.label) else {
+            continue;
+        };
         let mut state = entry.clone();
         for (stmt, _) in &block.statements {
-            transfer_stmt(&ctx, stmt, &mut state);
+            ctx.transfer_stmt(stmt, &mut state);
         }
         // Return terminator has no state effect.
         out.push((block, state));
@@ -389,17 +433,26 @@ pub fn states_before_returns<'a>(
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else { return; };
-    if body.blocks.is_empty() { return; }
+    let Some(body) = &func.body else {
+        return;
+    };
+    if body.blocks.is_empty() {
+        return;
+    }
 
     let locals = func.locals_map();
-    let ctx = Ctx { env, locals: &locals };
+    let ctx = Ctx {
+        env,
+        locals: &locals,
+    };
     let entry_states = run_fixpoint(&ctx, func, body);
 
     for block in &body.blocks {
-        let Some(entry) = entry_states.get(&block.label) else { continue; };
+        let Some(entry) = entry_states.get(&block.label) else {
+            continue;
+        };
         let mut state = entry.clone();
-        check_block(&ctx, func, block, &mut state, d);
+        ctx.check_block(func, block, &mut state, d);
     }
 }
 
@@ -447,24 +500,24 @@ struct InitAnalysis<'a> {
 
 impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     type State = PointState;
-    fn direction(&self) -> dataflow::Direction { dataflow::Direction::Forward }
-    fn initial_state(&self) -> Self::State { self.initial.clone() }
+    fn direction(&self) -> dataflow::Direction {
+        dataflow::Direction::Forward
+    }
+    fn initial_state(&self) -> Self::State {
+        self.initial.clone()
+    }
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join_point(a, b)
     }
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
-        transfer_stmt(self.ctx, stmt, state)
+        self.ctx.transfer_stmt(stmt, state)
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
-        transfer_terminator(self.ctx, term, state)
+        self.ctx.transfer_terminator(term, state)
     }
 }
 
-fn run_fixpoint(
-    ctx: &Ctx,
-    func: &Function,
-    body: &FunctionBody,
-) -> IndexMap<String, PointState> {
+fn run_fixpoint(ctx: &Ctx, func: &Function, body: &FunctionBody) -> IndexMap<String, PointState> {
     let analysis = InitAnalysis {
         ctx,
         initial: initial_state(func, body, ctx.env),
@@ -474,121 +527,138 @@ fn run_fixpoint(
 
 // ---------- Transfer (state updates) ----------
 
-fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
-    match stmt {
-        Statement::Assign(target, rvalue) => {
-            // Capture ref/loan entries to transfer via `move src` BEFORE
-            // apply_rvalue_moves removes them.
-            let move_source = ref_move_source(target, rvalue);
-            let carried = move_source.as_ref().and_then(|src| {
-                Some((state.refs.get(src).copied(), state.loans.get(src).cloned()))
-            });
+impl<'a> Ctx<'a> {
+    fn transfer_stmt(&self, stmt: &Statement, state: &mut PointState) {
+        match stmt {
+            Statement::Assign(target, rvalue) => {
+                // Capture ref/loan entries to transfer via `move src` BEFORE
+                // apply_rvalue_moves removes them.
+                let move_source = ref_move_source(target, rvalue);
+                let carried = move_source.as_ref().and_then(|src| {
+                    Some((state.refs.get(src).copied(), state.loans.get(src).cloned()))
+                });
 
-            apply_rvalue_moves(ctx, rvalue, state);
-            // Silent mirror of check_and_transfer_stmt's assign-side effects
-            // for the fixpoint. Errors are emitted only by the diagnostic
-            // pass; here we just propagate state.
-            if let Place::Var(name) = target {
-                state.refs.shift_remove(name);
-                state.loans.shift_remove(name);
-            }
-            if matches!(target, Place::Deref(_)) {
-                apply_deref_op(ctx, target, DerefOp::Write, state, None);
-            } else {
-                apply_write(ctx, target, state, InitState::Init);
-                if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
-                    if let Some(rs) = RefState::from_kind(kind) {
-                        state.refs.insert(name.clone(), rs);
+                self.apply_rvalue_moves(rvalue, state);
+                // Silent mirror of check_and_transfer_stmt's assign-side effects
+                // for the fixpoint. Errors are emitted only by the diagnostic
+                // pass; here we just propagate state.
+                if let Place::Var(name) = target {
+                    state.refs.shift_remove(name);
+                    state.loans.shift_remove(name);
+                }
+                if matches!(target, Place::Deref(_)) {
+                    self.apply_deref_op(target, DerefOp::Write, state, None);
+                } else {
+                    self.apply_write(target, state, InitState::Init);
+                    if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
+                        if let Some(rs) = RefState::from_kind(kind) {
+                            state.refs.insert(name.clone(), rs);
+                        }
+                        // Track the loan for all kinds (including shared)
+                        // for later conflict detection. Synthetic span here
+                        // — the diagnostic pass supplies the real one.
+                        state.loans.insert(
+                            name.clone(),
+                            Loan::single(kind.clone(), place.clone(), Span { line: 0, col: 0 }),
+                        );
+                        self.apply_eager_borrow_transition(kind, place, state);
                     }
-                    // Track the loan for all kinds (including shared)
-                    // for later conflict detection. Synthetic span here
-                    // — the diagnostic pass supplies the real one.
-                    state.loans.insert(
-                        name.clone(),
-                        Loan::single(kind.clone(), place.clone(), Span { line: 0, col: 0 }),
-                    );
-                    apply_eager_borrow_transition(ctx, kind, place, state);
-                }
-                // Ref/loan transfer via `dst = move src`.
-                if let (Place::Var(dst), Some((refs, loan))) = (target, carried) {
-                    if let Some(rs) = refs { state.refs.insert(dst.clone(), rs); }
-                    if let Some(l) = loan { state.loans.insert(dst.clone(), l); }
+                    // Ref/loan transfer via `dst = move src`.
+                    if let (Place::Var(dst), Some((refs, loan))) = (target, carried) {
+                        if let Some(rs) = refs {
+                            state.refs.insert(dst.clone(), rs);
+                        }
+                        if let Some(l) = loan {
+                            state.loans.insert(dst.clone(), l);
+                        }
+                    }
                 }
             }
-        }
-        Statement::Call(target, args) => {
-            apply_operand_move(ctx, target, state);
-            for a in args {
-                apply_operand_move(ctx, a, state);
+            Statement::Call(target, args) => {
+                self.apply_operand_move(target, state);
+                for a in args {
+                    self.apply_operand_move(a, state);
+                }
+            }
+            Statement::Drop(place) => {
+                if let Place::Var(name) = place {
+                    state.refs.shift_remove(name);
+                    state.loans.shift_remove(name);
+                }
+                // `drop *r` — consume the pointee, transition r's is_init.
+                self.apply_deref_op(place, DerefOp::Move, state, None);
+                self.apply_move(place, state);
+            }
+            Statement::Unborrow(place) => {
+                // Silent side of `unborrow r`: consume the borrower and its
+                // ref/loan entries. Obligation checks happen in the
+                // diagnostic pass.
+                if let Place::Var(name) = place {
+                    state.refs.shift_remove(name);
+                    state.loans.shift_remove(name);
+                }
+                self.apply_move(place, state);
             }
         }
-        Statement::Drop(place) => {
-            if let Place::Var(name) = place {
-                state.refs.shift_remove(name);
-                state.loans.shift_remove(name);
+    }
+
+    fn transfer_terminator(&self, term: &Terminator, state: &mut PointState) {
+        if let Terminator::Branch { cond, .. } = term {
+            self.apply_operand_move(cond, state);
+        }
+    }
+
+    fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
+        match rv {
+            RValue::Use(op) | RValue::EnumConstr(_, _, op) => self.apply_operand_move(op, state),
+            RValue::Ref(_, _) => {}
+        }
+    }
+
+    fn apply_operand_move(&self, op: &Operand, state: &mut PointState) {
+        // Deref through *r transitions the ref's pointee state; do it before
+        // the whole-var move that follows for consistency.
+        match op {
+            Operand::Copy(place) => self.apply_deref_op(place, DerefOp::Read, state, None),
+            Operand::Move(place) => {
+                self.apply_deref_op(place, DerefOp::Move, state, None);
+                self.apply_move(place, state);
             }
-            // `drop *r` — consume the pointee, transition r's cur.
-            apply_deref_op(ctx, place, DerefOp::Move, state, None);
-            apply_move(ctx, place, state);
-        }
-        Statement::Unborrow(place) => {
-            // Silent side of `unborrow r`: consume the borrower and its
-            // ref/loan entries. Obligation checks happen in the
-            // diagnostic pass.
-            if let Place::Var(name) = place {
-                state.refs.shift_remove(name);
-                state.loans.shift_remove(name);
-            }
-            apply_move(ctx, place, state);
+            Operand::Const(_) => {}
         }
     }
-}
 
-fn transfer_terminator(ctx: &Ctx, term: &Terminator, state: &mut PointState) {
-    if let Terminator::Branch { cond, .. } = term {
-        apply_operand_move(ctx, cond, state);
+    fn apply_write(&self, place: &Place, state: &mut PointState, leaf: InitState) {
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
+        write_at(root_state, &root_ty, &path, self.env, leaf);
     }
-}
 
-fn apply_rvalue_moves(ctx: &Ctx, rv: &RValue, state: &mut PointState) {
-    match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => apply_operand_move(ctx, op, state),
-        RValue::Ref(_, _) => {}
-    }
-}
-
-fn apply_operand_move(ctx: &Ctx, op: &Operand, state: &mut PointState) {
-    // Deref through *r transitions the ref's pointee state; do it before
-    // the whole-var move that follows for consistency.
-    match op {
-        Operand::Copy(place) => apply_deref_op(ctx, place, DerefOp::Read, state, None),
-        Operand::Move(place) => {
-            apply_deref_op(ctx, place, DerefOp::Move, state, None);
-            apply_move(ctx, place, state);
+    fn apply_move(&self, place: &Place, state: &mut PointState) {
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let root_state = state
+            .locals
+            .entry(root.clone())
+            .or_insert(InitState::NeverInit);
+        move_at(root_state, &root_ty, &path, self.env);
+        // Whole-var move of an exclusive reference: the loan is transferred
+        // to whoever receives the move. From the caller's perspective, the
+        // ref entry is gone; no obligation check here (that'd double-count
+        // if the callee's signature enforces its own).
+        if path.is_empty() {
+            state.refs.shift_remove(&root);
+            state.loans.shift_remove(&root);
         }
-        Operand::Const(_) => {}
-    }
-}
-
-fn apply_write(ctx: &Ctx, place: &Place, state: &mut PointState, leaf: InitState) {
-    let Some((root, path)) = extract_path(place) else { return; };
-    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
-    write_at(root_state, &root_ty, &path, ctx.env, leaf);
-}
-
-fn apply_move(ctx: &Ctx, place: &Place, state: &mut PointState) {
-    let Some((root, path)) = extract_path(place) else { return; };
-    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let root_state = state.locals.entry(root.clone()).or_insert(InitState::NeverInit);
-    move_at(root_state, &root_ty, &path, ctx.env);
-    // Whole-var move of an exclusive reference: the loan is transferred
-    // to whoever receives the move. From the caller's perspective, the
-    // ref entry is gone; no obligation check here (that'd double-count
-    // if the callee's signature enforces its own).
-    if path.is_empty() {
-        state.refs.shift_remove(&root);
-        state.loans.shift_remove(&root);
     }
 }
 
@@ -605,111 +675,151 @@ enum DerefOp {
     Write,
 }
 
-/// Apply the state effect of an operation through `*r`. If `place` isn't
-/// a shallow deref of a Var, returns without effect.
-///
-/// When `report` is `Some`, precondition failures emit errors; when `None`
-/// the check is silent (used from the fixpoint transfer).
-///
-/// Nested paths like `(*r).field` aren't handled here — pinned as a
-/// deferred limitation. Only the shape `*r` where `r: exclusive-ref` is
-/// tracked; shared refs generate a diagnostic on write/move but not read.
-fn apply_deref_op(
-    ctx: &Ctx,
-    place: &Place,
-    op: DerefOp,
-    state: &mut PointState,
-    report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
-) {
-    let Place::Deref(inner) = place else { return; };
-    let Place::Var(name) = &**inner else { return; };
-    let Some(root_ty) = ctx.locals.get(name) else { return; };
-    let Type::Ref(kind, _) = root_ty else { return; };
+impl<'a> Ctx<'a> {
+    /// Apply the state effect of an operation through `*r`. If `place` isn't
+    /// a shallow deref of a Var, returns without effect.
+    ///
+    /// When `report` is `Some`, precondition failures emit errors; when `None`
+    /// the check is silent (used from the fixpoint transfer).
+    ///
+    /// Nested paths like `(*r).field` aren't handled here — pinned as a
+    /// deferred limitation. Only the shape `*r` where `r: exclusive-ref` is
+    /// tracked; shared refs generate a diagnostic on write/move but not read.
+    fn apply_deref_op(
+        &self,
+        place: &Place,
+        op: DerefOp,
+        state: &mut PointState,
+        report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+    ) {
+        let Place::Deref(inner) = place else {
+            return;
+        };
+        let Place::Var(name) = &**inner else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(name) else {
+            return;
+        };
+        let Type::Ref(kind, _) = root_ty else {
+            return;
+        };
 
-    if matches!(kind, RefKind::Shared) {
-        if !matches!(op, DerefOp::Read) {
+        if matches!(kind, RefKind::Shared) {
+            if !matches!(op, DerefOp::Read) {
+                if let Some((func, block, span, d)) = report {
+                    push_error!(
+                        d,
+                        span,
+                        func,
+                        block,
+                        "cannot mutate through shared reference '{}'",
+                        name
+                    );
+                }
+            }
+            return;
+        }
+
+        let Some(rs) = state.refs.get(name).copied() else {
             if let Some((func, block, span, d)) = report {
                 push_error!(
-                    d, span, func, block,
-                    "cannot mutate through shared reference '{}'", name
+                    d,
+                    span,
+                    func,
+                    block,
+                    "cannot dereference '{}': reference state is unknown here",
+                    name
+                );
+            }
+            return;
+        };
+
+        let required_init = match op {
+            DerefOp::Read | DerefOp::Move => true,
+            DerefOp::Write => false,
+        };
+        if rs.is_init != required_init {
+            if let Some((func, block, span, d)) = report {
+                let action = match op {
+                    DerefOp::Read => "read from",
+                    DerefOp::Move => "move out of",
+                    DerefOp::Write => "write into",
+                };
+                let expected = if required_init {
+                    "initialized"
+                } else {
+                    "uninitialized"
+                };
+                let actual = if rs.is_init {
+                    "initialized"
+                } else {
+                    "uninitialized"
+                };
+                push_error!(
+                    d,
+                    span,
+                    func,
+                    block,
+                    "cannot {} pointee of '{}': pointee must be {} here, but is {}",
+                    action,
+                    name,
+                    expected,
+                    actual
                 );
             }
         }
-        return;
-    }
 
-    let Some(rs) = state.refs.get(name).copied() else {
-        if let Some((func, block, span, d)) = report {
-            push_error!(
-                d, span, func, block,
-                "cannot dereference '{}': reference state is unknown here", name
-            );
-        }
-        return;
-    };
-
-    let required = match op {
-        DerefOp::Read | DerefOp::Move => RefCur::Init,
-        DerefOp::Write => RefCur::Uninit,
-    };
-    if rs.cur != required {
-        if let Some((func, block, span, d)) = report {
-            let action = match op {
-                DerefOp::Read => "read from",
-                DerefOp::Move => "move out of",
-                DerefOp::Write => "write into",
-            };
-            let expected = match required {
-                RefCur::Init => "initialized",
-                RefCur::Uninit => "uninitialized",
-            };
-            let actual = match rs.cur {
-                RefCur::Init => "initialized",
-                RefCur::Uninit => "uninitialized",
-            };
-            push_error!(
-                d, span, func, block,
-                "cannot {} pointee of '{}': pointee must be {} here, but is {}",
-                action, name, expected, actual
-            );
-        }
-    }
-
-    // Apply the transition. Do this even on precondition failure so
-    // downstream analysis sees consistent state.
-    let new_cur = match op {
-        DerefOp::Read => rs.cur,
-        DerefOp::Move => RefCur::Uninit,
-        DerefOp::Write => RefCur::Init,
-    };
-    state.refs.insert(name.clone(), RefState { cur: new_cur, post: rs.post });
-}
-
-/// If `place` is a whole-var ref binding with an outstanding obligation
-/// (`refs[name]` exists), verify its obligation is fulfilled and remove
-/// the entry. Called at any point where the reference value is being
-/// silently forgotten: `drop r`, or overwrite of `r`.
-fn close_ref_if_present(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    place: &Place,
-    span: Span,
-    state: &mut PointState,
-    d: &mut Diagnostics,
-) {
-    let _ = ctx;
-    let Place::Var(name) = place else { return; };
-    let Some(rs) = state.refs.get(name).copied() else { return; };
-    if !rs.obligation_fulfilled() {
-        push_error!(
-            d, span, func, block,
-            "cannot forget reference '{}': obligation not fulfilled (cur={:?}, post={:?})",
-            name, rs.cur, rs.post
+        // Apply the transition. Do this even on precondition failure so
+        // downstream analysis sees consistent state.
+        let new_is_init = match op {
+            DerefOp::Read => rs.is_init,
+            DerefOp::Move => false,
+            DerefOp::Write => true,
+        };
+        state.refs.insert(
+            name.clone(),
+            RefState {
+                is_init: new_is_init,
+                ends_init: rs.ends_init,
+            },
         );
     }
-    state.refs.shift_remove(name);
-    state.loans.shift_remove(name);
+
+    /// If `place` is a whole-var ref binding with an outstanding obligation
+    /// (`refs[name]` exists), verify its obligation is fulfilled and remove
+    /// the entry. Called at any point where the reference value is being
+    /// silently forgotten: `drop r`, or overwrite of `r`.
+    fn close_ref_if_present(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        place: &Place,
+        span: Span,
+        state: &mut PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Place::Var(name) = place else {
+            return;
+        };
+        let Some(rs) = state.refs.get(name).copied() else {
+            return;
+        };
+        if !rs.obligation_fulfilled() {
+            push_error!(
+                d,
+                span,
+                func,
+                block,
+                "cannot forget reference '{}': obligation not fulfilled (is_init={}, ends_init={})",
+                name,
+                rs.is_init,
+                rs.ends_init
+            );
+        }
+        state.refs.shift_remove(name);
+        state.loans.shift_remove(name);
+    }
 }
 
 // ---------- Loan conflict check ----------
@@ -755,7 +865,9 @@ fn paths_conflict(a: &[PathStep], b: &[PathStep]) -> bool {
             (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
             _ => false,
         };
-        if !same { return false; }
+        if !same {
+            return false;
+        }
     }
     true
 }
@@ -764,7 +876,10 @@ fn paths_conflict(a: &[PathStep], b: &[PathStep]) -> bool {
 /// loan is a conflict.
 fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
     matches!(loan_kind, RefKind::Shared)
-        && matches!(access, AccessKind::Read | AccessKind::Borrow(RefKind::Shared))
+        && matches!(
+            access,
+            AccessKind::Read | AccessKind::Borrow(RefKind::Shared)
+        )
 }
 
 /// The pointee's init state after the loan expires (post). Returned as an
@@ -782,24 +897,27 @@ fn loan_post_leaf(kind: &RefKind) -> Option<InitState> {
     }
 }
 
-/// Apply the eager init transition on the loaned place. Called at borrow
-/// creation.
-fn apply_eager_borrow_transition(
-    ctx: &Ctx,
-    kind: &RefKind,
-    place: &Place,
-    state: &mut PointState,
-) {
-    let Some(leaf) = loan_post_leaf(kind) else { return; };
-    apply_write(ctx, place, state, leaf);
+impl<'a> Ctx<'a> {
+    /// Apply the eager init transition on the loaned place. Called at
+    /// borrow creation.
+    fn apply_eager_borrow_transition(&self, kind: &RefKind, place: &Place, state: &mut PointState) {
+        let Some(leaf) = loan_post_leaf(kind) else {
+            return;
+        };
+        self.apply_write(place, state, leaf);
+    }
 }
 
 /// If the assign is `dst_var = move src_var`, returns `src_var`. This is
 /// the pattern where a reference's ref-state and loan should transfer
 /// from src to dst instead of being lost.
 fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<String> {
-    let Place::Var(_) = target else { return None; };
-    let RValue::Use(Operand::Move(Place::Var(src))) = rvalue else { return None; };
+    let Place::Var(_) = target else {
+        return None;
+    };
+    let RValue::Use(Operand::Move(Place::Var(src))) = rvalue else {
+        return None;
+    };
     Some(src.clone())
 }
 
@@ -815,7 +933,9 @@ fn check_loan_conflict(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let Some((access_root, access_path)) = extract_path(place) else { return; };
+    let Some((access_root, access_path)) = extract_path(place) else {
+        return;
+    };
 
     for (borrower, loan) in &state.loans {
         // Ignore the borrower itself — its ref state is a separate slot.
@@ -825,17 +945,30 @@ fn check_loan_conflict(
             // consumption is handled by close_ref_if_present).
             continue;
         }
-        if is_compatible(&loan.kind, &access) { continue; }
+        if is_compatible(&loan.kind, &access) {
+            continue;
+        }
         // Multi-loan: any place in the set may be the actual pointee.
         // Report at most one error per loan (first matching place).
         for loaned in &loan.loaned {
-            let Some((loan_root, loan_path)) = extract_path(loaned) else { continue; };
-            if loan_root != access_root { continue; }
-            if !paths_conflict(&access_path, &loan_path) { continue; }
+            let Some((loan_root, loan_path)) = extract_path(loaned) else {
+                continue;
+            };
+            if loan_root != access_root {
+                continue;
+            }
+            if !paths_conflict(&access_path, &loan_path) {
+                continue;
+            }
             push_error!(
-                d, span, func, block,
+                d,
+                span,
+                func,
+                block,
                 "cannot {} '{}': already borrowed by '{}'",
-                access.describe(), format_path(&access_root, &access_path), borrower
+                access.describe(),
+                format_path(&access_root, &access_path),
+                borrower
             );
             break;
         }
@@ -844,194 +977,244 @@ fn check_loan_conflict(
 
 // ---------- Diagnostic pass ----------
 
-fn check_block(ctx: &Ctx, func: &Function, block: &BasicBlock, state: &mut PointState, d: &mut Diagnostics) {
-    for (stmt, span) in &block.statements {
-        check_and_transfer_stmt(ctx, func, block, stmt, *span, state, d);
+impl<'a> Ctx<'a> {
+    fn check_block(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        state: &mut PointState,
+        d: &mut Diagnostics,
+    ) {
+        for (stmt, span) in &block.statements {
+            self.check_and_transfer_stmt(func, block, stmt, *span, state, d);
+        }
+        self.check_and_transfer_terminator(func, block, state, d);
     }
-    check_and_transfer_terminator(ctx, func, block, state, d);
-}
 
-/// Combined check + transfer. Operands are consumed left-to-right so that a
-/// later operand in the same statement sees the state after prior moves —
-/// this is what makes `call f(move x, copy x)` correctly error on the second
-/// operand.
-fn check_and_transfer_stmt(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    stmt: &Statement,
-    span: Span,
-    state: &mut PointState,
-    d: &mut Diagnostics,
-) {
-    match stmt {
-        Statement::Assign(target, rvalue) => {
-            // Capture ref/loan state to transfer via `move src` BEFORE
-            // eval_rvalue runs (which clears the source entry).
-            let carried = ref_move_source(target, rvalue).map(|src| {
-                (state.refs.get(&src).copied(), state.loans.get(&src).cloned())
-            });
+    /// Combined check + transfer. Operands are consumed left-to-right so that a
+    /// later operand in the same statement sees the state after prior moves —
+    /// this is what makes `call f(move x, copy x)` correctly error on the second
+    /// operand.
+    fn check_and_transfer_stmt(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        stmt: &Statement,
+        span: Span,
+        state: &mut PointState,
+        d: &mut Diagnostics,
+    ) {
+        match stmt {
+            Statement::Assign(target, rvalue) => {
+                // Capture ref/loan state to transfer via `move src` BEFORE
+                // eval_rvalue runs (which clears the source entry).
+                let carried = ref_move_source(target, rvalue).map(|src| {
+                    (
+                        state.refs.get(&src).copied(),
+                        state.loans.get(&src).cloned(),
+                    )
+                });
 
-            eval_rvalue(ctx, func, block, rvalue, span, state, d);
-            check_lhs_downcast(ctx, func, block, target, span, state, d);
+                self.eval_rvalue(func, block, rvalue, span, state, d);
+                self.check_lhs_downcast(func, block, target, span, state, d);
 
-            // Writing to a place while it's borrowed conflicts with
-            // the outstanding loan.
-            check_loan_conflict(func, block, target, AccessKind::Write, span, state, d);
+                // Writing to a place while it's borrowed conflicts with
+                // the outstanding loan.
+                check_loan_conflict(func, block, target, AccessKind::Write, span, state, d);
 
-            // Overwriting a bound ref var is a silent-forget of the
-            // pointee obligation; error unless already fulfilled.
-            close_ref_if_present(ctx, func, block, target, span, state, d);
+                // Overwriting a bound ref var is a silent-forget of the
+                // pointee obligation; error unless already fulfilled.
+                self.close_ref_if_present(func, block, target, span, state, d);
 
-            // Deref-write: transition the ref's pointee state through *r.
-            if matches!(target, Place::Deref(_)) {
-                apply_deref_op(ctx, target, DerefOp::Write, state,
-                    Some((func, block, span, d)));
-            } else {
-                apply_write(ctx, target, state, InitState::Init);
-                // Borrow creation: attach the initial ref state to the
-                // target var (skipped for shared refs — no obligation).
-                if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
-                    if let Some(rs) = RefState::from_kind(kind) {
-                        state.refs.insert(name.clone(), rs);
-                    }
-                    state.loans.insert(
-                        name.clone(),
-                        Loan::single(kind.clone(), place.clone(), span),
+                // Deref-write: transition the ref's pointee state through *r.
+                if matches!(target, Place::Deref(_)) {
+                    self.apply_deref_op(
+                        target,
+                        DerefOp::Write,
+                        state,
+                        Some((func, block, span, d)),
                     );
-                    apply_eager_borrow_transition(ctx, kind, place, state);
-                }
-                // Ref/loan transfer via `dst = move src`.
-                if let (Place::Var(dst), Some((refs, loan))) = (target, carried) {
-                    if let Some(rs) = refs { state.refs.insert(dst.clone(), rs); }
-                    if let Some(l) = loan { state.loans.insert(dst.clone(), l); }
+                } else {
+                    self.apply_write(target, state, InitState::Init);
+                    // Borrow creation: attach the initial ref state to the
+                    // target var (skipped for shared refs — no obligation).
+                    if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
+                        if let Some(rs) = RefState::from_kind(kind) {
+                            state.refs.insert(name.clone(), rs);
+                        }
+                        state.loans.insert(
+                            name.clone(),
+                            Loan::single(kind.clone(), place.clone(), span),
+                        );
+                        self.apply_eager_borrow_transition(kind, place, state);
+                    }
+                    // Ref/loan transfer via `dst = move src`.
+                    if let (Place::Var(dst), Some((refs, loan))) = (target, carried) {
+                        if let Some(rs) = refs {
+                            state.refs.insert(dst.clone(), rs);
+                        }
+                        if let Some(l) = loan {
+                            state.loans.insert(dst.clone(), l);
+                        }
+                    }
                 }
             }
-        }
-        Statement::Call(target, args) => {
-            eval_operand(ctx, func, block, target, span, state, d);
-            for a in args {
-                eval_operand(ctx, func, block, a, span, state, d);
+            Statement::Call(target, args) => {
+                self.eval_operand(func, block, target, span, state, d);
+                for a in args {
+                    self.eval_operand(func, block, a, span, state, d);
+                }
+            }
+            Statement::Drop(place) => {
+                // Read the place, then consume it. Same effect on state as
+                // `move`. The substructural checker (separate pass) is the
+                // one that will require the type to be Drop. For a ref-typed
+                // Var, also verify the pointee obligation before forgetting.
+                self.check_place_read(func, block, place, span, state, d);
+                check_loan_conflict(func, block, place, AccessKind::Move, span, state, d);
+                self.close_ref_if_present(func, block, place, span, state, d);
+                // `drop *r` — consume the pointee, transition r's is_init.
+                self.apply_deref_op(place, DerefOp::Move, state, Some((func, block, span, d)));
+                self.apply_move(place, state);
+            }
+            Statement::Unborrow(place) => {
+                // Explicit end-of-loan. Requires the borrower to be Init
+                // and its (is_init, ends_init) obligation fulfilled — both
+                // checked by close_ref_if_present. Then consume the borrower.
+                self.check_place_read(func, block, place, span, state, d);
+                self.close_ref_if_present(func, block, place, span, state, d);
+                self.apply_move(place, state);
             }
         }
-        Statement::Drop(place) => {
-            // Read the place, then consume it. Same effect on state as
-            // `move`. The substructural checker (separate pass) is the
-            // one that will require the type to be Drop. For a ref-typed
-            // Var, also verify the pointee obligation before forgetting.
-            check_place_read(ctx, func, block, place, span, state, d);
-            check_loan_conflict(func, block, place, AccessKind::Move, span, state, d);
-            close_ref_if_present(ctx, func, block, place, span, state, d);
-            // `drop *r` — consume the pointee, transition r's cur.
-            apply_deref_op(ctx, place, DerefOp::Move, state,
-                Some((func, block, span, d)));
-            apply_move(ctx, place, state);
-        }
-        Statement::Unborrow(place) => {
-            // Explicit end-of-loan. Requires the borrower to be Init
-            // and its (cur, post) obligation fulfilled — both checked
-            // by close_ref_if_present. Then consume the borrower.
-            check_place_read(ctx, func, block, place, span, state, d);
-            close_ref_if_present(ctx, func, block, place, span, state, d);
-            apply_move(ctx, place, state);
+    }
+
+    fn check_and_transfer_terminator(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        state: &mut PointState,
+        d: &mut Diagnostics,
+    ) {
+        let ts = block.terminator_span;
+        match &block.terminator {
+            Terminator::Branch { cond, .. } => self.eval_operand(func, block, cond, ts, state, d),
+            Terminator::SwitchEnum { place, .. } => {
+                // Discriminant read: no move, no consumption.
+                self.check_place_read(func, block, place, ts, state, d);
+                check_loan_conflict(func, block, place, AccessKind::Read, ts, state, d);
+            }
+            _ => {}
         }
     }
-}
 
-fn check_and_transfer_terminator(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    state: &mut PointState,
-    d: &mut Diagnostics,
-) {
-    let ts = block.terminator_span;
-    match &block.terminator {
-        Terminator::Branch { cond, .. } => eval_operand(ctx, func, block, cond, ts, state, d),
-        Terminator::SwitchEnum { place, .. } => {
-            // Discriminant read: no move, no consumption.
-            check_place_read(ctx, func, block, place, ts, state, d);
-            check_loan_conflict(func, block, place, AccessKind::Read, ts, state, d);
-        }
-        _ => {}
-    }
-}
-
-fn eval_rvalue(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    rv: &RValue,
-    span: Span,
-    state: &mut PointState,
-    d: &mut Diagnostics,
-) {
-    match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
-            eval_operand(ctx, func, block, op, span, state, d);
-        }
-        RValue::Ref(kind, place) => {
-            check_borrow_precondition(ctx, func, block, kind, place, span, state, d);
-            check_loan_conflict(func, block, place, AccessKind::Borrow(kind.clone()), span, state, d);
+    fn eval_rvalue(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        rv: &RValue,
+        span: Span,
+        state: &mut PointState,
+        d: &mut Diagnostics,
+    ) {
+        match rv {
+            RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+                self.eval_operand(func, block, op, span, state, d);
+            }
+            RValue::Ref(kind, place) => {
+                self.check_borrow_precondition(func, block, kind, place, span, state, d);
+                check_loan_conflict(
+                    func,
+                    block,
+                    place,
+                    AccessKind::Borrow(kind.clone()),
+                    span,
+                    state,
+                    d,
+                );
+            }
         }
     }
-}
 
-/// Verify that the state of the borrowed place matches the reference kind's
-/// creation-cur:
-///   * `&`, `&mut`, `&drop` require the pointee to be Init.
-///   * `&out`, `&uninit` require the pointee to be uninitialized
-///     (NeverInit or Moved).
-///
-/// The check inspects the leaf state via [`read_at`]; partial and diverged
-/// states at the leaf never match either precondition, so they're rejected
-/// with a clear "not fully X" message.
-fn check_borrow_precondition(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    kind: &RefKind,
-    place: &Place,
-    span: Span,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    let Some((root, path)) = extract_path(place) else { return; };
-    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let Some(root_state) = state.locals.get(&root) else { return; };
-    let leaf = read_at(root_state, &root_ty, &path, ctx.env);
+    /// Verify that the state of the borrowed place matches the reference
+    /// kind's creation-is_init:
+    ///   * `&`, `&mut`, `&drop` require the pointee to be Init.
+    ///   * `&out`, `&uninit` require the pointee to be uninitialized
+    ///     (NeverInit or Moved).
+    ///
+    /// The check inspects the leaf state via [`read_at`]; partial and
+    /// diverged states at the leaf never match either precondition, so
+    /// they're rejected with a clear "not fully X" message.
+    fn check_borrow_precondition(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        kind: &RefKind,
+        place: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root) else {
+            return;
+        };
+        let leaf = read_at(root_state, &root_ty, &path, self.env);
 
-    let (requires_init, kind_str) = match kind {
-        RefKind::Shared => (true,  "&"),
-        RefKind::Mut    => (true,  "&mut"),
-        RefKind::Drop   => (true,  "&drop"),
-        RefKind::Out    => (false, "&out"),
-        RefKind::Uninit => (false, "&uninit"),
-    };
+        let (requires_init, kind_str) = match kind {
+            RefKind::Shared => (true, "&"),
+            RefKind::Mut => (true, "&mut"),
+            RefKind::Drop => (true, "&drop"),
+            RefKind::Out => (false, "&out"),
+            RefKind::Uninit => (false, "&uninit"),
+        };
 
-    let ok = if requires_init {
-        matches!(leaf, InitState::Init)
-    } else {
-        matches!(leaf, InitState::NeverInit | InitState::Moved)
-    };
-    if ok { return; }
+        let ok = if requires_init {
+            matches!(leaf, InitState::Init)
+        } else {
+            matches!(leaf, InitState::NeverInit | InitState::Moved)
+        };
+        if ok {
+            return;
+        }
 
-    let path_str = format_path(&root, &path);
-    let expected = if requires_init { "initialized" } else { "uninitialized" };
-    let actual = describe_state(&leaf);
-    push_error!(
-        d, span, func, block,
-        "cannot create {} of '{}': place must be {} at borrow, but is {}",
-        kind_str, path_str, expected, actual
-    );
+        let path_str = format_path(&root, &path);
+        let expected = if requires_init {
+            "initialized"
+        } else {
+            "uninitialized"
+        };
+        let actual = describe_state(&leaf);
+        push_error!(
+            d,
+            span,
+            func,
+            block,
+            "cannot create {} of '{}': place must be {} at borrow, but is {}",
+            kind_str,
+            path_str,
+            expected,
+            actual
+        );
+    }
 }
 
 fn format_path(root: &str, path: &[PathStep]) -> String {
     let mut s = String::from(root);
     for step in path {
         match step {
-            PathStep::Field(f) => { s.push('.'); s.push_str(f); }
-            PathStep::Downcast(v) => { s.push_str(" as "); s.push_str(v); }
+            PathStep::Field(f) => {
+                s.push('.');
+                s.push_str(f);
+            }
+            PathStep::Downcast(v) => {
+                s.push_str(" as ");
+                s.push_str(v);
+            }
         }
     }
     s
@@ -1047,110 +1230,133 @@ fn describe_state(s: &InitState) -> &'static str {
     }
 }
 
-fn eval_operand(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    op: &Operand,
-    span: Span,
-    state: &mut PointState,
-    d: &mut Diagnostics,
-) {
-    check_operand_read(ctx, func, block, op, span, state, d);
-    // Deref-op transitions for *r in operand position.
-    match op {
-        Operand::Copy(place) => {
-            apply_deref_op(ctx, place, DerefOp::Read, state,
-                Some((func, block, span, d)));
+impl<'a> Ctx<'a> {
+    fn eval_operand(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        op: &Operand,
+        span: Span,
+        state: &mut PointState,
+        d: &mut Diagnostics,
+    ) {
+        self.check_operand_read(func, block, op, span, state, d);
+        // Deref-op transitions for *r in operand position.
+        match op {
+            Operand::Copy(place) => {
+                self.apply_deref_op(place, DerefOp::Read, state, Some((func, block, span, d)));
+            }
+            Operand::Move(place) => {
+                self.apply_deref_op(place, DerefOp::Move, state, Some((func, block, span, d)));
+            }
+            Operand::Const(_) => {}
         }
-        Operand::Move(place) => {
-            apply_deref_op(ctx, place, DerefOp::Move, state,
-                Some((func, block, span, d)));
+        self.apply_operand_move(op, state);
+    }
+
+    fn check_operand_read(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        op: &Operand,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let (place, access) = match op {
+            Operand::Copy(p) => (p, AccessKind::Read),
+            Operand::Move(p) => (p, AccessKind::Move),
+            Operand::Const(_) => return,
+        };
+        self.check_place_read(func, block, place, span, state, d);
+        check_loan_conflict(func, block, place, access, span, state, d);
+    }
+
+    /// If the LHS path contains a `Downcast`, the enum being downcast must be
+    /// `Init` at that point — you can't refine an uninitialized enum by writing
+    /// through a variant projection. Enum construction goes via `Name::V(...)`.
+    fn check_lhs_downcast(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        place: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(idx) = path.iter().position(|s| matches!(s, PathStep::Downcast(_))) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root) else {
+            return;
+        };
+        let prefix_state = read_at(root_state, &root_ty, &path[..idx], self.env);
+        if !matches!(prefix_state, InitState::Init) {
+            push_error!(
+                d,
+                span,
+                func,
+                block,
+                "cannot write through variant projection: '{}' is not initialized here",
+                root
+            );
         }
-        Operand::Const(_) => {}
     }
-    apply_operand_move(ctx, op, state);
-}
 
-fn check_operand_read(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    op: &Operand,
-    span: Span,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    let (place, access) = match op {
-        Operand::Copy(p) => (p, AccessKind::Read),
-        Operand::Move(p) => (p, AccessKind::Move),
-        Operand::Const(_) => return,
-    };
-    check_place_read(ctx, func, block, place, span, state, d);
-    check_loan_conflict(func, block, place, access, span, state, d);
-}
-
-/// If the LHS path contains a `Downcast`, the enum being downcast must be
-/// `Init` at that point — you can't refine an uninitialized enum by writing
-/// through a variant projection. Enum construction goes via `Name::V(...)`.
-fn check_lhs_downcast(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    place: &Place,
-    span: Span,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    let Some((root, path)) = extract_path(place) else { return; };
-    let Some(idx) = path.iter().position(|s| matches!(s, PathStep::Downcast(_))) else { return; };
-    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let Some(root_state) = state.locals.get(&root) else { return; };
-    let prefix_state = read_at(root_state, &root_ty, &path[..idx], ctx.env);
-    if !matches!(prefix_state, InitState::Init) {
-        push_error!(
-            d, span, func, block,
-            "cannot write through variant projection: '{}' is not initialized here", root
-        );
+    fn check_place_read(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        place: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root) else {
+            return;
+        };
+        let leaf = read_at(root_state, &root_ty, &path, self.env);
+        match leaf {
+            InitState::Init => {}
+            InitState::NeverInit => push_error!(
+                d, span, func, block,
+                "variable '{}' is used before initialization", root
+            ),
+            InitState::Moved => push_error!(
+                d, span, func, block,
+                "variable '{}' is used after move", root
+            ),
+            InitState::Diverged => push_error!(
+                d, span, func, block,
+                "variable '{}' may be used before initialization or after move (state inconsistent across paths)", root
+            ),
+            InitState::Partial(_) => push_error!(
+                d, span, func, block,
+                "variable '{}' is not fully initialized here", root
+            ),
+        }
     }
 }
 
-fn check_place_read(
-    ctx: &Ctx,
-    func: &Function,
-    block: &BasicBlock,
-    place: &Place,
-    span: Span,
-    state: &PointState,
-    d: &mut Diagnostics,
-) {
-    let Some((root, path)) = extract_path(place) else { return; };
-    let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let Some(root_state) = state.locals.get(&root) else { return; };
-    let leaf = read_at(root_state, &root_ty, &path, ctx.env);
-    match leaf {
-        InitState::Init => {}
-        InitState::NeverInit => push_error!(
-            d, span, func, block,
-            "variable '{}' is used before initialization", root
-        ),
-        InitState::Moved => push_error!(
-            d, span, func, block,
-            "variable '{}' is used after move", root
-        ),
-        InitState::Diverged => push_error!(
-            d, span, func, block,
-            "variable '{}' may be used before initialization or after move (state inconsistent across paths)", root
-        ),
-        InitState::Partial(_) => push_error!(
-            d, span, func, block,
-            "variable '{}' is not fully initialized here", root
-        ),
-    }
-}
-
-#[cfg(test)] mod tests_lifecycle;
-#[cfg(test)] mod tests_borrows;
-#[cfg(test)] mod tests_loans;
-#[cfg(test)] mod tests_unborrow;
-#[cfg(test)] mod tests_cfg_shapes;
+#[cfg(test)]
+mod tests_borrows;
+#[cfg(test)]
+mod tests_cfg_shapes;
+#[cfg(test)]
+mod tests_lifecycle;
+#[cfg(test)]
+mod tests_loans;
+#[cfg(test)]
+mod tests_unborrow;
