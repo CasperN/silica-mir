@@ -7,11 +7,12 @@
 //!   * Forward: state at block entry (before the first statement).
 //!   * Backward: state at block exit (after the terminator).
 //!
-//! Callers that need per-statement states re-walk each block from its
-//! recorded start state using the same transfer functions. Diagnostic
-//! emission is not part of the framework — passes typically compute the
-//! fixed point silently, then re-walk with a diagnostic-emitting
-//! variant.
+//! Diagnostic emission is not part of the framework — passes typically
+//! compute the fixed point silently, then re-walk each block starting
+//! from the recorded state to emit diagnostics. For Forward analyses
+//! whose diagnostic walk fits the "check preconditions at a program
+//! point, then advance" shape, `walk_forward` supplies the loop so
+//! the pass only writes the visitor.
 //!
 //! The fixpoint terminates provided the state lattice has finite height
 //! along each ascending chain (the standard requirement).
@@ -69,6 +70,75 @@ pub fn run<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::State> 
     match analysis.direction() {
         Direction::Forward => run_forward(analysis, body),
         Direction::Backward => run_backward(analysis, body),
+    }
+}
+
+/// A program point visited by [`walk_forward`].
+pub enum WalkPoint<'a, S> {
+    /// State just before `stmt` runs, in a forward walk.
+    Stmt {
+        state: &'a S,
+        block: &'a BasicBlock,
+        stmt: &'a Statement,
+        span: Span,
+    },
+    /// State just before the terminator runs, in a forward walk.
+    Terminator {
+        state: &'a S,
+        block: &'a BasicBlock,
+        term: &'a Terminator,
+        span: Span,
+    },
+}
+
+/// Second-pass helper for Forward analyses. Walks each block (skipping
+/// unreachable ones — i.e. those absent from `results`) starting from its
+/// recorded entry state, calling `visit` at each program point BEFORE the
+/// corresponding transfer runs, then advancing state via
+/// `transfer_stmt` / `transfer_terminator`.
+///
+/// Passes whose diagnostics can be expressed as "check preconditions at
+/// each program point, then advance" (e.g. `variant_flow`) can call this
+/// instead of writing their own walk loop. Passes with finer-grained
+/// interleaving of check and transfer (e.g. `init_state`, whose Call
+/// handling checks operand N against state after operand N-1's move)
+/// still write their own walk.
+///
+/// Backward walks are more subtle (state at exit vs. entry, reversed
+/// iteration) and are intentionally not offered here; add a walker for
+/// them when a real consumer needs one.
+pub fn walk_forward<A, F>(
+    analysis: &A,
+    body: &FunctionBody,
+    results: &Results<A::State>,
+    mut visit: F,
+) where
+    A: Analysis,
+    F: FnMut(WalkPoint<'_, A::State>),
+{
+    assert!(
+        matches!(analysis.direction(), Direction::Forward),
+        "walk_forward requires a Forward analysis"
+    );
+    for block in &body.blocks {
+        let Some(entry) = results.get(&block.label) else { continue; };
+        let mut state = entry.clone();
+        for (stmt, span) in &block.statements {
+            visit(WalkPoint::Stmt {
+                state: &state,
+                block,
+                stmt,
+                span: *span,
+            });
+            analysis.transfer_stmt(&mut state, stmt);
+        }
+        visit(WalkPoint::Terminator {
+            state: &state,
+            block,
+            term: &block.terminator,
+            span: block.terminator_span,
+        });
+        analysis.transfer_terminator(&mut state, &block.terminator);
     }
 }
 
@@ -353,6 +423,74 @@ mod tests {
         let body = FunctionBody { locals: vec![], blocks: vec![] };
         let r = run(&AssignedVars, &body);
         assert!(r.is_empty());
+    }
+
+    // ---------- walk_forward ----------
+
+    #[test]
+    fn walk_forward_visits_program_points_in_order_with_pre_transfer_state() {
+        // Two-branch program: entry writes x, t writes y, fbr writes z, merge
+        // reads them. Walk collects (block_label, kind, state_size) at each
+        // point. State observed before a stmt/terminator should be the
+        // pre-transfer state.
+        let body = body_of(
+            "
+            fn f(a: boolean) {
+              x: number;
+              y: number;
+              z: number;
+              entry:
+                x = 1;
+                branch(copy a) [true: t, false: fbr]
+              t:
+                y = 2;
+                goto merge
+              fbr:
+                z = 3;
+                goto merge
+              merge:
+                return
+            }
+            ",
+        );
+        let results = run(&AssignedVars, &body);
+
+        // Collect (label, kind, seen-vars) triples in visit order.
+        let mut trace: Vec<(String, &'static str, BTreeSet<String>)> = Vec::new();
+        walk_forward(&AssignedVars, &body, &results, |pt| match pt {
+            WalkPoint::Stmt { state, block, .. } => {
+                trace.push((block.label.clone(), "stmt", state.clone()));
+            }
+            WalkPoint::Terminator { state, block, .. } => {
+                trace.push((block.label.clone(), "term", state.clone()));
+            }
+        });
+
+        let expect: BTreeSet<String> =
+            ["x".to_string(), "y".to_string(), "z".to_string()].into_iter().collect();
+        // entry: stmt `x = 1` sees {}, then terminator sees {x}.
+        assert_eq!(trace[0].0, "entry"); assert_eq!(trace[0].1, "stmt");
+        assert!(trace[0].2.is_empty());
+        assert_eq!(trace[1].0, "entry"); assert_eq!(trace[1].1, "term");
+        assert_eq!(trace[1].2, ["x".to_string()].into_iter().collect());
+        // At merge, only the terminator is visited (no stmts); state carries
+        // the join {x, y, z}.
+        let merge_term = trace.iter().find(|(b, k, _)| b == "merge" && *k == "term").unwrap();
+        assert_eq!(merge_term.2, expect);
+    }
+
+    #[test]
+    fn walk_forward_skips_unreachable_blocks() {
+        // `dead` has no predecessor; it should not be visited.
+        let body = body_of("fn f() { entry: return dead: return }");
+        let results = run(&AssignedVars, &body);
+        let mut visited: BTreeSet<String> = BTreeSet::new();
+        walk_forward(&AssignedVars, &body, &results, |pt| match pt {
+            WalkPoint::Stmt { block, .. } => { visited.insert(block.label.clone()); }
+            WalkPoint::Terminator { block, .. } => { visited.insert(block.label.clone()); }
+        });
+        assert!(visited.contains("entry"));
+        assert!(!visited.contains("dead"));
     }
 }
 

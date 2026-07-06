@@ -19,7 +19,7 @@
 //! see what the borrower does.
 
 use crate::ast::*;
-use crate::dataflow::{self, Analysis, Direction};
+use crate::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::diagnostics::Diagnostics;
 use crate::type_check::{Env, TypeDecl};
 use crate::{push_error, push_warning};
@@ -70,22 +70,20 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let locals = func.locals_map();
     let entry_states = dataflow::run(&VariantFlow, body);
 
-    for block in &body.blocks {
-        // Unvisited (dead) blocks: skip entirely. Their state is ⊥ so every
-        // arm is trivially "provably unreachable" and the whole switch is
-        // vacuous; noisy to complain.
-        let Some(entry) = entry_states.get(&block.label) else { continue; };
-
-        let mut state = entry.clone();
-        for (stmt, span) in &block.statements {
-            check_places_in_stmt(env, func, &locals, block, stmt, *span, &state, d);
-            transfer_stmt(stmt, &mut state);
+    // `check_switch` needs the whole `body` for target-block lookups; the
+    // walker only surfaces the current block, so we do the switch check in
+    // a separate pass alongside the per-point downcast refinement.
+    dataflow::walk_forward(&VariantFlow, body, &entry_states, |pt| match pt {
+        WalkPoint::Stmt { state, block, stmt, span } => {
+            check_places_in_stmt(env, func, &locals, block, stmt, span, state, d);
         }
-        check_places_in_terminator(env, func, &locals, block, &state, d);
-        if let Terminator::SwitchEnum { place, cases } = &block.terminator {
-            check_switch(env, func, body, &locals, block, place, cases, &state, d);
+        WalkPoint::Terminator { state, block, .. } => {
+            check_places_in_terminator(env, func, &locals, block, state, d);
+            if let Terminator::SwitchEnum { place, cases } = &block.terminator {
+                check_switch(env, func, body, &locals, block, place, cases, state, d);
+            }
         }
-    }
+    });
 }
 
 /// Strict Var-only extraction. Unlike `ast::extract_path`, this returns
