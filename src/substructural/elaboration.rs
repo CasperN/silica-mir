@@ -60,16 +60,26 @@ pub fn elaborate(program: &mut Program, env: &Env) {
 
     // Phase 2 (mutable): apply planned insertions to `program`.
     for decl in &mut program.declarations {
-        let Declaration::Fn(func) = decl else { continue; };
-        let Some(fn_plans) = plans.get(&func.name) else { continue; };
-        let Some(body) = &mut func.body else { continue; };
+        let Declaration::Fn(func) = decl else {
+            continue;
+        };
+        let Some(fn_plans) = plans.get(&func.name) else {
+            continue;
+        };
+        let Some(body) = &mut func.body else {
+            continue;
+        };
         for block in &mut body.blocks {
-            let Some(drops) = fn_plans.get(&block.label) else { continue; };
+            let Some(drops) = fn_plans.get(&block.label) else {
+                continue;
+            };
             // Use the terminator's span as the synthetic span for inserted
             // drops — points the user at the return they're associated with.
             let span = block.terminator_span;
             for place in drops {
-                block.statements.push((Statement::Drop(place.clone()), span));
+                block
+                    .statements
+                    .push((Statement::Drop(place.clone()), span));
             }
         }
     }
@@ -89,12 +99,16 @@ fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env) -> Vec<P
 
     let mut drops = Vec::new();
     for (name, ty) in order.iter().rev() {
-        let Some(s) = state.locals.get(name) else { continue; };
+        let Some(s) = state.locals.get(name) else {
+            continue;
+        };
         // Refs with unfulfilled obligations must NOT be dropped: doing so
         // would silently violate their (cur, post). Skip; the leak check
         // will surface the missing consumption.
         if let Some(rs) = state.refs.get(name) {
-            if !rs.obligation_fulfilled() { continue; }
+            if !rs.obligation_fulfilled() {
+                continue;
+            }
         }
         plan_drops_for_place(Place::Var(name.clone()), ty, s, env, &mut drops);
     }
@@ -124,13 +138,17 @@ fn plan_drops_for_place(
         }
         InitState::Partial(fields) => {
             // Reverse declared field order = LIFO for that container.
-            let Type::Custom(struct_name) = ty else { return; };
+            let Type::Custom(struct_name) = ty else {
+                return;
+            };
             let field_decls = match env.types.get(struct_name) {
                 Some(crate::type_check::TypeDecl::Struct(s)) => &s.fields,
                 _ => return,
             };
             for f in field_decls.iter().rev() {
-                let Some(field_state) = fields.get(&f.name) else { continue; };
+                let Some(field_state) = fields.get(&f.name) else {
+                    continue;
+                };
                 let field_place = Place::Field(Box::new(place.clone()), f.name.clone());
                 plan_drops_for_place(field_place, &f.ty, field_state, env, out);
             }
@@ -183,13 +201,19 @@ mod tests {
         let env = type_check::Env::build(&program, &mut d);
         env.typecheck(&mut d);
         check_return_leaks(&env, &mut d);
-        let leak_errs: Vec<&String> = d.errors.iter()
+        let leak_errs: Vec<&String> = d
+            .errors
+            .iter()
             .filter(|e| e.contains("not consumed at return"))
             .collect();
         assert!(
             leak_errs.is_empty(),
             "expected no leaks after elaboration; got:\n  {}",
-            leak_errs.iter().map(|s| s.as_str()).collect::<Vec<_>>().join("\n  ")
+            leak_errs
+                .iter()
+                .map(|s| s.as_str())
+                .collect::<Vec<_>>()
+                .join("\n  ")
         );
     }
 
@@ -471,10 +495,7 @@ fn f(b: boolean) {
 
     #[test]
     fn extern_function_untouched() {
-        assert_elaborated_eq(
-            "extern fn f(x: number);",
-            "extern fn f(x: number);",
-        );
+        assert_elaborated_eq("extern fn f(x: number);", "extern fn f(x: number);");
     }
 
     #[test]
@@ -724,9 +745,7 @@ fn f(x: number) {
 
     #[test]
     fn strict_check_passes_after_elaboration_simple() {
-        assert_strict_clean_after_elaboration(
-            "fn f(x: number) { entry: return }",
-        );
+        assert_strict_clean_after_elaboration("fn f(x: number) { entry: return }");
     }
 
     #[test]
@@ -748,9 +767,7 @@ fn f(x: number) {
     #[test]
     fn strict_check_passes_after_elaboration_with_shared_ref() {
         // `&T` is Copy Drop — elaboration should insert a drop for it.
-        assert_strict_clean_after_elaboration(
-            "fn f(r: &number) { entry: return }",
-        );
+        assert_strict_clean_after_elaboration("fn f(r: &number) { entry: return }");
     }
 
     #[test]
@@ -776,9 +793,7 @@ fn f(x: number) {
     #[test]
     fn strict_check_passes_after_elaboration_with_mut_ref() {
         // `&mut T` is Drop (not Copy). Elaboration inserts a drop.
-        assert_strict_clean_after_elaboration(
-            "fn f(r: &mut number) { entry: return }",
-        );
+        assert_strict_clean_after_elaboration("fn f(r: &mut number) { entry: return }");
     }
 
     #[test]
@@ -987,7 +1002,9 @@ fn f() {
         check_return_leaks(&env2, &mut d2);
 
         assert!(
-            d2.errors.iter().any(|e| e.contains("value 'x'") && e.contains("not consumed")),
+            d2.errors
+                .iter()
+                .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
             "expected linear leak to survive elaboration; got: {:?}",
             d2.errors
         );

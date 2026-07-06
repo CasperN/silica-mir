@@ -20,8 +20,8 @@
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::init_state::{self, InitState, PointState};
-use crate::substructural::composition::class_of;
 use crate::push_error;
+use crate::substructural::composition::class_of;
 use crate::type_check::Env;
 use indexmap::IndexMap;
 
@@ -34,7 +34,9 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else { return; };
+    let Some(body) = &func.body else {
+        return;
+    };
     let locals = func.locals_map();
     for block in &body.blocks {
         for (stmt, span) in &block.statements {
@@ -62,7 +64,9 @@ fn check_stmt(
             }
         }
         Statement::Drop(place) => {
-            let Ok(ty) = env.infer_place_type(place, locals) else { return; };
+            let Ok(ty) = env.infer_place_type(place, locals) else {
+                return;
+            };
             let c = class_of(&ty, env);
             if !c.drop {
                 push_error!(d, span, func, block, "cannot drop non-Drop type {:?}", ty);
@@ -103,7 +107,9 @@ fn check_operand(
     d: &mut Diagnostics,
 ) {
     if let Operand::Copy(place) = op {
-        let Ok(ty) = env.infer_place_type(place, locals) else { return; };
+        let Ok(ty) = env.infer_place_type(place, locals) else {
+            return;
+        };
         let c = class_of(&ty, env);
         if !c.copy {
             push_error!(d, span, func, block, "cannot copy non-Copy type {:?}", ty);
@@ -132,7 +138,9 @@ fn check_terminator(
 /// is reported as a leak — this is the "strict" post-elaboration check.
 pub fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
-        if f.body.is_none() { continue; }
+        if f.body.is_none() {
+            continue;
+        }
         let locals = f.locals_map();
         for (block, state) in init_state::states_before_returns(env, f) {
             check_leaks_in_state(env, f, block, &locals, &state, d);
@@ -149,19 +157,27 @@ fn check_leaks_in_state(
     d: &mut Diagnostics,
 ) {
     for (var, s) in &state.locals {
-        let Some(ty) = locals.get(var) else { continue; };
+        let Some(ty) = locals.get(var) else {
+            continue;
+        };
         // Reference-typed vars: their expiry rule is (cur, post) checked
         // separately below. Skip the linear-leak scan to avoid double
         // reporting.
-        if state.refs.contains_key(var) { continue; }
+        if state.refs.contains_key(var) {
+            continue;
+        }
         let mut path = vec![var.clone()];
         let mut leaks = Vec::new();
         find_leaks(env, s, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
             push_error!(
-                d, block.terminator_span, func, block,
+                d,
+                block.terminator_span,
+                func,
+                block,
                 "value '{}' of type {:?} is not consumed at return",
-                leaked_path, leaked_ty
+                leaked_path,
+                leaked_ty
             );
         }
     }
@@ -169,8 +185,12 @@ fn check_leaks_in_state(
     // Reference obligations: any ref var whose is_init != ends_init at
     // return leaks — the loan wasn't discharged.
     for (var, rs) in &state.refs {
-        if rs.obligation_fulfilled() { continue; }
-        let Some(ty) = locals.get(var) else { continue; };
+        if rs.obligation_fulfilled() {
+            continue;
+        }
+        let Some(ty) = locals.get(var) else {
+            continue;
+        };
         push_error!(
             d, block.terminator_span, func, block,
             "reference '{}' of type {:?} has unfulfilled obligation at return (is_init={}, ends_init={})",
@@ -197,7 +217,9 @@ fn find_leaks(
         }
         InitState::Partial(fields) => {
             for (field_name, field_state) in fields {
-                let Some(field_ty) = env.field_type(ty, field_name) else { continue; };
+                let Some(field_ty) = env.field_type(ty, field_name) else {
+                    continue;
+                };
                 path.push(field_name.clone());
                 find_leaks(env, field_state, &field_ty, path, out);
                 path.pop();
@@ -497,7 +519,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn scalar_param_untouched_is_lenient_ok() {
         // number is Copy Drop; leaving it Init at return is permitted under
@@ -737,8 +758,7 @@ mod tests {
 
     #[test]
     fn multiple_returns_each_checked() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             struct Linear { r: &out number }
             fn f(b: boolean, x: Linear) {
               entry:
@@ -746,8 +766,7 @@ mod tests {
               t: return
               fbr: return
             }
-            ",
-        );
+            ");
         let leak_errs: Vec<_> = errs
             .iter()
             .filter(|e| e.contains("is not consumed at return"))
@@ -759,10 +778,10 @@ mod tests {
     fn direct_leak_check_flags_pre_elaboration_drop_leak() {
         // Invoking check_return_leaks on a NON-elaborated program: any Init
         // at return is a leak because nothing has inserted drops yet.
+        use super::check_return_leaks;
         use crate::diagnostics::Diagnostics;
         use crate::parser::Parser;
         use crate::type_check;
-        use super::check_return_leaks;
 
         let src = "fn f(x: number) { entry: return }";
         let program = Parser::new(src.to_string()).parse().unwrap();
@@ -770,7 +789,9 @@ mod tests {
         let env = type_check::Env::build(&program, &mut d);
         check_return_leaks(&env, &mut d);
         assert!(
-            d.errors.iter().any(|e| e.contains("value 'x'") && e.contains("not consumed")),
+            d.errors
+                .iter()
+                .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
             "expected leak error, got {:?}",
             d.errors
         );
@@ -778,20 +799,25 @@ mod tests {
 
     #[test]
     fn direct_leak_check_ok_when_explicitly_dropped() {
+        use super::check_return_leaks;
         use crate::diagnostics::Diagnostics;
         use crate::parser::Parser;
         use crate::type_check;
-        use super::check_return_leaks;
 
         let src = "fn f(x: number) { entry: drop x; return }";
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program, &mut d);
         check_return_leaks(&env, &mut d);
-        let leak_errs: Vec<_> = d.errors
+        let leak_errs: Vec<_> = d
+            .errors
             .iter()
             .filter(|e| e.contains("not consumed at return"))
             .collect();
-        assert!(leak_errs.is_empty(), "expected no leaks, got {:?}", d.errors);
+        assert!(
+            leak_errs.is_empty(),
+            "expected no leaks, got {:?}",
+            d.errors
+        );
     }
 }

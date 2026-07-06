@@ -17,8 +17,7 @@ use crate::test_util::*;
 
 #[test]
 fn mut_loan_blocks_direct_write() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(x: number) {
           r: &mut number;
@@ -28,18 +27,13 @@ fn mut_loan_blocks_direct_write() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot write to 'x': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'x': already borrowed by 'r'"]);
 }
 
 #[test]
 fn mut_loan_blocks_direct_read() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(x: number) {
           r: &mut number;
@@ -50,18 +44,13 @@ fn mut_loan_blocks_direct_read() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot read 'x': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot read 'x': already borrowed by 'r'"]);
 }
 
 #[test]
 fn mut_loan_blocks_direct_move() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         extern fn use_num(y: number);
         fn f(x: number) {
@@ -72,12 +61,8 @@ fn mut_loan_blocks_direct_move() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot move from 'x': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot move from 'x': already borrowed by 'r'"]);
 }
 
 // === Shared loans permit reads and shared reborrows ===
@@ -116,8 +101,7 @@ fn shared_loan_permits_shared_reborrow_ok() {
 
 #[test]
 fn shared_loan_blocks_write() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           r: &number;
           entry:
@@ -125,18 +109,13 @@ fn shared_loan_blocks_write() {
             x = 1;
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot write to 'x': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'x': already borrowed by 'r'"]);
 }
 
 #[test]
 fn shared_loan_blocks_move() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn take(y: number);
         fn f(x: number) {
           r: &number;
@@ -145,18 +124,13 @@ fn shared_loan_blocks_move() {
             call take(move x);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot move from 'x': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot move from 'x': already borrowed by 'r'"]);
 }
 
 #[test]
 fn shared_loan_blocks_mut_reborrow() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           r: &number;
           s: &mut number;
@@ -165,8 +139,7 @@ fn shared_loan_blocks_mut_reborrow() {
             s = &mut x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot borrow as &mut 'x': already borrowed by 'r'"],
@@ -175,8 +148,7 @@ fn shared_loan_blocks_mut_reborrow() {
 
 #[test]
 fn mut_loan_blocks_shared_reborrow() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(x: number) {
           r: &mut number;
@@ -187,18 +159,13 @@ fn mut_loan_blocks_shared_reborrow() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot borrow as & 'x': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot borrow as & 'x': already borrowed by 'r'"]);
 }
 
 #[test]
 fn mut_loan_blocks_mut_reborrow() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(x: number) {
           r: &mut number;
@@ -209,8 +176,7 @@ fn mut_loan_blocks_mut_reborrow() {
             call sink(move r);
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot borrow as &mut 'x': already borrowed by 'r'"],
@@ -259,8 +225,7 @@ fn disjoint_field_borrows_ok() {
 
 #[test]
 fn same_field_borrow_conflicts() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Copy Drop P { a: number b: number }
         extern fn sink(r: &mut number);
         fn f(p: P) {
@@ -272,20 +237,15 @@ fn same_field_borrow_conflicts() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot read 'p.a': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot read 'p.a': already borrowed by 'r'"]);
 }
 
 #[test]
 fn access_to_parent_of_borrowed_field_conflicts() {
     // Borrowing a field freezes the whole path from that field
     // upward — moving the parent p would move the borrowed field.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Copy Drop P { a: number b: number }
         extern fn sink(r: &mut number);
         extern fn takep(p: P);
@@ -297,12 +257,8 @@ fn access_to_parent_of_borrowed_field_conflicts() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot move from 'p': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot move from 'p': already borrowed by 'r'"]);
 }
 
 // === Access through borrower still allowed ===
@@ -345,8 +301,7 @@ fn ref_transfer_carries_obligation_ok() {
 #[test]
 fn ref_transfer_leaves_source_moved_error_on_reuse() {
     // After transfer, x is Moved — can't use it again.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &out number);
         fn f(x: &out number) {
           z: &out number;
@@ -356,8 +311,7 @@ fn ref_transfer_leaves_source_moved_error_on_reuse() {
             call sink(move x);
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used after move"]);
 }
 
@@ -365,8 +319,7 @@ fn ref_transfer_leaves_source_moved_error_on_reuse() {
 fn ref_transfer_preserves_loan_conflict() {
     // Local borrower r loans a. Transfer r to s. s still loans a;
     // direct access to a should still conflict.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(a: number) {
           r: &mut number;
@@ -378,12 +331,8 @@ fn ref_transfer_preserves_loan_conflict() {
             call sink(move s);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot write to 'a': already borrowed by 's'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'a': already borrowed by 's'"]);
 }
 
 #[test]
@@ -392,8 +341,7 @@ fn branch_of_ref_moves_both_params_leak() {
     // depends on b. In each branch we init only one of them via z,
     // so the OTHER is a leak (its &out obligation is unmet on that
     // path). This program should be rejected.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: &out number, y: &out number, b: boolean) {
           z: &out number;
           entry:
@@ -409,22 +357,21 @@ fn branch_of_ref_moves_both_params_leak() {
           end:
             return
         }
-        ",
-    );
+        ");
     // In `t`, y is untouched — unfulfilled obligation.
     // In `fbr`, x is untouched — unfulfilled obligation.
     // Both branches merge into `end` where refs are dropped from
     // the join (each side has different entries) but the linear-
     // leak scan catches Diverged params.
-    let has_leak = errs.iter().any(|e| e.contains("not consumed at return")
-        || e.contains("has unfulfilled obligation at return"));
+    let has_leak = errs.iter().any(|e| {
+        e.contains("not consumed at return") || e.contains("has unfulfilled obligation at return")
+    });
     assert!(
         has_leak,
         "expected some kind of leak/obligation error, got: {:?}",
         errs
     );
 }
-
 
 // ---------- Multi-loan (branch of borrows) ----------
 
@@ -460,8 +407,7 @@ fn multi_loan_branch_of_borrows_a_or_b_ok() {
 fn multi_loan_conflict_on_a_after_join() {
     // After the merge, r loans {a, b}. Writing directly to `a` is
     // a conflict — r may loan a.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(a: number, b: number, c: boolean) {
           r: &mut number;
@@ -478,18 +424,13 @@ fn multi_loan_conflict_on_a_after_join() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot write to 'a': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'a': already borrowed by 'r'"]);
 }
 
 #[test]
 fn multi_loan_conflict_on_b_after_join() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(a: number, b: number, c: boolean) {
           r: &mut number;
@@ -506,12 +447,8 @@ fn multi_loan_conflict_on_b_after_join() {
             call sink(move r);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["cannot write to 'b': already borrowed by 'r'"],
-    );
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'b': already borrowed by 'r'"]);
 }
 
 #[test]
@@ -539,4 +476,3 @@ fn multi_loan_disjoint_third_place_ok() {
         ",
     );
 }
-

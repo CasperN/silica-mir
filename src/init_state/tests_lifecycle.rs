@@ -39,8 +39,7 @@ fn write_then_read_ok() {
 
 #[test]
 fn read_of_uninit_local_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           x: number;
           y: number;
@@ -48,15 +47,13 @@ fn read_of_uninit_local_error() {
             y = copy x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used before initialization"]);
 }
 
 #[test]
 fn read_after_move_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           y: number;
           z: number;
@@ -65,15 +62,13 @@ fn read_after_move_error() {
             z = copy x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used after move"]);
 }
 
 #[test]
 fn join_disagreement_produces_diverged_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(b: boolean) {
           x: number;
           y: number;
@@ -88,8 +83,7 @@ fn join_disagreement_produces_diverged_error() {
             y = copy x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' may be used before initialization"]);
 }
 
@@ -119,8 +113,7 @@ fn field_writes_complete_init_ok() {
 fn partial_field_write_leaves_root_partial_error() {
     // Only one field written; the whole struct is not fully init and
     // reading it errors.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct P { x: number y: number }
         fn f() {
           p: P;
@@ -130,16 +123,14 @@ fn partial_field_write_leaves_root_partial_error() {
             q = copy p;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'p' is not fully initialized here"]);
 }
 
 #[test]
 fn read_uninit_field_of_partial_struct_error() {
     // Field-granular: writing p.x doesn't init p.y — reading p.y errors.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct P { x: number y: number }
         fn f() {
           p: P;
@@ -149,8 +140,7 @@ fn read_uninit_field_of_partial_struct_error() {
             a = copy p.y;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'p' is used before initialization"]);
 }
 
@@ -176,8 +166,7 @@ fn move_of_field_leaves_other_fields_init_ok() {
 
 #[test]
 fn move_of_field_then_read_that_field_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct P { x: number y: number }
         fn f(p: P) {
           a: number;
@@ -187,8 +176,7 @@ fn move_of_field_then_read_that_field_error() {
             b = copy p.x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'p' is used after move"]);
 }
 
@@ -216,8 +204,7 @@ fn nested_field_writes_complete_init_ok() {
 
 #[test]
 fn nested_partial_read_of_uninit_inner_field_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Inner { a: number b: number }
         struct Outer { i: Inner c: number }
         fn f() {
@@ -229,8 +216,7 @@ fn nested_partial_read_of_uninit_inner_field_error() {
             n = copy o.i.b;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'o' is used before initialization"]);
 }
 
@@ -304,8 +290,7 @@ fn aborting_predecessor_doesnt_pollute_join() {
 
 #[test]
 fn branch_reads_cond() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           b: boolean;
           entry:
@@ -313,15 +298,13 @@ fn branch_reads_cond() {
           t: return
           fbr: return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'b' is used before initialization"]);
 }
 
 #[test]
 fn switch_enum_reads_place() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         enum Copy Drop Option { None: unit Some: number }
         fn f() {
           o: Option;
@@ -330,8 +313,7 @@ fn switch_enum_reads_place() {
           end:
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'o' is used before initialization"]);
 }
 
@@ -339,8 +321,7 @@ fn switch_enum_reads_place() {
 
 #[test]
 fn downcast_read_checks_root_var() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         enum Copy Drop Option { None: unit Some: number }
         fn f() {
           o: Option;
@@ -349,8 +330,7 @@ fn downcast_read_checks_root_var() {
             a = copy o as Some;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'o' is used before initialization"]);
 }
 
@@ -393,8 +373,7 @@ fn downcast_write_on_init_enum_ok() {
 fn downcast_write_on_uninit_enum_error() {
     // Enum construction goes via `Name::V(...)`; refining an uninit
     // enum by writing a variant payload is not allowed.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         enum Copy Drop Option { None: unit Some: number }
         fn f() {
           o: Option;
@@ -402,8 +381,7 @@ fn downcast_write_on_uninit_enum_error() {
             o as Some = 7;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot write through variant projection: 'o' is not initialized here"],
@@ -412,8 +390,7 @@ fn downcast_write_on_uninit_enum_error() {
 
 #[test]
 fn downcast_write_on_moved_enum_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         enum Copy Drop Option { None: unit Some: number }
         fn f(o: Option) {
           sink: Option;
@@ -422,8 +399,7 @@ fn downcast_write_on_moved_enum_error() {
             o as Some = 7;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot write through variant projection: 'o' is not initialized here"],
@@ -455,26 +431,20 @@ fn empty_struct_local_starts_init() {
 
 #[test]
 fn call_target_of_uninit_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           g: fn(number);
           entry:
             call copy g(1);
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["variable 'g' is used before initialization"],
-    );
+        ");
+    assert_errors_contain(&errs, &["variable 'g' is used before initialization"]);
 }
 
 #[test]
 fn call_arg_read_of_uninit_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn takes_num(a: number);
         fn f() {
           x: number;
@@ -482,8 +452,7 @@ fn call_arg_read_of_uninit_error() {
             call takes_num(copy x);
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used before initialization"]);
 }
 
@@ -510,14 +479,12 @@ fn loop_backedge_agrees_ok() {
     );
 }
 
-
 // ---------- Drop statement ----------
 
 #[test]
 fn drop_consumes_like_move() {
     // `drop x` behaves like a move for init tracking: subsequent read errors.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           y: number;
           entry:
@@ -525,23 +492,20 @@ fn drop_consumes_like_move() {
             y = copy x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used after move"]);
 }
 
 #[test]
 fn drop_of_uninit_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           x: number;
           entry:
             drop x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used before initialization"]);
 }
 
@@ -566,8 +530,7 @@ fn reassign_after_move_ok() {
 
 #[test]
 fn move_then_move_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           y: number;
           z: number;
@@ -576,8 +539,7 @@ fn move_then_move_error() {
             z = move x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used after move"]);
 }
 
@@ -600,16 +562,14 @@ fn call_args_copy_then_move_ok() {
 fn call_args_move_then_copy_error() {
     // Left-to-right operand evaluation: the second `copy` sees the
     // already-moved state and errors.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn take_two(a: number, b: number);
         fn f(x: number) {
           entry:
             call take_two(move x, copy x);
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' is used after move"]);
 }
 
@@ -617,8 +577,7 @@ fn call_args_move_then_copy_error() {
 
 #[test]
 fn loop_may_reach_uninit_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(b: boolean) {
           x: number;
           y: number;
@@ -631,7 +590,6 @@ fn loop_may_reach_uninit_error() {
           done:
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["variable 'x' may be used before initialization"]);
 }

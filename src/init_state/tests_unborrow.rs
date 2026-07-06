@@ -51,8 +51,7 @@ fn unborrow_releases_loan() {
 fn unborrow_with_unfulfilled_obligation_error() {
     // &mut is (Init, Init) but we moved *r out (cur=Uninit).
     // Unborrow requires cur == post; this errors.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &mut number) {
           x: number;
           entry:
@@ -60,8 +59,7 @@ fn unborrow_with_unfulfilled_obligation_error() {
             unborrow r;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot forget reference 'r': obligation not fulfilled"],
@@ -71,27 +69,21 @@ fn unborrow_with_unfulfilled_obligation_error() {
 #[test]
 fn unborrow_of_uninit_error() {
     // Can't unborrow a never-initialized ref var.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           r: &mut number;
           entry:
             unborrow r;
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["variable 'r' is used before initialization"],
-    );
+        ");
+    assert_errors_contain(&errs, &["variable 'r' is used before initialization"]);
 }
 
 #[test]
 fn unborrow_after_move_error() {
     // r was moved to a call — can't unborrow a Moved ref.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(r: &mut number);
         fn f(x: number) {
           r: &mut number;
@@ -101,12 +93,8 @@ fn unborrow_after_move_error() {
             unborrow r;
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["variable 'r' is used after move"],
-    );
+        ");
+    assert_errors_contain(&errs, &["variable 'r' is used after move"]);
 }
 
 #[test]
@@ -129,19 +117,14 @@ fn unborrow_of_shared_ref_ok() {
 #[test]
 fn unborrow_of_non_ref_type_error() {
     // Unborrow only makes sense on reference-typed places.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           entry:
             unborrow x;
             return
         }
-        ",
-    );
-    assert_errors_contain(
-        &errs,
-        &["unborrow requires a reference-typed place"],
-    );
+        ");
+    assert_errors_contain(&errs, &["unborrow requires a reference-typed place"]);
 }
 
 #[test]
@@ -281,4 +264,3 @@ fn unborrow_across_loop_ok() {
         ",
     );
 }
-

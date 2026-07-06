@@ -15,8 +15,7 @@ use crate::test_util::*;
 // What we verify: no residual loan on x outside the loop.
 #[test]
 fn borrow_in_loop_body_no_residual_loan() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn use_ref(r: &mut number);
         fn f(x: number, b: boolean) {
           r: &mut number;
@@ -32,11 +31,11 @@ fn borrow_in_loop_body_no_residual_loan() {
             x = 42;
             return
         }
-        ",
-    );
+        ");
     assert!(
         !errs.iter().any(|e| e.contains("cannot write to 'x'")),
-        "unexpected loan conflict on x at done: {:?}", errs
+        "unexpected loan conflict on x at done: {:?}",
+        errs
     );
 }
 
@@ -150,8 +149,7 @@ fn symmetric_borrow_carried_through_merge_ok() {
 // formation should catch this.
 #[test]
 fn move_in_one_branch_read_at_merge_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn take(y: number);
         extern fn use_num(n: number);
         fn f(x: number, b: boolean) {
@@ -166,8 +164,7 @@ fn move_in_one_branch_read_at_merge_error() {
             call use_num(copy x);
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["variable 'x' may be used before initialization or after move"],
@@ -321,7 +318,6 @@ fn move_reinit_move_cycle_ok() {
     );
 }
 
-
 // ---------- Nested and irreducible CFG shapes ----------
 
 #[test]
@@ -427,4 +423,3 @@ fn mut_ref_move_out_then_write_back_cycle_ok() {
         ",
     );
 }
-

@@ -33,17 +33,27 @@ struct VariantFlow;
 
 impl Analysis for VariantFlow {
     type State = PointState;
-    fn direction(&self) -> Direction { Direction::Forward }
-    fn initial_state(&self) -> Self::State { PointState::new() }
-    fn join(&self, a: &Self::State, b: &Self::State) -> Self::State { join(a, b) }
+    fn direction(&self) -> Direction {
+        Direction::Forward
+    }
+    fn initial_state(&self) -> Self::State {
+        PointState::new()
+    }
+    fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
+        join(a, b)
+    }
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
         transfer_stmt(stmt, state);
     }
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
     fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ: &str) {
         // switchEnum arm edges refine the switched Var to the matched variant.
-        let Terminator::SwitchEnum { place, cases } = &block.terminator else { return; };
-        let Some(root) = root_var(place) else { return; };
+        let Terminator::SwitchEnum { place, cases } = &block.terminator else {
+            return;
+        };
+        let Some(root) = root_var(place) else {
+            return;
+        };
         for (variant, label) in cases {
             if label == succ {
                 let mut singleton = BTreeSet::new();
@@ -62,7 +72,9 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else { return; };
+    let Some(body) = &func.body else {
+        return;
+    };
     if body.blocks.is_empty() {
         return;
     }
@@ -74,7 +86,12 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     // walker only surfaces the current block, so we do the switch check in
     // a separate pass alongside the per-point downcast refinement.
     dataflow::walk_forward(&VariantFlow, body, &entry_states, |pt| match pt {
-        WalkPoint::Stmt { state, block, stmt, span } => {
+        WalkPoint::Stmt {
+            state,
+            block,
+            stmt,
+            span,
+        } => {
             check_places_in_stmt(env, func, &locals, block, stmt, span, state, d);
         }
         WalkPoint::Terminator { state, block, .. } => {
@@ -174,17 +191,25 @@ fn check_downcast_refinement(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let Some((root, path)) = extract_path(place) else { return; };
-    let Some(root_ty) = locals.get(&root) else { return; };
+    let Some((root, path)) = extract_path(place) else {
+        return;
+    };
+    let Some(root_ty) = locals.get(&root) else {
+        return;
+    };
     let root_is_enum = matches!(
         root_ty,
         Type::Custom(n) if matches!(env.types.get(n), Some(TypeDecl::Enum(_)))
     );
-    if !root_is_enum { return; }
+    if !root_is_enum {
+        return;
+    }
 
     for (i, step) in path.iter().enumerate() {
         if let PathStep::Downcast(v) = step {
-            if i > 0 { continue; } // deeper — not yet tracked
+            if i > 0 {
+                continue;
+            } // deeper — not yet tracked
             let known = state.get(&root);
             let refined = match known {
                 // ⊥: variant set empty means the point is proven unreachable.
@@ -195,9 +220,15 @@ fn check_downcast_refinement(
             };
             if !refined {
                 push_error!(
-                    d, span, func, block,
+                    d,
+                    span,
+                    func,
+                    block,
                     "cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
-                    root, v, root, v
+                    root,
+                    v,
+                    root,
+                    v
                 );
             }
         }
@@ -220,28 +251,27 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
             // Update state[target] iff target is a Var. Writes through
             // non-Var places don't refine any tracked Var (we don't do
             // aliasing here).
-            let Place::Var(t) = target else { return; };
+            let Place::Var(t) = target else {
+                return;
+            };
             match rvalue {
                 RValue::EnumConstr(_, variant, _) => {
                     let mut set = BTreeSet::new();
                     set.insert(variant.clone());
                     state.insert(t.clone(), set);
                 }
-                RValue::Use(op) => {
-                    match op {
-                        Operand::Copy(Place::Var(src))
-                        | Operand::Move(Place::Var(src)) => {
-                            if let Some(set) = state.get(src).cloned() {
-                                state.insert(t.clone(), set);
-                            } else {
-                                state.shift_remove(t);
-                            }
-                        }
-                        _ => {
+                RValue::Use(op) => match op {
+                    Operand::Copy(Place::Var(src)) | Operand::Move(Place::Var(src)) => {
+                        if let Some(set) = state.get(src).cloned() {
+                            state.insert(t.clone(), set);
+                        } else {
                             state.shift_remove(t);
                         }
                     }
-                }
+                    _ => {
+                        state.shift_remove(t);
+                    }
+                },
                 _ => {
                     state.shift_remove(t);
                 }
@@ -303,8 +333,13 @@ fn check_switch(
     for variant in &declared {
         if !handled.contains(variant) {
             push_error!(
-                d, ts, func, block,
-                "switchEnum on '{}' does not handle variant '{}'", enum_decl.name, variant
+                d,
+                ts,
+                func,
+                block,
+                "switchEnum on '{}' does not handle variant '{}'",
+                enum_decl.name,
+                variant
             );
         }
     }
@@ -314,8 +349,12 @@ fn check_switch(
     for (variant, _) in cases {
         if !seen.insert(variant.as_str()) {
             push_error!(
-                d, ts, func, block,
-                "switchEnum has duplicate arm for variant '{}'", variant
+                d,
+                ts,
+                func,
+                block,
+                "switchEnum has duplicate arm for variant '{}'",
+                variant
             );
         }
     }
@@ -332,7 +371,9 @@ fn check_switch(
         if !declared.contains(&variant.as_str()) {
             continue;
         }
-        let Some(target) = blocks_by_label.get(label.as_str()) else { continue; };
+        let Some(target) = blocks_by_label.get(label.as_str()) else {
+            continue;
+        };
         let target_unreachable = matches!(target.terminator, Terminator::Unreachable);
 
         let variant_reachable = match known {
@@ -362,7 +403,9 @@ fn resolve_enum_of_place<'a>(
     place: &Place,
 ) -> Option<&'a EnumDecl> {
     let ty = env.infer_place_type(place, locals).ok()?;
-    let Type::Custom(name) = ty else { return None; };
+    let Type::Custom(name) = ty else {
+        return None;
+    };
     match env.types.get(&name) {
         Some(TypeDecl::Enum(e)) => Some(e),
         _ => None,
@@ -392,34 +435,27 @@ mod tests {
 
     #[test]
     fn coverage_missing_variant_error() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: end]
               end: return
             }
-            ",
-        );
-        assert_errors_contain(
-            &errs,
-            &["does not handle variant 'Some'"],
-        );
+            ");
+        assert_errors_contain(&errs, &["does not handle variant 'Some'"]);
     }
 
     #[test]
     fn coverage_multiple_missing_reported() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum E { A: number B: number C: number }
             fn f(e: E) {
               entry:
                 switchEnum(e) [A: end]
               end: return
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["does not handle variant 'B'", "does not handle variant 'C'"],
@@ -428,8 +464,7 @@ mod tests {
 
     #[test]
     fn coverage_duplicate_arm_error() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
@@ -438,26 +473,20 @@ mod tests {
               b: return
               c: return
             }
-            ",
-        );
-        assert_errors_contain(
-            &errs,
-            &["duplicate arm for variant 'None'"],
-        );
+            ");
+        assert_errors_contain(&errs, &["duplicate arm for variant 'None'"]);
     }
 
     #[test]
     fn coverage_unknown_variant_still_reported_and_missing_still_fires() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [Wat: end]
               end: return
             }
-            ",
-        );
+            ");
         // tc reports the unknown variant; flow reports the two missing ones.
         assert_errors_contain(
             &errs,
@@ -559,8 +588,7 @@ mod tests {
 
     #[test]
     fn flow_unreachable_arm_on_parameter_error() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
@@ -568,8 +596,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -578,8 +605,7 @@ mod tests {
 
     #[test]
     fn flow_unreachable_arm_after_reassign_error() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o1: Option) {
               o: Option;
@@ -590,8 +616,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -600,8 +625,7 @@ mod tests {
 
     #[test]
     fn flow_unreachable_arm_after_ambiguous_join_error() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(b: boolean) {
               o: Option;
@@ -618,8 +642,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -632,8 +655,7 @@ mod tests {
     fn flow_dead_code_variant_real_target_warning() {
         // o is provably None, but the Some arm still targets real code. That's
         // dead code — a warning, not an error.
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
@@ -643,13 +665,9 @@ mod tests {
               n: return
               s: return
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "did not expect errors, got: {:?}", errs);
-        assert_warnings_contain(
-            &warns,
-            &["variant 'Some' is dead code"],
-        );
+        assert_warnings_contain(&warns, &["variant 'Some' is dead code"]);
     }
 
     // ---------- Conservative places ----------
@@ -658,8 +676,7 @@ mod tests {
     fn flow_deref_switch_place_treated_as_top() {
         // switchEnum on *r treats state as ⊤ — an unreachable arm claim fails
         // even if a preceding assignment through the ref narrowed the value.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(r: &mut Option) {
               entry:
@@ -668,8 +685,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -678,8 +694,7 @@ mod tests {
 
     #[test]
     fn flow_field_switch_place_treated_as_top() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             struct S { o: Option }
             fn f(s: S) {
@@ -688,8 +703,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -700,8 +714,7 @@ mod tests {
     fn flow_exclusive_borrow_clobbers_refinement() {
         // After `r = &mut o`, o's variant tracking is clobbered even though
         // r isn't used before the switch.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
@@ -713,8 +726,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -743,8 +755,7 @@ mod tests {
 
     #[test]
     fn flow_out_borrow_clobbers_refinement() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
@@ -756,8 +767,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -766,8 +776,7 @@ mod tests {
 
     #[test]
     fn flow_drop_borrow_clobbers_refinement() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
@@ -779,8 +788,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -789,8 +797,7 @@ mod tests {
 
     #[test]
     fn flow_uninit_borrow_clobbers_refinement() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
@@ -802,8 +809,7 @@ mod tests {
               n: return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -816,8 +822,7 @@ mod tests {
         // only `unreachable` is. So a variant provably-dead whose arm points
         // at an `abort` block should be surfaced as dead-code (warning),
         // not silently accepted as a proof of impossibility.
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
@@ -827,8 +832,7 @@ mod tests {
               n: return
               trap: abort
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
         assert_warnings_contain(&warns, &["variant 'Some' is dead code"]);
     }
@@ -839,8 +843,7 @@ mod tests {
     fn downcast_read_without_refinement_error() {
         // `o as Some` in a block where `o` is still ⊤ — the read might see
         // the None variant's payload, so this is unsound.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               x: number;
@@ -848,8 +851,7 @@ mod tests {
                 x = copy o as Some;
                 return
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'"],
@@ -880,8 +882,7 @@ mod tests {
     fn downcast_in_switch_place_without_refinement_error() {
         // switchEnum(o as X) itself is a read of `o as X` — refinement
         // required.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Inner { P: unit Q: unit }
             enum Outer { X: Inner Y: unit }
             fn f(o: Outer) {
@@ -890,8 +891,7 @@ mod tests {
               pb: return
               qb: return
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["cannot downcast 'o as X' here: 'o' is not refined to variant 'X'"],
@@ -905,8 +905,7 @@ mod tests {
         // In the loop body, o is reassigned to Some; on next iteration head,
         // o could be None (initial) or Some (from prior iteration). Any
         // unreachable arm claim should fail.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(b: boolean) {
               o: Option;
@@ -922,8 +921,7 @@ mod tests {
                 return
               dead: unreachable
             }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &["variant 'Some' claims unreachable but variant is reachable"],
@@ -937,15 +935,13 @@ mod tests {
         // `switchEnum(x) [ ]` doesn't terminate the block (no successors) —
         // use `unreachable` instead. Values of zero-variant enums are
         // uninspectable, which naturally follows.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Void { }
             fn f(v: Void) {
               entry:
                 switchEnum(v) [ ]
             }
-            ",
-        );
+            ");
         assert_errors_contain(&errs, &["switchEnum requires at least one arm"]);
     }
 
@@ -969,8 +965,7 @@ mod tests {
         // analysis skips it — including its non-exhaustive switch. tc's
         // structural checks still run and might complain, but our flow-only
         // errors (missing-variant, unreachable-claim) should not appear here.
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
@@ -978,8 +973,7 @@ mod tests {
               dead_switch:
                 switchEnum(o) [None: dead_switch]
             }
-            ",
-        );
+            ");
         assert!(
             errs.iter().all(|e| !e.contains("does not handle variant")),
             "unexpected exhaustiveness error in dead block: {:?}",

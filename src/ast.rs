@@ -22,11 +22,11 @@ impl std::fmt::Display for Span {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RefKind {
-    Shared,   // &
-    Mut,      // &mut
-    Out,      // &out
-    Drop,     // &drop
-    Uninit,   // &uninit
+    Shared, // &
+    Mut,    // &mut
+    Out,    // &out
+    Drop,   // &drop
+    Uninit, // &uninit
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -95,7 +95,11 @@ pub fn terminator_successors(term: &Terminator) -> Vec<&str> {
     match term {
         Terminator::Goto(label) => vec![label.as_str()],
         Terminator::Return | Terminator::Abort | Terminator::Unreachable => vec![],
-        Terminator::Branch { true_label, false_label, .. } => {
+        Terminator::Branch {
+            true_label,
+            false_label,
+            ..
+        } => {
             vec![true_label.as_str(), false_label.as_str()]
         }
         Terminator::SwitchEnum { cases, .. } => {

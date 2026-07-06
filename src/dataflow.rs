@@ -51,13 +51,7 @@ pub trait Analysis {
     /// `block -> succ_label`. Default: no refinement. Used e.g. by
     /// `variant_flow` to pin a place to a specific enum variant on a
     /// `switchEnum` arm edge.
-    fn refine_edge(
-        &self,
-        _state: &mut Self::State,
-        _block: &BasicBlock,
-        _succ_label: &str,
-    ) {
-    }
+    fn refine_edge(&self, _state: &mut Self::State, _block: &BasicBlock, _succ_label: &str) {}
 }
 
 /// Fixed-point state at each block's start-wrt-direction.
@@ -121,7 +115,9 @@ pub fn walk_forward<A, F>(
         "walk_forward requires a Forward analysis"
     );
     for block in &body.blocks {
-        let Some(entry) = results.get(&block.label) else { continue; };
+        let Some(entry) = results.get(&block.label) else {
+            continue;
+        };
         let mut state = entry.clone();
         for (stmt, span) in &block.statements {
             visit(WalkPoint::Stmt {
@@ -211,8 +207,12 @@ mod tests {
     struct AssignedVars;
     impl Analysis for AssignedVars {
         type State = BTreeSet<String>;
-        fn direction(&self) -> Direction { Direction::Forward }
-        fn initial_state(&self) -> Self::State { BTreeSet::new() }
+        fn direction(&self) -> Direction {
+            Direction::Forward
+        }
+        fn initial_state(&self) -> Self::State {
+            BTreeSet::new()
+        }
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
             a.union(b).cloned().collect()
         }
@@ -258,9 +258,8 @@ mod tests {
             ",
         );
         let r = run(&AssignedVars, &body);
-        let expect = |labs: &[&str]| -> BTreeSet<String> {
-            labs.iter().map(|s| s.to_string()).collect()
-        };
+        let expect =
+            |labs: &[&str]| -> BTreeSet<String> { labs.iter().map(|s| s.to_string()).collect() };
         assert_eq!(r["entry"], expect(&[]));
         assert_eq!(r["t"], expect(&["x"]));
         assert_eq!(r["fbr"], expect(&["x"]));
@@ -304,17 +303,30 @@ mod tests {
     struct BranchLabel;
     impl Analysis for BranchLabel {
         type State = BTreeSet<String>;
-        fn direction(&self) -> Direction { Direction::Forward }
-        fn initial_state(&self) -> Self::State { BTreeSet::new() }
+        fn direction(&self) -> Direction {
+            Direction::Forward
+        }
+        fn initial_state(&self) -> Self::State {
+            BTreeSet::new()
+        }
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
             a.union(b).cloned().collect()
         }
         fn transfer_stmt(&self, _: &mut Self::State, _: &Statement) {}
         fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
         fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ: &str) {
-            if let Terminator::Branch { true_label, false_label, .. } = &block.terminator {
-                if succ == true_label { state.insert("T".to_string()); }
-                if succ == false_label { state.insert("F".to_string()); }
+            if let Terminator::Branch {
+                true_label,
+                false_label,
+                ..
+            } = &block.terminator
+            {
+                if succ == true_label {
+                    state.insert("T".to_string());
+                }
+                if succ == false_label {
+                    state.insert("F".to_string());
+                }
             }
         }
     }
@@ -346,8 +358,12 @@ mod tests {
     struct DropLiveness;
     impl Analysis for DropLiveness {
         type State = BTreeSet<String>;
-        fn direction(&self) -> Direction { Direction::Backward }
-        fn initial_state(&self) -> Self::State { BTreeSet::new() }
+        fn direction(&self) -> Direction {
+            Direction::Backward
+        }
+        fn initial_state(&self) -> Self::State {
+            BTreeSet::new()
+        }
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
             a.union(b).cloned().collect()
         }
@@ -420,7 +436,10 @@ mod tests {
 
     #[test]
     fn empty_body_returns_empty_results() {
-        let body = FunctionBody { locals: vec![], blocks: vec![] };
+        let body = FunctionBody {
+            locals: vec![],
+            blocks: vec![],
+        };
         let r = run(&AssignedVars, &body);
         assert!(r.is_empty());
     }
@@ -466,16 +485,22 @@ mod tests {
             }
         });
 
-        let expect: BTreeSet<String> =
-            ["x".to_string(), "y".to_string(), "z".to_string()].into_iter().collect();
+        let expect: BTreeSet<String> = ["x".to_string(), "y".to_string(), "z".to_string()]
+            .into_iter()
+            .collect();
         // entry: stmt `x = 1` sees {}, then terminator sees {x}.
-        assert_eq!(trace[0].0, "entry"); assert_eq!(trace[0].1, "stmt");
+        assert_eq!(trace[0].0, "entry");
+        assert_eq!(trace[0].1, "stmt");
         assert!(trace[0].2.is_empty());
-        assert_eq!(trace[1].0, "entry"); assert_eq!(trace[1].1, "term");
+        assert_eq!(trace[1].0, "entry");
+        assert_eq!(trace[1].1, "term");
         assert_eq!(trace[1].2, ["x".to_string()].into_iter().collect());
         // At merge, only the terminator is visited (no stmts); state carries
         // the join {x, y, z}.
-        let merge_term = trace.iter().find(|(b, k, _)| b == "merge" && *k == "term").unwrap();
+        let merge_term = trace
+            .iter()
+            .find(|(b, k, _)| b == "merge" && *k == "term")
+            .unwrap();
         assert_eq!(merge_term.2, expect);
     }
 
@@ -486,8 +511,12 @@ mod tests {
         let results = run(&AssignedVars, &body);
         let mut visited: BTreeSet<String> = BTreeSet::new();
         walk_forward(&AssignedVars, &body, &results, |pt| match pt {
-            WalkPoint::Stmt { block, .. } => { visited.insert(block.label.clone()); }
-            WalkPoint::Terminator { block, .. } => { visited.insert(block.label.clone()); }
+            WalkPoint::Stmt { block, .. } => {
+                visited.insert(block.label.clone());
+            }
+            WalkPoint::Terminator { block, .. } => {
+                visited.insert(block.label.clone());
+            }
         });
         assert!(visited.contains("entry"));
         assert!(!visited.contains("dead"));
@@ -537,12 +566,7 @@ fn run_backward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::St
         // exit state. refine_edge is called on the pred_block -> label
         // edge — same signature/direction as forward, so a pass writes
         // one refinement in terms of "outgoing edge from block".
-        let pred_labels: Vec<String> = preds
-            .get(&label)
-            .into_iter()
-            .flatten()
-            .cloned()
-            .collect();
+        let pred_labels: Vec<String> = preds.get(&label).into_iter().flatten().cloned().collect();
         for pred_label in pred_labels {
             let pred_block = blocks_by_label[pred_label.as_str()];
             let mut incoming = state.clone();

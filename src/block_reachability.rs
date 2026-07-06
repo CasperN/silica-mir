@@ -15,7 +15,9 @@ struct Reachability;
 
 impl Analysis for Reachability {
     type State = ();
-    fn direction(&self) -> Direction { Direction::Forward }
+    fn direction(&self) -> Direction {
+        Direction::Forward
+    }
     fn initial_state(&self) -> Self::State {}
     fn join(&self, _: &Self::State, _: &Self::State) -> Self::State {}
     fn transfer_stmt(&self, _: &mut Self::State, _: &Statement) {}
@@ -29,8 +31,12 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_function(func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else { return; };
-    if body.blocks.is_empty() { return; }
+    let Some(body) = &func.body else {
+        return;
+    };
+    if body.blocks.is_empty() {
+        return;
+    }
 
     let reached = dataflow::run(&Reachability, body);
     for block in &body.blocks {
@@ -115,16 +121,14 @@ mod tests {
 
     #[test]
     fn isolated_block_is_unreachable() {
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             fn f() {
               entry:
                 return
               dead:
                 return
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
         assert_warnings_contain(
             &warns,
@@ -134,8 +138,7 @@ mod tests {
 
     #[test]
     fn multiple_unreachable_blocks_each_reported() {
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             fn f() {
               entry:
                 return
@@ -144,8 +147,7 @@ mod tests {
               dead2:
                 return
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
         assert_warnings_contain(
             &warns,
@@ -177,16 +179,14 @@ mod tests {
     fn abort_and_return_prune_successors() {
         // `abort` and `return` have no successors — anything only reachable
         // through such a block is dead.
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             fn f() {
               entry:
                 abort
               orphan:
                 return
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
         assert_warnings_contain(&warns, &["block 'orphan' is unreachable"]);
     }

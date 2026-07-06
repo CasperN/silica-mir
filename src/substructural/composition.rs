@@ -35,13 +35,23 @@ pub struct Class {
 
 pub fn class_of(ty: &Type, env: &Env) -> Class {
     match ty {
-        Type::Number | Type::Boolean | Type::Unit | Type::Fn(_) => {
-            Class { copy: true, drop: true }
-        }
+        Type::Number | Type::Boolean | Type::Unit | Type::Fn(_) => Class {
+            copy: true,
+            drop: true,
+        },
         Type::Ref(kind, _) => match kind {
-            RefKind::Shared => Class { copy: true, drop: true },
-            RefKind::Mut | RefKind::Uninit => Class { copy: false, drop: true },
-            RefKind::Out | RefKind::Drop => Class { copy: false, drop: false },
+            RefKind::Shared => Class {
+                copy: true,
+                drop: true,
+            },
+            RefKind::Mut | RefKind::Uninit => Class {
+                copy: false,
+                drop: true,
+            },
+            RefKind::Out | RefKind::Drop => Class {
+                copy: false,
+                drop: false,
+            },
         },
         Type::Custom(name) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => Class {
@@ -54,7 +64,10 @@ pub fn class_of(ty: &Type, env: &Env) -> Class {
             },
             // Unknown name — tc has already reported "undeclared type".
             // Fall back to linear so we don't fabricate a Copy/Drop claim.
-            None => Class { copy: false, drop: false },
+            None => Class {
+                copy: false,
+                drop: false,
+            },
         },
     }
 }
@@ -252,11 +265,9 @@ mod tests {
 
     #[test]
     fn copy_drop_struct_with_linear_field_reports_both() {
-        let (errs, _) = run(
-            "
+        let (errs, _) = run("
             struct Copy Drop Bad { r: &out number }
-            ",
-        );
+            ");
         assert_errors_contain(
             &errs,
             &[

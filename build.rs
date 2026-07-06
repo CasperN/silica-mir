@@ -14,7 +14,10 @@ fn main() {
 
         c_config.compile("tree-sitter-silica-mir");
 
-        println!("cargo:rerun-if-changed={}", src_dir.join("parser.c").to_str().unwrap());
+        println!(
+            "cargo:rerun-if-changed={}",
+            src_dir.join("parser.c").to_str().unwrap()
+        );
         if scanner.exists() {
             println!("cargo:rerun-if-changed={}", scanner.to_str().unwrap());
         }

@@ -79,18 +79,20 @@ impl Env {
                 }
                 Ok(())
             }
-            Type::Ref(_, inner) => {
-                self.validate_type(inner)
-            }
+            Type::Ref(_, inner) => self.validate_type(inner),
         }
     }
 
     /// Type of `field` in the struct type `ty`, if any. Returns `None` if
     /// `ty` isn't a declared struct or the field doesn't exist.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let Type::Custom(name) = ty else { return None; };
+        let Type::Custom(name) = ty else {
+            return None;
+        };
         match self.types.get(name) {
-            Some(TypeDecl::Struct(s)) => s.fields.iter()
+            Some(TypeDecl::Struct(s)) => s
+                .fields
+                .iter()
                 .find(|f| f.name == field)
                 .map(|f| f.ty.clone()),
             _ => None,
@@ -109,39 +111,53 @@ impl Env {
                 }
                 a.iter().zip(b.iter()).all(|(x, y)| self.types_match(x, y))
             }
-            (Type::Ref(k1, i1), Type::Ref(k2, i2)) => {
-                k1 == k2 && self.types_match(i1, i2)
-            }
+            (Type::Ref(k1, i1), Type::Ref(k2, i2)) => k1 == k2 && self.types_match(i1, i2),
             _ => false,
         }
     }
 
-    pub fn infer_place_type(&self, place: &Place, locals: &IndexMap<String, Type>) -> Result<Type, String> {
+    pub fn infer_place_type(
+        &self,
+        place: &Place,
+        locals: &IndexMap<String, Type>,
+    ) -> Result<Type, String> {
         match place {
-            Place::Var(name) => {
-                locals.get(name).cloned().ok_or_else(|| format!("Use of undeclared variable '{}'", name))
-            }
+            Place::Var(name) => locals
+                .get(name)
+                .cloned()
+                .ok_or_else(|| format!("Use of undeclared variable '{}'", name)),
             Place::Deref(inner) => {
                 let inner_ty = self.infer_place_type(inner, locals)?;
                 if let Type::Ref(_, pointee) = inner_ty {
                     Ok(*pointee)
                 } else {
-                    Err(format!("Cannot dereference non-reference type {:?}", inner_ty))
+                    Err(format!(
+                        "Cannot dereference non-reference type {:?}",
+                        inner_ty
+                    ))
                 }
             }
             Place::Field(inner, field_name) => {
                 let inner_ty = self.infer_place_type(inner, locals)?;
                 let name = match &inner_ty {
                     Type::Custom(n) => n,
-                    _ => return Err(format!("Cannot project field '{}' of non-struct type {:?}", field_name, inner_ty)),
+                    _ => {
+                        return Err(format!(
+                            "Cannot project field '{}' of non-struct type {:?}",
+                            field_name, inner_ty
+                        ))
+                    }
                 };
                 match self.types.get(name) {
-                    Some(TypeDecl::Struct(s)) => s.fields.iter()
+                    Some(TypeDecl::Struct(s)) => s
+                        .fields
+                        .iter()
                         .find(|f| f.name == *field_name)
                         .map(|f| f.ty.clone())
                         .ok_or_else(|| format!("Struct '{}' has no field '{}'", name, field_name)),
                     Some(TypeDecl::Enum(_)) => Err(format!(
-                        "Cannot project field '{}' of enum type '{}'", field_name, name
+                        "Cannot project field '{}' of enum type '{}'",
+                        field_name, name
                     )),
                     None => Err(format!("Use of undeclared type '{}'", name)),
                 }
@@ -153,20 +169,28 @@ impl Env {
                     _ => return Err(format!("Cannot downcast non-enum type {:?}", inner_ty)),
                 };
                 match self.types.get(name) {
-                    Some(TypeDecl::Enum(e)) => e.variants.iter()
+                    Some(TypeDecl::Enum(e)) => e
+                        .variants
+                        .iter()
                         .find(|v| v.name == *variant_name)
                         .map(|v| v.ty.clone())
-                        .ok_or_else(|| format!("Enum '{}' has no variant '{}'", name, variant_name)),
-                    Some(TypeDecl::Struct(_)) => Err(format!(
-                        "Cannot downcast struct type '{}'", name
-                    )),
+                        .ok_or_else(|| {
+                            format!("Enum '{}' has no variant '{}'", name, variant_name)
+                        }),
+                    Some(TypeDecl::Struct(_)) => {
+                        Err(format!("Cannot downcast struct type '{}'", name))
+                    }
                     None => Err(format!("Use of undeclared type '{}'", name)),
                 }
             }
         }
     }
 
-    pub fn infer_operand_type(&self, op: &Operand, locals: &IndexMap<String, Type>) -> Result<Type, String> {
+    pub fn infer_operand_type(
+        &self,
+        op: &Operand,
+        locals: &IndexMap<String, Type>,
+    ) -> Result<Type, String> {
         match op {
             Operand::Copy(place) | Operand::Move(place) => self.infer_place_type(place, locals),
             Operand::Const(c) => match c {
@@ -174,15 +198,22 @@ impl Env {
                 ConstVal::Boolean(_) => Ok(Type::Boolean),
                 ConstVal::Unit => Ok(Type::Unit),
                 ConstVal::FnName(name) => {
-                    let f = self.functions.get(name).ok_or_else(|| format!("Undeclared function name '{}'", name))?;
+                    let f = self
+                        .functions
+                        .get(name)
+                        .ok_or_else(|| format!("Undeclared function name '{}'", name))?;
                     let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
                     Ok(Type::Fn(param_tys))
                 }
-            }
+            },
         }
     }
 
-    pub fn infer_rvalue_type(&self, rvalue: &RValue, locals: &IndexMap<String, Type>) -> Result<Type, String> {
+    pub fn infer_rvalue_type(
+        &self,
+        rvalue: &RValue,
+        locals: &IndexMap<String, Type>,
+    ) -> Result<Type, String> {
         match rvalue {
             RValue::Use(op) => self.infer_operand_type(op, locals),
             RValue::Ref(kind, place) => {
@@ -197,13 +228,20 @@ impl Env {
                     }
                     None => return Err(format!("Undeclared enum '{}'", enum_name)),
                 };
-                let variant = e_decl.variants.iter()
+                let variant = e_decl
+                    .variants
+                    .iter()
                     .find(|v| v.name == *variant_name)
-                    .ok_or_else(|| format!("Enum '{}' has no variant '{}'", enum_name, variant_name))?;
+                    .ok_or_else(|| {
+                        format!("Enum '{}' has no variant '{}'", enum_name, variant_name)
+                    })?;
 
                 let op_ty = self.infer_operand_type(op, locals)?;
                 if !self.types_match(&variant.ty, &op_ty) {
-                    return Err(format!("Variant '{}' of enum '{}' expects type {:?}, found {:?}", variant_name, enum_name, variant.ty, op_ty));
+                    return Err(format!(
+                        "Variant '{}' of enum '{}' expects type {:?}, found {:?}",
+                        variant_name, enum_name, variant.ty, op_ty
+                    ));
                 }
 
                 Ok(Type::Custom(enum_name.clone()))
@@ -268,7 +306,9 @@ impl Env {
             }
         }
 
-        let Some(body) = &f.body else { return; };
+        let Some(body) = &f.body else {
+            return;
+        };
 
         if body.blocks.is_empty() {
             d.errors.push(format!(
@@ -341,44 +381,62 @@ impl Env {
     ) -> Result<(), String> {
         match stmt {
             Statement::Assign(place, rvalue) => {
-                let lhs_ty = self.infer_place_type(place, locals)
+                let lhs_ty = self
+                    .infer_place_type(place, locals)
                     .map_err(|e| fmt_error!(stmt_span, func, block, "assignment LHS: {}", e))?;
-                let rhs_ty = self.infer_rvalue_type(rvalue, locals)
+                let rhs_ty = self
+                    .infer_rvalue_type(rvalue, locals)
                     .map_err(|e| fmt_error!(stmt_span, func, block, "assignment RHS: {}", e))?;
                 if !self.types_match(&lhs_ty, &rhs_ty) {
                     return Err(fmt_error!(
-                        stmt_span, func, block,
-                        "Type mismatch in assignment. LHS is {:?}, RHS is {:?}", lhs_ty, rhs_ty
+                        stmt_span,
+                        func,
+                        block,
+                        "Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
+                        lhs_ty,
+                        rhs_ty
                     ));
                 }
                 Ok(())
             }
             Statement::Call(target, args) => {
-                let target_ty = self.infer_operand_type(target, locals)
+                let target_ty = self
+                    .infer_operand_type(target, locals)
                     .map_err(|e| fmt_error!(stmt_span, func, block, "call target: {}", e))?;
 
                 let Type::Fn(param_tys) = target_ty else {
                     return Err(fmt_error!(
-                        stmt_span, func, block,
-                        "Call target is not a function type: {:?}", target_ty
+                        stmt_span,
+                        func,
+                        block,
+                        "Call target is not a function type: {:?}",
+                        target_ty
                     ));
                 };
 
                 if args.len() != param_tys.len() {
                     return Err(fmt_error!(
-                        stmt_span, func, block,
+                        stmt_span,
+                        func,
+                        block,
                         "Wrong number of arguments for call. Expected {}, found {}",
-                        param_tys.len(), args.len()
+                        param_tys.len(),
+                        args.len()
                     ));
                 }
                 for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                    let arg_ty = self.infer_operand_type(arg, locals)
+                    let arg_ty = self
+                        .infer_operand_type(arg, locals)
                         .map_err(|e| fmt_error!(stmt_span, func, block, "call arg {}: {}", i, e))?;
                     if !self.types_match(param_ty, &arg_ty) {
                         return Err(fmt_error!(
-                            stmt_span, func, block,
+                            stmt_span,
+                            func,
+                            block,
                             "Call argument {} type mismatch. Expected {:?}, found {:?}",
-                            i, param_ty, arg_ty
+                            i,
+                            param_ty,
+                            arg_ty
                         ));
                     }
                 }
@@ -392,12 +450,16 @@ impl Env {
                 Ok(())
             }
             Statement::Unborrow(place) => {
-                let ty = self.infer_place_type(place, locals)
+                let ty = self
+                    .infer_place_type(place, locals)
                     .map_err(|e| fmt_error!(stmt_span, func, block, "unborrow: {}", e))?;
                 if !matches!(ty, Type::Ref(_, _)) {
                     return Err(fmt_error!(
-                        stmt_span, func, block,
-                        "unborrow requires a reference-typed place, found {:?}", ty
+                        stmt_span,
+                        func,
+                        block,
+                        "unborrow requires a reference-typed place, found {:?}",
+                        ty
                     ));
                 }
                 Ok(())
@@ -417,24 +479,53 @@ impl Env {
         match &block.terminator {
             Terminator::Goto(label) => {
                 if !block_labels.contains(label) {
-                    push_error!(d, ts, func, block, "goto targets undefined block '{}'", label);
+                    push_error!(
+                        d,
+                        ts,
+                        func,
+                        block,
+                        "goto targets undefined block '{}'",
+                        label
+                    );
                 }
             }
             Terminator::Return => {}
-            Terminator::Branch { cond, true_label, false_label } => {
+            Terminator::Branch {
+                cond,
+                true_label,
+                false_label,
+            } => {
                 match self.infer_operand_type(cond, locals) {
                     Ok(cond_ty) if cond_ty != Type::Boolean => push_error!(
-                        d, ts, func, block,
-                        "branch condition must be boolean, found {:?}", cond_ty
+                        d,
+                        ts,
+                        func,
+                        block,
+                        "branch condition must be boolean, found {:?}",
+                        cond_ty
                     ),
                     Ok(_) => {}
                     Err(e) => push_error!(d, ts, func, block, "branch condition: {}", e),
                 }
                 if !block_labels.contains(true_label) {
-                    push_error!(d, ts, func, block, "branch true target undefined block '{}'", true_label);
+                    push_error!(
+                        d,
+                        ts,
+                        func,
+                        block,
+                        "branch true target undefined block '{}'",
+                        true_label
+                    );
                 }
                 if !block_labels.contains(false_label) {
-                    push_error!(d, ts, func, block, "branch false target undefined block '{}'", false_label);
+                    push_error!(
+                        d,
+                        ts,
+                        func,
+                        block,
+                        "branch false target undefined block '{}'",
+                        false_label
+                    );
                 }
             }
             Terminator::SwitchEnum { place, cases } => {
@@ -446,23 +537,35 @@ impl Env {
                         Some(TypeDecl::Enum(e)) => Some(e),
                         Some(TypeDecl::Struct(_)) => {
                             push_error!(
-                                d, ts, func, block,
-                                "switchEnum place must be an enum type, found struct '{}'", name
+                                d,
+                                ts,
+                                func,
+                                block,
+                                "switchEnum place must be an enum type, found struct '{}'",
+                                name
                             );
                             None
                         }
                         None => {
                             push_error!(
-                                d, ts, func, block,
-                                "Undeclared enum '{}' in switchEnum", name
+                                d,
+                                ts,
+                                func,
+                                block,
+                                "Undeclared enum '{}' in switchEnum",
+                                name
                             );
                             None
                         }
                     },
                     Ok(other) => {
                         push_error!(
-                            d, ts, func, block,
-                            "switchEnum place must be an enum type, found {:?}", other
+                            d,
+                            ts,
+                            func,
+                            block,
+                            "switchEnum place must be an enum type, found {:?}",
+                            other
                         );
                         None
                     }
@@ -476,16 +579,25 @@ impl Env {
                     if let Some(e_decl) = enum_decl {
                         if !e_decl.variants.iter().any(|v| v.name == *variant) {
                             push_error!(
-                                d, ts, func, block,
-                                "variant '{}' is not part of enum '{}'", variant, e_decl.name
+                                d,
+                                ts,
+                                func,
+                                block,
+                                "variant '{}' is not part of enum '{}'",
+                                variant,
+                                e_decl.name
                             );
                         }
                     }
                     if !block_labels.contains(label) {
                         push_error!(
-                            d, ts, func, block,
+                            d,
+                            ts,
+                            func,
+                            block,
                             "switchEnum variant '{}' targets undefined block '{}'",
-                            variant, label
+                            variant,
+                            label
                         );
                     }
                 }
@@ -601,18 +713,12 @@ mod tests {
 
     #[test]
     fn validate_undeclared_field_type() {
-        assert_err(
-            "struct S { x: Nope }",
-            "Use of undeclared type 'Nope'",
-        );
+        assert_err("struct S { x: Nope }", "Use of undeclared type 'Nope'");
     }
 
     #[test]
     fn validate_undeclared_enum_payload_type() {
-        assert_err(
-            "enum E { A: Nope }",
-            "Use of undeclared type 'Nope'",
-        );
+        assert_err("enum E { A: Nope }", "Use of undeclared type 'Nope'");
     }
 
     #[test]
@@ -1545,7 +1651,7 @@ mod tests {
             ",
         )
     }
-     #[test]
+    #[test]
     fn double_drop_error() {
         // Syntactically well-formed drop on a param of Drop type.
         assert_err(
@@ -1642,10 +1748,7 @@ mod tests {
 
     #[test]
     fn extern_fn_with_bad_param_type_error() {
-        assert_err(
-            "extern fn foo(x: Nope);",
-            "Use of undeclared type 'Nope'",
-        );
+        assert_err("extern fn foo(x: Nope);", "Use of undeclared type 'Nope'");
     }
 
     #[test]
@@ -1717,7 +1820,9 @@ mod tests {
         );
         // Two independent bad assigns in one block should both be reported.
         assert_eq!(errs.len(), 2, "expected 2 errors, got: {:?}", errs);
-        assert!(errs.iter().all(|e| e.contains("Type mismatch in assignment")));
+        assert!(errs
+            .iter()
+            .all(|e| e.contains("Type mismatch in assignment")));
     }
 
     #[test]
@@ -1797,4 +1902,3 @@ mod tests {
         );
     }
 }
-

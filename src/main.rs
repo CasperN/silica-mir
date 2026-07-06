@@ -92,7 +92,11 @@ fn main() {
         for e in &d.errors {
             eprintln!("Error: {}", e);
         }
-        eprintln!("{} error(s), {} warning(s)", d.errors.len(), d.warnings.len());
+        eprintln!(
+            "{} error(s), {} warning(s)",
+            d.errors.len(),
+            d.warnings.len()
+        );
         std::process::exit(1);
     }
 

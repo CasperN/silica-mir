@@ -30,8 +30,7 @@ fn shared_borrow_of_init_ok() {
 
 #[test]
 fn shared_borrow_of_never_init_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           x: number;
           r: &number;
@@ -39,8 +38,7 @@ fn shared_borrow_of_never_init_error() {
             r = &x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create & of 'x': place must be initialized at borrow, but is not yet initialized"],
@@ -49,8 +47,7 @@ fn shared_borrow_of_never_init_error() {
 
 #[test]
 fn shared_borrow_of_moved_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         extern fn sink(x: number);
         fn f(x: number) {
           r: &number;
@@ -59,8 +56,7 @@ fn shared_borrow_of_moved_error() {
             r = &x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create & of 'x': place must be initialized at borrow, but is moved-from"],
@@ -85,8 +81,7 @@ fn mut_borrow_of_init_ok() {
 
 #[test]
 fn mut_borrow_of_never_init_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           x: number;
           r: &mut number;
@@ -94,8 +89,7 @@ fn mut_borrow_of_never_init_error() {
             r = &mut x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized"],
@@ -122,8 +116,7 @@ fn drop_borrow_of_init_ok() {
 
 #[test]
 fn drop_borrow_of_never_init_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f() {
           x: number;
           r: &drop number;
@@ -131,8 +124,7 @@ fn drop_borrow_of_never_init_error() {
             r = &drop x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized"],
@@ -184,8 +176,7 @@ fn out_borrow_of_moved_ok() {
 
 #[test]
 fn out_borrow_of_init_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           entry:
             x = 1;
@@ -197,8 +188,7 @@ fn out_borrow_of_init_error() {
             r = &out x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &out of 'x': place must be uninitialized at borrow, but is initialized"],
@@ -226,16 +216,14 @@ fn uninit_borrow_of_never_init_ok() {
 
 #[test]
 fn uninit_borrow_of_init_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(x: number) {
           r: &uninit number;
           entry:
             r = &uninit x;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized"],
@@ -268,8 +256,7 @@ fn mut_borrow_of_init_field_ok() {
 
 #[test]
 fn mut_borrow_of_never_init_field_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Copy Drop P { x: number y: number }
         fn f() {
           p: P;
@@ -287,8 +274,7 @@ fn mut_borrow_of_never_init_field_error() {
             r = &mut p.y;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized"],
@@ -299,8 +285,7 @@ fn mut_borrow_of_never_init_field_error() {
 fn out_borrow_of_partial_error() {
     // Borrowing the whole `p` when only `p.x` was written: the leaf
     // read on `p` is Partial, not one of the accepted states.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Copy Drop P { x: number y: number }
         fn f() {
           p: P;
@@ -310,8 +295,7 @@ fn out_borrow_of_partial_error() {
             r = &out p;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized"],
@@ -321,8 +305,7 @@ fn out_borrow_of_partial_error() {
 #[test]
 fn shared_borrow_of_partial_error() {
     // `&` requires Init; Partial isn't Init.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Copy Drop P { x: number y: number }
         fn f() {
           p: P;
@@ -332,8 +315,7 @@ fn shared_borrow_of_partial_error() {
             r = &p;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create & of 'p': place must be initialized at borrow, but is partially initialized"],
@@ -343,8 +325,7 @@ fn shared_borrow_of_partial_error() {
 #[test]
 fn drop_borrow_of_partial_error() {
     // `&drop` requires Init; Partial isn't Init.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         struct Copy Drop P { x: number y: number }
         fn f() {
           p: P;
@@ -354,8 +335,7 @@ fn drop_borrow_of_partial_error() {
             r = &drop p;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized"],
@@ -426,15 +406,13 @@ fn mut_ref_move_then_write_ok() {
 fn mut_ref_write_without_move_error() {
     // `*r = v` on an Init pointee would silently forget the old
     // value — rejected as pre-overwrite of the pointee.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &mut number) {
           entry:
             *r = 42;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized"],
@@ -444,16 +422,14 @@ fn mut_ref_write_without_move_error() {
 #[test]
 fn mut_ref_moved_out_return_leaks() {
     // Move-out leaves cur=Uninit; not refilled → obligation unmet.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &mut number) {
           x: number;
           entry:
             x = move *r;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["reference 'r' of type Ref(Mut, Number) has unfulfilled obligation at return"],
@@ -477,14 +453,12 @@ fn out_ref_write_then_return_ok() {
 
 #[test]
 fn out_ref_unwritten_leaks() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &out number) {
           entry:
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["reference 'r' of type Ref(Out, Number) has unfulfilled obligation at return"],
@@ -494,8 +468,7 @@ fn out_ref_unwritten_leaks() {
 #[test]
 fn out_ref_read_before_write_error() {
     // Can't read through &out — pointee is Uninit at creation.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &out number) {
           x: number;
           entry:
@@ -503,8 +476,7 @@ fn out_ref_read_before_write_error() {
             *r = 42;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized"],
@@ -529,14 +501,12 @@ fn drop_ref_move_out_then_return_ok() {
 
 #[test]
 fn drop_ref_unmoved_leaks() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &drop number) {
           entry:
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["reference 'r' of type Ref(Drop, Number) has unfulfilled obligation at return"],
@@ -576,15 +546,13 @@ fn uninit_ref_write_makes_it_drop_state() {
 
 #[test]
 fn uninit_ref_write_without_moveback_leaks() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &uninit number) {
           entry:
             *r = 42;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["reference 'r' of type Ref(Uninit, Number) has unfulfilled obligation at return"],
@@ -645,15 +613,13 @@ fn shared_ref_read_ok() {
 
 #[test]
 fn shared_ref_write_error() {
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &number) {
           entry:
             *r = 1;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(&errs, &["cannot mutate through shared reference 'r'"]);
 }
 
@@ -690,8 +656,7 @@ fn drop_of_mut_ref_ok() {
 fn drop_of_ref_with_unfulfilled_obligation_error() {
     // Move out through &mut leaves cur=Uninit; drop-forget then
     // errors because obligation not fulfilled.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &mut number) {
           x: number;
           entry:
@@ -699,8 +664,7 @@ fn drop_of_ref_with_unfulfilled_obligation_error() {
             drop r;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot forget reference 'r': obligation not fulfilled"],
@@ -732,8 +696,7 @@ fn overwrite_bound_ref_with_fulfilled_obligation_ok() {
 fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
     // After `x = move *r`, r is (Uninit, Init); overwriting r would
     // silently forget the pending re-init obligation on the pointee.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &mut number, z: number) {
           x: number;
           entry:
@@ -741,8 +704,7 @@ fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
             r = &mut z;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["cannot forget reference 'r': obligation not fulfilled"],
@@ -755,15 +717,13 @@ fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
 fn drop_deref_of_mut_ref_leaks_pointee() {
     // `drop *r` on r: &mut consumes the pointee, transitioning r to
     // (Uninit, Init). Without re-init, obligation at return is unmet.
-    let (errs, _) = run(
-        "
+    let (errs, _) = run("
         fn f(r: &mut number) {
           entry:
             drop *r;
             return
         }
-        ",
-    );
+        ");
     assert_errors_contain(
         &errs,
         &["reference 'r' of type Ref(Mut, Number) has unfulfilled obligation at return"],
@@ -832,4 +792,3 @@ fn mut_borrow_does_not_change_place_state() {
         ",
     );
 }
-

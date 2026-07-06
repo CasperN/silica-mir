@@ -1,5 +1,5 @@
 use crate::ast::*;
-use tree_sitter::{Parser as TSParser, Node};
+use tree_sitter::{Node, Parser as TSParser};
 
 extern "C" {
     fn tree_sitter_silica_mir() -> *const std::ffi::c_void;
@@ -21,7 +21,6 @@ pub struct Parser {
     source: String,
 }
 
-
 impl Parser {
     pub fn new(source: String) -> Self {
         Self { source }
@@ -29,9 +28,13 @@ impl Parser {
 
     pub fn parse(&self) -> Result<Program, String> {
         let mut parser = TSParser::new();
-        parser.set_language(&language()).map_err(|e| e.to_string())?;
+        parser
+            .set_language(&language())
+            .map_err(|e| e.to_string())?;
 
-        let tree = parser.parse(&self.source, None).ok_or("Failed to parse source code")?;
+        let tree = parser
+            .parse(&self.source, None)
+            .ok_or("Failed to parse source code")?;
         let root = tree.root_node();
 
         if root.has_error() {
@@ -81,15 +84,16 @@ impl Parser {
 
                 let text = self.get_text(first_child);
                 let ref_kind = match text {
-                    "&"       => Some(RefKind::Shared),
-                    "&mut"    => Some(RefKind::Mut),
-                    "&out"    => Some(RefKind::Out),
-                    "&drop"   => Some(RefKind::Drop),
+                    "&" => Some(RefKind::Shared),
+                    "&mut" => Some(RefKind::Mut),
+                    "&out" => Some(RefKind::Out),
+                    "&drop" => Some(RefKind::Drop),
                     "&uninit" => Some(RefKind::Uninit),
-                    _         => None,
+                    _ => None,
                 };
                 if let Some(kind) = ref_kind {
-                    let inner = node.child(1)
+                    let inner = node
+                        .child(1)
                         .ok_or_else(|| format!("Missing inner type for {}", text))?;
                     return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
                 }
@@ -134,7 +138,10 @@ impl Parser {
                     let field_name = self.get_text(field_node).to_string();
                     Ok(Place::Field(Box::new(inner_place), field_name))
                 } else {
-                    Err(format!("Unrecognized place suffix: {}", self.get_text(node)))
+                    Err(format!(
+                        "Unrecognized place suffix: {}",
+                        self.get_text(node)
+                    ))
                 }
             }
             _ => Err(format!("Unexpected node kind in place: {}", node.kind())),
@@ -154,9 +161,7 @@ impl Parser {
                     let place_node = node.child(1).ok_or("Move missing place")?;
                     Ok(Operand::Move(self.map_place(place_node)?))
                 }
-                _ => {
-                    Ok(Operand::Const(self.map_const(first_child)?))
-                }
+                _ => Ok(Operand::Const(self.map_const(first_child)?)),
             }
         } else {
             Err(format!("Expected operand, found: {}", node.kind()))
@@ -166,7 +171,10 @@ impl Parser {
     fn map_const(&self, node: Node) -> Result<ConstVal, String> {
         match node.kind() {
             "number" => {
-                let val = self.get_text(node).parse::<u64>().map_err(|e| e.to_string())?;
+                let val = self
+                    .get_text(node)
+                    .parse::<u64>()
+                    .map_err(|e| e.to_string())?;
                 Ok(ConstVal::Number(val))
             }
             "const" => {
@@ -213,12 +221,19 @@ impl Parser {
                         Ok(RValue::Ref(RefKind::Uninit, self.map_place(place_node)?))
                     }
                     _ => {
-                        let enum_name_node = node.child_by_field_name("enum_name").ok_or("Enum construction missing enum name")?;
+                        let enum_name_node = node
+                            .child_by_field_name("enum_name")
+                            .ok_or("Enum construction missing enum name")?;
                         let enum_name = self.get_text(enum_name_node).to_string();
-                        let variant_name_node = node.child_by_field_name("variant_name").ok_or("Enum construction missing variant name")?;
+                        let variant_name_node = node
+                            .child_by_field_name("variant_name")
+                            .ok_or("Enum construction missing variant name")?;
                         let variant_name = self.get_text(variant_name_node).to_string();
                         let mut cursor = node.walk();
-                        let operand_node = node.children(&mut cursor).find(|c| c.kind() == "operand").ok_or("Enum construction missing operand")?;
+                        let operand_node = node
+                            .children(&mut cursor)
+                            .find(|c| c.kind() == "operand")
+                            .ok_or("Enum construction missing operand")?;
                         let operand = self.map_operand(operand_node)?;
                         Ok(RValue::EnumConstr(enum_name, variant_name, operand))
                     }
@@ -231,14 +246,20 @@ impl Parser {
         let child = node.child(0).ok_or("Statement empty")?;
         match child.kind() {
             "assignment" => {
-                let lhs_node = child.child_by_field_name("lhs").ok_or("Assignment missing LHS")?;
+                let lhs_node = child
+                    .child_by_field_name("lhs")
+                    .ok_or("Assignment missing LHS")?;
                 let lhs = self.map_place(lhs_node)?;
-                let rhs_node = child.child_by_field_name("rhs").ok_or("Assignment missing RHS")?;
+                let rhs_node = child
+                    .child_by_field_name("rhs")
+                    .ok_or("Assignment missing RHS")?;
                 let rhs = self.map_rvalue(rhs_node)?;
                 Ok(Statement::Assign(lhs, rhs))
             }
             "call" => {
-                let func_node = child.child_by_field_name("function").ok_or("Call missing function")?;
+                let func_node = child
+                    .child_by_field_name("function")
+                    .ok_or("Call missing function")?;
                 let func = self.map_operand(func_node)?;
 
                 let mut args = Vec::new();
@@ -251,11 +272,15 @@ impl Parser {
                 Ok(Statement::Call(func, args))
             }
             "drop_stmt" => {
-                let place_node = child.child_by_field_name("place").ok_or("Drop missing place")?;
+                let place_node = child
+                    .child_by_field_name("place")
+                    .ok_or("Drop missing place")?;
                 Ok(Statement::Drop(self.map_place(place_node)?))
             }
             "unborrow_stmt" => {
-                let place_node = child.child_by_field_name("place").ok_or("Unborrow missing place")?;
+                let place_node = child
+                    .child_by_field_name("place")
+                    .ok_or("Unborrow missing place")?;
                 Ok(Statement::Unborrow(self.map_place(place_node)?))
             }
             _ => Err(format!("Unknown statement kind: {}", child.kind())),
@@ -266,30 +291,48 @@ impl Parser {
         let child = node.child(0).ok_or("Terminator empty")?;
         match child.kind() {
             "goto" => {
-                let label_node = child.child_by_field_name("label").ok_or("Goto missing label")?;
+                let label_node = child
+                    .child_by_field_name("label")
+                    .ok_or("Goto missing label")?;
                 Ok(Terminator::Goto(self.get_text(label_node).to_string()))
             }
             "return" => Ok(Terminator::Return),
             "branch" => {
-                let cond_node = child.child_by_field_name("condition").ok_or("Branch missing condition")?;
+                let cond_node = child
+                    .child_by_field_name("condition")
+                    .ok_or("Branch missing condition")?;
                 let cond = self.map_operand(cond_node)?;
-                let true_node = child.child_by_field_name("true_label").ok_or("Branch missing true_label")?;
+                let true_node = child
+                    .child_by_field_name("true_label")
+                    .ok_or("Branch missing true_label")?;
                 let true_label = self.get_text(true_node).to_string();
-                let false_node = child.child_by_field_name("false_label").ok_or("Branch missing false_label")?;
+                let false_node = child
+                    .child_by_field_name("false_label")
+                    .ok_or("Branch missing false_label")?;
                 let false_label = self.get_text(false_node).to_string();
-                Ok(Terminator::Branch { cond, true_label, false_label })
+                Ok(Terminator::Branch {
+                    cond,
+                    true_label,
+                    false_label,
+                })
             }
             "switchEnum" => {
-                let place_node = child.child_by_field_name("place").ok_or("SwitchEnum missing place")?;
+                let place_node = child
+                    .child_by_field_name("place")
+                    .ok_or("SwitchEnum missing place")?;
                 let place = self.map_place(place_node)?;
 
                 let mut cases = Vec::new();
                 let mut cursor = child.walk();
                 for item in child.children(&mut cursor) {
                     if item.kind() == "switch_case" {
-                        let variant_node = item.child_by_field_name("variant").ok_or("Switch case missing variant")?;
+                        let variant_node = item
+                            .child_by_field_name("variant")
+                            .ok_or("Switch case missing variant")?;
                         let variant = self.get_text(variant_node).to_string();
-                        let label_node = item.child_by_field_name("label").ok_or("Switch case missing label")?;
+                        let label_node = item
+                            .child_by_field_name("label")
+                            .ok_or("Switch case missing label")?;
                         let label = self.get_text(label_node).to_string();
                         cases.push((variant, label));
                     }
@@ -303,7 +346,9 @@ impl Parser {
     }
 
     fn map_basic_block(&self, node: Node) -> Result<BasicBlock, String> {
-        let label_node = node.child_by_field_name("label").ok_or("Basic block missing label")?;
+        let label_node = node
+            .child_by_field_name("label")
+            .ok_or("Basic block missing label")?;
         let label = self.get_text(label_node).to_string();
         let label_span = span_of(label_node);
 
@@ -316,15 +361,26 @@ impl Parser {
             }
         }
 
-        let term_node = node.children(&mut cursor).find(|c| c.kind() == "terminator").ok_or("Basic block missing terminator")?;
+        let term_node = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "terminator")
+            .ok_or("Basic block missing terminator")?;
         let terminator_span = span_of(term_node);
         let terminator = self.map_terminator(term_node)?;
 
-        Ok(BasicBlock { label, label_span, statements, terminator, terminator_span })
+        Ok(BasicBlock {
+            label,
+            label_span,
+            statements,
+            terminator,
+            terminator_span,
+        })
     }
 
     fn map_struct_decl(&self, node: Node) -> Result<StructDecl, String> {
-        let name_node = node.child_by_field_name("name").ok_or("Struct decl missing name")?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or("Struct decl missing name")?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
@@ -341,19 +397,34 @@ impl Parser {
         let mut fields = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "struct_field" {
-                let f_name_node = child.child_by_field_name("name").ok_or("Struct field missing name")?;
+                let f_name_node = child
+                    .child_by_field_name("name")
+                    .ok_or("Struct field missing name")?;
                 let f_name = self.get_text(f_name_node).to_string();
-                let f_type_node = child.child_by_field_name("type").ok_or("Struct field missing type")?;
+                let f_type_node = child
+                    .child_by_field_name("type")
+                    .ok_or("Struct field missing type")?;
                 let f_type = self.map_type(f_type_node)?;
-                fields.push(StructField { name: f_name, ty: f_type, span: span_of(child) });
+                fields.push(StructField {
+                    name: f_name,
+                    ty: f_type,
+                    span: span_of(child),
+                });
             }
         }
 
-        Ok(StructDecl { name, name_span, markers, fields })
+        Ok(StructDecl {
+            name,
+            name_span,
+            markers,
+            fields,
+        })
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, String> {
-        let name_node = node.child_by_field_name("name").ok_or("Enum decl missing name")?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or("Enum decl missing name")?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
@@ -370,19 +441,34 @@ impl Parser {
         let mut variants = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "enum_variant" {
-                let v_name_node = child.child_by_field_name("name").ok_or("Enum variant missing name")?;
+                let v_name_node = child
+                    .child_by_field_name("name")
+                    .ok_or("Enum variant missing name")?;
                 let v_name = self.get_text(v_name_node).to_string();
-                let v_type_node = child.child_by_field_name("type").ok_or("Enum variant missing type")?;
+                let v_type_node = child
+                    .child_by_field_name("type")
+                    .ok_or("Enum variant missing type")?;
                 let v_type = self.map_type(v_type_node)?;
-                variants.push(EnumVariant { name: v_name, ty: v_type, span: span_of(child) });
+                variants.push(EnumVariant {
+                    name: v_name,
+                    ty: v_type,
+                    span: span_of(child),
+                });
             }
         }
 
-        Ok(EnumDecl { name, name_span, markers, variants })
+        Ok(EnumDecl {
+            name,
+            name_span,
+            markers,
+            variants,
+        })
     }
 
     fn map_function_decl(&self, node: Node) -> Result<Function, String> {
-        let name_node = node.child_by_field_name("name").ok_or("Function missing name")?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or("Function missing name")?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
         let is_extern = self.get_text(node).starts_with("extern");
@@ -396,19 +482,35 @@ impl Parser {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "param_decl" => {
-                    let p_name_node = child.child_by_field_name("name").ok_or("Param missing name")?;
+                    let p_name_node = child
+                        .child_by_field_name("name")
+                        .ok_or("Param missing name")?;
                     let p_name = self.get_text(p_name_node).to_string();
-                    let p_type_node = child.child_by_field_name("type").ok_or("Param missing type")?;
+                    let p_type_node = child
+                        .child_by_field_name("type")
+                        .ok_or("Param missing type")?;
                     let p_type = self.map_type(p_type_node)?;
-                    params.push(Param { name: p_name, ty: p_type, span: span_of(child) });
+                    params.push(Param {
+                        name: p_name,
+                        ty: p_type,
+                        span: span_of(child),
+                    });
                 }
                 "local_decl" => {
                     has_body = true;
-                    let l_name_node = child.child_by_field_name("name").ok_or("Local missing name")?;
+                    let l_name_node = child
+                        .child_by_field_name("name")
+                        .ok_or("Local missing name")?;
                     let l_name = self.get_text(l_name_node).to_string();
-                    let l_type_node = child.child_by_field_name("type").ok_or("Local missing type")?;
+                    let l_type_node = child
+                        .child_by_field_name("type")
+                        .ok_or("Local missing type")?;
                     let l_type = self.map_type(l_type_node)?;
-                    locals.push(Local { name: l_name, ty: l_type, span: span_of(child) });
+                    locals.push(Local {
+                        name: l_name,
+                        ty: l_type,
+                        span: span_of(child),
+                    });
                 }
                 "basic_block" => {
                     has_body = true;
@@ -427,7 +529,13 @@ impl Parser {
             None
         };
 
-        Ok(Function { name, name_span, is_extern, params, body })
+        Ok(Function {
+            name,
+            name_span,
+            is_extern,
+            params,
+            body,
+        })
     }
 }
 

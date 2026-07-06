@@ -19,7 +19,9 @@ pub fn pretty_print(program: &Program) -> String {
     let mut out = String::new();
     let mut first = true;
     for decl in &program.declarations {
-        if !first { out.push('\n'); }
+        if !first {
+            out.push('\n');
+        }
         first = false;
         write_declaration(&mut out, decl);
     }
@@ -35,8 +37,12 @@ fn write_declaration(out: &mut String, decl: &Declaration) {
 }
 
 fn write_markers(out: &mut String, m: &Markers) {
-    if m.copy { out.push_str("Copy "); }
-    if m.drop { out.push_str("Drop "); }
+    if m.copy {
+        out.push_str("Copy ");
+    }
+    if m.drop {
+        out.push_str("Drop ");
+    }
 }
 
 fn write_struct(out: &mut String, s: &StructDecl) {
@@ -74,7 +80,9 @@ fn write_function(out: &mut String, f: &Function) {
     out.push_str(&f.name);
     out.push('(');
     for (i, p) in f.params.iter().enumerate() {
-        if i > 0 { out.push_str(", "); }
+        if i > 0 {
+            out.push_str(", ");
+        }
         write!(out, "{}: ", p.name).unwrap();
         write_type(out, &p.ty);
     }
@@ -113,7 +121,9 @@ fn write_type(out: &mut String, ty: &Type) {
         Type::Fn(params) => {
             out.push_str("fn(");
             for (i, p) in params.iter().enumerate() {
-                if i > 0 { out.push_str(", "); }
+                if i > 0 {
+                    out.push_str(", ");
+                }
                 write_type(out, p);
             }
             out.push(')');
@@ -126,7 +136,9 @@ fn write_type(out: &mut String, ty: &Type) {
                 RefKind::Drop => "&drop ",
                 RefKind::Uninit => "&uninit ",
             });
-            if matches!(kind, RefKind::Shared) { out.push(' '); }
+            if matches!(kind, RefKind::Shared) {
+                out.push(' ');
+            }
             write_type(out, inner);
         }
     }
@@ -154,8 +166,14 @@ fn write_place(out: &mut String, place: &Place) {
 
 fn write_operand(out: &mut String, op: &Operand) {
     match op {
-        Operand::Copy(p) => { out.push_str("copy "); write_place(out, p); }
-        Operand::Move(p) => { out.push_str("move "); write_place(out, p); }
+        Operand::Copy(p) => {
+            out.push_str("copy ");
+            write_place(out, p);
+        }
+        Operand::Move(p) => {
+            out.push_str("move ");
+            write_place(out, p);
+        }
         Operand::Const(c) => write_const(out, c),
     }
 }
@@ -181,7 +199,9 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
                 RefKind::Drop => "&drop ",
                 RefKind::Uninit => "&uninit ",
             });
-            if matches!(kind, RefKind::Shared) { out.push(' '); }
+            if matches!(kind, RefKind::Shared) {
+                out.push(' ');
+            }
             write_place(out, place);
         }
         RValue::EnumConstr(enum_name, variant, op) => {
@@ -204,7 +224,9 @@ fn write_statement(out: &mut String, stmt: &Statement) {
             write_operand(out, target);
             out.push('(');
             for (i, a) in args.iter().enumerate() {
-                if i > 0 { out.push_str(", "); }
+                if i > 0 {
+                    out.push_str(", ");
+                }
                 write_operand(out, a);
             }
             out.push(')');
@@ -224,7 +246,11 @@ fn write_terminator(out: &mut String, term: &Terminator) {
     match term {
         Terminator::Goto(label) => write!(out, "goto {}", label).unwrap(),
         Terminator::Return => out.push_str("return"),
-        Terminator::Branch { cond, true_label, false_label } => {
+        Terminator::Branch {
+            cond,
+            true_label,
+            false_label,
+        } => {
             out.push_str("branch(");
             write_operand(out, cond);
             write!(out, ") [true: {}, false: {}]", true_label, false_label).unwrap();
@@ -234,7 +260,9 @@ fn write_terminator(out: &mut String, term: &Terminator) {
             write_place(out, place);
             out.push_str(") [");
             for (i, (variant, label)) in cases.iter().enumerate() {
-                if i > 0 { out.push_str(", "); }
+                if i > 0 {
+                    out.push_str(", ");
+                }
                 write!(out, "{}: {}", variant, label).unwrap();
             }
             out.push(']');
@@ -254,9 +282,9 @@ mod tests {
     /// strip them before compare).
     #[track_caller]
     fn assert_roundtrip(src: &str) {
-        let original = Parser::new(src.to_string()).parse().unwrap_or_else(|e| {
-            panic!("parse error on original: {}\n--- source ---\n{}", e, src)
-        });
+        let original = Parser::new(src.to_string())
+            .parse()
+            .unwrap_or_else(|e| panic!("parse error on original: {}\n--- source ---\n{}", e, src));
         let printed = pretty_print(&original);
         let reparsed = Parser::new(printed.clone()).parse().unwrap_or_else(|e| {
             panic!(
@@ -268,7 +296,8 @@ mod tests {
             strip_spans(original.clone()),
             strip_spans(reparsed),
             "round-trip differed\n--- source ---\n{}\n--- pretty ---\n{}",
-            src, printed
+            src,
+            printed
         );
     }
 
@@ -279,21 +308,31 @@ mod tests {
             match decl {
                 Declaration::Struct(s) => {
                     s.name_span = zero;
-                    for f in &mut s.fields { f.span = zero; }
+                    for f in &mut s.fields {
+                        f.span = zero;
+                    }
                 }
                 Declaration::Enum(e) => {
                     e.name_span = zero;
-                    for v in &mut e.variants { v.span = zero; }
+                    for v in &mut e.variants {
+                        v.span = zero;
+                    }
                 }
                 Declaration::Fn(f) => {
                     f.name_span = zero;
-                    for p in &mut f.params { p.span = zero; }
+                    for p in &mut f.params {
+                        p.span = zero;
+                    }
                     if let Some(body) = &mut f.body {
-                        for l in &mut body.locals { l.span = zero; }
+                        for l in &mut body.locals {
+                            l.span = zero;
+                        }
                         for b in &mut body.blocks {
                             b.label_span = zero;
                             b.terminator_span = zero;
-                            for (_, s) in &mut b.statements { *s = zero; }
+                            for (_, s) in &mut b.statements {
+                                *s = zero;
+                            }
                         }
                     }
                 }
