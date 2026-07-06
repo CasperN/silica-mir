@@ -39,7 +39,7 @@ pub enum Type {
     Ref(RefKind, Box<Type>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Place {
     Var(String),
     Field(Box<Place>, String),

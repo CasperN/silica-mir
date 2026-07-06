@@ -25,7 +25,7 @@ use crate::diagnostics::Diagnostics;
 use crate::push_error;
 use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitState {
@@ -70,12 +70,23 @@ impl RefState {
     }
 }
 
-/// A record of a borrow that's currently in force.
+/// A record of a borrow that's currently in force. `loaned` is a set to
+/// support multi-loan: when a branch-of-borrows produces different loaned
+/// places on each side, the join unions them so all possible pointees stay
+/// tracked.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loan {
     pub kind: RefKind,
-    pub loaned: Place,
+    pub loaned: BTreeSet<Place>,
     pub create_span: Span,
+}
+
+impl Loan {
+    pub fn single(kind: RefKind, loaned: Place, create_span: Span) -> Self {
+        let mut set = BTreeSet::new();
+        set.insert(loaned);
+        Loan { kind, loaned: set, create_span }
+    }
 }
 
 /// State at a single program point.
@@ -224,14 +235,18 @@ fn join_point(a: &PointState, b: &PointState) -> PointState {
             }
         }
     }
-    // Loans: same rule — only keep exact-match entries. A branch of
-    // borrows (multi-loan) is a punchlist item; for now, disagreement
-    // just drops the loan from the map.
+    // Loans: same-kind entries merge by unioning their loaned sets
+    // (branch-of-borrows produces a multi-loan). Different kinds at the
+    // same borrower name can't happen — type_check enforces uniform ref
+    // types — so we drop as a conservative fallback if it somehow occurs.
     let mut loans: IndexMap<String, Loan> = IndexMap::new();
     for (name, la) in &a.loans {
         if let Some(lb) = b.loans.get(name) {
-            if la == lb {
-                loans.insert(name.clone(), la.clone());
+            if la.kind == lb.kind {
+                let mut merged = la.clone();
+                merged.loaned.extend(lb.loaned.iter().cloned());
+                // Span: prefer earlier (either side; a's is deterministic).
+                loans.insert(name.clone(), merged);
             }
         }
     }
@@ -490,11 +505,10 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
                     // Track the loan for all kinds (including shared)
                     // for later conflict detection. Synthetic span here
                     // — the diagnostic pass supplies the real one.
-                    state.loans.insert(name.clone(), Loan {
-                        kind: kind.clone(),
-                        loaned: place.clone(),
-                        create_span: Span { line: 0, col: 0 },
-                    });
+                    state.loans.insert(
+                        name.clone(),
+                        Loan::single(kind.clone(), place.clone(), Span { line: 0, col: 0 }),
+                    );
                     apply_eager_borrow_transition(ctx, kind, place, state);
                 }
                 // Ref/loan transfer via `dst = move src`.
@@ -803,16 +817,20 @@ fn check_loan_conflict(
             // consumption is handled by close_ref_if_present).
             continue;
         }
-        let Some((loan_root, loan_path)) = extract_path(&loan.loaned) else { continue; };
-        if loan_root != access_root { continue; }
-        if !paths_conflict(&access_path, &loan_path) { continue; }
         if is_compatible(&loan.kind, &access) { continue; }
-
-        push_error!(
-            d, span, func, block,
-            "cannot {} '{}': already borrowed by '{}'",
-            access.describe(), format_path(&access_root, &access_path), borrower
-        );
+        // Multi-loan: any place in the set may be the actual pointee.
+        // Report at most one error per loan (first matching place).
+        for loaned in &loan.loaned {
+            let Some((loan_root, loan_path)) = extract_path(loaned) else { continue; };
+            if loan_root != access_root { continue; }
+            if !paths_conflict(&access_path, &loan_path) { continue; }
+            push_error!(
+                d, span, func, block,
+                "cannot {} '{}': already borrowed by '{}'",
+                access.describe(), format_path(&access_root, &access_path), borrower
+            );
+            break;
+        }
     }
 }
 
@@ -869,11 +887,10 @@ fn check_and_transfer_stmt(
                     if let Some(rs) = RefState::from_kind(kind) {
                         state.refs.insert(name.clone(), rs);
                     }
-                    state.loans.insert(name.clone(), Loan {
-                        kind: kind.clone(),
-                        loaned: place.clone(),
-                        create_span: span,
-                    });
+                    state.loans.insert(
+                        name.clone(),
+                        Loan::single(kind.clone(), place.clone(), span),
+                    );
                     apply_eager_borrow_transition(ctx, kind, place, state);
                 }
                 // Ref/loan transfer via `dst = move src`.
@@ -3073,6 +3090,203 @@ mod tests {
                 z = move x;
                 call use_num(move y);
                 call use_num(move z);
+                return
+            }
+            ",
+        );
+    }
+
+    // ---------- Multi-loan (branch of borrows) ----------
+
+    #[test]
+    fn multiloan_branch_of_borrows_a_or_b_ok() {
+        // A branch-of-borrows: after the merge, r loans {a, b}. Both
+        // are frozen. Consuming r via a call releases both. Direct
+        // access to a or b after that is fine.
+        assert_no_diagnostics(
+            "
+            extern fn sink(r: &mut number);
+            fn f(a: number, b: number, c: boolean) {
+              r: &mut number;
+              entry:
+                branch(copy c) [true: t, false: fbr]
+              t:
+                r = &mut a;
+                goto merge
+              fbr:
+                r = &mut b;
+                goto merge
+              merge:
+                call sink(move r);
+                a = 1;
+                b = 2;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn multiloan_conflict_on_a_after_join() {
+        // After the merge, r loans {a, b}. Writing directly to `a` is
+        // a conflict — r may loan a.
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(a: number, b: number, c: boolean) {
+              r: &mut number;
+              entry:
+                branch(copy c) [true: t, false: fbr]
+              t:
+                r = &mut a;
+                goto merge
+              fbr:
+                r = &mut b;
+                goto merge
+              merge:
+                a = 1;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write to 'a': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn multiloan_conflict_on_b_after_join() {
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(a: number, b: number, c: boolean) {
+              r: &mut number;
+              entry:
+                branch(copy c) [true: t, false: fbr]
+              t:
+                r = &mut a;
+                goto merge
+              fbr:
+                r = &mut b;
+                goto merge
+              merge:
+                b = 2;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write to 'b': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn multiloan_disjoint_third_place_ok() {
+        // r may loan {a, b}, but neither is c. Direct access to c is
+        // fine.
+        assert_no_diagnostics(
+            "
+            extern fn sink(r: &mut number);
+            fn f(a: number, b: number, c: number, cond: boolean) {
+              r: &mut number;
+              entry:
+                branch(copy cond) [true: t, false: fbr]
+              t:
+                r = &mut a;
+                goto merge
+              fbr:
+                r = &mut b;
+                goto merge
+              merge:
+                c = 3;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    // ---------- Nested and irreducible CFG shapes ----------
+
+    #[test]
+    fn nested_loops_converge_ok() {
+        // A loop inside a loop — the fixpoint over back-edges should
+        // still converge and produce the expected states.
+        assert_no_diagnostics(
+            "
+            extern fn noop();
+            fn f(a: boolean, b: boolean) {
+              entry:
+                goto outer_head
+              outer_head:
+                branch(copy a) [true: inner_head, false: outer_done]
+              inner_head:
+                branch(copy b) [true: inner_body, false: outer_back]
+              inner_body:
+                call noop();
+                goto inner_head
+              outer_back:
+                goto outer_head
+              outer_done:
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn irreducible_control_flow_two_entry_points_ok() {
+        // Both `l` and `m` have a predecessor from the other and from
+        // entry — the loop has no single header (irreducible flow).
+        // Fixpoint should still converge.
+        assert_no_diagnostics(
+            "
+            extern fn noop();
+            fn f(a: boolean, b: boolean) {
+              entry:
+                branch(copy a) [true: l, false: m]
+              l:
+                call noop();
+                branch(copy b) [true: m, false: exit]
+              m:
+                call noop();
+                branch(copy a) [true: l, false: exit]
+              exit:
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn nested_loop_with_borrow_across_outer_iterations_ok() {
+        // Borrow taken outside both loops, used through the inner loop,
+        // consumed after both. Confirms loan persists through nested
+        // back-edges without accumulating.
+        assert_no_diagnostics(
+            "
+            extern fn sink(r: &mut number);
+            extern fn use_num(n: number);
+            fn f(x: number, a: boolean, b: boolean) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                goto outer_head
+              outer_head:
+                branch(copy a) [true: inner_head, false: outer_done]
+              inner_head:
+                branch(copy b) [true: inner_body, false: outer_back]
+              inner_body:
+                call use_num(copy *r);
+                goto inner_head
+              outer_back:
+                goto outer_head
+              outer_done:
+                call sink(move r);
                 return
             }
             ",
