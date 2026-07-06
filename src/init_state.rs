@@ -278,7 +278,7 @@ pub fn states_before_returns<'a>(
     let Some(body) = &func.body else { return out; };
     if body.blocks.is_empty() { return out; }
 
-    let locals = collect_locals(func, body);
+    let locals = func.locals_map();
     let ctx = Ctx { env, locals: &locals };
     let entry_states = compute_entry_states(&ctx, func, body);
 
@@ -299,7 +299,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else { return; };
     if body.blocks.is_empty() { return; }
 
-    let locals = collect_locals(func, body);
+    let locals = func.locals_map();
     let ctx = Ctx { env, locals: &locals };
     let entry_states = compute_entry_states(&ctx, func, body);
 
@@ -308,13 +308,6 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         let mut state = entry.clone();
         check_block(&ctx, func, block, &mut state, d);
     }
-}
-
-fn collect_locals(func: &Function, body: &FunctionBody) -> IndexMap<String, Type> {
-    let mut m = IndexMap::new();
-    for p in &func.params { m.insert(p.name.clone(), p.ty.clone()); }
-    for l in &body.locals { m.insert(l.name.clone(), l.ty.clone()); }
-    m
 }
 
 fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState {

@@ -1,13 +1,13 @@
 //! Substructural class check for declared types.
 //!
-//! **Scope note:** this file is narrower than its subject suggests. Today
-//! it only verifies that a declaration's `Copy` / `Drop` markers are
-//! *compositionally* consistent — a struct marked `Copy` must not contain
-//! a non-Copy field, etc. It does **not** check that MIR statements respect
-//! substructural constraints (implicit copies, insertion of `drop`
-//! sequences, LIFO drop ordering, etc.). When those land they belong in a
-//! sibling module — likely under a `substructural/` directory alongside a
-//! renamed `substructural/composition.rs`.
+//! **Scope note:** this file only checks that a declaration's `Copy` /
+//! `Drop` markers are compositionally consistent — a struct marked `Copy`
+//! must not contain a non-Copy field, etc. Its sibling
+//! `substructural_check` handles statement-level class checks and the
+//! leak check at return; `drop_elaboration` inserts the drops that make
+//! Drop values explicit. When elaboration coverage is finished, the three
+//! files can be bundled into a `substructural/` directory as
+//! `composition.rs`, `check.rs`, `elaboration.rs`.
 //!
 //! Silica's `Copy` / `Drop` markers on struct and enum declarations classify
 //! the type as (respectively) copyable and forgettable. This pass verifies

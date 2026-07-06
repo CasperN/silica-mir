@@ -40,7 +40,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         return;
     }
 
-    let locals = collect_locals(func, body);
+    let locals = func.locals_map();
     let entry_states = compute_entry_states(body);
 
     for block in &body.blocks {
@@ -179,17 +179,6 @@ fn check_downcast_refinement(
     }
 }
 
-fn collect_locals(func: &Function, body: &FunctionBody) -> IndexMap<String, Type> {
-    let mut locals = IndexMap::new();
-    for p in &func.params {
-        locals.insert(p.name.clone(), p.ty.clone());
-    }
-    for l in &body.locals {
-        locals.insert(l.name.clone(), l.ty.clone());
-    }
-    locals
-}
-
 fn compute_entry_states(body: &FunctionBody) -> IndexMap<String, PointState> {
     let mut states: IndexMap<String, PointState> = IndexMap::new();
     let mut worklist: VecDeque<String> = VecDeque::new();
@@ -265,7 +254,7 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
             if let RValue::Ref(kind, borrowed) = rvalue {
                 if !matches!(kind, RefKind::Shared) {
                     if let Some(root) = root_var(borrowed) {
-                        state.remove(root);
+                        state.shift_remove(root);
                     }
                 }
             }
@@ -287,16 +276,16 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
                             if let Some(set) = state.get(src).cloned() {
                                 state.insert(t.clone(), set);
                             } else {
-                                state.remove(t);
+                                state.shift_remove(t);
                             }
                         }
                         _ => {
-                            state.remove(t);
+                            state.shift_remove(t);
                         }
                     }
                 }
                 _ => {
-                    state.remove(t);
+                    state.shift_remove(t);
                 }
             }
         }
@@ -308,7 +297,7 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
         Statement::Drop(place) => {
             // Drop consumes the place — kill any variant refinement.
             if let Some(root) = root_var(place) {
-                state.remove(root);
+                state.shift_remove(root);
             }
         }
     }

@@ -17,9 +17,9 @@
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks.
 //!
-//! This file will likely move to `substructural/check.rs` alongside a
-//! renamed `substructural/composition.rs` once elaboration handles more
-//! cases.
+//! When elaboration coverage is finished (Partial-at-return, join-edge
+//! splitting), this file, `marker_composition`, and `drop_elaboration`
+//! can be bundled into a `substructural/` directory.
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
@@ -39,14 +39,7 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else { return; };
-    let mut locals: IndexMap<String, Type> = IndexMap::new();
-    for p in &func.params {
-        locals.insert(p.name.clone(), p.ty.clone());
-    }
-    for l in &body.locals {
-        locals.insert(l.name.clone(), l.ty.clone());
-    }
-
+    let locals = func.locals_map();
     for block in &body.blocks {
         for (stmt, span) in &block.statements {
             check_stmt(env, func, block, &locals, stmt, *span, d);
@@ -138,23 +131,12 @@ fn check_terminator(
 /// is reported as a leak — this is the "strict" post-elaboration check.
 pub fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
-        let Some(body) = &f.body else { continue; };
-        let locals = build_locals(f, body);
+        if f.body.is_none() { continue; }
+        let locals = f.locals_map();
         for (block, state) in init_state::states_before_returns(env, f) {
             check_leaks_in_state(env, f, block, &locals, &state, d);
         }
     }
-}
-
-fn build_locals(func: &Function, body: &FunctionBody) -> IndexMap<String, Type> {
-    let mut locals = IndexMap::new();
-    for p in &func.params {
-        locals.insert(p.name.clone(), p.ty.clone());
-    }
-    for l in &body.locals {
-        locals.insert(l.name.clone(), l.ty.clone());
-    }
-    locals
 }
 
 fn check_leaks_in_state(

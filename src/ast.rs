@@ -213,6 +213,25 @@ pub struct Function {
     pub body: Option<FunctionBody>,
 }
 
+impl Function {
+    /// Build a `name -> type` map from the function's parameters and (if
+    /// present) its body's locals. Iteration follows declaration order:
+    /// params, then locals. Used by every analysis pass that needs to
+    /// look up the type of a place-root.
+    pub fn locals_map(&self) -> IndexMap<String, Type> {
+        let mut m = IndexMap::new();
+        for p in &self.params {
+            m.insert(p.name.clone(), p.ty.clone());
+        }
+        if let Some(body) = &self.body {
+            for l in &body.locals {
+                m.insert(l.name.clone(), l.ty.clone());
+            }
+        }
+        m
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructDecl {
     pub name: String,
