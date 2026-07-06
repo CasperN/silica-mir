@@ -469,6 +469,8 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
             if let Place::Var(name) = place {
                 state.refs.shift_remove(name);
             }
+            // `drop *r` — consume the pointee, transition r's cur.
+            apply_deref_op(ctx, place, DerefOp::Move, state, None);
             apply_move(ctx, place, state);
         }
     }
@@ -699,6 +701,9 @@ fn check_and_transfer_stmt(
             // Var, also verify the pointee obligation before forgetting.
             check_place_read(ctx, func, block, place, span, state, d);
             close_ref_if_present(ctx, func, block, place, span, state, d);
+            // `drop *r` — consume the pointee, transition r's cur.
+            apply_deref_op(ctx, place, DerefOp::Move, state,
+                Some((func, block, span, d)));
             apply_move(ctx, place, state);
         }
     }

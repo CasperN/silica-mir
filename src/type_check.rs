@@ -1131,15 +1131,13 @@ mod tests {
     #[test]
     fn assign_through_mut_ref_ok() {
         // `&mut r` starts pointee Init; writing through *r requires first
-        // moving the pointee out (transitioning to Uninit). This confirms
-        // the type checker accepts the number-into-*r assignment; init
-        // tracking imposes the additional ordering constraint.
+        // consuming the pointee (transitioning to Uninit). Use `drop *r`
+        // to consume the pointee without needing a local receiver.
         assert_ok(
             "
             fn f(r: &mut number) {
-              x: number;
               entry:
-                x = move *r;
+                drop *r;
                 *r = 42;
                 return
             }

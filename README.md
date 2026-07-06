@@ -215,8 +215,10 @@ payload sets the whole enum `Uninit`.
 
 
 # Punch list
-- reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Requre `Move` to move, `Copy + Drop` is move.
+- reachable/flow analysis for booleans too. Or should boolean be an enum?
+
+# Longer term
 - NLL
 - Lower to LLVM
 - Lambdas
