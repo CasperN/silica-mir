@@ -85,6 +85,18 @@ impl Env {
         }
     }
 
+    /// Type of `field` in the struct type `ty`, if any. Returns `None` if
+    /// `ty` isn't a declared struct or the field doesn't exist.
+    pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
+        let Type::Custom(name) = ty else { return None; };
+        match self.types.get(name) {
+            Some(TypeDecl::Struct(s)) => s.fields.iter()
+                .find(|f| f.name == field)
+                .map(|f| f.ty.clone()),
+            _ => None,
+        }
+    }
+
     pub fn types_match(&self, t1: &Type, t2: &Type) -> bool {
         match (t1, t2) {
             (Type::Number, Type::Number) => true,
@@ -485,7 +497,7 @@ mod tests {
         assert_ok(
             "
             struct Point { x: number y: number }
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f() { entry: return }
             extern fn g();
             ",
@@ -644,7 +656,7 @@ mod tests {
     fn place_struct_field_ok() {
         assert_ok(
             "
-            struct P { x: number y: number }
+            struct Copy Drop P { x: number y: number }
             fn f(p: P) {
               a: number;
               entry:
@@ -708,7 +720,7 @@ mod tests {
         // switchEnum arm — enforced by `enum_variants`.
         assert_ok(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               x: number;
               entry:
@@ -726,7 +738,7 @@ mod tests {
     fn place_downcast_unknown_variant_error() {
         assert_err(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f(o: Option) {
               x: number;
               entry:
@@ -839,7 +851,7 @@ mod tests {
         // Exercises Deref(Field(Var, "r")) — a reference held in a struct field.
         assert_ok(
             "
-            struct Ptr { r: &number }
+            struct Copy Drop Ptr { r: &number }
             fn f(p: Ptr) {
               a: number;
               entry:
@@ -884,7 +896,7 @@ mod tests {
     fn unit_as_enum_payload_ok() {
         assert_ok(
             "
-            enum Tag { A: unit B: number }
+            enum Copy Drop Tag { A: unit B: number }
             fn f() {
               t: Tag;
               entry:
@@ -1005,7 +1017,7 @@ mod tests {
     fn rvalue_enum_constr_ok() {
         assert_ok(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f() {
               o: Option;
               entry:
@@ -1024,7 +1036,7 @@ mod tests {
               entry:
                 return
             }
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             struct S { x: number }
             fn g() {
               o: Option;
@@ -1041,7 +1053,7 @@ mod tests {
     fn rvalue_enum_constr_unknown_variant_error() {
         assert_err(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f() {
               o: Option;
               entry:
@@ -1057,7 +1069,7 @@ mod tests {
     fn rvalue_enum_constr_wrong_payload_type_error() {
         assert_err(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f() {
               o: Option;
               entry:
@@ -1074,7 +1086,7 @@ mod tests {
         // Option::None has payload type Option (matches whole enum).
         assert_ok(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f(o: Option) {
               r: Option;
               entry:
@@ -1149,7 +1161,7 @@ mod tests {
         // Downcast writes need the same refinement as reads.
         assert_ok(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n, Some: s]
@@ -1447,7 +1459,7 @@ mod tests {
     fn switch_enum_ok() {
         assert_ok(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: end, Some: end]
@@ -1477,7 +1489,7 @@ mod tests {
     fn switch_enum_unknown_variant_error() {
         assert_err(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [Wat: end]
@@ -1493,7 +1505,7 @@ mod tests {
     fn switch_enum_undefined_target_error() {
         assert_err(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: nowhere]
@@ -1752,7 +1764,7 @@ mod tests {
         // report both, and continue past the failed variant check.
         let errs = errors_of(
             "
-            enum Option { None: Option Some: number }
+            enum Copy Drop Option { None: Option Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [Wat: nowhere, None: end]

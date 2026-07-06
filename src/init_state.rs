@@ -28,7 +28,7 @@ use indexmap::IndexMap;
 use std::collections::{BTreeMap, VecDeque};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-enum InitState {
+pub enum InitState {
     NeverInit,
     Moved,
     Init,
@@ -39,7 +39,7 @@ enum InitState {
     Diverged,
 }
 
-type PointState = IndexMap<String, InitState>;
+pub type PointState = IndexMap<String, InitState>;
 
 struct Ctx<'a> {
     env: &'a Env,
@@ -264,6 +264,35 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
         check_function(env, f, d);
     }
+}
+
+/// For each `Return`-terminated block in `func`, compute the init state at
+/// the point just before the terminator (all statements applied). Used by
+/// other passes (e.g. substructural leak-at-return checks) that need to see
+/// what a function actually leaves initialized when it returns.
+pub fn states_before_returns<'a>(
+    env: &Env,
+    func: &'a Function,
+) -> Vec<(&'a BasicBlock, PointState)> {
+    let mut out = Vec::new();
+    let Some(body) = &func.body else { return out; };
+    if body.blocks.is_empty() { return out; }
+
+    let locals = collect_locals(func, body);
+    let ctx = Ctx { env, locals: &locals };
+    let entry_states = compute_entry_states(&ctx, func, body);
+
+    for block in &body.blocks {
+        if !matches!(block.terminator, Terminator::Return) { continue; }
+        let Some(entry) = entry_states.get(&block.label) else { continue; };
+        let mut state = entry.clone();
+        for (stmt, _) in &block.statements {
+            transfer_stmt(&ctx, stmt, &mut state);
+        }
+        // Return terminator has no state effect.
+        out.push((block, state));
+    }
+    out
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
@@ -672,7 +701,7 @@ mod tests {
         // to fully Init.
         assert_no_diagnostics(
             "
-            struct P { x: number y: number }
+            struct Copy Drop P { x: number y: number }
             fn f() {
               p: P;
               a: number;
@@ -731,7 +760,7 @@ mod tests {
         // leave the other still readable.
         assert_no_diagnostics(
             "
-            struct P { x: number y: number }
+            struct Copy Drop P { x: number y: number }
             fn f(p: P) {
               a: number;
               b: number;
@@ -768,8 +797,8 @@ mod tests {
         // struct collapses to Init once every leaf is written.
         assert_no_diagnostics(
             "
-            struct Inner { a: number b: number }
-            struct Outer { i: Inner c: number }
+            struct Copy Drop Inner { a: number b: number }
+            struct Copy Drop Outer { i: Inner c: number }
             fn f() {
               o: Outer;
               n: number;
@@ -809,7 +838,7 @@ mod tests {
         // Even if we partially init, a whole-struct assign resets to Init.
         assert_no_diagnostics(
             "
-            struct P { x: number y: number }
+            struct Copy Drop P { x: number y: number }
             fn f(src: P) {
               p: P;
               a: number;
@@ -892,7 +921,7 @@ mod tests {
     fn switch_enum_reads_place() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               entry:
@@ -911,7 +940,7 @@ mod tests {
     fn downcast_read_checks_root_var() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               a: number;
@@ -946,7 +975,7 @@ mod tests {
         // Init AND refined to the correct variant.
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n, Some: s]
@@ -965,7 +994,7 @@ mod tests {
         // enum by writing a variant payload is not allowed.
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               entry:
@@ -984,7 +1013,7 @@ mod tests {
     fn downcast_write_on_moved_enum_error() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               sink: Option;
               entry:

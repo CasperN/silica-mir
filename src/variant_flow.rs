@@ -432,7 +432,7 @@ mod tests {
     fn coverage_all_variants_handled_ok() {
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n, Some: s]
@@ -447,7 +447,7 @@ mod tests {
     fn coverage_missing_variant_error() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: end]
@@ -483,7 +483,7 @@ mod tests {
     fn coverage_duplicate_arm_error() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: a, None: b, Some: c]
@@ -503,7 +503,7 @@ mod tests {
     fn coverage_unknown_variant_still_reported_and_missing_still_fires() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [Wat: end]
@@ -528,7 +528,7 @@ mod tests {
     fn flow_unreachable_after_construction_ok() {
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               entry:
@@ -547,7 +547,7 @@ mod tests {
         // then claim None is unreachable.
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n_arm, Some: s_arm]
@@ -567,7 +567,7 @@ mod tests {
         // o is refined to {None} — Some arm is provably unreachable.
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(b: boolean) {
               o: Option;
               entry:
@@ -592,7 +592,7 @@ mod tests {
         // statements; still counts as an unreachable-terminated arm target.
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               x: number;
@@ -614,7 +614,7 @@ mod tests {
     fn flow_unreachable_arm_on_parameter_error() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n, Some: dead]
@@ -633,7 +633,7 @@ mod tests {
     fn flow_unreachable_arm_after_reassign_error() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o1: Option) {
               o: Option;
               entry:
@@ -655,7 +655,7 @@ mod tests {
     fn flow_unreachable_arm_after_ambiguous_join_error() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(b: boolean) {
               o: Option;
               entry:
@@ -687,7 +687,7 @@ mod tests {
         // dead code — a warning, not an error.
         let (errs, warns) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               entry:
@@ -713,7 +713,7 @@ mod tests {
         // even if a preceding assignment through the ref narrowed the value.
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(r: &mut Option) {
               entry:
                 *r = Option::None(unit);
@@ -733,7 +733,7 @@ mod tests {
     fn flow_field_switch_place_treated_as_top() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             struct S { o: Option }
             fn f(s: S) {
               entry:
@@ -755,7 +755,7 @@ mod tests {
         // r isn't used before the switch.
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               r: &mut Option;
@@ -779,7 +779,7 @@ mod tests {
         // Shared borrow can't mutate; refinement survives.
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               r: &Option;
@@ -798,7 +798,7 @@ mod tests {
     fn flow_out_borrow_clobbers_refinement() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               r: &out Option;
@@ -821,7 +821,7 @@ mod tests {
     fn flow_drop_borrow_clobbers_refinement() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               r: &drop Option;
@@ -844,7 +844,7 @@ mod tests {
     fn flow_uninit_borrow_clobbers_refinement() {
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               r: &uninit Option;
@@ -871,7 +871,7 @@ mod tests {
         // not silently accepted as a proof of impossibility.
         let (errs, warns) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f() {
               o: Option;
               entry:
@@ -894,7 +894,7 @@ mod tests {
         // the None variant's payload, so this is unsound.
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               x: number;
               entry:
@@ -915,7 +915,7 @@ mod tests {
         // and `o as Some` is valid.
         assert_no_diagnostics(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               x: number;
               entry:
@@ -960,7 +960,7 @@ mod tests {
         // unreachable arm claim should fail.
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(b: boolean) {
               o: Option;
               entry:
@@ -1006,7 +1006,7 @@ mod tests {
     fn flow_single_variant_enum_requires_single_arm() {
         assert_no_diagnostics(
             "
-            enum One { Only: number }
+            enum Copy Drop One { Only: number }
             fn f(o: One) {
               entry:
                 switchEnum(o) [Only: end]
@@ -1024,7 +1024,7 @@ mod tests {
         // errors (missing-variant, unreachable-claim) should not appear here.
         let (errs, _) = run(
             "
-            enum Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: number }
             fn f(o: Option) {
               entry:
                 return
