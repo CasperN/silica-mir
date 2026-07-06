@@ -472,7 +472,7 @@ fn check_and_transfer_stmt(
         Statement::Drop(place) => {
             // Read the place, then consume it. Same effect on state as
             // `move`. The substructural checker (separate pass) is the
-            // one that will require the type to be `Drop`-classed.
+            // one that will require the type to be Drop.
             check_place_read(ctx, func, block, place, span, state, d);
             apply_move(ctx, place, state);
         }

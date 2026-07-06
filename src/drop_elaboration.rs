@@ -2,7 +2,7 @@
 //!
 //! Inserts explicit `drop p` statements before each `return` for every
 //! variable whose init state is `Init` at that point and whose type is
-//! `Drop`-classed. Turns implicit forgets into explicit consumption so a
+//! Drop. Turns implicit forgets into explicit consumption so a
 //! subsequent `LeakMode::Strict` check can validate the elaborated MIR.
 //!
 //! Ordering: reverse combined declaration order (locals reverse first,
@@ -154,7 +154,7 @@ mod tests {
     // ---------- Basic insertion ----------
 
     #[test]
-    fn elaborates_single_drop_classed_param() {
+    fn elaborates_single_drop_param() {
         let program = elaborate_src("fn f(x: number) { entry: return }");
         assert_eq!(drops_before_returns(&program, "f"), vec![vec!["x".to_string()]]);
     }
@@ -236,10 +236,10 @@ mod tests {
         assert_eq!(drops_before_returns(&program, "f"), vec![Vec::<String>::new()]);
     }
 
-    // ---------- Different Drop-classed types ----------
+    // ---------- Different Drop types ----------
 
     #[test]
-    fn elaborates_drop_classed_struct() {
+    fn elaborates_drop_struct() {
         // A Copy Drop struct at whole-var Init is one drop.
         let program = elaborate_src(
             "
@@ -251,7 +251,7 @@ mod tests {
     }
 
     #[test]
-    fn elaborates_drop_classed_enum() {
+    fn elaborates_drop_enum() {
         let program = elaborate_src(
             "
             enum Copy Drop Option { None: unit Some: number }
@@ -305,7 +305,7 @@ mod tests {
         // (This documents the phase-1 behavior; pre-overwrite drops are
         // slice 2 — the first assignment's value is currently silently
         // forgotten by the elaborator's absence, which the lenient
-        // checker permits for Drop-classed types.)
+        // checker permits for Drop types.)
         let program = elaborate_src(
             "
             fn f() {
@@ -426,7 +426,7 @@ mod tests {
     fn partial_state_not_elaborated_yet() {
         // Slice 1 doesn't emit drops for Partial states. Verify this is
         // the case: the partial-init `p` gets no drop even though its
-        // type is Drop-classed.
+        // type is Drop.
         let program = elaborate_src(
             "
             struct Copy Drop P { x: number y: number }

@@ -385,7 +385,7 @@ impl Env {
                 Ok(())
             }
             Statement::Drop(place) => {
-                // Just resolve the place — any legality (Drop-classed,
+                // Just resolve the place — any legality (Drop,
                 // currently init) is enforced by the substructural checker.
                 self.infer_place_type(place, locals)
                     .map_err(|e| fmt_error!(stmt_span, func, block, "drop: {}", e))?;
@@ -1519,7 +1519,7 @@ mod tests {
 
     #[test]
     fn drop_statement_ok() {
-        // Syntactically well-formed drop on a param of Drop-classed type.
+        // Syntactically well-formed drop on a param of Drop type.
         assert_ok(
             "
             fn f(x: number) {
@@ -1532,7 +1532,7 @@ mod tests {
     }
      #[test]
     fn double_drop_error() {
-        // Syntactically well-formed drop on a param of Drop-classed type.
+        // Syntactically well-formed drop on a param of Drop type.
         assert_err(
             "
             fn f(x: number) {

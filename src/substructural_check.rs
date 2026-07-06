@@ -2,14 +2,14 @@
 //!
 //! Verifies (a) that statements respect the substructural class of the types
 //! they operate on and (b) that no *linear* value is silently forgotten at
-//! `return`. Drop-classed leaks are permitted by default because the
+//! `return`. Drop leaks are permitted by default because the
 //! drop-elaboration pass will make them explicit; that leniency is opt-out
 //! via [`LeakMode::Strict`], which post-elaboration validation should use.
 //!
 //! - `copy p` (operand position) requires `p`'s type to be `Copy`.
 //! - `drop p` requires `p`'s type to be `Drop`.
 //! - At `return`, any Init/Diverged/Partial path whose leaf type is not
-//!   `Drop`-classed is a leak.
+//!   Drop is a leak.
 //!
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks. Both share the same "when is a state leaked?"
@@ -26,10 +26,10 @@ use crate::push_error;
 use crate::type_check::Env;
 use indexmap::IndexMap;
 
-/// Whether the leak check permits Drop-classed leaks.
+/// Whether the leak check permits Drop leaks.
 ///
 /// * `Lenient` — the default for `run_all_passes`. Emits errors only for
-///   leaks whose leaf type is not `Drop`-classed. Drop-classed leaks are
+///   leaks whose leaf type is not Drop. Drop leaks are
 ///   accepted because the drop-elaboration pass would make them explicit.
 /// * `Strict` — treats every Init/Diverged/Partial path at return as a
 ///   leak. Use to validate post-elaboration MIR.
@@ -179,27 +179,62 @@ fn check_leaks_in_state(
 ) {
     for (var, s) in state {
         let Some(ty) = locals.get(var) else { continue; };
-        if is_leak(env, s, ty, mode) {
+        let mut path = vec![var.clone()];
+        let mut leaks = Vec::new();
+        find_leaks(env, s, ty, mode, &mut path, &mut leaks);
+        for (leaked_path, leaked_ty) in leaks {
             push_error!(
                 d, block.terminator_span, func, block,
                 "value '{}' of type {:?} is not consumed at return (linear leak)",
-                var, ty
+                leaked_path, leaked_ty
             );
         }
     }
 }
 
-/// A variable at return leaks iff its state is non-consumed AND, under
-/// lenient mode, its declared type is not `Drop`-classed. Marker
-/// composition guarantees that if the root type is Drop, all sub-fields
-/// are Drop too — so a partial/nested check is unnecessary. We report at
-/// the root granularity in either mode.
-fn is_leak(env: &Env, state: &InitState, ty: &Type, mode: LeakMode) -> bool {
-    let non_consumed = !matches!(state, InitState::NeverInit | InitState::Moved);
-    if !non_consumed { return false; }
-    match mode {
-        LeakMode::Lenient => !class_of(ty, env).drop,
-        LeakMode::Strict => true,
+/// Walk the init state in lockstep with its type, collecting leaks.
+///
+/// Rules:
+///   * `NeverInit`/`Moved` — nothing to leak at this level.
+///   * Under **lenient**, a Drop container is silently forgettable
+///     regardless of its state (marker composition guarantees fields are
+///     Drop too, so any inner Init leaf can also be silently
+///     forgotten). Return early.
+///   * Otherwise (strict, or a non-Drop container under lenient):
+///     `Init`/`Diverged` here is a leak; `Partial` requires every leaf to
+///     be `Moved`/`NeverInit`, so we recurse into fields with **strict**
+///     semantics (the container's linearity propagates to descendants
+///     regardless of leaf-type class).
+fn find_leaks(
+    env: &Env,
+    state: &InitState,
+    ty: &Type,
+    mode: LeakMode,
+    path: &mut Vec<String>,
+    out: &mut Vec<(String, Type)>,
+) {
+    if matches!(state, InitState::NeverInit | InitState::Moved) {
+        return;
+    }
+    if matches!(mode, LeakMode::Lenient) && class_of(ty, env).drop {
+        return;
+    }
+    match state {
+        InitState::Init | InitState::Diverged => {
+            out.push((path.join("."), ty.clone()));
+        }
+        InitState::Partial(fields) => {
+            for (field_name, field_state) in fields {
+                let Some(field_ty) = env.field_type(ty, field_name) else { continue; };
+                path.push(field_name.clone());
+                // Container is linear at this point (either strict mode or
+                // non-Drop container under lenient); propagate strict to
+                // descendants — every leaf must be consumed.
+                find_leaks(env, field_state, &field_ty, LeakMode::Strict, path, out);
+                path.pop();
+            }
+        }
+        _ => {}
     }
 }
 
@@ -273,7 +308,7 @@ mod tests {
     }
 
     #[test]
-    fn copy_of_drop_only_struct_error() {
+    fn copy_of_affine_struct_error() {
         // Marked `Drop` but not `Copy` — affine, not copyable.
         assert_err(
             "
@@ -494,27 +529,11 @@ mod tests {
         );
     }
 
-    // ---------- Leak at return (lenient by default) ----------
 
     #[test]
-    fn linear_param_leak_at_return_error() {
-        // A linear param left Init at return is a leak.
-        assert_err(
-            "
-            struct Linear { r: &out number }
-            fn f(x: Linear) {
-              entry:
-                return
-            }
-            ",
-            "value 'x' of type Custom(\"Linear\") is not consumed at return",
-        );
-    }
-
-    #[test]
-    fn drop_classed_param_left_init_is_ok_lenient() {
-        // number is Copy Drop; leaving it Init at return is permitted
-        // under LeakMode::Lenient — the elaborator will drop it explicitly.
+    fn scalar_param_untouched_is_lenient_ok() {
+        // number is Copy Drop; leaving it Init at return is permitted under
+        // LeakMode::Lenient — the elaborator will drop it explicitly.
         assert_no_diagnostics(
             "
             fn f(x: number) {
@@ -526,14 +545,13 @@ mod tests {
     }
 
     #[test]
-    fn linear_param_consumed_by_move_ok() {
+    fn scalar_param_moved_ok() {
         assert_no_diagnostics(
             "
-            struct Linear { r: &out number }
-            extern fn sink(x: Linear);
-            fn f(x: Linear) {
+            extern fn take(a: number);
+            fn f(x: number) {
               entry:
-                call sink(move x);
+                call take(move x);
                 return
             }
             ",
@@ -541,27 +559,89 @@ mod tests {
     }
 
     #[test]
-    fn linear_local_leak_at_return_error() {
+    fn scalar_param_explicitly_dropped_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              entry:
+                drop x;
+                return
+            }
+            ",
+        );
+    }
+
+    // === Scenario: `r: &out number` — linear reference param =============
+
+    #[test]
+    fn linear_ref_param_untouched_leaks() {
         assert_err(
             "
-            struct Linear { r: &out number }
-            fn f(x: Linear) {
-              y: Linear;
+            fn f(r: &out number) {
               entry:
-                y = move x;
                 return
             }
             ",
-            "value 'y' of type Custom(\"Linear\") is not consumed at return",
+            "value 'r' of type Ref(Out, Number) is not consumed at return",
         );
     }
 
     #[test]
-    fn partial_init_of_linear_struct_leaks_root() {
-        // A linear struct with any non-consumed sub-state leaks at the
-        // root. Marker composition guarantees a Drop-classed root has
-        // only Drop-classed fields, so we don't need per-field reporting
-        // to be sound — the root granularity is correct.
+    fn linear_ref_param_moved_ok() {
+        assert_no_diagnostics(
+            "
+            extern fn take(r: &out number);
+            fn f(r: &out number) {
+              entry:
+                call take(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    // === Scenario: `struct P { x: number y: number }` — linear struct ====
+    // ==== with Drop fields =======================================
+    // Marker composition permits this: the fields are Drop, but the struct
+    // itself isn't marked, so it's linear as a value. Partial init with
+    // Drop leaves collapses to per-leaf leak checks.
+
+    #[test]
+    fn linear_struct_untouched_param_leaks() {
+        // Whole-var Init of a linear type: leak.
+        assert_err(
+            "
+            struct P { x: number y: number }
+            fn f(p: P) {
+              entry:
+                return
+            }
+            ",
+            "value 'p' of type Custom(\"P\") is not consumed at return",
+        );
+    }
+
+    #[test]
+    fn linear_struct_moved_whole_ok() {
+        assert_no_diagnostics(
+            "
+            struct P { x: number y: number }
+            extern fn take(p: P);
+            fn f(p: P) {
+              entry:
+                call take(move p);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn linear_struct_partial_init_one_field_leaks() {
+        // `p.x = 1` → Partial({x: Init, y: NeverInit}). P is linear, so
+        // its Partial state propagates strict semantics to descendants:
+        // p.x is Init and must be consumed (moved or explicitly dropped).
+        // Reports at the leaf path `p.x`.
         assert_err(
             "
             struct P { x: number y: number }
@@ -572,13 +652,121 @@ mod tests {
                 return
             }
             ",
-            "value 'p' of type Custom(\"P\")",
+            "value 'p.x' of type Number is not consumed at return",
+        );
+    }
+
+    #[test]
+    fn linear_struct_partial_init_then_drop_ok() {
+        assert_no_diagnostics(
+            "
+            struct P { x: number y: number }
+            fn f() {
+              p: P;
+              entry:
+                p.x = 1;
+                drop p.x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn linear_struct_both_fields_dropped_ok() {
+        assert_no_diagnostics(
+            "
+            struct P { x: number y: number }
+            fn f() {
+              p: P;
+              entry:
+                p.x = 1;
+                p.y = 2;
+                drop p.x;
+                drop p.y;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn linear_struct_fully_constructed_leaks() {
+        // `p.x = 1; p.y = 2` → Partial({x: Init, y: Init}) canonicalizes
+        // to Init. Whole-var Init of a linear type: leak (the linearity
+        // now applies at the container granularity — you completed a value
+        // and never consumed it).
+        assert_err(
+            "
+            struct P { x: number y: number }
+            fn f() {
+              p: P;
+              entry:
+                p.x = 1;
+                p.y = 2;
+                return
+            }
+            ",
+            "value 'p' of type Custom(\"P\") is not consumed at return",
+        );
+    }
+
+    // === Scenario: `struct L { r: &out number }` — fully-linear struct ===
+    // The container and its field are both linear; there's no "Drop leaf"
+    // escape.
+
+    #[test]
+    fn fully_linear_struct_untouched_param_leaks() {
+        assert_err(
+            "
+            struct L { r: &out number }
+            fn f(x: L) {
+              entry:
+                return
+            }
+            ",
+            "value 'x' of type Custom(\"L\") is not consumed at return",
+        );
+    }
+
+    #[test]
+    fn fully_linear_struct_moved_ok() {
+        assert_no_diagnostics(
+            "
+            struct L { r: &out number }
+            extern fn take(x: L);
+            fn f(x: L) {
+              entry:
+                call take(move x);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn fully_linear_struct_partial_init_field_leaks() {
+        // `x.r = ...`  wouldn't compile (can't assign a linear place),
+        // but a fully-linear field with Init state at return is a
+        // per-leaf leak whenever it appears — verified here via a local
+        // that's partially inited via a moved-in field.
+        assert_err(
+            "
+            struct L { r: &out number }
+            struct Pair { a: L b: L }
+            fn f(src: Pair) {
+              p: Pair;
+              entry:
+                p.a = move src.a;
+                return
+            }
+            ",
+            "not consumed at return",
         );
     }
 
     #[test]
     fn multiple_returns_each_checked() {
-        // Both blocks return with `x` Init; both should leak.
         let (errs, _) = run(
             "
             struct Linear { r: &out number }
@@ -590,7 +778,6 @@ mod tests {
             }
             ",
         );
-        // Two leak errors, one per return.
         let leak_errs: Vec<_> = errs
             .iter()
             .filter(|e| e.contains("is not consumed at return"))
@@ -598,17 +785,13 @@ mod tests {
         assert_eq!(leak_errs.len(), 2, "expected 2 leak errors, got {:?}", errs);
     }
 
-    // ---------- Strict mode (direct call) ----------
-
     #[test]
-    fn strict_mode_flags_drop_classed_leak() {
+    fn strict_flags_drop_leak() {
         use crate::diagnostics::Diagnostics;
         use crate::parser::Parser;
         use crate::type_check;
         use super::{check_return_leaks, LeakMode};
 
-        // number is Drop-classed, so lenient permits the leak. Strict
-        // mode should still flag it.
         let src = "fn f(x: number) { entry: return }";
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();
@@ -622,13 +805,12 @@ mod tests {
     }
 
     #[test]
-    fn strict_mode_ok_when_explicitly_dropped() {
+    fn strict_ok_when_explicitly_dropped() {
         use crate::diagnostics::Diagnostics;
         use crate::parser::Parser;
         use crate::type_check;
         use super::{check_return_leaks, LeakMode};
 
-        // After explicit `drop x`, strict mode should see no leaks.
         let src = "fn f(x: number) { entry: drop x; return }";
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();

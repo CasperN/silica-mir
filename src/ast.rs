@@ -132,7 +132,7 @@ pub enum Statement {
     Call(Operand, Vec<Operand>),
     /// Consume a place. In the current MIR this is a bitwise forget; once
     /// user-defined `Drop::drop` exists, this lowers to a call to it.
-    /// Legal only on `Drop`-classed places (enforced by the substructural
+    /// Legal only on Drop places (enforced by the substructural
     /// checker, not here).
     Drop(Place),
 }
