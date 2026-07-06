@@ -5,6 +5,7 @@ mod drop_elaboration;
 mod init_state;
 mod marker_composition;
 mod parser;
+mod pretty_print;
 mod substructural_check;
 mod type_check;
 mod variant_flow;
@@ -74,4 +75,13 @@ fn main() {
     if !d.warnings.is_empty() {
         println!("({} warning(s))", d.warnings.len());
     }
+
+    // Run drop elaboration and print the result so users can see the
+    // program's explicit-drop form.
+    let mut elaborated = program;
+    let mut d2 = Diagnostics::default();
+    let env2 = type_check::Env::build(&elaborated, &mut d2);
+    drop_elaboration::elaborate(&mut elaborated, &env2);
+    println!("\n=== Elaborated MIR ===");
+    print!("{}", pretty_print::pretty_print(&elaborated));
 }
