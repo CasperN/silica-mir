@@ -882,6 +882,50 @@ fn f(x: number) {
         );
     }
 
+    // ---------- Unborrow interaction ----------
+
+    #[test]
+    fn does_not_drop_unborrowed_ref() {
+        // After `unborrow r`, the borrower is Moved — the elaborator
+        // must not insert a `drop r`. It should still drop the (now
+        // thawed and Init) pointee `x`.
+        assert_elaborated_eq(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                unborrow r;
+                return
+            }
+            ",
+            "\
+fn f(x: number) {
+  r: &mut number;
+  entry:
+    r = &mut x;
+    unborrow r;
+    drop x;
+    return
+}",
+        );
+    }
+
+    #[test]
+    fn idempotent_with_unborrow() {
+        assert_idempotent(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                unborrow r;
+                return
+            }
+            ",
+        );
+    }
+
     // ---------- Known limitation ----------
 
     #[test]

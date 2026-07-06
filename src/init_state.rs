@@ -1971,6 +1971,50 @@ mod tests {
         );
     }
 
+    #[test]
+    fn shared_borrow_of_partial_error() {
+        // `&` requires Init; Partial isn't Init.
+        let (errs, _) = run(
+            "
+            struct Copy Drop P { x: number y: number }
+            fn f() {
+              p: P;
+              r: &P;
+              entry:
+                p.x = 1;
+                r = &p;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create & of 'p': place must be initialized at borrow, but is partially initialized"],
+        );
+    }
+
+    #[test]
+    fn drop_borrow_of_partial_error() {
+        // `&drop` requires Init; Partial isn't Init.
+        let (errs, _) = run(
+            "
+            struct Copy Drop P { x: number y: number }
+            fn f() {
+              p: P;
+              r: &drop P;
+              entry:
+                p.x = 1;
+                r = &drop p;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized"],
+        );
+    }
+
     // === Scenario: borrow through deref is not tracked (documents gap) ===
 
     #[test]
@@ -2313,6 +2357,69 @@ mod tests {
         assert_errors_contain(
             &errs,
             &["cannot forget reference 'r': obligation not fulfilled"],
+        );
+    }
+
+    // === Overwrite of a bound reference variable ===
+
+    #[test]
+    fn overwrite_bound_ref_with_fulfilled_obligation_ok() {
+        // r's first binding is (Init, Init) — obligation fulfilled at
+        // the overwrite point, so silently dropping the old ref is OK.
+        assert_no_diagnostics(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number, y: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                r = &mut y;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
+        // After `x = move *r`, r is (Uninit, Init); overwriting r would
+        // silently forget the pending re-init obligation on the pointee.
+        let (errs, _) = run(
+            "
+            fn f(r: &mut number, z: number) {
+              x: number;
+              entry:
+                x = move *r;
+                r = &mut z;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot forget reference 'r': obligation not fulfilled"],
+        );
+    }
+
+    // === Drop through a deref ===
+
+    #[test]
+    fn drop_deref_of_mut_ref_leaks_pointee() {
+        // `drop *r` on r: &mut consumes the pointee, transitioning r to
+        // (Uninit, Init). Without re-init, obligation at return is unmet.
+        let (errs, _) = run(
+            "
+            fn f(r: &mut number) {
+              entry:
+                drop *r;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["reference 'r' of type Ref(Mut, Number) has unfulfilled obligation at return"],
         );
     }
 
@@ -3261,6 +3368,129 @@ mod tests {
               entry:
                 *r = 42;
                 unborrow r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_of_multi_loan_releases_all_places_ok() {
+        // Branch-of-borrows unified into r loaning {a, b}. `unborrow r`
+        // must release both places at the merge point, so direct writes
+        // to a and b downstream succeed.
+        assert_no_diagnostics(
+            "
+            fn f(a: number, b: number, c: boolean) {
+              r: &mut number;
+              entry:
+                branch(copy c) [true: t, false: fbr]
+              t:
+                r = &mut a;
+                goto merge
+              fbr:
+                r = &mut b;
+                goto merge
+              merge:
+                unborrow r;
+                a = 1;
+                b = 2;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_in_both_arms_merges_clean_ok() {
+        // Symmetric unborrow in both branches: at the merge, r is Moved
+        // on both sides (no divergence), and x is unloaned on both sides
+        // — direct access to x is legal downstream.
+        assert_no_diagnostics(
+            "
+            fn f(x: number, b: boolean) {
+              r: &mut number;
+              y: number;
+              entry:
+                branch(copy b) [true: t, false: fbr]
+              t:
+                r = &mut x;
+                unborrow r;
+                goto merge
+              fbr:
+                r = &mut x;
+                unborrow r;
+                goto merge
+              merge:
+                y = copy x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_then_reborrow_same_place_ok() {
+        // After `unborrow r`, x is unfrozen; taking a fresh &mut of x is
+        // legal. Second unborrow closes the new loan.
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              s: &mut number;
+              y: number;
+              entry:
+                r = &mut x;
+                unborrow r;
+                s = &mut x;
+                y = copy *s;
+                unborrow s;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_of_field_borrower_thaws_field_ok() {
+        // &mut p.a freezes p.a; `unborrow r` thaws it, so writing to
+        // p.a directly afterward succeeds.
+        assert_no_diagnostics(
+            "
+            struct Copy Drop P { a: number b: number }
+            fn f(p: P) {
+              r: &mut number;
+              entry:
+                r = &mut p.a;
+                unborrow r;
+                p.a = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_across_loop_ok() {
+        // Borrow taken before the loop, used through the loop, unborrowed
+        // after. Verifies the loan persists across back-edges and is
+        // cleanly closable at loop exit.
+        assert_no_diagnostics(
+            "
+            extern fn use_num(n: number);
+            fn f(x: number, b: boolean) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                goto head
+              head:
+                branch(copy b) [true: body, false: done]
+              body:
+                call use_num(copy *r);
+                goto head
+              done:
+                unborrow r;
+                x = 42;
                 return
             }
             ",
