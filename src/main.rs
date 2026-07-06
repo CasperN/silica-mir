@@ -3,6 +3,7 @@ mod block_reachability;
 mod dataflow;
 mod diagnostics;
 mod init_state;
+mod lifetime;
 mod parser;
 mod pretty_print;
 mod substructural;
