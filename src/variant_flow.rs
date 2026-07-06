@@ -19,14 +19,41 @@
 //! see what the borrower does.
 
 use crate::ast::*;
+use crate::dataflow::{self, Analysis, Direction};
 use crate::diagnostics::Diagnostics;
 use crate::type_check::{Env, TypeDecl};
 use crate::{push_error, push_warning};
 use indexmap::IndexMap;
-use std::collections::{BTreeSet, VecDeque};
+use std::collections::BTreeSet;
 
 /// State at one program point: per-Var variant set. Absent = ⊤.
 type PointState = IndexMap<String, BTreeSet<String>>;
+
+struct VariantFlow;
+
+impl Analysis for VariantFlow {
+    type State = PointState;
+    fn direction(&self) -> Direction { Direction::Forward }
+    fn initial_state(&self) -> Self::State { PointState::new() }
+    fn join(&self, a: &Self::State, b: &Self::State) -> Self::State { join(a, b) }
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+        transfer_stmt(stmt, state);
+    }
+    fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
+    fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ: &str) {
+        // switchEnum arm edges refine the switched Var to the matched variant.
+        let Terminator::SwitchEnum { place, cases } = &block.terminator else { return; };
+        let Some(root) = root_var(place) else { return; };
+        for (variant, label) in cases {
+            if label == succ {
+                let mut singleton = BTreeSet::new();
+                singleton.insert(variant.clone());
+                state.insert(root.to_string(), singleton);
+                return;
+            }
+        }
+    }
+}
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
@@ -41,7 +68,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     }
 
     let locals = func.locals_map();
-    let entry_states = compute_entry_states(body);
+    let entry_states = dataflow::run(&VariantFlow, body);
 
     for block in &body.blocks {
         // Unvisited (dead) blocks: skip entirely. Their state is ⊥ so every
@@ -175,73 +202,6 @@ fn check_downcast_refinement(
                     root, v, root, v
                 );
             }
-        }
-    }
-}
-
-fn compute_entry_states(body: &FunctionBody) -> IndexMap<String, PointState> {
-    let mut states: IndexMap<String, PointState> = IndexMap::new();
-    let mut worklist: VecDeque<String> = VecDeque::new();
-
-    let entry_label = body.blocks[0].label.clone();
-    states.insert(entry_label.clone(), PointState::new());
-    worklist.push_back(entry_label);
-
-    let blocks_by_label = body.blocks_by_label();
-
-    while let Some(label) = worklist.pop_front() {
-        let entry_state = states.get(&label).cloned().unwrap_or_default();
-        let block = blocks_by_label[label.as_str()];
-
-        let mut state = entry_state;
-        for (stmt, _) in &block.statements {
-            transfer_stmt(stmt, &mut state);
-        }
-
-        for (succ_label, refinement) in successor_edges(&block.terminator) {
-            if !blocks_by_label.contains_key(succ_label.as_str()) {
-                // Undefined block; tc reports this. Just skip the edge.
-                continue;
-            }
-            let mut succ_new = state.clone();
-            if let Some((var, variant)) = refinement {
-                let mut singleton = BTreeSet::new();
-                singleton.insert(variant);
-                succ_new.insert(var, singleton);
-            }
-            let joined = match states.get(&succ_label) {
-                None => succ_new,
-                Some(existing) => join(existing, &succ_new),
-            };
-            if states.get(&succ_label).map_or(true, |cur| cur != &joined) {
-                states.insert(succ_label.clone(), joined);
-                worklist.push_back(succ_label);
-            }
-        }
-    }
-
-    states
-}
-
-fn successor_edges(term: &Terminator) -> Vec<(String, Option<(String, String)>)> {
-    match term {
-        Terminator::Goto(label) => vec![(label.clone(), None)],
-        Terminator::Return | Terminator::Abort | Terminator::Unreachable => vec![],
-        Terminator::Branch { true_label, false_label, .. } => vec![
-            (true_label.clone(), None),
-            (false_label.clone(), None),
-        ],
-        Terminator::SwitchEnum { place, cases } => {
-            let root = root_var(place).map(|s| s.to_string());
-            cases
-                .iter()
-                .map(|(variant, label)| {
-                    let refinement = root
-                        .as_ref()
-                        .map(|r| (r.clone(), variant.clone()));
-                    (label.clone(), refinement)
-                })
-                .collect()
         }
     }
 }
