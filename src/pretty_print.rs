@@ -213,6 +213,10 @@ fn write_statement(out: &mut String, stmt: &Statement) {
             out.push_str("drop ");
             write_place(out, place);
         }
+        Statement::Unborrow(place) => {
+            out.push_str("unborrow ");
+            write_place(out, place);
+        }
     }
 }
 

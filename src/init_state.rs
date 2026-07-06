@@ -533,6 +533,16 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
             apply_deref_op(ctx, place, DerefOp::Move, state, None);
             apply_move(ctx, place, state);
         }
+        Statement::Unborrow(place) => {
+            // Silent side of `unborrow r`: consume the borrower and its
+            // ref/loan entries. Obligation checks happen in the
+            // diagnostic pass.
+            if let Place::Var(name) = place {
+                state.refs.shift_remove(name);
+                state.loans.shift_remove(name);
+            }
+            apply_move(ctx, place, state);
+        }
     }
 }
 
@@ -917,6 +927,14 @@ fn check_and_transfer_stmt(
             // `drop *r` — consume the pointee, transition r's cur.
             apply_deref_op(ctx, place, DerefOp::Move, state,
                 Some((func, block, span, d)));
+            apply_move(ctx, place, state);
+        }
+        Statement::Unborrow(place) => {
+            // Explicit end-of-loan. Requires the borrower to be Init
+            // and its (cur, post) obligation fulfilled — both checked
+            // by close_ref_if_present. Then consume the borrower.
+            check_place_read(ctx, func, block, place, span, state, d);
+            close_ref_if_present(ctx, func, block, place, span, state, d);
             apply_move(ctx, place, state);
         }
     }
@@ -3090,6 +3108,159 @@ mod tests {
                 z = move x;
                 call use_num(move y);
                 call use_num(move z);
+                return
+            }
+            ",
+        );
+    }
+
+    // ---------- unborrow statement ----------
+
+    #[test]
+    fn unborrow_of_mut_ref_ok() {
+        // &mut is (Init, Init) — obligation trivially fulfilled at any
+        // point where cur=Init. Unborrow closes the loan.
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              y: number;
+              entry:
+                r = &mut x;
+                y = copy *r;
+                unborrow r;
+                x = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_releases_loan() {
+        // After `unborrow r`, direct access to the previously-borrowed
+        // place is legal.
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              y: number;
+              entry:
+                r = &mut x;
+                unborrow r;
+                y = copy x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_with_unfulfilled_obligation_error() {
+        // &mut is (Init, Init) but we moved *r out (cur=Uninit).
+        // Unborrow requires cur == post; this errors.
+        let (errs, _) = run(
+            "
+            fn f(r: &mut number) {
+              x: number;
+              entry:
+                x = move *r;
+                unborrow r;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot forget reference 'r': obligation not fulfilled"],
+        );
+    }
+
+    #[test]
+    fn unborrow_of_uninit_error() {
+        // Can't unborrow a never-initialized ref var.
+        let (errs, _) = run(
+            "
+            fn f() {
+              r: &mut number;
+              entry:
+                unborrow r;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variable 'r' is used before initialization"],
+        );
+    }
+
+    #[test]
+    fn unborrow_after_move_error() {
+        // r was moved to a call — can't unborrow a Moved ref.
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                call sink(move r);
+                unborrow r;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variable 'r' is used after move"],
+        );
+    }
+
+    #[test]
+    fn unborrow_of_shared_ref_ok() {
+        // Shared refs have no obligation; unborrow just consumes them.
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &number;
+              entry:
+                r = &x;
+                unborrow r;
+                x = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn unborrow_of_non_ref_type_error() {
+        // Unborrow only makes sense on reference-typed places.
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              entry:
+                unborrow x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["unborrow requires a reference-typed place"],
+        );
+    }
+
+    #[test]
+    fn unborrow_out_ref_after_write_ok() {
+        // &out with cur=Init after `*r = v` reaches post; unborrow OK.
+        assert_no_diagnostics(
+            "
+            fn f(r: &out number) {
+              entry:
+                *r = 42;
+                unborrow r;
                 return
             }
             ",

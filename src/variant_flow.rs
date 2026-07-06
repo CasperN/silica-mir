@@ -106,7 +106,7 @@ fn check_places_in_stmt(
                 }
             }
         }
-        Statement::Drop(place) => {
+        Statement::Drop(place) | Statement::Unborrow(place) => {
             check_downcast_refinement(env, func, locals, block, place, span, state, d);
         }
     }
@@ -294,8 +294,8 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
             // borrowed at some earlier assignment (which already clobbered
             // the underlying Var). Nothing to do here.
         }
-        Statement::Drop(place) => {
-            // Drop consumes the place — kill any variant refinement.
+        Statement::Drop(place) | Statement::Unborrow(place) => {
+            // Consumes the place — kill any variant refinement.
             if let Some(root) = root_var(place) {
                 state.shift_remove(root);
             }

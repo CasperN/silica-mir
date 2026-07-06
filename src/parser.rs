@@ -254,6 +254,10 @@ impl Parser {
                 let place_node = child.child_by_field_name("place").ok_or("Drop missing place")?;
                 Ok(Statement::Drop(self.map_place(place_node)?))
             }
+            "unborrow_stmt" => {
+                let place_node = child.child_by_field_name("place").ok_or("Unborrow missing place")?;
+                Ok(Statement::Unborrow(self.map_place(place_node)?))
+            }
             _ => Err(format!("Unknown statement kind: {}", child.kind())),
         }
     }

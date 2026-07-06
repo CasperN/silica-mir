@@ -391,6 +391,17 @@ impl Env {
                     .map_err(|e| fmt_error!(stmt_span, func, block, "drop: {}", e))?;
                 Ok(())
             }
+            Statement::Unborrow(place) => {
+                let ty = self.infer_place_type(place, locals)
+                    .map_err(|e| fmt_error!(stmt_span, func, block, "unborrow: {}", e))?;
+                if !matches!(ty, Type::Ref(_, _)) {
+                    return Err(fmt_error!(
+                        stmt_span, func, block,
+                        "unborrow requires a reference-typed place, found {:?}", ty
+                    ));
+                }
+                Ok(())
+            }
         }
     }
 

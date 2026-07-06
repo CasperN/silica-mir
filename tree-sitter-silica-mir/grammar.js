@@ -99,11 +99,17 @@ module.exports = grammar({
     statement: $ => choice(
       $.assignment,
       $.call,
-      $.drop_stmt
+      $.drop_stmt,
+      $.unborrow_stmt
     ),
 
     drop_stmt: $ => seq(
       'drop',
+      field('place', $.place)
+    ),
+
+    unborrow_stmt: $ => seq(
+      'unborrow',
       field('place', $.place)
     ),
 

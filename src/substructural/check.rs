@@ -68,6 +68,11 @@ fn check_stmt(
                 push_error!(d, span, func, block, "cannot drop non-Drop type {:?}", ty);
             }
         }
+        Statement::Unborrow(_) => {
+            // No class precondition — unborrow works on any reference
+            // regardless of Drop marker. Its precondition (obligation
+            // fulfilled) is checked by init_state.
+        }
     }
 }
 

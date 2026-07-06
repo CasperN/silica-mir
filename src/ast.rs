@@ -135,6 +135,12 @@ pub enum Statement {
     /// Legal only on Drop places (enforced by the substructural
     /// checker, not here).
     Drop(Place),
+    /// Explicitly end a reference's loan. Requires the referenced place
+    /// to hold a bound reference with its (cur, post) obligation
+    /// fulfilled (cur == post). After: the borrower is consumed and its
+    /// loan is removed. Inserted by `lifetime::elaboration` at last-use
+    /// points; the checker just observes the marker.
+    Unborrow(Place),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

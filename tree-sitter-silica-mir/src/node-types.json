@@ -472,6 +472,10 @@
         {
           "type": "drop_stmt",
           "named": true
+        },
+        {
+          "type": "unborrow_stmt",
+          "named": true
         }
       ]
     }
@@ -639,6 +643,22 @@
     }
   },
   {
+    "type": "unborrow_stmt",
+    "named": true,
+    "fields": {
+      "place": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "place",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "&",
     "named": false
   },
@@ -773,11 +793,11 @@
   },
   {
     "type": "number",
-    "named": true
+    "named": false
   },
   {
     "type": "number",
-    "named": false
+    "named": true
   },
   {
     "type": "return",
@@ -793,6 +813,10 @@
   },
   {
     "type": "true",
+    "named": false
+  },
+  {
+    "type": "unborrow",
     "named": false
   },
   {
