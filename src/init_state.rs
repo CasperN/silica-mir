@@ -70,6 +70,14 @@ impl RefState {
     }
 }
 
+/// A record of a borrow that's currently in force.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Loan {
+    pub kind: RefKind,
+    pub loaned: Place,
+    pub create_span: Span,
+}
+
 /// State at a single program point.
 ///
 /// - `locals`: init state per root Var, potentially projecting through
@@ -77,10 +85,14 @@ impl RefState {
 /// - `refs`: the (cur, post) obligation for each ref-typed Var that is
 ///   currently `Init`. Absent when the ref var is not Init, is shared,
 ///   or has been consumed.
+/// - `loans`: per-borrower record of what's borrowed (kind + loaned
+///   place). Keyed by borrower Var name. Populated on borrow creation;
+///   removed when the borrower is consumed.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PointState {
     pub locals: IndexMap<String, InitState>,
     pub refs: IndexMap<String, RefState>,
+    pub loans: IndexMap<String, Loan>,
 }
 
 struct Ctx<'a> {
@@ -212,7 +224,18 @@ fn join_point(a: &PointState, b: &PointState) -> PointState {
             }
         }
     }
-    PointState { locals, refs }
+    // Loans: same rule — only keep exact-match entries. A branch of
+    // borrows (multi-loan) is a punchlist item; for now, disagreement
+    // just drops the loan from the map.
+    let mut loans: IndexMap<String, Loan> = IndexMap::new();
+    for (name, la) in &a.loans {
+        if let Some(lb) = b.loans.get(name) {
+            if la == lb {
+                loans.insert(name.clone(), la.clone());
+            }
+        }
+    }
+    PointState { locals, refs, loans }
 }
 
 // ---------- Path walks ----------
@@ -447,15 +470,24 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
             // pass; here we just propagate state.
             if let Place::Var(name) = target {
                 state.refs.shift_remove(name);
+                state.loans.shift_remove(name);
             }
             if matches!(target, Place::Deref(_)) {
                 apply_deref_op(ctx, target, DerefOp::Write, state, None);
             } else {
                 apply_write(ctx, target, state, InitState::Init);
-                if let (Place::Var(name), RValue::Ref(kind, _)) = (target, rvalue) {
+                if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
                     if let Some(rs) = RefState::from_kind(kind) {
                         state.refs.insert(name.clone(), rs);
                     }
+                    // Track the loan for all kinds (including shared)
+                    // for later conflict detection. Synthetic span here
+                    // — the diagnostic pass supplies the real one.
+                    state.loans.insert(name.clone(), Loan {
+                        kind: kind.clone(),
+                        loaned: place.clone(),
+                        create_span: Span { line: 0, col: 0 },
+                    });
                 }
             }
         }
@@ -468,6 +500,7 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
         Statement::Drop(place) => {
             if let Place::Var(name) = place {
                 state.refs.shift_remove(name);
+                state.loans.shift_remove(name);
             }
             // `drop *r` — consume the pointee, transition r's cur.
             apply_deref_op(ctx, place, DerefOp::Move, state, None);
@@ -520,6 +553,7 @@ fn apply_move(ctx: &Ctx, place: &Place, state: &mut PointState) {
     // if the callee's signature enforces its own).
     if path.is_empty() {
         state.refs.shift_remove(&root);
+        state.loans.shift_remove(&root);
     }
 }
 
@@ -640,6 +674,97 @@ fn close_ref_if_present(
         );
     }
     state.refs.shift_remove(name);
+    state.loans.shift_remove(name);
+}
+
+// ---------- Loan conflict check ----------
+
+/// How a place is being accessed. Used to classify conflicts against
+/// active loans.
+#[derive(Debug, Clone)]
+enum AccessKind {
+    /// Read (copy, or discriminant read in switchEnum).
+    Read,
+    /// Write to the place (RHS of assign target).
+    Write,
+    /// Move / consumption (destructive read).
+    Move,
+    /// A new borrow of this kind is being created here.
+    Borrow(RefKind),
+}
+
+impl AccessKind {
+    fn describe(&self) -> &'static str {
+        match self {
+            AccessKind::Read => "read",
+            AccessKind::Write => "write to",
+            AccessKind::Move => "move from",
+            AccessKind::Borrow(k) => match k {
+                RefKind::Shared => "borrow as &",
+                RefKind::Mut => "borrow as &mut",
+                RefKind::Out => "borrow as &out",
+                RefKind::Drop => "borrow as &drop",
+                RefKind::Uninit => "borrow as &uninit",
+            },
+        }
+    }
+}
+
+/// True if the two paths share a prefix — i.e. one is a prefix of the
+/// other, meaning they refer to overlapping storage.
+fn paths_conflict(a: &[PathStep], b: &[PathStep]) -> bool {
+    let n = a.len().min(b.len());
+    for i in 0..n {
+        let same = match (&a[i], &b[i]) {
+            (PathStep::Field(x), PathStep::Field(y)) => x == y,
+            (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
+            _ => false,
+        };
+        if !same { return false; }
+    }
+    true
+}
+
+/// Compatible = both shared read/borrow. Anything else against a live
+/// loan is a conflict.
+fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
+    matches!(loan_kind, RefKind::Shared)
+        && matches!(access, AccessKind::Read | AccessKind::Borrow(RefKind::Shared))
+}
+
+/// Check whether accessing `place` in the given way conflicts with any
+/// active loan. Skips accesses through `Deref` (those go via the
+/// borrower and are always permitted).
+fn check_loan_conflict(
+    func: &Function,
+    block: &BasicBlock,
+    place: &Place,
+    access: AccessKind,
+    span: Span,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    let Some((access_root, access_path)) = extract_path(place) else { return; };
+
+    for (borrower, loan) in &state.loans {
+        // Ignore the borrower itself — its ref state is a separate slot.
+        if *borrower == access_root {
+            // e.g. `move r` where r is a borrower: consuming the ref,
+            // not accessing the loaned place. Not a conflict here (the
+            // consumption is handled by close_ref_if_present).
+            continue;
+        }
+        let Some((loan_root, loan_path)) = extract_path(&loan.loaned) else { continue; };
+        if loan_root != access_root { continue; }
+        if !paths_conflict(&access_path, &loan_path) { continue; }
+        if is_compatible(&loan.kind, &access) { continue; }
+
+        push_error!(
+            d, span, func, block,
+            "cannot {} '{}': already borrowed by '{}'",
+            access.describe(), format_path(&access_root, &access_path), borrower
+        );
+    }
 }
 
 // ---------- Diagnostic pass ----------
@@ -669,6 +794,10 @@ fn check_and_transfer_stmt(
             eval_rvalue(ctx, func, block, rvalue, span, state, d);
             check_lhs_downcast(ctx, func, block, target, span, state, d);
 
+            // Writing to a place while it's borrowed conflicts with
+            // the outstanding loan.
+            check_loan_conflict(func, block, target, AccessKind::Write, span, state, d);
+
             // Overwriting a bound ref var is a silent-forget of the
             // pointee obligation; error unless already fulfilled.
             close_ref_if_present(ctx, func, block, target, span, state, d);
@@ -681,10 +810,15 @@ fn check_and_transfer_stmt(
                 apply_write(ctx, target, state, InitState::Init);
                 // Borrow creation: attach the initial ref state to the
                 // target var (skipped for shared refs — no obligation).
-                if let (Place::Var(name), RValue::Ref(kind, _)) = (target, rvalue) {
+                if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
                     if let Some(rs) = RefState::from_kind(kind) {
                         state.refs.insert(name.clone(), rs);
                     }
+                    state.loans.insert(name.clone(), Loan {
+                        kind: kind.clone(),
+                        loaned: place.clone(),
+                        create_span: span,
+                    });
                 }
             }
         }
@@ -700,6 +834,7 @@ fn check_and_transfer_stmt(
             // one that will require the type to be Drop. For a ref-typed
             // Var, also verify the pointee obligation before forgetting.
             check_place_read(ctx, func, block, place, span, state, d);
+            check_loan_conflict(func, block, place, AccessKind::Move, span, state, d);
             close_ref_if_present(ctx, func, block, place, span, state, d);
             // `drop *r` — consume the pointee, transition r's cur.
             apply_deref_op(ctx, place, DerefOp::Move, state,
@@ -722,6 +857,7 @@ fn check_and_transfer_terminator(
         Terminator::SwitchEnum { place, .. } => {
             // Discriminant read: no move, no consumption.
             check_place_read(ctx, func, block, place, ts, state, d);
+            check_loan_conflict(func, block, place, AccessKind::Read, ts, state, d);
         }
         _ => {}
     }
@@ -742,6 +878,7 @@ fn eval_rvalue(
         }
         RValue::Ref(kind, place) => {
             check_borrow_precondition(ctx, func, block, kind, place, span, state, d);
+            check_loan_conflict(func, block, place, AccessKind::Borrow(kind.clone()), span, state, d);
         }
     }
 }
@@ -850,11 +987,13 @@ fn check_operand_read(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let place = match op {
-        Operand::Copy(p) | Operand::Move(p) => p,
+    let (place, access) = match op {
+        Operand::Copy(p) => (p, AccessKind::Read),
+        Operand::Move(p) => (p, AccessKind::Move),
         Operand::Const(_) => return,
     };
     check_place_read(ctx, func, block, place, span, state, d);
+    check_loan_conflict(func, block, place, access, span, state, d);
 }
 
 /// If the LHS path contains a `Downcast`, the enum being downcast must be
@@ -2078,6 +2217,323 @@ mod tests {
         assert_errors_contain(
             &errs,
             &["cannot forget reference 'r': obligation not fulfilled"],
+        );
+    }
+
+    // ---------- Loan conflicts ----------
+    //
+    // Slice 1: a borrow of a place freezes it (whole-function
+    // conservative lifetime — the loan lasts until the borrower is
+    // consumed). Any direct access to the loaned place is a conflict,
+    // with the shared/shared exception for reads and shared reborrows.
+
+    // === Exclusive loan blocks direct access ===
+
+    #[test]
+    fn mut_loan_blocks_direct_write() {
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                x = 1;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write to 'x': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn mut_loan_blocks_direct_read() {
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              y: number;
+              entry:
+                r = &mut x;
+                y = copy x;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot read 'x': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn mut_loan_blocks_direct_move() {
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            extern fn use_num(y: number);
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                call use_num(move x);
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot move from 'x': already borrowed by 'r'"],
+        );
+    }
+
+    // === Shared loans permit reads and shared reborrows ===
+
+    #[test]
+    fn shared_loan_permits_read_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &number;
+              y: number;
+              entry:
+                r = &x;
+                y = copy x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn shared_loan_permits_shared_reborrow_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &number;
+              s: &number;
+              entry:
+                r = &x;
+                s = &x;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn shared_loan_blocks_write() {
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              r: &number;
+              entry:
+                r = &x;
+                x = 1;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write to 'x': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn shared_loan_blocks_move() {
+        let (errs, _) = run(
+            "
+            extern fn take(y: number);
+            fn f(x: number) {
+              r: &number;
+              entry:
+                r = &x;
+                call take(move x);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot move from 'x': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn shared_loan_blocks_mut_reborrow() {
+        let (errs, _) = run(
+            "
+            fn f(x: number) {
+              r: &number;
+              s: &mut number;
+              entry:
+                r = &x;
+                s = &mut x;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot borrow as &mut 'x': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn mut_loan_blocks_shared_reborrow() {
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              s: &number;
+              entry:
+                r = &mut x;
+                s = &x;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot borrow as & 'x': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn mut_loan_blocks_mut_reborrow() {
+        let (errs, _) = run(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              s: &mut number;
+              entry:
+                r = &mut x;
+                s = &mut x;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot borrow as &mut 'x': already borrowed by 'r'"],
+        );
+    }
+
+    // === Loan ends when borrower is consumed ===
+
+    #[test]
+    fn access_ok_after_borrower_moved_to_call() {
+        assert_no_diagnostics(
+            "
+            extern fn sink(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                call sink(move r);
+                x = 1;
+                return
+            }
+            ",
+        );
+    }
+
+    // === Field-level precision ===
+
+    #[test]
+    fn disjoint_field_borrows_ok() {
+        assert_no_diagnostics(
+            "
+            struct Copy Drop P { a: number b: number }
+            extern fn sink(r: &mut number);
+            fn f(p: P) {
+              r: &mut number;
+              y: number;
+              entry:
+                r = &mut p.a;
+                y = copy p.b;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn same_field_borrow_conflicts() {
+        let (errs, _) = run(
+            "
+            struct Copy Drop P { a: number b: number }
+            extern fn sink(r: &mut number);
+            fn f(p: P) {
+              r: &mut number;
+              y: number;
+              entry:
+                r = &mut p.a;
+                y = copy p.a;
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot read 'p.a': already borrowed by 'r'"],
+        );
+    }
+
+    #[test]
+    fn access_to_parent_of_borrowed_field_conflicts() {
+        // Borrowing a field freezes the whole path from that field
+        // upward — moving the parent p would move the borrowed field.
+        let (errs, _) = run(
+            "
+            struct Copy Drop P { a: number b: number }
+            extern fn sink(r: &mut number);
+            extern fn takep(p: P);
+            fn f(p: P) {
+              r: &mut number;
+              entry:
+                r = &mut p.a;
+                call takep(move p);
+                call sink(move r);
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot move from 'p': already borrowed by 'r'"],
+        );
+    }
+
+    // === Access through borrower still allowed ===
+
+    #[test]
+    fn read_through_borrower_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(x: number) {
+              r: &mut number;
+              y: number;
+              entry:
+                r = &mut x;
+                y = copy *r;
+                return
+            }
+            ",
         );
     }
 
