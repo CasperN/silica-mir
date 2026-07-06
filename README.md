@@ -13,11 +13,11 @@ effects, so features such as streams, iterators, generators, and async become
 library features. Coroutines are deferred from the Silica-MIR for initial
 implementation simplicity.
 
-## Substructural types
-Values in Silica are linear. Relaxations are provided by the
-`Drop` and `Copy` traits, which tell the compiler that the type can be used
-0 or 1 times and 1 or more times respectively. Scalar types are both `Drop` and
-`Copy` so they can be used freely.
+### Substructural types
+Values in Silica are linear. Relaxations are provided by the `Drop` and `Copy`
+traits, which tell the compiler that the type may be used fewer than 1 and
+greater than 1 times respectively. Scalar types are both `Drop` and `Copy` so
+they can be used freely.
 
 Substructural class comes from the declaration markers:
 
@@ -29,16 +29,16 @@ Substructural class comes from the declaration markers:
 | `Copy Drop`  | unrestricted | yes           | yes              |
 
 #### Initialization State tracking
-Silica has four kinds of mutable reference. Each kind tracks the referent's
-current initialization state and the desired initialization state at the end of
-the reference's lifetime.
+Like Rust, Silica has const references, but unlike Rust, it has four kinds of
+mutable reference. Each kind tracks the referent's current initialization state
+and their desired initialization state at the end of the reference lifetime.
 
-| kind    | start | end |
-|---------|-------|-----|
-| &mut    | yes   | yes |
-| &out    | no    | yes |
-| &drop   | yes   | no  |
-| &uninit | no    | no  |
+| kind    | current | end |
+|---------|---------|-----|
+| &mut    | yes     | yes |
+| &out    | no      | yes |
+| &drop   | yes     | no  |
+| &uninit | no      | no  |
 
 The shared kind `&T` is `Copy Drop` (unrestricted) — aliasable and freely
 forgettable, same as Rust. The mutable kinds above are all not `Copy` to avoid
@@ -216,3 +216,11 @@ payload sets the whole enum `Uninit`.
 
 # Punch list
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
+- Requre `Move` to move, `Copy + Drop` is move.
+- NLL
+- Lower to LLVM
+- Lambdas
+- Coroutines
+- MIR polymorphic types
+- MIR traits?
+- Silica HLL lowering

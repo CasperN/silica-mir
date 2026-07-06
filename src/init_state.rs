@@ -39,7 +39,49 @@ pub enum InitState {
     Diverged,
 }
 
-pub type PointState = IndexMap<String, InitState>;
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RefCur { Init, Uninit }
+
+/// Per-reference-variable state: the current and (post-expiry) required
+/// state of the pointee. Only tracked for exclusive reference kinds (`&mut`,
+/// `&out`, `&drop`, `&uninit`). Shared references (`&T`) don't carry an
+/// obligation — they're `Copy Drop`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RefState {
+    pub cur: RefCur,
+    pub post: RefCur,
+}
+
+impl RefState {
+    /// The (cur, post) at borrow creation for a given ref kind. Returns
+    /// `None` for shared borrows (which don't carry an obligation).
+    pub fn from_kind(kind: &RefKind) -> Option<Self> {
+        match kind {
+            RefKind::Shared => None,
+            RefKind::Mut    => Some(RefState { cur: RefCur::Init,   post: RefCur::Init }),
+            RefKind::Out    => Some(RefState { cur: RefCur::Uninit, post: RefCur::Init }),
+            RefKind::Drop   => Some(RefState { cur: RefCur::Init,   post: RefCur::Uninit }),
+            RefKind::Uninit => Some(RefState { cur: RefCur::Uninit, post: RefCur::Uninit }),
+        }
+    }
+
+    pub fn obligation_fulfilled(&self) -> bool {
+        self.cur == self.post
+    }
+}
+
+/// State at a single program point.
+///
+/// - `locals`: init state per root Var, potentially projecting through
+///   struct fields and enum downcasts.
+/// - `refs`: the (cur, post) obligation for each ref-typed Var that is
+///   currently `Init`. Absent when the ref var is not Init, is shared,
+///   or has been consumed.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct PointState {
+    pub locals: IndexMap<String, InitState>,
+    pub refs: IndexMap<String, RefState>,
+}
 
 struct Ctx<'a> {
     env: &'a Env,
@@ -153,12 +195,24 @@ fn join_partials(
 }
 
 fn join_point(a: &PointState, b: &PointState) -> PointState {
-    a.iter()
+    let locals: IndexMap<String, InitState> = a.locals.iter()
         .map(|(name, sa)| {
-            let sb = b.get(name).cloned().unwrap_or(InitState::NeverInit);
+            let sb = b.locals.get(name).cloned().unwrap_or(InitState::NeverInit);
             (name.clone(), join_state(sa, &sb))
         })
-        .collect()
+        .collect();
+    // Refs: keep only entries that agree exactly on both sides. Disagreement
+    // is treated as "not currently bound" for the joined point — subsequent
+    // uses will see no ref state and behave conservatively.
+    let mut refs: IndexMap<String, RefState> = IndexMap::new();
+    for (name, ra) in &a.refs {
+        if let Some(rb) = b.refs.get(name) {
+            if ra == rb {
+                refs.insert(name.clone(), *ra);
+            }
+        }
+    }
+    PointState { locals, refs }
 }
 
 // ---------- Path walks ----------
@@ -311,9 +365,16 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 }
 
 fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState {
-    let mut s = PointState::new();
+    let mut s = PointState::default();
     for p in &func.params {
-        s.insert(p.name.clone(), InitState::Init);
+        s.locals.insert(p.name.clone(), InitState::Init);
+        // Reference parameters carry the loan for the whole body, so at
+        // entry we know their pointee is in the kind's creation-cur.
+        if let Type::Ref(kind, _) = &p.ty {
+            if let Some(rs) = RefState::from_kind(kind) {
+                s.refs.insert(p.name.clone(), rs);
+            }
+        }
     }
     for l in &body.locals {
         // A struct with zero declared fields is trivially initialized —
@@ -323,7 +384,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
         } else {
             InitState::NeverInit
         };
-        s.insert(l.name.clone(), init);
+        s.locals.insert(l.name.clone(), init);
     }
     s
 }
@@ -381,7 +442,22 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
     match stmt {
         Statement::Assign(target, rvalue) => {
             apply_rvalue_moves(ctx, rvalue, state);
-            apply_write(ctx, target, state, InitState::Init);
+            // Silent mirror of check_and_transfer_stmt's assign-side effects
+            // for the fixpoint. Errors are emitted only by the diagnostic
+            // pass; here we just propagate state.
+            if let Place::Var(name) = target {
+                state.refs.shift_remove(name);
+            }
+            if matches!(target, Place::Deref(_)) {
+                apply_deref_op(ctx, target, DerefOp::Write, state, None);
+            } else {
+                apply_write(ctx, target, state, InitState::Init);
+                if let (Place::Var(name), RValue::Ref(kind, _)) = (target, rvalue) {
+                    if let Some(rs) = RefState::from_kind(kind) {
+                        state.refs.insert(name.clone(), rs);
+                    }
+                }
+            }
         }
         Statement::Call(target, args) => {
             apply_operand_move(ctx, target, state);
@@ -390,6 +466,9 @@ fn transfer_stmt(ctx: &Ctx, stmt: &Statement, state: &mut PointState) {
             }
         }
         Statement::Drop(place) => {
+            if let Place::Var(name) = place {
+                state.refs.shift_remove(name);
+            }
             apply_move(ctx, place, state);
         }
     }
@@ -409,23 +488,156 @@ fn apply_rvalue_moves(ctx: &Ctx, rv: &RValue, state: &mut PointState) {
 }
 
 fn apply_operand_move(ctx: &Ctx, op: &Operand, state: &mut PointState) {
-    if let Operand::Move(place) = op {
-        apply_move(ctx, place, state);
+    // Deref through *r transitions the ref's pointee state; do it before
+    // the whole-var move that follows for consistency.
+    match op {
+        Operand::Copy(place) => apply_deref_op(ctx, place, DerefOp::Read, state, None),
+        Operand::Move(place) => {
+            apply_deref_op(ctx, place, DerefOp::Move, state, None);
+            apply_move(ctx, place, state);
+        }
+        Operand::Const(_) => {}
     }
 }
 
 fn apply_write(ctx: &Ctx, place: &Place, state: &mut PointState, leaf: InitState) {
     let Some((root, path)) = extract_path(place) else { return; };
     let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let root_state = state.entry(root).or_insert(InitState::NeverInit);
+    let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
     write_at(root_state, &root_ty, &path, ctx.env, leaf);
 }
 
 fn apply_move(ctx: &Ctx, place: &Place, state: &mut PointState) {
     let Some((root, path)) = extract_path(place) else { return; };
     let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let root_state = state.entry(root).or_insert(InitState::NeverInit);
+    let root_state = state.locals.entry(root.clone()).or_insert(InitState::NeverInit);
     move_at(root_state, &root_ty, &path, ctx.env);
+    // Whole-var move of an exclusive reference: the loan is transferred
+    // to whoever receives the move. From the caller's perspective, the
+    // ref entry is gone; no obligation check here (that'd double-count
+    // if the callee's signature enforces its own).
+    if path.is_empty() {
+        state.refs.shift_remove(&root);
+    }
+}
+
+/// Which kind of dereference operation is being performed. Distinguishes
+/// state precondition (init vs uninit) and post-condition transition.
+#[derive(Debug, Clone, Copy)]
+enum DerefOp {
+    /// `copy *r` / discriminant read of *r — requires pointee Init, no
+    /// transition.
+    Read,
+    /// `move *r` — requires pointee Init, transitions to Uninit.
+    Move,
+    /// `*r = v` — requires pointee Uninit, transitions to Init.
+    Write,
+}
+
+/// Apply the state effect of an operation through `*r`. If `place` isn't
+/// a shallow deref of a Var, returns without effect.
+///
+/// When `report` is `Some`, precondition failures emit errors; when `None`
+/// the check is silent (used from the fixpoint transfer).
+///
+/// Nested paths like `(*r).field` aren't handled here — pinned as a
+/// deferred limitation. Only the shape `*r` where `r: exclusive-ref` is
+/// tracked; shared refs generate a diagnostic on write/move but not read.
+fn apply_deref_op(
+    ctx: &Ctx,
+    place: &Place,
+    op: DerefOp,
+    state: &mut PointState,
+    report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+) {
+    let Place::Deref(inner) = place else { return; };
+    let Place::Var(name) = &**inner else { return; };
+    let Some(root_ty) = ctx.locals.get(name) else { return; };
+    let Type::Ref(kind, _) = root_ty else { return; };
+
+    if matches!(kind, RefKind::Shared) {
+        if !matches!(op, DerefOp::Read) {
+            if let Some((func, block, span, d)) = report {
+                push_error!(
+                    d, span, func, block,
+                    "cannot mutate through shared reference '{}'", name
+                );
+            }
+        }
+        return;
+    }
+
+    let Some(rs) = state.refs.get(name).copied() else {
+        if let Some((func, block, span, d)) = report {
+            push_error!(
+                d, span, func, block,
+                "cannot dereference '{}': reference state is unknown here", name
+            );
+        }
+        return;
+    };
+
+    let required = match op {
+        DerefOp::Read | DerefOp::Move => RefCur::Init,
+        DerefOp::Write => RefCur::Uninit,
+    };
+    if rs.cur != required {
+        if let Some((func, block, span, d)) = report {
+            let action = match op {
+                DerefOp::Read => "read from",
+                DerefOp::Move => "move out of",
+                DerefOp::Write => "write into",
+            };
+            let expected = match required {
+                RefCur::Init => "initialized",
+                RefCur::Uninit => "uninitialized",
+            };
+            let actual = match rs.cur {
+                RefCur::Init => "initialized",
+                RefCur::Uninit => "uninitialized",
+            };
+            push_error!(
+                d, span, func, block,
+                "cannot {} pointee of '{}': pointee must be {} here, but is {}",
+                action, name, expected, actual
+            );
+        }
+    }
+
+    // Apply the transition. Do this even on precondition failure so
+    // downstream analysis sees consistent state.
+    let new_cur = match op {
+        DerefOp::Read => rs.cur,
+        DerefOp::Move => RefCur::Uninit,
+        DerefOp::Write => RefCur::Init,
+    };
+    state.refs.insert(name.clone(), RefState { cur: new_cur, post: rs.post });
+}
+
+/// If `place` is a whole-var ref binding with an outstanding obligation
+/// (`refs[name]` exists), verify its obligation is fulfilled and remove
+/// the entry. Called at any point where the reference value is being
+/// silently forgotten: `drop r`, or overwrite of `r`.
+fn close_ref_if_present(
+    ctx: &Ctx,
+    func: &Function,
+    block: &BasicBlock,
+    place: &Place,
+    span: Span,
+    state: &mut PointState,
+    d: &mut Diagnostics,
+) {
+    let _ = ctx;
+    let Place::Var(name) = place else { return; };
+    let Some(rs) = state.refs.get(name).copied() else { return; };
+    if !rs.obligation_fulfilled() {
+        push_error!(
+            d, span, func, block,
+            "cannot forget reference '{}': obligation not fulfilled (cur={:?}, post={:?})",
+            name, rs.cur, rs.post
+        );
+    }
+    state.refs.shift_remove(name);
 }
 
 // ---------- Diagnostic pass ----------
@@ -454,7 +666,25 @@ fn check_and_transfer_stmt(
         Statement::Assign(target, rvalue) => {
             eval_rvalue(ctx, func, block, rvalue, span, state, d);
             check_lhs_downcast(ctx, func, block, target, span, state, d);
-            apply_write(ctx, target, state, InitState::Init);
+
+            // Overwriting a bound ref var is a silent-forget of the
+            // pointee obligation; error unless already fulfilled.
+            close_ref_if_present(ctx, func, block, target, span, state, d);
+
+            // Deref-write: transition the ref's pointee state through *r.
+            if matches!(target, Place::Deref(_)) {
+                apply_deref_op(ctx, target, DerefOp::Write, state,
+                    Some((func, block, span, d)));
+            } else {
+                apply_write(ctx, target, state, InitState::Init);
+                // Borrow creation: attach the initial ref state to the
+                // target var (skipped for shared refs — no obligation).
+                if let (Place::Var(name), RValue::Ref(kind, _)) = (target, rvalue) {
+                    if let Some(rs) = RefState::from_kind(kind) {
+                        state.refs.insert(name.clone(), rs);
+                    }
+                }
+            }
         }
         Statement::Call(target, args) => {
             eval_operand(ctx, func, block, target, span, state, d);
@@ -465,8 +695,10 @@ fn check_and_transfer_stmt(
         Statement::Drop(place) => {
             // Read the place, then consume it. Same effect on state as
             // `move`. The substructural checker (separate pass) is the
-            // one that will require the type to be Drop.
+            // one that will require the type to be Drop. For a ref-typed
+            // Var, also verify the pointee obligation before forgetting.
             check_place_read(ctx, func, block, place, span, state, d);
+            close_ref_if_present(ctx, func, block, place, span, state, d);
             apply_move(ctx, place, state);
         }
     }
@@ -530,7 +762,7 @@ fn check_borrow_precondition(
 ) {
     let Some((root, path)) = extract_path(place) else { return; };
     let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let Some(root_state) = state.get(&root) else { return; };
+    let Some(root_state) = state.locals.get(&root) else { return; };
     let leaf = read_at(root_state, &root_ty, &path, ctx.env);
 
     let (requires_init, kind_str) = match kind {
@@ -589,6 +821,18 @@ fn eval_operand(
     d: &mut Diagnostics,
 ) {
     check_operand_read(ctx, func, block, op, span, state, d);
+    // Deref-op transitions for *r in operand position.
+    match op {
+        Operand::Copy(place) => {
+            apply_deref_op(ctx, place, DerefOp::Read, state,
+                Some((func, block, span, d)));
+        }
+        Operand::Move(place) => {
+            apply_deref_op(ctx, place, DerefOp::Move, state,
+                Some((func, block, span, d)));
+        }
+        Operand::Const(_) => {}
+    }
     apply_operand_move(ctx, op, state);
 }
 
@@ -623,7 +867,7 @@ fn check_lhs_downcast(
     let Some((root, path)) = extract_path(place) else { return; };
     let Some(idx) = path.iter().position(|s| matches!(s, PathStep::Downcast(_))) else { return; };
     let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let Some(root_state) = state.get(&root) else { return; };
+    let Some(root_state) = state.locals.get(&root) else { return; };
     let prefix_state = read_at(root_state, &root_ty, &path[..idx], ctx.env);
     if !matches!(prefix_state, InitState::Init) {
         push_error!(
@@ -644,7 +888,7 @@ fn check_place_read(
 ) {
     let Some((root, path)) = extract_path(place) else { return; };
     let Some(root_ty) = ctx.locals.get(&root).cloned() else { return; };
-    let Some(root_state) = state.get(&root) else { return; };
+    let Some(root_state) = state.locals.get(&root) else { return; };
     let leaf = read_at(root_state, &root_ty, &path, ctx.env);
     match leaf {
         InitState::Init => {}
@@ -1503,6 +1747,332 @@ mod tests {
                 return
             }
             ",
+        );
+    }
+
+    // ---------- Reference (cur, post) state tracking ----------
+    //
+    // Slice 0b: transitions on `*r` operations, close-check on ref-var
+    // consumption, leak check at return for unfulfilled ref obligations.
+    //
+    // Tests organized by ref kind, then by the interesting sequences.
+
+    // === &mut: pointee starts Init, must stay Init at expiry ===
+
+    #[test]
+    fn mut_ref_read_then_return_ok() {
+        // Read through &mut leaves cur=Init; obligation trivially met.
+        assert_no_diagnostics(
+            "
+            fn f(r: &mut number) {
+              x: number;
+              entry:
+                x = copy *r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn mut_ref_move_then_write_ok() {
+        // Move-out drops cur to Uninit; write puts it back to Init;
+        // obligation met at return.
+        assert_no_diagnostics(
+            "
+            fn f(r: &mut number) {
+              x: number;
+              entry:
+                x = move *r;
+                *r = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn mut_ref_write_without_move_error() {
+        // `*r = v` on an Init pointee would silently forget the old
+        // value — rejected as pre-overwrite of the pointee.
+        let (errs, _) = run(
+            "
+            fn f(r: &mut number) {
+              entry:
+                *r = 42;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized"],
+        );
+    }
+
+    #[test]
+    fn mut_ref_moved_out_return_leaks() {
+        // Move-out leaves cur=Uninit; not refilled → obligation unmet.
+        let (errs, _) = run(
+            "
+            fn f(r: &mut number) {
+              x: number;
+              entry:
+                x = move *r;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["reference 'r' of type Ref(Mut, Number) has unfulfilled obligation at return"],
+        );
+    }
+
+    // === &out: pointee starts Uninit, must reach Init at expiry ===
+
+    #[test]
+    fn out_ref_write_then_return_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(r: &out number) {
+              entry:
+                *r = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn out_ref_unwritten_leaks() {
+        let (errs, _) = run(
+            "
+            fn f(r: &out number) {
+              entry:
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["reference 'r' of type Ref(Out, Number) has unfulfilled obligation at return"],
+        );
+    }
+
+    #[test]
+    fn out_ref_read_before_write_error() {
+        // Can't read through &out — pointee is Uninit at creation.
+        let (errs, _) = run(
+            "
+            fn f(r: &out number) {
+              x: number;
+              entry:
+                x = copy *r;
+                *r = 42;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized"],
+        );
+    }
+
+    // === &drop: pointee starts Init, must reach Uninit at expiry ===
+
+    #[test]
+    fn drop_ref_move_out_then_return_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(r: &drop number) {
+              x: number;
+              entry:
+                x = move *r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn drop_ref_unmoved_leaks() {
+        let (errs, _) = run(
+            "
+            fn f(r: &drop number) {
+              entry:
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["reference 'r' of type Ref(Drop, Number) has unfulfilled obligation at return"],
+        );
+    }
+
+    // === &uninit: pointee starts Uninit, must stay Uninit at expiry ===
+
+    #[test]
+    fn uninit_ref_untouched_return_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(r: &uninit number) {
+              entry:
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn uninit_ref_write_makes_it_drop_state() {
+        // After `*r = v`, r is in `&drop` state (post=Uninit, cur=Init).
+        // Must move-out again to satisfy post.
+        assert_no_diagnostics(
+            "
+            fn f(r: &uninit number) {
+              x: number;
+              entry:
+                *r = 42;
+                x = move *r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn uninit_ref_write_without_moveback_leaks() {
+        let (errs, _) = run(
+            "
+            fn f(r: &uninit number) {
+              entry:
+                *r = 42;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["reference 'r' of type Ref(Uninit, Number) has unfulfilled obligation at return"],
+        );
+    }
+
+    // === Local ref: create → use → move-to-call ===
+
+    #[test]
+    fn local_mut_ref_moved_to_call_ok() {
+        assert_no_diagnostics(
+            "
+            extern fn use_mut(r: &mut number);
+            fn f(x: number) {
+              r: &mut number;
+              entry:
+                r = &mut x;
+                call use_mut(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn local_drop_ref_moved_to_call_ok() {
+        // Create &drop, transfer via call. Loan obligation delegated to
+        // the callee.
+        assert_no_diagnostics(
+            "
+            extern fn consume(r: &drop number);
+            fn f(x: number) {
+              r: &drop number;
+              entry:
+                r = &drop x;
+                call consume(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    // === Shared refs: no obligation, no state tracking ===
+
+    #[test]
+    fn shared_ref_read_ok() {
+        assert_no_diagnostics(
+            "
+            fn f(r: &number) {
+              x: number;
+              entry:
+                x = copy *r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn shared_ref_write_error() {
+        let (errs, _) = run(
+            "
+            fn f(r: &number) {
+              entry:
+                *r = 1;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["cannot mutate through shared reference 'r'"]);
+    }
+
+    #[test]
+    fn shared_ref_left_bound_at_return_ok() {
+        // `&T` is Copy Drop; no obligation on return.
+        assert_no_diagnostics(
+            "
+            fn f(r: &number) {
+              entry:
+                return
+            }
+            ",
+        );
+    }
+
+    // === Drop statement on refs (bitwise forget must satisfy post) ===
+
+    #[test]
+    fn drop_of_mut_ref_ok() {
+        // &mut is (Init, Init) at every point; drop is trivially legal.
+        assert_no_diagnostics(
+            "
+            fn f(r: &mut number) {
+              entry:
+                drop r;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn drop_of_ref_with_unfulfilled_obligation_error() {
+        // Move out through &mut leaves cur=Uninit; drop-forget then
+        // errors because obligation not fulfilled.
+        let (errs, _) = run(
+            "
+            fn f(r: &mut number) {
+              x: number;
+              entry:
+                x = move *r;
+                drop r;
+                return
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["cannot forget reference 'r': obligation not fulfilled"],
         );
     }
 

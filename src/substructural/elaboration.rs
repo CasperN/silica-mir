@@ -89,7 +89,13 @@ fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env) -> Vec<P
 
     let mut drops = Vec::new();
     for (name, ty) in order.iter().rev() {
-        let Some(s) = state.get(name) else { continue; };
+        let Some(s) = state.locals.get(name) else { continue; };
+        // Refs with unfulfilled obligations must NOT be dropped: doing so
+        // would silently violate their (cur, post). Skip; the leak check
+        // will surface the missing consumption.
+        if let Some(rs) = state.refs.get(name) {
+            if !rs.obligation_fulfilled() { continue; }
+        }
         plan_drops_for_place(Place::Var(name.clone()), ty, s, env, &mut drops);
     }
     drops

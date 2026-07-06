@@ -143,8 +143,12 @@ fn check_leaks_in_state(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    for (var, s) in state {
+    for (var, s) in &state.locals {
         let Some(ty) = locals.get(var) else { continue; };
+        // Reference-typed vars: their expiry rule is (cur, post) checked
+        // separately below. Skip the linear-leak scan to avoid double
+        // reporting.
+        if state.refs.contains_key(var) { continue; }
         let mut path = vec![var.clone()];
         let mut leaks = Vec::new();
         find_leaks(env, s, ty, &mut path, &mut leaks);
@@ -155,6 +159,18 @@ fn check_leaks_in_state(
                 leaked_path, leaked_ty
             );
         }
+    }
+
+    // Reference obligations: any ref var still Init with cur != post at
+    // return leaks — the loan wasn't discharged.
+    for (var, rs) in &state.refs {
+        if rs.obligation_fulfilled() { continue; }
+        let Some(ty) = locals.get(var) else { continue; };
+        push_error!(
+            d, block.terminator_span, func, block,
+            "reference '{}' of type {:?} has unfulfilled obligation at return (cur={:?}, post={:?})",
+            var, ty, rs.cur, rs.post
+        );
     }
 }
 
@@ -522,6 +538,8 @@ mod tests {
 
     #[test]
     fn linear_ref_param_untouched_leaks() {
+        // Refs are reported via the obligation check, not the linear-leak
+        // check, because their expiry rule is the (cur, post) obligation.
         assert_err(
             "
             fn f(r: &out number) {
@@ -529,7 +547,7 @@ mod tests {
                 return
             }
             ",
-            "value 'r' of type Ref(Out, Number) is not consumed at return",
+            "reference 'r' of type Ref(Out, Number) has unfulfilled obligation at return",
         );
     }
 
