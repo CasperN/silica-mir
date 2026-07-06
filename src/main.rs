@@ -1,12 +1,10 @@
 mod ast;
 mod block_reachability;
 mod diagnostics;
-mod drop_elaboration;
 mod init_state;
-mod marker_composition;
 mod parser;
 mod pretty_print;
-mod substructural_check;
+mod substructural;
 mod type_check;
 mod variant_flow;
 
@@ -35,8 +33,8 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
-    marker_composition::check_program(&env, &mut d);
-    substructural_check::check_program(&env, &mut d);
+    substructural::composition::check_program(&env, &mut d);
+    substructural::check::check_program(&env, &mut d);
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
@@ -46,12 +44,12 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     }
 
     let mut elaborated = program.clone();
-    drop_elaboration::elaborate(&mut elaborated, &env);
+    substructural::elaboration::elaborate(&mut elaborated, &env);
 
     // Re-build env from elaborated program (inserted drops introduce new
     // statements that init_state / leak check need to see accurately).
     let env2 = type_check::Env::build(&elaborated, &mut d);
-    substructural_check::check_return_leaks(&env2, &mut d);
+    substructural::check::check_return_leaks(&env2, &mut d);
 
     (elaborated, d)
 }

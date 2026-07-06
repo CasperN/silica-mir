@@ -25,7 +25,7 @@
 
 use crate::ast::*;
 use crate::init_state::{self, InitState, PointState};
-use crate::marker_composition::class_of;
+use crate::substructural::composition::class_of;
 use crate::type_check::Env;
 use indexmap::IndexMap;
 
@@ -96,7 +96,7 @@ mod tests {
     use crate::diagnostics::Diagnostics;
     use crate::parser::Parser;
     use crate::pretty_print::pretty_print;
-    use crate::substructural_check::check_return_leaks;
+    use crate::substructural::check::check_return_leaks;
     use crate::type_check;
 
     /// Run the full parse → typecheck → elaborate pipeline, returning the

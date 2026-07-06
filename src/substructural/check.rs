@@ -16,15 +16,11 @@
 //!
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks.
-//!
-//! When elaboration coverage is finished (Partial-at-return, join-edge
-//! splitting), this file, `marker_composition`, and `drop_elaboration`
-//! can be bundled into a `substructural/` directory.
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
 use crate::init_state::{self, InitState, PointState};
-use crate::marker_composition::class_of;
+use crate::substructural::composition::class_of;
 use crate::push_error;
 use crate::type_check::Env;
 use indexmap::IndexMap;
