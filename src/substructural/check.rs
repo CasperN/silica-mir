@@ -106,15 +106,39 @@ fn check_operand(
     span: Span,
     d: &mut Diagnostics,
 ) {
-    if let Operand::Copy(place) = op {
-        let Ok(ty) = env.infer_place_type(place, locals) else {
-            return;
-        };
-        let c = class_of(&ty, env);
-        if !c.copy {
-            push_error!(d, span, func, block, "cannot copy non-Copy type {:?}", ty);
-        }
+    let (place, kind_name, needed) = match op {
+        Operand::Copy(place) => (place, "copy", ClassMarker::Copy),
+        Operand::Move(place) => (place, "move", ClassMarker::Move),
+        Operand::Const(_) => return,
+    };
+    let Ok(ty) = env.infer_place_type(place, locals) else {
+        return;
+    };
+    let c = class_of(&ty, env);
+    let ok = match needed {
+        ClassMarker::Copy => c.copy,
+        ClassMarker::Move => c.mov,
+    };
+    if !ok {
+        push_error!(
+            d,
+            span,
+            func,
+            block,
+            "cannot {} non-{} type {:?}",
+            kind_name,
+            match needed {
+                ClassMarker::Copy => "Copy",
+                ClassMarker::Move => "Move",
+            },
+            ty
+        );
     }
+}
+
+enum ClassMarker {
+    Copy,
+    Move,
 }
 
 fn check_terminator(
@@ -415,14 +439,32 @@ mod tests {
         );
     }
 
-    // ---------- Move: always allowed ----------
+    // ---------- Move: requires Move marker ----------
 
     #[test]
     fn move_of_linear_ok() {
-        // Substructural check permits moves of any class; only `copy`
-        // demands Copy. Consume the moved-to `y` via a sink call so we
-        // don't trip the leak-at-return check.
+        // A struct that gets moved must declare Move. Here `struct Move
+        // Linear` composes fine because `&out T` is Move (linear
+        // obligation, but movable — pointer relocates with obligation).
         assert_no_diagnostics(
+            "
+            struct Move Linear { r: &out number }
+            extern fn sink(y: Linear);
+            fn f(x: Linear) {
+              y: Linear;
+              entry:
+                y = move x;
+                call sink(move y);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn move_of_non_move_struct_errors() {
+        // Same shape, but no Move marker — moves are rejected.
+        assert_err(
             "
             struct Linear { r: &out number }
             extern fn sink(y: Linear);
@@ -434,6 +476,57 @@ mod tests {
                 return
             }
             ",
+            "cannot move non-Move type",
+        );
+    }
+
+    #[test]
+    fn move_of_ref_ok() {
+        // All ref kinds are implicitly Move (the ref itself is a pointer;
+        // its obligation transfers with the move).
+        assert_no_diagnostics(
+            "
+            extern fn take(r: &mut number);
+            fn f(r: &mut number) {
+              entry:
+                call take(move r);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn move_of_copy_drop_struct_ok() {
+        // Copy+Drop implies Move — no explicit Move marker needed.
+        assert_no_diagnostics(
+            "
+            struct Copy Drop Point { x: number y: number }
+            extern fn take(p: Point);
+            fn f(p: Point) {
+              entry:
+                call take(move p);
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn move_of_copy_only_struct_errors() {
+        // Copy alone doesn't imply Move — the type is bit-duplicable but
+        // not relocatable.
+        assert_err(
+            "
+            struct Copy PinnedShared { x: number }
+            extern fn take(p: PinnedShared);
+            fn f(p: PinnedShared) {
+              entry:
+                call take(move p);
+                return
+            }
+            ",
+            "cannot move non-Move type",
         );
     }
 
@@ -637,7 +730,7 @@ mod tests {
     fn linear_struct_moved_whole_ok() {
         assert_no_diagnostics(
             "
-            struct P { x: number y: number }
+            struct Move P { x: number y: number }
             extern fn take(p: P);
             fn f(p: P) {
               entry:
@@ -745,7 +838,7 @@ mod tests {
     fn fully_linear_struct_moved_ok() {
         assert_no_diagnostics(
             "
-            struct L { r: &out number }
+            struct Move L { r: &out number }
             extern fn take(x: L);
             fn f(x: L) {
               entry:
@@ -758,14 +851,15 @@ mod tests {
 
     #[test]
     fn fully_linear_struct_partial_init_field_leaks() {
-        // `x.r = ...`  wouldn't compile (can't assign a linear place),
+        // `x.r = ...` wouldn't compile (can't assign a linear place),
         // but a fully-linear field with Init state at return is a
         // per-leaf leak whenever it appears — verified here via a local
-        // that's partially inited via a moved-in field.
+        // that's partially inited via a moved-in field. Both structs
+        // need Move to permit `move src.a`.
         assert_err(
             "
-            struct L { r: &out number }
-            struct Pair { a: L b: L }
+            struct Move L { r: &out number }
+            struct Move Pair { a: L b: L }
             fn f(src: Pair) {
               p: Pair;
               entry:

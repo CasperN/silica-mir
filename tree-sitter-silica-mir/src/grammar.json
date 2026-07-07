@@ -1,5 +1,4 @@
 {
-  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
   "name": "silica_mir",
   "word": "identifier",
   "rules": {
@@ -178,6 +177,13 @@
       ]
     },
     "markers": {
+      "type": "REPEAT1",
+      "content": {
+        "type": "SYMBOL",
+        "name": "marker"
+      }
+    },
+    "marker": {
       "type": "CHOICE",
       "members": [
         {
@@ -189,30 +195,8 @@
           "value": "Drop"
         },
         {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "Copy"
-            },
-            {
-              "type": "STRING",
-              "value": "Drop"
-            }
-          ]
-        },
-        {
-          "type": "SEQ",
-          "members": [
-            {
-              "type": "STRING",
-              "value": "Drop"
-            },
-            {
-              "type": "STRING",
-              "value": "Copy"
-            }
-          ]
+          "type": "STRING",
+          "value": "Move"
         }
       ]
     },
@@ -1232,6 +1216,5 @@
   "precedences": [],
   "externals": [],
   "inline": [],
-  "supertypes": [],
-  "reserved": {}
+  "supertypes": []
 }

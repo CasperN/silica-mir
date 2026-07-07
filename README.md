@@ -46,6 +46,33 @@ data races. `&out` and `&drop` are linear types (neither `Drop` nor `Copy`) as
 they represent unfulfilled obligations to initialize or deinitialize the
 referent. `&mut` and `&uninit` are affine types (`Drop` not `Copy`).
 
+### Substructural traits
+The `Move` trait tells the compiler a type is movable. Without it, it cannot be
+passed by move. All scalar types are movable. If a type is copy and drop, it
+is automatically move. The traits are related by the following blanket impl.
+
+```
+trait Copy {
+  fn copy(src: &Self, dst: &out Self);
+}
+trait Drop {
+  fn drop(&drop self);
+}
+trait Move {
+  fn move(src: &drop Self, dst: &out Self);
+}
+impl<T: Copy + Drop> Move for T {
+  fn move(src: &drop Self, dst: &out Self) {
+    Copy::copy(&*src, dst);
+    Drop::drop(src);
+  }
+} 
+```
+Note that unlike Rust, `Copy` may be user defined.
+
+TODO: Should there be explicit versions of Copy and Drop (Clone and Destroy)
+that with standard, potentially effectful, methods that the compiler cannot
+implicitly insert?
 
 ### Silica's Compiler Plan
 1. Lower from Silica to this MIR. Typecheck the source program and convert
@@ -107,10 +134,10 @@ function =
     | fn name ( var: type, ... ) { (var: type ;)* basic_block* }
 
 struct_decl =
-    struct [Copy? Drop?] identifier { (field: type)* }
+    struct [Copy? Drop? Move?] identifier { (field: type)* }
 
 enum_decl =
-    enum [Copy? Drop?] identifier { (Variant: type)* }
+    enum [Copy? Drop? Move?] identifier { (Variant: type)* }
 
 declaration = struct_decl | enum_decl | function
 
@@ -161,7 +188,6 @@ The essential elaboration and check passes are:
 
 
 # Punch list
-- Requre `Move` to move, `Copy + Drop` is move.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - `switchEnum(o as V)` on an inline downcast doesn't refine — the outer
   variant isn't proven before the inner switch reads its discriminant.

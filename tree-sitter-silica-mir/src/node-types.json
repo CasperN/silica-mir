@@ -308,9 +308,24 @@
     }
   },
   {
-    "type": "markers",
+    "type": "marker",
     "named": true,
     "fields": {}
+  },
+  {
+    "type": "markers",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "marker",
+          "named": true
+        }
+      ]
+    }
   },
   {
     "type": "operand",
@@ -400,7 +415,6 @@
   {
     "type": "program",
     "named": true,
-    "root": true,
     "fields": {},
     "children": {
       "multiple": true,
@@ -723,6 +737,10 @@
     "named": false
   },
   {
+    "type": "Move",
+    "named": false
+  },
+  {
     "type": "[",
     "named": false
   },
@@ -752,8 +770,7 @@
   },
   {
     "type": "comment",
-    "named": true,
-    "extra": true
+    "named": true
   },
   {
     "type": "copy",

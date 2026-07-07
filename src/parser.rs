@@ -377,6 +377,36 @@ impl Parser {
         })
     }
 
+    /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
+    /// order). Errors on duplicates.
+    fn map_markers(&self, node: Node) -> Result<Markers, String> {
+        let mut copy = false;
+        let mut drop = false;
+        let mut mov = false;
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "marker" {
+                continue;
+            }
+            let text = self.get_text(child);
+            let flag = match text {
+                "Copy" => &mut copy,
+                "Drop" => &mut drop,
+                "Move" => &mut mov,
+                other => return Err(format!("Unknown marker: {}", other)),
+            };
+            if *flag {
+                return Err(format!(
+                    "Duplicate marker '{}' at {}",
+                    text,
+                    span_of(child)
+                ));
+            }
+            *flag = true;
+        }
+        Ok(Markers { copy, drop, mov })
+    }
+
     fn map_struct_decl(&self, node: Node) -> Result<StructDecl, String> {
         let name_node = node
             .child_by_field_name("name")
@@ -384,15 +414,14 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
-        let mut copy = false;
-        let mut drop = false;
         let mut cursor = node.walk();
-        if let Some(markers_node) = node.children(&mut cursor).find(|c| c.kind() == "markers") {
-            let text = self.get_text(markers_node);
-            copy = text.contains("Copy");
-            drop = text.contains("Drop");
-        }
-        let markers = Markers { copy, drop };
+        let markers = if let Some(markers_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "markers")
+        {
+            self.map_markers(markers_node)?
+        } else {
+            Markers { copy: false, drop: false, mov: false }
+        };
 
         let mut fields = Vec::new();
         for child in node.children(&mut cursor) {
@@ -428,15 +457,14 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
-        let mut copy = false;
-        let mut drop = false;
         let mut cursor = node.walk();
-        if let Some(markers_node) = node.children(&mut cursor).find(|c| c.kind() == "markers") {
-            let text = self.get_text(markers_node);
-            copy = text.contains("Copy");
-            drop = text.contains("Drop");
-        }
-        let markers = Markers { copy, drop };
+        let markers = if let Some(markers_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "markers")
+        {
+            self.map_markers(markers_node)?
+        } else {
+            Markers { copy: false, drop: false, mov: false }
+        };
 
         let mut variants = Vec::new();
         for child in node.children(&mut cursor) {

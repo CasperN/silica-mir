@@ -1,27 +1,27 @@
 //! Substructural class check for declared types.
 //!
-//! **Scope note:** this file only checks that a declaration's `Copy` /
-//! `Drop` markers are compositionally consistent — a struct marked `Copy`
-//! must not contain a non-Copy field, etc. Its siblings in this module
-//! handle statement-level class checks (`check`) and drop insertion
-//! (`elaboration`).
+//! **Scope note:** this file only checks that a declaration's markers
+//! (`Copy`, `Drop`, `Move`) are compositionally consistent. Its siblings
+//! in this module handle statement-level class checks (`check`) and drop
+//! insertion (`elaboration`).
 //!
-//! Silica's `Copy` / `Drop` markers on struct and enum declarations classify
-//! the type as (respectively) copyable and forgettable. This pass verifies
-//! that a declaration's markers are compositionally consistent: a struct
-//! marked `Copy` must not contain a non-Copy field, and same for `Drop` (and
-//! same for enum variants against their payload types).
+//! A type marker on a struct/enum declaration classifies the type as
+//! (respectively) copyable, forgettable, or relocatable. This pass
+//! verifies that a declaration's markers are compositionally consistent:
+//! a struct marked `Copy` must not contain a non-Copy field, and same
+//! for `Drop` and `Move`.
 //!
 //! Class assignment (per README):
-//!   - Scalars (`number`, `boolean`, `unit`) and `fn(...)` : `Copy Drop`
-//!   - `&T`               : `Copy Drop`
-//!   - `&mut`, `&uninit`  : `Drop`, not `Copy`
-//!   - `&out`, `&drop`    : neither (linear)
-//!   - Custom (struct/enum): as declared by its own markers
+//!   - Scalars (`number`, `boolean`, `unit`) and `fn(...)` : `Copy Drop Move`
+//!   - `&T`               : `Copy Drop Move`
+//!   - `&mut`, `&uninit`  : `Drop Move`
+//!   - `&out`, `&drop`    : `Move` only (linear obligation, but relocatable)
+//!   - Custom (struct/enum): as declared, with the rule that
+//!     `Copy` + `Drop` implies `Move` (blanket impl in the README).
 //!
-//! Self-referential and mutually recursive types resolve without a fixpoint:
-//! we use the declared markers of a `Custom` name verbatim, which is
-//! sufficient for compositional checks.
+//! Self-referential and mutually recursive types resolve without a
+//! fixpoint: we use the declared markers of a `Custom` name verbatim,
+//! which is sufficient for compositional checks.
 
 use crate::ast::*;
 use crate::diagnostics::Diagnostics;
@@ -31,6 +31,7 @@ use crate::type_check::{Env, TypeDecl};
 pub struct Class {
     pub copy: bool,
     pub drop: bool,
+    pub mov: bool,
 }
 
 pub fn class_of(ty: &Type, env: &Env) -> Class {
@@ -38,35 +39,48 @@ pub fn class_of(ty: &Type, env: &Env) -> Class {
         Type::Number | Type::Boolean | Type::Unit | Type::Fn(_) => Class {
             copy: true,
             drop: true,
+            mov: true,
         },
         Type::Ref(kind, _) => match kind {
+            // Shared refs are unrestricted and relocatable.
             RefKind::Shared => Class {
                 copy: true,
                 drop: true,
+                mov: true,
             },
+            // Exclusive mutable/uninit refs: affine + movable. The ref
+            // itself is a pointer we can freely relocate; the referent's
+            // obligation goes with it.
             RefKind::Mut | RefKind::Uninit => Class {
                 copy: false,
                 drop: true,
+                mov: true,
             },
+            // `&out` / `&drop` carry linear obligations, but the
+            // reference value itself is a pointer that can be relocated
+            // (obligation transfers with the ref).
             RefKind::Out | RefKind::Drop => Class {
                 copy: false,
                 drop: false,
+                mov: true,
             },
         },
         Type::Custom(name) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => Class {
                 copy: s.markers.copy,
                 drop: s.markers.drop,
+                mov: s.markers.effective_move(),
             },
             Some(TypeDecl::Enum(e)) => Class {
                 copy: e.markers.copy,
                 drop: e.markers.drop,
+                mov: e.markers.effective_move(),
             },
             // Unknown name — tc has already reported "undeclared type".
-            // Fall back to linear so we don't fabricate a Copy/Drop claim.
             None => Class {
                 copy: false,
                 drop: false,
+                mov: false,
             },
         },
     }
@@ -96,6 +110,15 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
                 f.span, s.name, f.name, f.ty
             ));
         }
+        // Only check explicit Move against fields — an implicit Move
+        // via Copy+Drop is guaranteed to succeed because those fields
+        // are already Copy AND Drop, hence Move.
+        if s.markers.mov && !c.mov {
+            d.errors.push(format!(
+                "at {}: In struct '{}' (marked Move), field '{}' has type {:?} which is not Move",
+                f.span, s.name, f.name, f.ty
+            ));
+        }
     }
 }
 
@@ -111,6 +134,12 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         if e.markers.drop && !c.drop {
             d.errors.push(format!(
                 "at {}: In enum '{}' (marked Drop), variant '{}' payload type {:?} is not Drop",
+                v.span, e.name, v.name, v.ty
+            ));
+        }
+        if e.markers.mov && !c.mov {
+            d.errors.push(format!(
+                "at {}: In enum '{}' (marked Move), variant '{}' payload type {:?} is not Move",
                 v.span, e.name, v.name, v.ty
             ));
         }
@@ -294,6 +323,64 @@ mod tests {
         assert_no_diagnostics(
             "
             struct Drop S { r: &uninit number }
+            ",
+        );
+    }
+
+    // ---------- Move: explicit marker ----------
+
+    #[test]
+    fn struct_move_of_scalars_ok() {
+        assert_no_diagnostics(
+            "
+            struct Move Point { x: number y: boolean }
+            ",
+        );
+    }
+
+    #[test]
+    fn struct_move_with_ref_fields_ok() {
+        // All ref kinds are Move (the reference is a movable pointer).
+        assert_no_diagnostics(
+            "
+            struct Move S { a: &mut number b: &out number c: &drop number
+                            d: &uninit number e: &number }
+            ",
+        );
+    }
+
+    #[test]
+    fn struct_move_with_non_move_field_error() {
+        assert_err(
+            "
+            struct Inner { r: &out number }
+            struct Move Outer { i: Inner }
+            ",
+            "In struct 'Outer' (marked Move), field 'i'",
+        );
+    }
+
+    #[test]
+    fn enum_move_of_non_move_payload_error() {
+        assert_err(
+            "
+            struct Inner { r: &out number }
+            enum Move Wrap { W: Inner }
+            ",
+            "In enum 'Wrap' (marked Move), variant 'W'",
+        );
+    }
+
+    // ---------- Copy + Drop implies Move ----------
+
+    #[test]
+    fn copy_drop_struct_is_effectively_move() {
+        // A struct marked `Copy Drop` doesn't need explicit `Move`;
+        // it's implicitly Move via the blanket rule.
+        assert_no_diagnostics(
+            "
+            struct Copy Drop Point { x: number y: number }
+            struct Move Outer { p: Point }
             ",
         );
     }

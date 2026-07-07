@@ -12,7 +12,7 @@ use crate::test_util::*;
 #[test]
 fn field_borrower_blocks_direct_access_to_loaned_place() {
     let (errs, _) = run("
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn take_box(b: RefBox);
         fn f(x: number) {
           b: RefBox;
@@ -33,7 +33,7 @@ fn field_borrower_survives_call_taking_whole_struct() {
     // (but drop-elab will handle the cleanup).
     assert_no_diagnostics(
         "
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn take_box(b: RefBox);
         fn f(x: number) {
           b: RefBox;
@@ -52,7 +52,7 @@ fn field_borrower_survives_call_taking_whole_struct() {
 fn reborrow_through_field_ok() {
     assert_no_diagnostics(
         "
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn sink(r: &mut number);
         extern fn take_box(b: RefBox);
         fn f(x: number) {
@@ -72,7 +72,7 @@ fn reborrow_through_field_ok() {
 #[test]
 fn access_through_field_ref_while_reborrow_live_conflicts() {
     let (errs, _) = run("
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn sink(r: &mut number);
         extern fn take_box(b: RefBox);
         fn f(x: number) {
@@ -99,7 +99,7 @@ fn split_field_borrows_coexist() {
     // fine; b is Moved (Partial) after both moves.
     assert_no_diagnostics(
         "
-        struct RefBox2 { q: &mut number r: &mut number }
+        struct Move RefBox2 { q: &mut number r: &mut number }
         extern fn use_mut(r: &mut number);
         fn f(x: number, y: number) {
           b: RefBox2;
@@ -122,7 +122,7 @@ fn move_ancestor_closes_field_loans() {
     // x afterward is OK.
     assert_no_diagnostics(
         "
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn take_box(b: RefBox);
         fn f(x: number) {
           b: RefBox;
@@ -144,7 +144,7 @@ fn move_struct_with_unfulfilled_field_ref_obligation_errors() {
     // ends_init=true). Moving b to a callee would silently violate
     // the obligation. Boundary check catches it.
     let (errs, _) = run("
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn take_box(b: RefBox);
         fn f(x: number) {
           b: RefBox;
@@ -168,7 +168,7 @@ fn move_struct_with_fulfilled_field_ref_ok() {
     // outer move — obligation fulfilled.
     assert_no_diagnostics(
         "
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn take_box(b: RefBox);
         fn f(x: number, z: number) {
           b: RefBox;
@@ -192,7 +192,7 @@ fn move_of_struct_with_ref_typed_field_ok() {
     // to a callee — the callee's signature accepts the same type.
     assert_no_diagnostics(
         "
-        struct Linear { r: &out number }
+        struct Move Linear { r: &out number }
         extern fn sink(y: Linear);
         fn f(x: Linear) {
           y: Linear;
@@ -212,7 +212,7 @@ fn dynamic_field_borrow_multi_loan() {
     // Both branches bind the same field b.p; merge unions the loan
     // targets. Writing to y at merge conflicts.
     let (errs, _) = run("
-        struct RefBox { p: &mut number }
+        struct Move RefBox { p: &mut number }
         extern fn take_box(b: RefBox);
         fn f(y: number, z: number, cond: boolean) {
           b: RefBox;

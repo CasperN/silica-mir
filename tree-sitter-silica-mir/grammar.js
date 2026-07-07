@@ -52,12 +52,11 @@ module.exports = grammar({
       field('type', $.type)
     ),
 
-    markers: $ => choice(
-      'Copy',
-      'Drop',
-      seq('Copy', 'Drop'),
-      seq('Drop', 'Copy')
-    ),
+    // One or more marker keywords in any order. Parser rejects
+    // duplicates. Legal keywords: Copy, Drop, Move.
+    markers: $ => repeat1($.marker),
+
+    marker: $ => choice('Copy', 'Drop', 'Move'),
 
 
 

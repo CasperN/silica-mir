@@ -1,9 +1,26 @@
 use indexmap::IndexMap;
 
+/// Substructural markers declared on a struct/enum. Independent flags:
+/// - `copy`: values may be bitwise duplicated (Copy).
+/// - `drop`: values may be forgotten in place (Drop).
+/// - `mov`: values may be bitwise relocated (Move). Named `mov` because
+///   `move` is a Rust keyword.
+///
+/// The "effective" Move class is `mov || (copy && drop)` — declaring
+/// both Copy and Drop is enough; explicit Move is only needed for
+/// types that aren't Copy+Drop.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Markers {
     pub copy: bool,
     pub drop: bool,
+    pub mov: bool,
+}
+
+impl Markers {
+    /// Effective Move class: declared Move, or Copy AND Drop.
+    pub fn effective_move(&self) -> bool {
+        self.mov || (self.copy && self.drop)
+    }
 }
 
 /// Source position (1-based line and column) of the syntax that a node

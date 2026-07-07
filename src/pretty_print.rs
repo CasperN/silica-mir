@@ -37,11 +37,15 @@ fn write_declaration(out: &mut String, decl: &Declaration) {
 }
 
 fn write_markers(out: &mut String, m: &Markers) {
+    // Canonical order: Copy, Drop, Move.
     if m.copy {
         out.push_str("Copy ");
     }
     if m.drop {
         out.push_str("Drop ");
+    }
+    if m.mov {
+        out.push_str("Move ");
     }
 }
 
