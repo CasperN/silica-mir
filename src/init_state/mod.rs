@@ -677,7 +677,7 @@ fn close_refs_under(state: &mut PointState, consumed: &Place) {
     let victims: Vec<Place> = state
         .refs
         .keys()
-        .filter(|k| is_owned_ancestor_or_self(consumed, k))
+        .filter(|k| is_ancestor_or_self(consumed, k))
         .cloned()
         .collect();
     for v in victims {
@@ -685,35 +685,6 @@ fn close_refs_under(state: &mut PointState, consumed: &Place) {
     }
 }
 
-/// True if `ancestor` is `descendant` or an owned-path prefix of it.
-/// Both are assumed to be owned paths (no Deref).
-fn is_owned_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
-    let (ar, ap) = extract_path_owned(ancestor);
-    let (dr, dp) = extract_path_owned(descendant);
-    if ar != dr {
-        return false;
-    }
-    if ap.len() > dp.len() {
-        return false;
-    }
-    ap.iter()
-        .zip(dp.iter())
-        .all(|(a, b)| owned_step_eq(a, b))
-}
-
-fn owned_step_eq(a: &PathStep, b: &PathStep) -> bool {
-    match (a, b) {
-        (PathStep::Field(x), PathStep::Field(y)) => x == y,
-        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
-        _ => false,
-    }
-}
-
-/// Like `extract_path`, but assumes the place is owned (no Deref) and
-/// unwraps directly. Panics on Deref — call only on owned paths.
-fn extract_path_owned(place: &Place) -> (String, Vec<PathStep>) {
-    extract_path(place).expect("owned-path invariant violated")
-}
 
 /// Which kind of dereference operation is being performed. Distinguishes
 /// state precondition (init vs uninit) and post-condition transition.
@@ -760,7 +731,7 @@ impl<'a> Ctx<'a> {
             return;
         };
 
-        let name_str = format_owned(&inner_place);
+        let name_str = format_place(&inner_place);
 
         if matches!(kind, RefKind::Shared) {
             if !matches!(op, DerefOp::Read) {
@@ -907,9 +878,9 @@ impl<'a> Ctx<'a> {
                 let c = class_of(leaf_ty, self.env);
                 if !c.drop {
                     let path_str = if leaf_path.is_empty() {
-                        format_owned(target)
+                        format_place(target)
                     } else {
-                        format!("{}.{}", format_owned(target), leaf_path.join("."))
+                        format!("{}.{}", format_place(target), leaf_path.join("."))
                     };
                     push_error!(
                         d,
@@ -953,26 +924,6 @@ fn walk_overwrite_leaves(
     }
 }
 
-/// Format an owned path for diagnostics: `x`, `b.p`, `e as V`.
-fn format_owned(place: &Place) -> String {
-    let (root, path) = extract_path(place).expect("owned-path invariant");
-    let mut s = root;
-    for step in &path {
-        match step {
-            PathStep::Field(f) => {
-                s.push('.');
-                s.push_str(f);
-            }
-            PathStep::Downcast(v) => {
-                s.push_str(" as ");
-                s.push_str(v);
-            }
-            PathStep::Deref => unreachable!("owned-path invariant"),
-        }
-    }
-    s
-}
-
 impl<'a> Ctx<'a> {
 
     /// If `place` is a whole-var ref binding with an outstanding obligation
@@ -996,7 +947,7 @@ impl<'a> Ctx<'a> {
         let victims: Vec<Place> = state
             .refs
             .keys()
-            .filter(|k| is_owned_ancestor_or_self(&owned, k))
+            .filter(|k| is_ancestor_or_self(&owned, k))
             .cloned()
             .collect();
         for v in victims {
@@ -1008,7 +959,7 @@ impl<'a> Ctx<'a> {
                     func,
                     block,
                     "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
-                    format_owned(&v),
+                    format_place(&v),
                     rs.is_init,
                     rs.ends_init
                 );
@@ -1050,7 +1001,7 @@ impl<'a> Ctx<'a> {
         let Some(leaf) = loan_post_leaf(kind) else {
             return;
         };
-        if let Some(parent) = deref_target(place) {
+        if let Some(parent) = deref_inner(place) {
             if let Some(rs) = state.refs.get_mut(&parent) {
                 rs.is_init = matches!(leaf, InitState::Init);
             }
@@ -1058,16 +1009,6 @@ impl<'a> Ctx<'a> {
         }
         self.apply_write(place, state, leaf);
     }
-}
-
-/// If `place` is `Deref(inner)` where `inner` is an owned path,
-/// return that inner path. This is where the borrowed reference
-/// lives (e.g. `*r` → `r`; `*b.p` → `b.p`).
-fn deref_target(place: &Place) -> Option<Place> {
-    let Place::Deref(inner) = place else {
-        return None;
-    };
-    as_owned_path(inner)
 }
 
 /// If the assign is `dst_var = move src_var`, returns `src_var`. This is
@@ -1113,12 +1054,12 @@ fn capture_carried_refs(
 /// If `key` is `src` or a descendant of it, return the parallel path
 /// under `dst`. `rekey(b, y, b.p)` → `y.p`. Returns None otherwise.
 fn rekey(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
-    if !is_owned_ancestor_or_self(src, key) {
+    if !is_ancestor_or_self(src, key) {
         return None;
     }
     // Extract the trailing suffix from `key` beyond `src`'s path length.
-    let (_, src_path) = extract_path_owned(src);
-    let (_, key_path) = extract_path_owned(key);
+    let (_, src_path) = extract_path(src).expect("owned-path invariant");
+    let (_, key_path) = extract_path(key).expect("owned-path invariant");
     let suffix = &key_path[src_path.len()..];
     let mut out = dst.clone();
     for step in suffix {
@@ -1297,8 +1238,8 @@ impl<'a> Ctx<'a> {
         // Reborrow `&kind *inner`: the pointee's init state lives in
         // inner's RefState, not the locals tree. Any owned path can be
         // reborrowed through — bare `r`, `b.p`, `e as V`, etc.
-        if let Some(parent) = deref_target(place) {
-            let parent_str = format_owned(&parent);
+        if let Some(parent) = deref_inner(place) {
+            let parent_str = format_place(&parent);
             let Some(parent_rs) = state.refs.get(&parent) else {
                 push_error!(
                     d, span, func, block,
@@ -1448,14 +1389,14 @@ impl<'a> Ctx<'a> {
             if ref_place == &owned {
                 continue;
             }
-            if !is_owned_ancestor_or_self(&owned, ref_place) {
+            if !is_ancestor_or_self(&owned, ref_place) {
                 continue;
             }
             if !rs.obligation_fulfilled() {
                 push_error!(
                     d, span, func, block,
                     "cannot move '{}': contained reference '{}' has unfulfilled obligation (is_init={}, ends_init={})",
-                    format_owned(&owned), format_owned(ref_place), rs.is_init, rs.ends_init
+                    format_place(&owned), format_place(ref_place), rs.is_init, rs.ends_init
                 );
             }
         }

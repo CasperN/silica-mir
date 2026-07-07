@@ -230,7 +230,7 @@ fn check_downcast_refinement(
                 );
             }
         } else {
-            let prefix = format_place_up_to(&root, &path[..i]);
+            let prefix = format_place(&build_place(&root, &path[..i]));
             push_error!(
                 d,
                 span,
@@ -255,24 +255,19 @@ fn root_is_enum_ty(root: &str, locals: &IndexMap<String, Type>, env: &Env) -> bo
     )
 }
 
-fn format_place_up_to(root: &str, prefix: &[PathStep]) -> String {
-    let mut s = root.to_string();
-    for step in prefix {
-        match step {
-            PathStep::Field(f) => {
-                s.push('.');
-                s.push_str(f);
-            }
-            PathStep::Downcast(v) => {
-                s.push_str(" as ");
-                s.push_str(v);
-            }
-            PathStep::Deref => {
-                s = format!("*{}", s);
-            }
-        }
+/// Rebuild a `Place` from `(root, steps)` — inverse of extract_path/
+/// extract_path_with_deref. Used to feed `format_place` a place value
+/// when the caller only has the decomposed form.
+fn build_place(root: &str, steps: &[PathStep]) -> Place {
+    let mut p = Place::Var(root.to_string());
+    for step in steps {
+        p = match step {
+            PathStep::Field(f) => Place::Field(Box::new(p), f.clone()),
+            PathStep::Downcast(v) => Place::Downcast(Box::new(p), v.clone()),
+            PathStep::Deref => Place::Deref(Box::new(p)),
+        };
     }
-    s
+    p
 }
 
 fn transfer_stmt(stmt: &Statement, state: &mut PointState) {

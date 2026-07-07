@@ -176,6 +176,66 @@ pub fn extract_path_with_deref(place: &Place) -> (String, Vec<PathStep>) {
     }
 }
 
+/// True if `ancestor` is `descendant` or a prefix of it (comparing
+/// projections step-by-step). Handles Field, Downcast, and Deref
+/// uniformly — a loan on `*r` is a prefix of `*r.f`, and `b` is a
+/// prefix of `b.p`. Callers that need "owned-path prefix only" can
+/// pre-check `is_owned_path` on both arguments.
+pub fn is_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
+    let (ar, ap) = extract_path_with_deref(ancestor);
+    let (dr, dp) = extract_path_with_deref(descendant);
+    if ar != dr || ap.len() > dp.len() {
+        return false;
+    }
+    ap.iter().zip(dp.iter()).all(|(a, b)| match (a, b) {
+        (PathStep::Field(x), PathStep::Field(y)) => x == y,
+        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
+        (PathStep::Deref, PathStep::Deref) => true,
+        _ => false,
+    })
+}
+
+/// Canonical diagnostic rendering of a place. `Var("x")` → `x`;
+/// `Field(Var("b"), "p")` → `b.p`; `Deref(Var("r"))` → `*r`;
+/// mixed projections beneath a Deref get parenthesized so
+/// `Field(Deref(Var("r")), "f")` renders as `(*r).f`. Use this
+/// everywhere a place needs to appear in an error message.
+pub fn format_place(place: &Place) -> String {
+    let (root, path) = extract_path_with_deref(place);
+    let mut s = root;
+    for step in &path {
+        match step {
+            PathStep::Field(f) => {
+                s.push('.');
+                s.push_str(f);
+            }
+            PathStep::Downcast(v) => {
+                s.push_str(" as ");
+                s.push_str(v);
+            }
+            PathStep::Deref => {
+                // Wrap prior projections so `Deref` binds correctly.
+                if s.contains('.') || s.contains(" as ") {
+                    s = format!("*({})", s);
+                } else {
+                    s = format!("*{}", s);
+                }
+            }
+        }
+    }
+    s
+}
+
+/// If `place` is `Deref(inner)` and `inner` is an owned path, return
+/// `inner`. This is where a reborrowed reference physically lives —
+/// e.g. `*r` → `r`, `*b.p` → `b.p`.
+pub fn deref_inner(place: &Place) -> Option<Place> {
+    let Place::Deref(inner) = place else {
+        return None;
+    };
+    as_owned_path(inner)
+}
+
 /// The `Place` referenced by an operand's `copy`/`move`, or `None` for
 /// constants.
 pub fn operand_place(op: &Operand) -> Option<&Place> {

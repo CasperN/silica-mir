@@ -336,7 +336,7 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
             // A def at `def` kills the borrower entry at `def` AND any
             // borrower descendants (assigning to `b` overwrites `b.p`,
             // etc.).
-            state.retain(|b| !is_owned_ancestor_or_self(&def, b));
+            state.retain(|b| !is_ancestor_or_self(&def, b));
         }
         for u in stmt_uses(stmt, self.borrowers) {
             self.add_use(state, &u);
@@ -424,23 +424,6 @@ fn walk_ref_paths(
     visited.remove(name);
 }
 
-/// True if `ancestor` is `descendant` or an owned-path prefix of it.
-fn is_owned_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
-    let Some((ar, ap)) = extract_path(ancestor) else {
-        return false;
-    };
-    let Some((dr, dp)) = extract_path(descendant) else {
-        return false;
-    };
-    if ar != dr || ap.len() > dp.len() {
-        return false;
-    }
-    ap.iter().zip(dp.iter()).all(|(a, b)| match (a, b) {
-        (PathStep::Field(x), PathStep::Field(y)) => x == y,
-        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
-        _ => false,
-    })
-}
 
 /// Enumerate borrower places used by referencing `place`. Yields any
 /// borrower that shares storage with `place`:
@@ -465,7 +448,7 @@ fn place_borrower_uses(place: &Place, borrowers: &BTreeSet<Place>, out: &mut Vec
             }
             // Descendants of owned that are borrowers. Storage-covered.
             for b in borrowers {
-                if b != &owned && is_owned_ancestor_or_self(&owned, b) {
+                if b != &owned && is_ancestor_or_self(&owned, b) {
                     out.push(b.clone());
                 }
             }
@@ -549,7 +532,7 @@ fn terminator_uses(term: &Terminator, borrowers: &BTreeSet<Place>) -> Vec<Place>
 fn stmt_binds_borrower(stmt: &Statement, r: &Place) -> bool {
     if let Statement::Assign(target, _) = stmt {
         if let Some(owned) = as_owned_path(target) {
-            return is_owned_ancestor_or_self(&owned, r);
+            return is_ancestor_or_self(&owned, r);
         }
     }
     false
@@ -560,7 +543,7 @@ fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
     match stmt {
         Statement::Drop(place) | Statement::Unborrow(place) => {
             if let Some(owned) = as_owned_path(place) {
-                is_owned_ancestor_or_self(&owned, r)
+                is_ancestor_or_self(&owned, r)
             } else {
                 false
             }
@@ -568,7 +551,7 @@ fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
         Statement::Assign(target, rvalue) => {
             // Redefinition of r (or an ancestor) consumes r's old value.
             if let Some(owned) = as_owned_path(target) {
-                if is_owned_ancestor_or_self(&owned, r) {
+                if is_ancestor_or_self(&owned, r) {
                     return true;
                 }
             }
@@ -590,7 +573,7 @@ fn rvalue_moves(rv: &RValue, r: &Place) -> bool {
 fn operand_moves(op: &Operand, r: &Place) -> bool {
     match op {
         Operand::Move(place) => match as_owned_path(place) {
-            Some(owned) => is_owned_ancestor_or_self(&owned, r),
+            Some(owned) => is_ancestor_or_self(&owned, r),
             None => false,
         },
         _ => false,

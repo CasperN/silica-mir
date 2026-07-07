@@ -218,31 +218,11 @@ fn check_leaks_in_state(
         push_error!(
             d, block.terminator_span, func, block,
             "reference '{}' has unfulfilled obligation at return (is_init={}, ends_init={})",
-            format_place_for_diag(place), rs.is_init, rs.ends_init
+            format_place(place), rs.is_init, rs.ends_init
         );
     }
 }
 
-fn format_place_for_diag(place: &Place) -> String {
-    // Owned-path formatting — matches init_state::format_owned but
-    // duplicated here to avoid a public export.
-    let (root, path) = crate::ast::extract_path(place).expect("owned-path invariant");
-    let mut s = root;
-    for step in &path {
-        match step {
-            PathStep::Field(f) => {
-                s.push('.');
-                s.push_str(f);
-            }
-            PathStep::Downcast(v) => {
-                s.push_str(" as ");
-                s.push_str(v);
-            }
-            PathStep::Deref => unreachable!("owned-path invariant"),
-        }
-    }
-    s
-}
 
 /// Walk the init state in lockstep with its type, reporting every non-
 /// consumed leaf. `Init` and `Diverged` at a leaf are leaks; `Partial`

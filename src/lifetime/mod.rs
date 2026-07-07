@@ -126,36 +126,6 @@ fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
         )
 }
 
-/// Format a `(root, path)` as `root[.field | as Variant]*` for
-/// diagnostic messages. Deref steps render as `*` prefix around the
-/// path built so far, so `[Deref]` on root `r` prints as `*r` and
-/// `[Deref, Field("a")]` prints as `(*r).a`.
-fn format_path(root: &str, path: &[PathStep]) -> String {
-    let mut s = String::from(root);
-    for step in path {
-        match step {
-            PathStep::Field(f) => {
-                s.push('.');
-                s.push_str(f);
-            }
-            PathStep::Downcast(v) => {
-                s.push_str(" as ");
-                s.push_str(v);
-            }
-            PathStep::Deref => {
-                // Wrap prior expression in `*( ... )` when it has projections;
-                // for a bare root, `*root` reads fine.
-                if s.contains('.') || s.contains(" as ") {
-                    s = format!("*({})", s);
-                } else {
-                    s = format!("*{}", s);
-                }
-            }
-        }
-    }
-    s
-}
-
 /// Check whether accessing `place` in the given way conflicts with any
 /// active loan. Uses `extract_path_with_deref` so accesses through `*r`
 /// or ancestors of `*r` (like `r` itself) can conflict with a reborrow
@@ -207,19 +177,12 @@ pub fn check_loan_conflict(
                 block,
                 "cannot {} '{}': already borrowed by '{}'",
                 access.describe(),
-                format_path(&access_root, &access_path),
-                format_borrower(borrower_place),
+                format_place(place),
+                format_place(borrower_place),
             );
             break;
         }
     }
-}
-
-/// Pretty-print a borrower place for diagnostics. `Var(x)` becomes `x`,
-/// deeper paths use `format_path` for consistency.
-fn format_borrower(place: &Place) -> String {
-    let (root, path) = extract_path_with_deref(place);
-    format_path(&root, &path)
 }
 
 /// Join two `LoanMap`s. Same-borrower entries merge by unioning their
@@ -258,31 +221,12 @@ pub fn consume_operand(loans: &mut LoanMap, op: &Operand) {
 fn close_loans_under(loans: &mut LoanMap, consumed: &Place) {
     let victims: Vec<Place> = loans
         .keys()
-        .filter(|k| is_prefix_of(consumed, k))
+        .filter(|k| is_ancestor_or_self(consumed, k))
         .cloned()
         .collect();
     for v in victims {
         loans.shift_remove(&v);
     }
-}
-
-/// True if `ancestor` is `descendant` or an owned-path prefix of it.
-/// Both are assumed to be owned paths (no Deref).
-fn is_prefix_of(ancestor: &Place, descendant: &Place) -> bool {
-    let (ar, ap) = extract_path_with_deref(ancestor);
-    let (dr, dp) = extract_path_with_deref(descendant);
-    if ar != dr {
-        return false;
-    }
-    if ap.len() > dp.len() {
-        return false;
-    }
-    ap.iter().zip(dp.iter()).all(|(a, b)| match (a, b) {
-        (PathStep::Field(x), PathStep::Field(y)) => x == y,
-        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
-        (PathStep::Deref, PathStep::Deref) => true,
-        _ => false,
-    })
 }
 
 fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
