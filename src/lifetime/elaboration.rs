@@ -111,8 +111,10 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
         return None;
     }
 
+    let reborrow_parent = collect_reborrow_parents(body);
     let analysis = BorrowerLiveness {
         borrowers: &borrowers,
+        reborrow_parent: &reborrow_parent,
     };
     let live_out_per_block = dataflow::run(&analysis, body);
 
@@ -226,7 +228,42 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
         }
     }
 
+    // Order each unborrow group by reborrow depth (children first,
+    // parents last). When s reborrows r and both end at the same
+    // point, `unborrow s` must run before `unborrow r` — while s's
+    // loan on `*r` is active, `unborrow r` would fail loan check.
+    for group in plan.intra_block.values_mut() {
+        sort_by_reborrow_depth_desc(group, &reborrow_parent);
+    }
+    for group in plan.cross_edge.values_mut() {
+        sort_by_reborrow_depth_desc(group, &reborrow_parent);
+    }
+
     Some(plan)
+}
+
+/// Sort names in place so that reborrow children (higher parent-chain
+/// depth) come first. Ties broken by name for determinism.
+fn sort_by_reborrow_depth_desc(names: &mut [String], parents: &IndexMap<String, String>) {
+    names.sort_by(|a, b| {
+        let da = reborrow_depth(a, parents);
+        let db = reborrow_depth(b, parents);
+        db.cmp(&da).then_with(|| a.cmp(b))
+    });
+}
+
+fn reborrow_depth(name: &str, parents: &IndexMap<String, String>) -> usize {
+    let mut depth = 0;
+    let mut cur = name.to_string();
+    let limit = parents.len() + 1;
+    while let Some(p) = parents.get(&cur) {
+        depth += 1;
+        if depth > limit {
+            break; // cycle guard — shouldn't happen for well-formed programs
+        }
+        cur = p.clone();
+    }
+    depth
 }
 
 fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
@@ -278,8 +315,34 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
 
 // ---------- Backward liveness ----------
 
+/// Backward liveness with reborrow-parent expansion. When a borrower
+/// `s` is added to the live set, we also add its reborrow parent
+/// (`r` such that `s = &kind *r`) transitively. This is how NLL
+/// keeps `r` alive across `s`'s lifetime — otherwise NLL would
+/// insert `unborrow r` right after the reborrow, before `s`'s uses.
 struct BorrowerLiveness<'a> {
     borrowers: &'a BTreeSet<String>,
+    /// `s -> r` when `s = &kind *r`. Chased transitively when
+    /// expanding uses. Built once by the plan phase.
+    reborrow_parent: &'a IndexMap<String, String>,
+}
+
+impl<'a> BorrowerLiveness<'a> {
+    fn add_use(&self, state: &mut BTreeSet<String>, u: &str) {
+        if !self.borrowers.contains(u) {
+            return;
+        }
+        state.insert(u.to_string());
+        // Chase reborrow parents. Bounded by the number of borrowers
+        // because each step goes to a distinct name.
+        let mut cur = u.to_string();
+        while let Some(parent) = self.reborrow_parent.get(&cur) {
+            if !state.insert(parent.clone()) {
+                break;
+            }
+            cur = parent.clone();
+        }
+    }
 }
 
 impl<'a> Analysis for BorrowerLiveness<'a> {
@@ -301,21 +364,45 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
             }
         }
         for u in stmt_uses(stmt) {
-            if self.borrowers.contains(&u) {
-                state.insert(u);
-            }
+            self.add_use(state, &u);
         }
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         for u in terminator_uses(term) {
-            if self.borrowers.contains(&u) {
-                state.insert(u);
-            }
+            self.add_use(state, &u);
         }
     }
 }
 
 // ---------- Use / def / consume helpers ----------
+
+/// Scan `body` for reborrow patterns `s = &kind *r` and build the
+/// `s -> r` relation. Only handles the simple case (`Deref(Var(r))`
+/// as the borrowed place); deeper paths like `(*r).field` are out of
+/// scope for this slice.
+///
+/// Overwrites are not tracked separately: if `s` is later assigned a
+/// new reborrow or a fresh borrow, the map's value is overwritten with
+/// the latest parent. Since we only need this for a *static* liveness
+/// approximation (any use of s must also count as a use of whichever r
+/// s is currently reborrowing), a single most-recent mapping is
+/// coarser but safe — it treats s as live whenever any of its potential
+/// parents would be live.
+fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<String, String> {
+    let mut map = IndexMap::new();
+    for block in &body.blocks {
+        for (stmt, _) in &block.statements {
+            if let Statement::Assign(Place::Var(s), RValue::Ref(_, place)) = stmt {
+                if let Place::Deref(inner) = place {
+                    if let Place::Var(r) = inner.as_ref() {
+                        map.insert(s.clone(), r.clone());
+                    }
+                }
+            }
+        }
+    }
+    map
+}
 
 fn collect_borrowers(func: &Function) -> BTreeSet<String> {
     let mut out = BTreeSet::new();

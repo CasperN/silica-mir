@@ -48,16 +48,21 @@ pub enum Place {
 }
 
 /// A single projection step from a root Var. Used by analyses that need to
-/// walk down a Place chain uniformly.
-#[derive(Debug, Clone)]
+/// walk down a Place chain uniformly. `Deref` steps only appear in paths
+/// returned by [`extract_path_with_deref`]; the plain [`extract_path`] bails
+/// on Deref since analyses that use it (init-state locals tracking, variant
+/// flow) can't reason across reference boundaries.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PathStep {
     Field(String),
     Downcast(String),
+    Deref,
 }
 
 /// Extract `(root_var, projection_steps)` from `place`, returning `None` if
-/// the chain passes through a `Deref` (we don't follow references at this
-/// level).
+/// the chain passes through a `Deref`. Use this when your analysis only
+/// makes sense on paths rooted in a concrete local — moving through a ref
+/// would break the abstraction.
 pub fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
     let mut steps = Vec::new();
     let mut cur = place;
@@ -76,6 +81,35 @@ pub fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
                 cur = inner;
             }
             Place::Deref(_) => return None,
+        }
+    }
+}
+
+/// Extract `(root_var, projection_steps)` including `Deref` steps in the
+/// path. Used by the lifetime pass so a loan on `*r` can be tracked as
+/// (root=r, path=[Deref]) and prefix-compared against `r`, `*r`, `(*r).f`,
+/// etc. Always returns `Some` (every place has a root Var).
+pub fn extract_path_with_deref(place: &Place) -> (String, Vec<PathStep>) {
+    let mut steps = Vec::new();
+    let mut cur = place;
+    loop {
+        match cur {
+            Place::Var(name) => {
+                steps.reverse();
+                return (name.clone(), steps);
+            }
+            Place::Field(inner, f) => {
+                steps.push(PathStep::Field(f.clone()));
+                cur = inner;
+            }
+            Place::Downcast(inner, v) => {
+                steps.push(PathStep::Downcast(v.clone()));
+                cur = inner;
+            }
+            Place::Deref(inner) => {
+                steps.push(PathStep::Deref);
+                cur = inner;
+            }
         }
     }
 }

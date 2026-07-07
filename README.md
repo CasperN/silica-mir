@@ -221,26 +221,21 @@ payload sets the whole enum `Uninit`.
 ## Ref & loan tracking
 
 Basic loan tracking, eager init transition at borrow, multi-loan on
-branch-of-borrows: all implemented.
+branch-of-borrows, `lifetime::check` (loan-conflict pass), NLL
+elaboration inserting `unborrow` at ASAP last-use points, and single-
+level reborrow (`s = &kind *r`) with child-first unborrow ordering:
+all implemented.
 
-Remaining, in intended order:
+Remaining follow-ups:
 
-1. **`lifetime::check` module** — verify a program with explicit
-   `unborrow` markers. Adds `unborrow place` to the grammar/AST/parser;
-   semantically it's what `close_ref_if_present` already does (check
-   cur == post, mark Moved, remove refs/loans). Mirrors the
-   substructural pattern of writing the checker first.
-2. **NLL inference**: compute where each borrower's last use is, and
-   treat the loan as active only through that region. Backward liveness
-   analysis. Initially in-place in `init_state`; extract to
-   `lifetime::` submodule once stable.
-3. **`lifetime::elaboration` module** — insert `unborrow` statements at
-   the last-use points inferred by (2). Post-elaboration, the checker
-   just observes unborrows and doesn't need to compute liveness.
-4. **Reborrow through `*r`**: `s = &kind *r` creates a nested loan that
-   suspends r's own access during s's lifetime and restores it (at
-   child's post state) when s expires. Real feature — needs suspension
-   semantics on the parent ref.
+- **Deep-deref reborrow paths**: `s = &kind (*r).field` — currently
+  falls back to the pure `extract_path` bail; only bare `*r` is
+  handled by the reborrow precondition/eager-transition path.
+- **Reborrow kind compatibility as a type check**: today the
+  precondition on `r.is_init` gates via init state, which is enough
+  for soundness but surfaces as an init-state error. Rejecting
+  `&mut *r` when `r: &T` at type-check time would produce a clearer
+  message.
 
 ## Elaboration gaps
 - Elaborator handles Diverged states at CFG joins — requires splitting

@@ -270,6 +270,7 @@ fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf
             // Direct write into a variant payload does not initialize the
             // enum in our model (enum construction goes via `Name::V(...)`).
         }
+        PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
     }
     let taken = std::mem::replace(state, InitState::NeverInit);
     *state = canonicalize(taken);
@@ -303,6 +304,7 @@ fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env) {
         PathStep::Downcast(_) => {
             *state = InitState::Moved;
         }
+        PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
     }
     let taken = std::mem::replace(state, InitState::NeverInit);
     *state = canonicalize(taken);
@@ -341,6 +343,7 @@ fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env) -> InitSt
                 }
             }
         },
+        PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
     }
 }
 
@@ -780,12 +783,37 @@ fn loan_post_leaf(kind: &RefKind) -> Option<InitState> {
 impl<'a> Ctx<'a> {
     /// Apply the eager init transition on the loaned place. Called at
     /// borrow creation.
+    ///
+    /// - Direct borrow of a local (`&kind x`, `&kind p.a`, ...): update
+    ///   the locals init tree at that path via `apply_write`.
+    /// - Reborrow through a reference (`&kind *r`): the loaned "place"
+    ///   is the pointee of `r`, which locals-tracking can't reach.
+    ///   Instead update `r`'s `RefState.is_init` to reflect the kind's
+    ///   post, so when `s` expires `r` naturally resumes at the right
+    ///   pointee-init state.
     fn apply_eager_borrow_transition(&self, kind: &RefKind, place: &Place, state: &mut PointState) {
         let Some(leaf) = loan_post_leaf(kind) else {
             return;
         };
+        if let Some(parent) = simple_deref_target(place) {
+            if let Some(rs) = state.refs.get_mut(&parent) {
+                rs.is_init = matches!(leaf, InitState::Init);
+            }
+            return;
+        }
         self.apply_write(place, state, leaf);
     }
+}
+
+/// If `place` is `Deref(Var(r))` — a bare `*r` — return `r`. Deeper
+/// paths like `(*r).field` are out of scope for this slice.
+fn simple_deref_target(place: &Place) -> Option<String> {
+    if let Place::Deref(inner) = place {
+        if let Place::Var(name) = inner.as_ref() {
+            return Some(name.clone());
+        }
+    }
+    None
 }
 
 /// If the assign is `dst_var = move src_var`, returns `src_var`. This is
@@ -955,6 +983,38 @@ impl<'a> Ctx<'a> {
         state: &PointState,
         d: &mut Diagnostics,
     ) {
+        let (requires_init, kind_str) = match kind {
+            RefKind::Shared => (true, "&"),
+            RefKind::Mut => (true, "&mut"),
+            RefKind::Drop => (true, "&drop"),
+            RefKind::Out => (false, "&out"),
+            RefKind::Uninit => (false, "&uninit"),
+        };
+
+        // Reborrow `&kind *r`: the pointee's init state lives in r's
+        // RefState, not the locals tree. r must be alive (have a
+        // RefState entry) and its is_init must match the kind's cur.
+        if let Some(parent) = simple_deref_target(place) {
+            let Some(parent_rs) = state.refs.get(&parent) else {
+                push_error!(
+                    d, span, func, block,
+                    "cannot create {} of '*{}': parent reference '{}' is not bound here",
+                    kind_str, parent, parent
+                );
+                return;
+            };
+            if parent_rs.is_init != requires_init {
+                let expected = if requires_init { "initialized" } else { "uninitialized" };
+                let actual = if parent_rs.is_init { "initialized" } else { "uninitialized" };
+                push_error!(
+                    d, span, func, block,
+                    "cannot create {} of '*{}': pointee must be {} at borrow, but is {}",
+                    kind_str, parent, expected, actual
+                );
+            }
+            return;
+        }
+
         let Some((root, path)) = extract_path(place) else {
             return;
         };
@@ -965,14 +1025,6 @@ impl<'a> Ctx<'a> {
             return;
         };
         let leaf = read_at(root_state, &root_ty, &path, self.env);
-
-        let (requires_init, kind_str) = match kind {
-            RefKind::Shared => (true, "&"),
-            RefKind::Mut => (true, "&mut"),
-            RefKind::Drop => (true, "&drop"),
-            RefKind::Out => (false, "&out"),
-            RefKind::Uninit => (false, "&uninit"),
-        };
 
         let ok = if requires_init {
             matches!(leaf, InitState::Init)
@@ -1015,6 +1067,9 @@ fn format_path(root: &str, path: &[PathStep]) -> String {
             PathStep::Downcast(v) => {
                 s.push_str(" as ");
                 s.push_str(v);
+            }
+            PathStep::Deref => {
+                unreachable!("init_state uses extract_path which never yields Deref")
             }
         }
     }

@@ -403,6 +403,70 @@ fn f(x: number) {
 }
 
 #[test]
+fn snapshot_reborrow_child_before_parent() {
+    // r is a &out param, s reborrows it as &out *r. Both die at
+    // return; NLL must emit unborrow s BEFORE unborrow r (deepest
+    // reborrow first) so s's loan is closed before r is consumed.
+    assert_elab_eq(
+        "
+        fn f(r: &out number) {
+          s: &out number;
+          entry:
+            s = &out *r;
+            *s = 42;
+            return
+        }
+        ",
+        "fn f(r: &out number) {
+  s: &out number;
+  entry:
+    s = &out *r;
+    *s = 42;
+    unborrow s;
+    unborrow r;
+    return
+}",
+    );
+}
+
+#[test]
+fn snapshot_chained_reborrow_insertion_order() {
+    // Three-level: r loans x, s reborrows r, t reborrows s. t is
+    // consumed by call; NLL then closes s, then r.
+    assert_elab_eq(
+        "
+        extern fn sink(t: &mut number);
+        fn f(x: number) {
+          r: &mut number;
+          s: &mut number;
+          t: &mut number;
+          entry:
+            r = &mut x;
+            s = &mut *r;
+            t = &mut *s;
+            call sink(move t);
+            return
+        }
+        ",
+        "extern fn sink(t: &mut number);
+
+fn f(x: number) {
+  r: &mut number;
+  s: &mut number;
+  t: &mut number;
+  entry:
+    r = &mut x;
+    s = &mut *r;
+    t = &mut *s;
+    call sink(move t);
+    unborrow s;
+    unborrow r;
+    return
+}",
+    );
+}
+
+#[test]
 fn snapshot_refparam_never_used_gets_entry_unborrow() {
     // A ref param that's never mentioned in the body — NLL inserts
     // unborrow at the very start of entry (position 0).

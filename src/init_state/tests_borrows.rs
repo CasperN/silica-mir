@@ -342,24 +342,9 @@ fn drop_borrow_of_partial_error() {
     );
 }
 
-// === Scenario: borrow through deref is not tracked (documents gap) ===
-
-#[test]
-fn borrow_through_deref_not_checked() {
-    // `*r` isn't a followed path in slice 0a. Any borrow whose base
-    // path contains a Deref is silently skipped. This documents the
-    // gap; a later slice will handle reference-through-reference.
-    assert_no_diagnostics(
-        "
-        fn f(r: &mut number) {
-          s: &number;
-          entry:
-            s = &*r;
-            return
-        }
-        ",
-    );
-}
+// Reborrow (`s = &kind *r`) is now handled properly; positive/negative
+// cases live in `lifetime/reborrow_tests.rs` (loan tracking, kind
+// precondition, NLL insertion order).
 
 // ---------- Reference (cur, post) state tracking ----------
 //

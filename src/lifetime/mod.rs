@@ -92,13 +92,17 @@ impl AccessKind {
 }
 
 /// True if the two paths share a prefix — i.e. one is a prefix of the
-/// other, meaning they refer to overlapping storage.
+/// other, meaning they refer to overlapping storage. `Deref` steps compare
+/// like any other: two `Deref` steps at the same position match, so a loan
+/// on `*r` (path=[Deref]) prefix-matches `*r`, `(*r).f`, etc., and the
+/// empty path (raw `r`) is a prefix of `[Deref]` too.
 fn paths_conflict(a: &[PathStep], b: &[PathStep]) -> bool {
     let n = a.len().min(b.len());
     for i in 0..n {
         let same = match (&a[i], &b[i]) {
             (PathStep::Field(x), PathStep::Field(y)) => x == y,
             (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
+            (PathStep::Deref, PathStep::Deref) => true,
             _ => false,
         };
         if !same {
@@ -119,7 +123,9 @@ fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
 }
 
 /// Format a `(root, path)` as `root[.field | as Variant]*` for
-/// diagnostic messages.
+/// diagnostic messages. Deref steps render as `*` prefix around the
+/// path built so far, so `[Deref]` on root `r` prints as `*r` and
+/// `[Deref, Field("a")]` prints as `(*r).a`.
 fn format_path(root: &str, path: &[PathStep]) -> String {
     let mut s = String::from(root);
     for step in path {
@@ -132,14 +138,24 @@ fn format_path(root: &str, path: &[PathStep]) -> String {
                 s.push_str(" as ");
                 s.push_str(v);
             }
+            PathStep::Deref => {
+                // Wrap prior expression in `*( ... )` when it has projections;
+                // for a bare root, `*root` reads fine.
+                if s.contains('.') || s.contains(" as ") {
+                    s = format!("*({})", s);
+                } else {
+                    s = format!("*{}", s);
+                }
+            }
         }
     }
     s
 }
 
 /// Check whether accessing `place` in the given way conflicts with any
-/// active loan. Skips accesses through `Deref` (those go via the
-/// borrower and are always permitted).
+/// active loan. Uses `extract_path_with_deref` so accesses through `*r`
+/// or ancestors of `*r` (like `r` itself) can conflict with a reborrow
+/// loan on `Deref(Var(r))`.
 ///
 /// A conflict is reported when: the access root matches a loan's root
 /// (i.e. touches the same base variable) AND the access path shares a
@@ -154,16 +170,19 @@ pub fn check_loan_conflict(
     loans: &LoanMap,
     d: &mut Diagnostics,
 ) {
-    let Some((access_root, access_path)) = extract_path(place) else {
-        return;
-    };
+    let (access_root, access_path) = extract_path_with_deref(place);
 
     for (borrower, loan) in loans {
         // Ignore the borrower itself — its ref state is a separate slot.
-        if *borrower == access_root {
+        if *borrower == access_root && access_path.is_empty() {
             // e.g. `move r` where r is a borrower: consuming the ref,
             // not accessing the loaned place. Not a conflict here (the
-            // consumption is handled by close_ref_if_present).
+            // consumption is handled by close_ref_if_present). A path
+            // like `*r` or `r.field` — same root but nonempty path —
+            // still has to be checked, because a reborrow of `*r` shows
+            // up as loan borrower=s, loaned=*r; but a *self*-loan (r
+            // borrowing something and then r appearing bare) is handled
+            // by the borrower==root case above.
             continue;
         }
         if is_compatible(&loan.kind, &access) {
@@ -172,9 +191,7 @@ pub fn check_loan_conflict(
         // Multi-loan: any place in the set may be the actual pointee.
         // Report at most one error per loan (first matching place).
         for loaned in &loan.loaned {
-            let Some((loan_root, loan_path)) = extract_path(loaned) else {
-                continue;
-            };
+            let (loan_root, loan_path) = extract_path_with_deref(loaned);
             if loan_root != access_root {
                 continue;
             }
@@ -398,9 +415,12 @@ fn check_and_transfer_stmt(
             check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
             transfer_stmt(loans, stmt);
         }
-        Statement::Unborrow(_) => {
-            // Consumes the borrower Var; no access check on the borrower
-            // itself (its own loan is skipped in check_loan_conflict).
+        Statement::Unborrow(place) => {
+            // Consumes the borrower Var. Its own loan is skipped in
+            // check_loan_conflict (the "borrower == access_root with
+            // empty path" case), but a *reborrow* of this borrower —
+            // loan borrowed by s on `*r` — still needs to block `unborrow r`.
+            check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
             transfer_stmt(loans, stmt);
         }
     }
@@ -444,5 +464,7 @@ fn check_operand_access(
 
 #[cfg(test)]
 mod tests_loans;
+#[cfg(test)]
+mod tests_reborrow;
 #[cfg(test)]
 mod tests_unborrow;
