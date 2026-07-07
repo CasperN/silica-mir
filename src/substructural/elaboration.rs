@@ -1,34 +1,31 @@
 //! Drop elaboration pass.
 //!
-//! **TODO (design status):** in the final compiler pipeline, drop insertion
-//! is a *frontend* responsibility — the source language defines scoping
-//! rules (which drops run at which program points), and lowering to MIR
-//! emits them explicitly. This pass exists as (a) a reference
-//! implementation for validating a frontend's drop insertion, (b) a
-//! convenience for hand-written MIR test programs, and (c) an exercise
-//! target for the leak checker. It should not be relied on as the
-//! authoritative source of drop placement.
-//!
 //! Inserts explicit `drop p` statements before each `return` for every
 //! variable whose init state is `Init` at that point and whose type is
 //! Drop. Turns implicit forgets into explicit consumption so a
 //! subsequent leak check can validate the elaborated MIR.
 //!
-//! Ordering: reverse combined declaration order (locals reverse first,
-//! then params reverse). TODO(elaboration): per-write sequence numbers
-//! would give true LIFO by *initialization* order, matching the README's
-//! stated semantics. Declaration-order is a reasonable first cut and
-//! agrees with LIFO for programs that init in declaration order.
-//!
-//! **Not yet handled** (future slices):
-//!   * Pre-overwrite drops (`p = ...` where p was Init) — the overwrite
-//!     check catches these as errors; frontend must lower manual drops.
+//! **Design status:** in the final compiler pipeline, drop *placement*
+//! is a HLL responsibility — the source language's scope rules dictate
+//! LIFO order and when destructors run. This pass exists as (a) a
+//! reference implementation for validating a frontend's drop insertion,
+//! (b) a convenience for hand-written MIR test programs, and (c) an
+//! exercise target for the leak checker. It emits drops in reverse
+//! declaration order (locals reversed first, then params reversed) —
+//! this agrees with LIFO for programs that init in declaration order,
+//! which is the norm.
 //!
 //! **Handled:**
+//!   * Simple return leaks — variable Init at return with a Drop type.
 //!   * `Partial` states at return — per-leaf drops walking the struct
 //!     field tree.
 //!   * `Diverged` states — per-edge drops inserted via `cfg_edit` on the
-//!     Init-side predecessors of a return block. See `plan_diverged`.
+//!     Init-side predecessors of a return block.
+//!
+//! **Not handled (delegated to the frontend or the checker):**
+//!   * Pre-overwrite drops (`p = ...` where p was Init). The overwrite
+//!     check in `init_state` rejects these as errors, expecting the
+//!     frontend to emit `drop p` before the reassignment.
 //!
 //! **Idempotent**: rerunning the pass produces no additional drops. A
 //! dropped variable transitions to `Moved` in the init dataflow, so a

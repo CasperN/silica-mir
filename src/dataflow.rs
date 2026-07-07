@@ -67,7 +67,10 @@ pub fn run<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::State> 
     }
 }
 
-/// A program point visited by [`walk_forward`].
+/// A program point visited by [`walk_forward`]. Fields are all `pub`
+/// for visitor destructuring; `#[allow(dead_code)]` because no current
+/// visitor destructures every field, but they're API for callers.
+#[allow(dead_code)]
 pub enum WalkPoint<'a, S> {
     /// State just before `stmt` runs, in a forward walk.
     Stmt {

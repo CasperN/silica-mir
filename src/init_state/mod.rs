@@ -1497,10 +1497,14 @@ impl<'a> Ctx<'a> {
 }
 
 #[cfg(test)]
-mod tests_borrows;
+mod tests_borrow_preconditions;
 #[cfg(test)]
 mod tests_cfg_shapes;
+#[cfg(test)]
+mod tests_eager_transitions;
 #[cfg(test)]
 mod tests_lifecycle;
 #[cfg(test)]
 mod tests_overwrite;
+#[cfg(test)]
+mod tests_ref_obligations;

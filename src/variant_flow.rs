@@ -12,11 +12,13 @@
 //!   * `Some(subset)`               = tracked subset
 //!   * The whole block unvisited by the fixed-point = ⊥ (skip; unreachable)
 //!
-//! We only track `Place::Var(_)`. Field paths and derefs are always ⊤ — the
-//! first-pass analysis doesn't try to alias-track through references or into
-//! aggregates. Exclusive borrows (`&mut`/`&out`/`&drop`/`&uninit`) of a tracked
-//! Var clobber that Var back to ⊤ for the rest of its lifetime, since we can't
-//! see what the borrower does.
+//! We only track `Place::Var(_)`. Downcasts on projection paths
+//! (`x.f as V`, `(x as U).f as V`, etc.) are rejected at check time —
+//! nothing in this analysis proves the projection is the required
+//! variant, so requiring an extract-to-local first keeps the checker
+//! honest. Exclusive borrows (`&mut`/`&out`/`&drop`/`&uninit`) of a
+//! tracked Var clobber that Var back to ⊤ for the rest of its
+//! lifetime, since we can't see what the borrower does.
 
 use crate::ast::*;
 use crate::dataflow::{self, Analysis, Direction, WalkPoint};
