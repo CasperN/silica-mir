@@ -90,16 +90,8 @@ statement =
         # and lowers to call Drop::drop(&drop place) for custom destructors.
     | unborrow place
         # Mark the place as no longer borrowed. Inserted by the NLL pass.
-        # Legal iff the loan on x has a fully dead lineage -- the reference and
-        # every continuation derived from it consumed/forgotten.
-    | place, place = deref_move place
-        # dst, src' = deref_move src
-        # If src: &mut T, src': &out T
-        # If src: &drop T, src': &uninit T
-    | place = deref_init(place, operand)
-        # p' = deref_init p operand
-        # if p: &out T, p': &mut T
-        # if p: &uninit T, p': &drop T
+        # Legal iff the reference and every reborrow derived from it has been
+        # consumed or forgotten.
 
 terminator =
     | goto label
@@ -150,114 +142,36 @@ type =
     | &T | &mut T | &out T | &drop T | &uninit T
 ```
 
-# Analysis pass
-The analysis pass is **insertion-only**: it may add locals, statements,
-and blocks (edge splitting); it never rewrites, reorders, or renames
-existing code, and inserted names are used only by inserted statements.
+# Compiler Structure
+Where possible the compiler splits subsytems into independent passes.
+`src/dataflow.rs` contains common forwards/backwards CFG traversal utilities
+that are shared across multiple passes. The compiler splits elaboration and
+checker passes. Elaboration passes add statements, such as `drop` and
+`unborrow`, which make ownership/linearity transitions explicit. Checker passes
+do not modify the instructions but verify their properties.
 
-It inserts: `unborrow`s at inferred loan ends (liveness-based), copies, and
-drop-call sequences for dead values (including per-edge
-join resolution). A fully explicit program passes the checker with
-nothing inserted; the pass is idempotent and validated by re-running
-the checker on its output.
+The essential elaboration and check passes are:
+1. Simple type checking
+2. Flow sensitive analysis to verify enums are handled safely
+3. Lifetime elaboration to insert `unborrow` statements as early as possible
+4. Substructural elaboration to add `drop` statements before returns.
+5. Lifetime checking
+6. Substructural checking.
 
-## Loans and lineages
-
-A borrow freezes its base and starts a **lineage**: the chain of names
-through transitions. A lineage — and its loan — closes at exactly one
-of two syntactic points:
-
-- **`unborrow r`** — consumes `r`; requires cur == post. Only applies to
-  exclusive references; `&T` is `Copy Drop` and needs no closure. If the
-  lineage originated at a borrow of a local base, the base thaws to the
-  loan's post (`Init` for `&mut`/`&out`, `Uninit` for `&drop`/`&uninit`).
-  If the lineage is a reference *parameter's*, this discharges the
-  signature obligation instead (there is no local base).
-- **a call consuming the reference operand** — the callee's signature
-  is trusted; the base thaws to the loan's post immediately after the
-  call.
-
-`&out`/`&drop` cannot be unborrowed (cur ≠ post): they must first be
-transitioned or passed to a call — that refusal is the obligation.
-
-Borrow bases must be owned paths (no deref of an exclusive reference
-in a borrowed place); reborrows are a planned extension. Assignment
-destinations must likewise be owned paths — all mutation through
-references goes via `deref_move`/`deref_init`.
-
-# Checking
-
-The checker is a forward dataflow analysis; no lifetime inference. State
-per program point: the **init tree** — each move path (locals and their
-projections through fields and downcasts) is `Uninit | Init |
-Partial(fields) | Frozen(loan)`. Enums are atomic: moving a downcast
-payload sets the whole enum `Uninit`.
-
-- **Freezing:** while a base is `Frozen`, no reads, writes, moves, or
-  borrows of it, any prefix, or any extension. Loans on disjoint fields
-  coexist, mixed kinds included.
-- **Joins:** predecessors must agree per move path. Disagreement is an
-  error unless the path's type permits weakening (`Drop` without a
-  destructor, `Copy Drop`) — the analysis pass resolves other
-  disagreements by inserting drop sequences on the initialized edges
-  (splitting critical edges as needed).
-- **Leak check at `return`:** every move path `Uninit`, every loan
-  closed, every reference-parameter lineage discharged — except
-  weakening-permitted paths, which may be left `Init`. A body holding
-  an untransitioned `&out`/`&drop` parameter cannot close it and fails
-  here; that is the whole enforcement of signature obligations.
-- **Downcast refinement:** `p as V` is legal iff `p` is `Init` and the
-  point is dominated by a `switchEnum(p) → V` edge with no intervening
-  kill: any write to, move from, or borrow of `p` or a prefix
-  (including passing `&mut p` to a call — `&mut` does not preserve the
-  variant). `switchEnum` arms must be syntactically total over the
-  declaration (a declaration-level check).
 
 
 # Punch list
 - Requre `Move` to move, `Copy + Drop` is move.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
-
-## Ref & loan tracking
-
-Basic loan tracking, eager init transition at borrow, multi-loan on
-branch-of-borrows, `lifetime::check` (loan-conflict pass), NLL
-elaboration inserting `unborrow` at ASAP last-use points, and single-
-level reborrow (`s = &kind *r`) with child-first unborrow ordering:
-all implemented.
-
-Remaining follow-ups:
-
-- **Deep-deref reborrow paths**: `s = &kind (*r).field` — currently
-  falls back to the pure `extract_path` bail; only bare `*r` is
-  handled by the reborrow precondition/eager-transition path.
-- **Reborrow kind compatibility as a type check**: today the
-  precondition on `r.is_init` gates via init state, which is enough
-  for soundness but surfaces as an init-state error. Rejecting
-  `&mut *r` when `r: &T` at type-check time would produce a clearer
-  message.
+- `switchEnum(o as V)` on an inline downcast doesn't refine — the outer
+  variant isn't proven before the inner switch reads its discriminant.
 
 ## Elaboration gaps
-- Elaborator handles Diverged states at CFG joins — requires splitting
-  critical edges (same mechanism `unborrow` insertion will want).
 - Drop insertion order is by declaration, not initialization. LIFO by
   initialization time needs per-write sequence numbers on statements.
 - If the frontend emits its own drops (per scope-exit rules), the drop
   elaborator becomes reference/debug-only rather than authoritative.
 
-## Smaller gaps
-- Deep-deref tracking: `(*r).field = ...` and reads through `(*r).field`
-  aren't followed through the ref.
-- `switchEnum(o as V)` on an inline downcast doesn't refine — the outer
-  variant isn't proven before the inner switch reads its discriminant.
-
-## Doc hygiene
-- README: `unborrow`/`deref_move`/`deref_init` statements described in the
-  grammar aren't implemented; `Frozen(loan)` init state isn't implemented;
-  analysis pass description mentions inserting copies (unclear if planned).
-- `init_state.rs` module doc still says "borrow init preconditions deferred"
-  — done. Same for the docstring's mention of "freeze/thaw state" (not
-  done, but is what loan tracking will do).
 
 ## Elaboration should not affect declarations
 Currently `run_all_passes` rebuilds the `Env` after elaboration. Elaboration
