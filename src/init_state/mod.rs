@@ -188,6 +188,13 @@ fn join_state(a: &InitState, b: &InitState) -> InitState {
     if a == b {
         return a.clone();
     }
+    // `NeverInit` and `Moved` both mean "no value present at this path".
+    // They differ historically (never written vs. written and moved out)
+    // but both are consumed for leak/drop purposes, so their join is one
+    // of them rather than `Diverged`.
+    if is_empty(a) && is_empty(b) {
+        return InitState::NeverInit;
+    }
     // Try to join field-wise when at least one side is Partial.
     match (a, b) {
         (InitState::Partial(ma), InitState::Partial(mb)) => join_partials(ma, mb),
@@ -201,6 +208,10 @@ fn join_state(a: &InitState, b: &InitState) -> InitState {
         }
         _ => InitState::Diverged,
     }
+}
+
+fn is_empty(s: &InitState) -> bool {
+    matches!(s, InitState::NeverInit | InitState::Moved)
 }
 
 fn expand_from_partial_keys(
@@ -371,6 +382,47 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 /// the point just before the terminator (all statements applied). Used by
 /// other passes (e.g. substructural leak-at-return checks) that need to see
 /// what a function actually leaves initialized when it returns.
+/// Compute per-block entry `PointState` for `func`. Same fixpoint as
+/// `states_before_returns` uses internally, exposed so callers (drop
+/// elaboration) can then walk any block from its entry to compute
+/// arbitrary intermediate states (e.g. a predecessor's exit).
+///
+/// Also returns a closure that advances a state through a single
+/// statement (silent — no diagnostics), so callers can walk a block
+/// forward from its entry state to compute intermediate points.
+pub fn block_entry_states(env: &Env, func: &Function) -> IndexMap<String, PointState> {
+    let Some(body) = &func.body else {
+        return IndexMap::new();
+    };
+    if body.blocks.is_empty() {
+        return IndexMap::new();
+    }
+    let locals = func.locals_map();
+    let ctx = Ctx {
+        env,
+        locals: &locals,
+    };
+    run_fixpoint(&ctx, func, body)
+}
+
+/// Advance `state` silently through `stmt` (no diagnostics). Uses the
+/// same transfer as the fixpoint. For callers that hold a per-block
+/// entry state and want to reconstruct the state at any point inside
+/// the block.
+pub fn transfer_stmt_silent(
+    env: &Env,
+    func: &Function,
+    stmt: &Statement,
+    state: &mut PointState,
+) {
+    let locals = func.locals_map();
+    let ctx = Ctx {
+        env,
+        locals: &locals,
+    };
+    ctx.transfer_stmt(stmt, state);
+}
+
 pub fn states_before_returns<'a>(
     env: &Env,
     func: &'a Function,
