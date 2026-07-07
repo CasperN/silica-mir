@@ -32,6 +32,8 @@ use crate::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
+pub mod elaboration;
+
 /// A record of a borrow that's currently in force. `loaned` is a set to
 /// support multi-loan: when a branch-of-borrows produces different loaned
 /// places on each side, the join unions them so all possible pointees

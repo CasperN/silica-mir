@@ -750,7 +750,7 @@ impl<'a> Ctx<'a> {
                 span,
                 func,
                 block,
-                "cannot forget reference '{}': obligation not fulfilled (is_init={}, ends_init={})",
+                "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
                 name,
                 rs.is_init,
                 rs.ends_init

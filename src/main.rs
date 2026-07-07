@@ -1,5 +1,6 @@
 mod ast;
 mod block_reachability;
+mod cfg_edit;
 mod dataflow;
 mod diagnostics;
 mod init_state;
@@ -25,9 +26,13 @@ use diagnostics::Diagnostics;
 ///      `block_reachability`, `init_state`.
 ///   2. If step 1 found errors, bail before elaboration (a broken program's
 ///      init state is unreliable, so elaboration would be unsound).
-///   3. Elaboration: `substructural::elaboration::elaborate` inserts drops
-///      on the returned program. (Once `lifetime::elaboration` lands, it
-///      runs first here to insert `unborrow` at NLL last-use points.)
+///   3. Elaboration, in order:
+///      - `lifetime::elaboration::elaborate` inserts `unborrow` at NLL
+///        last-use points.
+///      - `substructural::elaboration::elaborate` inserts drops for
+///        values still alive at return.
+///      Env is rebuilt between the two so drop-elab sees the post-NLL
+///      init state (borrowers now consumed at their last-use points).
 ///   4. Post-elab: `substructural::check::check_return_leaks` and
 ///      `lifetime::check_program` validate the elaborated MIR. Lifetime
 ///      is position-dependent, so it belongs on the elaborated form
@@ -49,13 +54,25 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     }
 
     let mut elaborated = program.clone();
-    substructural::elaboration::elaborate(&mut elaborated, &env);
+    lifetime::elaboration::elaborate(&mut elaborated, &env);
 
-    // Re-build env from elaborated program (inserted drops introduce new
-    // statements that init_state / leak check need to see accurately).
+    // Env rebuild #1: NLL added `unborrow` statements and possibly
+    // split edges. Drop-elab reads init-state through env; it needs to
+    // see the elaborated bodies.
     let env2 = type_check::Env::build(&elaborated, &mut d);
-    substructural::check::check_return_leaks(&env2, &mut d);
-    lifetime::check_program(&env2, &mut d);
+    substructural::elaboration::elaborate(&mut elaborated, &env2);
+
+    // Env rebuild #2: drop-elab appended `drop` statements. Post-elab
+    // checks read init state and loans from the final form.
+    let env3 = type_check::Env::build(&elaborated, &mut d);
+    // init_state re-run: NLL may have inserted `unborrow r` where the
+    // pointee obligation isn't fulfilled (e.g. an `&out` never written
+    // to). That triggers `close_ref_if_present`'s obligation error
+    // at the insertion site — which we'd otherwise swallow silently
+    // because check_return_leaks only sees state *after* unborrow ran.
+    init_state::check_program(&env3, &mut d);
+    substructural::check::check_return_leaks(&env3, &mut d);
+    lifetime::check_program(&env3, &mut d);
 
     (elaborated, d)
 }

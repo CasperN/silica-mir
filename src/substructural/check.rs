@@ -573,7 +573,7 @@ mod tests {
                 return
             }
             ",
-            "reference 'r' of type Ref(Out, Number) has unfulfilled obligation at return",
+            "reference 'r' has unfulfilled obligation",
         );
     }
 

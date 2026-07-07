@@ -432,7 +432,7 @@ fn mut_ref_moved_out_return_leaks() {
         ");
     assert_errors_contain(
         &errs,
-        &["reference 'r' of type Ref(Mut, Number) has unfulfilled obligation at return"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
@@ -461,7 +461,7 @@ fn out_ref_unwritten_leaks() {
         ");
     assert_errors_contain(
         &errs,
-        &["reference 'r' of type Ref(Out, Number) has unfulfilled obligation at return"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
@@ -509,7 +509,7 @@ fn drop_ref_unmoved_leaks() {
         ");
     assert_errors_contain(
         &errs,
-        &["reference 'r' of type Ref(Drop, Number) has unfulfilled obligation at return"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
@@ -555,7 +555,7 @@ fn uninit_ref_write_without_moveback_leaks() {
         ");
     assert_errors_contain(
         &errs,
-        &["reference 'r' of type Ref(Uninit, Number) has unfulfilled obligation at return"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
@@ -667,7 +667,7 @@ fn drop_of_ref_with_unfulfilled_obligation_error() {
         ");
     assert_errors_contain(
         &errs,
-        &["cannot forget reference 'r': obligation not fulfilled"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
@@ -707,7 +707,7 @@ fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
         ");
     assert_errors_contain(
         &errs,
-        &["cannot forget reference 'r': obligation not fulfilled"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
@@ -726,7 +726,7 @@ fn drop_deref_of_mut_ref_leaks_pointee() {
         ");
     assert_errors_contain(
         &errs,
-        &["reference 'r' of type Ref(Mut, Number) has unfulfilled obligation at return"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 

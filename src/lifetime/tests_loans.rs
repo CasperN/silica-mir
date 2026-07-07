@@ -101,12 +101,17 @@ fn shared_loan_permits_shared_reborrow_ok() {
 
 #[test]
 fn shared_loan_blocks_write() {
+    // r kept alive through the conflicting write via a downstream use;
+    // without it, NLL would close the loan before the write and there'd
+    // be no conflict.
     let (errs, _) = run("
+        extern fn read_ref(r: &number);
         fn f(x: number) {
           r: &number;
           entry:
             r = &x;
             x = 1;
+            call read_ref(move r);
             return
         }
         ");
@@ -117,11 +122,13 @@ fn shared_loan_blocks_write() {
 fn shared_loan_blocks_move() {
     let (errs, _) = run("
         extern fn take(y: number);
+        extern fn read_ref(r: &number);
         fn f(x: number) {
           r: &number;
           entry:
             r = &x;
             call take(move x);
+            call read_ref(move r);
             return
         }
         ");
@@ -131,12 +138,16 @@ fn shared_loan_blocks_move() {
 #[test]
 fn shared_loan_blocks_mut_reborrow() {
     let (errs, _) = run("
+        extern fn read_ref(r: &number);
+        extern fn use_mut(r: &mut number);
         fn f(x: number) {
           r: &number;
           s: &mut number;
           entry:
             r = &x;
             s = &mut x;
+            call read_ref(move r);
+            call use_mut(move s);
             return
         }
         ");
@@ -363,9 +374,9 @@ fn branch_of_ref_moves_both_params_leak() {
     // Both branches merge into `end` where refs are dropped from
     // the join (each side has different entries) but the linear-
     // leak scan catches Diverged params.
-    let has_leak = errs.iter().any(|e| {
-        e.contains("not consumed at return") || e.contains("has unfulfilled obligation at return")
-    });
+    let has_leak = errs
+        .iter()
+        .any(|e| e.contains("not consumed at return") || e.contains("has unfulfilled obligation"));
     assert!(
         has_leak,
         "expected some kind of leak/obligation error, got: {:?}",

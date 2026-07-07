@@ -62,7 +62,7 @@ fn unborrow_with_unfulfilled_obligation_error() {
         ");
     assert_errors_contain(
         &errs,
-        &["cannot forget reference 'r': obligation not fulfilled"],
+        &["reference 'r' has unfulfilled obligation"],
     );
 }
 
