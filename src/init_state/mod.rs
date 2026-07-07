@@ -496,17 +496,15 @@ impl<'a> Ctx<'a> {
     fn transfer_stmt(&self, stmt: &Statement, state: &mut PointState) {
         match stmt {
             Statement::Assign(target, rvalue) => {
-                // Capture ref entry to transfer via `move src` BEFORE
-                // apply_rvalue_moves removes it. Loans transfer is handled
-                // by lifetime::LoanAnalysis's own fixpoint.
-                let carried_refs =
-                    ref_move_source(target, rvalue).and_then(|src| state.refs.get(&src).copied());
+                // Capture ref-state entries to transfer via `move src`
+                // BEFORE apply_rvalue_moves removes them. If src has
+                // ref-typed descendants (e.g. moving a whole struct),
+                // each descendant's RefState transfers to the parallel
+                // path under dst.
+                let carried_refs = capture_carried_refs(target, rvalue, state);
 
                 self.apply_rvalue_moves(rvalue, state);
                 if let Some(t) = as_owned_path(target) {
-                    // Overwriting the target closes any prior ref-state
-                    // on it (and on any descendants, for an ancestor
-                    // overwrite like `b = ...`).
                     close_refs_under(state, &t);
                 }
                 if matches!(target, Place::Deref(_)) {
@@ -519,8 +517,8 @@ impl<'a> Ctx<'a> {
                         }
                         self.apply_eager_borrow_transition(kind, place, state);
                     }
-                    if let (Some(dst), Some(rs)) = (as_owned_path(target), carried_refs) {
-                        state.refs.insert(dst, rs);
+                    for (dst_place, rs) in carried_refs {
+                        state.refs.insert(dst_place, rs);
                     }
                 }
             }
@@ -936,6 +934,54 @@ fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<Place> {
     as_owned_path(src)
 }
 
+/// For an assign `target = move src` where both are owned paths, gather
+/// every ref-state entry rooted at src (src itself, or any descendant
+/// like src.p) and re-key it under target, replacing the src prefix
+/// with target. E.g. moving `x` to `y` moves `x.r` → `y.r`.
+///
+/// Returns an empty vec for non-move rvalues or non-owned-path targets.
+fn capture_carried_refs(
+    target: &Place,
+    rvalue: &RValue,
+    state: &PointState,
+) -> Vec<(Place, RefState)> {
+    let Some(src) = ref_move_source(target, rvalue) else {
+        return Vec::new();
+    };
+    let Some(dst) = as_owned_path(target) else {
+        return Vec::new();
+    };
+    state
+        .refs
+        .iter()
+        .filter_map(|(k, rs)| {
+            let new_key = rekey(&src, &dst, k)?;
+            Some((new_key, *rs))
+        })
+        .collect()
+}
+
+/// If `key` is `src` or a descendant of it, return the parallel path
+/// under `dst`. `rekey(b, y, b.p)` → `y.p`. Returns None otherwise.
+fn rekey(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
+    if !is_owned_ancestor_or_self(src, key) {
+        return None;
+    }
+    // Extract the trailing suffix from `key` beyond `src`'s path length.
+    let (_, src_path) = extract_path_owned(src);
+    let (_, key_path) = extract_path_owned(key);
+    let suffix = &key_path[src_path.len()..];
+    let mut out = dst.clone();
+    for step in suffix {
+        out = match step {
+            PathStep::Field(f) => Place::Field(Box::new(out), f.clone()),
+            PathStep::Downcast(v) => Place::Downcast(Box::new(out), v.clone()),
+            PathStep::Deref => unreachable!("owned-path invariant"),
+        };
+    }
+    Some(out)
+}
+
 // ---------- Diagnostic pass ----------
 
 impl<'a> Ctx<'a> {
@@ -967,10 +1013,9 @@ impl<'a> Ctx<'a> {
     ) {
         match stmt {
             Statement::Assign(target, rvalue) => {
-                // Capture ref state to transfer via `move src` BEFORE
-                // eval_rvalue runs (which clears the source entry).
-                let carried_refs = ref_move_source(target, rvalue)
-                    .and_then(|src| state.refs.get(&src).copied());
+                // Capture ref-state entries to transfer via `move src`
+                // BEFORE eval_rvalue runs. Cascade re-keys src.f → dst.f.
+                let carried_refs = capture_carried_refs(target, rvalue, state);
 
                 self.eval_rvalue(func, block, rvalue, span, state, d);
                 self.check_lhs_downcast(func, block, target, span, state, d);
@@ -989,18 +1034,14 @@ impl<'a> Ctx<'a> {
                     );
                 } else {
                     self.apply_write(target, state, InitState::Init);
-                    // Borrow creation: attach the initial ref state and
-                    // apply the eager pointee transition (safe because
-                    // lifetime blocks direct access until the loan ends).
                     if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                         if let Some(rs) = RefState::from_kind(kind) {
                             state.refs.insert(t, rs);
                         }
                         self.apply_eager_borrow_transition(kind, place, state);
                     }
-                    // Ref-state transfer via `dst = move src`.
-                    if let (Some(dst), Some(rs)) = (as_owned_path(target), carried_refs) {
-                        state.refs.insert(dst, rs);
+                    for (dst_place, rs) in carried_refs {
+                        state.refs.insert(dst_place, rs);
                     }
                 }
             }

@@ -65,7 +65,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     // Phase 1 (immutable): plan per-function.
     let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
     for func in env.functions.values() {
-        if let Some(plan) = plan_for_function(func) {
+        if let Some(plan) = plan_for_function(func, env) {
             plans.insert(func.name.clone(), plan);
         }
     }
@@ -88,25 +88,24 @@ pub fn elaborate(program: &mut Program, env: &Env) {
 /// Planned insertions for a single function.
 #[derive(Default, Debug)]
 struct ElaborationPlan {
-    /// `(block_label, insert_pos)` -> borrower names to unborrow at that
-    /// position. `insert_pos` is an index into the *original* block's
-    /// statements, semantically "insert before original stmt N", so:
-    /// - 0 means before the first stmt (block entry).
-    /// - N (where N = num_stmts) means before the terminator (block end).
-    intra_block: IndexMap<(String, usize), Vec<String>>,
-    /// `(pred_label, succ_label)` -> borrower names to unborrow on this
+    /// `(block_label, insert_pos)` -> borrower places to unborrow at
+    /// that position. `insert_pos` is an index into the *original*
+    /// block's statements: 0 = before first stmt, N (num_stmts) =
+    /// before terminator.
+    intra_block: IndexMap<(String, usize), Vec<Place>>,
+    /// `(pred_label, succ_label)` -> borrower places to unborrow on this
     /// edge. Apply by splitting the edge and appending the unborrows
     /// in the split block.
-    cross_edge: IndexMap<(String, String), Vec<String>>,
+    cross_edge: IndexMap<(String, String), Vec<Place>>,
 }
 
-fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
+fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
     let body = func.body.as_ref()?;
     if body.blocks.is_empty() {
         return None;
     }
 
-    let borrowers = collect_borrowers(func);
+    let borrowers = collect_borrowers(func, env);
     if borrowers.is_empty() {
         return None;
     }
@@ -119,7 +118,7 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
     let live_out_per_block = dataflow::run(&analysis, body);
 
     // Compute live_in per block by walking backward through the block.
-    let mut live_in_per_block: IndexMap<String, BTreeSet<String>> = IndexMap::new();
+    let mut live_in_per_block: IndexMap<String, BTreeSet<Place>> = IndexMap::new();
     for block in &body.blocks {
         let Some(live_out) = live_out_per_block.get(&block.label) else {
             continue;
@@ -142,7 +141,7 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
         // Per-statement live sets: live_states[i] = live before stmt i
         // for i in 0..n_stmts. live_states[n_stmts] = live before
         // terminator = live after last statement.
-        let mut live_states: Vec<BTreeSet<String>> =
+        let mut live_states: Vec<BTreeSet<Place>> =
             Vec::with_capacity(block.statements.len() + 1);
         let mut cur = live_out.clone();
         analysis.transfer_terminator(&mut cur, &block.terminator);
@@ -153,30 +152,12 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
         }
         live_states.reverse();
 
-        // Intra-block insertions.
-        //
-        // Two rules cover the general "borrower r is bound but not
-        // future-used" state, both inserting immediately after the
-        // triggering statement:
-        //
-        //   (a) Transition: r was live before S and dies at S without S
-        //       consuming it — S is r's last actual use.
-        //   (b) Bind-and-dead: S binds r (assigns to a borrower target)
-        //       but r has no future use — a created-then-forgotten
-        //       borrower. Without this rule the transition never fires
-        //       because r wasn't live before S (kill via def).
-        //
-        // Bind and transition can't fire for the same (S, r): if S binds
-        // r then live_before excludes r (def kills it in the backward
-        // transfer), so the transition test's r ∈ live_before is false.
+        // Intra-block insertions. See notes on the two rules
+        // (transition, bind-and-dead) in the pre-refactor version.
         for (i, (stmt, _)) in block.statements.iter().enumerate() {
             let live_before = &live_states[i];
             let live_after = &live_states[i + 1];
             for r in &borrowers {
-                // Transition rule cares about the r that was live going
-                // into S — skip if S consumes/redefines that binding.
-                // The bind rule looks at the NEW r that S binds and
-                // stands apart from consumption of the old.
                 let transition = !stmt_consumes(stmt, r)
                     && live_before.contains(r)
                     && !live_after.contains(r);
@@ -211,19 +192,18 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
     // Ref-parameter rule: a param of ref type is bound at function
     // entry. If it's not in live_in(entry_block), it's created-but-
     // never-used and needs an unborrow at the very start of entry.
-    // (Mirrors the intra-block bind rule but for the pre-entry binding
-    // that isn't a real statement.)
     let entry_label = body.blocks[0].label.clone();
     if let Some(entry_live_in) = live_in_per_block.get(&entry_label) {
         for p in &func.params {
-            if !borrowers.contains(&p.name) {
+            let param_place = Place::Var(p.name.clone());
+            if !borrowers.contains(&param_place) {
                 continue;
             }
-            if !entry_live_in.contains(&p.name) {
+            if !entry_live_in.contains(&param_place) {
                 plan.intra_block
                     .entry((entry_label.clone(), 0))
                     .or_default()
-                    .push(p.name.clone());
+                    .push(param_place);
             }
         }
     }
@@ -242,9 +222,9 @@ fn plan_for_function(func: &Function) -> Option<ElaborationPlan> {
     Some(plan)
 }
 
-/// Sort names in place so that reborrow children (higher parent-chain
-/// depth) come first. Ties broken by name for determinism.
-fn sort_by_reborrow_depth_desc(names: &mut [String], parents: &IndexMap<String, String>) {
+/// Sort borrower places in place so that reborrow children (higher
+/// parent-chain depth) come first. Ties broken by Ord for determinism.
+fn sort_by_reborrow_depth_desc(names: &mut [Place], parents: &IndexMap<Place, Place>) {
     names.sort_by(|a, b| {
         let da = reborrow_depth(a, parents);
         let db = reborrow_depth(b, parents);
@@ -252,14 +232,14 @@ fn sort_by_reborrow_depth_desc(names: &mut [String], parents: &IndexMap<String, 
     });
 }
 
-fn reborrow_depth(name: &str, parents: &IndexMap<String, String>) -> usize {
+fn reborrow_depth(name: &Place, parents: &IndexMap<Place, Place>) -> usize {
     let mut depth = 0;
-    let mut cur = name.to_string();
+    let mut cur = name.clone();
     let limit = parents.len() + 1;
     while let Some(p) = parents.get(&cur) {
         depth += 1;
         if depth > limit {
-            break; // cycle guard — shouldn't happen for well-formed programs
+            break;
         }
         cur = p.clone();
     }
@@ -267,10 +247,8 @@ fn reborrow_depth(name: &str, parents: &IndexMap<String, String>) -> usize {
 }
 
 fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
-    // Intra-block: sort inserts by descending position and splice —
-    // later positions go first so lower positions' indices stay valid.
     for block in &mut body.blocks {
-        let mut inserts: Vec<(usize, &Vec<String>)> = plan
+        let mut inserts: Vec<(usize, &Vec<Place>)> = plan
             .intra_block
             .iter()
             .filter(|((label, _), _)| label == &block.label)
@@ -278,26 +256,21 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             .collect();
         inserts.sort_by(|a, b| b.0.cmp(&a.0));
 
-        for (pos, names) in inserts {
-            // Span: use the original stmt at `pos` (i.e. the stmt the
-            // unborrow is inserted just before). At end-of-block
-            // (pos = num_stmts) or in empty blocks, use the terminator.
+        for (pos, places) in inserts {
             let span = block
                 .statements
                 .get(pos)
                 .map(|(_, s)| *s)
                 .unwrap_or(block.terminator_span);
-            let items: Vec<(Statement, Span)> = names
+            let items: Vec<(Statement, Span)> = places
                 .iter()
-                .map(|n| (Statement::Unborrow(Place::Var(n.clone())), span))
+                .map(|p| (Statement::Unborrow(p.clone()), span))
                 .collect();
             block.statements.splice(pos..pos, items);
         }
     }
 
-    // Cross-edge: split the edge (idempotent, so repeated NLL runs share
-    // the block), then append unborrows.
-    for ((pred, succ), names) in &plan.cross_edge {
+    for ((pred, succ), places) in &plan.cross_edge {
         let split_label = cfg_edit::split_edge(body, pred, succ);
         let split_block = body
             .blocks
@@ -305,10 +278,10 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             .find(|b| b.label == split_label)
             .expect("split_edge just guaranteed this block exists");
         let span = split_block.terminator_span;
-        for n in names {
+        for p in places {
             split_block
                 .statements
-                .push((Statement::Unborrow(Place::Var(n.clone())), span));
+                .push((Statement::Unborrow(p.clone()), span));
         }
     }
 }
@@ -316,26 +289,27 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
 // ---------- Backward liveness ----------
 
 /// Backward liveness with reborrow-parent expansion. When a borrower
-/// `s` is added to the live set, we also add its reborrow parent
-/// (`r` such that `s = &kind *r`) transitively. This is how NLL
-/// keeps `r` alive across `s`'s lifetime — otherwise NLL would
-/// insert `unborrow r` right after the reborrow, before `s`'s uses.
+/// place is added to the live set, we also add its reborrow parent
+/// transitively. Both borrowers and their parents are owned paths
+/// (Var, struct field, or enum-variant downcast); nothing here works
+/// at the Var-name level.
 struct BorrowerLiveness<'a> {
-    borrowers: &'a BTreeSet<String>,
-    /// `s -> r` when `s = &kind *r`. Chased transitively when
-    /// expanding uses. Built once by the plan phase.
-    reborrow_parent: &'a IndexMap<String, String>,
+    borrowers: &'a BTreeSet<Place>,
+    /// `s -> r` when `s = &kind *r` (both owned paths). Chased
+    /// transitively when expanding uses.
+    reborrow_parent: &'a IndexMap<Place, Place>,
 }
 
 impl<'a> BorrowerLiveness<'a> {
-    fn add_use(&self, state: &mut BTreeSet<String>, u: &str) {
+    fn add_use(&self, state: &mut BTreeSet<Place>, u: &Place) {
         if !self.borrowers.contains(u) {
             return;
         }
-        state.insert(u.to_string());
-        // Chase reborrow parents. Bounded by the number of borrowers
-        // because each step goes to a distinct name.
-        let mut cur = u.to_string();
+        if !state.insert(u.clone()) {
+            return;
+        }
+        // Chase reborrow parents.
+        let mut cur = u.clone();
         while let Some(parent) = self.reborrow_parent.get(&cur) {
             if !state.insert(parent.clone()) {
                 break;
@@ -346,7 +320,7 @@ impl<'a> BorrowerLiveness<'a> {
 }
 
 impl<'a> Analysis for BorrowerLiveness<'a> {
-    type State = BTreeSet<String>;
+    type State = BTreeSet<Place>;
     fn direction(&self) -> Direction {
         Direction::Backward
     }
@@ -359,16 +333,17 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
         // Backward transfer: pre = (post - defs) ∪ uses.
         for def in stmt_defs(stmt) {
-            if self.borrowers.contains(&def) {
-                state.remove(&def);
-            }
+            // A def at `def` kills the borrower entry at `def` AND any
+            // borrower descendants (assigning to `b` overwrites `b.p`,
+            // etc.).
+            state.retain(|b| !is_owned_ancestor_or_self(&def, b));
         }
-        for u in stmt_uses(stmt) {
+        for u in stmt_uses(stmt, self.borrowers) {
             self.add_use(state, &u);
         }
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
-        for u in terminator_uses(term) {
+        for u in terminator_uses(term, self.borrowers) {
             self.add_use(state, &u);
         }
     }
@@ -376,26 +351,20 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
 
 // ---------- Use / def / consume helpers ----------
 
-/// Scan `body` for reborrow patterns `s = &kind *r` and build the
-/// `s -> r` relation. Only handles the simple case (`Deref(Var(r))`
-/// as the borrowed place); deeper paths like `(*r).field` are out of
-/// scope for this slice.
-///
-/// Overwrites are not tracked separately: if `s` is later assigned a
-/// new reborrow or a fresh borrow, the map's value is overwritten with
-/// the latest parent. Since we only need this for a *static* liveness
-/// approximation (any use of s must also count as a use of whichever r
-/// s is currently reborrowing), a single most-recent mapping is
-/// coarser but safe — it treats s as live whenever any of its potential
-/// parents would be live.
-fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<String, String> {
+/// Scan `body` for reborrow patterns `s = &kind *r` where both `s` and
+/// `r` are owned paths, and build the `s -> r` relation. `r` may be
+/// any owned path (Var, field, downcast) — not just Var.
+fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
     let mut map = IndexMap::new();
     for block in &body.blocks {
         for (stmt, _) in &block.statements {
-            if let Statement::Assign(Place::Var(s), RValue::Ref(_, place)) = stmt {
+            if let Statement::Assign(target, RValue::Ref(_, place)) = stmt {
+                let Some(s) = as_owned_path(target) else {
+                    continue;
+                };
                 if let Place::Deref(inner) = place {
-                    if let Place::Var(r) = inner.as_ref() {
-                        map.insert(s.clone(), r.clone());
+                    if let Some(r) = as_owned_path(inner) {
+                        map.insert(s, r);
                     }
                 }
             }
@@ -404,144 +373,228 @@ fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<String, String> {
     map
 }
 
-fn collect_borrowers(func: &Function) -> BTreeSet<String> {
+/// Enumerate every ref-typed owned path in `func`. A path is included
+/// if its inferred type is a `Type::Ref(...)`. Recursion through
+/// self-referential type declarations is bounded by tracking visited
+/// type names on each root walk.
+fn collect_borrowers(func: &Function, env: &Env) -> BTreeSet<Place> {
     let mut out = BTreeSet::new();
-    for p in &func.params {
-        if matches!(p.ty, Type::Ref(_, _)) {
-            out.insert(p.name.clone());
-        }
-    }
-    if let Some(body) = &func.body {
-        for l in &body.locals {
-            if matches!(l.ty, Type::Ref(_, _)) {
-                out.insert(l.name.clone());
-            }
-        }
+    let locals = func.locals_map();
+    for (name, ty) in &locals {
+        let mut visited = BTreeSet::new();
+        walk_ref_paths(&Place::Var(name.clone()), ty, env, &mut visited, &mut out);
     }
     out
 }
 
-/// Root Var name of a place, following through `Deref` (unlike
-/// `extract_path`, which stops at ref boundaries). Every mention of
-/// a borrower via `*r`, `r.f`, `r as V`, `(*r).f`, etc. is a use of r.
-fn place_root(place: &Place) -> Option<String> {
+/// Walk a place's type, adding owned-path descendants of ref type.
+/// Stops at Ref boundaries (we don't traverse a reference's pointee)
+/// and at already-visited nominal types (cycle guard for recursive
+/// declarations like `enum Option { None: Option, Some: number }`).
+fn walk_ref_paths(
+    place: &Place,
+    ty: &Type,
+    env: &Env,
+    visited: &mut BTreeSet<String>,
+    out: &mut BTreeSet<Place>,
+) {
+    if matches!(ty, Type::Ref(_, _)) {
+        out.insert(place.clone());
+        return;
+    }
+    let Type::Custom(name) = ty else { return };
+    if !visited.insert(name.clone()) {
+        return;
+    }
+    match env.types.get(name) {
+        Some(crate::type_check::TypeDecl::Struct(s)) => {
+            for f in &s.fields {
+                let sub = Place::Field(Box::new(place.clone()), f.name.clone());
+                walk_ref_paths(&sub, &f.ty, env, visited, out);
+            }
+        }
+        Some(crate::type_check::TypeDecl::Enum(e)) => {
+            for v in &e.variants {
+                let sub = Place::Downcast(Box::new(place.clone()), v.name.clone());
+                walk_ref_paths(&sub, &v.ty, env, visited, out);
+            }
+        }
+        _ => {}
+    }
+    visited.remove(name);
+}
+
+/// True if `ancestor` is `descendant` or an owned-path prefix of it.
+fn is_owned_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
+    let Some((ar, ap)) = extract_path(ancestor) else {
+        return false;
+    };
+    let Some((dr, dp)) = extract_path(descendant) else {
+        return false;
+    };
+    if ar != dr || ap.len() > dp.len() {
+        return false;
+    }
+    ap.iter().zip(dp.iter()).all(|(a, b)| match (a, b) {
+        (PathStep::Field(x), PathStep::Field(y)) => x == y,
+        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
+        _ => false,
+    })
+}
+
+/// Enumerate borrower places used by referencing `place`. Yields any
+/// borrower that shares storage with `place`:
+///   - Owned-path prefixes of `place` (touching a field touches its
+///     enclosing struct/enum).
+///   - Owned-path descendants of `place` (touching `b` touches `b.p`,
+///     because moving/reading b covers b.p's storage).
+///
+/// Examples with borrower set containing `b.p` and `b.q`:
+///   - `b`: yields `b.p`, `b.q` (moving b covers both fields).
+///   - `b.p`: yields `b.p`.
+///   - `*b.p`: yields `b.p` (dereffing b.p uses the ref itself).
+fn place_borrower_uses(place: &Place, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
     let mut cur = place;
     loop {
+        if let Some(owned) = as_owned_path(cur) {
+            // Prefixes (including owned itself).
+            for prefix in owned_path_prefixes(&owned) {
+                if borrowers.contains(&prefix) {
+                    out.push(prefix);
+                }
+            }
+            // Descendants of owned that are borrowers. Storage-covered.
+            for b in borrowers {
+                if b != &owned && is_owned_ancestor_or_self(&owned, b) {
+                    out.push(b.clone());
+                }
+            }
+            return;
+        }
         match cur {
-            Place::Var(name) => return Some(name.clone()),
-            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => cur = inner,
+            Place::Deref(inner) | Place::Field(inner, _) | Place::Downcast(inner, _) => {
+                cur = inner;
+            }
+            Place::Var(_) => unreachable!("Var is always owned"),
         }
     }
 }
 
-fn stmt_uses(stmt: &Statement) -> Vec<String> {
+fn stmt_uses(stmt: &Statement, borrowers: &BTreeSet<Place>) -> Vec<Place> {
     let mut out = Vec::new();
     match stmt {
         Statement::Assign(target, rvalue) => {
-            // Whole-Var target is a def, not a use of the old value.
-            // Anything more structured (field/downcast/deref) is a use
-            // because the surrounding path must be alive.
-            if !matches!(target, Place::Var(_)) {
-                if let Some(root) = place_root(target) {
-                    out.push(root);
-                }
+            // If target isn't an owned path (e.g. deref target), or has
+            // projections, its structural parts are uses.
+            match target {
+                Place::Var(_) => {}
+                _ => place_borrower_uses(target, borrowers, &mut out),
             }
-            rvalue_uses(rvalue, &mut out);
+            rvalue_uses(rvalue, borrowers, &mut out);
         }
         Statement::Call(target, args) => {
-            operand_uses(target, &mut out);
+            operand_uses(target, borrowers, &mut out);
             for a in args {
-                operand_uses(a, &mut out);
+                operand_uses(a, borrowers, &mut out);
             }
         }
         Statement::Drop(place) | Statement::Unborrow(place) => {
-            if let Some(root) = place_root(place) {
-                out.push(root);
-            }
+            place_borrower_uses(place, borrowers, &mut out);
         }
     }
     out
 }
 
-fn stmt_defs(stmt: &Statement) -> Vec<String> {
-    if let Statement::Assign(Place::Var(x), _) = stmt {
-        vec![x.clone()]
-    } else {
-        Vec::new()
-    }
-}
-
-fn rvalue_uses(rv: &RValue, out: &mut Vec<String>) {
-    match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => operand_uses(op, out),
-        RValue::Ref(_, place) => {
-            if let Some(root) = place_root(place) {
-                out.push(root);
-            }
+fn stmt_defs(stmt: &Statement) -> Vec<Place> {
+    if let Statement::Assign(target, _) = stmt {
+        if let Some(owned) = as_owned_path(target) {
+            return vec![owned];
         }
     }
+    Vec::new()
 }
 
-fn operand_uses(op: &Operand, out: &mut Vec<String>) {
+fn rvalue_uses(rv: &RValue, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
+    match rv {
+        RValue::Use(op) | RValue::EnumConstr(_, _, op) => operand_uses(op, borrowers, out),
+        RValue::Ref(_, place) => place_borrower_uses(place, borrowers, out),
+    }
+}
+
+fn operand_uses(op: &Operand, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
     match op {
         Operand::Copy(place) | Operand::Move(place) => {
-            if let Some(root) = place_root(place) {
-                out.push(root);
-            }
+            place_borrower_uses(place, borrowers, out);
         }
         Operand::Const(_) => {}
     }
 }
 
-fn terminator_uses(term: &Terminator) -> Vec<String> {
+fn terminator_uses(term: &Terminator, borrowers: &BTreeSet<Place>) -> Vec<Place> {
     let mut out = Vec::new();
     match term {
-        Terminator::Branch { cond, .. } => operand_uses(cond, &mut out),
+        Terminator::Branch { cond, .. } => operand_uses(cond, borrowers, &mut out),
         Terminator::SwitchEnum { place, .. } => {
-            if let Some(root) = place_root(place) {
-                out.push(root);
-            }
+            place_borrower_uses(place, borrowers, &mut out);
         }
         _ => {}
     }
     out
 }
 
-/// True iff `stmt` is `Assign(Var(r), _)` — the statement binds a
-/// new value to borrower `r`. Used by the bind-and-dead rule to catch
-/// created-then-never-used borrowers, which don't produce a live→dead
-/// transition (backward-liveness def kills them so they're never in
-/// live_before). Redefinitions of an already-bound r trigger this too,
-/// but the earlier binding's own last-use scan handles the old value.
-fn stmt_binds_borrower(stmt: &Statement, r: &str) -> bool {
-    matches!(stmt, Statement::Assign(Place::Var(name), _) if name == r)
+/// True iff `stmt` is `Assign(target, _)` where `target` is or contains
+/// borrower `r` as an owned prefix — the statement binds a new value
+/// covering r's storage. Used by the bind-and-dead rule to catch
+/// created-then-never-used borrowers.
+fn stmt_binds_borrower(stmt: &Statement, r: &Place) -> bool {
+    if let Statement::Assign(target, _) = stmt {
+        if let Some(owned) = as_owned_path(target) {
+            return is_owned_ancestor_or_self(&owned, r);
+        }
+    }
+    false
 }
 
-/// True iff `stmt` naturally closes/consumes borrower `r`. If so, NLL
-/// skips inserting an `unborrow r` at the transition — the statement
-/// already handles it.
-fn stmt_consumes(stmt: &Statement, r: &str) -> bool {
+/// True iff `stmt` naturally closes/consumes borrower `r`.
+fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
     match stmt {
-        Statement::Drop(Place::Var(name)) if name == r => true,
-        Statement::Unborrow(Place::Var(name)) if name == r => true,
-        Statement::Assign(Place::Var(name), _) if name == r => true,
-        Statement::Assign(_, rvalue) => rvalue_moves(rvalue, r),
+        Statement::Drop(place) | Statement::Unborrow(place) => {
+            if let Some(owned) = as_owned_path(place) {
+                is_owned_ancestor_or_self(&owned, r)
+            } else {
+                false
+            }
+        }
+        Statement::Assign(target, rvalue) => {
+            // Redefinition of r (or an ancestor) consumes r's old value.
+            if let Some(owned) = as_owned_path(target) {
+                if is_owned_ancestor_or_self(&owned, r) {
+                    return true;
+                }
+            }
+            rvalue_moves(rvalue, r)
+        }
         Statement::Call(target, args) => {
             operand_moves(target, r) || args.iter().any(|a| operand_moves(a, r))
         }
-        _ => false,
     }
 }
 
-fn rvalue_moves(rv: &RValue, r: &str) -> bool {
+fn rvalue_moves(rv: &RValue, r: &Place) -> bool {
     match rv {
         RValue::Use(op) | RValue::EnumConstr(_, _, op) => operand_moves(op, r),
         RValue::Ref(_, _) => false,
     }
 }
 
-fn operand_moves(op: &Operand, r: &str) -> bool {
-    matches!(op, Operand::Move(Place::Var(name)) if name == r)
+fn operand_moves(op: &Operand, r: &Place) -> bool {
+    match op {
+        Operand::Move(place) => match as_owned_path(place) {
+            Some(owned) => is_owned_ancestor_or_self(&owned, r),
+            None => false,
+        },
+        _ => false,
+    }
 }
 
 #[cfg(test)]
