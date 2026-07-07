@@ -1253,10 +1253,57 @@ impl<'a> Ctx<'a> {
             }
             Operand::Move(place) => {
                 self.apply_deref_op(place, DerefOp::Move, state, Some((func, block, span, d)));
+                // Boundary invariant: when a place is moved as an
+                // operand, we're handing its whole storage to the
+                // callee (or a matching position). Any ref-typed field
+                // inside with an unfulfilled (cur, post) obligation
+                // would be silently violated by the transfer — the
+                // callee's signature promises to consume the type, not
+                // to rebalance mid-borrow state. Exception: the whole
+                // place itself IS a ref-typed borrower — moving a bare
+                // ref like `move r` transfers the obligation intact to
+                // the callee's signature, so we skip that case (only
+                // check strict descendants).
+                self.check_move_boundary(func, block, place, span, state, d);
             }
             Operand::Const(_) => {}
         }
         self.apply_operand_move(op, state);
+    }
+
+    /// For a `move place` operand, verify that every strict ref-typed
+    /// descendant of `place` in state.refs has its obligation fulfilled.
+    /// Emits an error per violation. Does not modify state (the cascade
+    /// happens later in apply_operand_move → apply_move → close_refs_under).
+    fn check_move_boundary(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        place: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some(owned) = as_owned_path(place) else {
+            return;
+        };
+        for (ref_place, rs) in &state.refs {
+            // Skip the exact-self case: moving `r` where r is a bare ref
+            // transfers the obligation to the callee via signature.
+            if ref_place == &owned {
+                continue;
+            }
+            if !is_owned_ancestor_or_self(&owned, ref_place) {
+                continue;
+            }
+            if !rs.obligation_fulfilled() {
+                push_error!(
+                    d, span, func, block,
+                    "cannot move '{}': contained reference '{}' has unfulfilled obligation (is_init={}, ends_init={})",
+                    format_owned(&owned), format_owned(ref_place), rs.is_init, rs.ends_init
+                );
+            }
+        }
     }
 
     fn check_operand_read(

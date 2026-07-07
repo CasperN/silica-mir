@@ -510,6 +510,8 @@ fn check_operand_access(
 #[cfg(test)]
 mod tests_loans;
 #[cfg(test)]
+mod tests_path_borrowers;
+#[cfg(test)]
 mod tests_reborrow;
 #[cfg(test)]
 mod tests_unborrow;
