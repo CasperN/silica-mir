@@ -41,7 +41,7 @@ use diagnostics::Diagnostics;
 /// Used by `main` and by test helpers.
 pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(program, &mut d);
+    let mut env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
     substructural::composition::check_program(&env, &mut d);
     substructural::check::check_program(&env, &mut d);
@@ -54,25 +54,22 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     }
 
     let mut elaborated = program.clone();
+
+    // Elaboration passes mutate function bodies only; `types` never
+    // changes. After each mutation, resync env's cached function bodies
+    // so downstream passes see the up-to-date form.
     lifetime::elaboration::elaborate(&mut elaborated, &env);
+    env.sync_functions(&elaborated);
 
-    // Env rebuild #1: NLL added `unborrow` statements and possibly
-    // split edges. Drop-elab reads init-state through env; it needs to
-    // see the elaborated bodies.
-    let env2 = type_check::Env::build(&elaborated, &mut d);
-    substructural::elaboration::elaborate(&mut elaborated, &env2);
+    substructural::elaboration::elaborate(&mut elaborated, &env);
+    env.sync_functions(&elaborated);
 
-    // Env rebuild #2: drop-elab appended `drop` statements. Post-elab
-    // checks read init state and loans from the final form.
-    let env3 = type_check::Env::build(&elaborated, &mut d);
-    // init_state re-run: NLL may have inserted `unborrow r` where the
-    // pointee obligation isn't fulfilled (e.g. an `&out` never written
-    // to). That triggers `close_ref_if_present`'s obligation error
-    // at the insertion site — which we'd otherwise swallow silently
-    // because check_return_leaks only sees state *after* unborrow ran.
-    init_state::check_program(&env3, &mut d);
-    substructural::check::check_return_leaks(&env3, &mut d);
-    lifetime::check_program(&env3, &mut d);
+    // Post-elab checks. init_state re-runs so NLL-inserted `unborrow r`
+    // on an unfulfilled `&out`/`&drop` obligation surfaces its error at
+    // the insertion site (via close_ref_if_present), not silently.
+    init_state::check_program(&env, &mut d);
+    substructural::check::check_return_leaks(&env, &mut d);
+    lifetime::check_program(&env, &mut d);
 
     (elaborated, d)
 }

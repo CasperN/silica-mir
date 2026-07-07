@@ -189,20 +189,15 @@ The essential elaboration and check passes are:
 
 # Punch list
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
-- `switchEnum(o as V)` on an inline downcast doesn't refine — the outer
-  variant isn't proven before the inner switch reads its discriminant.
 
 ## Elaboration gaps
-- Drop insertion order is by declaration, not initialization. LIFO by
-  initialization time needs per-write sequence numbers on statements.
-- If the frontend emits its own drops (per scope-exit rules), the drop
-  elaborator becomes reference/debug-only rather than authoritative.
-
-
-## Elaboration should not affect declarations
-Currently `run_all_passes` rebuilds the `Env` after elaboration. Elaboration
-passes should just mutate function bodies in place and have no effect on
-declarations.
+- Drop elaboration doesn't handle `Diverged` states at CFG joins yet
+  (needs per-edge insertion via the existing `cfg_edit` splitter).
+- Drop insertion *order* within a return block is a HLL responsibility
+  (scope-nesting determines LIFO). At the MIR level drops are already
+  explicit statements; the elaborator only inserts what would otherwise
+  leak. If the frontend emits its own drops per scope-exit rules, the
+  drop elaborator becomes reference/debug-only rather than authoritative.
 
 # Longer term
 - Lower to LLVM

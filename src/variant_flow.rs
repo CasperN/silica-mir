@@ -176,11 +176,15 @@ fn check_places_in_terminator(
     }
 }
 
-/// Verify that every `Downcast(V)` step at the root position of `place` sits
-/// at a program point where the tracked variant set of the root is exactly
-/// `{V}` (i.e. refined by a preceding `switchEnum` → V edge).
-/// Deeper downcasts (`x.f as V`) require sub-place variant tracking and are
-/// silently skipped in this phase.
+/// Verify that every `Downcast(V)` step in `place` sits at a program
+/// point where the enclosing enum is proven to hold variant `V`.
+///
+/// Coverage:
+/// - `x as V` where `x` is an enum Var: refined via preceding
+///   `switchEnum(x) → V` edge.
+/// - `x.f as V`, `x.f.g as V`, `(x as U).f as V`, and any Downcast at a
+///   deeper path position: rejected — variant_flow only tracks state on
+///   root Vars, so nothing proves the projection is the required variant.
 fn check_downcast_refinement(
     env: &Env,
     func: &Function,
@@ -194,22 +198,16 @@ fn check_downcast_refinement(
     let Some((root, path)) = extract_path(place) else {
         return;
     };
-    let Some(root_ty) = locals.get(&root) else {
-        return;
-    };
-    let root_is_enum = matches!(
-        root_ty,
-        Type::Custom(n) if matches!(env.types.get(n), Some(TypeDecl::Enum(_)))
-    );
-    if !root_is_enum {
-        return;
-    }
 
     for (i, step) in path.iter().enumerate() {
-        if let PathStep::Downcast(v) = step {
-            if i > 0 {
-                continue;
-            } // deeper — not yet tracked
+        let PathStep::Downcast(v) = step else {
+            continue;
+        };
+
+        // Track-able case: Downcast at path[0] and root is a Var of enum
+        // type. Anything else (deeper Downcast, non-enum root) is beyond
+        // the current analysis and treated as unprovable.
+        if i == 0 && root_is_enum_ty(&root, locals, env) {
             let known = state.get(&root);
             let refined = match known {
                 // ⊥: variant set empty means the point is proven unreachable.
@@ -231,8 +229,50 @@ fn check_downcast_refinement(
                     v
                 );
             }
+        } else {
+            let prefix = format_place_up_to(&root, &path[..i]);
+            push_error!(
+                d,
+                span,
+                func,
+                block,
+                "cannot downcast '{} as {}' here: variant flow only tracks root Vars, and '{}' is a projection — extract into a local first",
+                prefix,
+                v,
+                prefix
+            );
         }
     }
+}
+
+fn root_is_enum_ty(root: &str, locals: &IndexMap<String, Type>, env: &Env) -> bool {
+    let Some(root_ty) = locals.get(root) else {
+        return false;
+    };
+    matches!(
+        root_ty,
+        Type::Custom(n) if matches!(env.types.get(n), Some(TypeDecl::Enum(_)))
+    )
+}
+
+fn format_place_up_to(root: &str, prefix: &[PathStep]) -> String {
+    let mut s = root.to_string();
+    for step in prefix {
+        match step {
+            PathStep::Field(f) => {
+                s.push('.');
+                s.push_str(f);
+            }
+            PathStep::Downcast(v) => {
+                s.push_str(" as ");
+                s.push_str(v);
+            }
+            PathStep::Deref => {
+                s = format!("*{}", s);
+            }
+        }
+    }
+    s
 }
 
 fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
@@ -873,6 +913,50 @@ mod tests {
                 x = copy o as Some;
                 return
               n: return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn downcast_on_field_of_struct_errors() {
+        // `switchEnum(w.e as A)`: variant_flow can't prove w.e is variant A,
+        // since it only tracks root Vars. Rejected.
+        let (errs, _) = run("
+            enum Copy Drop Sub { S1: unit S2: unit }
+            enum Copy Drop Inner { A: Sub B: unit }
+            struct Copy Drop Wrap { e: Inner }
+            fn f(w: Wrap) {
+              entry:
+                switchEnum(w.e as A) [S1: s1, S2: s2]
+              s1: return
+              s2: return
+            }
+            ");
+        assert_errors_contain(
+            &errs,
+            &["cannot downcast 'w.e as A' here"],
+        );
+    }
+
+    #[test]
+    fn nested_downcast_after_refinement_ok() {
+        // `switchEnum(o as X.inner)` where o is refined to X: the outer
+        // Downcast is at path[0] and root o is enum-typed → tracked.
+        // The trailing `.inner` field access doesn't add a Downcast.
+        assert_no_diagnostics(
+            "
+            enum Copy Drop Sub { S1: unit S2: unit }
+            struct Copy Drop Wrap { inner: Sub }
+            enum Copy Drop Outer { X: Wrap Y: unit }
+            fn f(o: Outer) {
+              entry:
+                switchEnum(o) [X: x_lbl, Y: y_lbl]
+              x_lbl:
+                switchEnum(o as X.inner) [S1: s1, S2: s2]
+              y_lbl: return
+              s1: return
+              s2: return
             }
             ",
         );

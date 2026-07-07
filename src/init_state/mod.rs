@@ -30,6 +30,7 @@
 //! in-write does not change enum state.
 
 use crate::ast::*;
+use crate::substructural::composition::class_of;
 use crate::dataflow;
 use crate::diagnostics::Diagnostics;
 use crate::push_error;
@@ -811,6 +812,93 @@ impl<'a> Ctx<'a> {
         }
         Some(ty)
     }
+
+    /// Overwrite check: at `target = ...`, the storage covered by
+    /// `target` is about to be clobbered. Any part currently `Init` (or
+    /// `Diverged`) is a value that would be silently forgotten. Each
+    /// such Init leaf's type must be `Drop`, or the caller must have
+    /// consumed it first (e.g. via `drop target;`).
+    ///
+    /// Deref targets skip this: `*r = v` writes through the ref, and
+    /// the pointee's obligation is tracked separately via RefState.
+    ///
+    /// `NeverInit` and `Moved` states are consumed (no clobber). `Partial`
+    /// recurses into fields to find Init leaves.
+    fn check_overwrite(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        target: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some((root, path)) = extract_path(target) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root) else {
+            return;
+        };
+        let target_state = read_at(root_state, &root_ty, &path, self.env);
+        let Some(target_ty) = self.infer_ref_place_type(target) else {
+            return;
+        };
+        walk_overwrite_leaves(
+            &target_state,
+            &target_ty,
+            self.env,
+            &mut Vec::new(),
+            &mut |leaf_path, leaf_ty| {
+                let c = class_of(leaf_ty, self.env);
+                if !c.drop {
+                    let path_str = if leaf_path.is_empty() {
+                        format_owned(target)
+                    } else {
+                        format!("{}.{}", format_owned(target), leaf_path.join("."))
+                    };
+                    push_error!(
+                        d,
+                        span,
+                        func,
+                        block,
+                        "cannot overwrite '{}': type {:?} is not Drop and the value is still live (consume it via `drop {}` first)",
+                        path_str,
+                        leaf_ty,
+                        path_str
+                    );
+                }
+            },
+        );
+    }
+}
+
+/// Walk (init state × type) tree together, invoking `report` on every
+/// leaf whose state is Init or Diverged. `Partial` recurses per-field;
+/// `NeverInit`/`Moved` short-circuit (nothing to overwrite).
+fn walk_overwrite_leaves(
+    state: &InitState,
+    ty: &Type,
+    env: &Env,
+    path: &mut Vec<String>,
+    report: &mut dyn FnMut(&[String], &Type),
+) {
+    match state {
+        InitState::NeverInit | InitState::Moved => {}
+        InitState::Init | InitState::Diverged => report(path, ty),
+        InitState::Partial(fields) => {
+            for (field_name, field_state) in fields {
+                let Some(field_ty) = env.field_type(ty, field_name) else {
+                    continue;
+                };
+                path.push(field_name.clone());
+                walk_overwrite_leaves(field_state, &field_ty, env, path, report);
+                path.pop();
+            }
+        }
+    }
 }
 
 /// Format an owned path for diagnostics: `x`, `b.p`, `e as V`.
@@ -1025,6 +1113,12 @@ impl<'a> Ctx<'a> {
                 // Capture ref-state entries to transfer via `move src`
                 // BEFORE eval_rvalue runs. Cascade re-keys src.f → dst.f.
                 let carried_refs = capture_carried_refs(target, rvalue, state);
+
+                // Overwrite check runs BEFORE we mutate state: it looks
+                // at the target's current state before the rvalue's
+                // moves take effect, so that e.g. `y = move y.f` isn't
+                // conflated (although that shape is not really valid).
+                self.check_overwrite(func, block, target, span, state, d);
 
                 self.eval_rvalue(func, block, rvalue, span, state, d);
                 self.check_lhs_downcast(func, block, target, span, state, d);
@@ -1415,3 +1509,5 @@ mod tests_borrows;
 mod tests_cfg_shapes;
 #[cfg(test)]
 mod tests_lifecycle;
+#[cfg(test)]
+mod tests_overwrite;

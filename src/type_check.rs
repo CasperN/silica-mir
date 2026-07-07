@@ -63,6 +63,19 @@ impl Env {
         Env { types, functions }
     }
 
+    /// Refresh cached function definitions from `program` in place.
+    /// Elaboration passes mutate function bodies; after that the cloned
+    /// `functions` map in `Env` is stale. This resyncs the map without
+    /// touching `types` (declarations aren't mutated by elaboration).
+    pub fn sync_functions(&mut self, program: &Program) {
+        self.functions.clear();
+        for decl in &program.declarations {
+            if let Declaration::Fn(f) = decl {
+                self.functions.insert(f.name.clone(), f.clone());
+            }
+        }
+    }
+
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
             Type::Number | Type::Boolean | Type::Unit => Ok(()),
