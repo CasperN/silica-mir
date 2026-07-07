@@ -1,4 +1,4 @@
-//! Init state dataflow — loan conflict tests.
+//! Lifetime pass — loan conflict tests.
 //!
 //! Covers single-loan conflicts (exclusive vs shared vs mutable-reborrow),
 //! field-level precision, ref transfer through moves, and multi-loan
@@ -475,4 +475,275 @@ fn multi_loan_disjoint_third_place_ok() {
         }
         ",
     );
+}
+
+// ---------- Cross-kind exclusivity ----------
+//
+// All four exclusive kinds (&mut, &out, &drop, &uninit) are just
+// "exclusive borrow" to the loan tracker — differ only in obligation.
+// Each blocks direct write same as &mut.
+
+#[test]
+fn out_loan_blocks_direct_write() {
+    let (errs, _) = run("
+        extern fn take_out(r: &out number);
+        fn f() {
+          x: number;
+          r: &out number;
+          entry:
+            r = &out x;
+            x = 42;
+            call take_out(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'x': already borrowed by 'r'"]);
+}
+
+#[test]
+fn drop_loan_blocks_direct_write() {
+    let (errs, _) = run("
+        extern fn take_drop(r: &drop number);
+        fn f(x: number) {
+          r: &drop number;
+          entry:
+            r = &drop x;
+            x = 42;
+            call take_drop(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'x': already borrowed by 'r'"]);
+}
+
+#[test]
+fn uninit_loan_blocks_direct_write() {
+    let (errs, _) = run("
+        extern fn take_uninit(r: &uninit number);
+        fn f() {
+          x: number;
+          r: &uninit number;
+          entry:
+            r = &uninit x;
+            x = 42;
+            call take_uninit(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'x': already borrowed by 'r'"]);
+}
+
+// ---------- Mixed-kind disjoint field loans ----------
+
+#[test]
+fn mixed_kind_disjoint_field_loans_ok() {
+    // &mut p.a and &out p.b coexist — disjoint fields, kinds are
+    // independent for exclusivity purposes.
+    assert_no_diagnostics(
+        "
+        struct Copy Drop P { a: number b: number }
+        extern fn use_mut(r: &mut number);
+        extern fn use_out(r: &out number);
+        fn f() {
+          p: P;
+          r: &mut number;
+          s: &out number;
+          entry:
+            p.a = 1;
+            r = &mut p.a;
+            s = &out p.b;
+            call use_mut(move r);
+            call use_out(move s);
+            return
+        }
+        ",
+    );
+}
+
+// ---------- Nested field paths ----------
+//
+// paths_conflict compares steps one-by-one, so depth > 1 needs its
+// own coverage.
+
+#[test]
+fn nested_field_ancestor_conflicts() {
+    // Borrow p.a.x freezes p.a — reading p.a hits the loan.
+    let (errs, _) = run("
+        struct Copy Drop Inner { x: number y: number }
+        struct Copy Drop Outer { i: Inner c: number }
+        extern fn use_mut(r: &mut number);
+        fn f(o: Outer) {
+          r: &mut number;
+          y: Inner;
+          entry:
+            r = &mut o.i.x;
+            y = copy o.i;
+            call use_mut(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot read 'o.i': already borrowed by 'r'"]);
+}
+
+#[test]
+fn nested_field_sibling_ok() {
+    // p.a.x and p.a.y are disjoint — borrow of one lets the other be
+    // read.
+    assert_no_diagnostics(
+        "
+        struct Copy Drop Inner { x: number y: number }
+        struct Copy Drop Outer { i: Inner c: number }
+        extern fn use_mut(r: &mut number);
+        fn f(o: Outer) {
+          r: &mut number;
+          z: number;
+          entry:
+            r = &mut o.i.x;
+            z = copy o.i.y;
+            call use_mut(move r);
+            return
+        }
+        ",
+    );
+}
+
+// ---------- Borrower overwrite ----------
+
+#[test]
+fn borrower_overwrite_releases_old_loan_ok() {
+    // r first borrows x, then is overwritten to borrow y. After the
+    // overwrite, x is no longer loaned — direct write to x is fine.
+    assert_no_diagnostics(
+        "
+        extern fn use_mut(r: &mut number);
+        fn f(x: number, y: number) {
+          r: &mut number;
+          entry:
+            r = &mut x;
+            r = &mut y;
+            x = 42;
+            call use_mut(move r);
+            return
+        }
+        ",
+    );
+}
+
+#[test]
+fn borrower_overwrite_new_loan_active() {
+    // After the overwrite, y is loaned. Direct write to y conflicts.
+    let (errs, _) = run("
+        extern fn use_mut(r: &mut number);
+        fn f(x: number, y: number) {
+          r: &mut number;
+          entry:
+            r = &mut x;
+            r = &mut y;
+            y = 42;
+            call use_mut(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'y': already borrowed by 'r'"]);
+}
+
+// ---------- switchEnum access checked against loans ----------
+
+#[test]
+fn switch_on_loaned_enum_conflicts() {
+    // switchEnum(e) is a discriminant read (AccessKind::Read); an
+    // exclusive loan on e blocks it.
+    let (errs, _) = run("
+        enum Copy Drop Sel { A: unit B: unit }
+        extern fn sink(r: &mut Sel);
+        fn f(e: Sel) {
+          r: &mut Sel;
+          entry:
+            r = &mut e;
+            switchEnum(e) [A: a_lbl, B: b_lbl]
+          a_lbl:
+            call sink(move r);
+            return
+          b_lbl:
+            call sink(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot read 'e': already borrowed by 'r'"]);
+}
+
+// ---------- drop r vs drop *r ----------
+
+#[test]
+fn drop_borrower_closes_loan_ok() {
+    // `drop r` consumes the borrower — its loan is released and
+    // direct access to the previously-loaned place is legal.
+    assert_no_diagnostics(
+        "
+        fn f(x: number) {
+          r: &mut number;
+          entry:
+            r = &mut x;
+            drop r;
+            x = 42;
+            return
+        }
+        ",
+    );
+}
+
+#[test]
+fn drop_deref_does_not_release_loan() {
+    // `drop *r` consumes the pointee via r; the borrower r is still
+    // live, so its loan on x still blocks direct access.
+    let (errs, _) = run("
+        extern fn sink(r: &mut number);
+        fn f(x: number) {
+          r: &mut number;
+          entry:
+            r = &mut x;
+            drop *r;
+            x = 42;
+            call sink(move r);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot write to 'x': already borrowed by 'r'"]);
+}
+
+// ---------- Downcast projection borrows ----------
+//
+// TODO(reborrow): current behavior — extract_path treats Downcast as
+// a regular path step, so loans on `o as V` are tracked at depth
+// [Downcast(V)]. Same-projection access conflicts. Cross-variant
+// projection is not testable today because a borrow clobbers the
+// enum's refinement (variant_flow), so subsequent `o as W` fails
+// on refinement grounds before reaching the loan tracker. Revisit
+// this pinning when reborrow lands and variant-projected borrows
+// can coexist through separate refinement lineages.
+
+#[test]
+fn downcast_projection_borrow_same_variant_conflicts() {
+    let (errs, _) = run("
+        enum Copy Drop Option { None: unit Some: number }
+        extern fn sink(r: &mut number);
+        fn f() {
+          o: Option;
+          r: &mut number;
+          y: number;
+          entry:
+            o = Option::Some(1);
+            switchEnum(o) [None: n_arm, Some: s_arm]
+          s_arm:
+            r = &mut o as Some;
+            y = copy o as Some;
+            call sink(move r);
+            return
+          n_arm:
+            unreachable
+        }
+        ");
+    // Substring — variant_flow may also error on the clobbered
+    // refinement, but the loan conflict is what we're pinning here.
+    assert_errors_contain(&errs, &["already borrowed by 'r'"]);
 }

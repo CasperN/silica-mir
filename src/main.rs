@@ -20,16 +20,18 @@ use diagnostics::Diagnostics;
 /// elaborated MIR and the collected diagnostics.
 ///
 /// Pipeline:
-///   1. `type_check`, `marker_composition`, per-statement `substructural_check`
-///      class checks, `variant_flow`, `block_reachability`, `lifetime`,
-///      `init_state`.
+///   1. Pre-elab: `type_check`, `marker_composition`, per-statement
+///      `substructural::check` class checks, `variant_flow`,
+///      `block_reachability`, `init_state`.
 ///   2. If step 1 found errors, bail before elaboration (a broken program's
 ///      init state is unreliable, so elaboration would be unsound).
-///   3. `drop_elaboration::elaborate` inserts drops on the returned
-///      program.
-///   4. `substructural_check::check_return_leaks` validates the elaborated
-///      MIR — surviving leaks indicate elaboration was insufficient (e.g.
-///      Partial or Diverged states the current elaborator doesn't touch).
+///   3. Elaboration: `substructural::elaboration::elaborate` inserts drops
+///      on the returned program. (Once `lifetime::elaboration` lands, it
+///      runs first here to insert `unborrow` at NLL last-use points.)
+///   4. Post-elab: `substructural::check::check_return_leaks` and
+///      `lifetime::check_program` validate the elaborated MIR. Lifetime
+///      is position-dependent, so it belongs on the elaborated form
+///      where every loan-closing point is explicit.
 ///
 /// Used by `main` and by test helpers.
 pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
@@ -40,7 +42,6 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     substructural::check::check_program(&env, &mut d);
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
-    lifetime::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
 
     if !d.errors.is_empty() {
@@ -54,6 +55,7 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     // statements that init_state / leak check need to see accurately).
     let env2 = type_check::Env::build(&elaborated, &mut d);
     substructural::check::check_return_leaks(&env2, &mut d);
+    lifetime::check_program(&env2, &mut d);
 
     (elaborated, d)
 }

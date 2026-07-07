@@ -1,4 +1,4 @@
-//! Init state dataflow — `unborrow` statement tests.
+//! Lifetime pass — `unborrow` statement tests.
 //!
 //! Covers the explicit end-of-loan primitive: obligation check on the
 //! borrower, loan release, and interactions with multi-loan, joins,

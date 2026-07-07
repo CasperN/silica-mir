@@ -264,6 +264,11 @@ Remaining, in intended order:
   — done. Same for the docstring's mention of "freeze/thaw state" (not
   done, but is what loan tracking will do).
 
+## Elaboration should not affect declarations
+Currently `run_all_passes` rebuilds the `Env` after elaboration. Elaboration
+passes should just mutate function bodies in place and have no effect on
+declarations.
+
 # Longer term
 - Lower to LLVM
 - Lambdas
