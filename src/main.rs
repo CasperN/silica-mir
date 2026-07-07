@@ -21,7 +21,8 @@ use diagnostics::Diagnostics;
 ///
 /// Pipeline:
 ///   1. `type_check`, `marker_composition`, per-statement `substructural_check`
-///      class checks, `variant_flow`, `block_reachability`, `init_state`.
+///      class checks, `variant_flow`, `block_reachability`, `lifetime`,
+///      `init_state`.
 ///   2. If step 1 found errors, bail before elaboration (a broken program's
 ///      init state is unreliable, so elaboration would be unsound).
 ///   3. `drop_elaboration::elaborate` inserts drops on the returned
@@ -39,6 +40,7 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     substructural::check::check_program(&env, &mut d);
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
+    lifetime::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
 
     if !d.errors.is_empty() {

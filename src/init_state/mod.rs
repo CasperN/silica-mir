@@ -23,7 +23,6 @@
 use crate::ast::*;
 use crate::dataflow;
 use crate::diagnostics::Diagnostics;
-use crate::lifetime::{self, AccessKind, Loan, LoanMap};
 use crate::push_error;
 use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
@@ -93,9 +92,11 @@ impl RefState {
 ///   that is currently `Init`. Absent when the ref var is not Init, is
 ///   shared, or has been consumed.
 ///
-/// Loans are tracked separately by `lifetime::LoanAnalysis`; the
-/// diagnostic walk here consults a shadow `LoanMap` supplied by the
-/// caller when it needs to check for loan conflicts.
+/// Loans are tracked entirely by `lifetime::check_program`, an
+/// independent pass. This pass never looks at the loan set — it trusts
+/// that lifetime blocks direct access to any place while borrowed, and
+/// eagerly applies the borrow's post-transition on the loaned place at
+/// creation (e.g. `y = &out x` marks `x` `Init` immediately).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PointState {
     pub locals: IndexMap<String, InitState>,
@@ -405,18 +406,13 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         locals: &locals,
     };
     let init_entry_states = run_fixpoint(&ctx, func, body);
-    let loan_entry_states = lifetime::run(body);
 
     for block in &body.blocks {
         let Some(init_entry) = init_entry_states.get(&block.label) else {
             continue;
         };
-        let Some(loan_entry) = loan_entry_states.get(&block.label) else {
-            continue;
-        };
         let mut state = init_entry.clone();
-        let mut loans = loan_entry.clone();
-        ctx.check_block(func, block, &mut state, &mut loans, d);
+        ctx.check_block(func, block, &mut state, d);
     }
 }
 
@@ -813,13 +809,12 @@ impl<'a> Ctx<'a> {
         func: &Function,
         block: &BasicBlock,
         state: &mut PointState,
-        loans: &mut LoanMap,
         d: &mut Diagnostics,
     ) {
         for (stmt, span) in &block.statements {
-            self.check_and_transfer_stmt(func, block, stmt, *span, state, loans, d);
+            self.check_and_transfer_stmt(func, block, stmt, *span, state, d);
         }
-        self.check_and_transfer_terminator(func, block, state, loans, d);
+        self.check_and_transfer_terminator(func, block, state, d);
     }
 
     /// Combined check + transfer. Operands are consumed left-to-right so that a
@@ -833,41 +828,21 @@ impl<'a> Ctx<'a> {
         stmt: &Statement,
         span: Span,
         state: &mut PointState,
-        loans: &mut LoanMap,
         d: &mut Diagnostics,
     ) {
         match stmt {
             Statement::Assign(target, rvalue) => {
-                // Capture ref/loan state to transfer via `move src` BEFORE
-                // eval_rvalue runs (which clears the source entries).
-                let move_source = ref_move_source(target, rvalue);
-                let carried_refs = move_source
-                    .as_ref()
-                    .and_then(|src| state.refs.get(src).copied());
-                let carried_loan = move_source.as_ref().and_then(|src| loans.get(src).cloned());
+                // Capture ref state to transfer via `move src` BEFORE
+                // eval_rvalue runs (which clears the source entry).
+                let carried_refs = ref_move_source(target, rvalue)
+                    .and_then(|src| state.refs.get(&src).copied());
 
-                self.eval_rvalue(func, block, rvalue, span, state, loans, d);
+                self.eval_rvalue(func, block, rvalue, span, state, d);
                 self.check_lhs_downcast(func, block, target, span, state, d);
-
-                // Writing to a place while it's borrowed conflicts with
-                // the outstanding loan.
-                lifetime::check_loan_conflict(
-                    func,
-                    block,
-                    target,
-                    AccessKind::Write,
-                    span,
-                    loans,
-                    d,
-                );
 
                 // Overwriting a bound ref var is a silent-forget of the
                 // pointee obligation; error unless already fulfilled.
                 self.close_ref_if_present(func, block, target, span, state, d);
-                // Overwriting the borrower clears its loan too.
-                if let Place::Var(name) = target {
-                    loans.shift_remove(name);
-                }
 
                 // Deref-write: transition the ref's pointee state through *r.
                 if matches!(target, Place::Deref(_)) {
@@ -880,33 +855,24 @@ impl<'a> Ctx<'a> {
                 } else {
                     self.apply_write(target, state, InitState::Init);
                     // Borrow creation: attach the initial ref state and
-                    // record the loan (skipped RefState for shared — no
-                    // obligation — but loans track all kinds).
+                    // apply the eager pointee transition (safe because
+                    // lifetime blocks direct access until the loan ends).
                     if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
                         if let Some(rs) = RefState::from_kind(kind) {
                             state.refs.insert(name.clone(), rs);
                         }
-                        loans.insert(
-                            name.clone(),
-                            Loan::single(kind.clone(), place.clone(), span),
-                        );
                         self.apply_eager_borrow_transition(kind, place, state);
                     }
-                    // Ref/loan transfer via `dst = move src`.
-                    if let Place::Var(dst) = target {
-                        if let Some(rs) = carried_refs {
-                            state.refs.insert(dst.clone(), rs);
-                        }
-                        if let Some(l) = carried_loan {
-                            loans.insert(dst.clone(), l);
-                        }
+                    // Ref-state transfer via `dst = move src`.
+                    if let (Place::Var(dst), Some(rs)) = (target, carried_refs) {
+                        state.refs.insert(dst.clone(), rs);
                     }
                 }
             }
             Statement::Call(target, args) => {
-                self.eval_operand(func, block, target, span, state, loans, d);
+                self.eval_operand(func, block, target, span, state, d);
                 for a in args {
-                    self.eval_operand(func, block, a, span, state, loans, d);
+                    self.eval_operand(func, block, a, span, state, d);
                 }
             }
             Statement::Drop(place) => {
@@ -915,11 +881,7 @@ impl<'a> Ctx<'a> {
                 // one that will require the type to be Drop. For a ref-typed
                 // Var, also verify the pointee obligation before forgetting.
                 self.check_place_read(func, block, place, span, state, d);
-                lifetime::check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
                 self.close_ref_if_present(func, block, place, span, state, d);
-                if let Place::Var(name) = place {
-                    loans.shift_remove(name);
-                }
                 // `drop *r` — consume the pointee, transition r's is_init.
                 self.apply_deref_op(place, DerefOp::Move, state, Some((func, block, span, d)));
                 self.apply_move(place, state);
@@ -930,9 +892,6 @@ impl<'a> Ctx<'a> {
                 // checked by close_ref_if_present. Then consume the borrower.
                 self.check_place_read(func, block, place, span, state, d);
                 self.close_ref_if_present(func, block, place, span, state, d);
-                if let Place::Var(name) = place {
-                    loans.shift_remove(name);
-                }
                 self.apply_move(place, state);
             }
         }
@@ -943,18 +902,16 @@ impl<'a> Ctx<'a> {
         func: &Function,
         block: &BasicBlock,
         state: &mut PointState,
-        loans: &mut LoanMap,
         d: &mut Diagnostics,
     ) {
         let ts = block.terminator_span;
         match &block.terminator {
             Terminator::Branch { cond, .. } => {
-                self.eval_operand(func, block, cond, ts, state, loans, d)
+                self.eval_operand(func, block, cond, ts, state, d)
             }
             Terminator::SwitchEnum { place, .. } => {
                 // Discriminant read: no move, no consumption.
                 self.check_place_read(func, block, place, ts, state, d);
-                lifetime::check_loan_conflict(func, block, place, AccessKind::Read, ts, loans, d);
             }
             _ => {}
         }
@@ -967,24 +924,14 @@ impl<'a> Ctx<'a> {
         rv: &RValue,
         span: Span,
         state: &mut PointState,
-        loans: &mut LoanMap,
         d: &mut Diagnostics,
     ) {
         match rv {
             RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
-                self.eval_operand(func, block, op, span, state, loans, d);
+                self.eval_operand(func, block, op, span, state, d);
             }
             RValue::Ref(kind, place) => {
                 self.check_borrow_precondition(func, block, kind, place, span, state, d);
-                lifetime::check_loan_conflict(
-                    func,
-                    block,
-                    place,
-                    AccessKind::Borrow(kind.clone()),
-                    span,
-                    loans,
-                    d,
-                );
             }
         }
     }
@@ -1092,10 +1039,9 @@ impl<'a> Ctx<'a> {
         op: &Operand,
         span: Span,
         state: &mut PointState,
-        loans: &mut LoanMap,
         d: &mut Diagnostics,
     ) {
-        self.check_operand_read(func, block, op, span, state, loans, d);
+        self.check_operand_read(func, block, op, span, state, d);
         // Deref-op transitions for *r in operand position.
         match op {
             Operand::Copy(place) => {
@@ -1107,9 +1053,6 @@ impl<'a> Ctx<'a> {
             Operand::Const(_) => {}
         }
         self.apply_operand_move(op, state);
-        // Advance the shadow LoanMap in lockstep: a whole-var Move of a
-        // borrower consumes its loan here.
-        lifetime::consume_operand(loans, op);
     }
 
     fn check_operand_read(
@@ -1119,16 +1062,13 @@ impl<'a> Ctx<'a> {
         op: &Operand,
         span: Span,
         state: &PointState,
-        loans: &LoanMap,
         d: &mut Diagnostics,
     ) {
-        let (place, access) = match op {
-            Operand::Copy(p) => (p, AccessKind::Read),
-            Operand::Move(p) => (p, AccessKind::Move),
+        let place = match op {
+            Operand::Copy(p) | Operand::Move(p) => p,
             Operand::Const(_) => return,
         };
         self.check_place_read(func, block, place, span, state, d);
-        lifetime::check_loan_conflict(func, block, place, access, span, loans, d);
     }
 
     /// If the LHS path contains a `Downcast`, the enum being downcast must be

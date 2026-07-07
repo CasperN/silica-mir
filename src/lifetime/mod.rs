@@ -28,6 +28,7 @@ use crate::ast::*;
 use crate::dataflow::{self, Analysis, Direction, Results};
 use crate::diagnostics::Diagnostics;
 use crate::push_error;
+use crate::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -313,6 +314,130 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
 /// `LoanMap`.
 pub fn run(body: &FunctionBody) -> Results<LoanMap> {
     dataflow::run(&LoanAnalysis, body)
+}
+
+// ---------- Check pass ----------
+
+/// Verify per-statement access against the active loan set. Emits
+/// "already borrowed by" diagnostics on conflicts. Runs the LoanAnalysis
+/// fixpoint, then walks each block re-applying the transfer in lockstep
+/// with per-access checks.
+///
+/// Independent of `init_state`: this pass sees a program purely as
+/// borrows and accesses, without regard to the ref kind's init obligation.
+pub fn check_program(env: &Env, d: &mut Diagnostics) {
+    for f in env.functions.values() {
+        check_function(f, d);
+    }
+}
+
+fn check_function(func: &Function, d: &mut Diagnostics) {
+    let Some(body) = &func.body else {
+        return;
+    };
+    if body.blocks.is_empty() {
+        return;
+    }
+    let entry_states = run(body);
+    for block in &body.blocks {
+        let Some(entry) = entry_states.get(&block.label) else {
+            continue;
+        };
+        let mut loans = entry.clone();
+        for (stmt, span) in &block.statements {
+            check_and_transfer_stmt(func, block, stmt, *span, &mut loans, d);
+        }
+        check_and_transfer_terminator(func, block, &mut loans, d);
+    }
+}
+
+/// Check accesses in `stmt` against `loans`, then advance `loans` via
+/// `transfer_stmt`. `Call` is handled inline (not via `transfer_stmt`)
+/// so operand-by-operand consumption sees prior operands' releases —
+/// e.g. `call f(move r, copy y)` where `y` is loaned by `r` must pass.
+fn check_and_transfer_stmt(
+    func: &Function,
+    block: &BasicBlock,
+    stmt: &Statement,
+    span: Span,
+    loans: &mut LoanMap,
+    d: &mut Diagnostics,
+) {
+    match stmt {
+        Statement::Assign(target, rvalue) => {
+            match rvalue {
+                RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+                    check_operand_access(func, block, op, span, loans, d);
+                }
+                RValue::Ref(kind, place) => {
+                    check_loan_conflict(
+                        func,
+                        block,
+                        place,
+                        AccessKind::Borrow(kind.clone()),
+                        span,
+                        loans,
+                        d,
+                    );
+                }
+            }
+            check_loan_conflict(func, block, target, AccessKind::Write, span, loans, d);
+            transfer_stmt(loans, stmt);
+        }
+        Statement::Call(target, args) => {
+            check_operand_access(func, block, target, span, loans, d);
+            consume_operand(loans, target);
+            for a in args {
+                check_operand_access(func, block, a, span, loans, d);
+                consume_operand(loans, a);
+            }
+        }
+        Statement::Drop(place) => {
+            check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
+            transfer_stmt(loans, stmt);
+        }
+        Statement::Unborrow(_) => {
+            // Consumes the borrower Var; no access check on the borrower
+            // itself (its own loan is skipped in check_loan_conflict).
+            transfer_stmt(loans, stmt);
+        }
+    }
+}
+
+fn check_and_transfer_terminator(
+    func: &Function,
+    block: &BasicBlock,
+    loans: &mut LoanMap,
+    d: &mut Diagnostics,
+) {
+    let ts = block.terminator_span;
+    match &block.terminator {
+        Terminator::Branch { cond, .. } => {
+            check_operand_access(func, block, cond, ts, loans, d);
+            consume_operand(loans, cond);
+        }
+        Terminator::SwitchEnum { place, .. } => {
+            // Discriminant read.
+            check_loan_conflict(func, block, place, AccessKind::Read, ts, loans, d);
+        }
+        _ => {}
+    }
+}
+
+fn check_operand_access(
+    func: &Function,
+    block: &BasicBlock,
+    op: &Operand,
+    span: Span,
+    loans: &LoanMap,
+    d: &mut Diagnostics,
+) {
+    let (place, access) = match op {
+        Operand::Copy(p) => (p, AccessKind::Read),
+        Operand::Move(p) => (p, AccessKind::Move),
+        Operand::Const(_) => return,
+    };
+    check_loan_conflict(func, block, place, access, span, loans, d);
 }
 
 #[cfg(test)]
