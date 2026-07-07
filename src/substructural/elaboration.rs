@@ -105,7 +105,7 @@ fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env) -> Vec<P
         // Refs with unfulfilled obligations must NOT be dropped: doing so
         // would silently violate their (cur, post). Skip; the leak check
         // will surface the missing consumption.
-        if let Some(rs) = state.refs.get(name) {
+        if let Some(rs) = state.refs.get(&Place::Var(name.clone())) {
             if !rs.obligation_fulfilled() {
                 continue;
             }

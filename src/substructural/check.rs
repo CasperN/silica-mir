@@ -161,9 +161,12 @@ fn check_leaks_in_state(
             continue;
         };
         // Reference-typed vars: their expiry rule is (cur, post) checked
-        // separately below. Skip the linear-leak scan to avoid double
-        // reporting.
-        if state.refs.contains_key(var) {
+        // separately below. Skip the linear-leak scan on the whole Var
+        // if the Var itself is bound as a ref. (Ref-typed *fields* of a
+        // struct are handled via the leak walk descending into fields;
+        // Phase 2/4 will refine this to also inspect state.refs for
+        // sub-paths.)
+        if state.refs.contains_key(&Place::Var(var.clone())) {
             continue;
         }
         let mut path = vec![var.clone()];
@@ -182,21 +185,39 @@ fn check_leaks_in_state(
         }
     }
 
-    // Reference obligations: any ref var whose is_init != ends_init at
-    // return leaks — the loan wasn't discharged.
-    for (var, rs) in &state.refs {
+    // Reference obligations: any ref-typed path whose is_init != ends_init
+    // at return leaks — the loan wasn't discharged.
+    for (place, rs) in &state.refs {
         if rs.obligation_fulfilled() {
             continue;
         }
-        let Some(ty) = locals.get(var) else {
-            continue;
-        };
         push_error!(
             d, block.terminator_span, func, block,
-            "reference '{}' of type {:?} has unfulfilled obligation at return (is_init={}, ends_init={})",
-            var, ty, rs.is_init, rs.ends_init
+            "reference '{}' has unfulfilled obligation at return (is_init={}, ends_init={})",
+            format_place_for_diag(place), rs.is_init, rs.ends_init
         );
     }
+}
+
+fn format_place_for_diag(place: &Place) -> String {
+    // Owned-path formatting — matches init_state::format_owned but
+    // duplicated here to avoid a public export.
+    let (root, path) = crate::ast::extract_path(place).expect("owned-path invariant");
+    let mut s = root;
+    for step in &path {
+        match step {
+            PathStep::Field(f) => {
+                s.push('.');
+                s.push_str(f);
+            }
+            PathStep::Downcast(v) => {
+                s.push_str(" as ");
+                s.push_str(v);
+            }
+            PathStep::Deref => unreachable!("owned-path invariant"),
+        }
+    }
+    s
 }
 
 /// Walk the init state in lockstep with its type, reporting every non-

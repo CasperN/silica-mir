@@ -39,7 +39,7 @@ pub enum Type {
     Ref(RefKind, Box<Type>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
     Var(String),
     Field(Box<Place>, String),
@@ -81,6 +81,51 @@ pub fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
                 cur = inner;
             }
             Place::Deref(_) => return None,
+        }
+    }
+}
+
+/// True if `place` is an *owned path* — a chain of Field/Downcast steps
+/// rooted in a Var, no Deref. Used as an invariant on RefState/loan
+/// keys: a reference physically lives in a place we can name (a local,
+/// or a nested field of a local).
+pub fn is_owned_path(place: &Place) -> bool {
+    match place {
+        Place::Var(_) => true,
+        Place::Field(inner, _) | Place::Downcast(inner, _) => is_owned_path(inner),
+        Place::Deref(_) => false,
+    }
+}
+
+/// If `place` is an owned path (no Deref anywhere), return it as an
+/// owned Place clone. Used to canonicalize the LHS of a borrow assign
+/// or an ancestor path when cascading through consumption.
+pub fn as_owned_path(place: &Place) -> Option<Place> {
+    if is_owned_path(place) {
+        Some(place.clone())
+    } else {
+        None
+    }
+}
+
+/// Iterate all owned-path prefixes of `place`, longest first. If
+/// `place` is `b.p.q`, yields `b.p.q`, `b.p`, `b`. If `place` contains
+/// a `Deref` anywhere, stops at the innermost Deref boundary — the
+/// prefixes above the Deref aren't owned paths in the local frame.
+pub fn owned_path_prefixes(place: &Place) -> Vec<Place> {
+    let mut out = Vec::new();
+    let mut cur = place.clone();
+    loop {
+        if !is_owned_path(&cur) {
+            return out;
+        }
+        out.push(cur.clone());
+        match cur {
+            Place::Var(_) => return out,
+            Place::Field(inner, _) | Place::Downcast(inner, _) => {
+                cur = *inner;
+            }
+            Place::Deref(_) => unreachable!("filtered above"),
         }
     }
 }

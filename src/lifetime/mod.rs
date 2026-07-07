@@ -57,8 +57,12 @@ impl Loan {
     }
 }
 
-/// Map from borrower Var name to its active loan.
-pub type LoanMap = IndexMap<String, Loan>;
+/// Map from borrower *place* to its active loan. The key is an owned
+/// path in the local frame — a `Place` with no `Deref` steps — since
+/// a ref only rests in a place we can name (`x`, `b.p`, `e as V`).
+/// Values in ref-typed struct fields are first-class borrowers so
+/// `b.p = &mut x` produces an entry keyed on `b.p`, not `b`.
+pub type LoanMap = IndexMap<Place, Loan>;
 
 /// How a place is being accessed. Used to classify conflicts against
 /// active loans.
@@ -172,17 +176,15 @@ pub fn check_loan_conflict(
 ) {
     let (access_root, access_path) = extract_path_with_deref(place);
 
-    for (borrower, loan) in loans {
-        // Ignore the borrower itself — its ref state is a separate slot.
-        if *borrower == access_root && access_path.is_empty() {
-            // e.g. `move r` where r is a borrower: consuming the ref,
-            // not accessing the loaned place. Not a conflict here (the
-            // consumption is handled by close_ref_if_present). A path
-            // like `*r` or `r.field` — same root but nonempty path —
-            // still has to be checked, because a reborrow of `*r` shows
-            // up as loan borrower=s, loaned=*r; but a *self*-loan (r
-            // borrowing something and then r appearing bare) is handled
-            // by the borrower==root case above.
+    for (borrower_place, loan) in loans {
+        // Ignore the borrower itself. Consumption of the borrower's own
+        // storage (`move r`, `move b.p`) doesn't conflict with the loan
+        // it holds — that's handled by close_ref_if_present. But an
+        // *ancestor* consumption (`move b` when `b.p` holds a loan)
+        // still needs to fire on `b.p`'s loan, so this skip only fires
+        // when the access is exactly the borrower place.
+        let (borrower_root, borrower_path) = extract_path_with_deref(borrower_place);
+        if borrower_root == access_root && borrower_path == access_path {
             continue;
         }
         if is_compatible(&loan.kind, &access) {
@@ -206,11 +208,18 @@ pub fn check_loan_conflict(
                 "cannot {} '{}': already borrowed by '{}'",
                 access.describe(),
                 format_path(&access_root, &access_path),
-                borrower
+                format_borrower(borrower_place),
             );
             break;
         }
     }
+}
+
+/// Pretty-print a borrower place for diagnostics. `Var(x)` becomes `x`,
+/// deeper paths use `format_path` for consistency.
+fn format_borrower(place: &Place) -> String {
+    let (root, path) = extract_path_with_deref(place);
+    format_path(&root, &path)
 }
 
 /// Join two `LoanMap`s. Same-borrower entries merge by unioning their
@@ -220,12 +229,12 @@ pub fn check_loan_conflict(
 /// somehow occurs.
 pub fn join_loans(a: &LoanMap, b: &LoanMap) -> LoanMap {
     let mut out = LoanMap::new();
-    for (name, la) in a {
-        if let Some(lb) = b.get(name) {
+    for (place, la) in a {
+        if let Some(lb) = b.get(place) {
             if la.kind == lb.kind {
                 let mut merged = la.clone();
                 merged.loaned.extend(lb.loaned.iter().cloned());
-                out.insert(name.clone(), merged);
+                out.insert(place.clone(), merged);
             }
         }
     }
@@ -234,14 +243,46 @@ pub fn join_loans(a: &LoanMap, b: &LoanMap) -> LoanMap {
 
 // ---------- Dataflow ----------
 
-/// If `op` is `move` of a whole borrower Var, remove its loan. Used by
-/// both the fixpoint transfer and the diagnostic walk in `init_state`
-/// (which needs to advance a shadow `LoanMap` in lockstep with its own
-/// per-operand checks).
+/// If `op` is a `move` of an owned path, remove any loan whose borrower
+/// place *is* that path or lies underneath it. An ancestor move
+/// (`move b`) cascades to close every ref-typed field's loan
+/// (`b.p`, `b.q`, ...).
 pub fn consume_operand(loans: &mut LoanMap, op: &Operand) {
-    if let Operand::Move(Place::Var(name)) = op {
-        loans.shift_remove(name);
+    if let Operand::Move(place) = op {
+        if let Some(consumed) = as_owned_path(place) {
+            close_loans_under(loans, &consumed);
+        }
     }
+}
+
+fn close_loans_under(loans: &mut LoanMap, consumed: &Place) {
+    let victims: Vec<Place> = loans
+        .keys()
+        .filter(|k| is_prefix_of(consumed, k))
+        .cloned()
+        .collect();
+    for v in victims {
+        loans.shift_remove(&v);
+    }
+}
+
+/// True if `ancestor` is `descendant` or an owned-path prefix of it.
+/// Both are assumed to be owned paths (no Deref).
+fn is_prefix_of(ancestor: &Place, descendant: &Place) -> bool {
+    let (ar, ap) = extract_path_with_deref(ancestor);
+    let (dr, dp) = extract_path_with_deref(descendant);
+    if ar != dr {
+        return false;
+    }
+    if ap.len() > dp.len() {
+        return false;
+    }
+    ap.iter().zip(dp.iter()).all(|(a, b)| match (a, b) {
+        (PathStep::Field(x), PathStep::Field(y)) => x == y,
+        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
+        (PathStep::Deref, PathStep::Deref) => true,
+        _ => false,
+    })
 }
 
 fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
@@ -251,17 +292,19 @@ fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     }
 }
 
-/// If the assign is `dst_var = move src_var`, returns `src_var`. The
-/// same pattern is recognized on the init side (transferring `RefState`);
-/// here it tells us to move the loan from src to dst.
-fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<String> {
-    let Place::Var(_) = target else {
+/// If the assign is `dst_place = move src_place` and both sides are
+/// owned paths, returns `src_place`. This is the pattern where a
+/// reference's ref-state and loan should transfer from src to dst
+/// instead of being lost. Handles `x = move y`, `b.p = move t`,
+/// `t = move b.p`, etc.
+fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<Place> {
+    if !is_owned_path(target) {
+        return None;
+    }
+    let RValue::Use(Operand::Move(src)) = rvalue else {
         return None;
     };
-    let RValue::Use(Operand::Move(Place::Var(src))) = rvalue else {
-        return None;
-    };
-    Some(src.clone())
+    as_owned_path(src)
 }
 
 /// Forward dataflow analysis over `LoanMap`. Runs independently of the
@@ -299,17 +342,18 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
             let carried = ref_move_source(target, rvalue).and_then(|src| loans.get(&src).cloned());
 
             consume_rvalue(loans, rvalue);
-            if let Place::Var(name) = target {
-                loans.shift_remove(name);
+            if let Some(t) = as_owned_path(target) {
+                // Overwriting the target closes its previous loan.
+                loans.shift_remove(&t);
             }
-            if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
+            if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                 loans.insert(
-                    name.clone(),
+                    t,
                     Loan::single(kind.clone(), place.clone(), Span { line: 0, col: 0 }),
                 );
             }
-            if let (Place::Var(dst), Some(loan)) = (target, carried) {
-                loans.insert(dst.clone(), loan);
+            if let (Some(dst), Some(loan)) = (as_owned_path(target), carried) {
+                loans.insert(dst, loan);
             }
         }
         Statement::Call(target, args) => {
@@ -319,11 +363,12 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
             }
         }
         Statement::Drop(place) | Statement::Unborrow(place) => {
-            // Whole-var consume of a borrower ends its loan. `drop *r`
-            // consumes the pointee, not the borrower — the borrower
-            // path passes through Deref, which we don't match here.
-            if let Place::Var(name) = place {
-                loans.shift_remove(name);
+            // Consume of a borrower place ends its loan (and any
+            // ref-field loans it holds). `drop *r` consumes the pointee,
+            // not the borrower; the borrower path passes through Deref
+            // and won't match as_owned_path.
+            if let Some(consumed) = as_owned_path(place) {
+                close_loans_under(loans, &consumed);
             }
         }
     }

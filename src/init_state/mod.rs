@@ -88,9 +88,11 @@ impl RefState {
 ///
 /// - `locals`: init state per root Var, potentially projecting through
 ///   struct fields and enum downcasts.
-/// - `refs`: the (is_init, ends_init) obligation for each ref-typed Var
-///   that is currently `Init`. Absent when the ref var is not Init, is
-///   shared, or has been consumed.
+/// - `refs`: the (is_init, ends_init) obligation for each ref-typed
+///   *owned path* that is currently `Init`. A place can be a Var
+///   (`r`), a struct field (`b.p`), or a downcast (`e as V`) — anything
+///   we can name in the local frame. Absent when the ref place is not
+///   Init, is shared, or has been consumed.
 ///
 /// Loans are tracked entirely by `lifetime::check_program`, an
 /// independent pass. This pass never looks at the loan set — it trusts
@@ -100,7 +102,7 @@ impl RefState {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct PointState {
     pub locals: IndexMap<String, InitState>,
-    pub refs: IndexMap<String, RefState>,
+    pub refs: IndexMap<Place, RefState>,
 }
 
 struct Ctx<'a> {
@@ -227,11 +229,11 @@ fn join_point(a: &PointState, b: &PointState) -> PointState {
     // Refs: keep only entries that agree exactly on both sides. Disagreement
     // is treated as "not currently bound" for the joined point — subsequent
     // uses will see no ref state and behave conservatively.
-    let mut refs: IndexMap<String, RefState> = IndexMap::new();
-    for (name, ra) in &a.refs {
-        if let Some(rb) = b.refs.get(name) {
+    let mut refs: IndexMap<Place, RefState> = IndexMap::new();
+    for (place, ra) in &a.refs {
+        if let Some(rb) = b.refs.get(place) {
             if ra == rb {
-                refs.insert(name.clone(), *ra);
+                refs.insert(place.clone(), *ra);
             }
         }
     }
@@ -427,7 +429,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
         // entry we know their pointee is in the kind's creation-cur.
         if let Type::Ref(kind, _) = &p.ty {
             if let Some(rs) = RefState::from_kind(kind) {
-                s.refs.insert(p.name.clone(), rs);
+                s.refs.insert(Place::Var(p.name.clone()), rs);
             }
         }
     }
@@ -501,21 +503,24 @@ impl<'a> Ctx<'a> {
                     ref_move_source(target, rvalue).and_then(|src| state.refs.get(&src).copied());
 
                 self.apply_rvalue_moves(rvalue, state);
-                if let Place::Var(name) = target {
-                    state.refs.shift_remove(name);
+                if let Some(t) = as_owned_path(target) {
+                    // Overwriting the target closes any prior ref-state
+                    // on it (and on any descendants, for an ancestor
+                    // overwrite like `b = ...`).
+                    close_refs_under(state, &t);
                 }
                 if matches!(target, Place::Deref(_)) {
                     self.apply_deref_op(target, DerefOp::Write, state, None);
                 } else {
                     self.apply_write(target, state, InitState::Init);
-                    if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
+                    if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                         if let Some(rs) = RefState::from_kind(kind) {
-                            state.refs.insert(name.clone(), rs);
+                            state.refs.insert(t, rs);
                         }
                         self.apply_eager_borrow_transition(kind, place, state);
                     }
-                    if let (Place::Var(dst), Some(rs)) = (target, carried_refs) {
-                        state.refs.insert(dst.clone(), rs);
+                    if let (Some(dst), Some(rs)) = (as_owned_path(target), carried_refs) {
+                        state.refs.insert(dst, rs);
                     }
                 }
             }
@@ -526,8 +531,8 @@ impl<'a> Ctx<'a> {
                 }
             }
             Statement::Drop(place) => {
-                if let Place::Var(name) = place {
-                    state.refs.shift_remove(name);
+                if let Some(consumed) = as_owned_path(place) {
+                    close_refs_under(state, &consumed);
                 }
                 // `drop *r` — consume the pointee, transition r's is_init.
                 self.apply_deref_op(place, DerefOp::Move, state, None);
@@ -537,8 +542,8 @@ impl<'a> Ctx<'a> {
                 // Silent side of `unborrow r`: consume the borrower's ref
                 // entry. Obligation checks happen in the diagnostic pass;
                 // loan removal is handled by lifetime.
-                if let Place::Var(name) = place {
-                    state.refs.shift_remove(name);
+                if let Some(consumed) = as_owned_path(place) {
+                    close_refs_under(state, &consumed);
                 }
                 self.apply_move(place, state);
             }
@@ -594,14 +599,60 @@ impl<'a> Ctx<'a> {
             .entry(root.clone())
             .or_insert(InitState::NeverInit);
         move_at(root_state, &root_ty, &path, self.env);
-        // Whole-var move of an exclusive reference: drop the ref entry
-        // here (loans are handled by lifetime). No obligation check —
-        // that'd double-count if the callee's signature enforces its
-        // own.
-        if path.is_empty() {
-            state.refs.shift_remove(&root);
+        // Move of a borrower place: drop its ref entry, and cascade
+        // through any ref-typed descendants (an ancestor move like
+        // `move b` closes all `b.p`, `b.q`, ...). Loans are handled by
+        // lifetime; no obligation check here — that'd double-count if
+        // the callee's signature enforces its own.
+        if let Some(consumed) = as_owned_path(place) {
+            close_refs_under(state, &consumed);
         }
     }
+}
+
+/// Remove all ref-state entries at `consumed` or any owned descendant.
+/// Called at every consumption/overwrite site so an ancestor consume
+/// cascades to all ref-typed fields it holds.
+fn close_refs_under(state: &mut PointState, consumed: &Place) {
+    let victims: Vec<Place> = state
+        .refs
+        .keys()
+        .filter(|k| is_owned_ancestor_or_self(consumed, k))
+        .cloned()
+        .collect();
+    for v in victims {
+        state.refs.shift_remove(&v);
+    }
+}
+
+/// True if `ancestor` is `descendant` or an owned-path prefix of it.
+/// Both are assumed to be owned paths (no Deref).
+fn is_owned_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
+    let (ar, ap) = extract_path_owned(ancestor);
+    let (dr, dp) = extract_path_owned(descendant);
+    if ar != dr {
+        return false;
+    }
+    if ap.len() > dp.len() {
+        return false;
+    }
+    ap.iter()
+        .zip(dp.iter())
+        .all(|(a, b)| owned_step_eq(a, b))
+}
+
+fn owned_step_eq(a: &PathStep, b: &PathStep) -> bool {
+    match (a, b) {
+        (PathStep::Field(x), PathStep::Field(y)) => x == y,
+        (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
+        _ => false,
+    }
+}
+
+/// Like `extract_path`, but assumes the place is owned (no Deref) and
+/// unwraps directly. Panics on Deref — call only on owned paths.
+fn extract_path_owned(place: &Place) -> (String, Vec<PathStep>) {
+    extract_path(place).expect("owned-path invariant violated")
 }
 
 /// Which kind of dereference operation is being performed. Distinguishes
@@ -637,15 +688,19 @@ impl<'a> Ctx<'a> {
         let Place::Deref(inner) = place else {
             return;
         };
-        let Place::Var(name) = &**inner else {
+        // The reference lives at `*inner`. We look up its RefState by
+        // `inner` treated as an owned path.
+        let Some(inner_place) = as_owned_path(inner) else {
             return;
         };
-        let Some(root_ty) = self.locals.get(name) else {
+        let Some(inner_ty) = self.infer_ref_place_type(&inner_place) else {
             return;
         };
-        let Type::Ref(kind, _) = root_ty else {
+        let Type::Ref(kind, _) = inner_ty else {
             return;
         };
+
+        let name_str = format_owned(&inner_place);
 
         if matches!(kind, RefKind::Shared) {
             if !matches!(op, DerefOp::Read) {
@@ -656,14 +711,14 @@ impl<'a> Ctx<'a> {
                         func,
                         block,
                         "cannot mutate through shared reference '{}'",
-                        name
+                        name_str
                     );
                 }
             }
             return;
         }
 
-        let Some(rs) = state.refs.get(name).copied() else {
+        let Some(rs) = state.refs.get(&inner_place).copied() else {
             if let Some((func, block, span, d)) = report {
                 push_error!(
                     d,
@@ -671,7 +726,7 @@ impl<'a> Ctx<'a> {
                     func,
                     block,
                     "cannot dereference '{}': reference state is unknown here",
-                    name
+                    name_str
                 );
             }
             return;
@@ -705,7 +760,7 @@ impl<'a> Ctx<'a> {
                     block,
                     "cannot {} pointee of '{}': pointee must be {} here, but is {}",
                     action,
-                    name,
+                    name_str,
                     expected,
                     actual
                 );
@@ -720,13 +775,58 @@ impl<'a> Ctx<'a> {
             DerefOp::Write => true,
         };
         state.refs.insert(
-            name.clone(),
+            inner_place,
             RefState {
                 is_init: new_is_init,
                 ends_init: rs.ends_init,
             },
         );
     }
+
+    /// Infer the type of an owned-path place by walking the ctx's
+    /// locals map for the root and projecting through fields/downcasts.
+    /// Returns `None` if the place isn't a valid owned path or the
+    /// projection doesn't resolve.
+    fn infer_ref_place_type(&self, place: &Place) -> Option<Type> {
+        let (root, path) = extract_path(place)?;
+        let mut ty = self.locals.get(&root)?.clone();
+        for step in &path {
+            match step {
+                PathStep::Field(f) => {
+                    let fields = struct_fields_of(&ty, self.env)?;
+                    ty = fields.iter().find(|fd| fd.name == *f)?.ty.clone();
+                }
+                PathStep::Downcast(v) => {
+                    ty = enum_variant_payload_ty(&ty, v, self.env)?;
+                }
+                PathStep::Deref => return None,
+            }
+        }
+        Some(ty)
+    }
+}
+
+/// Format an owned path for diagnostics: `x`, `b.p`, `e as V`.
+fn format_owned(place: &Place) -> String {
+    let (root, path) = extract_path(place).expect("owned-path invariant");
+    let mut s = root;
+    for step in &path {
+        match step {
+            PathStep::Field(f) => {
+                s.push('.');
+                s.push_str(f);
+            }
+            PathStep::Downcast(v) => {
+                s.push_str(" as ");
+                s.push_str(v);
+            }
+            PathStep::Deref => unreachable!("owned-path invariant"),
+        }
+    }
+    s
+}
+
+impl<'a> Ctx<'a> {
 
     /// If `place` is a whole-var ref binding with an outstanding obligation
     /// (`refs[name]` exists), verify its obligation is fulfilled and remove
@@ -741,25 +841,33 @@ impl<'a> Ctx<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let Place::Var(name) = place else {
+        let Some(owned) = as_owned_path(place) else {
             return;
         };
-        let Some(rs) = state.refs.get(name).copied() else {
-            return;
-        };
-        if !rs.obligation_fulfilled() {
-            push_error!(
-                d,
-                span,
-                func,
-                block,
-                "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
-                name,
-                rs.is_init,
-                rs.ends_init
-            );
+        // Cascade: closing/overwriting an ancestor implicitly forgets
+        // every descendant ref. Each victim's obligation is checked.
+        let victims: Vec<Place> = state
+            .refs
+            .keys()
+            .filter(|k| is_owned_ancestor_or_self(&owned, k))
+            .cloned()
+            .collect();
+        for v in victims {
+            let rs = state.refs[&v];
+            if !rs.obligation_fulfilled() {
+                push_error!(
+                    d,
+                    span,
+                    func,
+                    block,
+                    "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
+                    format_owned(&v),
+                    rs.is_init,
+                    rs.ends_init
+                );
+            }
+            state.refs.shift_remove(&v);
         }
-        state.refs.shift_remove(name);
     }
 }
 
@@ -795,7 +903,7 @@ impl<'a> Ctx<'a> {
         let Some(leaf) = loan_post_leaf(kind) else {
             return;
         };
-        if let Some(parent) = simple_deref_target(place) {
+        if let Some(parent) = deref_target(place) {
             if let Some(rs) = state.refs.get_mut(&parent) {
                 rs.is_init = matches!(leaf, InitState::Init);
             }
@@ -805,28 +913,27 @@ impl<'a> Ctx<'a> {
     }
 }
 
-/// If `place` is `Deref(Var(r))` — a bare `*r` — return `r`. Deeper
-/// paths like `(*r).field` are out of scope for this slice.
-fn simple_deref_target(place: &Place) -> Option<String> {
-    if let Place::Deref(inner) = place {
-        if let Place::Var(name) = inner.as_ref() {
-            return Some(name.clone());
-        }
-    }
-    None
+/// If `place` is `Deref(inner)` where `inner` is an owned path,
+/// return that inner path. This is where the borrowed reference
+/// lives (e.g. `*r` → `r`; `*b.p` → `b.p`).
+fn deref_target(place: &Place) -> Option<Place> {
+    let Place::Deref(inner) = place else {
+        return None;
+    };
+    as_owned_path(inner)
 }
 
 /// If the assign is `dst_var = move src_var`, returns `src_var`. This is
 /// the pattern where a reference's ref-state and loan should transfer
 /// from src to dst instead of being lost.
-fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<String> {
-    let Place::Var(_) = target else {
+fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<Place> {
+    if !is_owned_path(target) {
+        return None;
+    }
+    let RValue::Use(Operand::Move(src)) = rvalue else {
         return None;
     };
-    let RValue::Use(Operand::Move(Place::Var(src))) = rvalue else {
-        return None;
-    };
-    Some(src.clone())
+    as_owned_path(src)
 }
 
 // ---------- Diagnostic pass ----------
@@ -885,15 +992,15 @@ impl<'a> Ctx<'a> {
                     // Borrow creation: attach the initial ref state and
                     // apply the eager pointee transition (safe because
                     // lifetime blocks direct access until the loan ends).
-                    if let (Place::Var(name), RValue::Ref(kind, place)) = (target, rvalue) {
+                    if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                         if let Some(rs) = RefState::from_kind(kind) {
-                            state.refs.insert(name.clone(), rs);
+                            state.refs.insert(t, rs);
                         }
                         self.apply_eager_borrow_transition(kind, place, state);
                     }
                     // Ref-state transfer via `dst = move src`.
-                    if let (Place::Var(dst), Some(rs)) = (target, carried_refs) {
-                        state.refs.insert(dst.clone(), rs);
+                    if let (Some(dst), Some(rs)) = (as_owned_path(target), carried_refs) {
+                        state.refs.insert(dst, rs);
                     }
                 }
             }
@@ -991,15 +1098,16 @@ impl<'a> Ctx<'a> {
             RefKind::Uninit => (false, "&uninit"),
         };
 
-        // Reborrow `&kind *r`: the pointee's init state lives in r's
-        // RefState, not the locals tree. r must be alive (have a
-        // RefState entry) and its is_init must match the kind's cur.
-        if let Some(parent) = simple_deref_target(place) {
+        // Reborrow `&kind *inner`: the pointee's init state lives in
+        // inner's RefState, not the locals tree. Any owned path can be
+        // reborrowed through — bare `r`, `b.p`, `e as V`, etc.
+        if let Some(parent) = deref_target(place) {
+            let parent_str = format_owned(&parent);
             let Some(parent_rs) = state.refs.get(&parent) else {
                 push_error!(
                     d, span, func, block,
                     "cannot create {} of '*{}': parent reference '{}' is not bound here",
-                    kind_str, parent, parent
+                    kind_str, parent_str, parent_str
                 );
                 return;
             };
@@ -1009,7 +1117,7 @@ impl<'a> Ctx<'a> {
                 push_error!(
                     d, span, func, block,
                     "cannot create {} of '*{}': pointee must be {} at borrow, but is {}",
-                    kind_str, parent, expected, actual
+                    kind_str, parent_str, expected, actual
                 );
             }
             return;
