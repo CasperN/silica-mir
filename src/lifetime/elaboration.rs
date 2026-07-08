@@ -580,5 +580,3 @@ fn operand_moves(op: &Operand, r: &Place) -> bool {
     }
 }
 
-#[cfg(test)]
-mod tests;

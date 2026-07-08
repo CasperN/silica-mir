@@ -452,10 +452,12 @@ fn check_operand_access(
 }
 
 #[cfg(test)]
-mod tests_loans;
+mod elaboration_tests;
 #[cfg(test)]
-mod tests_path_borrowers;
+mod loan_tests;
 #[cfg(test)]
-mod tests_reborrow;
+mod path_borrower_tests;
 #[cfg(test)]
-mod tests_unborrow;
+mod reborrow_tests;
+#[cfg(test)]
+mod unborrow_tests;

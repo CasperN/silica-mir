@@ -1,0 +1,95 @@
+use crate::test_util::*;
+
+#[test]
+fn env_build_ok_mixed_decls() {
+    assert_ok(
+        "
+        struct Point { x: number y: number }
+        enum Copy Drop Option { None: Option Some: number }
+        fn f() { entry: return }
+        extern fn g();
+        ",
+    );
+}
+
+#[test]
+fn struct_duplicate_field_name_error() {
+    assert_err(
+        "
+        struct S {
+            x: number
+            x: boolean
+        }
+        ",
+        "field 'x' is declared more than once",
+    );
+}
+
+#[test]
+fn enum_duplicate_variant_name_error() {
+    assert_err(
+        "
+        enum E {
+            A: unit
+            A: number
+        }
+        ",
+        "variant 'A' is declared more than once",
+    );
+}
+
+#[test]
+fn env_build_duplicate_struct() {
+    assert_err(
+        "
+        struct P { x: number }
+        struct P { y: number }
+        ",
+        "Duplicate declaration of type 'P'",
+    );
+}
+
+#[test]
+fn env_build_duplicate_enum() {
+    assert_err(
+        "
+        enum E { A: number }
+        enum E { B: number }
+        ",
+        "Duplicate declaration of type 'E'",
+    );
+}
+
+#[test]
+fn env_build_struct_enum_name_clash() {
+    assert_err(
+        "
+        struct N { x: number }
+        enum N { A: number }
+        ",
+        "Duplicate declaration of type 'N'",
+    );
+}
+
+#[test]
+fn env_build_duplicate_function() {
+    assert_err(
+        "
+        fn f() { entry: return }
+        fn f() { entry: return }
+        ",
+        "Duplicate declaration of function 'f'",
+    );
+}
+
+#[test]
+fn env_build_struct_and_fn_same_name_currently_ok() {
+    // Documents current behavior: struct/enum and fn share different namespaces.
+    // If we ever unify, this test tightens into an assert_err.
+    assert_ok(
+        "
+        struct N { x: number }
+        fn N() { entry: return }
+        ",
+    );
+}

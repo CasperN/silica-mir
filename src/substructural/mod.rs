@@ -11,3 +11,9 @@
 pub mod check;
 pub mod composition;
 pub mod elaboration;
+
+#[cfg(test)]
+mod elaboration_tests;
+
+#[cfg(test)]
+mod check_tests;
