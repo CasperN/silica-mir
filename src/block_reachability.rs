@@ -92,7 +92,7 @@ mod tests {
     fn switch_enum_arms_reachable() {
         assert_no_diagnostics(
             "
-            enum Copy Drop Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: i64 }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n, Some: s]

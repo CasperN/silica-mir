@@ -2,7 +2,7 @@
 //! self-contained `.ll` string. Runs after `run_all_passes` succeeded.
 //!
 //! ## Scope
-//! - Scalars: `number` → `i64`, `boolean` → `i1`, `unit`/`never` → `{}`
+//! - Scalars: `i64` → `i64`, `boolean` → `i1`, `unit`/`never` → `{}`
 //!   (the `never` case is unreachable at runtime, so any zero-sized rep
 //!   works).
 //! - References: all five kinds erase to `ptr` (opaque pointer). The
@@ -128,10 +128,14 @@ impl<'a> CodeGenContext<'a> {
     }
 
     /// Map an AST type to its LLVM textual form. References and function
-    /// pointers both erase to opaque `ptr`.
+    /// pointers both erase to opaque `ptr`. Signedness of ints is not
+    /// carried in LLVM — signed/unsigned differ only at operation sites
+    /// (`add` vs `add`, but `sdiv` vs `udiv` etc.), not at value type.
     fn lower_type(&self, ty: &Type) -> String {
         match ty {
-            Type::Number => "i64".to_string(),
+            Type::Int(i) => format!("i{}", i.bits()),
+            Type::Float(FloatTy::F32) => "float".to_string(),
+            Type::Float(FloatTy::F64) => "double".to_string(),
             Type::Boolean => "i1".to_string(),
             Type::Unit | Type::Never => "{}".to_string(),
             Type::Ref(_, _) | Type::Fn(_) => "ptr".to_string(),
@@ -415,7 +419,36 @@ fn emit_operand(cx: &mut CodeGenContext, op: &Operand) -> (String, Type) {
 
 fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
     match c {
-        ConstVal::Number(n) => (n.to_string(), Type::Number),
+        ConstVal::Int { bits, ty } => {
+            // LLVM accepts a decimal integer that fits the target
+            // integer type. For signed types, LLVM interprets the value
+            // in two's-complement of the given width — writing the raw
+            // unsigned bit pattern works as long as we mask to the
+            // type's width.
+            let mask: u64 = if ty.bits() == 64 {
+                u64::MAX
+            } else {
+                (1u64 << ty.bits()) - 1
+            };
+            let masked = bits & mask;
+            (masked.to_string(), Type::Int(*ty))
+        }
+        ConstVal::Float { bits, ty } => {
+            // LLVM's textual IR accepts float literals as hex bit
+            // patterns (`0x...`). Emitting hex avoids parse-round-trip
+            // errors on subnormals and NaNs. For f32, the low 32 bits
+            // of `bits` hold the IEEE-754 form; LLVM expects the
+            // hexadecimal to represent the *double* form even for
+            // `float`, so we widen f32 → f64 for the literal.
+            let hex = match ty {
+                FloatTy::F32 => {
+                    let v32 = f32::from_bits(*bits as u32);
+                    format!("0x{:016X}", (v32 as f64).to_bits())
+                }
+                FloatTy::F64 => format!("0x{:016X}", *bits),
+            };
+            (hex, Type::Float(*ty))
+        }
         ConstVal::Boolean(true) => ("true".to_string(), Type::Boolean),
         ConstVal::Boolean(false) => ("false".to_string(), Type::Boolean),
         ConstVal::Unit => ("zeroinitializer".to_string(), Type::Unit),

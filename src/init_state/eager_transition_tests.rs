@@ -16,10 +16,10 @@ fn out_borrow_of_local_marks_place_init() {
     // by the elaborator at return.
     assert_no_diagnostics(
         "
-        extern fn init(r: &out number);
+        extern fn init(r: &out i64);
         fn f() {
-          x: number;
-          r: &out number;
+          x: i64;
+          r: &out i64;
           entry:
             r = &out x;
             call init(move r);
@@ -35,9 +35,9 @@ fn drop_borrow_of_local_marks_place_moved() {
     // return, and no leak.
     assert_no_diagnostics(
         "
-        extern fn consume(r: &drop number);
-        fn f(x: number) {
-          r: &drop number;
+        extern fn consume(r: &drop i64);
+        fn f(x: i64) {
+          r: &drop i64;
           entry:
             r = &drop x;
             call consume(move r);
@@ -53,9 +53,9 @@ fn mut_borrow_does_not_change_place_state() {
     // transition on the loaned place.
     assert_no_diagnostics(
         "
-        extern fn use_mut(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
+        extern fn use_mut(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             call use_mut(move r);

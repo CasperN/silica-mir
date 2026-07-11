@@ -84,7 +84,7 @@ impl Env {
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
-            Type::Number | Type::Boolean | Type::Unit | Type::Never => Ok(()),
+            Type::Int(_) | Type::Float(_) | Type::Boolean | Type::Unit | Type::Never => Ok(()),
             Type::Custom(name) => {
                 if self.types.contains_key(name) {
                     Ok(())
@@ -120,7 +120,8 @@ impl Env {
 
     pub fn types_match(&self, t1: &Type, t2: &Type) -> bool {
         match (t1, t2) {
-            (Type::Number, Type::Number) => true,
+            (Type::Int(a), Type::Int(b)) => a == b,
+            (Type::Float(a), Type::Float(b)) => a == b,
             (Type::Boolean, Type::Boolean) => true,
             (Type::Unit, Type::Unit) => true,
             (Type::Never, Type::Never) => true,
@@ -214,7 +215,8 @@ impl Env {
         match op {
             Operand::Copy(place) | Operand::Move(place) => self.infer_place_type(place, locals),
             Operand::Const(c) => match c {
-                ConstVal::Number(_) => Ok(Type::Number),
+                ConstVal::Int { ty, .. } => Ok(Type::Int(*ty)),
+                ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
                 ConstVal::Boolean(_) => Ok(Type::Boolean),
                 ConstVal::Unit => Ok(Type::Unit),
                 ConstVal::FnName(name) => {
@@ -439,7 +441,7 @@ impl Env {
                         stmt_span,
                         func,
                         block,
-                        "Wrong number of arguments for call. Expected {}, found {}",
+                        "Wrong i64 of arguments for call. Expected {}, found {}",
                         param_tys.len(),
                         args.len()
                     ));

@@ -11,7 +11,7 @@ use crate::test_util::*;
 fn plain_struct_ok() {
     assert_no_diagnostics(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() { entry: return }
         ",
     );

@@ -10,13 +10,13 @@ fn preamble_declares_abort() {
 
 #[test]
 fn extern_fn_declaration() {
-    let ll = ll_of("extern fn print_num(x: number);");
+    let ll = ll_of("extern fn print_num(x: i64);");
     assert_contains(&ll, "declare void @print_num(i64)");
 }
 
 #[test]
 fn extern_fn_with_ref_and_bool() {
-    let ll = ll_of("extern fn f(a: boolean, r: &mut number);");
+    let ll = ll_of("extern fn f(a: boolean, r: &mut i64);");
     assert_contains(&ll, "declare void @f(i1, ptr)");
 }
 
@@ -24,7 +24,7 @@ fn extern_fn_with_ref_and_bool() {
 fn struct_decl_lowered_to_named_type() {
     let ll = ll_of(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() { entry: return }
         ",
     );

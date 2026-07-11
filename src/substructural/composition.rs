@@ -12,7 +12,7 @@
 //! for `Drop` and `Move`.
 //!
 //! Class assignment (per README):
-//!   - Scalars (`number`, `boolean`, `unit`) and `fn(...)` : `Copy Drop Move`
+//!   - Scalars (`i64`, `boolean`, `unit`) and `fn(...)` : `Copy Drop Move`
 //!   - `&T`               : `Copy Drop Move`
 //!   - `&mut`, `&uninit`  : `Drop Move`
 //!   - `&out`, `&drop`    : `Move` only (linear obligation, but relocatable)
@@ -36,7 +36,7 @@ pub struct Class {
 
 pub fn class_of(ty: &Type, env: &Env) -> Class {
     match ty {
-        Type::Number | Type::Boolean | Type::Unit | Type::Fn(_) => Class {
+        Type::Int(_) | Type::Float(_) | Type::Boolean | Type::Unit | Type::Fn(_) => Class {
             copy: true,
             drop: true,
             mov: true,
@@ -163,7 +163,7 @@ mod tests {
     fn struct_copy_drop_of_scalars_ok() {
         assert_no_diagnostics(
             "
-            struct Copy Drop Point { x: number y: boolean }
+            struct Copy Drop Point { x: i64 y: boolean }
             ",
         );
     }
@@ -173,7 +173,7 @@ mod tests {
         // With no markers, the struct is linear — no obligations to satisfy.
         assert_no_diagnostics(
             "
-            struct Container { r: &out number }
+            struct Container { r: &out i64 }
             ",
         );
     }
@@ -183,7 +183,7 @@ mod tests {
         // `&T` is Copy Drop so a Copy struct may hold one.
         assert_no_diagnostics(
             "
-            struct Copy S { r: &number x: number }
+            struct Copy S { r: &i64 x: i64 }
             ",
         );
     }
@@ -192,8 +192,8 @@ mod tests {
     fn nested_copy_struct_ok() {
         assert_no_diagnostics(
             "
-            struct Copy A { x: number }
-            struct Copy B { a: A y: number }
+            struct Copy A { x: i64 }
+            struct Copy B { a: A y: i64 }
             ",
         );
     }
@@ -214,7 +214,7 @@ mod tests {
     fn enum_copy_drop_scalar_variants_ok() {
         assert_no_diagnostics(
             "
-            enum Copy Drop Tag { N: number B: boolean U: unit }
+            enum Copy Drop Tag { N: i64 B: boolean U: unit }
             ",
         );
     }
@@ -226,7 +226,7 @@ mod tests {
         // `&mut T` is Drop but not Copy.
         assert_err(
             "
-            struct Copy Bad { r: &mut number }
+            struct Copy Bad { r: &mut i64 }
             ",
             "In struct 'Bad' (marked Copy), field 'r'",
         );
@@ -237,7 +237,7 @@ mod tests {
         // `&out T` is neither Copy nor Drop; the Copy check reports.
         assert_err(
             "
-            struct Copy Bad { r: &out number }
+            struct Copy Bad { r: &out i64 }
             ",
             "In struct 'Bad' (marked Copy), field 'r'",
         );
@@ -247,7 +247,7 @@ mod tests {
     fn nested_copy_struct_with_non_copy_field_error() {
         assert_err(
             "
-            struct Linear { r: &out number }
+            struct Linear { r: &out i64 }
             struct Copy Outer { inner: Linear }
             ",
             "In struct 'Outer' (marked Copy), field 'inner'",
@@ -258,7 +258,7 @@ mod tests {
     fn enum_copy_with_non_copy_payload_error() {
         assert_err(
             "
-            enum Copy Bad { A: &mut number }
+            enum Copy Bad { A: &mut i64 }
             ",
             "In enum 'Bad' (marked Copy), variant 'A'",
         );
@@ -271,7 +271,7 @@ mod tests {
         // `&out T` is linear (not Drop).
         assert_err(
             "
-            struct Drop Bad { r: &out number }
+            struct Drop Bad { r: &out i64 }
             ",
             "In struct 'Bad' (marked Drop), field 'r'",
         );
@@ -281,7 +281,7 @@ mod tests {
     fn struct_drop_containing_linear_struct_error() {
         assert_err(
             "
-            struct Linear { r: &out number }
+            struct Linear { r: &out i64 }
             struct Drop Outer { inner: Linear }
             ",
             "In struct 'Outer' (marked Drop), field 'inner'",
@@ -292,7 +292,7 @@ mod tests {
     fn enum_drop_with_out_ref_payload_error() {
         assert_err(
             "
-            enum Drop Bad { A: &out number }
+            enum Drop Bad { A: &out i64 }
             ",
             "In enum 'Bad' (marked Drop), variant 'A'",
         );
@@ -303,7 +303,7 @@ mod tests {
     #[test]
     fn copy_drop_struct_with_linear_field_reports_both() {
         let (errs, _) = run("
-            struct Copy Drop Bad { r: &out number }
+            struct Copy Drop Bad { r: &out i64 }
             ");
         assert_errors_contain(
             &errs,
@@ -321,7 +321,7 @@ mod tests {
         // `&mut T` is Drop (though not Copy).
         assert_no_diagnostics(
             "
-            struct Drop S { r: &mut number }
+            struct Drop S { r: &mut i64 }
             ",
         );
     }
@@ -330,7 +330,7 @@ mod tests {
     fn struct_drop_with_uninit_ref_ok() {
         assert_no_diagnostics(
             "
-            struct Drop S { r: &uninit number }
+            struct Drop S { r: &uninit i64 }
             ",
         );
     }
@@ -341,7 +341,7 @@ mod tests {
     fn struct_move_of_scalars_ok() {
         assert_no_diagnostics(
             "
-            struct Move Point { x: number y: boolean }
+            struct Move Point { x: i64 y: boolean }
             ",
         );
     }
@@ -351,8 +351,8 @@ mod tests {
         // All ref kinds are Move (the reference is a movable pointer).
         assert_no_diagnostics(
             "
-            struct Move S { a: &mut number b: &out number c: &drop number
-                            d: &uninit number e: &number }
+            struct Move S { a: &mut i64 b: &out i64 c: &drop i64
+                            d: &uninit i64 e: &i64 }
             ",
         );
     }
@@ -361,7 +361,7 @@ mod tests {
     fn struct_move_with_non_move_field_error() {
         assert_err(
             "
-            struct Inner { r: &out number }
+            struct Inner { r: &out i64 }
             struct Move Outer { i: Inner }
             ",
             "In struct 'Outer' (marked Move), field 'i'",
@@ -372,7 +372,7 @@ mod tests {
     fn enum_move_of_non_move_payload_error() {
         assert_err(
             "
-            struct Inner { r: &out number }
+            struct Inner { r: &out i64 }
             enum Move Wrap { W: Inner }
             ",
             "In enum 'Wrap' (marked Move), variant 'W'",
@@ -387,7 +387,7 @@ mod tests {
         // it's implicitly Move via the blanket rule.
         assert_no_diagnostics(
             "
-            struct Copy Drop Point { x: number y: number }
+            struct Copy Drop Point { x: i64 y: i64 }
             struct Move Outer { p: Point }
             ",
         );

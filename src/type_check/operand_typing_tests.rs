@@ -5,7 +5,7 @@ fn operand_number_const_ok() {
     assert_ok(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = 42;
             return
@@ -32,7 +32,7 @@ fn operand_unit_const_ok() {
 fn unit_as_enum_payload_ok() {
     assert_ok(
         "
-        enum Copy Drop Tag { A: unit B: number }
+        enum Copy Drop Tag { A: unit B: i64 }
         fn f() {
             t: Tag;
             entry:
@@ -48,7 +48,7 @@ fn unit_type_mismatch_error() {
     assert_err(
         "
         fn f() {
-            n: number;
+            n: i64;
             entry:
             n = unit;
             return
@@ -76,9 +76,9 @@ fn operand_boolean_const_ok() {
 fn operand_fnname_defined_ok() {
     assert_ok(
         "
-        fn callee(x: number) { entry: return }
+        fn callee(x: i64) { entry: return }
         fn f() {
-            g: fn(number);
+            g: fn(i64);
             entry:
             g = callee;
             return
@@ -91,9 +91,9 @@ fn operand_fnname_defined_ok() {
 fn operand_fnname_extern_ok() {
     assert_ok(
         "
-        extern fn callee(x: number);
+        extern fn callee(x: i64);
         fn f() {
-            g: fn(number);
+            g: fn(i64);
             entry:
             g = callee;
             return
@@ -109,7 +109,7 @@ fn operand_fnname_undeclared_error() {
     assert_err(
         "
         fn f() {
-            g: fn(number);
+            g: fn(i64);
             entry:
             g = missing;
             return

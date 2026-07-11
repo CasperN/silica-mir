@@ -243,9 +243,9 @@ mod tests {
         let body = body_of(
             "
             fn f(a: boolean) {
-              x: number;
-              y: number;
-              z: number;
+              x: i64;
+              y: i64;
+              z: i64;
               entry:
                 x = 1;
                 branch(copy a) [true: t, false: fbr]
@@ -277,7 +277,7 @@ mod tests {
         let body = body_of(
             "
             fn f(b: boolean) {
-              x: number;
+              x: i64;
               entry:
                 x = 0;
                 goto head
@@ -386,7 +386,7 @@ mod tests {
         let body = body_of(
             "
             fn f(b: boolean) {
-              x: number;
+              x: i64;
               entry:
                 branch(copy b) [true: t, false: fbr]
               t:
@@ -414,7 +414,7 @@ mod tests {
         let body = body_of(
             "
             fn f(b: boolean) {
-              x: number;
+              x: i64;
               entry:
                 goto head
               head:
@@ -458,9 +458,9 @@ mod tests {
         let body = body_of(
             "
             fn f(a: boolean) {
-              x: number;
-              y: number;
-              z: number;
+              x: i64;
+              y: i64;
+              z: i64;
               entry:
                 x = 1;
                 branch(copy a) [true: t, false: fbr]

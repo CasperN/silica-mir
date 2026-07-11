@@ -17,10 +17,10 @@ fn mut_reborrow_of_mut_ok() {
     // eager transition of &mut, ends=Init).
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
           entry:
             r = &mut x;
             s = &mut *r;
@@ -36,11 +36,11 @@ fn access_r_while_reborrow_live_conflicts() {
     // r is suspended by s. `copy *r` between the reborrow and s's
     // consumption reads through r while s's loan is active — errors.
     let (errs, _) = run("
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
-          y: number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             s = &mut *r;
@@ -58,10 +58,10 @@ fn access_x_while_reborrow_live_conflicts() {
     // access to x still fails through the r-loan (unchanged behavior;
     // reborrow doesn't remove the parent's loan).
     let (errs, _) = run("
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
           entry:
             r = &mut x;
             s = &mut *r;
@@ -77,12 +77,12 @@ fn access_x_while_reborrow_live_conflicts() {
 
 #[test]
 fn mut_reborrow_of_out_precondition_fails() {
-    // r: &out number → r.is_init = false at param entry. &mut *r
+    // r: &out i64 → r.is_init = false at param entry. &mut *r
     // requires the pointee to be initialized. Rejected.
     let (errs, _) = run("
-        extern fn sink(r: &mut number);
-        fn f(r: &out number) {
-          s: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(r: &out i64) {
+          s: &mut i64;
           entry:
             s = &mut *r;
             call sink(move s);
@@ -97,13 +97,13 @@ fn mut_reborrow_of_out_precondition_fails() {
 
 #[test]
 fn out_reborrow_of_out_ok_when_pointee_written() {
-    // r: &out number, s: &out *r fulfilling r's obligation transitively.
+    // r: &out i64, s: &out *r fulfilling r's obligation transitively.
     // After s's *s = 42, r.is_init becomes true (via eager on &out).
     // r resumes and its own &out obligation is met.
     assert_no_diagnostics(
         "
-        fn f(r: &out number) {
-          s: &out number;
+        fn f(r: &out i64) {
+          s: &out i64;
           entry:
             s = &out *r;
             *s = 42;
@@ -115,11 +115,11 @@ fn out_reborrow_of_out_ok_when_pointee_written() {
 
 #[test]
 fn out_reborrow_of_mut_precondition_fails() {
-    // r: &mut number → pointee Init. &out *r requires Uninit. Rejected.
+    // r: &mut i64 → pointee Init. &out *r requires Uninit. Rejected.
     let (errs, _) = run("
-        extern fn sink(r: &out number);
-        fn f(r: &mut number) {
-          s: &out number;
+        extern fn sink(r: &out i64);
+        fn f(r: &mut i64) {
+          s: &out i64;
           entry:
             s = &out *r;
             *s = 1;
@@ -141,10 +141,10 @@ fn shared_reborrow_of_mut_ok() {
     // NLL closes it and r resumes. No obligation on s.
     assert_no_diagnostics(
         "
-        extern fn read_ref(r: &number);
-        fn f(x: number) {
-          r: &mut number;
-          s: &number;
+        extern fn read_ref(r: &i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &i64;
           entry:
             r = &mut x;
             s = &*r;
@@ -164,11 +164,11 @@ fn chained_reborrow_t_from_s_from_r_ok() {
     // consume by call), then s, then r.
     assert_no_diagnostics(
         "
-        extern fn sink(t: &mut number);
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
-          t: &mut number;
+        extern fn sink(t: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
+          t: &mut i64;
           entry:
             r = &mut x;
             s = &mut *r;
@@ -184,14 +184,14 @@ fn chained_reborrow_t_from_s_from_r_ok() {
 
 #[test]
 fn reborrow_of_mut_param_ok() {
-    // A ref param r: &mut number, reborrowed into local s. s's use
+    // A ref param r: &mut i64, reborrowed into local s. s's use
     // via *s reads through r; s expires; r resumes; r's own
     // obligation ends the function.
     assert_no_diagnostics(
         "
-        extern fn read_ref(r: &number);
-        fn f(r: &mut number) {
-          s: &number;
+        extern fn read_ref(r: &i64);
+        fn f(r: &mut i64) {
+          s: &i64;
           entry:
             s = &*r;
             call read_ref(move s);
@@ -211,8 +211,8 @@ fn nll_inserts_child_unborrow_before_parent() {
     // correct (checker rejects the wrong order).
     assert_no_diagnostics(
         "
-        fn f(r: &out number) {
-          s: &out number;
+        fn f(r: &out i64) {
+          s: &out i64;
           entry:
             s = &out *r;
             *s = 42;
@@ -231,10 +231,10 @@ fn reborrow_in_loop_body_ok() {
     // across the back-edge and NLL closes it on the loop-exit edge.
     assert_no_diagnostics(
         "
-        extern fn use_mut(r: &mut number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
-          s: &mut number;
+        extern fn use_mut(r: &mut i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
+          s: &mut i64;
           entry:
             r = &mut x;
             goto head

@@ -20,7 +20,7 @@ fn env_of(src: &str) -> Env {
 #[test]
 fn scalar_sizes() {
     let env = env_of("fn f() { entry: return }");
-    assert_eq!(size_of(&Type::Number, &env), 8);
+    assert_eq!(size_of(&Type::Int(IntTy::I64), &env), 8);
     assert_eq!(size_of(&Type::Boolean, &env), 1);
     assert_eq!(size_of(&Type::Unit, &env), 0);
     assert_eq!(size_of(&Type::Never, &env), 0);
@@ -29,7 +29,7 @@ fn scalar_sizes() {
 #[test]
 fn scalar_alignments() {
     let env = env_of("fn f() { entry: return }");
-    assert_eq!(align_of(&Type::Number, &env), 8);
+    assert_eq!(align_of(&Type::Int(IntTy::I64), &env), 8);
     assert_eq!(align_of(&Type::Boolean, &env), 1);
     assert_eq!(align_of(&Type::Unit, &env), 1);
     assert_eq!(align_of(&Type::Never, &env), 1);
@@ -38,7 +38,7 @@ fn scalar_alignments() {
 #[test]
 fn all_ref_kinds_and_fn_are_pointer_sized() {
     let env = env_of("fn f() { entry: return }");
-    let inner = Box::new(Type::Number);
+    let inner = Box::new(Type::Int(IntTy::I64));
     for kind in [
         RefKind::Shared,
         RefKind::Mut,
@@ -50,7 +50,7 @@ fn all_ref_kinds_and_fn_are_pointer_sized() {
         assert_eq!(size_of(&ty, &env), 8);
         assert_eq!(align_of(&ty, &env), 8);
     }
-    let fn_ty = Type::Fn(vec![Type::Number, Type::Boolean]);
+    let fn_ty = Type::Fn(vec![Type::Int(IntTy::I64), Type::Boolean]);
     assert_eq!(size_of(&fn_ty, &env), 8);
     assert_eq!(align_of(&fn_ty, &env), 8);
 }
@@ -67,7 +67,7 @@ fn empty_struct_is_zero_sized() {
 
 #[test]
 fn homogeneous_struct_sums_field_sizes() {
-    let env = env_of("struct P { x: number y: number } fn f() { entry: return }");
+    let env = env_of("struct P { x: i64 y: i64 } fn f() { entry: return }");
     let ty = Type::Custom("P".to_string());
     assert_eq!(size_of(&ty, &env), 16);
     assert_eq!(align_of(&ty, &env), 8);
@@ -75,9 +75,9 @@ fn homogeneous_struct_sums_field_sizes() {
 
 #[test]
 fn struct_pads_between_smaller_then_larger_field() {
-    // b:boolean at offset 0 (size 1), then x:number aligned to 8 → offset 8;
+    // b:boolean at offset 0 (size 1), then x:i64 aligned to 8 → offset 8;
     // total = 8 + 8 = 16, rounded to align 8.
-    let env = env_of("struct P { b: boolean x: number } fn f() { entry: return }");
+    let env = env_of("struct P { b: boolean x: i64 } fn f() { entry: return }");
     let ty = Type::Custom("P".to_string());
     assert_eq!(size_of(&ty, &env), 16);
     assert_eq!(align_of(&ty, &env), 8);
@@ -85,9 +85,9 @@ fn struct_pads_between_smaller_then_larger_field() {
 
 #[test]
 fn struct_rounds_up_trailing_padding_to_alignment() {
-    // x:number at offset 0 (size 8), b:boolean at offset 8 (size 1);
+    // x:i64 at offset 0 (size 8), b:boolean at offset 8 (size 1);
     // total 9, rounded to align 8 → 16.
-    let env = env_of("struct P { x: number b: boolean } fn f() { entry: return }");
+    let env = env_of("struct P { x: i64 b: boolean } fn f() { entry: return }");
     let ty = Type::Custom("P".to_string());
     assert_eq!(size_of(&ty, &env), 16);
 }
@@ -107,7 +107,7 @@ fn packed_boolean_only_struct_is_tightly_packed() {
 fn nested_struct_inherits_alignment() {
     let env = env_of(
         "
-        struct Inner { x: number }
+        struct Inner { x: i64 }
         struct Outer { i: Inner b: boolean }
         fn f() { entry: return }
         ",
@@ -121,7 +121,7 @@ fn nested_struct_inherits_alignment() {
 
 #[test]
 fn struct_with_reference_field_uses_pointer_size() {
-    let env = env_of("struct S { r: &mut number x: boolean } fn f() { entry: return }");
+    let env = env_of("struct S { r: &mut i64 x: boolean } fn f() { entry: return }");
     let ty = Type::Custom("S".to_string());
     // r at 0..8 (align 8), b at 8; total 9 → 16.
     assert_eq!(size_of(&ty, &env), 16);
@@ -141,7 +141,7 @@ fn enum_with_unit_only_variants_is_discriminant_only() {
 
 #[test]
 fn enum_with_number_payload_pads_disc_to_8() {
-    let env = env_of("enum E { A: number B: unit } fn f() { entry: return }");
+    let env = env_of("enum E { A: i64 B: unit } fn f() { entry: return }");
     let ty = Type::Custom("E".to_string());
     // disc:i16 at 0..2, padded to 8 for i64-aligned payload; payload 8;
     // total 16, align 8.
@@ -153,8 +153,8 @@ fn enum_with_number_payload_pads_disc_to_8() {
 fn enum_size_is_dominated_by_largest_variant_payload() {
     let env = env_of(
         "
-        struct Big { a: number b: number c: number }
-        enum E { Small: number Wide: Big }
+        struct Big { a: i64 b: i64 c: i64 }
+        enum E { Small: i64 Wide: Big }
         fn f() { entry: return }
         ",
     );
@@ -176,7 +176,7 @@ fn enum_with_only_boolean_payloads_is_align_2() {
 
 #[test]
 fn enum_with_ref_payload_is_pointer_aligned() {
-    let env = env_of("enum E { A: &mut number B: unit } fn f() { entry: return }");
+    let env = env_of("enum E { A: &mut i64 B: unit } fn f() { entry: return }");
     let ty = Type::Custom("E".to_string());
     // disc padded to 8, +8 pointer = 16, align 8.
     assert_eq!(size_of(&ty, &env), 16);

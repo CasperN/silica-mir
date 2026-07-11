@@ -4,14 +4,14 @@ use crate::test_util::*;
 fn error_includes_line_and_col() {
     // A bad assignment on a specific line — verify the exact `at L:C:`
     // shows up (not just some span). Line 4, col 17 for `x = true`.
-    let src = "fn f() {\n  x: number;\n  entry:\n                x = true;\n                return\n}";
+    let src = "fn f() {\n  x: i64;\n  entry:\n                x = true;\n                return\n}";
     let errs = errors_of(src);
     assert_errors_contain(&errs, &["at 4:17:", "Type mismatch in assignment"]);
 }
 
 #[test]
 fn distinct_errors_carry_distinct_spans() {
-    let src = "fn f() {\n  x: number;\n  y: number;\n  entry:\n    x = true;\n    y = true;\n    return\n}";
+    let src = "fn f() {\n  x: i64;\n  y: i64;\n  entry:\n    x = true;\n    y = true;\n    return\n}";
     let errs = errors_of(src);
     assert_errors_contain(&errs, &["at 5:5:", "at 6:5:"]);
 }
@@ -20,8 +20,8 @@ fn distinct_errors_carry_distinct_spans() {
 fn accumulate_env_build_duplicates() {
     let errs = errors_of(
         "
-        struct S { x: number }
-        struct S { y: number }
+        struct S { x: i64 }
+        struct S { y: i64 }
         fn f() { entry: return }
         fn f() { entry: return }
         ",
@@ -35,8 +35,8 @@ fn accumulate_statement_errors_in_one_block() {
     let errs = errors_of(
         "
         fn f() {
-            x: number;
-            y: number;
+            x: i64;
+            y: i64;
             entry:
             x = true;
             y = true;
@@ -56,13 +56,13 @@ fn accumulate_across_functions() {
     let errs = errors_of(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = true;
             return
         }
         fn g() {
-            y: number;
+            y: i64;
             entry:
             y = true;
             return
@@ -79,11 +79,11 @@ fn accumulate_branch_multi_error() {
     // non-boolean cond and both labels undefined.
     let errs = errors_of(
         "
-        fn f(n: number) {
+        fn f(n: i64) {
             entry:
             branch(copy n) [true: nowhere1, false: nowhere2]
         }
-        fn g(n: number) {
+        fn g(n: i64) {
             entry:
             branch(copy n) [true: nowhere1, false: nowhere2]
             nowhere1:
@@ -111,7 +111,7 @@ fn accumulate_switch_enum_multi_error() {
     // report both, and continue past the failed variant check.
     let errs = errors_of(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
             entry:
             switchEnum(o) [Wat: nowhere, None: end]

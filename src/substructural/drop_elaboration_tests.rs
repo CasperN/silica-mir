@@ -63,9 +63,9 @@ fn assert_strict_clean_after_elaboration(src: &str) {
 #[test]
 fn elaborates_single_drop_param() {
     assert_elaborated_eq(
-        "fn f(x: number) { entry: return }",
+        "fn f(x: i64) { entry: return }",
         "\
-fn f(x: number) {
+fn f(x: i64) {
   entry:
     drop x;
     return
@@ -78,9 +78,9 @@ fn elaborates_multiple_vars_in_reverse_decl_order() {
     // Reverse combined order (locals first, then params): y, x, c, b, a.
     assert_elaborated_eq(
         "
-            fn f(a: number, b: number, c: number) {
-              x: number;
-              y: number;
+            fn f(a: i64, b: i64, c: i64) {
+              x: i64;
+              y: i64;
               entry:
                 x = 1;
                 y = 2;
@@ -88,9 +88,9 @@ fn elaborates_multiple_vars_in_reverse_decl_order() {
             }
             ",
         "\
-fn f(a: number, b: number, c: number) {
-  x: number;
-  y: number;
+fn f(a: i64, b: i64, c: i64) {
+  x: i64;
+  y: i64;
   entry:
     x = 1;
     y = 2;
@@ -108,7 +108,7 @@ fn f(a: number, b: number, c: number) {
 fn does_not_drop_linear_vars() {
     assert_elaborated_eq(
         "
-            struct Linear { r: &out number }
+            struct Linear { r: &out i64 }
             extern fn sink(x: Linear);
             fn f(x: Linear) {
               entry:
@@ -118,7 +118,7 @@ fn does_not_drop_linear_vars() {
             ",
         "\
 struct Linear {
-  r: &out number
+  r: &out i64
 }
 
 extern fn sink(x: Linear);
@@ -135,17 +135,17 @@ fn f(x: Linear) {
 fn does_not_drop_moved_vars() {
     assert_elaborated_eq(
         "
-            extern fn take(a: number);
-            fn f(x: number) {
+            extern fn take(a: i64);
+            fn f(x: i64) {
               entry:
                 call take(move x);
                 return
             }
             ",
         "\
-extern fn take(a: number);
+extern fn take(a: i64);
 
-fn f(x: number) {
+fn f(x: i64) {
   entry:
     call take(move x);
     return
@@ -158,14 +158,14 @@ fn does_not_drop_never_init_locals() {
     assert_elaborated_eq(
         "
             fn f() {
-              x: number;
+              x: i64;
               entry:
                 return
             }
             ",
         "\
 fn f() {
-  x: number;
+  x: i64;
   entry:
     return
 }",
@@ -178,13 +178,13 @@ fn f() {
 fn elaborates_drop_struct() {
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: number y: number }
+            struct Copy Drop P { x: i64 y: i64 }
             fn f(p: P) { entry: return }
             ",
         "\
 struct Copy Drop P {
-  x: number
-  y: number
+  x: i64
+  y: i64
 }
 
 fn f(p: P) {
@@ -199,13 +199,13 @@ fn f(p: P) {
 fn elaborates_drop_enum() {
     assert_elaborated_eq(
         "
-            enum Copy Drop Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: i64 }
             fn f(o: Option) { entry: return }
             ",
         "\
 enum Copy Drop Option {
   None: unit
-  Some: number
+  Some: i64
 }
 
 fn f(o: Option) {
@@ -221,9 +221,9 @@ fn elaborates_mut_ref_param() {
     // `&mut T` is Drop (though not Copy) — reference value may be
     // forgotten. Elaboration inserts a drop for it.
     assert_elaborated_eq(
-        "fn f(r: &mut number) { entry: return }",
+        "fn f(r: &mut i64) { entry: return }",
         "\
-fn f(r: &mut number) {
+fn f(r: &mut i64) {
   entry:
     drop r;
     return
@@ -236,9 +236,9 @@ fn does_not_drop_out_ref_param() {
     // `&out T` is linear — never silently dropped. (This program
     // leaks under the checker; we're only verifying the elaborator.)
     assert_elaborated_eq(
-        "fn f(r: &out number) { entry: return }",
+        "fn f(r: &out i64) { entry: return }",
         "\
-fn f(r: &out number) {
+fn f(r: &out i64) {
   entry:
     return
 }",
@@ -252,14 +252,14 @@ fn respects_explicit_user_drop() {
     // User already dropped `x` — elaboration doesn't add a second one.
     assert_elaborated_eq(
         "
-            fn f(x: number) {
+            fn f(x: i64) {
               entry:
                 drop x;
                 return
             }
             ",
         "\
-fn f(x: number) {
+fn f(x: i64) {
   entry:
     drop x;
     return
@@ -274,7 +274,7 @@ fn reassignment_still_leaves_one_drop() {
     assert_elaborated_eq(
         "
             fn f() {
-              x: number;
+              x: i64;
               entry:
                 x = 1;
                 x = 2;
@@ -283,7 +283,7 @@ fn reassignment_still_leaves_one_drop() {
             ",
         "\
 fn f() {
-  x: number;
+  x: i64;
   entry:
     x = 1;
     x = 2;
@@ -306,7 +306,7 @@ fn diverged_state_splits_edge_and_drops_on_init_side() {
     assert_elaborated_eq(
         "
             fn f(b: boolean) {
-              x: number;
+              x: i64;
               entry:
                 branch(copy b) [true: t, false: fbr]
               t:
@@ -320,7 +320,7 @@ fn diverged_state_splits_edge_and_drops_on_init_side() {
             ",
         "\
 fn f(b: boolean) {
-  x: number;
+  x: i64;
   entry:
     branch(copy b) [true: t, false: fbr]
   t:
@@ -340,7 +340,7 @@ fn f(b: boolean) {
 
 #[test]
 fn extern_function_untouched() {
-    assert_elaborated_eq("extern fn f(x: number);", "extern fn f(x: number);");
+    assert_elaborated_eq("extern fn f(x: i64);", "extern fn f(x: i64);");
 }
 
 #[test]
@@ -351,7 +351,7 @@ fn diverged_on_multi_case_switch() {
         "
             enum Copy Drop Sel { A: unit B: unit }
             fn f(s: Sel) {
-              y: number;
+              y: i64;
               entry:
                 switchEnum(s) [A: a_lbl, B: b_lbl]
               a_lbl:
@@ -370,7 +370,7 @@ enum Copy Drop Sel {
 }
 
 fn f(s: Sel) {
-  y: number;
+  y: i64;
   entry:
     switchEnum(s) [A: a_lbl, B: b_lbl]
   a_lbl:
@@ -394,7 +394,7 @@ fn diverged_elab_idempotent() {
     // the first run's inserted drops already satisfy the leak check.
     let src = "
             fn f(b: boolean) {
-              x: number;
+              x: i64;
               entry:
                 branch(copy b) [true: t, false: fbr]
               t:
@@ -425,7 +425,7 @@ fn multi_block_return_sees_upstream_writes() {
     assert_elaborated_eq(
         "
             fn f() {
-              y: number;
+              y: i64;
               entry:
                 goto mid
               mid:
@@ -437,7 +437,7 @@ fn multi_block_return_sees_upstream_writes() {
             ",
         "\
 fn f() {
-  y: number;
+  y: i64;
   entry:
     goto mid
   mid:
@@ -457,7 +457,7 @@ fn elaborates_each_return_independently() {
     // Two returns, each drops x and b (reverse decl order).
     assert_elaborated_eq(
         "
-            fn f(b: boolean, x: number) {
+            fn f(b: boolean, x: i64) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return
@@ -465,7 +465,7 @@ fn elaborates_each_return_independently() {
             }
             ",
         "\
-fn f(b: boolean, x: number) {
+fn f(b: boolean, x: i64) {
   entry:
     branch(copy b) [true: t, false: fbr]
   t:
@@ -484,7 +484,7 @@ fn f(b: boolean, x: number) {
 
 #[test]
 fn elaboration_is_idempotent() {
-    let src = "fn f(x: number) { entry: return }";
+    let src = "fn f(x: i64) { entry: return }";
     let once = elaborate_src(src);
 
     // Elaborate the already-elaborated program a second time and
@@ -506,7 +506,7 @@ fn partial_state_emits_per_leaf_drop() {
     // Init leaves — here just `p.x`, since `p.y` is NeverInit.
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: number y: number }
+            struct Copy Drop P { x: i64 y: i64 }
             fn f() {
               p: P;
               entry:
@@ -516,8 +516,8 @@ fn partial_state_emits_per_leaf_drop() {
             ",
         "\
 struct Copy Drop P {
-  x: number
-  y: number
+  x: i64
+  y: i64
 }
 
 fn f() {
@@ -536,9 +536,9 @@ fn partial_after_field_move_emits_drop_for_remaining_field() {
     // Partial({x: Moved, y: Init}). Only `p.y` needs a drop.
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: number y: number }
+            struct Copy Drop P { x: i64 y: i64 }
             fn f(p: P) {
-              a: number;
+              a: i64;
               entry:
                 a = move p.x;
                 return
@@ -546,12 +546,12 @@ fn partial_after_field_move_emits_drop_for_remaining_field() {
             ",
         "\
 struct Copy Drop P {
-  x: number
-  y: number
+  x: i64
+  y: i64
 }
 
 fn f(p: P) {
-  a: number;
+  a: i64;
   entry:
     a = move p.x;
     drop a;
@@ -563,12 +563,12 @@ fn f(p: P) {
 
 #[test]
 fn nested_partial_walks_recursively() {
-    // Inner struct has two number fields; only one is written. Elaborator
+    // Inner struct has two i64 fields; only one is written. Elaborator
     // reaches through the outer Partial to the leaf.
     assert_elaborated_eq(
         "
-            struct Copy Drop Inner { a: number b: number }
-            struct Copy Drop Outer { i: Inner c: number }
+            struct Copy Drop Inner { a: i64 b: i64 }
+            struct Copy Drop Outer { i: Inner c: i64 }
             fn f() {
               o: Outer;
               entry:
@@ -578,13 +578,13 @@ fn nested_partial_walks_recursively() {
             ",
         "\
 struct Copy Drop Inner {
-  a: number
-  b: number
+  a: i64
+  b: i64
 }
 
 struct Copy Drop Outer {
   i: Inner
-  c: number
+  c: i64
 }
 
 fn f() {
@@ -608,10 +608,10 @@ fn partial_field_drop_lifo_order() {
     // sequences to keep the state Partial.
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: number y: number }
+            struct Copy Drop P { x: i64 y: i64 }
             fn f(src: P) {
               p: P;
-              a: number;
+              a: i64;
               entry:
                 a = move src.x;
                 p.x = 1;
@@ -621,13 +621,13 @@ fn partial_field_drop_lifo_order() {
             ",
         "\
 struct Copy Drop P {
-  x: number
-  y: number
+  x: i64
+  y: i64
 }
 
 fn f(src: P) {
   p: P;
-  a: number;
+  a: i64;
   entry:
     a = move src.x;
     p.x = 1;
@@ -648,13 +648,13 @@ fn only_return_blocks_get_drops() {
     // (they're the escape hatches; obligations are waived).
     assert_elaborated_eq(
         "
-            fn f(x: number) {
+            fn f(x: i64) {
               entry:
                 abort
             }
             ",
         "\
-fn f(x: number) {
+fn f(x: i64) {
   entry:
     abort
 }",
@@ -665,16 +665,16 @@ fn f(x: number) {
 
 #[test]
 fn strict_check_passes_after_elaboration_simple() {
-    assert_strict_clean_after_elaboration("fn f(x: number) { entry: return }");
+    assert_strict_clean_after_elaboration("fn f(x: i64) { entry: return }");
 }
 
 #[test]
 fn strict_check_passes_after_elaboration_with_locals() {
     assert_strict_clean_after_elaboration(
         "
-            fn f(x: number) {
-              y: number;
-              z: number;
+            fn f(x: i64) {
+              y: i64;
+              z: i64;
               entry:
                 y = copy x;
                 z = 42;
@@ -687,14 +687,14 @@ fn strict_check_passes_after_elaboration_with_locals() {
 #[test]
 fn strict_check_passes_after_elaboration_with_shared_ref() {
     // `&T` is Copy Drop — elaboration should insert a drop for it.
-    assert_strict_clean_after_elaboration("fn f(r: &number) { entry: return }");
+    assert_strict_clean_after_elaboration("fn f(r: &i64) { entry: return }");
 }
 
 #[test]
 fn strict_check_passes_after_elaboration_with_copy_drop_struct() {
     assert_strict_clean_after_elaboration(
         "
-            struct Copy Drop P { x: number y: number }
+            struct Copy Drop P { x: i64 y: i64 }
             fn f(p: P) { entry: return }
             ",
     );
@@ -704,7 +704,7 @@ fn strict_check_passes_after_elaboration_with_copy_drop_struct() {
 fn strict_check_passes_after_elaboration_with_copy_drop_enum() {
     assert_strict_clean_after_elaboration(
         "
-            enum Copy Drop Option { None: unit Some: number }
+            enum Copy Drop Option { None: unit Some: i64 }
             fn f(o: Option) { entry: return }
             ",
     );
@@ -713,7 +713,7 @@ fn strict_check_passes_after_elaboration_with_copy_drop_enum() {
 #[test]
 fn strict_check_passes_after_elaboration_with_mut_ref() {
     // `&mut T` is Drop (not Copy). Elaboration inserts a drop.
-    assert_strict_clean_after_elaboration("fn f(r: &mut number) { entry: return }");
+    assert_strict_clean_after_elaboration("fn f(r: &mut i64) { entry: return }");
 }
 
 #[test]
@@ -721,7 +721,7 @@ fn strict_check_passes_after_elaboration_with_multi_return() {
     // Each return-block gets its own drops; strict validates both.
     assert_strict_clean_after_elaboration(
         "
-            fn f(b: boolean, x: number) {
+            fn f(b: boolean, x: i64) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return
@@ -738,7 +738,7 @@ fn strict_check_passes_after_elaboration_with_multi_block() {
     assert_strict_clean_after_elaboration(
         "
             fn f() {
-              y: number;
+              y: i64;
               entry:
                 goto mid
               mid:
@@ -775,7 +775,7 @@ fn assert_idempotent(src: &str) {
 fn idempotent_with_copy_drop_struct() {
     assert_idempotent(
         "
-            struct Copy Drop P { x: number y: number }
+            struct Copy Drop P { x: i64 y: i64 }
             fn f(p: P) {
               q: P;
               entry:
@@ -793,7 +793,7 @@ fn idempotent_with_reassignment() {
     assert_idempotent(
         "
             fn f() {
-              x: number;
+              x: i64;
               entry:
                 x = 1;
                 x = 2;
@@ -807,7 +807,7 @@ fn idempotent_with_reassignment() {
 fn idempotent_with_multi_return() {
     assert_idempotent(
         "
-            fn f(b: boolean, x: number) {
+            fn f(b: boolean, x: i64) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return
@@ -826,8 +826,8 @@ fn does_not_drop_unborrowed_ref() {
     // thawed and Init) pointee `x`.
     assert_elaborated_eq(
         "
-            fn f(x: number) {
-              r: &mut number;
+            fn f(x: i64) {
+              r: &mut i64;
               entry:
                 r = &mut x;
                 unborrow r;
@@ -835,8 +835,8 @@ fn does_not_drop_unborrowed_ref() {
             }
             ",
         "\
-fn f(x: number) {
-  r: &mut number;
+fn f(x: i64) {
+  r: &mut i64;
   entry:
     r = &mut x;
     unborrow r;
@@ -850,8 +850,8 @@ fn f(x: number) {
 fn idempotent_with_unborrow() {
     assert_idempotent(
         "
-            fn f(x: number) {
-              r: &mut number;
+            fn f(x: i64) {
+              r: &mut i64;
               entry:
                 r = &mut x;
                 unborrow r;
@@ -877,8 +877,8 @@ fn init_order_differs_from_decl_order_uses_decl_order() {
     assert_elaborated_eq(
         "
             fn f() {
-              a: number;
-              b: number;
+              a: i64;
+              b: i64;
               entry:
                 b = 1;
                 a = 2;
@@ -887,8 +887,8 @@ fn init_order_differs_from_decl_order_uses_decl_order() {
             ",
         "\
 fn f() {
-  a: number;
-  b: number;
+  a: i64;
+  b: i64;
   entry:
     b = 1;
     a = 2;
@@ -904,7 +904,7 @@ fn strict_check_still_fails_for_linear_leak() {
     // Elaboration doesn't paper over linear leaks; strict should
     // still report them.
     let src = "
-            struct Linear { r: &out number }
+            struct Linear { r: &out i64 }
             fn f(x: Linear) {
               entry:
                 return

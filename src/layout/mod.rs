@@ -8,7 +8,7 @@
 //! reference is fine: the referent is behind a pointer of bounded size.
 //!
 //! ## Layout rules
-//! - `number`                 → 8 bytes, align 8 (i64)
+//! - `i64`                 → 8 bytes, align 8 (i64)
 //! - `boolean`                → 1 byte,  align 1
 //! - `unit`, `never`          → 0 bytes, align 1 (never is uninhabited)
 //! - `fn(...)`, `&T` (any kind) → 8 bytes, align 8 (pointer on 64-bit target)
@@ -37,7 +37,8 @@ use std::collections::BTreeSet;
 /// Size of `ty` in bytes on a 64-bit target.
 pub fn size_of(ty: &Type, env: &Env) -> u64 {
     match ty {
-        Type::Number => 8,
+        Type::Int(i) => i.bytes(),
+        Type::Float(f) => f.bytes(),
         Type::Boolean => 1,
         Type::Unit | Type::Never => 0,
         Type::Fn(_) | Type::Ref(_, _) => 8,
@@ -50,9 +51,11 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
 }
 
 /// Alignment of `ty` in bytes on a 64-bit target. Always a power of two.
+/// For scalars, alignment equals the type's own size (natural alignment).
 pub fn align_of(ty: &Type, env: &Env) -> u64 {
     match ty {
-        Type::Number => 8,
+        Type::Int(i) => i.bytes(),
+        Type::Float(f) => f.bytes(),
         Type::Boolean => 1,
         Type::Unit | Type::Never => 1,
         Type::Fn(_) | Type::Ref(_, _) => 8,

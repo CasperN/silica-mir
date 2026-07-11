@@ -18,9 +18,9 @@ fn place_unknown_var_error() {
 fn place_struct_field_ok() {
     assert_ok(
         "
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f(p: P) {
-            a: number;
+            a: i64;
             entry:
             a = copy p.x;
             return
@@ -33,9 +33,9 @@ fn place_struct_field_ok() {
 fn place_unknown_field_error() {
     assert_err(
         "
-        struct P { x: number }
+        struct P { x: i64 }
         fn f(p: P) {
-            a: number;
+            a: i64;
             entry:
             a = copy p.z;
             return
@@ -49,8 +49,8 @@ fn place_unknown_field_error() {
 fn place_field_on_non_struct_error() {
     assert_err(
         "
-        fn f(n: number) {
-            a: number;
+        fn f(n: i64) {
+            a: i64;
             entry:
             a = copy n.x;
             return
@@ -64,9 +64,9 @@ fn place_field_on_non_struct_error() {
 fn place_field_on_enum_error() {
     assert_err(
         "
-        enum E { A: number }
+        enum E { A: i64 }
         fn f(e: E) {
-            a: number;
+            a: i64;
             entry:
             a = copy e.x;
             return
@@ -82,9 +82,9 @@ fn place_downcast_ok() {
     // switchEnum arm — enforced by `enum_variants`.
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
-            x: number;
+            x: i64;
             entry:
             switchEnum(o) [None: n, Some: s]
             s:
@@ -100,9 +100,9 @@ fn place_downcast_ok() {
 fn place_downcast_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
-            x: number;
+            x: i64;
             entry:
             x = copy o as Wat;
             return
@@ -118,8 +118,8 @@ fn place_downcast_on_non_enum_type() {
     // 'Cannot downcast non-enum type' branch.
     assert_err(
         "
-        fn f(r: &number) {
-            x: number;
+        fn f(r: &i64) {
+            x: i64;
             entry:
             x = copy r as Some;
             return
@@ -133,9 +133,9 @@ fn place_downcast_on_non_enum_type() {
 fn place_downcast_on_struct_error() {
     assert_err(
         "
-        struct S { x: number }
+        struct S { x: i64 }
         fn f(s: S) {
-            x: number;
+            x: i64;
             entry:
             x = copy s as Some;
             return
@@ -149,8 +149,8 @@ fn place_downcast_on_struct_error() {
 fn place_deref_ok() {
     assert_ok(
         "
-        fn f(r: &number) {
-            x: number;
+        fn f(r: &i64) {
+            x: i64;
             entry:
             x = copy *r;
             return
@@ -165,8 +165,8 @@ fn nested_reference_type_ok() {
     // deref on the read side.
     assert_ok(
         "
-        fn f(r: &mut &mut number) {
-            a: number;
+        fn f(r: &mut &mut i64) {
+            a: i64;
             entry:
             a = copy **r;
             return
@@ -197,8 +197,8 @@ fn zero_arity_fn_type_ok() {
 fn place_deref_of_non_ref_error() {
     assert_err(
         "
-        fn f(y: number) {
-            x: number;
+        fn f(y: i64) {
+            x: i64;
             entry:
             x = copy *y;
             return
@@ -213,9 +213,9 @@ fn place_deref_through_field_ok() {
     // Exercises Deref(Field(Var, "r")) — a reference held in a struct field.
     assert_ok(
         "
-        struct Copy Drop Ptr { r: &number }
+        struct Copy Drop Ptr { r: &i64 }
         fn f(p: Ptr) {
-            a: number;
+            a: i64;
             entry:
             a = copy *p.r;
             return

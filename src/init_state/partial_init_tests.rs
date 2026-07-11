@@ -14,10 +14,10 @@ fn field_writes_complete_init_ok() {
     // to fully Init.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f() {
           p: P;
-          a: number;
+          a: i64;
           entry:
             p.x = 1;
             p.y = 2;
@@ -33,7 +33,7 @@ fn partial_field_write_leaves_root_partial_error() {
     // Only one field written; the whole struct is not fully init and
     // reading it errors.
     let (errs, _) = run("
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
           p: P;
           q: P;
@@ -50,10 +50,10 @@ fn partial_field_write_leaves_root_partial_error() {
 fn read_uninit_field_of_partial_struct_error() {
     // Field-granular: writing p.x doesn't init p.y — reading p.y errors.
     let (errs, _) = run("
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
           p: P;
-          a: number;
+          a: i64;
           entry:
             p.x = 1;
             a = copy p.y;
@@ -70,10 +70,10 @@ fn move_of_field_leaves_other_fields_init_ok() {
     // for the remaining p.y automatically.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f(p: P) {
-          a: number;
-          b: number;
+          a: i64;
+          b: i64;
           entry:
             a = move p.x;
             b = copy p.y;
@@ -86,10 +86,10 @@ fn move_of_field_leaves_other_fields_init_ok() {
 #[test]
 fn move_of_field_then_read_that_field_error() {
     let (errs, _) = run("
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f(p: P) {
-          a: number;
-          b: number;
+          a: i64;
+          b: i64;
           entry:
             a = move p.x;
             b = copy p.x;
@@ -105,11 +105,11 @@ fn nested_field_writes_complete_init_ok() {
     // struct collapses to Init once every leaf is written.
     assert_no_diagnostics(
         "
-        struct Copy Drop Inner { a: number b: number }
-        struct Copy Drop Outer { i: Inner c: number }
+        struct Copy Drop Inner { a: i64 b: i64 }
+        struct Copy Drop Outer { i: Inner c: i64 }
         fn f() {
           o: Outer;
-          n: number;
+          n: i64;
           entry:
             o.i.a = 1;
             o.i.b = 2;
@@ -124,11 +124,11 @@ fn nested_field_writes_complete_init_ok() {
 #[test]
 fn nested_partial_read_of_uninit_inner_field_error() {
     let (errs, _) = run("
-        struct Inner { a: number b: number }
-        struct Outer { i: Inner c: number }
+        struct Inner { a: i64 b: i64 }
+        struct Outer { i: Inner c: i64 }
         fn f() {
           o: Outer;
-          n: number;
+          n: i64;
           entry:
             o.i.a = 1;
             o.c = 3;
@@ -144,10 +144,10 @@ fn whole_struct_assign_after_partial_ok() {
     // Even if we partially init, a whole-struct assign resets to Init.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f(src: P) {
           p: P;
-          a: number;
+          a: i64;
           entry:
             p.x = 1;
             p = move src;

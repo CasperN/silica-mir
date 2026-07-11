@@ -14,9 +14,9 @@ fn unborrow_of_mut_ref_ok() {
     // point where cur=Init. Unborrow closes the loan.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             y = copy *r;
@@ -34,9 +34,9 @@ fn unborrow_releases_loan() {
     // place is legal.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             unborrow r;
@@ -52,8 +52,8 @@ fn unborrow_with_unfulfilled_obligation_error() {
     // &mut is (Init, Init) but we moved *r out (cur=Uninit).
     // Unborrow requires cur == post; this errors.
     let (errs, _) = run("
-        fn f(r: &mut number) {
-          x: number;
+        fn f(r: &mut i64) {
+          x: i64;
           entry:
             x = move *r;
             unborrow r;
@@ -71,7 +71,7 @@ fn unborrow_of_uninit_error() {
     // Can't unborrow a never-initialized ref var.
     let (errs, _) = run("
         fn f() {
-          r: &mut number;
+          r: &mut i64;
           entry:
             unborrow r;
             return
@@ -84,9 +84,9 @@ fn unborrow_of_uninit_error() {
 fn unborrow_after_move_error() {
     // r was moved to a call — can't unborrow a Moved ref.
     let (errs, _) = run("
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             call sink(move r);
@@ -102,8 +102,8 @@ fn unborrow_of_shared_ref_ok() {
     // Shared refs have no obligation; unborrow just consumes them.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &number;
+        fn f(x: i64) {
+          r: &i64;
           entry:
             r = &x;
             unborrow r;
@@ -118,7 +118,7 @@ fn unborrow_of_shared_ref_ok() {
 fn unborrow_of_non_ref_type_error() {
     // Unborrow only makes sense on reference-typed places.
     let (errs, _) = run("
-        fn f(x: number) {
+        fn f(x: i64) {
           entry:
             unborrow x;
             return
@@ -132,7 +132,7 @@ fn unborrow_out_ref_after_write_ok() {
     // &out with cur=Init after `*r = v` reaches post; unborrow OK.
     assert_no_diagnostics(
         "
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
           entry:
             *r = 42;
             unborrow r;
@@ -149,8 +149,8 @@ fn unborrow_of_multi_loan_releases_all_places_ok() {
     // to a and b downstream succeed.
     assert_no_diagnostics(
         "
-        fn f(a: number, b: number, c: boolean) {
-          r: &mut number;
+        fn f(a: i64, b: i64, c: boolean) {
+          r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
           t:
@@ -176,9 +176,9 @@ fn unborrow_in_both_arms_merges_clean_ok() {
     // — direct access to x is legal downstream.
     assert_no_diagnostics(
         "
-        fn f(x: number, b: boolean) {
-          r: &mut number;
-          y: number;
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
+          y: i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -203,10 +203,10 @@ fn unborrow_then_reborrow_same_place_ok() {
     // legal. Second unborrow closes the new loan.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             unborrow r;
@@ -225,9 +225,9 @@ fn unborrow_of_field_borrower_thaws_field_ok() {
     // p.a directly afterward succeeds.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: number b: number }
+        struct Copy Drop P { a: i64 b: i64 }
         fn f(p: P) {
-          r: &mut number;
+          r: &mut i64;
           entry:
             r = &mut p.a;
             unborrow r;
@@ -245,9 +245,9 @@ fn unborrow_across_loop_ok() {
     // cleanly closable at loop exit.
     assert_no_diagnostics(
         "
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             goto head

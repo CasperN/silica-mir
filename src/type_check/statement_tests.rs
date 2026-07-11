@@ -6,7 +6,7 @@ fn assign_type_match_ok() {
     assert_ok(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = 42;
             return
@@ -20,7 +20,7 @@ fn assign_type_mismatch_error() {
     assert_err(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = true;
             return
@@ -37,7 +37,7 @@ fn assign_through_mut_ref_ok() {
     // to consume the pointee without needing a local receiver.
     assert_ok(
         "
-        fn f(r: &mut number) {
+        fn f(r: &mut i64) {
             entry:
             drop *r;
             *r = 42;
@@ -51,7 +51,7 @@ fn assign_through_mut_ref_ok() {
 fn assign_field_type_mismatch_error() {
     assert_err(
         "
-        struct S { f: number }
+        struct S { f: i64 }
         fn f(s: S) {
             entry:
             s.f = true;
@@ -67,7 +67,7 @@ fn assign_via_downcast_ok() {
     // Downcast writes need the same refinement as reads.
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
             entry:
             switchEnum(o) [None: n, Some: s]
@@ -84,8 +84,8 @@ fn assign_via_downcast_ok() {
 fn assign_ref_kind_mismatch_error() {
     assert_err(
         "
-        fn f(y: number) {
-            r: &mut number;
+        fn f(y: i64) {
+            r: &mut i64;
             entry:
             r = &y;
             return
@@ -99,9 +99,9 @@ fn assign_ref_kind_mismatch_error() {
 fn assign_fn_arity_mismatch_error() {
     assert_err(
         "
-        fn callee(x: number) { entry: return }
+        fn callee(x: i64) { entry: return }
         fn f() {
-            g: fn(number, number);
+            g: fn(i64, i64);
             entry:
             g = callee;
             return
@@ -117,7 +117,7 @@ fn assign_fn_arity_mismatch_error() {
 fn call_direct_by_fn_name_ok() {
     assert_ok(
         "
-        extern fn add(a: number, b: number);
+        extern fn add(a: i64, b: i64);
         fn f() {
             entry:
             call add(1, 2);
@@ -131,9 +131,9 @@ fn call_direct_by_fn_name_ok() {
 fn call_through_local_ok() {
     assert_ok(
         "
-        extern fn add(a: number, b: number);
+        extern fn add(a: i64, b: i64);
         fn f() {
-            g: fn(number, number);
+            g: fn(i64, i64);
             entry:
             g = add;
             call copy g(1, 2);
@@ -147,14 +147,14 @@ fn call_through_local_ok() {
 fn call_wrong_arity_error() {
     assert_err(
         "
-        extern fn add(a: number, b: number);
+        extern fn add(a: i64, b: i64);
         fn f() {
             entry:
             call add(1);
             return
         }
         ",
-        "Wrong number of arguments",
+        "Wrong i64 of arguments",
     );
 }
 
@@ -162,7 +162,7 @@ fn call_wrong_arity_error() {
 fn call_wrong_arg_type_error() {
     assert_err(
         "
-        extern fn takes_num(a: number);
+        extern fn takes_num(a: i64);
         fn f() {
             entry:
             call takes_num(true);
@@ -178,7 +178,7 @@ fn call_non_function_target_error() {
     assert_err(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = 42;
             call copy x();
@@ -193,9 +193,9 @@ fn call_non_function_target_error() {
 fn call_ref_kind_mismatch_error() {
     assert_err(
         "
-        extern fn takes_drop(r: &drop number);
-        fn f(y: number) {
-            r: &mut number;
+        extern fn takes_drop(r: &drop i64);
+        fn f(y: i64) {
+            r: &mut i64;
             entry:
             r = &mut y;
             call takes_drop(move r);
@@ -229,7 +229,7 @@ fn drop_statement_ok() {
     // Syntactically well-formed drop on a param of Drop type.
     assert_ok(
         "
-        fn f(x: number) {
+        fn f(x: i64) {
             entry:
             drop x;
             return
@@ -242,7 +242,7 @@ fn double_drop_error() {
     // Syntactically well-formed drop on a param of Drop type.
     assert_err(
         "
-        fn f(x: number) {
+        fn f(x: i64) {
             entry:
             drop x;
             drop x;

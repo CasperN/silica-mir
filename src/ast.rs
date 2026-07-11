@@ -46,9 +46,84 @@ pub enum RefKind {
     Uninit, // &uninit
 }
 
+/// Integer scalar type. Grouped in `Type::Int(IntTy)` rather than a
+/// separate `Type` variant per width — passes that treat all integers
+/// uniformly (Copy/Drop class, ref-ness, etc.) match on `Type::Int(_)`;
+/// passes that dispatch per-width (layout, codegen) match on the inner
+/// `IntTy`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum IntTy {
+    I8, I16, I32, I64,
+    U8, U16, U32, U64,
+}
+
+impl IntTy {
+    pub fn is_signed(self) -> bool {
+        matches!(self, IntTy::I8 | IntTy::I16 | IntTy::I32 | IntTy::I64)
+    }
+
+    /// Width in bits.
+    pub fn bits(self) -> u32 {
+        match self {
+            IntTy::I8 | IntTy::U8 => 8,
+            IntTy::I16 | IntTy::U16 => 16,
+            IntTy::I32 | IntTy::U32 => 32,
+            IntTy::I64 | IntTy::U64 => 64,
+        }
+    }
+
+    /// Width in bytes.
+    pub fn bytes(self) -> u64 {
+        self.bits() as u64 / 8
+    }
+
+    /// Canonical MIR / LLVM name (`"i8"`, `"u32"`, …).
+    pub fn name(self) -> &'static str {
+        match self {
+            IntTy::I8 => "i8",
+            IntTy::I16 => "i16",
+            IntTy::I32 => "i32",
+            IntTy::I64 => "i64",
+            IntTy::U8 => "u8",
+            IntTy::U16 => "u16",
+            IntTy::U32 => "u32",
+            IntTy::U64 => "u64",
+        }
+    }
+}
+
+/// Floating-point scalar type. Grouped like `IntTy` — see its comment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum FloatTy {
+    F32,
+    F64,
+}
+
+impl FloatTy {
+    pub fn bits(self) -> u32 {
+        match self {
+            FloatTy::F32 => 32,
+            FloatTy::F64 => 64,
+        }
+    }
+
+    pub fn bytes(self) -> u64 {
+        self.bits() as u64 / 8
+    }
+
+    /// Canonical MIR name (`"f32"`, `"f64"`).
+    pub fn name(self) -> &'static str {
+        match self {
+            FloatTy::F32 => "f32",
+            FloatTy::F64 => "f64",
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
-    Number,
+    Int(IntTy),
+    Float(FloatTy),
     Boolean,
     Unit,
     Never,
@@ -267,7 +342,15 @@ pub fn terminator_successors(term: &Terminator) -> Vec<&str> {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ConstVal {
-    Number(u64),
+    /// Integer literal. `bits` is the raw bit pattern; interpretation
+    /// as signed/unsigned comes from `ty`. Bit widths narrower than 64
+    /// use the low `ty.bits()` bits, upper bits zero.
+    Int { bits: u64, ty: IntTy },
+    /// Floating-point literal, stored as its IEEE-754 bit pattern.
+    /// `f32` literals are stored in the low 32 bits (upper 32 bits
+    /// zero); `f64` fills all 64. Bit-pattern storage lets ConstVal
+    /// stay `Eq` (NaN comparisons preserved as bit-equality).
+    Float { bits: u64, ty: FloatTy },
     Boolean(bool),
     Unit,
     FnName(String),

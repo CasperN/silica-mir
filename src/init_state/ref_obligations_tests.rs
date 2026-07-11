@@ -18,8 +18,8 @@ fn mut_ref_read_then_return_ok() {
     // Read through &mut leaves cur=Init; obligation trivially met.
     assert_no_diagnostics(
         "
-        fn f(r: &mut number) {
-          x: number;
+        fn f(r: &mut i64) {
+          x: i64;
           entry:
             x = copy *r;
             return
@@ -34,8 +34,8 @@ fn mut_ref_move_then_write_ok() {
     // obligation met at return.
     assert_no_diagnostics(
         "
-        fn f(r: &mut number) {
-          x: number;
+        fn f(r: &mut i64) {
+          x: i64;
           entry:
             x = move *r;
             *r = 42;
@@ -50,7 +50,7 @@ fn mut_ref_write_without_move_error() {
     // `*r = v` on an Init pointee would silently forget the old
     // value — rejected as pre-overwrite of the pointee.
     let (errs, _) = run("
-        fn f(r: &mut number) {
+        fn f(r: &mut i64) {
           entry:
             *r = 42;
             return
@@ -66,8 +66,8 @@ fn mut_ref_write_without_move_error() {
 fn mut_ref_moved_out_return_leaks() {
     // Move-out leaves cur=Uninit; not refilled → obligation unmet.
     let (errs, _) = run("
-        fn f(r: &mut number) {
-          x: number;
+        fn f(r: &mut i64) {
+          x: i64;
           entry:
             x = move *r;
             return
@@ -85,7 +85,7 @@ fn mut_ref_moved_out_return_leaks() {
 fn out_ref_write_then_return_ok() {
     assert_no_diagnostics(
         "
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
           entry:
             *r = 42;
             return
@@ -97,7 +97,7 @@ fn out_ref_write_then_return_ok() {
 #[test]
 fn out_ref_unwritten_leaks() {
     let (errs, _) = run("
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
           entry:
             return
         }
@@ -112,8 +112,8 @@ fn out_ref_unwritten_leaks() {
 fn out_ref_read_before_write_error() {
     // Can't read through &out — pointee is Uninit at creation.
     let (errs, _) = run("
-        fn f(r: &out number) {
-          x: number;
+        fn f(r: &out i64) {
+          x: i64;
           entry:
             x = copy *r;
             *r = 42;
@@ -132,8 +132,8 @@ fn out_ref_read_before_write_error() {
 fn drop_ref_move_out_then_return_ok() {
     assert_no_diagnostics(
         "
-        fn f(r: &drop number) {
-          x: number;
+        fn f(r: &drop i64) {
+          x: i64;
           entry:
             x = move *r;
             return
@@ -145,7 +145,7 @@ fn drop_ref_move_out_then_return_ok() {
 #[test]
 fn drop_ref_unmoved_leaks() {
     let (errs, _) = run("
-        fn f(r: &drop number) {
+        fn f(r: &drop i64) {
           entry:
             return
         }
@@ -162,7 +162,7 @@ fn drop_ref_unmoved_leaks() {
 fn uninit_ref_untouched_return_ok() {
     assert_no_diagnostics(
         "
-        fn f(r: &uninit number) {
+        fn f(r: &uninit i64) {
           entry:
             return
         }
@@ -176,8 +176,8 @@ fn uninit_ref_write_makes_it_drop_state() {
     // Must move-out again to satisfy post.
     assert_no_diagnostics(
         "
-        fn f(r: &uninit number) {
-          x: number;
+        fn f(r: &uninit i64) {
+          x: i64;
           entry:
             *r = 42;
             x = move *r;
@@ -190,7 +190,7 @@ fn uninit_ref_write_makes_it_drop_state() {
 #[test]
 fn uninit_ref_write_without_moveback_leaks() {
     let (errs, _) = run("
-        fn f(r: &uninit number) {
+        fn f(r: &uninit i64) {
           entry:
             *r = 42;
             return
@@ -208,9 +208,9 @@ fn uninit_ref_write_without_moveback_leaks() {
 fn local_mut_ref_moved_to_call_ok() {
     assert_no_diagnostics(
         "
-        extern fn use_mut(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
+        extern fn use_mut(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             call use_mut(move r);
@@ -226,9 +226,9 @@ fn local_drop_ref_moved_to_call_ok() {
     // the callee.
     assert_no_diagnostics(
         "
-        extern fn consume(r: &drop number);
-        fn f(x: number) {
-          r: &drop number;
+        extern fn consume(r: &drop i64);
+        fn f(x: i64) {
+          r: &drop i64;
           entry:
             r = &drop x;
             call consume(move r);
@@ -244,8 +244,8 @@ fn local_drop_ref_moved_to_call_ok() {
 fn shared_ref_read_ok() {
     assert_no_diagnostics(
         "
-        fn f(r: &number) {
-          x: number;
+        fn f(r: &i64) {
+          x: i64;
           entry:
             x = copy *r;
             return
@@ -257,7 +257,7 @@ fn shared_ref_read_ok() {
 #[test]
 fn shared_ref_write_error() {
     let (errs, _) = run("
-        fn f(r: &number) {
+        fn f(r: &i64) {
           entry:
             *r = 1;
             return
@@ -271,7 +271,7 @@ fn shared_ref_left_bound_at_return_ok() {
     // `&T` is Copy Drop; no obligation on return.
     assert_no_diagnostics(
         "
-        fn f(r: &number) {
+        fn f(r: &i64) {
           entry:
             return
         }
@@ -286,7 +286,7 @@ fn drop_of_mut_ref_ok() {
     // &mut is (Init, Init) at every point; drop is trivially legal.
     assert_no_diagnostics(
         "
-        fn f(r: &mut number) {
+        fn f(r: &mut i64) {
           entry:
             drop r;
             return
@@ -300,8 +300,8 @@ fn drop_of_ref_with_unfulfilled_obligation_error() {
     // Move out through &mut leaves cur=Uninit; drop-forget then
     // errors because obligation not fulfilled.
     let (errs, _) = run("
-        fn f(r: &mut number) {
-          x: number;
+        fn f(r: &mut i64) {
+          x: i64;
           entry:
             x = move *r;
             drop r;
@@ -322,9 +322,9 @@ fn overwrite_bound_ref_with_fulfilled_obligation_ok() {
     // the overwrite point, so silently dropping the old ref is OK.
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number, y: number) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64, y: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             r = &mut y;
@@ -340,8 +340,8 @@ fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
     // After `x = move *r`, r is (Uninit, Init); overwriting r would
     // silently forget the pending re-init obligation on the pointee.
     let (errs, _) = run("
-        fn f(r: &mut number, z: number) {
-          x: number;
+        fn f(r: &mut i64, z: i64) {
+          x: i64;
           entry:
             x = move *r;
             r = &mut z;
@@ -361,7 +361,7 @@ fn drop_deref_of_mut_ref_leaks_pointee() {
     // `drop *r` on r: &mut consumes the pointee, transitioning r to
     // (Uninit, Init). Without re-init, obligation at return is unmet.
     let (errs, _) = run("
-        fn f(r: &mut number) {
+        fn f(r: &mut i64) {
           entry:
             drop *r;
             return

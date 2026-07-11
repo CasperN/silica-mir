@@ -4,7 +4,7 @@ use crate::test_util::*;
 #[test]
 fn duplicate_param_name_error() {
     assert_err(
-        "fn f(x: number, x: number) { entry: return }",
+        "fn f(x: i64, x: i64) { entry: return }",
         "Duplicate variable name 'x' in parameters",
     );
 }
@@ -13,8 +13,8 @@ fn duplicate_param_name_error() {
 fn local_shadows_param_error() {
     assert_err(
         "
-        fn f(x: number) {
-            x: number;
+        fn f(x: i64) {
+            x: i64;
             entry:
             return
         }
@@ -28,8 +28,8 @@ fn duplicate_local_name_error() {
     assert_err(
         "
         fn f() {
-            x: number;
-            x: number;
+            x: i64;
+            x: i64;
             entry:
             return
         }
@@ -42,7 +42,7 @@ fn duplicate_local_name_error() {
 fn extern_fn_declared_and_callable_ok() {
     assert_ok(
         "
-        extern fn takes_num(a: number);
+        extern fn takes_num(a: i64);
         fn f() {
             entry:
             call takes_num(1);
@@ -64,7 +64,7 @@ fn unreachable_with_statements_ok() {
     assert_ok(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = 42;
             unreachable

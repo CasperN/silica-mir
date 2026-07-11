@@ -4,8 +4,8 @@ use crate::test_util::*;
 fn env_build_ok_mixed_decls() {
     assert_ok(
         "
-        struct Point { x: number y: number }
-        enum Copy Drop Option { None: unit Some: number }
+        struct Point { x: i64 y: i64 }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f() { entry: return }
         extern fn g();
         ",
@@ -17,7 +17,7 @@ fn struct_duplicate_field_name_error() {
     assert_err(
         "
         struct S {
-            x: number
+            x: i64
             x: boolean
         }
         ",
@@ -31,7 +31,7 @@ fn enum_duplicate_variant_name_error() {
         "
         enum E {
             A: unit
-            A: number
+            A: i64
         }
         ",
         "variant 'A' is declared more than once",
@@ -42,8 +42,8 @@ fn enum_duplicate_variant_name_error() {
 fn env_build_duplicate_struct() {
     assert_err(
         "
-        struct P { x: number }
-        struct P { y: number }
+        struct P { x: i64 }
+        struct P { y: i64 }
         ",
         "Duplicate declaration of type 'P'",
     );
@@ -53,8 +53,8 @@ fn env_build_duplicate_struct() {
 fn env_build_duplicate_enum() {
     assert_err(
         "
-        enum E { A: number }
-        enum E { B: number }
+        enum E { A: i64 }
+        enum E { B: i64 }
         ",
         "Duplicate declaration of type 'E'",
     );
@@ -64,8 +64,8 @@ fn env_build_duplicate_enum() {
 fn env_build_struct_enum_name_clash() {
     assert_err(
         "
-        struct N { x: number }
-        enum N { A: number }
+        struct N { x: i64 }
+        enum N { A: i64 }
         ",
         "Duplicate declaration of type 'N'",
     );
@@ -88,7 +88,7 @@ fn env_build_struct_and_fn_same_name_currently_ok() {
     // If we ever unify, this test tightens into an assert_err.
     assert_ok(
         "
-        struct N { x: number }
+        struct N { x: i64 }
         fn N() { entry: return }
         ",
     );

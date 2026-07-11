@@ -19,8 +19,8 @@ use crate::test_util::*;
 fn shared_borrow_of_init_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &number;
+        fn f(x: i64) {
+          r: &i64;
           entry:
             r = &x;
             return
@@ -33,8 +33,8 @@ fn shared_borrow_of_init_ok() {
 fn shared_borrow_of_never_init_error() {
     let (errs, _) = run("
         fn f() {
-          x: number;
-          r: &number;
+          x: i64;
+          r: &i64;
           entry:
             r = &x;
             return
@@ -49,9 +49,9 @@ fn shared_borrow_of_never_init_error() {
 #[test]
 fn shared_borrow_of_moved_error() {
     let (errs, _) = run("
-        extern fn sink(x: number);
-        fn f(x: number) {
-          r: &number;
+        extern fn sink(x: i64);
+        fn f(x: i64) {
+          r: &i64;
           entry:
             call sink(move x);
             r = &x;
@@ -70,8 +70,8 @@ fn shared_borrow_of_moved_error() {
 fn mut_borrow_of_init_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &mut number;
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             return
@@ -84,8 +84,8 @@ fn mut_borrow_of_init_ok() {
 fn mut_borrow_of_never_init_error() {
     let (errs, _) = run("
         fn f() {
-          x: number;
-          r: &mut number;
+          x: i64;
+          r: &mut i64;
           entry:
             r = &mut x;
             return
@@ -103,9 +103,9 @@ fn mut_borrow_of_never_init_error() {
 fn drop_borrow_of_init_ok() {
     assert_no_diagnostics(
         "
-        extern fn take_drop(r: &drop number);
-        fn f(x: number) {
-          r: &drop number;
+        extern fn take_drop(r: &drop i64);
+        fn f(x: i64) {
+          r: &drop i64;
           entry:
             r = &drop x;
             call take_drop(move r);
@@ -119,8 +119,8 @@ fn drop_borrow_of_init_ok() {
 fn drop_borrow_of_never_init_error() {
     let (errs, _) = run("
         fn f() {
-          x: number;
-          r: &drop number;
+          x: i64;
+          r: &drop i64;
           entry:
             r = &drop x;
             return
@@ -141,10 +141,10 @@ fn out_borrow_of_never_init_ok() {
     // the &out — so x stays NeverInit locally, which is fine at return.
     assert_no_diagnostics(
         "
-        extern fn init_number(out: &out number);
+        extern fn init_number(out: &out i64);
         fn f() {
-          x: number;
-          r: &out number;
+          x: i64;
+          r: &out i64;
           entry:
             r = &out x;
             call init_number(move r);
@@ -161,10 +161,10 @@ fn out_borrow_of_moved_ok() {
     // — x stays Moved locally, which is fine at return.)
     assert_no_diagnostics(
         "
-        extern fn take(y: number);
-        extern fn init(out: &out number);
-        fn f(x: number) {
-          r: &out number;
+        extern fn take(y: i64);
+        extern fn init(out: &out i64);
+        fn f(x: i64) {
+          r: &out i64;
           entry:
             call take(move x);
             r = &out x;
@@ -178,13 +178,13 @@ fn out_borrow_of_moved_ok() {
 #[test]
 fn out_borrow_of_init_error() {
     let (errs, _) = run("
-        fn f(x: number) {
+        fn f(x: i64) {
           entry:
             x = 1;
             return
         }
-        fn g(x: number) {
-          r: &out number;
+        fn g(x: i64) {
+          r: &out i64;
           entry:
             r = &out x;
             return
@@ -202,10 +202,10 @@ fn out_borrow_of_init_error() {
 fn uninit_borrow_of_never_init_ok() {
     assert_no_diagnostics(
         "
-        extern fn discard(r: &uninit number);
+        extern fn discard(r: &uninit i64);
         fn f() {
-          x: number;
-          r: &uninit number;
+          x: i64;
+          r: &uninit i64;
           entry:
             r = &uninit x;
             call discard(move r);
@@ -218,8 +218,8 @@ fn uninit_borrow_of_never_init_ok() {
 #[test]
 fn uninit_borrow_of_init_error() {
     let (errs, _) = run("
-        fn f(x: number) {
-          r: &uninit number;
+        fn f(x: i64) {
+          r: &uninit i64;
           entry:
             r = &uninit x;
             return
@@ -239,11 +239,11 @@ fn mut_borrow_of_init_field_ok() {
     // `&mut p.x` succeeds even though p is Partial as a whole.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: number y: number }
-        extern fn use_mut(r: &mut number);
+        struct Copy Drop P { x: i64 y: i64 }
+        extern fn use_mut(r: &mut i64);
         fn f() {
           p: P;
-          r: &mut number;
+          r: &mut i64;
           entry:
             p.x = 1;
             r = &mut p.x;
@@ -258,7 +258,7 @@ fn mut_borrow_of_init_field_ok() {
 #[test]
 fn mut_borrow_of_never_init_field_error() {
     let (errs, _) = run("
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f() {
           p: P;
           entry:
@@ -269,7 +269,7 @@ fn mut_borrow_of_never_init_field_error() {
         }
         fn g() {
           p: P;
-          r: &mut number;
+          r: &mut i64;
           entry:
             p.x = 1;
             r = &mut p.y;
@@ -287,7 +287,7 @@ fn out_borrow_of_partial_error() {
     // Borrowing the whole `p` when only `p.x` was written: the leaf
     // read on `p` is Partial, not one of the accepted states.
     let (errs, _) = run("
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f() {
           p: P;
           r: &out P;
@@ -307,7 +307,7 @@ fn out_borrow_of_partial_error() {
 fn shared_borrow_of_partial_error() {
     // `&` requires Init; Partial isn't Init.
     let (errs, _) = run("
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f() {
           p: P;
           r: &P;
@@ -327,7 +327,7 @@ fn shared_borrow_of_partial_error() {
 fn drop_borrow_of_partial_error() {
     // `&drop` requires Init; Partial isn't Init.
     let (errs, _) = run("
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f() {
           p: P;
           r: &drop P;

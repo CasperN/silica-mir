@@ -20,12 +20,12 @@ fn enum_with_unit_variants_only() {
 
 #[test]
 fn enum_with_number_payload_pads_to_i64_alignment() {
-    // number needs align 8 → payload_offset = 8, pad_bytes = 6.
+    // i64 needs align 8 → payload_offset = 8, pad_bytes = 6.
     // Payload lane is i64 (align 8) with count ceil(8/8) = 1, so
     // LLVM infers the struct's align as 8.
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f() { entry: return }
         ",
     );
@@ -50,7 +50,7 @@ fn enum_with_boolean_payload_stays_align_2() {
 fn enum_with_ref_payload_pads_to_pointer_alignment() {
     let ll = ll_of(
         "
-        enum E { A: &mut number B: unit }
+        enum E { A: &mut i64 B: unit }
         fn f() { entry: return }
         ",
     );
@@ -64,7 +64,7 @@ fn enum_infers_align_when_embedded_in_struct() {
     // an i64 lane, LLVM infers align 8 and pads `b` correctly.
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         struct S { b: boolean e: E }
         fn f() { entry: return }
         ",
@@ -79,7 +79,7 @@ fn enum_infers_align_when_embedded_in_struct() {
 fn enum_local_alloca_uses_layout_alignment() {
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f() {
           e: E;
           entry: return
@@ -109,7 +109,7 @@ fn enum_of_only_unit_variants_alloca_is_align_2() {
 fn enum_construction_writes_discriminant_at_field_zero() {
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f() {
           e: E;
           entry:
@@ -131,7 +131,7 @@ fn enum_construction_writes_discriminant_at_field_zero() {
 fn enum_construction_second_variant_gets_index_1() {
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f() {
           e: E;
           entry:
@@ -147,7 +147,7 @@ fn enum_construction_second_variant_gets_index_1() {
 fn enum_construction_writes_payload_at_field_two() {
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f() {
           e: E;
           entry:
@@ -193,9 +193,9 @@ fn downcast_read_geps_to_payload_field() {
     // Refined via the switchEnum arm — variant_flow requires it.
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f(e: E) {
-          x: number;
+          x: i64;
           entry:
             switchEnum(e) [A: a_arm, B: b_arm]
           a_arm:
@@ -219,7 +219,7 @@ fn downcast_read_geps_to_payload_field() {
 fn switch_enum_loads_disc_and_emits_switch() {
     let ll = ll_of(
         "
-        enum E { A: number B: unit }
+        enum E { A: i64 B: unit }
         fn f(e: E) {
           entry:
             switchEnum(e) [A: a_arm, B: b_arm]

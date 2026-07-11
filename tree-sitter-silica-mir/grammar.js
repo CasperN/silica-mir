@@ -20,7 +20,14 @@ module.exports = grammar({
     comment: $ => /#.*/,
 
     identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
-    number: $ => /[0-9]+/,
+    // Integer literals: decimal / hex (0x…) / binary (0b…). Underscore
+    // separators allowed anywhere in the digits. Optional type suffix
+    // pins the type; unsuffixed defaults to i64 at parse time.
+    int_lit: $ => /(0x[0-9a-fA-F_]+|0b[01_]+|[0-9][0-9_]*)(i8|i16|i32|i64|u8|u16|u32|u64)?/,
+    // Float literals: decimal only (hex floats not supported yet).
+    // Underscore separators allowed. Optional f32/f64 suffix; unsuffixed
+    // defaults to f64.
+    float_lit: $ => /[0-9][0-9_]*\.[0-9][0-9_]*(f32|f64)?/,
 
     struct_decl: $ => seq(
       'struct',
@@ -192,7 +199,8 @@ module.exports = grammar({
     ),
 
     const: $ => choice(
-      $.number,
+      $.float_lit,   // ordered before int_lit so `3.14` isn't lexed as int
+      $.int_lit,
       'true',
       'false',
       'unit',
@@ -210,7 +218,9 @@ module.exports = grammar({
     ),
 
     type: $ => choice(
-      'number',
+      'i8', 'i16', 'i32', 'i64',
+      'u8', 'u16', 'u32', 'u64',
+      'f32', 'f64',
       'boolean',
       'unit',
       'never',

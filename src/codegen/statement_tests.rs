@@ -10,7 +10,7 @@ fn assign_number_const() {
     let ll = ll_of(
         "
         fn f() {
-          x: number;
+          x: i64;
           entry:
             x = 42;
             return
@@ -42,8 +42,8 @@ fn assign_boolean_consts() {
 fn copy_local_loads_then_stores() {
     let ll = ll_of(
         "
-        fn f(x: number) {
-          y: number;
+        fn f(x: i64) {
+          y: i64;
           entry:
             y = copy x;
             return
@@ -60,7 +60,7 @@ fn copy_local_loads_then_stores() {
 fn call_extern_with_const_arg() {
     let ll = ll_of(
         "
-        extern fn callee(a: number);
+        extern fn callee(a: i64);
         fn f() {
           entry:
             call callee(1);
@@ -75,9 +75,9 @@ fn call_extern_with_const_arg() {
 fn call_via_fn_pointer_local() {
     let ll = ll_of(
         "
-        extern fn callee(a: number);
+        extern fn callee(a: i64);
         fn f() {
-          g: fn(number);
+          g: fn(i64);
           entry:
             g = callee;
             call copy g(1);
@@ -101,8 +101,8 @@ fn drop_and_unborrow_are_erased() {
     // Both statements produce no instructions in the LLVM output.
     let ll = ll_of(
         "
-        fn f(r: &number) {
-          x: number;
+        fn f(r: &i64) {
+          x: i64;
           entry:
             x = 0;
             drop x;

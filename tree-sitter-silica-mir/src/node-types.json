@@ -126,11 +126,15 @@
       "required": false,
       "types": [
         {
+          "type": "float_lit",
+          "named": true
+        },
+        {
           "type": "identifier",
           "named": true
         },
         {
-          "type": "number",
+          "type": "int_lit",
           "named": true
         }
       ]
@@ -415,6 +419,7 @@
   {
     "type": "program",
     "named": true,
+    "root": true,
     "fields": {},
     "children": {
       "multiple": true,
@@ -770,7 +775,8 @@
   },
   {
     "type": "comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "copy",
@@ -789,8 +795,20 @@
     "named": false
   },
   {
+    "type": "f32",
+    "named": false
+  },
+  {
+    "type": "f64",
+    "named": false
+  },
+  {
     "type": "false",
     "named": false
+  },
+  {
+    "type": "float_lit",
+    "named": true
   },
   {
     "type": "fn",
@@ -801,7 +819,27 @@
     "named": false
   },
   {
+    "type": "i16",
+    "named": false
+  },
+  {
+    "type": "i32",
+    "named": false
+  },
+  {
+    "type": "i64",
+    "named": false
+  },
+  {
+    "type": "i8",
+    "named": false
+  },
+  {
     "type": "identifier",
+    "named": true
+  },
+  {
+    "type": "int_lit",
     "named": true
   },
   {
@@ -811,14 +849,6 @@
   {
     "type": "never",
     "named": false
-  },
-  {
-    "type": "number",
-    "named": false
-  },
-  {
-    "type": "number",
-    "named": true
   },
   {
     "type": "return",
@@ -834,6 +864,22 @@
   },
   {
     "type": "true",
+    "named": false
+  },
+  {
+    "type": "u16",
+    "named": false
+  },
+  {
+    "type": "u32",
+    "named": false
+  },
+  {
+    "type": "u64",
+    "named": false
+  },
+  {
+    "type": "u8",
     "named": false
   },
   {

@@ -7,9 +7,9 @@ use super::test_util::*;
 fn field_read_uses_gep() {
     let ll = ll_of(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f(p: P) {
-          n: number;
+          n: i64;
           entry:
             n = copy p.y;
             return
@@ -23,7 +23,7 @@ fn field_read_uses_gep() {
 fn field_write_uses_gep() {
     let ll = ll_of(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
           p: P;
           entry:
@@ -40,8 +40,8 @@ fn field_write_uses_gep() {
 fn deref_read_loads_pointer_then_pointee() {
     let ll = ll_of(
         "
-        fn f(r: &number) {
-          x: number;
+        fn f(r: &i64) {
+          x: i64;
           entry:
             x = copy *r;
             return
@@ -58,7 +58,7 @@ fn deref_read_loads_pointer_then_pointee() {
 fn deref_write_stores_via_loaded_ptr() {
     let ll = ll_of(
         "
-        fn f(r: &mut number) {
+        fn f(r: &mut i64) {
           entry:
             *r = 99;
             return
@@ -74,8 +74,8 @@ fn ref_stores_place_address() {
     let ll = ll_of(
         "
         fn f() {
-          x: number;
-          r: &number;
+          x: i64;
+          r: &i64;
           entry:
             x = 0;
             r = &x;
@@ -91,12 +91,12 @@ fn all_ref_kinds_lower_to_ptr() {
     let ll = ll_of(
         "
         fn f() {
-          x: number;
-          a: &number;
-          b: &mut number;
-          c: &out number;
-          d: &drop number;
-          e: &uninit number;
+          x: i64;
+          a: &i64;
+          b: &mut i64;
+          c: &out i64;
+          d: &drop i64;
+          e: &uninit i64;
           entry:
             x = 0;
             a = &x;

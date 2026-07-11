@@ -16,9 +16,9 @@ use crate::test_util::*;
 #[test]
 fn borrow_in_loop_body_no_residual_loan() {
     let (errs, _) = run("
-        extern fn use_ref(r: &mut number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn use_ref(r: &mut i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             goto head
           head:
@@ -46,10 +46,10 @@ fn borrow_in_loop_body_no_residual_loan() {
 fn borrow_across_loop_iterations_ok() {
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             goto head
@@ -72,9 +72,9 @@ fn borrow_across_loop_iterations_ok() {
 fn zero_iteration_loop_ok() {
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        fn f(b: boolean, x: number) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(b: boolean, x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             goto head
@@ -98,9 +98,9 @@ fn zero_iteration_loop_ok() {
 fn symmetric_borrow_then_gone_merge_access_ok() {
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -126,9 +126,9 @@ fn symmetric_borrow_then_gone_merge_access_ok() {
 fn symmetric_borrow_carried_through_merge_ok() {
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -150,9 +150,9 @@ fn symmetric_borrow_carried_through_merge_ok() {
 #[test]
 fn move_in_one_branch_read_at_merge_error() {
     let (errs, _) = run("
-        extern fn take(y: number);
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
+        extern fn take(y: i64);
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -177,9 +177,9 @@ fn move_in_one_branch_read_at_merge_error() {
 fn abort_with_live_borrow_other_arm_returns_ok() {
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             branch(copy b) [true: t, false: fbr]
@@ -200,9 +200,9 @@ fn abort_with_live_borrow_other_arm_returns_ok() {
 fn borrow_before_abort_no_leak_into_sibling_ok() {
     assert_no_diagnostics(
         "
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -222,11 +222,11 @@ fn borrow_before_abort_no_leak_into_sibling_ok() {
 fn borrow_downcast_with_unreachable_sibling_ok() {
     assert_no_diagnostics(
         "
-        enum Copy Drop Option { None: unit Some: number }
-        extern fn sink(r: &mut number);
+        enum Copy Drop Option { None: unit Some: i64 }
+        extern fn sink(r: &mut i64);
         fn f() {
           o: Option;
-          r: &mut number;
+          r: &mut i64;
           entry:
             o = Option::Some(1);
             switchEnum(o) [None: n_arm, Some: s_arm]
@@ -248,9 +248,9 @@ fn switch_arms_same_borrow_carried_through_merge_ok() {
     assert_no_diagnostics(
         "
         enum Copy Drop Sel { A: unit B: unit }
-        extern fn sink(r: &mut number);
-        fn f(o: Sel, x: number) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(o: Sel, x: i64) {
+          r: &mut i64;
           entry:
             switchEnum(o) [A: a_arm, B: b_arm]
           a_arm:
@@ -302,10 +302,10 @@ fn two_sequential_loops_ok() {
 fn move_reinit_move_cycle_ok() {
     assert_no_diagnostics(
         "
-        extern fn use_num(n: number);
-        fn f(x: number) {
-          y: number;
-          z: number;
+        extern fn use_num(n: i64);
+        fn f(x: i64) {
+          y: i64;
+          z: i64;
           entry:
             y = move x;
             x = 1;
@@ -377,10 +377,10 @@ fn nested_loop_with_borrow_across_outer_iterations_ok() {
     // back-edges without accumulating.
     assert_no_diagnostics(
         "
-        extern fn sink(r: &mut number);
-        extern fn use_num(n: number);
-        fn f(x: number, a: boolean, b: boolean) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        extern fn use_num(n: i64);
+        fn f(x: i64, a: boolean, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             goto outer_head
@@ -407,11 +407,11 @@ fn nested_loop_with_borrow_across_outer_iterations_ok() {
 fn mut_ref_move_out_then_write_back_cycle_ok() {
     assert_no_diagnostics(
         "
-        extern fn use_num(n: number);
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
-          y: number;
+        extern fn use_num(n: i64);
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             y = move *r;
@@ -432,8 +432,8 @@ fn join_agree_init_ok() {
     assert_no_diagnostics(
         "
         fn f(b: boolean) {
-          x: number;
-          y: number;
+          x: i64;
+          y: i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -455,8 +455,8 @@ fn join_disagreement_produces_diverged_error() {
     // Only one branch inits x; the merge is Diverged and reading errors.
     let (errs, _) = run("
         fn f(b: boolean) {
-          x: number;
-          y: number;
+          x: i64;
+          y: i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -479,8 +479,8 @@ fn aborting_predecessor_doesnt_pollute_join() {
     assert_no_diagnostics(
         "
         fn f(b: boolean) {
-          x: number;
-          y: number;
+          x: i64;
+          y: i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -505,7 +505,7 @@ fn loop_backedge_agrees_ok() {
     assert_no_diagnostics(
         "
         fn f(b: boolean) {
-          x: number;
+          x: i64;
           entry:
             x = 0;
             goto head
@@ -527,8 +527,8 @@ fn loop_may_reach_uninit_error() {
     // NeverInit. The read errors.
     let (errs, _) = run("
         fn f(b: boolean) {
-          x: number;
-          y: number;
+          x: i64;
+          y: i64;
           entry:
             branch(copy b) [true: body, false: done]
           body:

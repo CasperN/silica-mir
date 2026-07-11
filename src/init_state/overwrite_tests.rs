@@ -10,11 +10,11 @@ use crate::test_util::*;
 
 #[test]
 fn overwrite_scalar_ok() {
-    // `number` is Copy Drop — bit-copies are cheap to forget.
+    // `i64` is Copy Drop — bit-copies are cheap to forget.
     assert_no_diagnostics(
         "
         fn f() {
-          x: number;
+          x: i64;
           entry:
             x = 1;
             x = 2;
@@ -28,7 +28,7 @@ fn overwrite_scalar_ok() {
 fn overwrite_copy_drop_struct_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: number b: number }
+        struct Copy Drop P { a: i64 b: i64 }
         extern fn use_p(p: P);
         fn f(p1: P, p2: P) {
           x: P;
@@ -47,7 +47,7 @@ fn overwrite_after_explicit_drop_ok() {
     // Manual `drop x` before overwrite makes it uncontroversial.
     assert_no_diagnostics(
         "
-        struct Move Drop D { a: number }
+        struct Move Drop D { a: i64 }
         extern fn use_d(d: D);
         fn f(d1: D, d2: D) {
           x: D;
@@ -67,7 +67,7 @@ fn overwrite_never_init_ok() {
     // First assignment isn't an overwrite.
     assert_no_diagnostics(
         "
-        struct Move Linear { r: &out number }
+        struct Move Linear { r: &out i64 }
         extern fn take(l: Linear);
         fn f(x: Linear) {
           y: Linear;
@@ -85,7 +85,7 @@ fn overwrite_never_init_ok() {
 #[test]
 fn overwrite_non_drop_linear_errors() {
     let (errs, _) = run("
-        struct Move Linear { r: &out number }
+        struct Move Linear { r: &out i64 }
         extern fn take(l: Linear);
         fn f(x1: Linear, x2: Linear) {
           y: Linear;
@@ -106,7 +106,7 @@ fn overwrite_non_drop_linear_errors() {
 fn overwrite_non_drop_move_only_errors() {
     // `struct Move A` is not Drop (Move alone doesn't imply Drop).
     let (errs, _) = run("
-        struct Move A { r: &out number }
+        struct Move A { r: &out i64 }
         extern fn take(a: A);
         fn f(a1: A, a2: A) {
           y: A;
@@ -124,10 +124,10 @@ fn overwrite_non_drop_move_only_errors() {
 
 #[test]
 fn overwrite_field_of_scalar_struct_ok() {
-    // p.a: number is Copy Drop; overwriting p.a is fine.
+    // p.a: i64 is Copy Drop; overwriting p.a is fine.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: number b: number }
+        struct Copy Drop P { a: i64 b: i64 }
         fn f() {
           p: P;
           entry:
@@ -144,7 +144,7 @@ fn overwrite_field_of_scalar_struct_ok() {
 fn overwrite_non_drop_field_errors() {
     // Overwriting a live non-Drop field.
     let (errs, _) = run("
-        struct Move Wrap { r: &out number }
+        struct Move Wrap { r: &out i64 }
         struct Move Container { w1: Wrap w2: Wrap }
         extern fn take_wrap(w: Wrap);
         extern fn take(c: Container);
@@ -167,15 +167,15 @@ fn overwrite_non_drop_field_errors() {
 
 #[test]
 fn overwrite_ref_typed_field_with_unfulfilled_obligation_errors() {
-    // b.p is a &mut number bound to x. After `y = move *b.p`, b.p is
+    // b.p is a &mut i64 bound to x. After `y = move *b.p`, b.p is
     // (Uninit, Init) — obligation unfulfilled. Overwriting b.p would
     // silently forget the pending re-init. Overwrite check catches it
     // (via close_ref_if_present, which cascades to ref-typed fields).
     let (errs, _) = run("
-        struct Move RefBox { p: &mut number }
-        fn f(x: number, x2: number) {
+        struct Move RefBox { p: &mut i64 }
+        fn f(x: i64, x2: i64) {
           b: RefBox;
-          y: number;
+          y: i64;
           entry:
             b.p = &mut x;
             y = move *b.p;
@@ -197,7 +197,7 @@ fn overwrite_after_move_out_ok() {
     // isn't an overwrite (x is Moved), so no error.
     assert_no_diagnostics(
         "
-        struct Move Linear { r: &out number }
+        struct Move Linear { r: &out i64 }
         extern fn take(l: Linear);
         fn f(x1: Linear, x2: Linear) {
           y: Linear;

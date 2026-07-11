@@ -118,7 +118,8 @@ fn write_function(out: &mut String, f: &Function) {
 
 fn write_type(out: &mut String, ty: &Type) {
     match ty {
-        Type::Number => out.push_str("number"),
+        Type::Int(i) => out.push_str(i.name()),
+        Type::Float(f) => out.push_str(f.name()),
         Type::Boolean => out.push_str("boolean"),
         Type::Unit => out.push_str("unit"),
         Type::Never => out.push_str("never"),
@@ -185,7 +186,34 @@ fn write_operand(out: &mut String, op: &Operand) {
 
 fn write_const(out: &mut String, c: &ConstVal) {
     match c {
-        ConstVal::Number(n) => write!(out, "{}", n).unwrap(),
+        // Integer literals emit the decimal value; the type suffix is
+        // omitted for the parser's default (`i64`) so unsuffixed source
+        // round-trips as unsuffixed.
+        ConstVal::Int { bits, ty } => {
+            let mask: u64 = if ty.bits() == 64 {
+                u64::MAX
+            } else {
+                (1u64 << ty.bits()) - 1
+            };
+            let value = bits & mask;
+            if *ty == IntTy::I64 {
+                write!(out, "{}", value).unwrap();
+            } else {
+                write!(out, "{}{}", value, ty.name()).unwrap();
+            }
+        }
+        // Float literals emit `<decimal>.<decimal>` and add the type
+        // suffix only when the type isn't the parser default (`f64`).
+        ConstVal::Float { bits, ty } => match ty {
+            FloatTy::F32 => {
+                let v = f32::from_bits(*bits as u32);
+                write!(out, "{:?}f32", v).unwrap();
+            }
+            FloatTy::F64 => {
+                let v = f64::from_bits(*bits);
+                write!(out, "{:?}", v).unwrap();
+            }
+        },
         ConstVal::Boolean(true) => out.push_str("true"),
         ConstVal::Boolean(false) => out.push_str("false"),
         ConstVal::Unit => out.push_str("unit"),
@@ -350,8 +378,8 @@ mod tests {
     fn roundtrip_scalar_fn() {
         assert_roundtrip(
             "
-            fn f(x: number) {
-              y: number;
+            fn f(x: i64) {
+              y: i64;
               entry:
                 y = copy x;
                 return
@@ -364,10 +392,10 @@ mod tests {
     fn roundtrip_struct_and_enum() {
         assert_roundtrip(
             "
-            struct Copy Drop P { x: number y: number }
-            enum Copy Drop Option { None: unit Some: number }
+            struct Copy Drop P { x: i64 y: i64 }
+            enum Copy Drop Option { None: unit Some: i64 }
             fn f(p: P, o: Option) {
-              n: number;
+              n: i64;
               entry:
                 switchEnum(o) [None: n_arm, Some: s_arm]
               s_arm:
@@ -382,14 +410,14 @@ mod tests {
 
     #[test]
     fn roundtrip_extern_fn() {
-        assert_roundtrip("extern fn take(x: number, y: &mut number);");
+        assert_roundtrip("extern fn take(x: i64, y: &mut i64);");
     }
 
     #[test]
     fn roundtrip_all_ref_kinds() {
         assert_roundtrip(
             "
-            fn f(a: &number, b: &mut number, c: &out number, d: &drop number, e: &uninit number) {
+            fn f(a: &i64, b: &mut i64, c: &out i64, d: &drop i64, e: &uninit i64) {
               entry:
                 return
             }
@@ -401,9 +429,9 @@ mod tests {
     fn roundtrip_fn_type_and_call() {
         assert_roundtrip(
             "
-            extern fn callee(a: number);
+            extern fn callee(a: i64);
             fn f() {
-              g: fn(number);
+              g: fn(i64);
               entry:
                 g = callee;
                 call copy g(1);
@@ -417,7 +445,7 @@ mod tests {
     fn roundtrip_branch_and_drop_and_abort() {
         assert_roundtrip(
             "
-            fn f(b: boolean, x: number) {
+            fn f(b: boolean, x: i64) {
               entry:
                 drop x;
                 branch(copy b) [true: t, false: fbr]
@@ -434,10 +462,10 @@ mod tests {
     fn roundtrip_nested_places() {
         assert_roundtrip(
             "
-            struct Copy Drop Inner { a: number b: number }
-            struct Copy Drop Outer { i: Inner c: number }
+            struct Copy Drop Inner { a: i64 b: i64 }
+            struct Copy Drop Outer { i: Inner c: i64 }
             fn f(o: Outer) {
-              n: number;
+              n: i64;
               entry:
                 n = copy o.i.a;
                 return
@@ -452,10 +480,10 @@ mod tests {
         // so `e as A.x` parses as `Field(Downcast(e, A), x)`.
         assert_roundtrip(
             "
-            struct Copy Drop Pair { x: number y: number }
-            enum Copy Drop E { A: Pair B: number }
+            struct Copy Drop Pair { x: i64 y: i64 }
+            enum Copy Drop E { A: Pair B: i64 }
             fn f(e: E) {
-              n: number;
+              n: i64;
               entry:
                 switchEnum(e) [A: a_arm, B: b_arm]
               a_arm:
@@ -472,8 +500,8 @@ mod tests {
     fn roundtrip_deref() {
         assert_roundtrip(
             "
-            fn f(r: &mut number) {
-              n: number;
+            fn f(r: &mut i64) {
+              n: i64;
               entry:
                 n = copy *r;
                 *r = 42;

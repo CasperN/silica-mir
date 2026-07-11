@@ -49,9 +49,9 @@ fn roundtrip_mut_ref_read_last_use_ok() {
     // Same as unborrow_of_mut_ref_ok but without the explicit unborrow.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             y = copy *r;
@@ -68,8 +68,8 @@ fn roundtrip_out_write_last_use_ok() {
     assert_no_diagnostics(
         "
         fn f() {
-          x: number;
-          r: &out number;
+          x: i64;
+          r: &out i64;
           entry:
             r = &out x;
             *r = 42;
@@ -85,10 +85,10 @@ fn roundtrip_reborrow_same_place_ok() {
     // can freshly borrow x.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             y = copy *r;
@@ -104,9 +104,9 @@ fn roundtrip_reborrow_same_place_ok() {
 fn roundtrip_field_borrow_last_use_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: number b: number }
+        struct Copy Drop P { a: i64 b: i64 }
         fn f(p: P) {
-          r: &mut number;
+          r: &mut i64;
           entry:
             r = &mut p.a;
             p.a = 42;
@@ -122,9 +122,9 @@ fn roundtrip_loop_last_use_after_loop_ok() {
     // after loop exit.
     assert_no_diagnostics(
         "
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             goto head
@@ -147,8 +147,8 @@ fn roundtrip_multi_loan_branch_of_borrows_ok() {
     // at the merge (before the direct writes).
     assert_no_diagnostics(
         "
-        fn f(a: number, b: number, c: boolean) {
-          r: &mut number;
+        fn f(a: i64, b: i64, c: boolean) {
+          r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
           t:
@@ -173,9 +173,9 @@ fn roundtrip_natural_close_by_call_no_insert() {
     // printed form should not have unborrow.
     let out = elaborate_only(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             call sink(move r);
@@ -194,8 +194,8 @@ fn roundtrip_natural_close_by_call_no_insert() {
 fn roundtrip_natural_close_by_drop_no_insert() {
     let out = elaborate_only(
         "
-        fn f(x: number) {
-          r: &mut number;
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             drop r;
@@ -216,9 +216,9 @@ fn roundtrip_natural_close_by_drop_no_insert() {
 fn snapshot_intra_block_last_use_of_mut() {
     assert_elab_eq(
         "
-        fn f(x: number) {
-          r: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             y = copy *r;
@@ -226,9 +226,9 @@ fn snapshot_intra_block_last_use_of_mut() {
             return
         }
         ",
-        "fn f(x: number) {
-  r: &mut number;
-  y: number;
+        "fn f(x: i64) {
+  r: &mut i64;
+  y: i64;
   entry:
     r = &mut x;
     y = copy *r;
@@ -246,8 +246,8 @@ fn snapshot_out_write_last_use() {
     assert_elab_eq(
         "
         fn f() {
-          x: number;
-          r: &out number;
+          x: i64;
+          r: &out i64;
           entry:
             r = &out x;
             *r = 42;
@@ -255,8 +255,8 @@ fn snapshot_out_write_last_use() {
         }
         ",
         "fn f() {
-  x: number;
-  r: &out number;
+  x: i64;
+  r: &out i64;
   entry:
     r = &out x;
     *r = 42;
@@ -273,8 +273,8 @@ fn snapshot_multi_loan_bind_rule() {
     // are legal because loans are closed pre-merge.
     assert_elab_eq(
         "
-        fn f(a: number, b: number, c: boolean) {
-          r: &mut number;
+        fn f(a: i64, b: i64, c: boolean) {
+          r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
           t:
@@ -289,8 +289,8 @@ fn snapshot_multi_loan_bind_rule() {
             return
         }
         ",
-        "fn f(a: number, b: number, c: boolean) {
-  r: &mut number;
+        "fn f(a: i64, b: i64, c: boolean) {
+  r: &mut i64;
   entry:
     branch(copy c) [true: t, false: fbr]
   t:
@@ -315,9 +315,9 @@ fn snapshot_cross_edge_split() {
     // unborrow r on the split. In `t`, insert after the last use.
     assert_elab_eq(
         "
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             branch(copy b) [true: t, false: fbr]
@@ -331,10 +331,10 @@ fn snapshot_cross_edge_split() {
             return
         }
         ",
-        "extern fn use_num(n: number);
+        "extern fn use_num(n: i64);
 
-fn f(x: number, b: boolean) {
-  r: &mut number;
+fn f(x: i64, b: boolean) {
+  r: &mut i64;
   entry:
     r = &mut x;
     branch(copy b) [true: t, false: entry__to__fbr]
@@ -358,15 +358,15 @@ fn f(x: number, b: boolean) {
 fn snapshot_refparam_last_use() {
     assert_elab_eq(
         "
-        fn f(x: &mut number) {
-          y: number;
+        fn f(x: &mut i64) {
+          y: i64;
           entry:
             y = copy *x;
             return
         }
         ",
-        "fn f(x: &mut number) {
-  y: number;
+        "fn f(x: &mut i64) {
+  y: i64;
   entry:
     y = copy *x;
     unborrow x;
@@ -380,19 +380,19 @@ fn snapshot_natural_close_no_insert() {
     // `call sink(move r)` naturally consumes r; NLL inserts nothing.
     assert_elab_eq(
         "
-        extern fn sink(r: &mut number);
-        fn f(x: number) {
-          r: &mut number;
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
           entry:
             r = &mut x;
             call sink(move r);
             return
         }
         ",
-        "extern fn sink(r: &mut number);
+        "extern fn sink(r: &mut i64);
 
-fn f(x: number) {
-  r: &mut number;
+fn f(x: i64) {
+  r: &mut i64;
   entry:
     r = &mut x;
     call sink(move r);
@@ -408,16 +408,16 @@ fn snapshot_reborrow_child_before_parent() {
     // reborrow first) so s's loan is closed before r is consumed.
     assert_elab_eq(
         "
-        fn f(r: &out number) {
-          s: &out number;
+        fn f(r: &out i64) {
+          s: &out i64;
           entry:
             s = &out *r;
             *s = 42;
             return
         }
         ",
-        "fn f(r: &out number) {
-  s: &out number;
+        "fn f(r: &out i64) {
+  s: &out i64;
   entry:
     s = &out *r;
     *s = 42;
@@ -434,11 +434,11 @@ fn snapshot_chained_reborrow_insertion_order() {
     // consumed by call; NLL then closes s, then r.
     assert_elab_eq(
         "
-        extern fn sink(t: &mut number);
-        fn f(x: number) {
-          r: &mut number;
-          s: &mut number;
-          t: &mut number;
+        extern fn sink(t: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          s: &mut i64;
+          t: &mut i64;
           entry:
             r = &mut x;
             s = &mut *r;
@@ -447,12 +447,12 @@ fn snapshot_chained_reborrow_insertion_order() {
             return
         }
         ",
-        "extern fn sink(t: &mut number);
+        "extern fn sink(t: &mut i64);
 
-fn f(x: number) {
-  r: &mut number;
-  s: &mut number;
-  t: &mut number;
+fn f(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  t: &mut i64;
   entry:
     r = &mut x;
     s = &mut *r;
@@ -471,12 +471,12 @@ fn snapshot_refparam_never_used_gets_entry_unborrow() {
     // unborrow at the very start of entry (position 0).
     assert_elab_eq(
         "
-        fn f(x: &mut number) {
+        fn f(x: &mut i64) {
           entry:
             return
         }
         ",
-        "fn f(x: &mut number) {
+        "fn f(x: &mut i64) {
   entry:
     unborrow x;
     return
@@ -494,9 +494,9 @@ fn cross_edge_insertion_when_borrower_dies_on_one_arm() {
     // that the loan is fully released on both edges before end.
     assert_no_diagnostics(
         "
-        extern fn use_num(n: number);
-        fn f(x: number, b: boolean) {
-          r: &mut number;
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: boolean) {
+          r: &mut i64;
           entry:
             r = &mut x;
             branch(copy b) [true: t, false: fbr]
@@ -518,9 +518,9 @@ fn cross_edge_insertion_when_borrower_dies_on_one_arm() {
 #[test]
 fn idempotent_second_run_is_noop() {
     let src = "
-        fn f(x: number) {
-          r: &mut number;
-          y: number;
+        fn f(x: i64) {
+          r: &mut i64;
+          y: i64;
           entry:
             r = &mut x;
             y = copy *r;
@@ -552,8 +552,8 @@ fn reference_param_last_use_gets_unborrow() {
     // the signature obligation.
     assert_no_diagnostics(
         "
-        fn f(x: &mut number) {
-          y: number;
+        fn f(x: &mut i64) {
+          y: i64;
           entry:
             y = copy *x;
             return
@@ -568,7 +568,7 @@ fn out_param_written_then_unborrow_ok() {
     // NLL inserts unborrow x; discharges the signature obligation.
     assert_no_diagnostics(
         "
-        fn f(x: &out number) {
+        fn f(x: &out i64) {
           entry:
             *x = 42;
             return
@@ -587,7 +587,7 @@ fn out_param_never_written_still_leaks() {
     // inserts at entry, the unborrow itself errors on obligation.
     // Either way: error expected.
     let (errs, _) = run("
-        fn f(x: &out number) {
+        fn f(x: &out i64) {
           entry:
             return
         }
@@ -610,7 +610,7 @@ fn out_param_unused_with_abort_ok() {
     // erroring on the unfulfilled &out obligation.
     assert_no_diagnostics(
         "
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
           entry:
             abort
         }
@@ -624,8 +624,8 @@ fn mut_move_out_then_abort_ok() {
     // Obligation is waived; no unborrow inserted.
     assert_no_diagnostics(
         "
-        fn f(r: &mut number) {
-          x: number;
+        fn f(r: &mut i64) {
+          x: i64;
           entry:
             x = move *r;
             abort
@@ -639,7 +639,7 @@ fn out_param_unused_with_unreachable_ok() {
     // Same as abort — `unreachable` also has no return-reachable path.
     assert_no_diagnostics(
         "
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
           entry:
             unreachable
         }
@@ -653,7 +653,7 @@ fn mixed_branch_return_arm_fulfills_ok() {
     // only on the return path.
     assert_no_diagnostics(
         "
-        fn f(r: &out number, b: boolean) {
+        fn f(r: &out i64, b: boolean) {
           entry:
             branch(copy b) [true: init_arm, false: die_arm]
           init_arm:
@@ -672,7 +672,7 @@ fn mixed_branch_return_arm_still_leaks_error() {
     // return path fails the obligation check; the abort path is
     // waived. Error is still reported for the return side.
     let (errs, _) = run("
-        fn f(r: &out number, b: boolean) {
+        fn f(r: &out i64, b: boolean) {
           entry:
             branch(copy b) [true: return_arm, false: die_arm]
           return_arm:
@@ -693,7 +693,7 @@ fn mixed_branch_snapshot_only_return_arm_gets_unborrow() {
     // arm, not on the abort arm.
     let out = elaborate_only(
         "
-        fn f(r: &out number, b: boolean) {
+        fn f(r: &out i64, b: boolean) {
           entry:
             branch(copy b) [true: init_arm, false: die_arm]
           init_arm:

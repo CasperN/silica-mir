@@ -293,8 +293,8 @@ fn split_then_full_pipeline_still_clean() {
     use crate::run_all_passes;
 
     let src = "
-        fn f(b: boolean, x: number) {
-          y: number;
+        fn f(b: boolean, x: i64) {
+          y: i64;
           entry:
             branch(copy b) [true: t, false: fbr]
           t:

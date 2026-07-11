@@ -14,8 +14,8 @@ use crate::test_util::*;
 fn param_starts_init_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          y: number;
+        fn f(x: i64) {
+          y: i64;
           entry:
             y = copy x;
             return
@@ -29,7 +29,7 @@ fn write_then_read_ok() {
     assert_no_diagnostics(
         "
         fn f() {
-          x: number;
+          x: i64;
           entry:
             x = 42;
             x = copy x;
@@ -43,8 +43,8 @@ fn write_then_read_ok() {
 fn read_of_uninit_local_error() {
     let (errs, _) = run("
         fn f() {
-          x: number;
-          y: number;
+          x: i64;
+          y: i64;
           entry:
             y = copy x;
             return
@@ -56,9 +56,9 @@ fn read_of_uninit_local_error() {
 #[test]
 fn read_after_move_error() {
     let (errs, _) = run("
-        fn f(x: number) {
-          y: number;
-          z: number;
+        fn f(x: i64) {
+          y: i64;
+          z: i64;
           entry:
             y = move x;
             z = copy x;
@@ -74,9 +74,9 @@ fn read_after_move_error() {
 fn reassign_after_move_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-          y: number;
-          z: number;
+        fn f(x: i64) {
+          y: i64;
+          z: i64;
           entry:
             y = move x;
             x = 42;
@@ -90,9 +90,9 @@ fn reassign_after_move_ok() {
 #[test]
 fn move_then_move_error() {
     let (errs, _) = run("
-        fn f(x: number) {
-          y: number;
-          z: number;
+        fn f(x: i64) {
+          y: i64;
+          z: i64;
           entry:
             y = move x;
             z = move x;
@@ -107,8 +107,8 @@ fn call_args_copy_then_move_ok() {
     // Copy first, then move — the copy sees Init, the move consumes.
     assert_no_diagnostics(
         "
-        extern fn take_two(a: number, b: number);
-        fn f(x: number) {
+        extern fn take_two(a: i64, b: i64);
+        fn f(x: i64) {
           entry:
             call take_two(copy x, move x);
             return
@@ -122,8 +122,8 @@ fn call_args_move_then_copy_error() {
     // Left-to-right operand evaluation: the second `copy` sees the
     // already-moved state and errors.
     let (errs, _) = run("
-        extern fn take_two(a: number, b: number);
-        fn f(x: number) {
+        extern fn take_two(a: i64, b: i64);
+        fn f(x: i64) {
           entry:
             call take_two(move x, copy x);
             return
@@ -138,7 +138,7 @@ fn call_args_move_then_copy_error() {
 fn call_target_of_uninit_error() {
     let (errs, _) = run("
         fn f() {
-          g: fn(number);
+          g: fn(i64);
           entry:
             call copy g(1);
             return
@@ -150,9 +150,9 @@ fn call_target_of_uninit_error() {
 #[test]
 fn call_arg_read_of_uninit_error() {
     let (errs, _) = run("
-        extern fn takes_num(a: number);
+        extern fn takes_num(a: i64);
         fn f() {
-          x: number;
+          x: i64;
           entry:
             call takes_num(copy x);
             return
@@ -167,8 +167,8 @@ fn call_arg_read_of_uninit_error() {
 fn drop_consumes_like_move() {
     // `drop x` behaves like a move for init tracking: subsequent read errors.
     let (errs, _) = run("
-        fn f(x: number) {
-          y: number;
+        fn f(x: i64) {
+          y: i64;
           entry:
             drop x;
             y = copy x;
@@ -182,7 +182,7 @@ fn drop_consumes_like_move() {
 fn drop_of_uninit_error() {
     let (errs, _) = run("
         fn f() {
-          x: number;
+          x: i64;
           entry:
             drop x;
             return

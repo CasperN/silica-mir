@@ -4,8 +4,8 @@ use crate::test_util::*;
 fn rvalue_ref_shared_ok() {
     assert_ok(
         "
-        fn f(y: number) {
-            r: &number;
+        fn f(y: i64) {
+            r: &i64;
             entry:
             r = &y;
             return
@@ -18,8 +18,8 @@ fn rvalue_ref_shared_ok() {
 fn rvalue_ref_mut_ok() {
     assert_ok(
         "
-        fn f(y: number) {
-            r: &mut number;
+        fn f(y: i64) {
+            r: &mut i64;
             entry:
             r = &mut y;
             return
@@ -32,7 +32,7 @@ fn rvalue_ref_mut_ok() {
 fn rvalue_enum_constr_ok() {
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f() {
             o: Option;
             entry:
@@ -51,8 +51,8 @@ fn rvalue_enum_constr_unknown_enum_error() {
             entry:
             return
         }
-        enum Copy Drop Option { None: unit Some: number }
-        struct S { x: number }
+        enum Copy Drop Option { None: unit Some: i64 }
+        struct S { x: i64 }
         fn g() {
             o: Option;
             entry:
@@ -68,7 +68,7 @@ fn rvalue_enum_constr_unknown_enum_error() {
 fn rvalue_enum_constr_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f() {
             o: Option;
             entry:
@@ -84,7 +84,7 @@ fn rvalue_enum_constr_unknown_variant_error() {
 fn rvalue_enum_constr_wrong_payload_type_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f() {
             o: Option;
             entry:

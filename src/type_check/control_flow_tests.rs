@@ -27,13 +27,13 @@ fn cross_function_local_names_are_independent() {
     assert_no_diagnostics(
         "
         fn f() {
-            x: number;
+            x: i64;
             entry:
             x = 42;
             return
         }
         fn g() {
-            x: number;
+            x: i64;
             entry:
             x = 7;
             return
@@ -94,7 +94,7 @@ fn branch_ok() {
 fn branch_non_boolean_error() {
     assert_err(
         "
-        fn f(n: number) {
+        fn f(n: i64) {
             entry:
             branch(copy n) [true: yes, false: no]
             yes:
@@ -141,7 +141,7 @@ fn branch_false_label_undefined_error() {
 fn switch_enum_ok() {
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
             entry:
             switchEnum(o) [None: end, Some: end]
@@ -156,7 +156,7 @@ fn switch_enum_ok() {
 fn switch_enum_non_enum_place_error() {
     assert_err(
         "
-        fn f(n: number) {
+        fn f(n: i64) {
             entry:
             switchEnum(n) [A: end]
             end:
@@ -171,7 +171,7 @@ fn switch_enum_non_enum_place_error() {
 fn switch_enum_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
             entry:
             switchEnum(o) [Wat: end]
@@ -187,7 +187,7 @@ fn switch_enum_unknown_variant_error() {
 fn switch_enum_undefined_target_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: number }
+        enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
             entry:
             switchEnum(o) [None: nowhere]

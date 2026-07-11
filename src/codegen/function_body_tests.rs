@@ -15,7 +15,7 @@ fn empty_fn_has_init_block_and_returns() {
 
 #[test]
 fn params_get_alloca_and_arg_store() {
-    let ll = ll_of("fn f(x: number) { entry: return }");
+    let ll = ll_of("fn f(x: i64) { entry: return }");
     assert_contains(&ll, "define void @f(i64 %arg.x)");
     assert_contains(&ll, "%local.x = alloca i64");
     assert_contains(&ll, "store i64 %arg.x, ptr %local.x");
@@ -26,7 +26,7 @@ fn locals_get_alloca_no_arg_store() {
     let ll = ll_of(
         "
         fn f() {
-          x: number;
+          x: i64;
           entry: return
         }
         ",

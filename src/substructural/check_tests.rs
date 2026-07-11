@@ -10,8 +10,8 @@ use crate::type_check;
 fn copy_of_number_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
-            y: number;
+        fn f(x: i64) {
+            y: i64;
             entry:
             y = copy x;
             return
@@ -25,8 +25,8 @@ fn copy_of_shared_ref_ok() {
     // `&T` is Copy Drop.
     assert_no_diagnostics(
         "
-        fn f(r: &number) {
-            s: &number;
+        fn f(r: &i64) {
+            s: &i64;
             entry:
             s = copy r;
             return
@@ -39,7 +39,7 @@ fn copy_of_shared_ref_ok() {
 fn copy_of_copy_struct_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: number y: number }
+        struct Copy Drop P { x: i64 y: i64 }
         fn f(p: P) {
             q: P;
             entry:
@@ -57,7 +57,7 @@ fn copy_of_linear_struct_error() {
     // struct without markers = linear
     assert_err(
         "
-        struct Linear { r: &out number }
+        struct Linear { r: &out i64 }
         fn f(x: Linear) {
             y: Linear;
             entry:
@@ -74,7 +74,7 @@ fn copy_of_affine_struct_error() {
     // Marked `Drop` but not `Copy` — affine, not copyable.
     assert_err(
         "
-        struct Drop D { x: number }
+        struct Drop D { x: i64 }
         fn f(a: D) {
             b: D;
             entry:
@@ -90,8 +90,8 @@ fn copy_of_affine_struct_error() {
 fn copy_of_mut_ref_error() {
     assert_err(
         "
-        fn f(r: &mut number) {
-            s: &mut number;
+        fn f(r: &mut i64) {
+            s: &mut i64;
             entry:
             s = copy r;
             return
@@ -105,8 +105,8 @@ fn copy_of_mut_ref_error() {
 fn copy_of_out_ref_error() {
     assert_err(
         "
-        fn f(r: &out number) {
-            s: &out number;
+        fn f(r: &out i64) {
+            s: &out i64;
             entry:
             s = copy r;
             return
@@ -120,8 +120,8 @@ fn copy_of_out_ref_error() {
 fn copy_of_uninit_ref_error() {
     assert_err(
         "
-        fn f(r: &uninit number) {
-            s: &uninit number;
+        fn f(r: &uninit i64) {
+            s: &uninit i64;
             entry:
             s = copy r;
             return
@@ -137,7 +137,7 @@ fn copy_of_uninit_ref_error() {
 fn copy_in_call_arg_of_non_copy_error() {
     assert_err(
         "
-        struct Linear { r: &out number }
+        struct Linear { r: &out i64 }
         extern fn take(x: Linear);
         fn f(x: Linear) {
             entry:
@@ -153,7 +153,7 @@ fn copy_in_call_arg_of_non_copy_error() {
 fn copy_in_enum_payload_of_non_copy_error() {
     assert_err(
         "
-        struct Linear { r: &out number }
+        struct Linear { r: &out i64 }
         enum Wrap { W: Linear }
         fn f(x: Linear) {
             w: Wrap;
@@ -175,7 +175,7 @@ fn move_of_linear_ok() {
     // obligation, but movable — pointer relocates with obligation).
     assert_no_diagnostics(
         "
-        struct Move Linear { r: &out number }
+        struct Move Linear { r: &out i64 }
         extern fn sink(y: Linear);
         fn f(x: Linear) {
             y: Linear;
@@ -193,7 +193,7 @@ fn move_of_non_move_struct_errors() {
     // Same shape, but no Move marker — moves are rejected.
     assert_err(
         "
-        struct Linear { r: &out number }
+        struct Linear { r: &out i64 }
         extern fn sink(y: Linear);
         fn f(x: Linear) {
             y: Linear;
@@ -213,8 +213,8 @@ fn move_of_ref_ok() {
     // its obligation transfers with the move).
     assert_no_diagnostics(
         "
-        extern fn take(r: &mut number);
-        fn f(r: &mut number) {
+        extern fn take(r: &mut i64);
+        fn f(r: &mut i64) {
             entry:
             call take(move r);
             return
@@ -228,7 +228,7 @@ fn move_of_copy_drop_struct_ok() {
     // Copy+Drop implies Move — no explicit Move marker needed.
     assert_no_diagnostics(
         "
-        struct Copy Drop Point { x: number y: number }
+        struct Copy Drop Point { x: i64 y: i64 }
         extern fn take(p: Point);
         fn f(p: Point) {
             entry:
@@ -245,7 +245,7 @@ fn move_of_copy_only_struct_errors() {
     // not relocatable.
     assert_err(
         "
-        struct Copy PinnedShared { x: number }
+        struct Copy PinnedShared { x: i64 }
         extern fn take(p: PinnedShared);
         fn f(p: PinnedShared) {
             entry:
@@ -263,7 +263,7 @@ fn move_of_copy_only_struct_errors() {
 fn drop_of_number_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
+        fn f(x: i64) {
             entry:
             drop x;
             return
@@ -276,7 +276,7 @@ fn drop_of_number_ok() {
 fn drop_of_shared_ref_ok() {
     assert_no_diagnostics(
         "
-        fn f(r: &number) {
+        fn f(r: &i64) {
             entry:
             drop r;
             return
@@ -291,7 +291,7 @@ fn drop_of_mut_ref_ok() {
     // forgotten (the loan expires at the drop point).
     assert_no_diagnostics(
         "
-        fn f(r: &mut number) {
+        fn f(r: &mut i64) {
             entry:
             drop r;
             return
@@ -304,7 +304,7 @@ fn drop_of_mut_ref_ok() {
 fn drop_of_drop_struct_ok() {
     assert_no_diagnostics(
         "
-        struct Drop D { x: number }
+        struct Drop D { x: i64 }
         fn f(d: D) {
             entry:
             drop d;
@@ -320,7 +320,7 @@ fn drop_of_drop_struct_ok() {
 fn drop_of_linear_struct_error() {
     assert_err(
         "
-        struct Linear { r: &out number }
+        struct Linear { r: &out i64 }
         fn f(x: Linear) {
             entry:
             drop x;
@@ -335,7 +335,7 @@ fn drop_of_linear_struct_error() {
 fn drop_of_out_ref_error() {
     assert_err(
         "
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
             entry:
             drop r;
             return
@@ -350,7 +350,7 @@ fn drop_of_drop_ref_error() {
     // `&drop T` is linear (obligation to deinit before expiry).
     assert_err(
         "
-        fn f(r: &drop number) {
+        fn f(r: &drop i64) {
             entry:
             drop r;
             return
@@ -362,11 +362,11 @@ fn drop_of_drop_ref_error() {
 
 #[test]
 fn scalar_param_untouched_is_lenient_ok() {
-    // number is Copy Drop; leaving it Init at return is permitted under
+    // i64 is Copy Drop; leaving it Init at return is permitted under
     // the elaborator will insert an explicit drop.
     assert_no_diagnostics(
         "
-        fn f(x: number) {
+        fn f(x: i64) {
             entry:
             return
         }
@@ -378,8 +378,8 @@ fn scalar_param_untouched_is_lenient_ok() {
 fn scalar_param_moved_ok() {
     assert_no_diagnostics(
         "
-        extern fn take(a: number);
-        fn f(x: number) {
+        extern fn take(a: i64);
+        fn f(x: i64) {
             entry:
             call take(move x);
             return
@@ -392,7 +392,7 @@ fn scalar_param_moved_ok() {
 fn scalar_param_explicitly_dropped_ok() {
     assert_no_diagnostics(
         "
-        fn f(x: number) {
+        fn f(x: i64) {
             entry:
             drop x;
             return
@@ -401,7 +401,7 @@ fn scalar_param_explicitly_dropped_ok() {
     );
 }
 
-// === Scenario: `r: &out number` — linear reference param =============
+// === Scenario: `r: &out i64` — linear reference param =============
 
 #[test]
 fn linear_ref_param_untouched_leaks() {
@@ -409,7 +409,7 @@ fn linear_ref_param_untouched_leaks() {
     // check, because their expiry rule is the (cur, post) obligation.
     assert_err(
         "
-        fn f(r: &out number) {
+        fn f(r: &out i64) {
             entry:
             return
         }
@@ -422,8 +422,8 @@ fn linear_ref_param_untouched_leaks() {
 fn linear_ref_param_moved_ok() {
     assert_no_diagnostics(
         "
-        extern fn take(r: &out number);
-        fn f(r: &out number) {
+        extern fn take(r: &out i64);
+        fn f(r: &out i64) {
             entry:
             call take(move r);
             return
@@ -432,7 +432,7 @@ fn linear_ref_param_moved_ok() {
     );
 }
 
-// === Scenario: `struct P { x: number y: number }` — linear struct ====
+// === Scenario: `struct P { x: i64 y: i64 }` — linear struct ====
 // ==== with Drop fields =======================================
 // Marker composition permits this: the fields are Drop, but the struct
 // itself isn't marked, so it's linear as a value. Partial init with
@@ -443,7 +443,7 @@ fn linear_struct_untouched_param_leaks() {
     // Whole-var Init of a linear type: leak.
     assert_err(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f(p: P) {
             entry:
             return
@@ -457,7 +457,7 @@ fn linear_struct_untouched_param_leaks() {
 fn linear_struct_moved_whole_ok() {
     assert_no_diagnostics(
         "
-        struct Move P { x: number y: number }
+        struct Move P { x: i64 y: i64 }
         extern fn take(p: P);
         fn f(p: P) {
             entry:
@@ -477,7 +477,7 @@ fn linear_struct_partial_init_one_field_elaborated() {
     // fields are Drop.
     assert_no_diagnostics(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
             p: P;
             entry:
@@ -492,7 +492,7 @@ fn linear_struct_partial_init_one_field_elaborated() {
 fn linear_struct_partial_init_then_drop_ok() {
     assert_no_diagnostics(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
             p: P;
             entry:
@@ -508,7 +508,7 @@ fn linear_struct_partial_init_then_drop_ok() {
 fn linear_struct_both_fields_dropped_ok() {
     assert_no_diagnostics(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
             p: P;
             entry:
@@ -530,7 +530,7 @@ fn linear_struct_fully_constructed_leaks() {
     // and never consumed it).
     assert_err(
         "
-        struct P { x: number y: number }
+        struct P { x: i64 y: i64 }
         fn f() {
             p: P;
             entry:
@@ -543,7 +543,7 @@ fn linear_struct_fully_constructed_leaks() {
     );
 }
 
-// === Scenario: `struct L { r: &out number }` — fully-linear struct ===
+// === Scenario: `struct L { r: &out i64 }` — fully-linear struct ===
 // The container and its field are both linear; there's no "Drop leaf"
 // escape.
 
@@ -551,7 +551,7 @@ fn linear_struct_fully_constructed_leaks() {
 fn fully_linear_struct_untouched_param_leaks() {
     assert_err(
         "
-        struct L { r: &out number }
+        struct L { r: &out i64 }
         fn f(x: L) {
             entry:
             return
@@ -565,7 +565,7 @@ fn fully_linear_struct_untouched_param_leaks() {
 fn fully_linear_struct_moved_ok() {
     assert_no_diagnostics(
         "
-        struct Move L { r: &out number }
+        struct Move L { r: &out i64 }
         extern fn take(x: L);
         fn f(x: L) {
             entry:
@@ -585,7 +585,7 @@ fn fully_linear_struct_partial_init_field_leaks() {
     // need Move to permit `move src.a`.
     assert_err(
         "
-        struct Move L { r: &out number }
+        struct Move L { r: &out i64 }
         struct Move Pair { a: L b: L }
         fn f(src: Pair) {
             p: Pair;
@@ -601,7 +601,7 @@ fn fully_linear_struct_partial_init_field_leaks() {
 #[test]
 fn multiple_returns_each_checked() {
     let (errs, _) = run("
-        struct Linear { r: &out number }
+        struct Linear { r: &out i64 }
         fn f(b: boolean, x: Linear) {
             entry:
             branch(copy b) [true: t, false: fbr]
@@ -621,7 +621,7 @@ fn direct_leak_check_flags_pre_elaboration_drop_leak() {
     // Invoking check_return_leaks on a NON-elaborated program: any Init
     // at return is a leak because nothing has inserted drops yet.
 
-    let src = "fn f(x: number) { entry: return }";
+    let src = "fn f(x: i64) { entry: return }";
     let program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
@@ -638,7 +638,7 @@ fn direct_leak_check_flags_pre_elaboration_drop_leak() {
 #[test]
 fn direct_leak_check_ok_when_explicitly_dropped() {
 
-    let src = "fn f(x: number) { entry: drop x; return }";
+    let src = "fn f(x: i64) { entry: drop x; return }";
     let program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
