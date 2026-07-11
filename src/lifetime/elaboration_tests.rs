@@ -599,3 +599,123 @@ fn out_param_never_written_still_leaks() {
         "expected some error for unfulfilled &out obligation"
     );
 }
+
+// ---------- Return-reachability waiver ----------
+//
+// Elaboration only inserts cleanup on paths that reach `return`. Blocks
+// that only lead to `abort` or `unreachable` waive linear obligations —
+// the program dies before the caller could observe missing init.
+
+#[test]
+fn out_param_unused_with_abort_ok() {
+    // Without the waiver: NLL would insert `unborrow r` at entry,
+    // erroring on the unfulfilled &out obligation.
+    assert_no_diagnostics(
+        "
+        fn f(r: &out number) {
+          entry:
+            abort
+        }
+        ",
+    );
+}
+
+#[test]
+fn mut_move_out_then_abort_ok() {
+    // After `x = move *r`, r's cur=Uninit, but the block aborts.
+    // Obligation is waived; no unborrow inserted.
+    assert_no_diagnostics(
+        "
+        fn f(r: &mut number) {
+          x: number;
+          entry:
+            x = move *r;
+            abort
+        }
+        ",
+    );
+}
+
+#[test]
+fn out_param_unused_with_unreachable_ok() {
+    // Same as abort — `unreachable` also has no return-reachable path.
+    assert_no_diagnostics(
+        "
+        fn f(r: &out number) {
+          entry:
+            unreachable
+        }
+        ",
+    );
+}
+
+#[test]
+fn mixed_branch_return_arm_fulfills_ok() {
+    // Return arm inits r; abort arm doesn't. NLL emits `unborrow r`
+    // only on the return path.
+    assert_no_diagnostics(
+        "
+        fn f(r: &out number, b: boolean) {
+          entry:
+            branch(copy b) [true: init_arm, false: die_arm]
+          init_arm:
+            *r = 42;
+            return
+          die_arm:
+            abort
+        }
+        ",
+    );
+}
+
+#[test]
+fn mixed_branch_return_arm_still_leaks_error() {
+    // Return arm does NOT init r; abort arm doesn't either. The
+    // return path fails the obligation check; the abort path is
+    // waived. Error is still reported for the return side.
+    let (errs, _) = run("
+        fn f(r: &out number, b: boolean) {
+          entry:
+            branch(copy b) [true: return_arm, false: die_arm]
+          return_arm:
+            return
+          die_arm:
+            abort
+        }
+        ");
+    assert!(
+        !errs.is_empty(),
+        "expected an error for the return-arm's unfulfilled obligation"
+    );
+}
+
+#[test]
+fn mixed_branch_snapshot_only_return_arm_gets_unborrow() {
+    // The elaborated form should have unborrow only on the return
+    // arm, not on the abort arm.
+    let out = elaborate_only(
+        "
+        fn f(r: &out number, b: boolean) {
+          entry:
+            branch(copy b) [true: init_arm, false: die_arm]
+          init_arm:
+            *r = 42;
+            return
+          die_arm:
+            abort
+        }
+        ",
+    );
+    assert!(
+        out.contains("*r = 42") && out.contains("unborrow r"),
+        "expected unborrow on the return arm; got:\n{}",
+        out
+    );
+    // Count unborrow occurrences — should be exactly one.
+    assert_eq!(
+        out.matches("unborrow").count(),
+        1,
+        "expected exactly one unborrow (return arm only); got:\n{}",
+        out
+    );
+}

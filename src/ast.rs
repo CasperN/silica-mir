@@ -369,6 +369,46 @@ impl FunctionBody {
     pub fn blocks_by_label(&self) -> IndexMap<&str, &BasicBlock> {
         self.blocks.iter().map(|b| (b.label.as_str(), b)).collect()
     }
+
+    /// Compute the set of block labels that can reach a `return`
+    /// terminator via any CFG path. Blocks that only lead to `abort`,
+    /// `unreachable`, or infinite loops with no return exit are excluded.
+    ///
+    /// Backward reachability from return-terminated blocks. Used by
+    /// elaboration passes to skip inserting cleanup on paths that die
+    /// before the caller could observe missing initialization —
+    /// consistent with drop-elab, which only inserts before `return`.
+    pub fn return_reachable(&self) -> std::collections::BTreeSet<String> {
+        let blocks_by_label = self.blocks_by_label();
+        // Reverse edges: succ -> predecessors.
+        let mut preds: IndexMap<&str, Vec<&str>> = IndexMap::new();
+        for block in &self.blocks {
+            for succ in terminator_successors(&block.terminator) {
+                if blocks_by_label.contains_key(succ) {
+                    preds.entry(succ).or_default().push(block.label.as_str());
+                }
+            }
+        }
+        // Seed: blocks with `Return` terminator.
+        let mut reachable = std::collections::BTreeSet::new();
+        let mut worklist: Vec<&str> = Vec::new();
+        for block in &self.blocks {
+            if matches!(block.terminator, Terminator::Return) {
+                reachable.insert(block.label.clone());
+                worklist.push(block.label.as_str());
+            }
+        }
+        while let Some(label) = worklist.pop() {
+            if let Some(pred_labels) = preds.get(label) {
+                for pred in pred_labels {
+                    if reachable.insert(pred.to_string()) {
+                        worklist.push(pred);
+                    }
+                }
+            }
+        }
+        reachable
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

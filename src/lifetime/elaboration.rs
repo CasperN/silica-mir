@@ -110,6 +110,12 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         return None;
     }
 
+    // Return-reachability waiver: NLL only inserts cleanup on paths that
+    // can reach a `return` terminator. Paths that only reach `abort` or
+    // `unreachable` are considered "the program dies before the caller
+    // could observe missing initialization" and skip elaboration.
+    let return_reachable = body.return_reachable();
+
     let reborrow_parent = collect_reborrow_parents(body);
     let analysis = BorrowerLiveness {
         borrowers: &borrowers,
@@ -152,29 +158,40 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         }
         live_states.reverse();
 
+        // Return-reachability waiver: skip intra-block insertions in
+        // blocks that only lead to abort/unreachable.
+        let block_reaches_return = return_reachable.contains(&block.label);
+
         // Intra-block insertions. See notes on the two rules
         // (transition, bind-and-dead) in the pre-refactor version.
-        for (i, (stmt, _)) in block.statements.iter().enumerate() {
-            let live_before = &live_states[i];
-            let live_after = &live_states[i + 1];
-            for r in &borrowers {
-                let transition = !stmt_consumes(stmt, r)
-                    && live_before.contains(r)
-                    && !live_after.contains(r);
-                let bind_dead = stmt_binds_borrower(stmt, r) && !live_after.contains(r);
-                if transition || bind_dead {
-                    plan.intra_block
-                        .entry((block.label.clone(), i + 1))
-                        .or_default()
-                        .push(r.clone());
+        if block_reaches_return {
+            for (i, (stmt, _)) in block.statements.iter().enumerate() {
+                let live_before = &live_states[i];
+                let live_after = &live_states[i + 1];
+                for r in &borrowers {
+                    let transition = !stmt_consumes(stmt, r)
+                        && live_before.contains(r)
+                        && !live_after.contains(r);
+                    let bind_dead = stmt_binds_borrower(stmt, r) && !live_after.contains(r);
+                    if transition || bind_dead {
+                        plan.intra_block
+                            .entry((block.label.clone(), i + 1))
+                            .or_default()
+                            .push(r.clone());
+                    }
                 }
             }
         }
 
         // Cross-edge: for each successor, borrowers live at B's exit
-        // but not entering that successor die on this edge.
+        // but not entering that successor die on this edge. Skip when
+        // the successor doesn't reach return — insertion there would
+        // be dead code from the type system's perspective.
         let live_before_term = live_states.last().unwrap();
         for succ in terminator_successors(&block.terminator) {
+            if !return_reachable.contains(succ) {
+                continue;
+            }
             let Some(succ_live_in) = live_in_per_block.get(succ) else {
                 continue;
             };
@@ -192,18 +209,22 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
     // Ref-parameter rule: a param of ref type is bound at function
     // entry. If it's not in live_in(entry_block), it's created-but-
     // never-used and needs an unborrow at the very start of entry.
+    // Skip if the entry block doesn't reach return — the whole function
+    // diverges and static obligations are waived.
     let entry_label = body.blocks[0].label.clone();
-    if let Some(entry_live_in) = live_in_per_block.get(&entry_label) {
-        for p in &func.params {
-            let param_place = Place::Var(p.name.clone());
-            if !borrowers.contains(&param_place) {
-                continue;
-            }
-            if !entry_live_in.contains(&param_place) {
-                plan.intra_block
-                    .entry((entry_label.clone(), 0))
-                    .or_default()
-                    .push(param_place);
+    if return_reachable.contains(&entry_label) {
+        if let Some(entry_live_in) = live_in_per_block.get(&entry_label) {
+            for p in &func.params {
+                let param_place = Place::Var(p.name.clone());
+                if !borrowers.contains(&param_place) {
+                    continue;
+                }
+                if !entry_live_in.contains(&param_place) {
+                    plan.intra_block
+                        .entry((entry_label.clone(), 0))
+                        .or_default()
+                        .push(param_place);
+                }
             }
         }
     }
