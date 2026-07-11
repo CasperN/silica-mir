@@ -100,7 +100,7 @@ fn place_downcast_ok() {
 fn place_downcast_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: Option Some: number }
+        enum Copy Drop Option { None: unit Some: number }
         fn f(o: Option) {
             x: number;
             entry:

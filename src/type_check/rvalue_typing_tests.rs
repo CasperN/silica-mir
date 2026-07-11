@@ -32,7 +32,7 @@ fn rvalue_ref_mut_ok() {
 fn rvalue_enum_constr_ok() {
     assert_ok(
         "
-        enum Copy Drop Option { None: Option Some: number }
+        enum Copy Drop Option { None: unit Some: number }
         fn f() {
             o: Option;
             entry:
@@ -51,7 +51,7 @@ fn rvalue_enum_constr_unknown_enum_error() {
             entry:
             return
         }
-        enum Copy Drop Option { None: Option Some: number }
+        enum Copy Drop Option { None: unit Some: number }
         struct S { x: number }
         fn g() {
             o: Option;
@@ -68,7 +68,7 @@ fn rvalue_enum_constr_unknown_enum_error() {
 fn rvalue_enum_constr_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: Option Some: number }
+        enum Copy Drop Option { None: unit Some: number }
         fn f() {
             o: Option;
             entry:
@@ -84,7 +84,7 @@ fn rvalue_enum_constr_unknown_variant_error() {
 fn rvalue_enum_constr_wrong_payload_type_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: Option Some: number }
+        enum Copy Drop Option { None: unit Some: number }
         fn f() {
             o: Option;
             entry:
@@ -97,15 +97,17 @@ fn rvalue_enum_constr_wrong_payload_type_error() {
 }
 
 #[test]
-fn rvalue_enum_constr_self_recursive_payload_ok() {
-    // Option::None has payload type Option (matches whole enum).
+fn rvalue_enum_constr_ref_recursive_payload_ok() {
+    // Cons's payload is `&List`, which references the enclosing enum.
+    // Type-checking resolves the variant payload type against the actual
+    // rvalue operand type.
     assert_ok(
         "
-        enum Copy Drop Option { None: Option Some: number }
-        fn f(o: Option) {
-            r: Option;
+        enum Copy Drop List { Nil: unit Cons: &List }
+        fn f(l: &List) {
+            r: List;
             entry:
-            r = Option::None(move o);
+            r = List::Cons(copy l);
             return
         }
         ",

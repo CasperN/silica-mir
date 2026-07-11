@@ -409,9 +409,10 @@ fn collect_borrowers(func: &Function, env: &Env) -> BTreeSet<Place> {
 }
 
 /// Walk a place's type, adding owned-path descendants of ref type.
-/// Stops at Ref boundaries (we don't traverse a reference's pointee)
-/// and at already-visited nominal types (cycle guard for recursive
-/// declarations like `enum Option { None: Option, Some: number }`).
+/// Stops at Ref boundaries (we don't traverse a reference's pointee).
+/// The visited-set is a defensive cycle guard; by-value type recursion
+/// is banned upstream by `layout::check_program`, so this can only fire
+/// if someone bypasses the standard pipeline.
 fn walk_ref_paths(
     place: &Place,
     ty: &Type,

@@ -111,7 +111,7 @@ fn accumulate_switch_enum_multi_error() {
     // report both, and continue past the failed variant check.
     let errs = errors_of(
         "
-        enum Copy Drop Option { None: Option Some: number }
+        enum Copy Drop Option { None: unit Some: number }
         fn f(o: Option) {
             entry:
             switchEnum(o) [Wat: nowhere, None: end]

@@ -199,12 +199,13 @@ mod tests {
     }
 
     #[test]
-    fn recursive_copy_drop_enum_ok() {
-        // Marker-declared class is used verbatim for `Loop` when checking
-        // variant payloads that reference `Loop`.
+    fn recursive_via_reference_copy_drop_enum_ok() {
+        // Recursion through `&T` doesn't require size resolution — `&T`
+        // is Copy Drop regardless of `T`. Verifies composition uses the
+        // declared markers for a Custom name without needing a fixpoint.
         assert_no_diagnostics(
             "
-            enum Copy Drop Loop { A: unit B: Loop }
+            enum Copy Drop List { Nil: unit Cons: &List }
             ",
         );
     }

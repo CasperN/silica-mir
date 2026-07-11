@@ -5,6 +5,7 @@ mod codegen;
 mod dataflow;
 mod diagnostics;
 mod init_state;
+mod layout;
 mod lifetime;
 mod parser;
 mod pretty_print;
@@ -22,7 +23,7 @@ use diagnostics::Diagnostics;
 /// elaborated MIR and the collected diagnostics.
 ///
 /// Pipeline:
-///   1. Pre-elab: `type_check`, `substructural::composition`,
+///   1. Pre-elab: `type_check`, `substructural::composition`, `layout`,
 ///      `substructural::check::check_statements`, `variant_flow`,
 ///      `block_reachability`, `init_state`.
 ///   2. If step 1 found errors, bail before elaboration (a broken program's
@@ -45,13 +46,14 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     let mut env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
     substructural::composition::check_program(&env, &mut d);
+    layout::check_sizes_finite(&env, &mut d);
     substructural::check::check_statements(&env, &mut d);
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
 
     if !d.errors.is_empty() {
-        return (program.clone(), d);
+        return (program.clone(), d); 
     }
 
     let mut elaborated = program.clone();

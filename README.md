@@ -362,6 +362,7 @@ type =
     | fn(type, ...)                              # no result type; results via &out params
     | &T | &mut T | &out T | &drop T | &uninit T
 ```
+Note: by-value recursion is rejected as it would require infinite sizes.
 
 ## Compiler Structure
 Where possible the compiler splits subsytems into independent passes.
