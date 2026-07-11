@@ -1,6 +1,7 @@
 mod ast;
 mod block_reachability;
 mod cfg_edit;
+mod codegen;
 mod dataflow;
 mod diagnostics;
 mod init_state;
@@ -77,11 +78,27 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: {} <file.silica>", args[0]);
+        eprintln!("Usage: {} [--llvm] <file.silica>", args[0]);
         std::process::exit(1);
     }
 
-    let path = &args[1];
+    let mut emit_llvm = false;
+    let mut path: Option<&str> = None;
+    for a in &args[1..] {
+        if a == "--llvm" {
+            emit_llvm = true;
+        } else if path.is_none() {
+            path = Some(a.as_str());
+        } else {
+            eprintln!("Unexpected extra argument: {}", a);
+            std::process::exit(1);
+        }
+    }
+    let Some(path) = path else {
+        eprintln!("Usage: {} [--llvm] <file.silica>", args[0]);
+        std::process::exit(1);
+    };
+
     let source = match std::fs::read_to_string(path) {
         Ok(s) => s,
         Err(e) => {
@@ -99,7 +116,7 @@ fn main() {
         }
     };
 
-    println!("AST parsed successfully.");
+    eprintln!("AST parsed successfully.");
 
     let (elaborated, d) = run_all_passes(&program);
 
@@ -119,11 +136,14 @@ fn main() {
         std::process::exit(1);
     }
 
-    println!("Type checking successful!");
+    eprintln!("Type checking successful!");
     if !d.warnings.is_empty() {
-        println!("({} warning(s))", d.warnings.len());
+        eprintln!("({} warning(s))", d.warnings.len());
     }
 
-    println!("\n=== Elaborated MIR ===");
-    print!("{}", pretty_print::pretty_print(&elaborated));
+    if emit_llvm {
+        print!("{}", codegen::generate_llvm(&elaborated));
+    } else {
+        print!("{}", pretty_print::pretty_print(&elaborated));
+    }
 }
