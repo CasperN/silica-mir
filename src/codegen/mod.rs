@@ -54,6 +54,13 @@ pub fn generate_llvm(program: &Program, env: &Env) -> String {
 
     writeln!(cx.out, "; Generated from Silica-MIR").unwrap();
     writeln!(cx.out, "declare void @abort()").unwrap();
+    // Intrinsics that lower to `@llvm.*` calls surface their `declare`
+    // lines here. Only intrinsics actually called by the program are
+    // included, deduped — keeps output tight so unused intrinsics
+    // don't bloat every emitted module.
+    for decl in llvm_declares_needed(program) {
+        writeln!(cx.out, "{}", decl).unwrap();
+    }
     writeln!(cx.out).unwrap();
 
     let mut had_type = false;
@@ -314,6 +321,15 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             writeln!(cx.out, "  store {} {}, ptr {}", ty_llvm, val, addr).unwrap();
         }
         Statement::Call(target, args) => {
+            // Intercept intrinsic calls (`call $name(...)`): emit the LLVM
+            // instruction sequence inline. The intrinsic symbol never
+            // appears in the emitted `.ll`.
+            if let Operand::Const(ConstVal::FnName(name)) = target {
+                if crate::intrinsics::is_intrinsic(name) {
+                    emit_intrinsic_call(cx, name, args);
+                    return;
+                }
+            }
             let (target_val, target_ty) = emit_operand(cx, target);
             let Type::Fn(param_tys) = &target_ty else {
                 panic!("call target is not a function type: {:?}", target_ty);
@@ -338,6 +354,93 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             // exists; unborrow is checker-only and never has runtime effect.
         }
     }
+}
+
+/// Walk `program`'s statements, collect every intrinsic called by
+/// name, and return the deduped `llvm_declares` those intrinsics
+/// require. Preserves the order intrinsics are listed in
+/// `intrinsics::all()` so output is stable across runs.
+fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
+    let mut called: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for decl in &program.declarations {
+        let Declaration::Fn(f) = decl else { continue };
+        let Some(body) = &f.body else { continue };
+        for block in &body.blocks {
+            for (stmt, _) in &block.statements {
+                if let Statement::Call(Operand::Const(ConstVal::FnName(name)), _) = stmt {
+                    if crate::intrinsics::is_intrinsic(name) {
+                        called.insert(name.clone());
+                    }
+                }
+            }
+        }
+    }
+    let mut seen = std::collections::BTreeSet::new();
+    let mut out = Vec::new();
+    for spec in crate::intrinsics::all() {
+        if !called.contains(spec.name) {
+            continue;
+        }
+        for d in spec.llvm_declares {
+            if seen.insert(*d) {
+                out.push(*d);
+            }
+        }
+    }
+    out
+}
+
+/// Lower an intrinsic `call $name(operand..., out)` inline.
+///
+/// Codegen has zero intrinsic-specific logic — it just materializes
+/// input operands, hands the SSA names + a fresh-name generator to
+/// the spec's `emit` closure, writes the returned lines, and stores
+/// the returned SSA value through the `&out` pointer. Adding a new
+/// intrinsic never touches this function.
+fn emit_intrinsic_call(cx: &mut CodeGenContext, name: &str, args: &[Operand]) {
+    let spec = crate::intrinsics::lookup(name)
+        .unwrap_or_else(|| panic!("unknown intrinsic '{}'", name));
+    assert_eq!(
+        args.len(),
+        spec.inputs.len() + 1,
+        "intrinsic '{}' called with {} args, expected {} inputs + 1 out",
+        name,
+        args.len(),
+        spec.inputs.len()
+    );
+    let (out_operand, in_operands) = args.split_last().unwrap();
+
+    // Materialize each input as an SSA value.
+    let in_ssa: Vec<String> = in_operands
+        .iter()
+        .map(|op| emit_operand(cx, op).0)
+        .collect();
+
+    // Hand control to the intrinsic's emit closure. `mk_name` is the
+    // only hook it has back into codegen state — the closure allocates
+    // as many fresh SSA names as it needs, and returns the lines + the
+    // SSA name holding the final result.
+    let v_counter = &mut cx.v_counter;
+    let mut mk_name = || {
+        let n = *v_counter;
+        *v_counter += 1;
+        format!("%t.{}", n)
+    };
+    let (lines, result_ssa) = (spec.emit)(&in_ssa, &mut mk_name);
+    for line in &lines {
+        writeln!(cx.out, "{}", line).unwrap();
+    }
+
+    // Store result through the &out pointer. `out_operand` is `move r`
+    // where `r: &out T` — load its slot to get the pointee address.
+    let (out_val, _) = emit_operand(cx, out_operand);
+    let result_llvm = cx.lower_type(&spec.result);
+    writeln!(
+        cx.out,
+        "  store {} {}, ptr {}",
+        result_llvm, result_ssa, out_val
+    )
+    .unwrap();
 }
 
 /// Lower `p = Name::V(operand)`. Writes the discriminant to LHS field 0
@@ -664,6 +767,8 @@ mod declaration_tests;
 mod enum_tests;
 #[cfg(test)]
 mod function_body_tests;
+#[cfg(test)]
+mod intrinsic_tests;
 #[cfg(test)]
 mod place_tests;
 #[cfg(test)]

@@ -33,7 +33,7 @@
     },
     "identifier": {
       "type": "PATTERN",
-      "value": "[a-zA-Z_][a-zA-Z0-9_]*"
+      "value": "\\$?[a-zA-Z_][a-zA-Z0-9_]*"
     },
     "int_lit": {
       "type": "PATTERN",

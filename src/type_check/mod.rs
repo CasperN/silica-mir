@@ -31,6 +31,14 @@ impl Env {
         let mut functions = IndexMap::new();
         let mut errors = Vec::new();
 
+        // Preload intrinsic signatures. Reserved-namespace names (`$*`)
+        // can never conflict with user declarations at the lexical
+        // level, but if we ever add non-`$` prelude items, redeclarations
+        // will hit the duplicate-declaration path below.
+        for f in crate::intrinsics::prelude_fns() {
+            functions.insert(f.name.clone(), f);
+        }
+
         for decl in &program.declarations {
             match decl {
                 Declaration::Struct(s) => {
@@ -73,8 +81,12 @@ impl Env {
     /// Elaboration passes mutate function bodies; after that the cloned
     /// `functions` map in `Env` is stale. This resyncs the map without
     /// touching `types` (declarations aren't mutated by elaboration).
+    /// Intrinsic signatures are re-preloaded so they survive the sync.
     pub fn sync_functions(&mut self, program: &Program) {
         self.functions.clear();
+        for f in crate::intrinsics::prelude_fns() {
+            self.functions.insert(f.name.clone(), f);
+        }
         for decl in &program.declarations {
             if let Declaration::Fn(f) = decl {
                 self.functions.insert(f.name.clone(), f.clone());

@@ -19,7 +19,11 @@ module.exports = grammar({
 
     comment: $ => /#.*/,
 
-    identifier: $ => /[a-zA-Z_][a-zA-Z0-9_]*/,
+    // Identifiers may optionally start with `$` — a reserved namespace
+    // for MIR-only names (intrinsics, compiler-generated symbols) that
+    // the higher-level language forbids in user code. Guarantees no HLL
+    // name can shadow an intrinsic.
+    identifier: $ => /\$?[a-zA-Z_][a-zA-Z0-9_]*/,
     // Integer literals: decimal / hex (0x…) / binary (0b…). Underscore
     // separators allowed anywhere in the digits. Optional type suffix
     // pins the type; unsuffixed defaults to i64 at parse time.

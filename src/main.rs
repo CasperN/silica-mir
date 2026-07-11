@@ -5,6 +5,7 @@ mod codegen;
 mod dataflow;
 mod diagnostics;
 mod init_state;
+mod intrinsics;
 mod layout;
 mod lifetime;
 mod parser;
