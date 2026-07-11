@@ -147,6 +147,10 @@ fn write_type(out: &mut String, ty: &Type) {
             }
             write_type(out, inner);
         }
+        Type::RawPtr(inner) => {
+            out.push('*');
+            write_type(out, inner);
+        }
     }
 }
 
@@ -235,6 +239,10 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
             if matches!(kind, RefKind::Shared) {
                 out.push(' ');
             }
+            write_place(out, place);
+        }
+        RValue::RawRef(place) => {
+            out.push_str("&raw ");
             write_place(out, place);
         }
         RValue::EnumConstr(enum_name, variant, op) => {

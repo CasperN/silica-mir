@@ -218,6 +218,9 @@ module.exports = grammar({
       seq('&out', $.place),
       seq('&drop', $.place),
       seq('&uninit', $.place),
+      // Raw pointer (unsafe): does not create a loan, no aliasing
+      // guarantees, no init-state obligation. Deref is unchecked.
+      seq('&raw', $.place),
       seq(field('enum_name', $.identifier), '::', field('variant_name', $.identifier), '(', $.operand, ')')
     ),
 
@@ -233,6 +236,8 @@ module.exports = grammar({
       prec(2, seq('&out', $.type)),
       prec(2, seq('&drop', $.type)),
       prec(2, seq('&uninit', $.type)),
+      // Raw pointer type. Aliasing allowed; no loan/lifetime tracking.
+      prec(2, seq('*', $.type)),
       seq('fn', '(', commaSep($.type), ')'),
       $.identifier // struct / enum name
     )

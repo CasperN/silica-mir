@@ -232,7 +232,7 @@ fn close_loans_under(loans: &mut LoanMap, consumed: &Place) {
 fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     match rv {
         RValue::Use(op) | RValue::EnumConstr(_, _, op) => consume_operand(loans, op),
-        RValue::Ref(_, _) => {}
+        RValue::Ref(_, _) | RValue::RawRef(_) => {}
     }
 }
 
@@ -387,6 +387,11 @@ fn check_and_transfer_stmt(
                         loans,
                         d,
                     );
+                }
+                RValue::RawRef(_) => {
+                    // Raw pointer creation is the "unsafe" escape hatch
+                    // — no loan-conflict check. Aliasing with live
+                    // borrows is the programmer's responsibility.
                 }
             }
             check_loan_conflict(func, block, target, AccessKind::Write, span, loans, d);

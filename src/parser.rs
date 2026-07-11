@@ -201,6 +201,16 @@ impl Parser {
                     return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
                 }
 
+                if text == "*" {
+                    // Raw pointer type `*T`. Distinct from the deref
+                    // place operator `*p` — types occupy a different
+                    // grammar position.
+                    let inner = node
+                        .child(1)
+                        .ok_or("Missing inner type for raw pointer")?;
+                    return Ok(Type::RawPtr(Box::new(self.map_type(inner)?)));
+                }
+
                 match text {
                     "fn" => {
                         let mut params = Vec::new();
@@ -317,6 +327,10 @@ impl Parser {
                     "&uninit" => {
                         let place_node = node.child(1).ok_or("Ref missing place")?;
                         Ok(RValue::Ref(RefKind::Uninit, self.map_place(place_node)?))
+                    }
+                    "&raw" => {
+                        let place_node = node.child(1).ok_or("&raw missing place")?;
+                        Ok(RValue::RawRef(self.map_place(place_node)?))
                     }
                     _ => {
                         let enum_name_node = node

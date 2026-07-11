@@ -48,6 +48,14 @@ pub fn class_of(ty: &Type, env: &Env) -> Class {
             drop: true,
             mov: true,
         },
+        // Raw pointers are unrestricted (aliasable, forgettable,
+        // relocatable) — same class as shared refs. No loan / no
+        // obligation, so no linearity to worry about.
+        Type::RawPtr(_) => Class {
+            copy: true,
+            drop: true,
+            mov: true,
+        },
         Type::Ref(kind, _) => match kind {
             // Shared refs are unrestricted and relocatable.
             RefKind::Shared => Class {

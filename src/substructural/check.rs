@@ -93,7 +93,7 @@ fn check_rvalue(
         RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
             check_operand(env, func, block, locals, op, span, d)
         }
-        RValue::Ref(_, _) => {}
+        RValue::Ref(_, _) | RValue::RawRef(_) => {}
     }
 }
 

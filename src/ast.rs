@@ -130,6 +130,11 @@ pub enum Type {
     Custom(String), // struct or enum type reference
     Fn(Vec<Type>),
     Ref(RefKind, Box<Type>),
+    /// Raw pointer. Aliasing is unrestricted; no loan tracking, no
+    /// `(cur, post)` obligation. Deref is unchecked — the caller is
+    /// responsible for the pointee's init state and lifetime. The
+    /// pointer value itself is `Copy Drop Move`, like `&T`.
+    RawPtr(Box<Type>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -367,6 +372,9 @@ pub enum Operand {
 pub enum RValue {
     Use(Operand),
     Ref(RefKind, Place),
+    /// Take the address of `place` as a raw pointer. Does NOT create
+    /// a loan — this is the unsafe part. Written `&raw place`.
+    RawRef(Place),
     EnumConstr(String, String, Operand), // EnumName, VariantName, payload
 }
 

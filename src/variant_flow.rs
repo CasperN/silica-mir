@@ -135,7 +135,7 @@ fn check_places_in_stmt(
                         check_downcast_refinement(env, func, locals, block, p, span, state, d);
                     }
                 }
-                RValue::Ref(_, p) => {
+                RValue::Ref(_, p) | RValue::RawRef(p) => {
                     check_downcast_refinement(env, func, locals, block, p, span, state, d);
                 }
             }
@@ -276,12 +276,16 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
     match stmt {
         Statement::Assign(target, rvalue) => {
             // Exclusive borrow of a tracked Var → clobber it: we can't see
-            // what the borrower does.
-            if let RValue::Ref(kind, borrowed) = rvalue {
-                if !matches!(kind, RefKind::Shared) {
-                    if let Some(root) = root_var(borrowed) {
-                        state.shift_remove(root);
-                    }
+            // what the borrower does. Raw pointer creation clobbers
+            // for the same reason (aliasing writes possible).
+            let clobber_borrowed: Option<&Place> = match rvalue {
+                RValue::Ref(kind, borrowed) if !matches!(kind, RefKind::Shared) => Some(borrowed),
+                RValue::RawRef(borrowed) => Some(borrowed),
+                _ => None,
+            };
+            if let Some(borrowed) = clobber_borrowed {
+                if let Some(root) = root_var(borrowed) {
+                    state.shift_remove(root);
                 }
             }
 

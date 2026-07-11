@@ -619,7 +619,7 @@ impl<'a> InitStateContext<'a> {
     fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
         match rv {
             RValue::Use(op) | RValue::EnumConstr(_, _, op) => self.apply_operand_move(op, state),
-            RValue::Ref(_, _) => {}
+            RValue::Ref(_, _) | RValue::RawRef(_) => {}
         }
     }
 
@@ -1204,6 +1204,11 @@ impl<'a> InitStateContext<'a> {
             }
             RValue::Ref(kind, place) => {
                 self.check_borrow_precondition(func, block, kind, place, span, state, d);
+            }
+            RValue::RawRef(_) => {
+                // No precondition — raw pointers can point at any
+                // state (init, uninit, moved). Aliasing/lifetime are
+                // the programmer's responsibility.
             }
         }
     }

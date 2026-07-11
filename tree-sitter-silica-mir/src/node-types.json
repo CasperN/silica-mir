@@ -694,6 +694,10 @@
     "named": false
   },
   {
+    "type": "&raw",
+    "named": false
+  },
+  {
     "type": "&uninit",
     "named": false
   },

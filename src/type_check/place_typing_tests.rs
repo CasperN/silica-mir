@@ -204,7 +204,7 @@ fn place_deref_of_non_ref_error() {
             return
         }
         ",
-        "Cannot dereference non-reference type",
+        "Cannot dereference non-pointer type",
     );
 }
 

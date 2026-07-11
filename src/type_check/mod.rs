@@ -111,6 +111,7 @@ impl Env {
                 Ok(())
             }
             Type::Ref(_, inner) => self.validate_type(inner),
+            Type::RawPtr(inner) => self.validate_type(inner),
         }
     }
 
@@ -145,6 +146,7 @@ impl Env {
                 a.iter().zip(b.iter()).all(|(x, y)| self.types_match(x, y))
             }
             (Type::Ref(k1, i1), Type::Ref(k2, i2)) => k1 == k2 && self.types_match(i1, i2),
+            (Type::RawPtr(i1), Type::RawPtr(i2)) => self.types_match(i1, i2),
             _ => false,
         }
     }
@@ -161,13 +163,13 @@ impl Env {
                 .ok_or_else(|| format!("Use of undeclared variable '{}'", name)),
             Place::Deref(inner) => {
                 let inner_ty = self.infer_place_type(inner, locals)?;
-                if let Type::Ref(_, pointee) = inner_ty {
-                    Ok(*pointee)
-                } else {
-                    Err(format!(
-                        "Cannot dereference non-reference type {:?}",
-                        inner_ty
-                    ))
+                match inner_ty {
+                    Type::Ref(_, pointee) => Ok(*pointee),
+                    Type::RawPtr(pointee) => Ok(*pointee),
+                    other => Err(format!(
+                        "Cannot dereference non-pointer type {:?}",
+                        other
+                    )),
                 }
             }
             Place::Field(inner, field_name) => {
@@ -253,6 +255,10 @@ impl Env {
             RValue::Ref(kind, place) => {
                 let pointee_ty = self.infer_place_type(place, locals)?;
                 Ok(Type::Ref(kind.clone(), Box::new(pointee_ty)))
+            }
+            RValue::RawRef(place) => {
+                let pointee_ty = self.infer_place_type(place, locals)?;
+                Ok(Type::RawPtr(Box::new(pointee_ty)))
             }
             RValue::EnumConstr(enum_name, variant_name, op) => {
                 let e_decl = match self.types.get(enum_name) {

@@ -170,7 +170,7 @@ impl<'a> CodeGenContext<'a> {
             Type::Float(FloatTy::F64) => "double".to_string(),
             Type::Boolean => "i1".to_string(),
             Type::Unit | Type::Never => "{}".to_string(),
-            Type::Ref(_, _) | Type::Fn(_) => "ptr".to_string(),
+            Type::Ref(_, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
             Type::Custom(name) => format!("%{}", name),
         }
     }
@@ -566,6 +566,13 @@ fn emit_rvalue(cx: &mut CodeGenContext, rv: &RValue) -> (String, Type) {
             let (addr, ty) = emit_place_addr(cx, place);
             (addr, Type::Ref(RefKind::Shared, Box::new(ty)))
         }
+        RValue::RawRef(place) => {
+            // Raw pointer: identical LLVM emission as `&` above — an
+            // address. The distinction between safe ref and raw ptr is
+            // purely compiler-time (loan tracking, obligation checks).
+            let (addr, ty) = emit_place_addr(cx, place);
+            (addr, Type::RawPtr(Box::new(ty)))
+        }
         RValue::EnumConstr(..) => {
             unreachable!("EnumConstr is handled in Assign statement, not here")
         }
@@ -655,10 +662,12 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
         }
         Place::Deref(inner) => {
             let (base_addr, base_ty) = emit_place_addr(cx, inner);
-            let Type::Ref(_, pointee) = base_ty else {
-                panic!("deref of non-reference type");
+            let pointee = match base_ty {
+                Type::Ref(_, p) => p,
+                Type::RawPtr(p) => p,
+                other => panic!("deref of non-pointer type {:?}", other),
             };
-            // `base_addr` points to the reference's own storage (a slot
+            // `base_addr` points to the pointer's own storage (a slot
             // holding a `ptr`). Load once to obtain the pointee address.
             let dst = cx.fresh();
             writeln!(cx.out, "  {} = load ptr, ptr {}", dst, base_addr).unwrap();
