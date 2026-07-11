@@ -115,7 +115,7 @@ pub struct PointState {
     pub refs: IndexMap<Place, RefState>,
 }
 
-struct Ctx<'a> {
+struct InitStateContext<'a> {
     env: &'a Env,
     locals: &'a IndexMap<String, Type>,
 }
@@ -398,7 +398,7 @@ pub fn block_entry_states(env: &Env, func: &Function) -> IndexMap<String, PointS
         return IndexMap::new();
     }
     let locals = func.locals_map();
-    let ctx = Ctx {
+    let ctx = InitStateContext {
         env,
         locals: &locals,
     };
@@ -416,7 +416,7 @@ pub fn transfer_stmt_silent(
     state: &mut PointState,
 ) {
     let locals = func.locals_map();
-    let ctx = Ctx {
+    let ctx = InitStateContext {
         env,
         locals: &locals,
     };
@@ -436,7 +436,7 @@ pub fn states_before_returns<'a>(
     }
 
     let locals = func.locals_map();
-    let ctx = Ctx {
+    let ctx = InitStateContext {
         env,
         locals: &locals,
     };
@@ -468,7 +468,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     }
 
     let locals = func.locals_map();
-    let ctx = Ctx {
+    let ctx = InitStateContext {
         env,
         locals: &locals,
     };
@@ -521,7 +521,7 @@ fn is_trivially_init(ty: &Type, env: &Env) -> bool {
 /// Bridge between init_state's per-function context and the generic
 /// dataflow framework. Instantiated per-function.
 struct InitAnalysis<'a> {
-    ctx: &'a Ctx<'a>,
+    ctx: &'a InitStateContext<'a>,
     initial: PointState,
 }
 
@@ -544,7 +544,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     }
 }
 
-fn run_fixpoint(ctx: &Ctx, func: &Function, body: &FunctionBody) -> IndexMap<String, PointState> {
+fn run_fixpoint(ctx: &InitStateContext, func: &Function, body: &FunctionBody) -> IndexMap<String, PointState> {
     let analysis = InitAnalysis {
         ctx,
         initial: initial_state(func, body, ctx.env),
@@ -554,7 +554,7 @@ fn run_fixpoint(ctx: &Ctx, func: &Function, body: &FunctionBody) -> IndexMap<Str
 
 // ---------- Transfer (state updates) ----------
 
-impl<'a> Ctx<'a> {
+impl<'a> InitStateContext<'a> {
     fn transfer_stmt(&self, stmt: &Statement, state: &mut PointState) {
         match stmt {
             Statement::Assign(target, rvalue) => {
@@ -699,7 +699,7 @@ enum DerefOp {
     Write,
 }
 
-impl<'a> Ctx<'a> {
+impl<'a> InitStateContext<'a> {
     /// Apply the state effect of an operation through `*r`. If `place` isn't
     /// a shallow deref of a Var, returns without effect.
     ///
@@ -924,7 +924,7 @@ fn walk_overwrite_leaves(
     }
 }
 
-impl<'a> Ctx<'a> {
+impl<'a> InitStateContext<'a> {
 
     /// If `place` is a whole-var ref binding with an outstanding obligation
     /// (`refs[name]` exists), verify its obligation is fulfilled and remove
@@ -986,7 +986,7 @@ fn loan_post_leaf(kind: &RefKind) -> Option<InitState> {
     }
 }
 
-impl<'a> Ctx<'a> {
+impl<'a> InitStateContext<'a> {
     /// Apply the eager init transition on the loaned place. Called at
     /// borrow creation.
     ///
@@ -1074,7 +1074,7 @@ fn rekey(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
 
 // ---------- Diagnostic pass ----------
 
-impl<'a> Ctx<'a> {
+impl<'a> InitStateContext<'a> {
     fn check_block(
         &self,
         func: &Function,
@@ -1331,7 +1331,7 @@ fn describe_state(s: &InitState) -> &'static str {
     }
 }
 
-impl<'a> Ctx<'a> {
+impl<'a> InitStateContext<'a> {
     fn eval_operand(
         &self,
         func: &Function,

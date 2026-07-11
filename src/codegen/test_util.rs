@@ -5,13 +5,17 @@
 
 use crate::codegen::generate_llvm;
 use crate::parser::Parser;
+use crate::type_check::Env;
 
 /// Parse `src` (assumed well-typed) and return the emitted LLVM IR.
+/// Env build errors are discarded — test sources don't have duplicate
+/// declarations.
 pub fn ll_of(src: &str) -> String {
     let program = Parser::new(src.to_string())
         .parse()
         .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
-    generate_llvm(&program)
+    let (env, _) = Env::build(&program);
+    generate_llvm(&program, &env)
 }
 
 #[track_caller]

@@ -35,7 +35,6 @@
 //! field order is declaration order. Padding and alignment can change.
 
 use crate::ast::*;
-use crate::diagnostics::Diagnostics;
 use crate::layout;
 use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
@@ -44,18 +43,9 @@ use std::fmt::Write;
 /// Lower `program` to LLVM textual IR. Assumes `program` has already
 /// passed the full check/elaborate pipeline — malformed inputs will
 /// panic.
-pub fn generate_llvm(program: &Program) -> String {
-    // TODO(env-plumbing): thread the `Env` (and skip the throwaway
-    // `Diagnostics`) from `run_all_passes` instead of rebuilding here.
-    // The rebuild is O(decls) but a semantically-loaded smell: it
-    // implies the checker's env and codegen's env could disagree,
-    // which they must not. Change the pipeline to return `(Program,
-    // Env, Diagnostics)` and take `generate_llvm(&Program, &Env)`.
-    let mut throwaway = Diagnostics::default();
-    let env = Env::build(program, &mut throwaway);
-
-    let mut cx = Ctx {
-        env: &env,
+pub fn generate_llvm(program: &Program, env: &Env) -> String {
+    let mut cx = CodeGenContext {
+        env,
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
@@ -110,7 +100,7 @@ pub fn generate_llvm(program: &Program) -> String {
 
 // ---------- Context ----------
 
-struct Ctx<'a> {
+struct CodeGenContext<'a> {
     env: &'a Env,
     out: String,
     v_counter: u32,
@@ -121,11 +111,20 @@ struct Ctx<'a> {
     pending_default_blocks: Vec<String>,
 }
 
-impl<'a> Ctx<'a> {
+impl<'a> CodeGenContext<'a> {
     fn fresh(&mut self) -> String {
         let n = self.v_counter;
         self.v_counter += 1;
         format!("%t.{}", n)
+    }
+
+    /// Reset every per-function field to its function-entry value.
+    /// Called at the top of `emit_fn_body`. Centralized so a new
+    /// per-fn field can't be missed at the reset boundary.
+    fn reset_for_function(&mut self, f: &Function) {
+        self.v_counter = 0;
+        self.locals = f.locals_map();
+        self.pending_default_blocks.clear();
     }
 
     /// Map an AST type to its LLVM textual form. References and function
@@ -170,7 +169,7 @@ impl<'a> Ctx<'a> {
 
 // ---------- Declarations ----------
 
-fn emit_struct_decl(cx: &mut Ctx, s: &StructDecl) {
+fn emit_struct_decl(cx: &mut CodeGenContext, s: &StructDecl) {
     write!(cx.out, "%{} = type {{ ", s.name).unwrap();
     for (i, f) in s.fields.iter().enumerate() {
         if i > 0 {
@@ -181,7 +180,7 @@ fn emit_struct_decl(cx: &mut Ctx, s: &StructDecl) {
     writeln!(cx.out, " }}").unwrap();
 }
 
-fn emit_enum_decl(cx: &mut Ctx, e: &EnumDecl) {
+fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
     let pay_off = payload_offset(e, cx.env);
     let pay_size = max_payload_size(e, cx.env);
     // pad_bytes = payload_offset - disc_size (2). Always ≥ 0 since
@@ -205,7 +204,7 @@ fn emit_enum_decl(cx: &mut Ctx, e: &EnumDecl) {
     .unwrap();
 }
 
-fn emit_extern_fn(cx: &mut Ctx, f: &Function) {
+fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     write!(cx.out, "declare void @{}(", f.name).unwrap();
     for (i, p) in f.params.iter().enumerate() {
         if i > 0 {
@@ -216,10 +215,8 @@ fn emit_extern_fn(cx: &mut Ctx, f: &Function) {
     writeln!(cx.out, ")").unwrap();
 }
 
-fn emit_fn_body(cx: &mut Ctx, f: &Function) {
-    cx.v_counter = 0;
-    cx.locals = f.locals_map();
-    cx.pending_default_blocks.clear();
+fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
+    cx.reset_for_function(f);
 
     write!(cx.out, "define void @{}(", f.name).unwrap();
     for (i, p) in f.params.iter().enumerate() {
@@ -273,7 +270,7 @@ fn emit_fn_body(cx: &mut Ctx, f: &Function) {
     writeln!(cx.out).unwrap();
 }
 
-fn emit_alloca(cx: &mut Ctx, name: &str, ty: &Type) {
+fn emit_alloca(cx: &mut CodeGenContext, name: &str, ty: &Type) {
     let llvm_ty = cx.lower_type(ty);
     let align = layout::align_of(ty, cx.env);
     writeln!(
@@ -284,7 +281,7 @@ fn emit_alloca(cx: &mut Ctx, name: &str, ty: &Type) {
     .unwrap();
 }
 
-fn emit_block(cx: &mut Ctx, block: &BasicBlock) {
+fn emit_block(cx: &mut CodeGenContext, block: &BasicBlock) {
     writeln!(cx.out, "{}:", block.label).unwrap();
     for (stmt, _) in &block.statements {
         emit_stmt(cx, stmt);
@@ -294,7 +291,7 @@ fn emit_block(cx: &mut Ctx, block: &BasicBlock) {
 
 // ---------- Statements ----------
 
-fn emit_stmt(cx: &mut Ctx, stmt: &Statement) {
+fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
     match stmt {
         Statement::Assign(lhs, rhs) => {
             // EnumConstr is a whole-value initialization: it writes both
@@ -344,7 +341,7 @@ fn emit_stmt(cx: &mut Ctx, stmt: &Statement) {
 /// to LHS field 2. RHS materialization happens before LHS address
 /// computation to preserve read-before-write semantics.
 fn emit_enum_construction(
-    cx: &mut Ctx,
+    cx: &mut CodeGenContext,
     lhs: &Place,
     enum_name: &str,
     variant: &str,
@@ -394,7 +391,7 @@ fn emit_enum_construction(
 /// Emit code to materialize `rv` as an SSA value. Returns the value
 /// (an LLVM identifier or literal) and its AST type. `EnumConstr` is
 /// handled by `emit_enum_construction` before reaching here.
-fn emit_rvalue(cx: &mut Ctx, rv: &RValue) -> (String, Type) {
+fn emit_rvalue(cx: &mut CodeGenContext, rv: &RValue) -> (String, Type) {
     match rv {
         RValue::Use(op) => emit_operand(cx, op),
         RValue::Ref(_, place) => {
@@ -409,14 +406,14 @@ fn emit_rvalue(cx: &mut Ctx, rv: &RValue) -> (String, Type) {
     }
 }
 
-fn emit_operand(cx: &mut Ctx, op: &Operand) -> (String, Type) {
+fn emit_operand(cx: &mut CodeGenContext, op: &Operand) -> (String, Type) {
     match op {
         Operand::Copy(p) | Operand::Move(p) => read_place(cx, p),
         Operand::Const(c) => emit_const(cx, c),
     }
 }
 
-fn emit_const(cx: &mut Ctx, c: &ConstVal) -> (String, Type) {
+fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
     match c {
         ConstVal::Number(n) => (n.to_string(), Type::Number),
         ConstVal::Boolean(true) => ("true".to_string(), Type::Boolean),
@@ -438,7 +435,7 @@ fn emit_const(cx: &mut Ctx, c: &ConstVal) -> (String, Type) {
 
 /// Compute the address (a `ptr`) of `place`. Returns the SSA value
 /// holding that pointer plus the pointee's AST type.
-fn emit_place_addr(cx: &mut Ctx, place: &Place) -> (String, Type) {
+fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
     match place {
         Place::Var(name) => {
             let ty = cx
@@ -499,7 +496,7 @@ fn emit_place_addr(cx: &mut Ctx, place: &Place) -> (String, Type) {
 
 /// Emit a `load` of the value at `place`. Returns the SSA value and
 /// its AST type.
-fn read_place(cx: &mut Ctx, place: &Place) -> (String, Type) {
+fn read_place(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
     let (addr, ty) = emit_place_addr(cx, place);
     let ty_llvm = cx.lower_type(&ty);
     let dst = cx.fresh();
@@ -509,7 +506,7 @@ fn read_place(cx: &mut Ctx, place: &Place) -> (String, Type) {
 
 // ---------- Terminators ----------
 
-fn emit_terminator(cx: &mut Ctx, term: &Terminator) {
+fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
     match term {
         Terminator::Goto(label) => {
             writeln!(cx.out, "  br label %{}", label).unwrap();

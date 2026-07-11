@@ -21,15 +21,21 @@ pub struct Env {
 }
 
 impl Env {
-    pub fn build(program: &Program, d: &mut Diagnostics) -> Self {
+    /// Build the checker's projection over `program`. Returns the env
+    /// plus any duplicate-declaration errors — callers that care (i.e.
+    /// the main pipeline) plumb them into their `Diagnostics`; callers
+    /// that don't (i.e. tests and codegen) can drop them. Duplicate
+    /// declarations are the only failure mode.
+    pub fn build(program: &Program) -> (Self, Vec<String>) {
         let mut types = IndexMap::new();
         let mut functions = IndexMap::new();
+        let mut errors = Vec::new();
 
         for decl in &program.declarations {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
-                        d.errors.push(format!(
+                        errors.push(format!(
                             "at {}: Duplicate declaration of type '{}'",
                             s.name_span, s.name
                         ));
@@ -39,7 +45,7 @@ impl Env {
                 }
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
-                        d.errors.push(format!(
+                        errors.push(format!(
                             "at {}: Duplicate declaration of type '{}'",
                             e.name_span, e.name
                         ));
@@ -49,7 +55,7 @@ impl Env {
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
-                        d.errors.push(format!(
+                        errors.push(format!(
                             "at {}: Duplicate declaration of function '{}'",
                             f.name_span, f.name
                         ));
@@ -60,7 +66,7 @@ impl Env {
             }
         }
 
-        Env { types, functions }
+        (Env { types, functions }, errors)
     }
 
     /// Refresh cached function definitions from `program` in place.

@@ -624,7 +624,7 @@ fn direct_leak_check_flags_pre_elaboration_drop_leak() {
     let src = "fn f(x: number) { entry: return }";
     let program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&program, &mut d);
+    let env = type_check::Env::build(&program).0;
     check_return_leaks(&env, &mut d);
     assert!(
         d.errors
@@ -641,7 +641,7 @@ fn direct_leak_check_ok_when_explicitly_dropped() {
     let src = "fn f(x: number) { entry: drop x; return }";
     let program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&program, &mut d);
+    let env = type_check::Env::build(&program).0;
     check_return_leaks(&env, &mut d);
     let leak_errs: Vec<_> = d
         .errors

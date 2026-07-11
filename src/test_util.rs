@@ -11,7 +11,7 @@ pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     let program = Parser::new(src.to_string())
         .parse()
         .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
-    let (_, d) = run_all_passes(&program);
+    let (_, _, d) = run_all_passes(&program);
     (d.errors, d.warnings)
 }
 

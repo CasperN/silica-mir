@@ -5,7 +5,6 @@ use crate::layout::{align_of, size_of};
 use crate::parser::Parser;
 use crate::type_check::Env;
 use crate::ast::*;
-use crate::diagnostics::Diagnostics;
 
 /// Parse `src` and build an `Env`. Doesn't run any check pass — the
 /// tests just need type-name resolution.
@@ -13,8 +12,7 @@ fn env_of(src: &str) -> Env {
     let program = Parser::new(src.to_string())
         .parse()
         .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
-    let mut d = Diagnostics::default();
-    Env::build(&program, &mut d)
+    Env::build(&program).0
 }
 
 // ---------- Scalars and pointers ----------

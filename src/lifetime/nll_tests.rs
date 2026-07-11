@@ -20,8 +20,7 @@ use crate::type_check::Env;
 /// the pretty-printed result.
 fn elaborate_only(src: &str) -> String {
     let mut program = Parser::new(src.to_string()).parse().expect("parse");
-    let mut d = crate::diagnostics::Diagnostics::default();
-    let env = Env::build(&program, &mut d);
+    let env = Env::build(&program).0;
     elaborate(&mut program, &env);
     pretty_print(&program)
 }
@@ -530,13 +529,12 @@ fn idempotent_second_run_is_noop() {
         }
         ";
     let mut program = Parser::new(src.to_string()).parse().unwrap();
-    let mut d = crate::diagnostics::Diagnostics::default();
-    let env = Env::build(&program, &mut d);
+    let env = Env::build(&program).0;
     elaborate(&mut program, &env);
     let after_first = pretty_print(&program);
 
     // Rebuild env against the elaborated program and run NLL again.
-    let env2 = Env::build(&program, &mut d);
+    let env2 = Env::build(&program).0;
     elaborate(&mut program, &env2);
     let after_second = pretty_print(&program);
 

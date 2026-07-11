@@ -41,9 +41,10 @@ use diagnostics::Diagnostics;
 ///      where every loan-closing point is explicit.
 ///
 /// Used by `main` and by test helpers.
-pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
+pub fn run_all_passes(program: &Program) -> (Program, type_check::Env, Diagnostics) {
     let mut d = Diagnostics::default();
-    let mut env = type_check::Env::build(program, &mut d);
+    let (mut env, env_errs) = type_check::Env::build(program);
+    d.errors.extend(env_errs);
     env.typecheck(&mut d);
     substructural::composition::check_program(&env, &mut d);
     layout::check_sizes_finite(&env, &mut d);
@@ -53,7 +54,7 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     init_state::check_program(&env, &mut d);
 
     if !d.errors.is_empty() {
-        return (program.clone(), d); 
+        return (program.clone(), env, d);
     }
 
     let mut elaborated = program.clone();
@@ -74,7 +75,7 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     substructural::check::check_return_leaks(&env, &mut d);
     lifetime::check_program(&env, &mut d);
 
-    (elaborated, d)
+    (elaborated, env, d)
 }
 
 fn main() {
@@ -120,7 +121,7 @@ fn main() {
 
     eprintln!("AST parsed successfully.");
 
-    let (elaborated, d) = run_all_passes(&program);
+    let (elaborated, env, d) = run_all_passes(&program);
 
     for w in &d.warnings {
         eprintln!("Warning: {}", w);
@@ -144,7 +145,7 @@ fn main() {
     }
 
     if emit_llvm {
-        print!("{}", codegen::generate_llvm(&elaborated));
+        print!("{}", codegen::generate_llvm(&elaborated, &env));
     } else {
         print!("{}", pretty_print::pretty_print(&elaborated));
     }

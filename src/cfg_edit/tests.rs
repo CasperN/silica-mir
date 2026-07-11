@@ -320,7 +320,7 @@ fn split_then_full_pipeline_still_clean() {
         }
     }
 
-    let (_, d) = run_all_passes(&program);
+    let (_, _, d) = run_all_passes(&program);
     assert!(
         d.errors.is_empty(),
         "expected clean, got errors: {:?}",
