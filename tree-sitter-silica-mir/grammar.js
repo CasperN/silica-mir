@@ -213,6 +213,7 @@ module.exports = grammar({
       'number',
       'boolean',
       'unit',
+      'never',
       prec(2, seq('&', $.type)),
       prec(2, seq('&mut', $.type)),
       prec(2, seq('&out', $.type)),

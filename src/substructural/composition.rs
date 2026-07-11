@@ -41,6 +41,13 @@ pub fn class_of(ty: &Type, env: &Env) -> Class {
             drop: true,
             mov: true,
         },
+        // Never is uninhabited: the substructural rules quantify over
+        // values, and there are none. All three ops apply vacuously.
+        Type::Never => Class {
+            copy: true,
+            drop: true,
+            mov: true,
+        },
         Type::Ref(kind, _) => match kind {
             // Shared refs are unrestricted and relocatable.
             RefKind::Shared => Class {

@@ -78,7 +78,7 @@ impl Env {
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
-            Type::Number | Type::Boolean | Type::Unit => Ok(()),
+            Type::Number | Type::Boolean | Type::Unit | Type::Never => Ok(()),
             Type::Custom(name) => {
                 if self.types.contains_key(name) {
                     Ok(())
@@ -117,6 +117,7 @@ impl Env {
             (Type::Number, Type::Number) => true,
             (Type::Boolean, Type::Boolean) => true,
             (Type::Unit, Type::Unit) => true,
+            (Type::Never, Type::Never) => true,
             (Type::Custom(a), Type::Custom(b)) => a == b,
             (Type::Fn(a), Type::Fn(b)) => {
                 if a.len() != b.len() {

@@ -51,6 +51,7 @@ pub enum Type {
     Number,
     Boolean,
     Unit,
+    Never,
     Custom(String), // struct or enum type reference
     Fn(Vec<Type>),
     Ref(RefKind, Box<Type>),

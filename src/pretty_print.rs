@@ -121,6 +121,7 @@ fn write_type(out: &mut String, ty: &Type) {
         Type::Number => out.push_str("number"),
         Type::Boolean => out.push_str("boolean"),
         Type::Unit => out.push_str("unit"),
+        Type::Never => out.push_str("never"),
         Type::Custom(name) => out.push_str(name),
         Type::Fn(params) => {
             out.push_str("fn(");

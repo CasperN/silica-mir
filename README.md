@@ -342,7 +342,7 @@ Notes:
 - Struct construction has **no aggregate rvalue**. Structs are initialized one field at a time via `x.field = ...`; the struct as a whole is initialized exactly when all fields are.
 - Enum construction *is* whole-value (`Name::Variant(operand)`): a variant's payload and discriminant must become valid atomically.
 - **`switchEnum` takes a place, not an operand.** It performs a *discriminant read* — a shared-read access for conflict purposes, consuming nothing. It must be a place because each out-edge refines the type of *that specific place*, which is what justifies the downcast projection in the target block. Switching on a copied temporary would sever the connection between the discriminant tested and the place downcast. (`branch` stays operand-based: `boolean` is `Copy Drop` and no refinement occurs.)
-- **`abort`** is dynamic termination: no successors, and the one point where `&out`/`&drop` obligations and the leak check are waived — the escape hatch a linear language needs for runtime invariant violations.
+- **`abort`** is dynamic termination: no successors — a runtime escape hatch for invariant violations. It does **not** waive static obligations. A function that declares `&out T` promises to initialize T; reaching `abort` without doing so is a static obligation error, even though the program would die at runtime before the caller could observe the missing initialization.
 - **Lifetimes are inferred (NLL-style).** No lifetime annotations anywhere.
 Regions are internal to the checker, derived from reference liveness.
 - **Return values are modeled with `&out` parameters.** Functions have no return
@@ -356,6 +356,7 @@ type =
     | unit
     | number
     | boolean
+    | never                                      # uninhabited (⊥); vacuously Copy Drop Move
     | struct identifiers
     | enum identifiers
     | fn(type, ...)                              # no result type; results via &out params
@@ -382,7 +383,6 @@ The essential elaboration and check passes are:
 
 # Punch list
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
-- `never` type.
 - Design MIR coroutines and effect decls.
 
 ## Elaboration gaps

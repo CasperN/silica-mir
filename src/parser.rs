@@ -74,11 +74,17 @@ impl Parser {
             "number" => Ok(Type::Number),
             "boolean" => Ok(Type::Boolean),
             "unit" => Ok(Type::Unit),
+            "never" => Ok(Type::Never),
             "identifier" => Ok(Type::Custom(self.get_text(node).to_string())),
             "type" => {
                 let first_child = node.child(0).ok_or("Type node has no children")?;
                 let kind = first_child.kind();
-                if kind == "number" || kind == "boolean" || kind == "unit" || kind == "identifier" {
+                if kind == "number"
+                    || kind == "boolean"
+                    || kind == "unit"
+                    || kind == "never"
+                    || kind == "identifier"
+                {
                     return self.map_type(first_child);
                 }
 

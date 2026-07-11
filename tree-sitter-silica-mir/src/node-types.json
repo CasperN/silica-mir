@@ -809,6 +809,10 @@
     "named": false
   },
   {
+    "type": "never",
+    "named": false
+  },
+  {
     "type": "number",
     "named": false
   },
