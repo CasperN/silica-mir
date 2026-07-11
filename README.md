@@ -395,6 +395,8 @@ The essential elaboration and check passes are:
   re-keying them under `w as W`. Unsound when the payload holds a
   bound reference. Fix: extend the transfer to `EnumConstr` rvalues,
   rekeying src.* → (dst as V).* for the constructed variant.
+- Elaborate `drop p` if `p` is initialized and begin assigned to or sent to an
+  `&out` function. 
 
 ## Elaboration gaps
 - Drop insertion *order* within a return block is a HLL responsibility

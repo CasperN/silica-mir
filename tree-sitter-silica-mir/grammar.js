@@ -193,6 +193,9 @@ module.exports = grammar({
       $.identifier, // var
       prec.left(2, seq($.place, '.', field('field', $.identifier))),
       prec.left(2, seq($.place, 'as', field('variant', $.identifier))),
+      // Array indexing: dynamic operand. Const-integer operands are
+      // trackable per-slot; non-const operands widen to whole-array.
+      prec.left(2, seq($.place, '[', field('index', $.operand), ']')),
       prec.left(1, seq('*', $.place))
     ),
 
@@ -221,7 +224,10 @@ module.exports = grammar({
       // Raw pointer (unsafe): does not create a loan, no aliasing
       // guarantees, no init-state obligation. Deref is unchecked.
       seq('&raw', $.place),
-      seq(field('enum_name', $.identifier), '::', field('variant_name', $.identifier), '(', $.operand, ')')
+      seq(field('enum_name', $.identifier), '::', field('variant_name', $.identifier), '(', $.operand, ')'),
+      // Aggregate array literal: [e0, e1, ..., eN-1]. All operands
+      // must share the array's element type.
+      seq('[', commaSep($.operand), ']')
     ),
 
     type: $ => choice(
@@ -238,6 +244,8 @@ module.exports = grammar({
       prec(2, seq('&uninit', $.type)),
       // Raw pointer type. Aliasing allowed; no loan/lifetime tracking.
       prec(2, seq('*', $.type)),
+      // Fixed-size array: `[T; N]`. N must be an integer literal.
+      seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
       seq('fn', '(', commaSep($.type), ')'),
       $.identifier // struct / enum name
     )

@@ -211,6 +211,26 @@ impl Parser {
                     return Ok(Type::RawPtr(Box::new(self.map_type(inner)?)));
                 }
 
+                if text == "[" {
+                    // Fixed-size array `[T; N]`.
+                    let elem_node = node
+                        .child_by_field_name("element")
+                        .ok_or("Array type missing element")?;
+                    let len_node = node
+                        .child_by_field_name("length")
+                        .ok_or("Array type missing length")?;
+                    let elem = self.map_type(elem_node)?;
+                    let ConstVal::Int { bits, .. } =
+                        parse_int_literal(self.get_text(len_node))?
+                    else {
+                        return Err(format!(
+                            "Array length must be an integer literal, got {}",
+                            self.get_text(len_node)
+                        ));
+                    };
+                    return Ok(Type::Array(Box::new(elem), bits));
+                }
+
                 match text {
                     "fn" => {
                         let mut params = Vec::new();
@@ -250,6 +270,9 @@ impl Parser {
                 } else if let Some(field_node) = node.child_by_field_name("field") {
                     let field_name = self.get_text(field_node).to_string();
                     Ok(Place::Field(Box::new(inner_place), field_name))
+                } else if let Some(index_node) = node.child_by_field_name("index") {
+                    let index = self.map_operand(index_node)?;
+                    Ok(Place::Index(Box::new(inner_place), Box::new(index)))
                 } else {
                     Err(format!(
                         "Unrecognized place suffix: {}",
@@ -331,6 +354,16 @@ impl Parser {
                     "&raw" => {
                         let place_node = node.child(1).ok_or("&raw missing place")?;
                         Ok(RValue::RawRef(self.map_place(place_node)?))
+                    }
+                    "[" => {
+                        // Array literal: [op0, op1, ..., opN-1].
+                        let mut cursor = node.walk();
+                        let ops: Result<Vec<Operand>, String> = node
+                            .children(&mut cursor)
+                            .filter(|c| c.kind() == "operand")
+                            .map(|c| self.map_operand(c))
+                            .collect();
+                        Ok(RValue::ArrayLit(ops?))
                     }
                     _ => {
                         let enum_name_node = node

@@ -151,6 +151,12 @@ fn write_type(out: &mut String, ty: &Type) {
             out.push('*');
             write_type(out, inner);
         }
+        Type::Array(elem, n) => {
+            out.push('[');
+            write_type(out, elem);
+            write!(out, "; {}", n).unwrap();
+            out.push(']');
+        }
     }
 }
 
@@ -170,6 +176,12 @@ fn write_place(out: &mut String, place: &Place) {
         Place::Deref(inner) => {
             out.push('*');
             write_place(out, inner);
+        }
+        Place::Index(inner, op) => {
+            write_place(out, inner);
+            out.push('[');
+            write_operand(out, op);
+            out.push(']');
         }
     }
 }
@@ -249,6 +261,16 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
             write!(out, "{}::{}(", enum_name, variant).unwrap();
             write_operand(out, op);
             out.push(')');
+        }
+        RValue::ArrayLit(ops) => {
+            out.push('[');
+            for (i, op) in ops.iter().enumerate() {
+                if i > 0 {
+                    out.push_str(", ");
+                }
+                write_operand(out, op);
+            }
+            out.push(']');
         }
     }
 }

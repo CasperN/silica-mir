@@ -477,7 +477,10 @@ fn place_borrower_uses(place: &Place, borrowers: &BTreeSet<Place>, out: &mut Vec
             return;
         }
         match cur {
-            Place::Deref(inner) | Place::Field(inner, _) | Place::Downcast(inner, _) => {
+            Place::Deref(inner)
+            | Place::Field(inner, _)
+            | Place::Downcast(inner, _)
+            | Place::Index(inner, _) => {
                 cur = inner;
             }
             Place::Var(_) => unreachable!("Var is always owned"),
@@ -528,6 +531,11 @@ fn rvalue_uses(rv: &RValue, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
         // loan tracking, not borrower liveness.
         RValue::Ref(_, place) | RValue::RawRef(place) => {
             place_borrower_uses(place, borrowers, out)
+        }
+        RValue::ArrayLit(ops) => {
+            for op in ops {
+                operand_uses(op, borrowers, out);
+            }
         }
     }
 }
@@ -595,6 +603,7 @@ fn rvalue_moves(rv: &RValue, r: &Place) -> bool {
     match rv {
         RValue::Use(op) | RValue::EnumConstr(_, _, op) => operand_moves(op, r),
         RValue::Ref(_, _) | RValue::RawRef(_) => false,
+        RValue::ArrayLit(ops) => ops.iter().any(|op| operand_moves(op, r)),
     }
 }
 

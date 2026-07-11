@@ -112,6 +112,7 @@ impl Env {
             }
             Type::Ref(_, inner) => self.validate_type(inner),
             Type::RawPtr(inner) => self.validate_type(inner),
+            Type::Array(elem, _) => self.validate_type(elem),
         }
     }
 
@@ -147,6 +148,9 @@ impl Env {
             }
             (Type::Ref(k1, i1), Type::Ref(k2, i2)) => k1 == k2 && self.types_match(i1, i2),
             (Type::RawPtr(i1), Type::RawPtr(i2)) => self.types_match(i1, i2),
+            (Type::Array(e1, n1), Type::Array(e2, n2)) => {
+                n1 == n2 && self.types_match(e1, e2)
+            }
             _ => false,
         }
     }
@@ -218,6 +222,24 @@ impl Env {
                     None => Err(format!("Use of undeclared type '{}'", name)),
                 }
             }
+            Place::Index(inner, op) => {
+                let inner_ty = self.infer_place_type(inner, locals)?;
+                let Type::Array(elem, _) = inner_ty else {
+                    return Err(format!(
+                        "Cannot index non-array type {:?}",
+                        inner_ty
+                    ));
+                };
+                // Index operand must be an integer type.
+                let op_ty = self.infer_operand_type(op, locals)?;
+                if !matches!(op_ty, Type::Int(_)) {
+                    return Err(format!(
+                        "Array index must be an integer, got {:?}",
+                        op_ty
+                    ));
+                }
+                Ok(*elem)
+            }
         }
     }
 
@@ -285,6 +307,26 @@ impl Env {
                 }
 
                 Ok(Type::Custom(enum_name.clone()))
+            }
+            RValue::ArrayLit(ops) => {
+                // Empty array literal: `[]` has type `[Unit; 0]` as a
+                // placeholder — types_match will still reject any real
+                // target type mismatch. Effectively unusable but not
+                // an error at inference time.
+                if ops.is_empty() {
+                    return Ok(Type::Array(Box::new(Type::Unit), 0));
+                }
+                let first_ty = self.infer_operand_type(&ops[0], locals)?;
+                for (i, op) in ops.iter().enumerate().skip(1) {
+                    let ty = self.infer_operand_type(op, locals)?;
+                    if !self.types_match(&first_ty, &ty) {
+                        return Err(format!(
+                            "Array literal element {} has type {:?}, expected {:?}",
+                            i, ty, first_ty
+                        ));
+                    }
+                }
+                Ok(Type::Array(Box::new(first_ty), ops.len() as u64))
             }
         }
     }

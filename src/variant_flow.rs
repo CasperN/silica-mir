@@ -138,6 +138,13 @@ fn check_places_in_stmt(
                 RValue::Ref(_, p) | RValue::RawRef(p) => {
                     check_downcast_refinement(env, func, locals, block, p, span, state, d);
                 }
+                RValue::ArrayLit(ops) => {
+                    for op in ops {
+                        if let Some(p) = operand_place(op) {
+                            check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                        }
+                    }
+                }
             }
         }
         Statement::Call(target, args) => {
@@ -266,6 +273,19 @@ fn build_place(root: &str, steps: &[PathStep]) -> Place {
         p = match step {
             PathStep::Field(f) => Place::Field(Box::new(p), f.clone()),
             PathStep::Downcast(v) => Place::Downcast(Box::new(p), v.clone()),
+            PathStep::Index(Some(k)) => Place::Index(
+                Box::new(p),
+                Box::new(Operand::Const(ConstVal::Int {
+                    bits: *k,
+                    ty: IntTy::I64,
+                })),
+            ),
+            PathStep::Index(None) => {
+                // Sentinel: dynamic-index steps only appear via
+                // extract_path_with_deref, which variant_flow doesn't
+                // feed into build_place. Panic if we somehow get here.
+                unreachable!("variant_flow shouldn't rebuild dynamic-index paths")
+            }
             PathStep::Deref => Place::Deref(Box::new(p)),
         };
     }

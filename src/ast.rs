@@ -135,6 +135,12 @@ pub enum Type {
     /// responsible for the pointee's init state and lifetime. The
     /// pointer value itself is `Copy Drop Move`, like `&T`.
     RawPtr(Box<Type>),
+    /// Fixed-size array `[T; N]`. Layout is `N * size_of(T)`, align
+    /// equals `T`'s align. Element access via `Place::Index`. Init
+    /// state is tracked per-slot for constant indices (using slot
+    /// numbers as `Partial` keys); dynamic indices widen to the
+    /// whole array.
+    Array(Box<Type>, u64),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -143,6 +149,12 @@ pub enum Place {
     Field(Box<Place>, String),
     Downcast(Box<Place>, String),
     Deref(Box<Place>),
+    /// Array element access `place[operand]`. The operand is an
+    /// arbitrary rvalue-shaped index; analyses that need static
+    /// tracking (init state, per-slot loans) inspect the operand
+    /// for an integer const and treat it like a numbered field
+    /// step. Dynamic (non-const) indices widen to the whole array.
+    Index(Box<Place>, Box<Operand>),
 }
 
 /// A single projection step from a root Var. Used by analyses that need to
@@ -155,6 +167,13 @@ pub enum PathStep {
     Field(String),
     Downcast(String),
     Deref,
+    /// Array slot access. `Some(k)` = constant slot k; `None` =
+    /// dynamic index (unknown slot). `extract_path` returns `None`
+    /// if any index step is dynamic (untrackable in the locals
+    /// tree); `extract_path_with_deref` preserves both forms so the
+    /// loan tracker can widen dynamic indices to "matches any slot"
+    /// via the conflict helper.
+    Index(Option<u64>),
 }
 
 /// Extract `(root_var, projection_steps)` from `place`, returning `None` if
@@ -178,8 +197,32 @@ pub fn extract_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
                 steps.push(PathStep::Downcast(v.clone()));
                 cur = inner;
             }
+            Place::Index(inner, op) => {
+                // Dynamic (non-const) indices aren't trackable in the
+                // locals tree; bail like Deref does.
+                let k = const_int_operand(op)?;
+                steps.push(PathStep::Index(Some(k)));
+                cur = inner;
+            }
             Place::Deref(_) => return None,
         }
+    }
+}
+
+/// If `op` is `Const(Int { bits, ty })` treat its bits as an unsigned
+/// slot index (masked to the type's width). Returns `None` for
+/// `Copy`/`Move` operands (dynamic index) and non-integer consts.
+pub fn const_int_operand(op: &Operand) -> Option<u64> {
+    match op {
+        Operand::Const(ConstVal::Int { bits, ty }) => {
+            let mask: u64 = if ty.bits() == 64 {
+                u64::MAX
+            } else {
+                (1u64 << ty.bits()) - 1
+            };
+            Some(bits & mask)
+        }
+        _ => None,
     }
 }
 
@@ -191,6 +234,11 @@ pub fn is_owned_path(place: &Place) -> bool {
     match place {
         Place::Var(_) => true,
         Place::Field(inner, _) | Place::Downcast(inner, _) => is_owned_path(inner),
+        Place::Index(inner, op) => {
+            // Dynamic index breaks the owned-path invariant (we can't
+            // name a specific slot). Constant index preserves it.
+            const_int_operand(op).is_some() && is_owned_path(inner)
+        }
         Place::Deref(_) => false,
     }
 }
@@ -220,7 +268,7 @@ pub fn owned_path_prefixes(place: &Place) -> Vec<Place> {
         out.push(cur.clone());
         match cur {
             Place::Var(_) => return out,
-            Place::Field(inner, _) | Place::Downcast(inner, _) => {
+            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
                 cur = *inner;
             }
             Place::Deref(_) => unreachable!("filtered above"),
@@ -249,6 +297,10 @@ pub fn extract_path_with_deref(place: &Place) -> (String, Vec<PathStep>) {
                 steps.push(PathStep::Downcast(v.clone()));
                 cur = inner;
             }
+            Place::Index(inner, op) => {
+                steps.push(PathStep::Index(const_int_operand(op)));
+                cur = inner;
+            }
             Place::Deref(inner) => {
                 steps.push(PathStep::Deref);
                 cur = inner;
@@ -272,6 +324,13 @@ pub fn is_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
         (PathStep::Field(x), PathStep::Field(y)) => x == y,
         (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
         (PathStep::Deref, PathStep::Deref) => true,
+        // Index steps: two constant indices conflict iff equal.
+        // A dynamic index (None) may refer to any slot, so it
+        // conflicts with any index step — widening.
+        (PathStep::Index(a), PathStep::Index(b)) => match (a, b) {
+            (Some(x), Some(y)) => x == y,
+            _ => true,
+        },
         _ => false,
     })
 }
@@ -301,6 +360,14 @@ pub fn format_place(place: &Place) -> String {
                 } else {
                     s = format!("*{}", s);
                 }
+            }
+            PathStep::Index(Some(k)) => {
+                s.push('[');
+                s.push_str(&k.to_string());
+                s.push(']');
+            }
+            PathStep::Index(None) => {
+                s.push_str("[?]");
             }
         }
     }
@@ -345,7 +412,7 @@ pub fn terminator_successors(term: &Terminator) -> Vec<&str> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ConstVal {
     /// Integer literal. `bits` is the raw bit pattern; interpretation
     /// as signed/unsigned comes from `ty`. Bit widths narrower than 64
@@ -361,7 +428,7 @@ pub enum ConstVal {
     FnName(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Operand {
     Copy(Place),
     Move(Place),
@@ -376,6 +443,11 @@ pub enum RValue {
     /// a loan — this is the unsafe part. Written `&raw place`.
     RawRef(Place),
     EnumConstr(String, String, Operand), // EnumName, VariantName, payload
+    /// Aggregate array literal `[e0, e1, ..., eN-1]`. All operands
+    /// must share the target's element type; the vec length must
+    /// equal the target's `[T; N]` length. Init state treats this
+    /// as whole-array atomic init.
+    ArrayLit(Vec<Operand>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

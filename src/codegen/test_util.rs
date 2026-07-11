@@ -27,3 +27,20 @@ pub fn assert_contains(haystack: &str, needle: &str) {
         haystack
     );
 }
+
+/// Assert that emitting `input` produces the exact LLVM IR `expected`
+/// (leading/trailing whitespace on each side trimmed; no tolerance
+/// for internal differences). Mirrors the "golden output" pattern
+/// used by `assert_elab_eq` in `lifetime/nll_tests.rs`.
+#[track_caller]
+pub fn assert_ll_eq(input: &str, expected: &str) {
+    let got = ll_of(input);
+    let a = got.trim();
+    let b = expected.trim();
+    if a != b {
+        panic!(
+            "LLVM IR differs\n--- expected ---\n{}\n--- got ---\n{}",
+            b, a
+        );
+    }
+}

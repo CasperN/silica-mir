@@ -47,6 +47,7 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
             Some(TypeDecl::Enum(e)) => enum_size(e, env),
             None => panic!("layout::size_of: unknown type '{}'", name),
         },
+        Type::Array(elem, n) => n * size_of(elem, env),
     }
 }
 
@@ -64,6 +65,7 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
             Some(TypeDecl::Enum(e)) => enum_align(e, env),
             None => panic!("layout::align_of: unknown type '{}'", name),
         },
+        Type::Array(elem, _) => align_of(elem, env),
     }
 }
 

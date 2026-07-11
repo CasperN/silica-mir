@@ -107,6 +107,12 @@ fn paths_conflict(a: &[PathStep], b: &[PathStep]) -> bool {
             (PathStep::Field(x), PathStep::Field(y)) => x == y,
             (PathStep::Downcast(x), PathStep::Downcast(y)) => x == y,
             (PathStep::Deref, PathStep::Deref) => true,
+            // Index steps: two const indices conflict iff equal;
+            // any dynamic index widens to "conflicts with any slot."
+            (PathStep::Index(x), PathStep::Index(y)) => match (x, y) {
+                (Some(k1), Some(k2)) => k1 == k2,
+                _ => true,
+            },
             _ => false,
         };
         if !same {
@@ -233,6 +239,11 @@ fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     match rv {
         RValue::Use(op) | RValue::EnumConstr(_, _, op) => consume_operand(loans, op),
         RValue::Ref(_, _) | RValue::RawRef(_) => {}
+        RValue::ArrayLit(ops) => {
+            for op in ops {
+                consume_operand(loans, op);
+            }
+        }
     }
 }
 
@@ -392,6 +403,11 @@ fn check_and_transfer_stmt(
                     // Raw pointer creation is the "unsafe" escape hatch
                     // — no loan-conflict check. Aliasing with live
                     // borrows is the programmer's responsibility.
+                }
+                RValue::ArrayLit(ops) => {
+                    for op in ops {
+                        check_operand_access(func, block, op, span, loans, d);
+                    }
                 }
             }
             check_loan_conflict(func, block, target, AccessKind::Write, span, loans, d);

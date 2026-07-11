@@ -172,6 +172,7 @@ impl<'a> CodeGenContext<'a> {
             Type::Unit | Type::Never => "{}".to_string(),
             Type::Ref(_, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
             Type::Custom(name) => format!("%{}", name),
+            Type::Array(elem, n) => format!("[{} x {}]", n, self.lower_type(elem)),
         }
     }
 
@@ -371,6 +372,13 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 emit_enum_construction(cx, lhs, enum_name, variant, operand);
                 return;
             }
+            // Aggregate array literal: per-slot GEP + store, no
+            // intermediate value materialization. Same shape as
+            // EnumConstr.
+            if let RValue::ArrayLit(operands) = rhs {
+                emit_array_lit(cx, lhs, operands);
+                return;
+            }
             // Evaluate RHS first so `x = copy x` (or any self-referential
             // path) reads before it overwrites. Then compute LHS address
             // and store.
@@ -502,6 +510,31 @@ fn emit_intrinsic_call(cx: &mut CodeGenContext, name: &str, args: &[Operand]) {
     .unwrap();
 }
 
+/// Lower `p = [e0, e1, ..., eN-1]`. Materializes each operand, then
+/// GEPs to each slot and stores. RHS materialization happens before
+/// LHS address computation to preserve read-before-write semantics.
+fn emit_array_lit(cx: &mut CodeGenContext, lhs: &Place, operands: &[Operand]) {
+    // Materialize all operand values first (before LHS address
+    // computation, in case an operand reads from the target itself).
+    let materialized: Vec<(String, Type)> =
+        operands.iter().map(|op| emit_operand(cx, op)).collect();
+    let (lhs_addr, lhs_ty) = emit_place_addr(cx, lhs);
+    let Type::Array(elem, _) = lhs_ty else {
+        panic!("ArrayLit target must have array type, got {:?}", lhs_ty);
+    };
+    let elem_llvm = cx.lower_type(&elem);
+    for (i, (val, _)) in materialized.iter().enumerate() {
+        let slot_addr = cx.fresh();
+        writeln!(
+            cx.out,
+            "  {} = getelementptr {}, ptr {}, i64 {}",
+            slot_addr, elem_llvm, lhs_addr, i
+        )
+        .unwrap();
+        writeln!(cx.out, "  store {} {}, ptr {}", elem_llvm, val, slot_addr).unwrap();
+    }
+}
+
 /// Lower `p = Name::V(operand)`. Writes the discriminant to LHS field 0
 /// and, if the variant's payload is non-empty, writes the operand's value
 /// to LHS field 2. RHS materialization happens before LHS address
@@ -575,6 +608,9 @@ fn emit_rvalue(cx: &mut CodeGenContext, rv: &RValue) -> (String, Type) {
         }
         RValue::EnumConstr(..) => {
             unreachable!("EnumConstr is handled in Assign statement, not here")
+        }
+        RValue::ArrayLit(..) => {
+            unreachable!("ArrayLit is handled in Assign statement, not here")
         }
     }
 }
@@ -695,6 +731,48 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
             .unwrap();
             (dst, payload_ty)
         }
+        Place::Index(inner, op) => {
+            let (base_addr, base_ty) = emit_place_addr(cx, inner);
+            let Type::Array(elem, _) = base_ty else {
+                panic!("index into non-array type {:?}", base_ty);
+            };
+            let elem_ty = *elem;
+            let elem_llvm = cx.lower_type(&elem_ty);
+            // Materialize the index operand as an i64 SSA value.
+            let idx_ssa = emit_operand_as_i64(cx, op);
+            let dst = cx.fresh();
+            // Element-type single-index GEP: treats base_addr as a
+            // pointer-to-element and offsets by idx. Semantically the
+            // same as `getelementptr [N x elem], ptr base, i64 0, i64
+            // idx` and one instruction shorter.
+            writeln!(
+                cx.out,
+                "  {} = getelementptr {}, ptr {}, i64 {}",
+                dst, elem_llvm, base_addr, idx_ssa
+            )
+            .unwrap();
+            (dst, elem_ty)
+        }
+    }
+}
+
+/// Materialize an operand as an SSA `i64` value suitable for use as
+/// a GEP index. Integer operands are extended/truncated to i64 to
+/// match LLVM's canonical index type; non-integer operands panic
+/// (type_check should have rejected them).
+fn emit_operand_as_i64(cx: &mut CodeGenContext, op: &Operand) -> String {
+    let (val, ty) = emit_operand(cx, op);
+    match ty {
+        Type::Int(IntTy::I64) | Type::Int(IntTy::U64) => val,
+        Type::Int(i) => {
+            let dst = cx.fresh();
+            let src_ty = format!("i{}", i.bits());
+            // Signed types get sext, unsigned get zext.
+            let op = if i.is_signed() { "sext" } else { "zext" };
+            writeln!(cx.out, "  {} = {} {} {} to i64", dst, op, src_ty, val).unwrap();
+            dst
+        }
+        other => panic!("array index must be an integer, got {:?}", other),
     }
 }
 
@@ -829,6 +907,8 @@ fn align_up(x: u64, a: u64) -> u64 {
 
 #[cfg(test)]
 mod test_util;
+#[cfg(test)]
+mod array_tests;
 #[cfg(test)]
 mod declaration_tests;
 #[cfg(test)]

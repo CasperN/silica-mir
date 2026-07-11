@@ -216,11 +216,18 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
             }
             other => other.clone(),
         },
+        PathStep::Index(Some(k)) => match state {
+            InitState::Partial(map) => {
+                let sub = map.get(&k.to_string()).cloned().unwrap_or(InitState::NeverInit);
+                read_state_at_path(&sub, &path[1..])
+            }
+            other => other.clone(),
+        },
         PathStep::Downcast(_) => match state {
             InitState::NeverInit | InitState::Moved | InitState::Diverged => state.clone(),
             _ => InitState::Init,
         },
-        PathStep::Deref => state.clone(),
+        PathStep::Deref | PathStep::Index(None) => state.clone(),
     }
 }
 

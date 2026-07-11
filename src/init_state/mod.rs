@@ -289,14 +289,47 @@ fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf
                 }
             }
         }
+        PathStep::Index(Some(k)) => {
+            let Some((elem_ty, n)) = array_info(ty) else {
+                return;
+            };
+            if !matches!(state, InitState::Partial(_)) {
+                *state = InitState::Partial(expand_uniform_array(state, n));
+            }
+            if let InitState::Partial(map) = &mut *state {
+                let key = k.to_string();
+                if let Some(slot_state) = map.get_mut(&key) {
+                    write_at(slot_state, &elem_ty, &path[1..], env, leaf_state);
+                }
+            }
+        }
         PathStep::Downcast(_) => {
             // Direct write into a variant payload does not initialize the
             // enum in our model (enum construction goes via `Name::V(...)`).
         }
         PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
+        PathStep::Index(None) => {
+            unreachable!("init_state uses extract_path which rejects dynamic indices")
+        }
     }
     let taken = std::mem::replace(state, InitState::NeverInit);
     *state = canonicalize(taken);
+}
+
+/// Array info helpers for init tracking. `Type::Array(elem, n)` →
+/// `(elem, n)`; otherwise `None`.
+fn array_info(ty: &Type) -> Option<(Type, u64)> {
+    if let Type::Array(elem, n) = ty {
+        Some(((**elem).clone(), *n))
+    } else {
+        None
+    }
+}
+
+/// Expand a uniform state into an array `Partial` with N slots keyed
+/// by `"0"`, `"1"`, ..., `"N-1"`.
+fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<String, InitState> {
+    (0..n).map(|i| (i.to_string(), state.clone())).collect()
 }
 
 /// Apply a move at the given path. Downcast steps set the whole enum to
@@ -324,10 +357,27 @@ fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env) {
                 }
             }
         }
+        PathStep::Index(Some(k)) => {
+            let Some((elem_ty, n)) = array_info(ty) else {
+                return;
+            };
+            if !matches!(state, InitState::Partial(_)) {
+                *state = InitState::Partial(expand_uniform_array(state, n));
+            }
+            if let InitState::Partial(map) = &mut *state {
+                let key = k.to_string();
+                if let Some(slot_state) = map.get_mut(&key) {
+                    move_at(slot_state, &elem_ty, &path[1..], env);
+                }
+            }
+        }
         PathStep::Downcast(_) => {
             *state = InitState::Moved;
         }
         PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
+        PathStep::Index(None) => {
+            unreachable!("init_state uses extract_path which rejects dynamic indices")
+        }
     }
     let taken = std::mem::replace(state, InitState::NeverInit);
     *state = canonicalize(taken);
@@ -366,7 +416,23 @@ fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env) -> InitSt
                 }
             }
         },
+        PathStep::Index(Some(k)) => match state {
+            InitState::Init | InitState::NeverInit | InitState::Moved | InitState::Diverged => {
+                state.clone()
+            }
+            InitState::Partial(map) => {
+                let elem_ty = array_info(ty).map(|(e, _)| e);
+                let slot_state = map.get(&k.to_string()).cloned().unwrap_or(InitState::NeverInit);
+                match elem_ty {
+                    Some(et) => read_at(&slot_state, &et, &path[1..], env),
+                    None => slot_state,
+                }
+            }
+        },
         PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
+        PathStep::Index(None) => {
+            unreachable!("init_state uses extract_path which rejects dynamic indices")
+        }
     }
 }
 
@@ -620,6 +686,11 @@ impl<'a> InitStateContext<'a> {
         match rv {
             RValue::Use(op) | RValue::EnumConstr(_, _, op) => self.apply_operand_move(op, state),
             RValue::Ref(_, _) | RValue::RawRef(_) => {}
+            RValue::ArrayLit(ops) => {
+                for op in ops {
+                    self.apply_operand_move(op, state);
+                }
+            }
         }
     }
 
@@ -829,6 +900,11 @@ impl<'a> InitStateContext<'a> {
                 }
                 PathStep::Downcast(v) => {
                     ty = enum_variant_payload_ty(&ty, v, self.env)?;
+                }
+                PathStep::Index(_) => {
+                    // Any index step (const or dyn) yields the element type.
+                    let (elem, _) = array_info(&ty)?;
+                    ty = elem;
                 }
                 PathStep::Deref => return None,
             }
@@ -1066,6 +1142,19 @@ fn rekey(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
         out = match step {
             PathStep::Field(f) => Place::Field(Box::new(out), f.clone()),
             PathStep::Downcast(v) => Place::Downcast(Box::new(out), v.clone()),
+            PathStep::Index(Some(k)) => {
+                // Reconstruct a const-int operand from the slot number.
+                // We default to i64 as the index type — analyses only
+                // compare the const value, not its declared type.
+                let op = Operand::Const(ConstVal::Int {
+                    bits: *k,
+                    ty: IntTy::I64,
+                });
+                Place::Index(Box::new(out), Box::new(op))
+            }
+            PathStep::Index(None) => {
+                unreachable!("extract_path never yields Index(None); this is an owned path")
+            }
             PathStep::Deref => unreachable!("owned-path invariant"),
         };
     }
@@ -1210,6 +1299,11 @@ impl<'a> InitStateContext<'a> {
                 // state (init, uninit, moved). Aliasing/lifetime are
                 // the programmer's responsibility.
             }
+            RValue::ArrayLit(ops) => {
+                for op in ops {
+                    self.eval_operand(func, block, op, span, state, d);
+                }
+            }
         }
     }
 
@@ -1318,8 +1412,13 @@ fn format_path(root: &str, path: &[PathStep]) -> String {
                 s.push_str(" as ");
                 s.push_str(v);
             }
-            PathStep::Deref => {
-                unreachable!("init_state uses extract_path which never yields Deref")
+            PathStep::Index(Some(k)) => {
+                s.push('[');
+                s.push_str(&k.to_string());
+                s.push(']');
+            }
+            PathStep::Deref | PathStep::Index(None) => {
+                unreachable!("init_state uses extract_path which rejects these")
             }
         }
     }

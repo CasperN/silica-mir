@@ -94,6 +94,11 @@ fn check_rvalue(
             check_operand(env, func, block, locals, op, span, d)
         }
         RValue::Ref(_, _) | RValue::RawRef(_) => {}
+        RValue::ArrayLit(ops) => {
+            for op in ops {
+                check_operand(env, func, block, locals, op, span, d);
+            }
+        }
     }
 }
 

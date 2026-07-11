@@ -98,6 +98,10 @@ pub fn class_of(ty: &Type, env: &Env) -> Class {
                 mov: false,
             },
         },
+        // Array class inherits from its element type. Zero-length
+        // arrays are trivially Copy Drop Move (no elements to worry
+        // about) — treat like the element class regardless.
+        Type::Array(elem, _) => class_of(elem, env),
     }
 }
 
