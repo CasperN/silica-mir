@@ -1,7 +1,7 @@
 # Silica-MIR
 This document defines the Silica middle level intermediate representation (MIR).
 
-## Background on Silica
+# Background on Silica
 Silica is an experimental Rust-like language that explores some choices that
 Rust did not make.
 - **Substructural Types:** While Rust has affine types, Silica has substructural
@@ -13,7 +13,7 @@ effects, so features such as streams, iterators, generators, and async become
 library features. Coroutines are deferred from the Silica-MIR for initial
 implementation simplicity.
 
-### Substructural types
+## Substructural types
 Values in Silica are linear. Relaxations are provided by the `Drop` and `Copy`
 traits, which tell the compiler that the type may be used fewer than 1 and
 greater than 1 times respectively. Scalar types are both `Drop` and `Copy` so
@@ -46,21 +46,196 @@ data races. `&out` and `&drop` are linear types (neither `Drop` nor `Copy`) as
 they represent unfulfilled obligations to initialize or deinitialize the
 referent. `&mut` and `&uninit` are affine types (`Drop` not `Copy`).
 
-### Substructural traits
+## Immovable Types
 The `Move` trait tells the compiler a type is movable. Without it, it cannot be
-passed by move. All scalar types are movable. If a type is copy and drop, it
-is automatically move. The traits are related by the following blanket impl.
+passed by move. All scalar types are movable. If a type is `Copy` and `Drop`,
+the compiler auto-derives a `Move` impl for it (see the Substructural traits
+section below), unless the user has provided their own `Move` impl.
+
+## Algebraic Effects
+Silica uses algebraic effects in the form of coroutines. Effects may be thought
+of as checked, resumable, exceptions. Breaking that down:
+- **exceptions:** Effects transfer control from a coroutine to an outer handler,
+much like a try-catch block in other languages.
+- **resumable:** Unlike a try-catch block, the handler may resume the coroutine
+and provide a value, so a coroutine frame is not always immediately destroyed
+when the "exception" is thrown.
+- **checked:** The set of effects that a coroutine may perform is known at
+compile time and the Silica language enforces that all effects are ultimately
+handled.
+
+Many common control flow patterns that require dedicated language features may
+be modeled in libraries using algebraic effects. This includes exceptions
+(obviously), async-await, and generators.
+
+
+# Silica HLL examples
+Example syntax and definitions
+
+Note
+```
+co foo() -> T ! E
+```
+is sugar for
+```
+fn foo() -> impl Co<() -> T ! E>;
+```
+
+for common and useful effects include the following:
+
+#### Fail
+```
+effect Fail<Err=()> {
+  op fail: Err -> never;
+}
+co fn map_err<T, E1, E2, rho>(
+  c: impl Co<T, Fail<E1>, rho>,
+  err_fn: impl FnOnce(E1) -> impl Co<E2 ! rho>, 
+) -> T ! Fail<E2>, rho {
+  c handle () {
+    Fail.fail(err) => {
+      let e2 = err_fn(err)?;
+      perform Fail.fail(e2);
+    }
+  }
+}
+```
+
+#### Iteration
+```
+effect Iter {
+  type Item;
+  op yield: Item -> ();
+}
+co flat_map<T, U, rho>(
+  iterator: impl Co<(), Iter<Item=T>>,
+  f: impl FnMut(T) -> impl Co<() ! Iter<Item=U>, rho>
+) -> () ! Iter<U>, rho {
+  iterator handle () {
+    Iter.yield(t) => f(t) handle () {
+      Iter.yield(u) => {
+        perform Iter.yield(u);
+        continue(())
+      }
+    }
+  }
+}
+```
+
+#### Parse
+```
+enum Either<A, B> {
+  left: A, right: B
+}
+effect Parser<Input, SaveMarker, Error> {
+  // Consume some input from the input stream stream.
+  op read: usize -> Input;
+  // Snapshot the input stream state so it can be restored.
+  op save: () -> SaveMarker;
+  op restore: SaveMarker -> ();
+  // Fail to parse.
+  op fail: Error -> Never; 
+}
+co alt<
+  T, U, I, S, E1, E2, rho
+>(
+  a: impl Co<T, Parser<I, S, E1>, rho>,
+  b: impl Co<U, Parser<I, S, E2>, rho>,
+) -> Either<T, U> ! Parser<I, S, (E1, E2)>, rho {
+  let s = perform Parser.save();
+  a_error = a handle () {
+    return t => return Either::Left(t),
+    Parser.fail e => break e,
+    // Other effects are propagated through alt to the outer handler.
+  };
+  s.restore();
+  b_error = b handle () {
+    return u => return Either::Right(u),
+    Parser.fail e => break e,
+  };
+  s.restore();
+  perform Parser.fail((a_error, b_error));
+}
+```
+
+#### Async / Await
+```
+effect Async<Id> {
+  op await: Id -> ();
+}
+enum Files<'a> {
+  File(usize),
+  Files(&'a[Files])
+}
+co first_of<T, U, rho>(
+  mut a: impl Co<T ! Async<Files<'suspend>, rho>> + Drop,
+  mut b: impl Co<U ! Async<Files<'suspend>, rho>> + Drop,
+) -> Either<T, U> ! Async<Files<'suspend>, rho> + Drop
+{
+  let mut a_deps, mut b_deps;
+  loop {
+    a = a handle {
+      return t => return Either::Left(t),
+      Async.await(deps), k => {
+        a_deps = deps;
+        k
+      }
+    }
+    b = a handle {
+      return u => return Either::Right(u),
+      Async.await(deps), k => {
+        b_deps = deps;
+        k
+      }
+    }
+    perform Async.await(Files::Files(&[a_deps, b_deps]));
+  }
+}
+```
+
+# Streaming
+Algebraic effects are great because they compose nicely. Consider fetching a
+paginated list of images over the network: 
+```
+co list_images() -> i32 ! Fail<NetworkError>, Iter<Image>, Async<FileDesc> {
+  ...
+}
+```
+This computation iterates yielding `Image`s, it can fail with a network error,
+and its asynchronous - waiting on file descriptors. Contrast this with Rust
+where you might choose one of the following signatures
+```rust
+async fn list_images1() -> Result<Iter<Item=Image>, NetworkError>;
+async fn list_images2() -> Iter<Item=Result<Image, NetworkError>>;
+use futures::stream::Stream;
+fn list_images3() -> impl Stream<Item = Result<Image, NetworkError>>;
+```
+`list_images1` is wrong because the iterator should be able to fail midway
+through iteration. `list_images2` at least indicates failure can happen 
+midstream, but they both can only await once until the start of the stream
+and cannot express that there's awaiting mid-stream too. `list_images3()`
+fuses `Iter` and `Async` effects with `Stream`, which is better, but the
+`NetworkError` is attached to individual items rather than the stream as a
+whole so its type-legal for the stream to continue after a network error.
+
+All this to say, These 3 kinds of control flow, falibility, iteration, and
+asynchrony do not compose in Rust. 
+
+## Substructural traits
 
 ```
 trait Copy {
-  fn copy(src: &Self, dst: &out Self);
+  fn copy(&self, dst: &out Self);
 }
 trait Drop {
   fn drop(&drop self);
 }
 trait Move {
-  fn move(src: &drop Self, dst: &out Self);
+  fn move(&drop self, dst: &out Self);
 }
+// Auto-derived by the compiler for any `Copy + Drop` type unless the
+// user provides their own `Move` impl. Not a Rust-style blanket impl —
+// user impls take precedence, so there's no coherence conflict.
 impl<T: Copy + Drop> Move for T {
   fn move(src: &drop Self, dst: &out Self) {
     Copy::copy(&*src, dst);
@@ -68,23 +243,41 @@ impl<T: Copy + Drop> Move for T {
   }
 } 
 ```
-Note that unlike Rust, `Copy` may be user defined.
+Note that unlike Rust, `Copy` may be user defined. The same auto-derivation
+rule applies: `Copy` is derived for types whose fields are all `Copy`, and
+users may override.
 
-TODO: Should there be explicit versions of Copy and Drop (Clone and Destroy)
-that with standard, potentially effectful, methods that the compiler cannot
-implicitly insert?
 
-### Silica's Compiler Plan
+## Effectful Copy/Move/Drop
+These are vocabulary traits, for use in the standard library, but not inserted
+by the compiler.
+```
+trait Clone {
+  effects E;
+  co clone(&self, dst: &out Self) -> () ! E;
+}
+trait Destroy {
+  effects E;
+  co destroy(&drop self) -> () ! E;
+}
+trait Transfer {
+  effects E;
+  co transfer(&drop self, dst: &out Self) -> () ! E;
+}
+```
+
+# Silica's Compiler Plan
 1. Lower from Silica to this MIR. Typecheck the source program and convert
 control flow into a CFG.
 2. Run analysis pass on this MIR to infer lifetimes and insert explicit
-`unborrows`, `drop`s, and `copy`s. This is the "elaborated MIR". Once
+`unborrows` and `drop`s. This is the "elaborated MIR". Once
 elaborated, programs should be fast to check without inference.
-3. Run optimization passes on the elaborated MIR. After optimizations, we
+1. Run optimization passes on the elaborated MIR. After optimizations, we
 optionally recheck the programs for correctness.
 
+# MIR Spec
 
-# Grammar
+## Grammar
 
 ```
 place =
@@ -156,7 +349,7 @@ Regions are internal to the checker, derived from reference liveness.
 type; `call` is a statement, not an rvalue. This is sret/RVO. Full Silica
 has return types but lowers to this to simplify the MIR.
 
-# Types
+## Types
 
 ```
 type =
@@ -169,7 +362,7 @@ type =
     | &T | &mut T | &out T | &drop T | &uninit T
 ```
 
-# Compiler Structure
+## Compiler Structure
 Where possible the compiler splits subsytems into independent passes.
 `src/dataflow.rs` contains common forwards/backwards CFG traversal utilities
 that are shared across multiple passes. The compiler splits elaboration and
@@ -189,6 +382,8 @@ The essential elaboration and check passes are:
 
 # Punch list
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
+- `never` type.
+- Design MIR coroutines and effect decls.
 
 ## Elaboration gaps
 - Drop elaboration doesn't handle `Diverged` states at CFG joins yet
