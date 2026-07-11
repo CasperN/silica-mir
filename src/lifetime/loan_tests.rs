@@ -618,6 +618,31 @@ fn nested_field_sibling_ok() {
     );
 }
 
+#[test]
+fn depth_three_field_sibling_ok_ancestor_conflicts() {
+    // Borrowing `o.a.x.z` (depth 3) leaves `o.a.x.w` (sibling at
+    // depth 3) readable, but `o.a.x` (ancestor at depth 2) still
+    // conflicts. Confirms path-prefix comparison scales past depth 2.
+    let (errs, _) = run("
+        struct Copy Drop Innermost { z: number w: number }
+        struct Copy Drop Inner { x: Innermost y: Innermost }
+        struct Copy Drop Outer { a: Inner b: Inner }
+        extern fn sink(r: &mut number);
+        extern fn take_i(i: Innermost);
+        fn f(o: Outer) {
+          r: &mut number;
+          y: Innermost;
+          entry:
+            r = &mut o.a.x.z;
+            y = copy o.a.x;
+            call sink(move r);
+            call take_i(move y);
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["cannot read 'o.a.x': already borrowed by 'r'"]);
+}
+
 // ---------- Borrower overwrite ----------
 
 #[test]
@@ -656,6 +681,28 @@ fn borrower_overwrite_new_loan_active() {
         }
         ");
     assert_errors_contain(&errs, &["cannot write to 'y': already borrowed by 'r'"]);
+}
+
+#[test]
+fn field_borrower_overwrite_releases_old_loan_ok() {
+    // Path-granular version of borrower_overwrite_releases_old_loan_ok:
+    // b.p first borrows x, then is overwritten to borrow x2. After
+    // the overwrite, x's loan is released — writing to x is legal.
+    assert_no_diagnostics(
+        "
+        struct Move RefBox { p: &mut number }
+        extern fn take_box(b: RefBox);
+        fn f(x: number, x2: number) {
+          b: RefBox;
+          entry:
+            b.p = &mut x;
+            b.p = &mut x2;
+            x = 42;
+            call take_box(move b);
+            return
+        }
+        ",
+    );
 }
 
 // ---------- switchEnum access checked against loans ----------

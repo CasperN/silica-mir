@@ -221,3 +221,32 @@ fn nll_inserts_child_unborrow_before_parent() {
         ",
     );
 }
+
+// ---------- Reborrow across loop iterations ----------
+
+#[test]
+fn reborrow_in_loop_body_ok() {
+    // Reborrow `s = &mut *r` inside a loop body. Each iteration
+    // creates a fresh s, uses it, drops it (via call). r stays live
+    // across the back-edge and NLL closes it on the loop-exit edge.
+    assert_no_diagnostics(
+        "
+        extern fn use_mut(r: &mut number);
+        fn f(x: number, b: boolean) {
+          r: &mut number;
+          s: &mut number;
+          entry:
+            r = &mut x;
+            goto head
+          head:
+            branch(copy b) [true: body, false: done]
+          body:
+            s = &mut *r;
+            call use_mut(move s);
+            goto head
+          done:
+            return
+        }
+        ",
+    );
+}

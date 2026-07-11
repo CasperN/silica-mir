@@ -384,10 +384,14 @@ The essential elaboration and check passes are:
 # Punch list
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
+- **Enum-payload loan transfer.** `capture_carried_refs` in `init_state`
+  only transfers loans and ref-states for `Use(Move(src))` rvalues.
+  `Wrap::W(move b)` (an `EnumConstr`) drops b's loans instead of
+  re-keying them under `w as W`. Unsound when the payload holds a
+  bound reference. Fix: extend the transfer to `EnumConstr` rvalues,
+  rekeying src.* → (dst as V).* for the constructed variant.
 
 ## Elaboration gaps
-- Drop elaboration doesn't handle `Diverged` states at CFG joins yet
-  (needs per-edge insertion via the existing `cfg_edit` splitter).
 - Drop insertion *order* within a return block is a HLL responsibility
   (scope-nesting determines LIFO). At the MIR level drops are already
   explicit statements; the elaborator only inserts what would otherwise

@@ -423,3 +423,121 @@ fn mut_ref_move_out_then_write_back_cycle_ok() {
         ",
     );
 }
+
+// ---------- Join disagreement ----------
+
+#[test]
+fn join_agree_init_ok() {
+    // Both branches init x; the merge sees Init.
+    assert_no_diagnostics(
+        "
+        fn f(b: boolean) {
+          x: number;
+          y: number;
+          entry:
+            branch(copy b) [true: t, false: fbr]
+          t:
+            x = 1;
+            goto merge
+          fbr:
+            x = 2;
+            goto merge
+          merge:
+            y = copy x;
+            return
+        }
+        ",
+    );
+}
+
+#[test]
+fn join_disagreement_produces_diverged_error() {
+    // Only one branch inits x; the merge is Diverged and reading errors.
+    let (errs, _) = run("
+        fn f(b: boolean) {
+          x: number;
+          y: number;
+          entry:
+            branch(copy b) [true: t, false: fbr]
+          t:
+            x = 1;
+            goto merge
+          fbr:
+            goto merge
+          merge:
+            y = copy x;
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["variable 'x' may be used before initialization"]);
+}
+
+#[test]
+fn aborting_predecessor_doesnt_pollute_join() {
+    // The false branch aborts; the merge only sees the true branch's
+    // Init state, so reading x is fine.
+    assert_no_diagnostics(
+        "
+        fn f(b: boolean) {
+          x: number;
+          y: number;
+          entry:
+            branch(copy b) [true: t, false: fbr]
+          t:
+            x = 1;
+            goto merge
+          fbr:
+            abort
+          merge:
+            y = copy x;
+            return
+        }
+        ",
+    );
+}
+
+// ---------- Loop convergence ----------
+
+#[test]
+fn loop_backedge_agrees_ok() {
+    // x is Init before the loop head and also after each iteration —
+    // the backedge join agrees.
+    assert_no_diagnostics(
+        "
+        fn f(b: boolean) {
+          x: number;
+          entry:
+            x = 0;
+            goto head
+          head:
+            branch(copy b) [true: body, false: done]
+          body:
+            x = 1;
+            goto head
+          done:
+            return
+        }
+        ",
+    );
+}
+
+#[test]
+fn loop_may_reach_uninit_error() {
+    // Loop body reads x before writing; on the first iteration x is
+    // NeverInit. The read errors.
+    let (errs, _) = run("
+        fn f(b: boolean) {
+          x: number;
+          y: number;
+          entry:
+            branch(copy b) [true: body, false: done]
+          body:
+            y = copy x;
+            x = 1;
+            branch(copy b) [true: body, false: done]
+          done:
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["variable 'x' may be used before initialization"]);
+}

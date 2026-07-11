@@ -4,7 +4,7 @@
 //! each borrower Var. Post-elaboration, the lifetime checker sees a
 //! program where every loan-closing point is syntactically explicit.
 //!
-//! Structure mirrors `substructural::elaboration`:
+//! Structure mirrors `substructural::drop_elaboration`:
 //! - Phase 1 (immutable): plan per-function insertions using backward
 //!   liveness over borrower Vars.
 //! - Phase 2 (mutable): apply the plan — inserting statements and

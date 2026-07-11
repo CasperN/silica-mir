@@ -21,17 +21,17 @@ use diagnostics::Diagnostics;
 /// elaborated MIR and the collected diagnostics.
 ///
 /// Pipeline:
-///   1. Pre-elab: `type_check`, `marker_composition`, per-statement
-///      `substructural::check` class checks, `variant_flow`,
+///   1. Pre-elab: `type_check`, `substructural::composition`,
+///      `substructural::check::check_statements`, `variant_flow`,
 ///      `block_reachability`, `init_state`.
 ///   2. If step 1 found errors, bail before elaboration (a broken program's
 ///      init state is unreliable, so elaboration would be unsound).
 ///   3. Elaboration, in order:
-///      - `lifetime::elaboration::elaborate` inserts `unborrow` at NLL
+///      - `lifetime::nll::elaborate` inserts `unborrow` at NLL
 ///        last-use points.
-///      - `substructural::elaboration::elaborate` inserts drops for
-///        values still alive at return.
-///      Env is rebuilt between the two so drop-elab sees the post-NLL
+///      - `substructural::drop_elaboration::elaborate` inserts drops
+///        for values still alive at return.
+///      Env is resynced between the two so drop-elab sees the post-NLL
 ///      init state (borrowers now consumed at their last-use points).
 ///   4. Post-elab: `substructural::check::check_return_leaks` and
 ///      `lifetime::check_program` validate the elaborated MIR. Lifetime
@@ -44,7 +44,7 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     let mut env = type_check::Env::build(program, &mut d);
     env.typecheck(&mut d);
     substructural::composition::check_program(&env, &mut d);
-    substructural::check::check_program(&env, &mut d);
+    substructural::check::check_statements(&env, &mut d);
     variant_flow::check_program(&env, &mut d);
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
@@ -58,10 +58,10 @@ pub fn run_all_passes(program: &Program) -> (Program, Diagnostics) {
     // Elaboration passes mutate function bodies only; `types` never
     // changes. After each mutation, resync env's cached function bodies
     // so downstream passes see the up-to-date form.
-    lifetime::elaboration::elaborate(&mut elaborated, &env);
+    lifetime::nll::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
-    substructural::elaboration::elaborate(&mut elaborated, &env);
+    substructural::drop_elaboration::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
     // Post-elab checks. init_state re-runs so NLL-inserted `unborrow r`

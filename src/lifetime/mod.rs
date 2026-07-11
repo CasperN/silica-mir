@@ -32,7 +32,7 @@ use crate::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
-pub mod elaboration;
+pub mod nll;
 
 /// A record of a borrow that's currently in force. `loaned` is a set to
 /// support multi-loan: when a branch-of-borrows produces different loaned
@@ -452,9 +452,9 @@ fn check_operand_access(
 }
 
 #[cfg(test)]
-mod elaboration_tests;
-#[cfg(test)]
 mod loan_tests;
+#[cfg(test)]
+mod nll_tests;
 #[cfg(test)]
 mod path_borrower_tests;
 #[cfg(test)]

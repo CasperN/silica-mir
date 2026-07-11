@@ -1,4 +1,4 @@
-use super::elaboration::*;
+use super::drop_elaboration::*;
 use crate::ast::Program;
 use crate::diagnostics::Diagnostics;
 use crate::parser::Parser;

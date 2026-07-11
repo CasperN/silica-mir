@@ -163,6 +163,32 @@ fn overwrite_non_drop_field_errors() {
     );
 }
 
+// ---------- Path-granular obligation cross-check ----------
+
+#[test]
+fn overwrite_ref_typed_field_with_unfulfilled_obligation_errors() {
+    // b.p is a &mut number bound to x. After `y = move *b.p`, b.p is
+    // (Uninit, Init) — obligation unfulfilled. Overwriting b.p would
+    // silently forget the pending re-init. Overwrite check catches it
+    // (via close_ref_if_present, which cascades to ref-typed fields).
+    let (errs, _) = run("
+        struct Move RefBox { p: &mut number }
+        fn f(x: number, x2: number) {
+          b: RefBox;
+          y: number;
+          entry:
+            b.p = &mut x;
+            y = move *b.p;
+            b.p = &mut x2;
+            return
+        }
+        ");
+    assert_errors_contain(
+        &errs,
+        &["reference 'b.p' has unfulfilled obligation"],
+    );
+}
+
 // ---------- Move source & target the same shape ----------
 
 #[test]

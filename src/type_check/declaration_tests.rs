@@ -84,3 +84,19 @@ fn never_inside_ref_ok() {
         ",
     );
 }
+
+#[test]
+fn out_never_signals_divergence_ok() {
+    // `&out never` is an obligation to initialize an uninhabited
+    // pointee — unsatisfiable. The only way to type-check such a
+    // function is to not reach `return`. Combined with the return-
+    // reachability waiver, an abort-only body is legal.
+    assert_ok(
+        "
+        fn f(r: &out never) {
+          entry:
+            abort
+        }
+        ",
+    );
+}

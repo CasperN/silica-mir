@@ -25,9 +25,9 @@ use crate::substructural::composition::class_of;
 use crate::type_check::Env;
 use indexmap::IndexMap;
 
-/// Class-precondition checks over statements (does not include leak-at-
-/// return, which callers run separately, typically after elaboration).
-pub fn check_program(env: &Env, d: &mut Diagnostics) {
+/// Class-precondition checks over statements (does not include
+/// `check_return_leaks`, which callers run separately after elaboration).
+pub fn check_statements(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
         check_function(env, f, d);
     }

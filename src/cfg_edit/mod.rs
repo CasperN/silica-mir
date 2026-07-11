@@ -1,10 +1,10 @@
 //! CFG mutation utilities shared across elaboration passes.
 //!
-//! Right now: critical-edge splitting. Both `substructural::elaboration`
-//! (for `Diverged` join resolution) and `lifetime::elaboration` (for
-//! ASAP `unborrow` insertion on per-arm last-use points) need a place to
-//! attach per-edge statements. This module provides the primitive so
-//! neither pass invents its own.
+//! Right now: critical-edge splitting. Both
+//! `substructural::drop_elaboration` (for `Diverged` join resolution)
+//! and `lifetime::nll` (for ASAP `unborrow` insertion on per-arm
+//! last-use points) need a place to attach per-edge statements. This
+//! module provides the primitive so neither pass invents its own.
 
 use crate::ast::*;
 
