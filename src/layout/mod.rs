@@ -33,13 +33,7 @@ use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
 // ---------- Size / alignment ----------
-//
-// `size_of` / `align_of` (and their helpers) are exercised by tests but
-// not yet consumed by any non-test caller. Enum codegen (slice 2) will
-// wire them into `codegen::generate_llvm`. `dead_code` is silenced on
-// each until then.
 
-#[allow(dead_code)]
 /// Size of `ty` in bytes on a 64-bit target.
 pub fn size_of(ty: &Type, env: &Env) -> u64 {
     match ty {
@@ -55,7 +49,6 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
     }
 }
 
-#[allow(dead_code)]
 /// Alignment of `ty` in bytes on a 64-bit target. Always a power of two.
 pub fn align_of(ty: &Type, env: &Env) -> u64 {
     match ty {
@@ -71,7 +64,6 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
     }
 }
 
-#[allow(dead_code)]
 fn struct_size(s: &StructDecl, env: &Env) -> u64 {
     let mut offset = 0u64;
     let mut align = 1u64;
@@ -84,7 +76,6 @@ fn struct_size(s: &StructDecl, env: &Env) -> u64 {
     align_up(offset, align)
 }
 
-#[allow(dead_code)]
 fn struct_align(s: &StructDecl, env: &Env) -> u64 {
     let mut align = 1u64;
     for f in &s.fields {
@@ -93,7 +84,6 @@ fn struct_align(s: &StructDecl, env: &Env) -> u64 {
     align
 }
 
-#[allow(dead_code)]
 fn enum_size(e: &EnumDecl, env: &Env) -> u64 {
     // {i16 discriminant, [N x i8] payload} with the whole thing aligned
     // to the enum's overall alignment. Discriminant lives at offset 0;
@@ -111,7 +101,6 @@ fn enum_size(e: &EnumDecl, env: &Env) -> u64 {
     align_up(payload_offset + max_payload_size, overall_align)
 }
 
-#[allow(dead_code)]
 fn enum_align(e: &EnumDecl, env: &Env) -> u64 {
     let mut a = 2u64; // discriminant alignment
     for v in &e.variants {
@@ -120,7 +109,6 @@ fn enum_align(e: &EnumDecl, env: &Env) -> u64 {
     a
 }
 
-#[allow(dead_code)]
 /// Round `x` up to the next multiple of `a`. `a` must be a power of two.
 fn align_up(x: u64, a: u64) -> u64 {
     debug_assert!(a.is_power_of_two(), "align must be a power of two");
@@ -205,7 +193,7 @@ fn tarjan_sccs(env: &Env) -> Vec<Vec<String>> {
     let names: Vec<String> = env.types.keys().cloned().collect();
     for n in &names {
         if !state.index.contains_key(n) {
-            state.strongconnect(n);
+            state.strong_connect(n);
         }
     }
     state.sccs
@@ -222,7 +210,7 @@ struct Tarjan<'a> {
 }
 
 impl<'a> Tarjan<'a> {
-    fn strongconnect(&mut self, v: &str) {
+    fn strong_connect(&mut self, v: &str) {
         let v_owned = v.to_string();
         self.index.insert(v_owned.clone(), self.counter);
         self.lowlink.insert(v_owned.clone(), self.counter);
@@ -238,7 +226,7 @@ impl<'a> Tarjan<'a> {
                 continue;
             }
             if !self.index.contains_key(&w) {
-                self.strongconnect(&w);
+                self.strong_connect(&w);
                 let w_low = self.lowlink[&w];
                 let v_low = self.lowlink.get_mut(&v_owned).unwrap();
                 *v_low = (*v_low).min(w_low);

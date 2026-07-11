@@ -1,35 +1,43 @@
 //! LLVM textual IR emitter. Lowers a checked/elaborated MIR program to a
 //! self-contained `.ll` string. Runs after `run_all_passes` succeeded.
 //!
-//! ## Scope (slice 1)
+//! ## Scope
 //! - Scalars: `number` → `i64`, `boolean` → `i1`, `unit`/`never` → `{}`
 //!   (the `never` case is unreachable at runtime, so any zero-sized rep
 //!   works).
 //! - References: all five kinds erase to `ptr` (opaque pointer). The
 //!   (cur, post) obligations and shared/exclusive distinction are
 //!   compiler-time only.
-//! - Structs: `%<Name> = type { field-tys... }`.
+//! - Structs: `%<Name> = type { field-tys... }` — LLVM's default layout
+//!   picks per-field padding.
+//! - Enums: `%<E> = type { i16, [pad x i8], [K x <lane_ty>] }` where
+//!   `lane_ty` (i8/i16/i32/i64) matches the enum's overall alignment
+//!   and `K = ceil(max_payload_size / sizeof(lane_ty))`. The lane type
+//!   makes LLVM's inferred struct alignment equal `layout::align_of(E)`,
+//!   so an enum embedded in a larger struct is placed at the correct
+//!   offset. Discriminant is variant index in declaration order.
+//!   Alloca sites also carry explicit `align <enum_align>` from
+//!   `layout::align_of` for redundancy.
 //! - Functions: extern → `declare void @f(...)`; defined → `define void
 //!   @f(...)` with one `alloca` per param/local in a synthetic `.init`
 //!   block that stores each argument into its slot and then `br`s to
 //!   the MIR entry block. All functions are `void`; return values ride
 //!   `&out` parameters (sret-by-hand).
-//! - Statements: `Assign`, `Call`. `Drop` and `Unborrow` are erased —
+//! - Statements: `Assign` (including `EnumConstr` as a specialized
+//!   whole-value write), `Call`. `Drop` and `Unborrow` are erased —
 //!   this is a POD-only world until user `Drop::drop` exists.
-//! - Terminators: `Goto`, `Return`, `Branch`, `Abort` (→ `@abort` +
-//!   `unreachable`), `Unreachable`.
-//!
-//! ## Not yet (slice 2)
-//! - Enums, `Downcast` places, `EnumConstr` rvalues, `SwitchEnum`.
-//!   Planned layout: `%<E> = type { i16, [N x i8] }` with variant order
-//!   = declaration order; N = max payload size (target-dependent).
+//! - Terminators: `Goto`, `Return`, `Branch`, `SwitchEnum` (with an
+//!   `unreachable` default block for LLVM; MIR requires the switch to
+//!   be exhaustive), `Abort` (→ `@abort` + `unreachable`), `Unreachable`.
 //!
 //! ## Layout notes
-//! Not ABI-stable — layout is whatever LLVM picks for the emitted
-//! struct/pointer types on the target. Booleans stored in memory get
-//! LLVM's default `i1` extension to a byte at alloca.
+//! Not ABI-stable — variant order in enums is declaration order; struct
+//! field order is declaration order. Padding and alignment can change.
 
 use crate::ast::*;
+use crate::diagnostics::Diagnostics;
+use crate::layout;
+use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::fmt::Write;
 
@@ -37,14 +45,21 @@ use std::fmt::Write;
 /// passed the full check/elaborate pipeline — malformed inputs will
 /// panic.
 pub fn generate_llvm(program: &Program) -> String {
-    let types = collect_types(program);
-    let functions = collect_functions(program);
+    // TODO(env-plumbing): thread the `Env` (and skip the throwaway
+    // `Diagnostics`) from `run_all_passes` instead of rebuilding here.
+    // The rebuild is O(decls) but a semantically-loaded smell: it
+    // implies the checker's env and codegen's env could disagree,
+    // which they must not. Change the pipeline to return `(Program,
+    // Env, Diagnostics)` and take `generate_llvm(&Program, &Env)`.
+    let mut throwaway = Diagnostics::default();
+    let env = Env::build(program, &mut throwaway);
+
     let mut cx = Ctx {
-        types: &types,
-        functions: &functions,
+        env: &env,
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
+        pending_default_blocks: Vec::new(),
     };
 
     writeln!(cx.out, "; Generated from Silica-MIR").unwrap();
@@ -53,11 +68,17 @@ pub fn generate_llvm(program: &Program) -> String {
 
     let mut had_type = false;
     for decl in &program.declarations {
-        if let Declaration::Struct(s) = decl {
-            had_type = true;
-            emit_struct_decl(&mut cx, s);
+        match decl {
+            Declaration::Struct(s) => {
+                had_type = true;
+                emit_struct_decl(&mut cx, s);
+            }
+            Declaration::Enum(e) => {
+                had_type = true;
+                emit_enum_decl(&mut cx, e);
+            }
+            Declaration::Fn(_) => {}
         }
-        // Enums: slice 2.
     }
     if had_type {
         writeln!(cx.out).unwrap();
@@ -87,42 +108,17 @@ pub fn generate_llvm(program: &Program) -> String {
     cx.out
 }
 
-// ---------- Lookup tables ----------
-
-fn collect_types(program: &Program) -> IndexMap<String, &Declaration> {
-    let mut out = IndexMap::new();
-    for d in &program.declarations {
-        match d {
-            Declaration::Struct(s) => {
-                out.insert(s.name.clone(), d);
-            }
-            Declaration::Enum(e) => {
-                out.insert(e.name.clone(), d);
-            }
-            Declaration::Fn(_) => {}
-        }
-    }
-    out
-}
-
-fn collect_functions(program: &Program) -> IndexMap<String, &Function> {
-    let mut out = IndexMap::new();
-    for d in &program.declarations {
-        if let Declaration::Fn(f) = d {
-            out.insert(f.name.clone(), f);
-        }
-    }
-    out
-}
-
 // ---------- Context ----------
 
 struct Ctx<'a> {
-    types: &'a IndexMap<String, &'a Declaration>,
-    functions: &'a IndexMap<String, &'a Function>,
+    env: &'a Env,
     out: String,
     v_counter: u32,
     locals: IndexMap<String, Type>,
+    /// Labels of synthetic default-arm blocks for `switch i16` terminators.
+    /// Accumulated per-fn during block emission and flushed as
+    /// `<label>: unreachable` blocks right before the fn's closing brace.
+    pending_default_blocks: Vec<String>,
 }
 
 impl<'a> Ctx<'a> {
@@ -144,12 +140,12 @@ impl<'a> Ctx<'a> {
         }
     }
 
-    /// Zero-based struct field index and its type.
+    /// Zero-based struct field index and its type. Panics on non-struct.
     fn field_lookup(&self, ty: &Type, field: &str) -> (usize, Type) {
         let Type::Custom(name) = ty else {
             panic!("field access on non-struct type {:?}", ty);
         };
-        let Some(Declaration::Struct(s)) = self.types.get(name).copied() else {
+        let Some(TypeDecl::Struct(s)) = self.env.types.get(name) else {
             panic!("field lookup on non-struct '{}'", name);
         };
         let (idx, f) = s
@@ -159,6 +155,16 @@ impl<'a> Ctx<'a> {
             .find(|(_, f)| f.name == field)
             .unwrap_or_else(|| panic!("no field '{}' on struct '{}'", field, name));
         (idx, f.ty.clone())
+    }
+
+    fn enum_decl(&self, ty: &Type) -> &'a EnumDecl {
+        let Type::Custom(name) = ty else {
+            panic!("expected enum type, got {:?}", ty);
+        };
+        match self.env.types.get(name) {
+            Some(TypeDecl::Enum(e)) => e,
+            _ => panic!("expected enum type, got '{}'", name),
+        }
     }
 }
 
@@ -175,6 +181,30 @@ fn emit_struct_decl(cx: &mut Ctx, s: &StructDecl) {
     writeln!(cx.out, " }}").unwrap();
 }
 
+fn emit_enum_decl(cx: &mut Ctx, e: &EnumDecl) {
+    let pay_off = payload_offset(e, cx.env);
+    let pay_size = max_payload_size(e, cx.env);
+    // pad_bytes = payload_offset - disc_size (2). Always ≥ 0 since
+    // payload_offset ≥ 2 (aligned up from disc).
+    let pad_bytes = pay_off - 2;
+    // Payload lane type matches the enum's overall alignment so that
+    // LLVM's inferred struct alignment equals `layout::align_of(E)`.
+    // Without this, an enum embedded as a field after a smaller-aligned
+    // sibling (e.g. `struct S { b: boolean, e: BigEnum }`) would place
+    // the payload at a stricter-than-actual offset — UB on payload
+    // access. Lane count is `ceil(pay_size / sizeof(lane_ty))`, so
+    // total storage is at least `pay_size` bytes.
+    let overall_align = enum_overall_align(e, cx.env);
+    let (lane_ty, lane_size) = payload_lane_type(overall_align);
+    let lane_count = pay_size.div_ceil(lane_size);
+    writeln!(
+        cx.out,
+        "%{} = type {{ i16, [{} x i8], [{} x {}] }}",
+        e.name, pad_bytes, lane_count, lane_ty
+    )
+    .unwrap();
+}
+
 fn emit_extern_fn(cx: &mut Ctx, f: &Function) {
     write!(cx.out, "declare void @{}(", f.name).unwrap();
     for (i, p) in f.params.iter().enumerate() {
@@ -189,6 +219,7 @@ fn emit_extern_fn(cx: &mut Ctx, f: &Function) {
 fn emit_fn_body(cx: &mut Ctx, f: &Function) {
     cx.v_counter = 0;
     cx.locals = f.locals_map();
+    cx.pending_default_blocks.clear();
 
     write!(cx.out, "define void @{}(", f.name).unwrap();
     for (i, p) in f.params.iter().enumerate() {
@@ -211,8 +242,8 @@ fn emit_fn_body(cx: &mut Ctx, f: &Function) {
     // can never collide with a user block name.
     writeln!(cx.out, ".init:").unwrap();
     for p in &f.params {
+        emit_alloca(cx, &p.name, &p.ty);
         let ty = cx.lower_type(&p.ty);
-        writeln!(cx.out, "  %local.{} = alloca {}", p.name, ty).unwrap();
         writeln!(
             cx.out,
             "  store {} %arg.{}, ptr %local.{}",
@@ -221,8 +252,7 @@ fn emit_fn_body(cx: &mut Ctx, f: &Function) {
         .unwrap();
     }
     for l in &body.locals {
-        let ty = cx.lower_type(&l.ty);
-        writeln!(cx.out, "  %local.{} = alloca {}", l.name, ty).unwrap();
+        emit_alloca(cx, &l.name, &l.ty);
     }
     let entry_label = &body.blocks[0].label;
     writeln!(cx.out, "  br label %{}", entry_label).unwrap();
@@ -230,8 +260,28 @@ fn emit_fn_body(cx: &mut Ctx, f: &Function) {
     for block in &body.blocks {
         emit_block(cx, block);
     }
+
+    // Flush switch default blocks. Each is `<label>: unreachable`. Order
+    // is the order in which switches were emitted, which is stable across
+    // runs given the pretty-printer's block ordering.
+    for label in std::mem::take(&mut cx.pending_default_blocks) {
+        writeln!(cx.out, "{}:", label).unwrap();
+        writeln!(cx.out, "  unreachable").unwrap();
+    }
+
     writeln!(cx.out, "}}").unwrap();
     writeln!(cx.out).unwrap();
+}
+
+fn emit_alloca(cx: &mut Ctx, name: &str, ty: &Type) {
+    let llvm_ty = cx.lower_type(ty);
+    let align = layout::align_of(ty, cx.env);
+    writeln!(
+        cx.out,
+        "  %local.{} = alloca {}, align {}",
+        name, llvm_ty, align
+    )
+    .unwrap();
 }
 
 fn emit_block(cx: &mut Ctx, block: &BasicBlock) {
@@ -247,6 +297,13 @@ fn emit_block(cx: &mut Ctx, block: &BasicBlock) {
 fn emit_stmt(cx: &mut Ctx, stmt: &Statement) {
     match stmt {
         Statement::Assign(lhs, rhs) => {
+            // EnumConstr is a whole-value initialization: it writes both
+            // the discriminant and the payload. Handled directly at LHS
+            // address rather than via materialize-then-store.
+            if let RValue::EnumConstr(enum_name, variant, operand) = rhs {
+                emit_enum_construction(cx, lhs, enum_name, variant, operand);
+                return;
+            }
             // Evaluate RHS first so `x = copy x` (or any self-referential
             // path) reads before it overwrites. Then compute LHS address
             // and store.
@@ -282,10 +339,61 @@ fn emit_stmt(cx: &mut Ctx, stmt: &Statement) {
     }
 }
 
+/// Lower `p = Name::V(operand)`. Writes the discriminant to LHS field 0
+/// and, if the variant's payload is non-empty, writes the operand's value
+/// to LHS field 2. RHS materialization happens before LHS address
+/// computation to preserve read-before-write semantics.
+fn emit_enum_construction(
+    cx: &mut Ctx,
+    lhs: &Place,
+    enum_name: &str,
+    variant: &str,
+    operand: &Operand,
+) {
+    let (operand_val, operand_ty) = emit_operand(cx, operand);
+    let (lhs_addr, _) = emit_place_addr(cx, lhs);
+
+    let e_decl = match cx.env.types.get(enum_name) {
+        Some(TypeDecl::Enum(e)) => e,
+        _ => panic!("expected enum '{}'", enum_name),
+    };
+    let v_idx = variant_index(e_decl, variant);
+
+    // Discriminant.
+    let disc_addr = cx.fresh();
+    writeln!(
+        cx.out,
+        "  {} = getelementptr %{}, ptr {}, i32 0, i32 0",
+        disc_addr, enum_name, lhs_addr
+    )
+    .unwrap();
+    writeln!(cx.out, "  store i16 {}, ptr {}", v_idx, disc_addr).unwrap();
+
+    // Payload — skip if zero-sized (unit / never). LLVM tolerates
+    // `store {} zeroinitializer` but there's no reason to emit it.
+    if layout::size_of(&operand_ty, cx.env) > 0 {
+        let payload_addr = cx.fresh();
+        writeln!(
+            cx.out,
+            "  {} = getelementptr %{}, ptr {}, i32 0, i32 2",
+            payload_addr, enum_name, lhs_addr
+        )
+        .unwrap();
+        let llvm_ty = cx.lower_type(&operand_ty);
+        writeln!(
+            cx.out,
+            "  store {} {}, ptr {}",
+            llvm_ty, operand_val, payload_addr
+        )
+        .unwrap();
+    }
+}
+
 // ---------- RValues / Operands / Constants ----------
 
 /// Emit code to materialize `rv` as an SSA value. Returns the value
-/// (an LLVM identifier or literal) and its AST type.
+/// (an LLVM identifier or literal) and its AST type. `EnumConstr` is
+/// handled by `emit_enum_construction` before reaching here.
 fn emit_rvalue(cx: &mut Ctx, rv: &RValue) -> (String, Type) {
     match rv {
         RValue::Use(op) => emit_operand(cx, op),
@@ -295,7 +403,9 @@ fn emit_rvalue(cx: &mut Ctx, rv: &RValue) -> (String, Type) {
             let (addr, ty) = emit_place_addr(cx, place);
             (addr, Type::Ref(RefKind::Shared, Box::new(ty)))
         }
-        RValue::EnumConstr(..) => panic!("EnumConstr: enums are not yet lowered (slice 2)"),
+        RValue::EnumConstr(..) => {
+            unreachable!("EnumConstr is handled in Assign statement, not here")
+        }
     }
 }
 
@@ -314,6 +424,7 @@ fn emit_const(cx: &mut Ctx, c: &ConstVal) -> (String, Type) {
         ConstVal::Unit => ("zeroinitializer".to_string(), Type::Unit),
         ConstVal::FnName(name) => {
             let f = cx
+                .env
                 .functions
                 .get(name)
                 .unwrap_or_else(|| panic!("undeclared function '{}'", name));
@@ -361,7 +472,28 @@ fn emit_place_addr(cx: &mut Ctx, place: &Place) -> (String, Type) {
             writeln!(cx.out, "  {} = load ptr, ptr {}", dst, base_addr).unwrap();
             (dst, *pointee)
         }
-        Place::Downcast(..) => panic!("Downcast: enums are not yet lowered (slice 2)"),
+        Place::Downcast(inner, variant) => {
+            let (base_addr, base_ty) = emit_place_addr(cx, inner);
+            let e_decl = cx.enum_decl(&base_ty);
+            let payload_ty = e_decl
+                .variants
+                .iter()
+                .find(|v| v.name == *variant)
+                .map(|v| v.ty.clone())
+                .unwrap_or_else(|| {
+                    panic!("no variant '{}' on enum {:?}", variant, base_ty)
+                });
+            let base_llvm = cx.lower_type(&base_ty);
+            // Payload lives at field index 2: {i16, [pad x i8], [N x i8]}.
+            let dst = cx.fresh();
+            writeln!(
+                cx.out,
+                "  {} = getelementptr {}, ptr {}, i32 0, i32 2",
+                dst, base_llvm, base_addr
+            )
+            .unwrap();
+            (dst, payload_ty)
+        }
     }
 }
 
@@ -398,8 +530,41 @@ fn emit_terminator(cx: &mut Ctx, term: &Terminator) {
             )
             .unwrap();
         }
-        Terminator::SwitchEnum { .. } => {
-            panic!("SwitchEnum: enums are not yet lowered (slice 2)")
+        Terminator::SwitchEnum { place, cases } => {
+            let (place_addr, place_ty) = emit_place_addr(cx, place);
+            let e_decl = cx.enum_decl(&place_ty).clone();
+            let base_llvm = cx.lower_type(&place_ty);
+            // GEP to discriminant (field 0), then load i16.
+            let disc_addr = cx.fresh();
+            writeln!(
+                cx.out,
+                "  {} = getelementptr {}, ptr {}, i32 0, i32 0",
+                disc_addr, base_llvm, place_addr
+            )
+            .unwrap();
+            let disc_val = cx.fresh();
+            writeln!(cx.out, "  {} = load i16, ptr {}", disc_val, disc_addr).unwrap();
+
+            // Reserve a `.switch_default.N` label. MIR guarantees the
+            // switch is exhaustive (variant_flow); the default block is
+            // just LLVM's syntactic requirement, filled with `unreachable`.
+            let default_label = format!(
+                ".switch_default.{}",
+                cx.pending_default_blocks.len()
+            );
+            cx.pending_default_blocks.push(default_label.clone());
+
+            writeln!(
+                cx.out,
+                "  switch i16 {}, label %{} [",
+                disc_val, default_label
+            )
+            .unwrap();
+            for (variant, arm_label) in cases {
+                let idx = variant_index(&e_decl, variant);
+                writeln!(cx.out, "    i16 {}, label %{}", idx, arm_label).unwrap();
+            }
+            writeln!(cx.out, "  ]").unwrap();
         }
         Terminator::Abort => {
             writeln!(cx.out, "  call void @abort()").unwrap();
@@ -411,10 +576,62 @@ fn emit_terminator(cx: &mut Ctx, term: &Terminator) {
     }
 }
 
+// ---------- Enum layout helpers ----------
+
+/// Overall alignment of an enum: the stricter of the discriminant's
+/// alignment (i16 = 2) and any variant payload's alignment.
+fn enum_overall_align(e: &EnumDecl, env: &Env) -> u64 {
+    let mut a = 2u64;
+    for v in &e.variants {
+        a = a.max(layout::align_of(&v.ty, env));
+    }
+    a
+}
+
+/// Byte offset of the payload within an enum's LLVM struct. Equals the
+/// discriminant size (2) rounded up to the enum's overall alignment.
+fn payload_offset(e: &EnumDecl, env: &Env) -> u64 {
+    align_up(2, enum_overall_align(e, env))
+}
+
+/// LLVM integer type used for the payload lane so LLVM infers the
+/// enum's true struct alignment. `sizeof(lane_ty) == align`.
+fn payload_lane_type(align: u64) -> (&'static str, u64) {
+    match align {
+        1 => ("i8", 1),
+        2 => ("i16", 2),
+        4 => ("i32", 4),
+        8 => ("i64", 8),
+        _ => panic!("unsupported enum alignment: {}", align),
+    }
+}
+
+fn max_payload_size(e: &EnumDecl, env: &Env) -> u64 {
+    e.variants
+        .iter()
+        .map(|v| layout::size_of(&v.ty, env))
+        .max()
+        .unwrap_or(0)
+}
+
+fn variant_index(e: &EnumDecl, variant: &str) -> u64 {
+    e.variants
+        .iter()
+        .position(|v| v.name == variant)
+        .unwrap_or_else(|| panic!("no variant '{}' on enum '{}'", variant, e.name))
+        as u64
+}
+
+fn align_up(x: u64, a: u64) -> u64 {
+    (x + a - 1) & !(a - 1)
+}
+
 #[cfg(test)]
 mod test_util;
 #[cfg(test)]
 mod declaration_tests;
+#[cfg(test)]
+mod enum_tests;
 #[cfg(test)]
 mod function_body_tests;
 #[cfg(test)]
