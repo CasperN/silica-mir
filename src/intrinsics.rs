@@ -163,20 +163,6 @@ pub fn prelude_fns() -> Vec<Function> {
     all().into_iter().map(spec_to_function).collect()
 }
 
-/// Deduped union of every intrinsic's `llvm_declares`. Codegen prints
-/// these in the module preamble so calls like `@llvm.ctpop.i64` link.
-pub fn all_llvm_declares() -> Vec<&'static str> {
-    let mut seen = std::collections::BTreeSet::new();
-    let mut out = Vec::new();
-    for spec in all() {
-        for d in spec.llvm_declares {
-            if seen.insert(*d) {
-                out.push(*d);
-            }
-        }
-    }
-    out
-}
 
 fn spec_to_function(spec: IntrinsicSpec) -> Function {
     let mut params = Vec::with_capacity(spec.inputs.len() + 1);
@@ -335,32 +321,15 @@ mod tests {
         );
     }
 
-    // ---------- llvm_declares ----------
+    // ---------- llvm_declares (on the spec, not the union) ----------
 
     #[test]
-    fn all_llvm_declares_includes_popcount() {
-        // Guards the machinery: adding an intrinsic with a
-        // `llvm_declares` entry surfaces it in the deduped preamble
-        // list.
-        let decls = all_llvm_declares();
-        assert!(
-            decls.contains(&"declare i64 @llvm.ctpop.i64(i64)"),
-            "popcount's declare should be in the preamble list, got {:?}",
-            decls
-        );
-    }
-
-    #[test]
-    fn all_llvm_declares_dedupes() {
-        // Every entry appears at most once (no ordering guarantee).
-        let decls = all_llvm_declares();
-        let unique: std::collections::BTreeSet<_> = decls.iter().collect();
-        assert_eq!(
-            decls.len(),
-            unique.len(),
-            "duplicates in all_llvm_declares: {:?}",
-            decls
-        );
+    fn popcount_spec_carries_its_declare() {
+        // Guards the "spec owns its declare" contract. Codegen's
+        // `llvm_declares_needed` (in `codegen/mod.rs`) reads from
+        // this per-spec field, so the sanity check lives here.
+        let spec = lookup("$i64_popcount").unwrap();
+        assert_eq!(spec.llvm_declares, &["declare i64 @llvm.ctpop.i64(i64)"]);
     }
 
     // ---------- emit closures ----------

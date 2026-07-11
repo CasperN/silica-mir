@@ -102,7 +102,32 @@ pub fn generate_llvm(program: &Program, env: &Env) -> String {
         }
     }
 
+    // If the program has a Silica `fn main` (renamed to `@silica.main`
+    // in emission), synthesize a C-conformant `i32 @main()` wrapper so
+    // the linked binary has a proper entry point + exit code.
+    for decl in &program.declarations {
+        if let Declaration::Fn(f) = decl {
+            if f.name == "main" && !f.is_extern {
+                emit_main_wrapper(&mut cx, f);
+                break;
+            }
+        }
+    }
+
     cx.out
+}
+
+/// Map a Silica function name to the LLVM symbol codegen emits for
+/// it. Only `main` is renamed — codegen synthesizes an `i32 @main()`
+/// wrapper, so the Silica implementation of `main` has to live under
+/// a different name. `.` is used because MIR identifiers forbid it,
+/// making collisions with user-defined names impossible.
+fn llvm_fn_symbol(silica_name: &str) -> String {
+    if silica_name == "main" {
+        "silica.main".to_string()
+    } else {
+        silica_name.to_string()
+    }
 }
 
 // ---------- Context ----------
@@ -216,7 +241,7 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
 }
 
 fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
-    write!(cx.out, "declare void @{}(", f.name).unwrap();
+    write!(cx.out, "declare void @{}(", llvm_fn_symbol(&f.name)).unwrap();
     for (i, p) in f.params.iter().enumerate() {
         if i > 0 {
             write!(cx.out, ", ").unwrap();
@@ -226,10 +251,44 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, ")").unwrap();
 }
 
+/// Emit the C-conformant `i32 @main()` wrapper. `f` is the Silica
+/// `fn main` (already emitted as `@silica.main`); its signature must
+/// be one of the two shapes enforced by `type_check::check_main_signature`:
+///
+/// - `fn main()` — wrapper calls it and returns 0.
+/// - `fn main(exit: &out i32)` — wrapper allocas an i32, passes a
+///   pointer, then returns the loaded value.
+///
+/// Panics on unexpected signatures (the checker should have rejected
+/// them earlier).
+fn emit_main_wrapper(cx: &mut CodeGenContext, f: &Function) {
+    writeln!(cx.out, "define i32 @main() {{").unwrap();
+    match f.params.len() {
+        0 => {
+            writeln!(cx.out, "  call void @silica.main()").unwrap();
+            writeln!(cx.out, "  ret i32 0").unwrap();
+        }
+        1 => {
+            writeln!(cx.out, "  %exit = alloca i32, align 4").unwrap();
+            writeln!(cx.out, "  store i32 0, ptr %exit").unwrap();
+            writeln!(cx.out, "  call void @silica.main(ptr %exit)").unwrap();
+            writeln!(cx.out, "  %code = load i32, ptr %exit").unwrap();
+            writeln!(cx.out, "  ret i32 %code").unwrap();
+        }
+        n => panic!(
+            "emit_main_wrapper: unexpected main signature ({} params); \
+             type_check::check_main_signature should have rejected this",
+            n
+        ),
+    }
+    writeln!(cx.out, "}}").unwrap();
+    writeln!(cx.out).unwrap();
+}
+
 fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     cx.reset_for_function(f);
 
-    write!(cx.out, "define void @{}(", f.name).unwrap();
+    write!(cx.out, "define void @{}(", llvm_fn_symbol(&f.name)).unwrap();
     for (i, p) in f.params.iter().enumerate() {
         if i > 0 {
             write!(cx.out, ", ").unwrap();
@@ -562,7 +621,7 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
                 .get(name)
                 .unwrap_or_else(|| panic!("undeclared function '{}'", name));
             let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
-            (format!("@{}", name), Type::Fn(param_tys))
+            (format!("@{}", llvm_fn_symbol(name)), Type::Fn(param_tys))
         }
     }
 }
@@ -769,6 +828,8 @@ mod enum_tests;
 mod function_body_tests;
 #[cfg(test)]
 mod intrinsic_tests;
+#[cfg(test)]
+mod main_wrapper_tests;
 #[cfg(test)]
 mod place_tests;
 #[cfg(test)]

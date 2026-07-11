@@ -340,6 +340,14 @@ impl Env {
             }
         }
 
+        // `main` has a fixed signature convention — codegen synthesizes
+        // an `i32 @main()` wrapper that calls it. Reject any other
+        // shape here so bad programs fail at check time instead of
+        // producing invalid IR.
+        if f.name == "main" {
+            check_main_signature(f, d);
+        }
+
         let Some(body) = &f.body else {
             return;
         };
@@ -638,6 +646,38 @@ impl Env {
             }
             Terminator::Abort => {}
             Terminator::Unreachable => {}
+        }
+    }
+}
+
+/// Verify `fn main`'s signature is one of the two accepted shapes:
+///
+/// - `fn main()` — the wrapper always returns 0.
+/// - `fn main(exit: &out i32)` — the wrapper returns the value
+///   written through `exit`.
+///
+/// Anything else is a check error. Externs (no body) are ignored;
+/// this only fires on definitions.
+fn check_main_signature(f: &Function, d: &mut Diagnostics) {
+    if f.is_extern {
+        return;
+    }
+    let expected = Type::Ref(RefKind::Out, Box::new(Type::Int(IntTy::I32)));
+    match f.params.as_slice() {
+        [] => {}
+        [p] if p.ty == expected => {}
+        [p] => {
+            d.errors.push(format!(
+                "at {}: In function 'main': single parameter must be '&out i32', found {:?}",
+                p.span, p.ty
+            ));
+        }
+        _ => {
+            d.errors.push(format!(
+                "at {}: In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
+                f.name_span,
+                f.params.len()
+            ));
         }
     }
 }

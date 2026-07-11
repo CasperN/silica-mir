@@ -383,6 +383,10 @@ The essential elaboration and check passes are:
 
 
 # Punch list
+- Pointers
+- Strings
+- FFI? Varadic externs?
+- HLL
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
 - **Enum-payload loan transfer.** `capture_carried_refs` in `init_state`
