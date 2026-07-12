@@ -164,12 +164,12 @@ fn write_place(out: &mut String, place: &Place) {
     match place {
         Place::Var(name) => out.push_str(name),
         Place::Field(inner, field) => {
-            write_place(out, inner);
+            write_place_projection_base(out, inner);
             out.push('.');
             out.push_str(field);
         }
         Place::Downcast(inner, variant) => {
-            write_place(out, inner);
+            write_place_projection_base(out, inner);
             out.push_str(" as ");
             out.push_str(variant);
         }
@@ -178,11 +178,26 @@ fn write_place(out: &mut String, place: &Place) {
             write_place(out, inner);
         }
         Place::Index(inner, op) => {
-            write_place(out, inner);
+            write_place_projection_base(out, inner);
             out.push('[');
             write_operand(out, op);
             out.push(']');
         }
+    }
+}
+
+/// Write a place that appears to the left of `.field`, `as V`, or `[i]`.
+/// Wraps in parens if the child is a `Deref`, since `.`/`as`/`[]` bind
+/// tighter than `*` (grammar prec 2 vs 1). Without the parens,
+/// `Downcast(Deref(e), V)` round-trips as `*e as V`, which parses as
+/// `Deref(Downcast(e, V))` — a different Place.
+fn write_place_projection_base(out: &mut String, place: &Place) {
+    if matches!(place, Place::Deref(_)) {
+        out.push('(');
+        write_place(out, place);
+        out.push(')');
+    } else {
+        write_place(out, place);
     }
 }
 

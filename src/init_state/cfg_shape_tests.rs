@@ -541,3 +541,52 @@ fn loop_may_reach_uninit_error() {
         ");
     assert_errors_contain(&errs, &["variable 'x' may be used before initialization"]);
 }
+
+// ---------- Ref obligation × switchEnum arms with mixed abort/return ----------
+//
+// README waives obligations on abort-only paths. Test the mixed shape:
+// one arm fulfils the obligation and returns; the other consumes the
+// ref and then aborts. The abort arm should be waived.
+
+#[test]
+fn out_ref_unfulfilled_on_abort_arm_is_waived() {
+    // r: &out i64. a_arm writes and returns; b_arm just aborts without
+    // touching r. Per the README's abort-waiver, obligations are only
+    // checked on paths that reach `return` — so the unfulfilled state
+    // on b_arm should be tolerated.
+    assert_no_diagnostics(
+        "
+        enum Copy Drop E { A: unit B: unit }
+        fn f(r: &out i64, e: E) {
+          entry:
+            switchEnum(e) [A: a_arm, B: b_arm]
+          a_arm:
+            *r = 1;
+            return
+          b_arm:
+            abort
+        }
+        ",
+    );
+}
+
+#[test]
+fn out_ref_unfulfilled_on_return_arm_leaks() {
+    // Same shape but b_arm returns instead of aborting. Now the
+    // obligation must be checked and this errors.
+    let (errs, _) = run(
+        "
+        enum Copy Drop E { A: unit B: unit }
+        fn f(r: &out i64, e: E) {
+          entry:
+            switchEnum(e) [A: a_arm, B: b_arm]
+          a_arm:
+            *r = 1;
+            return
+          b_arm:
+            return
+        }
+        ",
+    );
+    assert_errors_contain(&errs, &["unfulfilled obligation"]);
+}

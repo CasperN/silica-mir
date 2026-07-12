@@ -487,3 +487,67 @@ fn unused_intrinsic_declare_is_not_emitted() {
         ll
     );
 }
+
+// ---------- Boolean branch smoke (README punch-list "boolean flow") ----------
+
+#[test]
+fn boolean_result_of_intrinsic_used_in_branch_ok() {
+    // Compute a boolean via `$i64_gt` (writes through `&out boolean`),
+    // then feed to a `branch` terminator. Currently the branch does
+    // no refinement on its operand (unlike switchEnum); this pins the
+    // current behavior and provides an anchor for a future flow-
+    // analysis change on booleans (README punch list).
+    let (errs, _) = crate::test_util::run(
+        "
+        fn f(x: i64) {
+          b: boolean;
+          bo: &out boolean;
+          y: i64;
+          entry:
+            bo = &out b;
+            call $i64_gt(copy x, 0i64, move bo);
+            branch(copy b) [true: t_arm, false: f_arm]
+          t_arm:
+            y = 1;
+            goto join
+          f_arm:
+            y = 2;
+            goto join
+          join:
+            return
+        }
+        ",
+    );
+    assert!(
+        errs.is_empty(),
+        "expected clean run for boolean-branch program, got: {:?}",
+        errs
+    );
+}
+
+// ---------- Missing intrinsics (documents a gap) ----------
+
+#[test]
+fn f64_lt_is_not_yet_an_intrinsic() {
+    // README lists only `$f64_add` and `$f64_mul`. Any missing float
+    // predicate should surface as an unknown-function error. When
+    // `$f64_lt` gets added, flip this test.
+    let (errs, _) = crate::test_util::run(
+        "
+        fn f(x: f64, y: f64) {
+          b: boolean;
+          out: &out boolean;
+          entry:
+            out = &out b;
+            call $f64_lt(copy x, copy y, move out);
+            return
+        }
+        ",
+    );
+    assert!(
+        errs.iter().any(|e| e.contains("$f64_lt") || e.contains("Undeclared")
+            || e.contains("undeclared") || e.contains("not defined")),
+        "expected an unknown-function-style error mentioning $f64_lt, got: {:?}",
+        errs
+    );
+}

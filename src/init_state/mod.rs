@@ -1359,6 +1359,54 @@ impl<'a> InitStateContext<'a> {
             return;
         }
 
+        // Dynamic-index widening: if the path contains an `Index(None)`,
+        // we can't name a specific slot. Widen the precondition to the
+        // *whole* containing array: every slot must uniformly satisfy
+        // the pre-condition. Truncate the path at the first dynamic
+        // index and check the array's state at that prefix.
+        let (root_widen, path_widen) = extract_path_with_deref(place);
+        if let Some(dyn_pos) = path_widen
+            .iter()
+            .position(|s| matches!(s, PathStep::Index(None)))
+        {
+            // Deref inside the prefix means this is a reborrow —
+            // already handled above by deref_inner. Shouldn't reach
+            // here for that shape, but guard anyway.
+            if path_widen[..dyn_pos]
+                .iter()
+                .any(|s| matches!(s, PathStep::Deref))
+            {
+                return;
+            }
+            let Some(root_ty) = self.locals.get(&root_widen).cloned() else {
+                return;
+            };
+            let Some(root_state) = state.locals.get(&root_widen) else {
+                return;
+            };
+            let leaf = read_at(root_state, &root_ty, &path_widen[..dyn_pos], self.env);
+            let ok = if requires_init {
+                matches!(leaf, InitState::Init)
+            } else {
+                matches!(leaf, InitState::NeverInit | InitState::Moved)
+            };
+            if ok {
+                return;
+            }
+            let expected = if requires_init {
+                "initialized"
+            } else {
+                "uninitialized"
+            };
+            let actual = describe_state(&leaf);
+            push_error!(
+                d, span, func, block,
+                "cannot create {} of '{}': dynamic index requires the containing array to be uniformly {}, but it is {}",
+                kind_str, format_place(place), expected, actual
+            );
+            return;
+        }
+
         let Some((root, path)) = extract_path(place) else {
             return;
         };

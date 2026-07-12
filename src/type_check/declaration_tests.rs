@@ -100,3 +100,66 @@ fn out_never_signals_divergence_ok() {
         ",
     );
 }
+
+#[test]
+fn never_param_body_is_unreachable_ok() {
+    // A function that takes a `never` param is uninhabitedly-callable.
+    // Its body can be `unreachable`. `x` at param entry is Init (per
+    // `initial_state`), but as an uninhabited value nothing observes it.
+    assert_ok(
+        "
+        fn f(x: never) {
+          entry:
+            unreachable
+        }
+        ",
+    );
+}
+
+#[test]
+fn enum_of_only_never_variants_ok() {
+    // All variants have `never` payloads → the enum is uninhabited
+    // by value but the declaration is legal. Compositional class
+    // check passes because never is vacuously Copy Drop Move.
+    assert_ok(
+        "
+        enum Copy Drop Uninhabited { A: never B: never }
+        ",
+    );
+}
+
+#[test]
+fn copy_struct_with_never_field_full_roundtrip_ok() {
+    // Copy Drop Move struct containing a never field. Since the
+    // struct is uninhabited by value, we can only exercise the
+    // class check compositionally — copy/move via a param that
+    // will never be invoked at runtime, body reaches unreachable.
+    assert_ok(
+        "
+        struct Copy Drop Move Absurd { x: i64 y: never }
+        extern fn take(a: Absurd);
+        fn f(a: Absurd) {
+          b: Absurd;
+          entry:
+            b = copy a;
+            unreachable
+        }
+        ",
+    );
+}
+
+#[test]
+fn local_of_all_never_enum_is_never_init_ok() {
+    // Local of an all-never enum stays NeverInit — no way to construct
+    // one. At return, NeverInit is not a leak.
+    assert_ok(
+        "
+        enum Copy Drop Uninhabited { A: never B: never }
+        fn f() {
+          e: Uninhabited;
+          entry:
+            return
+        }
+        ",
+    );
+}

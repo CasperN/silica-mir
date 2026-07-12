@@ -499,14 +499,32 @@ for production correctness).
 - HLL
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
-- **Enum-payload loan transfer.** `capture_carried_refs` in `init_state`
-  only transfers loans and ref-states for `Use(Move(src))` rvalues.
-  `Wrap::W(move b)` (an `EnumConstr`) drops b's loans instead of
-  re-keying them under `w as W`. Unsound when the payload holds a
-  bound reference. Fix: extend the transfer to `EnumConstr` rvalues,
-  rekeying src.* → (dst as V).* for the constructed variant.
-- Elaborate `drop p` if `p` is initialized and begin assigned to or sent to an
-  `&out` function.
+- **Loan re-key coherence** — two parallel gaps in different modules,
+  same shape. Both silently drop loans on paths where they should
+  transfer.
+  1. **Enum-payload loan transfer.** `capture_carried_refs` in
+     `init_state` only transfers loans and ref-states for
+     `Use(Move(src))` rvalues. `Wrap::W(move b)` (an `EnumConstr`)
+     drops b's loans instead of re-keying them under `w as W`.
+     Unsound when the payload holds a bound reference. Fix: extend
+     the transfer to `EnumConstr` rvalues, rekeying src.* → (dst as
+     V).* for the constructed variant.
+     Pinned by `enum_wrap_of_borrower_currently_drops_loan_gap` in
+     `lifetime::loan_tests`.
+  2. **Struct-descendant loan re-key in the lifetime module.**
+     `lifetime::ref_move_source` only handles the case where the
+     moved place *is* the borrower. Moving a struct whose field holds
+     a borrower (e.g. `b = move a` where `a.p: &mut i64`) drops the
+     field's loan. `init_state`'s `capture_carried_refs` walks
+     descendants correctly, so ref-state stays coherent; loans
+     diverge. Fix: extend `ref_move_source` (or replace it) with the
+     same descendant walk `init_state` uses. Should be done together
+     with (1) to keep the passes aligned.
+     Pinned by `struct_move_currently_drops_field_loan_gap`.
+- Elaborate `drop p` if `p` is initialized and being assigned to or
+  sent to an `&out` function. Blocked on custom `Drop::drop`
+  landing — today drop is bitwise-forget, so this doesn't matter for
+  correctness.
 - No-alias raw pointer variant (`*noalias T`) — currently we only have
   the aliasing `*T`. Would enable `noalias` attributes on parameters
   where the checker can prove exclusivity.

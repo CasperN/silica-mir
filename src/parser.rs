@@ -338,6 +338,12 @@ impl Parser {
                     return Ok(Place::Deref(Box::new(self.map_place(inner)?)));
                 }
 
+                // Parenthesized place: `(<place>)` — transparently unwraps.
+                if self.get_text(first_child) == "(" {
+                    let inner = node.child(1).ok_or("Paren-place missing inner")?;
+                    return self.map_place(inner);
+                }
+
                 let inner_place = self.map_place(first_child)?;
                 if let Some(variant_node) = node.child_by_field_name("variant") {
                     let variant = self.get_text(variant_node).to_string();
@@ -1038,5 +1044,40 @@ mod tests {
         };
         assert_eq!(ty, FloatTy::F32);
         assert_eq!(f32::from_bits(bits as u32), 2.5);
+    }
+
+    // ---------- Marker parsing ----------
+
+    #[test]
+    fn duplicate_marker_rejected() {
+        // `map_markers` returns an error on duplicates.
+        let src = "struct Copy Copy P { x: i64 }";
+        let err = Parser::new(src.to_string())
+            .parse()
+            .expect_err("expected duplicate-marker error");
+        assert!(
+            err.contains("Duplicate marker"),
+            "expected 'Duplicate marker' in error, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn marker_order_is_commutative() {
+        // Any permutation of {Copy, Drop, Move} yields the same set
+        // of flags — canonicalization is not by textual order.
+        fn markers_of(src: &str) -> Markers {
+            let program = Parser::new(src.to_string()).parse().unwrap();
+            let Declaration::Struct(s) = &program.declarations[0] else {
+                panic!("expected struct");
+            };
+            s.markers
+        }
+        let a = markers_of("struct Copy Drop Move P { x: i64 }");
+        let b = markers_of("struct Move Drop Copy P { x: i64 }");
+        let c = markers_of("struct Drop Copy Move P { x: i64 }");
+        assert_eq!(a, b);
+        assert_eq!(b, c);
+        assert!(a.copy && a.drop && a.mov);
     }
 }

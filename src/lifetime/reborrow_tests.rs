@@ -224,6 +224,55 @@ fn nll_inserts_child_unborrow_before_parent() {
 
 // ---------- Reborrow across loop iterations ----------
 
+// ---------- Reborrow through an enum-variant downcast ----------
+
+#[test]
+fn bare_downcast_of_deref_still_parses_as_deref_downcast() {
+    // Precedence: `as` (prec 2) binds tighter than `*` (prec 1), so
+    // the bare form `*e as V` groups as `Deref(Downcast(e, V))` and
+    // fails because `e: &mut E` isn't an enum. Use parens to force
+    // the other grouping (see next test).
+    let (errs, _) = run(
+        "
+        enum Move E { V: i64 }
+        extern fn sink(r: &mut i64);
+        fn f(e: &mut E) {
+          r: &mut i64;
+          entry:
+            switchEnum(*e) [V: v_arm]
+          v_arm:
+            r = &mut *e as V;
+            call sink(move r);
+            return
+        }
+        ",
+    );
+    assert_errors_contain(&errs, &["Cannot downcast non-enum type"]);
+}
+
+#[test]
+fn parenthesized_deref_then_downcast_reborrow_ok() {
+    // With the paren-place production, `(*e) as V` groups as
+    // `Downcast(Deref(e), V)` — reborrowing a variant payload behind
+    // a mutable reference. Combines Deref + Downcast in a single
+    // Ref rvalue.
+    assert_no_diagnostics(
+        "
+        enum Move E { V: i64 }
+        extern fn sink(r: &mut i64);
+        fn f(e: &mut E) {
+          r: &mut i64;
+          entry:
+            switchEnum(*e) [V: v_arm]
+          v_arm:
+            r = &mut (*e) as V;
+            call sink(move r);
+            return
+        }
+        ",
+    );
+}
+
 #[test]
 fn reborrow_in_loop_body_ok() {
     // Reborrow `s = &mut *r` inside a loop body. Each iteration

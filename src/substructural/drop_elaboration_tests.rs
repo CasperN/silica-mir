@@ -929,3 +929,49 @@ fn strict_check_still_fails_for_linear_leak() {
         d2.errors
     );
 }
+
+// ---------- Pre-overwrite drop (punch-list gap) ----------
+//
+// README punch list: "Elaborate `drop p` if `p` is initialized and
+// being assigned to or sent to an `&out` function." Today, drop is a
+// bitwise forget so overwriting a Drop-marked type silently succeeds
+// with no destructor call. Once custom `Drop::drop` exists, the
+// elaborator will need to insert `drop x` before the reassignment.
+// This test pins today's behavior: no `drop` in the elaborated output
+// between the two assigns.
+
+#[test]
+fn overwrite_of_drop_type_is_silently_bitwise_forgotten_today() {
+    // Drop-marked struct — reassignment allowed without any inserted
+    // drop. When custom destructors land, the elaborated form will
+    // grow a `drop x;` between the two assigns.
+    assert_elaborated_eq(
+        "
+        struct Copy Drop P { a: i64 }
+        extern fn use_p(p: P);
+        fn f(p1: P, p2: P) {
+          x: P;
+          entry:
+            x = move p1;
+            x = move p2;
+            call use_p(move x);
+            return
+        }
+        ",
+        "\
+struct Copy Drop P {
+  a: i64
+}
+
+extern fn use_p(p: P);
+
+fn f(p1: P, p2: P) {
+  x: P;
+  entry:
+    x = move p1;
+    x = move p2;
+    call use_p(move x);
+    return
+}",
+    );
+}

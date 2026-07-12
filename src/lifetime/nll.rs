@@ -383,15 +383,33 @@ fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
                 let Some(s) = as_owned_path(target) else {
                     continue;
                 };
-                if let Place::Deref(inner) = place {
-                    if let Some(r) = as_owned_path(inner) {
-                        map.insert(s, r);
-                    }
+                // Walk through `Downcast`/`Field`/`Index` projections
+                // to find an inner `Deref`. `r = &mut *p` and
+                // `r = &mut (*p) as V` both reborrow p.
+                if let Some(parent) = deref_ancestor(place) {
+                    map.insert(s, parent);
                 }
             }
         }
     }
     map
+}
+
+/// If `place` contains a `Deref(inner)` step somewhere along its path
+/// (past only `Field`/`Downcast`/`Index` projections), and `inner` is
+/// an owned path, return `inner` — the borrower whose pointee the
+/// original place refers to. Returns `None` otherwise.
+fn deref_ancestor(place: &Place) -> Option<Place> {
+    let mut cur = place;
+    loop {
+        match cur {
+            Place::Deref(inner) => return as_owned_path(inner),
+            Place::Field(inner, _)
+            | Place::Downcast(inner, _)
+            | Place::Index(inner, _) => cur = inner,
+            Place::Var(_) => return None,
+        }
+    }
 }
 
 /// Enumerate every ref-typed owned path in `func`. A path is included

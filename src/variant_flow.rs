@@ -1085,4 +1085,61 @@ mod tests {
             errs,
         );
     }
+
+    // ---------- Empty enum ----------
+
+    #[test]
+    fn empty_enum_switch_with_no_arms_rejected() {
+        // Design decision: even for an uninhabited enum, `switchEnum
+        // (v) []` is rejected — a zero-arm switch has no successors,
+        // making the block a dead-end without a proper terminator.
+        // Callers should use `unreachable` on the Void-typed
+        // block instead. Pin the "at least one arm" error.
+        let (errs, _) = run(
+            "
+            enum Copy Drop Void {}
+            fn f(v: Void) {
+              entry:
+                switchEnum(v) []
+            }
+            ",
+        );
+        assert_errors_contain(&errs, &["at least one arm"]);
+    }
+
+    #[test]
+    fn empty_enum_via_unreachable_terminator_ok() {
+        // The right way to type-check an uninhabited enum's block:
+        // if the value can never exist, mark the block unreachable.
+        assert_no_diagnostics(
+            "
+            enum Copy Drop Void {}
+            fn f(v: Void) {
+              entry:
+                unreachable
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn empty_enum_switch_with_spurious_arm_errors() {
+        // Adding an arm for a nonexistent variant should fail the
+        // \"variant not part of enum\" check.
+        let (errs, _) = run(
+            "
+            enum Copy Drop Void {}
+            fn f(v: Void) {
+              entry:
+                switchEnum(v) [Nope: bad]
+              bad: return
+            }
+            ",
+        );
+        assert!(
+            errs.iter().any(|e| e.contains("is not part of enum")),
+            "expected 'not part of enum' error, got: {:?}",
+            errs
+        );
+    }
 }

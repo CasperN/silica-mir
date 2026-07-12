@@ -262,6 +262,148 @@ fn dynamic_index_loan_conflicts_with_any_slot_access() {
     );
 }
 
+// ---------- Dynamic-index &out ----------
+
+#[test]
+fn out_borrow_via_dynamic_index_of_uninit_array_ok() {
+    // Sound: array is fully NeverInit → every slot is Uninit, so an
+    // `&out` on any slot meets its precondition. The precondition
+    // check now widens dynamic-index paths to the containing array
+    // and accepts this uniformly-Uninit case.
+    assert_no_diagnostics(
+        "
+        extern fn set_i64(r: &out i64, v: i64);
+        fn f(i: i64) {
+          a: [i64; 3];
+          r: &out i64;
+          entry:
+            r = &out a[copy i];
+            call set_i64(move r, 1i64);
+            return
+        }
+        ",
+    );
+}
+
+#[test]
+fn out_borrow_via_dynamic_index_of_init_array_errors() {
+    // Unsound if silently accepted: `a` is fully Init at the borrow
+    // point, so `&out a[dyn]` promises the pointee is Uninit but it
+    // isn't — writing through the &out would silently forget the
+    // old slot value. The dynamic-index widening now rejects.
+    assert_err(
+        "
+        extern fn set_i64(r: &out i64, v: i64);
+        fn f(i: i64) {
+          a: [i64; 3];
+          r: &out i64;
+          entry:
+            a = [1i64, 2i64, 3i64];
+            r = &out a[copy i];
+            call set_i64(move r, 1i64);
+            return
+        }
+        ",
+        "dynamic index requires the containing array to be uniformly uninitialized",
+    );
+}
+
+#[test]
+fn mut_borrow_via_dynamic_index_of_uninit_array_errors() {
+    // Dual case: `&mut a[dyn]` requires uniform Init; on a NeverInit
+    // array it now fails cleanly instead of being silently accepted.
+    assert_err(
+        "
+        extern fn use_mut(r: &mut i64);
+        fn f(i: i64) {
+          a: [i64; 3];
+          r: &mut i64;
+          entry:
+            r = &mut a[copy i];
+            call use_mut(move r);
+            return
+        }
+        ",
+        "dynamic index requires the containing array to be uniformly initialized",
+    );
+}
+
+// ---------- Array of exclusive refs ----------
+
+#[test]
+fn array_of_mut_ref_declaration_and_init() {
+    // `[&mut i64; N]` composes at the type level. Init via array literal
+    // where each element is `&mut x_i`. Since `&mut T` is not Copy but
+    // is Move, and ArrayLit takes operands, we borrow-then-move.
+    // Boundary: does the parser/type-checker accept the array literal
+    // with borrow rvalues masquerading as operands? Expected: the
+    // literal itself is operand-only, so this may not parse or may
+    // need per-slot init. Pin the current behavior.
+    let (errs, _) = run(
+        "
+        extern fn take(a: [&mut i64; 2]);
+        fn f(x: i64, y: i64) {
+          rx: &mut i64;
+          ry: &mut i64;
+          a: [&mut i64; 2];
+          entry:
+            rx = &mut x;
+            ry = &mut y;
+            a = [move rx, move ry];
+            call take(move a);
+            return
+        }
+        ",
+    );
+    // Either it works (great) or the diagnostics identify why.
+    // Just log what happens by asserting an empty error set is fine
+    // OR the errors mention something about the type. Actual check:
+    // this must not panic. If errors, the test still succeeds — we
+    // just want to document the current state.
+    if !errs.is_empty() {
+        eprintln!("array_of_mut_ref current diagnostics: {:?}", errs);
+    }
+}
+
+// ---------- Zero-length array ----------
+
+#[test]
+fn zero_length_array_index_out_of_bounds_errors() {
+    // `[T; 0]` has no slots; const-index access is out of bounds.
+    // `type_check::infer_place_type` catches this at check time.
+    assert_err(
+        "
+        fn f() {
+          a: [i64; 0];
+          r: &mut i64;
+          entry:
+            r = &mut a[0i64];
+            return
+        }
+        ",
+        "out of bounds",
+    );
+}
+
+#[test]
+fn const_index_past_end_errors() {
+    // `[T; N]` with a const index `k >= N` should also error, not
+    // just k=0 into [_; 0].
+    assert_err(
+        "
+        fn f() {
+          a: [i64; 3];
+          r: &mut i64;
+          entry:
+            a = [1i64, 2i64, 3i64];
+            r = &mut a[3i64];
+            return
+        }
+        ",
+        "out of bounds",
+    );
+}
+
 #[test]
 fn nested_array_element_read_ok() {
     // `[[T; M]; N]` — read an element of an inner array via two
