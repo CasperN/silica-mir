@@ -371,14 +371,19 @@ mod tests {
     /// strip them before compare).
     #[track_caller]
     fn assert_roundtrip(src: &str) {
-        let original = Parser::new(src.to_string())
-            .parse()
-            .unwrap_or_else(|e| panic!("parse error on original: {}\n--- source ---\n{}", e, src));
-        let printed = pretty_print(&original);
-        let reparsed = Parser::new(printed.clone()).parse().unwrap_or_else(|e| {
+        let original = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
             panic!(
-                "parse error on pretty-printed output: {}\n--- pretty ---\n{}",
-                e, printed
+                "parse error on original:\n{}\n--- source ---\n{}",
+                d.errors_str().join("\n"),
+                src
+            )
+        });
+        let printed = pretty_print(&original);
+        let reparsed = Parser::new(printed.clone()).parse().unwrap_or_else(|d| {
+            panic!(
+                "parse error on pretty-printed output:\n{}\n--- pretty ---\n{}",
+                d.errors_str().join("\n"),
+                printed
             )
         });
         assert_eq!(

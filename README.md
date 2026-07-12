@@ -526,7 +526,9 @@ in LLVM.
   `pretty_print::write_type`.
 - Errors give `at L:C:` but no source snippet with a caret.
   Rustc-style rendering (source line + caret span + message)
-  would help enormously.
+  would help enormously. Prerequisite: widen `Span` from
+  `{ line, col }` to byte offsets so the renderer can slice
+  the source line and place the caret precisely.
 - No tags. Prefixing tests with `[init_state]` / `[lifetime]` / `[correct]`
   etc. would speed grep-based navigation.
 - Golden IR snapshot failures print two blobs; a line-by-line
@@ -536,9 +538,12 @@ in LLVM.
   save first-time users a lot of time.
 
 # Longer term
-- Replace tree-sitter MIR parser with a hand-rolled recursive descent parser,
-  sharing lexer/span infrastructure with the HLL parser. Eliminates the C build
-  dependency and enables a unified diagnostic layer.
+- Split `grammar.js` into `common/` (types, identifiers, literals,
+  struct/enum decls, markers) plus `hll/` and `mir/` grammars that
+  consume the common rules via JS `require`. Retire the hand-rolled
+  HLL parser once the tree-sitter HLL grammar reaches parity.
+- Round-trip corpus test (`pretty_print → parse → pretty_print`)
+  as an anti-drift check between grammar and codebase.
 - Lambdas
 - Coroutines
 - MIR polymorphic types

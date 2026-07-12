@@ -1,5 +1,41 @@
 use crate::ast::*;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use tree_sitter::{Node, Parser as TSParser};
+
+/// Machine-readable error codes emitted by the MIR parser.
+///
+/// Emitted from two places:
+/// - The tree-sitter ERROR/MISSING walker (surface syntax errors).
+/// - The CST-to-AST conversion layer (invariant failures + literal
+///   decode errors that tree-sitter accepts token-wise but our
+///   downstream code rejects).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParserCode {
+    /// A tree-sitter ERROR node — a token region the parser couldn't
+    /// fit into any grammar rule. Emitted once per error region.
+    UnexpectedToken,
+    /// A tree-sitter MISSING node — a token the parser expected but
+    /// didn't see, synthesized into the CST for error recovery. Kept
+    /// distinct from `UnexpectedToken` because MISSING errors often
+    /// have an obvious fix (insert the token) while `UnexpectedToken`
+    /// needs reader judgment.
+    MissingToken,
+    /// A literal token that tree-sitter accepted as syntactically
+    /// well-formed but the value decoder rejected (e.g., an unknown
+    /// `\q` byte-string escape, a length-3 hex escape).
+    InvalidLiteral,
+    /// The CST-to-AST walker encountered a node shape it can't
+    /// handle. In principle unreachable given the grammar; kept as
+    /// a reportable diagnostic rather than a panic so grammar drift
+    /// surfaces as an error rather than crashing the compiler.
+    MalformedCst,
+}
+
+impl From<ParserCode> for DiagCode {
+    fn from(code: ParserCode) -> DiagCode {
+        DiagCode::Parser(code)
+    }
+}
 
 extern "C" {
     fn tree_sitter_silica_mir() -> *const std::ffi::c_void;
@@ -192,29 +228,139 @@ impl Parser {
         Self { source }
     }
 
-    pub fn parse(&self) -> Result<Program, String> {
-        let mut parser = TSParser::new();
-        parser
-            .set_language(&language())
-            .map_err(|e| e.to_string())?;
-
-        let tree = parser
-            .parse(&self.source, None)
-            .ok_or("Failed to parse source code")?;
-        let root = tree.root_node();
-
-        if root.has_error() {
-            return Err("Syntax error in source code".to_string());
+    /// Parse `self.source` into a `Program`.
+    ///
+    /// On success returns `Ok(program)`. On failure returns
+    /// `Err(diagnostics)` with one diagnostic per problem — tree-sitter
+    /// ERROR regions become `UnexpectedToken` diagnostics and MISSING
+    /// nodes become `MissingToken` diagnostics (multi-error output);
+    /// CST-to-AST failures become `MalformedCst` or `InvalidLiteral`
+    /// diagnostics with the span of the offending node.
+    pub fn parse(&self) -> Result<Program, Diagnostics> {
+        let mut ts_parser = TSParser::new();
+        if let Err(e) = ts_parser.set_language(&language()) {
+            let mut d = Diagnostics::default();
+            d.push_error(Diagnostic::new(
+                ParserCode::MalformedCst,
+                Span::default(),
+                format!("failed to load tree-sitter grammar: {}", e),
+            ));
+            return Err(d);
         }
 
-        self.map_program(root)
+        let Some(tree) = ts_parser.parse(&self.source, None) else {
+            let mut d = Diagnostics::default();
+            d.push_error(Diagnostic::new(
+                ParserCode::MalformedCst,
+                Span::default(),
+                "tree-sitter failed to produce a parse tree",
+            ));
+            return Err(d);
+        };
+        let root = tree.root_node();
+
+        // Multi-error: emit every ERROR/MISSING region as its own
+        // diagnostic. Only fall through to CST-to-AST conversion if
+        // the tree is syntactically clean — a partial CST would
+        // otherwise produce spurious downstream errors.
+        if root.has_error() {
+            let mut diags = Diagnostics::default();
+            self.walk_syntax_errors(root, None, None, &mut diags);
+            return Err(diags);
+        }
+
+        self.map_program(root).map_err(|d| {
+            let mut diags = Diagnostics::default();
+            diags.push_error(d);
+            diags
+        })
     }
 
     fn get_text(&self, node: Node) -> &str {
         &self.source[node.byte_range()]
     }
 
-    fn map_program(&self, node: Node) -> Result<Program, String> {
+    /// Build a `Diagnostic` at `node`'s start position.
+    fn diag(
+        &self,
+        node: Node,
+        code: ParserCode,
+        message: impl Into<String>,
+    ) -> Diagnostic {
+        Diagnostic::new(code, span_of(node), message)
+    }
+
+    /// Wrap a `Result<T, String>` produced by a literal decoder into a
+    /// `Diagnostic` with `InvalidLiteral` code and the source span of
+    /// the literal token.
+    fn lit_diag<T>(&self, res: Result<T, String>, node: Node) -> Result<T, Diagnostic> {
+        res.map_err(|s| self.diag(node, ParserCode::InvalidLiteral, s))
+    }
+
+    /// Walk the CST emitting one diagnostic per tree-sitter ERROR or
+    /// MISSING node. Tracks function/block context so errors report
+    /// which function/block they're in when the surrounding structure
+    /// is intact enough for the walker to identify.
+    fn walk_syntax_errors<'a>(
+        &'a self,
+        node: Node<'a>,
+        ctx_fn: Option<&'a str>,
+        ctx_block: Option<&'a str>,
+        diags: &mut Diagnostics,
+    ) {
+        // Refine context on entry: descending into a function_decl or
+        // basic_block pins the appropriate label. Uses field-name
+        // lookup so a partially-parsed decl (missing name/label) just
+        // leaves the context unset.
+        let (ctx_fn, ctx_block) = match node.kind() {
+            "function_decl" => (
+                node.child_by_field_name("name").map(|n| self.get_text(n)),
+                None,
+            ),
+            "basic_block" => (
+                ctx_fn,
+                node.child_by_field_name("label").map(|n| self.get_text(n)),
+            ),
+            _ => (ctx_fn, ctx_block),
+        };
+
+        if node.is_missing() {
+            let mut d = Diagnostic::new(
+                ParserCode::MissingToken,
+                span_of(node),
+                format!("missing '{}'", node.kind()),
+            );
+            if let Some(f) = ctx_fn {
+                d = d.in_function(f);
+            }
+            if let Some(b) = ctx_block {
+                d = d.in_block(b);
+            }
+            diags.push_error(d);
+        } else if node.is_error() {
+            let text = self.get_text(node);
+            let msg = if text.is_empty() {
+                "syntax error".to_string()
+            } else {
+                format!("unexpected: {}", text)
+            };
+            let mut d = Diagnostic::new(ParserCode::UnexpectedToken, span_of(node), msg);
+            if let Some(f) = ctx_fn {
+                d = d.in_function(f);
+            }
+            if let Some(b) = ctx_block {
+                d = d.in_block(b);
+            }
+            diags.push_error(d);
+        }
+
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_syntax_errors(child, ctx_fn, ctx_block, diags);
+        }
+    }
+
+    fn map_program(&self, node: Node) -> Result<Program, Diagnostic> {
         let mut declarations = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -225,17 +371,23 @@ impl Parser {
         Ok(Program { declarations })
     }
 
-    fn map_declaration(&self, node: Node) -> Result<Declaration, String> {
-        let child = node.child(0).ok_or("Empty declaration")?;
+    fn map_declaration(&self, node: Node) -> Result<Declaration, Diagnostic> {
+        let child = node
+            .child(0)
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "empty declaration"))?;
         match child.kind() {
             "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child)?)),
             "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child)?)),
             "function_decl" => Ok(Declaration::Fn(self.map_function_decl(child)?)),
-            _ => Err(format!("Unknown declaration kind: {}", child.kind())),
+            _ => Err(self.diag(
+                child,
+                ParserCode::MalformedCst,
+                format!("unknown declaration kind: {}", child.kind()),
+            )),
         }
     }
 
-    fn map_type(&self, node: Node) -> Result<Type, String> {
+    fn map_type(&self, node: Node) -> Result<Type, Diagnostic> {
         // Scalar type keywords are tokenized as anonymous tree-sitter
         // nodes whose `kind()` equals the keyword itself.
         if let Some(ty) = scalar_kind_to_type(node.kind()) {
@@ -254,7 +406,9 @@ impl Parser {
                 }
             }
             "type" => {
-                let first_child = node.child(0).ok_or("Type node has no children")?;
+                let first_child = node.child(0).ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "type node has no children")
+                })?;
                 if let Some(ty) = scalar_kind_to_type(first_child.kind()) {
                     return Ok(ty);
                 }
@@ -277,9 +431,13 @@ impl Parser {
                     _ => None,
                 };
                 if let Some(kind) = ref_kind {
-                    let inner = node
-                        .child(1)
-                        .ok_or_else(|| format!("Missing inner type for {}", text))?;
+                    let inner = node.child(1).ok_or_else(|| {
+                        self.diag(
+                            node,
+                            ParserCode::MalformedCst,
+                            format!("missing inner type for {}", text),
+                        )
+                    })?;
                     return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
                 }
 
@@ -287,27 +445,35 @@ impl Parser {
                     // Raw pointer type `*T`. Distinct from the deref
                     // place operator `*p` — types occupy a different
                     // grammar position.
-                    let inner = node
-                        .child(1)
-                        .ok_or("Missing inner type for raw pointer")?;
+                    let inner = node.child(1).ok_or_else(|| {
+                        self.diag(
+                            node,
+                            ParserCode::MalformedCst,
+                            "missing inner type for raw pointer",
+                        )
+                    })?;
                     return Ok(Type::RawPtr(Box::new(self.map_type(inner)?)));
                 }
 
                 if text == "[" {
                     // Fixed-size array `[T; N]`.
-                    let elem_node = node
-                        .child_by_field_name("element")
-                        .ok_or("Array type missing element")?;
-                    let len_node = node
-                        .child_by_field_name("length")
-                        .ok_or("Array type missing length")?;
+                    let elem_node = node.child_by_field_name("element").ok_or_else(|| {
+                        self.diag(node, ParserCode::MalformedCst, "array type missing element")
+                    })?;
+                    let len_node = node.child_by_field_name("length").ok_or_else(|| {
+                        self.diag(node, ParserCode::MalformedCst, "array type missing length")
+                    })?;
                     let elem = self.map_type(elem_node)?;
                     let ConstVal::Int { bits, .. } =
-                        parse_int_literal(self.get_text(len_node))?
+                        self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?
                     else {
-                        return Err(format!(
-                            "Array length must be an integer literal, got {}",
-                            self.get_text(len_node)
+                        return Err(self.diag(
+                            len_node,
+                            ParserCode::InvalidLiteral,
+                            format!(
+                                "array length must be an integer literal, got {}",
+                                self.get_text(len_node)
+                            ),
                         ));
                     };
                     return Ok(Type::Array(Box::new(elem), bits));
@@ -324,18 +490,28 @@ impl Parser {
                         }
                         Ok(Type::Fn(params))
                     }
-                    _ => Err(format!("Unexpected token in type: {}", text)),
+                    _ => Err(self.diag(
+                        first_child,
+                        ParserCode::MalformedCst,
+                        format!("unexpected token in type: {}", text),
+                    )),
                 }
             }
-            _ => Err(format!("Unexpected node kind in type: {}", node.kind())),
+            _ => Err(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                format!("unexpected node kind in type: {}", node.kind()),
+            )),
         }
     }
 
-    fn map_place(&self, node: Node) -> Result<Place, String> {
+    fn map_place(&self, node: Node) -> Result<Place, Diagnostic> {
         match node.kind() {
             "identifier" => Ok(Place::Var(self.get_text(node).to_string())),
             "place" => {
-                let first_child = node.child(0).ok_or("Place node has no children")?;
+                let first_child = node.child(0).ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "place node has no children")
+                })?;
                 if first_child.kind() == "identifier" && node.child_count() == 1 {
                     return Ok(Place::Var(self.get_text(first_child).to_string()));
                 }
@@ -345,7 +521,13 @@ impl Parser {
                     let last_child = node.child((n - 1) as u32).unwrap();
                     let second_to_last = node.child((n - 2) as u32).unwrap();
                     if self.get_text(last_child) == "*" && self.get_text(second_to_last) == "." {
-                        let inner = node.child(0).ok_or("Deref missing inner place")?;
+                        let inner = node.child(0).ok_or_else(|| {
+                            self.diag(
+                                node,
+                                ParserCode::MalformedCst,
+                                "deref missing inner place",
+                            )
+                        })?;
                         return Ok(Place::Deref(Box::new(self.map_place(inner)?)));
                     }
                 }
@@ -361,44 +543,61 @@ impl Parser {
                     let index = self.map_operand(index_node)?;
                     Ok(Place::Index(Box::new(inner_place), Box::new(index)))
                 } else {
-                    Err(format!(
-                        "Unrecognized place suffix: {}",
-                        self.get_text(node)
+                    Err(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        format!("unrecognized place suffix: {}", self.get_text(node)),
                     ))
                 }
             }
-            _ => Err(format!("Unexpected node kind in place: {}", node.kind())),
+            _ => Err(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                format!("unexpected node kind in place: {}", node.kind()),
+            )),
         }
     }
 
-    fn map_operand(&self, node: Node) -> Result<Operand, String> {
+    fn map_operand(&self, node: Node) -> Result<Operand, Diagnostic> {
         if node.kind() == "operand" {
-            let first_child = node.child(0).ok_or("Operand missing children")?;
+            let first_child = node.child(0).ok_or_else(|| {
+                self.diag(node, ParserCode::MalformedCst, "operand missing children")
+            })?;
             let text = self.get_text(first_child);
             match text {
                 "copy" => {
-                    let place_node = node.child(1).ok_or("Copy missing place")?;
+                    let place_node = node.child(1).ok_or_else(|| {
+                        self.diag(node, ParserCode::MalformedCst, "copy missing place")
+                    })?;
                     Ok(Operand::Copy(self.map_place(place_node)?))
                 }
                 "move" => {
-                    let place_node = node.child(1).ok_or("Move missing place")?;
+                    let place_node = node.child(1).ok_or_else(|| {
+                        self.diag(node, ParserCode::MalformedCst, "move missing place")
+                    })?;
                     Ok(Operand::Move(self.map_place(place_node)?))
                 }
                 _ => Ok(Operand::Const(self.map_const(first_child)?)),
             }
         } else {
-            Err(format!("Expected operand, found: {}", node.kind()))
+            Err(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                format!("expected operand, found: {}", node.kind()),
+            ))
         }
     }
 
-    fn map_const(&self, node: Node) -> Result<ConstVal, String> {
+    fn map_const(&self, node: Node) -> Result<ConstVal, Diagnostic> {
         match node.kind() {
-            "int_lit" => parse_int_literal(self.get_text(node)),
-            "float_lit" => parse_float_literal(self.get_text(node)),
-            "byte_str_lit" => parse_byte_str_literal(self.get_text(node)),
-            "byte_char_lit" => parse_byte_char_literal(self.get_text(node)),
+            "int_lit" => self.lit_diag(parse_int_literal(self.get_text(node)), node),
+            "float_lit" => self.lit_diag(parse_float_literal(self.get_text(node)), node),
+            "byte_str_lit" => self.lit_diag(parse_byte_str_literal(self.get_text(node)), node),
+            "byte_char_lit" => self.lit_diag(parse_byte_char_literal(self.get_text(node)), node),
             "const" => {
-                let child = node.child(0).ok_or("Const node is empty")?;
+                let child = node.child(0).ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "const node is empty")
+                })?;
                 self.map_const(child)
             }
             _ => {
@@ -413,41 +612,39 @@ impl Parser {
         }
     }
 
-    fn map_rvalue(&self, node: Node) -> Result<RValue, String> {
-        let child = node.child(0).ok_or("RValue node is empty")?;
+    fn map_rvalue(&self, node: Node) -> Result<RValue, Diagnostic> {
+        let child = node.child(0).ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "rvalue node is empty")
+        })?;
         match child.kind() {
             "operand" => Ok(RValue::Use(self.map_operand(child)?)),
             _ => {
                 let text = self.get_text(child);
+                let ref_kind = match text {
+                    "&" => Some(RefKind::Shared),
+                    "&mut" => Some(RefKind::Mut),
+                    "&out" => Some(RefKind::Out),
+                    "&drop" => Some(RefKind::Drop),
+                    "&uninit" => Some(RefKind::Uninit),
+                    _ => None,
+                };
+                if let Some(kind) = ref_kind {
+                    let place_node = node.child(1).ok_or_else(|| {
+                        self.diag(node, ParserCode::MalformedCst, "ref missing place")
+                    })?;
+                    return Ok(RValue::Ref(kind, self.map_place(place_node)?));
+                }
                 match text {
-                    "&" => {
-                        let place_node = node.child(1).ok_or("Ref missing place")?;
-                        Ok(RValue::Ref(RefKind::Shared, self.map_place(place_node)?))
-                    }
-                    "&mut" => {
-                        let place_node = node.child(1).ok_or("Ref missing place")?;
-                        Ok(RValue::Ref(RefKind::Mut, self.map_place(place_node)?))
-                    }
-                    "&out" => {
-                        let place_node = node.child(1).ok_or("Ref missing place")?;
-                        Ok(RValue::Ref(RefKind::Out, self.map_place(place_node)?))
-                    }
-                    "&drop" => {
-                        let place_node = node.child(1).ok_or("Ref missing place")?;
-                        Ok(RValue::Ref(RefKind::Drop, self.map_place(place_node)?))
-                    }
-                    "&uninit" => {
-                        let place_node = node.child(1).ok_or("Ref missing place")?;
-                        Ok(RValue::Ref(RefKind::Uninit, self.map_place(place_node)?))
-                    }
                     "&raw" => {
-                        let place_node = node.child(1).ok_or("&raw missing place")?;
+                        let place_node = node.child(1).ok_or_else(|| {
+                            self.diag(node, ParserCode::MalformedCst, "&raw missing place")
+                        })?;
                         Ok(RValue::RawRef(self.map_place(place_node)?))
                     }
                     "[" => {
                         // Array literal: [op0, op1, ..., opN-1].
                         let mut cursor = node.walk();
-                        let ops: Result<Vec<Operand>, String> = node
+                        let ops: Result<Vec<Operand>, Diagnostic> = node
                             .children(&mut cursor)
                             .filter(|c| c.kind() == "operand")
                             .map(|c| self.map_operand(c))
@@ -455,19 +652,35 @@ impl Parser {
                         Ok(RValue::ArrayLit(ops?))
                     }
                     _ => {
-                        let enum_name_node = node
-                            .child_by_field_name("enum_name")
-                            .ok_or("Enum construction missing enum name")?;
+                        let enum_name_node =
+                            node.child_by_field_name("enum_name").ok_or_else(|| {
+                                self.diag(
+                                    node,
+                                    ParserCode::MalformedCst,
+                                    "enum construction missing enum name",
+                                )
+                            })?;
                         let enum_name = self.get_text(enum_name_node).to_string();
-                        let variant_name_node = node
-                            .child_by_field_name("variant_name")
-                            .ok_or("Enum construction missing variant name")?;
+                        let variant_name_node =
+                            node.child_by_field_name("variant_name").ok_or_else(|| {
+                                self.diag(
+                                    node,
+                                    ParserCode::MalformedCst,
+                                    "enum construction missing variant name",
+                                )
+                            })?;
                         let variant_name = self.get_text(variant_name_node).to_string();
                         let mut cursor = node.walk();
                         let operand_node = node
                             .children(&mut cursor)
                             .find(|c| c.kind() == "operand")
-                            .ok_or("Enum construction missing operand")?;
+                            .ok_or_else(|| {
+                                self.diag(
+                                    node,
+                                    ParserCode::MalformedCst,
+                                    "enum construction missing operand",
+                                )
+                            })?;
                         let operand = self.map_operand(operand_node)?;
                         Ok(RValue::EnumConstr(enum_name, variant_name, operand))
                     }
@@ -476,24 +689,26 @@ impl Parser {
         }
     }
 
-    fn map_statement(&self, node: Node) -> Result<Statement, String> {
-        let child = node.child(0).ok_or("Statement empty")?;
+    fn map_statement(&self, node: Node) -> Result<Statement, Diagnostic> {
+        let child = node
+            .child(0)
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "statement empty"))?;
         match child.kind() {
             "assignment" => {
-                let lhs_node = child
-                    .child_by_field_name("lhs")
-                    .ok_or("Assignment missing LHS")?;
+                let lhs_node = child.child_by_field_name("lhs").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "assignment missing lhs")
+                })?;
                 let lhs = self.map_place(lhs_node)?;
-                let rhs_node = child
-                    .child_by_field_name("rhs")
-                    .ok_or("Assignment missing RHS")?;
+                let rhs_node = child.child_by_field_name("rhs").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "assignment missing rhs")
+                })?;
                 let rhs = self.map_rvalue(rhs_node)?;
                 Ok(Statement::Assign(lhs, rhs))
             }
             "call" => {
-                let func_node = child
-                    .child_by_field_name("function")
-                    .ok_or("Call missing function")?;
+                let func_node = child.child_by_field_name("function").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "call missing function")
+                })?;
                 let func = self.map_operand(func_node)?;
 
                 let mut args = Vec::new();
@@ -506,43 +721,57 @@ impl Parser {
                 Ok(Statement::Call(func, args))
             }
             "drop_stmt" => {
-                let place_node = child
-                    .child_by_field_name("place")
-                    .ok_or("Drop missing place")?;
+                let place_node = child.child_by_field_name("place").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "drop missing place")
+                })?;
                 Ok(Statement::Drop(self.map_place(place_node)?))
             }
             "unborrow_stmt" => {
-                let place_node = child
-                    .child_by_field_name("place")
-                    .ok_or("Unborrow missing place")?;
+                let place_node = child.child_by_field_name("place").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "unborrow missing place")
+                })?;
                 Ok(Statement::Unborrow(self.map_place(place_node)?))
             }
-            _ => Err(format!("Unknown statement kind: {}", child.kind())),
+            _ => Err(self.diag(
+                child,
+                ParserCode::MalformedCst,
+                format!("unknown statement kind: {}", child.kind()),
+            )),
         }
     }
 
-    fn map_terminator(&self, node: Node) -> Result<Terminator, String> {
-        let child = node.child(0).ok_or("Terminator empty")?;
+    fn map_terminator(&self, node: Node) -> Result<Terminator, Diagnostic> {
+        let child = node
+            .child(0)
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "terminator empty"))?;
         match child.kind() {
             "goto" => {
-                let label_node = child
-                    .child_by_field_name("label")
-                    .ok_or("Goto missing label")?;
+                let label_node = child.child_by_field_name("label").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "goto missing label")
+                })?;
                 Ok(Terminator::Goto(self.get_text(label_node).to_string()))
             }
             "return" => Ok(Terminator::Return),
             "branch" => {
-                let cond_node = child
-                    .child_by_field_name("condition")
-                    .ok_or("Branch missing condition")?;
+                let cond_node = child.child_by_field_name("condition").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "branch missing condition")
+                })?;
                 let cond = self.map_operand(cond_node)?;
-                let true_node = child
-                    .child_by_field_name("true_label")
-                    .ok_or("Branch missing true_label")?;
+                let true_node = child.child_by_field_name("true_label").ok_or_else(|| {
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "branch missing true_label",
+                    )
+                })?;
                 let true_label = self.get_text(true_node).to_string();
-                let false_node = child
-                    .child_by_field_name("false_label")
-                    .ok_or("Branch missing false_label")?;
+                let false_node = child.child_by_field_name("false_label").ok_or_else(|| {
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "branch missing false_label",
+                    )
+                })?;
                 let false_label = self.get_text(false_node).to_string();
                 Ok(Terminator::Branch {
                     cond,
@@ -551,22 +780,34 @@ impl Parser {
                 })
             }
             "switchEnum" => {
-                let place_node = child
-                    .child_by_field_name("place")
-                    .ok_or("SwitchEnum missing place")?;
+                let place_node = child.child_by_field_name("place").ok_or_else(|| {
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "switchEnum missing place",
+                    )
+                })?;
                 let place = self.map_place(place_node)?;
 
                 let mut cases = Vec::new();
                 let mut cursor = child.walk();
                 for item in child.children(&mut cursor) {
                     if item.kind() == "switch_case" {
-                        let variant_node = item
-                            .child_by_field_name("variant")
-                            .ok_or("Switch case missing variant")?;
+                        let variant_node = item.child_by_field_name("variant").ok_or_else(|| {
+                            self.diag(
+                                item,
+                                ParserCode::MalformedCst,
+                                "switch case missing variant",
+                            )
+                        })?;
                         let variant = self.get_text(variant_node).to_string();
-                        let label_node = item
-                            .child_by_field_name("label")
-                            .ok_or("Switch case missing label")?;
+                        let label_node = item.child_by_field_name("label").ok_or_else(|| {
+                            self.diag(
+                                item,
+                                ParserCode::MalformedCst,
+                                "switch case missing label",
+                            )
+                        })?;
                         let label = self.get_text(label_node).to_string();
                         cases.push((variant, label));
                     }
@@ -575,32 +816,48 @@ impl Parser {
             }
             "abort" => Ok(Terminator::Abort),
             "unreachable" => Ok(Terminator::Unreachable),
-            _ => Err(format!("Unknown terminator kind: {}", child.kind())),
+            _ => Err(self.diag(
+                child,
+                ParserCode::MalformedCst,
+                format!("unknown terminator kind: {}", child.kind()),
+            )),
         }
     }
 
-    fn map_basic_block(&self, node: Node) -> Result<BasicBlock, String> {
-        let label_node = node
-            .child_by_field_name("label")
-            .ok_or("Basic block missing label")?;
+    fn map_basic_block(&self, node: Node) -> Result<BasicBlock, Diagnostic> {
+        let label_node = node.child_by_field_name("label").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "basic block missing label")
+        })?;
         let label = self.get_text(label_node).to_string();
         let label_span = span_of(label_node);
+
+        // Attach `in_block(label)` to any error bubbling from below —
+        // parses of statements/terminators inside this block get the
+        // block context for free without threading it explicitly.
+        let with_block_ctx = |d: Diagnostic| d.in_block(label.clone());
 
         let mut statements = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "statement" {
                 let span = span_of(child);
-                statements.push((self.map_statement(child)?, span));
+                statements.push((self.map_statement(child).map_err(with_block_ctx)?, span));
             }
         }
 
         let term_node = node
             .children(&mut cursor)
             .find(|c| c.kind() == "terminator")
-            .ok_or("Basic block missing terminator")?;
+            .ok_or_else(|| {
+                self.diag(
+                    node,
+                    ParserCode::MalformedCst,
+                    "basic block missing terminator",
+                )
+                .in_block(label.clone())
+            })?;
         let terminator_span = span_of(term_node);
-        let terminator = self.map_terminator(term_node)?;
+        let terminator = self.map_terminator(term_node).map_err(with_block_ctx)?;
 
         Ok(BasicBlock {
             label,
@@ -613,7 +870,7 @@ impl Parser {
 
     /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
     /// order). Errors on duplicates.
-    fn map_markers(&self, node: Node) -> Result<Markers, String> {
+    fn map_markers(&self, node: Node) -> Result<Markers, Diagnostic> {
         let mut copy = false;
         let mut drop = false;
         let mut mov = false;
@@ -627,13 +884,19 @@ impl Parser {
                 "Copy" => &mut copy,
                 "Drop" => &mut drop,
                 "Move" => &mut mov,
-                other => return Err(format!("Unknown marker: {}", other)),
+                other => {
+                    return Err(self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("unknown marker: {}", other),
+                    ));
+                }
             };
             if *flag {
-                return Err(format!(
-                    "Duplicate marker '{}' at {}",
-                    text,
-                    span_of(child)
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("Duplicate marker '{}'", text),
                 ));
             }
             *flag = true;
@@ -641,10 +904,10 @@ impl Parser {
         Ok(Markers { copy, drop, mov })
     }
 
-    fn map_struct_decl(&self, node: Node) -> Result<StructDecl, String> {
-        let name_node = node
-            .child_by_field_name("name")
-            .ok_or("Struct decl missing name")?;
+    fn map_struct_decl(&self, node: Node) -> Result<StructDecl, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "struct decl missing name")
+        })?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
@@ -660,13 +923,13 @@ impl Parser {
         let mut fields = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "struct_field" {
-                let f_name_node = child
-                    .child_by_field_name("name")
-                    .ok_or("Struct field missing name")?;
+                let f_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "struct field missing name")
+                })?;
                 let f_name = self.get_text(f_name_node).to_string();
-                let f_type_node = child
-                    .child_by_field_name("type")
-                    .ok_or("Struct field missing type")?;
+                let f_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "struct field missing type")
+                })?;
                 let f_type = self.map_type(f_type_node)?;
                 fields.push(StructField {
                     name: f_name,
@@ -684,10 +947,10 @@ impl Parser {
         })
     }
 
-    fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, String> {
-        let name_node = node
-            .child_by_field_name("name")
-            .ok_or("Enum decl missing name")?;
+    fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "enum decl missing name")
+        })?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
@@ -703,13 +966,21 @@ impl Parser {
         let mut variants = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "enum_variant" {
-                let v_name_node = child
-                    .child_by_field_name("name")
-                    .ok_or("Enum variant missing name")?;
+                let v_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "enum variant missing name",
+                    )
+                })?;
                 let v_name = self.get_text(v_name_node).to_string();
-                let v_type_node = child
-                    .child_by_field_name("type")
-                    .ok_or("Enum variant missing type")?;
+                let v_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "enum variant missing type",
+                    )
+                })?;
                 let v_type = self.map_type(v_type_node)?;
                 variants.push(EnumVariant {
                     name: v_name,
@@ -727,13 +998,19 @@ impl Parser {
         })
     }
 
-    fn map_function_decl(&self, node: Node) -> Result<Function, String> {
-        let name_node = node
-            .child_by_field_name("name")
-            .ok_or("Function missing name")?;
+    fn map_function_decl(&self, node: Node) -> Result<Function, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "function missing name")
+        })?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
         let is_extern = self.get_text(node).starts_with("extern");
+
+        // Attach `in_function(name)` to any error bubbling from below —
+        // this includes errors already tagged `in_block(...)` by
+        // map_basic_block, so the composed diagnostic ends up with
+        // both function and block context.
+        let with_fn_ctx = |d: Diagnostic| d.in_function(name.clone());
 
         let mut params = Vec::new();
         let mut locals = Vec::new();
@@ -744,14 +1021,22 @@ impl Parser {
         for child in node.children(&mut cursor) {
             match child.kind() {
                 "param_decl" => {
-                    let p_name_node = child
-                        .child_by_field_name("name")
-                        .ok_or("Param missing name")?;
+                    let p_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                        with_fn_ctx(self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "param missing name",
+                        ))
+                    })?;
                     let p_name = self.get_text(p_name_node).to_string();
-                    let p_type_node = child
-                        .child_by_field_name("type")
-                        .ok_or("Param missing type")?;
-                    let p_type = self.map_type(p_type_node)?;
+                    let p_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                        with_fn_ctx(self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "param missing type",
+                        ))
+                    })?;
+                    let p_type = self.map_type(p_type_node).map_err(with_fn_ctx)?;
                     params.push(Param {
                         name: p_name,
                         ty: p_type,
@@ -760,14 +1045,22 @@ impl Parser {
                 }
                 "local_decl" => {
                     has_body = true;
-                    let l_name_node = child
-                        .child_by_field_name("name")
-                        .ok_or("Local missing name")?;
+                    let l_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                        with_fn_ctx(self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "local missing name",
+                        ))
+                    })?;
                     let l_name = self.get_text(l_name_node).to_string();
-                    let l_type_node = child
-                        .child_by_field_name("type")
-                        .ok_or("Local missing type")?;
-                    let l_type = self.map_type(l_type_node)?;
+                    let l_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                        with_fn_ctx(self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "local missing type",
+                        ))
+                    })?;
+                    let l_type = self.map_type(l_type_node).map_err(with_fn_ctx)?;
                     locals.push(Local {
                         name: l_name,
                         ty: l_type,
@@ -776,7 +1069,7 @@ impl Parser {
                 }
                 "basic_block" => {
                     has_body = true;
-                    blocks.push(self.map_basic_block(child)?);
+                    blocks.push(self.map_basic_block(child).map_err(with_fn_ctx)?);
                 }
                 "{" | "}" => {
                     has_body = true;
@@ -1058,13 +1351,14 @@ mod tests {
     fn duplicate_marker_rejected() {
         // `map_markers` returns an error on duplicates.
         let src = "struct Copy Copy P { x: i64 }";
-        let err = Parser::new(src.to_string())
+        let diags = Parser::new(src.to_string())
             .parse()
             .expect_err("expected duplicate-marker error");
+        let errs = diags.errors_str();
         assert!(
-            err.contains("Duplicate marker"),
-            "expected 'Duplicate marker' in error, got: {}",
-            err
+            errs.iter().any(|e| e.contains("Duplicate marker")),
+            "expected 'Duplicate marker' in errors, got: {:?}",
+            errs
         );
     }
 
@@ -1085,6 +1379,73 @@ mod tests {
         assert_eq!(a, b);
         assert_eq!(b, c);
         assert!(a.copy && a.drop && a.mov);
+    }
+
+    #[test]
+    fn syntax_errors_emit_one_diagnostic_per_region() {
+        // Two broken functions. Regression against the pre-hoist
+        // "Syntax error in source code" fallback that collapsed every
+        // parse failure into a single opaque string. The walker now
+        // emits at least one Parser(UnexpectedToken|MissingToken)
+        // diagnostic per broken region so users can locate each
+        // independently.
+        let src = "\
+            fn a( { entry: return }\n\
+            fn b( { entry: return }\n";
+        let diags = Parser::new(src.to_string())
+            .parse()
+            .expect_err("both functions have unbalanced parens");
+        assert!(
+            diags.error_count() >= 2,
+            "expected multi-error output, got {} error(s): {:?}",
+            diags.error_count(),
+            diags.errors_str()
+        );
+        for e in diags.errors() {
+            match e.code() {
+                DiagCode::Parser(ParserCode::UnexpectedToken)
+                | DiagCode::Parser(ParserCode::MissingToken) => {}
+                other => panic!(
+                    "walker should emit only UnexpectedToken/MissingToken; got {:?}",
+                    other
+                ),
+            }
+        }
+    }
+
+    #[test]
+    fn syntax_error_carries_function_context() {
+        // A syntax error inside a function body should be tagged with
+        // the enclosing function's name so the diagnostic reads
+        // "at L:C: In function 'f': ...". Uses `in_function` context
+        // threading in the ERROR/MISSING walker.
+        let src = "fn my_fn(x: i64) {\n  entry:\n    x = @@;\n    return\n}\n";
+        let diags = Parser::new(src.to_string())
+            .parse()
+            .expect_err("`@@` is not a valid rvalue");
+        let rendered = diags.errors_str().join("\n");
+        assert!(
+            rendered.contains("In function 'my_fn'"),
+            "expected function context in errors:\n{}",
+            rendered
+        );
+    }
+
+    #[test]
+    fn syntax_error_carries_block_context() {
+        // A syntax error inside a basic_block should be tagged with
+        // both the enclosing function AND the enclosing block label.
+        // Uses `in_block` context threading in the walker.
+        let src = "fn f() {\n  my_block:\n    @@;\n    return\n}\n";
+        let diags = Parser::new(src.to_string())
+            .parse()
+            .expect_err("`@@` is not a valid statement");
+        let rendered = diags.errors_str().join("\n");
+        assert!(
+            rendered.contains("block 'my_block'"),
+            "expected block context in errors:\n{}",
+            rendered
+        );
     }
 
     #[test]

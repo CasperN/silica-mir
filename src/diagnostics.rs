@@ -50,6 +50,10 @@ pub enum DiagCode {
     /// Warnings from the block-reachability pass
     /// (see `block_reachability::BlockReachabilityCode`).
     BlockReachability(crate::mir::block_reachability::BlockReachabilityCode),
+    /// Errors from the MIR parser — surface syntax errors from the
+    /// tree-sitter ERROR/MISSING walker, plus CST-to-AST invariant
+    /// failures and literal decode errors (see `parser::ParserCode`).
+    Parser(crate::mir::parser::ParserCode),
 }
 
 /// A single compiler diagnostic (error or warning). The container in

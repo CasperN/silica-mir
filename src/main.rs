@@ -118,8 +118,11 @@ fn main() {
     let p = mir::parser::Parser::new(source);
     let program = match p.parse() {
         Ok(program) => program,
-        Err(err) => {
-            eprintln!("Parse error: {}", err);
+        Err(diags) => {
+            for e in diags.errors() {
+                eprintln!("Error: {}", e);
+            }
+            eprintln!("{} error(s)", diags.error_count());
             std::process::exit(1);
         }
     };

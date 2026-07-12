@@ -9,9 +9,13 @@ use crate::ast::*;
 /// Parse `src` and build an `Env`. Doesn't run any check pass — the
 /// tests just need type-name resolution.
 fn env_of(src: &str) -> Env {
-    let program = Parser::new(src.to_string())
-        .parse()
-        .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
+    let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
+        panic!(
+            "parse error:\n{}\n--- source ---\n{}",
+            d.errors_str().join("\n"),
+            src
+        )
+    });
     Env::build(&program).0
 }
 

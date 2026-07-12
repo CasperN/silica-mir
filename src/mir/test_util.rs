@@ -11,9 +11,13 @@ use crate::run_all_passes;
 /// Used by tests that need to assert on codes/spans, not just strings.
 #[track_caller]
 pub fn run_structured(src: &str) -> Diagnostics {
-    let program = Parser::new(src.to_string())
-        .parse()
-        .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
+    let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
+        panic!(
+            "parse error:\n{}\n--- source ---\n{}",
+            d.errors_str().join("\n"),
+            src
+        )
+    });
     let (_, _, d) = run_all_passes(&program);
     d
 }
@@ -75,9 +79,13 @@ fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> 
 /// `Diagnostics` container returned by `run_all_passes` directly; use
 /// that when a test needs code/span rather than substring matching.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
-    let program = Parser::new(src.to_string())
-        .parse()
-        .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
+    let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
+        panic!(
+            "parse error:\n{}\n--- source ---\n{}",
+            d.errors_str().join("\n"),
+            src
+        )
+    });
     let (_, _, d) = run_all_passes(&program);
     (d.errors_str(), d.warnings_str())
 }

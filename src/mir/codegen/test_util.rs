@@ -11,9 +11,13 @@ use crate::type_check::Env;
 /// Env build errors are discarded — test sources don't have duplicate
 /// declarations.
 pub fn ll_of(src: &str) -> String {
-    let program = Parser::new(src.to_string())
-        .parse()
-        .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
+    let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
+        panic!(
+            "parse error:\n{}\n--- source ---\n{}",
+            d.errors_str().join("\n"),
+            src
+        )
+    });
     let (env, _) = Env::build(&program);
     generate_llvm(&program, &env)
 }
