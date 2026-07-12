@@ -247,19 +247,46 @@ fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     }
 }
 
-/// If the assign is `dst_place = move src_place` and both sides are
-/// owned paths, returns `src_place`. This is the pattern where a
-/// reference's ref-state and loan should transfer from src to dst
-/// instead of being lost. Handles `x = move y`, `b.p = move t`,
-/// `t = move b.p`, etc.
-fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<Place> {
-    if !is_owned_path(target) {
-        return None;
-    }
-    let RValue::Use(Operand::Move(src)) = rvalue else {
-        return None;
+/// For an assign `target = <rvalue>` where the rvalue transfers a
+/// borrower via move, gather every loan whose borrower is rooted at
+/// the moved source path (src itself or any owned-path descendant) and
+/// re-key each under `target`. Mirrors `init_state::capture_carried_refs`.
+///
+/// - `Use(Move(src))` → re-key under `target` directly.
+/// - `EnumConstr(_, V, Move(src))` → re-key under `target as V`.
+///
+/// Returns `Vec<(new_key, loan)>` to be re-inserted after the source's
+/// loans are removed by `consume_rvalue`.
+fn capture_carried_loans(
+    target: &Place,
+    rvalue: &RValue,
+    loans: &LoanMap,
+) -> Vec<(Place, Loan)> {
+    let Some(dst) = as_owned_path(target) else {
+        return Vec::new();
     };
-    as_owned_path(src)
+    let (src, dst_effective) = match rvalue {
+        RValue::Use(Operand::Move(src_place)) => {
+            let Some(src) = as_owned_path(src_place) else {
+                return Vec::new();
+            };
+            (src, dst)
+        }
+        RValue::EnumConstr(_, variant, Operand::Move(src_place)) => {
+            let Some(src) = as_owned_path(src_place) else {
+                return Vec::new();
+            };
+            (src, Place::Downcast(Box::new(dst), variant.clone()))
+        }
+        _ => return Vec::new(),
+    };
+    loans
+        .iter()
+        .filter_map(|(k, loan)| {
+            let new_key = rekey_owned_path(&src, &dst_effective, k)?;
+            Some((new_key, loan.clone()))
+        })
+        .collect()
 }
 
 /// Forward dataflow analysis over `LoanMap`. Runs independently of the
@@ -294,7 +321,10 @@ impl Analysis for LoanAnalysis {
 fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
     match stmt {
         Statement::Assign(target, rvalue) => {
-            let carried = ref_move_source(target, rvalue).and_then(|src| loans.get(&src).cloned());
+            // Capture BEFORE consume: the loans rooted at the moved
+            // source (whole-var or struct-descendant) will be removed
+            // by consume_rvalue, so grab them first for re-key.
+            let carried = capture_carried_loans(target, rvalue, loans);
 
             consume_rvalue(loans, rvalue);
             if let Some(t) = as_owned_path(target) {
@@ -307,8 +337,8 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
                     Loan::single(kind.clone(), place.clone(), Span { line: 0, col: 0 }),
                 );
             }
-            if let (Some(dst), Some(loan)) = (as_owned_path(target), carried) {
-                loans.insert(dst, loan);
+            for (new_key, loan) in carried {
+                loans.insert(new_key, loan);
             }
         }
         Statement::Call(target, args) => {

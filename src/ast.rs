@@ -254,6 +254,43 @@ pub fn as_owned_path(place: &Place) -> Option<Place> {
     }
 }
 
+/// If `key` is `src` or an owned-path descendant of it, return the
+/// parallel path under `dst`. `rekey_owned_path(b, y, b.p)` → `y.p`;
+/// `rekey_owned_path(b, w as W, b.p)` → `(w as W).p`. Returns `None`
+/// if `key` is not below `src`. Both `src` and `key` must be owned
+/// paths (no `Deref`); `dst` may contain any projection since we
+/// only extend it.
+pub fn rekey_owned_path(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
+    if !is_ancestor_or_self(src, key) {
+        return None;
+    }
+    let (_, src_path) = extract_path(src).expect("owned-path invariant");
+    let (_, key_path) = extract_path(key).expect("owned-path invariant");
+    let suffix = &key_path[src_path.len()..];
+    let mut out = dst.clone();
+    for step in suffix {
+        out = match step {
+            PathStep::Field(f) => Place::Field(Box::new(out), f.clone()),
+            PathStep::Downcast(v) => Place::Downcast(Box::new(out), v.clone()),
+            PathStep::Index(Some(k)) => {
+                // Reconstruct a const-int operand from the slot number.
+                // We default to i64 as the index type — analyses only
+                // compare the const value, not its declared type.
+                let op = Operand::Const(ConstVal::Int {
+                    bits: *k,
+                    ty: IntTy::I64,
+                });
+                Place::Index(Box::new(out), Box::new(op))
+            }
+            PathStep::Index(None) => {
+                unreachable!("extract_path never yields Index(None); this is an owned path")
+            }
+            PathStep::Deref => unreachable!("owned-path invariant"),
+        };
+    }
+    Some(out)
+}
+
 /// Iterate all owned-path prefixes of `place`, longest first. If
 /// `place` is `b.p.q`, yields `b.p.q`, `b.p`, `b`. If `place` contains
 /// a `Deref` anywhere, stops at the innermost Deref boundary — the

@@ -1087,78 +1087,49 @@ impl<'a> InitStateContext<'a> {
     }
 }
 
-/// If the assign is `dst_var = move src_var`, returns `src_var`. This is
-/// the pattern where a reference's ref-state and loan should transfer
-/// from src to dst instead of being lost.
-fn ref_move_source(target: &Place, rvalue: &RValue) -> Option<Place> {
-    if !is_owned_path(target) {
-        return None;
-    }
-    let RValue::Use(Operand::Move(src)) = rvalue else {
-        return None;
-    };
-    as_owned_path(src)
-}
-
-/// For an assign `target = move src` where both are owned paths, gather
-/// every ref-state entry rooted at src (src itself, or any descendant
-/// like src.p) and re-key it under target, replacing the src prefix
-/// with target. E.g. moving `x` to `y` moves `x.r` → `y.r`.
+/// For an assign `target = <rvalue>` where the rvalue transfers a
+/// borrower via move, gather every ref-state entry rooted at the moved
+/// source path (src itself, or any owned-path descendant like src.p)
+/// and re-key it under `target`.
 ///
-/// Returns an empty vec for non-move rvalues or non-owned-path targets.
+/// - `Use(Move(src))`  → re-key under `target` directly (moving `x` to
+///   `y` moves `x.r` → `y.r`).
+/// - `EnumConstr(_, V, Move(src))` → re-key under `target as V` (wrapping
+///   `x` into `Wrap::V(...)` moves `x.r` → `(target as V).r`).
+///
+/// Returns an empty vec for rvalues that don't transfer a borrower, or
+/// for non-owned-path targets.
 fn capture_carried_refs(
     target: &Place,
     rvalue: &RValue,
     state: &PointState,
 ) -> Vec<(Place, RefState)> {
-    let Some(src) = ref_move_source(target, rvalue) else {
-        return Vec::new();
-    };
     let Some(dst) = as_owned_path(target) else {
         return Vec::new();
+    };
+    let (src, dst_effective) = match rvalue {
+        RValue::Use(Operand::Move(src_place)) => {
+            let Some(src) = as_owned_path(src_place) else {
+                return Vec::new();
+            };
+            (src, dst)
+        }
+        RValue::EnumConstr(_, variant, Operand::Move(src_place)) => {
+            let Some(src) = as_owned_path(src_place) else {
+                return Vec::new();
+            };
+            (src, Place::Downcast(Box::new(dst), variant.clone()))
+        }
+        _ => return Vec::new(),
     };
     state
         .refs
         .iter()
         .filter_map(|(k, rs)| {
-            let new_key = rekey(&src, &dst, k)?;
+            let new_key = rekey_owned_path(&src, &dst_effective, k)?;
             Some((new_key, *rs))
         })
         .collect()
-}
-
-/// If `key` is `src` or a descendant of it, return the parallel path
-/// under `dst`. `rekey(b, y, b.p)` → `y.p`. Returns None otherwise.
-fn rekey(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
-    if !is_ancestor_or_self(src, key) {
-        return None;
-    }
-    // Extract the trailing suffix from `key` beyond `src`'s path length.
-    let (_, src_path) = extract_path(src).expect("owned-path invariant");
-    let (_, key_path) = extract_path(key).expect("owned-path invariant");
-    let suffix = &key_path[src_path.len()..];
-    let mut out = dst.clone();
-    for step in suffix {
-        out = match step {
-            PathStep::Field(f) => Place::Field(Box::new(out), f.clone()),
-            PathStep::Downcast(v) => Place::Downcast(Box::new(out), v.clone()),
-            PathStep::Index(Some(k)) => {
-                // Reconstruct a const-int operand from the slot number.
-                // We default to i64 as the index type — analyses only
-                // compare the const value, not its declared type.
-                let op = Operand::Const(ConstVal::Int {
-                    bits: *k,
-                    ty: IntTy::I64,
-                });
-                Place::Index(Box::new(out), Box::new(op))
-            }
-            PathStep::Index(None) => {
-                unreachable!("extract_path never yields Index(None); this is an owned path")
-            }
-            PathStep::Deref => unreachable!("owned-path invariant"),
-        };
-    }
-    Some(out)
 }
 
 // ---------- Diagnostic pass ----------

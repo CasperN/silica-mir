@@ -789,15 +789,12 @@ fn drop_deref_does_not_release_loan() {
 // behavior — they will fail today because the transfer is missing.
 
 #[test]
-fn enum_wrap_of_borrower_currently_drops_loan_gap() {
-    // GAP (README punch list): `capture_carried_refs` only re-keys
-    // refs for `Use(Move(src))`, not `EnumConstr`. Wrapping a live
-    // borrower drops its loan silently — this test pins the buggy
-    // "no error" so it flips when the fix lands. Note the `Move`
-    // marker on Wrap: the enum contains a Move-only payload, so
-    // Wrap itself must be Move (Copy/Drop don't compose with &mut).
-    assert_no_diagnostics(
-        "
+fn enum_wrap_of_borrower_keeps_loan_active() {
+    // Wrapping a live borrower into an enum variant re-keys the loan
+    // from the source to the constructed variant path (e.g. `w as W`),
+    // so direct access to the originally-borrowed place still
+    // conflicts. Wrap needs `Move` because its payload is Move-only.
+    let (errs, _) = run("
         enum Move Wrap { W: &mut i64 }
         extern fn take_wrap(w: Wrap);
         fn f(x: i64) {
@@ -806,12 +803,12 @@ fn enum_wrap_of_borrower_currently_drops_loan_gap() {
           entry:
             r = &mut x;
             w = Wrap::W(move r);
-            x = 7;                    # SHOULD error, but doesn't (gap)
+            x = 7;
             call take_wrap(move w);
             return
         }
-        ",
-    );
+        ");
+    assert_errors_contain(&errs, &["already borrowed"]);
 }
 
 #[test]
@@ -840,17 +837,12 @@ fn enum_wrap_of_borrower_consumed_releases_loan() {
 // ---------- Struct-move re-key (positive path already supported) ----------
 
 #[test]
-fn struct_move_currently_drops_field_loan_gap() {
-    // GAP: `lifetime::ref_move_source` only re-keys loans when the
-    // moved place IS the borrower (whole-var move of a ref). Moving
-    // a struct whose *field* holds a borrower drops the loan —
-    // parallel to the enum-payload gap. init_state's
-    // `capture_carried_refs` does handle the struct-descendant
-    // case, so ref-state stays consistent — but the lifetime
-    // module's LoanMap silently loses the loan. Pin the current
-    // "no error" so this flips when the loan re-key catches up.
-    assert_no_diagnostics(
-        "
+fn struct_move_rekeys_field_loan() {
+    // Moving a struct whose field holds a borrower re-keys the
+    // field's loan onto the parallel path under the target
+    // (`a.p` → `b.p`), so direct access to the borrowed place
+    // still conflicts.
+    let (errs, _) = run("
         struct Move RefBox { p: &mut i64 v: i64 }
         extern fn sink(y: RefBox);
         fn f(x: i64) {
@@ -860,12 +852,12 @@ fn struct_move_currently_drops_field_loan_gap() {
             a.p = &mut x;
             a.v = 0;
             b = move a;
-            x = 42;                    # SHOULD error, but doesn't (gap)
+            x = 42;
             call sink(move b);
             return
         }
-        ",
-    );
+        ");
+    assert_errors_contain(&errs, &["already borrowed"]);
 }
 
 #[test]
