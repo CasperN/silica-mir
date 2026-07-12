@@ -77,3 +77,28 @@ fn unreachable_with_statements_ok() {
 fn empty_function_body_error() {
     assert_err("fn f() { }", "Function 'f' has no entry block");
 }
+
+#[test]
+fn return_param_not_last_error() {
+    assert_err(
+        "fn f($return: &out i64, x: i64) { entry: return }",
+        "parameter '$return' must be in the final position",
+    );
+}
+
+#[test]
+fn return_param_wrong_type_error() {
+    assert_err(
+        "fn f(x: i64, $return: i64) { entry: return }",
+        "parameter '$return' must be of type '&out ReturnType'",
+    );
+    assert_err(
+        "fn f(x: i64, $return: &mut i64) { entry: return }",
+        "parameter '$return' must be of type '&out ReturnType'",
+    );
+}
+
+#[test]
+fn return_param_valid_ok() {
+    assert_ok("fn f(x: i64, $return: &out i64) { entry: *$return = copy x; return }");
+}

@@ -130,6 +130,10 @@ fn llvm_fn_symbol(silica_name: &str) -> String {
     }
 }
 
+fn get_return_param(f: &Function) -> Option<&Param> {
+    f.params.last().filter(|p| p.name == "$return")
+}
+
 // ---------- Context ----------
 
 struct CodeGenContext<'a> {
@@ -242,8 +246,20 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
 }
 
 fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
-    write!(cx.out, "declare void @{}(", llvm_fn_symbol(&f.name)).unwrap();
-    for (i, p) in f.params.iter().enumerate() {
+    let ret_param = get_return_param(f);
+    let ret_llvm = match ret_param {
+        Some(p) => match &p.ty {
+            Type::Ref(_, inner) => cx.lower_type(inner),
+            _ => "void".to_string(),
+        },
+        None => "void".to_string(),
+    };
+    write!(cx.out, "declare {} @{}(", ret_llvm, llvm_fn_symbol(&f.name)).unwrap();
+    let mut params_to_emit = &f.params[..];
+    if ret_param.is_some() {
+        params_to_emit = &f.params[..f.params.len() - 1];
+    }
+    for (i, p) in params_to_emit.iter().enumerate() {
         if i > 0 {
             write!(cx.out, ", ").unwrap();
         }
@@ -264,23 +280,28 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
 /// them earlier).
 fn emit_main_wrapper(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, "define i32 @main() {{").unwrap();
-    match f.params.len() {
-        0 => {
-            writeln!(cx.out, "  call void @silica.main()").unwrap();
-            writeln!(cx.out, "  ret i32 0").unwrap();
+    if get_return_param(f).is_some() {
+        writeln!(cx.out, "  %code = call i32 @silica.main()").unwrap();
+        writeln!(cx.out, "  ret i32 %code").unwrap();
+    } else {
+        match f.params.len() {
+            0 => {
+                writeln!(cx.out, "  call void @silica.main()").unwrap();
+                writeln!(cx.out, "  ret i32 0").unwrap();
+            }
+            1 => {
+                writeln!(cx.out, "  %exit = alloca i32, align 4").unwrap();
+                writeln!(cx.out, "  store i32 0, ptr %exit").unwrap();
+                writeln!(cx.out, "  call void @silica.main(ptr %exit)").unwrap();
+                writeln!(cx.out, "  %code = load i32, ptr %exit").unwrap();
+                writeln!(cx.out, "  ret i32 %code").unwrap();
+            }
+            n => panic!(
+                "emit_main_wrapper: unexpected main signature ({} params); \
+                 type_check::check_main_signature should have rejected this",
+                n
+            ),
         }
-        1 => {
-            writeln!(cx.out, "  %exit = alloca i32, align 4").unwrap();
-            writeln!(cx.out, "  store i32 0, ptr %exit").unwrap();
-            writeln!(cx.out, "  call void @silica.main(ptr %exit)").unwrap();
-            writeln!(cx.out, "  %code = load i32, ptr %exit").unwrap();
-            writeln!(cx.out, "  ret i32 %code").unwrap();
-        }
-        n => panic!(
-            "emit_main_wrapper: unexpected main signature ({} params); \
-             type_check::check_main_signature should have rejected this",
-            n
-        ),
     }
     writeln!(cx.out, "}}").unwrap();
     writeln!(cx.out).unwrap();
@@ -289,8 +310,21 @@ fn emit_main_wrapper(cx: &mut CodeGenContext, f: &Function) {
 fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     cx.reset_for_function(f);
 
-    write!(cx.out, "define void @{}(", llvm_fn_symbol(&f.name)).unwrap();
-    for (i, p) in f.params.iter().enumerate() {
+    let ret_param = get_return_param(f);
+    let ret_llvm = match ret_param {
+        Some(p) => match &p.ty {
+            Type::Ref(_, inner) => cx.lower_type(inner),
+            _ => "void".to_string(),
+        },
+        None => "void".to_string(),
+    };
+
+    write!(cx.out, "define {} @{}(", ret_llvm, llvm_fn_symbol(&f.name)).unwrap();
+    let mut params_to_emit = &f.params[..];
+    if ret_param.is_some() {
+        params_to_emit = &f.params[..f.params.len() - 1];
+    }
+    for (i, p) in params_to_emit.iter().enumerate() {
         if i > 0 {
             write!(cx.out, ", ").unwrap();
         }
@@ -309,7 +343,18 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     // identifier char but not a legal MIR identifier char, so `.init`
     // can never collide with a user block name.
     writeln!(cx.out, ".init:").unwrap();
-    for p in &f.params {
+
+    if let Some(p) = ret_param {
+        if let Type::Ref(_, inner) = &p.ty {
+            let inner_llvm = cx.lower_type(inner);
+            let inner_align = layout::align_of(inner, cx.env);
+            writeln!(cx.out, "  %local.$return_val = alloca {}, align {}", inner_llvm, inner_align).unwrap();
+            emit_alloca(cx, &p.name, &p.ty);
+            writeln!(cx.out, "  store ptr %local.$return_val, ptr %local.{}", p.name).unwrap();
+        }
+    }
+
+    for p in params_to_emit {
         emit_alloca(cx, &p.name, &p.ty);
         let ty = cx.lower_type(&p.ty);
         writeln!(
@@ -407,14 +452,47 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 arg_pairs.push((cx.lower_type(&t), v));
             }
             let _ = param_tys; // types are already implicit in arg_pairs
-            write!(cx.out, "  call void {}(", target_val).unwrap();
-            for (i, (t, v)) in arg_pairs.iter().enumerate() {
-                if i > 0 {
-                    write!(cx.out, ", ").unwrap();
+
+            let ret_llvm = if let Operand::Const(ConstVal::FnName(name)) = target {
+                if let Some(f) = cx.env.functions.get(name) {
+                    if let Some(p) = get_return_param(f) {
+                        if let Type::Ref(_, inner) = &p.ty {
+                            Some(cx.lower_type(inner))
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
-                write!(cx.out, "{} {}", t, v).unwrap();
+            } else {
+                None
+            };
+
+            if let Some(ret_ty_str) = ret_llvm {
+                let (_, ret_ptr_val) = arg_pairs.pop().expect("must have at least the $return arg");
+                let ret_reg = cx.fresh();
+                write!(cx.out, "  {} = call {} {}(", ret_reg, ret_ty_str, target_val).unwrap();
+                for (i, (t, v)) in arg_pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(cx.out, ", ").unwrap();
+                    }
+                    write!(cx.out, "{} {}", t, v).unwrap();
+                }
+                writeln!(cx.out, ")").unwrap();
+                writeln!(cx.out, "  store {} {}, ptr {}", ret_ty_str, ret_reg, ret_ptr_val).unwrap();
+            } else {
+                write!(cx.out, "  call void {}(", target_val).unwrap();
+                for (i, (t, v)) in arg_pairs.iter().enumerate() {
+                    if i > 0 {
+                        write!(cx.out, ", ").unwrap();
+                    }
+                    write!(cx.out, "{} {}", t, v).unwrap();
+                }
+                writeln!(cx.out, ")").unwrap();
             }
-            writeln!(cx.out, ")").unwrap();
         }
         Statement::Drop(_) | Statement::Unborrow(_) => {
             // Erased. Drop lowers to a real call once user Drop::drop
@@ -814,7 +892,19 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             writeln!(cx.out, "  br label %{}", label).unwrap();
         }
         Terminator::Return => {
-            writeln!(cx.out, "  ret void").unwrap();
+            if let Some(Type::Ref(RefKind::Out, inner_ty)) = cx.locals.get("$return") {
+                let llvm_ty = cx.lower_type(inner_ty);
+                let val_reg = cx.fresh();
+                writeln!(
+                    cx.out,
+                    "  {} = load {}, ptr %local.$return_val",
+                    val_reg, llvm_ty
+                )
+                .unwrap();
+                writeln!(cx.out, "  ret {} {}", llvm_ty, val_reg).unwrap();
+            } else {
+                writeln!(cx.out, "  ret void").unwrap();
+            }
         }
         Terminator::Branch {
             cond,

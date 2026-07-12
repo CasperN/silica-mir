@@ -559,7 +559,22 @@ impl Env {
     }
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
-        for p in &f.params {
+        for (i, p) in f.params.iter().enumerate() {
+            if p.name == "$return" {
+                if i != f.params.len() - 1 {
+                    d.push_error(
+                        Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be in the final position", f.name)),
+                    );
+                }
+                match &p.ty {
+                    Type::Ref(RefKind::Out, _) => {}
+                    _ => {
+                        d.push_error(
+                            Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {:?}", f.name, p.ty)),
+                        );
+                    }
+                }
+            }
             if let Err(e) = self.validate_type(&p.ty) {
                 d.push_error(
                     Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '{}': {}", f.name, p.name, e)),
