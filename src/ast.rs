@@ -25,7 +25,11 @@ impl Markers {
 
 /// Source position (1-based line and column) of the syntax that a node
 /// represents. Used to prefix error messages with `at L:C:`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+///
+/// `Default::default()` yields `Span { line: 0, col: 0 }`, which
+/// `Diagnostic::fmt` treats as "no position" (omits the `at L:C:`
+/// prefix). Real syntax always has 1-based positions.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct Span {
     pub line: u32,
     pub col: u32,

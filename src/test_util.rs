@@ -6,13 +6,16 @@ use crate::parser::Parser;
 use crate::run_all_passes;
 
 /// Parse `src` and run the whole pipeline (check → elaborate → validate).
-/// Returns `(errors, warnings)`; the elaborated program is discarded.
+/// Returns `(errors, warnings)` as preformatted strings — matches the
+/// original test API shape. Structured diagnostics live on the
+/// `Diagnostics` container returned by `run_all_passes` directly; use
+/// that when a test needs code/span rather than substring matching.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     let program = Parser::new(src.to_string())
         .parse()
         .unwrap_or_else(|e| panic!("parse error: {}\n--- source ---\n{}", e, src));
     let (_, _, d) = run_all_passes(&program);
-    (d.errors, d.warnings)
+    (d.errors_str(), d.warnings_str())
 }
 
 /// Convenience: just the errors from `run(src)`.

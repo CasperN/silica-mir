@@ -444,7 +444,7 @@ fn downcast_target_reassignment_elaborates_to_full_construction() {
     ";
     let program = Parser::new(src.to_string()).parse().unwrap();
     let (elaborated, _env, d) = run_all_passes(&program);
-    assert!(d.errors.is_empty(), "expected clean run, got {:?}", d.errors);
+    assert!(d.is_clean(), "expected clean run, got {:?}", d.errors_str());
     let out = pretty_print(&elaborated);
     assert!(
         out.contains("drop o as Some;")

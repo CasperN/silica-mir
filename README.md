@@ -531,40 +531,23 @@ in LLVM.
   drop elaborator becomes reference/debug-only rather than authoritative.
 
 ## Diagnostics
-The compiler currently accumulates errors as `Vec<String>`. Works but is
-rough at every scale — cheap papercuts stack up, and there's a bigger
-migration lurking underneath.
-
-Design requirements:
-- To avoid upfront test churn, the system needs to be backwards compatible to
-string-like errors like in the existing tests. This will be deleted after a
-migration.
-- We want Rust-inspired numbered errors, each with good names, explainations,
-and code locations. When the HLL exists, we'd need to map to HLL code locations.
-
-Cheap papercuts to fix incrementally:
-- Type names print as Rust `{:?}` debug form (`Int(I64)` instead of
-  `i64`). One-line fix: call `pretty_print::write_type` from the error
-  formatters.
-- Errors give `at L:C:` but no source snippet with a caret. Rustc-style
-  rendering (source line + caret span + message) would help enormously.
-- Errors don't say which pass fired them. Prefixing with `[init_state]`
-  / `[lifetime]` / etc. would speed grep-based navigation.
-- Golden IR snapshot failures print two blobs; a line-by-line diff
-  (e.g. `pretty_assertions`) makes regressions instant to read.
-- Common-mistake hints. When `cannot create &out of X` fires and `X` is
-  init, "hint: consider `drop X;` before rebinding" would save first-time
-  users a lot of time. Iterate on this as we hit each frustrating error.
-
-Larger migration (its own project):
-- Replace `Vec<String>` with a structured `Diagnostic` type carrying
-  span, severity, code, primary message, sub-labels, and hints —
-  rustc-style. Every `push_error!` site converts to a variant of a
-  `CheckError` enum with typed payload. Enables machine-readable output
-  (JSON diagnostics for editor integration) and localized formatting.
-  Big refactor: every pass currently pushes strings via macros, so it
-  touches every pass. Worth doing before we invest heavily in
-  frontend/LSP work.
+- `DiagCode::Unspecified` is the placeholder for call sites that haven't been
+assigned a dedicated code yet. The `push_error!` / `push_error_at!` /
+`push_warning!` macros default to it. All error sites must get a canonical code
+and `Unspecified` should be deleted.
+- Type names print as Rust `{:?}` debug form (`Int(I64)` instead
+  of `i64`). Route diagnostic-emitting sites through
+  `pretty_print::write_type`.
+- Errors give `at L:C:` but no source snippet with a caret.
+  Rustc-style rendering (source line + caret span + message)
+  would help enormously.
+- No tags. Prefixing tests with `[init_state]` / `[lifetime]` / `[correct]`
+  etc. would speed grep-based navigation.
+- Golden IR snapshot failures print two blobs; a line-by-line
+  diff would make regressions instant to read.
+- Common-mistake hints. When `cannot create &out of X` fires and
+  `X` is init, "hint: consider `drop X;` before rebinding" would
+  save first-time users a lot of time.
 
 # Longer term
 - Lambdas

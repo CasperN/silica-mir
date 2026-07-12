@@ -1,6 +1,6 @@
 use crate::ast::*;
-use crate::diagnostics::Diagnostics;
-use crate::{fmt_error, push_error};
+use crate::diagnostics::{Diagnostic, Diagnostics};
+use crate::{fmt_error, push_error, push_error_at};
 use indexmap::IndexMap;
 use std::collections::HashSet;
 
@@ -26,10 +26,10 @@ impl Env {
     /// the main pipeline) plumb them into their `Diagnostics`; callers
     /// that don't (i.e. tests and codegen) can drop them. Duplicate
     /// declarations are the only failure mode.
-    pub fn build(program: &Program) -> (Self, Vec<String>) {
+    pub fn build(program: &Program) -> (Self, Vec<Diagnostic>) {
         let mut types = IndexMap::new();
         let mut functions = IndexMap::new();
-        let mut errors = Vec::new();
+        let mut errors: Vec<Diagnostic> = Vec::new();
 
         // Preload intrinsic signatures. Reserved-namespace names (`$*`)
         // can never conflict with user declarations at the lexical
@@ -39,34 +39,44 @@ impl Env {
             functions.insert(f.name.clone(), f);
         }
 
+        use crate::diagnostics::DiagCode;
         for decl in &program.declarations {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
-                        errors.push(format!(
-                            "at {}: Duplicate declaration of type '{}'",
-                            s.name_span, s.name
-                        ));
+                        errors.push(
+                            Diagnostic::new(
+                                DiagCode::Unspecified,
+                                format!("Duplicate declaration of type '{}'", s.name),
+                            )
+                            .at(s.name_span),
+                        );
                     } else {
                         types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
                     }
                 }
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
-                        errors.push(format!(
-                            "at {}: Duplicate declaration of type '{}'",
-                            e.name_span, e.name
-                        ));
+                        errors.push(
+                            Diagnostic::new(
+                                DiagCode::Unspecified,
+                                format!("Duplicate declaration of type '{}'", e.name),
+                            )
+                            .at(e.name_span),
+                        );
                     } else {
                         types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
                     }
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
-                        errors.push(format!(
-                            "at {}: Duplicate declaration of function '{}'",
-                            f.name_span, f.name
-                        ));
+                        errors.push(
+                            Diagnostic::new(
+                                DiagCode::Unspecified,
+                                format!("Duplicate declaration of function '{}'", f.name),
+                            )
+                            .at(f.name_span),
+                        );
                     } else {
                         functions.insert(f.name.clone(), f.clone());
                     }
@@ -354,16 +364,23 @@ impl Env {
                     let mut seen: HashSet<&str> = HashSet::new();
                     for f in &s.fields {
                         if !seen.insert(f.name.as_str()) {
-                            d.errors.push(format!(
-                                "at {}: In struct '{}', field '{}' is declared more than once",
-                                f.span, s.name, f.name
-                            ));
+                            push_error_at!(
+                                d,
+                                f.span,
+                                "In struct '{}', field '{}' is declared more than once",
+                                s.name,
+                                f.name
+                            );
                         }
                         if let Err(e) = self.validate_type(&f.ty) {
-                            d.errors.push(format!(
-                                "at {}: In struct '{}', field '{}': {}",
-                                f.span, s.name, f.name, e
-                            ));
+                            push_error_at!(
+                                d,
+                                f.span,
+                                "In struct '{}', field '{}': {}",
+                                s.name,
+                                f.name,
+                                e
+                            );
                         }
                     }
                 }
@@ -371,16 +388,23 @@ impl Env {
                     let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
                         if !seen.insert(v.name.as_str()) {
-                            d.errors.push(format!(
-                                "at {}: In enum '{}', variant '{}' is declared more than once",
-                                v.span, e.name, v.name
-                            ));
+                            push_error_at!(
+                                d,
+                                v.span,
+                                "In enum '{}', variant '{}' is declared more than once",
+                                e.name,
+                                v.name
+                            );
                         }
                         if let Err(err) = self.validate_type(&v.ty) {
-                            d.errors.push(format!(
-                                "at {}: In enum '{}', variant '{}': {}",
-                                v.span, e.name, v.name, err
-                            ));
+                            push_error_at!(
+                                d,
+                                v.span,
+                                "In enum '{}', variant '{}': {}",
+                                e.name,
+                                v.name,
+                                err
+                            );
                         }
                     }
                 }
@@ -396,10 +420,14 @@ impl Env {
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
         for p in &f.params {
             if let Err(e) = self.validate_type(&p.ty) {
-                d.errors.push(format!(
-                    "at {}: In function '{}', parameter '{}': {}",
-                    p.span, f.name, p.name, e
-                ));
+                push_error_at!(
+                    d,
+                    p.span,
+                    "In function '{}', parameter '{}': {}",
+                    f.name,
+                    p.name,
+                    e
+                );
             }
         }
 
@@ -416,10 +444,12 @@ impl Env {
         };
 
         if body.blocks.is_empty() {
-            d.errors.push(format!(
-                "at {}: Function '{}' has no entry block: body must contain at least one basic block",
-                f.name_span, f.name
-            ));
+            push_error_at!(
+                d,
+                f.name_span,
+                "Function '{}' has no entry block: body must contain at least one basic block",
+                f.name
+            );
             return;
         }
 
@@ -428,26 +458,36 @@ impl Env {
         let mut locals_map: IndexMap<String, Type> = IndexMap::new();
         for p in &f.params {
             if locals_map.contains_key(&p.name) {
-                d.errors.push(format!(
-                    "at {}: Duplicate variable name '{}' in parameters of function '{}'",
-                    p.span, p.name, f.name
-                ));
+                push_error_at!(
+                    d,
+                    p.span,
+                    "Duplicate variable name '{}' in parameters of function '{}'",
+                    p.name,
+                    f.name
+                );
             } else {
                 locals_map.insert(p.name.clone(), p.ty.clone());
             }
         }
         for l in &body.locals {
             if let Err(e) = self.validate_type(&l.ty) {
-                d.errors.push(format!(
-                    "at {}: In function '{}', local '{}': {}",
-                    l.span, f.name, l.name, e
-                ));
+                push_error_at!(
+                    d,
+                    l.span,
+                    "In function '{}', local '{}': {}",
+                    f.name,
+                    l.name,
+                    e
+                );
             }
             if locals_map.contains_key(&l.name) {
-                d.errors.push(format!(
-                    "at {}: Duplicate variable name '{}' in locals/parameters of function '{}'",
-                    l.span, l.name, f.name
-                ));
+                push_error_at!(
+                    d,
+                    l.span,
+                    "Duplicate variable name '{}' in locals/parameters of function '{}'",
+                    l.name,
+                    f.name
+                );
             } else {
                 locals_map.insert(l.name.clone(), l.ty.clone());
             }
@@ -470,7 +510,7 @@ impl Env {
     ) {
         for (stmt, span) in &block.statements {
             if let Err(e) = self.typecheck_statement(func, block, stmt, *span, locals) {
-                d.errors.push(e);
+                d.push_error(e);
             }
         }
         self.typecheck_terminator(func, block, locals, block_labels, d);
@@ -483,7 +523,7 @@ impl Env {
         stmt: &Statement,
         stmt_span: Span,
         locals: &IndexMap<String, Type>,
-    ) -> Result<(), String> {
+    ) -> Result<(), Diagnostic> {
         match stmt {
             Statement::Assign(place, rvalue) => {
                 let lhs_ty = self
@@ -730,17 +770,20 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         [] => {}
         [p] if p.ty == expected => {}
         [p] => {
-            d.errors.push(format!(
-                "at {}: In function 'main': single parameter must be '&out i32', found {:?}",
-                p.span, p.ty
-            ));
+            push_error_at!(
+                d,
+                p.span,
+                "In function 'main': single parameter must be '&out i32', found {:?}",
+                p.ty
+            );
         }
         _ => {
-            d.errors.push(format!(
-                "at {}: In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
+            push_error_at!(
+                d,
                 f.name_span,
+                "In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
                 f.params.len()
-            ));
+            );
         }
     }
 }

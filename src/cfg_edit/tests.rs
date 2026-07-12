@@ -322,8 +322,8 @@ fn split_then_full_pipeline_still_clean() {
 
     let (_, _, d) = run_all_passes(&program);
     assert!(
-        d.errors.is_empty(),
+        d.is_clean(),
         "expected clean, got errors: {:?}",
-        d.errors
+        d.errors_str()
     );
 }

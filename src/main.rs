@@ -53,7 +53,7 @@ use diagnostics::Diagnostics;
 pub fn run_all_passes(program: &Program) -> (Program, type_check::Env, Diagnostics) {
     let mut d = Diagnostics::default();
     let (mut env, env_errs) = type_check::Env::build(program);
-    d.errors.extend(env_errs);
+    d.extend_errors(env_errs);
     env.typecheck(&mut d);
     substructural::composition::check_program(&env, &mut d);
     layout::check_sizes_finite(&env, &mut d);
@@ -62,7 +62,7 @@ pub fn run_all_passes(program: &Program) -> (Program, type_check::Env, Diagnosti
     block_reachability::check_program(&env, &mut d);
     init_state::check_program(&env, &mut d);
 
-    if !d.errors.is_empty() {
+    if d.has_errors() {
         return (program.clone(), env, d);
     }
 
@@ -132,25 +132,25 @@ fn main() {
 
     let (elaborated, env, d) = run_all_passes(&program);
 
-    for w in &d.warnings {
+    for w in d.warnings() {
         eprintln!("Warning: {}", w);
     }
 
-    if !d.errors.is_empty() {
-        for e in &d.errors {
+    if d.has_errors() {
+        for e in d.errors() {
             eprintln!("Error: {}", e);
         }
         eprintln!(
             "{} error(s), {} warning(s)",
-            d.errors.len(),
-            d.warnings.len()
+            d.error_count(),
+            d.warning_count()
         );
         std::process::exit(1);
     }
 
     eprintln!("Type checking successful!");
-    if !d.warnings.is_empty() {
-        eprintln!("({} warning(s))", d.warnings.len());
+    if d.warning_count() > 0 {
+        eprintln!("({} warning(s))", d.warning_count());
     }
 
     if emit_llvm {

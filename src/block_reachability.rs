@@ -41,10 +41,14 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
     let reached = dataflow::run(&Reachability, body);
     for block in &body.blocks {
         if !reached.contains_key(&block.label) {
-            d.warnings.push(format!(
-                "at {}: In function '{}': block '{}' is unreachable from entry",
-                block.label_span, func.name, block.label
-            ));
+            d.push_warning(
+                crate::diagnostics::Diagnostic::new(
+                    crate::diagnostics::DiagCode::Unspecified,
+                    format!("block '{}' is unreachable from entry", block.label),
+                )
+                .at(block.label_span)
+                .in_function(&func.name),
+            );
         }
     }
 }

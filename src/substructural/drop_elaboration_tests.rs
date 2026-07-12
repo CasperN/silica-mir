@@ -42,8 +42,8 @@ fn assert_strict_clean_after_elaboration(src: &str) {
     let env = type_check::Env::build(&program).0;
     env.typecheck(&mut d);
     check_return_leaks(&env, &mut d);
-    let leak_errs: Vec<&String> = d
-        .errors
+    let errs = d.errors_str();
+    let leak_errs: Vec<&String> = errs
         .iter()
         .filter(|e| e.contains("not consumed at return"))
         .collect();
@@ -925,12 +925,13 @@ fn strict_check_still_fails_for_linear_leak() {
     env2.typecheck(&mut d2);
     check_return_leaks(&env2, &mut d2);
 
+    let errs = d2.errors_str();
     assert!(
-        d2.errors
+        errs
             .iter()
             .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
         "expected linear leak to survive elaboration; got: {:?}",
-        d2.errors
+        errs
     );
 }
 

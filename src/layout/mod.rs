@@ -138,10 +138,13 @@ fn report_cycle(scc: &[String], env: &Env, d: &mut Diagnostics) {
     let head = &scc[0];
     let span = decl_span(head, env);
     let members = scc.join(", ");
-    d.errors.push(format!(
-        "at {}: type '{}' is recursive by value (cycle: {}). Break the cycle by wrapping a field/variant payload in a reference.",
-        span, head, members
-    ));
+    crate::push_error_at!(
+        d,
+        span,
+        "type '{}' is recursive by value (cycle: {}). Break the cycle by wrapping a field/variant payload in a reference.",
+        head,
+        members
+    );
 }
 
 fn decl_span(name: &str, env: &Env) -> Span {

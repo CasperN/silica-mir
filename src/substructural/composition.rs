@@ -118,25 +118,37 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
     for f in &s.fields {
         let c = class_of(&f.ty, env);
         if s.markers.copy && !c.copy {
-            d.errors.push(format!(
-                "at {}: In struct '{}' (marked Copy), field '{}' has type {:?} which is not Copy",
-                f.span, s.name, f.name, f.ty
-            ));
+            crate::push_error_at!(
+                d,
+                f.span,
+                "In struct '{}' (marked Copy), field '{}' has type {:?} which is not Copy",
+                s.name,
+                f.name,
+                f.ty
+            );
         }
         if s.markers.drop && !c.drop {
-            d.errors.push(format!(
-                "at {}: In struct '{}' (marked Drop), field '{}' has type {:?} which is not Drop",
-                f.span, s.name, f.name, f.ty
-            ));
+            crate::push_error_at!(
+                d,
+                f.span,
+                "In struct '{}' (marked Drop), field '{}' has type {:?} which is not Drop",
+                s.name,
+                f.name,
+                f.ty
+            );
         }
         // Only check explicit Move against fields — an implicit Move
         // via Copy+Drop is guaranteed to succeed because those fields
         // are already Copy AND Drop, hence Move.
         if s.markers.mov && !c.mov {
-            d.errors.push(format!(
-                "at {}: In struct '{}' (marked Move), field '{}' has type {:?} which is not Move",
-                f.span, s.name, f.name, f.ty
-            ));
+            crate::push_error_at!(
+                d,
+                f.span,
+                "In struct '{}' (marked Move), field '{}' has type {:?} which is not Move",
+                s.name,
+                f.name,
+                f.ty
+            );
         }
     }
 }
@@ -145,22 +157,34 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
     for v in &e.variants {
         let c = class_of(&v.ty, env);
         if e.markers.copy && !c.copy {
-            d.errors.push(format!(
-                "at {}: In enum '{}' (marked Copy), variant '{}' payload type {:?} is not Copy",
-                v.span, e.name, v.name, v.ty
-            ));
+            crate::push_error_at!(
+                d,
+                v.span,
+                "In enum '{}' (marked Copy), variant '{}' payload type {:?} is not Copy",
+                e.name,
+                v.name,
+                v.ty
+            );
         }
         if e.markers.drop && !c.drop {
-            d.errors.push(format!(
-                "at {}: In enum '{}' (marked Drop), variant '{}' payload type {:?} is not Drop",
-                v.span, e.name, v.name, v.ty
-            ));
+            crate::push_error_at!(
+                d,
+                v.span,
+                "In enum '{}' (marked Drop), variant '{}' payload type {:?} is not Drop",
+                e.name,
+                v.name,
+                v.ty
+            );
         }
         if e.markers.mov && !c.mov {
-            d.errors.push(format!(
-                "at {}: In enum '{}' (marked Move), variant '{}' payload type {:?} is not Move",
-                v.span, e.name, v.name, v.ty
-            ));
+            crate::push_error_at!(
+                d,
+                v.span,
+                "In enum '{}' (marked Move), variant '{}' payload type {:?} is not Move",
+                e.name,
+                v.name,
+                v.ty
+            );
         }
     }
 }

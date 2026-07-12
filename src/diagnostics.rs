@@ -1,44 +1,251 @@
-//! Shared diagnostic container for analysis passes. Every pass takes a
-//! `&mut Diagnostics` and pushes into `errors` / `warnings` directly.
+//! Structured diagnostic type shared by all analysis passes.
 //!
-//! `push_error!` / `push_warning!` macros abstract the ubiquitous
-//! `at L:C: In function 'f', block 'b': <msg>` prefix.
+//! A `Diagnostic` carries the source position, function/block context,
+//! and message for a single error or warning. `Diagnostics` collects
+//! them into two lists (errors and warnings).
+//!
+//! **Extension policy**: `Diagnostic` is constructed via
+//! [`Diagnostic::new`] + chainable `at` / `in_function` / `in_block`
+//! setters (builder-style). Every construction site names only the
+//! fields it cares about; unnamed ones get their default. Adding a
+//! new optional field is a non-breaking change — no callers need
+//! updating. Structural fields (currently `code` and `message`) are
+//! required arguments to `new`.
+//!
+//! Today `code` accepts a `DiagCode::Unspecified` placeholder used
+//! by the migration macros. Once every push_error site has a
+//! dedicated code, `Unspecified` can be removed and the placeholder
+//! goes with it.
+//!
+//! **String view**: `Diagnostic` implements `Display` in the current
+//! `at L:C: In function 'f', block 'b': msg` format so `Diagnostics
+//! ::errors_str()` reproduces the string-based test API. Tests keep
+//! calling `assert_errors_contain(&errs, &[...])` unchanged.
 
-#[derive(Debug, Default)]
-pub struct Diagnostics {
-    pub errors: Vec<String>,
-    pub warnings: Vec<String>,
+use crate::ast::Span;
+
+/// Machine-readable error kind. New variants added over time as
+/// `push_error!` sites are migrated from ad-hoc strings to specific
+/// codes. The default `Unspecified` covers all unmigrated call sites.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub enum DiagCode {
+    /// Sentinel for call sites that haven't been assigned a specific
+    /// code yet. Replace with a dedicated variant during migration.
+    #[default]
+    Unspecified,
 }
 
-/// Format a diagnostic string with `at <span>: In function '<f>', block '<b>':`
-/// prefix — for use where the caller already has an owned `String` sink
-/// (e.g. inside a `.map_err(|e| ...)` closure).
+/// A single compiler diagnostic (error or warning). The container in
+/// [`Diagnostics`] determines severity; this struct is the shared shape.
+///
+/// **Construct with [`Diagnostic::new`]** and chain optional setters:
+///
+/// ```ignore
+/// Diagnostic::new(DiagCode::Unspecified, "cannot copy non-Copy type i64")
+///     .at(span)
+///     .in_function(&func.name)
+///     .in_block(&block.label)
+/// ```
+///
+/// Fields are private to keep the struct extension-safe.
+/// Fields are initialized via the builder pattern and accessed via methods. 
+#[derive(Debug, Clone)]
+pub struct Diagnostic {
+    code: DiagCode,
+    span: Span,
+    function: String,
+    block: String,
+    message: String,
+}
+
+impl Diagnostic {
+    /// Build a diagnostic with the two required fields: a code and a
+    /// message. Add optional context via [`at`], [`in_function`],
+    /// [`in_block`].
+    pub fn new(code: DiagCode, message: impl Into<String>) -> Self {
+        Diagnostic {
+            code,
+            span: Span::default(),
+            function: String::new(),
+            block: String::new(),
+            message: message.into(),
+        }
+    }
+
+    /// Attach a source position.
+    pub fn at(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
+
+    /// Attach an enclosing function name.
+    pub fn in_function(mut self, name: impl Into<String>) -> Self {
+        self.function = name.into();
+        self
+    }
+
+    /// Attach an enclosing basic-block label.
+    pub fn in_block(mut self, label: impl Into<String>) -> Self {
+        self.block = label.into();
+        self
+    }
+
+    // Read-only accessors. Kept minimal until a specific pass needs
+    // more (e.g., LSP mapping will want `span()` and `code()`).
+
+    pub fn code(&self) -> DiagCode {
+        self.code
+    }
+
+    pub fn span(&self) -> Span {
+        self.span
+    }
+
+    pub fn message(&self) -> &str {
+        &self.message
+    }
+}
+
+impl std::fmt::Display for Diagnostic {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let has_pos = self.span.line != 0 || self.span.col != 0;
+        if has_pos {
+            write!(f, "at {}: ", self.span)?;
+        }
+        match (self.function.is_empty(), self.block.is_empty()) {
+            (false, false) => write!(f, "In function '{}', block '{}': ", self.function, self.block)?,
+            (false, true) => write!(f, "In function '{}': ", self.function)?,
+            _ => {}
+        }
+        write!(f, "{}", self.message)
+    }
+}
+
+/// Collected errors and warnings for a single compilation.
+///
+/// Fields are private. All access goes through methods so we can
+/// change the internal representation (add source-file tracking,
+/// deduplicate, batch by pass, etc.) without a whole-tree edit.
+#[derive(Debug, Default)]
+pub struct Diagnostics {
+    errors: Vec<Diagnostic>,
+    warnings: Vec<Diagnostic>,
+}
+
+impl Diagnostics {
+    /// Append an error. Used by [`push_error!`] and by any pass that
+    /// has already constructed a `Diagnostic`.
+    pub fn push_error(&mut self, diagnostic: Diagnostic) {
+        self.errors.push(diagnostic);
+    }
+
+    /// Append a warning. Used by [`push_warning!`] and by callers
+    /// with a prebuilt `Diagnostic`.
+    pub fn push_warning(&mut self, diagnostic: Diagnostic) {
+        self.warnings.push(diagnostic);
+    }
+
+    /// Append every diagnostic from `other` as errors. Used by
+    /// `run_all_passes` to fold in `Env::build`'s pre-typecheck
+    /// errors.
+    pub fn extend_errors(&mut self, other: impl IntoIterator<Item = Diagnostic>) {
+        self.errors.extend(other);
+    }
+
+    /// True if no errors have been recorded. Warnings are ignored.
+    pub fn is_clean(&self) -> bool {
+        self.errors.is_empty()
+    }
+
+    /// True if any error has been recorded.
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    /// Number of recorded errors.
+    pub fn error_count(&self) -> usize {
+        self.errors.len()
+    }
+
+    /// Number of recorded warnings.
+    pub fn warning_count(&self) -> usize {
+        self.warnings.len()
+    }
+
+    /// Iterate structured errors.
+    pub fn errors(&self) -> impl Iterator<Item = &Diagnostic> {
+        self.errors.iter()
+    }
+
+    /// Iterate structured warnings.
+    pub fn warnings(&self) -> impl Iterator<Item = &Diagnostic> {
+        self.warnings.iter()
+    }
+
+    /// String view of `errors`, one preformatted line per diagnostic
+    /// in the same format the old `Vec<String>` container produced.
+    /// Used by the test harness so existing `assert_errors_contain`
+    /// assertions keep matching.
+    pub fn errors_str(&self) -> Vec<String> {
+        self.errors.iter().map(|d| d.to_string()).collect()
+    }
+
+    /// String view of `warnings`. Mirrors [`errors_str`].
+    pub fn warnings_str(&self) -> Vec<String> {
+        self.warnings.iter().map(|d| d.to_string()).collect()
+    }
+}
+
+/// Build a `Diagnostic` with the standard `at L:C: In function 'f',
+/// block 'b': ...` shape. Used inside `push_error!` and `push_warning!`
+/// and also by any pass that needs to construct a diagnostic for a
+/// `Result<_, Diagnostic>` return.
+///
+/// The code defaults to `DiagCode::Unspecified` — replace via a
+/// dedicated variant when migrating a specific call site.
 #[macro_export]
 macro_rules! fmt_error {
     ($span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {
-        format!(
-            "at {}: In function '{}', block '{}': {}",
-            $span,
-            $func.name,
-            $block.label,
-            format_args!($($fmt)*)
+        $crate::diagnostics::Diagnostic::new(
+            $crate::diagnostics::DiagCode::Unspecified,
+            format!($($fmt)*),
         )
+        .at($span)
+        .in_function(&$func.name)
+        .in_block(&$block.label)
     };
 }
 
-/// Push an error formatted with `at <span>: In function '<f>', block '<b>':`
-/// prefix into `d.errors`.
+/// Push an error with the standard `at L:C: In function 'f', block 'b':`
+/// prefix into `d`.
 #[macro_export]
 macro_rules! push_error {
     ($d:expr, $span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {{
-        $d.errors.push($crate::fmt_error!($span, $func, $block, $($fmt)*));
+        $d.push_error($crate::fmt_error!($span, $func, $block, $($fmt)*));
     }};
 }
 
-/// Push a warning with the same prefix as `push_error!` into `d.warnings`.
+/// Push an error with just a span (no function/block context) into
+/// `d`. Used at declaration scope — before we have a Function or
+/// BasicBlock to attribute the error to (duplicate types, malformed
+/// struct fields, function-signature checks, etc.).
+#[macro_export]
+macro_rules! push_error_at {
+    ($d:expr, $span:expr, $($fmt:tt)*) => {{
+        $d.push_error(
+            $crate::diagnostics::Diagnostic::new(
+                $crate::diagnostics::DiagCode::Unspecified,
+                format!($($fmt)*),
+            )
+            .at($span)
+        );
+    }};
+}
+
+/// Push a warning with the same prefix as `push_error!` into `d`.
 #[macro_export]
 macro_rules! push_warning {
     ($d:expr, $span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {{
-        $d.warnings.push($crate::fmt_error!($span, $func, $block, $($fmt)*));
+        $d.push_warning($crate::fmt_error!($span, $func, $block, $($fmt)*));
     }};
 }

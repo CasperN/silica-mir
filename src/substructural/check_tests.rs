@@ -626,12 +626,13 @@ fn direct_leak_check_flags_pre_elaboration_drop_leak() {
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
     check_return_leaks(&env, &mut d);
+    let errs = d.errors_str();
     assert!(
-        d.errors
+        errs
             .iter()
             .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
         "expected leak error, got {:?}",
-        d.errors
+        errs
     );
 }
 
@@ -643,14 +644,14 @@ fn direct_leak_check_ok_when_explicitly_dropped() {
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
     check_return_leaks(&env, &mut d);
-    let leak_errs: Vec<_> = d
-        .errors
+    let errs = d.errors_str();
+    let leak_errs: Vec<_> = errs
         .iter()
         .filter(|e| e.contains("not consumed at return"))
         .collect();
     assert!(
         leak_errs.is_empty(),
         "expected no leaks, got {:?}",
-        d.errors
+        errs
     );
 }
