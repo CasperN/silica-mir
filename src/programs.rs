@@ -133,17 +133,11 @@ fn enum_of_enum_switch_and_downcast_ok() {
 // ---------- Never variant in a switchEnum ----------
 
 #[test]
-fn enum_with_never_variant_uninhabited_arm_not_detected_gap() {
-    // GAP: variant_flow doesn't inspect payload types to determine
-    // whether a variant is uninhabited. `N: never` cannot be
-    // constructed (there's no `never` value to wrap), so the `N`
-    // arm should be provably unreachable — but the checker rejects
-    // an `unreachable` terminator there with "variant is reachable
-    // at this point". Fix would extend variant_flow's refinement to
-    // start from a smaller variant set for enums with uninhabited
-    // variants, or teach class_of's `never` handling to propagate
-    // "value cannot exist" through enum construction.
-    assert_err(
+fn enum_with_never_variant_unreachable_arm_ok() {
+    // `enum { A: i64, N: never }` — the `N` variant is uninhabited
+    // (no `never` value can exist to wrap). variant_flow recognizes
+    // this and accepts an `unreachable` terminator on the N arm.
+    assert_no_diagnostics(
         "
         enum Copy Drop E { A: i64 N: never }
         fn f(e: E, out: &out i64) {
@@ -156,7 +150,6 @@ fn enum_with_never_variant_uninhabited_arm_not_detected_gap() {
             unreachable
         }
         ",
-        "variant is reachable",
     );
 }
 

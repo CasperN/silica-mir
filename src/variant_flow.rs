@@ -439,7 +439,22 @@ fn check_switch(
 
         let variant_reachable = match known {
             Some(set) => set.contains(variant),
-            None => true, // ⊤
+            None => {
+                // ⊤ over declared variants, but uninhabited variants
+                // (whose payload type can't be constructed) never
+                // occur at runtime — treat as unreachable so an
+                // `unreachable` arm for `N: never` is valid without
+                // requiring prior refinement.
+                let payload_ty = enum_decl
+                    .variants
+                    .iter()
+                    .find(|v| v.name == *variant)
+                    .map(|v| &v.ty);
+                match payload_ty {
+                    Some(ty) => !is_type_uninhabited(ty, env),
+                    None => true,
+                }
+            }
         };
 
         match (target_unreachable, variant_reachable) {
@@ -456,6 +471,50 @@ fn check_switch(
             _ => {}
         }
     }
+}
+
+/// True if a value of `ty` cannot be constructed. Uninhabited types:
+/// - `never` — the axiom.
+/// - Struct where any field is uninhabited (whole-value construction
+///   requires every field).
+/// - Enum where every variant's payload is uninhabited (no variant
+///   is constructible → the enum is empty).
+/// - Non-empty array of an uninhabited element type. `[T; 0]` is
+///   inhabited (the empty array literal has no elements to construct).
+///
+/// References, raw pointers, function pointers, scalars, `unit`, and
+/// `boolean` are always inhabited. Recursive struct/enum types are
+/// bounded by the visited set — a Custom name seen twice in the
+/// same walk conservatively returns false (inhabited) rather than
+/// looping.
+fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
+    fn walk(ty: &Type, env: &Env, visited: &mut BTreeSet<String>) -> bool {
+        match ty {
+            Type::Never => true,
+            Type::Custom(name) => {
+                if !visited.insert(name.clone()) {
+                    return false;
+                }
+                let out = match env.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => {
+                        s.fields.iter().any(|f| walk(&f.ty, env, visited))
+                    }
+                    // An enum is uninhabited when EVERY variant is
+                    // uninhabited. Vacuous truth handles the empty
+                    // enum (no variants → all() returns true).
+                    Some(TypeDecl::Enum(e)) => {
+                        e.variants.iter().all(|v| walk(&v.ty, env, visited))
+                    }
+                    None => false,
+                };
+                visited.remove(name);
+                out
+            }
+            Type::Array(elem, n) => *n > 0 && walk(elem, env, &mut BTreeSet::new()),
+            _ => false,
+        }
+    }
+    walk(ty, env, &mut BTreeSet::new())
 }
 
 fn resolve_enum_of_place<'a>(
@@ -1119,6 +1178,98 @@ mod tests {
                 unreachable
             }
             ",
+        );
+    }
+
+    // ---------- Uninhabited variants (transitive) ----------
+
+    #[test]
+    fn variant_with_never_payload_allows_unreachable_arm() {
+        // Directly `N: never` — the payload is uninhabited, so N
+        // itself is unreachable at any switch point.
+        assert_no_diagnostics(
+            "
+            enum Copy Drop E { A: i64 N: never }
+            fn f(e: E, out: &out i64) {
+              entry:
+                switchEnum(e) [A: a_arm, N: n_arm]
+              a_arm:
+                *out = copy e as A;
+                return
+              n_arm:
+                unreachable
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn variant_with_transitively_never_struct_payload_allows_unreachable_arm() {
+        // A struct that contains a `never` field is itself
+        // uninhabited. An enum variant carrying that struct is
+        // therefore uninhabited and its arm can be `unreachable`.
+        assert_no_diagnostics(
+            "
+            struct Copy Drop Move Voidish { real: i64 fake: never }
+            enum Copy Drop E { A: i64 N: Voidish }
+            fn f(e: E, out: &out i64) {
+              entry:
+                switchEnum(e) [A: a_arm, N: n_arm]
+              a_arm:
+                *out = copy e as A;
+                return
+              n_arm:
+                unreachable
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn variant_with_empty_enum_payload_allows_unreachable_arm() {
+        // An empty enum is uninhabited (no variants to construct).
+        // A variant carrying it is uninhabited via a different path
+        // than the `never` case — same treatment.
+        assert_no_diagnostics(
+            "
+            enum Copy Drop Void {}
+            enum Copy Drop E { A: i64 N: Void }
+            fn f(e: E, out: &out i64) {
+              entry:
+                switchEnum(e) [A: a_arm, N: n_arm]
+              a_arm:
+                *out = copy e as A;
+                return
+              n_arm:
+                unreachable
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn variant_with_inhabited_struct_payload_still_reachable() {
+        // Sanity: a struct with only inhabited fields does NOT make
+        // the containing variant uninhabited. Marking its arm
+        // `unreachable` should still error.
+        let (errs, _) = run(
+            "
+            struct Copy Drop Move Fine { x: i64 }
+            enum Copy Drop E { A: i64 B: Fine }
+            fn f(e: E, out: &out i64) {
+              entry:
+                switchEnum(e) [A: a_arm, B: b_arm]
+              a_arm:
+                *out = copy e as A;
+                return
+              b_arm:
+                unreachable
+            }
+            ",
+        );
+        assert_errors_contain(
+            &errs,
+            &["variant is reachable"],
         );
     }
 
