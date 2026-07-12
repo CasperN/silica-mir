@@ -445,7 +445,7 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::new();
     for spec in crate::intrinsics::all() {
-        if !called.contains(spec.name) {
+        if !called.contains(&spec.name) {
             continue;
         }
         for d in spec.llvm_declares {

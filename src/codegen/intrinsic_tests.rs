@@ -525,14 +525,13 @@ fn boolean_result_of_intrinsic_used_in_branch_ok() {
     );
 }
 
-// ---------- Missing intrinsics (documents a gap) ----------
+// ---------- Float comparisons ----------
 
 #[test]
-fn f64_lt_is_not_yet_an_intrinsic() {
-    // README lists only `$f64_add` and `$f64_mul`. Any missing float
-    // predicate should surface as an unknown-function error. When
-    // `$f64_lt` gets added, flip this test.
-    let (errs, _) = crate::test_util::run(
+fn f64_lt_lowers_to_ordered_fcmp() {
+    // Float predicates are ordered by default (NaN inputs make the
+    // comparison false). Ordered less-than lowers to `fcmp olt`.
+    let ll = ll_of(
         "
         fn f(x: f64, y: f64) {
           b: boolean;
@@ -544,10 +543,334 @@ fn f64_lt_is_not_yet_an_intrinsic() {
         }
         ",
     );
-    assert!(
-        errs.iter().any(|e| e.contains("$f64_lt") || e.contains("Undeclared")
-            || e.contains("undeclared") || e.contains("not defined")),
-        "expected an unknown-function-style error mentioning $f64_lt, got: {:?}",
-        errs
+    assert_contains(&ll, "fcmp olt double");
+}
+
+// ---------- Expanded surface: per-width, bitwise, shifts, div/rem ----------
+
+#[test]
+fn i32_add_uses_i32_width() {
+    let ll = ll_of(
+        "
+        fn f(a: i32, b: i32) {
+          r: i32;
+          out: &out i32;
+          entry:
+            out = &out r;
+            call $i32_add(copy a, copy b, move out);
+            return
+        }
+        ",
     );
+    assert_contains(&ll, "= add i32");
+}
+
+#[test]
+fn u8_mul_uses_i8_width() {
+    // u8 and i8 share the LLVM i8 type — signedness only affects
+    // ops like sdiv/udiv, not add/sub/mul.
+    let ll = ll_of(
+        "
+        fn f(a: u8, b: u8) {
+          r: u8;
+          out: &out u8;
+          entry:
+            out = &out r;
+            call $u8_mul(copy a, copy b, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= mul i8");
+}
+
+#[test]
+fn i64_and_or_xor_lower_to_bitwise() {
+    let ll = ll_of(
+        "
+        fn f(a: i64, b: i64) {
+          r: i64;
+          out: &out i64;
+          entry:
+            out = &out r;
+            call $i64_and(copy a, copy b, move out);
+            call $i64_or(copy a, copy b, move out);
+            call $i64_xor(copy a, copy b, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= and i64");
+    assert_contains(&ll, "= or i64");
+    assert_contains(&ll, "= xor i64");
+}
+
+#[test]
+fn i32_shr_uses_ashr_but_u32_shr_uses_lshr() {
+    let ll = ll_of(
+        "
+        fn f(a: i32, b: i32, c: u32, d: u32) {
+          r_signed: i32;
+          out_signed: &out i32;
+          r_unsigned: u32;
+          out_unsigned: &out u32;
+          entry:
+            out_signed = &out r_signed;
+            call $i32_shr(copy a, copy b, move out_signed);
+            out_unsigned = &out r_unsigned;
+            call $u32_shr(copy c, copy d, move out_unsigned);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= ashr i32");
+    assert_contains(&ll, "= lshr i32");
+}
+
+#[test]
+fn i32_div_uses_sdiv_but_u32_div_uses_udiv() {
+    let ll = ll_of(
+        "
+        fn f(a: i32, b: i32, c: u32, d: u32) {
+          r_signed: i32;
+          out_signed: &out i32;
+          r_unsigned: u32;
+          out_unsigned: &out u32;
+          entry:
+            out_signed = &out r_signed;
+            call $i32_div(copy a, copy b, move out_signed);
+            out_unsigned = &out r_unsigned;
+            call $u32_div(copy c, copy d, move out_unsigned);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= sdiv i32");
+    assert_contains(&ll, "= udiv i32");
+}
+
+#[test]
+fn i64_rem_lowers_to_srem() {
+    let ll = ll_of(
+        "
+        fn f(a: i64, b: i64) {
+          r: i64;
+          out: &out i64;
+          entry:
+            out = &out r;
+            call $i64_rem(copy a, copy b, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= srem i64");
+}
+
+// ---------- Float surface: sub, div, neg ----------
+
+#[test]
+fn f64_sub_div_neg_lower_correctly() {
+    let ll = ll_of(
+        "
+        fn f(a: f64, b: f64) {
+          r: f64;
+          out: &out f64;
+          entry:
+            out = &out r;
+            call $f64_sub(copy a, copy b, move out);
+            call $f64_div(copy a, copy b, move out);
+            call $f64_neg(copy a, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= fsub double");
+    assert_contains(&ll, "= fdiv double");
+    assert_contains(&ll, "= fneg double");
+}
+
+#[test]
+fn f32_arithmetic_uses_float_type() {
+    let ll = ll_of(
+        "
+        fn f(a: f32, b: f32) {
+          r: f32;
+          out: &out f32;
+          entry:
+            out = &out r;
+            call $f32_add(copy a, copy b, move out);
+            call $f32_mul(copy a, copy b, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= fadd float");
+    assert_contains(&ll, "= fmul float");
+}
+
+// ---------- Casts ----------
+
+#[test]
+fn i32_to_i64_lowers_to_sext() {
+    let ll = ll_of(
+        "
+        fn f(x: i32) {
+          y: i64;
+          out: &out i64;
+          entry:
+            out = &out y;
+            call $i32_to_i64(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= sext i32");
+    assert_contains(&ll, " to i64");
+}
+
+#[test]
+fn u32_to_u64_lowers_to_zext() {
+    let ll = ll_of(
+        "
+        fn f(x: u32) {
+          y: u64;
+          out: &out u64;
+          entry:
+            out = &out y;
+            call $u32_to_u64(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= zext i32");
+    assert_contains(&ll, " to i64");
+}
+
+#[test]
+fn i64_to_i32_lowers_to_trunc() {
+    let ll = ll_of(
+        "
+        fn f(x: i64) {
+          y: i32;
+          out: &out i32;
+          entry:
+            out = &out y;
+            call $i64_to_i32(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= trunc i64");
+    assert_contains(&ll, " to i32");
+}
+
+#[test]
+fn i64_to_f64_uses_sitofp() {
+    let ll = ll_of(
+        "
+        fn f(x: i64) {
+          y: f64;
+          out: &out f64;
+          entry:
+            out = &out y;
+            call $i64_to_f64(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= sitofp i64");
+    assert_contains(&ll, " to double");
+}
+
+#[test]
+fn f64_to_u32_uses_fptoui() {
+    let ll = ll_of(
+        "
+        fn f(x: f64) {
+          y: u32;
+          out: &out u32;
+          entry:
+            out = &out y;
+            call $f64_to_u32(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= fptoui double");
+    assert_contains(&ll, " to i32");
+}
+
+#[test]
+fn f32_to_f64_uses_fpext() {
+    let ll = ll_of(
+        "
+        fn f(x: f32) {
+          y: f64;
+          out: &out f64;
+          entry:
+            out = &out y;
+            call $f32_to_f64(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= fpext float");
+}
+
+#[test]
+fn bool_to_i32_uses_zext_from_i1() {
+    let ll = ll_of(
+        "
+        fn f(b: boolean) {
+          y: i32;
+          out: &out i32;
+          entry:
+            out = &out y;
+            call $bool_to_i32(copy b, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "= zext i1");
+    assert_contains(&ll, " to i32");
+}
+
+// ---------- LLVM-intrinsic-backed ops ----------
+
+#[test]
+fn i32_clz_calls_llvm_ctlz_with_zero_undef_false() {
+    let ll = ll_of(
+        "
+        fn f(x: i32) {
+          y: i32;
+          out: &out i32;
+          entry:
+            out = &out y;
+            call $i32_clz(copy x, move out);
+            return
+        }
+        ",
+    );
+    // The declare line lists the extra i1 arg; the call passes false.
+    assert_contains(&ll, "declare i32 @llvm.ctlz.i32(i32, i1)");
+    assert_contains(&ll, "call i32 @llvm.ctlz.i32(i32");
+    assert_contains(&ll, ", i1 false)");
+}
+
+#[test]
+fn f64_sqrt_calls_llvm_sqrt() {
+    let ll = ll_of(
+        "
+        fn f(x: f64) {
+          y: f64;
+          out: &out f64;
+          entry:
+            out = &out y;
+            call $f64_sqrt(copy x, move out);
+            return
+        }
+        ",
+    );
+    assert_contains(&ll, "declare double @llvm.sqrt.double(double)");
+    assert_contains(&ll, "call double @llvm.sqrt.double(double");
 }
