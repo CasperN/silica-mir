@@ -1,4 +1,5 @@
 {
+  "$schema": "https://tree-sitter.github.io/tree-sitter/assets/schemas/grammar.schema.json",
   "name": "silica_mir",
   "word": "identifier",
   "rules": {
@@ -1206,7 +1207,7 @@
         },
         {
           "type": "STRING",
-          "value": "boolean"
+          "value": "bool"
         },
         {
           "type": "STRING",
@@ -1422,5 +1423,6 @@
   "precedences": [],
   "externals": [],
   "inline": [],
-  "supertypes": []
+  "supertypes": [],
+  "reserved": {}
 }

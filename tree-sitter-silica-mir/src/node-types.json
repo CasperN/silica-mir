@@ -437,6 +437,7 @@
   {
     "type": "program",
     "named": true,
+    "root": true,
     "fields": {},
     "children": {
       "multiple": true,
@@ -804,7 +805,7 @@
     "named": false
   },
   {
-    "type": "boolean",
+    "type": "bool",
     "named": false
   },
   {
@@ -825,7 +826,8 @@
   },
   {
     "type": "comment",
-    "named": true
+    "named": true,
+    "extra": true
   },
   {
     "type": "copy",

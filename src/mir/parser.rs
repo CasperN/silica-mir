@@ -1086,4 +1086,23 @@ mod tests {
         assert_eq!(b, c);
         assert!(a.copy && a.drop && a.mov);
     }
+
+    #[test]
+    fn bool_type_keyword_parses_as_type_bool() {
+        // Regression: the grammar previously spelled the boolean type
+        // keyword as `boolean` while the rest of the codebase (Rust
+        // sources, pretty printer, HLL) used `bool`. Source text `bool`
+        // silently fell through to the `identifier` alternative and
+        // produced `Type::Custom("bool")`, which downstream typecheck
+        // rejected as "undeclared type 'bool'". The pretty printer emits
+        // `bool`, so round-tripping any bool-using program was broken.
+        let src = "fn f(x: bool) { entry: return }";
+        let program = Parser::new(src.to_string())
+            .parse()
+            .expect("bool should parse as a type keyword");
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!("expected fn");
+        };
+        assert_eq!(f.params[0].ty, Type::Bool);
+    }
 }
