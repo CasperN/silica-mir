@@ -501,17 +501,14 @@ for production correctness).
 in LLVM.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
-- Elaborate `drop p` before an overwriting assign `p = <rvalue>`
-  where `p` is Init and its type is Drop. The parallel `&out p`
-  case is handled (drop-elab inserts an implicit drop when a
-  borrower would otherwise fail the Uninit precondition), but the
-  bare-assign case is trickier: inserting `drop p` before `p = ...`
-  changes the semantics of self-referential rvalues (`p = copy p`,
-  `p = f(p)`) — the drop would move `p` before the RHS reads it.
-  Making the drop explicit for the general case likely requires
-  splitting the assign into `tmp = rvalue; drop p; p = move tmp;`.
-  Deferred; today's bitwise-forget is correctness-safe until custom
-  destructors land.
+- Extend downcast-target reassignment drop-elab to non-operand
+  rvalues. Today `o as V = <operand>` rewrites to
+  `drop (o as V); o = EnumName::V(<operand>)` — but only when the
+  rvalue is an operand (Copy/Move/Const), because `EnumConstr`
+  takes an Operand. For `o as V = &mut foo` or `o as V = [e0, e1]`
+  we'd need to hoist the payload into a fresh temp first, which
+  requires allocating a mid-elaboration local. Frontend can spell
+  the pattern manually today.
 - **Variant_flow doesn't detect uninhabited variants.** `enum { A: i64,
   N: never }` — the `N` arm is provably unreachable (no `never`
   value can exist to wrap), but variant_flow rejects an
@@ -537,6 +534,13 @@ in LLVM.
 The compiler currently accumulates errors as `Vec<String>`. Works but is
 rough at every scale — cheap papercuts stack up, and there's a bigger
 migration lurking underneath.
+
+Design requirements:
+- To avoid upfront test churn, the system needs to be backwards compatible to
+string-like errors like in the existing tests. This will be deleted after a
+migration.
+- We want Rust-inspired numbered errors, each with good names, explainations,
+and code locations. When the HLL exists, we'd need to map to HLL code locations.
 
 Cheap papercuts to fix incrementally:
 - Type names print as Rust `{:?}` debug form (`Int(I64)` instead of

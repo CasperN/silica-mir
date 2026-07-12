@@ -417,6 +417,43 @@ fn pack_two_refs_into_struct_and_pass_ok() {
 
 // ---------- Sum an array with a dynamic index ----------
 
+// ---------- Downcast-target reassignment ----------
+
+#[test]
+fn downcast_target_reassignment_elaborates_to_full_construction() {
+    // `o as Some = 7` used to silently overwrite the old payload.
+    // Drop-elab now rewrites the whole statement to
+    // `drop (o as Some); o = Option::Some(7)` so the old payload's
+    // destructor eventually runs. This avoids the enum-atomicity
+    // trap: a bare `drop (o as Some)` cascades o to Moved and
+    // breaks the subsequent write, but pairing it with an
+    // EnumConstr reconstruction restores o to Init as variant Some.
+    use crate::parser::Parser;
+    use crate::pretty_print::pretty_print;
+    use crate::run_all_passes;
+    let src = "
+        enum Copy Drop Option { None: unit Some: i64 }
+        fn f(o: Option) {
+          entry:
+            switchEnum(o) [None: n, Some: s]
+          s:
+            o as Some = 7;
+            return
+          n: return
+        }
+    ";
+    let program = Parser::new(src.to_string()).parse().unwrap();
+    let (elaborated, _env, d) = run_all_passes(&program);
+    assert!(d.errors.is_empty(), "expected clean run, got {:?}", d.errors);
+    let out = pretty_print(&elaborated);
+    assert!(
+        out.contains("drop o as Some;")
+            && out.contains("o = Option::Some(7);"),
+        "expected downcast rewrite in elaborated form:\n{}",
+        out
+    );
+}
+
 // ---------- Straight-line reassignment via &out ----------
 
 #[test]

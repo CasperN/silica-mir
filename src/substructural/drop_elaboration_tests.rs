@@ -268,9 +268,12 @@ fn f(x: i64) {
 }
 
 #[test]
-fn reassignment_still_leaves_one_drop() {
-    // `x = 1; x = 2;` is a single Init state at return — one drop.
-    // Pre-overwrite drops are a future slice.
+fn reassignment_inserts_pre_overwrite_drop_and_return_drop() {
+    // `x = 1; x = 2;` — the second assign silently forgets the old
+    // value at `x`. Drop-elaboration inserts `drop x` before the
+    // reassignment (so the old value's destructor eventually runs)
+    // and another `drop x` before `return` (for the final value).
+    // Two distinct values consumed, one drop each.
     assert_elaborated_eq(
         "
             fn f() {
@@ -286,6 +289,7 @@ fn f() {
   x: i64;
   entry:
     x = 1;
+    drop x;
     x = 2;
     drop x;
     return
@@ -941,10 +945,11 @@ fn strict_check_still_fails_for_linear_leak() {
 // between the two assigns.
 
 #[test]
-fn overwrite_of_drop_type_is_silently_bitwise_forgotten_today() {
-    // Drop-marked struct — reassignment allowed without any inserted
-    // drop. When custom destructors land, the elaborated form will
-    // grow a `drop x;` between the two assigns.
+fn overwrite_of_drop_type_inserts_explicit_drop() {
+    // Drop-marked struct — reassignment inserts an explicit
+    // `drop x` between the two moves so the old value is
+    // consumed. `call use_p(move x)` naturally consumes x, so no
+    // return-cleanup drop is needed at the return.
     assert_elaborated_eq(
         "
         struct Copy Drop P { a: i64 }
@@ -969,6 +974,7 @@ fn f(p1: P, p2: P) {
   x: P;
   entry:
     x = move p1;
+    drop x;
     x = move p2;
     call use_p(move x);
     return

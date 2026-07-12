@@ -26,13 +26,19 @@ fn param_starts_init_ok() {
 
 #[test]
 fn write_then_read_ok() {
+    // After a write, `x` is Init and can be read. Sink via a
+    // different local so the test isn't just `x = copy x` (which
+    // is useless — nobody writes it — and, with pre-overwrite
+    // drop-elab, would spuriously fail because the inserted
+    // `drop x` moves `x` before the RHS gets to read it).
     assert_no_diagnostics(
         "
         fn f() {
           x: i64;
+          y: i64;
           entry:
             x = 42;
-            x = copy x;
+            y = copy x;
             return
         }
         ",

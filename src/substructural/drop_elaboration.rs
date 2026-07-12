@@ -51,6 +51,13 @@ struct FnPlan {
     /// AND end-of-block return cleanups uniformly: the terminator
     /// acts as a "use" that consumes any still-Init Drop values.
     pre_stmt: IndexMap<(String, usize), Vec<Place>>,
+    /// (block_label, statement_index) → replacement for the original
+    /// statement at that index. Used for the downcast-target
+    /// reassignment case (`X as V = <operand>` becomes
+    /// `X = EnumName::V(<operand>)`), which pairs with a pre_stmt
+    /// `drop (X as V)`. Applied BEFORE splicing so indices remain
+    /// valid for the pre_stmt phase.
+    rewrite_stmt: IndexMap<(String, usize), Statement>,
     /// (pred, succ_return_block) → drops to place on the split edge,
     /// for `Diverged` places whose predecessor-exit state was Init.
     /// Kept separate because insertion requires structurally
@@ -65,7 +72,10 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in env.functions.values() {
         let plan = plan_for_function(env, func);
-        if !plan.pre_stmt.is_empty() || !plan.cross_edge.is_empty() {
+        if !plan.pre_stmt.is_empty()
+            || !plan.rewrite_stmt.is_empty()
+            || !plan.cross_edge.is_empty()
+        {
             plans.insert(func.name.clone(), plan);
         }
     }
@@ -81,6 +91,19 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         let Some(body) = &mut func.body else {
             continue;
         };
+
+        // Statement rewrites first: replace in place, no index shift.
+        // Pair with the pre-stmt drops planned for the same index.
+        for block in &mut body.blocks {
+            for ((label, idx), new_stmt) in &plan.rewrite_stmt {
+                if label != &block.label {
+                    continue;
+                }
+                if let Some((slot, _)) = block.statements.get_mut(*idx) {
+                    *slot = new_stmt.clone();
+                }
+            }
+        }
 
         // Pre-stmt drops: splice into each block at the recorded
         // positions (0..=N, where pos=N means "before terminator").
@@ -157,7 +180,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         };
         let mut state = entry.clone();
         for (stmt_idx, (stmt, _)) in block.statements.iter().enumerate() {
-            let drops = pre_stmt_drops(stmt, &state, env, &locals);
+            let (drops, rewrite) = pre_stmt_transitions(stmt, &state, env, &locals);
             if !drops.is_empty() {
                 for place in &drops {
                     init_state::transfer_stmt_silent(
@@ -170,7 +193,17 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
                 plan.pre_stmt
                     .insert((block.label.clone(), stmt_idx), drops);
             }
-            init_state::transfer_stmt_silent(env, func, stmt, &mut state);
+            // Transfer whichever form we're going to leave in the
+            // elaborated MIR: the rewrite if present, else the
+            // original. Both should produce the same net state
+            // effect, but we track the elaborated form for
+            // correctness under later analysis.
+            let effective = rewrite.clone().unwrap_or_else(|| stmt.clone());
+            init_state::transfer_stmt_silent(env, func, &effective, &mut state);
+            if let Some(new_stmt) = rewrite {
+                plan.rewrite_stmt
+                    .insert((block.label.clone(), stmt_idx), new_stmt);
+            }
         }
         // Pre-terminator cleanup for return blocks: drop everything
         // still Init-Drop at this point.
@@ -226,49 +259,104 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
     plan
 }
 
-/// Return the drops to insert BEFORE `stmt`, given the init state at
-/// this program point. Only one Init → Uninit shape is elaborated:
+/// Return `(drops_to_insert_before, optional_statement_rewrite)` for
+/// `stmt` given the init state at this program point.
 ///
-/// - `&out` / `&uninit` borrow of an Init Drop place: `foo = &out
-///   place` where `place` is Init Drop. Inserts `drop place` so the
-///   Uninit precondition is satisfied.
+/// Three Init → Uninit transition shapes:
 ///
-/// The parallel overwrite case (`target = rvalue` where `target` is
-/// Init Drop) is NOT elaborated. Inserting `drop target` *before*
-/// the assign changes the semantics of self-referential rvalues
-/// like `x = copy x` or `x = f(x)` — the drop would move `x` before
-/// the RHS gets to read it. Making the pre-existing "silent
-/// bitwise-forget of an Init Drop target" explicit would require
-/// splitting the assign into `tmp = rvalue; drop target; target = tmp;`,
-/// which is more than a splice. Deferred.
+/// - **Overwriting assign (Var/Field target)**: `target = <rvalue>`
+///   where `target` is an owned path currently Init and its type is
+///   Drop. Inserts `drop target` so the old value's destructor
+///   eventually runs (a no-op today with bitwise-forget drops;
+///   correct once custom `Drop::drop` lands).
+/// - **Overwriting assign (Downcast target)**: `X as V = <operand>`
+///   where the enum X is Init and V's payload is Drop. Rewrites the
+///   assign into `X = EnumName::V(<operand>)` and inserts
+///   `drop (X as V)` before. The rewrite bypasses the enum-
+///   atomicity trap: `drop (X as V)` cascades X to Moved, and the
+///   EnumConstr rebuilds it as variant V. Only fires when the
+///   rvalue is an operand — for Ref/ArrayLit payloads, the frontend
+///   still needs to hoist the payload into a temp (deferred).
+/// - **`&out` / `&uninit` borrow of an Init Drop place**: `foo =
+///   &out place` where `place` is Init Drop. Inserts `drop place`
+///   so the Uninit precondition is satisfied.
 ///
-/// Only handles uniformly-Init places; `Partial` states are left
-/// alone (the existing overwrite check either errors or silently
-/// permits them per-leaf). Reborrow shapes (`&out *r`) are governed
-/// by the parent ref's RefState, not the locals init tree, so
-/// they're skipped.
-fn pre_stmt_drops(
+/// All cases skip `Partial` states (per-leaf drops are complex; the
+/// existing overwrite check handles the common non-Drop cases) and
+/// reborrow shapes (`&out *r`) which are governed by RefState.
+fn pre_stmt_transitions(
     stmt: &Statement,
     state: &PointState,
     env: &Env,
     locals: &IndexMap<String, Type>,
-) -> Vec<Place> {
-    let Statement::Assign(_, rvalue) = stmt else {
-        return Vec::new();
+) -> (Vec<Place>, Option<Statement>) {
+    let Statement::Assign(target, rvalue) = stmt else {
+        return (Vec::new(), None);
     };
     let mut drops = Vec::new();
 
+    // Downcast target with operand rvalue → rewrite to full-enum
+    // reconstruction. Handled specially before the generic Case A
+    // because Case A skips Downcast paths.
+    if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
+        if let Some(inner_owned) = as_owned_path(inner) {
+            if let Ok(inner_ty) = env.infer_place_type(inner, locals) {
+                if let Type::Custom(enum_name) = &inner_ty {
+                    let payload_place =
+                        Place::Downcast(Box::new(inner_owned.clone()), variant.clone());
+                    if is_init_and_drop(&payload_place, state, env, locals) {
+                        drops.push(payload_place);
+                        let rewrite = Statement::Assign(
+                            inner_owned,
+                            RValue::EnumConstr(
+                                enum_name.clone(),
+                                variant.clone(),
+                                operand.clone(),
+                            ),
+                        );
+                        return (drops, Some(rewrite));
+                    }
+                }
+            }
+        }
+    }
+
+    // Case A: overwriting an owned-path target whose leaf state is
+    // Init and whose type is Drop. Skip Downcast-containing paths.
+    if let Some(owned) = as_owned_path(target) {
+        if !path_has_downcast(&owned) && is_init_and_drop(&owned, state, env, locals) {
+            drops.push(owned);
+        }
+    }
+
+    // Case B: `&out` / `&uninit` on an Init Drop place.
     if let RValue::Ref(RefKind::Out | RefKind::Uninit, place) = rvalue {
         if deref_inner(place).is_none() {
             if let Some(owned) = as_owned_path(place) {
-                if is_init_and_drop(&owned, state, env, locals) {
+                if !path_has_downcast(&owned)
+                    && is_init_and_drop(&owned, state, env, locals)
+                    && !drops.contains(&owned)
+                {
                     drops.push(owned);
                 }
             }
         }
     }
 
-    drops
+    (drops, None)
+}
+
+/// True if `place`'s projection path contains a `Downcast` step.
+/// Used to skip drop-elaboration for targets/borrowed places rooted
+/// in an enum-variant projection.
+fn path_has_downcast(place: &Place) -> bool {
+    matches!(place, Place::Downcast(_, _))
+        || match place {
+            Place::Field(inner, _) | Place::Index(inner, _) | Place::Downcast(inner, _) => {
+                path_has_downcast(inner)
+            }
+            Place::Var(_) | Place::Deref(_) => false,
+        }
 }
 
 /// True iff `place` (an owned path) is fully `Init` at this state AND
