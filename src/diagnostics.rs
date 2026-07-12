@@ -4,23 +4,22 @@
 //! and message for a single error or warning. `Diagnostics` collects
 //! them into two lists (errors and warnings).
 //!
-//! **Extension policy**: `Diagnostic` is constructed via
-//! [`Diagnostic::new`] + chainable `at` / `in_function` / `in_block`
-//! setters (builder-style). Every construction site names only the
-//! fields it cares about; unnamed ones get their default. Adding a
-//! new optional field is a non-breaking change — no callers need
-//! updating. Structural fields (currently `code` and `message`) are
-//! required arguments to `new`.
+//! **Construction**: `Diagnostic::new(code, span, message)` for the
+//! required fields, then chain `.in_function(...)` and/or
+//! `.in_block(...)` for optional context. Adding a new optional
+//! field is a non-breaking change — add a setter, existing sites
+//! keep working.
 //!
-//! Today `code` accepts a `DiagCode::Unspecified` placeholder used
-//! by the migration macros. Once every push_error site has a
-//! dedicated code, `Unspecified` can be removed and the placeholder
-//! goes with it.
+//! **Extending `DiagCode`**: dedicated codes live in per-pass
+//! sub-enums (see `type_check::TypeCheckCode`) and are dispatched by
+//! one variant here per pass. `DiagCode::Unspecified` is a migration
+//! placeholder for call sites that haven't been assigned a specific
+//! code yet.
 //!
-//! **String view**: `Diagnostic` implements `Display` in the current
-//! `at L:C: In function 'f', block 'b': msg` format so `Diagnostics
-//! ::errors_str()` reproduces the string-based test API. Tests keep
-//! calling `assert_errors_contain(&errs, &[...])` unchanged.
+//! **String view**: `Diagnostic` implements `Display` in the format
+//! `at L:C: In function 'f', block 'b': msg`. `Diagnostics::
+//! errors_str()` produces `Vec<String>` for tests that still assert
+//! on substring content.
 
 use crate::ast::Span;
 
@@ -49,14 +48,14 @@ pub enum DiagCode {
 /// **Construct with [`Diagnostic::new`]** and chain optional setters:
 ///
 /// ```ignore
-/// Diagnostic::new(DiagCode::Unspecified, "cannot copy non-Copy type i64")
-///     .at(span)
+/// Diagnostic::new(TypeCheckCode::NoEntryBlock, span, "no entry block")
 ///     .in_function(&func.name)
 ///     .in_block(&block.label)
 /// ```
 ///
-/// Fields are private to keep the struct extension-safe.
-/// Fields are initialized via the builder pattern and accessed via methods. 
+/// Fields are private. Read via the accessor methods; write only via
+/// construction / builder chain. Keeps the struct extension-safe:
+/// new optional fields need only a setter, no existing site changes.
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     code: DiagCode,
@@ -117,15 +116,22 @@ impl Diagnostic {
 
 impl std::fmt::Display for Diagnostic {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Omit `at L:C:` when the span is `(0, 0)` — the default —
+        // since that means "no source location". Real diagnostics
+        // always pass a real span through `Diagnostic::new`.
         let has_pos = self.span.line != 0 || self.span.col != 0;
         if has_pos {
             write!(f, "at {}: ", self.span)?;
         }
-        match (self.function.is_empty(), self.block.is_empty()) {
-            (false, false) => write!(f, "In function '{}', block '{}': ", self.function, self.block)?,
-            (false, true) => write!(f, "In function '{}': ", self.function)?,
-            _ => {}
+        if !self.function.is_empty() {
+            if !self.block.is_empty() {
+                write!(f, "In function '{}', block '{}': ", self.function, self.block)?;
+            } else {
+                write!(f, "In function '{}': ", self.function)?;
+            }
         }
+        // Block-only (function empty) is treated as no context —
+        // block labels are only meaningful relative to a function.
         write!(f, "{}", self.message)
     }
 }
