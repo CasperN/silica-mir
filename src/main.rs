@@ -1,31 +1,25 @@
-mod ast;
-mod block_reachability;
-mod cfg_edit;
-mod codegen;
-mod dataflow;
+pub mod mir;
+pub use mir::ast;
+pub use mir::type_check;
+pub use mir::init_state;
+pub use mir::lifetime;
+pub use mir::substructural;
+pub use mir::codegen;
+pub use mir::pretty_print;
+pub use mir::parser;
+pub use mir::intrinsics;
+pub use mir::layout;
+pub use mir::variant_flow;
+pub use mir::block_reachability;
+pub use mir::dataflow;
+pub use mir::cfg_edit;
+
+#[cfg(test)]
+pub use mir::test_util;
+
 mod diagnostics;
-mod init_state;
-mod intrinsics;
-mod layout;
-mod lifetime;
-mod parser;
-mod pretty_print;
-mod substructural;
-mod type_check;
-mod variant_flow;
 
-#[cfg(test)]
-mod array_tests;
-#[cfg(test)]
-mod programs;
-#[cfg(test)]
-mod raw_ptr_tests;
-#[cfg(test)]
-mod test_util;
-#[cfg(test)]
-mod string_tests;
-
-use ast::Program;
+use mir::ast::Program;
 use diagnostics::Diagnostics;
 
 /// Run every post-parse pass against `program` and return both the
@@ -50,17 +44,18 @@ use diagnostics::Diagnostics;
 ///      where every loan-closing point is explicit.
 ///
 /// Used by `main` and by test helpers.
-pub fn run_all_passes(program: &Program) -> (Program, type_check::Env, Diagnostics) {
+/// Used by `main` and by test helpers.
+pub fn run_all_passes(program: &Program) -> (Program, mir::type_check::Env, Diagnostics) {
     let mut d = Diagnostics::default();
-    let (mut env, env_errs) = type_check::Env::build(program);
+    let (mut env, env_errs) = mir::type_check::Env::build(program);
     d.extend_errors(env_errs);
     env.typecheck(&mut d);
-    substructural::composition::check_program(&env, &mut d);
-    layout::check_sizes_finite(&env, &mut d);
-    substructural::check::check_statements(&env, &mut d);
-    variant_flow::check_program(&env, &mut d);
-    block_reachability::check_program(&env, &mut d);
-    init_state::check_program(&env, &mut d);
+    mir::substructural::composition::check_program(&env, &mut d);
+    mir::layout::check_sizes_finite(&env, &mut d);
+    mir::substructural::check::check_statements(&env, &mut d);
+    mir::variant_flow::check_program(&env, &mut d);
+    mir::block_reachability::check_program(&env, &mut d);
+    mir::init_state::check_program(&env, &mut d);
 
     if d.has_errors() {
         return (program.clone(), env, d);
@@ -71,18 +66,18 @@ pub fn run_all_passes(program: &Program) -> (Program, type_check::Env, Diagnosti
     // Elaboration passes mutate function bodies only; `types` never
     // changes. After each mutation, resync env's cached function bodies
     // so downstream passes see the up-to-date form.
-    lifetime::nll::elaborate(&mut elaborated, &env);
+    mir::lifetime::nll::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
-    substructural::drop_elaboration::elaborate(&mut elaborated, &env);
+    mir::substructural::drop_elaboration::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
     // Post-elab checks. init_state re-runs so NLL-inserted `unborrow r`
     // on an unfulfilled `&out`/`&drop` obligation surfaces its error at
     // the insertion site (via close_ref_if_present), not silently.
-    init_state::check_program(&env, &mut d);
-    substructural::check::check_return_leaks(&env, &mut d);
-    lifetime::check_program(&env, &mut d);
+    mir::init_state::check_program(&env, &mut d);
+    mir::substructural::check::check_return_leaks(&env, &mut d);
+    mir::lifetime::check_program(&env, &mut d);
 
     (elaborated, env, d)
 }
@@ -119,7 +114,7 @@ fn main() {
         }
     };
 
-    let p = parser::Parser::new(source);
+    let p = mir::parser::Parser::new(source);
     let program = match p.parse() {
         Ok(program) => program,
         Err(err) => {
@@ -154,8 +149,8 @@ fn main() {
     }
 
     if emit_llvm {
-        print!("{}", codegen::generate_llvm(&elaborated, &env));
+        print!("{}", mir::codegen::generate_llvm(&elaborated, &env));
     } else {
-        print!("{}", pretty_print::pretty_print(&elaborated));
+        print!("{}", mir::pretty_print::pretty_print(&elaborated));
     }
 }

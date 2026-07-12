@@ -21,35 +21,35 @@
 //! errors_str()` produces `Vec<String>` for tests that still assert
 //! on substring content.
 
-use crate::ast::Span;
+use crate::mir::ast::Span;
 
 /// Machine-readable error kind. One variant per analysis pass; the
 /// pass owns its own sub-enum of specific codes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagCode {
     /// Errors from the type checker (see `type_check::TypeCheckCode`).
-    TypeCheck(crate::type_check::TypeCheckCode),
+    TypeCheck(crate::mir::type_check::TypeCheckCode),
     /// Errors from initialization-state dataflow
     /// (see `init_state::InitStateCode`).
-    InitState(crate::init_state::InitStateCode),
+    InitState(crate::mir::init_state::InitStateCode),
     /// Diagnostics from the variant-flow / `switchEnum` analysis
     /// (see `variant_flow::VariantFlowCode`).
-    VariantFlow(crate::variant_flow::VariantFlowCode),
+    VariantFlow(crate::mir::variant_flow::VariantFlowCode),
     /// Errors from the substructural per-statement checker
     /// (see `substructural::check::SubstructuralCheckCode`).
-    SubstructuralCheck(crate::substructural::check::SubstructuralCheckCode),
+    SubstructuralCheck(crate::mir::substructural::check::SubstructuralCheckCode),
     /// Errors from the substructural class-composition validator
     /// (see `substructural::composition::SubstructuralCompositionCode`).
-    SubstructuralComposition(crate::substructural::composition::SubstructuralCompositionCode),
+    SubstructuralComposition(crate::mir::substructural::composition::SubstructuralCompositionCode),
     /// Errors from the layout / recursion-cycle check
     /// (see `layout::LayoutCode`).
-    Layout(crate::layout::LayoutCode),
+    Layout(crate::mir::layout::LayoutCode),
     /// Errors from the lifetime / loan-conflict check
     /// (see `lifetime::LifetimeCode`).
-    Lifetime(crate::lifetime::LifetimeCode),
+    Lifetime(crate::mir::lifetime::LifetimeCode),
     /// Warnings from the block-reachability pass
     /// (see `block_reachability::BlockReachabilityCode`).
-    BlockReachability(crate::block_reachability::BlockReachabilityCode),
+    BlockReachability(crate::mir::block_reachability::BlockReachabilityCode),
 }
 
 /// A single compiler diagnostic (error or warning). The container in
