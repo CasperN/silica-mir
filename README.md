@@ -1,5 +1,13 @@
-# Silica-MIR
-This document defines the Silica middle level intermediate representation (MIR).
+# Silica
+This document defines the surface Silica High-Level Language (HLL) and its
+middle-level intermediate representation (MIR). The compiler parses either,
+runs a shared pipeline (type-check, substructural checks, init-state, NLL
+elaboration, drop elaboration, lifetime checks), and emits LLVM IR.
+
+File-extension routing:
+- `.si` — HLL source. Parsed, type-checked, and lowered to MIR before the
+  MIR passes run.
+- `.sim` — MIR source. Parsed and fed directly into the MIR passes.
 
 # Background on Silica
 Silica is an experimental Rust-like language that explores some choices that
@@ -267,13 +275,115 @@ trait Transfer {
 ```
 
 # Silica's Compiler Plan
-1. Lower from Silica to this MIR. Typecheck the source program and convert
-control flow into a CFG.
-2. Run analysis pass on this MIR to infer lifetimes and insert explicit
-`unborrows` and `drop`s. This is the "elaborated MIR". Once
-elaborated, programs should be fast to check without inference.
-1. Run optimization passes on the elaborated MIR. After optimizations, we
-optionally recheck the programs for correctness.
+1. **Parse HLL** (`.si`) into the HLL AST via the tree-sitter grammar in
+   `tree-sitter-silica/hll/`, then **lower** it to MIR — collapse
+   expression-oriented control flow into a CFG of basic blocks and
+   materialize return values through `&out $return` parameters. `.sim`
+   inputs skip this and enter the pipeline as MIR directly.
+2. **Type-check and analyze** the MIR (declarations, substructural class,
+   layout, init-state, variant flow, reachability) via `run_all_passes`
+   in `src/main.rs`.
+3. **Elaborate** the MIR: insert explicit `unborrow` at NLL last-use
+   points and `drop`s for values live at return. This is the "elaborated
+   MIR" — fast to re-check without inference.
+4. **Post-elaboration checks** re-verify init state, substructural
+   discipline, and lifetime loans against the elaborated program.
+5. **Codegen** to LLVM IR (`src/codegen/`). Post-codegen recheck of the
+   elaborated MIR remains available and is a future step for optimization
+   passes.
+
+# HLL Spec
+
+The HLL is the surface Silica syntax users write. It's expression-oriented
+(`if`, `match`, `loop`, and blocks all evaluate to a value) and lowers to
+MIR. The grammar below is the authoritative shape; the tree-sitter source
+lives in `tree-sitter-silica/{common,hll}/grammar.js`.
+
+## HLL Grammar
+
+```
+program     = declaration*
+declaration = struct_decl | enum_decl | fn_decl
+
+# Fields/variants are comma-separated with an optional trailing comma.
+struct_decl = struct [Copy? Drop? Move?] identifier { field , ..., }
+enum_decl   = enum   [Copy? Drop? Move?] identifier { variant , ..., }
+field       = identifier : type
+variant     = identifier : type
+
+# Functions: optional `-> ret_ty` (defaults to `unit`); body is a block.
+fn_decl = fn identifier ( param , ..., ) [ -> type ] block_expr
+param   = identifier : type
+
+# Types — identical to MIR (see below), sharing the same tree-sitter
+# common rule. `fn(T,...)` types do not yet spell a return arrow at the
+# surface; MIR interpretation is unit-returning.
+type = ...   # see MIR Types
+
+# Statements: `let` binding or expression-statement.
+stmt = let [mut] identifier [: type] = expr ;
+     | expr ;
+
+# Blocks: any number of statements, followed by an optional trailing
+# expression that is the block's value. Missing → unit.
+block_expr = { stmt* [expr] }
+
+# Expressions, loose → tight: assignment → prefix → postfix → primary.
+# Every operator is a named rule so the CST nests naturally.
+expr        = assign_expr | prefix
+assign_expr = prefix = expr                          # right-associative
+
+prefix = postfix
+       | (& | &mut | &out | &deinit | &uninit) prefix   # borrows
+       | &raw prefix                                    # raw borrow
+
+postfix = primary
+        | postfix . identifier                       # field access
+        | postfix . *                                # deref
+        | postfix as identifier                      # downcast
+        | postfix ( expr , ..., )                    # call
+        | postfix [ expr ]                           # array index
+        | postfix match { arm , ..., }               # postfix match
+
+primary = int_lit | float_lit | true | false | unit
+        | identifier                                     # variable
+        | ( expr )                                       # grouping / ()
+        | block_expr
+        | if expr block_expr [ else block_expr ]
+        | loop block_expr
+        | break [expr] | continue | return [expr]
+        | identifier { field: value , ..., }             # struct constructor
+        | identifier :: identifier ( expr )              # enum constructor
+        | [ expr , ..., ]                                # array literal
+
+arm     = pattern => expr
+pattern = identifier [ ( identifier ) ]                  # Variant [ (bind) ]
+```
+
+## HLL Notes
+
+- **Expression-oriented.** `if`, `match`, `loop`, and blocks all
+  evaluate to a value. A block's value is its trailing expression
+  (an `expr` with no `;`) or `unit` if there isn't one.
+- **No arithmetic or comparison operators.** They go through
+  intrinsic function calls (see MIR Intrinsics), so the HLL doesn't
+  need to reserve `+ - * /` or comparison tokens.
+- **`match` is postfix** (`expr match { ... }`), reading subject-first
+  and chaining naturally with method-style calls.
+- **`.*` is the postfix deref** operator (borrowed from Zig).
+- **HLL spells `&deinit T` where MIR spells `&drop T`.** Same
+  reference kind (`RefKind::Drop`); the surface uses a name that
+  reads as "de-initialize the referent."
+- **Struct constructor vs identifier + block ambiguity.** `Name { ... }`
+  parses as a struct constructor only when the brace contents look
+  like `field: value` fields (or the braces are empty). Otherwise
+  it's an identifier followed by a block, so `if cond { let x = 1; }`
+  works. Tree-sitter's dynamic conflict resolution handles both.
+- **No lifetime annotations at the surface.** All reference lifetimes
+  are inferred at the MIR level (NLL-style).
+- **Integer literal defaulting.** Unsuffixed integer literals get
+  type-variable defaults; the type checker resolves them to `i64`
+  if no other constraint pins them.
 
 # MIR Spec
 
@@ -364,7 +474,7 @@ Notes:
   supported for constant indices — including `&out a[k]` binding to a
   specific slot. Dynamic-index writes require the whole array to
   already be Init.
-- **`switchEnum` takes a place, not an operand.** It performs a *discriminant read* — a shared-read access for conflict purposes, consuming nothing. It must be a place because each out-edge refines the type of *that specific place*, which is what justifies the downcast projection in the target block. Switching on a copied temporary would sever the connection between the discriminant tested and the place downcast. (`branch` stays operand-based: `boolean` is `Copy Drop` and no refinement occurs.)
+- **`switchEnum` takes a place, not an operand.** It performs a *discriminant read* — a shared-read access for conflict purposes, consuming nothing. It must be a place because each out-edge refines the type of *that specific place*, which is what justifies the downcast projection in the target block. Switching on a copied temporary would sever the connection between the discriminant tested and the place downcast. (`branch` stays operand-based: `bool` is `Copy Drop` and no refinement occurs.)
 - **`abort` / `unreachable`** are terminators with no successors — runtime escape hatches. They **waive linear obligations** for code that only reaches them: elaboration passes (drop, NLL) don't insert cleanup on paths that never reach `return`, because the program dies before the caller could observe. Mixed CFGs are handled precisely — if a branch has one arm reaching `return` and one reaching `abort`, obligations are still checked on the return arm.
 - **Lifetimes are inferred (NLL-style).** No lifetime annotations anywhere.
 Regions are internal to the checker, derived from reference liveness.
@@ -496,9 +606,6 @@ for production correctness).
 
 
 # Punch list
-- HLL
-- Special $return MIR variable that maps to the return place in the HLL and
-in LLVM.
 - reachable/flow analysis for bools too. Or should bool be an enum?
 - Design MIR coroutines and effect decls.
 - Extend downcast-target reassignment drop-elab to non-operand
@@ -512,6 +619,16 @@ in LLVM.
 - No-alias raw pointer variant (`*noalias T`) — currently we only have
   the aliasing `*T`. Would enable `noalias` attributes on parameters
   where the checker can prove exclusivity.
+
+## HLL
+- Surface syntax for function types with a return arrow
+  (`fn(T,...) -> R`). Currently only `fn(T,...)` parses and
+  defaults to a unit return. Blocks lambdas from reading naturally.
+- Enforce `let mut`. The `is_mut` flag is stored on `Stmt::Let` but
+  no pass checks that non-mut bindings aren't reassigned.
+- Revisit `Move` auto-derive. Current README section says
+  `Copy + Drop` auto-derives `Move`; the newer immovable-by-default
+  design says `Move` should be an explicit opt-in marker. Reconcile.
 
 ## Elaboration gaps
 - Drop insertion *order* within a return block is a HLL responsibility
@@ -538,12 +655,9 @@ in LLVM.
   save first-time users a lot of time.
 
 # Longer term
-- Split `grammar.js` into `common/` (types, identifiers, literals,
-  struct/enum decls, markers) plus `hll/` and `mir/` grammars that
-  consume the common rules via JS `require`. Retire the hand-rolled
-  HLL parser once the tree-sitter HLL grammar reaches parity.
 - Round-trip corpus test (`pretty_print → parse → pretty_print`)
-  as an anti-drift check between grammar and codebase.
+  as an anti-drift check between grammar and codebase. Would also
+  catch parser walker regressions.
 - Tighten MIR struct/enum decl separators from
   whitespace-or-comma (current: either works) to comma-required-
   optional-trailing to match HLL. Currently permissive to keep
@@ -555,4 +669,3 @@ in LLVM.
 - Coroutines
 - MIR polymorphic types
 - MIR traits?
-- Silica HLL lowering
