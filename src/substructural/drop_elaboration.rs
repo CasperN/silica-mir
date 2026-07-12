@@ -41,11 +41,20 @@ use indexmap::IndexMap;
 /// Per-function plan for the elaboration pass.
 #[derive(Default)]
 struct FnPlan {
-    /// (return-block label) → drops to append inside that block, before
-    /// the return terminator.
-    in_return_block: IndexMap<String, Vec<Place>>,
+    /// (block_label, insert_pos) → drops to splice at that position.
+    /// `insert_pos` is an index in `[0, N]`: 0 means "before the
+    /// first statement", N (= number of statements) means "before
+    /// the terminator". Statement indices refer to the ORIGINAL
+    /// (pre-splice) list; apply sorts descending so splices don't
+    /// invalidate earlier indices. Handles both Init → Uninit
+    /// transitions mid-block (`&out place` on an Init-Drop place)
+    /// AND end-of-block return cleanups uniformly: the terminator
+    /// acts as a "use" that consumes any still-Init Drop values.
+    pre_stmt: IndexMap<(String, usize), Vec<Place>>,
     /// (pred, succ_return_block) → drops to place on the split edge,
     /// for `Diverged` places whose predecessor-exit state was Init.
+    /// Kept separate because insertion requires structurally
+    /// splitting the CFG edge.
     cross_edge: IndexMap<(String, String), Vec<Place>>,
 }
 
@@ -56,7 +65,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in env.functions.values() {
         let plan = plan_for_function(env, func);
-        if !plan.in_return_block.is_empty() || !plan.cross_edge.is_empty() {
+        if !plan.pre_stmt.is_empty() || !plan.cross_edge.is_empty() {
             plans.insert(func.name.clone(), plan);
         }
     }
@@ -73,16 +82,29 @@ pub fn elaborate(program: &mut Program, env: &Env) {
             continue;
         };
 
-        // In-block drops: append to each block before its terminator.
+        // Pre-stmt drops: splice into each block at the recorded
+        // positions (0..=N, where pos=N means "before terminator").
+        // Sort descending so earlier splices don't invalidate later
+        // indices.
         for block in &mut body.blocks {
-            let Some(drops) = plan.in_return_block.get(&block.label) else {
-                continue;
-            };
-            let span = block.terminator_span;
-            for place in drops {
-                block
+            let mut inserts: Vec<(usize, &Vec<Place>)> = plan
+                .pre_stmt
+                .iter()
+                .filter(|((label, _), _)| label == &block.label)
+                .map(|((_, pos), v)| (*pos, v))
+                .collect();
+            inserts.sort_by(|a, b| b.0.cmp(&a.0));
+            for (pos, places) in inserts {
+                let span = block
                     .statements
-                    .push((Statement::Drop(place.clone()), span));
+                    .get(pos)
+                    .map(|(_, s)| *s)
+                    .unwrap_or(block.terminator_span);
+                let items: Vec<(Statement, Span)> = places
+                    .iter()
+                    .map(|p| (Statement::Drop(p.clone()), span))
+                    .collect();
+                block.statements.splice(pos..pos, items);
             }
         }
 
@@ -114,16 +136,59 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
     }
 
     let entry_states = init_state::block_entry_states(env, func);
+    let locals = func.locals_map();
 
-    // In-block: use the merged state at the return point (existing behavior).
-    for (block, state) in init_state::states_before_returns(env, func) {
-        let drops = plan_drops_at_return(func, &state, env);
-        if !drops.is_empty() {
-            plan.in_return_block.insert(block.label.clone(), drops);
+    // Unified walk: for each block, walk forward from its entry state
+    // and plan drops at each program point where a Drop-typed slot
+    // transitions Init → Uninit.
+    //   - Mid-block: before an `Assign(_, Ref(Out|Uninit, place))`
+    //     where `place` is Init Drop, insert `drop place` so the
+    //     Uninit precondition holds after elaboration.
+    //   - End-of-block (return terminator): treat the return as a
+    //     "use" that consumes every still-Init Drop local — insert
+    //     drops in LIFO order right before the terminator.
+    //
+    // Planned drops apply to the running state (via silent transfer)
+    // so the return-cleanup step doesn't re-drop something the pre-
+    // stmt step already dropped.
+    for block in &body.blocks {
+        let Some(entry) = entry_states.get(&block.label) else {
+            continue;
+        };
+        let mut state = entry.clone();
+        for (stmt_idx, (stmt, _)) in block.statements.iter().enumerate() {
+            let drops = pre_stmt_drops(stmt, &state, env, &locals);
+            if !drops.is_empty() {
+                for place in &drops {
+                    init_state::transfer_stmt_silent(
+                        env,
+                        func,
+                        &Statement::Drop(place.clone()),
+                        &mut state,
+                    );
+                }
+                plan.pre_stmt
+                    .insert((block.label.clone(), stmt_idx), drops);
+            }
+            init_state::transfer_stmt_silent(env, func, stmt, &mut state);
         }
+        // Pre-terminator cleanup for return blocks: drop everything
+        // still Init-Drop at this point.
+        if matches!(block.terminator, Terminator::Return) {
+            let drops = plan_drops_at_return(func, &state, env);
+            if !drops.is_empty() {
+                let insert_pos = block.statements.len();
+                plan.pre_stmt.insert((block.label.clone(), insert_pos), drops);
+            }
+        }
+    }
 
-        // Cross-edge: for each Diverged path at the return-block entry,
-        // find which predecessors were Init and split those edges.
+    // Cross-edge: for return blocks with Diverged paths at entry,
+    // split predecessor edges and insert per-arm drops. Uses the
+    // fixpoint entry state directly (pre-elaboration) — this is
+    // fine because pre-stmt drops we plan above don't cross block
+    // boundaries, so predecessor exit states are unaffected.
+    for (block, _) in init_state::states_before_returns(env, func) {
         let Some(return_entry) = entry_states.get(&block.label) else {
             continue;
         };
@@ -159,6 +224,76 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         }
     }
     plan
+}
+
+/// Return the drops to insert BEFORE `stmt`, given the init state at
+/// this program point. Only one Init → Uninit shape is elaborated:
+///
+/// - `&out` / `&uninit` borrow of an Init Drop place: `foo = &out
+///   place` where `place` is Init Drop. Inserts `drop place` so the
+///   Uninit precondition is satisfied.
+///
+/// The parallel overwrite case (`target = rvalue` where `target` is
+/// Init Drop) is NOT elaborated. Inserting `drop target` *before*
+/// the assign changes the semantics of self-referential rvalues
+/// like `x = copy x` or `x = f(x)` — the drop would move `x` before
+/// the RHS gets to read it. Making the pre-existing "silent
+/// bitwise-forget of an Init Drop target" explicit would require
+/// splitting the assign into `tmp = rvalue; drop target; target = tmp;`,
+/// which is more than a splice. Deferred.
+///
+/// Only handles uniformly-Init places; `Partial` states are left
+/// alone (the existing overwrite check either errors or silently
+/// permits them per-leaf). Reborrow shapes (`&out *r`) are governed
+/// by the parent ref's RefState, not the locals init tree, so
+/// they're skipped.
+fn pre_stmt_drops(
+    stmt: &Statement,
+    state: &PointState,
+    env: &Env,
+    locals: &IndexMap<String, Type>,
+) -> Vec<Place> {
+    let Statement::Assign(_, rvalue) = stmt else {
+        return Vec::new();
+    };
+    let mut drops = Vec::new();
+
+    if let RValue::Ref(RefKind::Out | RefKind::Uninit, place) = rvalue {
+        if deref_inner(place).is_none() {
+            if let Some(owned) = as_owned_path(place) {
+                if is_init_and_drop(&owned, state, env, locals) {
+                    drops.push(owned);
+                }
+            }
+        }
+    }
+
+    drops
+}
+
+/// True iff `place` (an owned path) is fully `Init` at this state AND
+/// its type is Drop. Used to decide whether an implicit drop should
+/// be inserted for an Init → Uninit transition.
+fn is_init_and_drop(
+    place: &Place,
+    state: &PointState,
+    env: &Env,
+    locals: &IndexMap<String, Type>,
+) -> bool {
+    let Some((root, path)) = extract_path(place) else {
+        return false;
+    };
+    let Some(root_state) = state.locals.get(&root) else {
+        return false;
+    };
+    let leaf_state = read_state_at_path(root_state, &path);
+    if !matches!(leaf_state, InitState::Init) {
+        return false;
+    }
+    let Ok(leaf_ty) = env.infer_place_type(place, locals) else {
+        return false;
+    };
+    class_of(&leaf_ty, env).drop
 }
 
 /// Walk `state` looking for `Diverged` leaves (or Diverged aggregates

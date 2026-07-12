@@ -417,6 +417,34 @@ fn pack_two_refs_into_struct_and_pass_ok() {
 
 // ---------- Sum an array with a dynamic index ----------
 
+// ---------- Straight-line reassignment via &out ----------
+
+#[test]
+fn straight_line_reassign_via_out_ok_via_elaboration() {
+    // A sequence of intrinsic calls that all write through `&out r`
+    // to the SAME slot `r`. Without pre-`&out` drop elaboration this
+    // would require a fresh temp per call and a `move` back into r.
+    // The elaborator now inserts an implicit `drop r` before each
+    // rebinding of `&out r`. Note we don't read `r` inside the same
+    // call that reborrows it — the loan doesn't end until the ref
+    // is consumed at the last operand.
+    assert_no_diagnostics(
+        "
+        fn f(a: i64, b: i64, c: i64, out: &out i64) {
+          r: i64;
+          r_out: &out i64;
+          entry:
+            r_out = &out r;
+            call $i64_add(copy a, copy b, move r_out);
+            r_out = &out r;
+            call $i64_mul(copy a, copy c, move r_out);
+            *out = copy r;
+            return
+        }
+        ",
+    );
+}
+
 #[test]
 fn sum_array_via_dynamic_index_loop_ok() {
     // Classic loop over an array. Dynamic index means every access

@@ -501,10 +501,17 @@ for production correctness).
 in LLVM.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
-- Elaborate `drop p` if `p` is initialized and being assigned to or
-  sent to an `&out` function. Blocked on custom `Drop::drop`
-  landing — today drop is bitwise-forget, so this doesn't matter for
-  correctness.
+- Elaborate `drop p` before an overwriting assign `p = <rvalue>`
+  where `p` is Init and its type is Drop. The parallel `&out p`
+  case is handled (drop-elab inserts an implicit drop when a
+  borrower would otherwise fail the Uninit precondition), but the
+  bare-assign case is trickier: inserting `drop p` before `p = ...`
+  changes the semantics of self-referential rvalues (`p = copy p`,
+  `p = f(p)`) — the drop would move `p` before the RHS reads it.
+  Making the drop explicit for the general case likely requires
+  splitting the assign into `tmp = rvalue; drop p; p = move tmp;`.
+  Deferred; today's bitwise-forget is correctness-safe until custom
+  destructors land.
 - **Variant_flow doesn't detect uninhabited variants.** `enum { A: i64,
   N: never }` — the `N` arm is provably unreachable (no `never`
   value can exist to wrap), but variant_flow rejects an

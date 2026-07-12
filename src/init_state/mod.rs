@@ -1398,6 +1398,20 @@ impl<'a> InitStateContext<'a> {
             return;
         }
 
+        // Drop-elaborable: for `&out` / `&uninit` on an Init place whose
+        // leaf type is Drop, drop-elaboration will insert `drop place`
+        // just before this borrow, transitioning `place` from Init to
+        // Moved so the Uninit precondition is satisfied. Skip the
+        // error here; post-elab init_state re-runs against the
+        // elaborated MIR and will surface anything drop-elab missed.
+        if !requires_init && matches!(leaf, InitState::Init) {
+            if let Ok(leaf_ty) = self.env.infer_place_type(place, self.locals) {
+                if class_of(&leaf_ty, self.env).drop {
+                    return;
+                }
+            }
+        }
+
         let path_str = format_path(&root, &path);
         let expected = if requires_init {
             "initialized"

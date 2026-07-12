@@ -176,17 +176,33 @@ fn out_borrow_of_moved_ok() {
 }
 
 #[test]
-fn out_borrow_of_init_error() {
-    let (errs, _) = run("
-        fn f(x: i64) {
-          entry:
-            x = 1;
-            return
-        }
+fn out_borrow_of_init_drop_type_ok_via_elaboration() {
+    // `x: i64` is Copy Drop, so `&out x` on an Init `x` is elaborated
+    // into `drop x; r = &out x;` — the Uninit precondition is met
+    // after the implicit drop. Post-elab init_state accepts the
+    // rewritten program.
+    assert_no_diagnostics("
         fn g(x: i64) {
           r: &out i64;
           entry:
             r = &out x;
+            *r = 2;
+            return
+        }
+        ");
+}
+
+#[test]
+fn out_borrow_of_init_non_drop_type_errors() {
+    // A linear (non-Drop) value can't be silently forgotten, so
+    // drop-elab has nothing to insert. The precondition failure
+    // fires as before.
+    let (errs, _) = run("
+        struct Linear { r: &out i64 }
+        fn f(x: Linear) {
+          rr: &out Linear;
+          entry:
+            rr = &out x;
             return
         }
         ");
@@ -216,12 +232,32 @@ fn uninit_borrow_of_never_init_ok() {
 }
 
 #[test]
-fn uninit_borrow_of_init_error() {
-    let (errs, _) = run("
+fn uninit_borrow_of_init_drop_type_ok_via_elaboration() {
+    // Same as the &out case above but for &uninit. Since `x: i64` is
+    // Drop, drop-elab inserts `drop x` and the precondition is met.
+    // `&uninit`'s post is Uninit, so the pointee stays uninit after
+    // the borrow expires; the leak check catches that x remains
+    // uninit-at-return, so we consume via move to keep it clean.
+    assert_no_diagnostics("
         fn f(x: i64) {
           r: &uninit i64;
           entry:
             r = &uninit x;
+            drop r;
+            return
+        }
+        ");
+}
+
+#[test]
+fn uninit_borrow_of_init_non_drop_type_errors() {
+    // Linear payload → no drop to insert → precondition failure.
+    let (errs, _) = run("
+        struct Linear { r: &out i64 }
+        fn f(x: Linear) {
+          rr: &uninit Linear;
+          entry:
+            rr = &uninit x;
             return
         }
         ");
