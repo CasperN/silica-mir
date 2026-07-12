@@ -78,7 +78,7 @@ fn accumulate_across_functions() {
 #[test]
 fn accumulate_branch_multi_error() {
     // A single `branch` terminator can produce three independent errors:
-    // non-boolean cond and both labels undefined.
+    // non-bool cond and both labels undefined.
     let errs = errors_of(
         "
         fn f(n: i64) {
@@ -95,7 +95,7 @@ fn accumulate_branch_multi_error() {
         }
         ",
     );
-    assert_errors_contain(&errs, &["branch condition must be boolean"]);
+    assert_errors_contain(&errs, &["branch condition must be bool"]);
 
     assert_one_error_contains_all(
         &errs,

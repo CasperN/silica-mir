@@ -174,7 +174,7 @@ fn non_int_index_errors() {
         "
         fn f() {
           a: [i64; 3];
-          b: boolean;
+          b: bool;
           x: i64;
           entry:
             a = [1i64, 2i64, 3i64];

@@ -26,7 +26,7 @@ fn goto(label: &str) -> Terminator {
 
 fn branch(t: &str, f: &str) -> Terminator {
     Terminator::Branch {
-        cond: Operand::Const(ConstVal::Boolean(true)),
+        cond: Operand::Const(ConstVal::Bool(true)),
         true_label: t.to_string(),
         false_label: f.to_string(),
     }
@@ -293,7 +293,7 @@ fn split_then_full_pipeline_still_clean() {
     use crate::run_all_passes;
 
     let src = "
-        fn f(b: boolean, x: i64) {
+        fn f(b: bool, x: i64) {
           y: i64;
           entry:
             branch(copy b) [true: t, false: fbr]

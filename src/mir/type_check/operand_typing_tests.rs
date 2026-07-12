@@ -59,11 +59,11 @@ fn unit_type_mismatch_error() {
 }
 
 #[test]
-fn operand_boolean_const_ok() {
+fn operand_bool_const_ok() {
     assert_ok(
         "
         fn f() {
-            b: boolean;
+            b: bool;
             entry:
             b = true;
             return

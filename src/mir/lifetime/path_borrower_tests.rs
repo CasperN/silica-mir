@@ -214,7 +214,7 @@ fn dynamic_field_borrow_multi_loan() {
     let (errs, _) = run("
         struct Move RefBox { p: &mut i64 }
         extern fn take_box(b: RefBox);
-        fn f(y: i64, z: i64, cond: boolean) {
+        fn f(y: i64, z: i64, cond: bool) {
           b: RefBox;
           entry:
             branch(copy cond) [true: t, false: fbr]

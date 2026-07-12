@@ -72,7 +72,7 @@ impl Subst {
             }
             (Type::Int(i1), Type::Int(i2)) if i1 == i2 => Ok(()),
             (Type::Float(f1), Type::Float(f2)) if f1 == f2 => Ok(()),
-            (Type::Boolean, Type::Boolean) => Ok(()),
+            (Type::Bool, Type::Bool) => Ok(()),
             (Type::Unit, Type::Unit) => Ok(()),
             (Type::Never, _) | (_, Type::Never) => Ok(()),
             (Type::Custom(n1), Type::Custom(n2)) if n1 == n2 => Ok(()),
@@ -225,7 +225,7 @@ fn infer_inner(
             Literal::Int(_, None) => Ok(subst.fresh_var()),
             Literal::Float(_, Some(ty)) => Ok(Type::Float(*ty)),
             Literal::Float(_, None) => Ok(subst.fresh_var()),
-            Literal::Boolean(_) => Ok(Type::Boolean),
+            Literal::Bool(_) => Ok(Type::Bool),
             Literal::Unit => Ok(Type::Unit),
         },
         ExprKind::Variable(name) => {
@@ -338,7 +338,7 @@ fn infer_inner(
             res
         }
         ExprKind::If(cond, true_block, false_block) => {
-            check_inner(env, subst, cond, &Type::Boolean, types)?;
+            check_inner(env, subst, cond, &Type::Bool, types)?;
             let t1 = infer_inner(env, subst, true_block, types)?;
             let t2 = infer_inner(env, subst, false_block, types)?;
             subst.unify(&t1, &t2)?;
@@ -448,7 +448,7 @@ fn check_inner(
             res
         }
         (ExprKind::If(cond, true_block, false_block), expected_ty) => {
-            check_inner(env, subst, cond, &Type::Boolean, types)?;
+            check_inner(env, subst, cond, &Type::Bool, types)?;
             check_inner(env, subst, true_block, expected_ty, types)?;
             check_inner(env, subst, false_block, expected_ty, types)?;
             types.insert(expr as *const Expr, resolved_expected.clone());

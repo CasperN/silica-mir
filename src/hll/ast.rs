@@ -4,7 +4,7 @@ use crate::mir::ast::{IntTy, FloatTy, RefKind, Span};
 pub enum Type {
     Int(IntTy),
     Float(FloatTy),
-    Boolean,
+    Bool,
     Unit,
     Never,
     Custom(String),
@@ -74,7 +74,7 @@ pub struct Program {
 pub enum Literal {
     Int(i64, Option<IntTy>),
     Float(f64, Option<FloatTy>),
-    Boolean(bool),
+    Bool(bool),
     Unit,
 }
 

@@ -20,7 +20,7 @@ fn goto_emits_br_label() {
 fn branch_emits_br_i1() {
     let ll = ll_of(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
           entry:
             branch(copy b) [true: t, false: fbr]
           t: return

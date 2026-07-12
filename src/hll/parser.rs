@@ -21,7 +21,7 @@ pub enum TokenKind {
     As,
     Match,
     // Types
-    Boolean,
+    Bool,
     Unit,
     Never,
     FatArrow, // =>
@@ -143,7 +143,7 @@ impl<'a> Lexer<'a> {
                 "return" => TokenKind::Return,
                 "as" => TokenKind::As,
                 "match" => TokenKind::Match,
-                "boolean" => TokenKind::Boolean,
+                "bool" => TokenKind::Bool,
                 "unit" => TokenKind::Unit,
                 "never" => TokenKind::Never,
                 _ => TokenKind::Ident(text.to_string()),
@@ -475,9 +475,9 @@ impl<'a> Parser<'a> {
     fn parse_type(&mut self) -> Result<Type, String> {
         let tok = self.peek();
         match tok.kind {
-            TokenKind::Boolean => {
+            TokenKind::Bool => {
                 self.advance();
-                Ok(Type::Boolean)
+                Ok(Type::Bool)
             }
             TokenKind::Unit => {
                 self.advance();
@@ -743,12 +743,12 @@ impl<'a> Parser<'a> {
                 let start = self.advance().span;
                 if name_str == "true" {
                     Ok(Expr {
-                        kind: ExprKind::Literal(Literal::Boolean(true)),
+                        kind: ExprKind::Literal(Literal::Bool(true)),
                         span: start,
                     })
                 } else if name_str == "false" {
                     Ok(Expr {
-                        kind: ExprKind::Literal(Literal::Boolean(false)),
+                        kind: ExprKind::Literal(Literal::Bool(false)),
                         span: start,
                     })
                 } else {
@@ -1000,7 +1000,7 @@ mod tests {
     #[test]
     fn parse_if_without_else() {
         let source = "
-            fn check(cond: boolean) {
+            fn check(cond: bool) {
                 if cond {
                     let a = 1;
                 }

@@ -96,7 +96,7 @@ mod tests {
     fn branch_both_arms_reachable() {
         assert_no_diagnostics(
             "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return
@@ -125,7 +125,7 @@ mod tests {
     fn loop_body_reachable_via_backedge() {
         assert_no_diagnostics(
             "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               entry:
                 goto head
               head:

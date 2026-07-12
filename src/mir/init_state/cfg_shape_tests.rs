@@ -17,7 +17,7 @@ use crate::test_util::*;
 fn borrow_in_loop_body_no_residual_loan() {
     let (errs, _) = run("
         extern fn use_ref(r: &mut i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             goto head
@@ -48,7 +48,7 @@ fn borrow_across_loop_iterations_ok() {
         "
         extern fn sink(r: &mut i64);
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -73,7 +73,7 @@ fn zero_iteration_loop_ok() {
     assert_no_diagnostics(
         "
         extern fn sink(r: &mut i64);
-        fn f(b: boolean, x: i64) {
+        fn f(b: bool, x: i64) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -99,7 +99,7 @@ fn symmetric_borrow_then_gone_merge_access_ok() {
     assert_no_diagnostics(
         "
         extern fn sink(r: &mut i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             branch(copy b) [true: t, false: fbr]
@@ -127,7 +127,7 @@ fn symmetric_borrow_carried_through_merge_ok() {
     assert_no_diagnostics(
         "
         extern fn sink(r: &mut i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             branch(copy b) [true: t, false: fbr]
@@ -152,7 +152,7 @@ fn move_in_one_branch_read_at_merge_error() {
     let (errs, _) = run("
         extern fn take(y: i64);
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           entry:
             branch(copy b) [true: t, false: fbr]
           t:
@@ -178,7 +178,7 @@ fn abort_with_live_borrow_other_arm_returns_ok() {
     assert_no_diagnostics(
         "
         extern fn sink(r: &mut i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -201,7 +201,7 @@ fn borrow_before_abort_no_leak_into_sibling_ok() {
     assert_no_diagnostics(
         "
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             branch(copy b) [true: t, false: fbr]
@@ -274,7 +274,7 @@ fn two_sequential_loops_ok() {
     assert_no_diagnostics(
         "
         extern fn noop();
-        fn f(b: boolean) {
+        fn f(b: bool) {
           entry:
             goto head1
           head1:
@@ -327,7 +327,7 @@ fn nested_loops_converge_ok() {
     assert_no_diagnostics(
         "
         extern fn noop();
-        fn f(a: boolean, b: boolean) {
+        fn f(a: bool, b: bool) {
           entry:
             goto outer_head
           outer_head:
@@ -354,7 +354,7 @@ fn irreducible_control_flow_two_entry_points_ok() {
     assert_no_diagnostics(
         "
         extern fn noop();
-        fn f(a: boolean, b: boolean) {
+        fn f(a: bool, b: bool) {
           entry:
             branch(copy a) [true: l, false: m]
           l:
@@ -379,7 +379,7 @@ fn nested_loop_with_borrow_across_outer_iterations_ok() {
         "
         extern fn sink(r: &mut i64);
         extern fn use_num(n: i64);
-        fn f(x: i64, a: boolean, b: boolean) {
+        fn f(x: i64, a: bool, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -431,7 +431,7 @@ fn join_agree_init_ok() {
     // Both branches init x; the merge sees Init.
     assert_no_diagnostics(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
           x: i64;
           y: i64;
           entry:
@@ -454,7 +454,7 @@ fn join_agree_init_ok() {
 fn join_disagreement_produces_diverged_error() {
     // Only one branch inits x; the merge is Diverged and reading errors.
     let (errs, _) = run("
-        fn f(b: boolean) {
+        fn f(b: bool) {
           x: i64;
           y: i64;
           entry:
@@ -478,7 +478,7 @@ fn aborting_predecessor_doesnt_pollute_join() {
     // Init state, so reading x is fine.
     assert_no_diagnostics(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
           x: i64;
           y: i64;
           entry:
@@ -504,7 +504,7 @@ fn loop_backedge_agrees_ok() {
     // the backedge join agrees.
     assert_no_diagnostics(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
           x: i64;
           entry:
             x = 0;
@@ -526,7 +526,7 @@ fn loop_may_reach_uninit_error() {
     // Loop body reads x before writing; on the first iteration x is
     // NeverInit. The read errors.
     let (errs, _) = run("
-        fn f(b: boolean) {
+        fn f(b: bool) {
           x: i64;
           y: i64;
           entry:

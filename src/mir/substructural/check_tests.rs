@@ -602,7 +602,7 @@ fn fully_linear_struct_partial_init_field_leaks() {
 fn multiple_returns_each_checked() {
     let (errs, _) = run("
         struct Linear { r: &out i64 }
-        fn f(b: boolean, x: Linear) {
+        fn f(b: bool, x: Linear) {
             entry:
             branch(copy b) [true: t, false: fbr]
             t: return

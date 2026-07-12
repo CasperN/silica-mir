@@ -242,7 +242,7 @@ mod tests {
         // `z` gets assigned. Both must show up at merge.
         let body = body_of(
             "
-            fn f(a: boolean) {
+            fn f(a: bool) {
               x: i64;
               y: i64;
               z: i64;
@@ -276,7 +276,7 @@ mod tests {
         // head = {x}; done inherits {x}.
         let body = body_of(
             "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               x: i64;
               entry:
                 x = 0;
@@ -338,7 +338,7 @@ mod tests {
     fn forward_refine_edge_applies_per_successor() {
         let body = body_of(
             "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               entry: branch(copy b) [true: t, false: fbr]
               t: return
               fbr: return
@@ -385,7 +385,7 @@ mod tests {
         //                     = {x} ∪ {} = {x}.
         let body = body_of(
             "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               x: i64;
               entry:
                 branch(copy b) [true: t, false: fbr]
@@ -413,7 +413,7 @@ mod tests {
         // fixed point = {x} (body always propagates x back).
         let body = body_of(
             "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               x: i64;
               entry:
                 goto head
@@ -457,7 +457,7 @@ mod tests {
         // pre-transfer state.
         let body = body_of(
             "
-            fn f(a: boolean) {
+            fn f(a: bool) {
               x: i64;
               y: i64;
               z: i64;

@@ -78,7 +78,7 @@ fn goto_undefined_label_error() {
 fn branch_ok() {
     assert_ok(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
             entry:
             branch(copy b) [true: yes, false: no]
             yes:
@@ -91,7 +91,7 @@ fn branch_ok() {
 }
 
 #[test]
-fn branch_non_boolean_error() {
+fn branch_non_bool_error() {
     assert_err(
         "
         fn f(n: i64) {
@@ -103,7 +103,7 @@ fn branch_non_boolean_error() {
             return
         }
         ",
-        "branch condition must be boolean",
+        "branch condition must be bool",
     );
 }
 
@@ -111,7 +111,7 @@ fn branch_non_boolean_error() {
 fn branch_true_label_undefined_error() {
     assert_err(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
             entry:
             branch(copy b) [true: nowhere, false: no]
             no:
@@ -126,7 +126,7 @@ fn branch_true_label_undefined_error() {
 fn branch_false_label_undefined_error() {
     assert_err(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
             entry:
             branch(copy b) [true: yes, false: nowhere]
             yes:

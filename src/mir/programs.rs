@@ -19,8 +19,8 @@ fn recursive_factorial_ok() {
     assert_no_diagnostics(
         "
         fn fact(n: i64, out: &out i64) {
-          base: boolean;
-          bo: &out boolean;
+          base: bool;
+          bo: &out bool;
           sub: i64;
           sub_out: &out i64;
           sub_result: i64;
@@ -49,7 +49,7 @@ fn recursive_factorial_ok() {
 #[test]
 fn iterative_fibonacci_loop_ok() {
     // Loop with two mutable state locals updated per iteration.
-    // Exercises: loop CFG, boolean flow through intrinsic result,
+    // Exercises: loop CFG, bool flow through intrinsic result,
     // multi-var state, arithmetic.
     //
     // Note the two-slot pattern for each intrinsic output: `foo_tmp`
@@ -66,8 +66,8 @@ fn iterative_fibonacci_loop_ok() {
           b: i64;
           i: i64;
           i_tmp: i64;
-          done_tmp: boolean;
-          done_out: &out boolean;
+          done_tmp: bool;
+          done_out: &out bool;
           next_tmp: i64;
           next_out: &out i64;
           inc_out: &out i64;
@@ -237,14 +237,14 @@ fn i32_to_i64_and_back_ok() {
 
 #[test]
 fn bool_to_int_arithmetic_ok() {
-    // Boolean derived from a comparison, promoted to i32, and used
+    // Bool derived from a comparison, promoted to i32, and used
     // in arithmetic. This is the closest thing to `x < 0 ? 1 : 0`
     // in current Silica.
     assert_no_diagnostics(
         "
         fn f(x: i64, out: &out i32) {
-          neg: boolean;
-          bo: &out boolean;
+          neg: bool;
+          bo: &out bool;
           zext_out: &out i32;
           entry:
             bo = &out neg;
@@ -264,12 +264,12 @@ fn is_power_of_two_via_bitops_ok() {
     // `x & (x - 1) == 0` — classical bit-twiddling.
     assert_no_diagnostics(
         "
-        fn is_pow2(x: u64, out: &out boolean) {
+        fn is_pow2(x: u64, out: &out bool) {
           minus_one: u64;
           masked: u64;
           sub_out: &out u64;
           and_out: &out u64;
-          bo: &out boolean;
+          bo: &out bool;
           entry:
             sub_out = &out minus_one;
             call $u64_sub(copy x, 1u64, move sub_out);
@@ -495,8 +495,8 @@ fn sum_array_via_dynamic_index_loop_ok() {
           sum_tmp: i64;
           i: i64;
           i_tmp: i64;
-          done_tmp: boolean;
-          done_out: &out boolean;
+          done_tmp: bool;
+          done_out: &out bool;
           slot: i64;
           add_out: &out i64;
           inc_out: &out i64;

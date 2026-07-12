@@ -149,7 +149,7 @@ fn unborrow_of_multi_loan_releases_all_places_ok() {
     // to a and b downstream succeed.
     assert_no_diagnostics(
         "
-        fn f(a: i64, b: i64, c: boolean) {
+        fn f(a: i64, b: i64, c: bool) {
           r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
@@ -176,7 +176,7 @@ fn unborrow_in_both_arms_merges_clean_ok() {
     // — direct access to x is legal downstream.
     assert_no_diagnostics(
         "
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           y: i64;
           entry:
@@ -246,7 +246,7 @@ fn unborrow_across_loop_ok() {
     assert_no_diagnostics(
         "
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;

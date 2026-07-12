@@ -12,7 +12,7 @@
 //! for `Drop` and `Move`.
 //!
 //! Class assignment (per README):
-//!   - Scalars (`i64`, `boolean`, `unit`) and `fn(...)` : `Copy Drop Move`
+//!   - Scalars (`i64`, `bool`, `unit`) and `fn(...)` : `Copy Drop Move`
 //!   - `&T`               : `Copy Drop Move`
 //!   - `&mut`, `&uninit`  : `Drop Move`
 //!   - `&out`, `&drop`    : `Move` only (linear obligation, but relocatable)
@@ -67,7 +67,7 @@ pub struct Class {
 
 pub fn class_of(ty: &Type, env: &Env) -> Class {
     match ty {
-        Type::Int(_) | Type::Float(_) | Type::Boolean | Type::Unit | Type::Fn(_) => Class {
+        Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Fn(_) => Class {
             copy: true,
             drop: true,
             mov: true,
@@ -230,7 +230,7 @@ mod tests {
     fn struct_copy_drop_of_scalars_ok() {
         assert_no_diagnostics(
             "
-            struct Copy Drop Point { x: i64 y: boolean }
+            struct Copy Drop Point { x: i64 y: bool }
             ",
         );
     }
@@ -281,7 +281,7 @@ mod tests {
     fn enum_copy_drop_scalar_variants_ok() {
         assert_no_diagnostics(
             "
-            enum Copy Drop Tag { N: i64 B: boolean U: unit }
+            enum Copy Drop Tag { N: i64 B: bool U: unit }
             ",
         );
     }
@@ -408,7 +408,7 @@ mod tests {
     fn struct_move_of_scalars_ok() {
         assert_no_diagnostics(
             "
-            struct Move Point { x: i64 y: boolean }
+            struct Move Point { x: i64 y: bool }
             ",
         );
     }

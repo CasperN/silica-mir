@@ -21,7 +21,7 @@ fn env_of(src: &str) -> Env {
 fn scalar_sizes() {
     let env = env_of("fn f() { entry: return }");
     assert_eq!(size_of(&Type::Int(IntTy::I64), &env), 8);
-    assert_eq!(size_of(&Type::Boolean, &env), 1);
+    assert_eq!(size_of(&Type::Bool, &env), 1);
     assert_eq!(size_of(&Type::Unit, &env), 0);
     assert_eq!(size_of(&Type::Never, &env), 0);
 }
@@ -30,7 +30,7 @@ fn scalar_sizes() {
 fn scalar_alignments() {
     let env = env_of("fn f() { entry: return }");
     assert_eq!(align_of(&Type::Int(IntTy::I64), &env), 8);
-    assert_eq!(align_of(&Type::Boolean, &env), 1);
+    assert_eq!(align_of(&Type::Bool, &env), 1);
     assert_eq!(align_of(&Type::Unit, &env), 1);
     assert_eq!(align_of(&Type::Never, &env), 1);
 }
@@ -50,7 +50,7 @@ fn all_ref_kinds_and_fn_are_pointer_sized() {
         assert_eq!(size_of(&ty, &env), 8);
         assert_eq!(align_of(&ty, &env), 8);
     }
-    let fn_ty = Type::Fn(vec![Type::Int(IntTy::I64), Type::Boolean]);
+    let fn_ty = Type::Fn(vec![Type::Int(IntTy::I64), Type::Bool]);
     assert_eq!(size_of(&fn_ty, &env), 8);
     assert_eq!(align_of(&fn_ty, &env), 8);
 }
@@ -75,9 +75,9 @@ fn homogeneous_struct_sums_field_sizes() {
 
 #[test]
 fn struct_pads_between_smaller_then_larger_field() {
-    // b:boolean at offset 0 (size 1), then x:i64 aligned to 8 → offset 8;
+    // b:bool at offset 0 (size 1), then x:i64 aligned to 8 → offset 8;
     // total = 8 + 8 = 16, rounded to align 8.
-    let env = env_of("struct P { b: boolean x: i64 } fn f() { entry: return }");
+    let env = env_of("struct P { b: bool x: i64 } fn f() { entry: return }");
     let ty = Type::Custom("P".to_string());
     assert_eq!(size_of(&ty, &env), 16);
     assert_eq!(align_of(&ty, &env), 8);
@@ -85,18 +85,18 @@ fn struct_pads_between_smaller_then_larger_field() {
 
 #[test]
 fn struct_rounds_up_trailing_padding_to_alignment() {
-    // x:i64 at offset 0 (size 8), b:boolean at offset 8 (size 1);
+    // x:i64 at offset 0 (size 8), b:bool at offset 8 (size 1);
     // total 9, rounded to align 8 → 16.
-    let env = env_of("struct P { x: i64 b: boolean } fn f() { entry: return }");
+    let env = env_of("struct P { x: i64 b: bool } fn f() { entry: return }");
     let ty = Type::Custom("P".to_string());
     assert_eq!(size_of(&ty, &env), 16);
 }
 
 #[test]
-fn packed_boolean_only_struct_is_tightly_packed() {
-    // Three booleans, all align 1: no padding.
+fn packed_bool_only_struct_is_tightly_packed() {
+    // Three bools, all align 1: no padding.
     let env = env_of(
-        "struct P { a: boolean b: boolean c: boolean } fn f() { entry: return }",
+        "struct P { a: bool b: bool c: bool } fn f() { entry: return }",
     );
     let ty = Type::Custom("P".to_string());
     assert_eq!(size_of(&ty, &env), 3);
@@ -108,12 +108,12 @@ fn nested_struct_inherits_alignment() {
     let env = env_of(
         "
         struct Inner { x: i64 }
-        struct Outer { i: Inner b: boolean }
+        struct Outer { i: Inner b: bool }
         fn f() { entry: return }
         ",
     );
     let ty = Type::Custom("Outer".to_string());
-    // Inner is 8 bytes, align 8. Outer: Inner @ 0..8, boolean @ 8; total 9
+    // Inner is 8 bytes, align 8. Outer: Inner @ 0..8, bool @ 8; total 9
     // rounded to 8 → 16.
     assert_eq!(size_of(&ty, &env), 16);
     assert_eq!(align_of(&ty, &env), 8);
@@ -121,7 +121,7 @@ fn nested_struct_inherits_alignment() {
 
 #[test]
 fn struct_with_reference_field_uses_pointer_size() {
-    let env = env_of("struct S { r: &mut i64 x: boolean } fn f() { entry: return }");
+    let env = env_of("struct S { r: &mut i64 x: bool } fn f() { entry: return }");
     let ty = Type::Custom("S".to_string());
     // r at 0..8 (align 8), b at 8; total 9 → 16.
     assert_eq!(size_of(&ty, &env), 16);
@@ -165,10 +165,10 @@ fn enum_size_is_dominated_by_largest_variant_payload() {
 }
 
 #[test]
-fn enum_with_only_boolean_payloads_is_align_2() {
-    let env = env_of("enum E { A: boolean B: unit } fn f() { entry: return }");
+fn enum_with_only_bool_payloads_is_align_2() {
+    let env = env_of("enum E { A: bool B: unit } fn f() { entry: return }");
     let ty = Type::Custom("E".to_string());
-    // disc:i16 at 0..2, boolean at offset 2 (align 1) size 1, total 3,
+    // disc:i16 at 0..2, bool at offset 2 (align 1) size 1, total 3,
     // rounded to align 2 = 4.
     assert_eq!(size_of(&ty, &env), 4);
     assert_eq!(align_of(&ty, &env), 2);

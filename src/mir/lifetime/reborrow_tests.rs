@@ -281,7 +281,7 @@ fn reborrow_in_loop_body_ok() {
     assert_no_diagnostics(
         "
         extern fn use_mut(r: &mut i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           s: &mut i64;
           entry:

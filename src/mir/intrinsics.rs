@@ -115,7 +115,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
         });
     }
 
-    // ---------- Integer comparisons (result: boolean) ----------
+    // ---------- Integer comparisons (result: bool) ----------
 
     for &int_ty in ALL_INT_TYS {
         let value_ty = Type::Int(int_ty);
@@ -155,7 +155,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
         });
     }
 
-    // ---------- Float comparisons (result: boolean) ----------
+    // ---------- Float comparisons (result: bool) ----------
     //
     // Ordered predicates: NaN inputs make the comparison false.
     // Silica has no unordered predicates yet; users who need
@@ -177,7 +177,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
             out.push(IntrinsicSpec {
                 name: format!("${}_{}", type_name, op),
                 inputs: vec![value_ty.clone(), value_ty.clone()],
-                result: Type::Boolean,
+                result: Type::Bool,
                 emit: fcmp(pred, llvm_ty),
                 llvm_declares: &[],
             });
@@ -259,17 +259,17 @@ pub fn all() -> Vec<IntrinsicSpec> {
         llvm_declares: &[],
     });
 
-    // Boolean ↔ Int. `bool_to_iN` = zext from i1. `iN_to_bool` =
+    // Bool ↔ Int. `bool_to_iN` = zext from i1. `iN_to_bool` =
     // truncate to i1 (only the low bit matters).
     for &int_ty in ALL_INT_TYS {
         out.push(IntrinsicSpec {
             name: format!("$bool_to_{}", int_ty.name()),
-            inputs: vec![Type::Boolean],
+            inputs: vec![Type::Bool],
             result: Type::Int(int_ty),
             emit: cast_emit("zext", "i1", int_llvm_ty(int_ty)),
             llvm_declares: &[],
         });
-        // Truncation of an int wider than 1 bit to boolean. For i8
+        // Truncation of an int wider than 1 bit to bool. For i8
         // (same width as i1 storage but different semantics), the
         // trunc from i8 to i1 keeps only the low bit — matching the
         // C "nonzero-becomes-true" semantics if the caller pre-
@@ -279,7 +279,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
             out.push(IntrinsicSpec {
                 name: format!("${}_to_bool", int_ty.name()),
                 inputs: vec![Type::Int(int_ty)],
-                result: Type::Boolean,
+                result: Type::Bool,
                 emit: cast_emit("trunc", int_llvm_ty(int_ty), "i1"),
                 llvm_declares: &[],
             });
@@ -388,12 +388,12 @@ fn int_binop(name: String, ty: Type, llvm_op: &'static str, bits: u32) -> Intrin
     }
 }
 
-/// Two-operand integer comparison → boolean.
+/// Two-operand integer comparison → bool.
 fn int_cmp(name: String, ty: Type, pred: &'static str, bits: u32) -> IntrinsicSpec {
     IntrinsicSpec {
         name,
         inputs: vec![ty.clone(), ty],
-        result: Type::Boolean,
+        result: Type::Bool,
         emit: icmp(pred, bits),
         llvm_declares: &[],
     }
@@ -461,7 +461,7 @@ pub fn bin_int(op: &'static str, bits: u32) -> Emit {
 }
 
 /// Integer comparison emitted as `%r = icmp <pred> i<bits> %a, %b`.
-/// Result is always `i1` (Silica `boolean`).
+/// Result is always `i1` (Silica `bool`).
 pub fn icmp(pred: &'static str, bits: u32) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();
@@ -481,7 +481,7 @@ pub fn float_binop(op: &'static str, llvm_ty: &'static str) -> Emit {
 }
 
 /// Float comparison emitted as `%r = fcmp <pred> <fty> %a, %b`.
-/// Result is always `i1` (Silica `boolean`).
+/// Result is always `i1` (Silica `bool`).
 pub fn fcmp(pred: &'static str, llvm_ty: &'static str) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();

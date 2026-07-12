@@ -550,7 +550,7 @@ fn check_switch(
 ///   inhabited (the empty array literal has no elements to construct).
 ///
 /// References, raw pointers, function pointers, scalars, `unit`, and
-/// `boolean` are always inhabited. Recursive struct/enum types are
+/// `bool` are always inhabited. Recursive struct/enum types are
 /// bounded by the visited set — a Custom name seen twice in the
 /// same walk conservatively returns false (inhabited) rather than
 /// looping.
@@ -735,7 +735,7 @@ mod tests {
         assert_no_diagnostics(
             "
             enum Copy Drop Option { None: unit Some: i64 }
-            fn f(b: boolean) {
+            fn f(b: bool) {
               o: Option;
               entry:
                 branch(copy b) [true: t, false: fbr]
@@ -818,7 +818,7 @@ mod tests {
     fn flow_unreachable_arm_after_ambiguous_join_error() {
         let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: i64 }
-            fn f(b: boolean) {
+            fn f(b: bool) {
               o: Option;
               entry:
                 branch(copy b) [true: t, false: fbr]
@@ -1142,7 +1142,7 @@ mod tests {
         // unreachable arm claim should fail.
         let (errs, _) = run("
             enum Copy Drop Option { None: unit Some: i64 }
-            fn f(b: boolean) {
+            fn f(b: bool) {
               o: Option;
               entry:
                 o = Option::None(unit);

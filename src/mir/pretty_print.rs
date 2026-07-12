@@ -120,7 +120,7 @@ fn write_type(out: &mut String, ty: &Type) {
     match ty {
         Type::Int(i) => out.push_str(i.name()),
         Type::Float(f) => out.push_str(f.name()),
-        Type::Boolean => out.push_str("boolean"),
+        Type::Bool => out.push_str("bool"),
         Type::Unit => out.push_str("unit"),
         Type::Never => out.push_str("never"),
         Type::Custom(name) => out.push_str(name),
@@ -264,8 +264,8 @@ fn write_const(out: &mut String, c: &ConstVal) {
             }
             out.push('"');
         }
-        ConstVal::Boolean(true) => out.push_str("true"),
-        ConstVal::Boolean(false) => out.push_str("false"),
+        ConstVal::Bool(true) => out.push_str("true"),
+        ConstVal::Bool(false) => out.push_str("false"),
         ConstVal::Unit => out.push_str("unit"),
         ConstVal::FnName(name) => out.push_str(name),
     }
@@ -509,7 +509,7 @@ mod tests {
     fn roundtrip_branch_and_drop_and_abort() {
         assert_roundtrip(
             "
-            fn f(b: boolean, x: i64) {
+            fn f(b: bool, x: i64) {
               entry:
                 drop x;
                 branch(copy b) [true: t, false: fbr]

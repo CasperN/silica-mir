@@ -242,17 +242,24 @@ impl Parser {
             return Ok(ty);
         }
         match node.kind() {
-            "boolean" => Ok(Type::Boolean),
+            "bool" => Ok(Type::Bool),
             "unit" => Ok(Type::Unit),
             "never" => Ok(Type::Never),
-            "identifier" => Ok(Type::Custom(self.get_text(node).to_string())),
+            "identifier" => {
+                let text = self.get_text(node);
+                if text == "bool" {
+                    Ok(Type::Bool)
+                } else {
+                    Ok(Type::Custom(text.to_string()))
+                }
+            }
             "type" => {
                 let first_child = node.child(0).ok_or("Type node has no children")?;
                 if let Some(ty) = scalar_kind_to_type(first_child.kind()) {
                     return Ok(ty);
                 }
                 let kind = first_child.kind();
-                if kind == "boolean"
+                if kind == "bool"
                     || kind == "unit"
                     || kind == "never"
                     || kind == "identifier"
@@ -398,8 +405,8 @@ impl Parser {
             _ => {
                 let text = self.get_text(node);
                 match text {
-                    "true" => Ok(ConstVal::Boolean(true)),
-                    "false" => Ok(ConstVal::Boolean(false)),
+                    "true" => Ok(ConstVal::Bool(true)),
+                    "false" => Ok(ConstVal::Bool(false)),
                     "unit" => Ok(ConstVal::Unit),
                     _ => Ok(ConstVal::FnName(text.to_string())),
                 }

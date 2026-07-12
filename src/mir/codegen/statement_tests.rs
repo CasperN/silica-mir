@@ -21,12 +21,12 @@ fn assign_number_const() {
 }
 
 #[test]
-fn assign_boolean_consts() {
+fn assign_bool_consts() {
     let ll = ll_of(
         "
         fn f() {
-          a: boolean;
-          b: boolean;
+          a: bool;
+          b: bool;
           entry:
             a = true;
             b = false;

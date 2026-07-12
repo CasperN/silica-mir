@@ -91,15 +91,15 @@ fn i64_mul_lowers_to_llvm_mul() {
     assert_contains(&ll, "= mul i64");
 }
 
-// ---------- Comparison (result is boolean) ----------
+// ---------- Comparison (result is bool) ----------
 
 #[test]
 fn i64_lt_lowers_to_icmp_slt() {
     let ll = ll_of(
         "
         fn f(a: i64, b: i64) {
-          r: boolean;
-          out: &out boolean;
+          r: bool;
+          out: &out bool;
           entry:
             out = &out r;
             call $i64_lt(copy a, copy b, move out);
@@ -108,7 +108,7 @@ fn i64_lt_lowers_to_icmp_slt() {
         ",
     );
     assert_contains(&ll, "= icmp slt i64");
-    // Result stored as i1 through the &out boolean pointer.
+    // Result stored as i1 through the &out bool pointer.
     assert_contains(&ll, "store i1");
 }
 
@@ -247,13 +247,13 @@ entry:
 #[test]
 fn snapshot_i64_lt_full_ir() {
     // Comparison intrinsic: operand type is i64, result type is
-    // boolean (i1). Verifies the two-type shape of the signature and
+    // bool (i1). Verifies the two-type shape of the signature and
     // that the &out slot is `alloca ptr` regardless of pointee.
     assert_ll_eq(
         "
         fn f(a: i64, b: i64) {
-          r: boolean;
-          out: &out boolean;
+          r: bool;
+          out: &out bool;
           entry:
             out = &out r;
             call $i64_lt(copy a, copy b, move out);
@@ -488,20 +488,20 @@ fn unused_intrinsic_declare_is_not_emitted() {
     );
 }
 
-// ---------- Boolean branch smoke (README punch-list "boolean flow") ----------
+// ---------- Bool branch smoke (README punch-list "bool flow") ----------
 
 #[test]
-fn boolean_result_of_intrinsic_used_in_branch_ok() {
-    // Compute a boolean via `$i64_gt` (writes through `&out boolean`),
+fn bool_result_of_intrinsic_used_in_branch_ok() {
+    // Compute a bool via `$i64_gt` (writes through `&out bool`),
     // then feed to a `branch` terminator. Currently the branch does
     // no refinement on its operand (unlike switchEnum); this pins the
     // current behavior and provides an anchor for a future flow-
-    // analysis change on booleans (README punch list).
+    // analysis change on bools (README punch list).
     let (errs, _) = crate::test_util::run(
         "
         fn f(x: i64) {
-          b: boolean;
-          bo: &out boolean;
+          b: bool;
+          bo: &out bool;
           y: i64;
           entry:
             bo = &out b;
@@ -520,7 +520,7 @@ fn boolean_result_of_intrinsic_used_in_branch_ok() {
     );
     assert!(
         errs.is_empty(),
-        "expected clean run for boolean-branch program, got: {:?}",
+        "expected clean run for bool-branch program, got: {:?}",
         errs
     );
 }
@@ -534,8 +534,8 @@ fn f64_lt_lowers_to_ordered_fcmp() {
     let ll = ll_of(
         "
         fn f(x: f64, y: f64) {
-          b: boolean;
-          out: &out boolean;
+          b: bool;
+          out: &out bool;
           entry:
             out = &out b;
             call $f64_lt(copy x, copy y, move out);
@@ -821,7 +821,7 @@ fn f32_to_f64_uses_fpext() {
 fn bool_to_i32_uses_zext_from_i1() {
     let ll = ll_of(
         "
-        fn f(b: boolean) {
+        fn f(b: bool) {
           y: i32;
           out: &out i32;
           entry:

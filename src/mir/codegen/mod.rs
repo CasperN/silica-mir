@@ -2,7 +2,7 @@
 //! self-contained `.ll` string. Runs after `run_all_passes` succeeded.
 //!
 //! ## Scope
-//! - Scalars: `i64` → `i64`, `boolean` → `i1`, `unit`/`never` → `{}`
+//! - Scalars: `i64` → `i64`, `bool` → `i1`, `unit`/`never` → `{}`
 //!   (the `never` case is unreachable at runtime, so any zero-sized rep
 //!   works).
 //! - References: all five kinds erase to `ptr` (opaque pointer). The
@@ -172,7 +172,7 @@ impl<'a> CodeGenContext<'a> {
             Type::Int(i) => format!("i{}", i.bits()),
             Type::Float(FloatTy::F32) => "float".to_string(),
             Type::Float(FloatTy::F64) => "double".to_string(),
-            Type::Boolean => "i1".to_string(),
+            Type::Bool => "i1".to_string(),
             Type::Unit | Type::Never => "{}".to_string(),
             Type::Ref(_, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
             Type::Custom(name) => format!("%{}", name),
@@ -230,7 +230,7 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
     // Payload lane type matches the enum's overall alignment so that
     // LLVM's inferred struct alignment equals `layout::align_of(E)`.
     // Without this, an enum embedded as a field after a smaller-aligned
-    // sibling (e.g. `struct S { b: boolean, e: BigEnum }`) would place
+    // sibling (e.g. `struct S { b: bool, e: BigEnum }`) would place
     // the payload at a stricter-than-actual offset — UB on payload
     // access. Lane count is `ceil(pay_size / sizeof(lane_ty))`, so
     // total storage is at least `pay_size` bytes.
@@ -732,8 +732,8 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
             };
             (hex, Type::Float(*ty))
         }
-        ConstVal::Boolean(true) => ("true".to_string(), Type::Boolean),
-        ConstVal::Boolean(false) => ("false".to_string(), Type::Boolean),
+        ConstVal::Bool(true) => ("true".to_string(), Type::Bool),
+        ConstVal::Bool(false) => ("false".to_string(), Type::Bool),
         ConstVal::Unit => ("zeroinitializer".to_string(), Type::Unit),
         ConstVal::FnName(name) => {
             let f = cx

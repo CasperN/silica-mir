@@ -309,7 +309,7 @@ fn diverged_state_splits_edge_and_drops_on_init_side() {
     // and is dropped in the merge block itself.
     assert_elaborated_eq(
         "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               x: i64;
               entry:
                 branch(copy b) [true: t, false: fbr]
@@ -323,7 +323,7 @@ fn diverged_state_splits_edge_and_drops_on_init_side() {
             }
             ",
         "\
-fn f(b: boolean) {
+fn f(b: bool) {
   x: i64;
   entry:
     branch(copy b) [true: t, false: fbr]
@@ -397,7 +397,7 @@ fn diverged_elab_idempotent() {
     // Run elaboration twice; second run should be a no-op because
     // the first run's inserted drops already satisfy the leak check.
     let src = "
-            fn f(b: boolean) {
+            fn f(b: bool) {
               x: i64;
               entry:
                 branch(copy b) [true: t, false: fbr]
@@ -461,7 +461,7 @@ fn elaborates_each_return_independently() {
     // Two returns, each drops x and b (reverse decl order).
     assert_elaborated_eq(
         "
-            fn f(b: boolean, x: i64) {
+            fn f(b: bool, x: i64) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return
@@ -469,7 +469,7 @@ fn elaborates_each_return_independently() {
             }
             ",
         "\
-fn f(b: boolean, x: i64) {
+fn f(b: bool, x: i64) {
   entry:
     branch(copy b) [true: t, false: fbr]
   t:
@@ -725,7 +725,7 @@ fn strict_check_passes_after_elaboration_with_multi_return() {
     // Each return-block gets its own drops; strict validates both.
     assert_strict_clean_after_elaboration(
         "
-            fn f(b: boolean, x: i64) {
+            fn f(b: bool, x: i64) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return
@@ -811,7 +811,7 @@ fn idempotent_with_reassignment() {
 fn idempotent_with_multi_return() {
     assert_idempotent(
         "
-            fn f(b: boolean, x: i64) {
+            fn f(b: bool, x: i64) {
               entry:
                 branch(copy b) [true: t, false: fbr]
               t: return

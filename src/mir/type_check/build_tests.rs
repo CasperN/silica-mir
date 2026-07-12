@@ -18,7 +18,7 @@ fn struct_duplicate_field_name_error() {
         "
         struct S {
             x: i64
-            x: boolean
+            x: bool
         }
         ",
         "field 'x' is declared more than once",

@@ -279,12 +279,12 @@ fn concat_hello_world_via_dynamic_indexing() {
           world: [u8; 5];
           hello_world: [u8; 11];
           i: u64;
-          cond: boolean;
-          is_five: boolean;
+          cond: bool;
+          is_five: bool;
           add_out: &out u64;
           sub_out: &out u64;
-          lt_out: &out boolean;
-          eq_out: &out boolean;
+          lt_out: &out bool;
+          eq_out: &out bool;
           src_idx: u64;
           next_i: u64;
           entry:

@@ -47,8 +47,8 @@ pub enum TypeCheckCode {
     /// `goto`, `branch true/false`, or `switchEnum` variant targets a
     /// block label that isn't defined in this function.
     TerminatorUndefinedTarget,
-    /// `branch` condition operand doesn't have type `boolean`.
-    BranchConditionNotBoolean,
+    /// `branch` condition operand doesn't have type `bool`.
+    BranchConditionNotBool,
     /// `switchEnum(place)` where `place`'s type isn't a known enum.
     SwitchOnNonEnum,
     /// A `switchEnum` arm names a variant that isn't declared on
@@ -197,7 +197,7 @@ impl Env {
 
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
-            Type::Int(_) | Type::Float(_) | Type::Boolean | Type::Unit | Type::Never => Ok(()),
+            Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => Ok(()),
             Type::Custom(name) => {
                 if self.types.contains_key(name) {
                     Ok(())
@@ -237,7 +237,7 @@ impl Env {
         match (t1, t2) {
             (Type::Int(a), Type::Int(b)) => a == b,
             (Type::Float(a), Type::Float(b)) => a == b,
-            (Type::Boolean, Type::Boolean) => true,
+            (Type::Bool, Type::Bool) => true,
             (Type::Unit, Type::Unit) => true,
             (Type::Never, Type::Never) => true,
             (Type::Custom(a), Type::Custom(b)) => a == b,
@@ -405,7 +405,7 @@ impl Env {
             Operand::Const(c) => match c {
                 ConstVal::Int { ty, .. } => Ok(Type::Int(*ty)),
                 ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
-                ConstVal::Boolean(_) => Ok(Type::Boolean),
+                ConstVal::Bool(_) => Ok(Type::Bool),
                 ConstVal::Unit => Ok(Type::Unit),
                 ConstVal::FnName(name) => {
                     let f = self.functions.get(name).ok_or_else(|| {
@@ -790,9 +790,9 @@ impl Env {
                 false_label,
             } => {
                 match self.infer_operand_type(cond, ts, locals) {
-                    Ok(cond_ty) if cond_ty != Type::Boolean => d.push_error(terminator_diag(
-                        TypeCheckCode::BranchConditionNotBoolean,
-                        format!("branch condition must be boolean, found {:?}", cond_ty),
+                    Ok(cond_ty) if cond_ty != Type::Bool => d.push_error(terminator_diag(
+                        TypeCheckCode::BranchConditionNotBool,
+                        format!("branch condition must be bool, found {:?}", cond_ty),
                     )),
                     Ok(_) => {}
                     Err(inner_diag) => d.push_error(

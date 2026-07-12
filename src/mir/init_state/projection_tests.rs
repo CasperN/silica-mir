@@ -14,7 +14,7 @@ use crate::test_util::*;
 fn branch_reads_cond() {
     let (errs, _) = run("
         fn f() {
-          b: boolean;
+          b: bool;
           entry:
             branch(copy b) [true: t, false: fbr]
           t: return

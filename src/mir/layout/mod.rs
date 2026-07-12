@@ -9,7 +9,7 @@
 //!
 //! ## Layout rules
 //! - `i64`                 → 8 bytes, align 8 (i64)
-//! - `boolean`                → 1 byte,  align 1
+//! - `bool`                → 1 byte,  align 1
 //! - `unit`, `never`          → 0 bytes, align 1 (never is uninhabited)
 //! - `fn(...)`, `&T` (any kind) → 8 bytes, align 8 (pointer on 64-bit target)
 //! - **struct**: fields laid out in declaration order, each padded to its
@@ -54,7 +54,7 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
     match ty {
         Type::Int(i) => i.bytes(),
         Type::Float(f) => f.bytes(),
-        Type::Boolean => 1,
+        Type::Bool => 1,
         Type::Unit | Type::Never => 0,
         Type::Fn(_) | Type::Ref(_, _) | Type::RawPtr(_) => 8,
         Type::Custom(name) => match env.types.get(name) {
@@ -72,7 +72,7 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
     match ty {
         Type::Int(i) => i.bytes(),
         Type::Float(f) => f.bytes(),
-        Type::Boolean => 1,
+        Type::Bool => 1,
         Type::Unit | Type::Never => 1,
         Type::Fn(_) | Type::Ref(_, _) | Type::RawPtr(_) => 8,
         Type::Custom(name) => match env.types.get(name) {

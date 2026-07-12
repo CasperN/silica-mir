@@ -88,7 +88,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
     match ty {
         hll::Type::Int(t) => mir::Type::Int(*t),
         hll::Type::Float(t) => mir::Type::Float(*t),
-        hll::Type::Boolean => mir::Type::Boolean,
+        hll::Type::Bool => mir::Type::Bool,
         hll::Type::Unit => mir::Type::Unit,
         hll::Type::Never => mir::Type::Never,
         hll::Type::Custom(name) => mir::Type::Custom(name.clone()),
@@ -111,7 +111,7 @@ fn is_copy_type(ty: &mir::Type) -> bool {
         ty,
         mir::Type::Int(_)
             | mir::Type::Float(_)
-            | mir::Type::Boolean
+            | mir::Type::Bool
             | mir::Type::Unit
             | mir::Type::Never
             | mir::Type::Ref(_, _)
@@ -167,7 +167,7 @@ fn lower_expr_to_operand(
                     bits: val.to_bits(),
                     ty: suffix.unwrap_or(mir::FloatTy::F64),
                 },
-                hll::Literal::Boolean(val) => mir::ConstVal::Boolean(*val),
+                hll::Literal::Bool(val) => mir::ConstVal::Bool(*val),
                 hll::Literal::Unit => mir::ConstVal::Unit,
             };
             Ok(mir::Operand::Const(const_val))
@@ -735,7 +735,7 @@ mod tests {
     #[test]
     fn test_lower_if_without_else() {
         let source = "
-            fn check(cond: boolean) {
+            fn check(cond: bool) {
                 if cond {
                     let a = 1;
                 }
@@ -744,7 +744,7 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            fn check(cond: boolean) {
+            fn check(cond: bool) {
               _temp_0: unit;
               a: i64;
               entry:

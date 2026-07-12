@@ -33,13 +33,13 @@ fn enum_with_number_payload_pads_to_i64_alignment() {
 }
 
 #[test]
-fn enum_with_boolean_payload_stays_align_2() {
-    // boolean align 1, i16 align 2 → overall_align 2, pad_bytes 0.
+fn enum_with_bool_payload_stays_align_2() {
+    // bool align 1, i16 align 2 → overall_align 2, pad_bytes 0.
     // Payload lane is i16, count = ceil(1/2) = 1 (2 bytes storage
     // for a 1-byte payload — trivial slack).
     let ll = ll_of(
         "
-        enum E { A: boolean B: unit }
+        enum E { A: bool B: unit }
         fn f() { entry: return }
         ",
     );
@@ -65,7 +65,7 @@ fn enum_infers_align_when_embedded_in_struct() {
     let ll = ll_of(
         "
         enum E { A: i64 B: unit }
-        struct S { b: boolean e: E }
+        struct S { b: bool e: E }
         fn f() { entry: return }
         ",
     );

@@ -128,7 +128,7 @@ impl FloatTy {
 pub enum Type {
     Int(IntTy),
     Float(FloatTy),
-    Boolean,
+    Bool,
     Unit,
     Never,
     Custom(String), // struct or enum type reference
@@ -464,7 +464,7 @@ pub enum ConstVal {
     /// zero); `f64` fills all 64. Bit-pattern storage lets ConstVal
     /// stay `Eq` (NaN comparisons preserved as bit-equality).
     Float { bits: u64, ty: FloatTy },
-    Boolean(bool),
+    Bool(bool),
     Unit,
     FnName(String),
     /// Byte string literal `b"..."`. Value semantics: has type

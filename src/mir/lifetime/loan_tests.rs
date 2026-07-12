@@ -353,7 +353,7 @@ fn branch_of_ref_moves_both_params_leak() {
     // so the OTHER is a leak (its &out obligation is unmet on that
     // path). This program should be rejected.
     let (errs, _) = run("
-        fn f(x: &out i64, y: &out i64, b: boolean) {
+        fn f(x: &out i64, y: &out i64, b: bool) {
           z: &out i64;
           entry:
             branch(copy b) [true: t, false: fbr]
@@ -394,7 +394,7 @@ fn multi_loan_branch_of_borrows_a_or_b_ok() {
     assert_no_diagnostics(
         "
         extern fn sink(r: &mut i64);
-        fn f(a: i64, b: i64, c: boolean) {
+        fn f(a: i64, b: i64, c: bool) {
           r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
@@ -420,7 +420,7 @@ fn multi_loan_conflict_on_a_after_join() {
     // a conflict — r may loan a.
     let (errs, _) = run("
         extern fn sink(r: &mut i64);
-        fn f(a: i64, b: i64, c: boolean) {
+        fn f(a: i64, b: i64, c: bool) {
           r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
@@ -443,7 +443,7 @@ fn multi_loan_conflict_on_a_after_join() {
 fn multi_loan_conflict_on_b_after_join() {
     let (errs, _) = run("
         extern fn sink(r: &mut i64);
-        fn f(a: i64, b: i64, c: boolean) {
+        fn f(a: i64, b: i64, c: bool) {
           r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
@@ -469,7 +469,7 @@ fn multi_loan_disjoint_third_place_ok() {
     assert_no_diagnostics(
         "
         extern fn sink(r: &mut i64);
-        fn f(a: i64, b: i64, c: i64, cond: boolean) {
+        fn f(a: i64, b: i64, c: i64, cond: bool) {
           r: &mut i64;
           entry:
             branch(copy cond) [true: t, false: fbr]

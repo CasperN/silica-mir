@@ -16,7 +16,7 @@ fn extern_fn_declaration() {
 
 #[test]
 fn extern_fn_with_ref_and_bool() {
-    let ll = ll_of("extern fn f(a: boolean, r: &mut i64);");
+    let ll = ll_of("extern fn f(a: bool, r: &mut i64);");
     assert_contains(&ll, "declare void @f(i1, ptr)");
 }
 

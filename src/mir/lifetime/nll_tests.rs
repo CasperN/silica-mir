@@ -123,7 +123,7 @@ fn roundtrip_loop_last_use_after_loop_ok() {
     assert_no_diagnostics(
         "
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -147,7 +147,7 @@ fn roundtrip_multi_loan_branch_of_borrows_ok() {
     // at the merge (before the direct writes).
     assert_no_diagnostics(
         "
-        fn f(a: i64, b: i64, c: boolean) {
+        fn f(a: i64, b: i64, c: bool) {
           r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
@@ -273,7 +273,7 @@ fn snapshot_multi_loan_bind_rule() {
     // are legal because loans are closed pre-merge.
     assert_elab_eq(
         "
-        fn f(a: i64, b: i64, c: boolean) {
+        fn f(a: i64, b: i64, c: bool) {
           r: &mut i64;
           entry:
             branch(copy c) [true: t, false: fbr]
@@ -289,7 +289,7 @@ fn snapshot_multi_loan_bind_rule() {
             return
         }
         ",
-        "fn f(a: i64, b: i64, c: boolean) {
+        "fn f(a: i64, b: i64, c: bool) {
   r: &mut i64;
   entry:
     branch(copy c) [true: t, false: fbr]
@@ -316,7 +316,7 @@ fn snapshot_cross_edge_split() {
     assert_elab_eq(
         "
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -333,7 +333,7 @@ fn snapshot_cross_edge_split() {
         ",
         "extern fn use_num(n: i64);
 
-fn f(x: i64, b: boolean) {
+fn f(x: i64, b: bool) {
   r: &mut i64;
   entry:
     r = &mut x;
@@ -495,7 +495,7 @@ fn cross_edge_insertion_when_borrower_dies_on_one_arm() {
     assert_no_diagnostics(
         "
         extern fn use_num(n: i64);
-        fn f(x: i64, b: boolean) {
+        fn f(x: i64, b: bool) {
           r: &mut i64;
           entry:
             r = &mut x;
@@ -653,7 +653,7 @@ fn mixed_branch_return_arm_fulfills_ok() {
     // only on the return path.
     assert_no_diagnostics(
         "
-        fn f(r: &out i64, b: boolean) {
+        fn f(r: &out i64, b: bool) {
           entry:
             branch(copy b) [true: init_arm, false: die_arm]
           init_arm:
@@ -672,7 +672,7 @@ fn mixed_branch_return_arm_still_leaks_error() {
     // return path fails the obligation check; the abort path is
     // waived. Error is still reported for the return side.
     let (errs, _) = run("
-        fn f(r: &out i64, b: boolean) {
+        fn f(r: &out i64, b: bool) {
           entry:
             branch(copy b) [true: return_arm, false: die_arm]
           return_arm:
@@ -693,7 +693,7 @@ fn mixed_branch_snapshot_only_return_arm_gets_unborrow() {
     // arm, not on the abort arm.
     let out = elaborate_only(
         "
-        fn f(r: &out i64, b: boolean) {
+        fn f(r: &out i64, b: bool) {
           entry:
             branch(copy b) [true: init_arm, false: die_arm]
           init_arm:
