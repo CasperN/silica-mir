@@ -509,16 +509,6 @@ in LLVM.
   we'd need to hoist the payload into a fresh temp first, which
   requires allocating a mid-elaboration local. Frontend can spell
   the pattern manually today.
-- **Variant_flow doesn't detect uninhabited variants.** `enum { A: i64,
-  N: never }` — the `N` arm is provably unreachable (no `never`
-  value can exist to wrap), but variant_flow rejects an
-  `unreachable` terminator there with "variant is reachable at this
-  point". Fix: start refinement from the smaller "inhabited-only"
-  variant set for enums with any `never`-typed payloads. Or
-  propagate uninhabitedness through construction so
-  `Wrap::N(...)` is itself unspellable.
-  Pinned by
-  `programs::enum_with_never_variant_uninhabited_arm_not_detected_gap`.
 - No-alias raw pointer variant (`*noalias T`) — currently we only have
   the aliasing `*T`. Would enable `noalias` attributes on parameters
   where the checker can prove exclusivity.
