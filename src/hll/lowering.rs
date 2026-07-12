@@ -843,4 +843,118 @@ mod tests {
             "
         );
     }
+
+    #[test]
+    fn test_lower_recursive_tree_search() {
+        let source = "
+            struct Node {
+                value: i64,
+                left: Tree,
+                right: Tree
+            }
+            enum Tree {
+                Empty: unit,
+                Node: *Node
+            }
+            fn search_tree(tree: Tree, target: i64) -> bool {
+                tree match {
+                    Empty(u) => false,
+                    Node(n) => {
+                        let val = (*n).value;
+                        if is_equal(val, target) {
+                            true
+                        } else {
+                            if is_greater(val, target) {
+                                search_tree((*n).left, target)
+                            } else {
+                                search_tree((*n).right, target)
+                            }
+                        }
+                    }
+                }
+            }
+            fn is_equal(x: i64, y: i64) -> bool {
+                true
+            }
+            fn is_greater(x: i64, y: i64) -> bool {
+                true
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            struct Copy Drop Move Node {
+              value: i64
+              left: Tree
+              right: Tree
+            }
+
+            enum Copy Drop Move Tree {
+              Empty: unit
+              Node: *Node
+            }
+
+            fn search_tree(tree: Tree, target: i64, $return: &out bool) {
+              u: unit;
+              n: *Node;
+              val: i64;
+              _temp_0: bool;
+              _temp_1: &out bool;
+              _temp_2: bool;
+              _temp_3: &out bool;
+              _temp_4: &out bool;
+              _temp_5: &out bool;
+              entry:
+                switchEnum(tree) [Empty: switch_Empty_0, Node: switch_Node_1]
+              switch_Empty_0:
+                u = copy tree as Empty;
+                *$return = false;
+                goto switch_merge_2
+              switch_Node_1:
+                n = copy tree as Node;
+                val = copy (*n).value;
+                _temp_0 = unit;
+                _temp_1 = &out _temp_0;
+                call is_equal(copy val, copy target, move _temp_1);
+                branch(move _temp_0) [true: if_true_3, false: if_false_4]
+              if_true_3:
+                *$return = true;
+                goto if_merge_5
+              if_false_4:
+                _temp_2 = unit;
+                _temp_3 = &out _temp_2;
+                call is_greater(copy val, copy target, move _temp_3);
+                branch(move _temp_2) [true: if_true_6, false: if_false_7]
+              if_true_6:
+                *$return = unit;
+                _temp_4 = &out *$return;
+                call search_tree(move (*n).left, copy target, move _temp_4);
+                goto if_merge_8
+              if_false_7:
+                *$return = unit;
+                _temp_5 = &out *$return;
+                call search_tree(move (*n).right, copy target, move _temp_5);
+                goto if_merge_8
+              if_merge_8:
+                goto if_merge_5
+              if_merge_5:
+                goto switch_merge_2
+              switch_merge_2:
+                return
+            }
+
+            fn is_equal(x: i64, y: i64, $return: &out bool) {
+              entry:
+                *$return = true;
+                return
+            }
+
+            fn is_greater(x: i64, y: i64, $return: &out bool) {
+              entry:
+                *$return = true;
+                return
+            }
+            "
+        );
+    }
 }
