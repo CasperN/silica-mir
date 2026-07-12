@@ -281,12 +281,27 @@ optionally recheck the programs for correctness.
 
 ```
 place =
-    | var
+    | var                         # identifier; `$*` names are reserved for intrinsics
     | place.field                 # struct field projection
     | place as Variant            # enum downcast projection
-    | *place                      # deref of a reference
+    | *place                      # deref of a reference or raw pointer
+    | place[operand]              # array element indexing (const- or dynamic-index)
 
-const = number | true | false | fnName | unit
+int_lit   = (decimal | 0x<hex> | 0b<binary>) (i8|i16|i32|i64|u8|u16|u32|u64)?
+                                  # underscores allowed anywhere in digits; unsuffixed → i64
+float_lit = <decimal>.<decimal> (f32|f64)?
+                                  # unsuffixed → f64
+byte_str_lit  = b"..."            # byte string; supports \n \t \r \0 \\ \" \' \xNN
+byte_char_lit = b'...'            # single byte; same escape set as byte strings
+
+const =
+    | int_lit
+    | float_lit
+    | byte_str_lit                # value type [u8; N]
+    | byte_char_lit               # value type u8
+    | true | false
+    | unit
+    | fnName                      # a bare identifier resolves to a function's address
 
 operand =
     | copy place        # bitwise copy; place must be Copy; place stays initialized
@@ -300,7 +315,9 @@ rvalue =
     | &out place
     | &drop place
     | &uninit place
+    | &raw place                  # raw pointer; unsafe — no loan, no obligation
     | Name::Variant(operand)      # enum construction (whole-value)
+    | [operand, ...]              # array aggregate literal [T; N]
 
 statement =
     | place = rvalue
@@ -319,6 +336,7 @@ terminator =
     | branch(operand) [ true: label, false: label ]
     | switchEnum(place) [ Variant: label, ... ]
     | abort
+    | unreachable
 
 basic_block = label : (statement ;)* terminator
 
@@ -341,6 +359,11 @@ Notes:
 - `move`/`copy` is explicit on every operand so the linearity check is local and syntax-directed.
 - Struct construction has **no aggregate rvalue**. Structs are initialized one field at a time via `x.field = ...`; the struct as a whole is initialized exactly when all fields are.
 - Enum construction *is* whole-value (`Name::Variant(operand)`): a variant's payload and discriminant must become valid atomically.
+- **Array construction may be whole-value** (`[e0, e1, ..., eN-1]`) or
+  piecewise (`a[0] = ...; a[1] = ...`). Piecewise construction is
+  supported for constant indices — including `&out a[k]` binding to a
+  specific slot. Dynamic-index writes require the whole array to
+  already be Init.
 - **`switchEnum` takes a place, not an operand.** It performs a *discriminant read* — a shared-read access for conflict purposes, consuming nothing. It must be a place because each out-edge refines the type of *that specific place*, which is what justifies the downcast projection in the target block. Switching on a copied temporary would sever the connection between the discriminant tested and the place downcast. (`branch` stays operand-based: `boolean` is `Copy Drop` and no refinement occurs.)
 - **`abort` / `unreachable`** are terminators with no successors — runtime escape hatches. They **waive linear obligations** for code that only reaches them: elaboration passes (drop, NLL) don't insert cleanup on paths that never reach `return`, because the program dies before the caller could observe. Mixed CFGs are handled precisely — if a branch has one arm reaching `return` and one reaching `abort`, obligations are still checked on the return arm.
 - **Lifetimes are inferred (NLL-style).** No lifetime annotations anywhere.
@@ -348,44 +371,131 @@ Regions are internal to the checker, derived from reference liveness.
 - **Return values are modeled with `&out` parameters.** Functions have no return
 type; `call` is a statement, not an rvalue. This is sret/RVO. Full Silica
 has return types but lowers to this to simplify the MIR.
+- **Raw pointers (`*T`, created via `&raw place`) are unsafe.** Creating a
+  raw pointer does NOT create a loan; deref does not check aliasing,
+  init state, or lifetime. The pointer value itself is `Copy Drop Move`.
+  Use for FFI, unchecked buffer access, and pointer arithmetic
+  (once we add it).
+- **Reserved `$*` namespace.** Identifiers starting with `$` are reserved
+  for MIR-only names (intrinsics, compiler-generated symbols). The
+  higher-level language forbids `$*` identifiers, so intrinsics can
+  never be shadowed by user code.
+- **`fn main` is special.** Codegen synthesizes a C-conformant
+  `i32 @main()` wrapper around it. The Silica `main` may take no
+  parameters (wrapper always returns 0) or a single `exit: &out i32`
+  parameter (wrapper returns the value written through it). Any other
+  signature is rejected at check time.
 
 ## Types
 
 ```
 type =
     | unit
-    | number
+    | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64
+    | f32 | f64
     | boolean
     | never                                      # uninhabited (⊥); vacuously Copy Drop Move
     | struct identifiers
     | enum identifiers
     | fn(type, ...)                              # no result type; results via &out params
-    | &T | &mut T | &out T | &drop T | &uninit T
+    | &T | &mut T | &out T | &drop T | &uninit T # safe references (loan-tracked)
+    | *T                                         # raw pointer (unsafe, aliasing)
+    | [T; N]                                     # fixed-size array
 ```
-Note: by-value recursion is rejected as it would require infinite sizes.
+Notes:
+- **By-value recursion is rejected** as it would require infinite size.
+  Recursion through references or raw pointers is allowed (a pointer is
+  bounded regardless of the pointee).
+- **Scalar layout** matches natural alignment: i64/u64/f64/pointer are
+  8 bytes, i32/u32/f32 are 4, i16/u16 are 2, i8/u8/boolean are 1. Not
+  ABI-stable.
+- **Arrays lay out as `N * size_of(T)`**, aligned to `T`'s alignment.
+  Init state is per-slot for constant indices (piecewise construction
+  via `&out a[0]`, `&out a[1]`, ... is supported); dynamic indices
+  widen to the whole array.
+- **Enum layout** is `{i16 discriminant, [pad x i8], [K x lane]}` where
+  `lane` is chosen so LLVM infers the enum's true alignment. Variant
+  discriminant = declaration order.
 
 ## Compiler Structure
-Where possible the compiler splits subsytems into independent passes.
+Where possible the compiler splits subsystems into independent passes.
 `src/dataflow.rs` contains common forwards/backwards CFG traversal utilities
 that are shared across multiple passes. The compiler splits elaboration and
 checker passes. Elaboration passes add statements, such as `drop` and
 `unborrow`, which make ownership/linearity transitions explicit. Checker passes
 do not modify the instructions but verify their properties.
 
-The essential elaboration and check passes are:
-1. Simple type checking
-2. Flow sensitive analysis to verify enums are handled safely
-3. Lifetime elaboration to insert `unborrow` statements as early as possible
-4. Substructural elaboration to add `drop` statements before returns.
-5. Lifetime checking
-6. Substructural checking.
+The authoritative pipeline is `run_all_passes` in `src/main.rs`.
+Roughly:
+
+Pre-elaboration checks:
+1. **Type check** — declarations, statements, terminators, place / operand /
+   rvalue typing.
+2. **Substructural composition** — a struct/enum's declared markers must be
+   consistent with its fields/variants.
+3. **Layout / recursion** — reject by-value recursion; compute sizes.
+4. **Substructural statement check** — `copy`/`move` require Copy/Move types.
+5. **Variant flow** — `switchEnum` exhaustiveness + enum-variant refinement.
+6. **Block reachability** — dead-block warnings.
+7. **Init state + reference obligations** — the `(cur, post)` state machine
+   over locals; also validates deref preconditions and enforces
+   `&out`/`&drop` obligations.
+
+Elaboration:
+
+8. **NLL lifetime elaboration** — insert `unborrow` at ASAP last-use points.
+9. **Substructural drop elaboration** — insert `drop` before returns for
+   Init-at-return values whose types are Drop.
+
+Post-elaboration checks:
+
+10. **Init state (re-run)** — surface obligation errors at
+    NLL-inserted `unborrow` sites.
+11. **Substructural leak check** — strict "no Init at return."
+12. **Lifetime loan check** — every access respects the active loan set.
+
+Codegen (`src/codegen/`) emits textual LLVM IR from the elaborated MIR.
+It's a separate stage that assumes the MIR is well-checked.
+
+## Intrinsics
+
+Silica-MIR has no built-in arithmetic or comparison syntax. Common
+operations are ordinary `call` statements to functions whose names use
+the reserved `$` prefix — see `src/intrinsics.rs`. Codegen intercepts
+`call $name(...)` and emits the corresponding LLVM instruction sequence
+inline; the intrinsic symbol never appears in the emitted `.ll`.
+
+Adding an intrinsic that fits an existing shape is a one-file change
+(one row in `intrinsics::all()`). Adding an LLVM-intrinsic-backed
+operation (e.g. `@llvm.ctpop.i64`) is the same one-file change plus a
+`llvm_declares` entry that codegen auto-includes in the module preamble.
+
+Currently provided:
+- Integer arithmetic: `$i64_add/sub/mul/neg`, `$u64_add/sub/mul`.
+- Integer comparisons (result `boolean`): `$i64_eq/ne/lt/le/gt/ge`,
+  `$u64_eq/ne/lt/le/gt/ge` (signed and unsigned predicates
+  respectively).
+- Float arithmetic: `$f64_add`, `$f64_mul`.
+- LLVM-intrinsic-backed: `$i64_popcount` (`@llvm.ctpop.i64`).
+
+Everything else (bitwise ops, shifts, div/rem, per-width variants,
+casts, saturating arithmetic, LLVM intrinsics like `ctlz`/`sqrt`) is a
+row-addition away.
+
+## Runtime
+
+Extern functions declared in Silica lower to LLVM `declare void @name(...)`
+lines. Since the emitted `.ll` links against the platform's default libc
+via `clang out.ll -o out`, a `write(2)` or `abort()` extern resolves at
+link time with no per-symbol machinery — this is how string-printing
+demos work end-to-end without a C shim. Extern signatures are `void`
+because Silica has no return values; C-side non-void return values are
+silently dropped (fine for demos, would need explicit `&out` plumbing
+for production correctness).
 
 
 
 # Punch list
-- Pointers
-- Strings
-- FFI? Varadic externs?
 - HLL
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
@@ -396,7 +506,10 @@ The essential elaboration and check passes are:
   bound reference. Fix: extend the transfer to `EnumConstr` rvalues,
   rekeying src.* → (dst as V).* for the constructed variant.
 - Elaborate `drop p` if `p` is initialized and begin assigned to or sent to an
-  `&out` function. 
+  `&out` function.
+- No-alias raw pointer variant (`*noalias T`) — currently we only have
+  the aliasing `*T`. Would enable `noalias` attributes on parameters
+  where the checker can prove exclusivity.
 
 ## Elaboration gaps
 - Drop insertion *order* within a return block is a HLL responsibility
@@ -405,8 +518,36 @@ The essential elaboration and check passes are:
   leak. If the frontend emits its own drops per scope-exit rules, the
   drop elaborator becomes reference/debug-only rather than authoritative.
 
+## Diagnostics
+The compiler currently accumulates errors as `Vec<String>`. Works but is
+rough at every scale — cheap papercuts stack up, and there's a bigger
+migration lurking underneath.
+
+Cheap papercuts to fix incrementally:
+- Type names print as Rust `{:?}` debug form (`Int(I64)` instead of
+  `i64`). One-line fix: call `pretty_print::write_type` from the error
+  formatters.
+- Errors give `at L:C:` but no source snippet with a caret. Rustc-style
+  rendering (source line + caret span + message) would help enormously.
+- Errors don't say which pass fired them. Prefixing with `[init_state]`
+  / `[lifetime]` / etc. would speed grep-based navigation.
+- Golden IR snapshot failures print two blobs; a line-by-line diff
+  (e.g. `pretty_assertions`) makes regressions instant to read.
+- Common-mistake hints. When `cannot create &out of X` fires and `X` is
+  init, "hint: consider `drop X;` before rebinding" would save first-time
+  users a lot of time. Iterate on this as we hit each frustrating error.
+
+Larger migration (its own project):
+- Replace `Vec<String>` with a structured `Diagnostic` type carrying
+  span, severity, code, primary message, sub-labels, and hints —
+  rustc-style. Every `push_error!` site converts to a variant of a
+  `CheckError` enum with typed payload. Enables machine-readable output
+  (JSON diagnostics for editor integration) and localized formatting.
+  Big refactor: every pass currently pushes strings via macros, so it
+  touches every pass. Worth doing before we invest heavily in
+  frontend/LSP work.
+
 # Longer term
-- Lower to LLVM
 - Lambdas
 - Coroutines
 - MIR polymorphic types
