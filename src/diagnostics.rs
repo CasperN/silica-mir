@@ -40,6 +40,9 @@ pub enum DiagCode {
     Unspecified,
     /// Errors from the type checker (see `type_check::TypeCheckCode`).
     TypeCheck(crate::type_check::TypeCheckCode),
+    /// Errors from initialization-state dataflow
+    /// (see `init_state::InitStateCode`).
+    InitState(crate::init_state::InitStateCode),
 }
 
 /// A single compiler diagnostic (error or warning). The container in

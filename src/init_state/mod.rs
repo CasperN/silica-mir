@@ -32,11 +32,95 @@
 use crate::ast::*;
 use crate::substructural::composition::class_of;
 use crate::dataflow;
-use crate::diagnostics::Diagnostics;
-use crate::push_error;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
+
+/// Machine-readable error codes emitted by the initialization-state
+/// pass. One variant per user-observable failure kind; message text
+/// carries the specifics (place name, kinds, etc).
+///
+/// Push sites that surface the same conceptual failure share a code
+/// even when the surface path differs (e.g. wrong pointee state at a
+/// reborrow vs. wrong place state at a direct borrow both fold into
+/// `BorrowStateMismatch`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InitStateCode {
+    // ---- Reads (place-use checks) ----
+    /// Read of a local (or projection thereof) whose root is `NeverInit`.
+    UseBeforeInit,
+    /// Read of a local (or projection thereof) whose root is `Moved`.
+    UseAfterMove,
+    /// Read of a place whose init state differs across predecessors
+    /// (`Diverged`).
+    UseInconsistent,
+    /// Read of a place whose state is `Partial(...)` — some fields
+    /// initialized, others not.
+    UsePartiallyInit,
+
+    // ---- Consumption / drop obligations ----
+    /// Assignment target still holds an `Init` value whose type isn't
+    /// `Drop`. The caller must consume it (e.g. `drop target;`) before
+    /// the overwrite.
+    OverwriteWithoutDrop,
+    /// A ref-typed place is being silently forgotten (overwrite, drop,
+    /// unborrow) while its (is_init, ends_init) obligation is
+    /// unfulfilled.
+    RefObligationUnfulfilled,
+    /// `move place` where `place` contains a ref-typed descendant
+    /// whose obligation is unfulfilled — the descendant's borrow
+    /// contract can't be transferred to the callee.
+    MoveWithUnfulfilledContainedRef,
+
+    // ---- Through-reference operations (`*r`) ----
+    /// Attempted write or move through a shared reference (`&T`).
+    /// Shared refs only permit reads.
+    WriteThroughSharedRef,
+    /// `*r` or `&kind *r` where no `RefState` is tracked for the
+    /// parent reference — its pointee state is unknown at this point.
+    ReferenceStateUnknown,
+    /// `*r` (read/write/move) where the pointee's is_init doesn't
+    /// match the operation's required precondition.
+    DerefPointeeStateMismatch,
+
+    // ---- Borrow creation preconditions ----
+    /// `&kind place` where the pointee/place is in the wrong init
+    /// state for the borrow kind (e.g. `&mut` of an uninitialized
+    /// place, `&out` of an initialized non-Drop place).
+    BorrowStateMismatch,
+    /// `&kind a[i]` with a non-constant index, but the containing
+    /// array isn't in a uniform state — some slots satisfy the
+    /// precondition and some don't, so no single-slot borrow is safe.
+    BorrowDynamicIndexNonUniform,
+
+    // ---- LHS projections ----
+    /// Assignment through a downcast (`x as V . …`) where the enum
+    /// being downcast isn't `Init` at that point. Enum construction
+    /// must go via `Name::V(...)`.
+    WriteThroughUninitEnumProjection,
+}
+
+impl From<InitStateCode> for DiagCode {
+    fn from(code: InitStateCode) -> DiagCode {
+        DiagCode::InitState(code)
+    }
+}
+use InitStateCode::*;
+
+/// Build a diagnostic with the standard function/block context set.
+/// Local shorthand for the builder chain used at every push site.
+fn diag(
+    code: impl Into<DiagCode>,
+    span: Span,
+    func: &Function,
+    block: &BasicBlock,
+    msg: String,
+) -> Diagnostic {
+    Diagnostic::new(code, span, msg)
+        .in_function(&func.name)
+        .in_block(&block.label)
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitState {
@@ -807,14 +891,13 @@ impl<'a> InitStateContext<'a> {
         if matches!(kind, RefKind::Shared) {
             if !matches!(op, DerefOp::Read) {
                 if let Some((func, block, span, d)) = report {
-                    push_error!(
-                        d,
+                    d.push_error(diag(
+                        WriteThroughSharedRef,
                         span,
                         func,
                         block,
-                        "cannot mutate through shared reference '{}'",
-                        name_str
-                    );
+                        format!("cannot mutate through shared reference '{}'", name_str),
+                    ));
                 }
             }
             return;
@@ -822,14 +905,13 @@ impl<'a> InitStateContext<'a> {
 
         let Some(rs) = state.refs.get(&inner_place).copied() else {
             if let Some((func, block, span, d)) = report {
-                push_error!(
-                    d,
+                d.push_error(diag(
+                    ReferenceStateUnknown,
                     span,
                     func,
                     block,
-                    "cannot dereference '{}': reference state is unknown here",
-                    name_str
-                );
+                    format!("cannot dereference '{}': reference state is unknown here", name_str),
+                ));
             }
             return;
         };
@@ -855,17 +937,16 @@ impl<'a> InitStateContext<'a> {
                 } else {
                     "uninitialized"
                 };
-                push_error!(
-                    d,
+                d.push_error(diag(
+                    DerefPointeeStateMismatch,
                     span,
                     func,
                     block,
-                    "cannot {} pointee of '{}': pointee must be {} here, but is {}",
-                    action,
-                    name_str,
-                    expected,
-                    actual
-                );
+                    format!(
+                        "cannot {} pointee of '{}': pointee must be {} here, but is {}",
+                        action, name_str, expected, actual
+                    ),
+                ));
             }
         }
 
@@ -958,16 +1039,16 @@ impl<'a> InitStateContext<'a> {
                     } else {
                         format!("{}.{}", format_place(target), leaf_path.join("."))
                     };
-                    push_error!(
-                        d,
+                    d.push_error(diag(
+                        OverwriteWithoutDrop,
                         span,
                         func,
                         block,
-                        "cannot overwrite '{}': type {:?} is not Drop and the value is still live (consume it via `drop {}` first)",
-                        path_str,
-                        leaf_ty,
-                        path_str
-                    );
+                        format!(
+                            "cannot overwrite '{}': type {:?} is not Drop and the value is still live (consume it via `drop {}` first)",
+                            path_str, leaf_ty, path_str
+                        ),
+                    ));
                 }
             },
         );
@@ -1029,16 +1110,18 @@ impl<'a> InitStateContext<'a> {
         for v in victims {
             let rs = state.refs[&v];
             if !rs.obligation_fulfilled() {
-                push_error!(
-                    d,
+                d.push_error(diag(
+                    RefObligationUnfulfilled,
                     span,
                     func,
                     block,
-                    "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
-                    format_place(&v),
-                    rs.is_init,
-                    rs.ends_init
-                );
+                    format!(
+                        "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
+                        format_place(&v),
+                        rs.is_init,
+                        rs.ends_init
+                    ),
+                ));
             }
             state.refs.shift_remove(&v);
         }
@@ -1311,21 +1394,31 @@ impl<'a> InitStateContext<'a> {
         if let Some(parent) = deref_inner(place) {
             let parent_str = format_place(&parent);
             let Some(parent_rs) = state.refs.get(&parent) else {
-                push_error!(
-                    d, span, func, block,
-                    "cannot create {} of '*{}': parent reference '{}' is not bound here",
-                    kind_str, parent_str, parent_str
-                );
+                d.push_error(diag(
+                    ReferenceStateUnknown,
+                    span,
+                    func,
+                    block,
+                    format!(
+                        "cannot create {} of '*{}': parent reference '{}' is not bound here",
+                        kind_str, parent_str, parent_str
+                    ),
+                ));
                 return;
             };
             if parent_rs.is_init != requires_init {
                 let expected = if requires_init { "initialized" } else { "uninitialized" };
                 let actual = if parent_rs.is_init { "initialized" } else { "uninitialized" };
-                push_error!(
-                    d, span, func, block,
-                    "cannot create {} of '*{}': pointee must be {} at borrow, but is {}",
-                    kind_str, parent_str, expected, actual
-                );
+                d.push_error(diag(
+                    BorrowStateMismatch,
+                    span,
+                    func,
+                    block,
+                    format!(
+                        "cannot create {} of '*{}': pointee must be {} at borrow, but is {}",
+                        kind_str, parent_str, expected, actual
+                    ),
+                ));
             }
             return;
         }
@@ -1370,11 +1463,16 @@ impl<'a> InitStateContext<'a> {
                 "uninitialized"
             };
             let actual = describe_state(&leaf);
-            push_error!(
-                d, span, func, block,
-                "cannot create {} of '{}': dynamic index requires the containing array to be uniformly {}, but it is {}",
-                kind_str, format_place(place), expected, actual
-            );
+            d.push_error(diag(
+                BorrowDynamicIndexNonUniform,
+                span,
+                func,
+                block,
+                format!(
+                    "cannot create {} of '{}': dynamic index requires the containing array to be uniformly {}, but it is {}",
+                    kind_str, format_place(place), expected, actual
+                ),
+            ));
             return;
         }
 
@@ -1419,17 +1517,16 @@ impl<'a> InitStateContext<'a> {
             "uninitialized"
         };
         let actual = describe_state(&leaf);
-        push_error!(
-            d,
+        d.push_error(diag(
+            BorrowStateMismatch,
             span,
             func,
             block,
-            "cannot create {} of '{}': place must be {} at borrow, but is {}",
-            kind_str,
-            path_str,
-            expected,
-            actual
-        );
+            format!(
+                "cannot create {} of '{}': place must be {} at borrow, but is {}",
+                kind_str, path_str, expected, actual
+            ),
+        ));
     }
 }
 
@@ -1530,11 +1627,16 @@ impl<'a> InitStateContext<'a> {
                 continue;
             }
             if !rs.obligation_fulfilled() {
-                push_error!(
-                    d, span, func, block,
-                    "cannot move '{}': contained reference '{}' has unfulfilled obligation (is_init={}, ends_init={})",
-                    format_place(&owned), format_place(ref_place), rs.is_init, rs.ends_init
-                );
+                d.push_error(diag(
+                    MoveWithUnfulfilledContainedRef,
+                    span,
+                    func,
+                    block,
+                    format!(
+                        "cannot move '{}': contained reference '{}' has unfulfilled obligation (is_init={}, ends_init={})",
+                        format_place(&owned), format_place(ref_place), rs.is_init, rs.ends_init
+                    ),
+                ));
             }
         }
     }
@@ -1581,14 +1683,16 @@ impl<'a> InitStateContext<'a> {
         };
         let prefix_state = read_at(root_state, &root_ty, &path[..idx], self.env);
         if !matches!(prefix_state, InitState::Init) {
-            push_error!(
-                d,
+            d.push_error(diag(
+                WriteThroughUninitEnumProjection,
                 span,
                 func,
                 block,
-                "cannot write through variant projection: '{}' is not initialized here",
-                root
-            );
+                format!(
+                    "cannot write through variant projection: '{}' is not initialized here",
+                    root
+                ),
+            ));
         }
     }
 
@@ -1613,22 +1717,37 @@ impl<'a> InitStateContext<'a> {
         let leaf = read_at(root_state, &root_ty, &path, self.env);
         match leaf {
             InitState::Init => {}
-            InitState::NeverInit => push_error!(
-                d, span, func, block,
-                "variable '{}' is used before initialization", root
-            ),
-            InitState::Moved => push_error!(
-                d, span, func, block,
-                "variable '{}' is used after move", root
-            ),
-            InitState::Diverged => push_error!(
-                d, span, func, block,
-                "variable '{}' may be used before initialization or after move (state inconsistent across paths)", root
-            ),
-            InitState::Partial(_) => push_error!(
-                d, span, func, block,
-                "variable '{}' is not fully initialized here", root
-            ),
+            InitState::NeverInit => d.push_error(diag(
+                UseBeforeInit,
+                span,
+                func,
+                block,
+                format!("variable '{}' is used before initialization", root),
+            )),
+            InitState::Moved => d.push_error(diag(
+                UseAfterMove,
+                span,
+                func,
+                block,
+                format!("variable '{}' is used after move", root),
+            )),
+            InitState::Diverged => d.push_error(diag(
+                UseInconsistent,
+                span,
+                func,
+                block,
+                format!(
+                    "variable '{}' may be used before initialization or after move (state inconsistent across paths)",
+                    root
+                ),
+            )),
+            InitState::Partial(_) => d.push_error(diag(
+                UsePartiallyInit,
+                span,
+                func,
+                block,
+                format!("variable '{}' is not fully initialized here", root),
+            )),
         }
     }
 }
@@ -1637,6 +1756,8 @@ impl<'a> InitStateContext<'a> {
 mod borrow_precondition_tests;
 #[cfg(test)]
 mod cfg_shape_tests;
+#[cfg(test)]
+mod error_span_tests;
 #[cfg(test)]
 mod eager_transition_tests;
 #[cfg(test)]
