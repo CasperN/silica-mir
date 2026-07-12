@@ -587,8 +587,9 @@ mod tests {
     use crate::hll::parser::Parser;
 
     fn check_program(source: &str) -> Result<(), String> {
-        let mut p = Parser::new(source)?;
-        let program = p.parse_program()?;
+        let program = Parser::new(source)
+            .parse()
+            .map_err(|d| d.errors_str().join("\n"))?;
         typecheck_program(&program)
     }
 

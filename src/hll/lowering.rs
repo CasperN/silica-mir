@@ -630,8 +630,13 @@ mod tests {
     use crate::mir::pretty_print::pretty_print;
 
     fn lower_source(source: &str) -> String {
-        let mut p = Parser::new(source).unwrap();
-        let hll_prog = p.parse_program().unwrap();
+        let hll_prog = Parser::new(source).parse().unwrap_or_else(|d| {
+            panic!(
+                "parse error:\n{}\n--- source ---\n{}",
+                d.errors_str().join("\n"),
+                source
+            )
+        });
         let types = typecheck_program_collect(&hll_prog).unwrap();
         let mir_prog = lower_program(&hll_prog, &types).unwrap();
         pretty_print(&mir_prog)

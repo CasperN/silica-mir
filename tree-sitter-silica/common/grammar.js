@@ -1,0 +1,103 @@
+// Shared tree-sitter grammar rules for Silica HLL and MIR.
+//
+// This module is not itself a tree-sitter grammar — it exports a
+// plain object mapping rule names to builder functions. Each Silica
+// language grammar (`hll/grammar.js`, `mir/grammar.js`) spreads these
+// rules into its own rule map with `...common` so both languages
+// share one canonical definition of lexical tokens, types, marker
+// keywords, and struct/enum declarations. Grammar-level drift between
+// the two languages is impossible for anything defined here.
+//
+// The `$`, `choice`, `seq`, `field`, `optional`, `repeat`, `prec`, and
+// `commaSep` helpers used below come from the tree-sitter grammar DSL,
+// which is in scope wherever a grammar.js is evaluated by
+// `tree-sitter generate`.
+
+// Comma-separated list of `rule`, with an optional trailing comma
+// after the last element. Used for struct/enum decls, function args,
+// tuples, arrays, etc. — anywhere a Rust-style trailing comma should
+// be tolerated.
+function commaSep(rule) {
+  return optional(seq(rule, repeat(seq(',', rule)), optional(',')));
+}
+
+module.exports = {
+  commaSep,
+
+  rules: {
+    // Line comment. Same syntax in both languages: `# ...` to end of line.
+    comment: $ => /#.*/,
+
+    // Identifiers may optionally start with `$` — a reserved namespace
+    // for MIR-only names (intrinsics, compiler-generated symbols) that
+    // the higher-level language forbids in user code. Guarantees no
+    // HLL name can shadow an intrinsic.
+    identifier: $ => /\$?[a-zA-Z_][a-zA-Z0-9_]*/,
+
+    // Integer literals: decimal / hex (0x…) / binary (0b…). Underscore
+    // separators allowed anywhere in the digits. Optional type suffix
+    // pins the type; unsuffixed defaults to i64 at parse time.
+    int_lit: $ =>
+      /(0x[0-9a-fA-F_]+|0b[01_]+|[0-9][0-9_]*)(i8|i16|i32|i64|u8|u16|u32|u64)?/,
+
+    // Float literals: decimal only (hex floats not supported yet).
+    // Underscore separators allowed. Optional f32/f64 suffix;
+    // unsuffixed defaults to f64.
+    float_lit: $ => /[0-9][0-9_]*\.[0-9][0-9_]*(f32|f64)?/,
+
+    // Byte string literal: `b"..."`. Supports common escape sequences
+    // (\n, \t, \r, \0, \\, \", and \xNN hex bytes). Value type is
+    // `[u8; N]` where N is the decoded byte count. No UTF-8 or
+    // unicode escapes — use \xNN for non-ASCII bytes.
+    byte_str_lit: $ => /b"([^"\\]|\\.)*"/,
+
+    // Byte character literal: `b'X'`. One ASCII byte or one escape
+    // sequence (including `\xNN`). Value type is `u8`.
+    byte_char_lit: $ => /b'([^'\\]|\\x[0-9a-fA-F]{2}|\\.)'/,
+
+    // Substructural marker keywords on a struct or enum declaration.
+    // Any subset of {Copy, Drop, Move} in any order, no duplicates
+    // (duplicate check is enforced by the parser, not the grammar).
+    marker: $ => choice('Copy', 'Drop', 'Move'),
+    markers: $ => repeat1($.marker),
+
+    // Struct/enum field and variant have identical inner shape
+    // (`name : type`) in both languages. Each language defines its
+    // own `struct_decl` / `enum_decl` wrapper because field
+    // separators differ: MIR is whitespace-only, HLL uses commas.
+    struct_field: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('type', $.type),
+    ),
+    enum_variant: $ => seq(
+      field('name', $.identifier),
+      ':',
+      field('type', $.type),
+    ),
+
+    // Type grammar. Identical between HLL and MIR — both languages
+    // share references (five kinds tracking init state), raw
+    // pointers, fixed arrays, `fn(...)` function types, and custom
+    // struct/enum names.
+    type: $ => choice(
+      'i8', 'i16', 'i32', 'i64',
+      'u8', 'u16', 'u32', 'u64',
+      'f32', 'f64',
+      'bool',
+      'unit',
+      'never',
+      prec(2, seq('&', $.type)),
+      prec(2, seq('&mut', $.type)),
+      prec(2, seq('&out', $.type)),
+      prec(2, seq('&drop', $.type)),
+      prec(2, seq('&uninit', $.type)),
+      // Raw pointer type. Aliasing allowed; no loan/lifetime tracking.
+      prec(2, seq('*', $.type)),
+      // Fixed-size array `[T; N]`. N must be an integer literal.
+      seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
+      seq('fn', '(', commaSep($.type), ')'),
+      $.identifier, // struct / enum name
+    ),
+  },
+};

@@ -1,987 +1,820 @@
-use crate::mir::ast::{IntTy, FloatTy, RefKind, Span};
+//! Tree-sitter-driven HLL parser.
+//!
+//! Consumes `.si` source through the tree-sitter grammar at
+//! `tree-sitter-silica/hll/grammar.js` and produces the typed
+//! HLL AST defined in `hll::ast`. Emits structured `Diagnostics`
+//! for syntax errors (multi-error output) and CST-to-AST invariant
+//! failures — same error-code shape as the MIR parser.
+
+use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
+use crate::mir::ast::{FloatTy, IntTy, RefKind, Span};
+use crate::mir::parser::ParserCode;
+use tree_sitter::{Node, Parser as TSParser};
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum TokenKind {
-    Ident(String),
-    IntLit(i64, Option<IntTy>),
-    FloatLit(f64, Option<FloatTy>),
-    // Keywords
-    Struct,
-    Enum,
-    Fn,
-    Let,
-    Mut,
-    If,
-    Else,
-    Loop,
-    Break,
-    Continue,
-    Return,
-    As,
-    Match,
-    // Types
-    Bool,
-    Unit,
-    Never,
-    FatArrow, // =>
-    // Operators
-    LParen,
-    RParen,
-    LBrace,
-    RBrace,
-    Comma,
-    Colon,
-    Semicolon,
-    Dot,
-    Arrow,
-    Eq,
-    Star,
-    Amp,
-    AmpRaw,
-    PathSep, // ::
-    LBracket,
-    RBracket,
-    // Special
-    Eof,
+extern "C" {
+    fn tree_sitter_silica() -> *const std::ffi::c_void;
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Token {
-    pub kind: TokenKind,
-    pub span: Span,
+pub fn language() -> tree_sitter::Language {
+    unsafe { tree_sitter::Language::from_raw(tree_sitter_silica() as *const _) }
 }
 
-pub struct Lexer<'a> {
-    input: &'a str,
-    pos: usize,
-    line: u32,
-    col: u32,
+fn span_of(node: Node) -> Span {
+    let p = node.start_position();
+    Span {
+        line: (p.row as u32).saturating_add(1),
+        col: (p.column as u32).saturating_add(1),
+    }
 }
 
-impl<'a> Lexer<'a> {
-    pub fn new(input: &'a str) -> Self {
-        Self {
-            input,
-            pos: 0,
-            line: 1,
-            col: 1,
+/// Map a scalar type keyword to `Type`. Same table as MIR — the
+/// keywords are defined once in `common/grammar.js`.
+fn scalar_kind_to_type(kind: &str) -> Option<Type> {
+    Some(match kind {
+        "i8" => Type::Int(IntTy::I8),
+        "i16" => Type::Int(IntTy::I16),
+        "i32" => Type::Int(IntTy::I32),
+        "i64" => Type::Int(IntTy::I64),
+        "u8" => Type::Int(IntTy::U8),
+        "u16" => Type::Int(IntTy::U16),
+        "u32" => Type::Int(IntTy::U32),
+        "u64" => Type::Int(IntTy::U64),
+        "f32" => Type::Float(FloatTy::F32),
+        "f64" => Type::Float(FloatTy::F64),
+        _ => return None,
+    })
+}
+
+fn split_int_suffix(text: &str) -> (&str, Option<IntTy>) {
+    for (suf, ty) in [
+        ("i16", IntTy::I16),
+        ("i32", IntTy::I32),
+        ("i64", IntTy::I64),
+        ("u16", IntTy::U16),
+        ("u32", IntTy::U32),
+        ("u64", IntTy::U64),
+        ("i8", IntTy::I8),
+        ("u8", IntTy::U8),
+    ] {
+        if let Some(rest) = text.strip_suffix(suf) {
+            return (rest, Some(ty));
         }
     }
+    (text, None)
+}
 
-    fn current_char(&self) -> Option<char> {
-        self.input[self.pos..].chars().next()
+fn parse_int_literal(text: &str) -> Result<(i64, Option<IntTy>), String> {
+    let (digits_and_prefix, ty) = split_int_suffix(text);
+    let (radix, digits) = if let Some(rest) = digits_and_prefix.strip_prefix("0x") {
+        (16u32, rest)
+    } else if let Some(rest) = digits_and_prefix.strip_prefix("0b") {
+        (2u32, rest)
+    } else {
+        (10u32, digits_and_prefix)
+    };
+    let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
+    if cleaned.is_empty() {
+        return Err(format!("integer literal has no digits: {:?}", text));
+    }
+    let val = i64::from_str_radix(&cleaned, radix)
+        .map_err(|e| format!("invalid integer literal {:?}: {}", text, e))?;
+    Ok((val, ty))
+}
+
+fn parse_float_literal(text: &str) -> Result<(f64, Option<FloatTy>), String> {
+    let (digits, ty) = if let Some(rest) = text.strip_suffix("f32") {
+        (rest, Some(FloatTy::F32))
+    } else if let Some(rest) = text.strip_suffix("f64") {
+        (rest, Some(FloatTy::F64))
+    } else {
+        (text, None)
+    };
+    let cleaned: String = digits.chars().filter(|c| *c != '_').collect();
+    let val: f64 = cleaned
+        .parse()
+        .map_err(|e| format!("invalid float literal {:?}: {}", text, e))?;
+    Ok((val, ty))
+}
+
+pub struct Parser {
+    source: String,
+}
+
+impl Parser {
+    pub fn new(source: impl Into<String>) -> Self {
+        Self { source: source.into() }
     }
 
-    fn step(&mut self) {
-        if let Some(c) = self.current_char() {
-            self.pos += c.len_utf8();
-            if c == '\n' {
-                self.line += 1;
-                self.col = 1;
-            } else {
-                self.col += 1;
-            }
-        }
-    }
-
-    fn span(&self) -> Span {
-        Span {
-            line: self.line,
-            col: self.col,
-        }
-    }
-
-    pub fn next_token(&mut self) -> Result<Token, String> {
-        while let Some(c) = self.current_char() {
-            if c.is_whitespace() {
-                self.step();
-                continue;
-            }
-            if c == '/' {
-                // Line comment
-                if self.input[self.pos + 1..].starts_with('/') {
-                    while let Some(curr) = self.current_char() {
-                        self.step();
-                        if curr == '\n' {
-                            break;
-                        }
-                    }
-                    continue;
-                }
-            }
-            break;
+    pub fn parse(&self) -> Result<Program, Diagnostics> {
+        let mut ts_parser = TSParser::new();
+        if let Err(e) = ts_parser.set_language(&language()) {
+            let mut d = Diagnostics::default();
+            d.push_error(Diagnostic::new(
+                ParserCode::MalformedCst,
+                Span::default(),
+                format!("failed to load tree-sitter grammar: {}", e),
+            ));
+            return Err(d);
         }
 
-        let span = self.span();
-        let Some(c) = self.current_char() else {
-            return Ok(Token {
-                kind: TokenKind::Eof,
-                span,
-            });
+        let Some(tree) = ts_parser.parse(&self.source, None) else {
+            let mut d = Diagnostics::default();
+            d.push_error(Diagnostic::new(
+                ParserCode::MalformedCst,
+                Span::default(),
+                "tree-sitter failed to produce a parse tree",
+            ));
+            return Err(d);
         };
+        let root = tree.root_node();
 
-        // Identifiers or Keywords
-        if c.is_ascii_alphabetic() || c == '_' || c == '$' {
-            let start = self.pos;
-            while let Some(curr) = self.current_char() {
-                if curr.is_ascii_alphanumeric() || curr == '_' || curr == '$' {
-                    self.step();
-                } else {
-                    break;
-                }
-            }
-            let text = &self.input[start..self.pos];
-            let kind = match text {
-                "struct" => TokenKind::Struct,
-                "enum" => TokenKind::Enum,
-                "fn" => TokenKind::Fn,
-                "let" => TokenKind::Let,
-                "mut" => TokenKind::Mut,
-                "if" => TokenKind::If,
-                "else" => TokenKind::Else,
-                "loop" => TokenKind::Loop,
-                "break" => TokenKind::Break,
-                "continue" => TokenKind::Continue,
-                "return" => TokenKind::Return,
-                "as" => TokenKind::As,
-                "match" => TokenKind::Match,
-                "bool" => TokenKind::Bool,
-                "unit" => TokenKind::Unit,
-                "never" => TokenKind::Never,
-                _ => TokenKind::Ident(text.to_string()),
-            };
-            return Ok(Token { kind, span });
+        if root.has_error() {
+            let mut diags = Diagnostics::default();
+            self.walk_syntax_errors(root, None, &mut diags);
+            return Err(diags);
         }
 
-        // Numeric Literals
-        if c.is_ascii_digit() {
-            let start = self.pos;
-            let mut is_float = false;
-            while let Some(curr) = self.current_char() {
-                if curr.is_ascii_digit() || curr == '_' {
-                    self.step();
-                } else if curr == '.' {
-                    // Check if next char is digit (to avoid field access matching)
-                    let next = self.input[self.pos + 1..].chars().next();
-                    if next.map(|ch| ch.is_ascii_digit()).unwrap_or(false) {
-                        is_float = true;
-                        self.step();
-                    } else {
-                        break;
-                    }
-                } else {
-                    break;
-                }
-            }
-            let num_str = &self.input[start..self.pos];
-            let num_clean = num_str.replace('_', "");
-
-            // Look for optional suffix
-            let suffix_start = self.pos;
-            while let Some(curr) = self.current_char() {
-                if curr.is_ascii_alphanumeric() || curr == '_' {
-                    self.step();
-                } else {
-                    break;
-                }
-            }
-            let suffix_str = &self.input[suffix_start..self.pos];
-
-            if is_float {
-                let val: f64 = num_clean.parse().map_err(|e| format!("invalid float literal: {}", e))?;
-                let suffix = match suffix_str {
-                    "" => None,
-                    "f32" => Some(FloatTy::F32),
-                    "f64" => Some(FloatTy::F64),
-                    other => return Err(format!("invalid float suffix: {}", other)),
-                };
-                return Ok(Token {
-                    kind: TokenKind::FloatLit(val, suffix),
-                    span,
-                });
-            } else {
-                let val: i64 = num_clean.parse().map_err(|e| format!("invalid integer literal: {}", e))?;
-                let suffix = match suffix_str {
-                    "" => None,
-                    "i8" => Some(IntTy::I8),
-                    "i16" => Some(IntTy::I16),
-                    "i32" => Some(IntTy::I32),
-                    "i64" => Some(IntTy::I64),
-                    "u8" => Some(IntTy::U8),
-                    "u16" => Some(IntTy::U16),
-                    "u32" => Some(IntTy::U32),
-                    "u64" => Some(IntTy::U64),
-                    other => return Err(format!("invalid integer suffix: {}", other)),
-                };
-                return Ok(Token {
-                    kind: TokenKind::IntLit(val, suffix),
-                    span,
-                });
-            }
-        }
-
-        // Parentheses / Braces / Punctuation
-        let kind = match c {
-            '(' => {
-                self.step();
-                TokenKind::LParen
-            }
-            ')' => {
-                self.step();
-                TokenKind::RParen
-            }
-            '{' => {
-                self.step();
-                TokenKind::LBrace
-            }
-            '}' => {
-                self.step();
-                TokenKind::RBrace
-            }
-            '[' => {
-                self.step();
-                TokenKind::LBracket
-            }
-            ']' => {
-                self.step();
-                TokenKind::RBracket
-            }
-            ',' => {
-                self.step();
-                TokenKind::Comma
-            }
-            ':' => {
-                self.step();
-                if self.current_char() == Some(':') {
-                    self.step();
-                    TokenKind::PathSep
-                } else {
-                    TokenKind::Colon
-                }
-            }
-            ';' => {
-                self.step();
-                TokenKind::Semicolon
-            }
-            '.' => {
-                self.step();
-                TokenKind::Dot
-            }
-            '*' => {
-                self.step();
-                TokenKind::Star
-            }
-            '=' => {
-                self.step();
-                if self.current_char() == Some('>') {
-                    self.step();
-                    TokenKind::FatArrow
-                } else {
-                    TokenKind::Eq
-                }
-            }
-            '-' => {
-                self.step();
-                if self.current_char() == Some('>') {
-                    self.step();
-                    TokenKind::Arrow
-                } else {
-                    return Err(format!("unexpected character: {}", c));
-                }
-            }
-            '&' => {
-                self.step();
-                if self.input[self.pos..].starts_with("raw") {
-                    let next = self.input[self.pos + 3..].chars().next();
-                    if next.is_none() || !next.unwrap().is_ascii_alphanumeric() {
-                        for _ in 0..3 {
-                            self.step();
-                        }
-                        TokenKind::AmpRaw
-                    } else {
-                        TokenKind::Amp
-                    }
-                } else {
-                    TokenKind::Amp
-                }
-            }
-            _ => return Err(format!("unexpected character: {}", c)),
-        };
-
-        Ok(Token { kind, span })
-    }
-}
-
-pub struct Parser<'a> {
-    tokens: Vec<Token>,
-    index: usize,
-    _source: &'a str,
-}
-
-impl<'a> Parser<'a> {
-    pub fn new(source: &'a str) -> Result<Self, String> {
-        let mut lexer = Lexer::new(source);
-        let mut tokens = Vec::new();
-        loop {
-            let t = lexer.next_token()?;
-            let is_eof = t.kind == TokenKind::Eof;
-            tokens.push(t);
-            if is_eof {
-                break;
-            }
-        }
-        Ok(Self {
-            tokens,
-            index: 0,
-            _source: source,
+        self.map_program(root).map_err(|d| {
+            let mut diags = Diagnostics::default();
+            diags.push_error(d);
+            diags
         })
     }
 
-    fn peek(&self) -> &Token {
-        &self.tokens[self.index]
+    fn get_text(&self, node: Node) -> &str {
+        &self.source[node.byte_range()]
     }
 
-    fn advance(&mut self) -> Token {
-        let tok = self.tokens[self.index].clone();
-        if tok.kind != TokenKind::Eof {
-            self.index += 1;
+    fn diag(&self, node: Node, code: ParserCode, msg: impl Into<String>) -> Diagnostic {
+        Diagnostic::new(code, span_of(node), msg)
+    }
+
+    fn lit_diag<T>(&self, res: Result<T, String>, node: Node) -> Result<T, Diagnostic> {
+        res.map_err(|s| self.diag(node, ParserCode::InvalidLiteral, s))
+    }
+
+    /// Walk the CST emitting one diagnostic per ERROR/MISSING node.
+    /// Attaches `in_function` context when the error is inside a
+    /// `fn_decl` subtree.
+    fn walk_syntax_errors<'a>(
+        &'a self,
+        node: Node<'a>,
+        ctx_fn: Option<&'a str>,
+        diags: &mut Diagnostics,
+    ) {
+        let ctx_fn = match node.kind() {
+            "fn_decl" => node
+                .child_by_field_name("name")
+                .map(|n| self.get_text(n))
+                .or(ctx_fn),
+            _ => ctx_fn,
+        };
+
+        if node.is_missing() {
+            let mut d = Diagnostic::new(
+                ParserCode::MissingToken,
+                span_of(node),
+                format!("missing '{}'", node.kind()),
+            );
+            if let Some(f) = ctx_fn {
+                d = d.in_function(f);
+            }
+            diags.push_error(d);
+        } else if node.is_error() {
+            let text = self.get_text(node);
+            let msg = if text.is_empty() {
+                "syntax error".to_string()
+            } else {
+                format!("unexpected: {}", text)
+            };
+            let mut d = Diagnostic::new(ParserCode::UnexpectedToken, span_of(node), msg);
+            if let Some(f) = ctx_fn {
+                d = d.in_function(f);
+            }
+            diags.push_error(d);
         }
-        tok
-    }
 
-    fn expect(&mut self, kind: TokenKind) -> Result<Token, String> {
-        let tok = self.peek().clone();
-        if tok.kind == kind {
-            Ok(self.advance())
-        } else {
-            Err(format!(
-                "at {}: expected {:?}, found {:?}",
-                tok.span, kind, tok.kind
-            ))
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            self.walk_syntax_errors(child, ctx_fn, diags);
         }
     }
 
-    fn parse_identifier(&mut self) -> Result<(String, Span), String> {
-        let tok = self.peek();
-        if let TokenKind::Ident(ref name) = tok.kind {
-            let name_str = name.clone();
-            let span = tok.span;
-            self.advance();
-            Ok((name_str, span))
-        } else {
-            Err(format!("at {}: expected identifier, found {:?}", tok.span, tok.kind))
-        }
-    }
-
-    pub fn parse_program(&mut self) -> Result<Program, String> {
+    fn map_program(&self, node: Node) -> Result<Program, Diagnostic> {
         let mut declarations = Vec::new();
-        while self.peek().kind != TokenKind::Eof {
-            declarations.push(self.parse_declaration()?);
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "declaration" {
+                declarations.push(self.map_declaration(child)?);
+            }
         }
         Ok(Program { declarations })
     }
 
-    fn parse_declaration(&mut self) -> Result<Declaration, String> {
-        let tok = self.peek();
-        match tok.kind {
-            TokenKind::Struct => Ok(Declaration::Struct(self.parse_struct_decl()?)),
-            TokenKind::Enum => Ok(Declaration::Enum(self.parse_enum_decl()?)),
-            TokenKind::Fn => Ok(Declaration::Fn(self.parse_fn_decl()?)),
-            _ => Err(format!(
-                "at {}: expected 'struct', 'enum', or 'fn', found {:?}",
-                tok.span, tok.kind
+    fn map_declaration(&self, node: Node) -> Result<Declaration, Diagnostic> {
+        let child = node
+            .child(0)
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "empty declaration"))?;
+        match child.kind() {
+            "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child)?)),
+            "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child)?)),
+            "fn_decl" => Ok(Declaration::Fn(self.map_fn_decl(child)?)),
+            _ => Err(self.diag(
+                child,
+                ParserCode::MalformedCst,
+                format!("unknown declaration kind: {}", child.kind()),
             )),
         }
     }
 
-    fn parse_struct_decl(&mut self) -> Result<StructDecl, String> {
-        let start = self.expect(TokenKind::Struct)?.span;
-        let (name, _) = self.parse_identifier()?;
-        self.expect(TokenKind::LBrace)?;
+    fn map_struct_decl(&self, node: Node) -> Result<StructDecl, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "struct decl missing name")
+        })?;
+        let name = self.get_text(name_node).to_string();
+        let span = span_of(node);
+
+        let mut cursor = node.walk();
         let mut fields = Vec::new();
-        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
-            let (f_name, f_span) = self.parse_identifier()?;
-            self.expect(TokenKind::Colon)?;
-            let ty = self.parse_type()?;
-            fields.push(StructField {
-                name: f_name,
-                ty,
-                span: f_span,
-            });
-            if self.peek().kind == TokenKind::Comma {
-                self.advance();
-            } else if self.peek().kind != TokenKind::RBrace {
-                return Err(format!("at {}: expected ',' or '}}'", self.peek().span));
+        for child in node.children(&mut cursor) {
+            if child.kind() == "struct_field" {
+                let f_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "struct field missing name")
+                })?;
+                let f_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "struct field missing type")
+                })?;
+                fields.push(StructField {
+                    name: self.get_text(f_name_node).to_string(),
+                    ty: self.map_type(f_type_node)?,
+                    span: span_of(child),
+                });
             }
         }
-        self.expect(TokenKind::RBrace)?;
-        Ok(StructDecl {
-            name,
-            fields,
-            span: start,
-        })
+
+        Ok(StructDecl { name, fields, span })
     }
 
-    fn parse_enum_decl(&mut self) -> Result<EnumDecl, String> {
-        let start = self.expect(TokenKind::Enum)?.span;
-        let (name, _) = self.parse_identifier()?;
-        self.expect(TokenKind::LBrace)?;
+    fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "enum decl missing name")
+        })?;
+        let name = self.get_text(name_node).to_string();
+        let span = span_of(node);
+
+        let mut cursor = node.walk();
         let mut variants = Vec::new();
-        while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
-            let (v_name, v_span) = self.parse_identifier()?;
-            self.expect(TokenKind::Colon)?;
-            let ty = self.parse_type()?;
-            variants.push(EnumVariant {
-                name: v_name,
-                ty,
-                span: v_span,
-            });
-            if self.peek().kind == TokenKind::Comma {
-                self.advance();
-            } else if self.peek().kind != TokenKind::RBrace {
-                return Err(format!("at {}: expected ',' or '}}'", self.peek().span));
+        for child in node.children(&mut cursor) {
+            if child.kind() == "enum_variant" {
+                let v_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "enum variant missing name")
+                })?;
+                let v_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "enum variant missing type")
+                })?;
+                variants.push(EnumVariant {
+                    name: self.get_text(v_name_node).to_string(),
+                    ty: self.map_type(v_type_node)?,
+                    span: span_of(child),
+                });
             }
         }
-        self.expect(TokenKind::RBrace)?;
-        Ok(EnumDecl {
-            name,
-            variants,
-            span: start,
-        })
+
+        Ok(EnumDecl { name, variants, span })
     }
 
-    fn parse_fn_decl(&mut self) -> Result<FnDecl, String> {
-        let start = self.expect(TokenKind::Fn)?.span;
-        let (name, _) = self.parse_identifier()?;
-        self.expect(TokenKind::LParen)?;
+    fn map_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "fn decl missing name")
+        })?;
+        let name = self.get_text(name_node).to_string();
+        let span = span_of(node);
+        let with_fn = |d: Diagnostic| d.in_function(name.clone());
+
         let mut params = Vec::new();
-        while self.peek().kind != TokenKind::RParen && self.peek().kind != TokenKind::Eof {
-            let (p_name, p_span) = self.parse_identifier()?;
-            self.expect(TokenKind::Colon)?;
-            let ty = self.parse_type()?;
-            params.push(Param {
-                name: p_name,
-                ty,
-                span: p_span,
-            });
-            if self.peek().kind == TokenKind::Comma {
-                self.advance();
-            } else if self.peek().kind != TokenKind::RParen {
-                return Err(format!("at {}: expected ',' or ')'", self.peek().span));
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "param_decl" {
+                let p_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                    with_fn(self.diag(child, ParserCode::MalformedCst, "param missing name"))
+                })?;
+                let p_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                    with_fn(self.diag(child, ParserCode::MalformedCst, "param missing type"))
+                })?;
+                params.push(Param {
+                    name: self.get_text(p_name_node).to_string(),
+                    ty: self.map_type(p_type_node).map_err(with_fn)?,
+                    span: span_of(child),
+                });
             }
         }
-        self.expect(TokenKind::RParen)?;
-        let ret_ty = if self.peek().kind == TokenKind::Arrow {
-            self.advance();
-            self.parse_type()?
+
+        let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
+            self.map_type(rt_node).map_err(with_fn)?
         } else {
             Type::Unit
         };
-        let body = self.parse_expr()?;
-        Ok(FnDecl {
-            name,
-            params,
-            ret_ty,
-            body,
-            span: start,
-        })
+
+        let body_node = node.child_by_field_name("body").ok_or_else(|| {
+            with_fn(self.diag(node, ParserCode::MalformedCst, "fn decl missing body"))
+        })?;
+        let body = self.map_expr(body_node).map_err(with_fn)?;
+
+        Ok(FnDecl { name, params, ret_ty, body, span })
     }
 
-    fn parse_type(&mut self) -> Result<Type, String> {
-        let tok = self.peek();
-        match tok.kind {
-            TokenKind::Bool => {
-                self.advance();
-                Ok(Type::Bool)
-            }
-            TokenKind::Unit => {
-                self.advance();
-                Ok(Type::Unit)
-            }
-            TokenKind::Never => {
-                self.advance();
-                Ok(Type::Never)
-            }
-            TokenKind::Ident(ref name) => {
-                // Scalar shorthand types
-                let ty = match name.as_str() {
-                    "i8" => Type::Int(IntTy::I8),
-                    "i16" => Type::Int(IntTy::I16),
-                    "i32" => Type::Int(IntTy::I32),
-                    "i64" => Type::Int(IntTy::I64),
-                    "u8" => Type::Int(IntTy::U8),
-                    "u16" => Type::Int(IntTy::U16),
-                    "u32" => Type::Int(IntTy::U32),
-                    "u64" => Type::Int(IntTy::U64),
-                    "f32" => Type::Float(FloatTy::F32),
-                    "f64" => Type::Float(FloatTy::F64),
-                    other => Type::Custom(other.to_string()),
-                };
-                self.advance();
-                Ok(ty)
-            }
-            TokenKind::Star => {
-                self.advance();
-                let inner = self.parse_type()?;
-                Ok(Type::RawPtr(Box::new(inner)))
-            }
-            TokenKind::Amp => {
-                self.advance();
-                let kind = if self.peek().kind == TokenKind::Mut {
-                    self.advance();
-                    RefKind::Mut
-                } else if self.peek().kind == TokenKind::Ident("out".to_string()) {
-                    self.advance();
-                    RefKind::Out
-                } else if self.peek().kind == TokenKind::Ident("deinit".to_string()) {
-                    self.advance();
-                    RefKind::Drop
-                } else if self.peek().kind == TokenKind::Ident("uninit".to_string()) {
-                    self.advance();
-                    RefKind::Uninit
-                } else {
-                    RefKind::Shared
-                };
-                let inner = self.parse_type()?;
-                Ok(Type::Ref(kind, Box::new(inner)))
-            }
-            TokenKind::LBracket => {
-                self.advance();
-                let inner = self.parse_type()?;
-                self.expect(TokenKind::Semicolon)?;
-                let tok_size = self.advance();
-                let size = if let TokenKind::IntLit(val, _) = tok_size.kind {
-                    val as usize
-                } else {
-                    return Err(format!("at {}: expected integer literal for array size", tok_size.span));
-                };
-                self.expect(TokenKind::RBracket)?;
-                Ok(Type::Array(Box::new(inner), size))
-            }
-            _ => Err(format!("at {}: expected type, found {:?}", tok.span, tok.kind)),
+    fn map_type(&self, node: Node) -> Result<Type, Diagnostic> {
+        // Shared type rule with MIR; the shape is identical.
+        if let Some(ty) = scalar_kind_to_type(node.kind()) {
+            return Ok(ty);
         }
-    }
-
-    fn parse_stmt(&mut self) -> Result<Stmt, String> {
-        let tok = self.peek();
-        if tok.kind == TokenKind::Let {
-            let start = self.advance().span;
-            let is_mut = if self.peek().kind == TokenKind::Mut {
-                self.advance();
-                true
-            } else {
-                false
-            };
-            let (name, _) = self.parse_identifier()?;
-            let ty = if self.peek().kind == TokenKind::Colon {
-                self.advance();
-                Some(self.parse_type()?)
-            } else {
-                None
-            };
-            self.expect(TokenKind::Eq)?;
-            let init = self.parse_expr()?;
-            self.expect(TokenKind::Semicolon)?;
-            Ok(Stmt::Let {
-                is_mut,
-                name,
-                ty,
-                init,
-                span: start,
-            })
-        } else {
-            let expr = self.parse_expr()?;
-            // If the next token is a semicolon, we consume it and return Stmt::Expr.
-            // Wait, does block parsing rely on this?
-            // In a block `{ stmt1; stmt2; expr }`, stmt1 and stmt2 are statements (terminated by `;`).
-            // So we parse them as Stmt, expecting a semicolon.
-            self.expect(TokenKind::Semicolon)?;
-            Ok(Stmt::Expr(expr))
+        match node.kind() {
+            "bool" => return Ok(Type::Bool),
+            "unit" => return Ok(Type::Unit),
+            "never" => return Ok(Type::Never),
+            "identifier" => return Ok(Type::Custom(self.get_text(node).to_string())),
+            "type" => {}
+            _ => {
+                return Err(self.diag(
+                    node,
+                    ParserCode::MalformedCst,
+                    format!("unexpected node kind in type: {}", node.kind()),
+                ));
+            }
         }
+
+        let first = node.child(0).ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "type node has no children")
+        })?;
+        if let Some(ty) = scalar_kind_to_type(first.kind()) {
+            return Ok(ty);
+        }
+        match first.kind() {
+            "bool" => return Ok(Type::Bool),
+            "unit" => return Ok(Type::Unit),
+            "never" => return Ok(Type::Never),
+            "identifier" => return Ok(Type::Custom(self.get_text(first).to_string())),
+            _ => {}
+        }
+
+        let text = self.get_text(first);
+        let ref_kind = match text {
+            "&" => Some(RefKind::Shared),
+            "&mut" => Some(RefKind::Mut),
+            "&out" => Some(RefKind::Out),
+            "&drop" => Some(RefKind::Drop),
+            "&uninit" => Some(RefKind::Uninit),
+            _ => None,
+        };
+        if let Some(kind) = ref_kind {
+            let inner = node.child(1).ok_or_else(|| {
+                self.diag(node, ParserCode::MalformedCst, format!("missing inner type for {}", text))
+            })?;
+            return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
+        }
+        if text == "*" {
+            let inner = node.child(1).ok_or_else(|| {
+                self.diag(node, ParserCode::MalformedCst, "missing inner type for raw pointer")
+            })?;
+            return Ok(Type::RawPtr(Box::new(self.map_type(inner)?)));
+        }
+        if text == "[" {
+            let elem = node.child_by_field_name("element").ok_or_else(|| {
+                self.diag(node, ParserCode::MalformedCst, "array type missing element")
+            })?;
+            let len_node = node.child_by_field_name("length").ok_or_else(|| {
+                self.diag(node, ParserCode::MalformedCst, "array type missing length")
+            })?;
+            let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?;
+            return Ok(Type::Array(Box::new(self.map_type(elem)?), len as usize));
+        }
+        if text == "fn" {
+            let mut params = Vec::new();
+            let mut cursor = node.walk();
+            for child in node.children(&mut cursor) {
+                if child.kind() == "type" {
+                    params.push(self.map_type(child)?);
+                }
+            }
+            return Ok(Type::Fn(params, Box::new(Type::Unit)));
+        }
+        Err(self.diag(
+            first,
+            ParserCode::MalformedCst,
+            format!("unexpected token in type: {}", text),
+        ))
     }
 
-    pub fn parse_expr(&mut self) -> Result<Expr, String> {
-        self.parse_expr_assignment()
-    }
+    /// Walk any expression-carrying node into a typed `Expr`. All
+    /// operator forms (assign, borrow, field access, deref, downcast,
+    /// call, index, match) are named rules in the grammar, so
+    /// dispatch is straight by `node.kind()`. The `expr` node itself
+    /// is a thin wrapper containing exactly one child — recurse into
+    /// it.
+    fn map_expr(&self, node: Node) -> Result<Expr, Diagnostic> {
+        let span = span_of(node);
+        match node.kind() {
+            "expr" => {
+                let child = node.child(0).ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "expr wrapper empty")
+                })?;
+                self.map_expr(child)
+            }
 
-    fn parse_expr_assignment(&mut self) -> Result<Expr, String> {
-        let mut lhs = self.parse_expr_lowest()?;
-        if self.peek().kind == TokenKind::Eq {
-            self.advance();
-            let rhs = self.parse_expr_assignment()?;
-            let span = lhs.span;
-            lhs = Expr {
-                kind: ExprKind::Assign(Box::new(lhs), Box::new(rhs)),
+            // ---- Literals + identifier ----
+            "int_lit" => {
+                let (val, ty) = self.lit_diag(parse_int_literal(self.get_text(node)), node)?;
+                Ok(Expr { kind: ExprKind::Literal(Literal::Int(val, ty)), span })
+            }
+            "float_lit" => {
+                let (val, ty) = self.lit_diag(parse_float_literal(self.get_text(node)), node)?;
+                Ok(Expr { kind: ExprKind::Literal(Literal::Float(val, ty)), span })
+            }
+            "bool_lit" => Ok(Expr {
+                kind: ExprKind::Literal(Literal::Bool(self.get_text(node) == "true")),
                 span,
-            };
-        }
-        Ok(lhs)
-    }
+            }),
+            "unit_lit" => Ok(Expr {
+                kind: ExprKind::Literal(Literal::Unit),
+                span,
+            }),
+            "identifier" => Ok(Expr {
+                kind: ExprKind::Variable(self.get_text(node).to_string()),
+                span,
+            }),
 
-    fn parse_expr_lowest(&mut self) -> Result<Expr, String> {
-        // Break/Continue/Return / Loop / If / Block / Let are parsed as expressions or statements.
-        // Wait, loop/if/block can be primary.
-        // Precedence: prefix operators (deref, borrow, raw borrow) -> postfix (call, field access, downcast).
-        self.parse_expr_prefix()
-    }
+            // ---- Compound primaries ----
+            "paren_expr" => {
+                let mut cursor = node.walk();
+                let inner = node.children(&mut cursor).find(|c| c.kind() == "expr");
+                if let Some(e) = inner {
+                    self.map_expr(e)
+                } else {
+                    Ok(Expr { kind: ExprKind::Literal(Literal::Unit), span })
+                }
+            }
+            "block_expr" => self.map_block(node),
+            "if_expr" => self.map_if(node),
+            "loop_expr" => {
+                let body = node.child_by_field_name("body").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "loop missing body")
+                })?;
+                Ok(Expr {
+                    kind: ExprKind::Loop(Box::new(self.map_expr(body)?)),
+                    span,
+                })
+            }
+            "break_expr" => {
+                let mut cursor = node.walk();
+                let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
+                let val = inner.map(|n| self.map_expr(n)).transpose()?.map(Box::new);
+                Ok(Expr { kind: ExprKind::Break(val), span })
+            }
+            "continue_expr" => Ok(Expr { kind: ExprKind::Continue, span }),
+            "return_expr" => {
+                let mut cursor = node.walk();
+                let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
+                let val = inner.map(|n| self.map_expr(n)).transpose()?.map(Box::new);
+                Ok(Expr { kind: ExprKind::Return(val), span })
+            }
+            "struct_constr" => self.map_struct_constr(node),
+            "enum_constr" => self.map_enum_constr(node),
+            "array_lit" => {
+                let mut cursor = node.walk();
+                let mut elems = Vec::new();
+                for c in node.children(&mut cursor) {
+                    if self.is_expr_kind(&c) {
+                        elems.push(self.map_expr(c)?);
+                    }
+                }
+                Ok(Expr { kind: ExprKind::Array(elems), span })
+            }
 
-    fn parse_expr_prefix(&mut self) -> Result<Expr, String> {
-        let tok = self.peek();
-        match tok.kind {
-            TokenKind::Amp => {
-                let start = self.advance().span;
-                let kind = if self.peek().kind == TokenKind::Mut {
-                    self.advance();
-                    RefKind::Mut
-                } else if self.peek().kind == TokenKind::Ident("out".to_string()) {
-                    self.advance();
-                    RefKind::Out
-                } else if self.peek().kind == TokenKind::Ident("deinit".to_string()) {
-                    self.advance();
-                    RefKind::Drop
-                } else if self.peek().kind == TokenKind::Ident("uninit".to_string()) {
-                    self.advance();
-                    RefKind::Uninit
-                } else {
-                    RefKind::Shared
-                };
-                let inner = self.parse_expr_prefix()?;
+            // ---- Operators (named for nested CST structure) ----
+            "assign_expr" => {
+                let lhs = node.child_by_field_name("lhs").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "assign missing lhs")
+                })?;
+                let rhs = node.child_by_field_name("rhs").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "assign missing rhs")
+                })?;
                 Ok(Expr {
-                    kind: ExprKind::Borrow(kind, Box::new(inner)),
-                    span: start,
+                    kind: ExprKind::Assign(
+                        Box::new(self.map_expr(lhs)?),
+                        Box::new(self.map_expr(rhs)?),
+                    ),
+                    span,
                 })
             }
-            TokenKind::AmpRaw => {
-                let start = self.advance().span;
-                let inner = self.parse_expr_prefix()?;
-                Ok(Expr {
-                    kind: ExprKind::RawBorrow(Box::new(inner)),
-                    span: start,
-                })
-            }
-            _ => self.parse_expr_postfix(),
-        }
-    }
-
-    fn parse_expr_postfix(&mut self) -> Result<Expr, String> {
-        let mut expr = self.parse_expr_primary()?;
-        loop {
-            let tok = self.peek();
-            match tok.kind {
-                TokenKind::Dot => {
-                    self.advance();
-                    // Postfix deref: expr.*
-                    if self.peek().kind == TokenKind::Star {
-                        self.advance();
-                        let span = expr.span;
-                        expr = Expr {
-                            kind: ExprKind::Deref(Box::new(expr)),
-                            span,
-                        };
-                    } else {
-                        let (field, _) = self.parse_identifier()?;
-                        let span = expr.span;
-                        expr = Expr {
-                            kind: ExprKind::FieldAccess(Box::new(expr), field),
-                            span,
-                        };
-                    }
-                }
-                TokenKind::As => {
-                    self.advance();
-                    let (variant, _) = self.parse_identifier()?;
-                    let span = expr.span;
-                    expr = Expr {
-                        kind: ExprKind::Downcast(Box::new(expr), variant),
-                        span,
-                    };
-                }
-                TokenKind::LParen => {
-                    self.advance();
-                    let mut args = Vec::new();
-                    while self.peek().kind != TokenKind::RParen && self.peek().kind != TokenKind::Eof {
-                        args.push(self.parse_expr()?);
-                        if self.peek().kind == TokenKind::Comma {
-                            self.advance();
-                        } else if self.peek().kind != TokenKind::RParen {
-                            return Err(format!("at {}: expected ',' or ')'", self.peek().span));
-                        }
-                    }
-                    self.expect(TokenKind::RParen)?;
-                    let span = expr.span;
-                    expr = Expr {
-                        kind: ExprKind::Call(Box::new(expr), args),
-                        span,
-                    };
-                }
-                TokenKind::Match => {
-                    self.advance();
-                    self.expect(TokenKind::LBrace)?;
-                    let mut arms = Vec::new();
-                    while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
-                        let (variant, _) = self.parse_identifier()?;
-                        let bound_var = if self.peek().kind == TokenKind::LParen {
-                            self.advance();
-                            let (bound, _) = self.parse_identifier()?;
-                            self.expect(TokenKind::RParen)?;
-                            Some(bound)
-                        } else {
-                            None
-                        };
-                        let pattern = Pattern::Variant(variant, bound_var);
-                        self.expect(TokenKind::FatArrow)?;
-                        let body = self.parse_expr()?;
-                        arms.push((pattern, body));
-                        if self.peek().kind == TokenKind::Comma {
-                            self.advance();
-                        } else if self.peek().kind != TokenKind::RBrace {
-                            return Err(format!("at {}: expected ',' or '}}'", self.peek().span));
-                        }
-                    }
-                    self.expect(TokenKind::RBrace)?;
-                    let span = expr.span;
-                    expr = Expr {
-                        kind: ExprKind::Match(Box::new(expr), arms),
-                        span,
-                    };
-                }
-                TokenKind::LBracket => {
-                    self.advance();
-                    let index = self.parse_expr()?;
-                    self.expect(TokenKind::RBracket)?;
-                    let span = expr.span;
-                    expr = Expr {
-                        kind: ExprKind::ArrayIndex(Box::new(expr), Box::new(index)),
-                        span,
-                    };
-                }
-                _ => break,
-            }
-        }
-        Ok(expr)
-    }
-
-    fn parse_expr_primary(&mut self) -> Result<Expr, String> {
-        let tok = self.peek();
-        match tok.kind {
-            TokenKind::IntLit(val, suffix) => {
-                let start = self.advance().span;
-                Ok(Expr {
-                    kind: ExprKind::Literal(Literal::Int(val, suffix)),
-                    span: start,
-                })
-            }
-            TokenKind::FloatLit(val, suffix) => {
-                let start = self.advance().span;
-                Ok(Expr {
-                    kind: ExprKind::Literal(Literal::Float(val, suffix)),
-                    span: start,
-                })
-            }
-            TokenKind::Ident(ref name) => {
-                let name_str = name.clone();
-                let start = self.advance().span;
-                if name_str == "true" {
-                    Ok(Expr {
-                        kind: ExprKind::Literal(Literal::Bool(true)),
-                        span: start,
-                    })
-                } else if name_str == "false" {
-                    Ok(Expr {
-                        kind: ExprKind::Literal(Literal::Bool(false)),
-                        span: start,
-                    })
-                } else if self.peek().kind == TokenKind::LBrace
-                    && (self.tokens[self.index + 1].kind == TokenKind::RBrace
-                        || (matches!(self.tokens[self.index + 1].kind, TokenKind::Ident(_))
-                            && self.tokens[self.index + 2].kind == TokenKind::Colon))
-                {
-                    self.advance();
-                    let mut fields = Vec::new();
-                    while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
-                        let (field_name, _) = self.parse_identifier()?;
-                        self.expect(TokenKind::Colon)?;
-                        let value = self.parse_expr()?;
-                        fields.push((field_name, value));
-                        if self.peek().kind == TokenKind::Comma {
-                            self.advance();
-                        } else if self.peek().kind != TokenKind::RBrace {
-                            return Err(format!("at {}: expected ',' or '}}'", self.peek().span));
-                        }
-                    }
-                    self.expect(TokenKind::RBrace)?;
-                    Ok(Expr {
-                        kind: ExprKind::StructConstr(name_str, fields),
-                        span: start,
-                    })
-                } else if self.peek().kind == TokenKind::PathSep {
-                    self.advance();
-                    let (variant_name, _) = self.parse_identifier()?;
-                    self.expect(TokenKind::LParen)?;
-                    let payload = self.parse_expr()?;
-                    self.expect(TokenKind::RParen)?;
-                    Ok(Expr {
-                        kind: ExprKind::EnumConstr(name_str, variant_name, Box::new(payload)),
-                        span: start,
-                    })
-                } else {
-                    Ok(Expr {
-                        kind: ExprKind::Variable(name_str),
-                        span: start,
-                    })
-                }
-            }
-            TokenKind::LBracket => {
-                let start = self.advance().span;
-                let mut elements = Vec::new();
-                while self.peek().kind != TokenKind::RBracket && self.peek().kind != TokenKind::Eof {
-                    let expr = self.parse_expr()?;
-                    elements.push(expr);
-                    if self.peek().kind == TokenKind::Comma {
-                        self.advance();
-                    } else if self.peek().kind != TokenKind::RBracket {
-                        return Err(format!("at {}: expected ',' or ']'", self.peek().span));
-                    }
-                }
-                self.expect(TokenKind::RBracket)?;
-                Ok(Expr {
-                    kind: ExprKind::Array(elements),
-                    span: start,
-                })
-            }
-            TokenKind::Unit => {
-                let start = self.advance().span;
-                Ok(Expr {
-                    kind: ExprKind::Literal(Literal::Unit),
-                    span: start,
-                })
-            }
-            TokenKind::LParen => {
-                let start = self.advance().span;
-                if self.peek().kind == TokenKind::RParen {
-                    self.advance();
-                    Ok(Expr {
-                        kind: ExprKind::Literal(Literal::Unit),
-                        span: start,
-                    })
-                } else {
-                    let expr = self.parse_expr()?;
-                    self.expect(TokenKind::RParen)?;
-                    Ok(expr)
-                }
-            }
-            TokenKind::LBrace => {
-                let start = self.advance().span;
-                let mut stmts = Vec::new();
-                let mut last_expr = None;
-                while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
-                    // Check if this looks like a statement or trailing expression.
-                    // If it's a statement, we parse it as Stmt.
-                    // Let binding is always a statement.
-                    // Expressions followed by `;` are Stmt::Expr.
-                    // The last expression might not be followed by `;`.
-                    if self.peek().kind == TokenKind::Let {
-                        stmts.push(self.parse_stmt()?);
-                    } else {
-                        // Parse expression.
-                        let expr = self.parse_expr()?;
-                        if self.peek().kind == TokenKind::Semicolon {
-                            self.advance();
-                            stmts.push(Stmt::Expr(expr));
-                        } else {
-                            // This is the trailing expression!
-                            last_expr = Some(Box::new(expr));
-                            break;
-                        }
-                    }
-                }
-                self.expect(TokenKind::RBrace)?;
-                Ok(Expr {
-                    kind: ExprKind::Block(stmts, last_expr),
-                    span: start,
-                })
-            }
-            TokenKind::If => {
-                let start = self.advance().span;
-                let cond = self.parse_expr()?;
-                let true_block = self.parse_block_as_expr()?;
-                let false_block = if self.peek().kind == TokenKind::Else {
-                    self.advance();
-                    self.parse_block_as_expr()?
-                } else {
-                    Expr {
-                        kind: ExprKind::Block(Vec::new(), None),
-                        span: start,
+            "borrow_expr" => {
+                let kind_node = node.child_by_field_name("kind").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "borrow missing kind")
+                })?;
+                let ref_kind = match self.get_text(kind_node) {
+                    "&" => RefKind::Shared,
+                    "&mut" => RefKind::Mut,
+                    "&out" => RefKind::Out,
+                    "&deinit" => RefKind::Drop,
+                    "&uninit" => RefKind::Uninit,
+                    other => {
+                        return Err(self.diag(
+                            kind_node,
+                            ParserCode::MalformedCst,
+                            format!("unknown borrow kind: {}", other),
+                        ));
                     }
                 };
+                let target = node.child_by_field_name("target").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "borrow missing target")
+                })?;
                 Ok(Expr {
-                    kind: ExprKind::If(Box::new(cond), Box::new(true_block), Box::new(false_block)),
-                    span: start,
+                    kind: ExprKind::Borrow(ref_kind, Box::new(self.map_expr(target)?)),
+                    span,
                 })
             }
-            TokenKind::Loop => {
-                let start = self.advance().span;
-                let body = self.parse_block_as_expr()?;
+            "raw_borrow_expr" => {
+                let target = node.child_by_field_name("target").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "&raw missing target")
+                })?;
                 Ok(Expr {
-                    kind: ExprKind::Loop(Box::new(body)),
-                    span: start,
+                    kind: ExprKind::RawBorrow(Box::new(self.map_expr(target)?)),
+                    span,
                 })
             }
-            TokenKind::Break => {
-                let start = self.advance().span;
-                let expr = if self.peek().kind != TokenKind::Semicolon
-                    && self.peek().kind != TokenKind::RBrace
-                    && self.peek().kind != TokenKind::RParen
-                    && self.peek().kind != TokenKind::Comma
-                {
-                    Some(Box::new(self.parse_expr()?))
-                } else {
-                    None
-                };
+            "field_access" => {
+                let target = node.child_by_field_name("target").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "field access missing target")
+                })?;
+                let field = node.child_by_field_name("field").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "field access missing field")
+                })?;
                 Ok(Expr {
-                    kind: ExprKind::Break(expr),
-                    span: start,
+                    kind: ExprKind::FieldAccess(
+                        Box::new(self.map_expr(target)?),
+                        self.get_text(field).to_string(),
+                    ),
+                    span,
                 })
             }
-            TokenKind::Continue => {
-                let start = self.advance().span;
+            "deref_expr" => {
+                let target = node.child_by_field_name("target").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "deref missing target")
+                })?;
                 Ok(Expr {
-                    kind: ExprKind::Continue,
-                    span: start,
+                    kind: ExprKind::Deref(Box::new(self.map_expr(target)?)),
+                    span,
                 })
             }
-            TokenKind::Return => {
-                let start = self.advance().span;
-                let expr = if self.peek().kind != TokenKind::Semicolon
-                    && self.peek().kind != TokenKind::RBrace
-                    && self.peek().kind != TokenKind::RParen
-                    && self.peek().kind != TokenKind::Comma
-                {
-                    Some(Box::new(self.parse_expr()?))
-                } else {
-                    None
-                };
+            "downcast_expr" => {
+                let target = node.child_by_field_name("target").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "downcast missing target")
+                })?;
+                let variant = node.child_by_field_name("variant").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "downcast missing variant")
+                })?;
                 Ok(Expr {
-                    kind: ExprKind::Return(expr),
-                    span: start,
+                    kind: ExprKind::Downcast(
+                        Box::new(self.map_expr(target)?),
+                        self.get_text(variant).to_string(),
+                    ),
+                    span,
                 })
+            }
+            "call_expr" => {
+                let func = node.child_by_field_name("function").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "call missing function")
+                })?;
+                let mut cursor = node.walk();
+                let mut args = Vec::new();
+                for c in node.children(&mut cursor) {
+                    if c != func && self.is_expr_kind(&c) {
+                        args.push(self.map_expr(c)?);
+                    }
+                }
+                Ok(Expr {
+                    kind: ExprKind::Call(Box::new(self.map_expr(func)?), args),
+                    span,
+                })
+            }
+            "index_expr" => {
+                let target = node.child_by_field_name("target").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "index missing target")
+                })?;
+                let idx = node.child_by_field_name("index").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "index missing index")
+                })?;
+                Ok(Expr {
+                    kind: ExprKind::ArrayIndex(
+                        Box::new(self.map_expr(target)?),
+                        Box::new(self.map_expr(idx)?),
+                    ),
+                    span,
+                })
+            }
+            "match_expr" => {
+                let scrut = node.child_by_field_name("scrutinee").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "match missing scrutinee")
+                })?;
+                self.map_match(node, scrut)
             }
 
-            _ => Err(format!(
-                "at {}: expected expression primary, found {:?}",
-                tok.span, tok.kind
+            other => Err(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                format!("unrecognized expression node kind: {}", other),
             )),
         }
     }
 
-    fn parse_block_as_expr(&mut self) -> Result<Expr, String> {
-        let tok = self.peek();
-        if tok.kind == TokenKind::LBrace {
-            self.parse_expr_primary()
-        } else {
-            Err(format!("at {}: expected block starting with '{{'", tok.span))
+    fn map_block(&self, node: Node) -> Result<Expr, Diagnostic> {
+        let span = span_of(node);
+        let mut stmts = Vec::new();
+        let mut tail = None;
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "stmt" {
+                stmts.push(self.map_stmt(child)?);
+            } else if self.is_expr_kind(&child) {
+                // Trailing expression (has field name "tail" in grammar).
+                tail = Some(Box::new(self.map_expr(child)?));
+            }
         }
+        Ok(Expr {
+            kind: ExprKind::Block(stmts, tail),
+            span,
+        })
+    }
+
+    fn map_stmt(&self, node: Node) -> Result<Stmt, Diagnostic> {
+        // stmt is a choice: let_stmt | (expr ';'). If the child is a
+        // let_stmt, decode as Let; otherwise it's an expression stmt.
+        let child = node.child(0).ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "empty statement")
+        })?;
+        if child.kind() == "let_stmt" {
+            self.map_let_stmt(child)
+        } else {
+            let e = self.map_expr(child)?;
+            Ok(Stmt::Expr(e))
+        }
+    }
+
+    fn map_let_stmt(&self, node: Node) -> Result<Stmt, Diagnostic> {
+        let span = span_of(node);
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "let missing name")
+        })?;
+        let name = self.get_text(name_node).to_string();
+        // `mut` is an anonymous token, detect via child text.
+        let mut is_mut = false;
+        let mut cursor = node.walk();
+        for c in node.children(&mut cursor) {
+            if self.get_text(c) == "mut" {
+                is_mut = true;
+                break;
+            }
+        }
+        let ty = if let Some(t) = node.child_by_field_name("type") {
+            Some(self.map_type(t)?)
+        } else {
+            None
+        };
+        let init_node = node.child_by_field_name("init").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "let missing init")
+        })?;
+        let init = self.map_expr(init_node)?;
+        Ok(Stmt::Let { is_mut, name, ty, init, span })
+    }
+
+    fn map_if(&self, node: Node) -> Result<Expr, Diagnostic> {
+        let span = span_of(node);
+        let cond_node = node.child_by_field_name("cond").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "if missing cond")
+        })?;
+        let then_node = node.child_by_field_name("then").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "if missing then")
+        })?;
+        let else_expr = if let Some(else_node) = node.child_by_field_name("else") {
+            self.map_expr(else_node)?
+        } else {
+            Expr {
+                kind: ExprKind::Block(Vec::new(), None),
+                span,
+            }
+        };
+        Ok(Expr {
+            kind: ExprKind::If(
+                Box::new(self.map_expr(cond_node)?),
+                Box::new(self.map_expr(then_node)?),
+                Box::new(else_expr),
+            ),
+            span,
+        })
+    }
+
+    fn map_match(&self, node: Node, scrutinee_node: Node) -> Result<Expr, Diagnostic> {
+        let span = span_of(node);
+        let mut arms = Vec::new();
+        let mut cursor = node.walk();
+        for c in node.children(&mut cursor) {
+            if c.kind() == "match_arm" {
+                let pat_node = c.child_by_field_name("pattern").ok_or_else(|| {
+                    self.diag(c, ParserCode::MalformedCst, "match arm missing pattern")
+                })?;
+                let body_node = c.child_by_field_name("body").ok_or_else(|| {
+                    self.diag(c, ParserCode::MalformedCst, "match arm missing body")
+                })?;
+                arms.push((self.map_pattern(pat_node)?, self.map_expr(body_node)?));
+            }
+        }
+        Ok(Expr {
+            kind: ExprKind::Match(Box::new(self.map_expr(scrutinee_node)?), arms),
+            span,
+        })
+    }
+
+    fn map_pattern(&self, node: Node) -> Result<Pattern, Diagnostic> {
+        let variant_node = node.child_by_field_name("variant").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "pattern missing variant")
+        })?;
+        let variant = self.get_text(variant_node).to_string();
+        let bound = node
+            .child_by_field_name("bound")
+            .map(|b| self.get_text(b).to_string());
+        Ok(Pattern::Variant(variant, bound))
+    }
+
+    fn map_struct_constr(&self, node: Node) -> Result<Expr, Diagnostic> {
+        let span = span_of(node);
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "struct constr missing name")
+        })?;
+        let name = self.get_text(name_node).to_string();
+        let mut fields = Vec::new();
+        let mut cursor = node.walk();
+        for c in node.children(&mut cursor) {
+            if c.kind() == "field_init" {
+                let fn_name = c.child_by_field_name("name").ok_or_else(|| {
+                    self.diag(c, ParserCode::MalformedCst, "field init missing name")
+                })?;
+                let fn_val = c.child_by_field_name("value").ok_or_else(|| {
+                    self.diag(c, ParserCode::MalformedCst, "field init missing value")
+                })?;
+                fields.push((self.get_text(fn_name).to_string(), self.map_expr(fn_val)?));
+            }
+        }
+        Ok(Expr {
+            kind: ExprKind::StructConstr(name, fields),
+            span,
+        })
+    }
+
+    fn map_enum_constr(&self, node: Node) -> Result<Expr, Diagnostic> {
+        let span = span_of(node);
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "enum constr missing name")
+        })?;
+        let variant_node = node.child_by_field_name("variant").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "enum constr missing variant")
+        })?;
+        let payload_node = node.child_by_field_name("payload").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "enum constr missing payload")
+        })?;
+        Ok(Expr {
+            kind: ExprKind::EnumConstr(
+                self.get_text(name_node).to_string(),
+                self.get_text(variant_node).to_string(),
+                Box::new(self.map_expr(payload_node)?),
+            ),
+            span,
+        })
+    }
+
+    /// True if `node` is any expression-carrying node kind that
+    /// `map_expr` handles. Used to skip anonymous keyword/punctuation
+    /// children when iterating for the "trailing expression" of a
+    /// block or the "value" of `break`/`return`.
+    fn is_expr_kind(&self, node: &Node) -> bool {
+        matches!(
+            node.kind(),
+            "expr"
+                | "int_lit"
+                | "float_lit"
+                | "bool_lit"
+                | "unit_lit"
+                | "identifier"
+                | "paren_expr"
+                | "block_expr"
+                | "if_expr"
+                | "loop_expr"
+                | "break_expr"
+                | "continue_expr"
+                | "return_expr"
+                | "struct_constr"
+                | "enum_constr"
+                | "array_lit"
+        )
     }
 }
 
@@ -992,8 +825,7 @@ mod tests {
     #[test]
     fn parse_struct_decl_test() {
         let source = "struct Point { x: i64, y: i64 }";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Struct(ref s) = program.declarations[0] {
             assert_eq!(s.name, "Point");
@@ -1010,8 +842,7 @@ mod tests {
     #[test]
     fn parse_enum_decl_test() {
         let source = "enum Option { None: unit, Some: i64 }";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(ref e) = program.declarations[0] {
             assert_eq!(e.name, "Option");
@@ -1034,8 +865,7 @@ mod tests {
                 return sum;
             }
         ";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
             assert_eq!(f.name, "add");
@@ -1063,12 +893,14 @@ mod tests {
                 let e = &uninit a;
             }
         ";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
             assert_eq!(f.params[0].ty, Type::RawPtr(Box::new(Type::Int(IntTy::I64))));
-            assert_eq!(f.params[1].ty, Type::Ref(RefKind::Mut, Box::new(Type::Int(IntTy::I64))));
+            assert_eq!(
+                f.params[1].ty,
+                Type::Ref(RefKind::Mut, Box::new(Type::Int(IntTy::I64)))
+            );
         } else {
             panic!("Expected function");
         }
@@ -1084,8 +916,7 @@ mod tests {
                 }
             }
         ";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
     }
 
@@ -1098,8 +929,7 @@ mod tests {
                 }
             }
         ";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
     }
 
@@ -1113,8 +943,7 @@ mod tests {
                 let val = arr[0];
             }
         ";
-        let mut p = Parser::new(source).unwrap();
-        let program = p.parse_program().unwrap();
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
     }
 }

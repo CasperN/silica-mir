@@ -115,14 +115,60 @@ fn main() {
         }
     };
 
-    let p = mir::parser::Parser::new(source);
-    let program = match p.parse() {
-        Ok(program) => program,
-        Err(diags) => {
-            for e in diags.errors() {
-                eprintln!("Error: {}", e);
+    // Route by file extension:
+    //   `.sim` → MIR directly.
+    //   `.si`  → HLL, parse then lower to MIR.
+    // Anything else is rejected; ambiguity here would hide user
+    // errors under the wrong pipeline.
+    let program = match std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+    {
+        Some("sim") => {
+            let p = mir::parser::Parser::new(source);
+            match p.parse() {
+                Ok(program) => program,
+                Err(diags) => {
+                    for e in diags.errors() {
+                        eprintln!("Error: {}", e);
+                    }
+                    eprintln!("{} error(s)", diags.error_count());
+                    std::process::exit(1);
+                }
             }
-            eprintln!("{} error(s)", diags.error_count());
+        }
+        Some("si") => {
+            let p = hll::parser::Parser::new(source);
+            let hll_prog = match p.parse() {
+                Ok(prog) => prog,
+                Err(diags) => {
+                    for e in diags.errors() {
+                        eprintln!("Error: {}", e);
+                    }
+                    eprintln!("{} error(s)", diags.error_count());
+                    std::process::exit(1);
+                }
+            };
+            let types = match hll::type_check::typecheck_program_collect(&hll_prog) {
+                Ok(t) => t,
+                Err(e) => {
+                    eprintln!("Type error: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            match hll::lowering::lower_program(&hll_prog, &types) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("Lowering error: {}", e);
+                    std::process::exit(1);
+                }
+            }
+        }
+        other => {
+            eprintln!(
+                "Unknown file extension: {:?}. Expected `.si` (HLL) or `.sim` (MIR).",
+                other
+            );
             std::process::exit(1);
         }
     };
