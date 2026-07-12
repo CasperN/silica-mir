@@ -41,7 +41,7 @@ impl std::fmt::Display for Span {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RefKind {
     Shared, // &
     Mut,    // &mut

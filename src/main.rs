@@ -17,6 +17,7 @@ pub use mir::cfg_edit;
 #[cfg(test)]
 pub use mir::test_util;
 
+pub mod hll;
 mod diagnostics;
 
 use mir::ast::Program;
