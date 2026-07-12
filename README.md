@@ -596,14 +596,18 @@ row-addition away.
 
 ## Runtime
 
-Extern functions declared in Silica lower to LLVM `declare void @name(...)`
-lines. Since the emitted `.ll` links against the platform's default libc
-via `clang out.ll -o out`, a `write(2)` or `abort()` extern resolves at
-link time with no per-symbol machinery — this is how string-printing
-demos work end-to-end without a C shim. Extern signatures are `void`
-because Silica has no return values; C-side non-void return values are
-silently dropped (fine for demos, would need explicit `&out` plumbing
-for production correctness).
+Extern functions declared in Silica lower to LLVM `declare` lines that
+resolve against the platform's default libc at link time — no per-symbol
+machinery, no C shim. A `write(2)` or `abort()` extern is a one-line
+`extern fn` in Silica and works end-to-end.
+
+C return values integrate through Silica's `&out $return` convention:
+an extern `fn foo(a: T) -> R` is spelled as `extern fn foo(a: T, $return: &out R)`
+in MIR. Codegen at the extern call site does the C-ABI translation —
+issue the C call with the non-return args, store the LLVM-level return
+into `*$return`. Today the codegen path is still void-only in practice
+(non-void C returns get dropped); wiring up `$return`-carrying externs
+is a codegen change, not a design change.
 
 
 
@@ -627,6 +631,21 @@ for production correctness).
   no pass checks that non-mut bindings aren't reassigned. Planned
   as a dedicated `hll/mut_check.rs` pass between typecheck and
   lowering.
+
+## FFI
+- Wire codegen for `$return`-carrying externs. An extern
+  `extern fn foo(a: T, $return: &out R)` should emit
+  `%tmp = call R @foo(a); store R %tmp, R* $return` at the call
+  site — i.e., translate Silica's sret convention into C's
+  register-return convention. Today the extern-call path drops
+  non-void C returns.
+- Decide policy on function pointers to externs. `Type::Fn`
+  erases the sret-vs-C-ABI distinction, so a `fn(T) -> R`-typed
+  value called through can't tell which ABI to use at the call
+  site. Two options: (a) ban taking pointers to externs, or
+  (b) emit a Silica-shape wrapper `void @silica_foo_wrap(T, R*)`
+  and hand out pointers to the wrapper. Not urgent — needs
+  first-class function-pointer values first.
 
 ## Elaboration gaps
 - Drop insertion *order* within a return block is a HLL responsibility
