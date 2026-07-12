@@ -731,4 +731,35 @@ mod tests {
             "
         );
     }
+
+    #[test]
+    fn test_lower_if_without_else() {
+        let source = "
+            fn check(cond: boolean) {
+                if cond {
+                    let a = 1;
+                }
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn check(cond: boolean) {
+              _temp_0: unit;
+              a: i64;
+              entry:
+                branch(copy cond) [true: if_true_0, false: if_false_1]
+              if_true_0:
+                a = 1;
+                _temp_0 = unit;
+                goto if_merge_2
+              if_false_1:
+                _temp_0 = unit;
+                goto if_merge_2
+              if_merge_2:
+                return
+            }
+            "
+        );
+    }
 }

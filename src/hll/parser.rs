@@ -814,8 +814,15 @@ impl<'a> Parser<'a> {
                 let start = self.advance().span;
                 let cond = self.parse_expr()?;
                 let true_block = self.parse_block_as_expr()?;
-                self.expect(TokenKind::Else)?;
-                let false_block = self.parse_block_as_expr()?;
+                let false_block = if self.peek().kind == TokenKind::Else {
+                    self.advance();
+                    self.parse_block_as_expr()?
+                } else {
+                    Expr {
+                        kind: ExprKind::Block(Vec::new(), None),
+                        span: start,
+                    }
+                };
                 Ok(Expr {
                     kind: ExprKind::If(Box::new(cond), Box::new(true_block), Box::new(false_block)),
                     span: start,
@@ -982,6 +989,20 @@ mod tests {
                 v match {
                     Some(val) => val,
                     None => 0
+                }
+            }
+        ";
+        let mut p = Parser::new(source).unwrap();
+        let program = p.parse_program().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_if_without_else() {
+        let source = "
+            fn check(cond: boolean) {
+                if cond {
+                    let a = 1;
                 }
             }
         ";
