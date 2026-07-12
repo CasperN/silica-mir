@@ -1,4 +1,6 @@
+use crate::ast::Span;
 use crate::test_util::*;
+use crate::type_check::TypeCheckCode;
 
 #[test]
 fn error_includes_line_and_col() {
@@ -126,5 +128,110 @@ fn accumulate_switch_enum_multi_error() {
             "variant 'Wat' is not part of enum 'Option'",
             "targets undefined block 'nowhere'",
         ],
+    );
+}
+
+// ---------- Structured (code + span) assertions ----------
+//
+// These verify not just the user-facing message but the machine
+// -readable code + exact primary span. Ensures the code enum stays
+// in sync with the actual push site and catches accidental span
+// drift under refactors.
+
+#[test]
+fn structured_assignment_type_mismatch_at_stmt_span() {
+    // `x = true;` on line 4, col 17.
+    let src = "fn f() {\n  x: i64;\n  entry:\n                x = true;\n                return\n}";
+    let d = run_structured(src);
+    assert_error_at(
+        &d,
+        TypeCheckCode::AssignmentTypeMismatch,
+        Span { line: 4, col: 17 },
+    );
+}
+
+#[test]
+fn structured_duplicate_declaration_at_name_span() {
+    // Two `struct S {...}` declarations. The second one's name
+    // starts at line 3 col 16.
+    let src = "\n        struct S { x: i64 }\n        struct S { y: i64 }\n        fn f() { entry: return }\n";
+    let d = run_structured(src);
+    assert_error_at(
+        &d,
+        TypeCheckCode::DuplicateDeclaration,
+        Span { line: 3, col: 16 },
+    );
+}
+
+#[test]
+fn structured_goto_undefined_target_at_terminator_span() {
+    // The `goto missing_label` sits on line 4 col 17.
+    let src = "\n        fn f() {
+              entry:
+                goto missing_label
+            }";
+    let d = run_structured(src);
+    assert_error_at(
+        &d,
+        TypeCheckCode::TerminatorUndefinedTarget,
+        Span { line: 4, col: 17 },
+    );
+}
+
+#[test]
+fn structured_undeclared_variable_carries_stmt_span() {
+    // Inner `infer_place_type` error propagates through the statement
+    // check; the span is the statement, the code is the specific
+    // inner failure — not a generic wrapper.
+    let src = "
+            fn f() {
+              x: i64;
+              entry:
+                x = copy missing;
+                return
+            }";
+    let d = run_structured(src);
+    assert_error_at(
+        &d,
+        TypeCheckCode::UndeclaredVariable,
+        Span { line: 5, col: 17 },
+    );
+}
+
+#[test]
+fn structured_deref_of_non_pointer() {
+    // `*x` where `x: i64` — inner place error `DerefOfNonPointer`.
+    let src = "
+            fn f(x: i64) {
+              y: i64;
+              entry:
+                y = copy *x;
+                return
+            }";
+    let d = run_structured(src);
+    assert_error_at(
+        &d,
+        TypeCheckCode::DerefOfNonPointer,
+        Span { line: 5, col: 17 },
+    );
+}
+
+#[test]
+fn structured_array_index_out_of_bounds() {
+    // Const index past array length.
+    let src = "
+            fn f() {
+              a: [i64; 2];
+              x: i64;
+              entry:
+                a = [1i64, 2i64];
+                x = copy a[2i64];
+                return
+            }";
+    let d = run_structured(src);
+    assert_error_at(
+        &d,
+        TypeCheckCode::ArrayIndexOutOfBounds,
+        Span { line: 7, col: 17 },
     );
 }

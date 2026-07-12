@@ -1,6 +1,115 @@
 use crate::ast::*;
-use crate::diagnostics::{Diagnostic, Diagnostics};
-use crate::{fmt_error, push_error, push_error_at};
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+
+/// Machine-readable error codes emitted by the type checker. Migrated
+/// call sites use `DiagCode::TypeCheck(…)`. Sites still
+/// bearing `DiagCode::Unspecified` haven't been migrated yet.
+///
+/// Deliberately small: one variant per user-observable failure kind.
+/// Multiple push sites that surface the same conceptual error share
+/// a single variant (e.g. all "goto/branch/switch to an undefined
+/// block" cases fold into `TerminatorUndefinedTarget`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TypeCheckCode {
+    // ---- Declaration scope ----
+    /// Two top-level declarations share a name (struct/enum/function).
+    DuplicateDeclaration,
+    /// A struct declares the same field name twice.
+    DuplicateStructField,
+    /// An enum declares the same variant name twice.
+    DuplicateEnumVariant,
+    /// A parameter and a local (or two parameters, or two locals)
+    /// share a name within one function.
+    DuplicateLocalName,
+    /// A struct field, enum variant payload, parameter, or local
+    /// references a type that hasn't been declared. Wraps
+    /// `validate_type`'s errors — the specific reason lives in the
+    /// message.
+    InvalidDeclaredType,
+    /// A function has an empty body — no basic blocks. Every fn
+    /// definition must have at least an entry block.
+    NoEntryBlock,
+    /// `fn main` has a parameter list that doesn't match one of the
+    /// two accepted shapes (`()` or `(&out i32)`).
+    MainBadSignature,
+
+    // ---- Statement typing ----
+    /// LHS and RHS of an assignment have incompatible types.
+    AssignmentTypeMismatch,
+    /// A call operand doesn't resolve to a function type.
+    CallTargetNotFunction,
+    /// Call site arg count differs from the function's param count.
+    CallWrongArity,
+    /// A call arg's type doesn't match the corresponding param type.
+    CallArgTypeMismatch,
+    /// `unborrow` was applied to a non-reference-typed place.
+    UnborrowNonReference,
+
+    // ---- Terminator typing ----
+    /// `goto`, `branch true/false`, or `switchEnum` variant targets a
+    /// block label that isn't defined in this function.
+    TerminatorUndefinedTarget,
+    /// `branch` condition operand doesn't have type `boolean`.
+    BranchConditionNotBoolean,
+    /// `switchEnum(place)` where `place`'s type isn't a known enum.
+    SwitchOnNonEnum,
+    /// A `switchEnum` arm names a variant that isn't declared on
+    /// the switched enum.
+    SwitchArmUnknownVariant,
+
+    // ---- Place resolution (from infer_place_type) ----
+    /// A place references a name that isn't in the locals map.
+    UndeclaredVariable,
+    /// Deref applied to a value whose type isn't a `&T` / `*T`.
+    DerefOfNonPointer,
+    /// Field projection applied to a non-struct type.
+    FieldOfNonStruct,
+    /// Field projection names a field that doesn't exist on the
+    /// struct.
+    NoSuchField,
+    /// Downcast applied to a non-enum type.
+    DowncastOfNonEnum,
+    /// Downcast names a variant that doesn't exist on the enum.
+    /// Shared with the rvalue-side `EnumConstr` check.
+    NoSuchVariant,
+    /// A place, field type, variant payload, param type, or local
+    /// type mentions a type name that isn't declared.
+    UndeclaredType,
+    /// Index applied to a non-array type.
+    IndexOfNonArray,
+    /// Array index operand isn't an integer type.
+    ArrayIndexNotInteger,
+    /// Constant array index is out of bounds for the array's length.
+    ArrayIndexOutOfBounds,
+
+    // ---- Operand resolution (from infer_operand_type) ----
+    /// `Const::FnName` referenced a function that isn't declared.
+    UndeclaredFunction,
+
+    // ---- Rvalue resolution (from infer_rvalue_type) ----
+    /// `EnumConstr(N, V, _)` where `V` isn't a valid variant of `N`,
+    /// or `N` isn't a declared enum.
+    ///
+    /// Note: `NoSuchVariant` handles the "V not on N" flavor; this
+    /// covers "N doesn't exist" / "N is a struct".
+    EnumConstrOnNonEnum,
+    /// `EnumConstr(N, V, op)` where `op`'s type doesn't match V's
+    /// declared payload type.
+    EnumConstrPayloadTypeMismatch,
+    /// Two array-literal elements have different types.
+    ArrayLitElementTypeMismatch,
+}
+
+impl From<TypeCheckCode> for DiagCode {
+    fn from(code: TypeCheckCode) -> DiagCode {
+        DiagCode::TypeCheck(code)
+    }
+}
+use TypeCheckCode::*;
+
+// All push sites in this file use the builder pattern directly;
+// the shared `fmt_error!` / `push_error!` macros aren't needed here.
+
 use indexmap::IndexMap;
 use std::collections::HashSet;
 
@@ -39,17 +148,12 @@ impl Env {
             functions.insert(f.name.clone(), f);
         }
 
-        use crate::diagnostics::DiagCode;
         for decl in &program.declarations {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
                         errors.push(
-                            Diagnostic::new(
-                                DiagCode::Unspecified,
-                                format!("Duplicate declaration of type '{}'", s.name),
-                            )
-                            .at(s.name_span),
+                            Diagnostic::new(DuplicateDeclaration, s.name_span, format!("Duplicate declaration of type '{}'", s.name)),
                         );
                     } else {
                         types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
@@ -58,11 +162,7 @@ impl Env {
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
                         errors.push(
-                            Diagnostic::new(
-                                DiagCode::Unspecified,
-                                format!("Duplicate declaration of type '{}'", e.name),
-                            )
-                            .at(e.name_span),
+                            Diagnostic::new(DuplicateDeclaration, e.name_span, format!("Duplicate declaration of type '{}'", e.name)),
                         );
                     } else {
                         types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
@@ -71,11 +171,7 @@ impl Env {
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
                         errors.push(
-                            Diagnostic::new(
-                                DiagCode::Unspecified,
-                                format!("Duplicate declaration of function '{}'", f.name),
-                            )
-                            .at(f.name_span),
+                            Diagnostic::new(DuplicateDeclaration, f.name_span, format!("Duplicate declaration of function '{}'", f.name)),
                         );
                     } else {
                         functions.insert(f.name.clone(), f.clone());
@@ -165,35 +261,48 @@ impl Env {
         }
     }
 
+    /// Infer the type of a place. On failure returns a `Diagnostic`
+    /// with a code and `span` — the `span` here is the enclosing
+    /// syntactic construct (usually the statement or terminator span)
+    /// since `Place` itself doesn't carry a source position.
+    /// Function/block context is *not* set; the caller layers those
+    /// on via `.in_function()` / `.in_block()` if desired.
     pub fn infer_place_type(
         &self,
         place: &Place,
+        span: Span,
         locals: &IndexMap<String, Type>,
-    ) -> Result<Type, String> {
+    ) -> Result<Type, Diagnostic> {
+        let err = |code, msg: String| Diagnostic::new(code, span, msg);
         match place {
-            Place::Var(name) => locals
-                .get(name)
-                .cloned()
-                .ok_or_else(|| format!("Use of undeclared variable '{}'", name)),
+            Place::Var(name) => locals.get(name).cloned().ok_or_else(|| {
+                err(
+                    UndeclaredVariable,
+                    format!("Use of undeclared variable '{}'", name),
+                )
+            }),
             Place::Deref(inner) => {
-                let inner_ty = self.infer_place_type(inner, locals)?;
+                let inner_ty = self.infer_place_type(inner, span, locals)?;
                 match inner_ty {
                     Type::Ref(_, pointee) => Ok(*pointee),
                     Type::RawPtr(pointee) => Ok(*pointee),
-                    other => Err(format!(
-                        "Cannot dereference non-pointer type {:?}",
-                        other
+                    other => Err(err(
+                        DerefOfNonPointer,
+                        format!("Cannot dereference non-pointer type {:?}", other),
                     )),
                 }
             }
             Place::Field(inner, field_name) => {
-                let inner_ty = self.infer_place_type(inner, locals)?;
+                let inner_ty = self.infer_place_type(inner, span, locals)?;
                 let name = match &inner_ty {
                     Type::Custom(n) => n,
                     _ => {
-                        return Err(format!(
-                            "Cannot project field '{}' of non-struct type {:?}",
-                            field_name, inner_ty
+                        return Err(err(
+                            FieldOfNonStruct,
+                            format!(
+                                "Cannot project field '{}' of non-struct type {:?}",
+                                field_name, inner_ty
+                            ),
                         ))
                     }
                 };
@@ -203,19 +312,35 @@ impl Env {
                         .iter()
                         .find(|f| f.name == *field_name)
                         .map(|f| f.ty.clone())
-                        .ok_or_else(|| format!("Struct '{}' has no field '{}'", name, field_name)),
-                    Some(TypeDecl::Enum(_)) => Err(format!(
-                        "Cannot project field '{}' of enum type '{}'",
-                        field_name, name
+                        .ok_or_else(|| {
+                            err(
+                                NoSuchField,
+                                format!("Struct '{}' has no field '{}'", name, field_name),
+                            )
+                        }),
+                    Some(TypeDecl::Enum(_)) => Err(err(
+                        FieldOfNonStruct,
+                        format!(
+                            "Cannot project field '{}' of enum type '{}'",
+                            field_name, name
+                        ),
                     )),
-                    None => Err(format!("Use of undeclared type '{}'", name)),
+                    None => Err(err(
+                        UndeclaredType,
+                        format!("Use of undeclared type '{}'", name),
+                    )),
                 }
             }
             Place::Downcast(inner, variant_name) => {
-                let inner_ty = self.infer_place_type(inner, locals)?;
+                let inner_ty = self.infer_place_type(inner, span, locals)?;
                 let name = match &inner_ty {
                     Type::Custom(n) => n,
-                    _ => return Err(format!("Cannot downcast non-enum type {:?}", inner_ty)),
+                    _ => {
+                        return Err(err(
+                            DowncastOfNonEnum,
+                            format!("Cannot downcast non-enum type {:?}", inner_ty),
+                        ))
+                    }
                 };
                 match self.types.get(name) {
                     Some(TypeDecl::Enum(e)) => e
@@ -224,28 +349,35 @@ impl Env {
                         .find(|v| v.name == *variant_name)
                         .map(|v| v.ty.clone())
                         .ok_or_else(|| {
-                            format!("Enum '{}' has no variant '{}'", name, variant_name)
+                            err(
+                                NoSuchVariant,
+                                format!("Enum '{}' has no variant '{}'", name, variant_name),
+                            )
                         }),
-                    Some(TypeDecl::Struct(_)) => {
-                        Err(format!("Cannot downcast struct type '{}'", name))
-                    }
-                    None => Err(format!("Use of undeclared type '{}'", name)),
+                    Some(TypeDecl::Struct(_)) => Err(err(
+                        DowncastOfNonEnum,
+                        format!("Cannot downcast struct type '{}'", name),
+                    )),
+                    None => Err(err(
+                        UndeclaredType,
+                        format!("Use of undeclared type '{}'", name),
+                    )),
                 }
             }
             Place::Index(inner, op) => {
-                let inner_ty = self.infer_place_type(inner, locals)?;
+                let inner_ty = self.infer_place_type(inner, span, locals)?;
                 let Type::Array(elem, n) = inner_ty else {
-                    return Err(format!(
-                        "Cannot index non-array type {:?}",
-                        inner_ty
+                    return Err(err(
+                        IndexOfNonArray,
+                        format!("Cannot index non-array type {:?}", inner_ty),
                     ));
                 };
                 // Index operand must be an integer type.
-                let op_ty = self.infer_operand_type(op, locals)?;
+                let op_ty = self.infer_operand_type(op, span, locals)?;
                 if !matches!(op_ty, Type::Int(_)) {
-                    return Err(format!(
-                        "Array index must be an integer, got {:?}",
-                        op_ty
+                    return Err(err(
+                        ArrayIndexNotInteger,
+                        format!("Array index must be an integer, got {:?}", op_ty),
                     ));
                 }
                 // Constant-index bounds check. Cheap defensive check
@@ -253,9 +385,9 @@ impl Env {
                 // Dynamic indices are left to the HLL / runtime.
                 if let Some(k) = const_int_operand(op) {
                     if k >= n {
-                        return Err(format!(
-                            "Array index {} out of bounds for [_; {}]",
-                            k, n
+                        return Err(err(
+                            ArrayIndexOutOfBounds,
+                            format!("Array index {} out of bounds for [_; {}]", k, n),
                         ));
                     }
                 }
@@ -264,23 +396,30 @@ impl Env {
         }
     }
 
+    /// See [`infer_place_type`] for the `span` argument's role.
     pub fn infer_operand_type(
         &self,
         op: &Operand,
+        span: Span,
         locals: &IndexMap<String, Type>,
-    ) -> Result<Type, String> {
+    ) -> Result<Type, Diagnostic> {
         match op {
-            Operand::Copy(place) | Operand::Move(place) => self.infer_place_type(place, locals),
+            Operand::Copy(place) | Operand::Move(place) => {
+                self.infer_place_type(place, span, locals)
+            }
             Operand::Const(c) => match c {
                 ConstVal::Int { ty, .. } => Ok(Type::Int(*ty)),
                 ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
                 ConstVal::Boolean(_) => Ok(Type::Boolean),
                 ConstVal::Unit => Ok(Type::Unit),
                 ConstVal::FnName(name) => {
-                    let f = self
-                        .functions
-                        .get(name)
-                        .ok_or_else(|| format!("Undeclared function name '{}'", name))?;
+                    let f = self.functions.get(name).ok_or_else(|| {
+                        Diagnostic::new(
+                            UndeclaredFunction,
+                            span,
+                            format!("Undeclared function name '{}'", name),
+                        )
+                    })?;
                     let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
                     Ok(Type::Fn(param_tys))
                 }
@@ -295,39 +434,55 @@ impl Env {
     pub fn infer_rvalue_type(
         &self,
         rvalue: &RValue,
+        span: Span,
         locals: &IndexMap<String, Type>,
-    ) -> Result<Type, String> {
+    ) -> Result<Type, Diagnostic> {
+        let err = |code, msg: String| Diagnostic::new(code, span, msg);
         match rvalue {
-            RValue::Use(op) => self.infer_operand_type(op, locals),
+            RValue::Use(op) => self.infer_operand_type(op, span, locals),
             RValue::Ref(kind, place) => {
-                let pointee_ty = self.infer_place_type(place, locals)?;
+                let pointee_ty = self.infer_place_type(place, span, locals)?;
                 Ok(Type::Ref(kind.clone(), Box::new(pointee_ty)))
             }
             RValue::RawRef(place) => {
-                let pointee_ty = self.infer_place_type(place, locals)?;
+                let pointee_ty = self.infer_place_type(place, span, locals)?;
                 Ok(Type::RawPtr(Box::new(pointee_ty)))
             }
             RValue::EnumConstr(enum_name, variant_name, op) => {
                 let e_decl = match self.types.get(enum_name) {
                     Some(TypeDecl::Enum(e)) => e,
                     Some(TypeDecl::Struct(_)) => {
-                        return Err(format!("'{}' is a struct, not an enum", enum_name));
+                        return Err(err(
+                            EnumConstrOnNonEnum,
+                            format!("'{}' is a struct, not an enum", enum_name),
+                        ));
                     }
-                    None => return Err(format!("Undeclared enum '{}'", enum_name)),
+                    None => {
+                        return Err(err(
+                            EnumConstrOnNonEnum,
+                            format!("Undeclared enum '{}'", enum_name),
+                        ))
+                    }
                 };
                 let variant = e_decl
                     .variants
                     .iter()
                     .find(|v| v.name == *variant_name)
                     .ok_or_else(|| {
-                        format!("Enum '{}' has no variant '{}'", enum_name, variant_name)
+                        err(
+                            NoSuchVariant,
+                            format!("Enum '{}' has no variant '{}'", enum_name, variant_name),
+                        )
                     })?;
 
-                let op_ty = self.infer_operand_type(op, locals)?;
+                let op_ty = self.infer_operand_type(op, span, locals)?;
                 if !self.types_match(&variant.ty, &op_ty) {
-                    return Err(format!(
-                        "Variant '{}' of enum '{}' expects type {:?}, found {:?}",
-                        variant_name, enum_name, variant.ty, op_ty
+                    return Err(err(
+                        EnumConstrPayloadTypeMismatch,
+                        format!(
+                            "Variant '{}' of enum '{}' expects type {:?}, found {:?}",
+                            variant_name, enum_name, variant.ty, op_ty
+                        ),
                     ));
                 }
 
@@ -341,13 +496,16 @@ impl Env {
                 if ops.is_empty() {
                     return Ok(Type::Array(Box::new(Type::Unit), 0));
                 }
-                let first_ty = self.infer_operand_type(&ops[0], locals)?;
+                let first_ty = self.infer_operand_type(&ops[0], span, locals)?;
                 for (i, op) in ops.iter().enumerate().skip(1) {
-                    let ty = self.infer_operand_type(op, locals)?;
+                    let ty = self.infer_operand_type(op, span, locals)?;
                     if !self.types_match(&first_ty, &ty) {
-                        return Err(format!(
-                            "Array literal element {} has type {:?}, expected {:?}",
-                            i, ty, first_ty
+                        return Err(err(
+                            ArrayLitElementTypeMismatch,
+                            format!(
+                                "Array literal element {} has type {:?}, expected {:?}",
+                                i, ty, first_ty
+                            ),
                         ));
                     }
                 }
@@ -364,22 +522,16 @@ impl Env {
                     let mut seen: HashSet<&str> = HashSet::new();
                     for f in &s.fields {
                         if !seen.insert(f.name.as_str()) {
-                            push_error_at!(
-                                d,
-                                f.span,
-                                "In struct '{}', field '{}' is declared more than once",
-                                s.name,
-                                f.name
+                            d.push_error(
+                                Diagnostic::new(DuplicateStructField, f.span, format!(
+                                        "In struct '{}', field '{}' is declared more than once",
+                                        s.name, f.name
+                                    )),
                             );
                         }
                         if let Err(e) = self.validate_type(&f.ty) {
-                            push_error_at!(
-                                d,
-                                f.span,
-                                "In struct '{}', field '{}': {}",
-                                s.name,
-                                f.name,
-                                e
+                            d.push_error(
+                                Diagnostic::new(InvalidDeclaredType, f.span, format!("In struct '{}', field '{}': {}", s.name, f.name, e)),
                             );
                         }
                     }
@@ -388,22 +540,16 @@ impl Env {
                     let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
                         if !seen.insert(v.name.as_str()) {
-                            push_error_at!(
-                                d,
-                                v.span,
-                                "In enum '{}', variant '{}' is declared more than once",
-                                e.name,
-                                v.name
+                            d.push_error(
+                                Diagnostic::new(DuplicateEnumVariant, v.span, format!(
+                                        "In enum '{}', variant '{}' is declared more than once",
+                                        e.name, v.name
+                                    )),
                             );
                         }
                         if let Err(err) = self.validate_type(&v.ty) {
-                            push_error_at!(
-                                d,
-                                v.span,
-                                "In enum '{}', variant '{}': {}",
-                                e.name,
-                                v.name,
-                                err
+                            d.push_error(
+                                Diagnostic::new(InvalidDeclaredType, v.span, format!("In enum '{}', variant '{}': {}", e.name, v.name, err)),
                             );
                         }
                     }
@@ -420,13 +566,8 @@ impl Env {
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
         for p in &f.params {
             if let Err(e) = self.validate_type(&p.ty) {
-                push_error_at!(
-                    d,
-                    p.span,
-                    "In function '{}', parameter '{}': {}",
-                    f.name,
-                    p.name,
-                    e
+                d.push_error(
+                    Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '{}': {}", f.name, p.name, e)),
                 );
             }
         }
@@ -444,11 +585,11 @@ impl Env {
         };
 
         if body.blocks.is_empty() {
-            push_error_at!(
-                d,
-                f.name_span,
-                "Function '{}' has no entry block: body must contain at least one basic block",
-                f.name
+            d.push_error(
+                Diagnostic::new(NoEntryBlock, f.name_span, format!(
+                        "Function '{}' has no entry block: body must contain at least one basic block",
+                        f.name
+                    )),
             );
             return;
         }
@@ -458,12 +599,11 @@ impl Env {
         let mut locals_map: IndexMap<String, Type> = IndexMap::new();
         for p in &f.params {
             if locals_map.contains_key(&p.name) {
-                push_error_at!(
-                    d,
-                    p.span,
-                    "Duplicate variable name '{}' in parameters of function '{}'",
-                    p.name,
-                    f.name
+                d.push_error(
+                    Diagnostic::new(DuplicateLocalName, p.span, format!(
+                            "Duplicate variable name '{}' in parameters of function '{}'",
+                            p.name, f.name
+                        )),
                 );
             } else {
                 locals_map.insert(p.name.clone(), p.ty.clone());
@@ -471,22 +611,16 @@ impl Env {
         }
         for l in &body.locals {
             if let Err(e) = self.validate_type(&l.ty) {
-                push_error_at!(
-                    d,
-                    l.span,
-                    "In function '{}', local '{}': {}",
-                    f.name,
-                    l.name,
-                    e
+                d.push_error(
+                    Diagnostic::new(InvalidDeclaredType, l.span, format!("In function '{}', local '{}': {}", f.name, l.name, e)),
                 );
             }
             if locals_map.contains_key(&l.name) {
-                push_error_at!(
-                    d,
-                    l.span,
-                    "Duplicate variable name '{}' in locals/parameters of function '{}'",
-                    l.name,
-                    f.name
+                d.push_error(
+                    Diagnostic::new(DuplicateLocalName, l.span, format!(
+                            "Duplicate variable name '{}' in locals/parameters of function '{}'",
+                            l.name, f.name
+                        )),
                 );
             } else {
                 locals_map.insert(l.name.clone(), l.ty.clone());
@@ -524,64 +658,70 @@ impl Env {
         stmt_span: Span,
         locals: &IndexMap<String, Type>,
     ) -> Result<(), Diagnostic> {
+        // Local helper: build a Diagnostic with statement context.
+        let stmt_diag = |code, msg: String| -> Diagnostic {
+            Diagnostic::new(code, stmt_span, msg)
+                .in_function(&func.name)
+                .in_block(&block.label)
+        };
+        // Attach the current function/block to a Diagnostic produced
+        // by an inner helper (which knows its code + span but not the
+        // enclosing context).
+        let with_context = |d: Diagnostic| -> Diagnostic {
+            d.in_function(&func.name).in_block(&block.label)
+        };
         match stmt {
             Statement::Assign(place, rvalue) => {
                 let lhs_ty = self
-                    .infer_place_type(place, locals)
-                    .map_err(|e| fmt_error!(stmt_span, func, block, "assignment LHS: {}", e))?;
+                    .infer_place_type(place, stmt_span, locals)
+                    .map_err(with_context)?;
                 let rhs_ty = self
-                    .infer_rvalue_type(rvalue, locals)
-                    .map_err(|e| fmt_error!(stmt_span, func, block, "assignment RHS: {}", e))?;
+                    .infer_rvalue_type(rvalue, stmt_span, locals)
+                    .map_err(with_context)?;
                 if !self.types_match(&lhs_ty, &rhs_ty) {
-                    return Err(fmt_error!(
-                        stmt_span,
-                        func,
-                        block,
-                        "Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
-                        lhs_ty,
-                        rhs_ty
+                    return Err(stmt_diag(
+                        AssignmentTypeMismatch,
+                        format!(
+                            "Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
+                            lhs_ty, rhs_ty
+                        ),
                     ));
                 }
                 Ok(())
             }
             Statement::Call(target, args) => {
                 let target_ty = self
-                    .infer_operand_type(target, locals)
-                    .map_err(|e| fmt_error!(stmt_span, func, block, "call target: {}", e))?;
+                    .infer_operand_type(target, stmt_span, locals)
+                    .map_err(with_context)?;
 
                 let Type::Fn(param_tys) = target_ty else {
-                    return Err(fmt_error!(
-                        stmt_span,
-                        func,
-                        block,
-                        "Call target is not a function type: {:?}",
-                        target_ty
+                    return Err(stmt_diag(
+                        CallTargetNotFunction,
+                        format!("Call target is not a function type: {:?}", target_ty),
                     ));
                 };
 
                 if args.len() != param_tys.len() {
-                    return Err(fmt_error!(
-                        stmt_span,
-                        func,
-                        block,
-                        "Wrong i64 of arguments for call. Expected {}, found {}",
-                        param_tys.len(),
-                        args.len()
+                    return Err(stmt_diag(
+                        CallWrongArity,
+                        format!(
+                            "Wrong i64 of arguments for call. Expected {}, found {}",
+                            param_tys.len(),
+                            args.len()
+                        ),
                     ));
                 }
                 for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
                     let arg_ty = self
-                        .infer_operand_type(arg, locals)
-                        .map_err(|e| fmt_error!(stmt_span, func, block, "call arg {}: {}", i, e))?;
+                        .infer_operand_type(arg, stmt_span, locals)
+                        .map_err(with_context)?;
                     if !self.types_match(param_ty, &arg_ty) {
-                        return Err(fmt_error!(
-                            stmt_span,
-                            func,
-                            block,
-                            "Call argument {} type mismatch. Expected {:?}, found {:?}",
-                            i,
-                            param_ty,
-                            arg_ty
+                        return Err(stmt_diag(
+                            CallArgTypeMismatch,
+                            format!(
+                                "Call argument {} type mismatch. Expected {:?}, found {:?}",
+                                i, param_ty, arg_ty
+                            ),
                         ));
                     }
                 }
@@ -590,21 +730,18 @@ impl Env {
             Statement::Drop(place) => {
                 // Just resolve the place — any legality (Drop,
                 // currently init) is enforced by the substructural checker.
-                self.infer_place_type(place, locals)
-                    .map_err(|e| fmt_error!(stmt_span, func, block, "drop: {}", e))?;
+                self.infer_place_type(place, stmt_span, locals)
+                    .map_err(with_context)?;
                 Ok(())
             }
             Statement::Unborrow(place) => {
                 let ty = self
-                    .infer_place_type(place, locals)
-                    .map_err(|e| fmt_error!(stmt_span, func, block, "unborrow: {}", e))?;
+                    .infer_place_type(place, stmt_span, locals)
+                    .map_err(with_context)?;
                 if !matches!(ty, Type::Ref(_, _)) {
-                    return Err(fmt_error!(
-                        stmt_span,
-                        func,
-                        block,
-                        "unborrow requires a reference-typed place, found {:?}",
-                        ty
+                    return Err(stmt_diag(
+                        UnborrowNonReference,
+                        format!("unborrow requires a reference-typed place, found {:?}", ty),
                     ));
                 }
                 Ok(())
@@ -621,17 +758,19 @@ impl Env {
         d: &mut Diagnostics,
     ) {
         let ts = block.terminator_span;
+        // Local helper: build a Diagnostic with terminator context.
+        let terminator_diag = |code, msg: String| -> Diagnostic {
+            Diagnostic::new(code, ts, msg)
+                .in_function(&func.name)
+                .in_block(&block.label)
+        };
         match &block.terminator {
             Terminator::Goto(label) => {
                 if !block_labels.contains(label) {
-                    push_error!(
-                        d,
-                        ts,
-                        func,
-                        block,
-                        "goto targets undefined block '{}'",
-                        label
-                    );
+                    d.push_error(terminator_diag(
+                        TypeCheckCode::TerminatorUndefinedTarget,
+                        format!("goto targets undefined block '{}'", label),
+                    ));
                 }
             }
             Terminator::Return => {}
@@ -640,82 +779,69 @@ impl Env {
                 true_label,
                 false_label,
             } => {
-                match self.infer_operand_type(cond, locals) {
-                    Ok(cond_ty) if cond_ty != Type::Boolean => push_error!(
-                        d,
-                        ts,
-                        func,
-                        block,
-                        "branch condition must be boolean, found {:?}",
-                        cond_ty
-                    ),
+                match self.infer_operand_type(cond, ts, locals) {
+                    Ok(cond_ty) if cond_ty != Type::Boolean => d.push_error(terminator_diag(
+                        TypeCheckCode::BranchConditionNotBoolean,
+                        format!("branch condition must be boolean, found {:?}", cond_ty),
+                    )),
                     Ok(_) => {}
-                    Err(e) => push_error!(d, ts, func, block, "branch condition: {}", e),
+                    Err(inner_diag) => d.push_error(
+                        inner_diag
+                            .in_function(&func.name)
+                            .in_block(&block.label),
+                    ),
                 }
                 if !block_labels.contains(true_label) {
-                    push_error!(
-                        d,
-                        ts,
-                        func,
-                        block,
-                        "branch true target undefined block '{}'",
-                        true_label
-                    );
+                    d.push_error(terminator_diag(
+                        TypeCheckCode::TerminatorUndefinedTarget,
+                        format!("branch true target undefined block '{}'", true_label),
+                    ));
                 }
                 if !block_labels.contains(false_label) {
-                    push_error!(
-                        d,
-                        ts,
-                        func,
-                        block,
-                        "branch false target undefined block '{}'",
-                        false_label
-                    );
+                    d.push_error(terminator_diag(
+                        TypeCheckCode::TerminatorUndefinedTarget,
+                        format!("branch false target undefined block '{}'", false_label),
+                    ));
                 }
             }
             Terminator::SwitchEnum { place, cases } => {
                 // Resolve the place to (enum_name, decl) or record an error.
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
-                let enum_decl: Option<&EnumDecl> = match self.infer_place_type(place, locals) {
+                let enum_decl: Option<&EnumDecl> = match self.infer_place_type(place, ts, locals) {
                     Ok(Type::Custom(name)) => match self.types.get(&name) {
                         Some(TypeDecl::Enum(e)) => Some(e),
                         Some(TypeDecl::Struct(_)) => {
-                            push_error!(
-                                d,
-                                ts,
-                                func,
-                                block,
-                                "switchEnum place must be an enum type, found struct '{}'",
-                                name
-                            );
+                            d.push_error(terminator_diag(
+                                TypeCheckCode::SwitchOnNonEnum,
+                                format!(
+                                    "switchEnum place must be an enum type, found struct '{}'",
+                                    name
+                                ),
+                            ));
                             None
                         }
                         None => {
-                            push_error!(
-                                d,
-                                ts,
-                                func,
-                                block,
-                                "Undeclared enum '{}' in switchEnum",
-                                name
-                            );
+                            d.push_error(terminator_diag(
+                                TypeCheckCode::SwitchOnNonEnum,
+                                format!("Undeclared enum '{}' in switchEnum", name),
+                            ));
                             None
                         }
                     },
                     Ok(other) => {
-                        push_error!(
-                            d,
-                            ts,
-                            func,
-                            block,
-                            "switchEnum place must be an enum type, found {:?}",
-                            other
-                        );
+                        d.push_error(terminator_diag(
+                            TypeCheckCode::SwitchOnNonEnum,
+                            format!("switchEnum place must be an enum type, found {:?}", other),
+                        ));
                         None
                     }
-                    Err(e) => {
-                        push_error!(d, ts, func, block, "switchEnum place: {}", e);
+                    Err(inner_diag) => {
+                        d.push_error(
+                            inner_diag
+                                .in_function(&func.name)
+                                .in_block(&block.label),
+                        );
                         None
                     }
                 };
@@ -723,27 +849,23 @@ impl Env {
                 for (variant, label) in cases {
                     if let Some(e_decl) = enum_decl {
                         if !e_decl.variants.iter().any(|v| v.name == *variant) {
-                            push_error!(
-                                d,
-                                ts,
-                                func,
-                                block,
-                                "variant '{}' is not part of enum '{}'",
-                                variant,
-                                e_decl.name
-                            );
+                            d.push_error(terminator_diag(
+                                TypeCheckCode::SwitchArmUnknownVariant,
+                                format!(
+                                    "variant '{}' is not part of enum '{}'",
+                                    variant, e_decl.name
+                                ),
+                            ));
                         }
                     }
                     if !block_labels.contains(label) {
-                        push_error!(
-                            d,
-                            ts,
-                            func,
-                            block,
-                            "switchEnum variant '{}' targets undefined block '{}'",
-                            variant,
-                            label
-                        );
+                        d.push_error(terminator_diag(
+                            TypeCheckCode::TerminatorUndefinedTarget,
+                            format!(
+                                "switchEnum variant '{}' targets undefined block '{}'",
+                                variant, label
+                            ),
+                        ));
                     }
                 }
             }
@@ -770,20 +892,22 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         [] => {}
         [p] if p.ty == expected => {}
         [p] => {
-            push_error_at!(
-                d,
-                p.span,
-                "In function 'main': single parameter must be '&out i32', found {:?}",
-                p.ty
+            d.push_error(
+                Diagnostic::new(MainBadSignature, p.span, format!(
+                        "In function 'main': single parameter must be '&out i32', found {:?}",
+                        p.ty
+                    )),
             );
         }
         _ => {
-            push_error_at!(
-                d,
+            d.push_error(Diagnostic::new(
+                MainBadSignature,
                 f.name_span,
-                "In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
-                f.params.len()
-            );
+                format!(
+                    "In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
+                    f.params.len()
+                ),
+            ));
         }
     }
 }

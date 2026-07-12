@@ -64,7 +64,7 @@ fn check_stmt(
             }
         }
         Statement::Drop(place) => {
-            let Ok(ty) = env.infer_place_type(place, locals) else {
+            let Ok(ty) = env.infer_place_type(place, span, locals) else {
                 return;
             };
             let c = class_of(&ty, env);
@@ -116,7 +116,7 @@ fn check_operand(
         Operand::Move(place) => (place, "move", ClassMarker::Move),
         Operand::Const(_) => return,
     };
-    let Ok(ty) = env.infer_place_type(place, locals) else {
+    let Ok(ty) = env.infer_place_type(place, span, locals) else {
         return;
     };
     let c = class_of(&ty, env);

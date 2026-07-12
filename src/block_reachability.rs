@@ -44,9 +44,9 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
             d.push_warning(
                 crate::diagnostics::Diagnostic::new(
                     crate::diagnostics::DiagCode::Unspecified,
+                    block.label_span,
                     format!("block '{}' is unreachable from entry", block.label),
                 )
-                .at(block.label_span)
                 .in_function(&func.name),
             );
         }

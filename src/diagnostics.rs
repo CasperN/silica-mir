@@ -27,12 +27,20 @@ use crate::ast::Span;
 /// Machine-readable error kind. New variants added over time as
 /// `push_error!` sites are migrated from ad-hoc strings to specific
 /// codes. The default `Unspecified` covers all unmigrated call sites.
+///
+/// Per-pass sub-enums live in each pass's own file (e.g.
+/// `type_check::TypeCheckCode`) and are dispatched by one variant
+/// here per pass. Adding a new code within a pass is a one-line
+/// change in that pass; `diagnostics.rs` only changes when a new
+/// pass is added.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub enum DiagCode {
     /// Sentinel for call sites that haven't been assigned a specific
     /// code yet. Replace with a dedicated variant during migration.
     #[default]
     Unspecified,
+    /// Errors from the type checker (see `type_check::TypeCheckCode`).
+    TypeCheck(crate::type_check::TypeCheckCode),
 }
 
 /// A single compiler diagnostic (error or warning). The container in
@@ -59,23 +67,24 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    /// Build a diagnostic with the two required fields: a code and a
-    /// message. Add optional context via [`at`], [`in_function`],
-    /// [`in_block`].
-    pub fn new(code: DiagCode, message: impl Into<String>) -> Self {
+    /// Build a diagnostic with the three required fields: code, span,
+    /// and message. Add optional context via [`in_function`] and
+    /// [`in_block`]. `code` accepts anything that converts into a
+    /// `DiagCode`, so per-pass code enums can be passed directly
+    /// (e.g., `Diagnostic::new(TypeCheckCode::NoEntryBlock, span, msg)`).
+    ///
+    /// A span is required because every diagnostic needs a source
+    /// location — that's what makes it addressable in editors, LSP,
+    /// and error output. Callers that don't have a span at
+    /// construction time should build closer to the error site.
+    pub fn new(code: impl Into<DiagCode>, span: Span, message: impl Into<String>) -> Self {
         Diagnostic {
-            code,
-            span: Span::default(),
+            code: code.into(),
+            span,
             function: String::new(),
             block: String::new(),
             message: message.into(),
         }
-    }
-
-    /// Attach a source position.
-    pub fn at(mut self, span: Span) -> Self {
-        self.span = span;
-        self
     }
 
     /// Attach an enclosing function name.
@@ -208,13 +217,14 @@ macro_rules! fmt_error {
     ($span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {
         $crate::diagnostics::Diagnostic::new(
             $crate::diagnostics::DiagCode::Unspecified,
+            $span,
             format!($($fmt)*),
         )
-        .at($span)
         .in_function(&$func.name)
         .in_block(&$block.label)
     };
 }
+
 
 /// Push an error with the standard `at L:C: In function 'f', block 'b':`
 /// prefix into `d`.
@@ -224,6 +234,7 @@ macro_rules! push_error {
         $d.push_error($crate::fmt_error!($span, $func, $block, $($fmt)*));
     }};
 }
+
 
 /// Push an error with just a span (no function/block context) into
 /// `d`. Used at declaration scope — before we have a Function or
@@ -235,12 +246,13 @@ macro_rules! push_error_at {
         $d.push_error(
             $crate::diagnostics::Diagnostic::new(
                 $crate::diagnostics::DiagCode::Unspecified,
+                $span,
                 format!($($fmt)*),
             )
-            .at($span)
         );
     }};
 }
+
 
 /// Push a warning with the same prefix as `push_error!` into `d`.
 #[macro_export]
