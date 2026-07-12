@@ -17,6 +17,8 @@ mod variant_flow;
 #[cfg(test)]
 mod array_tests;
 #[cfg(test)]
+mod programs;
+#[cfg(test)]
 mod raw_ptr_tests;
 #[cfg(test)]
 mod test_util;

@@ -497,12 +497,24 @@ for production correctness).
 
 # Punch list
 - HLL
+- Special $return MIR variable that maps to the return place in the HLL and
+in LLVM.
 - reachable/flow analysis for booleans too. Or should boolean be an enum?
 - Design MIR coroutines and effect decls.
 - Elaborate `drop p` if `p` is initialized and being assigned to or
   sent to an `&out` function. Blocked on custom `Drop::drop`
   landing — today drop is bitwise-forget, so this doesn't matter for
   correctness.
+- **Variant_flow doesn't detect uninhabited variants.** `enum { A: i64,
+  N: never }` — the `N` arm is provably unreachable (no `never`
+  value can exist to wrap), but variant_flow rejects an
+  `unreachable` terminator there with "variant is reachable at this
+  point". Fix: start refinement from the smaller "inhabited-only"
+  variant set for enums with any `never`-typed payloads. Or
+  propagate uninhabitedness through construction so
+  `Wrap::N(...)` is itself unspellable.
+  Pinned by
+  `programs::enum_with_never_variant_uninhabited_arm_not_detected_gap`.
 - No-alias raw pointer variant (`*noalias T`) — currently we only have
   the aliasing `*T`. Would enable `noalias` attributes on parameters
   where the checker can prove exclusivity.
