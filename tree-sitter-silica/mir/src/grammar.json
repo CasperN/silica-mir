@@ -316,6 +316,10 @@
           ]
         },
         {
+          "type": "SYMBOL",
+          "name": "identifier"
+        },
+        {
           "type": "SEQ",
           "members": [
             {
@@ -376,10 +380,6 @@
               "value": ")"
             }
           ]
-        },
-        {
-          "type": "SYMBOL",
-          "name": "identifier"
         }
       ]
     },

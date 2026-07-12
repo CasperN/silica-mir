@@ -1449,6 +1449,23 @@ mod tests {
     }
 
     #[test]
+    fn mir_fn_type_rejects_return_arrow() {
+        // MIR's `fn(T,...)` type has no return arrow — returns go
+        // through `&out $return` params. If someone writes an HLL-style
+        // `fn(i64) -> i64` in a .sim file, the arrow tokens shouldn't
+        // parse (they belong to HLL's grammar variant, not MIR's).
+        let src = "fn f(g: fn(i64) -> i64) { entry: return }";
+        let diags = Parser::new(src.to_string())
+            .parse()
+            .expect_err("`->` in MIR fn type should be a syntax error");
+        assert!(
+            diags.error_count() >= 1,
+            "expected at least one syntax error, got {}",
+            diags.error_count()
+        );
+    }
+
+    #[test]
     fn struct_decl_accepts_whitespace_or_comma_separators() {
         // MIR struct/enum decls tolerate either whitespace-only or
         // comma-separated fields. Locked in so we don't accidentally

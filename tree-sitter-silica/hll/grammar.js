@@ -46,6 +46,18 @@ module.exports = grammar({
 
     ...common.rules,
 
+    // HLL type grammar: shared alternatives plus `fn(T,...)` with
+    // an optional `-> R` return arrow. Return type defaults to
+    // `unit` when the arrow is omitted.
+    type: $ => choice(
+      ...common.typeChoices($),
+      seq(
+        'fn',
+        '(', common.commaSep($.type), ')',
+        optional(seq('->', field('return_type', $.type))),
+      ),
+    ),
+
     // HLL struct/enum decls: mandatory comma between fields.
     // `commaSep` already tolerates a trailing comma.
     struct_decl: $ => seq(

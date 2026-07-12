@@ -315,10 +315,12 @@ variant     = identifier : type
 fn_decl = fn identifier ( param , ..., ) [ -> type ] block_expr
 param   = identifier : type
 
-# Types — identical to MIR (see below), sharing the same tree-sitter
-# common rule. `fn(T,...)` types do not yet spell a return arrow at the
-# surface; MIR interpretation is unit-returning.
-type = ...   # see MIR Types
+# Types — same as MIR for the shared alternatives (scalars, refs,
+# raw pointers, arrays, custom names) plus HLL's function-type
+# variant `fn(T,...) [-> R]` with an optional return arrow (defaults
+# to `unit` when omitted). MIR's function type has no arrow because
+# MIR returns go through `&out $return` parameters.
+type = ...   # see MIR Types, plus `fn(T,...) [-> R]`
 
 # Statements: `let` binding or expression-statement.
 stmt = let [mut] identifier [: type] = expr ;
@@ -621,14 +623,10 @@ for production correctness).
   where the checker can prove exclusivity.
 
 ## HLL
-- Surface syntax for function types with a return arrow
-  (`fn(T,...) -> R`). Currently only `fn(T,...)` parses and
-  defaults to a unit return. Blocks lambdas from reading naturally.
 - Enforce `let mut`. The `is_mut` flag is stored on `Stmt::Let` but
-  no pass checks that non-mut bindings aren't reassigned.
-- Revisit `Move` auto-derive. Current README section says
-  `Copy + Drop` auto-derives `Move`; the newer immovable-by-default
-  design says `Move` should be an explicit opt-in marker. Reconcile.
+  no pass checks that non-mut bindings aren't reassigned. Planned
+  as a dedicated `hll/mut_check.rs` pass between typecheck and
+  lowering.
 
 ## Elaboration gaps
 - Drop insertion *order* within a return block is a HLL responsibility

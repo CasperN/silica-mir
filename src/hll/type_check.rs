@@ -659,4 +659,56 @@ mod tests {
         let res = check_program(source);
         assert!(res.is_ok(), "Expected success, got: {:?}", res);
     }
+
+    #[test]
+    fn typecheck_call_through_fn_typed_param() {
+        // Calling through a fn-typed parameter: the return type
+        // flows correctly to the assignment binding. Exercises the
+        // return-arrow surface syntax through both parser and
+        // type checker.
+        let source = "
+            fn caller(f: fn(i64) -> i64) -> i64 {
+                let x: i64 = f(42);
+                x
+            }
+        ";
+        assert!(check_program(source).is_ok(), "expected type-check success");
+    }
+
+    #[test]
+    fn typecheck_fn_typed_param_return_type_mismatch_is_error() {
+        // If the declared return type of the fn-typed param is `i64`
+        // but the binding demands `bool`, the type checker catches
+        // it. Confirms the arrow's return type is actually consulted
+        // (not silently dropped and defaulted to unit).
+        let source = "
+            fn caller(f: fn(i64) -> i64) -> bool {
+                let b: bool = f(1);
+                b
+            }
+        ";
+        let res = check_program(source);
+        assert!(res.is_err(), "expected type mismatch, got Ok");
+        let err = res.unwrap_err();
+        assert!(
+            err.contains("type mismatch") || err.contains("expected"),
+            "expected a type mismatch message, got: {}",
+            err
+        );
+    }
+
+    #[test]
+    fn typecheck_fn_typed_param_arity_mismatch_is_error() {
+        // Wrong number of arguments is caught. Verifies the parser
+        // filled the param list correctly (previous walker bug
+        // would have accidentally included the return type as an
+        // extra param, breaking arity).
+        let source = "
+            fn caller(f: fn(i64, bool) -> i64) -> i64 {
+                f(1)
+            }
+        ";
+        let res = check_program(source);
+        assert!(res.is_err(), "expected arity error");
+    }
 }

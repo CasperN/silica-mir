@@ -21,8 +21,33 @@ function commaSep(rule) {
   return optional(seq(rule, repeat(seq(',', rule)), optional(',')));
 }
 
+// Shared alternatives for the `type` grammar rule. Returned as an
+// array so each language grammar can spread these into its own
+// `type: choice(...)` alongside a language-specific `fn(...)` variant
+// — HLL has `fn(T,...) [-> R]`, MIR has `fn(T,...)` with no arrow.
+// `$` is the calling grammar's `$` so `$.type` recurses correctly.
+function typeChoices($) {
+  return [
+    'i8', 'i16', 'i32', 'i64',
+    'u8', 'u16', 'u32', 'u64',
+    'f32', 'f64',
+    'bool',
+    'unit',
+    'never',
+    prec(2, seq('&', $.type)),
+    prec(2, seq('&mut', $.type)),
+    prec(2, seq('&out', $.type)),
+    prec(2, seq('&drop', $.type)),
+    prec(2, seq('&uninit', $.type)),
+    prec(2, seq('*', $.type)),
+    seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
+    $.identifier, // struct / enum name
+  ];
+}
+
 module.exports = {
   commaSep,
+  typeChoices,
 
   rules: {
     // Line comment. Same syntax in both languages: `# ...` to end of line.
@@ -76,28 +101,9 @@ module.exports = {
       field('type', $.type),
     ),
 
-    // Type grammar. Identical between HLL and MIR — both languages
-    // share references (five kinds tracking init state), raw
-    // pointers, fixed arrays, `fn(...)` function types, and custom
-    // struct/enum names.
-    type: $ => choice(
-      'i8', 'i16', 'i32', 'i64',
-      'u8', 'u16', 'u32', 'u64',
-      'f32', 'f64',
-      'bool',
-      'unit',
-      'never',
-      prec(2, seq('&', $.type)),
-      prec(2, seq('&mut', $.type)),
-      prec(2, seq('&out', $.type)),
-      prec(2, seq('&drop', $.type)),
-      prec(2, seq('&uninit', $.type)),
-      // Raw pointer type. Aliasing allowed; no loan/lifetime tracking.
-      prec(2, seq('*', $.type)),
-      // Fixed-size array `[T; N]`. N must be an integer literal.
-      seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
-      seq('fn', '(', commaSep($.type), ')'),
-      $.identifier, // struct / enum name
-    ),
+    // NOTE: `type` is defined per-language, not here. Each language
+    // grammar composes the shared alternatives (`typeChoices($)`)
+    // with its own `fn(...)` variant — HLL includes the optional
+    // return arrow, MIR does not.
   },
 };

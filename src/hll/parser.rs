@@ -390,14 +390,25 @@ impl Parser {
             return Ok(Type::Array(Box::new(self.map_type(elem)?), len as usize));
         }
         if text == "fn" {
+            // `fn(T,...) [-> R]`. The optional `return_type` field
+            // sits outside the paren-delimited params. Iterate all
+            // `type` children for params, skipping the return-type
+            // node when present; default to unit if the arrow was
+            // omitted.
+            let ret_node = node.child_by_field_name("return_type");
             let mut params = Vec::new();
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
-                if child.kind() == "type" {
+                if child.kind() == "type" && Some(child) != ret_node {
                     params.push(self.map_type(child)?);
                 }
             }
-            return Ok(Type::Fn(params, Box::new(Type::Unit)));
+            let ret_ty = if let Some(rt) = ret_node {
+                self.map_type(rt)?
+            } else {
+                Type::Unit
+            };
+            return Ok(Type::Fn(params, Box::new(ret_ty)));
         }
         Err(self.diag(
             first,
@@ -1139,6 +1150,121 @@ mod tests {
             }\n";
         let program = Parser::new(with).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
+    }
+
+    /// Helper: extract the parameter list of the first function in
+    /// `source`. Used by the fn-type tests below.
+    fn first_fn_params(source: &str) -> Vec<Param> {
+        let program = Parser::new(source)
+            .parse()
+            .unwrap_or_else(|d| panic!("parse error:\n{}", d.errors_str().join("\n")));
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!("expected fn declaration");
+        };
+        f.params.clone()
+    }
+
+    #[test]
+    fn fn_type_with_return_arrow() {
+        // `fn(i64) -> i64` → Type::Fn([i64], i64).
+        let params = first_fn_params("fn caller(f: fn(i64) -> i64) {}");
+        let Type::Fn(p, r) = &params[0].ty else {
+            panic!("expected Fn type, got {:?}", params[0].ty);
+        };
+        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64)]);
+        assert_eq!(**r, Type::Int(IntTy::I64));
+    }
+
+    #[test]
+    fn fn_type_without_arrow_defaults_to_unit() {
+        // `fn(i64)` → Type::Fn([i64], unit). The arrow is optional;
+        // absence means the callee returns `unit`.
+        let params = first_fn_params("fn caller(f: fn(i64)) {}");
+        let Type::Fn(p, r) = &params[0].ty else {
+            panic!("expected Fn type, got {:?}", params[0].ty);
+        };
+        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64)]);
+        assert_eq!(**r, Type::Unit);
+    }
+
+    #[test]
+    fn fn_type_zero_params_no_arrow() {
+        // `fn()` — nullary, no arrow → Fn([], unit).
+        let params = first_fn_params("fn caller(f: fn()) {}");
+        let Type::Fn(p, r) = &params[0].ty else {
+            panic!()
+        };
+        assert!(p.is_empty(), "expected empty param list, got {:?}", p);
+        assert_eq!(**r, Type::Unit);
+    }
+
+    #[test]
+    fn fn_type_zero_params_with_arrow() {
+        // `fn() -> i64` — nullary with arrow → Fn([], i64).
+        let params = first_fn_params("fn caller(f: fn() -> i64) {}");
+        let Type::Fn(p, r) = &params[0].ty else {
+            panic!()
+        };
+        assert!(p.is_empty());
+        assert_eq!(**r, Type::Int(IntTy::I64));
+    }
+
+    #[test]
+    fn fn_type_multi_param() {
+        // `fn(i64, bool) -> bool` — verifies that all params in a
+        // multi-arg list are collected, and the arrow'd return type
+        // isn't accidentally included in the param list (my earlier
+        // walker bug would have added it as a param).
+        let params = first_fn_params("fn caller(f: fn(i64, bool) -> bool) {}");
+        let Type::Fn(p, r) = &params[0].ty else {
+            panic!()
+        };
+        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64), Type::Bool]);
+        assert_eq!(**r, Type::Bool);
+    }
+
+    #[test]
+    fn fn_type_nested_as_param() {
+        // `fn(fn(i64)) -> bool` — the fn-typed param is itself a
+        // fn type. Exercises the walker's recursion.
+        let params = first_fn_params("fn caller(f: fn(fn(i64)) -> bool) {}");
+        let Type::Fn(outer_p, outer_r) = &params[0].ty else {
+            panic!()
+        };
+        assert_eq!(outer_p.len(), 1);
+        let Type::Fn(inner_p, inner_r) = &outer_p[0] else {
+            panic!("expected nested Fn type, got {:?}", outer_p[0]);
+        };
+        assert_eq!(inner_p.as_slice(), &[Type::Int(IntTy::I64)]);
+        assert_eq!(**inner_r, Type::Unit);
+        assert_eq!(**outer_r, Type::Bool);
+    }
+
+    #[test]
+    fn fn_type_returns_fn_type() {
+        // `fn(i64) -> fn()` — the arrow's return type is itself a
+        // fn type. Verifies the walker doesn't confuse where the
+        // return type ends.
+        let params = first_fn_params("fn caller(f: fn(i64) -> fn()) {}");
+        let Type::Fn(p, r) = &params[0].ty else {
+            panic!()
+        };
+        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64)]);
+        let Type::Fn(ret_p, ret_r) = &**r else {
+            panic!("expected Fn as return, got {:?}", r);
+        };
+        assert!(ret_p.is_empty());
+        assert_eq!(**ret_r, Type::Unit);
+    }
+
+    #[test]
+    fn fn_type_trailing_comma_in_params() {
+        // `fn(i64, bool,)` — trailing comma tolerated by commaSep.
+        let params = first_fn_params("fn caller(f: fn(i64, bool,) -> bool) {}");
+        let Type::Fn(p, _) = &params[0].ty else {
+            panic!()
+        };
+        assert_eq!(p.len(), 2);
     }
 
     #[test]

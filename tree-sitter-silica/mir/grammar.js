@@ -29,6 +29,14 @@ module.exports = grammar({
 
     ...common.rules,
 
+    // MIR type grammar: shared alternatives plus `fn(T,...)` with
+    // NO return arrow. MIR returns go through `&out $return` params,
+    // so function types don't carry a return position.
+    type: $ => choice(
+      ...common.typeChoices($),
+      seq('fn', '(', common.commaSep($.type), ')'),
+    ),
+
     // MIR struct/enum decls: separators between fields are either
     // whitespace or `,`. Existing test programs use whitespace-only;
     // commas are also accepted so hand-written MIR can use whichever
