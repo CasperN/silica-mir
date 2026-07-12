@@ -1449,6 +1449,26 @@ mod tests {
     }
 
     #[test]
+    fn struct_decl_accepts_whitespace_or_comma_separators() {
+        // MIR struct/enum decls tolerate either whitespace-only or
+        // comma-separated fields. Locked in so we don't accidentally
+        // regress to whitespace-only.
+        let ws = "struct P { x: i64 y: i64 }";
+        let comma = "struct P { x: i64, y: i64 }";
+        let mixed = "struct P { x: i64, y: i64 }";
+        let trailing = "struct P { x: i64, y: i64, }";
+        for src in [ws, comma, mixed, trailing] {
+            let prog = Parser::new(src.to_string())
+                .parse()
+                .unwrap_or_else(|d| panic!("expected parse OK for {:?}: {:?}", src, d));
+            let Declaration::Struct(s) = &prog.declarations[0] else {
+                panic!()
+            };
+            assert_eq!(s.fields.len(), 2, "for source: {:?}", src);
+        }
+    }
+
+    #[test]
     fn bool_type_keyword_parses_as_type_bool() {
         // Regression: the grammar previously spelled the boolean type
         // keyword as `boolean` while the rest of the codebase (Rust

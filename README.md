@@ -544,9 +544,10 @@ in LLVM.
   HLL parser once the tree-sitter HLL grammar reaches parity.
 - Round-trip corpus test (`pretty_print → parse → pretty_print`)
   as an anti-drift check between grammar and codebase.
-- Switch MIR struct/enum decl syntax to `,`-separated fields
-  (mandatory comma, optional trailing) to match HLL and general
-  Rust conventions. Currently whitespace-only.
+- Tighten MIR struct/enum decl separators from
+  whitespace-or-comma (current: either works) to comma-required-
+  optional-trailing to match HLL. Currently permissive to keep
+  existing MIR programs working.
 - Allow an optional trailing `;` after MIR terminators
   (`return;`, `goto foo;`, ...) — currently rejected, which is
   irritating when writing MIR by hand.

@@ -946,4 +946,218 @@ mod tests {
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
     }
+
+    // Helper: extract the initializer of the first `let` statement
+    // in the first function's block body. Used by the postfix/prefix
+    // precedence tests to pull out an `Expr` without repeated
+    // pattern-match boilerplate.
+    fn first_let_init(program: &Program) -> Expr {
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!("expected fn");
+        };
+        let ExprKind::Block(stmts, _) = &f.body.kind else {
+            panic!("expected block body");
+        };
+        let Stmt::Let { init, .. } = &stmts[0] else {
+            panic!("expected let stmt");
+        };
+        init.clone()
+    }
+
+    #[test]
+    fn postfix_deref_then_field_nests_correctly() {
+        // Regression: `n.*.value` must parse as
+        // FieldAccess(Deref(n), "value"), not something that skips
+        // the deref. When _expr_postfix was a hidden rule and the
+        // walker walked the flat inlined children, this got the
+        // deref/field ordering wrong.
+        let source = "fn f(n: *Point) { let v = n.*.value; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::FieldAccess(inner, field) = init.kind else {
+            panic!("expected FieldAccess, got {:?}", init.kind);
+        };
+        assert_eq!(field, "value");
+        assert!(
+            matches!(inner.kind, ExprKind::Deref(_)),
+            "expected deref inside field access, got {:?}",
+            inner.kind
+        );
+    }
+
+    #[test]
+    fn chained_field_access() {
+        // `a.b.c` → FieldAccess(FieldAccess(a, b), c).
+        let source = "fn f(a: Point) { let x = a.b.c; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::FieldAccess(outer, c) = init.kind else {
+            panic!("expected FieldAccess outer");
+        };
+        assert_eq!(c, "c");
+        let ExprKind::FieldAccess(_, b) = &outer.kind else {
+            panic!("expected FieldAccess inner");
+        };
+        assert_eq!(b, "b");
+    }
+
+    #[test]
+    fn chained_array_index() {
+        // `a[0][1]` → Index(Index(a, 0), 1).
+        let source = "fn f(a: [[i64; 2]; 2]) { let x = a[0][1]; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::ArrayIndex(outer, _) = init.kind else {
+            panic!("expected ArrayIndex outer");
+        };
+        assert!(matches!(outer.kind, ExprKind::ArrayIndex(_, _)));
+    }
+
+    #[test]
+    fn call_then_field() {
+        // `f().x` → FieldAccess(Call(f), "x"). Verifies postfix
+        // chains work across mixed operator kinds.
+        let source = "fn f() { let v = g().x; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::FieldAccess(target, x) = init.kind else {
+            panic!("expected FieldAccess");
+        };
+        assert_eq!(x, "x");
+        assert!(matches!(target.kind, ExprKind::Call(_, _)));
+    }
+
+    #[test]
+    fn borrow_binds_looser_than_field_access() {
+        // `&x.y` must parse as `&(x.y)`, not `(&x).y` — prefix
+        // borrows are prec 10, postfix operators are prec 20.
+        let source = "fn f(x: Point) { let r = &x.y; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::Borrow(_, inner) = init.kind else {
+            panic!("expected Borrow, got {:?}", init.kind);
+        };
+        assert!(
+            matches!(inner.kind, ExprKind::FieldAccess(_, _)),
+            "expected FieldAccess inside Borrow, got {:?}",
+            inner.kind
+        );
+    }
+
+    #[test]
+    fn assignment_is_right_associative() {
+        // `a = b = c` → Assign(a, Assign(b, c)). The rhs recursion
+        // in the grammar uses `_expr_assignment` (not `_expr_prefix`)
+        // to make the chain right-associative.
+        let source = "fn f() { a = b = c; }";
+        let program = Parser::new(source).parse().unwrap();
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!("expected fn");
+        };
+        let ExprKind::Block(stmts, _) = &f.body.kind else {
+            panic!("expected block");
+        };
+        let Stmt::Expr(e) = &stmts[0] else {
+            panic!("expected expr stmt");
+        };
+        let ExprKind::Assign(_lhs, rhs) = &e.kind else {
+            panic!("expected outer assign");
+        };
+        assert!(
+            matches!(rhs.kind, ExprKind::Assign(_, _)),
+            "expected inner assign as rhs (right-assoc), got {:?}",
+            rhs.kind
+        );
+    }
+
+    #[test]
+    fn trailing_comma_in_struct_decl() {
+        // `commaSep` in the common grammar accepts an optional
+        // trailing comma. Verify both with and without trailing.
+        let with = Parser::new("struct P { x: i64, y: i64, }")
+            .parse()
+            .unwrap();
+        let without = Parser::new("struct P { x: i64, y: i64 }")
+            .parse()
+            .unwrap();
+        let Declaration::Struct(a) = &with.declarations[0] else {
+            panic!()
+        };
+        let Declaration::Struct(b) = &without.declarations[0] else {
+            panic!()
+        };
+        assert_eq!(a.fields.len(), 2);
+        assert_eq!(b.fields.len(), 2);
+    }
+
+    #[test]
+    fn trailing_comma_in_enum_decl() {
+        let src = "enum E { A: unit, B: i64, }";
+        let program = Parser::new(src).parse().unwrap();
+        let Declaration::Enum(e) = &program.declarations[0] else {
+            panic!()
+        };
+        assert_eq!(e.variants.len(), 2);
+    }
+
+    #[test]
+    fn empty_function_body() {
+        // `fn f() {}` — empty block, no trailing expression, unit
+        // return.
+        let program = Parser::new("fn f() {}").parse().unwrap();
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!()
+        };
+        let ExprKind::Block(stmts, tail) = &f.body.kind else {
+            panic!("expected block body")
+        };
+        assert!(stmts.is_empty());
+        assert!(tail.is_none());
+    }
+
+    #[test]
+    fn return_and_break_without_value() {
+        // `return` and `break` with no expression carry `None`.
+        let program = Parser::new(
+            "fn f() {
+                loop {
+                    break;
+                };
+                return;
+            }",
+        )
+        .parse()
+        .unwrap();
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn line_comments_are_ignored() {
+        // `# ...` line comments are declared as tree-sitter `extras`
+        // and skipped by the lexer. Same source with and without
+        // comments should produce equivalent AST.
+        let with = "\
+            # a header comment\n\
+            fn f(a: i64) -> i64 {\n\
+              # inline comment\n\
+              a\n\
+            }\n";
+        let program = Parser::new(with).parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn syntax_errors_emit_multiple_diagnostics() {
+        // Regression against the pre-hoist single-error fallback.
+        // Two otherwise-valid functions each containing an invalid
+        // statement — tree-sitter's error recovery should treat the
+        // two errors as independent and emit a diagnostic for each.
+        let src = "\
+            fn a() { @@; }\n\
+            fn b() { @@; }\n";
+        let diags = Parser::new(src)
+            .parse()
+            .expect_err("two broken functions");
+        assert!(
+            diags.error_count() >= 2,
+            "expected ≥2 errors, got {}: {:?}",
+            diags.error_count(),
+            diags.errors_str()
+        );
+    }
 }

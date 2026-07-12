@@ -29,14 +29,16 @@ module.exports = grammar({
 
     ...common.rules,
 
-    // MIR struct/enum decls: whitespace-only between fields, no
-    // commas. Matches the terse programs.rs style.
+    // MIR struct/enum decls: separators between fields are either
+    // whitespace or `,`. Existing test programs use whitespace-only;
+    // commas are also accepted so hand-written MIR can use whichever
+    // reads best.
     struct_decl: $ => seq(
       'struct',
       optional($.markers),
       field('name', $.identifier),
       '{',
-      repeat($.struct_field),
+      repeat(seq($.struct_field, optional(','))),
       '}',
     ),
     enum_decl: $ => seq(
@@ -44,7 +46,7 @@ module.exports = grammar({
       optional($.markers),
       field('name', $.identifier),
       '{',
-      repeat($.enum_variant),
+      repeat(seq($.enum_variant, optional(','))),
       '}',
     ),
 
