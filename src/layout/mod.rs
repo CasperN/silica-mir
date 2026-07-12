@@ -27,7 +27,22 @@
 //! problem — it only walks the declared-type graph.
 
 use crate::ast::*;
-use crate::diagnostics::Diagnostics;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+
+/// Machine-readable codes emitted by the layout pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LayoutCode {
+    /// Struct/enum recursion by value: type participates in a cycle
+    /// where at least one edge is a by-value field or variant payload.
+    /// Break with a reference or function-pointer indirection.
+    RecursiveTypeByValue,
+}
+
+impl From<LayoutCode> for DiagCode {
+    fn from(code: LayoutCode) -> DiagCode {
+        DiagCode::Layout(code)
+    }
+}
 use crate::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
@@ -138,13 +153,14 @@ fn report_cycle(scc: &[String], env: &Env, d: &mut Diagnostics) {
     let head = &scc[0];
     let span = decl_span(head, env);
     let members = scc.join(", ");
-    crate::push_error_at!(
-        d,
+    d.push_error(Diagnostic::new(
+        LayoutCode::RecursiveTypeByValue,
         span,
-        "type '{}' is recursive by value (cycle: {}). Break the cycle by wrapping a field/variant payload in a reference.",
-        head,
-        members
-    );
+        format!(
+            "type '{}' is recursive by value (cycle: {}). Break the cycle by wrapping a field/variant payload in a reference.",
+            head, members
+        ),
+    ));
 }
 
 fn decl_span(name: &str, env: &Env) -> Span {

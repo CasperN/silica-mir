@@ -18,12 +18,48 @@
 //! disagreement checks.
 
 use crate::ast::*;
-use crate::diagnostics::Diagnostics;
-use crate::init_state::{self, InitState, PointState};
-use crate::push_error;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::init_state::{self, InitState, InitStateCode, PointState};
 use crate::substructural::composition::class_of;
 use crate::type_check::Env;
 use indexmap::IndexMap;
+
+/// Machine-readable codes emitted by the substructural per-statement
+/// checker.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubstructuralCheckCode {
+    /// `drop p` where `p`'s type doesn't have the `Drop` marker.
+    DropOfNonDrop,
+    /// `copy p` operand where `p`'s type doesn't have the `Copy`
+    /// marker.
+    CopyOfNonCopy,
+    /// `move p` operand where `p`'s type doesn't have the `Move`
+    /// marker.
+    MoveOfNonMove,
+    /// At `return`, some non-ref path is still `Init` (or `Diverged`)
+    /// — the value would leak. After elaboration, this means the
+    /// drop-elaborator couldn't insert enough drops.
+    ReturnValueLeak,
+}
+
+impl From<SubstructuralCheckCode> for DiagCode {
+    fn from(code: SubstructuralCheckCode) -> DiagCode {
+        DiagCode::SubstructuralCheck(code)
+    }
+}
+use SubstructuralCheckCode::*;
+
+fn diag(
+    code: impl Into<DiagCode>,
+    span: Span,
+    func: &Function,
+    block: &BasicBlock,
+    msg: String,
+) -> Diagnostic {
+    Diagnostic::new(code, span, msg)
+        .in_function(&func.name)
+        .in_block(&block.label)
+}
 
 /// Class-precondition checks over statements (does not include
 /// `check_return_leaks`, which callers run separately after elaboration).
@@ -69,7 +105,13 @@ fn check_stmt(
             };
             let c = class_of(&ty, env);
             if !c.drop {
-                push_error!(d, span, func, block, "cannot drop non-Drop type {:?}", ty);
+                d.push_error(diag(
+                    DropOfNonDrop,
+                    span,
+                    func,
+                    block,
+                    format!("cannot drop non-Drop type {:?}", ty),
+                ));
             }
         }
         Statement::Unborrow(_) => {
@@ -125,19 +167,17 @@ fn check_operand(
         ClassMarker::Move => c.mov,
     };
     if !ok {
-        push_error!(
-            d,
+        let (code, marker_name) = match needed {
+            ClassMarker::Copy => (CopyOfNonCopy, "Copy"),
+            ClassMarker::Move => (MoveOfNonMove, "Move"),
+        };
+        d.push_error(diag(
+            code,
             span,
             func,
             block,
-            "cannot {} non-{} type {:?}",
-            kind_name,
-            match needed {
-                ClassMarker::Copy => "Copy",
-                ClassMarker::Move => "Move",
-            },
-            ty
-        );
+            format!("cannot {} non-{} type {:?}", kind_name, marker_name, ty),
+        ));
     }
 }
 
@@ -202,32 +242,112 @@ fn check_leaks_in_state(
         let mut leaks = Vec::new();
         find_leaks(env, s, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
-            push_error!(
-                d,
+            d.push_error(diag(
+                ReturnValueLeak,
                 block.terminator_span,
                 func,
                 block,
-                "value '{}' of type {:?} is not consumed at return",
-                leaked_path,
-                leaked_ty
-            );
+                format!(
+                    "value '{}' of type {:?} is not consumed at return",
+                    leaked_path, leaked_ty
+                ),
+            ));
         }
     }
 
     // Reference obligations: any ref-typed path whose is_init != ends_init
-    // at return leaks — the loan wasn't discharged.
+    // at return leaks — the loan wasn't discharged. Shares the code with
+    // the silent-forget sites in init_state (drop, overwrite, unborrow):
+    // same obligation failure, just witnessed at a different point.
     for (place, rs) in &state.refs {
         if rs.obligation_fulfilled() {
             continue;
         }
-        push_error!(
-            d, block.terminator_span, func, block,
-            "reference '{}' has unfulfilled obligation at return (is_init={}, ends_init={})",
-            format_place(place), rs.is_init, rs.ends_init
-        );
+        d.push_error(diag(
+            InitStateCode::RefObligationUnfulfilled,
+            block.terminator_span,
+            func,
+            block,
+            format!(
+                "reference '{}' has unfulfilled obligation at return (is_init={}, ends_init={})",
+                format_place(place),
+                rs.is_init,
+                rs.ends_init
+            ),
+        ));
     }
 }
 
+
+#[cfg(test)]
+mod tests {
+    use crate::diagnostics::DiagCode;
+    use crate::init_state::InitStateCode;
+    use crate::test_util::*;
+
+    /// Pins the interaction between NLL elaboration and the return-time
+    /// obligation checks: for a struct-field ref with an unfulfilled
+    /// obligation, exactly one error fires and it comes from init_state,
+    /// not from `check_return_leaks`.
+    ///
+    /// The construction (`s.r = &drop x` with no later use) leaves
+    /// `state.refs[s.r]` at `(is_init=true, ends_init=false)`. NLL then
+    /// inserts `unborrow s.r` before `return`, and post-elab init_state
+    /// fires `RefObligationUnfulfilled` at that inserted statement via
+    /// `close_ref_if_present`. The unborrow also consumes s.r, so by
+    /// the time `check_return_leaks` runs `s` is `Moved` (no value-
+    /// leak report) and `state.refs` is empty (no obligation-loop
+    /// report). If NLL ever stops inserting the unborrow, or
+    /// `check_return_leaks` starts firing an independent report on the
+    /// same failure, this test breaks and the interaction should be
+    /// re-examined.
+    #[test]
+    fn return_leak_ref_field_reports_once_via_nll_unborrow() {
+        let src = "
+            struct S { r: &drop i64 }
+            fn f(x: i64) {
+              s: S;
+              entry:
+                s.r = &drop x;
+                return
+            }";
+        let d = run_structured(src);
+
+        let s_r_errs: Vec<_> = d
+            .errors()
+            .filter(|e| e.message().contains("'s.r'"))
+            .collect();
+
+        assert_eq!(
+            s_r_errs.len(),
+            1,
+            "expected exactly one error mentioning 's.r', got {}:\n{}",
+            s_r_errs.len(),
+            format_errs(&d),
+        );
+        assert_eq!(
+            s_r_errs[0].code(),
+            DiagCode::InitState(InitStateCode::RefObligationUnfulfilled),
+            "expected the obligation code (fired from init_state's \
+             close_ref_if_present at the NLL-inserted unborrow), got {:?}",
+            s_r_errs[0].code(),
+        );
+        // Not "at return" — the unborrow is a separate inserted stmt,
+        // and init_state's message for close_ref_if_present says "here".
+        assert!(
+            s_r_errs[0].message().contains("unfulfilled obligation here"),
+            "expected init_state's 'here' message, got: {}",
+            s_r_errs[0].message(),
+        );
+    }
+
+    fn format_errs(d: &crate::diagnostics::Diagnostics) -> String {
+        d.errors()
+            .map(|e| format!("  [{:?}] {}", e.code(), e))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
 
 /// Walk the init state in lockstep with its type, reporting every non-
 /// consumed leaf. `Init` and `Diverged` at a leaf are leaks; `Partial`

@@ -8,8 +8,22 @@
 
 use crate::ast::*;
 use crate::dataflow::{self, Analysis, Direction};
-use crate::diagnostics::Diagnostics;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::type_check::Env;
+
+/// Machine-readable codes emitted by the block-reachability pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BlockReachabilityCode {
+    /// (warning) A basic block is unreachable from the function's
+    /// entry block via terminator successor edges — dead code.
+    BlockUnreachable,
+}
+
+impl From<BlockReachabilityCode> for DiagCode {
+    fn from(code: BlockReachabilityCode) -> DiagCode {
+        DiagCode::BlockReachability(code)
+    }
+}
 
 struct Reachability;
 
@@ -42,8 +56,8 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
     for block in &body.blocks {
         if !reached.contains_key(&block.label) {
             d.push_warning(
-                crate::diagnostics::Diagnostic::new(
-                    crate::diagnostics::DiagCode::Unspecified,
+                Diagnostic::new(
+                    BlockReachabilityCode::BlockUnreachable,
                     block.label_span,
                     format!("block '{}' is unreachable from entry", block.label),
                 )

@@ -11,10 +11,10 @@
 //! keep working.
 //!
 //! **Extending `DiagCode`**: dedicated codes live in per-pass
-//! sub-enums (see `type_check::TypeCheckCode`) and are dispatched by
-//! one variant here per pass. `DiagCode::Unspecified` is a migration
-//! placeholder for call sites that haven't been assigned a specific
-//! code yet.
+//! sub-enums (see `type_check::TypeCheckCode`, `init_state::
+//! InitStateCode`, etc.) and are dispatched by one variant here per
+//! pass. Adding a new code within a pass is a one-line change in
+//! that pass; `diagnostics.rs` only changes when a new pass is added.
 //!
 //! **String view**: `Diagnostic` implements `Display` in the format
 //! `at L:C: In function 'f', block 'b': msg`. `Diagnostics::
@@ -23,21 +23,10 @@
 
 use crate::ast::Span;
 
-/// Machine-readable error kind. New variants added over time as
-/// `push_error!` sites are migrated from ad-hoc strings to specific
-/// codes. The default `Unspecified` covers all unmigrated call sites.
-///
-/// Per-pass sub-enums live in each pass's own file (e.g.
-/// `type_check::TypeCheckCode`) and are dispatched by one variant
-/// here per pass. Adding a new code within a pass is a one-line
-/// change in that pass; `diagnostics.rs` only changes when a new
-/// pass is added.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+/// Machine-readable error kind. One variant per analysis pass; the
+/// pass owns its own sub-enum of specific codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DiagCode {
-    /// Sentinel for call sites that haven't been assigned a specific
-    /// code yet. Replace with a dedicated variant during migration.
-    #[default]
-    Unspecified,
     /// Errors from the type checker (see `type_check::TypeCheckCode`).
     TypeCheck(crate::type_check::TypeCheckCode),
     /// Errors from initialization-state dataflow
@@ -46,6 +35,21 @@ pub enum DiagCode {
     /// Diagnostics from the variant-flow / `switchEnum` analysis
     /// (see `variant_flow::VariantFlowCode`).
     VariantFlow(crate::variant_flow::VariantFlowCode),
+    /// Errors from the substructural per-statement checker
+    /// (see `substructural::check::SubstructuralCheckCode`).
+    SubstructuralCheck(crate::substructural::check::SubstructuralCheckCode),
+    /// Errors from the substructural class-composition validator
+    /// (see `substructural::composition::SubstructuralCompositionCode`).
+    SubstructuralComposition(crate::substructural::composition::SubstructuralCompositionCode),
+    /// Errors from the layout / recursion-cycle check
+    /// (see `layout::LayoutCode`).
+    Layout(crate::layout::LayoutCode),
+    /// Errors from the lifetime / loan-conflict check
+    /// (see `lifetime::LifetimeCode`).
+    Lifetime(crate::lifetime::LifetimeCode),
+    /// Warnings from the block-reachability pass
+    /// (see `block_reachability::BlockReachabilityCode`).
+    BlockReachability(crate::block_reachability::BlockReachabilityCode),
 }
 
 /// A single compiler diagnostic (error or warning). The container in
@@ -154,14 +158,12 @@ pub struct Diagnostics {
 }
 
 impl Diagnostics {
-    /// Append an error. Used by [`push_error!`] and by any pass that
-    /// has already constructed a `Diagnostic`.
+    /// Append an error.
     pub fn push_error(&mut self, diagnostic: Diagnostic) {
         self.errors.push(diagnostic);
     }
 
-    /// Append a warning. Used by [`push_warning!`] and by callers
-    /// with a prebuilt `Diagnostic`.
+    /// Append a warning.
     pub fn push_warning(&mut self, diagnostic: Diagnostic) {
         self.warnings.push(diagnostic);
     }
@@ -215,61 +217,4 @@ impl Diagnostics {
     pub fn warnings_str(&self) -> Vec<String> {
         self.warnings.iter().map(|d| d.to_string()).collect()
     }
-}
-
-/// Build a `Diagnostic` with the standard `at L:C: In function 'f',
-/// block 'b': ...` shape. Used inside `push_error!` and `push_warning!`
-/// and also by any pass that needs to construct a diagnostic for a
-/// `Result<_, Diagnostic>` return.
-///
-/// The code defaults to `DiagCode::Unspecified` — replace via a
-/// dedicated variant when migrating a specific call site.
-#[macro_export]
-macro_rules! fmt_error {
-    ($span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {
-        $crate::diagnostics::Diagnostic::new(
-            $crate::diagnostics::DiagCode::Unspecified,
-            $span,
-            format!($($fmt)*),
-        )
-        .in_function(&$func.name)
-        .in_block(&$block.label)
-    };
-}
-
-
-/// Push an error with the standard `at L:C: In function 'f', block 'b':`
-/// prefix into `d`.
-#[macro_export]
-macro_rules! push_error {
-    ($d:expr, $span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {{
-        $d.push_error($crate::fmt_error!($span, $func, $block, $($fmt)*));
-    }};
-}
-
-
-/// Push an error with just a span (no function/block context) into
-/// `d`. Used at declaration scope — before we have a Function or
-/// BasicBlock to attribute the error to (duplicate types, malformed
-/// struct fields, function-signature checks, etc.).
-#[macro_export]
-macro_rules! push_error_at {
-    ($d:expr, $span:expr, $($fmt:tt)*) => {{
-        $d.push_error(
-            $crate::diagnostics::Diagnostic::new(
-                $crate::diagnostics::DiagCode::Unspecified,
-                $span,
-                format!($($fmt)*),
-            )
-        );
-    }};
-}
-
-
-/// Push a warning with the same prefix as `push_error!` into `d`.
-#[macro_export]
-macro_rules! push_warning {
-    ($d:expr, $span:expr, $func:expr, $block:expr, $($fmt:tt)*) => {{
-        $d.push_warning($crate::fmt_error!($span, $func, $block, $($fmt)*));
-    }};
 }

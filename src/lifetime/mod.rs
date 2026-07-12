@@ -26,11 +26,25 @@
 
 use crate::ast::*;
 use crate::dataflow::{self, Analysis, Direction, Results};
-use crate::diagnostics::Diagnostics;
-use crate::push_error;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
+
+/// Machine-readable codes emitted by the lifetime / loan-conflict pass.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LifetimeCode {
+    /// A place is accessed while an outstanding exclusive loan (or
+    /// otherwise incompatible loan) covers it. Includes reads,
+    /// writes, moves, drops, and new borrows.
+    LoanConflict,
+}
+
+impl From<LifetimeCode> for DiagCode {
+    fn from(code: LifetimeCode) -> DiagCode {
+        DiagCode::Lifetime(code)
+    }
+}
 
 pub mod nll;
 
@@ -176,15 +190,19 @@ pub fn check_loan_conflict(
             if !paths_conflict(&access_path, &loan_path) {
                 continue;
             }
-            push_error!(
-                d,
-                span,
-                func,
-                block,
-                "cannot {} '{}': already borrowed by '{}'",
-                access.describe(),
-                format_place(place),
-                format_place(borrower_place),
+            d.push_error(
+                Diagnostic::new(
+                    LifetimeCode::LoanConflict,
+                    span,
+                    format!(
+                        "cannot {} '{}': already borrowed by '{}'",
+                        access.describe(),
+                        format_place(place),
+                        format_place(borrower_place),
+                    ),
+                )
+                .in_function(&func.name)
+                .in_block(&block.label),
             );
             break;
         }

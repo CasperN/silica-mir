@@ -1,9 +1,7 @@
 use crate::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 
-/// Machine-readable error codes emitted by the type checker. Migrated
-/// call sites use `DiagCode::TypeCheck(…)`. Sites still
-/// bearing `DiagCode::Unspecified` haven't been migrated yet.
+/// Machine-readable error codes emitted by the type checker.
 ///
 /// Deliberately small: one variant per user-observable failure kind.
 /// Multiple push sites that surface the same conceptual error share
@@ -106,9 +104,6 @@ impl From<TypeCheckCode> for DiagCode {
     }
 }
 use TypeCheckCode::*;
-
-// All push sites in this file use the builder pattern directly;
-// the shared `fmt_error!` / `push_error!` macros aren't needed here.
 
 use indexmap::IndexMap;
 use std::collections::HashSet;

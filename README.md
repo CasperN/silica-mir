@@ -531,10 +531,6 @@ in LLVM.
   drop elaborator becomes reference/debug-only rather than authoritative.
 
 ## Diagnostics
-- `DiagCode::Unspecified` is the placeholder for call sites that haven't been
-assigned a dedicated code yet. The `push_error!` / `push_error_at!` /
-`push_warning!` macros default to it. All error sites must get a canonical code
-and `Unspecified` should be deleted.
 - Type names print as Rust `{:?}` debug form (`Int(I64)` instead
   of `i64`). Route diagnostic-emitting sites through
   `pretty_print::write_type`.
