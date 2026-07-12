@@ -20,6 +20,8 @@ mod array_tests;
 mod raw_ptr_tests;
 #[cfg(test)]
 mod test_util;
+#[cfg(test)]
+mod string_tests;
 
 use ast::Program;
 use diagnostics::Diagnostics;

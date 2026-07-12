@@ -230,6 +230,25 @@ fn write_const(out: &mut String, c: &ConstVal) {
                 write!(out, "{:?}", v).unwrap();
             }
         },
+        ConstVal::ByteStr(bytes) => {
+            // Emit `b"..."` with the same escape set the parser
+            // accepts. Round-trippable: `Parser::parse` of the
+            // output decodes to the same byte sequence.
+            out.push_str("b\"");
+            for &b in bytes {
+                match b {
+                    b'\n' => out.push_str("\\n"),
+                    b'\t' => out.push_str("\\t"),
+                    b'\r' => out.push_str("\\r"),
+                    b'\0' => out.push_str("\\0"),
+                    b'\\' => out.push_str("\\\\"),
+                    b'"' => out.push_str("\\\""),
+                    0x20..=0x7E => out.push(b as char),
+                    _ => write!(out, "\\x{:02X}", b).unwrap(),
+                }
+            }
+            out.push('"');
+        }
         ConstVal::Boolean(true) => out.push_str("true"),
         ConstVal::Boolean(false) => out.push_str("false"),
         ConstVal::Unit => out.push_str("unit"),

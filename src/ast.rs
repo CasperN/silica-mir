@@ -426,6 +426,11 @@ pub enum ConstVal {
     Boolean(bool),
     Unit,
     FnName(String),
+    /// Byte string literal `b"..."`. Value semantics: has type
+    /// `[u8; N]` where N = bytes.len(). Codegen emits an inline LLVM
+    /// aggregate constant `c"..."`; larger strings could be moved to
+    /// module-scope private constants later if size matters.
+    ByteStr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

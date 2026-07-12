@@ -73,41 +73,37 @@ pub type Emit = Box<dyn Fn(&[String], &mut dyn FnMut() -> String) -> (Vec<String
 /// adding one row here.
 pub fn all() -> Vec<IntrinsicSpec> {
     let i64_ = Type::Int(IntTy::I64);
+    let u64_ = Type::Int(IntTy::U64);
     let f64_ = Type::Float(FloatTy::F64);
-    let bool_ = Type::Boolean;
 
     vec![
-        // Integer arithmetic (i64 starter set; expand per-type as needed).
-        IntrinsicSpec {
-            name: "$i64_add",
-            inputs: vec![i64_.clone(), i64_.clone()],
-            result: i64_.clone(),
-            emit: bin_int("add", 64),
-            llvm_declares: &[],
-        },
-        IntrinsicSpec {
-            name: "$i64_sub",
-            inputs: vec![i64_.clone(), i64_.clone()],
-            result: i64_.clone(),
-            emit: bin_int("sub", 64),
-            llvm_declares: &[],
-        },
-        IntrinsicSpec {
-            name: "$i64_mul",
-            inputs: vec![i64_.clone(), i64_.clone()],
-            result: i64_.clone(),
-            emit: bin_int("mul", 64),
-            llvm_declares: &[],
-        },
-        // Integer comparison — result is boolean (i1).
-        IntrinsicSpec {
-            name: "$i64_lt",
-            inputs: vec![i64_.clone(), i64_.clone()],
-            result: bool_,
-            emit: icmp("slt", 64),
-            llvm_declares: &[],
-        },
-        // Integer unary negation — LLVM idiom `sub 0, x`.
+        // ---------- Integer arithmetic (i64) ----------
+        bin_arith("$i64_add", i64_.clone(), "add", 64),
+        bin_arith("$i64_sub", i64_.clone(), "sub", 64),
+        bin_arith("$i64_mul", i64_.clone(), "mul", 64),
+        // ---------- Integer arithmetic (u64) ----------
+        bin_arith("$u64_add", u64_.clone(), "add", 64),
+        bin_arith("$u64_sub", u64_.clone(), "sub", 64),
+        bin_arith("$u64_mul", u64_.clone(), "mul", 64),
+        // ---------- Integer comparisons — result is boolean ----------
+        // Signed (i64) — signed predicates (slt, sle, sgt, sge).
+        bin_cmp("$i64_eq", i64_.clone(), "eq", 64),
+        bin_cmp("$i64_ne", i64_.clone(), "ne", 64),
+        bin_cmp("$i64_lt", i64_.clone(), "slt", 64),
+        bin_cmp("$i64_le", i64_.clone(), "sle", 64),
+        bin_cmp("$i64_gt", i64_.clone(), "sgt", 64),
+        bin_cmp("$i64_ge", i64_.clone(), "sge", 64),
+        // Unsigned (u64) — unsigned predicates (ult, ule, ugt, uge).
+        // `eq` and `ne` are signedness-independent but we still name
+        // them per-type for consistency.
+        bin_cmp("$u64_eq", u64_.clone(), "eq", 64),
+        bin_cmp("$u64_ne", u64_.clone(), "ne", 64),
+        bin_cmp("$u64_lt", u64_.clone(), "ult", 64),
+        bin_cmp("$u64_le", u64_.clone(), "ule", 64),
+        bin_cmp("$u64_gt", u64_.clone(), "ugt", 64),
+        bin_cmp("$u64_ge", u64_.clone(), "uge", 64),
+        // ---------- Integer unary negation (i64 only — u64 negation
+        // is nonsensical without a signed conversion) ----------
         IntrinsicSpec {
             name: "$i64_neg",
             inputs: vec![i64_.clone()],
@@ -200,6 +196,32 @@ pub fn is_intrinsic(name: &str) -> bool {
 // Kept in this file — codegen never sees them — so the "one-file rule"
 // for adding intrinsics stays true. Exotic intrinsics don't use these
 // and inline their own `Box::new(|ins, mk| { ... })` closures.
+
+/// Build an integer binop spec: `$<name>(a: T, b: T) -> T` lowered as
+/// `%r = <llvm_op> i<bits> %a, %b`.
+fn bin_arith(name: &'static str, ty: Type, llvm_op: &'static str, bits: u32) -> IntrinsicSpec {
+    IntrinsicSpec {
+        name,
+        inputs: vec![ty.clone(), ty.clone()],
+        result: ty,
+        emit: bin_int(llvm_op, bits),
+        llvm_declares: &[],
+    }
+}
+
+/// Build an integer comparison spec: `$<name>(a: T, b: T) -> boolean`
+/// lowered as `%r = icmp <pred> i<bits> %a, %b`. `pred` encodes both
+/// the operation (`eq`, `lt`, ...) and signedness where relevant
+/// (`slt` vs `ult`).
+fn bin_cmp(name: &'static str, ty: Type, pred: &'static str, bits: u32) -> IntrinsicSpec {
+    IntrinsicSpec {
+        name,
+        inputs: vec![ty.clone(), ty],
+        result: Type::Boolean,
+        emit: icmp(pred, bits),
+        llvm_declares: &[],
+    }
+}
 
 /// Two-operand integer op emitted as `%r = <op> i<bits> %a, %b`.
 pub fn bin_int(op: &'static str, bits: u32) -> Emit {

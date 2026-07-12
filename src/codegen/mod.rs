@@ -666,7 +666,27 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
             let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
             (format!("@{}", llvm_fn_symbol(name)), Type::Fn(param_tys))
         }
+        ConstVal::ByteStr(bytes) => (
+            llvm_byte_str_literal(bytes),
+            Type::Array(Box::new(Type::Int(IntTy::U8)), bytes.len() as u64),
+        ),
     }
+}
+
+/// Encode `bytes` as an LLVM byte-string literal (`c"..."`).
+/// Printable ASCII bytes go verbatim; `"` and `\` and any other byte
+/// are emitted as `\XX` (uppercase hex).
+fn llvm_byte_str_literal(bytes: &[u8]) -> String {
+    let mut s = String::from("c\"");
+    for &b in bytes {
+        match b {
+            b'\\' | b'"' => write!(s, "\\{:02X}", b).unwrap(),
+            0x20..=0x7E => s.push(b as char),
+            _ => write!(s, "\\{:02X}", b).unwrap(),
+        }
+    }
+    s.push('"');
+    s
 }
 
 // ---------- Places ----------
@@ -909,6 +929,8 @@ fn align_up(x: u64, a: u64) -> u64 {
 mod test_util;
 #[cfg(test)]
 mod array_tests;
+#[cfg(test)]
+mod byte_str_tests;
 #[cfg(test)]
 mod declaration_tests;
 #[cfg(test)]

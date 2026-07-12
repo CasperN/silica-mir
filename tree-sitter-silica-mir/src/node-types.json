@@ -126,6 +126,14 @@
       "required": false,
       "types": [
         {
+          "type": "byte_char_lit",
+          "named": true
+        },
+        {
+          "type": "byte_str_lit",
+          "named": true
+        },
+        {
           "type": "float_lit",
           "named": true
         },
@@ -803,6 +811,14 @@
   {
     "type": "branch",
     "named": false
+  },
+  {
+    "type": "byte_char_lit",
+    "named": true
+  },
+  {
+    "type": "byte_str_lit",
+    "named": true
   },
   {
     "type": "call",

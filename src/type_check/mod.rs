@@ -224,7 +224,7 @@ impl Env {
             }
             Place::Index(inner, op) => {
                 let inner_ty = self.infer_place_type(inner, locals)?;
-                let Type::Array(elem, _) = inner_ty else {
+                let Type::Array(elem, n) = inner_ty else {
                     return Err(format!(
                         "Cannot index non-array type {:?}",
                         inner_ty
@@ -237,6 +237,17 @@ impl Env {
                         "Array index must be an integer, got {:?}",
                         op_ty
                     ));
+                }
+                // Constant-index bounds check. Cheap defensive check
+                // that catches known-bad accesses at check time.
+                // Dynamic indices are left to the HLL / runtime.
+                if let Some(k) = const_int_operand(op) {
+                    if k >= n {
+                        return Err(format!(
+                            "Array index {} out of bounds for [_; {}]",
+                            k, n
+                        ));
+                    }
                 }
                 Ok(*elem)
             }
@@ -263,6 +274,10 @@ impl Env {
                     let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
                     Ok(Type::Fn(param_tys))
                 }
+                ConstVal::ByteStr(bytes) => Ok(Type::Array(
+                    Box::new(Type::Int(IntTy::U8)),
+                    bytes.len() as u64,
+                )),
             },
         }
     }

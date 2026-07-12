@@ -955,6 +955,14 @@
           "name": "int_lit"
         },
         {
+          "type": "SYMBOL",
+          "name": "byte_str_lit"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "byte_char_lit"
+        },
+        {
           "type": "STRING",
           "value": "true"
         },
@@ -971,6 +979,14 @@
           "name": "identifier"
         }
       ]
+    },
+    "byte_str_lit": {
+      "type": "PATTERN",
+      "value": "b\"([^\"\\\\]|\\\\.)*\""
+    },
+    "byte_char_lit": {
+      "type": "PATTERN",
+      "value": "b'([^'\\\\]|\\\\x[0-9a-fA-F]{2}|\\\\.)'"
     },
     "rvalue": {
       "type": "CHOICE",

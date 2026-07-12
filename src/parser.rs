@@ -108,6 +108,81 @@ fn parse_float_literal(text: &str) -> Result<ConstVal, String> {
     }
 }
 
+/// Parse a byte string literal token `b"..."`. Supports these escape
+/// sequences: `\n`, `\t`, `\r`, `\0`, `\\`, `\"`, `\'`, and `\xNN`
+/// (two hex digits, case-insensitive). Non-ASCII source bytes are
+/// rejected — use `\xNN` escapes to embed arbitrary bytes.
+fn parse_byte_str_literal(text: &str) -> Result<ConstVal, String> {
+    let inner = text
+        .strip_prefix("b\"")
+        .and_then(|s| s.strip_suffix('"'))
+        .ok_or_else(|| format!("byte string literal missing quotes: {:?}", text))?;
+    Ok(ConstVal::ByteStr(decode_byte_escapes(inner)?))
+}
+
+/// Parse a byte character literal token `b'X'`. Value type is `u8`,
+/// carrying the single decoded byte. Accepts the same escape set as
+/// [`parse_byte_str_literal`].
+fn parse_byte_char_literal(text: &str) -> Result<ConstVal, String> {
+    let inner = text
+        .strip_prefix("b'")
+        .and_then(|s| s.strip_suffix('\''))
+        .ok_or_else(|| format!("byte char literal missing quotes: {:?}", text))?;
+    let bytes = decode_byte_escapes(inner)?;
+    if bytes.len() != 1 {
+        return Err(format!(
+            "byte char literal must be exactly one byte, got {} ({:?})",
+            bytes.len(),
+            text
+        ));
+    }
+    Ok(ConstVal::Int {
+        bits: bytes[0] as u64,
+        ty: IntTy::U8,
+    })
+}
+
+/// Decode the escape sequences in a `b"..."` / `b'...'` literal body
+/// (quote delimiters already stripped). Shared by both parsers so the
+/// escape set stays consistent.
+fn decode_byte_escapes(inner: &str) -> Result<Vec<u8>, String> {
+    let mut out: Vec<u8> = Vec::new();
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('n') => out.push(b'\n'),
+                Some('t') => out.push(b'\t'),
+                Some('r') => out.push(b'\r'),
+                Some('0') => out.push(b'\0'),
+                Some('\\') => out.push(b'\\'),
+                Some('"') => out.push(b'"'),
+                Some('\'') => out.push(b'\''),
+                Some('x') => {
+                    let h1 = chars.next().ok_or("truncated \\x escape")?;
+                    let h2 = chars.next().ok_or("truncated \\x escape")?;
+                    let hex = format!("{}{}", h1, h2);
+                    let val = u8::from_str_radix(&hex, 16)
+                        .map_err(|_| format!("invalid \\x escape: \\x{}", hex))?;
+                    out.push(val);
+                }
+                Some(other) => {
+                    return Err(format!("unknown escape sequence: \\{}", other));
+                }
+                None => return Err("truncated backslash at end of literal".to_string()),
+            }
+        } else if c.is_ascii() {
+            out.push(c as u8);
+        } else {
+            return Err(format!(
+                "non-ASCII char {:?} in byte literal; use \\xNN escapes",
+                c
+            ));
+        }
+    }
+    Ok(out)
+}
+
 pub struct Parser {
     source: String,
 }
@@ -308,6 +383,8 @@ impl Parser {
         match node.kind() {
             "int_lit" => parse_int_literal(self.get_text(node)),
             "float_lit" => parse_float_literal(self.get_text(node)),
+            "byte_str_lit" => parse_byte_str_literal(self.get_text(node)),
+            "byte_char_lit" => parse_byte_char_literal(self.get_text(node)),
             "const" => {
                 let child = node.child(0).ok_or("Const node is empty")?;
                 self.map_const(child)

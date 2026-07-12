@@ -208,11 +208,25 @@ module.exports = grammar({
     const: $ => choice(
       $.float_lit,   // ordered before int_lit so `3.14` isn't lexed as int
       $.int_lit,
+      $.byte_str_lit,
+      $.byte_char_lit,
       'true',
       'false',
       'unit',
       $.identifier // fnName
     ),
+
+    // Byte string literal: `b"..."`. Supports common escape sequences
+    // (\n, \t, \r, \0, \\, \", and \xNN hex bytes). Value type is
+    // `[u8; N]` where N is the decoded byte count. No UTF-8 or
+    // unicode escapes — use \xNN for non-ASCII bytes.
+    byte_str_lit: $ => /b"([^"\\]|\\.)*"/,
+
+    // Byte character literal: `b'X'`. One ASCII byte or one escape
+    // sequence (including `\xNN`). Value type is `u8`. The regex
+    // accepts either an unescaped non-quote/backslash byte, or a
+    // `\x` + 2 hex digits, or a `\` + single char.
+    byte_char_lit: $ => /b'([^'\\]|\\x[0-9a-fA-F]{2}|\\.)'/,
 
     rvalue: $ => choice(
       $.operand,
