@@ -9,16 +9,24 @@ struct LowerCtx {
     current_statements: Vec<(mir::Statement, mir::Span)>,
     temp_counter: usize,
     block_counter: usize,
-    loop_stack: Vec<(String, String)>, // (start_label, end_label)
+    loop_stack: Vec<(String, String, mir::Place)>, // (start_label, end_label, dest_place)
     functions: HashMap<String, hll::FnDecl>,
+    enums: HashMap<String, hll::EnumDecl>,
 }
 
 impl LowerCtx {
     fn new(program: &hll::Program) -> Self {
         let mut functions = HashMap::new();
+        let mut enums = HashMap::new();
         for decl in &program.declarations {
-            if let hll::Declaration::Fn(f) = decl {
-                functions.insert(f.name.clone(), f.clone());
+            match decl {
+                hll::Declaration::Fn(f) => {
+                    functions.insert(f.name.clone(), f.clone());
+                }
+                hll::Declaration::Enum(e) => {
+                    enums.insert(e.name.clone(), e.clone());
+                }
+                _ => {}
             }
         }
         Self {
@@ -30,6 +38,7 @@ impl LowerCtx {
             block_counter: 0,
             loop_stack: Vec::new(),
             functions,
+            enums,
         }
     }
 
@@ -366,7 +375,7 @@ fn lower_expr_into(
 
             ctx.terminate_block(mir::Terminator::Goto(start_label.clone()), expr.span);
 
-            ctx.loop_stack.push((start_label.clone(), end_label.clone()));
+            ctx.loop_stack.push((start_label.clone(), end_label.clone(), dest.clone()));
             ctx.start_block(start_label);
             
             // Loop body value is discarded
@@ -377,30 +386,22 @@ fn lower_expr_into(
             ctx.loop_stack.pop();
 
             ctx.start_block(end_label);
-            // Loop expression evaluates to Unit (or Never if infinite, but Unit is fine as fallback)
-            ctx.emit_statement(
-                mir::Statement::Assign(dest.clone(), mir::RValue::Use(mir::Operand::Const(mir::ConstVal::Unit))),
-                expr.span,
-            );
             Ok(())
         }
         hll::ExprKind::Break(val_expr) => {
-            let (_, end_label) = ctx.loop_stack.last().ok_or_else(|| {
+            let (_, end_label, dest_place) = ctx.loop_stack.last().ok_or_else(|| {
                 format!("at {}: break outside of loop", expr.span)
             })?.clone();
 
             if let Some(val) = val_expr {
-                // If break has a value, we can discard or handle it. Since HLL loops return Unit in this subset,
-                // we just evaluate it to a dummy place.
-                let dummy = ctx.fresh_temp(mir::Type::Unit, val.span);
-                lower_expr_into(ctx, val, &dummy, types)?;
+                lower_expr_into(ctx, val, &dest_place, types)?;
             }
 
             ctx.terminate_block(mir::Terminator::Goto(end_label), expr.span);
             Ok(())
         }
         hll::ExprKind::Continue => {
-            let (start_label, _) = ctx.loop_stack.last().ok_or_else(|| {
+            let (start_label, _, _) = ctx.loop_stack.last().ok_or_else(|| {
                 format!("at {}: continue outside of loop", expr.span)
             })?.clone();
 
@@ -414,6 +415,74 @@ fn lower_expr_into(
                 lower_expr_into(ctx, val, &ret_place, types)?;
             }
             ctx.terminate_block(mir::Terminator::Return, expr.span);
+            Ok(())
+        }
+        hll::ExprKind::Match(target, arms) => {
+            let target_place = lower_expr_to_place(ctx, target, types)?;
+            
+            let mut cases = Vec::new();
+            let mut case_labels = Vec::new();
+            for (pattern, _) in arms {
+                let hll::Pattern::Variant(variant, _) = pattern;
+                let label = ctx.fresh_label(&format!("switch_{}", variant));
+                cases.push((variant.clone(), label.clone()));
+                case_labels.push(label);
+            }
+            
+            let merge_label = ctx.fresh_label("switch_merge");
+            
+            ctx.terminate_block(
+                mir::Terminator::SwitchEnum {
+                    place: target_place.clone(),
+                    cases,
+                },
+                expr.span,
+            );
+            
+            // Lower each arm block
+            for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
+                let hll::Pattern::Variant(variant, bound_var) = pattern;
+                ctx.start_block(label.clone());
+                
+                if let Some(var_name) = bound_var {
+                    let target_hll_ty = types.get(&(&**target as *const hll::Expr)).ok_or_else(|| {
+                        format!("missing type annotation for match target")
+                    })?;
+                    let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name) = target_hll_ty {
+                        let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
+                            format!("undeclared enum '{}' in lowering", enum_name)
+                        })?;
+                        let variant_decl = enum_decl.variants.iter().find(|v| v.name == *variant).ok_or_else(|| {
+                            format!("enum '{}' has no variant '{}' in lowering", enum_name, variant)
+                        })?;
+                        lower_type(&variant_decl.ty)
+                    } else {
+                        return Err(format!("expected enum type for match target, found {:?}", target_hll_ty));
+                    };
+                    
+                    ctx.locals.push(mir::Local {
+                        name: var_name.clone(),
+                        ty: bound_var_mir_ty.clone(),
+                        span: body.span,
+                    });
+                    
+                    let downcast_place = mir::Place::Downcast(Box::new(target_place.clone()), variant.clone());
+                    let op = if is_copy_type(&bound_var_mir_ty) {
+                        mir::Operand::Copy(downcast_place)
+                    } else {
+                        mir::Operand::Move(downcast_place)
+                    };
+                    ctx.emit_statement(
+                        mir::Statement::Assign(mir::Place::Var(var_name.clone()), mir::RValue::Use(op)),
+                        body.span,
+                    );
+                }
+                
+                lower_expr_into(ctx, body, dest, types)?;
+                ctx.terminate_block(mir::Terminator::Goto(merge_label.clone()), expr.span);
+            }
+            
+            ctx.start_block(merge_label);
             Ok(())
         }
     }
@@ -586,6 +655,77 @@ mod tests {
               entry:
                 x = copy p.x;
                 *$return = copy x;
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_match() {
+        let source = "
+            enum Option { None: unit, Some: i64 }
+            fn match_val(v: Option) -> i64 {
+                v match {
+                    Some(val) => val,
+                    None => 0
+                }
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            enum Copy Drop Move Option {
+              None: unit
+              Some: i64
+            }
+
+            fn match_val(v: Option, $return: &out i64) {
+              val: i64;
+              entry:
+                switchEnum(v) [Some: switch_Some_0, None: switch_None_1]
+              switch_Some_0:
+                val = copy v as Some;
+                *$return = copy val;
+                goto switch_merge_2
+              switch_None_1:
+                *$return = 0;
+                goto switch_merge_2
+              switch_merge_2:
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_loop_break_value() {
+        let source = "
+            fn check() -> i64 {
+                let mut x = 0;
+                loop {
+                    x = 42;
+                    break x;
+                }
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn check($return: &out i64) {
+              x: i64;
+              _temp_0: unit;
+              _temp_1: unit;
+              _temp_2: unit;
+              entry:
+                x = 0;
+                goto loop_start_0
+              loop_start_0:
+                x = 42;
+                _temp_1 = unit;
+                *$return = copy x;
+                goto loop_end_1
+              loop_end_1:
                 return
             }
             "

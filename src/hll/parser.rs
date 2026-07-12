@@ -19,10 +19,12 @@ pub enum TokenKind {
     Continue,
     Return,
     As,
+    Match,
     // Types
     Boolean,
     Unit,
     Never,
+    FatArrow, // =>
     // Operators
     LParen,
     RParen,
@@ -140,6 +142,7 @@ impl<'a> Lexer<'a> {
                 "continue" => TokenKind::Continue,
                 "return" => TokenKind::Return,
                 "as" => TokenKind::As,
+                "match" => TokenKind::Match,
                 "boolean" => TokenKind::Boolean,
                 "unit" => TokenKind::Unit,
                 "never" => TokenKind::Never,
@@ -255,7 +258,12 @@ impl<'a> Lexer<'a> {
             }
             '=' => {
                 self.step();
-                TokenKind::Eq
+                if self.current_char() == Some('>') {
+                    self.step();
+                    TokenKind::FatArrow
+                } else {
+                    TokenKind::Eq
+                }
             }
             '-' => {
                 self.step();
@@ -676,6 +684,37 @@ impl<'a> Parser<'a> {
                         span,
                     };
                 }
+                TokenKind::Match => {
+                    self.advance();
+                    self.expect(TokenKind::LBrace)?;
+                    let mut arms = Vec::new();
+                    while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+                        let (variant, _) = self.parse_identifier()?;
+                        let bound_var = if self.peek().kind == TokenKind::LParen {
+                            self.advance();
+                            let (bound, _) = self.parse_identifier()?;
+                            self.expect(TokenKind::RParen)?;
+                            Some(bound)
+                        } else {
+                            None
+                        };
+                        let pattern = Pattern::Variant(variant, bound_var);
+                        self.expect(TokenKind::FatArrow)?;
+                        let body = self.parse_expr()?;
+                        arms.push((pattern, body));
+                        if self.peek().kind == TokenKind::Comma {
+                            self.advance();
+                        } else if self.peek().kind != TokenKind::RBrace {
+                            return Err(format!("at {}: expected ',' or '}}'", self.peek().span));
+                        }
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                    let span = expr.span;
+                    expr = Expr {
+                        kind: ExprKind::Match(Box::new(expr), arms),
+                        span,
+                    };
+                }
                 _ => break,
             }
         }
@@ -829,6 +868,7 @@ impl<'a> Parser<'a> {
                     span: start,
                 })
             }
+
             _ => Err(format!(
                 "at {}: expected expression primary, found {:?}",
                 tok.span, tok.kind
@@ -933,5 +973,20 @@ mod tests {
         } else {
             panic!("Expected function");
         }
+    }
+
+    #[test]
+    fn parse_match_expression() {
+        let source = "
+            fn match_val(v: Option) -> i64 {
+                v match {
+                    Some(val) => val,
+                    None => 0
+                }
+            }
+        ";
+        let mut p = Parser::new(source).unwrap();
+        let program = p.parse_program().unwrap();
+        assert_eq!(program.declarations.len(), 1);
     }
 }

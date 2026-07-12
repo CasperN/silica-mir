@@ -95,6 +95,12 @@ pub enum ExprKind {
     Continue,
     Return(Option<Box<Expr>>),
     Assign(Box<Expr>, Box<Expr>),
+    Match(Box<Expr>, Vec<(Pattern, Expr)>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Pattern {
+    Variant(String, Option<String>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

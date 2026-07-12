@@ -38,6 +38,25 @@ impl Subst {
             other => other.clone(),
         }
     }
+    pub fn resolve_default(&self, ty: &Type) -> Type {
+        match ty {
+            Type::Var(id) => {
+                if let Some(resolved) = self.map.get(id) {
+                    self.resolve_default(resolved)
+                } else {
+                    // Default unresolved type variables to i64
+                    Type::Int(crate::mir::ast::IntTy::I64)
+                }
+            }
+            Type::Ref(kind, inner) => Type::Ref(*kind, Box::new(self.resolve_default(inner))),
+            Type::RawPtr(inner) => Type::RawPtr(Box::new(self.resolve_default(inner))),
+            Type::Fn(params, ret) => {
+                let resolved_params = params.iter().map(|p| self.resolve_default(p)).collect();
+                Type::Fn(resolved_params, Box::new(self.resolve_default(ret)))
+            }
+            other => other.clone(),
+        }
+    }
 
     pub fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), String> {
         let r1 = self.resolve(t1);
@@ -178,7 +197,7 @@ pub fn typecheck_program_collect(program: &Program) -> Result<HashMap<*const Exp
     // Resolve all captured expression types in the final map
     let mut resolved_types = HashMap::new();
     for (expr_ptr, ty) in types {
-        resolved_types.insert(expr_ptr, subst.resolve(&ty));
+        resolved_types.insert(expr_ptr, subst.resolve_default(&ty));
     }
 
     Ok(resolved_types)
@@ -350,6 +369,40 @@ fn infer_inner(
             check_inner(env, subst, rhs, &lhs_ty, types)?;
             Ok(Type::Unit)
         }
+        ExprKind::Match(target, arms) => {
+            let target_ty = infer_inner(env, subst, target, types)?;
+            let resolved = subst.resolve(&target_ty);
+            if let Type::Custom(enum_name) = resolved {
+                let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
+                    format!("at {}: undeclared enum '{}'", expr.span, enum_name)
+                })?;
+                let mut arm_tys = Vec::new();
+                for (pattern, body) in arms {
+                    let Pattern::Variant(variant, bound_var) = pattern;
+                    if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
+                        env.push_scope();
+                        if let Some(var_name) = bound_var {
+                            env.insert_var(var_name.clone(), v.ty.clone());
+                        }
+                        let body_ty = infer_inner(env, subst, body, types)?;
+                        env.pop_scope();
+                        arm_tys.push(body_ty);
+                    } else {
+                        return Err(format!("at {}: enum '{}' has no variant '{}'", expr.span, enum_name, variant));
+                    }
+                }
+                if arm_tys.is_empty() {
+                    return Err(format!("at {}: empty switch expression", expr.span));
+                }
+                let first_ty = arm_tys[0].clone();
+                for ty in &arm_tys[1..] {
+                    subst.unify(&first_ty, ty)?;
+                }
+                Ok(subst.resolve(&first_ty))
+            } else {
+                Err(format!("at {}: expected enum type for switch target, found {:?}", expr.span, resolved))
+            }
+        }
     }?;
 
     types.insert(expr as *const Expr, ty.clone());
@@ -400,6 +453,32 @@ fn check_inner(
             check_inner(env, subst, false_block, expected_ty, types)?;
             types.insert(expr as *const Expr, resolved_expected.clone());
             Ok(())
+        }
+        (ExprKind::Match(target, arms), expected_ty) => {
+            let target_ty = infer_inner(env, subst, target, types)?;
+            let resolved = subst.resolve(&target_ty);
+            if let Type::Custom(enum_name) = resolved {
+                let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
+                    format!("at {}: undeclared enum '{}'", expr.span, enum_name)
+                })?;
+                for (pattern, body) in arms {
+                    let Pattern::Variant(variant, bound_var) = pattern;
+                    if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
+                        env.push_scope();
+                        if let Some(var_name) = bound_var {
+                            env.insert_var(var_name.clone(), v.ty.clone());
+                        }
+                        check_inner(env, subst, body, expected_ty, types)?;
+                        env.pop_scope();
+                    } else {
+                        return Err(format!("at {}: enum '{}' has no variant '{}'", expr.span, enum_name, variant));
+                    }
+                }
+                types.insert(expr as *const Expr, resolved_expected.clone());
+                Ok(())
+            } else {
+                Err(format!("at {}: expected enum type for switch target, found {:?}", expr.span, resolved))
+            }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), Type::Int(_ty)) => {
             types.insert(expr as *const Expr, resolved_expected.clone());
