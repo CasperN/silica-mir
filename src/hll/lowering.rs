@@ -101,22 +101,23 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
             }
             mir::Type::Fn(mir_params)
         }
+        hll::Type::Array(inner, size) => mir::Type::Array(Box::new(lower_type(inner)), *size as u64),
         hll::Type::Var(_) => unreachable!("type variables must be resolved before lowering"),
     }
 }
 
 fn is_copy_type(ty: &mir::Type) -> bool {
-    // Scalar values, references, and pointers are Copy
-    matches!(
-        ty,
+    match ty {
         mir::Type::Int(_)
-            | mir::Type::Float(_)
-            | mir::Type::Bool
-            | mir::Type::Unit
-            | mir::Type::Never
-            | mir::Type::Ref(_, _)
-            | mir::Type::RawPtr(_)
-    )
+        | mir::Type::Float(_)
+        | mir::Type::Bool
+        | mir::Type::Unit
+        | mir::Type::Never
+        | mir::Type::Ref(_, _)
+        | mir::Type::RawPtr(_) => true,
+        mir::Type::Array(inner, _) => is_copy_type(inner),
+        _ => false,
+    }
 }
 
 fn lower_expr_to_place(
@@ -137,6 +138,11 @@ fn lower_expr_to_place(
         hll::ExprKind::Deref(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             Ok(mir::Place::Deref(Box::new(target_place)))
+        }
+        hll::ExprKind::ArrayIndex(target, index) => {
+            let target_place = lower_expr_to_place(ctx, target, types)?;
+            let index_op = lower_expr_to_operand(ctx, index, types)?;
+            Ok(mir::Place::Index(Box::new(target_place), Box::new(index_op)))
         }
         _ => {
             // Allocate a temporary and evaluate the expression into it
@@ -175,7 +181,8 @@ fn lower_expr_to_operand(
         hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
         | hll::ExprKind::Downcast(_, _)
-        | hll::ExprKind::Deref(_) => {
+        | hll::ExprKind::Deref(_)
+        | hll::ExprKind::ArrayIndex(_, _) => {
             let place = lower_expr_to_place(ctx, expr, types)?;
             let hll_ty = types.get(&(expr as *const hll::Expr)).ok_or_else(|| {
                 format!("missing type annotation for variable/projection at {:?}", expr.span)
@@ -206,7 +213,8 @@ fn lower_expr_into(
         | hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
         | hll::ExprKind::Downcast(_, _)
-        | hll::ExprKind::Deref(_) => {
+        | hll::ExprKind::Deref(_)
+        | hll::ExprKind::ArrayIndex(_, _) => {
             let op = lower_expr_to_operand(ctx, expr, types)?;
             ctx.emit_statement(
                 mir::Statement::Assign(dest.clone(), mir::RValue::Use(op)),
@@ -485,6 +493,35 @@ fn lower_expr_into(
             ctx.start_block(merge_label);
             Ok(())
         }
+        hll::ExprKind::StructConstr(_, fields) => {
+            for (field_name, value_expr) in fields {
+                let field_dest = mir::Place::Field(Box::new(dest.clone()), field_name.clone());
+                lower_expr_into(ctx, value_expr, &field_dest, types)?;
+            }
+            Ok(())
+        }
+        hll::ExprKind::EnumConstr(enum_name, variant_name, payload) => {
+            let payload_op = lower_expr_to_operand(ctx, payload, types)?;
+            ctx.emit_statement(
+                mir::Statement::Assign(
+                    dest.clone(),
+                    mir::RValue::EnumConstr(enum_name.clone(), variant_name.clone(), payload_op),
+                ),
+                expr.span,
+            );
+            Ok(())
+        }
+        hll::ExprKind::Array(elements) => {
+            let mut ops = Vec::new();
+            for el in elements {
+                ops.push(lower_expr_to_operand(ctx, el, types)?);
+            }
+            ctx.emit_statement(
+                mir::Statement::Assign(dest.clone(), mir::RValue::ArrayLit(ops)),
+                expr.span,
+            );
+            Ok(())
+        }
     }
 }
 
@@ -757,6 +794,50 @@ mod tests {
                 _temp_0 = unit;
                 goto if_merge_2
               if_merge_2:
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_constructors_and_arrays() {
+        let source = "
+            struct Point { x: i64, y: i64 }
+            enum Option { None: unit, Some: i64 }
+            fn check(arr: [i64; 3]) -> i64 {
+                let p = Point { x: 1, y: 2 };
+                let o = Option::Some(42);
+                let a = [1, 2, 3];
+                let val = arr[0];
+                val
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            struct Copy Drop Move Point {
+              x: i64
+              y: i64
+            }
+
+            enum Copy Drop Move Option {
+              None: unit
+              Some: i64
+            }
+
+            fn check(arr: [i64; 3], $return: &out i64) {
+              p: Point;
+              o: Option;
+              a: [i64; 3];
+              val: i64;
+              entry:
+                p.x = 1;
+                p.y = 2;
+                o = Option::Some(42);
+                a = [1, 2, 3];
+                val = copy arr[0];
+                *$return = copy val;
                 return
             }
             "

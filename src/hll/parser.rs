@@ -39,6 +39,9 @@ pub enum TokenKind {
     Star,
     Amp,
     AmpRaw,
+    PathSep, // ::
+    LBracket,
+    RBracket,
     // Special
     Eof,
 }
@@ -236,13 +239,26 @@ impl<'a> Lexer<'a> {
                 self.step();
                 TokenKind::RBrace
             }
+            '[' => {
+                self.step();
+                TokenKind::LBracket
+            }
+            ']' => {
+                self.step();
+                TokenKind::RBracket
+            }
             ',' => {
                 self.step();
                 TokenKind::Comma
             }
             ':' => {
                 self.step();
-                TokenKind::Colon
+                if self.current_char() == Some(':') {
+                    self.step();
+                    TokenKind::PathSep
+                } else {
+                    TokenKind::Colon
+                }
             }
             ';' => {
                 self.step();
@@ -530,6 +546,19 @@ impl<'a> Parser<'a> {
                 let inner = self.parse_type()?;
                 Ok(Type::Ref(kind, Box::new(inner)))
             }
+            TokenKind::LBracket => {
+                self.advance();
+                let inner = self.parse_type()?;
+                self.expect(TokenKind::Semicolon)?;
+                let tok_size = self.advance();
+                let size = if let TokenKind::IntLit(val, _) = tok_size.kind {
+                    val as usize
+                } else {
+                    return Err(format!("at {}: expected integer literal for array size", tok_size.span));
+                };
+                self.expect(TokenKind::RBracket)?;
+                Ok(Type::Array(Box::new(inner), size))
+            }
             _ => Err(format!("at {}: expected type, found {:?}", tok.span, tok.kind)),
         }
     }
@@ -715,6 +744,16 @@ impl<'a> Parser<'a> {
                         span,
                     };
                 }
+                TokenKind::LBracket => {
+                    self.advance();
+                    let index = self.parse_expr()?;
+                    self.expect(TokenKind::RBracket)?;
+                    let span = expr.span;
+                    expr = Expr {
+                        kind: ExprKind::ArrayIndex(Box::new(expr), Box::new(index)),
+                        span,
+                    };
+                }
                 _ => break,
             }
         }
@@ -751,12 +790,63 @@ impl<'a> Parser<'a> {
                         kind: ExprKind::Literal(Literal::Bool(false)),
                         span: start,
                     })
+                } else if self.peek().kind == TokenKind::LBrace
+                    && (self.tokens[self.index + 1].kind == TokenKind::RBrace
+                        || (matches!(self.tokens[self.index + 1].kind, TokenKind::Ident(_))
+                            && self.tokens[self.index + 2].kind == TokenKind::Colon))
+                {
+                    self.advance();
+                    let mut fields = Vec::new();
+                    while self.peek().kind != TokenKind::RBrace && self.peek().kind != TokenKind::Eof {
+                        let (field_name, _) = self.parse_identifier()?;
+                        self.expect(TokenKind::Colon)?;
+                        let value = self.parse_expr()?;
+                        fields.push((field_name, value));
+                        if self.peek().kind == TokenKind::Comma {
+                            self.advance();
+                        } else if self.peek().kind != TokenKind::RBrace {
+                            return Err(format!("at {}: expected ',' or '}}'", self.peek().span));
+                        }
+                    }
+                    self.expect(TokenKind::RBrace)?;
+                    Ok(Expr {
+                        kind: ExprKind::StructConstr(name_str, fields),
+                        span: start,
+                    })
+                } else if self.peek().kind == TokenKind::PathSep {
+                    self.advance();
+                    let (variant_name, _) = self.parse_identifier()?;
+                    self.expect(TokenKind::LParen)?;
+                    let payload = self.parse_expr()?;
+                    self.expect(TokenKind::RParen)?;
+                    Ok(Expr {
+                        kind: ExprKind::EnumConstr(name_str, variant_name, Box::new(payload)),
+                        span: start,
+                    })
                 } else {
                     Ok(Expr {
                         kind: ExprKind::Variable(name_str),
                         span: start,
                     })
                 }
+            }
+            TokenKind::LBracket => {
+                let start = self.advance().span;
+                let mut elements = Vec::new();
+                while self.peek().kind != TokenKind::RBracket && self.peek().kind != TokenKind::Eof {
+                    let expr = self.parse_expr()?;
+                    elements.push(expr);
+                    if self.peek().kind == TokenKind::Comma {
+                        self.advance();
+                    } else if self.peek().kind != TokenKind::RBracket {
+                        return Err(format!("at {}: expected ',' or ']'", self.peek().span));
+                    }
+                }
+                self.expect(TokenKind::RBracket)?;
+                Ok(Expr {
+                    kind: ExprKind::Array(elements),
+                    span: start,
+                })
             }
             TokenKind::Unit => {
                 let start = self.advance().span;
@@ -1004,6 +1094,21 @@ mod tests {
                 if cond {
                     let a = 1;
                 }
+            }
+        ";
+        let mut p = Parser::new(source).unwrap();
+        let program = p.parse_program().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn parse_constructors_and_arrays() {
+        let source = "
+            fn check(arr: [i64; 3]) {
+                let p = Point { x: 1, y: 2 };
+                let o = Option::Some(42);
+                let a = [1, 2, 3];
+                let val = arr[0];
             }
         ";
         let mut p = Parser::new(source).unwrap();

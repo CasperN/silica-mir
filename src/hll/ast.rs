@@ -12,6 +12,7 @@ pub enum Type {
     RawPtr(Box<Type>),
     Fn(Vec<Type>, Box<Type>),
     Var(usize),
+    Array(Box<Type>, usize),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -96,6 +97,10 @@ pub enum ExprKind {
     Return(Option<Box<Expr>>),
     Assign(Box<Expr>, Box<Expr>),
     Match(Box<Expr>, Vec<(Pattern, Expr)>),
+    StructConstr(String, Vec<(String, Expr)>),
+    EnumConstr(String, String, Box<Expr>),
+    Array(Vec<Expr>),
+    ArrayIndex(Box<Expr>, Box<Expr>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

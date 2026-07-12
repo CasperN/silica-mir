@@ -35,6 +35,7 @@ impl Subst {
                 let resolved_params = params.iter().map(|p| self.resolve(p)).collect();
                 Type::Fn(resolved_params, Box::new(self.resolve(ret)))
             }
+            Type::Array(inner, size) => Type::Array(Box::new(self.resolve(inner)), *size),
             other => other.clone(),
         }
     }
@@ -50,6 +51,7 @@ impl Subst {
             }
             Type::Ref(kind, inner) => Type::Ref(*kind, Box::new(self.resolve_default(inner))),
             Type::RawPtr(inner) => Type::RawPtr(Box::new(self.resolve_default(inner))),
+            Type::Array(inner, size) => Type::Array(Box::new(self.resolve_default(inner)), *size),
             Type::Fn(params, ret) => {
                 let resolved_params = params.iter().map(|p| self.resolve_default(p)).collect();
                 Type::Fn(resolved_params, Box::new(self.resolve_default(ret)))
@@ -78,6 +80,7 @@ impl Subst {
             (Type::Custom(n1), Type::Custom(n2)) if n1 == n2 => Ok(()),
             (Type::Ref(k1, inner1), Type::Ref(k2, inner2)) if k1 == k2 => self.unify(inner1, inner2),
             (Type::RawPtr(inner1), Type::RawPtr(inner2)) => self.unify(inner1, inner2),
+            (Type::Array(inner1, size1), Type::Array(inner2, size2)) if size1 == size2 => self.unify(inner1, inner2),
             (Type::Fn(p1, r1), Type::Fn(p2, r2)) => {
                 if p1.len() != p2.len() {
                     return Err(format!("function arity mismatch"));
@@ -104,6 +107,7 @@ impl Subst {
             }
             Type::Ref(_, inner) => self.occurs_in(id, inner),
             Type::RawPtr(inner) => self.occurs_in(id, inner),
+            Type::Array(inner, _) => self.occurs_in(id, inner),
             Type::Fn(params, ret) => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
@@ -403,6 +407,73 @@ fn infer_inner(
                 Err(format!("at {}: expected enum type for switch target, found {:?}", expr.span, resolved))
             }
         }
+        ExprKind::StructConstr(name, fields) => {
+            let s_decl = env.structs.get(name).cloned().ok_or_else(|| {
+                format!("at {}: undeclared struct '{}'", expr.span, name)
+            })?;
+            
+            if fields.len() != s_decl.fields.len() {
+                return Err(format!(
+                    "at {}: struct '{}' has {} fields, but {} were initialized",
+                    expr.span, name, s_decl.fields.len(), fields.len()
+                ));
+            }
+            
+            for f_decl in &s_decl.fields {
+                let mut matches = fields.iter().filter(|(fname, _)| fname == &f_decl.name);
+                let Some((_, val_expr)) = matches.next() else {
+                    return Err(format!("at {}: missing field '{}' in constructor for '{}'", expr.span, f_decl.name, name));
+                };
+                if matches.next().is_some() {
+                    return Err(format!("at {}: duplicate field '{}' in constructor for '{}'", expr.span, f_decl.name, name));
+                }
+                check_inner(env, subst, val_expr, &f_decl.ty, types)?;
+            }
+            
+            Ok(Type::Custom(name.clone()))
+        }
+        ExprKind::EnumConstr(enum_name, variant_name, payload) => {
+            let e_decl = env.enums.get(enum_name).cloned().ok_or_else(|| {
+                format!("at {}: undeclared enum '{}'", expr.span, enum_name)
+            })?;
+            
+            let variant_decl = e_decl.variants.iter().find(|v| v.name == *variant_name).ok_or_else(|| {
+                format!("at {}: enum '{}' has no variant '{}'", expr.span, enum_name, variant_name)
+            })?;
+            
+            check_inner(env, subst, payload, &variant_decl.ty, types)?;
+            Ok(Type::Custom(enum_name.clone()))
+        }
+        ExprKind::Array(elements) => {
+            if elements.is_empty() {
+                let elem_ty = subst.fresh_var();
+                Ok(Type::Array(Box::new(elem_ty), 0))
+            } else {
+                let first_ty = infer_inner(env, subst, &elements[0], types)?;
+                for el in &elements[1..] {
+                    check_inner(env, subst, el, &first_ty, types)?;
+                }
+                Ok(Type::Array(Box::new(first_ty), elements.len()))
+            }
+        }
+        ExprKind::ArrayIndex(arr, idx) => {
+            let arr_ty = infer_inner(env, subst, arr, types)?;
+            let resolved = subst.resolve(&arr_ty);
+            if let Type::Array(inner, _) = resolved {
+                let idx_ty = infer_inner(env, subst, idx, types)?;
+                let idx_resolved = subst.resolve(&idx_ty);
+                match idx_resolved {
+                    Type::Int(_) => {}
+                    Type::Var(_) => {
+                        subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64))?;
+                    }
+                    other => return Err(format!("at {}: array index must be an integer, found {:?}", expr.span, other)),
+                }
+                Ok(*inner)
+            } else {
+                Err(format!("at {}: expected array type, found {:?}", expr.span, resolved))
+            }
+        }
     }?;
 
     types.insert(expr as *const Expr, ty.clone());
@@ -488,6 +559,19 @@ fn check_inner(
             types.insert(expr as *const Expr, resolved_expected.clone());
             Ok(())
         }
+        (ExprKind::Array(elements), Type::Array(expected_elem, expected_size)) => {
+            if elements.len() != *expected_size {
+                return Err(format!(
+                    "at {}: expected array of length {}, found length {}",
+                    expr.span, expected_size, elements.len()
+                ));
+            }
+            for el in elements {
+                check_inner(env, subst, el, expected_elem, types)?;
+            }
+            types.insert(expr as *const Expr, resolved_expected.clone());
+            Ok(())
+        }
         _ => {
             let inferred = infer_inner(env, subst, expr, types)?;
             subst.unify(&inferred, &resolved_expected)?;
@@ -556,5 +640,22 @@ mod tests {
         let res = check_program(source);
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("expected struct type"));
+    }
+
+    #[test]
+    fn test_typecheck_constructors_and_arrays() {
+        let source = "
+            struct Point { x: i64, y: i64 }
+            enum Option { None: unit, Some: i64 }
+            fn check(arr: [i64; 3]) -> i64 {
+                let p = Point { x: 1, y: 2 };
+                let o = Option::Some(42);
+                let a = [1, 2, 3];
+                let val = arr[0];
+                val
+            }
+        ";
+        let res = check_program(source);
+        assert!(res.is_ok(), "Expected success, got: {:?}", res);
     }
 }
