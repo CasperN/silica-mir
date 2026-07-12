@@ -283,7 +283,7 @@ fn read_through_borrower_ok() {
           y: i64;
           entry:
             r = &mut x;
-            y = copy *r;
+            y = copy r.*;
             return
         }
         ",
@@ -302,7 +302,7 @@ fn ref_transfer_carries_obligation_ok() {
           z: &out i64;
           entry:
             z = move x;
-            *z = 42;
+            z.* = 42;
             return
         }
         ",
@@ -318,7 +318,7 @@ fn ref_transfer_leaves_source_moved_error_on_reuse() {
           z: &out i64;
           entry:
             z = move x;
-            *z = 1;
+            z.* = 1;
             call sink(move x);
             return
         }
@@ -359,11 +359,11 @@ fn branch_of_ref_moves_both_params_leak() {
             branch(copy b) [true: t, false: fbr]
           t:
             z = move x;
-            *z = 1;
+            z.* = 1;
             goto end
           fbr:
             z = move y;
-            *z = 2;
+            z.* = 2;
             goto end
           end:
             return
@@ -760,7 +760,7 @@ fn drop_deref_does_not_release_loan() {
           r: &mut i64;
           entry:
             r = &mut x;
-            drop *r;
+            drop r.*;
             x = 42;
             call sink(move r);
             return

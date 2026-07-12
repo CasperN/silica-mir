@@ -54,7 +54,7 @@ fn roundtrip_mut_ref_read_last_use_ok() {
           y: i64;
           entry:
             r = &mut x;
-            y = copy *r;
+            y = copy r.*;
             x = 42;
             return
         }
@@ -72,7 +72,7 @@ fn roundtrip_out_write_last_use_ok() {
           r: &out i64;
           entry:
             r = &out x;
-            *r = 42;
+            r.* = 42;
             return
         }
         ",
@@ -91,9 +91,9 @@ fn roundtrip_reborrow_same_place_ok() {
           y: i64;
           entry:
             r = &mut x;
-            y = copy *r;
+            y = copy r.*;
             s = &mut x;
-            y = copy *s;
+            y = copy s.*;
             return
         }
         ",
@@ -131,7 +131,7 @@ fn roundtrip_loop_last_use_after_loop_ok() {
           head:
             branch(copy b) [true: body, false: done]
           body:
-            call use_num(copy *r);
+            call use_num(copy r.*);
             goto head
           done:
             x = 42;
@@ -221,7 +221,7 @@ fn snapshot_intra_block_last_use_of_mut() {
           y: i64;
           entry:
             r = &mut x;
-            y = copy *r;
+            y = copy r.*;
             x = 42;
             return
         }
@@ -231,7 +231,7 @@ fn snapshot_intra_block_last_use_of_mut() {
   y: i64;
   entry:
     r = &mut x;
-    y = copy *r;
+    y = copy r.*;
     unborrow r;
     x = 42;
     return
@@ -250,7 +250,7 @@ fn snapshot_out_write_last_use() {
           r: &out i64;
           entry:
             r = &out x;
-            *r = 42;
+            r.* = 42;
             return
         }
         ",
@@ -259,7 +259,7 @@ fn snapshot_out_write_last_use() {
   r: &out i64;
   entry:
     r = &out x;
-    *r = 42;
+    r.* = 42;
     unborrow r;
     return
 }",
@@ -322,7 +322,7 @@ fn snapshot_cross_edge_split() {
             r = &mut x;
             branch(copy b) [true: t, false: fbr]
           t:
-            call use_num(copy *r);
+            call use_num(copy r.*);
             goto end
           fbr:
             goto end
@@ -342,7 +342,7 @@ fn f(x: i64, b: bool) {
     unborrow r;
     goto fbr
   t:
-    call use_num(copy *r);
+    call use_num(copy r.*);
     unborrow r;
     goto end
   fbr:
@@ -361,14 +361,14 @@ fn snapshot_refparam_last_use() {
         fn f(x: &mut i64) {
           y: i64;
           entry:
-            y = copy *x;
+            y = copy x.*;
             return
         }
         ",
         "fn f(x: &mut i64) {
   y: i64;
   entry:
-    y = copy *x;
+    y = copy x.*;
     unborrow x;
     return
 }",
@@ -403,7 +403,7 @@ fn f(x: i64) {
 
 #[test]
 fn snapshot_reborrow_child_before_parent() {
-    // r is a &out param, s reborrows it as &out *r. Both die at
+    // r is a &out param, s reborrows it as &out r.*. Both die at
     // return; NLL must emit unborrow s BEFORE unborrow r (deepest
     // reborrow first) so s's loan is closed before r is consumed.
     assert_elab_eq(
@@ -411,16 +411,16 @@ fn snapshot_reborrow_child_before_parent() {
         fn f(r: &out i64) {
           s: &out i64;
           entry:
-            s = &out *r;
-            *s = 42;
+            s = &out r.*;
+            s.* = 42;
             return
         }
         ",
         "fn f(r: &out i64) {
   s: &out i64;
   entry:
-    s = &out *r;
-    *s = 42;
+    s = &out r.*;
+    s.* = 42;
     unborrow s;
     unborrow r;
     return
@@ -441,8 +441,8 @@ fn snapshot_chained_reborrow_insertion_order() {
           t: &mut i64;
           entry:
             r = &mut x;
-            s = &mut *r;
-            t = &mut *s;
+            s = &mut r.*;
+            t = &mut s.*;
             call sink(move t);
             return
         }
@@ -455,8 +455,8 @@ fn f(x: i64) {
   t: &mut i64;
   entry:
     r = &mut x;
-    s = &mut *r;
-    t = &mut *s;
+    s = &mut r.*;
+    t = &mut s.*;
     call sink(move t);
     unborrow s;
     unborrow r;
@@ -501,7 +501,7 @@ fn cross_edge_insertion_when_borrower_dies_on_one_arm() {
             r = &mut x;
             branch(copy b) [true: t, false: fbr]
           t:
-            call use_num(copy *r);
+            call use_num(copy r.*);
             goto end
           fbr:
             goto end
@@ -523,7 +523,7 @@ fn idempotent_second_run_is_noop() {
           y: i64;
           entry:
             r = &mut x;
-            y = copy *r;
+            y = copy r.*;
             x = 42;
             return
         }
@@ -555,7 +555,7 @@ fn reference_param_last_use_gets_unborrow() {
         fn f(x: &mut i64) {
           y: i64;
           entry:
-            y = copy *x;
+            y = copy x.*;
             return
         }
         ",
@@ -570,7 +570,7 @@ fn out_param_written_then_unborrow_ok() {
         "
         fn f(x: &out i64) {
           entry:
-            *x = 42;
+            x.* = 42;
             return
         }
         ",
@@ -620,14 +620,14 @@ fn out_param_unused_with_abort_ok() {
 
 #[test]
 fn mut_move_out_then_abort_ok() {
-    // After `x = move *r`, r's cur=Uninit, but the block aborts.
+    // After `x = move r.*`, r's cur=Uninit, but the block aborts.
     // Obligation is waived; no unborrow inserted.
     assert_no_diagnostics(
         "
         fn f(r: &mut i64) {
           x: i64;
           entry:
-            x = move *r;
+            x = move r.*;
             abort
         }
         ",
@@ -657,7 +657,7 @@ fn mixed_branch_return_arm_fulfills_ok() {
           entry:
             branch(copy b) [true: init_arm, false: die_arm]
           init_arm:
-            *r = 42;
+            r.* = 42;
             return
           die_arm:
             abort
@@ -697,7 +697,7 @@ fn mixed_branch_snapshot_only_return_arm_gets_unborrow() {
           entry:
             branch(copy b) [true: init_arm, false: die_arm]
           init_arm:
-            *r = 42;
+            r.* = 42;
             return
           die_arm:
             abort
@@ -705,7 +705,7 @@ fn mixed_branch_snapshot_only_return_arm_gets_unborrow() {
         ",
     );
     assert!(
-        out.contains("*r = 42") && out.contains("unborrow r"),
+        out.contains("r.* = 42") && out.contains("unborrow r"),
         "expected unborrow on the return arm; got:\n{}",
         out
     );

@@ -377,9 +377,8 @@ pub fn is_ancestor_or_self(ancestor: &Place, descendant: &Place) -> bool {
 }
 
 /// Canonical diagnostic rendering of a place. `Var("x")` → `x`;
-/// `Field(Var("b"), "p")` → `b.p`; `Deref(Var("r"))` → `*r`;
-/// mixed projections beneath a Deref get parenthesized so
-/// `Field(Deref(Var("r")), "f")` renders as `(*r).f`. Use this
+/// `Field(Var("b"), "p")` → `b.p`; `Deref(Var("r"))` → `r.*`;
+/// `Field(Deref(Var("r")), "f")` renders as `r.*.f`. Use this
 /// everywhere a place needs to appear in an error message.
 pub fn format_place(place: &Place) -> String {
     let (root, path) = extract_path_with_deref(place);
@@ -395,12 +394,8 @@ pub fn format_place(place: &Place) -> String {
                 s.push_str(v);
             }
             PathStep::Deref => {
-                // Wrap prior projections so `Deref` binds correctly.
-                if s.contains('.') || s.contains(" as ") {
-                    s = format!("*({})", s);
-                } else {
-                    s = format!("*{}", s);
-                }
+                // Postfix deref — always chains cleanly left-to-right.
+                s.push_str(".*");
             }
             PathStep::Index(Some(k)) => {
                 s.push('[');

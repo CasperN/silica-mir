@@ -418,7 +418,7 @@ fn lower_expr_into(
         }
         hll::ExprKind::Return(val_expr) => {
             if let Some(val) = val_expr {
-                // Return value is written to *$return
+                // Return value is written to $return.*
                 let ret_place = mir::Place::Deref(Box::new(mir::Place::Var("$return".to_string())));
                 lower_expr_into(ctx, val, &ret_place, types)?;
             }
@@ -590,7 +590,7 @@ pub fn lower_program(
 
                 // Lower body block into ctx
                 // Since body is a block/expression, we lower it.
-                // If return type is not Unit, we write the result to *$return.
+                // If return type is not Unit, we write the result to $return.*.
                 // Otherwise we write it to a dummy Unit place.
                 if f.ret_ty != hll::Type::Unit {
                     let ret_place = mir::Place::Deref(Box::new(mir::Place::Var("$return".to_string())));
@@ -663,7 +663,7 @@ mod tests {
                 sum = copy a;
                 sum = copy b;
                 _temp_0 = unit;
-                *$return = copy sum;
+                $return.* = copy sum;
                 return
             }
             "
@@ -691,7 +691,7 @@ mod tests {
               x: i64;
               entry:
                 x = copy p.x;
-                *$return = copy x;
+                $return.* = copy x;
                 return
             }
             "
@@ -723,10 +723,10 @@ mod tests {
                 switchEnum(v) [Some: switch_Some_0, None: switch_None_1]
               switch_Some_0:
                 val = copy v as Some;
-                *$return = copy val;
+                $return.* = copy val;
                 goto switch_merge_2
               switch_None_1:
-                *$return = 0;
+                $return.* = 0;
                 goto switch_merge_2
               switch_merge_2:
                 return
@@ -760,7 +760,7 @@ mod tests {
               loop_start_0:
                 x = 42;
                 _temp_1 = unit;
-                *$return = copy x;
+                $return.* = copy x;
                 goto loop_end_1
               loop_end_1:
                 return
@@ -837,7 +837,7 @@ mod tests {
                 o = Option::Some(42);
                 a = [1, 2, 3];
                 val = copy arr[0];
-                *$return = copy val;
+                $return.* = copy val;
                 return
             }
             "
@@ -860,14 +860,14 @@ mod tests {
                 tree match {
                     Empty(u) => false,
                     Node(n) => {
-                        let val = (*n).value;
+                        let val = n.*.value;
                         if is_equal(val, target) {
                             true
                         } else {
                             if is_greater(val, target) {
-                                search_tree((*n).left, target)
+                                search_tree(n.*.left, target)
                             } else {
-                                search_tree((*n).right, target)
+                                search_tree(n.*.right, target)
                             }
                         }
                     }
@@ -908,17 +908,17 @@ mod tests {
                 switchEnum(tree) [Empty: switch_Empty_0, Node: switch_Node_1]
               switch_Empty_0:
                 u = copy tree as Empty;
-                *$return = false;
+                $return.* = false;
                 goto switch_merge_2
               switch_Node_1:
                 n = copy tree as Node;
-                val = copy (*n).value;
+                val = copy n.*.value;
                 _temp_0 = unit;
                 _temp_1 = &out _temp_0;
                 call is_equal(copy val, copy target, move _temp_1);
                 branch(move _temp_0) [true: if_true_3, false: if_false_4]
               if_true_3:
-                *$return = true;
+                $return.* = true;
                 goto if_merge_5
               if_false_4:
                 _temp_2 = unit;
@@ -926,14 +926,14 @@ mod tests {
                 call is_greater(copy val, copy target, move _temp_3);
                 branch(move _temp_2) [true: if_true_6, false: if_false_7]
               if_true_6:
-                *$return = unit;
-                _temp_4 = &out *$return;
-                call search_tree(move (*n).left, copy target, move _temp_4);
+                $return.* = unit;
+                _temp_4 = &out $return.*;
+                call search_tree(move n.*.left, copy target, move _temp_4);
                 goto if_merge_8
               if_false_7:
-                *$return = unit;
-                _temp_5 = &out *$return;
-                call search_tree(move (*n).right, copy target, move _temp_5);
+                $return.* = unit;
+                _temp_5 = &out $return.*;
+                call search_tree(move n.*.right, copy target, move _temp_5);
                 goto if_merge_8
               if_merge_8:
                 goto if_merge_5
@@ -945,13 +945,13 @@ mod tests {
 
             fn is_equal(x: i64, y: i64, $return: &out bool) {
               entry:
-                *$return = true;
+                $return.* = true;
                 return
             }
 
             fn is_greater(x: i64, y: i64, $return: &out bool) {
               entry:
-                *$return = true;
+                $return.* = true;
                 return
             }
             "

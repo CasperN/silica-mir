@@ -21,7 +21,7 @@ fn mut_ref_read_then_return_ok() {
         fn f(r: &mut i64) {
           x: i64;
           entry:
-            x = copy *r;
+            x = copy r.*;
             return
         }
         ",
@@ -37,8 +37,8 @@ fn mut_ref_move_then_write_ok() {
         fn f(r: &mut i64) {
           x: i64;
           entry:
-            x = move *r;
-            *r = 42;
+            x = move r.*;
+            r.* = 42;
             return
         }
         ",
@@ -52,7 +52,7 @@ fn mut_ref_write_without_move_error() {
     let (errs, _) = run("
         fn f(r: &mut i64) {
           entry:
-            *r = 42;
+            r.* = 42;
             return
         }
         ");
@@ -69,7 +69,7 @@ fn mut_ref_moved_out_return_leaks() {
         fn f(r: &mut i64) {
           x: i64;
           entry:
-            x = move *r;
+            x = move r.*;
             return
         }
         ");
@@ -87,7 +87,7 @@ fn out_ref_write_then_return_ok() {
         "
         fn f(r: &out i64) {
           entry:
-            *r = 42;
+            r.* = 42;
             return
         }
         ",
@@ -115,8 +115,8 @@ fn out_ref_read_before_write_error() {
         fn f(r: &out i64) {
           x: i64;
           entry:
-            x = copy *r;
-            *r = 42;
+            x = copy r.*;
+            r.* = 42;
             return
         }
         ");
@@ -135,7 +135,7 @@ fn drop_ref_move_out_then_return_ok() {
         fn f(r: &drop i64) {
           x: i64;
           entry:
-            x = move *r;
+            x = move r.*;
             return
         }
         ",
@@ -179,8 +179,8 @@ fn uninit_ref_write_makes_it_drop_state() {
         fn f(r: &uninit i64) {
           x: i64;
           entry:
-            *r = 42;
-            x = move *r;
+            r.* = 42;
+            x = move r.*;
             return
         }
         ",
@@ -192,7 +192,7 @@ fn uninit_ref_write_without_moveback_leaks() {
     let (errs, _) = run("
         fn f(r: &uninit i64) {
           entry:
-            *r = 42;
+            r.* = 42;
             return
         }
         ");
@@ -247,7 +247,7 @@ fn shared_ref_read_ok() {
         fn f(r: &i64) {
           x: i64;
           entry:
-            x = copy *r;
+            x = copy r.*;
             return
         }
         ",
@@ -259,7 +259,7 @@ fn shared_ref_write_error() {
     let (errs, _) = run("
         fn f(r: &i64) {
           entry:
-            *r = 1;
+            r.* = 1;
             return
         }
         ");
@@ -303,7 +303,7 @@ fn drop_of_ref_with_unfulfilled_obligation_error() {
         fn f(r: &mut i64) {
           x: i64;
           entry:
-            x = move *r;
+            x = move r.*;
             drop r;
             return
         }
@@ -337,13 +337,13 @@ fn overwrite_bound_ref_with_fulfilled_obligation_ok() {
 
 #[test]
 fn overwrite_bound_ref_with_unfulfilled_obligation_error() {
-    // After `x = move *r`, r is (Uninit, Init); overwriting r would
+    // After `x = move r.*`, r is (Uninit, Init); overwriting r would
     // silently forget the pending re-init obligation on the pointee.
     let (errs, _) = run("
         fn f(r: &mut i64, z: i64) {
           x: i64;
           entry:
-            x = move *r;
+            x = move r.*;
             r = &mut z;
             return
         }
@@ -363,7 +363,7 @@ fn drop_deref_of_mut_ref_leaks_pointee() {
     let (errs, _) = run("
         fn f(r: &mut i64) {
           entry:
-            drop *r;
+            drop r.*;
             return
         }
         ");

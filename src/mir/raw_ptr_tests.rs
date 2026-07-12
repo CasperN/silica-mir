@@ -72,7 +72,7 @@ fn raw_ptr_creation_does_not_conflict_with_existing_mut_borrow() {
           entry:
             r = &mut x;
             p = &raw x;
-            y = copy *r;
+            y = copy r.*;
             return
         }
         ",
@@ -94,8 +94,8 @@ fn deref_of_raw_ptr_does_not_check_loan() {
           entry:
             r = &mut x;
             p = &raw x;
-            y = copy *p;
-            z = copy *r;
+            y = copy p.*;
+            z = copy r.*;
             return
         }
         ",
@@ -107,7 +107,7 @@ fn deref_of_raw_ptr_does_not_check_loan() {
 #[test]
 fn cannot_move_non_move_type_through_raw_ptr() {
     // The unsafe part is aliasing/lifetime — class rules still hold.
-    // `&out T` is not Copy; you can't `copy *p` a raw-ptr-to-`&out`.
+    // `&out T` is not Copy; you can't `copy p.*` a raw-ptr-to-`&out`.
     // (Not tested here directly since the setup would be complex;
     // instead we verify the positive case that a non-Copy pointee
     // still needs `move`.)
@@ -119,7 +119,7 @@ fn cannot_move_non_move_type_through_raw_ptr() {
           q: Linear;
           entry:
             p = &raw l;
-            q = copy *p;
+            q = copy p.*;
             return
         }
         ",
@@ -141,7 +141,7 @@ fn deref_of_non_pointer_type_errors() {
         fn f(x: i64) {
           y: i64;
           entry:
-            y = copy *x;
+            y = copy x.*;
             return
         }
         ",

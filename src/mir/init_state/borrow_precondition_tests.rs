@@ -186,7 +186,7 @@ fn out_borrow_of_init_drop_type_ok_via_elaboration() {
           r: &out i64;
           entry:
             r = &out x;
-            *r = 2;
+            r.* = 2;
             return
         }
         ");

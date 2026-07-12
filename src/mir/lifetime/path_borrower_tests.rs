@@ -60,7 +60,7 @@ fn reborrow_through_field_ok() {
           s: &mut i64;
           entry:
             b.p = &mut x;
-            s = &mut *b.p;
+            s = &mut b.p.*;
             call sink(move s);
             call take_box(move b);
             return
@@ -81,14 +81,14 @@ fn access_through_field_ref_while_reborrow_live_conflicts() {
           y: i64;
           entry:
             b.p = &mut x;
-            s = &mut *b.p;
-            y = copy *b.p;
+            s = &mut b.p.*;
+            y = copy b.p.*;
             call sink(move s);
             call take_box(move b);
             return
         }
         ");
-    assert_errors_contain(&errs, &["cannot read '*(b.p)': already borrowed by 's'"]);
+    assert_errors_contain(&errs, &["cannot read 'b.p.*': already borrowed by 's'"]);
 }
 
 // ---------- Split borrows across disjoint fields ----------
@@ -140,7 +140,7 @@ fn move_ancestor_closes_field_loans() {
 
 #[test]
 fn move_struct_with_unfulfilled_field_ref_obligation_errors() {
-    // b.p's ref was moved out via *b.p, leaving b.p (is_init=false,
+    // b.p's ref was moved out via b.p.*, leaving b.p (is_init=false,
     // ends_init=true). Moving b to a callee would silently violate
     // the obligation. Boundary check catches it.
     let (errs, _) = run("
@@ -151,7 +151,7 @@ fn move_struct_with_unfulfilled_field_ref_obligation_errors() {
           y: i64;
           entry:
             b.p = &mut x;
-            y = move *b.p;
+            y = move b.p.*;
             call take_box(move b);
             return
         }
@@ -175,8 +175,8 @@ fn move_struct_with_fulfilled_field_ref_ok() {
           y: i64;
           entry:
             b.p = &mut x;
-            y = move *b.p;
-            *b.p = 7;
+            y = move b.p.*;
+            b.p.* = 7;
             call take_box(move b);
             return
         }

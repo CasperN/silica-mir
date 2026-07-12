@@ -43,7 +43,7 @@ fn deref_read_loads_pointer_then_pointee() {
         fn f(r: &i64) {
           x: i64;
           entry:
-            x = copy *r;
+            x = copy r.*;
             return
         }
         ",
@@ -60,7 +60,7 @@ fn deref_write_stores_via_loaded_ptr() {
         "
         fn f(r: &mut i64) {
           entry:
-            *r = 99;
+            r.* = 99;
             return
         }
         ",

@@ -61,7 +61,7 @@ fn out_i32_main_wrapper_returns_loaded_value() {
         "
         fn main(exit: &out i32) {
           entry:
-            *exit = 42i32;
+            exit.* = 42i32;
             return
         }
         ",
@@ -107,7 +107,7 @@ fn snapshot_out_i32_main_full_ir() {
             "
             fn main(exit: &out i32) {
               entry:
-                *exit = 7i32;
+                exit.* = 7i32;
                 return
             }
             "
@@ -149,7 +149,7 @@ fn bad_main_signature_i64_param_rejected() {
         "
         fn main(exit: &out i64) {
           entry:
-            *exit = 0;
+            exit.* = 0;
             return
         }
         ",
@@ -197,7 +197,7 @@ fn valid_out_i32_main_passes_check() {
         "
         fn main(exit: &out i32) {
           entry:
-            *exit = 42i32;
+            exit.* = 42i32;
             return
         }
         ",

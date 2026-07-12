@@ -629,14 +629,6 @@ impl<'a> Parser<'a> {
     fn parse_expr_prefix(&mut self) -> Result<Expr, String> {
         let tok = self.peek();
         match tok.kind {
-            TokenKind::Star => {
-                let start = self.advance().span;
-                let inner = self.parse_expr_prefix()?;
-                Ok(Expr {
-                    kind: ExprKind::Deref(Box::new(inner)),
-                    span: start,
-                })
-            }
             TokenKind::Amp => {
                 let start = self.advance().span;
                 let kind = if self.peek().kind == TokenKind::Mut {
@@ -679,12 +671,22 @@ impl<'a> Parser<'a> {
             match tok.kind {
                 TokenKind::Dot => {
                     self.advance();
-                    let (field, _) = self.parse_identifier()?;
-                    let span = expr.span;
-                    expr = Expr {
-                        kind: ExprKind::FieldAccess(Box::new(expr), field),
-                        span,
-                    };
+                    // Postfix deref: expr.*
+                    if self.peek().kind == TokenKind::Star {
+                        self.advance();
+                        let span = expr.span;
+                        expr = Expr {
+                            kind: ExprKind::Deref(Box::new(expr)),
+                            span,
+                        };
+                    } else {
+                        let (field, _) = self.parse_identifier()?;
+                        let span = expr.span;
+                        expr = Expr {
+                            kind: ExprKind::FieldAccess(Box::new(expr), field),
+                            span,
+                        };
+                    }
                 }
                 TokenKind::As => {
                     self.advance();
@@ -1054,7 +1056,7 @@ mod tests {
     fn parse_borrows_and_pointers() {
         let source = "
             fn check(ptr: *i64, r: &mut i64) {
-                let a = *ptr;
+                let a = ptr.*;
                 let b = &raw a;
                 let c = &out a;
                 let d = &deinit a;

@@ -56,7 +56,7 @@ fn borrow_across_loop_iterations_ok() {
           head:
             branch(copy b) [true: body, false: done]
           body:
-            call use_num(copy *r);
+            call use_num(copy r.*);
             goto head
           done:
             call sink(move r);
@@ -389,7 +389,7 @@ fn nested_loop_with_borrow_across_outer_iterations_ok() {
           inner_head:
             branch(copy b) [true: inner_body, false: outer_back]
           inner_body:
-            call use_num(copy *r);
+            call use_num(copy r.*);
             goto inner_head
           outer_back:
             goto outer_head
@@ -414,8 +414,8 @@ fn mut_ref_move_out_then_write_back_cycle_ok() {
           y: i64;
           entry:
             r = &mut x;
-            y = move *r;
-            *r = 42;
+            y = move r.*;
+            r.* = 42;
             call use_num(move y);
             call sink(move r);
             return
@@ -561,7 +561,7 @@ fn out_ref_unfulfilled_on_abort_arm_is_waived() {
           entry:
             switchEnum(e) [A: a_arm, B: b_arm]
           a_arm:
-            *r = 1;
+            r.* = 1;
             return
           b_arm:
             abort
@@ -581,7 +581,7 @@ fn out_ref_unfulfilled_on_return_arm_leaks() {
           entry:
             switchEnum(e) [A: a_arm, B: b_arm]
           a_arm:
-            *r = 1;
+            r.* = 1;
             return
           b_arm:
             return

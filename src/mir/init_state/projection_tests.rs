@@ -69,7 +69,7 @@ fn deref_read_is_not_checked() {
         fn f(r: &i64) {
           a: i64;
           entry:
-            a = copy *r;
+            a = copy r.*;
             return
         }
         ",

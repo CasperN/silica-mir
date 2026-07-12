@@ -226,7 +226,7 @@ fn loan_on_one_slot_does_not_block_another_slot() {
             a = [10i64, 20i64, 30i64];
             r = &mut a[0i64];
             x = copy a[1i64];
-            y = copy *r;
+            y = copy r.*;
             return
         }
         ",
@@ -250,7 +250,7 @@ fn dynamic_index_loan_conflicts_with_any_slot_access() {
             a = [10i64, 20i64, 30i64];
             r = &mut a[copy i];
             x = copy a[0i64];
-            y = copy *r;
+            y = copy r.*;
             return
         }
         ",

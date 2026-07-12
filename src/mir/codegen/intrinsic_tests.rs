@@ -378,7 +378,7 @@ fn snapshot_composed_intrinsics_full_ir() {
             call $i64_add(copy a, copy b, move t1_out);
             t2_out = &out t2;
             call $i64_mul(copy t1, copy a, move t2_out);
-            *out = copy t2;
+            out.* = copy t2;
             return
         }
         ",

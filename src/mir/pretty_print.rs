@@ -174,8 +174,8 @@ fn write_place(out: &mut String, place: &Place) {
             out.push_str(variant);
         }
         Place::Deref(inner) => {
-            out.push('*');
             write_place(out, inner);
+            out.push_str(".*");
         }
         Place::Index(inner, op) => {
             write_place_projection_base(out, inner);
@@ -187,18 +187,10 @@ fn write_place(out: &mut String, place: &Place) {
 }
 
 /// Write a place that appears to the left of `.field`, `as V`, or `[i]`.
-/// Wraps in parens if the child is a `Deref`, since `.`/`as`/`[]` bind
-/// tighter than `*` (grammar prec 2 vs 1). Without the parens,
-/// `Downcast(Deref(e), V)` round-trips as `*e as V`, which parses as
-/// `Deref(Downcast(e, V))` — a different Place.
+/// With postfix `.*`, all projections are left-associative at the same
+/// precedence, so no parenthesization is ever needed.
 fn write_place_projection_base(out: &mut String, place: &Place) {
-    if matches!(place, Place::Deref(_)) {
-        out.push('(');
-        write_place(out, place);
-        out.push(')');
-    } else {
-        write_place(out, place);
-    }
+    write_place(out, place);
 }
 
 fn write_operand(out: &mut String, op: &Operand) {
@@ -567,8 +559,8 @@ mod tests {
             fn f(r: &mut i64) {
               n: i64;
               entry:
-                n = copy *r;
-                *r = 42;
+                n = copy r.*;
+                r.* = 42;
                 return
             }
             ",

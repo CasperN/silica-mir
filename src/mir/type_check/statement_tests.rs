@@ -32,15 +32,15 @@ fn assign_type_mismatch_error() {
 
 #[test]
 fn assign_through_mut_ref_ok() {
-    // `&mut r` starts pointee Init; writing through *r requires first
-    // consuming the pointee (transitioning to Uninit). Use `drop *r`
+    // `&mut r` starts pointee Init; writing through r.* requires first
+    // consuming the pointee (transitioning to Uninit). Use `drop r.*`
     // to consume the pointee without needing a local receiver.
     assert_ok(
         "
         fn f(r: &mut i64) {
             entry:
-            drop *r;
-            *r = 42;
+            drop r.*;
+            r.* = 42;
             return
         }
         ",

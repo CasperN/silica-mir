@@ -42,7 +42,7 @@ fn return_param_codegen() {
         "
         fn f(x: i64, $return: &out i64) {
           entry:
-            *$return = copy x;
+            $return.* = copy x;
             return
         }
         ",
@@ -75,7 +75,7 @@ fn return_param_call_codegen() {
         "
         fn callee($return: &out i64) {
           entry:
-            *$return = 42i64;
+            $return.* = 42i64;
             return
         }
         fn caller(out: &out i64) {

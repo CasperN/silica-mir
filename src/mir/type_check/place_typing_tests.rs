@@ -152,7 +152,7 @@ fn place_deref_ok() {
         fn f(r: &i64) {
             x: i64;
             entry:
-            x = copy *r;
+            x = copy r.*;
             return
         }
         ",
@@ -168,7 +168,7 @@ fn nested_reference_type_ok() {
         fn f(r: &mut &mut i64) {
             a: i64;
             entry:
-            a = copy **r;
+            a = copy r.*.*;
             return
         }
         ",
@@ -200,7 +200,7 @@ fn place_deref_of_non_ref_error() {
         fn f(y: i64) {
             x: i64;
             entry:
-            x = copy *y;
+            x = copy y.*;
             return
         }
         ",
@@ -210,14 +210,15 @@ fn place_deref_of_non_ref_error() {
 
 #[test]
 fn place_deref_through_field_ok() {
-    // Exercises Deref(Field(Var, "r")) — a reference held in a struct field.
+    // Exercises Deref(Field(Var, "r")) — dereference a reference stored in a
+    // struct field. `p.r.*` parses as Deref(Field(Var(p), r)).
     assert_ok(
         "
         struct Copy Drop Ptr { r: &i64 }
         fn f(p: Ptr) {
             a: i64;
             entry:
-            a = copy *p.r;
+            a = copy p.r.*;
             return
         }
         ",

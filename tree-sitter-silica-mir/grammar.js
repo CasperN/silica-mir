@@ -196,11 +196,7 @@ module.exports = grammar({
       // Array indexing: dynamic operand. Const-integer operands are
       // trackable per-slot; non-const operands widen to whole-array.
       prec.left(2, seq($.place, '[', field('index', $.operand), ']')),
-      prec.left(1, seq('*', $.place)),
-      // Parenthesized place. Highest precedence — used to force grouping
-      // when default binding produces the wrong shape (e.g. writing
-      // `(*e) as V` since `as` normally binds tighter than `*`).
-      seq('(', $.place, ')')
+      prec.left(3, seq($.place, '.', '*'))
     ),
 
     operand: $ => choice(

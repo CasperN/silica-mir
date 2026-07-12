@@ -205,7 +205,7 @@ fn structured_deref_of_non_pointer() {
             fn f(x: i64) {
               y: i64;
               entry:
-                y = copy *x;
+                y = copy x.*;
                 return
             }";
     let d = run_structured(src);

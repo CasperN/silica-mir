@@ -100,5 +100,5 @@ fn return_param_wrong_type_error() {
 
 #[test]
 fn return_param_valid_ok() {
-    assert_ok("fn f(x: i64, $return: &out i64) { entry: *$return = copy x; return }");
+    assert_ok("fn f(x: i64, $return: &out i64) { entry: $return.* = copy x; return }");
 }

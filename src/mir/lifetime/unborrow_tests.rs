@@ -19,7 +19,7 @@ fn unborrow_of_mut_ref_ok() {
           y: i64;
           entry:
             r = &mut x;
-            y = copy *r;
+            y = copy r.*;
             unborrow r;
             x = 42;
             return
@@ -49,13 +49,13 @@ fn unborrow_releases_loan() {
 
 #[test]
 fn unborrow_with_unfulfilled_obligation_error() {
-    // &mut is (Init, Init) but we moved *r out (cur=Uninit).
+    // &mut is (Init, Init) but we moved r.* out (cur=Uninit).
     // Unborrow requires cur == post; this errors.
     let (errs, _) = run("
         fn f(r: &mut i64) {
           x: i64;
           entry:
-            x = move *r;
+            x = move r.*;
             unborrow r;
             return
         }
@@ -129,12 +129,12 @@ fn unborrow_of_non_ref_type_error() {
 
 #[test]
 fn unborrow_out_ref_after_write_ok() {
-    // &out with cur=Init after `*r = v` reaches post; unborrow OK.
+    // &out with cur=Init after `r.* = v` reaches post; unborrow OK.
     assert_no_diagnostics(
         "
         fn f(r: &out i64) {
           entry:
-            *r = 42;
+            r.* = 42;
             unborrow r;
             return
         }
@@ -211,7 +211,7 @@ fn unborrow_then_reborrow_same_place_ok() {
             r = &mut x;
             unborrow r;
             s = &mut x;
-            y = copy *s;
+            y = copy s.*;
             unborrow s;
             return
         }
@@ -254,7 +254,7 @@ fn unborrow_across_loop_ok() {
           head:
             branch(copy b) [true: body, false: done]
           body:
-            call use_num(copy *r);
+            call use_num(copy r.*);
             goto head
           done:
             unborrow r;

@@ -178,7 +178,7 @@ fn overwrite_ref_typed_field_with_unfulfilled_obligation_errors() {
           y: i64;
           entry:
             b.p = &mut x;
-            y = move *b.p;
+            y = move b.p.*;
             b.p = &mut x2;
             return
         }

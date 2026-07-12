@@ -340,15 +340,14 @@ impl Parser {
                     return Ok(Place::Var(self.get_text(first_child).to_string()));
                 }
 
-                if self.get_text(first_child) == "*" {
-                    let inner = node.child(1).ok_or("Deref missing inner place")?;
-                    return Ok(Place::Deref(Box::new(self.map_place(inner)?)));
-                }
-
-                // Parenthesized place: `(<place>)` — transparently unwraps.
-                if self.get_text(first_child) == "(" {
-                    let inner = node.child(1).ok_or("Paren-place missing inner")?;
-                    return self.map_place(inner);
+                let n = node.child_count();
+                if n >= 3 {
+                    let last_child = node.child((n - 1) as u32).unwrap();
+                    let second_to_last = node.child((n - 2) as u32).unwrap();
+                    if self.get_text(last_child) == "*" && self.get_text(second_to_last) == "." {
+                        let inner = node.child(0).ok_or("Deref missing inner place")?;
+                        return Ok(Place::Deref(Box::new(self.map_place(inner)?)));
+                    }
                 }
 
                 let inner_place = self.map_place(first_child)?;

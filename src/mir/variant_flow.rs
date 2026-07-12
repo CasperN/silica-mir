@@ -871,8 +871,8 @@ mod tests {
             enum Copy Drop Option { None: unit Some: i64 }
             fn f(r: &mut Option) {
               entry:
-                *r = Option::None(unit);
-                switchEnum(*r) [None: n, Some: dead]
+                r.* = Option::None(unit);
+                switchEnum(r.*) [None: n, Some: dead]
               n: return
               dead: unreachable
             }
@@ -1265,7 +1265,7 @@ mod tests {
               entry:
                 switchEnum(e) [A: a_arm, N: n_arm]
               a_arm:
-                *out = copy e as A;
+                out.* = copy e as A;
                 return
               n_arm:
                 unreachable
@@ -1287,7 +1287,7 @@ mod tests {
               entry:
                 switchEnum(e) [A: a_arm, N: n_arm]
               a_arm:
-                *out = copy e as A;
+                out.* = copy e as A;
                 return
               n_arm:
                 unreachable
@@ -1309,7 +1309,7 @@ mod tests {
               entry:
                 switchEnum(e) [A: a_arm, N: n_arm]
               a_arm:
-                *out = copy e as A;
+                out.* = copy e as A;
                 return
               n_arm:
                 unreachable
@@ -1331,7 +1331,7 @@ mod tests {
               entry:
                 switchEnum(e) [A: a_arm, B: b_arm]
               a_arm:
-                *out = copy e as A;
+                out.* = copy e as A;
                 return
               b_arm:
                 unreachable
@@ -1464,7 +1464,7 @@ mod structured {
             fn f(o: Option) {
               x: i64;
               entry:
-                x = copy (o as Some);
+                x = copy o as Some;
                 return
             }";
         let d = run_structured(src);

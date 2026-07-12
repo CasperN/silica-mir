@@ -31,14 +31,14 @@ fn recursive_factorial_ok() {
             call $i64_le(copy n, 1i64, move bo);
             branch(copy base) [true: base_arm, false: rec_arm]
           base_arm:
-            *out = 1i64;
+            out.* = 1i64;
             return
           rec_arm:
             sub_out = &out sub;
             call $i64_sub(copy n, 1i64, move sub_out);
             rec_out = &out sub_result;
             call fact(copy sub, move rec_out);
-            mul_out = &out *out;
+            mul_out = &out out.*;
             call $i64_mul(copy n, copy sub_result, move mul_out);
             return
         }
@@ -90,7 +90,7 @@ fn iterative_fibonacci_loop_ok() {
             i = move i_tmp;
             goto head
           exit:
-            *out = copy a;
+            out.* = copy a;
             return
         }
         ",
@@ -117,13 +117,13 @@ fn enum_of_enum_switch_and_downcast_ok() {
             inner = copy o as A;
             switchEnum(inner) [X: x_arm, Y: y_arm]
           x_arm:
-            *out = copy inner as X;
+            out.* = copy inner as X;
             return
           y_arm:
-            *out = copy inner as Y;
+            out.* = copy inner as Y;
             return
           b_arm:
-            *out = copy o as B;
+            out.* = copy o as B;
             return
         }
         ",
@@ -144,7 +144,7 @@ fn enum_with_never_variant_unreachable_arm_ok() {
           entry:
             switchEnum(e) [A: a_arm, N: n_arm]
           a_arm:
-            *out = copy e as A;
+            out.* = copy e as A;
             return
           n_arm:
             unreachable
@@ -204,7 +204,7 @@ fn array_of_enums_per_slot_switch_ok() {
             drop v1_neg;
             goto combine
           combine:
-            add_out = &out *out;
+            add_out = &out out.*;
             call $i64_add(copy v0, copy v1, move add_out);
             return
         }
@@ -227,7 +227,7 @@ fn i32_to_i64_and_back_ok() {
           entry:
             wide_out = &out wide;
             call $i32_to_i64(copy x, move wide_out);
-            narrow_out = &out *out;
+            narrow_out = &out out.*;
             call $i64_to_i32(copy wide, move narrow_out);
             return
         }
@@ -249,7 +249,7 @@ fn bool_to_int_arithmetic_ok() {
           entry:
             bo = &out neg;
             call $i64_lt(copy x, 0i64, move bo);
-            zext_out = &out *out;
+            zext_out = &out out.*;
             call $bool_to_i32(copy neg, move zext_out);
             return
         }
@@ -275,7 +275,7 @@ fn is_power_of_two_via_bitops_ok() {
             call $u64_sub(copy x, 1u64, move sub_out);
             and_out = &out masked;
             call $u64_and(copy x, copy minus_one, move and_out);
-            bo = &out *out;
+            bo = &out out.*;
             call $u64_eq(copy masked, 0u64, move bo);
             return
         }
@@ -299,7 +299,7 @@ fn popcount_and_clz_compose_ok() {
             call $i32_popcount(copy x, move pop_out);
             clz_out = &out leading;
             call $i32_clz(copy x, move clz_out);
-            add_out = &out *out;
+            add_out = &out out.*;
             call $i32_add(copy pop, copy leading, move add_out);
             return
         }
@@ -318,14 +318,14 @@ fn function_pointer_indirect_call_ok() {
         fn double(x: i64, out: &out i64) {
           add_out: &out i64;
           entry:
-            add_out = &out *out;
+            add_out = &out out.*;
             call $i64_add(copy x, copy x, move add_out);
             return
         }
         fn call_it(f: fn(i64, &out i64), x: i64, out: &out i64) {
           fwd_out: &out i64;
           entry:
-            fwd_out = &out *out;
+            fwd_out = &out out.*;
             call copy f(copy x, move fwd_out);
             return
         }
@@ -336,7 +336,7 @@ fn function_pointer_indirect_call_ok() {
           entry:
             r_out = &out r;
             call call_it(double, 21i64, move r_out);
-            trunc_out = &out *exit;
+            trunc_out = &out exit.*;
             call $i64_to_i32(copy r, move trunc_out);
             return
         }
@@ -348,9 +348,9 @@ fn function_pointer_indirect_call_ok() {
 
 #[test]
 fn raw_ptr_to_struct_field_access_ok() {
-    // `p: *Point`. `(*p).x` should work — Deref of a raw pointer
-    // followed by field projection. Raw pointer skips loan/init
-    // checks but the field projection still needs to typecheck.
+    // `p: *Point`. `p.*.x` — Deref of a raw pointer followed by field
+    // projection. Raw pointer skips loan/init checks but the field
+    // projection still needs to typecheck.
     assert_no_diagnostics(
         "
         struct Copy Drop Point { x: i64 y: i64 }
@@ -358,7 +358,7 @@ fn raw_ptr_to_struct_field_access_ok() {
           p: *Point;
           entry:
             p = &raw pt;
-            *out = copy (*p).x;
+            out.* = copy p.*.x;
             return
         }
         ",
@@ -380,8 +380,8 @@ fn switch_arm_asymmetric_ref_use_ok() {
           entry:
             switchEnum(w) [A: a_arm, B: b_arm]
           a_arm:
-            consumed = move *r;
-            *r = 99i64;
+            consumed = move r.*;
+            r.* = 99i64;
             goto join
           b_arm:
             goto join
@@ -475,7 +475,7 @@ fn straight_line_reassign_via_out_ok_via_elaboration() {
             call $i64_add(copy a, copy b, move r_out);
             r_out = &out r;
             call $i64_mul(copy a, copy c, move r_out);
-            *out = copy r;
+            out.* = copy r;
             return
         }
         ",
@@ -519,7 +519,7 @@ fn sum_array_via_dynamic_index_loop_ok() {
             i = move i_tmp;
             goto head
           exit:
-            *out = copy sum;
+            out.* = copy sum;
             return
         }
         ",

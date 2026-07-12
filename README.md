@@ -284,7 +284,7 @@ place =
     | var                         # identifier; `$*` names are reserved for intrinsics
     | place.field                 # struct field projection
     | place as Variant            # enum downcast projection
-    | *place                      # deref of a reference or raw pointer
+    | place.*                     # deref of a reference or raw pointer
     | place[operand]              # array element indexing (const- or dynamic-index)
 
 int_lit   = (decimal | 0x<hex> | 0b<binary>) (i8|i16|i32|i64|u8|u16|u32|u64)?
@@ -393,7 +393,7 @@ type =
     | unit
     | i8 | i16 | i32 | i64 | u8 | u16 | u32 | u64
     | f32 | f64
-    | boolean
+    | bool
     | never                                      # uninhabited (⊥); vacuously Copy Drop Move
     | struct identifiers
     | enum identifiers
@@ -407,7 +407,7 @@ Notes:
   Recursion through references or raw pointers is allowed (a pointer is
   bounded regardless of the pointee).
 - **Scalar layout** matches natural alignment: i64/u64/f64/pointer are
-  8 bytes, i32/u32/f32 are 4, i16/u16 are 2, i8/u8/boolean are 1. Not
+  8 bytes, i32/u32/f32 are 4, i16/u16 are 2, i8/u8/bool are 1. Not
   ABI-stable.
 - **Arrays lay out as `N * size_of(T)`**, aligned to `T`'s alignment.
   Init state is per-slot for constant indices (piecewise construction
@@ -472,7 +472,7 @@ operation (e.g. `@llvm.ctpop.i64`) is the same one-file change plus a
 
 Currently provided:
 - Integer arithmetic: `$i64_add/sub/mul/neg`, `$u64_add/sub/mul`.
-- Integer comparisons (result `boolean`): `$i64_eq/ne/lt/le/gt/ge`,
+- Integer comparisons (result `bool`): `$i64_eq/ne/lt/le/gt/ge`,
   `$u64_eq/ne/lt/le/gt/ge` (signed and unsigned predicates
   respectively).
 - Float arithmetic: `$f64_add`, `$f64_mul`.
@@ -499,7 +499,7 @@ for production correctness).
 - HLL
 - Special $return MIR variable that maps to the return place in the HLL and
 in LLVM.
-- reachable/flow analysis for booleans too. Or should boolean be an enum?
+- reachable/flow analysis for bools too. Or should bool be an enum?
 - Design MIR coroutines and effect decls.
 - Extend downcast-target reassignment drop-elab to non-operand
   rvalues. Today `o as V = <operand>` rewrites to
@@ -536,6 +536,9 @@ in LLVM.
   save first-time users a lot of time.
 
 # Longer term
+- Replace tree-sitter MIR parser with a hand-rolled recursive descent parser,
+  sharing lexer/span infrastructure with the HLL parser. Eliminates the C build
+  dependency and enables a unified diagnostic layer.
 - Lambdas
 - Coroutines
 - MIR polymorphic types

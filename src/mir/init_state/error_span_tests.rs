@@ -82,7 +82,7 @@ fn structured_ref_obligation_unfulfilled_at_drop_span() {
             fn f(r: &mut i64) {
               x: i64;
               entry:
-                x = move *r;
+                x = move r.*;
                 drop r;
                 return
             }";

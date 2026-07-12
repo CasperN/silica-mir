@@ -23,7 +23,7 @@ fn mut_reborrow_of_mut_ok() {
           s: &mut i64;
           entry:
             r = &mut x;
-            s = &mut *r;
+            s = &mut r.*;
             call sink(move s);
             return
         }
@@ -33,7 +33,7 @@ fn mut_reborrow_of_mut_ok() {
 
 #[test]
 fn access_r_while_reborrow_live_conflicts() {
-    // r is suspended by s. `copy *r` between the reborrow and s's
+    // r is suspended by s. `copy r.*` between the reborrow and s's
     // consumption reads through r while s's loan is active — errors.
     let (errs, _) = run("
         extern fn sink(r: &mut i64);
@@ -43,13 +43,13 @@ fn access_r_while_reborrow_live_conflicts() {
           y: i64;
           entry:
             r = &mut x;
-            s = &mut *r;
-            y = copy *r;
+            s = &mut r.*;
+            y = copy r.*;
             call sink(move s);
             return
         }
         ");
-    assert_errors_contain(&errs, &["cannot read '*r': already borrowed by 's'"]);
+    assert_errors_contain(&errs, &["cannot read 'r.*': already borrowed by 's'"]);
 }
 
 #[test]
@@ -64,7 +64,7 @@ fn access_x_while_reborrow_live_conflicts() {
           s: &mut i64;
           entry:
             r = &mut x;
-            s = &mut *r;
+            s = &mut r.*;
             x = 1;
             call sink(move s);
             return
@@ -77,14 +77,14 @@ fn access_x_while_reborrow_live_conflicts() {
 
 #[test]
 fn mut_reborrow_of_out_precondition_fails() {
-    // r: &out i64 → r.is_init = false at param entry. &mut *r
+    // r: &out i64 → r.is_init = false at param entry. &mut r.*
     // requires the pointee to be initialized. Rejected.
     let (errs, _) = run("
         extern fn sink(r: &mut i64);
         fn f(r: &out i64) {
           s: &mut i64;
           entry:
-            s = &mut *r;
+            s = &mut r.*;
             call sink(move s);
             return
         }
@@ -97,7 +97,7 @@ fn mut_reborrow_of_out_precondition_fails() {
 
 #[test]
 fn out_reborrow_of_out_ok_when_pointee_written() {
-    // r: &out i64, s: &out *r fulfilling r's obligation transitively.
+    // r: &out i64, s: &out r.* fulfilling r's obligation transitively.
     // After s's *s = 42, r.is_init becomes true (via eager on &out).
     // r resumes and its own &out obligation is met.
     assert_no_diagnostics(
@@ -105,8 +105,8 @@ fn out_reborrow_of_out_ok_when_pointee_written() {
         fn f(r: &out i64) {
           s: &out i64;
           entry:
-            s = &out *r;
-            *s = 42;
+            s = &out r.*;
+            s.* = 42;
             return
         }
         ",
@@ -115,14 +115,14 @@ fn out_reborrow_of_out_ok_when_pointee_written() {
 
 #[test]
 fn out_reborrow_of_mut_precondition_fails() {
-    // r: &mut i64 → pointee Init. &out *r requires Uninit. Rejected.
+    // r: &mut i64 → pointee Init. &out r.* requires Uninit. Rejected.
     let (errs, _) = run("
         extern fn sink(r: &out i64);
         fn f(r: &mut i64) {
           s: &out i64;
           entry:
-            s = &out *r;
-            *s = 1;
+            s = &out r.*;
+            s.* = 1;
             call sink(move s);
             return
         }
@@ -147,7 +147,7 @@ fn shared_reborrow_of_mut_ok() {
           s: &i64;
           entry:
             r = &mut x;
-            s = &*r;
+            s = &r.*;
             call read_ref(move s);
             return
         }
@@ -171,8 +171,8 @@ fn chained_reborrow_t_from_s_from_r_ok() {
           t: &mut i64;
           entry:
             r = &mut x;
-            s = &mut *r;
-            t = &mut *s;
+            s = &mut r.*;
+            t = &mut s.*;
             call sink(move t);
             return
         }
@@ -193,7 +193,7 @@ fn reborrow_of_mut_param_ok() {
         fn f(r: &mut i64) {
           s: &i64;
           entry:
-            s = &*r;
+            s = &r.*;
             call read_ref(move s);
             return
         }
@@ -214,8 +214,8 @@ fn nll_inserts_child_unborrow_before_parent() {
         fn f(r: &out i64) {
           s: &out i64;
           entry:
-            s = &out *r;
-            *s = 42;
+            s = &out r.*;
+            s.* = 42;
             return
         }
         ",
@@ -228,10 +228,6 @@ fn nll_inserts_child_unborrow_before_parent() {
 
 #[test]
 fn bare_downcast_of_deref_still_parses_as_deref_downcast() {
-    // Precedence: `as` (prec 2) binds tighter than `*` (prec 1), so
-    // the bare form `*e as V` groups as `Deref(Downcast(e, V))` and
-    // fails because `e: &mut E` isn't an enum. Use parens to force
-    // the other grouping (see next test).
     let (errs, _) = run(
         "
         enum Move E { V: i64 }
@@ -239,9 +235,9 @@ fn bare_downcast_of_deref_still_parses_as_deref_downcast() {
         fn f(e: &mut E) {
           r: &mut i64;
           entry:
-            switchEnum(*e) [V: v_arm]
+            switchEnum(e.*) [V: v_arm]
           v_arm:
-            r = &mut *e as V;
+            r = &mut e as V .*;
             call sink(move r);
             return
         }
@@ -251,11 +247,7 @@ fn bare_downcast_of_deref_still_parses_as_deref_downcast() {
 }
 
 #[test]
-fn parenthesized_deref_then_downcast_reborrow_ok() {
-    // With the paren-place production, `(*e) as V` groups as
-    // `Downcast(Deref(e), V)` — reborrowing a variant payload behind
-    // a mutable reference. Combines Deref + Downcast in a single
-    // Ref rvalue.
+fn deref_then_downcast_reborrow_ok() {
     assert_no_diagnostics(
         "
         enum Move E { V: i64 }
@@ -263,9 +255,9 @@ fn parenthesized_deref_then_downcast_reborrow_ok() {
         fn f(e: &mut E) {
           r: &mut i64;
           entry:
-            switchEnum(*e) [V: v_arm]
+            switchEnum(e.*) [V: v_arm]
           v_arm:
-            r = &mut (*e) as V;
+            r = &mut e.* as V;
             call sink(move r);
             return
         }
@@ -275,7 +267,7 @@ fn parenthesized_deref_then_downcast_reborrow_ok() {
 
 #[test]
 fn reborrow_in_loop_body_ok() {
-    // Reborrow `s = &mut *r` inside a loop body. Each iteration
+    // Reborrow `s = &mut r.*` inside a loop body. Each iteration
     // creates a fresh s, uses it, drops it (via call). r stays live
     // across the back-edge and NLL closes it on the loop-exit edge.
     assert_no_diagnostics(
@@ -290,7 +282,7 @@ fn reborrow_in_loop_body_ok() {
           head:
             branch(copy b) [true: body, false: done]
           body:
-            s = &mut *r;
+            s = &mut r.*;
             call use_mut(move s);
             goto head
           done:
