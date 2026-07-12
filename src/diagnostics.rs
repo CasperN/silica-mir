@@ -43,6 +43,9 @@ pub enum DiagCode {
     /// Errors from initialization-state dataflow
     /// (see `init_state::InitStateCode`).
     InitState(crate::init_state::InitStateCode),
+    /// Diagnostics from the variant-flow / `switchEnum` analysis
+    /// (see `variant_flow::VariantFlowCode`).
+    VariantFlow(crate::variant_flow::VariantFlowCode),
 }
 
 /// A single compiler diagnostic (error or warning). The container in

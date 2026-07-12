@@ -22,11 +22,63 @@
 
 use crate::ast::*;
 use crate::dataflow::{self, Analysis, Direction, WalkPoint};
-use crate::diagnostics::Diagnostics;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::type_check::{Env, TypeDecl};
-use crate::{push_error, push_warning};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
+
+/// Machine-readable diagnostic codes emitted by the variant-flow pass.
+///
+/// Multiple push sites that surface the same conceptual failure share
+/// a code (e.g. every "declared variant missing" arm produces one
+/// `SwitchNotExhaustive` diagnostic).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum VariantFlowCode {
+    /// `place as V` where flow analysis hasn't refined `place`'s
+    /// variant set to (a subset containing only) `V`. Usually needs a
+    /// preceding `switchEnum` arm to narrow the state.
+    DowncastVariantNotRefined,
+    /// Downcast applied to a projection like `s.e as V`. Variant flow
+    /// only tracks root `Var`s — copy through a local first.
+    DowncastOnProjection,
+    /// `switchEnum` with zero arms — no control-flow successor.
+    SwitchNoArms,
+    /// `switchEnum` doesn't cover every declared variant of the enum.
+    /// Each missing variant reports its own diagnostic.
+    SwitchNotExhaustive,
+    /// `switchEnum` names the same variant twice. Each repeat reports
+    /// its own diagnostic.
+    SwitchDuplicateArm,
+    /// A `switchEnum` arm targets a block whose terminator is
+    /// `unreachable`, but flow analysis proves the variant IS
+    /// reachable at the switch. Declaring an arm `unreachable` is
+    /// only sound when the analysis actually rules it out.
+    SwitchArmFalselyUnreachable,
+    /// (warning) A `switchEnum` arm exists for a variant that flow
+    /// analysis proves cannot occur at this point — dead code.
+    SwitchArmDeadCode,
+}
+
+impl From<VariantFlowCode> for DiagCode {
+    fn from(code: VariantFlowCode) -> DiagCode {
+        DiagCode::VariantFlow(code)
+    }
+}
+use VariantFlowCode::*;
+
+/// Build a diagnostic with the standard function/block context set.
+/// Local shorthand for the builder chain used at every push site.
+fn diag(
+    code: impl Into<DiagCode>,
+    span: Span,
+    func: &Function,
+    block: &BasicBlock,
+    msg: String,
+) -> Diagnostic {
+    Diagnostic::new(code, span, msg)
+        .in_function(&func.name)
+        .in_block(&block.label)
+}
 
 /// State at one program point: per-Var variant set. Absent = ⊤.
 type PointState = IndexMap<String, BTreeSet<String>>;
@@ -226,30 +278,29 @@ fn check_downcast_refinement(
                 None => false, // ⊤: any declared variant possible
             };
             if !refined {
-                push_error!(
-                    d,
+                d.push_error(diag(
+                    DowncastVariantNotRefined,
                     span,
                     func,
                     block,
-                    "cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
-                    root,
-                    v,
-                    root,
-                    v
-                );
+                    format!(
+                        "cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
+                        root, v, root, v
+                    ),
+                ));
             }
         } else {
             let prefix = format_place(&build_place(&root, &path[..i]));
-            push_error!(
-                d,
+            d.push_error(diag(
+                DowncastOnProjection,
                 span,
                 func,
                 block,
-                "cannot downcast '{} as {}' here: variant flow only tracks root Vars, and '{}' is a projection — extract into a local first",
-                prefix,
-                v,
-                prefix
-            );
+                format!(
+                    "cannot downcast '{} as {}' here: variant flow only tracks root Vars, and '{}' is a projection — extract into a local first",
+                    prefix, v, prefix
+                ),
+            ));
         }
     }
 }
@@ -379,7 +430,13 @@ fn check_switch(
 ) {
     let ts = block.terminator_span;
     if cases.is_empty() {
-        push_error!(d, ts, func, block, "switchEnum requires at least one arm");
+        d.push_error(diag(
+            SwitchNoArms,
+            ts,
+            func,
+            block,
+            "switchEnum requires at least one arm".to_string(),
+        ));
     }
 
     let Some(enum_decl) = resolve_enum_of_place(env, locals, place) else {
@@ -393,15 +450,16 @@ fn check_switch(
     // Exhaustiveness — report missing variants in declaration order.
     for variant in &declared {
         if !handled.contains(variant) {
-            push_error!(
-                d,
+            d.push_error(diag(
+                SwitchNotExhaustive,
                 ts,
                 func,
                 block,
-                "switchEnum on '{}' does not handle variant '{}'",
-                enum_decl.name,
-                variant
-            );
+                format!(
+                    "switchEnum on '{}' does not handle variant '{}'",
+                    enum_decl.name, variant
+                ),
+            ));
         }
     }
 
@@ -409,14 +467,13 @@ fn check_switch(
     let mut seen: BTreeSet<&str> = BTreeSet::new();
     for (variant, _) in cases {
         if !seen.insert(variant.as_str()) {
-            push_error!(
-                d,
+            d.push_error(diag(
+                SwitchDuplicateArm,
                 ts,
                 func,
                 block,
-                "switchEnum has duplicate arm for variant '{}'",
-                variant
-            );
+                format!("switchEnum has duplicate arm for variant '{}'", variant),
+            ));
         }
     }
 
@@ -458,16 +515,26 @@ fn check_switch(
         };
 
         match (target_unreachable, variant_reachable) {
-            (true, true) => push_error!(
-                d, ts, func, block,
-                "switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
-                variant
-            ),
-            (false, false) => push_warning!(
-                d, ts, func, block,
-                "switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
-                variant
-            ),
+            (true, true) => d.push_error(diag(
+                SwitchArmFalselyUnreachable,
+                ts,
+                func,
+                block,
+                format!(
+                    "switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
+                    variant
+                ),
+            )),
+            (false, false) => d.push_warning(diag(
+                SwitchArmDeadCode,
+                ts,
+                func,
+                block,
+                format!(
+                    "switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
+                    variant
+                ),
+            )),
             _ => {}
         }
     }
@@ -1295,6 +1362,116 @@ mod tests {
             errs.iter().any(|e| e.contains("is not part of enum")),
             "expected 'not part of enum' error, got: {:?}",
             errs
+        );
+    }
+}
+
+/// Structured (code + span) assertions for variant_flow. Complements
+/// the string-based coverage/flow tests above by pinning the machine-
+/// readable code and the primary span of each diagnostic.
+#[cfg(test)]
+mod structured {
+    use crate::ast::Span;
+    use crate::test_util::*;
+    use crate::variant_flow::VariantFlowCode;
+
+    #[test]
+    fn structured_switch_not_exhaustive_at_terminator_span() {
+        // `switchEnum(o) [None: end]` on line 5 col 17 — Some
+        // isn't handled.
+        let src = "
+            enum Copy Drop Option { None: unit Some: i64 }
+            fn f(o: Option) {
+              entry:
+                switchEnum(o) [None: end]
+              end: return
+            }";
+        let d = run_structured(src);
+        assert_error_at(
+            &d,
+            VariantFlowCode::SwitchNotExhaustive,
+            Span { line: 5, col: 17 },
+        );
+    }
+
+    #[test]
+    fn structured_switch_duplicate_arm_at_terminator_span() {
+        let src = "
+            enum Copy Drop Option { None: unit Some: i64 }
+            fn f(o: Option) {
+              entry:
+                switchEnum(o) [None: a, None: b, Some: c]
+              a: return
+              b: return
+              c: return
+            }";
+        let d = run_structured(src);
+        assert_error_at(
+            &d,
+            VariantFlowCode::SwitchDuplicateArm,
+            Span { line: 5, col: 17 },
+        );
+    }
+
+    #[test]
+    fn structured_switch_arm_falsely_unreachable_at_terminator_span() {
+        // `Some` is reachable but its arm targets an `unreachable`
+        // block — inconsistent.
+        let src = "
+            enum Copy Drop Option { None: unit Some: i64 }
+            fn f(o: Option) {
+              entry:
+                switchEnum(o) [None: n, Some: dead]
+              n: return
+              dead: unreachable
+            }";
+        let d = run_structured(src);
+        assert_error_at(
+            &d,
+            VariantFlowCode::SwitchArmFalselyUnreachable,
+            Span { line: 5, col: 17 },
+        );
+    }
+
+    #[test]
+    fn structured_switch_arm_dead_code_at_terminator_span() {
+        // `o = Option::None(unit)` refines `o` to `{None}`, so the
+        // `Some: s` arm is dead code (warning).
+        let src = "
+            enum Copy Drop Option { None: unit Some: i64 }
+            fn f() {
+              o: Option;
+              entry:
+                o = Option::None(unit);
+                switchEnum(o) [None: n, Some: s]
+              n: return
+              s: return
+            }";
+        let d = run_structured(src);
+        assert_warning_at(
+            &d,
+            VariantFlowCode::SwitchArmDeadCode,
+            Span { line: 7, col: 17 },
+        );
+    }
+
+    #[test]
+    fn structured_downcast_variant_not_refined_at_stmt_span() {
+        // `x = copy (o as Some)` without a preceding switch to refine
+        // `o` — flow doesn't know we're on the `Some` variant.
+        let src = "
+            enum Copy Drop Option { None: unit Some: i64 }
+            fn f(o: Option) {
+              x: i64;
+              entry:
+                x = copy (o as Some);
+                return
+            }";
+        let d = run_structured(src);
+        assert_error_at(
+            &d,
+            VariantFlowCode::DowncastVariantNotRefined,
+            Span { line: 6, col: 17 },
         );
     }
 }

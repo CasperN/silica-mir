@@ -38,6 +38,25 @@ pub fn assert_error_at(d: &Diagnostics, code: impl Into<DiagCode>, span: Span) {
     }
 }
 
+/// Warning-side counterpart of [`assert_error_at`]. Matches on both
+/// code and primary span in the warnings list.
+#[track_caller]
+pub fn assert_warning_at(d: &Diagnostics, code: impl Into<DiagCode>, span: Span) {
+    let expected_code = code.into();
+    let matched = d
+        .warnings()
+        .any(|w| w.code() == expected_code && w.span() == span);
+    if !matched {
+        panic!(
+            "no warning matched code={:?} at span={}\n--- got {} warning(s) ---\n{}",
+            expected_code,
+            span,
+            d.warning_count(),
+            format_diagnostics(d.warnings()),
+        );
+    }
+}
+
 fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> String {
     let mut lines = Vec::new();
     for diag in diagnostics {
