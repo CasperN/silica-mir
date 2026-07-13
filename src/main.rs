@@ -156,6 +156,10 @@ fn main() {
                     std::process::exit(1);
                 }
             };
+            if let Err(e) = hll::mut_check::check_mutability(&hll_prog) {
+                eprintln!("Mutability error: {}", e);
+                std::process::exit(1);
+            }
             match hll::lowering::lower_program(&hll_prog, &types) {
                 Ok(p) => p,
                 Err(e) => {
