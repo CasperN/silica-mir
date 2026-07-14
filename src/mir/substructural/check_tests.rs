@@ -449,7 +449,7 @@ fn linear_struct_untouched_param_leaks() {
             return
         }
         ",
-        "value 'p' of type Custom(\"P\") is not consumed at return",
+        "value 'p' of type P is not consumed at return",
     );
 }
 
@@ -539,7 +539,7 @@ fn linear_struct_fully_constructed_leaks() {
             return
         }
         ",
-        "value 'p' of type Custom(\"P\") is not consumed at return",
+        "value 'p' of type P is not consumed at return",
     );
 }
 
@@ -557,7 +557,7 @@ fn fully_linear_struct_untouched_param_leaks() {
             return
         }
         ",
-        "value 'x' of type Custom(\"L\") is not consumed at return",
+        "value 'x' of type L is not consumed at return",
     );
 }
 

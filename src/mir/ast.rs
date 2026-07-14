@@ -147,6 +147,45 @@ pub enum Type {
     Array(Box<Type>, u64),
 }
 
+impl std::fmt::Display for Type {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Int(i) => write!(f, "{}", i.name()),
+            Type::Float(fl) => write!(f, "{}", fl.name()),
+            Type::Bool => write!(f, "bool"),
+            Type::Unit => write!(f, "unit"),
+            Type::Never => write!(f, "never"),
+            Type::Custom(name) => write!(f, "{}", name),
+            Type::Fn(params) => {
+                write!(f, "fn(")?;
+                for (i, p) in params.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", p)?;
+                }
+                write!(f, ")")
+            }
+            Type::Ref(kind, inner) => {
+                let kind_str = match kind {
+                    RefKind::Shared => "&",
+                    RefKind::Mut => "&mut ",
+                    RefKind::Out => "&out ",
+                    RefKind::Drop => "&drop ",
+                    RefKind::Uninit => "&uninit ",
+                };
+                if *kind == RefKind::Shared {
+                    write!(f, "& {}", inner)
+                } else {
+                    write!(f, "{}{}", kind_str, inner)
+                }
+            }
+            Type::RawPtr(inner) => write!(f, "*{}", inner),
+            Type::Array(elem, size) => write!(f, "[{}; {}]", elem, size),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Place {
     Var(String),

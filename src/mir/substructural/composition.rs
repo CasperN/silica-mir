@@ -153,7 +153,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
                 CopyMarkerNotSatisfied,
                 f.span,
                 format!(
-                    "In struct '{}' (marked Copy), field '{}' has type {:?} which is not Copy",
+                    "In struct '{}' (marked Copy), field '{}' has type {} which is not Copy",
                     s.name, f.name, f.ty
                 ),
             ));
@@ -163,7 +163,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
                 DropMarkerNotSatisfied,
                 f.span,
                 format!(
-                    "In struct '{}' (marked Drop), field '{}' has type {:?} which is not Drop",
+                    "In struct '{}' (marked Drop), field '{}' has type {} which is not Drop",
                     s.name, f.name, f.ty
                 ),
             ));
@@ -176,7 +176,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
                 MoveMarkerNotSatisfied,
                 f.span,
                 format!(
-                    "In struct '{}' (marked Move), field '{}' has type {:?} which is not Move",
+                    "In struct '{}' (marked Move), field '{}' has type {} which is not Move",
                     s.name, f.name, f.ty
                 ),
             ));
@@ -192,7 +192,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
                 CopyMarkerNotSatisfied,
                 v.span,
                 format!(
-                    "In enum '{}' (marked Copy), variant '{}' payload type {:?} is not Copy",
+                    "In enum '{}' (marked Copy), variant '{}' payload type {} is not Copy",
                     e.name, v.name, v.ty
                 ),
             ));
@@ -202,7 +202,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
                 DropMarkerNotSatisfied,
                 v.span,
                 format!(
-                    "In enum '{}' (marked Drop), variant '{}' payload type {:?} is not Drop",
+                    "In enum '{}' (marked Drop), variant '{}' payload type {} is not Drop",
                     e.name, v.name, v.ty
                 ),
             ));
@@ -212,7 +212,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
                 MoveMarkerNotSatisfied,
                 v.span,
                 format!(
-                    "In enum '{}' (marked Move), variant '{}' payload type {:?} is not Move",
+                    "In enum '{}' (marked Move), variant '{}' payload type {} is not Move",
                     e.name, v.name, v.ty
                 ),
             ));

@@ -283,7 +283,7 @@ impl Env {
                     Type::RawPtr(pointee) => Ok(*pointee),
                     other => Err(err(
                         DerefOfNonPointer,
-                        format!("Cannot dereference non-pointer type {:?}", other),
+                        format!("Cannot dereference non-pointer type {}", other),
                     )),
                 }
             }
@@ -295,7 +295,7 @@ impl Env {
                         return Err(err(
                             FieldOfNonStruct,
                             format!(
-                                "Cannot project field '{}' of non-struct type {:?}",
+                                "Cannot project field '{}' of non-struct type {}",
                                 field_name, inner_ty
                             ),
                         ))
@@ -333,7 +333,7 @@ impl Env {
                     _ => {
                         return Err(err(
                             DowncastOfNonEnum,
-                            format!("Cannot downcast non-enum type {:?}", inner_ty),
+                            format!("Cannot downcast non-enum type {}", inner_ty),
                         ))
                     }
                 };
@@ -364,7 +364,7 @@ impl Env {
                 let Type::Array(elem, n) = inner_ty else {
                     return Err(err(
                         IndexOfNonArray,
-                        format!("Cannot index non-array type {:?}", inner_ty),
+                        format!("Cannot index non-array type {}", inner_ty),
                     ));
                 };
                 // Index operand must be an integer type.
@@ -372,7 +372,7 @@ impl Env {
                 if !matches!(op_ty, Type::Int(_)) {
                     return Err(err(
                         ArrayIndexNotInteger,
-                        format!("Array index must be an integer, got {:?}", op_ty),
+                        format!("Array index must be an integer, got {}", op_ty),
                     ));
                 }
                 // Constant-index bounds check. Cheap defensive check
@@ -475,7 +475,7 @@ impl Env {
                     return Err(err(
                         EnumConstrPayloadTypeMismatch,
                         format!(
-                            "Variant '{}' of enum '{}' expects type {:?}, found {:?}",
+                            "Variant '{}' of enum '{}' expects type {}, found {}",
                             variant_name, enum_name, variant.ty, op_ty
                         ),
                     ));
@@ -498,7 +498,7 @@ impl Env {
                         return Err(err(
                             ArrayLitElementTypeMismatch,
                             format!(
-                                "Array literal element {} has type {:?}, expected {:?}",
+                                "Array literal element {} has type {}, expected {}",
                                 i, ty, first_ty
                             ),
                         ));
@@ -570,7 +570,7 @@ impl Env {
                     Type::Ref(RefKind::Out, _) => {}
                     _ => {
                         d.push_error(
-                            Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {:?}", f.name, p.ty)),
+                            Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", f.name, p.ty)),
                         );
                     }
                 }
@@ -692,7 +692,7 @@ impl Env {
                     return Err(stmt_diag(
                         AssignmentTypeMismatch,
                         format!(
-                            "Type mismatch in assignment. LHS is {:?}, RHS is {:?}",
+                            "Type mismatch in assignment. LHS is {}, RHS is {}",
                             lhs_ty, rhs_ty
                         ),
                     ));
@@ -707,7 +707,7 @@ impl Env {
                 let Type::Fn(param_tys) = target_ty else {
                     return Err(stmt_diag(
                         CallTargetNotFunction,
-                        format!("Call target is not a function type: {:?}", target_ty),
+                        format!("Call target is not a function type: {}", target_ty),
                     ));
                 };
 
@@ -729,7 +729,7 @@ impl Env {
                         return Err(stmt_diag(
                             CallArgTypeMismatch,
                             format!(
-                                "Call argument {} type mismatch. Expected {:?}, found {:?}",
+                                "Call argument {} type mismatch. Expected {}, found {}",
                                 i, param_ty, arg_ty
                             ),
                         ));
@@ -751,7 +751,7 @@ impl Env {
                 if !matches!(ty, Type::Ref(_, _)) {
                     return Err(stmt_diag(
                         UnborrowNonReference,
-                        format!("unborrow requires a reference-typed place, found {:?}", ty),
+                        format!("unborrow requires a reference-typed place, found {}", ty),
                     ));
                 }
                 Ok(())
@@ -792,7 +792,7 @@ impl Env {
                 match self.infer_operand_type(cond, ts, locals) {
                     Ok(cond_ty) if cond_ty != Type::Bool => d.push_error(terminator_diag(
                         TypeCheckCode::BranchConditionNotBool,
-                        format!("branch condition must be bool, found {:?}", cond_ty),
+                        format!("branch condition must be bool, found {}", cond_ty),
                     )),
                     Ok(_) => {}
                     Err(inner_diag) => d.push_error(
@@ -842,7 +842,7 @@ impl Env {
                     Ok(other) => {
                         d.push_error(terminator_diag(
                             TypeCheckCode::SwitchOnNonEnum,
-                            format!("switchEnum place must be an enum type, found {:?}", other),
+                            format!("switchEnum place must be an enum type, found {}", other),
                         ));
                         None
                     }
@@ -904,7 +904,7 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         [p] => {
             d.push_error(
                 Diagnostic::new(MainBadSignature, p.span, format!(
-                        "In function 'main': single parameter must be '&out i32', found {:?}",
+                        "In function 'main': single parameter must be '&out i32', found {}",
                         p.ty
                     )),
             );

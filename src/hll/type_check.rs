@@ -90,7 +90,7 @@ impl Subst {
                 }
                 self.unify(r1, r2)
             }
-            (a, b) => Err(format!("type mismatch: expected {:?}, found {:?}", a, b)),
+            (a, b) => Err(format!("type mismatch: expected {}, found {}", a, b)),
         }
     }
 
@@ -240,7 +240,7 @@ fn infer_inner(
             let resolved = subst.resolve(&lhs_ty);
             match &resolved {
                 Type::Int(_) | Type::Float(_) | Type::Var(_) | Type::Never => {}
-                _ => return Err(format!("at {}: binary operations only supported on numeric types, found {:?}", expr.span, resolved)),
+                _ => return Err(format!("at {}: binary operations only supported on numeric types, found {}", expr.span, resolved)),
             }
             
             let is_cmp = matches!(
@@ -281,7 +281,7 @@ fn infer_inner(
                     Err(format!("at {}: undeclared struct '{}'", expr.span, struct_name))
                 }
             } else {
-                Err(format!("at {}: expected struct type, found {:?}", expr.span, resolved))
+                Err(format!("at {}: expected struct type, found {}", expr.span, resolved))
             }
         }
         ExprKind::Downcast(target, variant) => {
@@ -298,7 +298,7 @@ fn infer_inner(
                     Err(format!("at {}: undeclared enum '{}'", expr.span, enum_name))
                 }
             } else {
-                Err(format!("at {}: expected enum type, found {:?}", expr.span, resolved))
+                Err(format!("at {}: expected enum type, found {}", expr.span, resolved))
             }
         }
         ExprKind::Deref(target) => {
@@ -306,7 +306,7 @@ fn infer_inner(
             let resolved = subst.resolve(&target_ty);
             match resolved {
                 Type::Ref(_, inner) | Type::RawPtr(inner) => Ok(*inner),
-                other => Err(format!("at {}: cannot dereference non-pointer type {:?}", expr.span, other)),
+                other => Err(format!("at {}: cannot dereference non-pointer type {}", expr.span, other)),
             }
         }
         ExprKind::Borrow(kind, target) => {
@@ -334,7 +334,7 @@ fn infer_inner(
                 }
                 Ok(*ret_ty)
             } else {
-                Err(format!("at {}: expected function type, found {:?}", expr.span, resolved))
+                Err(format!("at {}: expected function type, found {}", expr.span, resolved))
             }
         }
         ExprKind::Block(stmts, last_expr) => {
@@ -426,7 +426,7 @@ fn infer_inner(
                 }
                 Ok(subst.resolve(&first_ty))
             } else {
-                Err(format!("at {}: expected enum type for switch target, found {:?}", expr.span, resolved))
+                Err(format!("at {}: expected enum type for switch target, found {}", expr.span, resolved))
             }
         }
         ExprKind::StructConstr(name, fields) => {
@@ -489,11 +489,11 @@ fn infer_inner(
                     Type::Var(_) => {
                         subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64))?;
                     }
-                    other => return Err(format!("at {}: array index must be an integer, found {:?}", expr.span, other)),
+                    other => return Err(format!("at {}: array index must be an integer, found {}", expr.span, other)),
                 }
                 Ok(*inner)
             } else {
-                Err(format!("at {}: expected array type, found {:?}", expr.span, resolved))
+                Err(format!("at {}: expected array type, found {}", expr.span, resolved))
             }
         }
     }?;
@@ -570,7 +570,7 @@ fn check_inner(
                 types.insert(expr as *const Expr, resolved_expected.clone());
                 Ok(())
             } else {
-                Err(format!("at {}: expected enum type for switch target, found {:?}", expr.span, resolved))
+                Err(format!("at {}: expected enum type for switch target, found {}", expr.span, resolved))
             }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), Type::Int(_ty)) => {

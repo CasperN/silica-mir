@@ -117,47 +117,8 @@ fn write_function(out: &mut String, f: &Function) {
 }
 
 fn write_type(out: &mut String, ty: &Type) {
-    match ty {
-        Type::Int(i) => out.push_str(i.name()),
-        Type::Float(f) => out.push_str(f.name()),
-        Type::Bool => out.push_str("bool"),
-        Type::Unit => out.push_str("unit"),
-        Type::Never => out.push_str("never"),
-        Type::Custom(name) => out.push_str(name),
-        Type::Fn(params) => {
-            out.push_str("fn(");
-            for (i, p) in params.iter().enumerate() {
-                if i > 0 {
-                    out.push_str(", ");
-                }
-                write_type(out, p);
-            }
-            out.push(')');
-        }
-        Type::Ref(kind, inner) => {
-            out.push_str(match kind {
-                RefKind::Shared => "&",
-                RefKind::Mut => "&mut ",
-                RefKind::Out => "&out ",
-                RefKind::Drop => "&drop ",
-                RefKind::Uninit => "&uninit ",
-            });
-            if matches!(kind, RefKind::Shared) {
-                out.push(' ');
-            }
-            write_type(out, inner);
-        }
-        Type::RawPtr(inner) => {
-            out.push('*');
-            write_type(out, inner);
-        }
-        Type::Array(elem, n) => {
-            out.push('[');
-            write_type(out, elem);
-            write!(out, "; {}", n).unwrap();
-            out.push(']');
-        }
-    }
+    use std::fmt::Write;
+    write!(out, "{}", ty).unwrap();
 }
 
 fn write_place(out: &mut String, place: &Place) {

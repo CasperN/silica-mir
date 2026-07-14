@@ -110,7 +110,7 @@ fn check_stmt(
                     span,
                     func,
                     block,
-                    format!("cannot drop non-Drop type {:?}", ty),
+                    format!("cannot drop non-Drop type {}", ty),
                 ));
             }
         }
@@ -176,7 +176,7 @@ fn check_operand(
             span,
             func,
             block,
-            format!("cannot {} non-{} type {:?}", kind_name, marker_name, ty),
+            format!("cannot {} non-{} type {}", kind_name, marker_name, ty),
         ));
     }
 }
@@ -248,7 +248,7 @@ fn check_leaks_in_state(
                 func,
                 block,
                 format!(
-                    "value '{}' of type {:?} is not consumed at return",
+                    "value '{}' of type {} is not consumed at return",
                     leaked_path, leaked_ty
                 ),
             ));
