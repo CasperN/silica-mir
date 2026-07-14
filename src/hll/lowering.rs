@@ -1085,7 +1085,30 @@ mod tests {
             "
         );
     }
+
+    #[test]
+    fn test_lower_binary_expression_with_never() {
+        let source = "
+            fn check(a: i64) -> i64 {
+                a + return 1
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn check(a: i64, $return: &out i64) {
+              _temp_0: never;
+              _temp_1: &out i64;
+              entry:
+                $return.* = 1;
+                return
+            }
+            "
+        );
+    }
 }
+
+
 
 
 

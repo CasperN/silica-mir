@@ -9,7 +9,7 @@
 /// field/index writes on owned places need it.
 
 use crate::hll::ast::*;
-use crate::mir::ast::Span;
+use crate::mir::ast::{Span, RefKind};
 use std::collections::HashMap;
 
 // ── scope tracker ────────────────────────────────────────────────────
@@ -111,8 +111,24 @@ fn check_expr(expr: &Expr, scope: &mut Scope) -> Result<(), String> {
         | ExprKind::Continue => Ok(()),
 
         // ── unary wrappers ───────────────────────────────────────
-        ExprKind::Borrow(_, inner)
-        | ExprKind::RawBorrow(inner)
+        ExprKind::Borrow(kind, inner) => {
+            check_expr(inner, scope)?;
+            if *kind != RefKind::Shared {
+                match place_root(inner) {
+                    PlaceRoot::Var(name, span) => {
+                        if let Some(false) = scope.is_mut(name) {
+                            return Err(format!(
+                                "at {}: cannot borrow immutable binding '{}' as mutable",
+                                span, name,
+                            ));
+                        }
+                    }
+                    PlaceRoot::ThroughDeref | PlaceRoot::Unknown => {}
+                }
+            }
+            Ok(())
+        }
+        ExprKind::RawBorrow(inner)
         | ExprKind::Deref(inner)
         | ExprKind::FieldAccess(inner, _)
         | ExprKind::Downcast(inner, _) => check_expr(inner, scope),
@@ -488,5 +504,17 @@ mod tests {
             "unexpected error: {}",
             err,
         );
+    }
+
+    #[test]
+    fn borrow_mut_on_immutable_errors() {
+        let src = "
+            fn f() {
+                let x = 1;
+                let r = &mut x;
+            }
+        ";
+        let res = check(src);
+        assert!(res.is_err());
     }
 }
