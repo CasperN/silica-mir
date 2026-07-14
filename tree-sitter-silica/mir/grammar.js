@@ -91,6 +91,7 @@ module.exports = grammar({
       ':',
       repeat(seq($.statement, ';')),
       $.terminator,
+      optional(';'),
     ),
 
     statement: $ => choice(

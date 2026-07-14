@@ -1503,4 +1503,19 @@ mod tests {
         };
         assert_eq!(f.params[0].ty, Type::Bool);
     }
+
+    #[test]
+    fn basic_block_accepts_trailing_semicolon_after_terminator() {
+        // MIR terminators can optionally be followed by a semicolon.
+        // Tolerates both with and without semicolons.
+        let with_semi = "fn f() { entry: return; }";
+        let without_semi = "fn f() { entry: return }";
+        let multiple_with_semi = "fn f() { entry: goto loop; loop: return; }";
+        for src in [with_semi, without_semi, multiple_with_semi] {
+            Parser::new(src.to_string())
+                .parse()
+                .unwrap_or_else(|d| panic!("expected parse OK for {:?}: {:?}", src, d));
+        }
+    }
 }
+

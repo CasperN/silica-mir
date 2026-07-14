@@ -730,9 +730,6 @@ Key files
   whitespace-or-comma (current: either works) to comma-required-
   optional-trailing to match HLL. Currently permissive to keep
   existing MIR programs working.
-- Allow an optional trailing `;` after MIR terminators
-  (`return;`, `goto foo;`, ...) — currently rejected, which is
-  irritating when writing MIR by hand.
 - Lambdas
 - Coroutines
 - MIR polymorphic types
