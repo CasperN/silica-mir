@@ -56,6 +56,22 @@ pub enum DiagCode {
     Parser(crate::mir::parser::ParserCode),
 }
 
+impl DiagCode {
+    pub fn tag(&self) -> String {
+        match self {
+            DiagCode::TypeCheck(c) => format!("TC-{:?}", c),
+            DiagCode::InitState(c) => format!("INIT-{:?}", c),
+            DiagCode::VariantFlow(c) => format!("VF-{:?}", c),
+            DiagCode::SubstructuralCheck(c) => format!("SUB-{:?}", c),
+            DiagCode::SubstructuralComposition(c) => format!("COMP-{:?}", c),
+            DiagCode::Layout(c) => format!("LAY-{:?}", c),
+            DiagCode::Lifetime(c) => format!("LT-{:?}", c),
+            DiagCode::BlockReachability(c) => format!("REACH-{:?}", c),
+            DiagCode::Parser(c) => format!("PARSE-{:?}", c),
+        }
+    }
+}
+
 /// A single compiler diagnostic (error or warning). The container in
 /// [`Diagnostics`] determines severity; this struct is the shared shape.
 ///
@@ -77,6 +93,12 @@ pub struct Diagnostic {
     function: String,
     block: String,
     message: String,
+    hint: String,
+    /// Related spans with human labels. Each entry becomes a snippet
+    /// block after the primary snippet in [`Diagnostics::render_diagnostic`],
+    /// prefixed by the label (rustc-style "borrow of x occurs here" et al).
+    /// Empty for existing emission sites — infra is opt-in per site.
+    secondary: Vec<(Span, String)>,
 }
 
 impl Diagnostic {
@@ -97,6 +119,8 @@ impl Diagnostic {
             function: String::new(),
             block: String::new(),
             message: message.into(),
+            hint: String::new(),
+            secondary: Vec::new(),
         }
     }
 
@@ -109,6 +133,20 @@ impl Diagnostic {
     /// Attach an enclosing basic-block label.
     pub fn in_block(mut self, label: impl Into<String>) -> Self {
         self.block = label.into();
+        self
+    }
+
+    /// Attach a hint to suggest how to fix the diagnostic.
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = hint.into();
+        self
+    }
+
+    /// Attach a related labeled span (e.g., "borrow occurs here",
+    /// "expected because of this signature"). Rendered after the
+    /// primary snippet in emission order.
+    pub fn with_secondary(mut self, span: Span, label: impl Into<String>) -> Self {
+        self.secondary.push((span, label.into()));
         self
     }
 
@@ -126,28 +164,23 @@ impl Diagnostic {
     pub fn message(&self) -> &str {
         &self.message
     }
+
+    pub fn hint(&self) -> &str {
+        &self.hint
+    }
 }
 
-impl std::fmt::Display for Diagnostic {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Omit `at L:C:` when the span is `(0, 0)` — the default —
-        // since that means "no source location". Real diagnostics
-        // always pass a real span through `Diagnostic::new`.
-        let has_pos = self.span.line != 0 || self.span.col != 0;
-        if has_pos {
-            write!(f, "at {}: ", self.span)?;
-        }
-        if !self.function.is_empty() {
-            if !self.block.is_empty() {
-                write!(f, "In function '{}', block '{}': ", self.function, self.block)?;
-            } else {
-                write!(f, "In function '{}': ", self.function)?;
-            }
-        }
-        // Block-only (function empty) is treated as no context —
-        // block labels are only meaningful relative to a function.
-        write!(f, "{}", self.message)
-    }
+
+/// Which surface language the diagnostics apply to. Controls
+/// user-facing rendering choices — HLL users don't know about MIR
+/// concepts like basic blocks, so those get suppressed for `Hll`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SourceKind {
+    /// MIR source (`.sim`). Show all context including block labels.
+    #[default]
+    Mir,
+    /// HLL source (`.si`). Suppress MIR-only context (block labels).
+    Hll,
 }
 
 /// Collected errors and warnings for a single compilation.
@@ -159,9 +192,24 @@ impl std::fmt::Display for Diagnostic {
 pub struct Diagnostics {
     errors: Vec<Diagnostic>,
     warnings: Vec<Diagnostic>,
+    source: Option<std::sync::Arc<String>>,
+    source_kind: SourceKind,
 }
 
 impl Diagnostics {
+    /// Build diagnostics container associated with a source code.
+    pub fn with_source(mut self, source: std::sync::Arc<String>) -> Self {
+        self.source = Some(source);
+        self
+    }
+
+    /// Set the surface language. Defaults to `Mir`; HLL compilations
+    /// should set `Hll` so MIR-only context (block labels) is hidden.
+    pub fn with_source_kind(mut self, kind: SourceKind) -> Self {
+        self.source_kind = kind;
+        self
+    }
+
     /// Append an error.
     pub fn push_error(&mut self, diagnostic: Diagnostic) {
         self.errors.push(diagnostic);
@@ -214,11 +262,164 @@ impl Diagnostics {
     /// Used by the test harness so existing `assert_errors_contain`
     /// assertions keep matching.
     pub fn errors_str(&self) -> Vec<String> {
-        self.errors.iter().map(|d| d.to_string()).collect()
+        self.errors.iter().map(|d| self.render_diagnostic(d)).collect()
     }
 
     /// String view of `warnings`. Mirrors [`errors_str`].
     pub fn warnings_str(&self) -> Vec<String> {
-        self.warnings.iter().map(|d| d.to_string()).collect()
+        self.warnings.iter().map(|d| self.render_diagnostic(d)).collect()
+    }
+
+    fn render_diagnostic(&self, d: &Diagnostic) -> String {
+        let mut out = String::new();
+        let has_pos = d.span.line != 0 || d.span.col != 0;
+        if has_pos {
+            out.push_str(&format!("at {}: ", d.span));
+        }
+        out.push_str(&format!("[{}] ", d.code.tag()));
+        let show_block = self.source_kind == SourceKind::Mir;
+        if !d.function.is_empty() {
+            if !d.block.is_empty() && show_block {
+                out.push_str(&format!("In function '{}', block '{}': ", d.function, d.block));
+            } else {
+                out.push_str(&format!("In function '{}': ", d.function));
+            }
+        }
+        out.push_str(&d.message);
+
+        // Gutter width = digits in the largest line number across
+        // primary + secondaries, so every snippet in this diagnostic
+        // aligns to the same column. Line numbers make each snippet
+        // navigable to a specific location; a shared width keeps the
+        // stack readable when notes reference lines far from primary.
+        let max_line = std::iter::once(d.span.line)
+            .chain(d.secondary.iter().map(|(s, _)| s.line))
+            .max()
+            .unwrap_or(0);
+        let gutter_width = max_line.to_string().len();
+
+        if has_pos {
+            if let Some(snippet) = self.render_snippet(d.span, gutter_width) {
+                out.push_str(&snippet);
+            }
+        }
+
+        for (span, label) in &d.secondary {
+            out.push_str(&format!("\n  = note: {}", label));
+            if let Some(snippet) = self.render_snippet(*span, gutter_width) {
+                out.push_str(&snippet);
+            }
+        }
+
+        if !d.hint.is_empty() {
+            out.push_str(&format!("\n  hint: {}", d.hint));
+        }
+
+        out
+    }
+
+    /// Format one source-snippet block with a numbered gutter:
+    ///
+    /// ```text
+    ///    |
+    ///  4 | source line
+    ///    | ^^^
+    /// ```
+    ///
+    /// `gutter_width` is the number of digits reserved for the line
+    /// number; caller should pass the max width across all spans in
+    /// the diagnostic so blocks align. Returns `None` when there's no
+    /// source arc or the span lies outside it.
+    fn render_snippet(&self, span: Span, gutter_width: usize) -> Option<String> {
+        let source = self.source.as_ref()?;
+        let lines: Vec<&str> = source.lines().collect();
+        let line_idx = (span.line as usize).saturating_sub(1);
+        if line_idx >= lines.len() {
+            return None;
+        }
+        let line_str = lines[line_idx];
+        let start_col = span.col as usize;
+        let end_col = if span.end_line == span.line && span.end_col > span.col {
+            span.end_col as usize
+        } else {
+            start_col + 1
+        };
+        let mut caret_line = String::new();
+        for c in line_str.chars().take(start_col.saturating_sub(1)) {
+            caret_line.push(if c == '\t' { '\t' } else { ' ' });
+        }
+        let count = end_col.saturating_sub(start_col).max(1);
+        for _ in 0..count {
+            caret_line.push('^');
+        }
+        let blank = format!(" {:>w$} |", "", w = gutter_width);
+        let numbered = format!(" {:>w$} | {}", span.line, line_str, w = gutter_width);
+        let caret = format!(" {:>w$} | {}", "", caret_line, w = gutter_width);
+        Some(format!("\n{}\n{}\n{}", blank, numbered, caret))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::type_check::TypeCheckCode;
+
+    fn span(line: u32, col: u32, end_col: u32) -> Span {
+        Span { line, col, end_line: line, end_col }
+    }
+
+    #[test]
+    fn secondary_spans_render_as_notes_with_snippets() {
+        let source = std::sync::Arc::new(
+            "line one\nsecond line here\nthird line goes here\n".to_string(),
+        );
+        let d = Diagnostic::new(
+            TypeCheckCode::AssignmentTypeMismatch,
+            span(2, 8, 12),
+            "primary problem",
+        )
+        .with_secondary(span(1, 6, 9), "related thing over here")
+        .with_secondary(span(3, 7, 11), "another related thing");
+        let mut ds = Diagnostics::default().with_source(source);
+        ds.push_error(d);
+
+        let expected = "\
+at 2:8: [TC-AssignmentTypeMismatch] primary problem
+   |
+ 2 | second line here
+   |        ^^^^
+  = note: related thing over here
+   |
+ 1 | line one
+   |      ^^^
+  = note: another related thing
+   |
+ 3 | third line goes here
+   |       ^^^^";
+        assert_eq!(ds.errors_str()[0], expected);
+    }
+
+    #[test]
+    fn hll_source_kind_suppresses_block_context() {
+        let d = Diagnostic::new(
+            TypeCheckCode::AssignmentTypeMismatch,
+            Span::default(),
+            "msg",
+        )
+        .in_function("f")
+        .in_block("entry");
+        let mut ds = Diagnostics::default().with_source_kind(SourceKind::Hll);
+        ds.push_error(d);
+        let rendered = &ds.errors_str()[0];
+        assert!(
+            rendered.contains("In function 'f':"),
+            "expected block suppressed for HLL, got: {}",
+            rendered
+        );
+        assert!(
+            !rendered.contains("block"),
+            "block context should not appear for HLL, got: {}",
+            rendered
+        );
     }
 }

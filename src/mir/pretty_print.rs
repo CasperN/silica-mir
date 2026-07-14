@@ -356,9 +356,12 @@ mod tests {
         );
     }
 
-    /// Replace every span with a zero span so equality ignores positions.
+    /// Replace every span with a zero span AND clear the source arc so
+    /// equality ignores positions and formatting of the original text
+    /// (a re-parsed pretty-print is not byte-identical to the input).
     fn strip_spans(mut p: Program) -> Program {
-        let zero = Span { line: 0, col: 0 };
+        p.source = std::sync::Arc::new(String::new());
+        let zero = Span::default();
         for decl in &mut p.declarations {
             match decl {
                 Declaration::Struct(s) => {

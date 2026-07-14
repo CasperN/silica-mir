@@ -23,3 +23,5 @@ pub mod raw_ptr_tests;
 pub mod test_util;
 #[cfg(test)]
 pub mod string_tests;
+#[cfg(test)]
+pub mod error_display_tests;

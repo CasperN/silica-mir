@@ -364,7 +364,7 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
     }
 }
 
-const SPAN: Span = Span { line: 0, col: 0 };
+const SPAN: Span = Span { line: 0, col: 0, end_line: 0, end_col: 0 };
 
 /// True if `name` is an intrinsic name (starts with the reserved `$`).
 pub fn is_intrinsic(name: &str) -> bool {

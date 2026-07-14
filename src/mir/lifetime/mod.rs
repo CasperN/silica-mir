@@ -190,20 +190,31 @@ pub fn check_loan_conflict(
             if !paths_conflict(&access_path, &loan_path) {
                 continue;
             }
-            d.push_error(
-                Diagnostic::new(
-                    LifetimeCode::LoanConflict,
-                    span,
-                    format!(
-                        "cannot {} '{}': already borrowed by '{}'",
-                        access.describe(),
-                        format_place(place),
-                        format_place(borrower_place),
-                    ),
-                )
-                .in_function(&func.name)
-                .in_block(&block.label),
-            );
+            let hint = format!("the borrow of '{}' is active until its last use or explicit unborrow.", format_place(borrower_place));
+            let mut diag = Diagnostic::new(
+                LifetimeCode::LoanConflict,
+                span,
+                format!(
+                    "cannot {} '{}': already borrowed by '{}'",
+                    access.describe(),
+                    format_place(place),
+                    format_place(borrower_place),
+                ),
+            )
+            .in_function(&func.name)
+            .in_block(&block.label)
+            .with_hint(hint);
+            // Attach the borrow's origin as a secondary span if we
+            // captured one (within-block loans have real spans;
+            // cross-block dataflow-propagated loans have Span::default,
+            // which renders as no snippet).
+            if loan.create_span.line != 0 || loan.create_span.col != 0 {
+                diag = diag.with_secondary(
+                    loan.create_span,
+                    format!("borrow of '{}' occurs here", format_place(place)),
+                );
+            }
+            d.push_error(diag);
             break;
         }
     }
@@ -324,7 +335,11 @@ impl Analysis for LoanAnalysis {
         join_loans(a, b)
     }
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
-        transfer_stmt(state, stmt);
+        // Cross-block flow discards the borrow-origin span: the analysis
+        // trait doesn't thread per-statement spans, and the diagnostic
+        // walk (`check_and_transfer_stmt`) fills in a real span for
+        // within-block loans, which is where LoanConflict is reported.
+        transfer_stmt(state, stmt, Span::default());
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         if let Terminator::Branch { cond, .. } = term {
@@ -336,7 +351,7 @@ impl Analysis for LoanAnalysis {
 /// Apply the whole-statement loan transition. Silent (no diagnostics);
 /// the diagnostic walk in `init_state` uses the smaller `consume_operand`
 /// helper alongside inline inserts/removes.
-fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
+fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement, span: Span) {
     match stmt {
         Statement::Assign(target, rvalue) => {
             // Capture BEFORE consume: the loans rooted at the moved
@@ -352,7 +367,7 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement) {
             if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                 loans.insert(
                     t,
-                    Loan::single(kind.clone(), place.clone(), Span { line: 0, col: 0 }),
+                    Loan::single(kind.clone(), place.clone(), span),
                 );
             }
             for (new_key, loan) in carried {
@@ -459,7 +474,7 @@ fn check_and_transfer_stmt(
                 }
             }
             check_loan_conflict(func, block, target, AccessKind::Write, span, loans, d);
-            transfer_stmt(loans, stmt);
+            transfer_stmt(loans, stmt, span);
         }
         Statement::Call(target, args) => {
             check_operand_access(func, block, target, span, loans, d);
@@ -471,7 +486,7 @@ fn check_and_transfer_stmt(
         }
         Statement::Drop(place) => {
             check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
-            transfer_stmt(loans, stmt);
+            transfer_stmt(loans, stmt, span);
         }
         Statement::Unborrow(place) => {
             // Consumes the borrower Var. Its own loan is skipped in
@@ -479,7 +494,7 @@ fn check_and_transfer_stmt(
             // empty path" case), but a *reborrow* of this borrower —
             // loan borrowed by s on `*r` — still needs to block `unborrow r`.
             check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
-            transfer_stmt(loans, stmt);
+            transfer_stmt(loans, stmt, span);
         }
     }
 }

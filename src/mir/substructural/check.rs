@@ -105,13 +105,16 @@ fn check_stmt(
             };
             let c = class_of(&ty, env);
             if !c.drop {
-                d.push_error(diag(
-                    DropOfNonDrop,
-                    span,
-                    func,
-                    block,
-                    format!("cannot drop non-Drop type {}", ty),
-                ));
+                d.push_error(
+                    diag(
+                        DropOfNonDrop,
+                        span,
+                        func,
+                        block,
+                        format!("cannot drop non-Drop type {}", ty),
+                    )
+                    .with_hint("only types implementing the Drop class can be explicitly dropped")
+                );
             }
         }
         Statement::Unborrow(_) => {
@@ -167,17 +170,20 @@ fn check_operand(
         ClassMarker::Move => c.mov,
     };
     if !ok {
-        let (code, marker_name) = match needed {
-            ClassMarker::Copy => (CopyOfNonCopy, "Copy"),
-            ClassMarker::Move => (MoveOfNonMove, "Move"),
+        let (code, marker_name, hint) = match needed {
+            ClassMarker::Copy => (CopyOfNonCopy, "Copy", "since the type is not Copy, try moving it instead using 'move'"),
+            ClassMarker::Move => (MoveOfNonMove, "Move", "linear types cannot be moved out of non-Move contexts"),
         };
-        d.push_error(diag(
-            code,
-            span,
-            func,
-            block,
-            format!("cannot {} non-{} type {}", kind_name, marker_name, ty),
-        ));
+        d.push_error(
+            diag(
+                code,
+                span,
+                func,
+                block,
+                format!("cannot {} non-{} type {}", kind_name, marker_name, ty),
+            )
+            .with_hint(hint)
+        );
     }
 }
 
@@ -242,16 +248,19 @@ fn check_leaks_in_state(
         let mut leaks = Vec::new();
         find_leaks(env, s, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
-            d.push_error(diag(
-                ReturnValueLeak,
-                block.terminator_span,
-                func,
-                block,
-                format!(
-                    "value '{}' of type {} is not consumed at return",
-                    leaked_path, leaked_ty
-                ),
-            ));
+            d.push_error(
+                diag(
+                    ReturnValueLeak,
+                    block.terminator_span,
+                    func,
+                    block,
+                    format!(
+                        "value '{}' of type {} is not consumed at return",
+                        leaked_path, leaked_ty
+                    ),
+                )
+                .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.")
+            );
         }
     }
 
@@ -343,7 +352,7 @@ mod tests {
 
     fn format_errs(d: &crate::diagnostics::Diagnostics) -> String {
         d.errors()
-            .map(|e| format!("  [{:?}] {}", e.code(), e))
+            .map(|e| format!("  [{:?}] at {}: {}", e.code(), e.span(), e.message()))
             .collect::<Vec<_>>()
             .join("\n")
     }

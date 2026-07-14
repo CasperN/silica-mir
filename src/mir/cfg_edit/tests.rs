@@ -7,7 +7,7 @@
 use super::*;
 
 fn span() -> Span {
-    Span { line: 0, col: 0 }
+    Span::default()
 }
 
 fn block(label: &str, term: Terminator) -> BasicBlock {

@@ -1,4 +1,3 @@
-use crate::ast::Span;
 use crate::test_util::*;
 use crate::type_check::TypeCheckCode;
 
@@ -146,7 +145,7 @@ fn structured_assignment_type_mismatch_at_stmt_span() {
     assert_error_at(
         &d,
         TypeCheckCode::AssignmentTypeMismatch,
-        Span { line: 4, col: 17 },
+        (4, 17),
     );
 }
 
@@ -159,7 +158,7 @@ fn structured_duplicate_declaration_at_name_span() {
     assert_error_at(
         &d,
         TypeCheckCode::DuplicateDeclaration,
-        Span { line: 3, col: 16 },
+        (3, 16),
     );
 }
 
@@ -174,7 +173,7 @@ fn structured_goto_undefined_target_at_terminator_span() {
     assert_error_at(
         &d,
         TypeCheckCode::TerminatorUndefinedTarget,
-        Span { line: 4, col: 17 },
+        (4, 17),
     );
 }
 
@@ -194,7 +193,7 @@ fn structured_undeclared_variable_carries_stmt_span() {
     assert_error_at(
         &d,
         TypeCheckCode::UndeclaredVariable,
-        Span { line: 5, col: 17 },
+        (5, 17),
     );
 }
 
@@ -212,7 +211,7 @@ fn structured_deref_of_non_pointer() {
     assert_error_at(
         &d,
         TypeCheckCode::DerefOfNonPointer,
-        Span { line: 5, col: 17 },
+        (5, 17),
     );
 }
 
@@ -232,6 +231,6 @@ fn structured_array_index_out_of_bounds() {
     assert_error_at(
         &d,
         TypeCheckCode::ArrayIndexOutOfBounds,
-        Span { line: 7, col: 17 },
+        (7, 17),
     );
 }

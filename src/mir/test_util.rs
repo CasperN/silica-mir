@@ -2,7 +2,6 @@
 //! `run(src)`, which runs parse → type_check + all analyses
 //! against a single `Diagnostics`.
 
-use crate::ast::Span;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::parser::Parser;
 use crate::run_all_passes;
@@ -22,39 +21,40 @@ pub fn run_structured(src: &str) -> Diagnostics {
     d
 }
 
-/// Assert that `d` contains at least one error with the given code AND
-/// primary span. Both must match. `code` accepts anything convertible
-/// into `DiagCode` (typically a per-pass code enum variant).
+/// Assert that `d` contains at least one error with the given code whose
+/// primary span *starts* at `(line, col)`. End position is ignored: tests
+/// pin the point-of-error, not the extent, and widening `Span` to carry
+/// end positions should not force every test to update.
 #[track_caller]
-pub fn assert_error_at(d: &Diagnostics, code: impl Into<DiagCode>, span: Span) {
+pub fn assert_error_at(d: &Diagnostics, code: impl Into<DiagCode>, at: (u32, u32)) {
     let expected_code = code.into();
     let matched = d
         .errors()
-        .any(|e| e.code() == expected_code && e.span() == span);
+        .any(|e| e.code() == expected_code && (e.span().line, e.span().col) == at);
     if !matched {
         panic!(
-            "no error matched code={:?} at span={}\n--- got {} error(s) ---\n{}",
+            "no error matched code={:?} at {}:{}\n--- got {} error(s) ---\n{}",
             expected_code,
-            span,
+            at.0, at.1,
             d.error_count(),
             format_diagnostics(d.errors()),
         );
     }
 }
 
-/// Warning-side counterpart of [`assert_error_at`]. Matches on both
-/// code and primary span in the warnings list.
+/// Warning-side counterpart of [`assert_error_at`]. Matches code and
+/// span-start only (see that fn for rationale).
 #[track_caller]
-pub fn assert_warning_at(d: &Diagnostics, code: impl Into<DiagCode>, span: Span) {
+pub fn assert_warning_at(d: &Diagnostics, code: impl Into<DiagCode>, at: (u32, u32)) {
     let expected_code = code.into();
     let matched = d
         .warnings()
-        .any(|w| w.code() == expected_code && w.span() == span);
+        .any(|w| w.code() == expected_code && (w.span().line, w.span().col) == at);
     if !matched {
         panic!(
-            "no warning matched code={:?} at span={}\n--- got {} warning(s) ---\n{}",
+            "no warning matched code={:?} at {}:{}\n--- got {} warning(s) ---\n{}",
             expected_code,
-            span,
+            at.0, at.1,
             d.warning_count(),
             format_diagnostics(d.warnings()),
         );
@@ -64,7 +64,7 @@ pub fn assert_warning_at(d: &Diagnostics, code: impl Into<DiagCode>, span: Span)
 fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> String {
     let mut lines = Vec::new();
     for diag in diagnostics {
-        lines.push(format!("  [{:?}] {}", diag.code(), diag));
+        lines.push(format!("  [{:?}] at {}: {}", diag.code(), diag.span(), diag.message()));
     }
     if lines.is_empty() {
         "  (none)".to_string()

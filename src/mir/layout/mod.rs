@@ -167,7 +167,7 @@ fn decl_span(name: &str, env: &Env) -> Span {
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => s.name_span,
         Some(TypeDecl::Enum(e)) => e.name_span,
-        None => Span { line: 0, col: 0 },
+        None => Span { line: 0, col: 0, end_line: 0, end_col: 0 },
     }
 }
 

@@ -683,7 +683,7 @@ pub fn lower_program(
         }
     }
 
-    Ok(mir::Program { declarations })
+    Ok(mir::Program { declarations, source: program.source.clone() })
 }
 
 #[cfg(test)]

@@ -113,6 +113,7 @@ pub enum Declaration {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
+    pub source: std::sync::Arc<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

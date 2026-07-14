@@ -23,6 +23,9 @@ mod diagnostics;
 use mir::ast::Program;
 use diagnostics::Diagnostics;
 
+// TODO: Hoist the HLL passes and MIR passes into their own functions, possibly living in their
+// respective modules.
+
 /// Run every post-parse pass against `program` and return both the
 /// elaborated MIR and the collected diagnostics.
 ///
@@ -45,9 +48,55 @@ use diagnostics::Diagnostics;
 ///      where every loan-closing point is explicit.
 ///
 /// Used by `main` and by test helpers.
-/// Used by `main` and by test helpers.
+pub fn run_hll_pipeline(source: &str) -> (Option<Program>, Option<mir::type_check::Env>, Diagnostics) {
+    let source_arc = std::sync::Arc::new(source.to_string());
+    let mut d = Diagnostics::default()
+        .with_source(source_arc.clone())
+        .with_source_kind(diagnostics::SourceKind::Hll);
+    
+    // 1. Parse HLL
+    let hll_prog = match hll::parser::Parser::new(source.to_string()).parse() {
+        Ok(prog) => prog,
+        Err(diags) => {
+            d.extend_errors(diags.errors().cloned());
+            return (None, None, d);
+        }
+    };
+    
+    // 2. Type-check HLL
+    let types = match hll::type_check::typecheck_program_collect(&hll_prog) {
+        Ok(t) => t,
+        Err(e) => {
+            d.push_error(diagnostics::Diagnostic::new(mir::type_check::TypeCheckCode::AssignmentTypeMismatch, mir::ast::Span::default(), e));
+            return (None, None, d);
+        }
+    };
+    
+    // 3. Mutability-check HLL
+    if let Err(e) = hll::mut_check::check_mutability(&hll_prog) {
+        d.push_error(diagnostics::Diagnostic::new(mir::type_check::TypeCheckCode::AssignmentTypeMismatch, mir::ast::Span::default(), e));
+        return (None, None, d);
+    }
+    
+    // 4. Lower to MIR
+    let mir_program = match hll::lowering::lower_program(&hll_prog, &types) {
+        Ok(p) => p,
+        Err(e) => {
+            d.push_error(diagnostics::Diagnostic::new(mir::type_check::TypeCheckCode::AssignmentTypeMismatch, mir::ast::Span::default(), e));
+            return (None, None, d);
+        }
+    };
+    
+    // 5. Run all MIR passes
+    let (elaborated, env, mir_diags) = run_all_passes(&mir_program);
+    d.extend_errors(mir_diags.errors().cloned());
+    (Some(elaborated), Some(env), d)
+}
+
+/// Run every post-parse pass against `program` and return both the
+/// elaborated MIR and the collected diagnostics.
 pub fn run_all_passes(program: &Program) -> (Program, mir::type_check::Env, Diagnostics) {
-    let mut d = Diagnostics::default();
+    let mut d = Diagnostics::default().with_source(program.source.clone());
     let (mut env, env_errs) = mir::type_check::Env::build(program);
     d.extend_errors(env_errs);
     env.typecheck(&mut d);
@@ -120,53 +169,36 @@ fn main() {
     //   `.si`  → HLL, parse then lower to MIR.
     // Anything else is rejected; ambiguity here would hide user
     // errors under the wrong pipeline.
-    let program = match std::path::Path::new(path)
+    let (elaborated, env, d) = match std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
     {
         Some("sim") => {
             let p = mir::parser::Parser::new(source);
-            match p.parse() {
+            let program = match p.parse() {
                 Ok(program) => program,
                 Err(diags) => {
-                    for e in diags.errors() {
+                    for e in diags.errors_str() {
                         eprintln!("Error: {}", e);
                     }
                     eprintln!("{} error(s)", diags.error_count());
                     std::process::exit(1);
                 }
-            }
+            };
+            eprintln!("AST parsed successfully.");
+            run_all_passes(&program)
         }
         Some("si") => {
-            let p = hll::parser::Parser::new(source);
-            let hll_prog = match p.parse() {
-                Ok(prog) => prog,
-                Err(diags) => {
-                    for e in diags.errors() {
-                        eprintln!("Error: {}", e);
-                    }
-                    eprintln!("{} error(s)", diags.error_count());
-                    std::process::exit(1);
+            let (elaborated_opt, env_opt, d) = run_hll_pipeline(&source);
+            let (Some(elaborated), Some(env)) = (elaborated_opt, env_opt) else {
+                for e in d.errors_str() {
+                    eprintln!("Error: {}", e);
                 }
-            };
-            let types = match hll::type_check::typecheck_program_collect(&hll_prog) {
-                Ok(t) => t,
-                Err(e) => {
-                    eprintln!("Type error: {}", e);
-                    std::process::exit(1);
-                }
-            };
-            if let Err(e) = hll::mut_check::check_mutability(&hll_prog) {
-                eprintln!("Mutability error: {}", e);
+                eprintln!("{} error(s)", d.error_count());
                 std::process::exit(1);
-            }
-            match hll::lowering::lower_program(&hll_prog, &types) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("Lowering error: {}", e);
-                    std::process::exit(1);
-                }
-            }
+            };
+            eprintln!("AST parsed successfully.");
+            (elaborated, env, d)
         }
         other => {
             eprintln!(
@@ -177,16 +209,12 @@ fn main() {
         }
     };
 
-    eprintln!("AST parsed successfully.");
-
-    let (elaborated, env, d) = run_all_passes(&program);
-
-    for w in d.warnings() {
+    for w in d.warnings_str() {
         eprintln!("Warning: {}", w);
     }
 
     if d.has_errors() {
-        for e in d.errors() {
+        for e in d.errors_str() {
             eprintln!("Error: {}", e);
         }
         eprintln!(
@@ -208,3 +236,6 @@ fn main() {
         print!("{}", mir::pretty_print::pretty_print(&elaborated));
     }
 }
+
+#[cfg(test)]
+mod error_display_tests;

@@ -1371,7 +1371,6 @@ mod tests {
 /// readable code and the primary span of each diagnostic.
 #[cfg(test)]
 mod structured {
-    use crate::ast::Span;
     use crate::test_util::*;
     use crate::variant_flow::VariantFlowCode;
 
@@ -1390,7 +1389,7 @@ mod structured {
         assert_error_at(
             &d,
             VariantFlowCode::SwitchNotExhaustive,
-            Span { line: 5, col: 17 },
+            (5, 17),
         );
     }
 
@@ -1409,7 +1408,7 @@ mod structured {
         assert_error_at(
             &d,
             VariantFlowCode::SwitchDuplicateArm,
-            Span { line: 5, col: 17 },
+            (5, 17),
         );
     }
 
@@ -1429,7 +1428,7 @@ mod structured {
         assert_error_at(
             &d,
             VariantFlowCode::SwitchArmFalselyUnreachable,
-            Span { line: 5, col: 17 },
+            (5, 17),
         );
     }
 
@@ -1451,7 +1450,7 @@ mod structured {
         assert_warning_at(
             &d,
             VariantFlowCode::SwitchArmDeadCode,
-            Span { line: 7, col: 17 },
+            (7, 17),
         );
     }
 
@@ -1471,7 +1470,7 @@ mod structured {
         assert_error_at(
             &d,
             VariantFlowCode::DowncastVariantNotRefined,
-            Span { line: 6, col: 17 },
+            (6, 17),
         );
     }
 }

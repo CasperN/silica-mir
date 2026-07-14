@@ -5,7 +5,6 @@
 //! init_state test modules, which assert on user-facing message
 //! substrings.
 
-use crate::ast::Span;
 use crate::init_state::InitStateCode;
 use crate::test_util::*;
 
@@ -25,7 +24,7 @@ fn structured_use_before_init_at_stmt_span() {
     assert_error_at(
         &d,
         InitStateCode::UseBeforeInit,
-        Span { line: 6, col: 17 },
+        (6, 17),
     );
 }
 
@@ -46,7 +45,7 @@ fn structured_use_after_move_at_call_span() {
     assert_error_at(
         &d,
         InitStateCode::UseAfterMove,
-        Span { line: 7, col: 17 },
+        (7, 17),
     );
 }
 
@@ -69,7 +68,7 @@ fn structured_overwrite_without_drop_at_stmt_span() {
     assert_error_at(
         &d,
         InitStateCode::OverwriteWithoutDrop,
-        Span { line: 8, col: 17 },
+        (8, 17),
     );
 }
 
@@ -90,6 +89,6 @@ fn structured_ref_obligation_unfulfilled_at_drop_span() {
     assert_error_at(
         &d,
         InitStateCode::RefObligationUnfulfilled,
-        Span { line: 6, col: 17 },
+        (6, 17),
     );
 }

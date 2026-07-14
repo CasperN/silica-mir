@@ -22,9 +22,12 @@ pub fn language() -> tree_sitter::Language {
 
 fn span_of(node: Node) -> Span {
     let p = node.start_position();
+    let ep = node.end_position();
     Span {
         line: (p.row as u32).saturating_add(1),
         col: (p.column as u32).saturating_add(1),
+        end_line: (ep.row as u32).saturating_add(1),
+        end_col: (ep.column as u32).saturating_add(1),
     }
 }
 
@@ -98,18 +101,18 @@ fn parse_float_literal(text: &str) -> Result<(f64, Option<FloatTy>), String> {
 }
 
 pub struct Parser {
-    source: String,
+    source: std::sync::Arc<String>,
 }
 
 impl Parser {
     pub fn new(source: impl Into<String>) -> Self {
-        Self { source: source.into() }
+        Self { source: std::sync::Arc::new(source.into()) }
     }
 
     pub fn parse(&self) -> Result<Program, Diagnostics> {
         let mut ts_parser = TSParser::new();
         if let Err(e) = ts_parser.set_language(&language()) {
-            let mut d = Diagnostics::default();
+            let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
                 Span::default(),
@@ -118,8 +121,8 @@ impl Parser {
             return Err(d);
         }
 
-        let Some(tree) = ts_parser.parse(&self.source, None) else {
-            let mut d = Diagnostics::default();
+        let Some(tree) = ts_parser.parse(&*self.source, None) else {
+            let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
                 Span::default(),
@@ -130,13 +133,13 @@ impl Parser {
         let root = tree.root_node();
 
         if root.has_error() {
-            let mut diags = Diagnostics::default();
+            let mut diags = Diagnostics::default().with_source(self.source.clone());
             self.walk_syntax_errors(root, None, &mut diags);
             return Err(diags);
         }
 
         self.map_program(root).map_err(|d| {
-            let mut diags = Diagnostics::default();
+            let mut diags = Diagnostics::default().with_source(self.source.clone());
             diags.push_error(d);
             diags
         })
@@ -209,7 +212,10 @@ impl Parser {
                 declarations.push(self.map_declaration(child)?);
             }
         }
-        Ok(Program { declarations })
+        Ok(Program {
+            declarations,
+            source: self.source.clone(),
+        })
     }
 
     fn map_declaration(&self, node: Node) -> Result<Declaration, Diagnostic> {

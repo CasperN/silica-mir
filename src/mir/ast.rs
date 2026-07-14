@@ -33,6 +33,8 @@ impl Markers {
 pub struct Span {
     pub line: u32,
     pub col: u32,
+    pub end_line: u32,
+    pub end_col: u32,
 }
 
 impl std::fmt::Display for Span {
@@ -708,4 +710,5 @@ pub enum Declaration {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub declarations: Vec<Declaration>,
+    pub source: std::sync::Arc<String>,
 }
