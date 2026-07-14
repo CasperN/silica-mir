@@ -101,6 +101,22 @@ pub enum ExprKind {
     EnumConstr(String, String, Box<Expr>),
     Array(Vec<Expr>),
     ArrayIndex(Box<Expr>, Box<Expr>),
+    Binary(Box<Expr>, BinOp, Box<Expr>),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum BinOp {
+    Add,
+    Sub,
+    Mul,
+    Div,
+    Rem,
+    Eq,
+    Ne,
+    Lt,
+    Le,
+    Gt,
+    Ge,
 }
 
 #[derive(Debug, Clone, PartialEq)]

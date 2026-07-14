@@ -165,14 +165,34 @@ fn lower_expr_to_operand(
     match &expr.kind {
         hll::ExprKind::Literal(lit) => {
             let const_val = match lit {
-                hll::Literal::Int(val, suffix) => mir::ConstVal::Int {
-                    bits: *val as u64,
-                    ty: suffix.unwrap_or(mir::IntTy::I64),
-                },
-                hll::Literal::Float(val, suffix) => mir::ConstVal::Float {
-                    bits: val.to_bits(),
-                    ty: suffix.unwrap_or(mir::FloatTy::F64),
-                },
+                hll::Literal::Int(val, suffix) => {
+                    let ty = if let Some(s) = suffix {
+                        *s
+                    } else {
+                        match types.get(&(expr as *const hll::Expr)) {
+                            Some(hll::Type::Int(int_ty)) => *int_ty,
+                            _ => mir::IntTy::I64,
+                        }
+                    };
+                    mir::ConstVal::Int {
+                        bits: *val as u64,
+                        ty,
+                    }
+                }
+                hll::Literal::Float(val, suffix) => {
+                    let ty = if let Some(s) = suffix {
+                        *s
+                    } else {
+                        match types.get(&(expr as *const hll::Expr)) {
+                            Some(hll::Type::Float(float_ty)) => *float_ty,
+                            _ => mir::FloatTy::F64,
+                        }
+                    };
+                    mir::ConstVal::Float {
+                        bits: val.to_bits(),
+                        ty,
+                    }
+                }
                 hll::Literal::Bool(val) => mir::ConstVal::Bool(*val),
                 hll::Literal::Unit => mir::ConstVal::Unit,
             };
@@ -252,6 +272,54 @@ fn lower_expr_into(
             );
             Ok(())
         }
+        hll::ExprKind::Binary(lhs, op, rhs) => {
+            let lhs_hll_ty = types.get(&(lhs.as_ref() as *const hll::Expr)).ok_or_else(|| {
+                format!("missing type annotation for binary LHS at {:?}", lhs.span)
+            })?;
+            let mir_ty = lower_type(lhs_hll_ty);
+            
+            // Map BinOp to string name
+            let op_name = match op {
+                hll::BinOp::Add => "add",
+                hll::BinOp::Sub => "sub",
+                hll::BinOp::Mul => "mul",
+                hll::BinOp::Div => "div",
+                hll::BinOp::Rem => "rem",
+                hll::BinOp::Eq => "eq",
+                hll::BinOp::Ne => "ne",
+                hll::BinOp::Lt => "lt",
+                hll::BinOp::Le => "le",
+                hll::BinOp::Gt => "gt",
+                hll::BinOp::Ge => "ge",
+            };
+            
+            let type_name = match &mir_ty {
+                mir::Type::Int(int_ty) => int_ty.name(),
+                mir::Type::Float(float_ty) => float_ty.name(),
+                _ => return Err(format!("at {}: binary operations only supported on numeric types, found {:?}", expr.span, mir_ty)),
+            };
+            
+            let intrinsic_name = format!("${}_{}", type_name, op_name);
+            let fn_op = mir::Operand::Const(mir::ConstVal::FnName(intrinsic_name));
+            
+            let lhs_op = lower_expr_to_operand(ctx, lhs, types)?;
+            let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
+            let mut arg_ops = vec![lhs_op, rhs_op];
+            
+            let hll_ret_ty = types.get(&(expr as *const hll::Expr)).ok_or_else(|| {
+                format!("missing type annotation for binary expression at {:?}", expr.span)
+            })?;
+            
+            let ref_ty = mir::Type::Ref(mir::RefKind::Out, Box::new(lower_type(hll_ret_ty)));
+            let out_ref_place = ctx.fresh_temp(ref_ty, expr.span);
+            ctx.emit_statement(
+                mir::Statement::Assign(out_ref_place.clone(), mir::RValue::Ref(mir::RefKind::Out, dest.clone())),
+                expr.span,
+            );
+            arg_ops.push(mir::Operand::Move(out_ref_place));
+            ctx.emit_statement(mir::Statement::Call(fn_op, arg_ops), expr.span);
+            Ok(())
+        }
         hll::ExprKind::Call(fn_expr, args) => {
             let mut arg_ops = Vec::new();
             for arg in args {
@@ -277,10 +345,6 @@ fn lower_expr_into(
 
             if *hll_ret_ty != hll::Type::Unit {
                 // Return value is written to dest. In MIR, we pass &out dest as final argument.
-                ctx.emit_statement(
-                    mir::Statement::Assign(dest.clone(), mir::RValue::Use(mir::Operand::Const(mir::ConstVal::Unit))),
-                    expr.span,
-                ); // Pre-init to unit or keep assignment separate. Actually we just append `&out dest` to args:
                 // The codegen expects Statement::Call(fn_op, args) where the last argument is evaluated.
                 // Wait, in checkpoint 1:
                 // "Translated Statement::Call to omit the last argument from the LLVM call arguments list, capture the return value register, and emit a store to the target address."
@@ -639,6 +703,18 @@ mod tests {
         });
         let types = typecheck_program_collect(&hll_prog).unwrap();
         let mir_prog = lower_program(&hll_prog, &types).unwrap();
+
+        // Run MIR typecheck sanity check on the lowered program
+        let (env, env_errs) = crate::mir::type_check::Env::build(&mir_prog);
+        if !env_errs.is_empty() {
+            panic!("MIR Env build failed on lowered program: {:?}", env_errs);
+        }
+        let mut d = crate::Diagnostics::default();
+        env.typecheck(&mut d);
+        if d.has_errors() {
+            panic!("MIR typecheck failed on lowered program: {:?}", d.errors_str());
+        }
+
         pretty_print(&mir_prog)
     }
 
@@ -918,7 +994,6 @@ mod tests {
               switch_Node_1:
                 n = copy tree as Node;
                 val = copy n.*.value;
-                _temp_0 = unit;
                 _temp_1 = &out _temp_0;
                 call is_equal(copy val, copy target, move _temp_1);
                 branch(move _temp_0) [true: if_true_3, false: if_false_4]
@@ -926,17 +1001,14 @@ mod tests {
                 $return.* = true;
                 goto if_merge_5
               if_false_4:
-                _temp_2 = unit;
                 _temp_3 = &out _temp_2;
                 call is_greater(copy val, copy target, move _temp_3);
                 branch(move _temp_2) [true: if_true_6, false: if_false_7]
               if_true_6:
-                $return.* = unit;
                 _temp_4 = &out $return.*;
                 call search_tree(move n.*.left, copy target, move _temp_4);
                 goto if_merge_8
               if_false_7:
-                $return.* = unit;
                 _temp_5 = &out $return.*;
                 call search_tree(move n.*.right, copy target, move _temp_5);
                 goto if_merge_8
@@ -962,4 +1034,62 @@ mod tests {
             "
         );
     }
+
+    #[test]
+    fn test_lower_binary_expression() {
+        let source = "
+            fn check(a: i64, b: i64) -> bool {
+                let x = a + b * 2;
+                x < 10
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn check(a: i64, b: i64, $return: &out bool) {
+              x: i64;
+              _temp_0: i64;
+              _temp_1: &out i64;
+              _temp_2: &out i64;
+              _temp_3: &out bool;
+              entry:
+                _temp_1 = &out _temp_0;
+                call $i64_mul(copy b, 2, move _temp_1);
+                _temp_2 = &out x;
+                call $i64_add(copy a, move _temp_0, move _temp_2);
+                _temp_3 = &out $return.*;
+                call $i64_lt(copy x, 10, move _temp_3);
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_binary_expression_with_untyped_literals() {
+        let source = "
+            fn check(a: u32) -> u32 {
+                a + 1
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn check(a: u32, $return: &out u32) {
+              _temp_0: &out u32;
+              entry:
+                _temp_0 = &out $return.*;
+                call $u32_add(copy a, 1u32, move _temp_0);
+                return
+            }
+            "
+        );
+    }
 }
+
+
+
+
+
+
+

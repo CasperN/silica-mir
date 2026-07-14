@@ -553,6 +553,45 @@ impl Parser {
                     span,
                 })
             }
+            "binary_expr" => {
+                let lhs = node.child_by_field_name("lhs").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "binary expression missing lhs")
+                })?;
+                let op_node = node.child_by_field_name("op").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "binary expression missing op")
+                })?;
+                let rhs = node.child_by_field_name("rhs").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "binary expression missing rhs")
+                })?;
+                let op = match self.get_text(op_node) {
+                    "+" => BinOp::Add,
+                    "-" => BinOp::Sub,
+                    "*" => BinOp::Mul,
+                    "/" => BinOp::Div,
+                    "%" => BinOp::Rem,
+                    "==" => BinOp::Eq,
+                    "!=" => BinOp::Ne,
+                    "<" => BinOp::Lt,
+                    "<=" => BinOp::Le,
+                    ">" => BinOp::Gt,
+                    ">=" => BinOp::Ge,
+                    other => {
+                        return Err(self.diag(
+                            op_node,
+                            ParserCode::MalformedCst,
+                            format!("unknown binary operator: {}", other),
+                        ));
+                    }
+                };
+                Ok(Expr {
+                    kind: ExprKind::Binary(
+                        Box::new(self.map_expr(lhs)?),
+                        op,
+                        Box::new(self.map_expr(rhs)?),
+                    ),
+                    span,
+                })
+            }
             "field_access" => {
                 let target = node.child_by_field_name("target").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "field access missing target")
@@ -825,6 +864,7 @@ impl Parser {
                 | "struct_constr"
                 | "enum_constr"
                 | "array_lit"
+                | "binary_expr"
         )
     }
 }
@@ -1286,4 +1326,44 @@ mod tests {
             diags.errors_str()
         );
     }
+
+    #[test]
+    fn parse_binary_expressions_precedence() {
+        // Test that binary expressions parse correctly with expected associativity/precedence.
+        // e.g. `a + b * c` -> Add(a, Mul(b, c))
+        let source = "fn f(a: i64, b: i64, c: i64) { let x = a + b * c; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::Binary(lhs, op, rhs) = init.kind else {
+            panic!("expected Binary outer");
+        };
+        assert_eq!(op, BinOp::Add);
+        assert!(matches!(lhs.kind, ExprKind::Variable(ref name) if name == "a"));
+        let ExprKind::Binary(rlhs, rop, rrhs) = rhs.kind else {
+            panic!("expected Binary inner");
+        };
+        assert_eq!(rop, BinOp::Mul);
+        assert!(matches!(rlhs.kind, ExprKind::Variable(ref name) if name == "b"));
+        assert!(matches!(rrhs.kind, ExprKind::Variable(ref name) if name == "c"));
+    }
+
+    #[test]
+    fn parse_binary_expressions_with_parentheses() {
+        // Test that parentheses correctly override default precedence:
+        // `(a + b) * c` -> Mul(Add(a, b), c)
+        let source = "fn f(a: i64, b: i64, c: i64) { let x = (a + b) * c; }";
+        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let ExprKind::Binary(lhs, op, rhs) = init.kind else {
+            panic!("expected Binary outer");
+        };
+        assert_eq!(op, BinOp::Mul);
+        let ExprKind::Binary(llhs, lop, lrhs) = lhs.kind else {
+            panic!("expected Binary inner");
+        };
+        assert_eq!(lop, BinOp::Add);
+        assert!(matches!(llhs.kind, ExprKind::Variable(ref name) if name == "a"));
+        assert!(matches!(lrhs.kind, ExprKind::Variable(ref name) if name == "b"));
+        assert!(matches!(rhs.kind, ExprKind::Variable(ref name) if name == "c"));
+    }
 }
+
+

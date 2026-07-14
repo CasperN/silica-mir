@@ -27,6 +27,10 @@
             "named": true
           },
           {
+            "type": "binary_expr",
+            "named": true
+          },
+          {
             "type": "block_expr",
             "named": true
           },
@@ -129,6 +133,10 @@
             "named": true
           },
           {
+            "type": "binary_expr",
+            "named": true
+          },
+          {
             "type": "block_expr",
             "named": true
           },
@@ -221,6 +229,82 @@
     }
   },
   {
+    "type": "binary_expr",
+    "named": true,
+    "fields": {
+      "lhs": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "op": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          }
+        ]
+      },
+      "rhs": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "block_expr",
     "named": true,
     "fields": {
@@ -287,6 +371,10 @@
         "types": [
           {
             "type": "array_lit",
+            "named": true
+          },
+          {
+            "type": "binary_expr",
             "named": true
           },
           {
@@ -833,6 +921,10 @@
         },
         {
           "type": "assign_expr",
+          "named": true
+        },
+        {
+          "type": "binary_expr",
           "named": true
         },
         {
@@ -1546,6 +1638,10 @@
             "named": true
           },
           {
+            "type": "binary_expr",
+            "named": true
+          },
+          {
             "type": "block_expr",
             "named": true
           },
@@ -1809,6 +1905,14 @@
     "fields": {}
   },
   {
+    "type": "!=",
+    "named": false
+  },
+  {
+    "type": "%",
+    "named": false
+  },
+  {
     "type": "&",
     "named": false
   },
@@ -1849,7 +1953,15 @@
     "named": false
   },
   {
+    "type": "+",
+    "named": false
+  },
+  {
     "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
     "named": false
   },
   {
@@ -1858,6 +1970,10 @@
   },
   {
     "type": ".",
+    "named": false
+  },
+  {
+    "type": "/",
     "named": false
   },
   {
@@ -1873,11 +1989,31 @@
     "named": false
   },
   {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
     "type": "=",
     "named": false
   },
   {
+    "type": "==",
+    "named": false
+  },
+  {
     "type": "=>",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
     "named": false
   },
   {

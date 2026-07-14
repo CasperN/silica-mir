@@ -232,6 +232,28 @@ fn infer_inner(
             Literal::Bool(_) => Ok(Type::Bool),
             Literal::Unit => Ok(Type::Unit),
         },
+        ExprKind::Binary(lhs, op, rhs) => {
+            let lhs_ty = infer_inner(env, subst, lhs, types)?;
+            let rhs_ty = infer_inner(env, subst, rhs, types)?;
+            subst.unify(&lhs_ty, &rhs_ty).map_err(|e| format!("at {}: {}", expr.span, e))?;
+            
+            let resolved = subst.resolve(&lhs_ty);
+            match &resolved {
+                Type::Int(_) | Type::Float(_) | Type::Var(_) | Type::Never => {}
+                _ => return Err(format!("at {}: binary operations only supported on numeric types, found {:?}", expr.span, resolved)),
+            }
+            
+            let is_cmp = matches!(
+                op,
+                BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
+            );
+            let res_ty = if is_cmp {
+                Type::Bool
+            } else {
+                lhs_ty.clone()
+            };
+            Ok(res_ty)
+        }
         ExprKind::Variable(name) => {
             if let Some(ty) = env.lookup_var(name) {
                 Ok(ty)
@@ -711,4 +733,34 @@ mod tests {
         let res = check_program(source);
         assert!(res.is_err(), "expected arity error");
     }
+
+    #[test]
+    fn typecheck_binary_arithmetic_and_comparison() {
+        let valid = "
+            fn check(a: i64, b: i64) -> bool {
+                let x = a + b * 2;
+                x < 10
+            }
+        ";
+        assert!(check_program(valid).is_ok());
+
+        let invalid = "
+            fn check(a: i64, b: bool) -> i64 {
+                a + b
+            }
+        ";
+        let res = check_program(invalid);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("type mismatch"));
+
+        let invalid_bool_op = "
+            fn check(a: bool, b: bool) -> bool {
+                a == b
+            }
+        ";
+        let res = check_program(invalid_bool_op);
+        assert!(res.is_err());
+        assert!(res.unwrap_err().contains("only supported on numeric types"));
+    }
 }
+

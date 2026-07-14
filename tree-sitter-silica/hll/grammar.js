@@ -138,6 +138,7 @@ module.exports = grammar({
       $._expr_postfix,
       $.borrow_expr,
       $.raw_borrow_expr,
+      $.binary_expr,
     ),
 
     borrow_expr: $ => prec(10, seq(
@@ -149,6 +150,13 @@ module.exports = grammar({
       '&raw',
       field('target', $._expr_prefix),
     )),
+
+    binary_expr: $ => choice(
+      prec.left(13, seq(field('lhs', $.expr), field('op', choice('*', '/', '%')), field('rhs', $.expr))),
+      prec.left(12, seq(field('lhs', $.expr), field('op', choice('+', '-')), field('rhs', $.expr))),
+      prec.left(10, seq(field('lhs', $.expr), field('op', choice('<', '>', '<=', '>=')), field('rhs', $.expr))),
+      prec.left(9, seq(field('lhs', $.expr), field('op', choice('==', '!=')), field('rhs', $.expr))),
+    ),
 
     // Postfix chains bind left-to-right and tightly. Each gets its
     // own named rule so the CST is nested (see comment above).

@@ -122,6 +122,11 @@ fn check_expr(expr: &Expr, scope: &mut Scope) -> Result<(), String> {
             check_expr(idx, scope)
         }
 
+        ExprKind::Binary(lhs, _, rhs) => {
+            check_expr(lhs, scope)?;
+            check_expr(rhs, scope)
+        }
+
         // ── assignment — the core check ──────────────────────────
         ExprKind::Assign(lhs, rhs) => {
             check_expr(rhs, scope)?;
