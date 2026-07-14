@@ -780,13 +780,12 @@ fn drop_deref_does_not_release_loan() {
 // this pinning when reborrow lands and variant-projected borrows
 // can coexist through separate refinement lineages.
 
-// ---------- Enum-payload loan transfer (punch-list soundness gap) ----------
+// ---------- Enum-payload loan transfer ----------
 //
-// See README "Punch list": `capture_carried_refs` in `init_state` only
-// transfers loans and ref-states for `Use(Move(src))` rvalues.
-// `Wrap::W(move b)` (an `EnumConstr`) drops b's loans instead of
-// re-keying them under `w as W`. The tests below pin the *desired*
-// behavior — they will fail today because the transfer is missing.
+// Verifies that wrapping a live borrower into an enum variant correctly
+// transfers and re-keys the loan under the variant path (e.g. `w as W`),
+// so direct access to the originally-borrowed place still conflicts.
+// Wrap needs `Move` because its payload is Move-only.
 
 #[test]
 fn enum_wrap_of_borrower_keeps_loan_active() {

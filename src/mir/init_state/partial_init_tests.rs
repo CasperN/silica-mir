@@ -157,3 +157,31 @@ fn whole_struct_assign_after_partial_ok() {
         ",
     );
 }
+
+#[test]
+fn loop_carried_partial_init_divergence_error() {
+    // Struct starts with only x initialized.
+    // Inside the loop, on one branch we initialize y, on another we don't.
+    // The join at the loop header diverges y.
+    // Reading p after the loop should error.
+    let (errs, _) = run("
+        struct Copy Drop P { x: i64 y: i64 }
+        fn f(cond: bool) {
+          p: P;
+          a: P;
+          entry:
+            p.x = 10i64;
+            goto loop_hdr
+          loop_hdr:
+            branch(copy cond) [true: init_y, false: exit]
+          init_y:
+            p.y = 20i64;
+            goto loop_hdr
+          exit:
+            a = copy p;
+            return
+        }
+        ");
+    assert_errors_contain(&errs, &["variable 'p' is not fully initialized here"]);
+}
+

@@ -935,15 +935,11 @@ fn strict_check_still_fails_for_linear_leak() {
     );
 }
 
-// ---------- Pre-overwrite drop (punch-list gap) ----------
+// ---------- Pre-overwrite drop ----------
 //
-// README punch list: "Elaborate `drop p` if `p` is initialized and
-// being assigned to or sent to an `&out` function." Today, drop is a
-// bitwise forget so overwriting a Drop-marked type silently succeeds
-// with no destructor call. Once custom `Drop::drop` exists, the
-// elaborator will need to insert `drop x` before the reassignment.
-// This test pins today's behavior: no `drop` in the elaborated output
-// between the two assigns.
+// Verifies that drop elaboration inserts an explicit `drop x` statement
+// before reassignment when `x` is already initialized and its type is Drop,
+// so that the previous value is properly consumed before being overwritten.
 
 #[test]
 fn overwrite_of_drop_type_inserts_explicit_drop() {

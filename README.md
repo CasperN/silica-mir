@@ -569,6 +569,29 @@ Post-elaboration checks:
 Codegen (`src/codegen/`) emits textual LLVM IR from the elaborated MIR.
 It's a separate stage that assumes the MIR is well-checked.
 
+## Separate Elaboration and Checking
+This compiler separates elaboration from checking passes, e.g. for NLL and drop
+elaboration. This simplifies checking algorithms and decouples them from
+inference. We may also repeatedly check invariants after elaboration or
+optimization passes.
+
+## Return Values
+Silica-MIR has no return values. Instead, it recognizes a special `$return`
+argument, of type `&out T`, in final argument position. This simplifies the MIR
+analysis by treating return values as just another argument. It is also
+guaranteed RVO. This fact is taken into account when lowering from the HLL to
+MIR and from the MIR to LLVM, as the HLL and LLVM have return values.
+
+## Piecewise Struct Construction
+The MIR cannot express struct initialization in a single statement. Instead,
+they must be constructed one field at a time.
+
+## switchEnum Matches on Places (Not Operands)
+`switchEnum` operates strictly on a Place, so the compiler can refine the
+variant type of that specific place inside the successor blocks, allowing
+subsequent safe downcasts (like my_var as Variant). Switching on a temporary,
+like typical compilers do, would break this connection.
+
 ## Intrinsics
 
 Silica-MIR has no built-in arithmetic or comparison syntax. Common
@@ -609,11 +632,39 @@ into `*$return`. Today the codegen path is still void-only in practice
 (non-void C returns get dropped); wiring up `$return`-carrying externs
 is a codegen change, not a design change.
 
-
+# Exploration map
+This may be out of date but the directory structure is roughly as follows. 
+```
+src/
+├── main.rs                 # Authoritative pipeline (run_all_passes) & entrypoint
+├── diagnostics.rs          # Spanned warning/error collector
+├── hll/                    # High-Level Language Frontend
+│   ├── ast.rs              # Surface syntax definition
+│   ├── parser.rs           # HLL Tree-Sitter FFI wrapper
+│   ├── type_check.rs       # HM-style type inference
+│   ├── mut_check.rs        # Mutability enforcement
+│   └── lowering.rs         # Lowers HLL AST to MIR CFG & sret convention
+└── mir/                    # Medium Intermediate Representation
+    ├── ast.rs              # MIR nodes (Places, Operands, Statements, Types)
+    ├── parser.rs           # MIR Tree-Sitter parser
+    ├── intrinsics.rs       # Built-in $i64_* ops and LLVM declarations
+    ├── init_state/         # Initialization and reference obligations
+    ├── lifetime/           # Lifetime loan checker & NLL elaborator
+    ├── substructural/      # Drop elaborator & return leak checker
+    └── codegen/            # Textual LLVM IR generation
+```
+Key files
+- `main.rs` for `run_all_passes`
+- `src/hll/lowering.rs` for examples of HLL syntax and how it lowers to MIR. 
+- `src/mir/init_state/mod.rs` for the substructural references model.
 
 # Punch list
 - reachable/flow analysis for bools too. Or should bool be an enum?
-- Design MIR coroutines and effect decls.
+- Prerequisites before coroutines are attempted
+  - Generics
+  - Lifetime arguments
+  - defer in the HLL
+  - Binary operators +-*/ for intrinsics in the HLL
 - Extend downcast-target reassignment drop-elab to non-operand
   rvalues. Today `o as V = <operand>` rewrites to
   `drop (o as V); o = EnumName::V(<operand>)` — but only when the

@@ -422,3 +422,28 @@ fn nested_array_element_read_ok() {
         ",
     );
 }
+
+#[test]
+fn dynamic_index_loan_conflict_with_nested_struct_field() {
+    // Borrowing c.arr[copy i].v dynamically.
+    // Accessing c.arr[0i64].v must conflict.
+    let (errs, _) = run("
+        struct Copy Drop Sub { v: i64 }
+        struct Copy Drop Container { arr: [Sub; 3] }
+        extern fn use_mut(r: &mut i64);
+        fn f(c: Container, i: i64) {
+          r: &mut i64;
+          entry:
+            r = &mut c.arr[copy i].v;
+            c.arr[0i64].v = 7i64;
+            call use_mut(move r);
+            return
+        }
+        ");
+    assert!(
+        errs.iter().any(|e| e.contains("already borrowed")),
+        "expected loan conflict, got: {:?}",
+        errs
+    );
+}
+
