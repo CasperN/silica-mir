@@ -42,9 +42,82 @@ pub fn assert_ll_eq(input: &str, expected: &str) {
     let a = got.trim();
     let b = expected.trim();
     if a != b {
-        panic!(
-            "LLVM IR differs\n--- expected ---\n{}\n--- got ---\n{}",
-            b, a
+        panic!("LLVM IR differs\n{}", format_line_diff(b, a));
+    }
+}
+
+/// Format a line-by-line diff of two strings. Only lines that differ
+/// are shown, each labeled with its line number and both sides.
+/// Length mismatches are surfaced explicitly.
+pub fn format_line_diff(expected: &str, got: &str) -> String {
+    let expected_lines: Vec<&str> = expected.lines().collect();
+    let got_lines: Vec<&str> = got.lines().collect();
+    let mut out = String::new();
+    let max_len = expected_lines.len().max(got_lines.len());
+    let mut diff_count = 0;
+    for i in 0..max_len {
+        let e = expected_lines.get(i).copied();
+        let g = got_lines.get(i).copied();
+        if e == g {
+            continue;
+        }
+        diff_count += 1;
+        out.push_str(&format!(
+            "  line {}:\n    expected: {}\n    got:      {}\n",
+            i + 1,
+            e.map(|s| format!("{:?}", s)).unwrap_or_else(|| "<missing>".to_string()),
+            g.map(|s| format!("{:?}", s)).unwrap_or_else(|| "<missing>".to_string()),
+        ));
+    }
+    if diff_count == 0 {
+        // Should not happen when called from a real diff site.
+        return "(no line differences — trailing whitespace or non-line-based difference)\n".to_string();
+    }
+    format!(
+        "{} of {} line(s) differ (expected {}, got {}):\n\n{}",
+        diff_count,
+        max_len,
+        expected_lines.len(),
+        got_lines.len(),
+        out,
+    )
+}
+
+#[cfg(test)]
+mod diff_tests {
+    use super::format_line_diff;
+
+    #[test]
+    fn format_line_diff_shows_per_line_pairs() {
+        let expected = "one\ntwo\nthree";
+        let got = "one\nTWO\nthree";
+        let diff = format_line_diff(expected, got);
+        assert!(
+            diff.contains("1 of 3 line(s) differ (expected 3, got 3):"),
+            "missing header, got:\n{}",
+            diff
+        );
+        assert!(
+            diff.contains("  line 2:\n    expected: \"two\"\n    got:      \"TWO\"\n"),
+            "missing line 2 pair, got:\n{}",
+            diff
+        );
+    }
+
+    #[test]
+    fn format_line_diff_handles_length_mismatch() {
+        let expected = "one\ntwo";
+        let got = "one\ntwo\nthree";
+        let diff = format_line_diff(expected, got);
+        assert!(
+            diff.contains("1 of 3 line(s) differ (expected 2, got 3):"),
+            "missing header, got:\n{}",
+            diff
+        );
+        assert!(
+            diff.contains("  line 3:\n    expected: <missing>\n    got:      \"three\"\n"),
+            "missing line 3 pair, got:\n{}",
+            diff
         );
     }
 }
