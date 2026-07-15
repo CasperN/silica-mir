@@ -26,7 +26,7 @@
 //! `type_check` first. `check_program` runs before that becomes a
 //! problem — it only walks the declared-type graph.
 
-use crate::ast::*;
+use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 
 /// Machine-readable codes emitted by the layout pass.
@@ -43,7 +43,7 @@ impl From<LayoutCode> for DiagCode {
         DiagCode::Layout(code)
     }
 }
-use crate::type_check::{Env, TypeDecl};
+use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 

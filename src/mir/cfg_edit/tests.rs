@@ -288,8 +288,8 @@ fn split_then_full_pipeline_still_clean() {
     // Parse a simple program, split a critical edge in the AST, then
     // run the full pipeline — semantics are preserved so the check
     // should still be clean.
-    use crate::ast::Declaration;
-    use crate::parser::Parser;
+    use crate::mir::ast::Declaration;
+    use crate::mir::parser::Parser;
     use crate::run_all_passes;
 
     let src = "
@@ -320,7 +320,8 @@ fn split_then_full_pipeline_still_clean() {
         }
     }
 
-    let (_, _, d) = run_all_passes(&program);
+    let mut d = crate::diagnostics::Diagnostics::default().with_source(program.source.clone());
+    run_all_passes(&program, &mut d);
     assert!(
         d.is_clean(),
         "expected clean, got errors: {:?}",

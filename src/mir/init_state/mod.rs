@@ -29,11 +29,11 @@
 //! sets the whole enum to `Moved` (enum atomicity, per README); downcast-
 //! in-write does not change enum state.
 
-use crate::ast::*;
-use crate::substructural::composition::class_of;
-use crate::dataflow;
+use crate::mir::ast::*;
+use crate::mir::substructural::composition::class_of;
+use crate::mir::dataflow;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::type_check::{Env, TypeDecl};
+use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 

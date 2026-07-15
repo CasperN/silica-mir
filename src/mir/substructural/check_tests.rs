@@ -1,8 +1,8 @@
-use crate::test_util::*;
+use crate::mir::test_util::*;
 use super::check::check_return_leaks;
 use crate::diagnostics::Diagnostics;
-use crate::parser::Parser;
-use crate::type_check;
+use crate::mir::parser::Parser;
+use crate::mir::type_check;
 
 // ---------- Copy: positives ----------
 

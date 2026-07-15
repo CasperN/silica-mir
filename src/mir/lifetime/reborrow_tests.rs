@@ -6,7 +6,7 @@
 //! kind's post when s expires), NLL insertion ordering (children
 //! before parents), and chained reborrows.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Basic reborrow loan tracking ----------
 

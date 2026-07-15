@@ -12,7 +12,7 @@
 //! - Markers are emitted as `Copy`, `Drop`, or `Copy Drop`.
 //! - Types render with the same tokens the parser accepts.
 
-use crate::ast::*;
+use crate::mir::ast::*;
 use std::fmt::Write;
 
 pub fn pretty_print(program: &Program) -> String {
@@ -325,7 +325,7 @@ fn write_terminator(out: &mut String, term: &Terminator) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::parser::Parser;
+    use crate::mir::parser::Parser;
 
     /// Parse `src`, pretty-print, and verify the output re-parses to a
     /// program equivalent to the first (spans intentionally ignored — we

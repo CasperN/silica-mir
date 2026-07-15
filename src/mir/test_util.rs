@@ -3,7 +3,7 @@
 //! against a single `Diagnostics`.
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::parser::Parser;
+use crate::mir::parser::Parser;
 use crate::run_all_passes;
 
 /// Full pipeline run that yields the structured `Diagnostics` container.
@@ -17,7 +17,8 @@ pub fn run_structured(src: &str) -> Diagnostics {
             src
         )
     });
-    let (_, _, d) = run_all_passes(&program);
+    let mut d = Diagnostics::default().with_source(program.source.clone());
+    run_all_passes(&program, &mut d);
     d
 }
 
@@ -86,7 +87,8 @@ pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
             src
         )
     });
-    let (_, _, d) = run_all_passes(&program);
+    let mut d = Diagnostics::default().with_source(program.source.clone());
+    run_all_passes(&program, &mut d);
     (d.errors_str(), d.warnings_str())
 }
 

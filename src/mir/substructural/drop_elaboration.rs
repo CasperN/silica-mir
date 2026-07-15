@@ -31,11 +31,11 @@
 //! dropped variable transitions to `Moved` in the init dataflow, so a
 //! second run finds nothing to insert.
 
-use crate::ast::*;
-use crate::cfg_edit;
-use crate::init_state::{self, InitState, PointState};
-use crate::substructural::composition::class_of;
-use crate::type_check::Env;
+use crate::mir::ast::*;
+use crate::mir::cfg_edit;
+use crate::mir::init_state::{self, InitState, PointState};
+use crate::mir::substructural::composition::class_of;
+use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.
@@ -300,7 +300,7 @@ fn pre_stmt_transitions(
     // because Case A skips Downcast paths.
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
-            if let Ok(inner_ty) = env.infer_place_type(inner, crate::ast::Span::default(), locals) {
+            if let Ok(inner_ty) = env.infer_place_type(inner, crate::mir::ast::Span::default(), locals) {
                 if let Type::Custom(enum_name) = &inner_ty {
                     let payload_place =
                         Place::Downcast(Box::new(inner_owned.clone()), variant.clone());
@@ -378,7 +378,7 @@ fn is_init_and_drop(
     if !matches!(leaf_state, InitState::Init) {
         return false;
     }
-    let Ok(leaf_ty) = env.infer_place_type(place, crate::ast::Span::default(), locals) else {
+    let Ok(leaf_ty) = env.infer_place_type(place, crate::mir::ast::Span::default(), locals) else {
         return false;
     };
     class_of(&leaf_ty, env).drop
@@ -511,7 +511,7 @@ fn plan_drops_for_place(
                 return;
             };
             let field_decls = match env.types.get(struct_name) {
-                Some(crate::type_check::TypeDecl::Struct(s)) => &s.fields,
+                Some(crate::mir::type_check::TypeDecl::Struct(s)) => &s.fields,
                 _ => return,
             };
             for f in field_decls.iter().rev() {

@@ -4,7 +4,7 @@
 //! borrower, loan release, and interactions with multi-loan, joins,
 //! reborrow, field granularity, and loops.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- unborrow statement ----------
 

@@ -5,8 +5,8 @@
 //! init_state test modules, which assert on user-facing message
 //! substrings.
 
-use crate::init_state::InitStateCode;
-use crate::test_util::*;
+use crate::mir::init_state::InitStateCode;
+use crate::mir::test_util::*;
 
 #[test]
 fn structured_use_before_init_at_stmt_span() {

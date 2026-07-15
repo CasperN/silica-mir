@@ -7,7 +7,7 @@
 //! and doubles as a boundary test: if a combination is under-tested
 //! by unit suites, breakage will show up here.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Recursion via reference-passed results ----------
 
@@ -428,8 +428,8 @@ fn downcast_target_reassignment_elaborates_to_full_construction() {
     // trap: a bare `drop (o as Some)` cascades o to Moved and
     // breaks the subsequent write, but pairing it with an
     // EnumConstr reconstruction restores o to Init as variant Some.
-    use crate::parser::Parser;
-    use crate::pretty_print::pretty_print;
+    use crate::mir::parser::Parser;
+    use crate::mir::pretty_print::pretty_print;
     use crate::run_all_passes;
     let src = "
         enum Copy Drop Option { None: unit Some: i64 }
@@ -443,7 +443,8 @@ fn downcast_target_reassignment_elaborates_to_full_construction() {
         }
     ";
     let program = Parser::new(src.to_string()).parse().unwrap();
-    let (elaborated, _env, d) = run_all_passes(&program);
+    let mut d = crate::diagnostics::Diagnostics::default().with_source(program.source.clone());
+    let (elaborated, _env) = run_all_passes(&program, &mut d);
     assert!(d.is_clean(), "expected clean run, got {:?}", d.errors_str());
     let out = pretty_print(&elaborated);
     assert!(

@@ -20,10 +20,10 @@
 //! tracked Var clobber that Var back to ⊤ for the rest of its
 //! lifetime, since we can't see what the borrower does.
 
-use crate::ast::*;
-use crate::dataflow::{self, Analysis, Direction, WalkPoint};
+use crate::mir::ast::*;
+use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::type_check::{Env, TypeDecl};
+use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -592,7 +592,7 @@ fn resolve_enum_of_place<'a>(
     // We only need the successful branch; span doesn't matter since
     // any error is discarded.
     let ty = env
-        .infer_place_type(place, crate::ast::Span::default(), locals)
+        .infer_place_type(place, crate::mir::ast::Span::default(), locals)
         .ok()?;
     let Type::Custom(name) = ty else {
         return None;
@@ -605,7 +605,7 @@ fn resolve_enum_of_place<'a>(
 
 #[cfg(test)]
 mod tests {
-    use crate::test_util::*;
+    use crate::mir::test_util::*;
 
     // ---------- Coverage ----------
 
@@ -1371,8 +1371,8 @@ mod tests {
 /// readable code and the primary span of each diagnostic.
 #[cfg(test)]
 mod structured {
-    use crate::test_util::*;
-    use crate::variant_flow::VariantFlowCode;
+    use crate::mir::test_util::*;
+    use crate::mir::variant_flow::VariantFlowCode;
 
     #[test]
     fn structured_switch_not_exhaustive_at_terminator_span() {

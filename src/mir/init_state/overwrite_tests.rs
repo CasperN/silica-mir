@@ -4,7 +4,7 @@
 //! Init leaves), the old value would be silently forgotten. Each Init
 //! leaf's type must be `Drop`, or the caller must have consumed it first.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Allowed: scalars and Copy Drop types ----------
 

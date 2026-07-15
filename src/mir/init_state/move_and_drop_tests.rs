@@ -6,7 +6,7 @@
 //! `call f(move x, copy x)`), `drop` statement semantics, and read of
 //! empty-struct locals.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Baseline reads/writes/moves ----------
 

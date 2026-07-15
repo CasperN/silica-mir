@@ -3,7 +3,7 @@
 //! Exercises the dataflow fixpoint on loops, sequential loops, aborts,
 //! nested loops, irreducible flow, and switchEnum/borrow interactions.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- CFG shape stress tests ----------
 

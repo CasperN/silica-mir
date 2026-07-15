@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use tree_sitter::{Node, Parser as TSParser};
 
@@ -227,8 +227,8 @@ pub struct Parser {
 }
 
 impl Parser {
-    pub fn new(source: String) -> Self {
-        Self { source: std::sync::Arc::new(source) }
+    pub fn new(source: impl Into<String>) -> Self {
+        Self { source: std::sync::Arc::new(source.into()) }
     }
 
     /// Parse `self.source` into a `Program`.

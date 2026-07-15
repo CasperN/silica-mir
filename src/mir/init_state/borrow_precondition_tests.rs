@@ -11,7 +11,7 @@
 //! `lifetime/tests_reborrow.rs` — they inspect ref state, not the
 //! init tree.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // === Scenario: `&q` (shared) — requires Init ===
 

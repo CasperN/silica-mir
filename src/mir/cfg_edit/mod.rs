@@ -6,7 +6,7 @@
 //! last-use points) need a place to attach per-edge statements. This
 //! module provides the primitive so neither pass invents its own.
 
-use crate::ast::*;
+use crate::mir::ast::*;
 
 /// Ensure a dedicated block exists on the edge from `pred_label` to
 /// `succ_label`, and return its label. The returned block has an empty

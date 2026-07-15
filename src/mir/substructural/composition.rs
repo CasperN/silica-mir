@@ -23,9 +23,9 @@
 //! fixpoint: we use the declared markers of a `Custom` name verbatim,
 //! which is sufficient for compositional checks.
 
-use crate::ast::*;
+use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::type_check::{Env, TypeDecl};
+use crate::mir::type_check::{Env, TypeDecl};
 
 /// Machine-readable codes emitted by the class-composition check. Each
 /// variant flags "declared marker M on container C isn't satisfied by
@@ -222,7 +222,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_util::*;
+    use crate::mir::test_util::*;
 
     // ---------- Positive: markers consistent with content ----------
 

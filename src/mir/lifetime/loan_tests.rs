@@ -4,7 +4,7 @@
 //! field-level precision, ref transfer through moves, and multi-loan
 //! (branch-of-borrows) conflicts.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Loan conflicts ----------
 //

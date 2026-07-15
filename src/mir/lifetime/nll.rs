@@ -52,10 +52,10 @@
 //!   at last use even if the obligation is unfulfilled. The lifetime
 //!   check (post-elab) then surfaces the error at the inserted unborrow.
 
-use crate::ast::*;
-use crate::cfg_edit;
-use crate::dataflow::{self, Analysis, Direction};
-use crate::type_check::Env;
+use crate::mir::ast::*;
+use crate::mir::cfg_edit;
+use crate::mir::dataflow::{self, Analysis, Direction};
+use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -447,13 +447,13 @@ fn walk_ref_paths(
         return;
     }
     match env.types.get(name) {
-        Some(crate::type_check::TypeDecl::Struct(s)) => {
+        Some(crate::mir::type_check::TypeDecl::Struct(s)) => {
             for f in &s.fields {
                 let sub = Place::Field(Box::new(place.clone()), f.name.clone());
                 walk_ref_paths(&sub, &f.ty, env, visited, out);
             }
         }
-        Some(crate::type_check::TypeDecl::Enum(e)) => {
+        Some(crate::mir::type_check::TypeDecl::Enum(e)) => {
             for v in &e.variants {
                 let sub = Place::Downcast(Box::new(place.clone()), v.name.clone());
                 walk_ref_paths(&sub, &v.ty, env, visited, out);

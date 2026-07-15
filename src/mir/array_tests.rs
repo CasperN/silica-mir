@@ -2,7 +2,7 @@
 //! `place[operand]` indexing, `[e0, e1, ...]` aggregate literals).
 //! Covers parsing, type checking, per-slot init tracking, codegen.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Parsing / basic use ----------
 

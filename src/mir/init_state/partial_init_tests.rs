@@ -6,7 +6,7 @@
 //! fields (leaves siblings init), nested-struct partial paths, and
 //! whole-struct reassignment after partial init.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 #[test]
 fn field_writes_complete_init_ok() {

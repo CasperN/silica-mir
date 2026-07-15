@@ -497,7 +497,7 @@ fn bool_result_of_intrinsic_used_in_branch_ok() {
     // no refinement on its operand (unlike switchEnum); this pins the
     // current behavior and provides an anchor for a future flow-
     // analysis change on bools (README punch list).
-    let (errs, _) = crate::test_util::run(
+    let (errs, _) = crate::mir::test_util::run(
         "
         fn f(x: i64) {
           b: bool;

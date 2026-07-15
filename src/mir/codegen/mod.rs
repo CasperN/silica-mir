@@ -34,16 +34,16 @@
 //! Not ABI-stable — variant order in enums is declaration order; struct
 //! field order is declaration order. Padding and alignment can change.
 
-use crate::ast::*;
-use crate::layout;
-use crate::type_check::{Env, TypeDecl};
+use crate::mir::ast::*;
+use crate::mir::layout;
+use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::fmt::Write;
 
 /// Lower `program` to LLVM textual IR. Assumes `program` has already
 /// passed the full check/elaborate pipeline — malformed inputs will
 /// panic.
-pub fn generate_llvm(program: &Program, env: &Env) -> String {
+pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
     let mut cx = CodeGenContext {
         env,
         out: String::new(),
@@ -437,7 +437,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             // instruction sequence inline. The intrinsic symbol never
             // appears in the emitted `.ll`.
             if let Operand::Const(ConstVal::FnName(name)) = target {
-                if crate::intrinsics::is_intrinsic(name) {
+                if crate::mir::intrinsics::is_intrinsic(name) {
                     emit_intrinsic_call(cx, name, args);
                     return;
                 }
@@ -513,7 +513,7 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
         for block in &body.blocks {
             for (stmt, _) in &block.statements {
                 if let Statement::Call(Operand::Const(ConstVal::FnName(name)), _) = stmt {
-                    if crate::intrinsics::is_intrinsic(name) {
+                    if crate::mir::intrinsics::is_intrinsic(name) {
                         called.insert(name.clone());
                     }
                 }
@@ -522,7 +522,7 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
     }
     let mut seen = std::collections::BTreeSet::new();
     let mut out = Vec::new();
-    for spec in crate::intrinsics::all() {
+    for spec in crate::mir::intrinsics::all() {
         if !called.contains(&spec.name) {
             continue;
         }
@@ -543,7 +543,7 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
 /// the returned SSA value through the `&out` pointer. Adding a new
 /// intrinsic never touches this function.
 fn emit_intrinsic_call(cx: &mut CodeGenContext, name: &str, args: &[Operand]) {
-    let spec = crate::intrinsics::lookup(name)
+    let spec = crate::mir::intrinsics::lookup(name)
         .unwrap_or_else(|| panic!("unknown intrinsic '{}'", name));
     assert_eq!(
         args.len(),

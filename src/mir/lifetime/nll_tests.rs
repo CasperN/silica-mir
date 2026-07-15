@@ -10,11 +10,11 @@
 //! - **Negative**: programs with unfulfilled `&out` obligations still
 //!   fail after elaboration (NLL inserts naively; check surfaces error).
 
-use crate::lifetime::nll::elaborate;
-use crate::parser::Parser;
-use crate::pretty_print::pretty_print;
-use crate::test_util::*;
-use crate::type_check::Env;
+use crate::mir::lifetime::nll::elaborate;
+use crate::mir::parser::Parser;
+use crate::mir::pretty_print::pretty_print;
+use crate::mir::test_util::*;
+use crate::mir::type_check::Env;
 
 /// Parse `src`, run NLL elaboration only (no other passes), and return
 /// the pretty-printed result.

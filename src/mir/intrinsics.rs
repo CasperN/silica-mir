@@ -24,7 +24,7 @@
 //! the operand type determines which LLVM instruction the emit fn
 //! picks (`sdiv`/`udiv`, `ashr`/`lshr`, `sitofp`/`uitofp`, etc.).
 
-use crate::ast::*;
+use crate::mir::ast::*;
 
 /// One intrinsic. `inputs`/`result` build the extern signature; `emit`
 /// handles LLVM lowering.

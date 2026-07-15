@@ -17,7 +17,7 @@
 //! The fixpoint terminates provided the state lattice has finite height
 //! along each ascending chain (the standard requirement).
 
-use crate::ast::*;
+use crate::mir::ast::*;
 use indexmap::IndexMap;
 use std::collections::VecDeque;
 
@@ -186,7 +186,7 @@ mod tests {
     //! output.
 
     use super::*;
-    use crate::parser::Parser;
+    use crate::mir::parser::Parser;
     use std::collections::BTreeSet;
 
     /// Parse `src` and return the body of the first function.

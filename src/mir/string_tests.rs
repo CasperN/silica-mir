@@ -2,7 +2,7 @@
 //! is `[u8; N]` — reuses the existing array machinery in codegen,
 //! init tracking, and lifetime passes.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 #[test]
 fn simple_byte_string_ok() {
@@ -340,7 +340,7 @@ fn concat_hello_world_via_dynamic_indexing() {
 
 #[test]
 fn unknown_escape_is_parse_error() {
-    use crate::parser::Parser;
+    use crate::mir::parser::Parser;
     let src = r#"
         fn f() {
           s: [u8; 1];

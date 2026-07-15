@@ -1,5 +1,5 @@
-use crate::test_util::*;
-use crate::type_check::TypeCheckCode;
+use crate::mir::test_util::*;
+use crate::mir::type_check::TypeCheckCode;
 
 #[test]
 fn error_includes_line_and_col() {

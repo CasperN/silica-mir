@@ -5,7 +5,7 @@
 //! Var-only borrower tracking. They now behave correctly because
 //! RefState/LoanMap are keyed by owned path.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Ref-typed struct field as borrower ----------
 

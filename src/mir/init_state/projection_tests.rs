@@ -6,7 +6,7 @@
 //! through variant projection (`o as V = ...`) with init-state
 //! prerequisites on the enum.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Terminator reads ----------
 

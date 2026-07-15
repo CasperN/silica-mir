@@ -1,11 +1,11 @@
 //! Shared helpers for the codegen test suite. Codegen tests bypass the
 //! checker pipeline — they parse a hand-crafted MIR source and run
-//! `generate_llvm` directly — so the crate-level `test_util` (which
+//! `lower_mir_to_llvm` directly — so the crate-level `test_util` (which
 //! runs `run_all_passes`) isn't applicable here.
 
-use crate::codegen::generate_llvm;
-use crate::parser::Parser;
-use crate::type_check::Env;
+use crate::mir::codegen::lower_mir_to_llvm;
+use crate::mir::parser::Parser;
+use crate::mir::type_check::Env;
 
 /// Parse `src` (assumed well-typed) and return the emitted LLVM IR.
 /// Env build errors are discarded — test sources don't have duplicate
@@ -19,7 +19,7 @@ pub fn ll_of(src: &str) -> String {
         )
     });
     let (env, _) = Env::build(&program);
-    generate_llvm(&program, &env)
+    lower_mir_to_llvm(&program, &env)
 }
 
 #[track_caller]

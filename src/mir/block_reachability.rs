@@ -6,10 +6,10 @@
 //! Implemented as a trivial forward `dataflow::Analysis` with unit state.
 //! A block is reachable iff the fixpoint records a state for it.
 
-use crate::ast::*;
-use crate::dataflow::{self, Analysis, Direction};
+use crate::mir::ast::*;
+use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::type_check::Env;
+use crate::mir::type_check::Env;
 
 /// Machine-readable codes emitted by the block-reachability pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,7 +69,7 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
 
 #[cfg(test)]
 mod tests {
-    use crate::test_util::*;
+    use crate::mir::test_util::*;
 
     #[test]
     fn single_block_is_reachable() {

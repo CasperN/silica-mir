@@ -24,10 +24,10 @@
 //! diagnostic ("borrow as &out", etc.) and to enable shared/shared
 //! compatibility.
 
-use crate::ast::*;
-use crate::dataflow::{self, Analysis, Direction, Results};
+use crate::mir::ast::*;
+use crate::mir::dataflow::{self, Analysis, Direction, Results};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::type_check::Env;
+use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 

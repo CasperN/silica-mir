@@ -1,4 +1,4 @@
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 #[test]
 fn operand_number_const_ok() {

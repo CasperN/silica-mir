@@ -1,10 +1,10 @@
 //! Size and alignment computation for scalars, references, function
 //! types, structs, and enums.
 
-use crate::layout::{align_of, size_of};
-use crate::parser::Parser;
-use crate::type_check::Env;
-use crate::ast::*;
+use crate::mir::layout::{align_of, size_of};
+use crate::mir::parser::Parser;
+use crate::mir::type_check::Env;
+use crate::mir::ast::*;
 
 /// Parse `src` and build an `Env`. Doesn't run any check pass — the
 /// tests just need type-name resolution.

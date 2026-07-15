@@ -1,4 +1,4 @@
-use crate::ast::*;
+use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 
 /// Machine-readable error codes emitted by the type checker.
@@ -139,7 +139,7 @@ impl Env {
         // can never conflict with user declarations at the lexical
         // level, but if we ever add non-`$` prelude items, redeclarations
         // will hit the duplicate-declaration path below.
-        for f in crate::intrinsics::prelude_fns() {
+        for f in crate::mir::intrinsics::prelude_fns() {
             functions.insert(f.name.clone(), f);
         }
 
@@ -185,7 +185,7 @@ impl Env {
     /// Intrinsic signatures are re-preloaded so they survive the sync.
     pub fn sync_functions(&mut self, program: &Program) {
         self.functions.clear();
-        for f in crate::intrinsics::prelude_fns() {
+        for f in crate::mir::intrinsics::prelude_fns() {
             self.functions.insert(f.name.clone(), f);
         }
         for decl in &program.declarations {

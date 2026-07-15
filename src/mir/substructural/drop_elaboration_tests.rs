@@ -1,10 +1,10 @@
 use super::drop_elaboration::*;
-use crate::ast::Program;
+use crate::mir::ast::Program;
 use crate::diagnostics::Diagnostics;
-use crate::parser::Parser;
-use crate::pretty_print::pretty_print;
-use crate::substructural::check::check_return_leaks;
-use crate::type_check;
+use crate::mir::parser::Parser;
+use crate::mir::pretty_print::pretty_print;
+use crate::mir::substructural::check::check_return_leaks;
+use crate::mir::type_check;
 
 /// Run the full parse → typecheck → elaborate pipeline, returning the
 /// mutated program for inspection.

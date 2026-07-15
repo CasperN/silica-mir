@@ -3,7 +3,7 @@
 //! Uses the full `test_util::run` pipeline so we exercise the diagnostic
 //! wire-up as well as the check logic.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Not recursive (should pass) ----------
 

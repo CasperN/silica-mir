@@ -2,7 +2,7 @@
 //! `&raw place` rvalue). Covers parsing, type checking, codegen,
 //! and the unsafe semantics (no loan conflicts, no obligations).
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // ---------- Parsing / round-trip ----------
 

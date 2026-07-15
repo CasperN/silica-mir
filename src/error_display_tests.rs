@@ -10,7 +10,13 @@
 use crate::diagnostics::Diagnostics;
 
 fn run_hll_pipeline(source: &str) -> Diagnostics {
-    let (_, _, d) = crate::run_hll_pipeline(source);
+    let source_arc = std::sync::Arc::new(source.to_string());
+    let mut d = Diagnostics::default()
+        .with_source(source_arc)
+        .with_source_kind(crate::diagnostics::SourceKind::Hll);
+    if let Some(program) = crate::lower_hll_to_mir(source, &mut d) {
+        crate::run_all_passes(&program, &mut d);
+    }
     d
 }
 

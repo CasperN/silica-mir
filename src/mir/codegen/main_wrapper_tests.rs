@@ -145,7 +145,7 @@ define i32 @main() {
 /// which drives the full pipeline.
 #[test]
 fn bad_main_signature_i64_param_rejected() {
-    let (errs, _) = crate::test_util::run(
+    let (errs, _) = crate::mir::test_util::run(
         "
         fn main(exit: &out i64) {
           entry:
@@ -167,7 +167,7 @@ fn bad_main_signature_i64_param_rejected() {
 
 #[test]
 fn bad_main_signature_extra_params_rejected() {
-    let (errs, _) = crate::test_util::run(
+    let (errs, _) = crate::mir::test_util::run(
         "
         fn main(a: i32, b: i32) {
           entry: return
@@ -187,13 +187,13 @@ fn bad_main_signature_extra_params_rejected() {
 
 #[test]
 fn valid_void_main_passes_check() {
-    let (errs, _) = crate::test_util::run("fn main() { entry: return }");
+    let (errs, _) = crate::mir::test_util::run("fn main() { entry: return }");
     assert!(errs.is_empty(), "expected clean check, got: {:?}", errs);
 }
 
 #[test]
 fn valid_out_i32_main_passes_check() {
-    let (errs, _) = crate::test_util::run(
+    let (errs, _) = crate::mir::test_util::run(
         "
         fn main(exit: &out i32) {
           entry:

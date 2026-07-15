@@ -17,11 +17,11 @@
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks.
 
-use crate::ast::*;
+use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::init_state::{self, InitState, InitStateCode, PointState};
-use crate::substructural::composition::class_of;
-use crate::type_check::Env;
+use crate::mir::init_state::{self, InitState, InitStateCode, PointState};
+use crate::mir::substructural::composition::class_of;
+use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
 /// Machine-readable codes emitted by the substructural per-statement
@@ -291,8 +291,8 @@ fn check_leaks_in_state(
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::DiagCode;
-    use crate::init_state::InitStateCode;
-    use crate::test_util::*;
+    use crate::mir::init_state::InitStateCode;
+    use crate::mir::test_util::*;
 
     /// Pins the interaction between NLL elaboration and the return-time
     /// obligation checks: for a struct-field ref with an unfulfilled

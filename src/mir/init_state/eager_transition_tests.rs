@@ -7,7 +7,7 @@
 //! lifetime pass independently prevents direct access while the loan
 //! is live.
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 #[test]
 fn out_borrow_of_local_marks_place_init() {

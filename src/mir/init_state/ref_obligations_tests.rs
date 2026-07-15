@@ -9,7 +9,7 @@
 //! Tests organized by ref kind, then by the interesting operation
 //! sequences (read, write, move, drop, overwrite, drop-through-deref).
 
-use crate::test_util::*;
+use crate::mir::test_util::*;
 
 // === &mut: pointee starts Init, must stay Init at expiry ===
 
