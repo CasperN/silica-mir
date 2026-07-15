@@ -267,8 +267,8 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 /// - **Overwriting assign (Var/Field target)**: `target = <rvalue>`
 ///   where `target` is an owned path currently Init and its type is
 ///   Drop. Inserts `drop target` so the old value's destructor
-///   eventually runs (a no-op today with bitwise-forget drops;
-///   correct once custom `Drop::drop` lands).
+///   eventually runs (a no-op today with trivial bitwise-forget
+///   `Drop`; correct once `Destroy` (pure custom destructor) lands).
 /// - **Overwriting assign (Downcast target)**: `X as V = <operand>`
 ///   where the enum X is Init and V's payload is Drop. Rewrites the
 ///   assign into `X = EnumName::V(<operand>)` and inserts

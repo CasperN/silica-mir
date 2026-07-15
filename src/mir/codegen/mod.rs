@@ -25,7 +25,8 @@
 //!   `&out` parameters (sret-by-hand).
 //! - Statements: `Assign` (including `EnumConstr` as a specialized
 //!   whole-value write), `Call`. `Drop` and `Unborrow` are erased —
-//!   this is a POD-only world until user `Drop::drop` exists.
+//!   this is a POD-only world (trivial `Drop` only) until `Destroy`
+//!   and above land.
 //! - Terminators: `Goto`, `Return`, `Branch`, `SwitchEnum` (with an
 //!   `unreachable` default block for LLVM; MIR requires the switch to
 //!   be exhaustive), `Abort` (→ `@abort` + `unreachable`), `Unreachable`.
@@ -495,8 +496,9 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             }
         }
         Statement::Drop(_) | Statement::Unborrow(_) => {
-            // Erased. Drop lowers to a real call once user Drop::drop
-            // exists; unborrow is checker-only and never has runtime effect.
+            // Erased. `Drop` lowers to a real call once `Destroy`
+            // (pure custom destructor) lands; unborrow is checker-only
+            // and never has runtime effect.
         }
     }
 }

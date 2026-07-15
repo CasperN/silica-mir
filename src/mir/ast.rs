@@ -536,10 +536,10 @@ pub enum RValue {
 pub enum Statement {
     Assign(Place, RValue),
     Call(Operand, Vec<Operand>),
-    /// Consume a place. In the current MIR this is a bitwise forget; once
-    /// user-defined `Drop::drop` exists, this lowers to a call to it.
-    /// Legal only on Drop places (enforced by the substructural
-    /// checker, not here).
+    /// Consume a place. In the current MIR this is a bitwise forget
+    /// (trivial `Drop`); once `Destroy` and higher tiers exist, this
+    /// lowers to a call to the type's destructor. Legal only on `Drop`
+    /// places (enforced by the substructural checker, not here).
     Drop(Place),
     /// Explicitly end a reference's loan. Requires the referenced place
     /// to hold a bound reference with its (cur, post) obligation

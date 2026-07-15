@@ -22,19 +22,51 @@ library features. Coroutines are deferred from the Silica-MIR for initial
 implementation simplicity.
 
 ## Substructural types
-Values in Silica are linear. Relaxations are provided by the `Drop` and `Copy`
-traits, which tell the compiler that the type may be used fewer than 1 and
-greater than 1 times respectively. Scalar types are both `Drop` and `Copy` so
-they can be used freely.
+
+Values in Silica are linear. Relaxations are provided by the `AutoDrop` and
+`AutoClone` traits, which tell the compiler that the type may be used fewer
+than 1 and greater than 1 times respectively. Scalar types are both `AutoDrop`
+and `AutoClone` so they can be used freely.
 
 Substructural class comes from the declaration markers:
 
-| markers      | class        | may use twice | may be forgotten |
-|--------------|--------------|---------------|------------------|
-| (none)       | linear       | no            | no               |
-| `Drop`       | affine       | no            | yes              |
-| `Copy`       | relevant     | yes           | no               |
-| `Copy Drop`  | unrestricted | yes           | yes              |
+| markers                 | class        | may use twice | may be forgotten |
+|-------------------------|--------------|---------------|------------------|
+| (none)                  | linear       | no            | no               |
+| `AutoDrop`              | affine       | no            | yes              |
+| `AutoCopy`              | relevant     | yes           | no               |
+| `AutoCopy + Auto Drop`  | unrestricted | yes           | yes              |
+
+More generally, Silica has twelve traits that track whether a value may be
+copied, moved, or destroyed; and how trivially or explicitly that happens.
+
+| Implementation         | `Copy`      | `Drop`        | `Move`           |
+|------------------------|-------------|---------------|------------------|
+| Trivial (bitwise)      | `Copy`      | `Drop`        | `Move`           |
+| Pure and implicit      | `AutoClone` | `AutoDestroy` | `AutoTransfer`   |
+| Pure and explicit      | `Clone`     | `Destroy`     | `Transfer`       |
+| Effectful and explicit | `CoClone`   | `CoDestroy`   | `CoTransfer`     |
+
+* `Copy` and `Move` are bitwise operations, `Move` marks the original place as
+logicially deinitialized. Similarly `Drop` is a no-op deinitialization.
+* `Clone`, `Destroy`, and `Transfer` require non-trivial but pure methods to
+duplicate, destroy, or move an object.
+* The `Auto*` variants allow the compiler to implicitly call those methods to
+help programs typecheck.
+* The `Co` variants may perform algebraic effects when invoked.
+* **Rust comparison:** `Copy` and `Move` are analogous between Rust and Silica,
+  but Rust's `Drop` is more like Silica's `AutoDestroy` - customizable and
+  implictly inserted.
+* Blanket implementations:
+  * Each row in the table has a blanket implementation for the following row.
+    E.g. all types that are `Copy` are also `CoClone` and all types that are
+    `AutoDestroy` are also `Destroy`. 
+  * The compiler derives default implementations so `T: Copy + Drop` imply
+    `T: Move`, `T: Clone + Destroy` imply `T: Transfer`, etc. This default
+    implementation may be overridden, e.g. to remove an intermedediate value. 
+  * Because the last two rules can be applied repeatedly, `T: Copy + Destroy`
+    imply `T: CoTransfer`.
+
 
 #### Initialization State tracking
 Like Rust, Silica has const references, but unlike Rust, it has four kinds of
@@ -55,10 +87,13 @@ they represent unfulfilled obligations to initialize or deinitialize the
 referent. `&mut` and `&uninit` are affine types (`Drop` not `Copy`).
 
 ## Immovable Types
-The `Move` trait tells the compiler a type is movable. Without it, it cannot be
-passed by move. All scalar types are movable. If a type is `Copy` and `Drop`,
-the compiler auto-derives a `Move` impl for it (see the Substructural traits
-section below), unless the user has provided their own `Move` impl.
+The `Move` marker tells the compiler a type is bitwise-movable. Without
+it, it cannot be passed by move. All scalar types are movable. If a
+type is both `Copy` and `Drop`, the compiler synthesizes `Move` via
+the default impl `Copy + Drop → Move` (see the Substructural traits
+section below). The same rule lifts up the tiers: `Clone + Destroy →
+Transfer`, `CoClone + CoDestroy → CoTransfer`, and so on. Each default
+impl is overridable if the user wants a direct implementation.
 
 ## Algebraic Effects
 Silica uses algebraic effects in the form of coroutines. Effects may be thought
@@ -231,48 +266,63 @@ asynchrony do not compose in Rust.
 
 ## Substructural traits
 
-```
-trait Copy {
-  fn copy(&self, dst: &out Self);
-}
-trait Drop {
-  fn drop(&drop self);
-}
-trait Move {
-  fn move(&drop self, dst: &out Self);
-}
-// Auto-derived by the compiler for any `Copy + Drop` type unless the
-// user provides their own `Move` impl. Not a Rust-style blanket impl —
-// user impls take precedence, so there's no coherence conflict.
-impl<T: Copy + Drop> Move for T {
-  fn move(src: &drop Self, dst: &out Self) {
-    Copy::copy(&*src, dst);
-    Drop::drop(src);
-  }
-} 
-```
-Note that unlike Rust, `Copy` may be user defined. The same auto-derivation
-rule applies: `Copy` is derived for types whose fields are all `Copy`, and
-users may override.
+The trivial markers (`Copy`, `Drop`, `Move`) are properties, not traits
+with methods — the operations are compiler-inline (memcpy, no-op
+forget, memcpy + invalidate). The higher tiers expose function shapes:
 
-
-## Effectful Copy/Move/Drop
-These are vocabulary traits, for use in the standard library, but not inserted
-by the compiler.
 ```
+// Pure and explicit: the user writes the method
+// (or `#[derive]` auto-generates it, giving the Auto* variants).
 trait Clone {
+  fn clone(&self, dst: &out Self);
+}
+trait Destroy {
+  fn destroy(&drop self);
+}
+trait Transfer {
+  fn transfer(&drop self, dst: &out Self);
+}
+
+// Default impl (overridable): given `Clone + Destroy`, synthesize
+// `Transfer` as clone-then-destroy. User impls take precedence, so
+// there's no coherence conflict — a direct `impl Transfer for T`
+// wins and avoids the intermediate.
+impl<T: Clone + Destroy> Transfer for T {
+  fn transfer(src: &drop Self, dst: &out Self) {
+    Clone::clone(&*src, dst);
+    Destroy::destroy(src);
+  }
+}
+```
+
+The pure-and-implicit tier (`AutoClone` / `AutoDestroy` /
+`AutoTransfer`) has the same method signatures; the difference is
+that the compiler synthesizes the body by walking fields when the
+user hasn't provided one.
+
+
+## Effectful substructural traits
+The effectful-and-explicit traits are the effect-polymorphic versions
+of the pure-and-explicit ones. Their methods are coroutines and may
+perform algebraic effects.
+
+```
+trait CoClone {
   effects E;
   co clone(&self, dst: &out Self) -> () ! E;
 }
-trait Destroy {
+trait CoDestroy {
   effects E;
   co destroy(&drop self) -> () ! E;
 }
-trait Transfer {
+trait CoTransfer {
   effects E;
   co transfer(&drop self, dst: &out Self) -> () ! E;
 }
 ```
+
+These are vocabulary traits for the standard library, not inserted
+by the compiler.
 
 # Silica's Compiler Plan
 1. **Parse HLL** (`.si`) into the HLL AST via the tree-sitter grammar in
