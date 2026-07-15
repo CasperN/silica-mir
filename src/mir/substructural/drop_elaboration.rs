@@ -246,7 +246,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
             }
             for (path_place, ty) in &diverged_paths {
                 if state_at(&pred_exit, path_place) == Some(InitState::Init)
-                    && class_of(ty, env).drop
+                    && class_of(ty, env).implies(Marker::Drop)
                 {
                     plan.cross_edge
                         .entry((pred_block.label.clone(), block.label.clone()))
@@ -381,7 +381,7 @@ fn is_init_and_drop(
     let Ok(leaf_ty) = env.infer_place_type(place, crate::mir::ast::Span::default(), locals) else {
         return false;
     };
-    class_of(&leaf_ty, env).drop
+    class_of(&leaf_ty, env).implies(Marker::Drop)
 }
 
 /// Walk `state` looking for `Diverged` leaves (or Diverged aggregates
@@ -501,7 +501,7 @@ fn plan_drops_for_place(
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Diverged => {}
         InitState::Init => {
-            if class_of(ty, env).drop {
+            if class_of(ty, env).implies(Marker::Drop) {
                 out.push(place);
             }
         }

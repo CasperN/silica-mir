@@ -1,25 +1,196 @@
 use indexmap::IndexMap;
 
-/// Substructural markers declared on a struct/enum. Independent flags:
-/// - `copy`: values may be bitwise duplicated (Copy).
-/// - `drop`: values may be forgotten in place (Drop).
-/// - `mov`: values may be bitwise relocated (Move). Named `mov` because
-///   `move` is a Rust keyword.
+/// A single substructural marker in the vocabulary. Phase 1 has only
+/// the trivial-tier markers (Copy, Drop, Move); higher tiers
+/// (AutoClone, Clone, CoClone, etc.) land with the methods project.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Marker {
+    Copy,
+    Drop,
+    Move,
+}
+
+impl Marker {
+    /// Canonical spelling used in surface syntax and pretty-print.
+    pub fn name(self) -> &'static str {
+        match self {
+            Marker::Copy => "Copy",
+            Marker::Drop => "Drop",
+            Marker::Move => "Move",
+        }
+    }
+}
+
+/// Per-column implementation tier. Phase 1 has only Trivial —
+/// Auto/Pure/Co variants land alongside the methods project. The
+/// ordering `Trivial < Auto < Pure < Co` reflects the vertical
+/// closure: Trivial-Copy satisfies AutoClone/Clone/CoClone bounds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+enum Tier {
+    Trivial,
+}
+
+/// Substructural markers declared on a struct/enum, or the effective
+/// class of an arbitrary type. Opaque so the internal representation
+/// stays flexible as the marker vocabulary grows.
 ///
-/// The "effective" Move class is `mov || (copy && drop)` — declaring
-/// both Copy and Drop is enough; explicit Move is only needed for
-/// types that aren't Copy+Drop.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Two query modes:
+/// - [`declared`] — literal presence of a marker on the decl. Used
+///   by composition checking to avoid cascading redundant errors
+///   from the closure.
+/// - [`implies`] — semantic satisfaction, accounting for the
+///   vertical closure (higher tiers imply lower) and the horizontal
+///   closure (Copy + Drop implies Move). Used by every other query.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct Markers {
-    pub copy: bool,
-    pub drop: bool,
-    pub mov: bool,
+    // One tier per column, `None` = the type has no impl for that
+    // operation (linear in that dimension). Kept private so callers
+    // can't build inconsistent states.
+    copy: Option<Tier>,
+    drop: Option<Tier>,
+    mov: Option<Tier>,
 }
 
 impl Markers {
-    /// Effective Move class: declared Move, or Copy AND Drop.
-    pub fn effective_move(&self) -> bool {
-        self.mov || (self.copy && self.drop)
+    /// A marker set with nothing declared — linear in every dimension.
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Build from a set of declared markers. Duplicates are idempotent.
+    /// The result is canonicalized: markers derivable from the others
+    /// via closure are removed, so any two equivalent inputs produce
+    /// the same `Markers` value. E.g., `[Copy, Drop, Move]` and
+    /// `[Copy, Drop]` both yield `{copy, drop}` — `Move` is redundant
+    /// since it's already implied by Copy + Drop.
+    pub fn from_iter(ms: impl IntoIterator<Item = Marker>) -> Self {
+        let mut out = Self::empty();
+        for m in ms {
+            match m {
+                Marker::Copy => out.copy = Some(Tier::Trivial),
+                Marker::Drop => out.drop = Some(Tier::Trivial),
+                Marker::Move => out.mov = Some(Tier::Trivial),
+            }
+        }
+        out.canonicalize();
+        out
+    }
+
+    /// Strip declarations that the closure already implies. Called
+    /// from `from_iter` so `Markers` values are always canonical.
+    fn canonicalize(&mut self) {
+        // Copy + Drop implies Move via the horizontal closure — an
+        // explicit Move declaration alongside them is redundant.
+        if self.copy.is_some() && self.drop.is_some() {
+            self.mov = None;
+        }
+    }
+
+    /// True iff the user literally wrote this marker on the decl.
+    /// Does *not* consider the closure. Composition uses this to
+    /// avoid emitting redundant errors on closure-derived markers.
+    pub fn declared(&self, m: Marker) -> bool {
+        match m {
+            Marker::Copy => self.copy.is_some(),
+            Marker::Drop => self.drop.is_some(),
+            Marker::Move => self.mov.is_some(),
+        }
+    }
+
+    /// True iff the type semantically satisfies this marker, considering
+    /// the horizontal closure (Copy + Drop → Move). Vertical closure
+    /// (Auto, Pure, Co tiers) lands with those variants of `Marker`.
+    pub fn implies(&self, m: Marker) -> bool {
+        match m {
+            Marker::Copy => self.copy.is_some(),
+            Marker::Drop => self.drop.is_some(),
+            Marker::Move => self.mov.is_some() || (self.copy.is_some() && self.drop.is_some()),
+        }
+    }
+
+    /// Iterate declared markers in canonical order (Copy, Drop, Move).
+    /// Closure-derived markers are not included. Used by pretty-print.
+    pub fn iter_declared(&self) -> impl Iterator<Item = Marker> + '_ {
+        [
+            (self.copy.is_some(), Marker::Copy),
+            (self.drop.is_some(), Marker::Drop),
+            (self.mov.is_some(), Marker::Move),
+        ]
+        .into_iter()
+        .filter_map(|(present, m)| if present { Some(m) } else { None })
+    }
+}
+
+#[cfg(test)]
+mod markers_tests {
+    use super::*;
+
+    #[test]
+    fn empty_declares_and_implies_nothing() {
+        let m = Markers::empty();
+        for marker in [Marker::Copy, Marker::Drop, Marker::Move] {
+            assert!(!m.declared(marker));
+            assert!(!m.implies(marker));
+        }
+        assert_eq!(m.iter_declared().count(), 0);
+    }
+
+    #[test]
+    fn from_iter_records_each_marker() {
+        let m = Markers::from_iter([Marker::Copy, Marker::Drop]);
+        assert!(m.declared(Marker::Copy));
+        assert!(m.declared(Marker::Drop));
+        assert!(!m.declared(Marker::Move));
+    }
+
+    #[test]
+    fn horizontal_closure_copy_and_drop_implies_move() {
+        // Copy + Drop declared → Move is implied but not declared.
+        let m = Markers::from_iter([Marker::Copy, Marker::Drop]);
+        assert!(!m.declared(Marker::Move), "Move must not be declared");
+        assert!(m.implies(Marker::Move), "Copy + Drop must imply Move");
+    }
+
+    #[test]
+    fn copy_alone_does_not_imply_move() {
+        let m = Markers::from_iter([Marker::Copy]);
+        assert!(!m.implies(Marker::Move));
+    }
+
+    #[test]
+    fn iter_declared_uses_canonical_order() {
+        // Move alone (without Copy+Drop) survives canonicalization,
+        // so this exercises the ordering directly.
+        let m = Markers::from_iter([Marker::Move, Marker::Copy]);
+        let got: Vec<Marker> = m.iter_declared().collect();
+        assert_eq!(got, vec![Marker::Copy, Marker::Move]);
+    }
+
+    #[test]
+    fn from_iter_is_idempotent_on_duplicates() {
+        let a = Markers::from_iter([Marker::Copy, Marker::Copy]);
+        let b = Markers::from_iter([Marker::Copy]);
+        assert_eq!(a, b);
+    }
+
+    #[test]
+    fn canonical_form_strips_redundant_move() {
+        // Copy + Drop + Move and Copy + Drop are semantically the same
+        // (Move is implied by the pair). Both should produce the same
+        // canonical Markers value.
+        let a = Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
+        let b = Markers::from_iter([Marker::Copy, Marker::Drop]);
+        assert_eq!(a, b);
+        assert!(!a.declared(Marker::Move));
+        assert!(a.implies(Marker::Move));
+    }
+
+    #[test]
+    fn move_alone_stays_declared() {
+        // With no Copy or Drop, the Move declaration isn't redundant.
+        let m = Markers::from_iter([Marker::Move]);
+        assert!(m.declared(Marker::Move));
+        assert!(m.implies(Marker::Move));
     }
 }
 

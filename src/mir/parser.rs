@@ -877,19 +877,17 @@ impl Parser {
     /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
     /// order). Errors on duplicates.
     fn map_markers(&self, node: Node) -> Result<Markers, Diagnostic> {
-        let mut copy = false;
-        let mut drop = false;
-        let mut mov = false;
+        let mut seen: Vec<Marker> = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() != "marker" {
                 continue;
             }
             let text = self.get_text(child);
-            let flag = match text {
-                "Copy" => &mut copy,
-                "Drop" => &mut drop,
-                "Move" => &mut mov,
+            let m = match text {
+                "Copy" => Marker::Copy,
+                "Drop" => Marker::Drop,
+                "Move" => Marker::Move,
                 other => {
                     return Err(self.diag(
                         child,
@@ -898,16 +896,16 @@ impl Parser {
                     ));
                 }
             };
-            if *flag {
+            if seen.contains(&m) {
                 return Err(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("Duplicate marker '{}'", text),
                 ));
             }
-            *flag = true;
+            seen.push(m);
         }
-        Ok(Markers { copy, drop, mov })
+        Ok(Markers::from_iter(seen))
     }
 
     fn map_struct_decl(&self, node: Node) -> Result<StructDecl, Diagnostic> {
@@ -923,7 +921,7 @@ impl Parser {
         {
             self.map_markers(markers_node)?
         } else {
-            Markers { copy: false, drop: false, mov: false }
+            Markers::empty()
         };
 
         let mut fields = Vec::new();
@@ -966,7 +964,7 @@ impl Parser {
         {
             self.map_markers(markers_node)?
         } else {
-            Markers { copy: false, drop: false, mov: false }
+            Markers::empty()
         };
 
         let mut variants = Vec::new();
@@ -1117,8 +1115,8 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Struct(s) = &program.declarations[0] {
             assert_eq!(s.name, "Point");
-            assert!(s.markers.copy);
-            assert!(s.markers.drop);
+            assert!(s.markers.declared(Marker::Copy));
+            assert!(s.markers.declared(Marker::Drop));
             assert_eq!(s.fields.len(), 2);
             assert_eq!(s.fields[0].name, "x");
             assert_eq!(s.fields[0].ty, Type::Int(IntTy::I64));
@@ -1142,8 +1140,8 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(e) = &program.declarations[0] {
             assert_eq!(e.name, "Option");
-            assert!(!e.markers.copy);
-            assert!(!e.markers.drop);
+            assert!(!e.markers.declared(Marker::Copy));
+            assert!(!e.markers.declared(Marker::Drop));
             assert_eq!(e.variants.len(), 2);
             assert_eq!(e.variants[0].name, "None");
             assert_eq!(e.variants[0].ty, Type::Custom("Option".to_string()));
@@ -1384,7 +1382,10 @@ mod tests {
         let c = markers_of("struct P: Drop + Copy + Move { x: i64 }");
         assert_eq!(a, b);
         assert_eq!(b, c);
-        assert!(a.copy && a.drop && a.mov);
+        // All three implied — Move canonicalizes to implied-only when
+        // Copy and Drop are declared, so `declared(Move)` is false but
+        // `implies(Move)` holds.
+        assert!(a.implies(Marker::Copy) && a.implies(Marker::Drop) && a.implies(Marker::Move));
     }
 
     #[test]

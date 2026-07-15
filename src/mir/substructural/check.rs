@@ -104,7 +104,7 @@ fn check_stmt(
                 return;
             };
             let c = class_of(&ty, env);
-            if !c.drop {
+            if !c.implies(Marker::Drop) {
                 d.push_error(
                     diag(
                         DropOfNonDrop,
@@ -166,8 +166,8 @@ fn check_operand(
     };
     let c = class_of(&ty, env);
     let ok = match needed {
-        ClassMarker::Copy => c.copy,
-        ClassMarker::Move => c.mov,
+        ClassMarker::Copy => c.implies(Marker::Copy),
+        ClassMarker::Move => c.implies(Marker::Move),
     };
     if !ok {
         let (code, marker_name, hint) = match needed {

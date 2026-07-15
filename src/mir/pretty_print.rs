@@ -38,16 +38,9 @@ fn write_declaration(out: &mut String, decl: &Declaration) {
 }
 
 fn write_markers(out: &mut String, m: &Markers) {
-    // Canonical order: Copy, Drop, Move. Colon+plus form; nothing at
-    // all if the type has no markers.
-    let names: Vec<&str> = [
-        (m.copy, "Copy"),
-        (m.drop, "Drop"),
-        (m.mov, "Move"),
-    ]
-    .iter()
-    .filter_map(|(b, name)| if *b { Some(*name) } else { None })
-    .collect();
+    // Iterator yields declared markers in canonical order. Nothing
+    // at all when the type has no markers.
+    let names: Vec<&str> = m.iter_declared().map(|m| m.name()).collect();
     if names.is_empty() {
         return;
     }

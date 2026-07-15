@@ -1033,7 +1033,7 @@ impl<'a> InitStateContext<'a> {
             &mut Vec::new(),
             &mut |leaf_path, leaf_ty| {
                 let c = class_of(leaf_ty, self.env);
-                if !c.drop {
+                if !c.implies(Marker::Drop) {
                     let path_str = if leaf_path.is_empty() {
                         format_place(target)
                     } else {
@@ -1504,7 +1504,7 @@ impl<'a> InitStateContext<'a> {
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && matches!(leaf, InitState::Init) {
             if let Ok(leaf_ty) = self.env.infer_place_type(place, span, self.locals) {
-                if class_of(&leaf_ty, self.env).drop {
+                if class_of(&leaf_ty, self.env).implies(Marker::Drop) {
                     return;
                 }
             }

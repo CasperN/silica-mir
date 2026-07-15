@@ -789,6 +789,11 @@ variants with a slightly different syntax.
   `mir/dataflow.rs` doesn't thread `Span`, so cross-block loans
   lose their origin and the LoanConflict secondary snippet is
   suppressed (see comment in `mir/lifetime/mod.rs`).
+- Info-severity diagnostics. Fourth bucket alongside error / warning /
+  internal_error, rendered with a low-key prefix (e.g. `note:`).
+  First use case: flag redundant markers on a decl —
+  `struct X: Copy + Drop + Move { ... }` gets an info note that
+  `Move` is implied by `Copy + Drop` and canonicalized away.
 
 # Longer term
 - Round-trip corpus test (`pretty_print → parse → pretty_print`)

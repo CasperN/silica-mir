@@ -58,76 +58,43 @@ fn diag(code: impl Into<DiagCode>, span: Span, msg: String) -> Diagnostic {
     Diagnostic::new(code, span, msg)
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Class {
-    pub copy: bool,
-    pub drop: bool,
-    pub mov: bool,
-}
-
-pub fn class_of(ty: &Type, env: &Env) -> Class {
+/// Return the substructural class of `ty` as a `Markers` value.
+///
+/// Callers query the result via `implies(Marker::X)` — this bakes in
+/// both the vertical closure (higher tiers imply lower) and the
+/// horizontal closure (Copy + Drop → Move). Composition uses the raw
+/// `declared` on the *declaration's* markers to phrase errors; that
+/// pass reads `s.markers.declared(_)` directly, not through here.
+pub fn class_of(ty: &Type, env: &Env) -> Markers {
+    let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
     match ty {
-        Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Fn(_) => Class {
-            copy: true,
-            drop: true,
-            mov: true,
-        },
+        Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Fn(_) => all(),
         // Never is uninhabited: the substructural rules quantify over
         // values, and there are none. All three ops apply vacuously.
-        Type::Never => Class {
-            copy: true,
-            drop: true,
-            mov: true,
-        },
+        Type::Never => all(),
         // Raw pointers are unrestricted (aliasable, forgettable,
         // relocatable) — same class as shared refs. No loan / no
         // obligation, so no linearity to worry about.
-        Type::RawPtr(_) => Class {
-            copy: true,
-            drop: true,
-            mov: true,
-        },
+        Type::RawPtr(_) => all(),
         Type::Ref(kind, _) => match kind {
             // Shared refs are unrestricted and relocatable.
-            RefKind::Shared => Class {
-                copy: true,
-                drop: true,
-                mov: true,
-            },
+            RefKind::Shared => all(),
             // Exclusive mutable/uninit refs: affine + movable. The ref
             // itself is a pointer we can freely relocate; the referent's
             // obligation goes with it.
-            RefKind::Mut | RefKind::Uninit => Class {
-                copy: false,
-                drop: true,
-                mov: true,
-            },
+            RefKind::Mut | RefKind::Uninit => {
+                Markers::from_iter([Marker::Drop, Marker::Move])
+            }
             // `&out` / `&drop` carry linear obligations, but the
             // reference value itself is a pointer that can be relocated
             // (obligation transfers with the ref).
-            RefKind::Out | RefKind::Drop => Class {
-                copy: false,
-                drop: false,
-                mov: true,
-            },
+            RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
         },
         Type::Custom(name) => match env.types.get(name) {
-            Some(TypeDecl::Struct(s)) => Class {
-                copy: s.markers.copy,
-                drop: s.markers.drop,
-                mov: s.markers.effective_move(),
-            },
-            Some(TypeDecl::Enum(e)) => Class {
-                copy: e.markers.copy,
-                drop: e.markers.drop,
-                mov: e.markers.effective_move(),
-            },
+            Some(TypeDecl::Struct(s)) => s.markers,
+            Some(TypeDecl::Enum(e)) => e.markers,
             // Unknown name — tc has already reported "undeclared type".
-            None => Class {
-                copy: false,
-                drop: false,
-                mov: false,
-            },
+            None => Markers::empty(),
         },
         // Array class inherits from its element type. Zero-length
         // arrays are trivially Copy Drop Move (no elements to worry
@@ -148,7 +115,12 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
     for f in &s.fields {
         let c = class_of(&f.ty, env);
-        if s.markers.copy && !c.copy {
+        // `declared` on the struct + `implies` on the field: only
+        // fire on markers the user actually wrote (avoids redundant
+        // errors on closure-derived markers), and let the field's
+        // closure satisfy the requirement (a field that's Copy + Drop
+        // implies Move without needing explicit Move).
+        if s.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,
                 f.span,
@@ -158,7 +130,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
                 ),
             ));
         }
-        if s.markers.drop && !c.drop {
+        if s.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
             d.push_error(diag(
                 DropMarkerNotSatisfied,
                 f.span,
@@ -171,7 +143,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         // Only check explicit Move against fields — an implicit Move
         // via Copy+Drop is guaranteed to succeed because those fields
         // are already Copy AND Drop, hence Move.
-        if s.markers.mov && !c.mov {
+        if s.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
             d.push_error(diag(
                 MoveMarkerNotSatisfied,
                 f.span,
@@ -187,7 +159,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
 fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
     for v in &e.variants {
         let c = class_of(&v.ty, env);
-        if e.markers.copy && !c.copy {
+        if e.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,
                 v.span,
@@ -197,7 +169,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
                 ),
             ));
         }
-        if e.markers.drop && !c.drop {
+        if e.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
             d.push_error(diag(
                 DropMarkerNotSatisfied,
                 v.span,
@@ -207,7 +179,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
                 ),
             ));
         }
-        if e.markers.mov && !c.mov {
+        if e.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
             d.push_error(diag(
                 MoveMarkerNotSatisfied,
                 v.span,

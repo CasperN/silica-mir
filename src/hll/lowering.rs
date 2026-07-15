@@ -650,11 +650,13 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     name: s.name.clone(),
                     name_span: s.span,
-                    markers: mir::Markers {
-                        copy: true,
-                        drop: true,
-                        mov: true,
-                    },
+                    // Copy + Drop → Move via horizontal closure, so
+                    // there's no need to also declare Move; it'd be
+                    // canonicalized away.
+                    markers: mir::Markers::from_iter([
+                        mir::Marker::Copy,
+                        mir::Marker::Drop,
+                    ]),
                     fields,
                 }));
             }
@@ -667,11 +669,13 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     name: e.name.clone(),
                     name_span: e.span,
-                    markers: mir::Markers {
-                        copy: true,
-                        drop: true,
-                        mov: true,
-                    },
+                    // Copy + Drop → Move via horizontal closure, so
+                    // there's no need to also declare Move; it'd be
+                    // canonicalized away.
+                    markers: mir::Markers::from_iter([
+                        mir::Marker::Copy,
+                        mir::Marker::Drop,
+                    ]),
                     variants,
                 }));
             }
@@ -807,7 +811,7 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            struct Point: Copy + Drop + Move {
+            struct Point: Copy + Drop {
               x: i64
               y: i64
             }
@@ -837,7 +841,7 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            enum Option: Copy + Drop + Move {
+            enum Option: Copy + Drop {
               None: unit
               Some: i64
             }
@@ -941,12 +945,12 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            struct Point: Copy + Drop + Move {
+            struct Point: Copy + Drop {
               x: i64
               y: i64
             }
 
-            enum Option: Copy + Drop + Move {
+            enum Option: Copy + Drop {
               None: unit
               Some: i64
             }
@@ -1008,13 +1012,13 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            struct Node: Copy + Drop + Move {
+            struct Node: Copy + Drop {
               value: i64
               left: Tree
               right: Tree
             }
 
-            enum Tree: Copy + Drop + Move {
+            enum Tree: Copy + Drop {
               Empty: unit
               Node: *Node
             }
