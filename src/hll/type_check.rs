@@ -262,11 +262,18 @@ pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<HashMap<
     }
 }
 
-pub fn typecheck_program(program: &Program) -> Result<(), Diagnostic> {
+/// Test-facing wrapper — sibling modules under `hll::*` use this to
+/// stage a typecheck without needing a `Diagnostics` container.
+/// Production callers should use `run_type_check`.
+pub(super) fn typecheck_program(program: &Program) -> Result<(), Diagnostic> {
     typecheck_program_collect(program).map(|_| ())
 }
 
-pub fn typecheck_program_collect(program: &Program) -> Result<HashMap<*const Expr, Type>, Diagnostic> {
+/// Test-facing wrapper that returns the per-expression type map on
+/// success. Sibling modules use this to stage lowering-time work
+/// without needing a `Diagnostics` container. Production callers
+/// should use `run_type_check`.
+pub(super) fn typecheck_program_collect(program: &Program) -> Result<HashMap<*const Expr, Type>, Diagnostic> {
     let mut env = TypeEnv::new();
     let mut subst = Subst::new();
     let mut types = HashMap::new();
@@ -308,16 +315,6 @@ pub fn typecheck_program_collect(program: &Program) -> Result<HashMap<*const Exp
     }
 
     Ok(resolved_types)
-}
-
-pub fn infer(env: &mut TypeEnv, subst: &mut Subst, expr: &Expr) -> Result<Type, Diagnostic> {
-    let mut types = HashMap::new();
-    infer_inner(env, subst, expr, &mut types)
-}
-
-pub fn check(env: &mut TypeEnv, subst: &mut Subst, expr: &Expr, expected: &Type) -> Result<(), Diagnostic> {
-    let mut types = HashMap::new();
-    check_inner(env, subst, expr, expected, &mut types)
 }
 
 fn infer_inner(
