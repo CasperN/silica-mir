@@ -4,7 +4,7 @@
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::parser::Parser;
-use crate::run_all_passes;
+use crate::elaborate_and_check_mir;
 
 /// Full pipeline run that yields the structured `Diagnostics` container.
 /// Used by tests that need to assert on codes/spans, not just strings.
@@ -18,7 +18,7 @@ pub fn run_structured(src: &str) -> Diagnostics {
         )
     });
     let mut d = Diagnostics::default().with_source(program.source.clone());
-    run_all_passes(&program, &mut d);
+    elaborate_and_check_mir(&program, &mut d);
     d
 }
 
@@ -88,7 +88,7 @@ pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
         )
     });
     let mut d = Diagnostics::default().with_source(program.source.clone());
-    run_all_passes(&program, &mut d);
+    elaborate_and_check_mir(&program, &mut d);
     (d.errors_str(), d.warnings_str())
 }
 

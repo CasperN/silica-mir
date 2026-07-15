@@ -37,7 +37,8 @@ Substructural class comes from the declaration markers:
 | `AutoCopy`              | relevant     | yes           | no               |
 | `AutoCopy + Auto Drop`  | unrestricted | yes           | yes              |
 
-More generally, Silica has twelve traits that track whether a value may be
+Substructural types typically only track how many times a value can be used.
+However, Silica has twelve traits that track whether a value may be
 copied, moved, or destroyed; and how trivially or explicitly that happens.
 
 | Implementation         | `Copy`      | `Drop`        | `Move`           |
@@ -52,8 +53,10 @@ logicially deinitialized. Similarly `Drop` is a no-op deinitialization.
 * `Clone`, `Destroy`, and `Transfer` require non-trivial but pure methods to
 duplicate, destroy, or move an object.
 * The `Auto*` variants allow the compiler to implicitly call those methods to
-help programs typecheck.
-* The `Co` variants may perform algebraic effects when invoked.
+help programs typecheck. This is useful for passing reference counted pointers,
+where easy sharing is the intent. 
+* The `Co` variants may perform algebraic effects when invoked. E.g. for
+asynchronous object destruction.
 * **Rust comparison:** `Copy` and `Move` are analogous between Rust and Silica,
   but Rust's `Drop` is more like Silica's `AutoDestroy` - customizable and
   implictly inserted.
@@ -704,7 +707,7 @@ src/
     └── codegen/            # Textual LLVM IR generation
 ```
 Key files
-- `main.rs` for `run_all_passes`
+- `main.rs` for how all the compiler passes are wired up.
 - `src/hll/lowering.rs` for examples of HLL syntax and how it lowers to MIR. 
 - `src/mir/init_state/mod.rs` for the substructural references model.
 
@@ -727,11 +730,31 @@ Key files
   the aliasing `*T`. Would enable `noalias` attributes on parameters
   where the checker can prove exclusivity.
 
-## HLL
-- Enforce `let mut`. The `is_mut` flag is stored on `Stmt::Let` but
-  no pass checks that non-mut bindings aren't reassigned. Planned
-  as a dedicated `hll/mut_check.rs` pass between typecheck and
-  lowering.
+## Marker overhaul
+- Change the declaration syntax from `struct Copy Move Drop Foo {}` to
+struct `struct Foo: Copy + Move + Drop {}`.
+  - Note that `Foo: Copy` here means the compiler also must implement
+  `AutoClone, Clone, CoClone` etc.
+  - TODO: How does this work for generics where the marker depends on the
+  type parameter?
+  - TODO: In the far future, how do we enable libraries like serde? The short
+  term implementation likely requires compiler magic.
+- The HLL always makes types `Copy + Move + Drop`, once syntax is standardized
+follow the pattern.
+
+## Write a standard library
+- Requires generics
+- Requires modules and multi-file support
+- `Fail` effect for exceptional control flow.
+- `Iter` effect for for loops
+- `Async` effect for executors
+
+## Quality of life
+- HLL supports tuples
+- Utilize the error rendering capabilities for all errors.
+- Should the HLL support anonymous enums? `(left: T | right: U)`.
+- Should we make enums more like Rust's? We effectively only support newtype
+variants with a slightly different syntax.
 
 ## FFI
 - Wire codegen for `$return`-carrying externs. An extern
@@ -756,9 +779,6 @@ Key files
   drop elaborator becomes reference/debug-only rather than authoritative.
 
 ## Diagnostics
-- Type names print as Rust `{:?}` debug form (`Int(I64)` instead
-  of `i64`). Route diagnostic-emitting sites through
-  `pretty_print::write_type`.
 - Errors give `at L:C:` but no source snippet with a caret.
   Rustc-style rendering (source line + caret span + message)
   would help enormously. Prerequisite: widen `Span` from

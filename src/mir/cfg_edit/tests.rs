@@ -290,7 +290,7 @@ fn split_then_full_pipeline_still_clean() {
     // should still be clean.
     use crate::mir::ast::Declaration;
     use crate::mir::parser::Parser;
-    use crate::run_all_passes;
+    use crate::elaborate_and_check_mir;
 
     let src = "
         fn f(b: bool, x: i64) {
@@ -321,7 +321,7 @@ fn split_then_full_pipeline_still_clean() {
     }
 
     let mut d = crate::diagnostics::Diagnostics::default().with_source(program.source.clone());
-    run_all_passes(&program, &mut d);
+    elaborate_and_check_mir(&program, &mut d);
     assert!(
         d.is_clean(),
         "expected clean, got errors: {:?}",

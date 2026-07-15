@@ -34,7 +34,7 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
 /// Callers own the `Diagnostics` so they can pre-populate source /
 /// source-kind context and merge parse-time diagnostics in the same
 /// container.
-pub fn run_all_passes(program: &Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
+pub fn elaborate_and_check_mir(program: &Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
     let (mut env, env_errs) = mir::type_check::Env::build(program);
     d.extend_errors(env_errs);
     env.typecheck(d);
@@ -137,9 +137,8 @@ fn main() {
     let Some(program) = program else {
         report_and_exit(&d);
     };
-    eprintln!("AST parsed successfully.");
 
-    let (elaborated, env) = run_all_passes(&program, &mut d);
+    let (elaborated, env) = elaborate_and_check_mir(&program, &mut d);
 
     if d.has_errors() {
         report_and_exit(&d);
@@ -147,7 +146,7 @@ fn main() {
     for w in d.warnings_str() {
         eprintln!("Warning: {}", w);
     }
-    eprintln!("Type checking successful!");
+
     if d.warning_count() > 0 {
         eprintln!("({} warning(s))", d.warning_count());
     }

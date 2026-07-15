@@ -430,7 +430,7 @@ fn downcast_target_reassignment_elaborates_to_full_construction() {
     // EnumConstr reconstruction restores o to Init as variant Some.
     use crate::mir::parser::Parser;
     use crate::mir::pretty_print::pretty_print;
-    use crate::run_all_passes;
+    use crate::elaborate_and_check_mir;
     let src = "
         enum Copy Drop Option { None: unit Some: i64 }
         fn f(o: Option) {
@@ -444,7 +444,7 @@ fn downcast_target_reassignment_elaborates_to_full_construction() {
     ";
     let program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = crate::diagnostics::Diagnostics::default().with_source(program.source.clone());
-    let (elaborated, _env) = run_all_passes(&program, &mut d);
+    let (elaborated, _env) = elaborate_and_check_mir(&program, &mut d);
     assert!(d.is_clean(), "expected clean run, got {:?}", d.errors_str());
     let out = pretty_print(&elaborated);
     assert!(
