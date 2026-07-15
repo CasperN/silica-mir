@@ -136,7 +136,7 @@ fn test_loan_conflict_display() {
         err
     );
     assert!(
-        err.contains("cannot move from 'x': already borrowed by 'r'"),
+        err.contains("cannot write to 'x': already borrowed by 'r'"),
         "missing message details, got: {}",
         err
     );
@@ -144,5 +144,41 @@ fn test_loan_conflict_display() {
         err.contains("hint: the borrow of 'r' is active until its last use or explicit unborrow."),
         "missing hint, got: {}",
         err
+    );
+}
+
+#[test]
+fn test_loan_conflict_dedupe_single_error_per_statement() {
+    // `x = 20;` under an active borrow triggers both the RHS-consume
+    // check and the write-target check on the same statement. Only one
+    // LoanConflict should be reported, not two — the second is
+    // redundant noise for the same conflict.
+    let src = "
+        fn f() {
+            x: i64;
+            r: &mut i64;
+            entry:
+            x = 10;
+            r = &mut x;
+            x = 20;
+            drop r;
+            return
+        }
+    ";
+    let (errs, _) = run(src);
+    let loan_errs: Vec<&String> = errs
+        .iter()
+        .filter(|e| e.contains("[LT-LoanConflict]"))
+        .collect();
+    assert_eq!(
+        loan_errs.len(),
+        1,
+        "expected 1 LoanConflict error, got {}:\n{}",
+        loan_errs.len(),
+        loan_errs
+            .iter()
+            .map(|s| s.as_str())
+            .collect::<Vec<_>>()
+            .join("\n---\n")
     );
 }

@@ -62,7 +62,7 @@ fn test_hll_loan_conflict_display() {
         }
     ";
     let expected = "\
-at 5:13: [LT-LoanConflict] In function 'f': cannot move from 'x': already borrowed by 'r'
+at 5:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
    |
  5 |             x = 20;
    |             ^^^^^^

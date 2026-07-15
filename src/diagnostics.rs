@@ -249,6 +249,14 @@ impl Diagnostics {
         self.errors.extend(other);
     }
 
+    /// Keep only errors matching `f`; drop the rest. Emission sites
+    /// use this to dedupe when a later, more accurate diagnostic
+    /// supersedes an earlier one (e.g., a Write conflict replacing a
+    /// drop-elab-inserted Move conflict at the same span).
+    pub fn retain_errors(&mut self, f: impl FnMut(&Diagnostic) -> bool) {
+        self.errors.retain(f);
+    }
+
     /// True if no errors OR internal errors have been recorded.
     /// Warnings are ignored.
     pub fn is_clean(&self) -> bool {

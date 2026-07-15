@@ -190,7 +190,25 @@ pub fn check_loan_conflict(
             if !paths_conflict(&access_path, &loan_path) {
                 continue;
             }
-            let hint = format!("the borrow of '{}' is active until its last use or explicit unborrow.", format_place(borrower_place));
+            let borrower_name = format_place(borrower_place);
+            // Dedup: drop-elaboration expands `target = <rvalue>` into
+            // `drop target; target = <rvalue>` when target's type is
+            // Drop. Both statements then produce a LoanConflict against
+            // the same borrower at the same span (Move + Write access).
+            // Keep the *later* emission — for a drop-elab-expanded
+            // assign that's the Write, which matches what the user
+            // actually wrote. Remove any prior LoanConflict matching
+            // this (span, borrower) before pushing the new one.
+            let borrower_msg = format!("already borrowed by '{}'", borrower_name);
+            d.retain_errors(|e| {
+                !(e.code() == DiagCode::Lifetime(LifetimeCode::LoanConflict)
+                    && e.span() == span
+                    && e.message().contains(&borrower_msg))
+            });
+            let hint = format!(
+                "the borrow of '{}' is active until its last use or explicit unborrow.",
+                borrower_name,
+            );
             let mut diag = Diagnostic::new(
                 LifetimeCode::LoanConflict,
                 span,
@@ -198,7 +216,7 @@ pub fn check_loan_conflict(
                     "cannot {} '{}': already borrowed by '{}'",
                     access.describe(),
                     format_place(place),
-                    format_place(borrower_place),
+                    borrower_name,
                 ),
             )
             .in_function(&func.name)
