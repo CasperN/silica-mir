@@ -91,6 +91,83 @@ at 2:27: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfu
 }
 
 #[test]
+fn test_hll_undeclared_variable_display() {
+    // Reference to a name not in scope — caught in `hll::type_check`,
+    // renders with the HTC-UndeclaredVariable code tag.
+    let src = "
+        fn f() -> i64 {
+            let x = y;
+            x
+        }
+    ";
+    let expected = "\
+at 3:21: [HTC-UndeclaredVariable] In function 'f': undeclared variable 'y'
+   |
+ 3 |             let x = y;
+   |                     ^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_type_mismatch_display() {
+    // Return-type unification failure — HTC-TypeMismatch. The block's
+    // trailing expression is a `bool`; the declared return type is `i64`.
+    let src = "
+        fn f() -> i64 {
+            true
+        }
+    ";
+    let d = run_hll_pipeline(src);
+    assert!(!d.is_clean());
+    let errs = d.errors_str();
+    assert!(
+        errs[0].contains("[HTC-TypeMismatch]"),
+        "expected TypeMismatch tag, got: {}",
+        errs[0]
+    );
+    assert!(
+        errs[0].contains("type mismatch"),
+        "expected substring, got: {}",
+        errs[0]
+    );
+}
+
+#[test]
+fn test_hll_immutable_assign_display() {
+    // Reassigning a non-mut binding — HMC-AssignToImmutable.
+    let src = "
+        fn f() -> i64 {
+            let x: i64 = 1;
+            x = 2;
+            x
+        }
+    ";
+    let expected = "\
+at 4:13: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
+   |
+ 4 |             x = 2;
+   |             ^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_immutable_borrow_display() {
+    // Taking `&mut` of a non-mut binding — HMC-BorrowImmutableAsMut.
+    let src = "
+        fn f() {
+            let x: i64 = 1;
+            let r = &mut x;
+        }
+    ";
+    let expected = "\
+at 4:26: [HMC-BorrowImmutableAsMut] In function 'f': cannot borrow immutable binding 'x' as mutable
+   |
+ 4 |             let r = &mut x;
+   |                          ^";
+    assert_first_error(src, expected);
+}
+
+#[test]
 fn test_hll_copy_of_non_copy_display() {
     // `&mut i64` isn't Copy — assigning it into a fresh binding tries
     // to copy the reference and fails.

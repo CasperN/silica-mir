@@ -10,7 +10,24 @@
 
 use crate::hll::ast::*;
 use crate::mir::ast::{Span, RefKind};
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use std::collections::HashMap;
+
+/// Machine-readable code for each HLL mutability-check error kind.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HllMutCheckCode {
+    /// `x = ...` or `x.field = ...` where `x` was declared without `mut`.
+    AssignToImmutable,
+    /// `&mut x` (or another mutable-borrow kind) where `x` was declared
+    /// without `mut`.
+    BorrowImmutableAsMut,
+}
+
+impl From<HllMutCheckCode> for DiagCode {
+    fn from(code: HllMutCheckCode) -> DiagCode {
+        DiagCode::HllMutCheck(code)
+    }
+}
 
 // ── scope tracker ────────────────────────────────────────────────────
 
@@ -56,22 +73,21 @@ impl Scope {
 // ── public entry ─────────────────────────────────────────────────────
 
 /// Check that non-`mut` bindings are never reassigned.
-pub fn check_mutability(program: &Program) -> Result<(), String> {
+pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
     for decl in &program.declarations {
         if let Declaration::Fn(f) = decl {
-            check_fn(f).map_err(|e| format!("in function '{}': {}", f.name, e))?;
+            check_fn(f, d);
         }
     }
-    Ok(())
 }
 
-fn check_fn(f: &FnDecl) -> Result<(), String> {
+fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
     let mut scope = Scope::new();
     // Parameters are immutable (Param has no is_mut field).
     for p in &f.params {
         scope.declare(&p.name, false);
     }
-    check_expr(&f.body, &mut scope)
+    check_expr(&f.body, &mut scope, &f.name, d);
 }
 
 // ── place-root resolution ────────────────────────────────────────────
@@ -103,64 +119,64 @@ fn place_root(expr: &Expr) -> PlaceRoot<'_> {
 
 // ── expression / statement walk ──────────────────────────────────────
 
-fn check_expr(expr: &Expr, scope: &mut Scope) -> Result<(), String> {
+fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
     match &expr.kind {
         // ── leaf / simple ────────────────────────────────────────
         ExprKind::Literal(_)
         | ExprKind::Variable(_)
-        | ExprKind::Continue => Ok(()),
+        | ExprKind::Continue => {}
 
         // ── unary wrappers ───────────────────────────────────────
         ExprKind::Borrow(kind, inner) => {
-            check_expr(inner, scope)?;
+            check_expr(inner, scope, func, d);
             if *kind != RefKind::Shared {
-                match place_root(inner) {
-                    PlaceRoot::Var(name, span) => {
-                        if let Some(false) = scope.is_mut(name) {
-                            return Err(format!(
-                                "at {}: cannot borrow immutable binding '{}' as mutable",
-                                span, name,
-                            ));
-                        }
+                if let PlaceRoot::Var(name, span) = place_root(inner) {
+                    if let Some(false) = scope.is_mut(name) {
+                        d.push_error(
+                            Diagnostic::new(
+                                HllMutCheckCode::BorrowImmutableAsMut,
+                                span,
+                                format!("cannot borrow immutable binding '{}' as mutable", name),
+                            )
+                            .in_function(func),
+                        );
                     }
-                    PlaceRoot::ThroughDeref | PlaceRoot::Unknown => {}
                 }
             }
-            Ok(())
         }
         ExprKind::RawBorrow(inner)
         | ExprKind::Deref(inner)
         | ExprKind::FieldAccess(inner, _)
-        | ExprKind::Downcast(inner, _) => check_expr(inner, scope),
+        | ExprKind::Downcast(inner, _) => check_expr(inner, scope, func, d),
 
         ExprKind::ArrayIndex(arr, idx) => {
-            check_expr(arr, scope)?;
-            check_expr(idx, scope)
+            check_expr(arr, scope, func, d);
+            check_expr(idx, scope, func, d);
         }
 
         ExprKind::Binary(lhs, _, rhs) => {
-            check_expr(lhs, scope)?;
-            check_expr(rhs, scope)
+            check_expr(lhs, scope, func, d);
+            check_expr(rhs, scope, func, d);
         }
 
         // ── assignment — the core check ──────────────────────────
         ExprKind::Assign(lhs, rhs) => {
-            check_expr(rhs, scope)?;
+            check_expr(rhs, scope, func, d);
             // Walk the lhs for nested sub-expressions (index exprs etc.)
-            check_assign_subexprs(lhs, scope)?;
-            match place_root(lhs) {
-                PlaceRoot::Var(name, span) => {
-                    if let Some(false) = scope.is_mut(name) {
-                        return Err(format!(
-                            "at {}: cannot assign to immutable binding '{}'",
-                            span, name,
-                        ));
-                    }
-                    // `None` means the name wasn't in scope — the type
-                    // checker already rejects this, so we silently pass.
-                    Ok(())
+            check_assign_subexprs(lhs, scope, func, d);
+            if let PlaceRoot::Var(name, span) = place_root(lhs) {
+                if let Some(false) = scope.is_mut(name) {
+                    d.push_error(
+                        Diagnostic::new(
+                            HllMutCheckCode::AssignToImmutable,
+                            span,
+                            format!("cannot assign to immutable binding '{}'", name),
+                        )
+                        .in_function(func),
+                    );
                 }
-                PlaceRoot::ThroughDeref | PlaceRoot::Unknown => Ok(()),
+                // `None` means the name wasn't in scope — type_check
+                // already rejects this, so we silently pass.
             }
         }
 
@@ -168,70 +184,64 @@ fn check_expr(expr: &Expr, scope: &mut Scope) -> Result<(), String> {
         ExprKind::Block(stmts, trailing) => {
             scope.push();
             for stmt in stmts {
-                check_stmt(stmt, scope)?;
+                check_stmt(stmt, scope, func, d);
             }
             if let Some(tail) = trailing {
-                check_expr(tail, scope)?;
+                check_expr(tail, scope, func, d);
             }
             scope.pop();
-            Ok(())
         }
 
         // ── control flow ─────────────────────────────────────────
         ExprKind::If(cond, then_arm, else_arm) => {
-            check_expr(cond, scope)?;
-            check_expr(then_arm, scope)?;
-            check_expr(else_arm, scope)
+            check_expr(cond, scope, func, d);
+            check_expr(then_arm, scope, func, d);
+            check_expr(else_arm, scope, func, d);
         }
 
-        ExprKind::Loop(body) => check_expr(body, scope),
+        ExprKind::Loop(body) => check_expr(body, scope, func, d),
 
         ExprKind::Break(val) | ExprKind::Return(val) => {
             if let Some(v) = val {
-                check_expr(v, scope)?;
+                check_expr(v, scope, func, d);
             }
-            Ok(())
         }
 
         // ── calls ────────────────────────────────────────────────
         ExprKind::Call(callee, args) => {
-            check_expr(callee, scope)?;
+            check_expr(callee, scope, func, d);
             for arg in args {
-                check_expr(arg, scope)?;
+                check_expr(arg, scope, func, d);
             }
-            Ok(())
         }
 
         // ── match ────────────────────────────────────────────────
         ExprKind::Match(target, arms) => {
-            check_expr(target, scope)?;
+            check_expr(target, scope, func, d);
             for (pattern, body) in arms {
                 scope.push();
                 // Pattern bindings are immutable.
                 if let Pattern::Variant(_, Some(bound)) = pattern {
                     scope.declare(bound, false);
                 }
-                check_expr(body, scope)?;
+                check_expr(body, scope, func, d);
                 scope.pop();
             }
-            Ok(())
         }
 
         // ── constructors / aggregates ────────────────────────────
         ExprKind::StructConstr(_, fields) => {
             for (_, val) in fields {
-                check_expr(val, scope)?;
+                check_expr(val, scope, func, d);
             }
-            Ok(())
         }
 
-        ExprKind::EnumConstr(_, _, payload) => check_expr(payload, scope),
+        ExprKind::EnumConstr(_, _, payload) => check_expr(payload, scope, func, d),
 
         ExprKind::Array(elems) => {
             for e in elems {
-                check_expr(e, scope)?;
+                check_expr(e, scope, func, d);
             }
-            Ok(())
         }
     }
 }
@@ -239,23 +249,23 @@ fn check_expr(expr: &Expr, scope: &mut Scope) -> Result<(), String> {
 /// Check sub-expressions inside the LHS of an assignment that are
 /// not part of the "place path" but are arbitrary expressions (e.g.
 /// the index expression in `a[expr]`).
-fn check_assign_subexprs(expr: &Expr, scope: &mut Scope) -> Result<(), String> {
+fn check_assign_subexprs(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
     match &expr.kind {
         ExprKind::ArrayIndex(arr, idx) => {
-            check_assign_subexprs(arr, scope)?;
-            check_expr(idx, scope)
+            check_assign_subexprs(arr, scope, func, d);
+            check_expr(idx, scope, func, d);
         }
         ExprKind::FieldAccess(inner, _)
         | ExprKind::Downcast(inner, _)
-        | ExprKind::Deref(inner) => check_assign_subexprs(inner, scope),
+        | ExprKind::Deref(inner) => check_assign_subexprs(inner, scope, func, d),
         // The root variable itself — no sub-expressions to check.
-        ExprKind::Variable(_) => Ok(()),
+        ExprKind::Variable(_) => {}
         // Anything else is an arbitrary expression; fully check it.
-        _ => check_expr(expr, scope),
+        _ => check_expr(expr, scope, func, d),
     }
 }
 
-fn check_stmt(stmt: &Stmt, scope: &mut Scope) -> Result<(), String> {
+fn check_stmt(stmt: &Stmt, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
     match stmt {
         Stmt::Let {
             is_mut,
@@ -264,11 +274,10 @@ fn check_stmt(stmt: &Stmt, scope: &mut Scope) -> Result<(), String> {
             init,
             span: _,
         } => {
-            check_expr(init, scope)?;
+            check_expr(init, scope, func, d);
             scope.declare(name, *is_mut);
-            Ok(())
         }
-        Stmt::Expr(e) => check_expr(e, scope),
+        Stmt::Expr(e) => check_expr(e, scope, func, d),
     }
 }
 
@@ -280,13 +289,14 @@ mod tests {
     use crate::hll::parser::Parser;
     use crate::hll::type_check;
 
-    /// Parse + typecheck + mut-check.
-    fn check(source: &str) -> Result<(), String> {
-        let program = Parser::new(source)
-            .parse()
-            .map_err(|d| d.errors_str().join("\n"))?;
-        type_check::typecheck_program(&program)?;
-        check_mutability(&program)
+    /// Parse + typecheck + mut-check. Returns the mut-check errors as
+    /// strings (empty on success).
+    fn check(source: &str) -> Vec<String> {
+        let program = Parser::new(source).parse().expect("parse ok");
+        type_check::typecheck_program(&program).expect("typecheck ok");
+        let mut d = Diagnostics::default().with_source(program.source.clone());
+        check_mutability(&program, &mut d);
+        d.errors_str()
     }
 
     // ── should pass ──────────────────────────────────────────────
@@ -300,7 +310,7 @@ mod tests {
                 x
             }
         ";
-        assert!(check(src).is_ok(), "expected ok, got: {:?}", check(src));
+        assert!(check(src).is_empty(), "expected ok, got: {:?}", check(src));
     }
 
     #[test]
@@ -311,7 +321,7 @@ mod tests {
                 x
             }
         ";
-        assert!(check(src).is_ok());
+        assert!(check(src).is_empty());
     }
 
     #[test]
@@ -323,7 +333,7 @@ mod tests {
                 r.* = 42;
             }
         ";
-        assert!(check(src).is_ok(), "expected ok, got: {:?}", check(src));
+        assert!(check(src).is_empty(), "expected ok, got: {:?}", check(src));
     }
 
     #[test]
@@ -336,7 +346,7 @@ mod tests {
                 p.x
             }
         ";
-        assert!(check(src).is_ok(), "expected ok, got: {:?}", check(src));
+        assert!(check(src).is_empty(), "expected ok, got: {:?}", check(src));
     }
 
     #[test]
@@ -348,7 +358,7 @@ mod tests {
                 a[0]
             }
         ";
-        assert!(check(src).is_ok(), "expected ok, got: {:?}", check(src));
+        assert!(check(src).is_empty(), "expected ok, got: {:?}", check(src));
     }
 
     #[test]
@@ -361,7 +371,7 @@ mod tests {
                 x
             }
         ";
-        assert!(check(src).is_ok(), "expected ok, got: {:?}", check(src));
+        assert!(check(src).is_empty(), "expected ok, got: {:?}", check(src));
     }
 
     #[test]
@@ -376,7 +386,7 @@ mod tests {
                 }
             }
         ";
-        assert!(check(src).is_ok(), "expected ok, got: {:?}", check(src));
+        assert!(check(src).is_empty(), "expected ok, got: {:?}", check(src));
     }
 
     // ── should fail ──────────────────────────────────────────────
@@ -390,9 +400,9 @@ mod tests {
                 x
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
-        let err = res.unwrap_err();
+        let errs = check(src);
+        assert!(!errs.is_empty());
+        let err = errs.join("\n");
         assert!(
             err.contains("cannot assign to immutable binding 'x'"),
             "unexpected error: {}",
@@ -408,9 +418,9 @@ mod tests {
                 x
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
-        let err = res.unwrap_err();
+        let errs = check(src);
+        assert!(!errs.is_empty());
+        let err = errs.join("\n");
         assert!(
             err.contains("cannot assign to immutable binding 'x'"),
             "unexpected error: {}",
@@ -428,9 +438,9 @@ mod tests {
                 p.x
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
-        let err = res.unwrap_err();
+        let errs = check(src);
+        assert!(!errs.is_empty());
+        let err = errs.join("\n");
         assert!(
             err.contains("cannot assign to immutable binding 'p'"),
             "unexpected error: {}",
@@ -447,9 +457,9 @@ mod tests {
                 a[0]
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
-        let err = res.unwrap_err();
+        let errs = check(src);
+        assert!(!errs.is_empty());
+        let err = errs.join("\n");
         assert!(
             err.contains("cannot assign to immutable binding 'a'"),
             "unexpected error: {}",
@@ -471,9 +481,9 @@ mod tests {
                 }
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
-        let err = res.unwrap_err();
+        let errs = check(src);
+        assert!(!errs.is_empty());
+        let err = errs.join("\n");
         assert!(
             err.contains("cannot assign to immutable binding 'v'"),
             "unexpected error: {}",
@@ -496,9 +506,9 @@ mod tests {
                 x
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
-        let err = res.unwrap_err();
+        let errs = check(src);
+        assert!(!errs.is_empty());
+        let err = errs.join("\n");
         assert!(
             err.contains("cannot assign to immutable binding 'x'"),
             "unexpected error: {}",
@@ -514,7 +524,7 @@ mod tests {
                 let r = &mut x;
             }
         ";
-        let res = check(src);
-        assert!(res.is_err());
+        let errs = check(src);
+        assert!(!errs.is_empty());
     }
 }

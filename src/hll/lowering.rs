@@ -1,6 +1,50 @@
 use std::collections::HashMap;
 use crate::mir::ast as mir;
 use crate::hll::ast as hll;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+
+/// Machine-readable code for each HLL → MIR lowering error kind.
+///
+/// All lowering-time errors are internal compiler errors — the well-
+/// formed shape of the AST is a type_check post-condition, so anything
+/// that lowering rejects is a bug in an earlier pass or in lowering
+/// itself, not in user code. Currently one code covers all of them; a
+/// finer taxonomy can be introduced when the underlying error sites
+/// grow richer context.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HllLoweringCode {
+    /// Catch-all for internal invariants that lowering enforces
+    /// (missing type-map entry, missing decl, redundant safety-net
+    /// pattern-match arm, etc.).
+    Generic,
+}
+
+impl From<HllLoweringCode> for DiagCode {
+    fn from(code: HllLoweringCode) -> DiagCode {
+        DiagCode::HllLowering(code)
+    }
+}
+
+/// Run HLL → MIR lowering. Any error is treated as an internal compiler
+/// error and pushed into `d.internal_errors`; the caller decides
+/// whether to continue.
+pub fn run_lowering(
+    program: &hll::Program,
+    types: &HashMap<*const hll::Expr, hll::Type>,
+    d: &mut Diagnostics,
+) -> Option<mir::Program> {
+    match lower_program(program, types) {
+        Ok(p) => Some(p),
+        Err(msg) => {
+            d.push_internal_error(Diagnostic::new(
+                HllLoweringCode::Generic,
+                mir::Span::default(),
+                msg,
+            ));
+            None
+        }
+    }
+}
 
 struct LowerCtx {
     locals: Vec<mir::Local>,

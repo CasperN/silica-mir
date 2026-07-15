@@ -54,6 +54,12 @@ pub enum DiagCode {
     /// tree-sitter ERROR/MISSING walker, plus CST-to-AST invariant
     /// failures and literal decode errors (see `parser::ParserCode`).
     Parser(crate::mir::parser::ParserCode),
+    /// Errors from HLL type-checking (`hll::type_check::HllTypeCheckCode`).
+    HllTypeCheck(crate::hll::type_check::HllTypeCheckCode),
+    /// Errors from HLL mutability checking (`hll::mut_check::HllMutCheckCode`).
+    HllMutCheck(crate::hll::mut_check::HllMutCheckCode),
+    /// Errors from HLL → MIR lowering (`hll::lowering::HllLoweringCode`).
+    HllLowering(crate::hll::lowering::HllLoweringCode),
 }
 
 impl DiagCode {
@@ -68,6 +74,9 @@ impl DiagCode {
             DiagCode::Lifetime(c) => format!("LT-{:?}", c),
             DiagCode::BlockReachability(c) => format!("REACH-{:?}", c),
             DiagCode::Parser(c) => format!("PARSE-{:?}", c),
+            DiagCode::HllTypeCheck(c) => format!("HTC-{:?}", c),
+            DiagCode::HllMutCheck(c) => format!("HMC-{:?}", c),
+            DiagCode::HllLowering(c) => format!("HLO-{:?}", c),
         }
     }
 }
@@ -192,6 +201,11 @@ pub enum SourceKind {
 pub struct Diagnostics {
     errors: Vec<Diagnostic>,
     warnings: Vec<Diagnostic>,
+    /// Internal compiler errors — invariant violations, "should've been
+    /// caught by an earlier pass," unreachable branches. Distinct from
+    /// user-facing errors so we can render them with a bug-report
+    /// preamble and route them differently in the CLI.
+    internal_errors: Vec<Diagnostic>,
     source: Option<std::sync::Arc<String>>,
     source_kind: SourceKind,
 }
@@ -220,6 +234,14 @@ impl Diagnostics {
         self.warnings.push(diagnostic);
     }
 
+    /// Append an internal compiler error. Use for invariant violations
+    /// and cases that should have been rejected by an earlier pass —
+    /// user code cannot trigger these; if one fires, it's a compiler
+    /// bug.
+    pub fn push_internal_error(&mut self, diagnostic: Diagnostic) {
+        self.internal_errors.push(diagnostic);
+    }
+
     /// Append every diagnostic from `other` as errors. Used by
     /// `run_all_passes` to fold in `Env::build`'s pre-typecheck
     /// errors.
@@ -227,17 +249,18 @@ impl Diagnostics {
         self.errors.extend(other);
     }
 
-    /// True if no errors have been recorded. Warnings are ignored.
+    /// True if no errors OR internal errors have been recorded.
+    /// Warnings are ignored.
     pub fn is_clean(&self) -> bool {
-        self.errors.is_empty()
+        self.errors.is_empty() && self.internal_errors.is_empty()
     }
 
-    /// True if any error has been recorded.
+    /// True if any error (user or internal) has been recorded.
     pub fn has_errors(&self) -> bool {
-        !self.errors.is_empty()
+        !self.errors.is_empty() || !self.internal_errors.is_empty()
     }
 
-    /// Number of recorded errors.
+    /// Number of recorded user errors.
     pub fn error_count(&self) -> usize {
         self.errors.len()
     }
@@ -247,7 +270,12 @@ impl Diagnostics {
         self.warnings.len()
     }
 
-    /// Iterate structured errors.
+    /// Number of recorded internal errors.
+    pub fn internal_error_count(&self) -> usize {
+        self.internal_errors.len()
+    }
+
+    /// Iterate structured user errors.
     pub fn errors(&self) -> impl Iterator<Item = &Diagnostic> {
         self.errors.iter()
     }
@@ -255,6 +283,11 @@ impl Diagnostics {
     /// Iterate structured warnings.
     pub fn warnings(&self) -> impl Iterator<Item = &Diagnostic> {
         self.warnings.iter()
+    }
+
+    /// Iterate structured internal errors.
+    pub fn internal_errors(&self) -> impl Iterator<Item = &Diagnostic> {
+        self.internal_errors.iter()
     }
 
     /// String view of `errors`, one preformatted line per diagnostic
@@ -268,6 +301,11 @@ impl Diagnostics {
     /// String view of `warnings`. Mirrors [`errors_str`].
     pub fn warnings_str(&self) -> Vec<String> {
         self.warnings.iter().map(|d| self.render_diagnostic(d)).collect()
+    }
+
+    /// String view of `internal_errors`. Mirrors [`errors_str`].
+    pub fn internal_errors_str(&self) -> Vec<String> {
+        self.internal_errors.iter().map(|d| self.render_diagnostic(d)).collect()
     }
 
     fn render_diagnostic(&self, d: &Diagnostic) -> String {
@@ -397,6 +435,38 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
  3 | third line goes here
    |       ^^^^";
         assert_eq!(ds.errors_str()[0], expected);
+    }
+
+    #[test]
+    fn internal_errors_are_separate_from_user_errors() {
+        let mut ds = Diagnostics::default();
+        ds.push_error(Diagnostic::new(
+            TypeCheckCode::AssignmentTypeMismatch,
+            Span::default(),
+            "user error",
+        ));
+        ds.push_internal_error(Diagnostic::new(
+            crate::hll::lowering::HllLoweringCode::Generic,
+            Span::default(),
+            "internal boom",
+        ));
+
+        // Distinct buckets, distinct counters.
+        assert_eq!(ds.error_count(), 1);
+        assert_eq!(ds.internal_error_count(), 1);
+
+        // Neither is-clean nor has-errors ignores internal errors.
+        assert!(!ds.is_clean());
+        assert!(ds.has_errors());
+
+        // Each bucket renders through its own accessor.
+        let errs = ds.errors_str();
+        let internals = ds.internal_errors_str();
+        assert_eq!(errs.len(), 1);
+        assert_eq!(internals.len(), 1);
+        assert!(errs[0].contains("user error"));
+        assert!(internals[0].contains("[HLO-Generic]"));
+        assert!(internals[0].contains("internal boom"));
     }
 
     #[test]

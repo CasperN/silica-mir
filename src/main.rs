@@ -21,25 +21,12 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
             return None;
         }
     };
-    let types = hll::type_check::typecheck_program_collect(&hll_prog)
-        .map_err(|e| push_placeholder(d, e))
-        .ok()?;
-    hll::mut_check::check_mutability(&hll_prog)
-        .map_err(|e| push_placeholder(d, e))
-        .ok()?;
-    hll::lowering::lower_program(&hll_prog, &types)
-        .map_err(|e| push_placeholder(d, e))
-        .ok()
-}
-
-/// Wrap a `String` HLL-pass error as a `Diagnostic`. Placeholder code
-/// until HLL passes produce real diagnostics.
-fn push_placeholder(d: &mut Diagnostics, msg: String) {
-    d.push_error(diagnostics::Diagnostic::new(
-        mir::type_check::TypeCheckCode::AssignmentTypeMismatch,
-        mir::ast::Span::default(),
-        msg,
-    ));
+    let types = hll::type_check::run_type_check(&hll_prog, d)?;
+    hll::mut_check::check_mutability(&hll_prog, d);
+    if d.has_errors() {
+        return None;
+    }
+    hll::lowering::run_lowering(&hll_prog, &types, d)
 }
 
 /// Run every post-parse pass against `program`, pushing errors and
@@ -179,10 +166,18 @@ fn report_and_exit(d: &Diagnostics) -> ! {
     for w in d.warnings_str() {
         eprintln!("Warning: {}", w);
     }
+    if d.internal_error_count() > 0 {
+        eprintln!();
+        eprintln!("!!! Internal compiler error(s) — please file a bug !!!");
+        for e in d.internal_errors_str() {
+            eprintln!("Internal: {}", e);
+        }
+    }
     eprintln!(
-        "{} error(s), {} warning(s)",
+        "{} error(s), {} warning(s), {} internal error(s)",
         d.error_count(),
-        d.warning_count()
+        d.warning_count(),
+        d.internal_error_count(),
     );
     std::process::exit(1);
 }
