@@ -67,7 +67,7 @@ fn assign_via_downcast_ok() {
     // Downcast writes need the same refinement as reads.
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f(o: Option) {
             entry:
             switchEnum(o) [None: n, Some: s]

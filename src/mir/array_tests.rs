@@ -197,7 +197,7 @@ fn non_int_index_errors() {
 fn array_in_struct_field_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop Buf { data: [u8; 4] }
+        struct Buf: Copy + Drop { data: [u8; 4] }
         fn f() {
           b: Buf;
           entry:
@@ -428,8 +428,8 @@ fn dynamic_index_loan_conflict_with_nested_struct_field() {
     // Borrowing c.arr[copy i].v dynamically.
     // Accessing c.arr[0i64].v must conflict.
     let (errs, _) = run("
-        struct Copy Drop Sub { v: i64 }
-        struct Copy Drop Container { arr: [Sub; 3] }
+        struct Sub: Copy + Drop { v: i64 }
+        struct Container: Copy + Drop { arr: [Sub; 3] }
         extern fn use_mut(r: &mut i64);
         fn f(c: Container, i: i64) {
           r: &mut i64;

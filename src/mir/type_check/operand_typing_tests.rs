@@ -32,7 +32,7 @@ fn operand_unit_const_ok() {
 fn unit_as_enum_payload_ok() {
     assert_ok(
         "
-        enum Copy Drop Tag { A: unit B: i64 }
+        enum Tag: Copy + Drop { A: unit B: i64 }
         fn f() {
             t: Tag;
             entry:

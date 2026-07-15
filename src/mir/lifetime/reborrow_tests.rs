@@ -230,7 +230,7 @@ fn nll_inserts_child_unborrow_before_parent() {
 fn bare_downcast_of_deref_still_parses_as_deref_downcast() {
     let (errs, _) = run(
         "
-        enum Move E { V: i64 }
+        enum E: Move { V: i64 }
         extern fn sink(r: &mut i64);
         fn f(e: &mut E) {
           r: &mut i64;
@@ -250,7 +250,7 @@ fn bare_downcast_of_deref_still_parses_as_deref_downcast() {
 fn deref_then_downcast_reborrow_ok() {
     assert_no_diagnostics(
         "
-        enum Move E { V: i64 }
+        enum E: Move { V: i64 }
         extern fn sink(r: &mut i64);
         fn f(e: &mut E) {
           r: &mut i64;

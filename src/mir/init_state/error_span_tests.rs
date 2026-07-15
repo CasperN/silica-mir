@@ -33,7 +33,7 @@ fn structured_use_after_move_at_call_span() {
     // First `call take(move x)` consumes `x`; the second one on
     // line 7 col 17 sees `x` in the `Moved` state.
     let src = "
-            struct Move Drop M { a: i64 }
+            struct M: Move + Drop { a: i64 }
             extern fn take(m: M);
             fn f(x: M) {
               entry:
@@ -54,7 +54,7 @@ fn structured_overwrite_without_drop_at_stmt_span() {
     // `y` becomes Init after `y = move a1`; the overwrite on line 8
     // col 17 hits a live non-Drop value.
     let src = "
-            struct Move A { r: &out i64 }
+            struct A: Move { r: &out i64 }
             extern fn take(a: A);
             fn f(a1: A, a2: A) {
               y: A;

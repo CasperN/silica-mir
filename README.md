@@ -779,18 +779,16 @@ variants with a slightly different syntax.
   drop elaborator becomes reference/debug-only rather than authoritative.
 
 ## Diagnostics
-- Errors give `at L:C:` but no source snippet with a caret.
-  Rustc-style rendering (source line + caret span + message)
-  would help enormously. Prerequisite: widen `Span` from
-  `{ line, col }` to byte offsets so the renderer can slice
-  the source line and place the caret precisely.
 - No tags. Prefixing tests with `[init_state]` / `[lifetime]` / `[correct]`
   etc. would speed grep-based navigation.
-- Golden IR snapshot failures print two blobs; a line-by-line
-  diff would make regressions instant to read.
-- Common-mistake hints. When `cannot create &out of X` fires and
-  `X` is init, "hint: consider `drop X;` before rebinding" would
-  save first-time users a lot of time.
+- Rustc-style *interleaved* multi-span rendering (primary + labeled
+  secondaries merged into one continuous source block). Today
+  each secondary renders as its own `= note:` snippet — readable
+  but not compact when spans are on adjacent lines.
+- Cross-block borrow-origin spans. `Analysis::transfer_stmt` in
+  `mir/dataflow.rs` doesn't thread `Span`, so cross-block loans
+  lose their origin and the LoanConflict secondary snippet is
+  suppressed (see comment in `mir/lifetime/mod.rs`).
 
 # Longer term
 - Round-trip corpus test (`pretty_print → parse → pretty_print`)

@@ -66,7 +66,7 @@ fn never_in_all_marker_struct_ok() {
     // uninhabited but the declaration is legal.
     assert_ok(
         "
-        struct Copy Drop Move Void { x: never }
+        struct Void: Copy + Drop + Move { x: never }
         ",
     );
 }
@@ -123,7 +123,7 @@ fn enum_of_only_never_variants_ok() {
     // check passes because never is vacuously Copy Drop Move.
     assert_ok(
         "
-        enum Copy Drop Uninhabited { A: never B: never }
+        enum Uninhabited: Copy + Drop { A: never B: never }
         ",
     );
 }
@@ -136,7 +136,7 @@ fn copy_struct_with_never_field_full_roundtrip_ok() {
     // will never be invoked at runtime, body reaches unreachable.
     assert_ok(
         "
-        struct Copy Drop Move Absurd { x: i64 y: never }
+        struct Absurd: Copy + Drop + Move { x: i64 y: never }
         extern fn take(a: Absurd);
         fn f(a: Absurd) {
           b: Absurd;
@@ -154,7 +154,7 @@ fn local_of_all_never_enum_is_never_init_ok() {
     // one. At return, NeverInit is not a leak.
     assert_ok(
         "
-        enum Copy Drop Uninhabited { A: never B: never }
+        enum Uninhabited: Copy + Drop { A: never B: never }
         fn f() {
           e: Uninhabited;
           entry:

@@ -219,7 +219,7 @@ fn access_ok_after_borrower_moved_to_call() {
 fn disjoint_field_borrows_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: i64 b: i64 }
+        struct P: Copy + Drop { a: i64 b: i64 }
         extern fn sink(r: &mut i64);
         fn f(p: P) {
           r: &mut i64;
@@ -237,7 +237,7 @@ fn disjoint_field_borrows_ok() {
 #[test]
 fn same_field_borrow_conflicts() {
     let (errs, _) = run("
-        struct Copy Drop P { a: i64 b: i64 }
+        struct P: Copy + Drop { a: i64 b: i64 }
         extern fn sink(r: &mut i64);
         fn f(p: P) {
           r: &mut i64;
@@ -257,7 +257,7 @@ fn access_to_parent_of_borrowed_field_conflicts() {
     // Borrowing a field freezes the whole path from that field
     // upward — moving the parent p would move the borrowed field.
     let (errs, _) = run("
-        struct Copy Drop P { a: i64 b: i64 }
+        struct P: Copy + Drop { a: i64 b: i64 }
         extern fn sink(r: &mut i64);
         extern fn takep(p: P);
         fn f(p: P) {
@@ -552,7 +552,7 @@ fn mixed_kind_disjoint_field_loans_ok() {
     // independent for exclusivity purposes.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: i64 b: i64 }
+        struct P: Copy + Drop { a: i64 b: i64 }
         extern fn use_mut(r: &mut i64);
         extern fn use_out(r: &out i64);
         fn f() {
@@ -580,8 +580,8 @@ fn mixed_kind_disjoint_field_loans_ok() {
 fn nested_field_ancestor_conflicts() {
     // Borrow p.a.x freezes p.a — reading p.a hits the loan.
     let (errs, _) = run("
-        struct Copy Drop Inner { x: i64 y: i64 }
-        struct Copy Drop Outer { i: Inner c: i64 }
+        struct Inner: Copy + Drop { x: i64 y: i64 }
+        struct Outer: Copy + Drop { i: Inner c: i64 }
         extern fn use_mut(r: &mut i64);
         fn f(o: Outer) {
           r: &mut i64;
@@ -602,8 +602,8 @@ fn nested_field_sibling_ok() {
     // read.
     assert_no_diagnostics(
         "
-        struct Copy Drop Inner { x: i64 y: i64 }
-        struct Copy Drop Outer { i: Inner c: i64 }
+        struct Inner: Copy + Drop { x: i64 y: i64 }
+        struct Outer: Copy + Drop { i: Inner c: i64 }
         extern fn use_mut(r: &mut i64);
         fn f(o: Outer) {
           r: &mut i64;
@@ -624,9 +624,9 @@ fn depth_three_field_sibling_ok_ancestor_conflicts() {
     // depth 3) readable, but `o.a.x` (ancestor at depth 2) still
     // conflicts. Confirms path-prefix comparison scales past depth 2.
     let (errs, _) = run("
-        struct Copy Drop Innermost { z: i64 w: i64 }
-        struct Copy Drop Inner { x: Innermost y: Innermost }
-        struct Copy Drop Outer { a: Inner b: Inner }
+        struct Innermost: Copy + Drop { z: i64 w: i64 }
+        struct Inner: Copy + Drop { x: Innermost y: Innermost }
+        struct Outer: Copy + Drop { a: Inner b: Inner }
         extern fn sink(r: &mut i64);
         extern fn take_i(i: Innermost);
         fn f(o: Outer) {
@@ -690,7 +690,7 @@ fn field_borrower_overwrite_releases_old_loan_ok() {
     // the overwrite, x's loan is released — writing to x is legal.
     assert_no_diagnostics(
         "
-        struct Move RefBox { p: &mut i64 }
+        struct RefBox: Move { p: &mut i64 }
         extern fn take_box(b: RefBox);
         fn f(x: i64, x2: i64) {
           b: RefBox;
@@ -712,7 +712,7 @@ fn switch_on_loaned_enum_conflicts() {
     // switchEnum(e) is a discriminant read (AccessKind::Read); an
     // exclusive loan on e blocks it.
     let (errs, _) = run("
-        enum Copy Drop Sel { A: unit B: unit }
+        enum Sel: Copy + Drop { A: unit B: unit }
         extern fn sink(r: &mut Sel);
         fn f(e: Sel) {
           r: &mut Sel;
@@ -794,7 +794,7 @@ fn enum_wrap_of_borrower_keeps_loan_active() {
     // so direct access to the originally-borrowed place still
     // conflicts. Wrap needs `Move` because its payload is Move-only.
     let (errs, _) = run("
-        enum Move Wrap { W: &mut i64 }
+        enum Wrap: Move { W: &mut i64 }
         extern fn take_wrap(w: Wrap);
         fn f(x: i64) {
           r: &mut i64;
@@ -817,7 +817,7 @@ fn enum_wrap_of_borrower_consumed_releases_loan() {
     // after the loan re-key fix (loan is discharged either way).
     assert_no_diagnostics(
         "
-        enum Move Wrap { W: &mut i64 }
+        enum Wrap: Move { W: &mut i64 }
         extern fn take_wrap(w: Wrap);
         fn f(x: i64) {
           r: &mut i64;
@@ -842,7 +842,7 @@ fn struct_move_rekeys_field_loan() {
     // (`a.p` → `b.p`), so direct access to the borrowed place
     // still conflicts.
     let (errs, _) = run("
-        struct Move RefBox { p: &mut i64 v: i64 }
+        struct RefBox: Move { p: &mut i64 v: i64 }
         extern fn sink(y: RefBox);
         fn f(x: i64) {
           a: RefBox;
@@ -862,7 +862,7 @@ fn struct_move_rekeys_field_loan() {
 #[test]
 fn downcast_projection_borrow_same_variant_conflicts() {
     let (errs, _) = run("
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         extern fn sink(r: &mut i64);
         fn f() {
           o: Option;

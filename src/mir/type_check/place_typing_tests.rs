@@ -18,7 +18,7 @@ fn place_unknown_var_error() {
 fn place_struct_field_ok() {
     assert_ok(
         "
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f(p: P) {
             a: i64;
             entry:
@@ -82,7 +82,7 @@ fn place_downcast_ok() {
     // switchEnum arm — enforced by `enum_variants`.
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f(o: Option) {
             x: i64;
             entry:
@@ -100,7 +100,7 @@ fn place_downcast_ok() {
 fn place_downcast_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f(o: Option) {
             x: i64;
             entry:
@@ -214,7 +214,7 @@ fn place_deref_through_field_ok() {
     // struct field. `p.r.*` parses as Deref(Field(Var(p), r)).
     assert_ok(
         "
-        struct Copy Drop Ptr { r: &i64 }
+        struct Ptr: Copy + Drop { r: &i64 }
         fn f(p: Ptr) {
             a: i64;
             entry:

@@ -39,7 +39,7 @@ fn copy_of_shared_ref_ok() {
 fn copy_of_copy_struct_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f(p: P) {
             q: P;
             entry:
@@ -74,7 +74,7 @@ fn copy_of_affine_struct_error() {
     // Marked `Drop` but not `Copy` — affine, not copyable.
     assert_err(
         "
-        struct Drop D { x: i64 }
+        struct D: Drop { x: i64 }
         fn f(a: D) {
             b: D;
             entry:
@@ -175,7 +175,7 @@ fn move_of_linear_ok() {
     // obligation, but movable — pointer relocates with obligation).
     assert_no_diagnostics(
         "
-        struct Move Linear { r: &out i64 }
+        struct Linear: Move { r: &out i64 }
         extern fn sink(y: Linear);
         fn f(x: Linear) {
             y: Linear;
@@ -228,7 +228,7 @@ fn move_of_copy_drop_struct_ok() {
     // Copy+Drop implies Move — no explicit Move marker needed.
     assert_no_diagnostics(
         "
-        struct Copy Drop Point { x: i64 y: i64 }
+        struct Point: Copy + Drop { x: i64 y: i64 }
         extern fn take(p: Point);
         fn f(p: Point) {
             entry:
@@ -245,7 +245,7 @@ fn move_of_copy_only_struct_errors() {
     // not relocatable.
     assert_err(
         "
-        struct Copy PinnedShared { x: i64 }
+        struct PinnedShared: Copy { x: i64 }
         extern fn take(p: PinnedShared);
         fn f(p: PinnedShared) {
             entry:
@@ -304,7 +304,7 @@ fn drop_of_mut_ref_ok() {
 fn drop_of_drop_struct_ok() {
     assert_no_diagnostics(
         "
-        struct Drop D { x: i64 }
+        struct D: Drop { x: i64 }
         fn f(d: D) {
             entry:
             drop d;
@@ -457,7 +457,7 @@ fn linear_struct_untouched_param_leaks() {
 fn linear_struct_moved_whole_ok() {
     assert_no_diagnostics(
         "
-        struct Move P { x: i64 y: i64 }
+        struct P: Move { x: i64 y: i64 }
         extern fn take(p: P);
         fn f(p: P) {
             entry:
@@ -565,7 +565,7 @@ fn fully_linear_struct_untouched_param_leaks() {
 fn fully_linear_struct_moved_ok() {
     assert_no_diagnostics(
         "
-        struct Move L { r: &out i64 }
+        struct L: Move { r: &out i64 }
         extern fn take(x: L);
         fn f(x: L) {
             entry:
@@ -585,8 +585,8 @@ fn fully_linear_struct_partial_init_field_leaks() {
     // need Move to permit `move src.a`.
     assert_err(
         "
-        struct Move L { r: &out i64 }
-        struct Move Pair { a: L b: L }
+        struct L: Move { r: &out i64 }
+        struct Pair: Move { a: L b: L }
         fn f(src: Pair) {
             p: Pair;
             entry:

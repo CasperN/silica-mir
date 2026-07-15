@@ -9,7 +9,8 @@
 //! - Two-space indent inside function bodies.
 //! - One statement per line, terminator on its own line.
 //! - Struct/enum bodies are one field/variant per line.
-//! - Markers are emitted as `Copy`, `Drop`, or `Copy Drop`.
+//! - Markers appear after the name as `: Copy + Drop`. Absent when
+//!   the type has none.
 //! - Types render with the same tokens the parser accepts.
 
 use crate::mir::ast::*;
@@ -37,22 +38,27 @@ fn write_declaration(out: &mut String, decl: &Declaration) {
 }
 
 fn write_markers(out: &mut String, m: &Markers) {
-    // Canonical order: Copy, Drop, Move.
-    if m.copy {
-        out.push_str("Copy ");
+    // Canonical order: Copy, Drop, Move. Colon+plus form; nothing at
+    // all if the type has no markers.
+    let names: Vec<&str> = [
+        (m.copy, "Copy"),
+        (m.drop, "Drop"),
+        (m.mov, "Move"),
+    ]
+    .iter()
+    .filter_map(|(b, name)| if *b { Some(*name) } else { None })
+    .collect();
+    if names.is_empty() {
+        return;
     }
-    if m.drop {
-        out.push_str("Drop ");
-    }
-    if m.mov {
-        out.push_str("Move ");
-    }
+    out.push_str(": ");
+    out.push_str(&names.join(" + "));
 }
 
 fn write_struct(out: &mut String, s: &StructDecl) {
     out.push_str("struct ");
-    write_markers(out, &s.markers);
     out.push_str(&s.name);
+    write_markers(out, &s.markers);
     out.push_str(" {\n");
     for f in &s.fields {
         write!(out, "  {}: ", f.name).unwrap();
@@ -64,8 +70,8 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
     out.push_str("enum ");
-    write_markers(out, &e.markers);
     out.push_str(&e.name);
+    write_markers(out, &e.markers);
     out.push_str(" {\n");
     for v in &e.variants {
         write!(out, "  {}: ", v.name).unwrap();
@@ -417,8 +423,8 @@ mod tests {
     fn roundtrip_struct_and_enum() {
         assert_roundtrip(
             "
-            struct Copy Drop P { x: i64 y: i64 }
-            enum Copy Drop Option { None: unit Some: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
+            enum Option: Copy + Drop { None: unit Some: i64 }
             fn f(p: P, o: Option) {
               n: i64;
               entry:
@@ -487,8 +493,8 @@ mod tests {
     fn roundtrip_nested_places() {
         assert_roundtrip(
             "
-            struct Copy Drop Inner { a: i64 b: i64 }
-            struct Copy Drop Outer { i: Inner c: i64 }
+            struct Inner: Copy + Drop { a: i64 b: i64 }
+            struct Outer: Copy + Drop { i: Inner c: i64 }
             fn f(o: Outer) {
               n: i64;
               entry:
@@ -505,8 +511,8 @@ mod tests {
         // so `e as A.x` parses as `Field(Downcast(e, A), x)`.
         assert_roundtrip(
             "
-            struct Copy Drop Pair { x: i64 y: i64 }
-            enum Copy Drop E { A: Pair B: i64 }
+            struct Pair: Copy + Drop { x: i64 y: i64 }
+            enum E: Copy + Drop { A: Pair B: i64 }
             fn f(e: E) {
               n: i64;
               entry:

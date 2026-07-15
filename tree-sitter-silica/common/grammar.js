@@ -83,8 +83,14 @@ module.exports = {
     // Substructural marker keywords on a struct or enum declaration.
     // Any subset of {Copy, Drop, Move} in any order, no duplicates
     // (duplicate check is enforced by the parser, not the grammar).
+    // Syntax: `: Copy + Drop`. The leading `:` is required whenever
+    // markers are present; absent markers means the type is linear.
     marker: $ => choice('Copy', 'Drop', 'Move'),
-    markers: $ => repeat1($.marker),
+    markers: $ => seq(
+      ':',
+      $.marker,
+      repeat(seq('+', $.marker)),
+    ),
 
     // Struct/enum field and variant have identical inner shape
     // (`name : type`) in both languages. Each language defines its

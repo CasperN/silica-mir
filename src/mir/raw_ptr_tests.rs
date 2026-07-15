@@ -25,7 +25,7 @@ fn parses_raw_ptr_type_and_creation() {
 fn parses_raw_ptr_in_field() {
     assert_no_diagnostics(
         "
-        struct Copy Drop Node { p: *i64 v: i64 }
+        struct Node: Copy + Drop { p: *i64 v: i64 }
         fn f(x: i64) {
           n: Node;
           entry:

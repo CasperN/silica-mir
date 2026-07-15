@@ -14,7 +14,7 @@ fn field_writes_complete_init_ok() {
     // to fully Init.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f() {
           p: P;
           a: i64;
@@ -70,7 +70,7 @@ fn move_of_field_leaves_other_fields_init_ok() {
     // for the remaining p.y automatically.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f(p: P) {
           a: i64;
           b: i64;
@@ -105,8 +105,8 @@ fn nested_field_writes_complete_init_ok() {
     // struct collapses to Init once every leaf is written.
     assert_no_diagnostics(
         "
-        struct Copy Drop Inner { a: i64 b: i64 }
-        struct Copy Drop Outer { i: Inner c: i64 }
+        struct Inner: Copy + Drop { a: i64 b: i64 }
+        struct Outer: Copy + Drop { i: Inner c: i64 }
         fn f() {
           o: Outer;
           n: i64;
@@ -144,7 +144,7 @@ fn whole_struct_assign_after_partial_ok() {
     // Even if we partially init, a whole-struct assign resets to Init.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f(src: P) {
           p: P;
           a: i64;
@@ -165,7 +165,7 @@ fn loop_carried_partial_init_divergence_error() {
     // The join at the loop header diverges y.
     // Reading p after the loop should error.
     let (errs, _) = run("
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f(cond: bool) {
           p: P;
           a: P;

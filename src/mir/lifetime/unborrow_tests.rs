@@ -225,7 +225,7 @@ fn unborrow_of_field_borrower_thaws_field_ok() {
     // p.a directly afterward succeeds.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: i64 b: i64 }
+        struct P: Copy + Drop { a: i64 b: i64 }
         fn f(p: P) {
           r: &mut i64;
           entry:

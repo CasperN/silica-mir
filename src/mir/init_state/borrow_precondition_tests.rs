@@ -301,7 +301,7 @@ fn mut_borrow_of_init_field_ok() {
     // `&mut p.x` succeeds even though p is Partial as a whole.
     assert_no_diagnostics(
         "
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         extern fn use_mut(r: &mut i64);
         fn f() {
           p: P;
@@ -320,7 +320,7 @@ fn mut_borrow_of_init_field_ok() {
 #[test]
 fn mut_borrow_of_never_init_field_error() {
     let (errs, _) = run("
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f() {
           p: P;
           entry:
@@ -349,7 +349,7 @@ fn out_borrow_of_partial_error() {
     // Borrowing the whole `p` when only `p.x` was written: the leaf
     // read on `p` is Partial, not one of the accepted states.
     let (errs, _) = run("
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f() {
           p: P;
           r: &out P;
@@ -369,7 +369,7 @@ fn out_borrow_of_partial_error() {
 fn shared_borrow_of_partial_error() {
     // `&` requires Init; Partial isn't Init.
     let (errs, _) = run("
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f() {
           p: P;
           r: &P;
@@ -389,7 +389,7 @@ fn shared_borrow_of_partial_error() {
 fn drop_borrow_of_partial_error() {
     // `&drop` requires Init; Partial isn't Init.
     let (errs, _) = run("
-        struct Copy Drop P { x: i64 y: i64 }
+        struct P: Copy + Drop { x: i64 y: i64 }
         fn f() {
           p: P;
           r: &drop P;

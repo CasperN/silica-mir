@@ -222,7 +222,7 @@ fn borrow_before_abort_no_leak_into_sibling_ok() {
 fn borrow_downcast_with_unreachable_sibling_ok() {
     assert_no_diagnostics(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         extern fn sink(r: &mut i64);
         fn f() {
           o: Option;
@@ -247,7 +247,7 @@ fn borrow_downcast_with_unreachable_sibling_ok() {
 fn switch_arms_same_borrow_carried_through_merge_ok() {
     assert_no_diagnostics(
         "
-        enum Copy Drop Sel { A: unit B: unit }
+        enum Sel: Copy + Drop { A: unit B: unit }
         extern fn sink(r: &mut i64);
         fn f(o: Sel, x: i64) {
           r: &mut i64;
@@ -556,7 +556,7 @@ fn out_ref_unfulfilled_on_abort_arm_is_waived() {
     // on b_arm should be tolerated.
     assert_no_diagnostics(
         "
-        enum Copy Drop E { A: unit B: unit }
+        enum E: Copy + Drop { A: unit B: unit }
         fn f(r: &out i64, e: E) {
           entry:
             switchEnum(e) [A: a_arm, B: b_arm]
@@ -576,7 +576,7 @@ fn out_ref_unfulfilled_on_return_arm_leaks() {
     // obligation must be checked and this errors.
     let (errs, _) = run(
         "
-        enum Copy Drop E { A: unit B: unit }
+        enum E: Copy + Drop { A: unit B: unit }
         fn f(r: &out i64, e: E) {
           entry:
             switchEnum(e) [A: a_arm, B: b_arm]

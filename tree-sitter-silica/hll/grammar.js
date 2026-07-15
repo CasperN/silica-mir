@@ -62,16 +62,16 @@ module.exports = grammar({
     // `commaSep` already tolerates a trailing comma.
     struct_decl: $ => seq(
       'struct',
-      optional($.markers),
       field('name', $.identifier),
+      optional($.markers),
       '{',
       common.commaSep($.struct_field),
       '}',
     ),
     enum_decl: $ => seq(
       'enum',
-      optional($.markers),
       field('name', $.identifier),
+      optional($.markers),
       '{',
       common.commaSep($.enum_variant),
       '}',

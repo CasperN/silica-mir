@@ -206,7 +206,7 @@ fn empty_struct_local_starts_init() {
     // `Copy Drop` so the substructural checker permits the copy.
     assert_no_diagnostics(
         "
-        struct Copy Drop Unit0 { }
+        struct Unit0: Copy + Drop { }
         fn f() {
           u: Unit0;
           v: Unit0;

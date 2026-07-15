@@ -807,7 +807,7 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            struct Copy Drop Move Point {
+            struct Point: Copy + Drop + Move {
               x: i64
               y: i64
             }
@@ -837,7 +837,7 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            enum Copy Drop Move Option {
+            enum Option: Copy + Drop + Move {
               None: unit
               Some: i64
             }
@@ -941,12 +941,12 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            struct Copy Drop Move Point {
+            struct Point: Copy + Drop + Move {
               x: i64
               y: i64
             }
 
-            enum Copy Drop Move Option {
+            enum Option: Copy + Drop + Move {
               None: unit
               Some: i64
             }
@@ -1008,13 +1008,13 @@ mod tests {
         assert_lower_eq(
             source,
             "
-            struct Copy Drop Move Node {
+            struct Node: Copy + Drop + Move {
               value: i64
               left: Tree
               right: Tree
             }
 
-            enum Copy Drop Move Tree {
+            enum Tree: Copy + Drop + Move {
               Empty: unit
               Node: *Node
             }

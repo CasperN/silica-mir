@@ -178,11 +178,11 @@ fn f() {
 fn elaborates_drop_struct() {
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: i64 y: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
             fn f(p: P) { entry: return }
             ",
         "\
-struct Copy Drop P {
+struct P: Copy + Drop {
   x: i64
   y: i64
 }
@@ -199,11 +199,11 @@ fn f(p: P) {
 fn elaborates_drop_enum() {
     assert_elaborated_eq(
         "
-            enum Copy Drop Option { None: unit Some: i64 }
+            enum Option: Copy + Drop { None: unit Some: i64 }
             fn f(o: Option) { entry: return }
             ",
         "\
-enum Copy Drop Option {
+enum Option: Copy + Drop {
   None: unit
   Some: i64
 }
@@ -353,7 +353,7 @@ fn diverged_on_multi_case_switch() {
     // Elaborator splits the Init-side edge.
     assert_elaborated_eq(
         "
-            enum Copy Drop Sel { A: unit B: unit }
+            enum Sel: Copy + Drop { A: unit B: unit }
             fn f(s: Sel) {
               y: i64;
               entry:
@@ -368,7 +368,7 @@ fn diverged_on_multi_case_switch() {
             }
             ",
         "\
-enum Copy Drop Sel {
+enum Sel: Copy + Drop {
   A: unit
   B: unit
 }
@@ -510,7 +510,7 @@ fn partial_state_emits_per_leaf_drop() {
     // Init leaves — here just `p.x`, since `p.y` is NeverInit.
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: i64 y: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
             fn f() {
               p: P;
               entry:
@@ -519,7 +519,7 @@ fn partial_state_emits_per_leaf_drop() {
             }
             ",
         "\
-struct Copy Drop P {
+struct P: Copy + Drop {
   x: i64
   y: i64
 }
@@ -540,7 +540,7 @@ fn partial_after_field_move_emits_drop_for_remaining_field() {
     // Partial({x: Moved, y: Init}). Only `p.y` needs a drop.
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: i64 y: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
             fn f(p: P) {
               a: i64;
               entry:
@@ -549,7 +549,7 @@ fn partial_after_field_move_emits_drop_for_remaining_field() {
             }
             ",
         "\
-struct Copy Drop P {
+struct P: Copy + Drop {
   x: i64
   y: i64
 }
@@ -571,8 +571,8 @@ fn nested_partial_walks_recursively() {
     // reaches through the outer Partial to the leaf.
     assert_elaborated_eq(
         "
-            struct Copy Drop Inner { a: i64 b: i64 }
-            struct Copy Drop Outer { i: Inner c: i64 }
+            struct Inner: Copy + Drop { a: i64 b: i64 }
+            struct Outer: Copy + Drop { i: Inner c: i64 }
             fn f() {
               o: Outer;
               entry:
@@ -581,12 +581,12 @@ fn nested_partial_walks_recursively() {
             }
             ",
         "\
-struct Copy Drop Inner {
+struct Inner: Copy + Drop {
   a: i64
   b: i64
 }
 
-struct Copy Drop Outer {
+struct Outer: Copy + Drop {
   i: Inner
   c: i64
 }
@@ -612,7 +612,7 @@ fn partial_field_drop_lifo_order() {
     // sequences to keep the state Partial.
     assert_elaborated_eq(
         "
-            struct Copy Drop P { x: i64 y: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
             fn f(src: P) {
               p: P;
               a: i64;
@@ -624,7 +624,7 @@ fn partial_field_drop_lifo_order() {
             }
             ",
         "\
-struct Copy Drop P {
+struct P: Copy + Drop {
   x: i64
   y: i64
 }
@@ -698,7 +698,7 @@ fn strict_check_passes_after_elaboration_with_shared_ref() {
 fn strict_check_passes_after_elaboration_with_copy_drop_struct() {
     assert_strict_clean_after_elaboration(
         "
-            struct Copy Drop P { x: i64 y: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
             fn f(p: P) { entry: return }
             ",
     );
@@ -708,7 +708,7 @@ fn strict_check_passes_after_elaboration_with_copy_drop_struct() {
 fn strict_check_passes_after_elaboration_with_copy_drop_enum() {
     assert_strict_clean_after_elaboration(
         "
-            enum Copy Drop Option { None: unit Some: i64 }
+            enum Option: Copy + Drop { None: unit Some: i64 }
             fn f(o: Option) { entry: return }
             ",
     );
@@ -779,7 +779,7 @@ fn assert_idempotent(src: &str) {
 fn idempotent_with_copy_drop_struct() {
     assert_idempotent(
         "
-            struct Copy Drop P { x: i64 y: i64 }
+            struct P: Copy + Drop { x: i64 y: i64 }
             fn f(p: P) {
               q: P;
               entry:
@@ -949,7 +949,7 @@ fn overwrite_of_drop_type_inserts_explicit_drop() {
     // return-cleanup drop is needed at the return.
     assert_elaborated_eq(
         "
-        struct Copy Drop P { a: i64 }
+        struct P: Copy + Drop { a: i64 }
         extern fn use_p(p: P);
         fn f(p1: P, p2: P) {
           x: P;
@@ -961,7 +961,7 @@ fn overwrite_of_drop_type_inserts_explicit_drop() {
         }
         ",
         "\
-struct Copy Drop P {
+struct P: Copy + Drop {
   a: i64
 }
 

@@ -32,7 +32,7 @@ fn rvalue_ref_mut_ok() {
 fn rvalue_enum_constr_ok() {
     assert_ok(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() {
             o: Option;
             entry:
@@ -51,7 +51,7 @@ fn rvalue_enum_constr_unknown_enum_error() {
             entry:
             return
         }
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         struct S { x: i64 }
         fn g() {
             o: Option;
@@ -68,7 +68,7 @@ fn rvalue_enum_constr_unknown_enum_error() {
 fn rvalue_enum_constr_unknown_variant_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() {
             o: Option;
             entry:
@@ -84,7 +84,7 @@ fn rvalue_enum_constr_unknown_variant_error() {
 fn rvalue_enum_constr_wrong_payload_type_error() {
     assert_err(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() {
             o: Option;
             entry:
@@ -103,7 +103,7 @@ fn rvalue_enum_constr_ref_recursive_payload_ok() {
     // rvalue operand type.
     assert_ok(
         "
-        enum Copy Drop List { Nil: unit Cons: &List }
+        enum List: Copy + Drop { Nil: unit Cons: &List }
         fn f(l: &List) {
             r: List;
             entry:

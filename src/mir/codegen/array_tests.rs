@@ -194,7 +194,7 @@ fn dynamic_index_i64_needs_no_extension() {
 fn array_in_struct_field_geps_through_both() {
     let ll = ll_of(
         "
-        struct Copy Drop Row { data: [i64; 2] }
+        struct Row: Copy + Drop { data: [i64; 2] }
         fn f() {
           r: Row;
           x: i64;

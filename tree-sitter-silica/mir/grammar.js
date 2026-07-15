@@ -43,16 +43,16 @@ module.exports = grammar({
     // reads best.
     struct_decl: $ => seq(
       'struct',
-      optional($.markers),
       field('name', $.identifier),
+      optional($.markers),
       '{',
       repeat(seq($.struct_field, optional(','))),
       '}',
     ),
     enum_decl: $ => seq(
       'enum',
-      optional($.markers),
       field('name', $.identifier),
+      optional($.markers),
       '{',
       repeat(seq($.enum_variant, optional(','))),
       '}',

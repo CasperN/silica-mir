@@ -107,8 +107,8 @@ fn enum_of_enum_switch_and_downcast_ok() {
     // enum layout, refinement across levels, per-arm variance.
     assert_no_diagnostics(
         "
-        enum Copy Drop Inner { X: i64 Y: i64 }
-        enum Copy Drop Outer { A: Inner B: i64 }
+        enum Inner: Copy + Drop { X: i64 Y: i64 }
+        enum Outer: Copy + Drop { A: Inner B: i64 }
         fn f(o: Outer, out: &out i64) {
           inner: Inner;
           entry:
@@ -139,7 +139,7 @@ fn enum_with_never_variant_unreachable_arm_ok() {
     // this and accepts an `unreachable` terminator on the N arm.
     assert_no_diagnostics(
         "
-        enum Copy Drop E { A: i64 N: never }
+        enum E: Copy + Drop { A: i64 N: never }
         fn f(e: E, out: &out i64) {
           entry:
             switchEnum(e) [A: a_arm, N: n_arm]
@@ -163,7 +163,7 @@ fn array_of_enums_per_slot_switch_ok() {
     // intrinsic writes via &out, and we can't &out an Init slot.
     assert_no_diagnostics(
         "
-        enum Copy Drop Tag { Zero: unit Pos: i64 Neg: i64 }
+        enum Tag: Copy + Drop { Zero: unit Pos: i64 Neg: i64 }
         fn sum(a: [Tag; 2], out: &out i64) {
           t0: Tag;
           t1: Tag;
@@ -353,7 +353,7 @@ fn raw_ptr_to_struct_field_access_ok() {
     // projection still needs to typecheck.
     assert_no_diagnostics(
         "
-        struct Copy Drop Point { x: i64 y: i64 }
+        struct Point: Copy + Drop { x: i64 y: i64 }
         fn f(pt: Point, out: &out i64) {
           p: *Point;
           entry:
@@ -374,7 +374,7 @@ fn switch_arm_asymmetric_ref_use_ok() {
     // with the obligation satisfied.
     assert_no_diagnostics(
         "
-        enum Copy Drop Which { A: unit B: unit }
+        enum Which: Copy + Drop { A: unit B: unit }
         fn f(r: &mut i64, w: Which) {
           consumed: i64;
           entry:
@@ -401,7 +401,7 @@ fn pack_two_refs_into_struct_and_pass_ok() {
     // whole-struct move consuming both loans, sink discharging them.
     assert_no_diagnostics(
         "
-        struct Move Pair { a: &mut i64 b: &mut i64 }
+        struct Pair: Move { a: &mut i64 b: &mut i64 }
         extern fn use_pair(p: Pair);
         fn f(x: i64, y: i64) {
           p: Pair;
@@ -432,7 +432,7 @@ fn downcast_target_reassignment_elaborates_to_full_construction() {
     use crate::mir::pretty_print::pretty_print;
     use crate::elaborate_and_check_mir;
     let src = "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f(o: Option) {
           entry:
             switchEnum(o) [None: n, Some: s]

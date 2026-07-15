@@ -104,7 +104,7 @@ fn roundtrip_reborrow_same_place_ok() {
 fn roundtrip_field_borrow_last_use_ok() {
     assert_no_diagnostics(
         "
-        struct Copy Drop P { a: i64 b: i64 }
+        struct P: Copy + Drop { a: i64 b: i64 }
         fn f(p: P) {
           r: &mut i64;
           entry:

@@ -5,7 +5,7 @@ fn env_build_ok_mixed_decls() {
     assert_ok(
         "
         struct Point { x: i64 y: i64 }
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() { entry: return }
         extern fn g();
         ",

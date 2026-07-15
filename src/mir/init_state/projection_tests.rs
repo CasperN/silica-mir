@@ -27,7 +27,7 @@ fn branch_reads_cond() {
 #[test]
 fn switch_enum_reads_place() {
     let (errs, _) = run("
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() {
           o: Option;
           entry:
@@ -44,7 +44,7 @@ fn switch_enum_reads_place() {
 #[test]
 fn downcast_read_checks_root_var() {
     let (errs, _) = run("
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() {
           o: Option;
           a: i64;
@@ -84,7 +84,7 @@ fn downcast_write_on_init_enum_ok() {
     // Init AND refined to the correct variant.
     assert_no_diagnostics(
         "
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f(o: Option) {
           entry:
             switchEnum(o) [None: n, Some: s]
@@ -102,7 +102,7 @@ fn downcast_write_on_uninit_enum_error() {
     // Enum construction goes via `Name::V(...)`; refining an uninit
     // enum by writing a variant payload is not allowed.
     let (errs, _) = run("
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f() {
           o: Option;
           entry:
@@ -119,7 +119,7 @@ fn downcast_write_on_uninit_enum_error() {
 #[test]
 fn downcast_write_on_moved_enum_error() {
     let (errs, _) = run("
-        enum Copy Drop Option { None: unit Some: i64 }
+        enum Option: Copy + Drop { None: unit Some: i64 }
         fn f(o: Option) {
           sink: Option;
           entry:

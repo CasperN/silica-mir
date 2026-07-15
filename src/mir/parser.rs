@@ -1107,7 +1107,7 @@ mod tests {
     #[test]
     fn test_parse_struct_decl() {
         let source = "
-            struct Copy Drop Point {
+            struct Point: Copy + Drop {
                 x: i64
                 y: i64
             }
@@ -1356,7 +1356,7 @@ mod tests {
     #[test]
     fn duplicate_marker_rejected() {
         // `map_markers` returns an error on duplicates.
-        let src = "struct Copy Copy P { x: i64 }";
+        let src = "struct P: Copy + Copy { x: i64 }";
         let diags = Parser::new(src.to_string())
             .parse()
             .expect_err("expected duplicate-marker error");
@@ -1379,9 +1379,9 @@ mod tests {
             };
             s.markers
         }
-        let a = markers_of("struct Copy Drop Move P { x: i64 }");
-        let b = markers_of("struct Move Drop Copy P { x: i64 }");
-        let c = markers_of("struct Drop Copy Move P { x: i64 }");
+        let a = markers_of("struct P: Copy + Drop + Move { x: i64 }");
+        let b = markers_of("struct P: Move + Drop + Copy { x: i64 }");
+        let c = markers_of("struct P: Drop + Copy + Move { x: i64 }");
         assert_eq!(a, b);
         assert_eq!(b, c);
         assert!(a.copy && a.drop && a.mov);
