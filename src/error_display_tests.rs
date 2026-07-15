@@ -34,7 +34,7 @@ fn test_hll_use_after_move_display() {
     // next line is a use-after-move regardless of whether the type is
     // Copy at the surface level.
     let src = "
-        struct Box { val: i64 }
+        struct Box: Copy + Drop { val: i64 }
         fn f() {
             let x = Box { val: 1 };
             let y = x;

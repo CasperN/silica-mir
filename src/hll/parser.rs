@@ -8,7 +8,7 @@
 
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
-use crate::mir::ast::{FloatTy, IntTy, RefKind, Span};
+use crate::mir::ast::{FloatTy, IntTy, RefKind, Span, Markers, Marker};
 use crate::mir::parser::ParserCode;
 use tree_sitter::{Node, Parser as TSParser};
 
@@ -242,6 +242,14 @@ impl Parser {
         let span = span_of(node);
 
         let mut cursor = node.walk();
+        let markers = if let Some(markers_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "markers")
+        {
+            self.map_markers(markers_node)?
+        } else {
+            Markers::empty()
+        };
+
         let mut fields = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "struct_field" {
@@ -259,7 +267,7 @@ impl Parser {
             }
         }
 
-        Ok(StructDecl { name, fields, span })
+        Ok(StructDecl { name, markers, fields, span })
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
@@ -270,6 +278,14 @@ impl Parser {
         let span = span_of(node);
 
         let mut cursor = node.walk();
+        let markers = if let Some(markers_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "markers")
+        {
+            self.map_markers(markers_node)?
+        } else {
+            Markers::empty()
+        };
+
         let mut variants = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "enum_variant" {
@@ -287,7 +303,7 @@ impl Parser {
             }
         }
 
-        Ok(EnumDecl { name, variants, span })
+        Ok(EnumDecl { name, markers, variants, span })
     }
 
     fn map_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
@@ -873,6 +889,40 @@ impl Parser {
                 | "binary_expr"
         )
     }
+
+    /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
+    /// order). Errors on duplicates.
+    fn map_markers(&self, node: Node) -> Result<Markers, Diagnostic> {
+        let mut seen: Vec<Marker> = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "marker" {
+                continue;
+            }
+            let text = self.get_text(child);
+            let m = match text {
+                "Copy" => Marker::Copy,
+                "Drop" => Marker::Drop,
+                "Move" => Marker::Move,
+                other => {
+                    return Err(self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("unknown marker: {}", other),
+                    ));
+                }
+            };
+            if seen.contains(&m) {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("Duplicate marker '{}'", text),
+                ));
+            }
+            seen.push(m);
+        }
+        Ok(Markers::from_iter(seen))
+    }
 }
 
 #[cfg(test)]
@@ -891,6 +941,9 @@ mod tests {
             assert_eq!(s.fields[0].ty, Type::Int(IntTy::I64));
             assert_eq!(s.fields[1].name, "y");
             assert_eq!(s.fields[1].ty, Type::Int(IntTy::I64));
+            assert!(!s.markers.declared(Marker::Copy));
+            assert!(!s.markers.declared(Marker::Drop));
+            assert!(!s.markers.declared(Marker::Move));
         } else {
             panic!("Expected struct declaration");
         }
@@ -908,6 +961,39 @@ mod tests {
             assert_eq!(e.variants[0].ty, Type::Unit);
             assert_eq!(e.variants[1].name, "Some");
             assert_eq!(e.variants[1].ty, Type::Int(IntTy::I64));
+            assert!(!e.markers.declared(Marker::Copy));
+            assert!(!e.markers.declared(Marker::Drop));
+            assert!(!e.markers.declared(Marker::Move));
+        } else {
+            panic!("Expected enum declaration");
+        }
+    }
+
+    #[test]
+    fn parse_struct_decl_with_markers() {
+        let source = "struct Point: Copy + Drop { x: i64, y: i64 }";
+        let program = Parser::new(source).parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+        if let Declaration::Struct(ref s) = program.declarations[0] {
+            assert_eq!(s.name, "Point");
+            assert!(s.markers.declared(Marker::Copy));
+            assert!(s.markers.declared(Marker::Drop));
+            assert!(!s.markers.declared(Marker::Move));
+        } else {
+            panic!("Expected struct declaration");
+        }
+    }
+
+    #[test]
+    fn parse_enum_decl_with_markers() {
+        let source = "enum Option: Move + Drop { None: unit, Some: i64 }";
+        let program = Parser::new(source).parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+        if let Declaration::Enum(ref e) = program.declarations[0] {
+            assert_eq!(e.name, "Option");
+            assert!(!e.markers.declared(Marker::Copy));
+            assert!(e.markers.declared(Marker::Drop));
+            assert!(e.markers.declared(Marker::Move));
         } else {
             panic!("Expected enum declaration");
         }

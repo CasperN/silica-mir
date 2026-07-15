@@ -1,4 +1,4 @@
-use crate::mir::ast::{IntTy, FloatTy, RefKind, Span};
+use crate::mir::ast::{IntTy, FloatTy, RefKind, Span, Markers};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -85,6 +85,7 @@ pub struct StructField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructDecl {
     pub name: String,
+    pub markers: Markers,
     pub fields: Vec<StructField>,
     pub span: Span,
 }
@@ -99,6 +100,7 @@ pub struct EnumVariant {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumDecl {
     pub name: String,
+    pub markers: Markers,
     pub variants: Vec<EnumVariant>,
     pub span: Span,
 }

@@ -650,13 +650,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     name: s.name.clone(),
                     name_span: s.span,
-                    // Copy + Drop → Move via horizontal closure, so
-                    // there's no need to also declare Move; it'd be
-                    // canonicalized away.
-                    markers: mir::Markers::from_iter([
-                        mir::Marker::Copy,
-                        mir::Marker::Drop,
-                    ]),
+                    markers: s.markers.clone(),
                     fields,
                 }));
             }
@@ -669,13 +663,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     name: e.name.clone(),
                     name_span: e.span,
-                    // Copy + Drop → Move via horizontal closure, so
-                    // there's no need to also declare Move; it'd be
-                    // canonicalized away.
-                    markers: mir::Markers::from_iter([
-                        mir::Marker::Copy,
-                        mir::Marker::Drop,
-                    ]),
+                    markers: e.markers.clone(),
                     variants,
                 }));
             }
@@ -802,7 +790,7 @@ mod tests {
     #[test]
     fn test_lower_struct_and_field_access() {
         let source = "
-            struct Point { x: i64, y: i64 }
+            struct Point: Copy + Drop { x: i64, y: i64 }
             fn get_x(p: Point) -> i64 {
                 let x = p.x;
                 x
@@ -830,7 +818,7 @@ mod tests {
     #[test]
     fn test_lower_match() {
         let source = "
-            enum Option { None: unit, Some: i64 }
+            enum Option: Copy + Drop { None: unit, Some: i64 }
             fn match_val(v: Option) -> i64 {
                 v match {
                     Some(val) => val,
@@ -932,8 +920,8 @@ mod tests {
     #[test]
     fn test_lower_constructors_and_arrays() {
         let source = "
-            struct Point { x: i64, y: i64 }
-            enum Option { None: unit, Some: i64 }
+            struct Point: Copy + Drop { x: i64, y: i64 }
+            enum Option: Copy + Drop { None: unit, Some: i64 }
             fn check(arr: [i64; 3]) -> i64 {
                 let p = Point { x: 1, y: 2 };
                 let o = Option::Some(42);
@@ -976,12 +964,12 @@ mod tests {
     #[test]
     fn test_lower_recursive_tree_search() {
         let source = "
-            struct Node {
+            struct Node: Copy + Drop {
                 value: i64,
                 left: Tree,
                 right: Tree
             }
-            enum Tree {
+            enum Tree: Copy + Drop {
                 Empty: unit,
                 Node: *Node
             }
@@ -1150,6 +1138,68 @@ mod tests {
               entry:
                 $return.* = 1;
                 return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_struct_marker_combinations() {
+        // No markers (linear)
+        assert_lower_eq(
+            "
+            struct Foo { x: i64 }
+            ",
+            "
+            struct Foo {
+              x: i64
+            }
+            "
+        );
+
+        // Copy marker only
+        assert_lower_eq(
+            "
+            struct Foo: Copy { x: i64 }
+            ",
+            "
+            struct Foo: Copy {
+              x: i64
+            }
+            "
+        );
+
+        // Drop marker only
+        assert_lower_eq(
+            "
+            struct Foo: Drop { x: i64 }
+            ",
+            "
+            struct Foo: Drop {
+              x: i64
+            }
+            "
+        );
+        // Two markers, Drop + Move
+        assert_lower_eq(
+            "
+            struct Foo: Drop + Move { x: i64 }
+            ",
+            "
+            struct Foo: Drop + Move {
+              x: i64
+            }
+            "
+        );
+
+        // Move marker only.
+        assert_lower_eq(
+            "
+            struct Foo: Move { x: i64 }
+            ",
+            "
+            struct Foo: Move {
+              x: i64
             }
             "
         );
