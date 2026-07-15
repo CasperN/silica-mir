@@ -1517,7 +1517,7 @@ impl<'a> InitStateContext<'a> {
             "uninitialized"
         };
         let actual = describe_state(&leaf);
-        d.push_error(diag(
+        let mut diagnostic = diag(
             BorrowStateMismatch,
             span,
             func,
@@ -1526,7 +1526,18 @@ impl<'a> InitStateContext<'a> {
                 "cannot create {} of '{}': place must be {} at borrow, but is {}",
                 kind_str, path_str, expected, actual
             ),
-        ));
+        );
+        // Hint for `&out` / `&uninit` on Init non-Drop places: user
+        // can't `drop X;` (type isn't Drop) so they must move the
+        // value out first. Reachable only for non-Drop types — the
+        // Drop-eligible case is silently drop-elaborated above.
+        if !requires_init && matches!(leaf, InitState::Init) {
+            diagnostic = diagnostic.with_hint(format!(
+                "move '{}' out first — linear values cannot be forgotten in place",
+                path_str
+            ));
+        }
+        d.push_error(diagnostic);
     }
 }
 

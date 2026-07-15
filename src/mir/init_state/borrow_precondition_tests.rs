@@ -212,6 +212,32 @@ fn out_borrow_of_init_non_drop_type_errors() {
     );
 }
 
+#[test]
+fn out_borrow_of_init_non_drop_carries_hint() {
+    // Non-Drop linear types can't be dropped in place, so `&out` on
+    // an Init one requires the user to first move it out. Diagnostic
+    // should carry a hint spelling this out — first-time users
+    // otherwise reach for `drop X;` which won't compile either.
+    let (errs, _) = run("
+        struct Linear { r: &out i64 }
+        fn f(x: Linear) {
+          rr: &out Linear;
+          entry:
+            rr = &out x;
+            return
+        }
+        ");
+    let err = errs
+        .iter()
+        .find(|e| e.contains("cannot create &out of 'x'"))
+        .expect("expected &out precondition error");
+    assert!(
+        err.contains("hint: move 'x' out first — linear values cannot be forgotten in place"),
+        "expected hint about moving out, got:\n{}",
+        err
+    );
+}
+
 // === Scenario: `&uninit q` — requires Uninit ===
 
 #[test]
