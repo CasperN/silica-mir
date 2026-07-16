@@ -711,6 +711,78 @@ Key files
 - `src/hll/lowering.rs` for examples of HLL syntax and how it lowers to MIR. 
 - `src/mir/init_state/mod.rs` for the substructural references model.
 
+# Testing discipline
+
+Compiler testing lives on a spectrum from "here's a program, here's what
+should happen" (which most compiler bugs are actually about) to "does
+this dataflow join commute" (which most compiler bugs are not). The
+project skews toward the second today; the target is the first.
+
+## Test tiers
+
+1. **Fixture tests — the primary surface.** For anything that's "program
+   in, artifact out." Four flavors:
+   - `mir → elaborated mir` (pretty-printed after `elaborate_and_check_mir`)
+   - `mir → diagnostic` (rendered error text is the contract)
+   - `mir → llvm` (emitted IR)
+   - `hll → mir` (full pipeline through lowering + elaboration)
+   
+   Each test is an input file paired with an expected-output file
+   under `tests/{elab,errors,codegen,hll}/`. Name expected outputs
+   with the real extension first so editors keep syntax highlighting:
+   `foo.sim` → `foo.mir.expected` (elaborated MIR),
+   `foo.sim` → `foo.ll.expected` (codegen), `foo.sim` →
+   `foo.err.expected` (rendered diagnostic), `foo.si` →
+   `foo.mir.expected` (HLL lowering). A single runner drives them,
+   and `UPDATE=1 cargo test` rewrites the expected files so cosmetic
+   diagnostic changes don't turn into a slog. Discovery = `ls`.
+   Adding a feature = adding a file.
+
+2. **Pass-internal unit tests — narrow.** For pass private APIs whose
+   behavior isn't observable end-to-end, or invariants a fixture can't
+   check (e.g. the post-elab init_state re-run catching an obligation
+   at an inserted `unborrow`). Group by test kind in sibling
+   `*_tests.rs` files, following the `init_state/` and `type_check/`
+   layout.
+
+3. **Utility unit tests — inline.** For small helpers with real
+   invariants and no natural fixture expression:
+   `dataflow` join/fixed-point/direction semantics, `cfg_edit` split-edge
+   idempotence, `Markers::from_iter` canonicalization,
+   `is_type_uninhabited` cycle handling, parser tree-walking
+   primitives. `#[cfg(test)] mod tests` inline is fine here — the
+   tests belong next to the API they exercise.
+
+## When separate file vs inline
+
+Not file size — **test count and kind**:
+- **Sibling `*_tests.rs`**: >10 tests, or tests group naturally by
+  topic (e.g. `init_state/{cfg_shape,projections,overwrite,partial_init}_tests.rs`).
+- **Inline `#[cfg(test)] mod tests`**: <5 tests exercising one narrow
+  API, module <500 lines.
+- **`tests/` fixture dir**: anything "program in, artifact out." Never inline.
+
+## Anti-patterns to avoid
+
+- **Per-pass duplication of the same program.** If init_state and
+  lifetime both hand-craft the same `&mut` conflict, one fixture test
+  against the whole pipeline replaces both.
+- **Substring-matching emitted artifacts.** `assert_contains(&ll,
+  "= add i64")` in codegen tests should be a fixture whose
+  `.expected.ll` is asserted exactly (with `UPDATE=1` to regenerate).
+- **Success-only test suites.** Every diagnostic code should have a
+  fixture pinning its rendered output. This is what forces
+  diagnostic quality.
+- **Testing at the wrong tier.** Reaching into a pass's private state
+  to test something a fixture test would catch is a smell.
+
+## Adding a new feature
+
+Order of operations:
+1. Add a fixture for the golden path. Watch it fail.
+2. Add a fixture per error case, one per new `DiagCode` variant.
+3. Only add unit tests if there's an invariant the fixture can't observe.
+
 # Punch list
 - reachable/flow analysis for bools too. Or should bool be an enum?
 - Prerequisites before coroutines are attempted
@@ -803,8 +875,118 @@ variants with a slightly different syntax.
   `struct X: Copy + Drop + Move { ... }` gets an info note that
   `Move` is implied by `Copy + Drop` and canonicalized away.
 
+## HLL → MIR seam cleanup
+The HLL frontend and the lowering step use different error-plumbing
+conventions than the MIR passes. This is one theme with several
+independently-shippable pieces.
+
+- **Replace `HashMap<*const hll::Expr, hll::Type>` with a `Span`-keyed
+  map.** `hll::lowering::lookup_type` (~src/hll/lowering.rs:28-43)
+  primary-lookups by raw pointer identity and falls back to `unsafe`
+  span comparison across the whole map. Since the fallback already
+  demonstrates span keys are sufficient, drop the pointer path
+  entirely: change every `HashMap<*const hll::Expr, hll::Type>` (8
+  signatures in `lowering.rs`, plus the type-checker's construction
+  site) to `HashMap<Span, hll::Type>`, delete the `unsafe`, delete
+  the fallback loop. Single small PR, one file heavy.
+- **Retire `Result<_, String>` inside lowering.** `run_lowering` wraps
+  every error into a placeholder `HllLoweringCode::Generic` at
+  `Span::default()`. The 8 `-> Result<_, String>` signatures each carry
+  real span context at the error site (`expr.span`) that gets discarded.
+  Give `HllLoweringCode` real variants (missing-type-entry,
+  binary-non-numeric, match-non-enum-target, etc.), thread the
+  originating `Span`, and push through `d` at each error site instead
+  of bubbling a string. Independent of the pointer-map change; medium
+  PR (~200 lines of signature churn).
+- **`hll::parser::is_expr_kind` is incomplete
+  (src/hll/parser.rs:880-901).** Missing 9 expression node kinds
+  (`assign_expr`, `borrow_expr`, `raw_borrow_expr`, `deref_expr`,
+  `downcast_expr`, `call_expr`, `index_expr`, `match_expr`,
+  `field_access`). Consequence: any block whose trailing expression is
+  one of these — e.g. `{ a + b }`, `{ foo() }`, `{ x.f }`, `{ &x }` —
+  loses the tail at `map_block` (line 710) and evaluates as unit.
+  Same drop hits `break`/`return` value extraction (lines 503, 510)
+  and array-literal element scanning (line 520). Single tiny PR;
+  most of the effort is writing one regression test per missing
+  kind.
+- **Replace lowering `.unwrap()` on `ctx.scopes.last_mut()`
+  (src/hll/lowering.rs:498) with proper error propagation.** Lowering
+  should never panic. Trivial fix; roll into the `Result<_, String>`
+  retirement.
+
+## Pass-internal cleanup
+- **Deduplicate init-state transfer logic.** `InitStateContext::transfer_stmt`
+  (src/mir/init_state/mod.rs:708-761, silent, used by drop-elaboration)
+  and `check_and_transfer_stmt` (lines 1238-1313, diagnostic) reimplement
+  the same state-mutation choreography in parallel branches per statement
+  kind. Extract per-kind `apply_assign_state`/`apply_call_state`/
+  `apply_drop_state`/`apply_unborrow_state` helpers (~50 lines total) and
+  have both walkers delegate. Idempotence is already covered by
+  `assert_strict_clean_after_elaboration`, so the refactor is safe.
+- **Extract `is_type_uninhabited` from `variant_flow`.** The recursive
+  inhabitedness walk with cycle detection (src/mir/variant_flow.rs:557,
+  ~30 lines) is a general type predicate — no dependency on the
+  variant-flow lattice. Move it to a `mir::type_util` module (or
+  `mir::layout`, since layout already reasons about type shape) so
+  future passes can reuse it. The rest of variant_flow.rs (1476 lines)
+  is genuinely one topic (switch-arm reachability) and doesn't need
+  splitting for its own sake.
+- **Move dedup of loan-conflict diagnostics into elaboration.**
+  `lifetime/mod.rs:194-207` calls `d.retain_errors` mid-check to
+  suppress duplicate conflicts caused by drop-elaboration expanding
+  `target = <rvalue>` into `drop target; target = <rvalue>` (two
+  conflicts at the same span). Mutating diagnostics during checking is
+  fragile — the fix belongs in drop-elaboration (emit a single
+  compound statement or synthesize a shared span) so the checker stays
+  single-pass.
+
+## Testing gaps
+Testing discipline note: the project convention is dedicated
+`*_tests.rs` sibling files grouped by test kind (see `mir/type_check/`
+and `mir/init_state/`). Several files still carry inline `#[cfg(test)]
+mod tests` blocks that predate that convention.
+
+- **Extract inline tests from core MIR files into sibling `*_tests.rs`.**
+  133 inline tests across seven files:
+  `mir/ast.rs` (8), `mir/parser.rs` (23),
+  `mir/pretty_print.rs` (9), `mir/dataflow.rs` (9),
+  `mir/intrinsics.rs` (32), `mir/block_reachability.rs` (10),
+  `mir/variant_flow.rs` (42). Straight mechanical extraction — one PR
+  per file or bundled by module.
+- **Extract inline tests from HLL files into sibling `*_tests.rs`
+  or `hll/*_tests/` mirror dirs.** 71 inline tests:
+  `hll/parser.rs` (32), `hll/lowering.rs` (15), `hll/type_check.rs`
+  (10), `hll/mut_check.rs` (14). While there, group by kind
+  (e.g. `parser_precedence_tests.rs`, `parser_decl_tests.rs`).
+- **HLL is missing error-path tests entirely.** The 71 HLL tests
+  cover success paths; none assert the diagnostic emitted for e.g.
+  a type mismatch, a defer with `break`/`continue`, or a binary op
+  on non-numeric operands. Add one per HllLoweringCode variant
+  (adds context to the "retire Result<_, String>" work above).
+- **No HLL→MIR end-to-end test.** `main.rs::lower_hll_to_mir` is
+  the seam and it isn't exercised in-crate. Add a small suite that
+  parses `.si`, runs the full pipeline through `elaborate_and_check_mir`,
+  and asserts on pretty-printed elaborated MIR — one program per
+  HLL feature (defer, match, struct constructor, loop-with-break-value).
+- **Post-elaboration init-state re-run has no dedicated test.**
+  `main.rs:66` re-runs init_state after NLL specifically so that
+  an unfulfilled `&out`/`&drop` obligation at an inserted `unborrow`
+  fires via `close_ref_if_present`. Add one case per obligation kind
+  to `mir/lifetime/nll_tests.rs` (or a new `postelab_reruns_tests.rs`)
+  that would silently pass without the re-run.
+- **Codegen tests substring-match emitted LLVM IR but never
+  validate it.** ~2,300 lines of tests in `mir/codegen/*_tests.rs`
+  check for `assert_contains(&ll, "= add i64")`-style substrings; no
+  test invokes `llvm-as` (or a similar validator) to catch malformed
+  IR at emit time. Add one round-trip test per codegen feature area
+  that shells out to `llvm-as` if available on `PATH` (skip when
+  absent so CI stays portable).
+- **`hll/mut_check.rs` doesn't test nested-deref patterns.**
+  E.g. `r.*.field = ...` where `r` is `&mut &mut T`. Cheap to add
+  once inline tests are extracted.
+
 # Longer term
-- Round-trip corpus test (`pretty_print → parse → pretty_print`)
+- Round-trip fixture test (`pretty_print → parse → pretty_print`)
   as an anti-drift check between grammar and codebase. Would also
   catch parser walker regressions.
 - Tighten MIR struct/enum decl separators from
