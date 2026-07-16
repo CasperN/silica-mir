@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use crate::hll::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::Span;
@@ -254,7 +255,7 @@ impl TypeEnv {
 
 /// Run HLL type-checking, pushing errors into `d`. Returns the
 /// per-expression type map on success; `None` if any error was reported.
-pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<HashMap<*const Expr, Type>> {
+pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<IndexMap<Span, Type>> {
     match typecheck_program_collect(program) {
         Ok(types) => Some(types),
         Err(diag) => {
@@ -276,10 +277,10 @@ pub(super) fn typecheck_program(program: &Program) -> Result<(), Diagnostic> {
 /// success. Sibling modules use this to stage lowering-time work
 /// without needing a `Diagnostics` container. Production callers
 /// should use `run_type_check`.
-pub(super) fn typecheck_program_collect(program: &Program) -> Result<HashMap<*const Expr, Type>, Diagnostic> {
+pub(super) fn typecheck_program_collect(program: &Program) -> Result<IndexMap<Span, Type>, Diagnostic> {
     let mut env = TypeEnv::new();
     let mut subst = Subst::new();
-    let mut types = HashMap::new();
+    let mut types = IndexMap::new();
 
     // Populate top-level declarations
     for decl in &program.declarations {
@@ -312,9 +313,9 @@ pub(super) fn typecheck_program_collect(program: &Program) -> Result<HashMap<*co
     }
 
     // Resolve all captured expression types in the final map
-    let mut resolved_types = HashMap::new();
-    for (expr_ptr, ty) in types {
-        resolved_types.insert(expr_ptr, subst.resolve_default(&ty));
+    let mut resolved_types = IndexMap::new();
+    for (span, ty) in types {
+        resolved_types.insert(span, subst.resolve_default(&ty));
     }
 
     Ok(resolved_types)
@@ -324,7 +325,7 @@ fn infer_inner(
     env: &mut TypeEnv,
     subst: &mut Subst,
     expr: &Expr,
-    types: &mut HashMap<*const Expr, Type>,
+    types: &mut IndexMap<Span, Type>,
 ) -> Result<Type, Diagnostic> {
     let ty = match &expr.kind {
         ExprKind::Literal(lit) => match lit {
@@ -701,7 +702,7 @@ fn infer_inner(
         }
     }?;
 
-    types.insert(expr as *const Expr, ty.clone());
+    types.insert(expr.span, ty.clone());
     Ok(ty)
 }
 
@@ -710,7 +711,7 @@ fn check_inner(
     subst: &mut Subst,
     expr: &Expr,
     expected: &Type,
-    types: &mut HashMap<*const Expr, Type>,
+    types: &mut IndexMap<Span, Type>,
 ) -> Result<(), Diagnostic> {
     let resolved_expected = subst.resolve(expected);
     match (&expr.kind, &resolved_expected) {
@@ -744,7 +745,7 @@ fn check_inner(
             };
             env.pop_scope();
             if res.is_ok() {
-                types.insert(expr as *const Expr, resolved_expected.clone());
+                types.insert(expr.span, resolved_expected.clone());
             }
             res
         }
@@ -752,7 +753,7 @@ fn check_inner(
             check_inner(env, subst, cond, &Type::Bool, types)?;
             check_inner(env, subst, true_block, expected_ty, types)?;
             check_inner(env, subst, false_block, expected_ty, types)?;
-            types.insert(expr as *const Expr, resolved_expected.clone());
+            types.insert(expr.span, resolved_expected.clone());
             Ok(())
         }
         (ExprKind::Match(target, arms), expected_ty) => {
@@ -783,7 +784,7 @@ fn check_inner(
                         );
                     }
                 }
-                types.insert(expr as *const Expr, resolved_expected.clone());
+                types.insert(expr.span, resolved_expected.clone());
                 Ok(())
             } else {
                 err_at(
@@ -794,11 +795,11 @@ fn check_inner(
             }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), Type::Int(_ty)) => {
-            types.insert(expr as *const Expr, resolved_expected.clone());
+            types.insert(expr.span, resolved_expected.clone());
             Ok(())
         }
         (ExprKind::Literal(Literal::Float(_val, None)), Type::Float(_ty)) => {
-            types.insert(expr as *const Expr, resolved_expected.clone());
+            types.insert(expr.span, resolved_expected.clone());
             Ok(())
         }
         (ExprKind::Array(elements), Type::Array(expected_elem, expected_size)) => {
@@ -815,13 +816,13 @@ fn check_inner(
             for el in elements {
                 check_inner(env, subst, el, expected_elem, types)?;
             }
-            types.insert(expr as *const Expr, resolved_expected.clone());
+            types.insert(expr.span, resolved_expected.clone());
             Ok(())
         }
         _ => {
             let inferred = infer_inner(env, subst, expr, types)?;
             subst.unify(&inferred, &resolved_expected).map_err(|e| e.to_diag(expr.span))?;
-            types.insert(expr as *const Expr, resolved_expected.clone());
+            types.insert(expr.span, resolved_expected.clone());
             Ok(())
         }
     }

@@ -200,7 +200,7 @@ mod markers_tests {
 /// `Default::default()` yields `Span { line: 0, col: 0 }`, which
 /// `Diagnostic::fmt` treats as "no position" (omits the `at L:C:`
 /// prefix). Real syntax always has 1-based positions.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Span {
     pub line: u32,
     pub col: u32,

@@ -880,15 +880,6 @@ The HLL frontend and the lowering step use different error-plumbing
 conventions than the MIR passes. This is one theme with several
 independently-shippable pieces.
 
-- **Replace `HashMap<*const hll::Expr, hll::Type>` with a `Span`-keyed
-  map.** `hll::lowering::lookup_type` (~src/hll/lowering.rs:28-43)
-  primary-lookups by raw pointer identity and falls back to `unsafe`
-  span comparison across the whole map. Since the fallback already
-  demonstrates span keys are sufficient, drop the pointer path
-  entirely: change every `HashMap<*const hll::Expr, hll::Type>` (8
-  signatures in `lowering.rs`, plus the type-checker's construction
-  site) to `HashMap<Span, hll::Type>`, delete the `unsafe`, delete
-  the fallback loop. Single small PR, one file heavy.
 - **Retire `Result<_, String>` inside lowering.** `run_lowering` wraps
   every error into a placeholder `HllLoweringCode::Generic` at
   `Span::default()`. The 8 `-> Result<_, String>` signatures each carry

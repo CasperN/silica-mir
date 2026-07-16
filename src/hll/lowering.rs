@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use indexmap::IndexMap;
 use crate::mir::ast as mir;
 use crate::hll::ast as hll;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
@@ -27,19 +28,9 @@ impl From<HllLoweringCode> for DiagCode {
 
 fn lookup_type<'a>(
     expr: &hll::Expr,
-    types: &'a HashMap<*const hll::Expr, hll::Type>,
+    types: &'a IndexMap<mir::Span, hll::Type>,
 ) -> Option<&'a hll::Type> {
-    if let Some(ty) = types.get(&(expr as *const hll::Expr)) {
-        return Some(ty);
-    }
-    for (ptr, ty) in types {
-        unsafe {
-            if (**ptr).span == expr.span {
-                return Some(ty);
-            }
-        }
-    }
-    None
+    types.get(&expr.span)
 }
 
 /// Run HLL → MIR lowering. Any error is treated as an internal compiler
@@ -47,7 +38,7 @@ fn lookup_type<'a>(
 /// whether to continue.
 pub fn run_lowering(
     program: &hll::Program,
-    types: &HashMap<*const hll::Expr, hll::Type>,
+    types: &IndexMap<mir::Span, hll::Type>,
     d: &mut Diagnostics,
 ) -> Option<mir::Program> {
     match lower_program(program, types) {
@@ -117,7 +108,7 @@ impl LowerCtx {
         });
     }
 
-    fn pop_and_emit_defers(&mut self, types: &HashMap<*const hll::Expr, hll::Type>) -> Result<(), String> {
+    fn pop_and_emit_defers(&mut self, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), String> {
         let scope = self.scopes.pop().ok_or("scope stack underflow")?;
         for defer_expr in scope.defers.into_iter().rev() {
             let unit_temp = self.fresh_temp(mir::Type::Unit, defer_expr.span);
@@ -126,7 +117,7 @@ impl LowerCtx {
         Ok(())
     }
 
-    fn emit_defers_to_depth(&mut self, depth: usize, types: &HashMap<*const hll::Expr, hll::Type>) -> Result<(), String> {
+    fn emit_defers_to_depth(&mut self, depth: usize, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), String> {
         let mut defers = Vec::new();
         for i in (depth..self.scopes.len()).rev() {
             for defer_expr in self.scopes[i].defers.iter().rev() {
@@ -221,7 +212,7 @@ fn is_copy_type(ty: &mir::Type) -> bool {
 fn lower_expr_to_place(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
-    types: &HashMap<*const hll::Expr, hll::Type>,
+    types: &IndexMap<mir::Span, hll::Type>,
 ) -> Result<mir::Place, String> {
     match &expr.kind {
         hll::ExprKind::Variable(name) => Ok(mir::Place::Var(name.clone())),
@@ -258,7 +249,7 @@ fn lower_expr_to_place(
 fn lower_expr_to_operand(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
-    types: &HashMap<*const hll::Expr, hll::Type>,
+    types: &IndexMap<mir::Span, hll::Type>,
 ) -> Result<mir::Operand, String> {
     match &expr.kind {
         hll::ExprKind::Literal(lit) => {
@@ -324,7 +315,7 @@ fn lower_expr_into(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
     dest: &mir::Place,
-    types: &HashMap<*const hll::Expr, hll::Type>,
+    types: &IndexMap<mir::Span, hll::Type>,
 ) -> Result<(), String> {
     match &expr.kind {
         hll::ExprKind::Literal(_)
@@ -707,7 +698,7 @@ fn lower_expr_into(
 
 pub fn lower_program(
     program: &hll::Program,
-    types: &HashMap<*const hll::Expr, hll::Type>,
+    types: &IndexMap<mir::Span, hll::Type>,
 ) -> Result<mir::Program, String> {
     let mut declarations = Vec::new();
     
