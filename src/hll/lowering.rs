@@ -9,21 +9,40 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 /// All lowering-time errors are internal compiler errors — the well-
 /// formed shape of the AST is a type_check post-condition, so anything
 /// that lowering rejects is a bug in an earlier pass or in lowering
-/// itself, not in user code. Currently one code covers all of them; a
-/// finer taxonomy can be introduced when the underlying error sites
-/// grow richer context.
+/// itself, not in user code. Diagnostics still carry the originating
+/// `expr.span` so ICE reports point at the source that surfaced the
+/// invariant violation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HllLoweringCode {
-    /// Catch-all for internal invariants that lowering enforces
-    /// (missing type-map entry, missing decl, redundant safety-net
-    /// pattern-match arm, etc.).
-    Generic,
+    /// No entry in the per-expression type map. Type-check should have
+    /// populated one for every expression it visited.
+    MissingType,
+    /// Binary op emitted on a non-numeric type. Type-check should have
+    /// rejected this before lowering ran.
+    BinaryOpNonNumeric,
+    /// `match` scrutinee has a non-enum type.
+    MatchTargetNotEnum,
+    /// Match arm references an enum name with no declaration.
+    EnumDeclMissing,
+    /// Match arm references a variant not declared on the enum.
+    EnumVariantMissing,
+    /// `break` outside of any enclosing loop.
+    BreakOutsideLoop,
+    /// `continue` outside of any enclosing loop.
+    ContinueOutsideLoop,
+    /// Scope stack empty when a scope-relative operation ran (`defer`
+    /// registration, `pop_and_emit_defers`). Internal invariant.
+    ScopeStackUnderflow,
 }
 
 impl From<HllLoweringCode> for DiagCode {
     fn from(code: HllLoweringCode) -> DiagCode {
         DiagCode::HllLowering(code)
     }
+}
+
+fn diag(code: HllLoweringCode, span: mir::Span, msg: impl Into<String>) -> Diagnostic {
+    Diagnostic::new(code, span, msg)
 }
 
 fn lookup_type<'a>(
@@ -43,12 +62,8 @@ pub fn run_lowering(
 ) -> Option<mir::Program> {
     match lower_program(program, types) {
         Ok(p) => Some(p),
-        Err(msg) => {
-            d.push_internal_error(Diagnostic::new(
-                HllLoweringCode::Generic,
-                mir::Span::default(),
-                msg,
-            ));
+        Err(diag) => {
+            d.push_internal_error(diag);
             None
         }
     }
@@ -108,8 +123,14 @@ impl LowerCtx {
         });
     }
 
-    fn pop_and_emit_defers(&mut self, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), String> {
-        let scope = self.scopes.pop().ok_or("scope stack underflow")?;
+    fn pop_and_emit_defers(&mut self, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), Diagnostic> {
+        let scope = self.scopes.pop().ok_or_else(|| {
+            diag(
+                HllLoweringCode::ScopeStackUnderflow,
+                mir::Span::default(),
+                "pop_and_emit_defers called with empty scope stack",
+            )
+        })?;
         for defer_expr in scope.defers.into_iter().rev() {
             let unit_temp = self.fresh_temp(mir::Type::Unit, defer_expr.span);
             lower_expr_into(self, &defer_expr, &unit_temp, types)?;
@@ -117,7 +138,7 @@ impl LowerCtx {
         Ok(())
     }
 
-    fn emit_defers_to_depth(&mut self, depth: usize, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), String> {
+    fn emit_defers_to_depth(&mut self, depth: usize, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), Diagnostic> {
         let mut defers = Vec::new();
         for i in (depth..self.scopes.len()).rev() {
             for defer_expr in self.scopes[i].defers.iter().rev() {
@@ -213,7 +234,7 @@ fn lower_expr_to_place(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
     types: &IndexMap<mir::Span, hll::Type>,
-) -> Result<mir::Place, String> {
+) -> Result<mir::Place, Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Variable(name) => Ok(mir::Place::Var(name.clone())),
         hll::ExprKind::FieldAccess(target, field) => {
@@ -236,7 +257,11 @@ fn lower_expr_to_place(
         _ => {
             // Allocate a temporary and evaluate the expression into it
             let hll_ty = lookup_type(expr, types).ok_or_else(|| {
-                format!("missing type annotation for expression at {:?}", expr.span)
+                diag(
+                    HllLoweringCode::MissingType,
+                    expr.span,
+                    "missing type annotation for expression",
+                )
             })?;
             let mir_ty = lower_type(hll_ty);
             let temp = ctx.fresh_temp(mir_ty, expr.span);
@@ -250,7 +275,7 @@ fn lower_expr_to_operand(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
     types: &IndexMap<mir::Span, hll::Type>,
-) -> Result<mir::Operand, String> {
+) -> Result<mir::Operand, Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Literal(lit) => {
             let const_val = match lit {
@@ -294,7 +319,11 @@ fn lower_expr_to_operand(
         | hll::ExprKind::ArrayIndex(_, _) => {
             let place = lower_expr_to_place(ctx, expr, types)?;
             let hll_ty = lookup_type(expr, types).ok_or_else(|| {
-                format!("missing type annotation for variable/projection at {:?}", expr.span)
+                diag(
+                    HllLoweringCode::MissingType,
+                    expr.span,
+                    "missing type annotation for variable/projection",
+                )
             })?;
             let mir_ty = lower_type(hll_ty);
             if is_copy_type(&mir_ty) {
@@ -316,7 +345,7 @@ fn lower_expr_into(
     expr: &hll::Expr,
     dest: &mir::Place,
     types: &IndexMap<mir::Span, hll::Type>,
-) -> Result<(), String> {
+) -> Result<(), Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Literal(_)
         | hll::ExprKind::Variable(_)
@@ -363,7 +392,11 @@ fn lower_expr_into(
         }
         hll::ExprKind::Binary(lhs, op, rhs) => {
             let lhs_hll_ty = lookup_type(lhs, types).ok_or_else(|| {
-                format!("missing type annotation for binary LHS at {:?}", lhs.span)
+                diag(
+                    HllLoweringCode::MissingType,
+                    lhs.span,
+                    "missing type annotation for binary lhs",
+                )
             })?;
             let mir_ty = lower_type(lhs_hll_ty);
             
@@ -385,7 +418,11 @@ fn lower_expr_into(
             let type_name = match &mir_ty {
                 mir::Type::Int(int_ty) => int_ty.name(),
                 mir::Type::Float(float_ty) => float_ty.name(),
-                _ => return Err(format!("at {}: binary operations only supported on numeric types, found {:?}", expr.span, mir_ty)),
+                _ => return Err(diag(
+                    HllLoweringCode::BinaryOpNonNumeric,
+                    expr.span,
+                    format!("binary op on non-numeric type {:?}", mir_ty),
+                )),
             };
             
             let intrinsic_name = format!("${}_{}", type_name, op_name);
@@ -396,7 +433,11 @@ fn lower_expr_into(
             let mut arg_ops = vec![lhs_op, rhs_op];
             
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
-                format!("missing type annotation for binary expression at {:?}", expr.span)
+                diag(
+                    HllLoweringCode::MissingType,
+                    expr.span,
+                    "missing type annotation for binary expression",
+                )
             })?;
             
             let ref_ty = mir::Type::Ref(mir::RefKind::Out, Box::new(lower_type(hll_ret_ty)));
@@ -429,7 +470,11 @@ fn lower_expr_into(
 
             // Check if call has return value (if dest type is not Unit)
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
-                format!("missing type annotation for call at {:?}", expr.span)
+                diag(
+                    HllLoweringCode::MissingType,
+                    expr.span,
+                    "missing type annotation for call",
+                )
             })?;
 
             if *hll_ret_ty != hll::Type::Unit {
@@ -474,7 +519,11 @@ fn lower_expr_into(
                 match stmt {
                     hll::Stmt::Let { is_mut: _, name, ty: _, init, span } => {
                         let hll_ty = lookup_type(init, types).ok_or_else(|| {
-                            format!("missing type annotation for let init at {:?}", init.span)
+                            diag(
+                                HllLoweringCode::MissingType,
+                                init.span,
+                                "missing type annotation for let init",
+                            )
                         })?;
                         let mir_ty = lower_type(hll_ty);
                         ctx.locals.push(mir::Local {
@@ -485,8 +534,15 @@ fn lower_expr_into(
                         let var_place = mir::Place::Var(name.clone());
                         lower_expr_into(ctx, init, &var_place, types)?;
                     }
-                    hll::Stmt::Defer { body, span: _ } => {
-                        ctx.scopes.last_mut().unwrap().defers.push(body.clone());
+                    hll::Stmt::Defer { body, span } => {
+                        let scope = ctx.scopes.last_mut().ok_or_else(|| {
+                            diag(
+                                HllLoweringCode::ScopeStackUnderflow,
+                                *span,
+                                "defer registered with empty scope stack",
+                            )
+                        })?;
+                        scope.defers.push(body.clone());
                     }
                     hll::Stmt::Expr(e) => {
                         // Value is ignored, lower into a dummy unit temporary
@@ -543,13 +599,13 @@ fn lower_expr_into(
 
             ctx.loop_stack.push((start_label.clone(), end_label.clone(), dest.clone()));
             ctx.push_scope(true);
-            ctx.start_block(start_label);
-            
+            ctx.start_block(start_label.clone());
+
             // Loop body value is discarded
             let dummy = ctx.fresh_temp(mir::Type::Unit, body.span);
             lower_expr_into(ctx, body, &dummy, types)?;
             ctx.scopes.pop();
-            ctx.terminate_block(mir::Terminator::Goto(ctx.loop_stack.last().unwrap().0.clone()), expr.span);
+            ctx.terminate_block(mir::Terminator::Goto(start_label), expr.span);
 
             ctx.loop_stack.pop();
 
@@ -557,30 +613,32 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Break(val_expr) => {
-            let (_, end_label, dest_place) = ctx.loop_stack.last().ok_or_else(|| {
-                format!("at {}: break outside of loop", expr.span)
-            })?.clone();
+            let break_err = || diag(
+                HllLoweringCode::BreakOutsideLoop,
+                expr.span,
+                "break outside of loop",
+            );
+            let (_, end_label, dest_place) = ctx.loop_stack.last().ok_or_else(break_err)?.clone();
 
             if let Some(val) = val_expr {
                 lower_expr_into(ctx, val, &dest_place, types)?;
             }
 
-            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(|| {
-                format!("at {}: break outside of loop", expr.span)
-            })?;
+            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(break_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
             ctx.terminate_block(mir::Terminator::Goto(end_label), expr.span);
             Ok(())
         }
         hll::ExprKind::Continue => {
-            let (start_label, _, _) = ctx.loop_stack.last().ok_or_else(|| {
-                format!("at {}: continue outside of loop", expr.span)
-            })?.clone();
+            let continue_err = || diag(
+                HllLoweringCode::ContinueOutsideLoop,
+                expr.span,
+                "continue outside of loop",
+            );
+            let (start_label, _, _) = ctx.loop_stack.last().ok_or_else(continue_err)?.clone();
 
-            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(|| {
-                format!("at {}: continue outside of loop", expr.span)
-            })?;
+            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(continue_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
             ctx.terminate_block(mir::Terminator::Goto(start_label), expr.span);
@@ -625,18 +683,34 @@ fn lower_expr_into(
                 
                 if let Some(var_name) = bound_var {
                     let target_hll_ty = lookup_type(target, types).ok_or_else(|| {
-                        format!("missing type annotation for match target")
+                        diag(
+                            HllLoweringCode::MissingType,
+                            target.span,
+                            "missing type annotation for match target",
+                        )
                     })?;
                     let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name) = target_hll_ty {
                         let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
-                            format!("undeclared enum '{}' in lowering", enum_name)
+                            diag(
+                                HllLoweringCode::EnumDeclMissing,
+                                target.span,
+                                format!("undeclared enum '{}' in lowering", enum_name),
+                            )
                         })?;
                         let variant_decl = enum_decl.variants.iter().find(|v| v.name == *variant).ok_or_else(|| {
-                            format!("enum '{}' has no variant '{}' in lowering", enum_name, variant)
+                            diag(
+                                HllLoweringCode::EnumVariantMissing,
+                                body.span,
+                                format!("enum '{}' has no variant '{}' in lowering", enum_name, variant),
+                            )
                         })?;
                         lower_type(&variant_decl.ty)
                     } else {
-                        return Err(format!("expected enum type for match target, found {:?}", target_hll_ty));
+                        return Err(diag(
+                            HllLoweringCode::MatchTargetNotEnum,
+                            target.span,
+                            format!("expected enum type for match target, found {:?}", target_hll_ty),
+                        ));
                     };
                     
                     ctx.locals.push(mir::Local {
@@ -699,7 +773,7 @@ fn lower_expr_into(
 pub fn lower_program(
     program: &hll::Program,
     types: &IndexMap<mir::Span, hll::Type>,
-) -> Result<mir::Program, String> {
+) -> Result<mir::Program, Diagnostic> {
     let mut declarations = Vec::new();
     
     for decl in &program.declarations {

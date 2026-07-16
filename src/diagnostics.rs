@@ -454,7 +454,7 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
             "user error",
         ));
         ds.push_internal_error(Diagnostic::new(
-            crate::hll::lowering::HllLoweringCode::Generic,
+            crate::hll::lowering::HllLoweringCode::MissingType,
             Span::default(),
             "internal boom",
         ));
@@ -473,7 +473,7 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
         assert_eq!(errs.len(), 1);
         assert_eq!(internals.len(), 1);
         assert!(errs[0].contains("user error"));
-        assert!(internals[0].contains("[HLO-Generic]"));
+        assert!(internals[0].contains("[HLO-MissingType]"));
         assert!(internals[0].contains("internal boom"));
     }
 

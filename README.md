@@ -875,25 +875,6 @@ variants with a slightly different syntax.
   `struct X: Copy + Drop + Move { ... }` gets an info note that
   `Move` is implied by `Copy + Drop` and canonicalized away.
 
-## HLL → MIR seam cleanup
-The HLL frontend and the lowering step use different error-plumbing
-conventions than the MIR passes. This is one theme with several
-independently-shippable pieces.
-
-- **Retire `Result<_, String>` inside lowering.** `run_lowering` wraps
-  every error into a placeholder `HllLoweringCode::Generic` at
-  `Span::default()`. The 8 `-> Result<_, String>` signatures each carry
-  real span context at the error site (`expr.span`) that gets discarded.
-  Give `HllLoweringCode` real variants (missing-type-entry,
-  binary-non-numeric, match-non-enum-target, etc.), thread the
-  originating `Span`, and push through `d` at each error site instead
-  of bubbling a string. Independent of the pointer-map change; medium
-  PR (~200 lines of signature churn).
-- **Replace lowering `.unwrap()` on `ctx.scopes.last_mut()`
-  (src/hll/lowering.rs:498) with proper error propagation.** Lowering
-  should never panic. Trivial fix; roll into the `Result<_, String>`
-  retirement.
-
 ## Pass-internal cleanup
 - **Deduplicate init-state transfer logic.** `InitStateContext::transfer_stmt`
   (src/mir/init_state/mod.rs:708-761, silent, used by drop-elaboration)
