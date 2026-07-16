@@ -730,6 +730,10 @@
           "name": "let_stmt"
         },
         {
+          "type": "SYMBOL",
+          "name": "defer_stmt"
+        },
+        {
           "type": "SEQ",
           "members": [
             {
@@ -741,6 +745,27 @@
               "value": ";"
             }
           ]
+        }
+      ]
+    },
+    "defer_stmt": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "defer"
+        },
+        {
+          "type": "FIELD",
+          "name": "body",
+          "content": {
+            "type": "SYMBOL",
+            "name": "expr"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ";"
         }
       ]
     },

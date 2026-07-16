@@ -719,16 +719,26 @@ impl Parser {
     }
 
     fn map_stmt(&self, node: Node) -> Result<Stmt, Diagnostic> {
-        // stmt is a choice: let_stmt | (expr ';'). If the child is a
-        // let_stmt, decode as Let; otherwise it's an expression stmt.
+        // stmt is a choice: let_stmt | defer_stmt | (expr ';').
         let child = node.child(0).ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "empty statement")
         })?;
-        if child.kind() == "let_stmt" {
-            self.map_let_stmt(child)
-        } else {
-            let e = self.map_expr(child)?;
-            Ok(Stmt::Expr(e))
+        match child.kind() {
+            "let_stmt" => self.map_let_stmt(child),
+            "defer_stmt" => {
+                let body_node = child.child_by_field_name("body").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "defer missing body")
+                })?;
+                let body = self.map_expr(body_node)?;
+                Ok(Stmt::Defer {
+                    body,
+                    span: span_of(node),
+                })
+            }
+            _ => {
+                let e = self.map_expr(child)?;
+                Ok(Stmt::Expr(e))
+            }
         }
     }
 
@@ -1455,6 +1465,31 @@ mod tests {
         assert!(matches!(llhs.kind, ExprKind::Variable(ref name) if name == "a"));
         assert!(matches!(lrhs.kind, ExprKind::Variable(ref name) if name == "b"));
         assert!(matches!(rhs.kind, ExprKind::Variable(ref name) if name == "c"));
+    }
+
+    #[test]
+    fn parse_defer_stmt() {
+        let source = "
+            fn f() {
+                defer x = 2;
+                defer {
+                    let y = 1;
+                };
+            }
+        ";
+        let program = Parser::new(source).parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+        if let Declaration::Fn(ref f) = program.declarations[0] {
+            if let ExprKind::Block(ref stmts, _) = f.body.kind {
+                assert_eq!(stmts.len(), 2);
+                assert!(matches!(stmts[0], Stmt::Defer { .. }));
+                assert!(matches!(stmts[1], Stmt::Defer { .. }));
+            } else {
+                panic!("Expected block body");
+            }
+        } else {
+            panic!("Expected function declaration");
+        }
     }
 }
 

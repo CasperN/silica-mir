@@ -81,6 +81,8 @@ pub enum HllTypeCheckCode {
     ArrayIndexNotInt,
     /// Array literal doesn't match the expected length.
     ArrayLengthMismatch,
+    /// Control flow statement (break, continue, return) inside a defer block.
+    ControlFlowInDefer,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -265,6 +267,7 @@ pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<HashMap<
 /// Test-facing wrapper — sibling modules under `hll::*` use this to
 /// stage a typecheck without needing a `Diagnostics` container.
 /// Production callers should use `run_type_check`.
+#[cfg(test)]
 pub(super) fn typecheck_program(program: &Program) -> Result<(), Diagnostic> {
     typecheck_program_collect(program).map(|_| ())
 }
@@ -493,6 +496,10 @@ fn infer_inner(
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
+                    Stmt::Defer { body, span: _ } => {
+                        let body_ty = infer_inner(env, subst, body, types)?;
+                        subst.unify(&body_ty, &Type::Unit).map_err(|e| e.to_diag(body.span))?;
+                    }
                     Stmt::Expr(e) => {
                         infer_inner(env, subst, e, types)?;
                     }
@@ -720,6 +727,11 @@ fn check_inner(
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
+                    Stmt::Defer { body, span: _ } => {
+                        check_no_control_flow(body, 0)?;
+                        let body_ty = infer_inner(env, subst, body, types)?;
+                        subst.unify(&body_ty, &Type::Unit).map_err(|e| e.to_diag(body.span))?;
+                    }
                     Stmt::Expr(e) => {
                         infer_inner(env, subst, e, types)?;
                     }
@@ -814,6 +826,107 @@ fn check_inner(
         }
     }
 }
+
+fn check_no_control_flow(expr: &Expr, loop_depth: usize) -> Result<(), TcErr> {
+    match &expr.kind {
+        ExprKind::Break(_) => {
+            if loop_depth == 0 {
+                Err(Diagnostic::new(HllTypeCheckCode::ControlFlowInDefer, expr.span, "break is not allowed inside defer".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+        ExprKind::Continue => {
+            if loop_depth == 0 {
+                Err(Diagnostic::new(HllTypeCheckCode::ControlFlowInDefer, expr.span, "continue is not allowed inside defer".to_string()))
+            } else {
+                Ok(())
+            }
+        }
+        ExprKind::Return(_) => {
+            Err(Diagnostic::new(HllTypeCheckCode::ControlFlowInDefer, expr.span, "return is not allowed inside defer".to_string()))
+        }
+        ExprKind::Block(stmts, last) => {
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let { init, .. } => check_no_control_flow(init, loop_depth)?,
+                    Stmt::Defer { body, .. } => check_no_control_flow(body, loop_depth)?,
+                    Stmt::Expr(e) => check_no_control_flow(e, loop_depth)?,
+                }
+            }
+            if let Some(e) = last {
+                check_no_control_flow(e, loop_depth)?;
+            }
+            Ok(())
+        }
+        ExprKind::If(cond, thn, els) => {
+            check_no_control_flow(cond, loop_depth)?;
+            check_no_control_flow(thn, loop_depth)?;
+            check_no_control_flow(els, loop_depth)
+        }
+        ExprKind::Loop(body) => {
+            check_no_control_flow(body, loop_depth + 1)
+        }
+        ExprKind::Assign(lhs, rhs) => {
+            check_no_control_flow(lhs, loop_depth)?;
+            check_no_control_flow(rhs, loop_depth)
+        }
+        ExprKind::Binary(lhs, _, rhs) => {
+            check_no_control_flow(lhs, loop_depth)?;
+            check_no_control_flow(rhs, loop_depth)
+        }
+        ExprKind::FieldAccess(base, _) => {
+            check_no_control_flow(base, loop_depth)
+        }
+        ExprKind::Downcast(base, _) => {
+            check_no_control_flow(base, loop_depth)
+        }
+        ExprKind::ArrayIndex(base, index) => {
+            check_no_control_flow(base, loop_depth)?;
+            check_no_control_flow(index, loop_depth)
+        }
+        ExprKind::Deref(base) => {
+            check_no_control_flow(base, loop_depth)
+        }
+        ExprKind::Borrow(_, base) => {
+            check_no_control_flow(base, loop_depth)
+        }
+        ExprKind::RawBorrow(base) => {
+            check_no_control_flow(base, loop_depth)
+        }
+        ExprKind::Call(callee, args) => {
+            check_no_control_flow(callee, loop_depth)?;
+            for arg in args {
+                check_no_control_flow(arg, loop_depth)?;
+            }
+            Ok(())
+        }
+        ExprKind::StructConstr(_, fields) => {
+            for (_, f_init) in fields {
+                check_no_control_flow(f_init, loop_depth)?;
+            }
+            Ok(())
+        }
+        ExprKind::EnumConstr(_, _, payload) => {
+            check_no_control_flow(payload, loop_depth)
+        }
+        ExprKind::Match(target, arms) => {
+            check_no_control_flow(target, loop_depth)?;
+            for (_, body_expr) in arms {
+                check_no_control_flow(body_expr, loop_depth)?;
+            }
+            Ok(())
+        }
+        ExprKind::Array(elements) => {
+            for el in elements {
+                check_no_control_flow(el, loop_depth)?;
+            }
+            Ok(())
+        }
+        ExprKind::Literal(_) | ExprKind::Variable(_) => Ok(()),
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -980,6 +1093,20 @@ mod tests {
         let res = check_program(invalid_bool_op);
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("only supported on numeric types"));
+    }
+
+    #[test]
+    fn test_defer_with_nested_loop_ok() {
+        let source = "
+            fn check() {
+                defer {
+                    loop {
+                        break;
+                    };
+                };
+            }
+        ";
+        assert!(check_program(source).is_ok());
     }
 }
 

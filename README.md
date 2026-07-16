@@ -729,6 +729,14 @@ Key files
 - No-alias raw pointer variant (`*noalias T`) — currently we only have
   the aliasing `*T`. Would enable `noalias` attributes on parameters
   where the checker can prove exclusivity.
+- Support shadowed variables in lowering. Consider interaction with `defer`.
+```
+let x = 1;
+{
+  defer { x = 3 }  // This should act on outer x, right?
+  let x = 2;
+}
+```
 
 ## Marker overhaul
 - Change the declaration syntax from `struct Copy Move Drop Foo {}` to

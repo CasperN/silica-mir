@@ -98,7 +98,14 @@ module.exports = grammar({
     // parsed by `block_expr`, not here.
     stmt: $ => choice(
       $.let_stmt,
+      $.defer_stmt,
       seq($.expr, ';'),
+    ),
+
+    defer_stmt: $ => seq(
+      'defer',
+      field('body', $.expr),
+      ';',
     ),
 
     let_stmt: $ => seq(

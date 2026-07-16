@@ -186,5 +186,9 @@ pub enum Stmt {
         init: Expr,
         span: Span,
     },
+    Defer {
+        body: Expr,
+        span: Span,
+    },
     Expr(Expr),
 }

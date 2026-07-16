@@ -185,3 +185,158 @@ at 3:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut i64
   hint: since the type is not Copy, try moving it instead using 'move'";
     assert_first_error(src, expected);
 }
+
+#[test]
+fn test_hll_defer_mutability() {
+    let src = "
+        fn f() {
+            let x = 1;
+            defer x = 2;
+        }
+    ";
+    let expected = "\
+at 4:19: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
+   |
+ 4 |             defer x = 2;
+   |                   ^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_type_check() {
+    let src = "
+        fn f() {
+            defer 42;
+        }
+    ";
+    let expected = "\
+at 3:19: [TC-AssignmentTypeMismatch] In function 'f': Type mismatch in assignment. LHS is unit, RHS is i64
+   |
+ 3 |             defer 42;
+   |                   ^^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_double_drop() {
+    let src = "
+        struct Box: Drop + Move { val: i64 }
+        fn f(b: Box) {
+            defer { let x = b; };
+            let y = b;
+        }
+    ";
+    let expected = "\
+at 4:29: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
+   |
+ 4 |             defer { let x = b; };
+   |                             ^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_use_after_move() {
+    let src = "
+        struct Box: Copy + Drop { val: i64 }
+        fn f(b: Box, out: &out Box) {
+            defer out.* = b;
+            let c = b;
+        }
+    ";
+    let expected = "\
+at 4:19: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
+   |
+ 4 |             defer out.* = b;
+   |                   ^^^^^^^^^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_ref_obligation_unfulfilled() {
+    let src = "
+        struct Box: Drop + Move { val: i64 }
+        fn f(r: &drop Box) {
+            let x = r.*;
+            defer r.* = Box { val: 5 };
+        }
+    ";
+    let expected = "\
+at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+   |
+ 5 |             defer r.* = Box { val: 5 };
+   |                   ^^^^^^^^^^^^^^^^^^^^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_loan_conflict() {
+    let src = "
+        fn f() {
+            let mut x = 1;
+            let r = &x;
+            defer { let y = r.*; };
+            x = 2;
+        }
+    ";
+    let expected = "\
+at 6:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
+   |
+ 6 |             x = 2;
+   |             ^^^^^
+  = note: borrow of 'x' occurs here
+   |
+ 4 |             let r = &x;
+   |                     ^^
+  hint: the borrow of 'r' is active until its last use or explicit unborrow.";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_reject_break() {
+    let src = "
+        fn f() {
+            loop {
+                defer { break; };
+            };
+        }
+    ";
+    let expected = "\
+at 4:25: [HTC-ControlFlowInDefer] In function 'f': break is not allowed inside defer
+   |
+ 4 |                 defer { break; };
+   |                         ^^^^^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_reject_continue() {
+    let src = "
+        fn f() {
+            loop {
+                defer { continue; };
+            };
+        }
+    ";
+    let expected = "\
+at 4:25: [HTC-ControlFlowInDefer] In function 'f': continue is not allowed inside defer
+   |
+ 4 |                 defer { continue; };
+   |                         ^^^^^^^^";
+    assert_first_error(src, expected);
+}
+
+#[test]
+fn test_hll_defer_reject_return() {
+    let src = "
+        fn f() {
+            defer { return; };
+        }
+    ";
+    let expected = "\
+at 3:21: [HTC-ControlFlowInDefer] In function 'f': return is not allowed inside defer
+   |
+ 3 |             defer { return; };
+   |                     ^^^^^^";
+    assert_first_error(src, expected);
+}
+

@@ -25,6 +25,23 @@ impl From<HllLoweringCode> for DiagCode {
     }
 }
 
+fn lookup_type<'a>(
+    expr: &hll::Expr,
+    types: &'a HashMap<*const hll::Expr, hll::Type>,
+) -> Option<&'a hll::Type> {
+    if let Some(ty) = types.get(&(expr as *const hll::Expr)) {
+        return Some(ty);
+    }
+    for (ptr, ty) in types {
+        unsafe {
+            if (**ptr).span == expr.span {
+                return Some(ty);
+            }
+        }
+    }
+    None
+}
+
 /// Run HLL → MIR lowering. Any error is treated as an internal compiler
 /// error and pushed into `d.internal_errors`; the caller decides
 /// whether to continue.
@@ -46,6 +63,11 @@ pub fn run_lowering(
     }
 }
 
+struct Scope {
+    defers: Vec<hll::Expr>,
+    is_loop: bool,
+}
+
 struct LowerCtx {
     locals: Vec<mir::Local>,
     blocks: Vec<mir::BasicBlock>,
@@ -54,6 +76,7 @@ struct LowerCtx {
     temp_counter: usize,
     block_counter: usize,
     loop_stack: Vec<(String, String, mir::Place)>, // (start_label, end_label, dest_place)
+    scopes: Vec<Scope>,
     functions: HashMap<String, hll::FnDecl>,
     enums: HashMap<String, hll::EnumDecl>,
 }
@@ -81,9 +104,40 @@ impl LowerCtx {
             temp_counter: 0,
             block_counter: 0,
             loop_stack: Vec::new(),
+            scopes: Vec::new(),
             functions,
             enums,
         }
+    }
+
+    fn push_scope(&mut self, is_loop: bool) {
+        self.scopes.push(Scope {
+            defers: Vec::new(),
+            is_loop,
+        });
+    }
+
+    fn pop_and_emit_defers(&mut self, types: &HashMap<*const hll::Expr, hll::Type>) -> Result<(), String> {
+        let scope = self.scopes.pop().ok_or("scope stack underflow")?;
+        for defer_expr in scope.defers.into_iter().rev() {
+            let unit_temp = self.fresh_temp(mir::Type::Unit, defer_expr.span);
+            lower_expr_into(self, &defer_expr, &unit_temp, types)?;
+        }
+        Ok(())
+    }
+
+    fn emit_defers_to_depth(&mut self, depth: usize, types: &HashMap<*const hll::Expr, hll::Type>) -> Result<(), String> {
+        let mut defers = Vec::new();
+        for i in (depth..self.scopes.len()).rev() {
+            for defer_expr in self.scopes[i].defers.iter().rev() {
+                defers.push(defer_expr.clone());
+            }
+        }
+        for defer_expr in defers {
+            let unit_temp = self.fresh_temp(mir::Type::Unit, defer_expr.span);
+            lower_expr_into(self, &defer_expr, &unit_temp, types)?;
+        }
+        Ok(())
     }
 
     fn fresh_temp(&mut self, ty: mir::Type, span: mir::Span) -> mir::Place {
@@ -190,7 +244,7 @@ fn lower_expr_to_place(
         }
         _ => {
             // Allocate a temporary and evaluate the expression into it
-            let hll_ty = types.get(&(expr as *const hll::Expr)).ok_or_else(|| {
+            let hll_ty = lookup_type(expr, types).ok_or_else(|| {
                 format!("missing type annotation for expression at {:?}", expr.span)
             })?;
             let mir_ty = lower_type(hll_ty);
@@ -213,7 +267,7 @@ fn lower_expr_to_operand(
                     let ty = if let Some(s) = suffix {
                         *s
                     } else {
-                        match types.get(&(expr as *const hll::Expr)) {
+                        match lookup_type(expr, types) {
                             Some(hll::Type::Int(int_ty)) => *int_ty,
                             _ => mir::IntTy::I64,
                         }
@@ -227,7 +281,7 @@ fn lower_expr_to_operand(
                     let ty = if let Some(s) = suffix {
                         *s
                     } else {
-                        match types.get(&(expr as *const hll::Expr)) {
+                        match lookup_type(expr, types) {
                             Some(hll::Type::Float(float_ty)) => *float_ty,
                             _ => mir::FloatTy::F64,
                         }
@@ -248,7 +302,7 @@ fn lower_expr_to_operand(
         | hll::ExprKind::Deref(_)
         | hll::ExprKind::ArrayIndex(_, _) => {
             let place = lower_expr_to_place(ctx, expr, types)?;
-            let hll_ty = types.get(&(expr as *const hll::Expr)).ok_or_else(|| {
+            let hll_ty = lookup_type(expr, types).ok_or_else(|| {
                 format!("missing type annotation for variable/projection at {:?}", expr.span)
             })?;
             let mir_ty = lower_type(hll_ty);
@@ -317,7 +371,7 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Binary(lhs, op, rhs) => {
-            let lhs_hll_ty = types.get(&(lhs.as_ref() as *const hll::Expr)).ok_or_else(|| {
+            let lhs_hll_ty = lookup_type(lhs, types).ok_or_else(|| {
                 format!("missing type annotation for binary LHS at {:?}", lhs.span)
             })?;
             let mir_ty = lower_type(lhs_hll_ty);
@@ -350,7 +404,7 @@ fn lower_expr_into(
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
             let mut arg_ops = vec![lhs_op, rhs_op];
             
-            let hll_ret_ty = types.get(&(expr as *const hll::Expr)).ok_or_else(|| {
+            let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 format!("missing type annotation for binary expression at {:?}", expr.span)
             })?;
             
@@ -383,7 +437,7 @@ fn lower_expr_into(
             };
 
             // Check if call has return value (if dest type is not Unit)
-            let hll_ret_ty = types.get(&(expr as *const hll::Expr)).ok_or_else(|| {
+            let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 format!("missing type annotation for call at {:?}", expr.span)
             })?;
 
@@ -424,10 +478,11 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Block(stmts, last_expr) => {
+            ctx.push_scope(false);
             for stmt in stmts {
                 match stmt {
                     hll::Stmt::Let { is_mut: _, name, ty: _, init, span } => {
-                        let hll_ty = types.get(&(init as *const hll::Expr)).ok_or_else(|| {
+                        let hll_ty = lookup_type(init, types).ok_or_else(|| {
                             format!("missing type annotation for let init at {:?}", init.span)
                         })?;
                         let mir_ty = lower_type(hll_ty);
@@ -438,6 +493,9 @@ fn lower_expr_into(
                         });
                         let var_place = mir::Place::Var(name.clone());
                         lower_expr_into(ctx, init, &var_place, types)?;
+                    }
+                    hll::Stmt::Defer { body, span: _ } => {
+                        ctx.scopes.last_mut().unwrap().defers.push(body.clone());
                     }
                     hll::Stmt::Expr(e) => {
                         // Value is ignored, lower into a dummy unit temporary
@@ -454,6 +512,7 @@ fn lower_expr_into(
                     expr.span,
                 );
             }
+            ctx.pop_and_emit_defers(types)?;
             Ok(())
         }
         hll::ExprKind::If(cond, true_block, false_block) => {
@@ -492,11 +551,13 @@ fn lower_expr_into(
             ctx.terminate_block(mir::Terminator::Goto(start_label.clone()), expr.span);
 
             ctx.loop_stack.push((start_label.clone(), end_label.clone(), dest.clone()));
+            ctx.push_scope(true);
             ctx.start_block(start_label);
             
             // Loop body value is discarded
             let dummy = ctx.fresh_temp(mir::Type::Unit, body.span);
             lower_expr_into(ctx, body, &dummy, types)?;
+            ctx.scopes.pop();
             ctx.terminate_block(mir::Terminator::Goto(ctx.loop_stack.last().unwrap().0.clone()), expr.span);
 
             ctx.loop_stack.pop();
@@ -513,6 +574,11 @@ fn lower_expr_into(
                 lower_expr_into(ctx, val, &dest_place, types)?;
             }
 
+            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(|| {
+                format!("at {}: break outside of loop", expr.span)
+            })?;
+            ctx.emit_defers_to_depth(loop_depth, types)?;
+
             ctx.terminate_block(mir::Terminator::Goto(end_label), expr.span);
             Ok(())
         }
@@ -520,6 +586,11 @@ fn lower_expr_into(
             let (start_label, _, _) = ctx.loop_stack.last().ok_or_else(|| {
                 format!("at {}: continue outside of loop", expr.span)
             })?.clone();
+
+            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(|| {
+                format!("at {}: continue outside of loop", expr.span)
+            })?;
+            ctx.emit_defers_to_depth(loop_depth, types)?;
 
             ctx.terminate_block(mir::Terminator::Goto(start_label), expr.span);
             Ok(())
@@ -530,6 +601,7 @@ fn lower_expr_into(
                 let ret_place = mir::Place::Deref(Box::new(mir::Place::Var("$return".to_string())));
                 lower_expr_into(ctx, val, &ret_place, types)?;
             }
+            ctx.emit_defers_to_depth(0, types)?;
             ctx.terminate_block(mir::Terminator::Return, expr.span);
             Ok(())
         }
@@ -561,7 +633,7 @@ fn lower_expr_into(
                 ctx.start_block(label.clone());
                 
                 if let Some(var_name) = bound_var {
-                    let target_hll_ty = types.get(&(&**target as *const hll::Expr)).ok_or_else(|| {
+                    let target_hll_ty = lookup_type(target, types).ok_or_else(|| {
                         format!("missing type annotation for match target")
                     })?;
                     let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name) = target_hll_ty {
@@ -1200,6 +1272,169 @@ mod tests {
             "
             struct Foo: Move {
               x: i64
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_defer_lifo() {
+        let source = "
+            fn f(res: &out i64) {
+                let mut x = 1;
+                {
+                    defer x = 10;
+                    defer x = 20;
+                };
+                res.* = x;
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn f(res: &out i64) {
+              _temp_0: unit;
+              x: i64;
+              _temp_1: unit;
+              _temp_2: unit;
+              _temp_3: unit;
+              _temp_4: unit;
+              entry:
+                x = 1;
+                _temp_1 = unit;
+                x = 20;
+                _temp_2 = unit;
+                x = 10;
+                _temp_3 = unit;
+                res.* = copy x;
+                _temp_4 = unit;
+                _temp_0 = unit;
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_defer_return() {
+        let source = "
+            fn f(x: &mut i64) -> i64 {
+                defer x.* = 100;
+                x.*
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn f(x: &mut i64, $return: &out i64) {
+              _temp_0: unit;
+              entry:
+                $return.* = copy x.*;
+                x.* = 100;
+                _temp_0 = unit;
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_defer_nested() {
+        let source = "
+            fn f(res: &out i64) {
+                let mut x = 1;
+                defer {
+                    x = 10;
+                    defer x = 20;
+                    x = 30;
+                };
+                res.* = x;
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn f(res: &out i64) {
+              _temp_0: unit;
+              x: i64;
+              _temp_1: unit;
+              _temp_2: unit;
+              _temp_3: unit;
+              _temp_4: unit;
+              _temp_5: unit;
+              entry:
+                x = 1;
+                res.* = copy x;
+                _temp_1 = unit;
+                _temp_0 = unit;
+                x = 10;
+                _temp_3 = unit;
+                x = 30;
+                _temp_4 = unit;
+                _temp_2 = unit;
+                x = 20;
+                _temp_5 = unit;
+                return
+            }
+            "
+        );
+    }
+
+    #[test]
+    fn test_lower_defer_loop_break_continue() {
+        let source = "
+            fn f(res: &out i64) {
+                let mut x = 0;
+                loop {
+                    defer x = (x + 1);
+                    if true {
+                        break;
+                    }
+                };
+                res.* = x;
+            }
+        ";
+        assert_lower_eq(
+            source,
+            "
+            fn f(res: &out i64) {
+              _temp_0: unit;
+              x: i64;
+              _temp_1: unit;
+              _temp_2: unit;
+              _temp_3: unit;
+              _temp_4: unit;
+              _temp_5: i64;
+              _temp_6: &out i64;
+              _temp_7: unit;
+              _temp_8: i64;
+              _temp_9: &out i64;
+              _temp_10: unit;
+              entry:
+                x = 0;
+                goto loop_start_0
+              loop_start_0:
+                branch(true) [true: if_true_2, false: if_false_3]
+              if_true_2:
+                _temp_6 = &out _temp_5;
+                call $i64_add(copy x, 1, move _temp_6);
+                x = move _temp_5;
+                _temp_4 = unit;
+                goto loop_end_1
+              if_false_3:
+                _temp_2 = unit;
+                goto if_merge_4
+              if_merge_4:
+                _temp_9 = &out _temp_8;
+                call $i64_add(copy x, 1, move _temp_9);
+                x = move _temp_8;
+                _temp_7 = unit;
+                goto loop_start_0
+              loop_end_1:
+                res.* = copy x;
+                _temp_10 = unit;
+                _temp_0 = unit;
+                return
             }
             "
         );
