@@ -898,17 +898,6 @@ independently-shippable pieces.
   originating `Span`, and push through `d` at each error site instead
   of bubbling a string. Independent of the pointer-map change; medium
   PR (~200 lines of signature churn).
-- **`hll::parser::is_expr_kind` is incomplete
-  (src/hll/parser.rs:880-901).** Missing 9 expression node kinds
-  (`assign_expr`, `borrow_expr`, `raw_borrow_expr`, `deref_expr`,
-  `downcast_expr`, `call_expr`, `index_expr`, `match_expr`,
-  `field_access`). Consequence: any block whose trailing expression is
-  one of these — e.g. `{ a + b }`, `{ foo() }`, `{ x.f }`, `{ &x }` —
-  loses the tail at `map_block` (line 710) and evaluates as unit.
-  Same drop hits `break`/`return` value extraction (lines 503, 510)
-  and array-literal element scanning (line 520). Single tiny PR;
-  most of the effort is writing one regression test per missing
-  kind.
 - **Replace lowering `.unwrap()` on `ctx.scopes.last_mut()`
   (src/hll/lowering.rs:498) with proper error propagation.** Lowering
   should never panic. Trivial fix; roll into the `Result<_, String>`

@@ -878,26 +878,7 @@ impl Parser {
     /// children when iterating for the "trailing expression" of a
     /// block or the "value" of `break`/`return`.
     fn is_expr_kind(&self, node: &Node) -> bool {
-        matches!(
-            node.kind(),
-            "expr"
-                | "int_lit"
-                | "float_lit"
-                | "bool_lit"
-                | "unit_lit"
-                | "identifier"
-                | "paren_expr"
-                | "block_expr"
-                | "if_expr"
-                | "loop_expr"
-                | "break_expr"
-                | "continue_expr"
-                | "return_expr"
-                | "struct_constr"
-                | "enum_constr"
-                | "array_lit"
-                | "binary_expr"
-        )
+        node.kind() == "expr"
     }
 
     /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
@@ -1490,6 +1471,98 @@ mod tests {
         } else {
             panic!("Expected function declaration");
         }
+    }
+
+    // Helper: parse `fn f(...) { <stmts> <tail_source> }` and return the
+    // block's trailing expression, panicking if the tail is absent.
+    fn block_tail(source: &str) -> Expr {
+        let program = Parser::new(source).parse().unwrap();
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!("expected fn");
+        };
+        let ExprKind::Block(_, tail) = &f.body.kind else {
+            panic!("expected block body");
+        };
+        *tail
+            .clone()
+            .expect("expected block trailing expression, got unit tail")
+    }
+
+    #[test]
+    fn block_tail_binary_expr() {
+        // `{ a + b }` — trailing binary op must be captured as tail.
+        let e = block_tail("fn f(a: i64, b: i64) -> i64 { a + b }");
+        assert!(matches!(e.kind, ExprKind::Binary(_, _, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_call_expr() {
+        let e = block_tail("fn f() -> i64 { g() }");
+        assert!(matches!(e.kind, ExprKind::Call(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_field_access() {
+        let e = block_tail("fn f(p: Point) -> i64 { p.x }");
+        assert!(matches!(e.kind, ExprKind::FieldAccess(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_deref_expr() {
+        let e = block_tail("fn f(p: *i64) -> i64 { p.* }");
+        assert!(matches!(e.kind, ExprKind::Deref(_)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_downcast_expr() {
+        let e = block_tail("fn f(o: Option) -> Option { o as Some }");
+        assert!(matches!(e.kind, ExprKind::Downcast(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_index_expr() {
+        let e = block_tail("fn f(a: [i64; 4]) -> i64 { a[0] }");
+        assert!(matches!(e.kind, ExprKind::ArrayIndex(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_match_expr() {
+        let e = block_tail(
+            "fn f(o: Option) -> i64 { o match { Some(x) => 1, None => 0 } }",
+        );
+        assert!(matches!(e.kind, ExprKind::Match(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_borrow_expr() {
+        let e = block_tail("fn f(x: i64) -> &i64 { &x }");
+        assert!(matches!(e.kind, ExprKind::Borrow(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_raw_borrow_expr() {
+        let e = block_tail("fn f(x: i64) -> *i64 { &raw x }");
+        assert!(matches!(e.kind, ExprKind::RawBorrow(_)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_assign_expr() {
+        // `{ x = 1 }` — assignment evaluates to unit but must still be
+        // captured as the tail expression, not silently dropped.
+        let e = block_tail("fn f(x: i64) { let mut y = x; y = 1 }");
+        assert!(matches!(e.kind, ExprKind::Assign(_, _)), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_int_literal() {
+        let e = block_tail("fn f() -> i64 { 42 }");
+        assert!(matches!(e.kind, ExprKind::Literal(Literal::Int(_, _))), "got {:?}", e.kind);
+    }
+
+    #[test]
+    fn block_tail_identifier() {
+        let e = block_tail("fn f(x: i64) -> i64 { x }");
+        assert!(matches!(e.kind, ExprKind::Variable(_)), "got {:?}", e.kind);
     }
 }
 
