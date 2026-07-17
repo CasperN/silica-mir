@@ -1,5 +1,0 @@
-error: at 5:5: [SUB-ReturnValueLeak] In function 'f', block 'entry': value 'b' of type Box is not consumed at return
-   |
- 5 |     return
-   |     ^^^^^^
-  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

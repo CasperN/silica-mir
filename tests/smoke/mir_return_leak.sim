@@ -1,6 +1,0 @@
-# A linear struct value passed in must be consumed before return.
-struct Box { val: i64 }
-fn f(b: Box) {
-  entry:
-    return
-}

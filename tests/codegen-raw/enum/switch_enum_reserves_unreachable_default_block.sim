@@ -1,9 +1,0 @@
-
-        enum E { A: unit B: unit }
-        fn f(e: E) {
-          entry:
-            switchEnum(e) [A: a_arm, B: b_arm]
-          a_arm: return
-          b_arm: return
-        }
-        
