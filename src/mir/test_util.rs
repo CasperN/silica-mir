@@ -28,21 +28,25 @@ fn extract_mode() -> bool {
 static EXTRACT_COUNTERS: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
 
 /// Write `src` to a fixture file derived from the current test's
-/// module path + name. `has_errors` selects `errors/` vs `elab/`.
+/// module path + name. `has_errors` is used only to strip the
+/// matching `_ok`/`_error` suffix from the test name.
 /// No-op when EXTRACT_FIXTURES is unset.
 pub(crate) fn maybe_write_fixture(src: &str, has_errors: bool) {
     maybe_write_fixture_ext(src, has_errors, "sim")
 }
 
 pub(crate) fn maybe_write_fixture_ext(src: &str, has_errors: bool, ext: &str) {
-    let stage = if has_errors { "errors" } else { "elab" };
-    maybe_write_fixture_stage(src, stage, ext)
+    maybe_write_fixture_impl(src, None, has_errors, ext)
 }
 
-/// Explicit-stage variant. Used by codegen tests to write to
-/// `tests/codegen-raw/` regardless of diagnostic content, since
-/// they bypass the checker pipeline entirely.
+/// Codegen extraction: writes to `tests/codegen-raw/` regardless of
+/// diagnostic content, since these tests bypass the checker pipeline
+/// entirely.
 pub(crate) fn maybe_write_fixture_stage(src: &str, stage: &str, ext: &str) {
+    maybe_write_fixture_impl(src, Some(stage), false, ext)
+}
+
+fn maybe_write_fixture_impl(src: &str, forced_subdir: Option<&str>, has_errors: bool, ext: &str) {
     if !extract_mode() {
         return;
     }
@@ -51,7 +55,7 @@ pub(crate) fn maybe_write_fixture_stage(src: &str, stage: &str, ext: &str) {
         .map(|s| s.to_string())
         .unwrap_or_else(|| "unknown".to_string());
 
-    let (dir_rel, stem) = derive_fixture_path(&test_name, stage);
+    let (dir_rel, stem) = derive_fixture_path(&test_name, forced_subdir, has_errors);
 
     let counters = EXTRACT_COUNTERS.get_or_init(|| Mutex::new(HashMap::new()));
     let call_index = {
@@ -67,10 +71,11 @@ pub(crate) fn maybe_write_fixture_stage(src: &str, stage: &str, ext: &str) {
         format!("{}_call{}", stem, call_index)
     };
 
-    let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("tests")
-        .join(stage)
-        .join(&dir_rel);
+    let mut base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests");
+    if let Some(sub) = forced_subdir {
+        base = base.join(sub);
+    }
+    base = base.join(&dir_rel);
     if let Err(e) = std::fs::create_dir_all(&base) {
         eprintln!("EXTRACT: create_dir_all({}) failed: {}", base.display(), e);
         return;
@@ -84,13 +89,14 @@ pub(crate) fn maybe_write_fixture_stage(src: &str, stage: &str, ext: &str) {
 /// Derive `(dir_rel, stem)` from a fully-qualified test path such as
 /// `silica_mir::mir::init_state::foo_tests::bar_ok`. Rules:
 /// * Drop crate prefix (`silica_mir`).
-/// * Drop leading `mir::` — fixtures live directly under `tests/{stage}/`.
-/// * For `codegen-raw` stage, also drop leading `codegen::` — the
-///   stage dir already carries that context.
+/// * Drop leading `mir::` — fixtures live directly under `tests/`.
+/// * When `forced_subdir` is `"codegen-raw"`, also drop leading
+///   `codegen::` (the subdir already carries that context).
 /// * Strip `_tests` suffix from module names; drop bare `tests` (inline
 ///   `mod tests` blocks).
-/// * Strip trailing `_ok` (elab) or `_error` (errors) from the test fn.
-fn derive_fixture_path(test_name: &str, stage: &str) -> (String, String) {
+/// * Strip trailing `_ok` (clean) or `_error` (has errors) from the
+///   test fn.
+fn derive_fixture_path(test_name: &str, forced_subdir: Option<&str>, has_errors: bool) -> (String, String) {
     let mut parts: Vec<&str> = test_name.split("::").collect();
     if parts.first() == Some(&"silica_mir") {
         parts.remove(0);
@@ -98,11 +104,11 @@ fn derive_fixture_path(test_name: &str, stage: &str) -> (String, String) {
     if parts.first() == Some(&"mir") {
         parts.remove(0);
     }
-    if stage == "codegen-raw" && parts.first() == Some(&"codegen") {
+    if forced_subdir == Some("codegen-raw") && parts.first() == Some(&"codegen") {
         parts.remove(0);
     }
     let last = parts.pop().unwrap_or("unknown").to_string();
-    let suffix = if stage == "elab" { "_ok" } else { "_error" };
+    let suffix = if has_errors { "_error" } else { "_ok" };
     let stem = last.strip_suffix(suffix).unwrap_or(&last).to_string();
 
     let dir_parts: Vec<String> = parts
