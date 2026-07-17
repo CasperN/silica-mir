@@ -1,0 +1,51 @@
+# HLL counterpart to `pointee_obligation_fulfilled.sim` — the same
+# invariant, exercised through the HLL surface so the lowering path
+# also participates. Scope is deliberately smaller: a representative
+# subset of the (ref kind x container) matrix, no generics (the HLL
+# doesn't lower those yet).
+
+struct P: Copy + Drop { x: i64, y: i64 }
+
+struct Box: Drop + Move { val: i64 }
+
+# &out: pointee ends Init.
+
+fn out_scalar(r: &out i64) {
+  r.* = 42;
+}
+
+# Whole-value struct write through &out (moved from a param).
+fn out_struct_whole(src: P, r: &out P) {
+  r.* = src;
+}
+
+# Field-by-field init: writing each field discharges the &out
+# obligation once all fields land (Partial folds to Init).
+fn out_struct_field_by_field(r: &out P) {
+  r.*.x = 1;
+  r.*.y = 2;
+}
+
+# Array counterpart: slot-by-slot init folds to whole-array Init.
+fn out_array_slot_by_slot(r: &out [i64; 3]) {
+  r.*[0] = 1;
+  r.*[1] = 2;
+  r.*[2] = 3;
+}
+
+# &drop: pointee ends Uninit.
+#
+# Uses `Box: Drop + Move` so `let x = r.*` moves (not copies), which
+# is what discharges the (Init, Uninit) obligation. `x` is Drop and
+# gets consumed by HLL scope-exit lowering.
+fn drop_box(r: &drop Box) {
+  let x = r.*;
+}
+
+# &mut: pointee stays Init (no-touch baseline).
+fn mut_scalar(r: &mut i64) {
+}
+
+# &uninit: pointee stays Uninit (no-touch baseline).
+fn uninit_scalar(r: &uninit i64) {
+}

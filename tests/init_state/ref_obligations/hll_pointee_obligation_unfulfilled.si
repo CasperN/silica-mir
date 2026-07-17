@@ -1,0 +1,35 @@
+# HLL counterpart to `pointee_obligation_unfulfilled.sim` — the same
+# invariant, exercised through the HLL surface. Every fn fires
+# INIT-RefObligationUnfulfilled at return.
+
+struct P: Copy + Drop { x: i64, y: i64 }
+
+struct Box: Drop + Move { val: i64 }
+
+# &out never written.
+fn out_never(r: &out i64) {
+}
+
+# &out struct with only one field written; pointee ends Partial.
+fn out_struct_partial(r: &out P) {
+  r.*.x = 1;
+}
+
+# &drop pointee left initialized.
+fn drop_untouched(r: &drop Box) {
+}
+
+# &mut moved-out with no writeback; pointee ends Uninit.
+fn mut_moved_no_writeback(r: &mut Box) {
+  let x = r.*;
+}
+
+# &uninit written into as a whole.
+fn uninit_written(r: &uninit i64) {
+  r.* = 42;
+}
+
+# &uninit struct with one field written; pointee ends Partial.
+fn uninit_struct_partial(r: &uninit P) {
+  r.*.x = 1;
+}

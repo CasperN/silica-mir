@@ -1,0 +1,48 @@
+error: at 10:27: [INIT-RefObligationUnfulfilled] In function 'out_never': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 10 | fn out_never(r: &out i64) {
+    |                           ^
+  = note: reference declared here
+    |
+ 10 | fn out_never(r: &out i64) {
+    |              ^^^^^^^^^^^
+error: at 15:3: [INIT-RefObligationUnfulfilled] In function 'out_struct_partial': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
+    |
+ 15 |   r.*.x = 1;
+    |   ^^^^^^^^^
+  = note: reference declared here
+    |
+ 14 | fn out_struct_partial(r: &out P) {
+    |                       ^^^^^^^^^
+error: at 19:33: [INIT-RefObligationUnfulfilled] In function 'drop_untouched': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 19 | fn drop_untouched(r: &drop Box) {
+    |                                 ^
+  = note: reference declared here
+    |
+ 19 | fn drop_untouched(r: &drop Box) {
+    |                   ^^^^^^^^^^^^
+error: at 23:40: [INIT-RefObligationUnfulfilled] In function 'mut_moved_no_writeback': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 23 | fn mut_moved_no_writeback(r: &mut Box) {
+    |                                        ^
+  = note: reference declared here
+    |
+ 23 | fn mut_moved_no_writeback(r: &mut Box) {
+    |                           ^^^^^^^^^^^
+error: at 29:3: [INIT-RefObligationUnfulfilled] In function 'uninit_written': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 29 |   r.* = 42;
+    |   ^^^^^^^^
+  = note: reference declared here
+    |
+ 28 | fn uninit_written(r: &uninit i64) {
+    |                   ^^^^^^^^^^^^^^
+error: at 34:3: [INIT-RefObligationUnfulfilled] In function 'uninit_struct_partial': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
+    |
+ 34 |   r.*.x = 1;
+    |   ^^^^^^^^^
+  = note: reference declared here
+    |
+ 33 | fn uninit_struct_partial(r: &uninit P) {
+    |                          ^^^^^^^^^^^^
