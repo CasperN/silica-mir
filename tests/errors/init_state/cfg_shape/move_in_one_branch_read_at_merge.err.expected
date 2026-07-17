@@ -1,0 +1,4 @@
+error: at 14:5: [INIT-UseInconsistent] In function 'f', block 'merge': variable 'x' may be used before initialization or after move (state inconsistent across paths)
+    |
+ 14 |     call use_num(copy x);
+    |     ^^^^^^^^^^^^^^^^^^^^

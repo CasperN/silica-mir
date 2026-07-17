@@ -1,0 +1,4 @@
+error: at 4:26: [HMC-BorrowImmutableAsMut] In function 'f': cannot borrow immutable binding 'x' as mutable
+   |
+ 4 |             let r = &mut x;
+   |                          ^

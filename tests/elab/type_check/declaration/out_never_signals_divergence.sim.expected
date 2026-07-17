@@ -1,0 +1,4 @@
+fn f(r: &out never) {
+  entry:
+    abort
+}

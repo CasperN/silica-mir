@@ -1,0 +1,19 @@
+fn f(x: i32, out: &out i32) {
+  leading: i32;
+  pop: i32;
+  pop_out: &out i32;
+  clz_out: &out i32;
+  add_out: &out i32;
+  entry:
+    pop_out = &out pop;
+    call $i32_popcount(copy x, move pop_out);
+    clz_out = &out leading;
+    call $i32_clz(copy x, move clz_out);
+    add_out = &out out.*;
+    call $i32_add(copy pop, copy leading, move add_out);
+    unborrow out;
+    drop pop;
+    drop leading;
+    drop x;
+    return
+}

@@ -1,0 +1,13 @@
+
+        struct P: Copy + Drop { a: i64 b: i64 }
+        extern fn sink(r: &mut i64);
+        fn f(p: P) {
+          r: &mut i64;
+          y: i64;
+          entry:
+            r = &mut p.a;
+            y = copy p.a;
+            call sink(move r);
+            return
+        }
+        

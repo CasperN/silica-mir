@@ -1,0 +1,4 @@
+error: at 4:13: [TC-TerminatorUndefinedTarget] In function 'f', block 'entry': branch true target undefined block 'nowhere'
+   |
+ 4 |             branch(copy b) [true: nowhere, false: no]
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

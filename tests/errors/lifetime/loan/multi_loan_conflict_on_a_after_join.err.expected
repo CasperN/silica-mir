@@ -1,0 +1,5 @@
+error: at 14:13: [LT-LoanConflict] In function 'f', block 'merge': cannot write to 'a': already borrowed by 'r'
+    |
+ 14 |             a = 1;
+    |             ^^^^^
+  hint: the borrow of 'r' is active until its last use or explicit unborrow.

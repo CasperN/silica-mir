@@ -1,0 +1,8 @@
+error: at 9:13: [TC-DowncastOfNonEnum] In function 'f', block 'v_arm': Cannot downcast non-enum type &mut E
+   |
+ 9 |             r = &mut e as V .*;
+   |             ^^^^^^^^^^^^^^^^^^
+error: at 9:13: [INIT-ReferenceStateUnknown] In function 'f', block 'v_arm': cannot create &mut of '*e as V': parent reference 'e as V' is not bound here
+   |
+ 9 |             r = &mut e as V .*;
+   |             ^^^^^^^^^^^^^^^^^^

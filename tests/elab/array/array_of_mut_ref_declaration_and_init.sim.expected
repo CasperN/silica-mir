@@ -1,0 +1,15 @@
+extern fn take(a: [&mut i64; 2]);
+
+fn f(x: i64, y: i64) {
+  rx: &mut i64;
+  ry: &mut i64;
+  a: [&mut i64; 2];
+  entry:
+    rx = &mut x;
+    ry = &mut y;
+    a = [move rx, move ry];
+    call take(move a);
+    drop y;
+    drop x;
+    return
+}

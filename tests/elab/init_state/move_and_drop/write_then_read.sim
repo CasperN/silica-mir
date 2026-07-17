@@ -1,0 +1,10 @@
+
+        fn f() {
+          x: i64;
+          y: i64;
+          entry:
+            x = 42;
+            y = copy x;
+            return
+        }
+        

@@ -1,0 +1,9 @@
+error: at 10:13: [LT-LoanConflict] In function 'f', block 'entry': cannot write to 'x': already borrowed by 'w as W'
+    |
+ 10 |             x = 7;
+    |             ^^^^^
+  = note: borrow of 'x' occurs here
+    |
+  8 |             r = &mut x;
+    |             ^^^^^^^^^^
+  hint: the borrow of 'w as W' is active until its last use or explicit unborrow.

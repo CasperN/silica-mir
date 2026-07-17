@@ -1,0 +1,4 @@
+error: at 4:13: [TC-DuplicateLocalName] Duplicate variable name 'x' in locals/parameters of function 'f'
+   |
+ 4 |             x: i64;
+   |             ^^^^^^^

@@ -1,0 +1,4 @@
+error: at 6:13: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create &mut of '*r': pointee must be initialized at borrow, but is uninitialized
+   |
+ 6 |             s = &mut r.*;
+   |             ^^^^^^^^^^^^

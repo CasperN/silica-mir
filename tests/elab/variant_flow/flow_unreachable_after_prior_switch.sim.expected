@@ -1,0 +1,19 @@
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+fn f(o: Option) {
+  entry:
+    switchEnum(o) [None: n_arm, Some: s_arm]
+  n_arm:
+    drop o;
+    return
+  s_arm:
+    switchEnum(o) [None: nested_dead, Some: s_body]
+  s_body:
+    drop o;
+    return
+  nested_dead:
+    unreachable
+}

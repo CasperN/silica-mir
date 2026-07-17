@@ -1,0 +1,7 @@
+fn f() {
+  s: [u8; 3];
+  entry:
+    s = b"\xFF\0~";
+    drop s;
+    return
+}

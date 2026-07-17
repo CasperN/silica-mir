@@ -1,0 +1,13 @@
+fn f(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    unborrow r;
+    drop x;
+    x = 42;
+    drop y;
+    drop x;
+    return
+}

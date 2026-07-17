@@ -1,0 +1,9 @@
+error: at 8:13: [SUB-CopyOfNonCopy] In function 'f', block 'entry': cannot copy non-Copy type P
+   |
+ 8 |             q = copy p;
+   |             ^^^^^^^^^^
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 8:13: [INIT-UsePartiallyInit] In function 'f', block 'entry': variable 'p' is not fully initialized here
+   |
+ 8 |             q = copy p;
+   |             ^^^^^^^^^^

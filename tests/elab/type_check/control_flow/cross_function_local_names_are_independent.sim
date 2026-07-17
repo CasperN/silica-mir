@@ -1,0 +1,14 @@
+
+        fn f() {
+            x: i64;
+            entry:
+            x = 42;
+            return
+        }
+        fn g() {
+            x: i64;
+            entry:
+            x = 7;
+            return
+        }
+        

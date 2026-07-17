@@ -1,0 +1,9 @@
+error: at 13:13: [LT-LoanConflict] In function 'f', block 's_arm': cannot read 'o as Some': already borrowed by 'r'
+    |
+ 13 |             y = copy o as Some;
+    |             ^^^^^^^^^^^^^^^^^^
+  = note: borrow of 'o as Some' occurs here
+    |
+ 12 |             r = &mut o as Some;
+    |             ^^^^^^^^^^^^^^^^^^
+  hint: the borrow of 'r' is active until its last use or explicit unborrow.

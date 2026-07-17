@@ -1,0 +1,23 @@
+# Borrow taken outside both loops, used through the inner loop,
+# consumed after both. Confirms loan persists through nested
+# back-edges without accumulating.
+extern fn sink(r: &mut i64);
+extern fn use_num(n: i64);
+fn f(x: i64, a: bool, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto outer_head
+  outer_head:
+    branch(copy a) [true: inner_head, false: outer_done]
+  inner_head:
+    branch(copy b) [true: inner_body, false: outer_back]
+  inner_body:
+    call use_num(copy r.*);
+    goto inner_head
+  outer_back:
+    goto outer_head
+  outer_done:
+    call sink(move r);
+    return
+}

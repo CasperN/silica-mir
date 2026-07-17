@@ -1,0 +1,10 @@
+fn f(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    drop r;
+    drop x;
+    x = 42;
+    drop x;
+    return
+}

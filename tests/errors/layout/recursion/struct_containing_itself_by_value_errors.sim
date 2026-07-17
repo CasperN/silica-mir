@@ -1,0 +1,4 @@
+
+        struct S { s: S }
+        fn f() { entry: return }
+        

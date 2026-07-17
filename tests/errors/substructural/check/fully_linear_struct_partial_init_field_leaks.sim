@@ -1,0 +1,10 @@
+
+        struct L: Move { r: &out i64 }
+        struct Pair: Move { a: L b: L }
+        fn f(src: Pair) {
+            p: Pair;
+            entry:
+            p.a = move src.a;
+            return
+        }
+        

@@ -1,0 +1,4 @@
+error: at 9:13: [TC-ArrayIndexNotInteger] In function 'f', block 'entry': Array index must be an integer, got bool
+   |
+ 9 |             x = copy a[copy b];
+   |             ^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,4 @@
+error: at 2:27: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+   |
+ 2 |         fn f(r: &out i64) {
+   |                           ^

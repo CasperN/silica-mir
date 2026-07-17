@@ -1,0 +1,4 @@
+error: at 1:14: [TC-InvalidDeclaredType] In function 'f', parameter '$return' must be of type '&out ReturnType', found &mut i64
+   |
+ 1 | fn f(x: i64, $return: &mut i64) { entry: return }
+   |              ^^^^^^^^^^^^^^^^^

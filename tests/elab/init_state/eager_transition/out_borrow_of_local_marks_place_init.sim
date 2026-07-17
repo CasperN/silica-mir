@@ -1,0 +1,11 @@
+
+        extern fn init(r: &out i64);
+        fn f() {
+          x: i64;
+          r: &out i64;
+          entry:
+            r = &out x;
+            call init(move r);
+            return
+        }
+        

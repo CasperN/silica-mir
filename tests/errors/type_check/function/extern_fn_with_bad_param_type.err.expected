@@ -1,0 +1,4 @@
+error: at 1:15: [TC-InvalidDeclaredType] In function 'foo', parameter 'x': Use of undeclared type 'Nope'
+   |
+ 1 | extern fn foo(x: Nope);
+   |               ^^^^^^^

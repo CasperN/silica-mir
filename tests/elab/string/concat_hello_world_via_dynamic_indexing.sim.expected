@@ -1,0 +1,61 @@
+fn f() {
+  hello: [u8; 5];
+  world: [u8; 5];
+  hello_world: [u8; 11];
+  i: u64;
+  cond: bool;
+  is_five: bool;
+  add_out: &out u64;
+  sub_out: &out u64;
+  lt_out: &out bool;
+  eq_out: &out bool;
+  src_idx: u64;
+  next_i: u64;
+  entry:
+    hello = b"hello";
+    world = b"world";
+    i = 0u64;
+    goto head
+  head:
+    lt_out = &out cond;
+    call $u64_lt(copy i, 11u64, move lt_out);
+    branch(copy cond) [true: body, false: done]
+  body:
+    drop cond;
+    lt_out = &out cond;
+    call $u64_lt(copy i, 5u64, move lt_out);
+    branch(copy cond) [true: from_hello, false: at_or_after_five]
+  from_hello:
+    drop cond;
+    hello_world[copy i] = copy hello[copy i];
+    goto step
+  at_or_after_five:
+    drop cond;
+    eq_out = &out is_five;
+    call $u64_eq(copy i, 5u64, move eq_out);
+    branch(copy is_five) [true: space, false: from_world]
+  space:
+    drop is_five;
+    hello_world[copy i] = 32u8;
+    goto step
+  from_world:
+    drop is_five;
+    sub_out = &out src_idx;
+    call $u64_sub(copy i, 6u64, move sub_out);
+    hello_world[copy i] = copy world[copy src_idx];
+    drop src_idx;
+    goto step
+  step:
+    add_out = &out next_i;
+    call $u64_add(copy i, 1u64, move add_out);
+    drop i;
+    i = copy next_i;
+    drop next_i;
+    goto head
+  done:
+    drop cond;
+    drop i;
+    drop world;
+    drop hello;
+    return
+}

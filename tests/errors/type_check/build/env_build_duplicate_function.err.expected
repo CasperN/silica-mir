@@ -1,0 +1,4 @@
+error: at 3:12: [TC-DuplicateDeclaration] Duplicate declaration of function 'f'
+   |
+ 3 |         fn f() { entry: return }
+   |            ^

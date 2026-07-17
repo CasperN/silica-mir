@@ -1,0 +1,4 @@
+error: at 3:34: [COMP-MoveMarkerNotSatisfied] In struct 'Outer' (marked Move), field 'i' has type Inner which is not Move
+   |
+ 3 |             struct Outer: Move { i: Inner }
+   |                                  ^^^^^^^^

@@ -1,0 +1,7 @@
+extern fn take(a: i64);
+
+fn f(x: i64) {
+  entry:
+    call take(move x);
+    return
+}

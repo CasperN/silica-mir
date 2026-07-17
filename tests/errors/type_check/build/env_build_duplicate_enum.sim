@@ -1,0 +1,4 @@
+
+        enum E { A: i64 }
+        enum E { B: i64 }
+        

@@ -1,0 +1,9 @@
+# Move-out drops cur to Uninit; write puts it back to Init;
+# obligation met at return.
+fn f(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    r.* = 42;
+    return
+}

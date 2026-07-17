@@ -1,0 +1,16 @@
+# Move in one branch, read of the same var at merge — Diverged
+# formation should catch this.
+extern fn take(y: i64);
+extern fn use_num(n: i64);
+fn f(x: i64, b: bool) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    call take(move x);
+    goto merge
+  fbr:
+    goto merge
+  merge:
+    call use_num(copy x);
+    return
+}

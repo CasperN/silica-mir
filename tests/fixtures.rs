@@ -5,12 +5,16 @@
 //! what the runner asserts on:
 //!
 //!   - `elab/`     — parse+elaborate; compare pretty-printed MIR
-//!                   against `<stem>.mir.expected`.
+//!                   against `<stem>.sim.expected`.
 //!   - `errors/`   — run the pipeline; compare rendered diagnostics
 //!                   (errors + internal errors) against
 //!                   `<stem>.err.expected`.
 //!   - `codegen/`  — run the pipeline + codegen; compare emitted
 //!                   LLVM IR against `<stem>.ll.expected`.
+//!
+//! Expected-file extensions match the *output* language so editors
+//! syntax-highlight the .expected file: `.sim.expected` for MIR,
+//! `.ll.expected` for LLVM, `.err.expected` for diagnostics.
 //!
 //! `UPDATE_EXPECT=1 cargo test --test fixtures` rewrites every
 //! `.expected` file with the observed output instead of failing. Use
@@ -37,7 +41,7 @@ enum Stage {
 impl Stage {
     fn expected_extension(self) -> &'static str {
         match self {
-            Stage::Elab => "mir.expected",
+            Stage::Elab => "sim.expected",
             Stage::Errors => "err.expected",
             Stage::Codegen => "ll.expected",
         }
@@ -159,7 +163,7 @@ fn update_expect_enabled() -> bool {
 }
 
 fn expected_path_for(fixture: &Path, stage: Stage) -> PathBuf {
-    // `foo.sim` → `foo.mir.expected`; drops the source extension and
+    // `foo.sim` → `foo.sim.expected`; drops the source extension and
     // appends the stage-specific expected extension.
     let stem = fixture.file_stem().expect("fixture has no stem");
     fixture.with_file_name(format!("{}.{}", stem.to_string_lossy(), stage.expected_extension()))

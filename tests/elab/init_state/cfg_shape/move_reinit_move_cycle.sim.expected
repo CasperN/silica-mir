@@ -1,0 +1,13 @@
+extern fn use_num(n: i64);
+
+fn f(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    x = 1;
+    z = move x;
+    call use_num(move y);
+    call use_num(move z);
+    return
+}

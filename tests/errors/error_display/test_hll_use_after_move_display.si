@@ -1,0 +1,8 @@
+
+        struct Box: Copy + Drop { val: i64 }
+        fn f() {
+            let x = Box { val: 1 };
+            let y = x;
+            let z = x;
+        }
+    

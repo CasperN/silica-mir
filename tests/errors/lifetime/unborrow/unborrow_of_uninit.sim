@@ -1,0 +1,8 @@
+
+        fn f() {
+          r: &mut i64;
+          entry:
+            unborrow r;
+            return
+        }
+        

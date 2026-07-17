@@ -1,0 +1,5 @@
+error: at 5:13: [SUB-ReturnValueLeak] In function 'f', block 'entry': value 'p' of type P is not consumed at return
+   |
+ 5 |             return
+   |             ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

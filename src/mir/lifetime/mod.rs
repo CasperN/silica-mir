@@ -553,13 +553,9 @@ fn check_operand_access(
     check_loan_conflict(func, block, place, access, span, loans, d);
 }
 
-#[cfg(test)]
-mod loan_tests;
+
+// nll_tests covers pass-specific snapshot behavior (assert_elab_eq)
+// that the fixture runner can't observe. Most of its round-trip tests
+// duplicate fixtures; keeping the file whole is simpler than stripping.
 #[cfg(test)]
 mod nll_tests;
-#[cfg(test)]
-mod path_borrower_tests;
-#[cfg(test)]
-mod reborrow_tests;
-#[cfg(test)]
-mod unborrow_tests;

@@ -1,0 +1,22 @@
+fn f() {
+  nl: u8;
+  nul: u8;
+  bs: u8;
+  quote: u8;
+  apos: u8;
+  hex: u8;
+  entry:
+    nl = 10u8;
+    nul = 0u8;
+    bs = 92u8;
+    quote = 34u8;
+    apos = 39u8;
+    hex = 255u8;
+    drop hex;
+    drop apos;
+    drop quote;
+    drop bs;
+    drop nul;
+    drop nl;
+    return
+}

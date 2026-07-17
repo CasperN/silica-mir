@@ -1,0 +1,11 @@
+fn f() {
+  m: [[i32; 2]; 2];
+  x: i32;
+  entry:
+    m[0] = [1i32, 2i32];
+    m[1] = [3i32, 4i32];
+    x = copy m[1][0];
+    drop x;
+    drop m;
+    return
+}

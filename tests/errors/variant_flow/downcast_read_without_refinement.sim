@@ -1,0 +1,9 @@
+
+            enum Option: Copy + Drop { None: unit Some: i64 }
+            fn f(o: Option) {
+              x: i64;
+              entry:
+                x = copy o as Some;
+                return
+            }
+            

@@ -1,0 +1,14 @@
+
+        fn f(x: i64) {
+          r: &mut i64;
+          p: *i64;
+          y: i64;
+          z: i64;
+          entry:
+            r = &mut x;
+            p = &raw x;
+            y = copy p.*;
+            z = copy r.*;
+            return
+        }
+        

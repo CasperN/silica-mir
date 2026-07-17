@@ -1,0 +1,8 @@
+fn f(y: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut y;
+    unborrow r;
+    drop y;
+    return
+}

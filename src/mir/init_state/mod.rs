@@ -1763,19 +1763,3 @@ impl<'a> InitStateContext<'a> {
     }
 }
 
-#[cfg(test)]
-mod cfg_shape_tests;
-#[cfg(test)]
-mod error_span_tests;
-#[cfg(test)]
-mod eager_transition_tests;
-#[cfg(test)]
-mod move_and_drop_tests;
-#[cfg(test)]
-mod overwrite_tests;
-#[cfg(test)]
-mod partial_init_tests;
-#[cfg(test)]
-mod projection_tests;
-#[cfg(test)]
-mod ref_obligations_tests;

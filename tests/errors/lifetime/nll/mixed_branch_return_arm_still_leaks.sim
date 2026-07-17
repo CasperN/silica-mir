@@ -1,0 +1,10 @@
+
+        fn f(r: &out i64, b: bool) {
+          entry:
+            branch(copy b) [true: return_arm, false: die_arm]
+          return_arm:
+            return
+          die_arm:
+            abort
+        }
+        

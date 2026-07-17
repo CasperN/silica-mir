@@ -1,0 +1,4 @@
+error: at 10:13: [INIT-OverwriteWithoutDrop] In function 'f', block 'entry': cannot overwrite 'c.w1': type Custom("Wrap") is not Drop and the value is still live (consume it via `drop c.w1` first)
+    |
+ 10 |             c.w1 = move w1;
+    |             ^^^^^^^^^^^^^^

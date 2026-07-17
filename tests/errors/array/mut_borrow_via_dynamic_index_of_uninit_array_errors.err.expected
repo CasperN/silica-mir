@@ -1,0 +1,4 @@
+error: at 7:13: [INIT-BorrowDynamicIndexNonUniform] In function 'f', block 'entry': cannot create &mut of 'a[?]': dynamic index requires the containing array to be uniformly initialized, but it is not yet initialized
+   |
+ 7 |             r = &mut a[copy i];
+   |             ^^^^^^^^^^^^^^^^^^

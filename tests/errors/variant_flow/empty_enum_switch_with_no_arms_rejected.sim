@@ -1,0 +1,7 @@
+
+            enum Void: Copy + Drop {}
+            fn f(v: Void) {
+              entry:
+                switchEnum(v) []
+            }
+            

@@ -1,0 +1,4 @@
+error: at 5:13: [TC-CallWrongArity] In function 'f', block 'entry': Wrong i64 of arguments for call. Expected 2, found 1
+   |
+ 5 |             call add(1);
+   |             ^^^^^^^^^^^

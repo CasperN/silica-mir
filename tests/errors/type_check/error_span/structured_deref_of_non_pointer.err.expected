@@ -1,0 +1,4 @@
+error: at 5:17: [TC-DerefOfNonPointer] In function 'f', block 'entry': Cannot dereference non-pointer type i64
+   |
+ 5 |                 y = copy x.*;
+   |                 ^^^^^^^^^^^^

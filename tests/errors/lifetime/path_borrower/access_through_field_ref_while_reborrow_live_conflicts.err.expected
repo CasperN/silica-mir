@@ -1,0 +1,9 @@
+error: at 12:13: [LT-LoanConflict] In function 'f', block 'entry': cannot read 'b.p.*': already borrowed by 's'
+    |
+ 12 |             y = copy b.p.*;
+    |             ^^^^^^^^^^^^^^
+  = note: borrow of 'b.p.*' occurs here
+    |
+ 11 |             s = &mut b.p.*;
+    |             ^^^^^^^^^^^^^^
+  hint: the borrow of 's' is active until its last use or explicit unborrow.

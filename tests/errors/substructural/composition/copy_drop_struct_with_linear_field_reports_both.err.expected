@@ -1,0 +1,8 @@
+error: at 2:39: [COMP-CopyMarkerNotSatisfied] In struct 'Bad' (marked Copy), field 'r' has type &out i64 which is not Copy
+   |
+ 2 |             struct Bad: Copy + Drop { r: &out i64 }
+   |                                       ^^^^^^^^^^^
+error: at 2:39: [COMP-DropMarkerNotSatisfied] In struct 'Bad' (marked Drop), field 'r' has type &out i64 which is not Drop
+   |
+ 2 |             struct Bad: Copy + Drop { r: &out i64 }
+   |                                       ^^^^^^^^^^^

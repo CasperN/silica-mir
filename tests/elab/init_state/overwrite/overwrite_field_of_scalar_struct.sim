@@ -1,0 +1,11 @@
+
+        struct P: Copy + Drop { a: i64 b: i64 }
+        fn f() {
+          p: P;
+          entry:
+            p.a = 1;
+            p.b = 2;
+            p.a = 3;
+            return
+        }
+        

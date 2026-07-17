@@ -1,0 +1,17 @@
+
+        struct Innermost: Copy + Drop { z: i64 w: i64 }
+        struct Inner: Copy + Drop { x: Innermost y: Innermost }
+        struct Outer: Copy + Drop { a: Inner b: Inner }
+        extern fn sink(r: &mut i64);
+        extern fn take_i(i: Innermost);
+        fn f(o: Outer) {
+          r: &mut i64;
+          y: Innermost;
+          entry:
+            r = &mut o.a.x.z;
+            y = copy o.a.x;
+            call sink(move r);
+            call take_i(move y);
+            return
+        }
+        

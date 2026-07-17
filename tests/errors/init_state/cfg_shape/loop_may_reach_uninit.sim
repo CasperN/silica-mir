@@ -1,0 +1,14 @@
+# Loop body reads x before writing; on the first iteration x is
+# NeverInit. The read errors.
+fn f(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: body, false: done]
+  body:
+    y = copy x;
+    x = 1;
+    branch(copy b) [true: body, false: done]
+  done:
+    return
+}

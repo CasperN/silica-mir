@@ -1,0 +1,4 @@
+error: at 4:13: [TC-BranchConditionNotBool] In function 'f', block 'entry': branch condition must be bool, found i64
+   |
+ 4 |             branch(copy n) [true: yes, false: no]
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

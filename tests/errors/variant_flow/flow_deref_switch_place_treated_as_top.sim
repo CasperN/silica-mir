@@ -1,0 +1,10 @@
+
+            enum Option: Copy + Drop { None: unit Some: i64 }
+            fn f(r: &mut Option) {
+              entry:
+                r.* = Option::None(unit);
+                switchEnum(r.*) [None: n, Some: dead]
+              n: return
+              dead: unreachable
+            }
+            

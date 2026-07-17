@@ -1,0 +1,7 @@
+fn f(x: i64, $return: &out i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    drop x;
+    return
+}

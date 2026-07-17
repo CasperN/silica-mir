@@ -1,0 +1,4 @@
+error: at 15:13: [INIT-UsePartiallyInit] In function 'f', block 'exit': variable 'p' is not fully initialized here
+    |
+ 15 |             a = copy p;
+    |             ^^^^^^^^^^

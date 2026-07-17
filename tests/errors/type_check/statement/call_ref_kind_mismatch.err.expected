@@ -1,0 +1,4 @@
+error: at 7:13: [TC-CallArgTypeMismatch] In function 'f', block 'entry': Call argument 0 type mismatch. Expected &drop i64, found &mut i64
+   |
+ 7 |             call takes_drop(move r);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^

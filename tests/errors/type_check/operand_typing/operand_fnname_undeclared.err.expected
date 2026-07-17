@@ -1,0 +1,4 @@
+error: at 5:13: [TC-UndeclaredFunction] In function 'f', block 'entry': Undeclared function name 'missing'
+   |
+ 5 |             g = missing;
+   |             ^^^^^^^^^^^

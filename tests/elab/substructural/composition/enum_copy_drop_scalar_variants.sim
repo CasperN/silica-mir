@@ -1,0 +1,3 @@
+
+            enum Tag: Copy + Drop { N: i64 B: bool U: unit }
+            

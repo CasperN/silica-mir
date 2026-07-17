@@ -1,0 +1,14 @@
+struct RefBox: Move {
+  p: &mut i64
+}
+
+extern fn take_box(b: RefBox);
+
+fn f(x: i64) {
+  b: RefBox;
+  entry:
+    b.p = &mut x;
+    call take_box(move b);
+    drop x;
+    return
+}

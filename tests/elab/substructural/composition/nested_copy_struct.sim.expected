@@ -1,0 +1,8 @@
+struct A: Copy {
+  x: i64
+}
+
+struct B: Copy {
+  a: A
+  y: i64
+}

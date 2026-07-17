@@ -1,0 +1,11 @@
+struct Buf: Copy + Drop {
+  data: [u8; 4]
+}
+
+fn f() {
+  b: Buf;
+  entry:
+    b.data = [65u8, 66u8, 67u8, 68u8];
+    drop b;
+    return
+}

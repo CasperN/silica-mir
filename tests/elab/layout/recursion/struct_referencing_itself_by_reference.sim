@@ -1,0 +1,4 @@
+
+        struct Node { next: &mut Node }
+        fn f() { entry: return }
+        

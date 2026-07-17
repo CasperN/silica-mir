@@ -1,0 +1,4 @@
+error: at 6:13: [INIT-UseAfterMove] In function 'f', block 'entry': variable 'x' is used after move
+   |
+ 6 |             y = copy x;
+   |             ^^^^^^^^^^

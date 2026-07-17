@@ -1,0 +1,13 @@
+
+            enum Void: Copy + Drop {}
+            enum E: Copy + Drop { A: i64 N: Void }
+            fn f(e: E, out: &out i64) {
+              entry:
+                switchEnum(e) [A: a_arm, N: n_arm]
+              a_arm:
+                out.* = copy e as A;
+                return
+              n_arm:
+                unreachable
+            }
+            

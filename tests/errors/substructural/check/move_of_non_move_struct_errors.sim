@@ -1,0 +1,11 @@
+
+        struct Linear { r: &out i64 }
+        extern fn sink(y: Linear);
+        fn f(x: Linear) {
+            y: Linear;
+            entry:
+            y = move x;
+            call sink(move y);
+            return
+        }
+        

@@ -1,0 +1,12 @@
+
+        extern fn take(y: i64);
+        extern fn read_ref(r: &i64);
+        fn f(x: i64) {
+          r: &i64;
+          entry:
+            r = &x;
+            call take(move x);
+            call read_ref(move r);
+            return
+        }
+        

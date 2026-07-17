@@ -1,0 +1,4 @@
+error: at 4:5: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+   |
+ 4 |     return
+   |     ^^^^^^

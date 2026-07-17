@@ -1,0 +1,4 @@
+error: at 4:13: [TC-DuplicateEnumVariant] In enum 'E', variant 'A' is declared more than once
+   |
+ 4 |             A: i64
+   |             ^^^^^^

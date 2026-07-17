@@ -1,0 +1,4 @@
+fn f(r: &out i64) {
+  entry:
+    unreachable
+}

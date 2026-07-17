@@ -1,0 +1,4 @@
+
+            struct Inner { r: &out i64 }
+            struct Outer: Move { i: Inner }
+            

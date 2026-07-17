@@ -1,0 +1,23 @@
+extern fn use_num(n: i64);
+
+fn f(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    branch(copy b) [true: t, false: entry__to__fbr]
+  entry__to__fbr:
+    unborrow r;
+    goto fbr
+  t:
+    call use_num(copy r.*);
+    unborrow r;
+    goto end
+  fbr:
+    goto end
+  end:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}

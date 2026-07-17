@@ -1,0 +1,7 @@
+
+        struct Box: Drop + Move { val: i64 }
+        fn f(r: &drop Box) {
+            let x = r.*;
+            defer r.* = Box { val: 5 };
+        }
+    

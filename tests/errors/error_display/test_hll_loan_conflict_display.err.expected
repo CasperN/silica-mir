@@ -1,0 +1,9 @@
+error: at 5:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
+   |
+ 5 |             x = 20;
+   |             ^^^^^^
+  = note: borrow of 'x' occurs here
+   |
+ 4 |             let r = &mut x;
+   |                     ^^^^^^
+  hint: the borrow of 'r' is active until its last use or explicit unborrow.

@@ -1,0 +1,12 @@
+
+        extern fn sink(r: &mut i64);
+        extern fn use_num(y: i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          entry:
+            r = &mut x;
+            call use_num(move x);
+            call sink(move r);
+            return
+        }
+        

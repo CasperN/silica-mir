@@ -1,0 +1,4 @@
+error: at 6:13: [TC-FieldOfNonStruct] In function 'f', block 'entry': Cannot project field 'x' of enum type 'E'
+   |
+ 6 |             a = copy e.x;
+   |             ^^^^^^^^^^^^

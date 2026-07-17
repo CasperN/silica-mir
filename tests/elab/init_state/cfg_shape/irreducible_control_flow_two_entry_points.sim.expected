@@ -1,0 +1,16 @@
+extern fn noop();
+
+fn f(a: bool, b: bool) {
+  entry:
+    branch(copy a) [true: l, false: m]
+  l:
+    call noop();
+    branch(copy b) [true: m, false: exit]
+  m:
+    call noop();
+    branch(copy a) [true: l, false: exit]
+  exit:
+    drop b;
+    drop a;
+    return
+}

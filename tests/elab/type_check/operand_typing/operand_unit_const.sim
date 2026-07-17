@@ -1,0 +1,8 @@
+
+        fn f() {
+            u: unit;
+            entry:
+            u = unit;
+            return
+        }
+        

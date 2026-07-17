@@ -1,0 +1,8 @@
+
+        fn f() {
+            let mut x = 1;
+            let r = &x;
+            defer { let y = r.*; };
+            x = 2;
+        }
+    

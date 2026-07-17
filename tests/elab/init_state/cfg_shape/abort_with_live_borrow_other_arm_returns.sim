@@ -1,0 +1,14 @@
+# Live borrow going into a branch where one arm aborts. Abort
+# has no successors, so the loan doesn't leak into anything.
+extern fn sink(r: &mut i64);
+fn f(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    branch(copy b) [true: t, false: fbr]
+  t:
+    abort
+  fbr:
+    call sink(move r);
+    return
+}

@@ -1,0 +1,16 @@
+fn f() {
+  a: [i64; 3];
+  r: &mut i64;
+  x: i64;
+  y: i64;
+  entry:
+    a = [10, 20, 30];
+    r = &mut a[0];
+    x = copy a[1];
+    y = copy r.*;
+    unborrow r;
+    drop y;
+    drop x;
+    drop a;
+    return
+}

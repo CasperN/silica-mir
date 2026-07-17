@@ -1,0 +1,4 @@
+error: at 3:14: [TC-DuplicateDeclaration] Duplicate declaration of type 'N'
+   |
+ 3 |         enum N { A: i64 }
+   |              ^

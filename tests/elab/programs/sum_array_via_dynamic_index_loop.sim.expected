@@ -1,0 +1,38 @@
+fn sum(a: [i64; 4], out: &out i64) {
+  sum: i64;
+  sum_tmp: i64;
+  i: i64;
+  i_tmp: i64;
+  done_tmp: bool;
+  done_out: &out bool;
+  slot: i64;
+  add_out: &out i64;
+  inc_out: &out i64;
+  entry:
+    sum = 0;
+    i = 0;
+    goto head
+  head:
+    done_out = &out done_tmp;
+    call $i64_ge(copy i, 4, move done_out);
+    branch(move done_tmp) [true: exit, false: body]
+  body:
+    slot = copy a[copy i];
+    add_out = &out sum_tmp;
+    call $i64_add(copy sum, copy slot, move add_out);
+    drop sum;
+    sum = move sum_tmp;
+    drop slot;
+    inc_out = &out i_tmp;
+    call $i64_add(copy i, 1, move inc_out);
+    drop i;
+    i = move i_tmp;
+    goto head
+  exit:
+    out.* = copy sum;
+    unborrow out;
+    drop i;
+    drop sum;
+    drop a;
+    return
+}

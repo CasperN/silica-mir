@@ -1,0 +1,6 @@
+
+        enum E {
+            A: unit
+            A: i64
+        }
+        

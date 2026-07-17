@@ -1,0 +1,9 @@
+
+        struct Linear { r: &out i64 }
+        extern fn take(x: Linear);
+        fn f(x: Linear) {
+            entry:
+            call take(copy x);
+            return
+        }
+        

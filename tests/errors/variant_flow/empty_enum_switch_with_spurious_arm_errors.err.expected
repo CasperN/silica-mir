@@ -1,0 +1,4 @@
+error: at 5:17: [TC-SwitchArmUnknownVariant] In function 'f', block 'entry': variant 'Nope' is not part of enum 'Void'
+   |
+ 5 |                 switchEnum(v) [Nope: bad]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^

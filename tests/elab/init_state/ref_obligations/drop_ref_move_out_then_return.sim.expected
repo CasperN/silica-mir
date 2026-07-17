@@ -1,0 +1,8 @@
+fn f(r: &drop i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    unborrow r;
+    drop x;
+    return
+}

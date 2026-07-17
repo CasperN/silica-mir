@@ -1,0 +1,8 @@
+
+        fn f() {
+          s: [u8; 4];
+          entry:
+            s = b"hello";
+            return
+        }
+        

@@ -1,0 +1,10 @@
+fn f() {
+  hello: [u8; 5];
+  world: [u8; 5];
+  entry:
+    hello = b"hello";
+    world = b"world";
+    drop world;
+    drop hello;
+    return
+}

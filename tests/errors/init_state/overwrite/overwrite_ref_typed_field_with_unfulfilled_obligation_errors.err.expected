@@ -1,0 +1,4 @@
+error: at 9:13: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry': reference 'b.p' has unfulfilled obligation here (is_init=false, ends_init=true)
+   |
+ 9 |             b.p = &mut x2;
+   |             ^^^^^^^^^^^^^

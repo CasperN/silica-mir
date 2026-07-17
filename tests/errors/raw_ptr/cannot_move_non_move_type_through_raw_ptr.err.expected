@@ -1,0 +1,5 @@
+error: at 8:13: [SUB-CopyOfNonCopy] In function 'f', block 'entry': cannot copy non-Copy type Linear
+   |
+ 8 |             q = copy p.*;
+   |             ^^^^^^^^^^^^
+  hint: since the type is not Copy, try moving it instead using 'move'

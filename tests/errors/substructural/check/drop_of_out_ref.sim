@@ -1,0 +1,7 @@
+
+        fn f(r: &out i64) {
+            entry:
+            drop r;
+            return
+        }
+        

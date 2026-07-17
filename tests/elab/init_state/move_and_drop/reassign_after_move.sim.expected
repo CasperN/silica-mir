@@ -1,0 +1,12 @@
+fn f(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    x = 42;
+    z = copy x;
+    drop z;
+    drop y;
+    drop x;
+    return
+}

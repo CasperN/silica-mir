@@ -1,0 +1,14 @@
+fn f(x: i64, out: &out i32) {
+  neg: bool;
+  bo: &out bool;
+  zext_out: &out i32;
+  entry:
+    bo = &out neg;
+    call $i64_lt(copy x, 0, move bo);
+    zext_out = &out out.*;
+    call $bool_to_i32(copy neg, move zext_out);
+    unborrow out;
+    drop neg;
+    drop x;
+    return
+}

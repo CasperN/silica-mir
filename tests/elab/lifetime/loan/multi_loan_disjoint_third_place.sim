@@ -1,0 +1,18 @@
+
+        extern fn sink(r: &mut i64);
+        fn f(a: i64, b: i64, c: i64, cond: bool) {
+          r: &mut i64;
+          entry:
+            branch(copy cond) [true: t, false: fbr]
+          t:
+            r = &mut a;
+            goto merge
+          fbr:
+            r = &mut b;
+            goto merge
+          merge:
+            c = 3;
+            call sink(move r);
+            return
+        }
+        

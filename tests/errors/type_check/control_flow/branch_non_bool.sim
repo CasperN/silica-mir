@@ -1,0 +1,10 @@
+
+        fn f(n: i64) {
+            entry:
+            branch(copy n) [true: yes, false: no]
+            yes:
+            return
+            no:
+            return
+        }
+        

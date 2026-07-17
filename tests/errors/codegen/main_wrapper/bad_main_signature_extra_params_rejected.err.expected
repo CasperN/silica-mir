@@ -1,0 +1,4 @@
+error: at 2:12: [TC-MainBadSignature] In function 'main': takes at most one parameter (an optional '&out i32'), found 2 parameters
+   |
+ 2 |         fn main(a: i32, b: i32) {
+   |            ^^^^

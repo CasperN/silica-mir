@@ -1,0 +1,4 @@
+error: at 5:13: [TC-FieldOfNonStruct] In function 'f', block 'entry': Cannot project field 'x' of non-struct type i64
+   |
+ 5 |             a = copy n.x;
+   |             ^^^^^^^^^^^^

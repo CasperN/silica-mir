@@ -1,0 +1,5 @@
+# `&T` is Copy Drop; no obligation on return.
+fn f(r: &i64) {
+  entry:
+    return
+}

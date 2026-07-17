@@ -1,0 +1,5 @@
+error: at 6:13: [SUB-CopyOfNonCopy] In function 'f', block 'entry': cannot copy non-Copy type Linear
+   |
+ 6 |             call take(copy x);
+   |             ^^^^^^^^^^^^^^^^^
+  hint: since the type is not Copy, try moving it instead using 'move'

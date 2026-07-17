@@ -1,0 +1,8 @@
+
+        fn main(exit: &out i32) {
+            x: bool;
+            entry:
+            exit.* = copy x;
+            return
+        }
+    

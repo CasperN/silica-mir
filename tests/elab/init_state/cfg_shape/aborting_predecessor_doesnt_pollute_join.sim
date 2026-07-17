@@ -1,0 +1,16 @@
+# The false branch aborts; the merge only sees the true branch's
+# Init state, so reading x is fine.
+fn f(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    abort
+  merge:
+    y = copy x;
+    return
+}

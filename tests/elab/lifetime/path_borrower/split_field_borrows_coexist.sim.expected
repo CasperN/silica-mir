@@ -1,0 +1,18 @@
+struct RefBox2: Move {
+  q: &mut i64
+  r: &mut i64
+}
+
+extern fn use_mut(r: &mut i64);
+
+fn f(x: i64, y: i64) {
+  b: RefBox2;
+  entry:
+    b.q = &mut x;
+    b.r = &mut y;
+    call use_mut(move b.q);
+    call use_mut(move b.r);
+    drop y;
+    drop x;
+    return
+}

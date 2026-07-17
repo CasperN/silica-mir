@@ -1,0 +1,13 @@
+struct Absurd: Copy + Drop {
+  x: i64
+  y: never
+}
+
+extern fn take(a: Absurd);
+
+fn f(a: Absurd) {
+  b: Absurd;
+  entry:
+    b = copy a;
+    unreachable
+}

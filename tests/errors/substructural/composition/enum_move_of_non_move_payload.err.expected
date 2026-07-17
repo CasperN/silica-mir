@@ -1,0 +1,4 @@
+error: at 3:31: [COMP-MoveMarkerNotSatisfied] In enum 'Wrap' (marked Move), variant 'W' payload type Inner is not Move
+   |
+ 3 |             enum Wrap: Move { W: Inner }
+   |                               ^^^^^^^^

@@ -1,0 +1,10 @@
+error: at 3:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut i64
+   |
+ 3 |             let y = r;
+   |                     ^
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 4:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut i64
+   |
+ 4 |             let z = r;
+   |                     ^
+  hint: since the type is not Copy, try moving it instead using 'move'

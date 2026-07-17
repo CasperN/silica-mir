@@ -1,0 +1,9 @@
+enum List {
+  Nil: unit
+  Cons: &mut List
+}
+
+fn f() {
+  entry:
+    return
+}

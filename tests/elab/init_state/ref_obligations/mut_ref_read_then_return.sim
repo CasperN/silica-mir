@@ -1,0 +1,7 @@
+# Read through &mut leaves cur=Init; obligation trivially met.
+fn f(r: &mut i64) {
+  x: i64;
+  entry:
+    x = copy r.*;
+    return
+}

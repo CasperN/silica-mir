@@ -1,0 +1,10 @@
+
+        fn f(x: i64) {
+          r: &i64;
+          entry:
+            r = &x;
+            unborrow r;
+            x = 42;
+            return
+        }
+        

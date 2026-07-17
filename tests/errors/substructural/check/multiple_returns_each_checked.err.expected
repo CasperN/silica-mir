@@ -1,0 +1,10 @@
+error: at 6:16: [SUB-ReturnValueLeak] In function 'f', block 't': value 'x' of type Linear is not consumed at return
+   |
+ 6 |             t: return
+   |                ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 7:18: [SUB-ReturnValueLeak] In function 'f', block 'fbr': value 'x' of type Linear is not consumed at return
+   |
+ 7 |             fbr: return
+   |                  ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

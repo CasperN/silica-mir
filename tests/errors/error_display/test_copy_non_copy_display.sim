@@ -1,0 +1,8 @@
+
+        extern fn take(r: &out i64);
+        fn f(r: &out i64) {
+            entry:
+            call take(copy r);
+            return
+        }
+    

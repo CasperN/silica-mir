@@ -1,0 +1,9 @@
+# After `*r = v`, r is in `&drop` state (post=Uninit, cur=Init).
+# Must move-out again to satisfy post.
+fn f(r: &uninit i64) {
+  x: i64;
+  entry:
+    r.* = 42;
+    x = move r.*;
+    return
+}

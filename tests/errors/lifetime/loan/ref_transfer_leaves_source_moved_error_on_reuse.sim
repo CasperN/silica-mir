@@ -1,0 +1,11 @@
+
+        extern fn sink(r: &out i64);
+        fn f(x: &out i64) {
+          z: &out i64;
+          entry:
+            z = move x;
+            z.* = 1;
+            call sink(move x);
+            return
+        }
+        

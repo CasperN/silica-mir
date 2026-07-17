@@ -1,0 +1,10 @@
+fn f(b: bool) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    drop b;
+    return
+  fbr:
+    drop b;
+    return
+}

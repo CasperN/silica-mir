@@ -1,0 +1,4 @@
+struct S: Copy {
+  r: & i64
+  x: i64
+}

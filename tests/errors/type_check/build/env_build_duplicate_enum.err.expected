@@ -1,0 +1,4 @@
+error: at 3:14: [TC-DuplicateDeclaration] Duplicate declaration of type 'E'
+   |
+ 3 |         enum E { B: i64 }
+   |              ^

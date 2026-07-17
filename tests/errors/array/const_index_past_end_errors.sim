@@ -1,0 +1,10 @@
+
+        fn f() {
+          a: [i64; 3];
+          r: &mut i64;
+          entry:
+            a = [1i64, 2i64, 3i64];
+            r = &mut a[3i64];
+            return
+        }
+        

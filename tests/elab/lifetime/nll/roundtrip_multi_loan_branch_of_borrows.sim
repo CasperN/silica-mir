@@ -1,0 +1,17 @@
+
+        fn f(a: i64, b: i64, c: bool) {
+          r: &mut i64;
+          entry:
+            branch(copy c) [true: t, false: fbr]
+          t:
+            r = &mut a;
+            goto merge
+          fbr:
+            r = &mut b;
+            goto merge
+          merge:
+            a = 1;
+            b = 2;
+            return
+        }
+        

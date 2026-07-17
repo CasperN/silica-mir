@@ -1,0 +1,4 @@
+error: at 10:13: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'a' is used before initialization
+    |
+ 10 |             x = copy a[1i64];
+    |             ^^^^^^^^^^^^^^^^

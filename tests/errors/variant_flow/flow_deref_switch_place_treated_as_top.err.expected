@@ -1,0 +1,8 @@
+error: at 6:17: [VF-SwitchArmFalselyUnreachable] In function 'f', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+   |
+ 6 |                 switchEnum(r.*) [None: n, Some: dead]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 5:17: [INIT-DerefPointeeStateMismatch] In function 'f', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
+   |
+ 5 |                 r.* = Option::None(unit);
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,9 @@
+
+        struct D: Drop { x: i64 }
+        fn f(a: D) {
+            b: D;
+            entry:
+            b = copy a;
+            return
+        }
+        

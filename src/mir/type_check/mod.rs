@@ -922,21 +922,3 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
     }
 }
 
-#[cfg(test)]
-mod build_tests;
-#[cfg(test)]
-mod control_flow_tests;
-#[cfg(test)]
-mod declaration_tests;
-#[cfg(test)]
-mod error_span_tests;
-#[cfg(test)]
-mod function_tests;
-#[cfg(test)]
-mod operand_typing_tests;
-#[cfg(test)]
-mod place_typing_tests;
-#[cfg(test)]
-mod rvalue_typing_tests;
-#[cfg(test)]
-mod statement_tests;

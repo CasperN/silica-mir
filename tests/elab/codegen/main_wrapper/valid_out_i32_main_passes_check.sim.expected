@@ -1,0 +1,6 @@
+fn main(exit: &out i32) {
+  entry:
+    exit.* = 42i32;
+    unborrow exit;
+    return
+}

@@ -1,0 +1,11 @@
+
+            enum Sub: Copy + Drop { S1: unit S2: unit }
+            enum Inner: Copy + Drop { A: Sub B: unit }
+            struct Wrap: Copy + Drop { e: Inner }
+            fn f(w: Wrap) {
+              entry:
+                switchEnum(w.e as A) [S1: s1, S2: s2]
+              s1: return
+              s2: return
+            }
+            

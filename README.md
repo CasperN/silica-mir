@@ -730,10 +730,10 @@ project skews toward the second today; the target is the first.
    Each test is an input file paired with an expected-output file
    under `tests/{elab,errors,codegen,hll}/`. Name expected outputs
    with the real extension first so editors keep syntax highlighting:
-   `foo.sim` → `foo.mir.expected` (elaborated MIR),
+   `foo.sim` → `foo.sim.expected` (elaborated MIR),
    `foo.sim` → `foo.ll.expected` (codegen), `foo.sim` →
    `foo.err.expected` (rendered diagnostic), `foo.si` →
-   `foo.mir.expected` (HLL lowering). A single runner drives them,
+   `foo.sim.expected` (HLL lowering). A single runner drives them,
    and `UPDATE=1 cargo test` rewrites the expected files so cosmetic
    diagnostic changes don't turn into a slog. Discovery = `ls`.
    Adding a feature = adding a file.

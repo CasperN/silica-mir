@@ -1,0 +1,12 @@
+
+        extern fn use_mut(r: &mut i64);
+        fn f(x: i64, y: i64) {
+          r: &mut i64;
+          entry:
+            r = &mut x;
+            r = &mut y;
+            x = 42;
+            call use_mut(move r);
+            return
+        }
+        

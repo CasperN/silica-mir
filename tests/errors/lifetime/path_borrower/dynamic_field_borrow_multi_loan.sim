@@ -1,0 +1,19 @@
+
+        struct RefBox: Move { p: &mut i64 }
+        extern fn take_box(b: RefBox);
+        fn f(y: i64, z: i64, cond: bool) {
+          b: RefBox;
+          entry:
+            branch(copy cond) [true: t, false: fbr]
+          t:
+            b.p = &mut y;
+            goto merge
+          fbr:
+            b.p = &mut z;
+            goto merge
+          merge:
+            y = 1;
+            call take_box(move b);
+            return
+        }
+        

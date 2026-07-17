@@ -1,0 +1,14 @@
+fn f(x: i32, out: &out i32) {
+  wide: i64;
+  wide_out: &out i64;
+  narrow_out: &out i32;
+  entry:
+    wide_out = &out wide;
+    call $i32_to_i64(copy x, move wide_out);
+    narrow_out = &out out.*;
+    call $i64_to_i32(copy wide, move narrow_out);
+    unborrow out;
+    drop wide;
+    drop x;
+    return
+}

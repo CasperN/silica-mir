@@ -1,0 +1,7 @@
+
+        fn main(exit: &out i64) {
+          entry:
+            exit.* = 0;
+            return
+        }
+        

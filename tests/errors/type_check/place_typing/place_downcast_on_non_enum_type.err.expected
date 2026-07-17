@@ -1,0 +1,8 @@
+error: at 5:13: [TC-DowncastOfNonEnum] In function 'f', block 'entry': Cannot downcast non-enum type & i64
+   |
+ 5 |             x = copy r as Some;
+   |             ^^^^^^^^^^^^^^^^^^
+error: at 5:13: [VF-DowncastOnProjection] In function 'f', block 'entry': cannot downcast 'r as Some' here: variant flow only tracks root Vars, and 'r' is a projection — extract into a local first
+   |
+ 5 |             x = copy r as Some;
+   |             ^^^^^^^^^^^^^^^^^^

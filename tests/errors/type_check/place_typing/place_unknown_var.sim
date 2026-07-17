@@ -1,0 +1,7 @@
+
+        fn f() {
+            entry:
+            x = 42;
+            return
+        }
+        

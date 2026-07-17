@@ -1,0 +1,17 @@
+
+        extern fn use_num(n: i64);
+        fn f(x: i64, b: bool) {
+          r: &mut i64;
+          entry:
+            r = &mut x;
+            branch(copy b) [true: t, false: fbr]
+          t:
+            call use_num(copy r.*);
+            goto end
+          fbr:
+            goto end
+          end:
+            x = 42;
+            return
+        }
+        

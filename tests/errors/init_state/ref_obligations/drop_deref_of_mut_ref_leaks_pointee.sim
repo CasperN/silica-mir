@@ -1,0 +1,7 @@
+# `drop *r` on r: &mut consumes the pointee, transitioning r to
+# (Uninit, Init). Without re-init, obligation at return is unmet.
+fn f(r: &mut i64) {
+  entry:
+    drop r.*;
+    return
+}

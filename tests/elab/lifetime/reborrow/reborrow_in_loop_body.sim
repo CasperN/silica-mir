@@ -1,0 +1,18 @@
+
+        extern fn use_mut(r: &mut i64);
+        fn f(x: i64, b: bool) {
+          r: &mut i64;
+          s: &mut i64;
+          entry:
+            r = &mut x;
+            goto head
+          head:
+            branch(copy b) [true: body, false: done]
+          body:
+            s = &mut r.*;
+            call use_mut(move s);
+            goto head
+          done:
+            return
+        }
+        

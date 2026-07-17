@@ -1,0 +1,12 @@
+
+        enum Option: Copy + Drop { None: unit Some: i64 }
+        fn f(o: Option) {
+            x: i64;
+            entry:
+            switchEnum(o) [None: n, Some: s]
+            s:
+            x = copy o as Some;
+            return
+            n: return
+        }
+        

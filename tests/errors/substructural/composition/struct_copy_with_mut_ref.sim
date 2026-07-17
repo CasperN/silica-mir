@@ -1,0 +1,3 @@
+
+            struct Bad: Copy { r: &mut i64 }
+            

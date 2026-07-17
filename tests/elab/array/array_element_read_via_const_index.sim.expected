@@ -1,0 +1,10 @@
+fn f() {
+  a: [i64; 3];
+  x: i64;
+  entry:
+    a = [10, 20, 30];
+    x = copy a[1];
+    drop x;
+    drop a;
+    return
+}

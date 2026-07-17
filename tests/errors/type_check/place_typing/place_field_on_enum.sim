@@ -1,0 +1,9 @@
+
+        enum E { A: i64 }
+        fn f(e: E) {
+            a: i64;
+            entry:
+            a = copy e.x;
+            return
+        }
+        

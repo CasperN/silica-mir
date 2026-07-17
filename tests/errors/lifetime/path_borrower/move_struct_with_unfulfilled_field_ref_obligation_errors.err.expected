@@ -1,0 +1,4 @@
+error: at 10:13: [INIT-MoveWithUnfulfilledContainedRef] In function 'f', block 'entry': cannot move 'b': contained reference 'b.p' has unfulfilled obligation (is_init=false, ends_init=true)
+    |
+ 10 |             call take_box(move b);
+    |             ^^^^^^^^^^^^^^^^^^^^^

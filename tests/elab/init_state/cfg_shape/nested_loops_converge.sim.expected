@@ -1,0 +1,19 @@
+extern fn noop();
+
+fn f(a: bool, b: bool) {
+  entry:
+    goto outer_head
+  outer_head:
+    branch(copy a) [true: inner_head, false: outer_done]
+  inner_head:
+    branch(copy b) [true: inner_body, false: outer_back]
+  inner_body:
+    call noop();
+    goto inner_head
+  outer_back:
+    goto outer_head
+  outer_done:
+    drop b;
+    drop a;
+    return
+}

@@ -1,0 +1,7 @@
+
+        struct Box: Copy + Drop { val: i64 }
+        fn f(b: Box, out: &out Box) {
+            defer out.* = b;
+            let c = b;
+        }
+    

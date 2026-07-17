@@ -1,0 +1,9 @@
+
+            struct M: Move + Drop { a: i64 }
+            extern fn take(m: M);
+            fn f(x: M) {
+              entry:
+                call take(move x);
+                call take(move x);
+                return
+            }

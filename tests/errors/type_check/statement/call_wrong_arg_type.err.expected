@@ -1,0 +1,4 @@
+error: at 5:13: [TC-CallArgTypeMismatch] In function 'f', block 'entry': Call argument 0 type mismatch. Expected i64, found bool
+   |
+ 5 |             call takes_num(true);
+   |             ^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,7 @@
+
+            enum Void { }
+            fn f(v: Void) {
+              entry:
+                switchEnum(v) [ ]
+            }
+            

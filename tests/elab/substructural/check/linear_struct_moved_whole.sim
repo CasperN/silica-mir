@@ -1,0 +1,9 @@
+
+        struct P: Move { x: i64 y: i64 }
+        extern fn take(p: P);
+        fn f(p: P) {
+            entry:
+            call take(move p);
+            return
+        }
+        

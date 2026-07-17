@@ -1,0 +1,9 @@
+
+        enum Tag: Copy + Drop { A: unit B: i64 }
+        fn f() {
+            t: Tag;
+            entry:
+            t = Tag::A(unit);
+            return
+        }
+        

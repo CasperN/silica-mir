@@ -1,0 +1,13 @@
+struct Unit0: Copy + Drop {
+}
+
+fn f() {
+  u: Unit0;
+  v: Unit0;
+  entry:
+    drop v;
+    v = copy u;
+    drop v;
+    drop u;
+    return
+}

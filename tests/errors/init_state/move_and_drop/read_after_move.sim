@@ -1,0 +1,10 @@
+
+        fn f(x: i64) {
+          y: i64;
+          z: i64;
+          entry:
+            y = move x;
+            z = copy x;
+            return
+        }
+        

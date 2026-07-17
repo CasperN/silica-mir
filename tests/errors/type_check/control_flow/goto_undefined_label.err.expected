@@ -1,0 +1,4 @@
+error: at 4:13: [TC-TerminatorUndefinedTarget] In function 'f', block 'entry': goto targets undefined block 'nowhere'
+   |
+ 4 |             goto nowhere
+   |             ^^^^^^^^^^^^

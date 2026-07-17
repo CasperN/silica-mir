@@ -1,0 +1,4 @@
+error: at 1:14: [TC-DuplicateLocalName] Duplicate variable name 'x' in parameters of function 'f'
+   |
+ 1 | fn f(x: i64, x: i64) { entry: return }
+   |              ^^^^^^

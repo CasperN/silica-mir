@@ -1,0 +1,12 @@
+
+        fn f() {
+          s: [u8; 5];
+          h: u8;
+          o: u8;
+          entry:
+            s = b"hello";
+            h = copy s[0u64];
+            o = copy s[4u64];
+            return
+        }
+        

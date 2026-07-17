@@ -1,0 +1,4 @@
+error: at 5:17: [VF-SwitchDuplicateArm] In function 'f', block 'entry': switchEnum has duplicate arm for variant 'None'
+   |
+ 5 |                 switchEnum(o) [None: a, None: b, Some: c]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,4 @@
+error: at 4:16: [LAY-RecursiveTypeByValue] type 'C' is recursive by value (cycle: C, B, A). Break the cycle by wrapping a field/variant payload in a reference.
+   |
+ 4 |         struct C { a: A }
+   |                ^

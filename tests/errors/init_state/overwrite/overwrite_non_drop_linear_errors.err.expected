@@ -1,0 +1,4 @@
+error: at 8:13: [INIT-OverwriteWithoutDrop] In function 'f', block 'entry': cannot overwrite 'y': type Custom("Linear") is not Drop and the value is still live (consume it via `drop y` first)
+   |
+ 8 |             y = move x2;
+   |             ^^^^^^^^^^^

@@ -1,0 +1,14 @@
+
+        struct Inner: Copy + Drop { a: i64 b: i64 }
+        struct Outer: Copy + Drop { i: Inner c: i64 }
+        fn f() {
+          o: Outer;
+          n: i64;
+          entry:
+            o.i.a = 1;
+            o.i.b = 2;
+            o.c = 3;
+            n = copy o.i.a;
+            return
+        }
+        

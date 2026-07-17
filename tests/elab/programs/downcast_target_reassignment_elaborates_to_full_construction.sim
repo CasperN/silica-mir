@@ -1,0 +1,13 @@
+# `o as Some = 7` used to silently overwrite the old payload.
+# Drop-elab rewrites the whole statement to
+# `drop (o as Some); o = Option::Some(7)` so the old payload's
+# destructor eventually runs.
+enum Option: Copy + Drop { None: unit Some: i64 }
+fn f(o: Option) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    o as Some = 7;
+    return
+  n: return
+}

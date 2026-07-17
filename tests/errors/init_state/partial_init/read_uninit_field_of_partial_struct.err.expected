@@ -1,0 +1,4 @@
+error: at 8:13: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'p' is used before initialization
+   |
+ 8 |             a = copy p.y;
+   |             ^^^^^^^^^^^^

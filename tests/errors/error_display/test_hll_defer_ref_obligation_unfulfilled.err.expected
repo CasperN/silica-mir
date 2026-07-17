@@ -1,0 +1,4 @@
+error: at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+   |
+ 5 |             defer r.* = Box { val: 5 };
+   |                   ^^^^^^^^^^^^^^^^^^^^

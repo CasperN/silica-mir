@@ -1,0 +1,9 @@
+
+        fn f(x: &out i64) {
+          z: &out i64;
+          entry:
+            z = move x;
+            z.* = 42;
+            return
+        }
+        

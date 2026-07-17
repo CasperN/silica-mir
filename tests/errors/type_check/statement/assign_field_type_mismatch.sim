@@ -1,0 +1,8 @@
+
+        struct S { f: i64 }
+        fn f(s: S) {
+            entry:
+            s.f = true;
+            return
+        }
+        

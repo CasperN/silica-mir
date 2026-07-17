@@ -1,0 +1,4 @@
+error: at 6:17: [VF-SwitchArmFalselyUnreachable] In function 'f', block 'entry': switchEnum arm for variant 'B' claims unreachable but variant is reachable at this point
+   |
+ 6 |                 switchEnum(e) [A: a_arm, B: b_arm]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,13 @@
+fn callee(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+fn f() {
+  g: fn(i64);
+  entry:
+    g = callee;
+    drop g;
+    return
+}

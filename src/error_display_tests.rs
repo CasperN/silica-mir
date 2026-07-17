@@ -23,6 +23,7 @@ fn run_hll_pipeline(source: &str) -> Diagnostics {
 #[track_caller]
 fn assert_first_error(src: &str, expected: &str) {
     let d = run_hll_pipeline(src);
+    crate::mir::test_util::maybe_write_fixture_ext(src, d.has_errors(), "si");
     assert!(!d.is_clean(), "expected an error, got clean run");
     let errs = d.errors_str();
     assert_eq!(errs[0], expected);

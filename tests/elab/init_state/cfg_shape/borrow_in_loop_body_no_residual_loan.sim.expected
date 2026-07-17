@@ -1,0 +1,19 @@
+extern fn use_ref(r: &mut i64);
+
+fn f(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    r = &mut x;
+    call use_ref(move r);
+    goto head
+  done:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}

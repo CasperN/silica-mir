@@ -1,0 +1,4 @@
+error: at 5:17: [VF-SwitchArmFalselyUnreachable] In function 'f', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+   |
+ 5 |                 switchEnum(o) [None: n, Some: dead]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

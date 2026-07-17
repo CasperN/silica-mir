@@ -1,0 +1,7 @@
+fn f(r: &mut i64) {
+  entry:
+    drop r.*;
+    r.* = 42;
+    unborrow r;
+    return
+}

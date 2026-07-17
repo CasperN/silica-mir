@@ -1,0 +1,13 @@
+
+        struct D: Move + Drop { a: i64 }
+        extern fn use_d(d: D);
+        fn f(d1: D, d2: D) {
+          x: D;
+          entry:
+            x = move d1;
+            drop x;
+            x = move d2;
+            call use_d(move x);
+            return
+        }
+        

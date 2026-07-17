@@ -1,0 +1,6 @@
+
+        fn f() {
+            let x: i64 = 1;
+            let r = &mut x;
+        }
+    

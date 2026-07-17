@@ -1,0 +1,14 @@
+
+        enum Wrap: Move { W: &mut i64 }
+        extern fn take_wrap(w: Wrap);
+        fn f(x: i64) {
+          r: &mut i64;
+          w: Wrap;
+          entry:
+            r = &mut x;
+            w = Wrap::W(move r);
+            call take_wrap(move w);
+            x = 7;
+            return
+        }
+        

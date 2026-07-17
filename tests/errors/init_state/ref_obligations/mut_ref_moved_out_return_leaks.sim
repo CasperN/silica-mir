@@ -1,0 +1,7 @@
+# Move-out leaves cur=Uninit; not refilled → obligation unmet.
+fn f(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    return
+}

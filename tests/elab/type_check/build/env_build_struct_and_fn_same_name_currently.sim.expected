@@ -1,0 +1,8 @@
+struct N {
+  x: i64
+}
+
+fn N() {
+  entry:
+    return
+}

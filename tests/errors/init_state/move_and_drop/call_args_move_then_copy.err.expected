@@ -1,0 +1,4 @@
+error: at 5:13: [INIT-UseAfterMove] In function 'f', block 'entry': variable 'x' is used after move
+   |
+ 5 |             call take_two(move x, copy x);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

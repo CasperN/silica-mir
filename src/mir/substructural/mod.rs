@@ -14,6 +14,3 @@ pub mod drop_elaboration;
 
 #[cfg(test)]
 mod drop_elaboration_tests;
-
-#[cfg(test)]
-mod check_tests;

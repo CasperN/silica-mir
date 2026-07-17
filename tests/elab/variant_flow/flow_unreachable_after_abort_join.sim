@@ -1,0 +1,17 @@
+
+            enum Option: Copy + Drop { None: unit Some: i64 }
+            fn f(b: bool) {
+              o: Option;
+              entry:
+                branch(copy b) [true: t, false: fbr]
+              t:
+                o = Option::None(unit);
+                goto join
+              fbr:
+                abort
+              join:
+                switchEnum(o) [None: end, Some: dead]
+              end: return
+              dead: unreachable
+            }
+            

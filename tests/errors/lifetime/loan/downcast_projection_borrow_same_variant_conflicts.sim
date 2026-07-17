@@ -1,0 +1,19 @@
+
+        enum Option: Copy + Drop { None: unit Some: i64 }
+        extern fn sink(r: &mut i64);
+        fn f() {
+          o: Option;
+          r: &mut i64;
+          y: i64;
+          entry:
+            o = Option::Some(1);
+            switchEnum(o) [None: n_arm, Some: s_arm]
+          s_arm:
+            r = &mut o as Some;
+            y = copy o as Some;
+            call sink(move r);
+            return
+          n_arm:
+            unreachable
+        }
+        

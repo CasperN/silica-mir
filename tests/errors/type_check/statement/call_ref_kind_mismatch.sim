@@ -1,0 +1,10 @@
+
+        extern fn takes_drop(r: &drop i64);
+        fn f(y: i64) {
+            r: &mut i64;
+            entry:
+            r = &mut y;
+            call takes_drop(move r);
+            return
+        }
+        

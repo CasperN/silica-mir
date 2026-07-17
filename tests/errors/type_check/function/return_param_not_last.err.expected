@@ -1,0 +1,4 @@
+error: at 1:6: [TC-InvalidDeclaredType] In function 'f', parameter '$return' must be in the final position
+   |
+ 1 | fn f($return: &out i64, x: i64) { entry: return }
+   |      ^^^^^^^^^^^^^^^^^

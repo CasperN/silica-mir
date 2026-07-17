@@ -1,0 +1,8 @@
+fn f() {
+  entry:
+    return
+  dead1:
+    goto dead2
+  dead2:
+    return
+}

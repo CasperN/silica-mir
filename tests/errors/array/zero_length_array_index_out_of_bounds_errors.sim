@@ -1,0 +1,9 @@
+
+        fn f() {
+          a: [i64; 0];
+          r: &mut i64;
+          entry:
+            r = &mut a[0i64];
+            return
+        }
+        

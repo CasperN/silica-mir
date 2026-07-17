@@ -1,0 +1,4 @@
+
+        enum Loop { A: unit B: Loop }
+        fn f() { entry: return }
+        

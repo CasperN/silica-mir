@@ -1,0 +1,26 @@
+enum Which: Copy + Drop {
+  A: unit
+  B: unit
+}
+
+fn f(r: &mut i64, w: Which) {
+  consumed: i64;
+  entry:
+    switchEnum(w) [A: a_arm, B: entry__to__b_arm]
+  entry__to__b_arm:
+    unborrow r;
+    goto b_arm
+  a_arm:
+    consumed = move r.*;
+    r.* = 99;
+    unborrow r;
+    goto a_arm__to__join
+  a_arm__to__join:
+    drop consumed;
+    goto join
+  b_arm:
+    goto join
+  join:
+    drop w;
+    return
+}

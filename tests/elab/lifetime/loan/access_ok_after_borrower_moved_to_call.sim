@@ -1,0 +1,11 @@
+
+        extern fn sink(r: &mut i64);
+        fn f(x: i64) {
+          r: &mut i64;
+          entry:
+            r = &mut x;
+            call sink(move r);
+            x = 1;
+            return
+        }
+        

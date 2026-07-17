@@ -1,0 +1,4 @@
+error: at 4:9: [PARSE-InvalidLiteral] In function 'f', block 'entry': unknown escape sequence: \q
+   |
+ 4 |     s = b"\q";
+   |         ^^^^^

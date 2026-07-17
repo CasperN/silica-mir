@@ -1,0 +1,8 @@
+
+            fn f() {
+              x: i64;
+              z: i64;
+              entry:
+                x = copy z;
+                return
+            }

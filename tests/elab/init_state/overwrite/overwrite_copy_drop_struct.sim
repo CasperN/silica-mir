@@ -1,0 +1,12 @@
+
+        struct P: Copy + Drop { a: i64 b: i64 }
+        extern fn use_p(p: P);
+        fn f(p1: P, p2: P) {
+          x: P;
+          entry:
+            x = move p1;
+            x = move p2;
+            call use_p(move x);
+            return
+        }
+        

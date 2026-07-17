@@ -1,0 +1,16 @@
+extern fn sink(t: &mut i64);
+
+fn f(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  t: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    t = &mut s.*;
+    call sink(move t);
+    unborrow s;
+    unborrow r;
+    drop x;
+    return
+}

@@ -1,0 +1,10 @@
+
+        struct Linear { r: &out i64 }
+        enum Wrap { W: Linear }
+        fn f(x: Linear) {
+            w: Wrap;
+            entry:
+            w = Wrap::W(copy x);
+            return
+        }
+        

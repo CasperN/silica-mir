@@ -1,0 +1,3 @@
+
+            struct Bad: Drop { r: &out i64 }
+            

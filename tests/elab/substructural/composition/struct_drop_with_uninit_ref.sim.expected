@@ -1,0 +1,3 @@
+struct S: Drop {
+  r: &uninit i64
+}

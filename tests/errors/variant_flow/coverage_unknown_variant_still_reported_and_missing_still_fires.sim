@@ -1,0 +1,8 @@
+
+            enum Option: Copy + Drop { None: unit Some: i64 }
+            fn f(o: Option) {
+              entry:
+                switchEnum(o) [Wat: end]
+              end: return
+            }
+            

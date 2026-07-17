@@ -1,0 +1,13 @@
+
+        struct Sub: Copy + Drop { v: i64 }
+        struct Container: Copy + Drop { arr: [Sub; 3] }
+        extern fn use_mut(r: &mut i64);
+        fn f(c: Container, i: i64) {
+          r: &mut i64;
+          entry:
+            r = &mut c.arr[copy i].v;
+            c.arr[0i64].v = 7i64;
+            call use_mut(move r);
+            return
+        }
+        

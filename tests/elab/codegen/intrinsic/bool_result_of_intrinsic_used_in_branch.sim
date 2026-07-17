@@ -1,0 +1,19 @@
+
+        fn f(x: i64) {
+          b: bool;
+          bo: &out bool;
+          y: i64;
+          entry:
+            bo = &out b;
+            call $i64_gt(copy x, 0i64, move bo);
+            branch(copy b) [true: t_arm, false: f_arm]
+          t_arm:
+            y = 1;
+            goto join
+          f_arm:
+            y = 2;
+            goto join
+          join:
+            return
+        }
+        

@@ -1,0 +1,4 @@
+error: at 4:13: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
+   |
+ 4 |             x = 2;
+   |             ^

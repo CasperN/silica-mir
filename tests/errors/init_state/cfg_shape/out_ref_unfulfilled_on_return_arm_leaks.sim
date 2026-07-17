@@ -1,0 +1,13 @@
+# Same shape as out_ref_unfulfilled_on_abort_arm_is_waived but b_arm
+# returns instead of aborting. Now the obligation must be checked
+# and this errors.
+enum E: Copy + Drop { A: unit B: unit }
+fn f(r: &out i64, e: E) {
+  entry:
+    switchEnum(e) [A: a_arm, B: b_arm]
+  a_arm:
+    r.* = 1;
+    return
+  b_arm:
+    return
+}

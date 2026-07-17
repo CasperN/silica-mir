@@ -1,0 +1,4 @@
+error: at 6:17: [VF-DowncastVariantNotRefined] In function 'f', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+   |
+ 6 |                 x = copy o as Some;
+   |                 ^^^^^^^^^^^^^^^^^^

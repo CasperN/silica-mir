@@ -1,0 +1,4 @@
+error: at 5:13: [TC-AssignmentTypeMismatch] In function 'f', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+   |
+ 5 |             x = true;
+   |             ^^^^^^^^

@@ -1,0 +1,4 @@
+error: at 3:34: [COMP-CopyMarkerNotSatisfied] In struct 'Outer' (marked Copy), field 'inner' has type Linear which is not Copy
+   |
+ 3 |             struct Outer: Copy { inner: Linear }
+   |                                  ^^^^^^^^^^^^^

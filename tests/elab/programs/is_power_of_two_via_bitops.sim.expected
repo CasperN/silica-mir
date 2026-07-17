@@ -1,0 +1,19 @@
+fn is_pow2(x: u64, out: &out bool) {
+  minus_one: u64;
+  masked: u64;
+  sub_out: &out u64;
+  and_out: &out u64;
+  bo: &out bool;
+  entry:
+    sub_out = &out minus_one;
+    call $u64_sub(copy x, 1u64, move sub_out);
+    and_out = &out masked;
+    call $u64_and(copy x, copy minus_one, move and_out);
+    bo = &out out.*;
+    call $u64_eq(copy masked, 0u64, move bo);
+    unborrow out;
+    drop masked;
+    drop minus_one;
+    drop x;
+    return
+}

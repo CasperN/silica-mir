@@ -1,0 +1,10 @@
+
+        fn noop() { entry: return }
+        fn f() {
+            g: fn();
+            entry:
+            g = noop;
+            call copy g();
+            return
+        }
+        

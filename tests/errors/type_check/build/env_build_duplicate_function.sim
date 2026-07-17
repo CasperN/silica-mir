@@ -1,0 +1,4 @@
+
+        fn f() { entry: return }
+        fn f() { entry: return }
+        

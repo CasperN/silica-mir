@@ -1,0 +1,9 @@
+
+        struct S { x: i64 }
+        fn f(s: S) {
+            x: i64;
+            entry:
+            x = copy s as Some;
+            return
+        }
+        

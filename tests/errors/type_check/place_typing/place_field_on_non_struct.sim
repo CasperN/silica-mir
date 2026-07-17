@@ -1,0 +1,8 @@
+
+        fn f(n: i64) {
+            a: i64;
+            entry:
+            a = copy n.x;
+            return
+        }
+        

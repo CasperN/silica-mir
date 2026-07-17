@@ -1,0 +1,8 @@
+
+            struct S { r: &drop i64 }
+            fn f(x: i64) {
+              s: S;
+              entry:
+                s.r = &drop x;
+                return
+            }

@@ -1,0 +1,10 @@
+fn f() {
+  s: [u8; 5];
+  b: u8;
+  entry:
+    s = b"hello";
+    b = copy s[0u64];
+    drop b;
+    drop s;
+    return
+}

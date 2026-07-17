@@ -1,0 +1,16 @@
+# Both `l` and `m` have a predecessor from the other and from
+# entry — the loop has no single header (irreducible flow).
+# Fixpoint should still converge.
+extern fn noop();
+fn f(a: bool, b: bool) {
+  entry:
+    branch(copy a) [true: l, false: m]
+  l:
+    call noop();
+    branch(copy b) [true: m, false: exit]
+  m:
+    call noop();
+    branch(copy a) [true: l, false: exit]
+  exit:
+    return
+}

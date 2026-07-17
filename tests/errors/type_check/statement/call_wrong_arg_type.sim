@@ -1,0 +1,8 @@
+
+        extern fn takes_num(a: i64);
+        fn f() {
+            entry:
+            call takes_num(true);
+            return
+        }
+        

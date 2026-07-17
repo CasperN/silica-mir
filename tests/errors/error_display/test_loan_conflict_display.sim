@@ -1,0 +1,12 @@
+
+        fn f() {
+            x: i64;
+            r: &mut i64;
+            entry:
+            x = 10;
+            r = &mut x;
+            x = 20;
+            drop r;
+            return
+        }
+    

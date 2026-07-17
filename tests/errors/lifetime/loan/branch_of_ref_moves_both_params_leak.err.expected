@@ -1,0 +1,8 @@
+error: at 5:13: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry__to__fbr': reference 'x' has unfulfilled obligation here (is_init=false, ends_init=true)
+   |
+ 5 |             branch(copy b) [true: t, false: fbr]
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 5:13: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry__to__t': reference 'y' has unfulfilled obligation here (is_init=false, ends_init=true)
+   |
+ 5 |             branch(copy b) [true: t, false: fbr]
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

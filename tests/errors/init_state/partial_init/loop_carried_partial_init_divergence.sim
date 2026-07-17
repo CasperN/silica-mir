@@ -1,0 +1,18 @@
+
+        struct P: Copy + Drop { x: i64 y: i64 }
+        fn f(cond: bool) {
+          p: P;
+          a: P;
+          entry:
+            p.x = 10i64;
+            goto loop_hdr
+          loop_hdr:
+            branch(copy cond) [true: init_y, false: exit]
+          init_y:
+            p.y = 20i64;
+            goto loop_hdr
+          exit:
+            a = copy p;
+            return
+        }
+        

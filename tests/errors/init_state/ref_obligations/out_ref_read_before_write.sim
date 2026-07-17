@@ -1,0 +1,8 @@
+# Can't read through &out — pointee is Uninit at creation.
+fn f(r: &out i64) {
+  x: i64;
+  entry:
+    x = copy r.*;
+    r.* = 42;
+    return
+}

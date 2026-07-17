@@ -1,0 +1,4 @@
+error: at 6:13: [TC-NoSuchField] In function 'f', block 'entry': Struct 'P' has no field 'z'
+   |
+ 6 |             a = copy p.z;
+   |             ^^^^^^^^^^^^

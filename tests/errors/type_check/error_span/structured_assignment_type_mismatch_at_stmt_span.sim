@@ -1,0 +1,6 @@
+fn f() {
+  x: i64;
+  entry:
+                x = true;
+                return
+}

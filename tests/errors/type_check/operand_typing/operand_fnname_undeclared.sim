@@ -1,0 +1,8 @@
+
+        fn f() {
+            g: fn(i64);
+            entry:
+            g = missing;
+            return
+        }
+        

@@ -1,10 +1,105 @@
 //! Shared test helpers for the full check pipeline. Every helper builds on
 //! `run(src)`, which runs parse → type_check + all analyses
 //! against a single `Diagnostics`.
+//!
+//! Fixture extraction mode: setting `EXTRACT_FIXTURES=1` in the
+//! environment causes every `run` / `run_structured` call to also
+//! write the source string to `tests/{elab,errors}/…/<test_name>.sim`
+//! as a side effect. Directory is inferred from whether the run
+//! produced errors. Used to bulk-migrate the unit-test corpus into
+//! the fixture runner (see `tests/fixtures.rs`).
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::parser::Parser;
 use crate::elaborate_and_check_mir;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+
+// ============================================================
+// Fixture extraction (opt-in via EXTRACT_FIXTURES=1)
+// ============================================================
+
+fn extract_mode() -> bool {
+    std::env::var("EXTRACT_FIXTURES").ok().as_deref() == Some("1")
+}
+
+// Per-test call counter so multiple `run(...)` calls in one test each
+// get a distinct fixture filename (`name.sim`, `name_call1.sim`, ...).
+static EXTRACT_COUNTERS: OnceLock<Mutex<HashMap<String, usize>>> = OnceLock::new();
+
+/// Write `src` to a fixture file derived from the current test's
+/// module path + name. `has_errors` selects `errors/` vs `elab/`.
+/// No-op when EXTRACT_FIXTURES is unset.
+pub(crate) fn maybe_write_fixture(src: &str, has_errors: bool) {
+    maybe_write_fixture_ext(src, has_errors, "sim")
+}
+
+pub(crate) fn maybe_write_fixture_ext(src: &str, has_errors: bool, ext: &str) {
+    if !extract_mode() {
+        return;
+    }
+    let stage = if has_errors { "errors" } else { "elab" };
+    let test_name = std::thread::current()
+        .name()
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "unknown".to_string());
+
+    let (dir_rel, stem) = derive_fixture_path(&test_name, stage);
+
+    let counters = EXTRACT_COUNTERS.get_or_init(|| Mutex::new(HashMap::new()));
+    let call_index = {
+        let mut lock = counters.lock().unwrap();
+        let count = lock.entry(test_name.clone()).or_insert(0);
+        let idx = *count;
+        *count += 1;
+        idx
+    };
+    let stem_with_suffix = if call_index == 0 {
+        stem
+    } else {
+        format!("{}_call{}", stem, call_index)
+    };
+
+    let base = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("tests")
+        .join(stage)
+        .join(&dir_rel);
+    if let Err(e) = std::fs::create_dir_all(&base) {
+        eprintln!("EXTRACT: create_dir_all({}) failed: {}", base.display(), e);
+        return;
+    }
+    let dest = base.join(format!("{}.{}", stem_with_suffix, ext));
+    if let Err(e) = std::fs::write(&dest, src) {
+        eprintln!("EXTRACT: write({}) failed: {}", dest.display(), e);
+    }
+}
+
+/// Derive `(dir_rel, stem)` from a fully-qualified test path such as
+/// `silica_mir::mir::init_state::foo_tests::bar_ok`. Rules:
+/// * Drop crate prefix (`silica_mir`).
+/// * Drop leading `mir::` — fixtures live directly under `tests/{stage}/`.
+/// * Strip `_tests` suffix from module names; drop bare `tests` (inline
+///   `mod tests` blocks).
+/// * Strip trailing `_ok` (elab) or `_error` (errors) from the test fn.
+fn derive_fixture_path(test_name: &str, stage: &str) -> (String, String) {
+    let mut parts: Vec<&str> = test_name.split("::").collect();
+    if parts.first() == Some(&"silica_mir") {
+        parts.remove(0);
+    }
+    if parts.first() == Some(&"mir") {
+        parts.remove(0);
+    }
+    let last = parts.pop().unwrap_or("unknown").to_string();
+    let suffix = if stage == "elab" { "_ok" } else { "_error" };
+    let stem = last.strip_suffix(suffix).unwrap_or(&last).to_string();
+
+    let dir_parts: Vec<String> = parts
+        .into_iter()
+        .filter(|p| *p != "tests")
+        .map(|p| p.strip_suffix("_tests").unwrap_or(p).to_string())
+        .collect();
+    (dir_parts.join("/"), stem)
+}
 
 /// Full pipeline run that yields the structured `Diagnostics` container.
 /// Used by tests that need to assert on codes/spans, not just strings.
@@ -19,6 +114,7 @@ pub fn run_structured(src: &str) -> Diagnostics {
     });
     let mut d = Diagnostics::default().with_source(program.source.clone());
     elaborate_and_check_mir(&program, &mut d);
+    maybe_write_fixture(src, d.has_errors());
     d
 }
 
@@ -89,6 +185,7 @@ pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     });
     let mut d = Diagnostics::default().with_source(program.source.clone());
     elaborate_and_check_mir(&program, &mut d);
+    maybe_write_fixture(src, d.has_errors());
     (d.errors_str(), d.warnings_str())
 }
 

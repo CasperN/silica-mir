@@ -1,0 +1,13 @@
+struct Linear: Move {
+  r: &out i64
+}
+
+extern fn take(l: Linear);
+
+fn f(x: Linear) {
+  y: Linear;
+  entry:
+    y = move x;
+    call take(move y);
+    return
+}

@@ -1,0 +1,4 @@
+error: at 2:30: [COMP-DropMarkerNotSatisfied] In enum 'Bad' (marked Drop), variant 'A' payload type &out i64 is not Drop
+   |
+ 2 |             enum Bad: Drop { A: &out i64 }
+   |                              ^^^^^^^^^^^

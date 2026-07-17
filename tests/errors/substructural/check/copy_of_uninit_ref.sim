@@ -1,0 +1,8 @@
+
+        fn f(r: &uninit i64) {
+            s: &uninit i64;
+            entry:
+            s = copy r;
+            return
+        }
+        

@@ -1,0 +1,6 @@
+
+        fn f(r: &mut i64) {
+            let y = r;
+            let z = r;
+        }
+    

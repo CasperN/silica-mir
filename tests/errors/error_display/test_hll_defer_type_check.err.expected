@@ -1,0 +1,4 @@
+error: at 3:19: [TC-AssignmentTypeMismatch] In function 'f': Type mismatch in assignment. LHS is unit, RHS is i64
+   |
+ 3 |             defer 42;
+   |                   ^^

@@ -1,0 +1,4 @@
+error: at 1:4: [TC-NoEntryBlock] Function 'f' has no entry block: body must contain at least one basic block
+   |
+ 1 | fn f() { }
+   |    ^

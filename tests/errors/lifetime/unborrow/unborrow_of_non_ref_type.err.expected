@@ -1,0 +1,4 @@
+error: at 4:13: [TC-UnborrowNonReference] In function 'f', block 'entry': unborrow requires a reference-typed place, found i64
+   |
+ 4 |             unborrow x;
+   |             ^^^^^^^^^^

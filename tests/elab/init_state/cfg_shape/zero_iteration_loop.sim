@@ -1,0 +1,16 @@
+# Loop where body may execute zero times. State at `done` must
+# still be usable.
+extern fn sink(r: &mut i64);
+fn f(b: bool, x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    goto head
+  done:
+    call sink(move r);
+    return
+}

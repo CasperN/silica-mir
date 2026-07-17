@@ -1,0 +1,4 @@
+error: at 4:29: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
+   |
+ 4 |             defer { let x = b; };
+   |                             ^

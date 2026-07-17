@@ -1,0 +1,4 @@
+
+        struct N { x: i64 }
+        enum N { A: i64 }
+        

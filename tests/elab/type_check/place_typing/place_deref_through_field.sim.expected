@@ -1,0 +1,12 @@
+struct Ptr: Copy + Drop {
+  r: & i64
+}
+
+fn f(p: Ptr) {
+  a: i64;
+  entry:
+    a = copy p.r.*;
+    unborrow p.r;
+    drop a;
+    return
+}

@@ -1,0 +1,8 @@
+struct Point: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+struct Outer: Move {
+  p: Point
+}

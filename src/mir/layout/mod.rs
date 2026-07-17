@@ -278,5 +278,3 @@ impl<'a> Tarjan<'a> {
 
 #[cfg(test)]
 mod size_align_tests;
-#[cfg(test)]
-mod recursion_tests;

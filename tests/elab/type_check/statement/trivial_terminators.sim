@@ -1,0 +1,5 @@
+
+        fn a() { entry: return }
+        fn b() { entry: abort }
+        fn c() { entry: unreachable }
+        

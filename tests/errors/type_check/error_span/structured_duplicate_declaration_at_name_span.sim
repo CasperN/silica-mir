@@ -1,0 +1,4 @@
+
+        struct S { x: i64 }
+        struct S { y: i64 }
+        fn f() { entry: return }

@@ -1,0 +1,5 @@
+fn f(r: &i64) {
+  entry:
+    r.* = 1;
+    return
+}

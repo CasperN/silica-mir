@@ -1,0 +1,7 @@
+fn f() {
+  b: bool;
+  entry:
+    b = true;
+    drop b;
+    return
+}

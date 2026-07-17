@@ -1,0 +1,8 @@
+
+        struct Linear { r: &out i64 }
+        fn f(x: Linear) {
+            entry:
+            drop x;
+            return
+        }
+        

@@ -1,0 +1,9 @@
+fn f(b: bool) {
+  entry:
+    goto head
+  head:
+    branch(copy b) [true: head, false: done]
+  done:
+    drop b;
+    return
+}

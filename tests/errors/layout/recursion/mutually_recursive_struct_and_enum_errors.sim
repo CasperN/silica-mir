@@ -1,0 +1,5 @@
+
+        enum E { V: S }
+        struct S { e: E }
+        fn f() { entry: return }
+        

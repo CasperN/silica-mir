@@ -1,0 +1,9 @@
+error: at 10:13: [LT-LoanConflict] In function 'f', block 'entry': cannot read 'o.i': already borrowed by 'r'
+    |
+ 10 |             y = copy o.i;
+    |             ^^^^^^^^^^^^
+  = note: borrow of 'o.i' occurs here
+    |
+  9 |             r = &mut o.i.x;
+    |             ^^^^^^^^^^^^^^
+  hint: the borrow of 'r' is active until its last use or explicit unborrow.

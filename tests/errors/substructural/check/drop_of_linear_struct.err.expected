@@ -1,0 +1,5 @@
+error: at 5:13: [SUB-DropOfNonDrop] In function 'f', block 'entry': cannot drop non-Drop type Linear
+   |
+ 5 |             drop x;
+   |             ^^^^^^
+  hint: only types implementing the Drop class can be explicitly dropped

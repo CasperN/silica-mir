@@ -1,0 +1,13 @@
+
+        extern fn set_i64(r: &out i64, v: i64);
+        fn f() {
+          a: [i64; 3];
+          r0: &out i64;
+          x: i64;
+          entry:
+            r0 = &out a[0i64];
+            call set_i64(move r0, 10i64);
+            x = copy a[1i64];
+            return
+        }
+        

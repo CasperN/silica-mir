@@ -1,0 +1,4 @@
+enum List: Copy + Drop {
+  Nil: unit
+  Cons: & List
+}

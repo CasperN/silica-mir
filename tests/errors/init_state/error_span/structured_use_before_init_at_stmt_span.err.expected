@@ -1,0 +1,4 @@
+error: at 6:17: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'z' is used before initialization
+   |
+ 6 |                 x = copy z;
+   |                 ^^^^^^^^^^

@@ -1,0 +1,8 @@
+
+        fn f(y: i64) {
+            x: i64;
+            entry:
+            x = copy y.*;
+            return
+        }
+        

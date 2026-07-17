@@ -1,0 +1,13 @@
+
+        enum E: Move { V: i64 }
+        extern fn sink(r: &mut i64);
+        fn f(e: &mut E) {
+          r: &mut i64;
+          entry:
+            switchEnum(e.*) [V: v_arm]
+          v_arm:
+            r = &mut e.* as V;
+            call sink(move r);
+            return
+        }
+        

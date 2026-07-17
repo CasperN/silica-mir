@@ -1,0 +1,4 @@
+error: at 3:16: [TC-DuplicateDeclaration] Duplicate declaration of type 'P'
+   |
+ 3 |         struct P { y: i64 }
+   |                ^

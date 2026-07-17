@@ -1,0 +1,15 @@
+struct Point: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+fn f(pt: Point, out: &out i64) {
+  p: *Point;
+  entry:
+    p = &raw pt;
+    out.* = copy p.*.x;
+    unborrow out;
+    drop p;
+    drop pt;
+    return
+}

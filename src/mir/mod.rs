@@ -14,14 +14,4 @@ pub mod type_check;
 pub mod variant_flow;
 
 #[cfg(test)]
-pub mod array_tests;
-#[cfg(test)]
-pub mod programs;
-#[cfg(test)]
-pub mod raw_ptr_tests;
-#[cfg(test)]
 pub mod test_util;
-#[cfg(test)]
-pub mod string_tests;
-#[cfg(test)]
-pub mod error_display_tests;

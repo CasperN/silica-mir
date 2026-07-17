@@ -1,0 +1,22 @@
+extern fn use_num(n: i64);
+
+fn f(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: head__to__done]
+  head__to__done:
+    unborrow r;
+    goto done
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}

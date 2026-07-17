@@ -1,0 +1,9 @@
+fn f(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    r.* = 42;
+    unborrow r;
+    drop x;
+    return
+}

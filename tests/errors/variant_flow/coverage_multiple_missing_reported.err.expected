@@ -1,0 +1,8 @@
+error: at 5:17: [VF-SwitchNotExhaustive] In function 'f', block 'entry': switchEnum on 'E' does not handle variant 'B'
+   |
+ 5 |                 switchEnum(e) [A: end]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^
+error: at 5:17: [VF-SwitchNotExhaustive] In function 'f', block 'entry': switchEnum on 'E' does not handle variant 'C'
+   |
+ 5 |                 switchEnum(e) [A: end]
+   |                 ^^^^^^^^^^^^^^^^^^^^^^

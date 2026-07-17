@@ -1,0 +1,8 @@
+
+        fn f() {
+            n: i64;
+            entry:
+            n = unit;
+            return
+        }
+        

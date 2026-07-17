@@ -1,0 +1,4 @@
+error: at 4:17: [TC-TerminatorUndefinedTarget] In function 'f', block 'entry': goto targets undefined block 'missing_label'
+   |
+ 4 |                 goto missing_label
+   |                 ^^^^^^^^^^^^^^^^^^
