@@ -1,0 +1,9 @@
+# Every HLL `let y = x` lowers to a move; re-reading `x` afterward is
+# a use-after-move even for Copy-like types at the surface (the HLL
+# lowering emits a move, not a copy).
+struct Box: Copy + Drop { val: i64 }
+fn f() {
+  let x = Box { val: 1 };
+  let y = x;
+  let z = x;
+}

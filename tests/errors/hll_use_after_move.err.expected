@@ -1,0 +1,4 @@
+error: at 8:11: [INIT-UseAfterMove] In function 'f': variable 'x' is used after move
+   |
+ 8 |   let z = x;
+   |           ^

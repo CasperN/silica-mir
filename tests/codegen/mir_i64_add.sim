@@ -1,0 +1,5 @@
+fn add_two(a: i64, b: i64, out: &out i64) {
+  entry:
+    call $i64_add(copy a, copy b, move out);
+    return
+}
