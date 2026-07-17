@@ -549,7 +549,7 @@ fn resolve_enum_of_place<'a>(
     // We only need the successful branch; span doesn't matter since
     // any error is discarded.
     let ty = env
-        .infer_place_type(place, crate::mir::ast::Span::default(), locals)
+        .type_of_place(place, crate::mir::ast::Span::default(), locals)
         .ok()?;
     let Type::Custom(name) = ty else {
         return None;

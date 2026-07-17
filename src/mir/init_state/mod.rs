@@ -1519,7 +1519,7 @@ impl<'a> InitStateContext<'a> {
         // error here; post-elab init_state re-runs against the
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && matches!(leaf, InitState::Init) {
-            if let Ok(leaf_ty) = self.env.infer_place_type(place, span, self.locals) {
+            if let Ok(leaf_ty) = self.env.type_of_place(place, span, self.locals) {
                 if class_of(&leaf_ty, self.env).implies(Marker::Drop) {
                     return;
                 }

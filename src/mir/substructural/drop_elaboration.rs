@@ -300,7 +300,7 @@ fn pre_stmt_transitions(
     // because Case A skips Downcast paths.
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
-            if let Ok(inner_ty) = env.infer_place_type(inner, crate::mir::ast::Span::default(), locals) {
+            if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals) {
                 if let Type::Custom(enum_name) = &inner_ty {
                     let payload_place =
                         Place::Downcast(Box::new(inner_owned.clone()), variant.clone());
@@ -378,7 +378,7 @@ fn is_init_and_drop(
     if !matches!(leaf_state, InitState::Init) {
         return false;
     }
-    let Ok(leaf_ty) = env.infer_place_type(place, crate::mir::ast::Span::default(), locals) else {
+    let Ok(leaf_ty) = env.type_of_place(place, crate::mir::ast::Span::default(), locals) else {
         return false;
     };
     class_of(&leaf_ty, env).implies(Marker::Drop)
