@@ -11,6 +11,7 @@ pub mod parser;
 pub mod pretty_print;
 pub mod substructural;
 pub mod type_check;
+pub mod type_util;
 pub mod variant_flow;
 
 #[cfg(test)]

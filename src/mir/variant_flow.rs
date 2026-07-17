@@ -24,6 +24,7 @@ use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::type_util::is_type_uninhabited;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -538,50 +539,6 @@ fn check_switch(
             _ => {}
         }
     }
-}
-
-/// True if a value of `ty` cannot be constructed. Uninhabited types:
-/// - `never` — the axiom.
-/// - Struct where any field is uninhabited (whole-value construction
-///   requires every field).
-/// - Enum where every variant's payload is uninhabited (no variant
-///   is constructible → the enum is empty).
-/// - Non-empty array of an uninhabited element type. `[T; 0]` is
-///   inhabited (the empty array literal has no elements to construct).
-///
-/// References, raw pointers, function pointers, scalars, `unit`, and
-/// `bool` are always inhabited. Recursive struct/enum types are
-/// bounded by the visited set — a Custom name seen twice in the
-/// same walk conservatively returns false (inhabited) rather than
-/// looping.
-fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
-    fn walk(ty: &Type, env: &Env, visited: &mut BTreeSet<String>) -> bool {
-        match ty {
-            Type::Never => true,
-            Type::Custom(name) => {
-                if !visited.insert(name.clone()) {
-                    return false;
-                }
-                let out = match env.types.get(name) {
-                    Some(TypeDecl::Struct(s)) => {
-                        s.fields.iter().any(|f| walk(&f.ty, env, visited))
-                    }
-                    // An enum is uninhabited when EVERY variant is
-                    // uninhabited. Vacuous truth handles the empty
-                    // enum (no variants → all() returns true).
-                    Some(TypeDecl::Enum(e)) => {
-                        e.variants.iter().all(|v| walk(&v.ty, env, visited))
-                    }
-                    None => false,
-                };
-                visited.remove(name);
-                out
-            }
-            Type::Array(elem, n) => *n > 0 && walk(elem, env, &mut BTreeSet::new()),
-            _ => false,
-        }
-    }
-    walk(ty, env, &mut BTreeSet::new())
 }
 
 fn resolve_enum_of_place<'a>(
