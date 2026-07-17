@@ -101,11 +101,13 @@ impl Env {
 
     /// Validate `ty` against the current type-parameter scope.
     ///
-    /// Callers that don't have a scope (non-generic decls, tests) pass
-    /// the empty scope; use [`validate_type_in`] to skip constructing
-    /// it. `Custom(name, args)` triggers a use-site check: arity must
+    /// `Custom(name, args)` triggers a use-site check: arity must
     /// match the decl's `type_params` and each arg's substructural
     /// class must imply the corresponding param's declared bounds.
+    /// This pairs with the decl-side marker check in
+    /// [`composition`](crate::mir::substructural::composition) —
+    /// together they license `class_of(Custom(_, args))` returning
+    /// the decl's declared markers without substitution.
     pub fn validate_type(&self, ty: &Type, scope: ParamScope) -> Result<(), String> {
         match ty {
             Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => Ok(()),

@@ -22,6 +22,13 @@
 //! Self-referential and mutually recursive types resolve without a
 //! fixpoint: we use the declared markers of a `Custom` name verbatim,
 //! which is sufficient for compositional checks.
+//!
+//! Generics: the decl-side check runs under a `ParamScope` built from
+//! the decl's `type_params`, so a `Param(T)` reads its declared bounds
+//! as its class. The dual use-site check lives in
+//! [`Env::validate_type`](crate::mir::type_check::Env::validate_type) —
+//! together they mean `class_of(Custom(_, args))` can return the
+//! decl's declared markers without inspecting the args.
 
 use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};

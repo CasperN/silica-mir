@@ -831,6 +831,12 @@ Order of operations:
   syntax).
 
 ## Elaboration + drop
+- **Aggregate `Partial` state doesn't fold up to `Init`.** Writing
+  every field of an Uninit struct pointee through an `&out` (e.g.
+  `out.*.f = ...` for each field of a two-field struct) leaves the
+  pointee in `Partial{all-Init}`, which the `&out` obligation check
+  rejects at return. It should be equivalent to `Init`. Same rule
+  should apply to enum-variant construction and array literals.
 - **Extend downcast-target reassignment to non-operand rvalues.**
   Today `o as V = <operand>` elaborates to `drop (o as V); o =
   EnumName::V(<operand>)`, but only when the rvalue is an Operand
