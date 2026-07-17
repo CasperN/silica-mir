@@ -1,5 +1,5 @@
 //! LLVM textual IR emitter. Lowers a checked/elaborated MIR program to a
-//! self-contained `.ll` string. Runs after `run_all_passes` succeeded.
+//! self-contained `.ll` string. Runs after `elaborate_and_check_mir` succeeded.
 //!
 //! ## Scope
 //! - Scalars: `i64` → `i64`, `bool` → `i1`, `unit`/`never` → `{}`

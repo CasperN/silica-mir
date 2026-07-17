@@ -191,8 +191,8 @@ fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> 
 /// Parse `src` and run the whole pipeline (check → elaborate → validate).
 /// Returns `(errors, warnings)` as preformatted strings — matches the
 /// original test API shape. Structured diagnostics live on the
-/// `Diagnostics` container returned by `run_all_passes` directly; use
-/// that when a test needs code/span rather than substring matching.
+/// `Diagnostics` container populated by `elaborate_and_check_mir` directly;
+/// use that when a test needs code/span rather than substring matching.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
         panic!(

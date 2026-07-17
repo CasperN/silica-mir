@@ -9,10 +9,10 @@
 //!   types; the drop-elaboration pass is expected to have inserted the
 //!   needed drops.
 //!
-//! The design is: `run_all_passes` runs the class checks *before*
-//! elaboration and the leak check *after* elaboration. Errors on
-//! elaborated output indicate the elaborator was unable to insert enough
-//! drops (currently: Partial or Diverged states).
+//! The design is: `elaborate_and_check_mir` runs the class checks
+//! *before* elaboration and the leak check *after* elaboration. Errors
+//! on elaborated output indicate the elaborator was unable to insert
+//! enough drops (currently: Partial or Diverged states).
 //!
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks.

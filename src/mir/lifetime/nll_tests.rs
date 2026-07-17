@@ -3,7 +3,7 @@
 //! Test strategy:
 //! - **Snapshot**: `assert_elab_eq(input, expected)` pretty-prints the
 //!   post-NLL program and compares exactly. Pins the insertion sites.
-//! - **Round-trip**: input MIR without `unborrow` → `run_all_passes`
+//! - **Round-trip**: input MIR without `unborrow` → `elaborate_and_check_mir`
 //!   should succeed (NLL inserts on our behalf, drop-elab handles the
 //!   rest). Complements snapshot by testing the whole pipeline together.
 //! - **Idempotence**: elaborate twice; second run adds nothing.

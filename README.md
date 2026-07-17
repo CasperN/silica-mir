@@ -71,23 +71,20 @@ asynchronous object destruction.
     imply `T: CoTransfer`.
 
 
-#### Initialization State tracking
-Like Rust, Silica has const references, but unlike Rust, it has four kinds of
-mutable reference. Each kind tracks the referent's current initialization state
-and their desired initialization state at the end of the reference lifetime.
+#### Reference obligations
 
-| kind    | current | end |
-|---------|---------|-----|
-| &mut    | yes     | yes |
-| &out    | no      | yes |
-| &drop   | yes     | no  |
-| &uninit | no      | no  |
+Like Rust, Silica has shared references — but unlike Rust, it has four
+kinds of mutable reference, each pairing a required init state at borrow
+creation with a required state at borrow expiry. The (cur, post) table
+and the rules for pointee-state tracking live in the [Semantics section
+below](#semantics).
 
-The shared kind `&T` is `Copy Drop` (unrestricted) — aliasable and freely
-forgettable, same as Rust. The mutable kinds above are all not `Copy` to avoid
-data races. `&out` and `&drop` are linear types (neither `Drop` nor `Copy`) as
-they represent unfulfilled obligations to initialize or deinitialize the
-referent. `&mut` and `&uninit` are affine types (`Drop` not `Copy`).
+The substructural class of each kind falls out of that obligation. `&T`
+is `Copy Drop` (unrestricted). The mutable kinds are all not `Copy` to
+avoid data races. `&out` and `&drop` are linear (neither `Drop` nor
+`Copy`) — the outstanding obligation to initialize or deinitialize the
+referent cannot be forgotten. `&mut` and `&uninit` are affine (`Drop`
+not `Copy`).
 
 ## Immovable Types
 The `Move` marker tells the compiler a type is bitwise-movable. Without
@@ -334,8 +331,8 @@ by the compiler.
    materialize return values through `&out $return` parameters. `.sim`
    inputs skip this and enter the pipeline as MIR directly.
 2. **Type-check and analyze** the MIR (declarations, substructural class,
-   layout, init-state, variant flow, reachability) via `run_all_passes`
-   in `src/main.rs`.
+   layout, init-state, variant flow, reachability) via
+   `elaborate_and_check_mir` in `src/lib.rs`.
 3. **Elaborate** the MIR: insert explicit `unborrow` at NLL last-use
    points and `drop`s for values live at return. This is the "elaborated
    MIR" — fast to re-check without inference.
@@ -466,7 +463,8 @@ const =
     | byte_char_lit               # value type u8
     | true | false
     | unit
-    | fnName                      # a bare identifier resolves to a function's address
+    | fnName [type_args]          # bare identifier resolves to a function's address;
+                                  # generic fns require type args at the use site
 
 operand =
     | copy place        # bitwise copy; place must be Copy; place stays initialized
@@ -505,15 +503,20 @@ terminator =
 
 basic_block = label : (statement ;)* terminator
 
+markers     = : marker (+ marker)*     # marker ∈ {Copy, Drop, Move}
+type_params = < type_param (, type_param)* [,] >
+type_param  = identifier [markers]
+type_args   = < type (, type)* [,] >
+
 function =
     | extern fn name ( var: type, ... ) ;
-    | fn name ( var: type, ... ) { (var: type ;)* basic_block* }
+    | fn [type_params] name ( var: type, ... ) { (var: type ;)* basic_block* }
 
 struct_decl =
-    struct [Copy? Drop? Move?] identifier { (field: type)* }
+    struct [type_params] identifier [markers] { (field: type)* }
 
 enum_decl =
-    enum [Copy? Drop? Move?] identifier { (Variant: type)* }
+    enum [type_params] identifier [markers] { (Variant: type)* }
 
 declaration = struct_decl | enum_decl | function
 
@@ -560,13 +563,16 @@ type =
     | f32 | f64
     | bool
     | never                                      # uninhabited (⊥); vacuously Copy Drop Move
-    | struct identifiers
-    | enum identifiers
+    | Name [type_args]                           # struct/enum name, optionally with type args
+    | Name                                       # in-scope type-param reference
     | fn(type, ...)                              # no result type; results via &out params
     | &T | &mut T | &out T | &drop T | &uninit T # safe references (loan-tracked)
     | *T                                         # raw pointer (unsafe, aliasing)
     | [T; N]                                     # fixed-size array
 ```
+Custom-vs-Param disambiguation is scope-driven: an identifier that
+names an in-scope type parameter resolves to `Type::Param`; otherwise
+it resolves to `Type::Custom(name, args)`.
 Notes:
 - **By-value recursion is rejected** as it would require infinite size.
   Recursion through references or raw pointers is allowed (a pointer is
@@ -582,6 +588,80 @@ Notes:
   `lane` is chosen so LLVM infers the enum's true alignment. Variant
   discriminant = declaration order.
 
+## Semantics
+
+Four rule-sets are enforced over MIR.
+
+### Init-state
+
+Every place carries an init state, which together form a lattice.
+
+| state       | meaning                                             |
+|-------------|-----------------------------------------------------|
+| `NeverInit` | Declared, never written                             |
+| `Init`      | Fully written; readable                             |
+| `Moved`     | Written, then consumed by `move` or `drop`          |
+| `Partial`   | Per-field state (structs / arrays / enum payloads)  |
+| `Diverged`  | CFG-join found predecessors that disagreed          |
+
+Reads (`copy`, `switchEnum`, most borrows) require `Init`. Writing every
+field of a `Partial` folds it to `Init`; consuming every field folds it
+to `Moved`. `Diverged` fails every check — join sites unify only when
+predecessors match.
+
+Canonical tests:
+- `tests/init_state/partial_init/`,
+- `tests/init_state/move_and_drop/`.
+
+### Reference obligations
+
+Each mutable reference kind has a `(current, post)` obligation on its
+pointee at borrow creation and expiry, respectively:
+
+| kind      | current   | post      |
+|-----------|-----------|-----------|
+| `&mut`    | `Init`    | `Init`    |
+| `&out`    | Uninit    | `Init`    |
+| `&drop`   | `Init`    | Uninit    |
+| `&uninit` | Uninit    | Uninit    |
+
+("Uninit" here means `NeverInit` or `Moved`.) The pointee state is
+tracked with full `InitState` granularity, so per-field writes via
+`r.*.field = ...` accumulate through `Partial` and fold to `Init` on
+completion. Shared `&T` carries no obligation (it's `Copy Drop`).
+
+For `&out` / `&uninit` on an `Init` place, drop elaboration inserts
+`drop place` before the borrow if the type is `Drop`; a linear (non-Drop)
+place must be moved out first.
+
+Canonical: `tests/init_state/borrow_precondition/`, `tests/init_state/ref_obligations/`.
+
+### Marker composition
+
+A struct/enum's declared markers must be satisfied by every field or
+variant payload. `struct Foo: Copy { r: &mut i64 }` fires
+`COMP-CopyMarkerNotSatisfied` because `&mut i64` is not `Copy`. A decl
+carrying both `Copy` and `Drop` reports each unsatisfied marker
+independently, so one offending field can fire two diagnostics.
+
+Canonical: `tests/substructural/composition/`.
+
+### Generic bound duality
+
+Bounds on generic type parameters are checked in two places:
+
+- **Decl side.** `struct<T: Copy> Box: Copy { inner: T }` is verified
+  assuming `T: Copy`. The composition check accepts fields of type
+  `Param(T)` under the declared bound.
+- **Use side.** Every `Box<X>` requires the argument `X` to satisfy the
+  declared bound (`X: Copy`).
+
+Together these justify `class_of(Custom(_, args))` without substitution:
+the body was verified generically, and the use site verifies the args.
+Monomorphization is not required for checking — only for codegen.
+
+Canonical: `tests/generics/`.
+
 ## Compiler Structure
 Where possible the compiler splits subsystems into independent passes.
 `src/dataflow.rs` contains common forwards/backwards CFG traversal utilities
@@ -590,7 +670,7 @@ checker passes. Elaboration passes add statements, such as `drop` and
 `unborrow`, which make ownership/linearity transitions explicit. Checker passes
 do not modify the instructions but verify their properties.
 
-The authoritative pipeline is `run_all_passes` in `src/main.rs`.
+The authoritative pipeline is `elaborate_and_check_mir` in `src/lib.rs`.
 Roughly:
 
 Pre-elaboration checks:
@@ -621,29 +701,6 @@ Post-elaboration checks:
 
 Codegen (`src/codegen/`) emits textual LLVM IR from the elaborated MIR.
 It's a separate stage that assumes the MIR is well-checked.
-
-## Separate Elaboration and Checking
-This compiler separates elaboration from checking passes, e.g. for NLL and drop
-elaboration. This simplifies checking algorithms and decouples them from
-inference. We may also repeatedly check invariants after elaboration or
-optimization passes.
-
-## Return Values
-Silica-MIR has no return values. Instead, it recognizes a special `$return`
-argument, of type `&out T`, in final argument position. This simplifies the MIR
-analysis by treating return values as just another argument. It is also
-guaranteed RVO. This fact is taken into account when lowering from the HLL to
-MIR and from the MIR to LLVM, as the HLL and LLVM have return values.
-
-## Piecewise Struct Construction
-The MIR cannot express struct initialization in a single statement. Instead,
-they must be constructed one field at a time.
-
-## switchEnum Matches on Places (Not Operands)
-`switchEnum` operates strictly on a Place, so the compiler can refine the
-variant type of that specific place inside the successor blocks, allowing
-subsequent safe downcasts (like my_var as Variant). Switching on a temporary,
-like typical compilers do, would break this connection.
 
 ## Intrinsics
 
@@ -689,7 +746,8 @@ is a codegen change, not a design change.
 This may be out of date but the directory structure is roughly as follows. 
 ```
 src/
-├── main.rs                 # Authoritative pipeline (run_all_passes) & entrypoint
+├── lib.rs                  # Compiler pipeline entry
+├── main.rs                 # Binary entrypoint (CLI arg parsing, diagnostic rendering)
 ├── diagnostics.rs          # Spanned warning/error collector
 ├── hll/                    # High-Level Language Frontend
 │   ├── ast.rs              # Surface syntax definition
