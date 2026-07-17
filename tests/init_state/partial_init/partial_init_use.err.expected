@@ -1,0 +1,37 @@
+error: at 29:5: [SUB-CopyOfNonCopy] In function 'copy_whole_while_partial', block 'entry': cannot copy non-Copy type P
+    |
+ 29 |     q = copy p;
+    |     ^^^^^^^^^^
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 29:5: [INIT-UsePartiallyInit] In function 'copy_whole_while_partial', block 'entry': variable 'p' is not fully initialized here
+    |
+ 29 |     q = copy p;
+    |     ^^^^^^^^^^
+error: at 43:5: [INIT-UseBeforeInit] In function 'read_never_init_field', block 'entry': variable 'p' is used before initialization
+    |
+ 43 |     a = copy p.y;
+    |     ^^^^^^^^^^^^
+error: at 56:5: [INIT-UseAfterMove] In function 'read_moved_field', block 'entry': variable 'p' is used after move
+    |
+ 56 |     b = copy p.x;
+    |     ^^^^^^^^^^^^
+error: at 70:5: [INIT-UseBeforeInit] In function 'nested_read_uninit_leaf', block 'entry': variable 'o' is used before initialization
+    |
+ 70 |     n = copy o.i.b;
+    |     ^^^^^^^^^^^^^^
+error: at 81:5: [INIT-UseBeforeInit] In function 'array_read_uninit_slot', block 'entry': variable 'a' is used before initialization
+    |
+ 81 |     b = copy a[1];
+    |     ^^^^^^^^^^^^^
+error: at 92:5: [INIT-UsePartiallyInit] In function 'array_read_whole_while_partial', block 'entry': variable 'a' is not fully initialized here
+    |
+ 92 |     b = copy a;
+    |     ^^^^^^^^^^
+error: at 114:5: [INIT-UsePartiallyInit] In function 'loop_carried_partial', block 'exit': variable 'p' is not fully initialized here
+     |
+ 114 |     a = copy p;
+     |     ^^^^^^^^^^
+error: at 127:5: [INIT-UseBeforeInit] In function 'pair_read_uninit_param_field', block 'entry': variable 'p' is used before initialization
+     |
+ 127 |     x = copy p.b;
+     |     ^^^^^^^^^^^^

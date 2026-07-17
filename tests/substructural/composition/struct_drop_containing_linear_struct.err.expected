@@ -1,4 +1,0 @@
-error: at 3:34: [COMP-DropMarkerNotSatisfied] In struct 'Outer' (marked Drop), field 'inner' has type Linear which is not Drop
-   |
- 3 |             struct Outer: Drop { inner: Linear }
-   |                                  ^^^^^^^^^^^^^

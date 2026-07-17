@@ -1,0 +1,44 @@
+error: at 37:5: [TC-UndeclaredVariable] In function 'var_undeclared', block 'entry': Use of undeclared variable 'x'
+    |
+ 37 |     x = 42;
+    |     ^^^^^^
+error: at 46:5: [TC-FieldOfNonStruct] In function 'field_on_scalar', block 'entry': Cannot project field 'x' of non-struct type i64
+    |
+ 46 |     a = copy n.x;
+    |     ^^^^^^^^^^^^
+error: at 55:5: [TC-FieldOfNonStruct] In function 'field_on_enum', block 'entry': Cannot project field 'x' of enum type 'E'
+    |
+ 55 |     a = copy e.x;
+    |     ^^^^^^^^^^^^
+error: at 64:5: [TC-NoSuchField] In function 'field_unknown_on_struct', block 'entry': Struct 'P' has no field 'z'
+    |
+ 64 |     a = copy p.z;
+    |     ^^^^^^^^^^^^
+error: at 73:5: [TC-DerefOfNonPointer] In function 'deref_of_scalar', block 'entry': Cannot dereference non-pointer type i64
+    |
+ 73 |     x = copy y.*;
+    |     ^^^^^^^^^^^^
+error: at 84:5: [TC-DowncastOfNonEnum] In function 'downcast_on_ref', block 'entry': Cannot downcast non-enum type & i64
+    |
+ 84 |     x = copy r as Some;
+    |     ^^^^^^^^^^^^^^^^^^
+error: at 93:5: [TC-DowncastOfNonEnum] In function 'downcast_on_struct', block 'entry': Cannot downcast struct type 'S'
+    |
+ 93 |     x = copy s as Some;
+    |     ^^^^^^^^^^^^^^^^^^
+error: at 102:5: [TC-NoSuchVariant] In function 'downcast_variant_missing', block 'entry': Enum 'Option' has no variant 'Wat'
+     |
+ 102 |     x = copy o as Wat;
+     |     ^^^^^^^^^^^^^^^^^
+error: at 84:5: [VF-DowncastOnProjection] In function 'downcast_on_ref', block 'entry': cannot downcast 'r as Some' here: variant flow only tracks root Vars, and 'r' is a projection — extract into a local first
+    |
+ 84 |     x = copy r as Some;
+    |     ^^^^^^^^^^^^^^^^^^
+error: at 93:5: [VF-DowncastOnProjection] In function 'downcast_on_struct', block 'entry': cannot downcast 's as Some' here: variant flow only tracks root Vars, and 's' is a projection — extract into a local first
+    |
+ 93 |     x = copy s as Some;
+    |     ^^^^^^^^^^^^^^^^^^
+error: at 102:5: [VF-DowncastVariantNotRefined] In function 'downcast_variant_missing', block 'entry': cannot downcast 'o as Wat' here: 'o' is not refined to variant 'Wat'
+     |
+ 102 |     x = copy o as Wat;
+     |     ^^^^^^^^^^^^^^^^^

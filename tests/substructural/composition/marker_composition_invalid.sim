@@ -1,0 +1,81 @@
+# Each item below declares a struct or enum with a substructural marker
+# that at least one field or variant payload does not satisfy. The
+# checker fires one COMP-* diagnostic per unsatisfied (decl-marker x
+# field/variant) pair. When a decl carries both Copy and Drop, a single
+# offending field fires two independent diagnostics.
+#
+# A regression here means the composition checker fails to reject an
+# illegal combination, reports the wrong DiagCode, or mis-spans the
+# offending field/variant.
+#
+#   item                                 decl     offending field/variant   expected code
+#   CopyOutRef struct                    Copy     &out i64 field            COMP-CopyMarkerNotSatisfied
+#   CopyMutRef struct                    Copy     &mut i64 field            COMP-CopyMarkerNotSatisfied
+#   DropOutRef struct                    Drop     &out i64 field            COMP-DropMarkerNotSatisfied
+#   DropLinearField struct               Drop     linear struct field       COMP-DropMarkerNotSatisfied
+#   MoveLinearField struct               Move     linear struct field       COMP-MoveMarkerNotSatisfied
+#   CopyNestedLinear struct              Copy     linear struct field       COMP-CopyMarkerNotSatisfied
+#   CopyDropOutRef struct                Copy+Drop &out i64 field           both COMP-Copy + COMP-Drop
+#   CopyMutRefVariant enum               Copy     &mut i64 variant          COMP-CopyMarkerNotSatisfied
+#   DropOutRefVariant enum               Drop     &out i64 variant          COMP-DropMarkerNotSatisfied
+#   MoveLinearVariant enum               Move     linear struct variant     COMP-MoveMarkerNotSatisfied
+
+# Linear struct used as an offending field below: it carries no
+# substructural markers, so it is neither Copy, Drop, nor Move.
+struct Linear { r: &out i64 }
+
+# ---------- Copy: &out field is not Copy ----------
+
+# &out T is a write-once reference; it is neither Copy nor Drop.
+# Declaring the struct Copy while holding &out i64 violates the
+# Copy constraint on that field.
+struct CopyOutRef: Copy { r: &out i64 }
+
+# ---------- Copy: &mut field is not Copy ----------
+
+# &mut T is exclusive and may not be duplicated; it is not Copy.
+struct CopyMutRef: Copy { r: &mut i64 }
+
+# ---------- Drop: &out field is not Drop ----------
+
+# &out T is linear (non-Drop). A Drop struct may not contain it.
+struct DropOutRef: Drop { r: &out i64 }
+
+# ---------- Drop: linear struct field is not Drop ----------
+
+# `Linear` carries no markers, so it is not Drop. A Drop outer struct
+# that contains it violates the constraint on that field.
+struct DropLinearField: Drop { inner: Linear }
+
+# ---------- Move: linear struct field is not Move ----------
+
+# `Linear` is not Move. A Move outer struct may not contain it.
+struct MoveLinearField: Move { i: Linear }
+
+# ---------- Copy: nested struct field that is not Copy ----------
+
+# `Linear` is not Copy. Even when nested inside another struct,
+# the marker constraint on the outer struct reaches the field's type.
+struct CopyNestedLinear: Copy { inner: Linear }
+
+# ---------- Copy+Drop: &out field fires both diagnostics ----------
+
+# &out T is neither Copy nor Drop. A struct marked Copy+Drop with such
+# a field violates each marker independently, producing two diagnostics.
+struct CopyDropOutRef: Copy + Drop { r: &out i64 }
+
+# ---------- enum Copy: &mut payload is not Copy ----------
+
+# A variant whose payload is &mut i64 prevents the enum from being Copy.
+enum CopyMutRefVariant: Copy { A: &mut i64 }
+
+# ---------- enum Drop: &out payload is not Drop ----------
+
+# A variant whose payload is &out i64 prevents the enum from being Drop.
+enum DropOutRefVariant: Drop { A: &out i64 }
+
+# ---------- enum Move: linear struct payload is not Move ----------
+
+# `Linear` is not Move. Wrapping it in an enum variant does not exempt
+# it from the Move constraint declared on the enum.
+enum MoveLinearVariant: Move { W: Linear }

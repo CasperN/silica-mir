@@ -1,9 +1,0 @@
-struct P: Copy + Drop { x: i64 y: i64 }
-fn f() {
-  p: P;
-  r: &drop P;
-  entry:
-    p.x = 1;
-    r = &drop p;
-    return
-}

@@ -1,9 +1,0 @@
-
-        fn f() {
-          b: bool;
-          entry:
-            branch(copy b) [true: t, false: fbr]
-          t: return
-          fbr: return
-        }
-        

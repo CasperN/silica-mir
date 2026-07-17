@@ -1,9 +1,0 @@
-# Same as the &out case but for &uninit. `x: i64` is Drop, so drop-elab
-# inserts `drop x` and the precondition is met.
-fn f(x: i64) {
-  r: &uninit i64;
-  entry:
-    r = &uninit x;
-    drop r;
-    return
-}

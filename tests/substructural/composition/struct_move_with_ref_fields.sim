@@ -1,4 +1,0 @@
-
-            struct S: Move { a: &mut i64 b: &out i64 c: &drop i64
-                            d: &uninit i64 e: &i64 }
-            

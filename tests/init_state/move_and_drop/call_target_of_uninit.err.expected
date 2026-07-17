@@ -1,4 +1,0 @@
-error: at 5:13: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'g' is used before initialization
-   |
- 5 |             call copy g(1);
-   |             ^^^^^^^^^^^^^^

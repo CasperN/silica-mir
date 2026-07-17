@@ -1,9 +1,0 @@
-
-        extern fn takes_num(a: i64);
-        fn f() {
-          x: i64;
-          entry:
-            call takes_num(copy x);
-            return
-        }
-        

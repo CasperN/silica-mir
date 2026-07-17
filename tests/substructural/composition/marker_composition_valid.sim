@@ -1,0 +1,91 @@
+# Declared substructural markers must be satisfied by every field or
+# variant payload. A struct/enum marked Copy requires all fields/variants
+# to be Copy; one marked Drop requires all to be Drop; one marked Move
+# requires all to be Move. These rules fire independently, so a decl
+# marked Copy+Drop reports a violation for each unsatisfied marker.
+# A decl with no markers is linear and may hold any field type.
+#
+# Each item below covers one valid (declared marker x field/variant
+# profile) cell. A regression here means the composition checker
+# incorrectly rejects a legal combination.
+#
+#   item                               decl markers  field/variant profile
+#   copy_drop_scalars                  Copy+Drop     scalar fields (i64, bool)
+#   copy_shared_ref                    Copy          shared-ref field (&i64)
+#   move_scalars                       Move          scalar fields (i64, bool)
+#   move_all_ref_kinds                 Move          one field per ref kind
+#   drop_mut_ref                       Drop          &mut field
+#   drop_uninit_ref                    Drop          &uninit field
+#   no_markers_linear_field            (none)        linear (&out) field
+#   nested_copy                        Copy          Copy-typed nested struct field
+#   recursive_via_shared_ref           Copy+Drop     self-referential via &Self
+#   enum_copy_drop_scalar_variants     Copy+Drop     scalar-typed enum variants
+#   copy_drop_inside_move              Move          Copy+Drop-typed field
+
+# ---------- Copy+Drop: scalar fields ----------
+
+# Scalars (i64, bool) are Copy and Drop, so a struct marked Copy+Drop
+# that holds only scalars satisfies both constraints.
+struct CopyDropScalars: Copy + Drop { x: i64  y: bool }
+
+# ---------- Copy: shared-ref field ----------
+
+# A shared reference &T is Copy (it can be cloned) and pairs naturally
+# with a scalar field.
+struct CopySharedRef: Copy { r: &i64  x: i64 }
+
+# ---------- Move: scalar fields ----------
+
+# Move is weaker than Copy; a Move struct may hold scalars (which are
+# also Copy, hence Move).
+struct MoveScalars: Move { x: i64  y: bool }
+
+# ---------- Move: one field per ref kind ----------
+
+# Move structs may hold any combination of reference flavours because
+# every reference kind is at least Move.
+struct MoveAllRefKinds: Move { a: &mut i64  b: &out i64  c: &drop i64  d: &uninit i64  e: &i64 }
+
+# ---------- Drop: &mut field ----------
+
+# &mut T is Drop (the borrow can be released). A Drop struct holding
+# only a &mut field satisfies the constraint.
+struct DropMutRef: Drop { r: &mut i64 }
+
+# ---------- Drop: &uninit field ----------
+
+# &uninit T is Drop, so a Drop struct may hold one.
+struct DropUninitRef: Drop { r: &uninit i64 }
+
+# ---------- No markers: linear (&out) field ----------
+
+# A struct with no declared markers is linear and places no constraint
+# on its fields. It may hold a &out reference, which is non-Copy and
+# non-Drop.
+struct NoMarkersLinearField { r: &out i64 }
+
+# ---------- Copy: nested Copy struct as a field ----------
+
+# If the field type is itself Copy, it satisfies a Copy constraint on
+# the outer struct. Nesting is legal when markers compose correctly.
+struct CopyInner: Copy { x: i64 }
+struct CopyNested: Copy { a: CopyInner  y: i64 }
+
+# ---------- Copy+Drop: recursive via shared reference ----------
+
+# A shared reference breaks infinite size; &List is Copy and Drop.
+# The enum declared Copy+Drop holds only Copy+Drop payloads (unit and
+# &List), so the constraint is satisfied at every variant.
+enum RecursiveList: Copy + Drop { Nil: unit  Cons: &RecursiveList }
+
+# ---------- Copy+Drop: enum with scalar-typed variants ----------
+
+# All of i64, bool, and unit are Copy and Drop, satisfying both markers.
+enum CopyDropScalarVariants: Copy + Drop { N: i64  B: bool  U: unit }
+
+# ---------- Move: field whose type is Copy+Drop ----------
+
+# Copy+Drop implies Move (it is a strictly stronger guarantee), so a
+# Move struct may hold a Copy+Drop-typed field.
+struct CopyDropPoint: Copy + Drop { x: i64  y: i64 }
+struct MoveCopyDropField: Move { p: CopyDropPoint }

@@ -1,0 +1,117 @@
+# Operations that violate move/drop/copy init-state rules.
+#
+# Every function exercises one cell of the (operation x state)
+# matrix where the operation is illegal given the current init state
+# of the operand. Each fn fires exactly one INIT-* diagnostic.
+#
+#   state \ operation | copy/read | move | drop | call-arg | call-target
+#   NeverInit         |  [A]      |      | [B]  |  [C]     |   [D]
+#   Moved             |  [E]      | [F]  | [G]  |  [H]     |
+#
+# [A] read_of_uninit_local     — copy of a NeverInit local            → UseBeforeInit
+# [B] drop_of_uninit           — explicit drop of NeverInit local     → UseBeforeInit
+# [C] call_arg_uninit          — NeverInit value passed as call arg   → UseBeforeInit
+# [D] call_target_uninit       — NeverInit fn-ptr used as call target → UseBeforeInit
+# [E] read_after_move          — copy of a Moved local                → UseAfterMove
+# [F] move_then_move           — second move of already-Moved local    → UseAfterMove
+# [G] drop_consumes_like_move  — drop then copy sees Moved state       → UseAfterMove
+# [H] call_arg_move_then_copy  — move then copy in same call arg list  → UseAfterMove
+
+extern fn takes_num(a: i64);
+extern fn take_two(a: i64, b: i64);
+
+# ---------- [A] NeverInit local: copy fires UseBeforeInit ----------
+
+# `x` is declared but never written. Reading it via copy surfaces the
+# NeverInit state as UseBeforeInit.
+fn read_of_uninit_local() {
+  x: i64;
+  y: i64;
+  entry:
+    y = copy x;
+    return
+}
+
+# ---------- [B] NeverInit local: explicit drop fires UseBeforeInit ----------
+
+# `drop` is a consuming operation. Dropping a NeverInit local is the
+# same violation class as reading it — UseBeforeInit.
+fn drop_of_uninit() {
+  x: i64;
+  entry:
+    drop x;
+    return
+}
+
+# ---------- [C] NeverInit value: call arg fires UseBeforeInit ----------
+
+# Passing a NeverInit local as a call argument evaluates it, which
+# fires UseBeforeInit at the call statement span.
+fn call_arg_uninit() {
+  x: i64;
+  entry:
+    call takes_num(copy x);
+    return
+}
+
+# ---------- [E] NeverInit fn-ptr: call target fires UseBeforeInit ----------
+
+# Using a NeverInit fn-pointer as the callee itself triggers
+# UseBeforeInit at the call statement, distinct from an arg violation.
+fn call_target_uninit() {
+  g: fn(i64);
+  entry:
+    call copy g(1);
+    return
+}
+
+# ---------- [F] Moved local: copy fires UseAfterMove ----------
+
+# Moving x into y leaves x in the Moved state. A subsequent copy of x
+# fires UseAfterMove rather than UseBeforeInit because x passed through
+# Init before the move.
+fn read_after_move(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    z = copy x;
+    return
+}
+
+# ---------- [G] Moved local: second move fires UseAfterMove ----------
+
+# The first move consumes x. The second move of the same already-Moved
+# local fires UseAfterMove.
+fn move_then_move(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    z = move x;
+    return
+}
+
+# ---------- [H] Drop consumes; subsequent read fires UseAfterMove ----------
+
+# An explicit `drop x` transitions x from Init to Moved. The copy that
+# follows sees the Moved state and fires UseAfterMove — proving that
+# drop and move share the same consuming semantics.
+fn drop_consumes_like_move(x: i64) {
+  y: i64;
+  entry:
+    drop x;
+    y = copy x;
+    return
+}
+
+# ---------- [I] Call args: move then copy fires UseAfterMove ----------
+
+# Arguments are evaluated left-to-right. Moving x in the first slot
+# leaves x Moved; copying x in the second slot then fires UseAfterMove
+# at the call statement span.
+fn call_arg_move_then_copy(x: i64) {
+  entry:
+    call take_two(move x, copy x);
+    return
+}

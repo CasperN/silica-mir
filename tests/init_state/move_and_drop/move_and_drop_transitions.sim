@@ -1,0 +1,85 @@
+# Valid init-state transitions involving move, drop, and copy on scalar
+# and function-pointer locals.
+#
+# Every function exercises one cell of the (entry state x operation)
+# matrix and expects a clean run with elaboration inserting drops.
+# A regression here means the init-state lattice, move semantics, or
+# drop-insertion pass is mishandling one of these transitions:
+#
+#   fn                             entry state → operation → end state
+#   param_starts_init              Init (param)     copy      Init
+#   write_then_read                NeverInit        write     Init, then copy
+#   empty_struct_local_starts_init Init (empty)     copy      Init
+#   reassign_after_move            Init             move      Moved, write, Init
+#   call_args_copy_then_move       Init             copy;move Moved (call-arg order)
+#
+# Params are Init at function entry. Uninitialized locals of empty
+# structs are also Init because they carry no data. Copy evaluates
+# the operand without consuming it; move transfers ownership. A
+# reassignment after move restores the place to Init.
+
+struct Unit0: Copy + Drop { }
+
+extern fn take_two(a: i64, b: i64);
+
+# ---------- Param: starts Init, read via copy ----------
+
+# A parameter is Init at function entry; reading it via copy requires
+# no preceding write.
+fn param_starts_init(x: i64) {
+  y: i64;
+  entry:
+    y = copy x;
+    return
+}
+
+# ---------- Local scalar: write initializes, then copy reads ----------
+
+# A plain `x = 42` moves the constant into x, bringing it from
+# NeverInit to Init. The subsequent copy is then valid.
+fn write_then_read() {
+  x: i64;
+  y: i64;
+  entry:
+    x = 42;
+    y = copy x;
+    return
+}
+
+# ---------- Local empty struct: starts Init, copy is valid immediately ----------
+
+# An empty struct carries no data; the checker treats a declared-but-
+# unwritten local of such a type as already Init. Copying it without
+# any prior write must succeed.
+fn empty_struct_local_starts_init() {
+  u: Unit0;
+  v: Unit0;
+  entry:
+    v = copy u;
+    return
+}
+
+# ---------- Param: reassign after move restores Init ----------
+
+# Moving x into y leaves x Moved. Assigning the constant 42 to x
+# brings it back to Init; the copy that follows is then valid.
+fn reassign_after_move(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    x = 42;
+    z = copy x;
+    return
+}
+
+# ---------- Call args: copy then move in the same call ----------
+
+# Arguments are evaluated left-to-right. Copying x in the first
+# argument slot leaves x Init; moving x in the second slot then
+# consumes it. This ordering is legal.
+fn call_args_copy_then_move(x: i64) {
+  entry:
+    call take_two(copy x, move x);
+    return
+}

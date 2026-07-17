@@ -1,8 +1,0 @@
-error: at 7:13: [VF-DowncastVariantNotRefined] In function 'f', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
-   |
- 7 |             a = copy o as Some;
-   |             ^^^^^^^^^^^^^^^^^^
-error: at 7:13: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'o' is used before initialization
-   |
- 7 |             a = copy o as Some;
-   |             ^^^^^^^^^^^^^^^^^^

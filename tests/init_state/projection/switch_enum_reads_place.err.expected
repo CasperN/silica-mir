@@ -1,4 +1,0 @@
-error: at 6:13: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'o' is used before initialization
-   |
- 6 |             switchEnum(o) [None: end, Some: end]
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

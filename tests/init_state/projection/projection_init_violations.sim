@@ -1,0 +1,83 @@
+# Init-state violations through projections.
+#
+# Projection operations that read or write through a place are only
+# legal when the underlying variable is in a compatible init state.
+# This file covers the failure half of that matrix:
+#
+#   fn                                  projection kind    init state   diagnostic(s)
+#   branch_on_uninit_bool               branch operand     NeverInit    INIT-UseBeforeInit
+#   switch_enum_on_uninit               switchEnum operand NeverInit    INIT-UseBeforeInit
+#   downcast_read_of_uninit_enum        as Variant (read)  NeverInit    VF-DowncastVariantNotRefined
+#                                                                        INIT-UseBeforeInit
+#   downcast_write_through_uninit_enum  as Variant (write) NeverInit    VF-DowncastVariantNotRefined
+#                                                                        INIT-WriteThroughUninitEnumProjection
+#   downcast_write_through_moved_enum   as Variant (write) Moved        VF-DowncastVariantNotRefined
+#                                                                        INIT-WriteThroughUninitEnumProjection
+#
+# A regression here means the checker is silently accepting one of these
+# illegal forms or is emitting the wrong diagnostic for it.
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+# ---------- Branch on uninit bool: reads the operand, fires UseBeforeInit ----------
+
+# `branch` must read `b` to dispatch; `b` was never written, so the
+# checker fires INIT-UseBeforeInit at the branch statement.
+fn branch_on_uninit_bool() {
+  b: bool;
+  entry:
+    branch(copy b) [true: t, false: f]
+  t: return
+  f: return
+}
+
+# ---------- SwitchEnum on uninit enum: reads the discriminant, fires UseBeforeInit ----------
+
+# `switchEnum` reads the discriminant of `o` to dispatch to an arm;
+# `o` was never initialized, so the checker fires INIT-UseBeforeInit.
+fn switch_enum_on_uninit() {
+  o: Option;
+  entry:
+    switchEnum(o) [None: end, Some: end]
+  end:
+    return
+}
+
+# ---------- Downcast read of uninit enum: two diagnostics ----------
+
+# Attempting to copy through `o as Some` when `o` is NeverInit fires both
+# VF-DowncastVariantNotRefined (the variant cannot be confirmed without a
+# preceding switch) and INIT-UseBeforeInit (the root variable is uninit).
+fn downcast_read_of_uninit_enum() {
+  o: Option;
+  a: i64;
+  entry:
+    a = copy o as Some;
+    return
+}
+
+# ---------- Downcast write through uninit enum: two diagnostics ----------
+
+# Writing through `o as Some = 7` when `o` is NeverInit fires both
+# VF-DowncastVariantNotRefined (no preceding switch) and
+# INIT-WriteThroughUninitEnumProjection (root is uninit).
+fn downcast_write_through_uninit_enum() {
+  o: Option;
+  entry:
+    o as Some = 7;
+    return
+}
+
+# ---------- Downcast write through moved enum: two diagnostics ----------
+
+# After moving `o` into `sink`, `o` is in the Moved state. Writing through
+# `o as Some = 7` fires VF-DowncastVariantNotRefined and
+# INIT-WriteThroughUninitEnumProjection — Moved is treated as Uninit for
+# this check.
+fn downcast_write_through_moved_enum(o: Option) {
+  sink: Option;
+  entry:
+    sink = move o;
+    o as Some = 7;
+    return
+}

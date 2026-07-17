@@ -1,8 +1,0 @@
-error: at 6:13: [TC-DowncastOfNonEnum] In function 'f', block 'entry': Cannot downcast struct type 'S'
-   |
- 6 |             x = copy s as Some;
-   |             ^^^^^^^^^^^^^^^^^^
-error: at 6:13: [VF-DowncastOnProjection] In function 'f', block 'entry': cannot downcast 's as Some' here: variant flow only tracks root Vars, and 's' is a projection — extract into a local first
-   |
- 6 |             x = copy s as Some;
-   |             ^^^^^^^^^^^^^^^^^^

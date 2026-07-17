@@ -1,9 +1,0 @@
-extern fn take_drop(r: &drop i64);
-
-fn f(x: i64) {
-  r: &drop i64;
-  entry:
-    r = &drop x;
-    call take_drop(move r);
-    return
-}

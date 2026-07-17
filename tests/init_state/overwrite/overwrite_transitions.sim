@@ -1,0 +1,107 @@
+# An overwrite of a place is legal whenever the old value has already
+# been consumed (state is NeverInit or Moved) or the compiler can
+# insert a drop before the write. This file exercises the success cells
+# of the (prior state × type class × place granularity) matrix.
+#
+# Elaboration inserts `drop` before an overwrite only when the type is
+# Drop; for non-Drop types, the value must be consumed by the caller
+# first. Overwriting a NeverInit or Moved place is always legal
+# regardless of type, because there is nothing left to drop.
+#
+#   fn                               prior state  type class    granularity
+#   scalar_overwrite_inserts_drop    Init         i64 (Copy+Drop) whole
+#   copy_drop_struct_overwrite       Init         P   (Copy+Drop) whole
+#   field_overwrite_inserts_drop     Init         i64 (Copy+Drop) field
+#   overwrite_after_move_out         Moved        Linear (Move)   whole
+#   overwrite_after_explicit_drop    Moved        D    (Drop+Move) whole
+#   overwrite_never_init             NeverInit    Linear (Move)   whole
+
+struct P: Copy + Drop { a: i64  b: i64 }
+
+struct D: Drop + Move { a: i64 }
+
+struct Linear: Move { r: &out i64 }
+
+extern fn use_p(p: P);
+extern fn use_d(d: D);
+extern fn take(l: Linear);
+
+# ---------- Init Copy+Drop scalar: elaboration inserts drop ----------
+
+# Overwriting an Init i64 local is legal because i64 is Copy+Drop;
+# drop elaboration inserts `drop x` before the second assignment.
+fn scalar_overwrite_inserts_drop() {
+  x: i64;
+  entry:
+    x = 1;
+    x = 2;
+    return
+}
+
+# ---------- Init Copy+Drop struct: elaboration inserts drop ----------
+
+# `x` holds `p1` (Init) when `p2` is moved in. Because P is Drop,
+# elaboration inserts `drop x` between the two assignments.
+fn copy_drop_struct_overwrite(p1: P, p2: P) {
+  x: P;
+  entry:
+    x = move p1;
+    x = move p2;
+    call use_p(move x);
+    return
+}
+
+# ---------- Init Copy+Drop field: elaboration inserts drop ----------
+
+# `p.a` is Init (from the first write) when overwritten. Because i64 is
+# Drop, elaboration inserts `drop p.a` before the second write to the
+# field, then `drop p` at return (which covers `p.b` as well).
+fn field_overwrite_inserts_drop() {
+  p: P;
+  entry:
+    p.a = 1;
+    p.b = 2;
+    p.a = 3;
+    return
+}
+
+# ---------- Moved place: overwrite always legal (linear type) ----------
+
+# After `take(move y)`, `y` is in the Moved state. Assigning
+# `move x2` to it starts a new lifetime with no prior value to drop.
+fn overwrite_after_move_out(x1: Linear, x2: Linear) {
+  y: Linear;
+  entry:
+    y = move x1;
+    call take(move y);
+    y = move x2;
+    call take(move y);
+    return
+}
+
+# ---------- Moved place: overwrite after explicit drop ----------
+
+# `drop x` transitions x from Init to Moved. The subsequent
+# assignment of `d2` is then an overwrite of a Moved place, which
+# requires no inserted drop because the prior value was already gone.
+fn overwrite_after_explicit_drop(d1: D, d2: D) {
+  x: D;
+  entry:
+    x = move d1;
+    drop x;
+    x = move d2;
+    call use_d(move x);
+    return
+}
+
+# ---------- NeverInit place: overwrite always legal ----------
+
+# `y` is NeverInit at function entry. Assigning `move x` to it is
+# the first initialization, not an overwrite, so no drop is needed.
+fn overwrite_never_init(x: Linear) {
+  y: Linear;
+  entry:
+    y = move x;
+    call take(move y);
+    return
+}

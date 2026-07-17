@@ -1,0 +1,44 @@
+error: at 32:27: [COMP-CopyMarkerNotSatisfied] In struct 'CopyOutRef' (marked Copy), field 'r' has type &out i64 which is not Copy
+    |
+ 32 | struct CopyOutRef: Copy { r: &out i64 }
+    |                           ^^^^^^^^^^^
+error: at 37:27: [COMP-CopyMarkerNotSatisfied] In struct 'CopyMutRef' (marked Copy), field 'r' has type &mut i64 which is not Copy
+    |
+ 37 | struct CopyMutRef: Copy { r: &mut i64 }
+    |                           ^^^^^^^^^^^
+error: at 42:27: [COMP-DropMarkerNotSatisfied] In struct 'DropOutRef' (marked Drop), field 'r' has type &out i64 which is not Drop
+    |
+ 42 | struct DropOutRef: Drop { r: &out i64 }
+    |                           ^^^^^^^^^^^
+error: at 48:32: [COMP-DropMarkerNotSatisfied] In struct 'DropLinearField' (marked Drop), field 'inner' has type Linear which is not Drop
+    |
+ 48 | struct DropLinearField: Drop { inner: Linear }
+    |                                ^^^^^^^^^^^^^
+error: at 53:32: [COMP-MoveMarkerNotSatisfied] In struct 'MoveLinearField' (marked Move), field 'i' has type Linear which is not Move
+    |
+ 53 | struct MoveLinearField: Move { i: Linear }
+    |                                ^^^^^^^^^
+error: at 59:33: [COMP-CopyMarkerNotSatisfied] In struct 'CopyNestedLinear' (marked Copy), field 'inner' has type Linear which is not Copy
+    |
+ 59 | struct CopyNestedLinear: Copy { inner: Linear }
+    |                                 ^^^^^^^^^^^^^
+error: at 65:38: [COMP-CopyMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Copy), field 'r' has type &out i64 which is not Copy
+    |
+ 65 | struct CopyDropOutRef: Copy + Drop { r: &out i64 }
+    |                                      ^^^^^^^^^^^
+error: at 65:38: [COMP-DropMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Drop), field 'r' has type &out i64 which is not Drop
+    |
+ 65 | struct CopyDropOutRef: Copy + Drop { r: &out i64 }
+    |                                      ^^^^^^^^^^^
+error: at 70:32: [COMP-CopyMarkerNotSatisfied] In enum 'CopyMutRefVariant' (marked Copy), variant 'A' payload type &mut i64 is not Copy
+    |
+ 70 | enum CopyMutRefVariant: Copy { A: &mut i64 }
+    |                                ^^^^^^^^^^^
+error: at 75:32: [COMP-DropMarkerNotSatisfied] In enum 'DropOutRefVariant' (marked Drop), variant 'A' payload type &out i64 is not Drop
+    |
+ 75 | enum DropOutRefVariant: Drop { A: &out i64 }
+    |                                ^^^^^^^^^^^
+error: at 81:32: [COMP-MoveMarkerNotSatisfied] In enum 'MoveLinearVariant' (marked Move), variant 'W' payload type Linear is not Move
+    |
+ 81 | enum MoveLinearVariant: Move { W: Linear }
+    |                                ^^^^^^^^^

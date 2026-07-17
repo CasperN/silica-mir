@@ -1,3 +1,0 @@
-
-            struct Bad: Copy + Drop { r: &out i64 }
-            

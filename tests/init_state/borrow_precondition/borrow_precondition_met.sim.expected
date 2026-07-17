@@ -1,0 +1,102 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+extern fn use_shared(r: & i64);
+
+extern fn use_mut(r: &mut i64);
+
+extern fn use_out(r: &out i64);
+
+extern fn use_drop(r: &drop i64);
+
+extern fn use_uninit(r: &uninit i64);
+
+extern fn take_scalar(y: i64);
+
+fn shared_of_init(x: i64) {
+  r: & i64;
+  entry:
+    r = & x;
+    call use_shared(move r);
+    drop x;
+    return
+}
+
+fn mut_of_init(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call use_mut(move r);
+    drop x;
+    return
+}
+
+fn mut_of_init_field_of_partial() {
+  p: P;
+  r: &mut i64;
+  entry:
+    p.x = 1;
+    r = &mut p.x;
+    call use_mut(move r);
+    drop p.x;
+    return
+}
+
+fn out_of_never_init() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call use_out(move r);
+    drop x;
+    return
+}
+
+fn out_of_moved(x: i64) {
+  r: &out i64;
+  entry:
+    call take_scalar(move x);
+    r = &out x;
+    call use_out(move r);
+    drop x;
+    return
+}
+
+fn out_of_init_drop_type(x: i64) {
+  r: &out i64;
+  entry:
+    drop x;
+    r = &out x;
+    r.* = 2;
+    unborrow r;
+    drop x;
+    return
+}
+
+fn drop_of_init(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    call use_drop(move r);
+    return
+}
+
+fn uninit_of_never_init() {
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    call use_uninit(move r);
+    return
+}
+
+fn uninit_of_init_drop_type(x: i64) {
+  r: &uninit i64;
+  entry:
+    drop x;
+    r = &uninit x;
+    drop r;
+    return
+}

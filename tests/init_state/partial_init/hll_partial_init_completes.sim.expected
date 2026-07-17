@@ -1,0 +1,45 @@
+struct Box: Drop + Move {
+  val: i64
+}
+
+struct Pair: Drop + Move {
+  b: Box
+  c: Box
+}
+
+struct Outer: Drop + Move {
+  p: Pair
+  tag: i64
+}
+
+fn move_one_field_leaves_other_init(p: Pair) {
+  _temp_0: unit;
+  taken: Box;
+  remaining: Box;
+  entry:
+    taken = move p.b;
+    remaining = move p.c;
+    _temp_0 = unit;
+    drop remaining;
+    drop taken;
+    drop _temp_0;
+    return
+}
+
+fn nested_move_inner_leaf(o: Outer) {
+  _temp_0: unit;
+  inner_taken: Box;
+  inner_kept: Box;
+  tag: i64;
+  entry:
+    inner_taken = move o.p.b;
+    inner_kept = move o.p.c;
+    tag = copy o.tag;
+    _temp_0 = unit;
+    drop tag;
+    drop inner_kept;
+    drop inner_taken;
+    drop _temp_0;
+    drop o.tag;
+    return
+}

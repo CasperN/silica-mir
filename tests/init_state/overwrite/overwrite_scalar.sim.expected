@@ -1,9 +1,0 @@
-fn f() {
-  x: i64;
-  entry:
-    x = 1;
-    drop x;
-    x = 2;
-    drop x;
-    return
-}

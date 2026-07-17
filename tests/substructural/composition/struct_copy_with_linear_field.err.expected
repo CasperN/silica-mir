@@ -1,4 +1,0 @@
-error: at 2:32: [COMP-CopyMarkerNotSatisfied] In struct 'Bad' (marked Copy), field 'r' has type &out i64 which is not Copy
-   |
- 2 |             struct Bad: Copy { r: &out i64 }
-   |                                ^^^^^^^^^^^

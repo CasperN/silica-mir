@@ -1,0 +1,69 @@
+# Init-state checking through projections — valid cases.
+#
+# Projection operations that read or write through a place are only
+# legal when the underlying variable is in a compatible init state.
+# This file covers the success half of that matrix:
+#
+#   fn                               projection kind   init state   operation
+#   deref_read_of_ref_param          .* (deref read)   Init (param) copy through ref
+#   downcast_write_after_switch      as Variant (write) Init        write in refined arm
+#   deref_write_through_out_ref      .* (deref write)  Uninit       write through &out
+#   array_slot_read_after_write      [k] (index read)  Init (slot)  copy from init slot
+#
+# Projections do not manufacture their own init requirement — they
+# delegate to the init state of the leaf or root that backs them.
+# A regression here means a valid projection is being rejected.
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+extern fn use_shared(r: &i64);
+
+# ---------- Deref read: ref param is Init, copy through deref succeeds ----------
+
+# The reference parameter `r` is Init at entry; reading through the deref
+# projection `r.*` does not check the pointee's init state (the borrow
+# precondition already guaranteed it at borrow creation time).
+fn deref_read_of_ref_param(r: &i64) {
+  a: i64;
+  entry:
+    a = copy r.*;
+    return
+}
+
+# ---------- Downcast write: enum refined by switchEnum, write in the matching arm ----------
+
+# After `switchEnum(o)` dispatches to the `Some` arm, `o` is refined to the
+# `Some` variant. Writing through the downcast projection in that arm is valid
+# because the variant check has already been performed by the switch.
+fn downcast_write_after_switch(o: Option) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    o as Some = 7;
+    return
+  n: return
+}
+
+# ---------- Deref write: writing through an &out ref initializes the pointee ----------
+
+# The &out reference promises the pointee is Uninit at entry; assigning through
+# the deref projection fulfills the obligation that pointee is Init at expiry.
+fn deref_write_through_out_ref(r: &out i64) {
+  entry:
+    r.* = 42;
+    return
+}
+
+# ---------- Array slot read: slot initialized by prior write, copy succeeds ----------
+
+# Writing slot 0 brings it from NeverInit to Init. The subsequent copy of
+# the same slot is valid. Other slots remain NeverInit but are not read.
+fn array_slot_read_after_write() {
+  a: [i64; 3];
+  b: i64;
+  entry:
+    a[0] = 1;
+    b = copy a[0];
+    drop a[0];
+    return
+}

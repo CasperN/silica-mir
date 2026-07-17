@@ -1,0 +1,30 @@
+# HLL counterpart to `partial_init_use.sim` — same invariants
+# exercised through the HLL surface. HLL locals are constructed as
+# whole values, so `NeverInit` fields aren't reachable at the
+# surface — everything here is a use-after-move variant: the same
+# `Partial{...Moved...}` state that comes from field-by-field
+# consumption in MIR, produced through HLL's move-on-let-binding.
+
+struct Box: Drop + Move { val: i64 }
+
+struct Pair: Drop + Move { b: Box, c: Box }
+
+struct Outer: Drop + Move { p: Pair, tag: i64 }
+
+# Move a field, then re-read the moved field.
+fn read_moved_field(p: Pair) {
+  let taken = p.b;
+  let re_read = p.b;
+}
+
+# Move a field, then read the parent as a whole while it's Partial.
+fn read_whole_while_partial(p: Pair) {
+  let taken = p.b;
+  let all = p;
+}
+
+# Nested: move an inner leaf, then read the outer inner as a whole.
+fn nested_read_partial_inner(o: Outer) {
+  let taken = o.p.b;
+  let inner = o.p;
+}

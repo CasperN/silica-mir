@@ -1,9 +1,0 @@
-
-        fn f(x: i64) {
-          y: i64;
-          entry:
-            drop x;
-            y = copy x;
-            return
-        }
-        

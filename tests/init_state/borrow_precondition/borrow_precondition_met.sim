@@ -1,0 +1,127 @@
+# Every mutable reference kind checks a precondition on its pointee's
+# init state at the moment the borrow is created:
+#
+#   &        pointee must be Init
+#   &mut     pointee must be Init
+#   &out     pointee must be Uninit (NeverInit or Moved)
+#   &drop    pointee must be Init
+#   &uninit  pointee must be Uninit
+#
+# Tracking is per-leaf, so borrowing a subfield reads the subfield's
+# state — the aggregate's Partial status is irrelevant to the leaf.
+#
+# For `&out` and `&uninit`, drop elaboration will insert `drop place`
+# before the borrow if the type is Drop, so an Init Drop-typed place
+# still discharges the Uninit precondition. Linear (non-Drop) places
+# have to be moved out first.
+#
+# Each fn below covers one (ref kind x state) success cell. A
+# regression pins the wrong cell.
+
+struct P: Copy + Drop { x: i64  y: i64 }
+
+extern fn use_shared(r: &i64);
+extern fn use_mut(r: &mut i64);
+extern fn use_out(r: &out i64);
+extern fn use_drop(r: &drop i64);
+extern fn use_uninit(r: &uninit i64);
+extern fn take_scalar(y: i64);
+
+# ---------- & shared: pointee Init ----------
+
+fn shared_of_init(x: i64) {
+  r: &i64;
+  entry:
+    r = &x;
+    call use_shared(move r);
+    return
+}
+
+# ---------- &mut: pointee Init ----------
+
+fn mut_of_init(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call use_mut(move r);
+    return
+}
+
+# Field-granular: `p` is Partial as a whole but `p.x` is Init, so
+# `&mut p.x` reads the leaf and succeeds.
+fn mut_of_init_field_of_partial() {
+  p: P;
+  r: &mut i64;
+  entry:
+    p.x = 1;
+    r = &mut p.x;
+    call use_mut(move r);
+    drop p.x;
+    return
+}
+
+# ---------- &out: pointee Uninit (NeverInit) ----------
+
+fn out_of_never_init() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call use_out(move r);
+    return
+}
+
+# ---------- &out: pointee Uninit (Moved) ----------
+
+# After a move-out, the place is Uninit again — legal &out target.
+fn out_of_moved(x: i64) {
+  r: &out i64;
+  entry:
+    call take_scalar(move x);
+    r = &out x;
+    call use_out(move r);
+    return
+}
+
+# ---------- &out: pointee Init, type is Drop → elaboration inserts drop ----------
+
+# `x: i64` is Copy Drop, so drop-elab prepends `drop x` and the
+# Uninit precondition is met at the borrow.
+fn out_of_init_drop_type(x: i64) {
+  r: &out i64;
+  entry:
+    r = &out x;
+    r.* = 2;
+    return
+}
+
+# ---------- &drop: pointee Init ----------
+
+fn drop_of_init(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    call use_drop(move r);
+    return
+}
+
+# ---------- &uninit: pointee Uninit (NeverInit) ----------
+
+fn uninit_of_never_init() {
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    call use_uninit(move r);
+    return
+}
+
+# ---------- &uninit: pointee Init, type is Drop → elaboration inserts drop ----------
+
+fn uninit_of_init_drop_type(x: i64) {
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    drop r;
+    return
+}

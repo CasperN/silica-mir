@@ -1,0 +1,42 @@
+error: at 25:5: [INIT-BorrowStateMismatch] In function 'shared_of_never_init', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
+    |
+ 25 |     r = &x;
+    |     ^^^^^^
+error: at 33:5: [INIT-BorrowStateMismatch] In function 'shared_of_moved', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is moved-from
+    |
+ 33 |     r = &x;
+    |     ^^^^^^
+error: at 42:5: [INIT-BorrowStateMismatch] In function 'shared_of_partial', block 'entry': cannot create & of 'p': place must be initialized at borrow, but is partially initialized
+    |
+ 42 |     r = &p;
+    |     ^^^^^^
+error: at 52:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init', block 'entry': cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized
+    |
+ 52 |     r = &mut x;
+    |     ^^^^^^^^^^
+error: at 63:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init_field', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
+    |
+ 63 |     r = &mut p.y;
+    |     ^^^^^^^^^^^^
+error: at 73:5: [INIT-BorrowStateMismatch] In function 'drop_of_never_init', block 'entry': cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized
+    |
+ 73 |     r = &drop x;
+    |     ^^^^^^^^^^^
+error: at 82:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
+    |
+ 82 |     r = &drop p;
+    |     ^^^^^^^^^^^
+error: at 93:5: [INIT-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
+    |
+ 93 |     r = &out p;
+    |     ^^^^^^^^^^
+error: at 102:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
+     |
+ 102 |     rr = &out x;
+     |     ^^^^^^^^^^^
+  hint: move 'x' out first — linear values cannot be forgotten in place
+error: at 111:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
+     |
+ 111 |     rr = &uninit x;
+     |     ^^^^^^^^^^^^^^
+  hint: move 'x' out first — linear values cannot be forgotten in place

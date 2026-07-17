@@ -1,4 +1,0 @@
-error: at 6:13: [INIT-UseBeforeInit] In function 'f', block 'entry': variable 'x' is used before initialization
-   |
- 6 |             call takes_num(copy x);
-   |             ^^^^^^^^^^^^^^^^^^^^^^

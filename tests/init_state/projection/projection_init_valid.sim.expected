@@ -1,0 +1,46 @@
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+extern fn use_shared(r: & i64);
+
+fn deref_read_of_ref_param(r: & i64) {
+  a: i64;
+  entry:
+    a = copy r.*;
+    unborrow r;
+    drop a;
+    return
+}
+
+fn downcast_write_after_switch(o: Option) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    drop o as Some;
+    o = Option::Some(7);
+    drop o;
+    return
+  n:
+    drop o;
+    return
+}
+
+fn deref_write_through_out_ref(r: &out i64) {
+  entry:
+    r.* = 42;
+    unborrow r;
+    return
+}
+
+fn array_slot_read_after_write() {
+  a: [i64; 3];
+  b: i64;
+  entry:
+    a[0] = 1;
+    b = copy a[0];
+    drop a[0];
+    drop b;
+    return
+}

@@ -1,3 +1,0 @@
-
-            enum Bad: Drop { A: &out i64 }
-            

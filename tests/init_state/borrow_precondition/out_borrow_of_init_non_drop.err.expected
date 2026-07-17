@@ -1,5 +1,0 @@
-error: at 8:5: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
-   |
- 8 |     rr = &out x;
-   |     ^^^^^^^^^^^
-  hint: move 'x' out first — linear values cannot be forgotten in place

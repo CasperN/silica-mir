@@ -1,4 +1,0 @@
-
-            struct Inner { r: &out i64 }
-            enum Wrap: Move { W: Inner }
-            

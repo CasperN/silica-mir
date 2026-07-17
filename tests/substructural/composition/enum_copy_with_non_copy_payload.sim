@@ -1,3 +1,0 @@
-
-            enum Bad: Copy { A: &mut i64 }
-            

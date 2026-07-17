@@ -1,3 +1,0 @@
-
-            struct S: Drop { r: &mut i64 }
-            

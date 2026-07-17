@@ -1,0 +1,28 @@
+# HLL counterpart to `partial_init_completes.sim` — same invariant,
+# exercised through the HLL surface so the lowering path also
+# participates. Scope is deliberately smaller: HLL locals must be
+# constructed as whole values (no `let p: P;`), so field-by-field
+# aggregate init doesn't appear at the surface. What does appear is
+# per-field state after a move-out — the sibling field remains
+# usable, elaboration drops it at scope exit.
+
+struct Box: Drop + Move { val: i64 }
+
+struct Pair: Drop + Move { b: Box, c: Box }
+
+struct Outer: Drop + Move { p: Pair, tag: i64 }
+
+# Move one field out; sibling stays Init and is consumed later in
+# scope. The struct as a whole transitions through Partial.
+fn move_one_field_leaves_other_init(p: Pair) {
+  let taken = p.b;
+  let remaining = p.c;
+}
+
+# Nested: moving an inner leaf leaves the sibling leaf and the outer
+# scalar field usable.
+fn nested_move_inner_leaf(o: Outer) {
+  let inner_taken = o.p.b;
+  let inner_kept = o.p.c;
+  let tag = o.tag;
+}

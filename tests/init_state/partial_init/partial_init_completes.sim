@@ -1,0 +1,119 @@
+# Partial-init state accumulates cleanly and folds back to Init.
+#
+# Init state tracks per-field on structs and per-slot on constant-
+# indexed arrays. A local passes through `Partial{...}` while its
+# fields are initialized one by one; `canonicalize` folds
+# `Partial{all-Init}` back to `Init` at each transition, so a
+# fully-populated aggregate reaches `Init` even though no whole-value
+# assignment ever happens. Symmetric behavior for `Moved`: consuming
+# every field one by one folds to whole-value `Moved`.
+#
+# Every function exercises one cell of the (container x transition)
+# matrix. A regression here means the fold-up rule, per-field write
+# accounting, or projection tracking is broken for that container.
+
+struct P: Copy + Drop { x: i64  y: i64 }
+
+struct Inner: Copy + Drop { a: i64  b: i64 }
+
+struct Outer: Copy + Drop { i: Inner  c: i64 }
+
+struct<T: Copy + Drop> Pair: Copy + Drop { a: T  b: T }
+
+# ---------- Struct: field-by-field completion ----------
+
+# Each field write moves `p` through Partial; the second write
+# completes the aggregate and `canonicalize` folds to Init.
+fn struct_field_by_field() {
+  p: P;
+  a: i64;
+  entry:
+    p.x = 1;
+    p.y = 2;
+    a = copy p.x;
+    return
+}
+
+# ---------- Nested struct: leaf-by-leaf completion ----------
+
+# `o.i` starts NeverInit; writing `o.i.a` and `o.i.b` folds `o.i` to
+# Init; that plus `o.c` folds `o` to Init.
+fn nested_struct_leaf_by_leaf() {
+  o: Outer;
+  n: i64;
+  entry:
+    o.i.a = 1;
+    o.i.b = 2;
+    o.c = 3;
+    n = copy o.i.a;
+    return
+}
+
+# ---------- Array: slot-by-slot completion (constant index) ----------
+
+fn array_slot_by_slot() {
+  a: [i64; 3];
+  b: i64;
+  entry:
+    a[0] = 1;
+    a[1] = 2;
+    a[2] = 3;
+    b = copy a[1];
+    return
+}
+
+# ---------- Generic struct: field-by-field completion ----------
+
+# `Pair<T>` fields are `Param(T)`. Piecewise init through Param-typed
+# fields participates in the same fold-up rule.
+fn<T: Copy + Drop> pair_field_by_field(a: T, b: T) {
+  p: Pair<T>;
+  entry:
+    p.a = move a;
+    p.b = move b;
+    return
+}
+
+# ---------- Whole-struct overwrite from Partial ----------
+
+# Starting from `Partial{x: Init, y: NeverInit}`, a whole-value
+# assignment resets the aggregate to Init and both fields are readable.
+fn whole_struct_overwrite_from_partial(src: P) {
+  p: P;
+  a: i64;
+  entry:
+    p.x = 1;
+    p = move src;
+    a = copy p.y;
+    return
+}
+
+# ---------- Partial via move-out: remaining fields still usable ----------
+
+# Moving one field out leaves the sibling field in Init. Elaboration
+# emits `drop p.y` at return — proof that per-field state survives
+# past the aggregate split.
+fn move_one_field_leaves_other_init(p: P) {
+  a: i64;
+  b: i64;
+  entry:
+    a = move p.x;
+    b = copy p.y;
+    return
+}
+
+# ---------- Nested partial: move out inner leaf ----------
+
+# `o.i.a` moves out → `o.i` becomes `Partial{a: Moved, b: Init}`
+# while `o.c` stays Init. The remaining leaves are readable and
+# elaboration cleans them up at return.
+fn nested_move_inner_leaf(o: Outer) {
+  a: i64;
+  b: i64;
+  c: i64;
+  entry:
+    a = move o.i.a;
+    b = copy o.i.b;
+    c = copy o.c;
+    return
+}

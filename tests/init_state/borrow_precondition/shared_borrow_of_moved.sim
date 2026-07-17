@@ -1,8 +1,0 @@
-extern fn sink(x: i64);
-fn f(x: i64) {
-  r: &i64;
-  entry:
-    call sink(move x);
-    r = &x;
-    return
-}

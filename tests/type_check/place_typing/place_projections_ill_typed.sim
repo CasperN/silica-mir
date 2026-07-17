@@ -1,0 +1,104 @@
+# Each fn below violates one cell of the (projection kind x base
+# type) place-typing matrix and fires the corresponding TC-*
+# diagnostic. Two of the downcast cells also fire the paired VF-*
+# diagnostic that variant flow raises when a Downcast appears on a
+# non-refinable place.
+#
+#   fn                          projection / base            diagnostic
+#   var_undeclared              Var root not in locals       TC-UndeclaredVariable
+#   field_on_scalar             Field on i64                 TC-FieldOfNonStruct
+#   field_on_enum               Field on enum                TC-FieldOfNonStruct
+#   field_unknown_on_struct     Field naming missing member  TC-NoSuchField
+#   deref_of_scalar             Deref on i64                 TC-DerefOfNonPointer
+#   downcast_on_ref             Downcast on &T               TC-DowncastOfNonEnum
+#                                                            + VF-DowncastOnProjection
+#   downcast_on_struct          Downcast on struct           TC-DowncastOfNonEnum
+#                                                            + VF-DowncastOnProjection
+#   downcast_variant_missing    Downcast naming missing var  TC-NoSuchVariant
+#                                                            + VF-DowncastVariantNotRefined
+#
+# A regression here pins the wrong cell or drops the paired VF-*
+# diagnostic on a downcast case.
+
+struct P { x: i64 }
+
+struct S { x: i64 }
+
+enum E { A: i64 }
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+# ---------- Var: root not declared ----------
+
+# `x` never appears in the locals list, so the place root fails to
+# resolve.
+fn var_undeclared() {
+  entry:
+    x = 42;
+    return
+}
+
+# ---------- Field: base is a scalar ----------
+
+fn field_on_scalar(n: i64) {
+  a: i64;
+  entry:
+    a = copy n.x;
+    return
+}
+
+# ---------- Field: base is an enum ----------
+
+fn field_on_enum(e: E) {
+  a: i64;
+  entry:
+    a = copy e.x;
+    return
+}
+
+# ---------- Field: base is a struct, but field name is unknown ----------
+
+fn field_unknown_on_struct(p: P) {
+  a: i64;
+  entry:
+    a = copy p.z;
+    return
+}
+
+# ---------- Deref: base is a scalar ----------
+
+fn deref_of_scalar(y: i64) {
+  x: i64;
+  entry:
+    x = copy y.*;
+    return
+}
+
+# ---------- Downcast: base is a reference type ----------
+
+# Downcast requires an enum base; `&i64` is not an enum. Variant
+# flow also fires because the place is a projection, not a root Var.
+fn downcast_on_ref(r: &i64) {
+  x: i64;
+  entry:
+    x = copy r as Some;
+    return
+}
+
+# ---------- Downcast: base is a struct ----------
+
+fn downcast_on_struct(s: S) {
+  x: i64;
+  entry:
+    x = copy s as Some;
+    return
+}
+
+# ---------- Downcast: base is the right enum, variant name unknown ----------
+
+fn downcast_variant_missing(o: Option) {
+  x: i64;
+  entry:
+    x = copy o as Wat;
+    return
+}

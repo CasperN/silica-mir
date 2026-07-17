@@ -858,6 +858,16 @@ Order of operations:
 - **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and
   a Rust-shaped enum syntax (currently only newtype-with-different-
   syntax).
+- **HLL uninitialized `let` bindings** (`let p: P;` with no
+  initializer). Today every `let` requires an initializer, so
+  field-by-field aggregate init and Partial-with-NeverInit-fields
+  aren't spellable at the surface. Blocks the full HLL sibling of
+  `tests/init_state/partial_init/partial_init_use.sim` — the
+  current `hll_partial_init_completes.si` only covers the
+  move-out-then-partial subset. Also blocks the HLL sibling of
+  `tests/init_state/borrow_precondition/{borrow_precondition_met,
+  borrow_precondition_violated}.sim` — the `&out` / `&uninit`
+  matrix cells all require declaring an uninit-state place.
 
 ## Elaboration + drop
 - **Extend downcast-target reassignment to non-operand rvalues.**

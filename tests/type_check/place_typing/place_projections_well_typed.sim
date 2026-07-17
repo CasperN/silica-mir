@@ -1,0 +1,110 @@
+# Type-check accepts a place when every projection is valid for the
+# type of its immediate base:
+#
+#   Field  (base struct)   → field named on the struct
+#   Downcast (base enum)   → variant named on the enum
+#   Deref  (base &T / *T)  → reads the pointee's type
+#
+# Projections chain, and the base of each step is the type produced
+# by the prior step. A regression here means place-typing rejects a
+# well-formed projection or accepts a malformed one.
+#
+#   fn                       exercises
+#   read_var_scalar          bare Var of scalar type
+#   read_var_fn_pointer      bare Var of zero-arity fn pointer type
+#   field_on_struct          Field on struct base
+#   downcast_on_enum         Downcast on enum base (after switchEnum
+#                            refines the variant)
+#   deref_of_ref             Deref of &T
+#   deref_of_nested_ref      Deref chained through &mut &mut i64
+#   deref_through_field      Field followed by Deref (p.r.*)
+
+struct P: Copy + Drop { x: i64  y: i64 }
+
+struct Ptr: Copy + Drop { r: &i64 }
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+# ---------- Bare Var: scalar ----------
+
+# A place that is just a Var of a scalar type is well-typed and
+# copyable without any projection.
+fn read_var_scalar(x: i64) {
+  y: i64;
+  entry:
+    y = copy x;
+    return
+}
+
+# ---------- Bare Var: zero-arity fn pointer ----------
+
+# A local of `fn()` type is a valid Var place; reading it via copy
+# and using it as a call target both go through place-typing.
+fn noop() { entry: return }
+
+fn read_var_fn_pointer() {
+  g: fn();
+  entry:
+    g = noop;
+    call copy g();
+    return
+}
+
+# ---------- Field on struct ----------
+
+# Field projection on a struct base resolves to the declared field's
+# type.
+fn field_on_struct(p: P) {
+  a: i64;
+  entry:
+    a = copy p.x;
+    return
+}
+
+# ---------- Downcast on enum ----------
+
+# Downcast on an enum base names an existing variant; the variant
+# flow check requires the value to be refined to that variant first,
+# which switchEnum provides on the `s` arm.
+fn downcast_on_enum(o: Option) {
+  x: i64;
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    x = copy o as Some;
+    return
+  n:
+    return
+}
+
+# ---------- Deref of &T ----------
+
+# Deref of a shared reference reads the pointee's type.
+fn deref_of_ref(r: &i64) {
+  x: i64;
+  entry:
+    x = copy r.*;
+    return
+}
+
+# ---------- Deref of nested reference ----------
+
+# Deref chains: the type produced by the first `.*` becomes the base
+# for the second `.*`.
+fn deref_of_nested_ref(r: &mut &mut i64) {
+  a: i64;
+  entry:
+    a = copy r.*.*;
+    return
+}
+
+# ---------- Field then Deref ----------
+
+# A field projection can produce a reference type, which the next
+# `.*` then dereferences.
+fn deref_through_field(p: Ptr) {
+  a: i64;
+  entry:
+    a = copy p.r.*;
+    return
+}

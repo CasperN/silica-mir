@@ -1,9 +1,0 @@
-
-        struct P { x: i64 }
-        fn f(p: P) {
-            a: i64;
-            entry:
-            a = copy p.z;
-            return
-        }
-        

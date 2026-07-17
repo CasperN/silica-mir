@@ -1,3 +1,0 @@
-
-            struct Bad: Copy { r: &out i64 }
-            

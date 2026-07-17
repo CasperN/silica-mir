@@ -1,4 +1,0 @@
-error: at 2:32: [COMP-DropMarkerNotSatisfied] In struct 'Bad' (marked Drop), field 'r' has type &out i64 which is not Drop
-   |
- 2 |             struct Bad: Drop { r: &out i64 }
-   |                                ^^^^^^^^^^^

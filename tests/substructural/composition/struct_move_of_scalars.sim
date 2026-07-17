@@ -1,3 +1,0 @@
-
-            struct Point: Move { x: i64 y: bool }
-            

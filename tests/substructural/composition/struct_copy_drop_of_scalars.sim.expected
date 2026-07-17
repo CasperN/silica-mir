@@ -1,4 +1,0 @@
-struct Point: Copy + Drop {
-  x: i64
-  y: bool
-}

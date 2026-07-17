@@ -1,9 +1,0 @@
-
-        fn f() {
-          x: i64;
-          entry:
-            x = 1;
-            x = 2;
-            return
-        }
-        

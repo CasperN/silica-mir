@@ -1,0 +1,115 @@
+# Each fn below violates one cell of the (ref kind x pointee state)
+# borrow-precondition matrix and fires INIT-BorrowStateMismatch with
+# the specific mismatch phrased in the message ("must be
+# initialized, but is not yet initialized / moved-from / partially
+# initialized" — or the reverse for `&out` / `&uninit`).
+#
+# For `&out` / `&uninit` on Init places whose type is non-Drop, the
+# diagnostic also carries a hint telling the user to move the value
+# out first, since linear values cannot be silently forgotten.
+#
+# A regression here pins the wrong cell or the wrong wording.
+
+struct P: Copy + Drop { x: i64  y: i64 }
+
+# A linear (non-Drop) container so `&out` / `&uninit` on Init have
+# no drop for elaboration to insert.
+struct Linear { r: &out i64 }
+
+# ---------- & shared: pointee NeverInit / Moved / Partial ----------
+
+fn shared_of_never_init() {
+  x: i64;
+  r: &i64;
+  entry:
+    r = &x;
+    return
+}
+
+fn shared_of_moved(x: i64) {
+  r: &i64;
+  entry:
+    call sink(move x);
+    r = &x;
+    return
+}
+
+fn shared_of_partial() {
+  p: P;
+  r: &P;
+  entry:
+    p.x = 1;
+    r = &p;
+    return
+}
+
+# ---------- &mut: pointee NeverInit / NeverInit field ----------
+
+fn mut_of_never_init() {
+  x: i64;
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    return
+}
+
+# Field-granular: `p.x` is Init but `p.y` is NeverInit; the leaf
+# read on `p.y` is what fails.
+fn mut_of_never_init_field() {
+  p: P;
+  r: &mut i64;
+  entry:
+    p.x = 1;
+    r = &mut p.y;
+    return
+}
+
+# ---------- &drop: pointee NeverInit / Partial ----------
+
+fn drop_of_never_init() {
+  x: i64;
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    return
+}
+
+fn drop_of_partial() {
+  p: P;
+  r: &drop P;
+  entry:
+    p.x = 1;
+    r = &drop p;
+    return
+}
+
+# ---------- &out: pointee Partial / Init non-Drop ----------
+
+fn out_of_partial() {
+  p: P;
+  r: &out P;
+  entry:
+    p.x = 1;
+    r = &out p;
+    return
+}
+
+# Linear payload → no drop for elaboration to insert → precondition
+# failure carries the "move out first" hint.
+fn out_of_init_non_drop(x: Linear) {
+  rr: &out Linear;
+  entry:
+    rr = &out x;
+    return
+}
+
+# ---------- &uninit: pointee Init non-Drop ----------
+
+fn uninit_of_init_non_drop(x: Linear) {
+  rr: &uninit Linear;
+  entry:
+    rr = &uninit x;
+    return
+}
+
+extern fn sink(y: i64);

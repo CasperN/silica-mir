@@ -1,0 +1,106 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+struct Inner: Copy + Drop {
+  a: i64
+  b: i64
+}
+
+struct Outer: Copy + Drop {
+  i: Inner
+  c: i64
+}
+
+struct<T: Copy + Drop> Pair: Copy + Drop {
+  a: T
+  b: T
+}
+
+fn struct_field_by_field() {
+  p: P;
+  a: i64;
+  entry:
+    p.x = 1;
+    p.y = 2;
+    a = copy p.x;
+    drop a;
+    drop p;
+    return
+}
+
+fn nested_struct_leaf_by_leaf() {
+  o: Outer;
+  n: i64;
+  entry:
+    o.i.a = 1;
+    o.i.b = 2;
+    o.c = 3;
+    n = copy o.i.a;
+    drop n;
+    drop o;
+    return
+}
+
+fn array_slot_by_slot() {
+  a: [i64; 3];
+  b: i64;
+  entry:
+    a[0] = 1;
+    a[1] = 2;
+    a[2] = 3;
+    b = copy a[1];
+    drop b;
+    drop a;
+    return
+}
+
+fn<T: Copy + Drop> pair_field_by_field(a: T, b: T) {
+  p: Pair<T>;
+  entry:
+    p.a = move a;
+    p.b = move b;
+    drop p;
+    return
+}
+
+fn whole_struct_overwrite_from_partial(src: P) {
+  p: P;
+  a: i64;
+  entry:
+    p.x = 1;
+    p = move src;
+    a = copy p.y;
+    drop a;
+    drop p;
+    return
+}
+
+fn move_one_field_leaves_other_init(p: P) {
+  a: i64;
+  b: i64;
+  entry:
+    a = move p.x;
+    b = copy p.y;
+    drop b;
+    drop a;
+    drop p.y;
+    return
+}
+
+fn nested_move_inner_leaf(o: Outer) {
+  a: i64;
+  b: i64;
+  c: i64;
+  entry:
+    a = move o.i.a;
+    b = copy o.i.b;
+    c = copy o.c;
+    drop c;
+    drop b;
+    drop a;
+    drop o.c;
+    drop o.i.b;
+    return
+}

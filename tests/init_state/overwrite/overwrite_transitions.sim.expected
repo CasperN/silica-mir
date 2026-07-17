@@ -1,0 +1,77 @@
+struct P: Copy + Drop {
+  a: i64
+  b: i64
+}
+
+struct D: Drop + Move {
+  a: i64
+}
+
+struct Linear: Move {
+  r: &out i64
+}
+
+extern fn use_p(p: P);
+
+extern fn use_d(d: D);
+
+extern fn take(l: Linear);
+
+fn scalar_overwrite_inserts_drop() {
+  x: i64;
+  entry:
+    x = 1;
+    drop x;
+    x = 2;
+    drop x;
+    return
+}
+
+fn copy_drop_struct_overwrite(p1: P, p2: P) {
+  x: P;
+  entry:
+    x = move p1;
+    drop x;
+    x = move p2;
+    call use_p(move x);
+    return
+}
+
+fn field_overwrite_inserts_drop() {
+  p: P;
+  entry:
+    p.a = 1;
+    p.b = 2;
+    drop p.a;
+    p.a = 3;
+    drop p;
+    return
+}
+
+fn overwrite_after_move_out(x1: Linear, x2: Linear) {
+  y: Linear;
+  entry:
+    y = move x1;
+    call take(move y);
+    y = move x2;
+    call take(move y);
+    return
+}
+
+fn overwrite_after_explicit_drop(d1: D, d2: D) {
+  x: D;
+  entry:
+    x = move d1;
+    drop x;
+    x = move d2;
+    call use_d(move x);
+    return
+}
+
+fn overwrite_never_init(x: Linear) {
+  y: Linear;
+  entry:
+    y = move x;
+    call take(move y);
+    return
+}

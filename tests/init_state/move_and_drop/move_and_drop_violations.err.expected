@@ -1,0 +1,32 @@
+error: at 31:5: [INIT-UseBeforeInit] In function 'read_of_uninit_local', block 'entry': variable 'x' is used before initialization
+    |
+ 31 |     y = copy x;
+    |     ^^^^^^^^^^
+error: at 42:5: [INIT-UseBeforeInit] In function 'drop_of_uninit', block 'entry': variable 'x' is used before initialization
+    |
+ 42 |     drop x;
+    |     ^^^^^^
+error: at 53:5: [INIT-UseBeforeInit] In function 'call_arg_uninit', block 'entry': variable 'x' is used before initialization
+    |
+ 53 |     call takes_num(copy x);
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+error: at 64:5: [INIT-UseBeforeInit] In function 'call_target_uninit', block 'entry': variable 'g' is used before initialization
+    |
+ 64 |     call copy g(1);
+    |     ^^^^^^^^^^^^^^
+error: at 78:5: [INIT-UseAfterMove] In function 'read_after_move', block 'entry': variable 'x' is used after move
+    |
+ 78 |     z = copy x;
+    |     ^^^^^^^^^^
+error: at 91:5: [INIT-UseAfterMove] In function 'move_then_move', block 'entry': variable 'x' is used after move
+    |
+ 91 |     z = move x;
+    |     ^^^^^^^^^^
+error: at 104:5: [INIT-UseAfterMove] In function 'drop_consumes_like_move', block 'entry': variable 'x' is used after move
+     |
+ 104 |     y = copy x;
+     |     ^^^^^^^^^^
+error: at 115:5: [INIT-UseAfterMove] In function 'call_arg_move_then_copy', block 'entry': variable 'x' is used after move
+     |
+ 115 |     call take_two(move x, copy x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

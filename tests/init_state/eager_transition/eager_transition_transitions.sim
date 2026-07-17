@@ -1,0 +1,66 @@
+# Creating a borrow eagerly transitions the pointee's init state at the
+# borrow site — before the reference is used. Each borrow kind defines
+# which transition it performs on the place it borrows from:
+#
+#   borrow kind  | precondition | place state after borrow is consumed
+#   &out         | Uninit       | Init   (callee writes through the ref)
+#   &mut         | Init         | Init   (ownership stays with the local)
+#   &drop        | Init         | Moved  (callee drops through the ref)
+#
+# Drop elaboration observes the post-borrow state when deciding whether
+# to insert `drop place` at return. For `&out` and `&mut` the place is
+# Init at return so a drop is inserted. For `&drop` the place is Moved
+# so no drop is inserted.
+#
+# Every fn below covers one cell of the (borrow kind × post-borrow
+# state) matrix. A regression pins the wrong post-borrow state or the
+# wrong elaborated drop.
+#
+#   fn                               borrow kind  post-borrow state  drop at return
+#   out_borrow_marks_place_init      &out         Init               yes
+#   mut_borrow_leaves_place_init     &mut         Init               yes
+#   drop_borrow_marks_place_moved    &drop        Moved              no
+
+extern fn init(r: &out i64);
+extern fn use_mut(r: &mut i64);
+extern fn consume(r: &drop i64);
+
+# ---------- &out: place becomes Init after borrow is consumed ----------
+
+# Before the borrow, `x` is NeverInit — satisfying `&out`'s Uninit
+# precondition. After `init` returns, `x` is Init. Elaboration inserts
+# `drop x` at return.
+fn out_borrow_marks_place_init() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call init(move r);
+    return
+}
+
+# ---------- &mut: place remains Init after borrow is consumed ----------
+
+# `x` is Init at the borrow. Lending it mutably does not transfer
+# ownership, so `x` is still Init when the borrow ends. Elaboration
+# inserts `drop x` at return.
+fn mut_borrow_leaves_place_init(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call use_mut(move r);
+    return
+}
+
+# ---------- &drop: place becomes Moved after borrow is consumed ----------
+
+# `x` is Init at the borrow. A `&drop` borrow transfers ownership of
+# the drop obligation to the callee, leaving `x` in the Moved state.
+# Elaboration inserts no `drop x` because the place is already Moved.
+fn drop_borrow_marks_place_moved(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    call consume(move r);
+    return
+}

@@ -1,4 +1,0 @@
-
-            struct Linear { r: &out i64 }
-            struct Outer: Copy { inner: Linear }
-            

@@ -1,5 +1,0 @@
-error: at 6:5: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
-   |
- 6 |     rr = &uninit x;
-   |     ^^^^^^^^^^^^^^
-  hint: move 'x' out first — linear values cannot be forgotten in place
