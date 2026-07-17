@@ -1,0 +1,15 @@
+
+        fn f() {
+          x: i64;
+          a: &i64;
+          b: &mut i64;
+          c: &out i64;
+          d: &drop i64;
+          e: &uninit i64;
+          entry:
+            x = 0;
+            a = &x;
+            b = &mut x;
+            return
+        }
+        

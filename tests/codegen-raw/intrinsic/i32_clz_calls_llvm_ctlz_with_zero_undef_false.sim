@@ -1,0 +1,10 @@
+
+        fn f(x: i32) {
+          y: i32;
+          out: &out i32;
+          entry:
+            out = &out y;
+            call $i32_clz(copy x, move out);
+            return
+        }
+        

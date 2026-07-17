@@ -1,0 +1,12 @@
+
+        enum E { A: i64 B: unit }
+        fn f(e: E) {
+          x: i64;
+          entry:
+            switchEnum(e) [A: a_arm, B: b_arm]
+          a_arm:
+            x = copy e as A;
+            return
+          b_arm: return
+        }
+        

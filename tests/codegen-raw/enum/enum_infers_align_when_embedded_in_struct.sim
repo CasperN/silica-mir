@@ -1,0 +1,5 @@
+
+        enum E { A: i64 B: unit }
+        struct S { b: bool e: E }
+        fn f() { entry: return }
+        

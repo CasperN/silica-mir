@@ -1,0 +1,11 @@
+
+        fn f(a: f32, b: f32) {
+          r: f32;
+          out: &out f32;
+          entry:
+            out = &out r;
+            call $f32_add(copy a, copy b, move out);
+            call $f32_mul(copy a, copy b, move out);
+            return
+        }
+        

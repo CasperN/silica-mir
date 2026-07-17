@@ -1,0 +1,12 @@
+
+        fn callee($return: &out i64) {
+          entry:
+            $return.* = 42i64;
+            return
+        }
+        fn caller(out: &out i64) {
+          entry:
+            call callee(move out);
+            return
+        }
+        

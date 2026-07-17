@@ -1017,25 +1017,3 @@ fn align_up(x: u64, a: u64) -> u64 {
     (x + a - 1) & !(a - 1)
 }
 
-#[cfg(test)]
-mod test_util;
-#[cfg(test)]
-mod array_tests;
-#[cfg(test)]
-mod byte_str_tests;
-#[cfg(test)]
-mod declaration_tests;
-#[cfg(test)]
-mod enum_tests;
-#[cfg(test)]
-mod function_body_tests;
-#[cfg(test)]
-mod intrinsic_tests;
-#[cfg(test)]
-mod main_wrapper_tests;
-#[cfg(test)]
-mod place_tests;
-#[cfg(test)]
-mod statement_tests;
-#[cfg(test)]
-mod terminator_tests;

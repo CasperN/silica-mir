@@ -36,6 +36,12 @@ enum Stage {
     Elab,
     Errors,
     Codegen,
+    /// Codegen without the checker pipeline. Parses the fixture,
+    /// builds the type env, and lowers directly. Matches what the
+    /// old `codegen/test_util::ll_of` did — many hand-crafted
+    /// codegen tests use minimal programs that would fail the leak
+    /// check but exercise a specific codegen path.
+    CodegenRaw,
 }
 
 impl Stage {
@@ -43,7 +49,7 @@ impl Stage {
         match self {
             Stage::Elab => "sim.expected",
             Stage::Errors => "err.expected",
-            Stage::Codegen => "ll.expected",
+            Stage::Codegen | Stage::CodegenRaw => "ll.expected",
         }
     }
 
@@ -52,6 +58,7 @@ impl Stage {
             Stage::Elab => "elab",
             Stage::Errors => "errors",
             Stage::Codegen => "codegen",
+            Stage::CodegenRaw => "codegen-raw",
         }
     }
 }
@@ -114,6 +121,20 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
                 render_diagnostics(&d),
             ),
         },
+        Stage::CodegenRaw => {
+            // Bypass the checker pipeline entirely: parse, build env,
+            // codegen. Matches the semantics of the old
+            // `codegen/test_util::ll_of` helper.
+            let program = program.unwrap_or_else(|| {
+                panic!(
+                    "codegen-raw fixture {} failed to parse:\n{}",
+                    path.display(),
+                    render_diagnostics(&d),
+                )
+            });
+            let (env, _) = mir::type_check::Env::build(&program);
+            mir::codegen::lower_mir_to_llvm(&program, &env)
+        }
     }
 }
 
@@ -238,4 +259,9 @@ fn errors_fixtures() {
 #[test]
 fn codegen_fixtures() {
     run_stage(Stage::Codegen);
+}
+
+#[test]
+fn codegen_raw_fixtures() {
+    run_stage(Stage::CodegenRaw);
 }

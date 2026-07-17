@@ -1,0 +1,6 @@
+
+        fn f() {
+          entry: goto next
+          next: return
+        }
+        

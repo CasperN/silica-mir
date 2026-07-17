@@ -35,10 +35,17 @@ pub(crate) fn maybe_write_fixture(src: &str, has_errors: bool) {
 }
 
 pub(crate) fn maybe_write_fixture_ext(src: &str, has_errors: bool, ext: &str) {
+    let stage = if has_errors { "errors" } else { "elab" };
+    maybe_write_fixture_stage(src, stage, ext)
+}
+
+/// Explicit-stage variant. Used by codegen tests to write to
+/// `tests/codegen-raw/` regardless of diagnostic content, since
+/// they bypass the checker pipeline entirely.
+pub(crate) fn maybe_write_fixture_stage(src: &str, stage: &str, ext: &str) {
     if !extract_mode() {
         return;
     }
-    let stage = if has_errors { "errors" } else { "elab" };
     let test_name = std::thread::current()
         .name()
         .map(|s| s.to_string())
@@ -78,6 +85,8 @@ pub(crate) fn maybe_write_fixture_ext(src: &str, has_errors: bool, ext: &str) {
 /// `silica_mir::mir::init_state::foo_tests::bar_ok`. Rules:
 /// * Drop crate prefix (`silica_mir`).
 /// * Drop leading `mir::` — fixtures live directly under `tests/{stage}/`.
+/// * For `codegen-raw` stage, also drop leading `codegen::` — the
+///   stage dir already carries that context.
 /// * Strip `_tests` suffix from module names; drop bare `tests` (inline
 ///   `mod tests` blocks).
 /// * Strip trailing `_ok` (elab) or `_error` (errors) from the test fn.
@@ -87,6 +96,9 @@ fn derive_fixture_path(test_name: &str, stage: &str) -> (String, String) {
         parts.remove(0);
     }
     if parts.first() == Some(&"mir") {
+        parts.remove(0);
+    }
+    if stage == "codegen-raw" && parts.first() == Some(&"codegen") {
         parts.remove(0);
     }
     let last = parts.pop().unwrap_or("unknown").to_string();

@@ -1,0 +1,9 @@
+
+        enum E { A: i64 B: unit }
+        fn f() {
+          e: E;
+          entry:
+            e = E::A(42);
+            return
+        }
+        

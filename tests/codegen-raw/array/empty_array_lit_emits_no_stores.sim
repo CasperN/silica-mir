@@ -1,0 +1,8 @@
+
+        fn f() {
+          a: [i64; 0];
+          entry:
+            a = [];
+            return
+        }
+        

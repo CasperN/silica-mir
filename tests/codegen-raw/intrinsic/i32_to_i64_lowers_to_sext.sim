@@ -1,0 +1,10 @@
+
+        fn f(x: i32) {
+          y: i64;
+          out: &out i64;
+          entry:
+            out = &out y;
+            call $i32_to_i64(copy x, move out);
+            return
+        }
+        

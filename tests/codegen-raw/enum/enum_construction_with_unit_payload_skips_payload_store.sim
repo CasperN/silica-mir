@@ -1,0 +1,9 @@
+
+        enum E { A: unit B: unit }
+        fn f() {
+          e: E;
+          entry:
+            e = E::A(unit);
+            return
+        }
+        

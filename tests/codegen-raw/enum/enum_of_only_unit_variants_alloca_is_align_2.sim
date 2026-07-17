@@ -1,0 +1,7 @@
+
+        enum E { A: unit B: unit }
+        fn f() {
+          e: E;
+          entry: return
+        }
+        

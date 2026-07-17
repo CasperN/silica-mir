@@ -1,0 +1,15 @@
+
+        fn compute(a: i64, b: i64, out: &out i64) {
+          t1: i64;
+          t2: i64;
+          t1_out: &out i64;
+          t2_out: &out i64;
+          entry:
+            t1_out = &out t1;
+            call $i64_add(copy a, copy b, move t1_out);
+            t2_out = &out t2;
+            call $i64_mul(copy t1, copy a, move t2_out);
+            out.* = copy t2;
+            return
+        }
+        

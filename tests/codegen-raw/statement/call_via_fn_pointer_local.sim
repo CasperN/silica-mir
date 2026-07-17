@@ -1,0 +1,10 @@
+
+        extern fn callee(a: i64);
+        fn f() {
+          g: fn(i64);
+          entry:
+            g = callee;
+            call copy g(1);
+            return
+        }
+        

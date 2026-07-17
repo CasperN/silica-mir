@@ -1,0 +1,10 @@
+
+        fn f() {
+          a: bool;
+          b: bool;
+          entry:
+            a = true;
+            b = false;
+            return
+        }
+        

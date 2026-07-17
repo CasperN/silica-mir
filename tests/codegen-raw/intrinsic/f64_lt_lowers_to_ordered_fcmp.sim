@@ -1,0 +1,10 @@
+
+        fn f(x: f64, y: f64) {
+          b: bool;
+          out: &out bool;
+          entry:
+            out = &out b;
+            call $f64_lt(copy x, copy y, move out);
+            return
+        }
+        

@@ -1,0 +1,14 @@
+
+        fn f(a: i32, b: i32, c: u32, d: u32) {
+          r_signed: i32;
+          out_signed: &out i32;
+          r_unsigned: u32;
+          out_unsigned: &out u32;
+          entry:
+            out_signed = &out r_signed;
+            call $i32_div(copy a, copy b, move out_signed);
+            out_unsigned = &out r_unsigned;
+            call $u32_div(copy c, copy d, move out_unsigned);
+            return
+        }
+        

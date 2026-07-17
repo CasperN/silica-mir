@@ -1,0 +1,1 @@
+extern fn f(a: bool, r: &mut i64);

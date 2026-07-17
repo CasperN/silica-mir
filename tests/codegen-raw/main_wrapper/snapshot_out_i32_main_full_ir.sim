@@ -1,0 +1,7 @@
+
+            fn main(exit: &out i32) {
+              entry:
+                exit.* = 7i32;
+                return
+            }
+            

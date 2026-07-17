@@ -1,0 +1,10 @@
+
+        fn f(i: i32) {
+          a: [i64; 3];
+          x: i64;
+          entry:
+            a = [10i64, 20i64, 30i64];
+            x = copy a[copy i];
+            return
+        }
+        

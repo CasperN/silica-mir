@@ -1,0 +1,8 @@
+
+        extern fn ext(x: i64, $return: &out i64);
+        fn caller(out: &out i64) {
+          entry:
+            call ext(42i64, move out);
+            return
+        }
+        

@@ -1,0 +1,10 @@
+
+        fn f() {
+          x: i64;
+          r: &i64;
+          entry:
+            x = 0;
+            r = &x;
+            return
+        }
+        

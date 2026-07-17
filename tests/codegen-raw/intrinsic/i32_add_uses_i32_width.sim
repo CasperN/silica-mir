@@ -1,0 +1,10 @@
+
+        fn f(a: i32, b: i32) {
+          r: i32;
+          out: &out i32;
+          entry:
+            out = &out r;
+            call $i32_add(copy a, copy b, move out);
+            return
+        }
+        

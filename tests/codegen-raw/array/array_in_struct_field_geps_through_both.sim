@@ -1,0 +1,11 @@
+
+        struct Row: Copy + Drop { data: [i64; 2] }
+        fn f() {
+          r: Row;
+          x: i64;
+          entry:
+            r.data = [7i64, 42i64];
+            x = copy r.data[1i64];
+            return
+        }
+        

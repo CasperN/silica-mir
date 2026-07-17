@@ -1,0 +1,10 @@
+
+        fn f(a: u8, b: u8) {
+          r: u8;
+          out: &out u8;
+          entry:
+            out = &out r;
+            call $u8_mul(copy a, copy b, move out);
+            return
+        }
+        

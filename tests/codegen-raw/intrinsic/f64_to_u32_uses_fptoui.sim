@@ -1,0 +1,10 @@
+
+        fn f(x: f64) {
+          y: u32;
+          out: &out u32;
+          entry:
+            out = &out y;
+            call $f64_to_u32(copy x, move out);
+            return
+        }
+        

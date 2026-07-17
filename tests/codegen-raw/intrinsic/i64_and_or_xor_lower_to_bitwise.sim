@@ -1,0 +1,12 @@
+
+        fn f(a: i64, b: i64) {
+          r: i64;
+          out: &out i64;
+          entry:
+            out = &out r;
+            call $i64_and(copy a, copy b, move out);
+            call $i64_or(copy a, copy b, move out);
+            call $i64_xor(copy a, copy b, move out);
+            return
+        }
+        

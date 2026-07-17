@@ -1,0 +1,12 @@
+
+        enum E { A: unit B: unit }
+        fn f(e: E, e2: E) {
+          entry:
+            switchEnum(e) [A: a1, B: b1]
+          a1:
+            switchEnum(e2) [A: a2, B: b2]
+          b1: return
+          a2: return
+          b2: return
+        }
+        

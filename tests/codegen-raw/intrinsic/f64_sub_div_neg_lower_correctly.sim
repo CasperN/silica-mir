@@ -1,0 +1,12 @@
+
+        fn f(a: f64, b: f64) {
+          r: f64;
+          out: &out f64;
+          entry:
+            out = &out r;
+            call $f64_sub(copy a, copy b, move out);
+            call $f64_div(copy a, copy b, move out);
+            call $f64_neg(copy a, move out);
+            return
+        }
+        

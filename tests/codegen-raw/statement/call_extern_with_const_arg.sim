@@ -1,0 +1,8 @@
+
+        extern fn callee(a: i64);
+        fn f() {
+          entry:
+            call callee(1);
+            return
+        }
+        

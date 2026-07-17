@@ -1,0 +1,10 @@
+
+        fn f(b: bool) {
+          y: i32;
+          out: &out i32;
+          entry:
+            out = &out y;
+            call $bool_to_i32(copy b, move out);
+            return
+        }
+        
