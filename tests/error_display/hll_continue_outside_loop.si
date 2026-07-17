@@ -1,0 +1,6 @@
+# `continue` outside any enclosing loop. See sibling
+# hll_break_outside_loop.si for the story on why this is an internal
+# error today instead of a proper type_check diagnostic.
+fn f() {
+  continue;
+}

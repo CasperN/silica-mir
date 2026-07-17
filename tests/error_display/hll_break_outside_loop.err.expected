@@ -1,0 +1,4 @@
+internal: at 10:3: [HLO-BreakOutsideLoop] break outside of loop
+    |
+ 10 |   break;
+    |   ^^^^^

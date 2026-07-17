@@ -1,0 +1,11 @@
+# `break` outside any enclosing loop.
+#
+# Ideally the HLL type-checker (`hll::type_check`) rejects this with
+# a HTC-* error before lowering runs; today it doesn't, so the
+# HLO-BreakOutsideLoop guard in lowering fires as an internal
+# compiler error. This fixture pins current behavior — when
+# type_check grows the check, update the .err.expected to the new
+# HTC-* diagnostic.
+fn f() {
+  break;
+}
