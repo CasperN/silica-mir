@@ -1,4 +1,0 @@
-fn f(r: &uninit i64) {
-  entry:
-    return
-}

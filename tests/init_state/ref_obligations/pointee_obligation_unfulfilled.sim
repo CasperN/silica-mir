@@ -1,0 +1,165 @@
+# Ref obligations violated at end of life.
+#
+# Every function exercises one cell of the (ref kind x container)
+# matrix that leaves the pointee in a state the obligation rejects.
+# All the cases in the main body fire `INIT-RefObligationUnfulfilled`
+# at return.
+#
+# TODO(writes-through-Deref, punchlist): writes / moves whose path
+# passes through a Deref are silently discarded — the pointee's
+# tracked state never leaves its entry value. When entry and exit
+# obligations disagree (all `&out` / `&drop` cases below), that
+# discrepancy fires the correct error at return by accident. When
+# they agree (see the `# TODO: should error` section at the bottom),
+# the current implementation produces no diagnostic — a real safety
+# hole. Fixing per-field tracking should preserve the correct-error
+# behavior and close the silent-bug cases.
+
+struct P: Copy + Drop { x: i64  y: i64 }
+
+enum E: Copy + Drop { A: i64  B: unit }
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+
+enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+
+# ---------- &out: pointee left non-Init ----------
+
+fn out_scalar_never(r: &out i64) {
+  entry:
+    return
+}
+
+fn out_struct_never(r: &out P) {
+  entry:
+    return
+}
+
+# Writes one field of P; the other field never reaches Init. The
+# aggregate Partial-fold-up gap makes this fail via a different
+# path than intended (see file header).
+fn out_struct_partial(r: &out P) {
+  entry:
+    r.*.x = 1;
+    return
+}
+
+fn out_enum_never(r: &out E) {
+  entry:
+    return
+}
+
+fn out_array_never(r: &out [i64; 3]) {
+  entry:
+    return
+}
+
+# Writes one slot of the array; other slots remain Uninit.
+fn out_array_partial(r: &out [i64; 3]) {
+  entry:
+    r.*[0] = 1;
+    return
+}
+
+fn<T: Copy + Drop> out_param_never(r: &out T) {
+  entry:
+    return
+}
+
+fn<T: Copy + Drop> out_generic_struct_never(r: &out Box<T>) {
+  entry:
+    return
+}
+
+# ---------- &drop: pointee left non-Uninit ----------
+
+fn drop_scalar_untouched(r: &drop i64) {
+  entry:
+    return
+}
+
+fn drop_struct_untouched(r: &drop P) {
+  entry:
+    return
+}
+
+# Consumes one field but not the other.
+fn drop_struct_partial(r: &drop P) {
+  x: i64;
+  entry:
+    x = move r.*.x;
+    drop x;
+    return
+}
+
+fn drop_array_untouched(r: &drop [i64; 3]) {
+  entry:
+    return
+}
+
+fn<T: Copy + Drop> drop_param_untouched(r: &drop T) {
+  entry:
+    return
+}
+
+fn<T: Copy + Drop> drop_generic_struct_untouched(r: &drop Box<T>) {
+  entry:
+    return
+}
+
+# ---------- &mut: pointee moved out with no writeback ----------
+
+fn mut_scalar_moved_no_writeback(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    drop x;
+    return
+}
+
+fn mut_struct_moved_no_writeback(r: &mut P) {
+  p: P;
+  entry:
+    p = move r.*;
+    drop p;
+    return
+}
+
+# ---------- &uninit: pointee written into (violates Uninit obligation) ----------
+
+fn uninit_scalar_written(r: &uninit i64) {
+  entry:
+    r.* = 42;
+    return
+}
+
+# ========================================================================
+# TODO: should error but currently doesn't.
+#
+# Each function below leaves the pointee in a state that should
+# violate the obligation, but the write / move that would make that
+# violation observable passes through a Deref and gets silently
+# discarded. The pointee's tracked state stays at its entry value —
+# which happens to match the exit obligation, so no diagnostic
+# fires. These are safety holes; a per-field aggregate write model
+# (see punchlist) resolves both.
+# ========================================================================
+
+# Should error: leaves the pointee `Partial{x: Moved, y: Init}` at
+# ref expiry, which doesn't discharge the `&mut` (Init, Init)
+# obligation.
+fn mut_struct_field_moved(r: &mut P) {
+  x: i64;
+  entry:
+    x = move r.*.x;
+    drop x;
+    return
+}
+
+# Should error: writes one field of an `&uninit` pointee, which
+# violates the (Uninit, Uninit) obligation.
+fn uninit_struct_field_written(r: &uninit P) {
+  entry:
+    r.*.x = 1;
+    return
+}

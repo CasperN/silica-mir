@@ -1,4 +1,0 @@
-fn f(r: &drop i64) {
-  entry:
-    return
-}

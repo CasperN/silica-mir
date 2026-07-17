@@ -1,5 +1,0 @@
-fn f(r: &out i64) {
-  entry:
-    r.* = 42;
-    return
-}

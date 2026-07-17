@@ -1,0 +1,68 @@
+error: at 30:5: [INIT-RefObligationUnfulfilled] In function 'out_scalar_never', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 30 |     return
+    |     ^^^^^^
+error: at 35:5: [INIT-RefObligationUnfulfilled] In function 'out_struct_never', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 35 |     return
+    |     ^^^^^^
+error: at 44:5: [INIT-RefObligationUnfulfilled] In function 'out_struct_partial', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 44 |     return
+    |     ^^^^^^
+error: at 49:5: [INIT-RefObligationUnfulfilled] In function 'out_enum_never', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 49 |     return
+    |     ^^^^^^
+error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'out_array_never', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 54 |     return
+    |     ^^^^^^
+error: at 61:5: [INIT-RefObligationUnfulfilled] In function 'out_array_partial', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 61 |     return
+    |     ^^^^^^
+error: at 66:5: [INIT-RefObligationUnfulfilled] In function 'out_param_never', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 66 |     return
+    |     ^^^^^^
+error: at 71:5: [INIT-RefObligationUnfulfilled] In function 'out_generic_struct_never', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+    |
+ 71 |     return
+    |     ^^^^^^
+error: at 78:5: [INIT-RefObligationUnfulfilled] In function 'drop_scalar_untouched', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+    |
+ 78 |     return
+    |     ^^^^^^
+error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'drop_struct_untouched', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+    |
+ 83 |     return
+    |     ^^^^^^
+error: at 91:5: [INIT-RefObligationUnfulfilled] In function 'drop_struct_partial', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+    |
+ 91 |     drop x;
+    |     ^^^^^^
+error: at 97:5: [INIT-RefObligationUnfulfilled] In function 'drop_array_untouched', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+    |
+ 97 |     return
+    |     ^^^^^^
+error: at 102:5: [INIT-RefObligationUnfulfilled] In function 'drop_param_untouched', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+     |
+ 102 |     return
+     |     ^^^^^^
+error: at 107:5: [INIT-RefObligationUnfulfilled] In function 'drop_generic_struct_untouched', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+     |
+ 107 |     return
+     |     ^^^^^^
+error: at 116:5: [INIT-RefObligationUnfulfilled] In function 'mut_scalar_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+     |
+ 116 |     drop x;
+     |     ^^^^^^
+error: at 124:5: [INIT-RefObligationUnfulfilled] In function 'mut_struct_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+     |
+ 124 |     drop p;
+     |     ^^^^^^
+error: at 133:5: [INIT-RefObligationUnfulfilled] In function 'uninit_scalar_written', block 'entry': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+     |
+ 133 |     return
+     |     ^^^^^^

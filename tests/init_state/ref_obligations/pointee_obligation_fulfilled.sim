@@ -1,0 +1,172 @@
+# Ref obligations fulfilled at end of life.
+#
+# Every function exercises one cell of the (ref kind x container)
+# matrix. Each body performs a whole-value operation through the ref
+# that leaves the pointee in exactly the state the obligation
+# requires:
+#
+#   &out    pointee must be Init    at ref expiry
+#   &drop   pointee must be Uninit  at ref expiry
+#   &mut    pointee must be Init    at ref expiry (no touch = trivial)
+#   &uninit pointee must be Uninit  at ref expiry (no touch = trivial)
+#
+# The pipeline runs clean and elaboration inserts drops + unborrows.
+# A regression here means one of the ref obligations is
+# misclassified for the relevant container.
+#
+# TODO(EnumConstr type-args): whole-value construction for a generic
+# enum uses a move from a param because `Option::Some(x)` produces
+# `Custom("Option", [])` which can't match a target of `Option<T>`.
+# Once EnumConstr grows type-arg syntax, replace with direct
+# construction.
+
+struct P: Copy + Drop { x: i64  y: i64 }
+
+enum E: Copy + Drop { A: i64  B: unit }
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+
+enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+
+# ---------- &out: pointee must be Init at expiry ----------
+
+fn out_scalar(r: &out i64) {
+  entry:
+    r.* = 42;
+    return
+}
+
+fn out_struct(src: P, r: &out P) {
+  entry:
+    r.* = move src;
+    return
+}
+
+fn out_enum(r: &out E) {
+  entry:
+    r.* = E::A(42);
+    return
+}
+
+fn out_array(r: &out [i64; 3]) {
+  entry:
+    r.* = [1, 2, 3];
+    return
+}
+
+fn<T: Copy + Drop> out_param(src: T, r: &out T) {
+  entry:
+    r.* = move src;
+    return
+}
+
+fn<T: Copy + Drop> out_generic_struct(src: Box<T>, r: &out Box<T>) {
+  entry:
+    r.* = move src;
+    return
+}
+
+fn<T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out Option<T>) {
+  entry:
+    r.* = move src;
+    return
+}
+
+# ---------- &drop: pointee must be Uninit at expiry ----------
+
+fn drop_scalar(r: &drop i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    drop x;
+    return
+}
+
+fn drop_struct(r: &drop P) {
+  p: P;
+  entry:
+    p = move r.*;
+    drop p;
+    return
+}
+
+fn drop_enum(r: &drop E) {
+  e: E;
+  entry:
+    e = move r.*;
+    drop e;
+    return
+}
+
+fn drop_array(r: &drop [i64; 3]) {
+  a: [i64; 3];
+  entry:
+    a = move r.*;
+    drop a;
+    return
+}
+
+fn<T: Copy + Drop> drop_param(r: &drop T) {
+  x: T;
+  entry:
+    x = move r.*;
+    drop x;
+    return
+}
+
+fn<T: Copy + Drop> drop_generic_struct(r: &drop Box<T>) {
+  b: Box<T>;
+  entry:
+    b = move r.*;
+    drop b;
+    return
+}
+
+# ---------- &mut: pointee must be Init at expiry (no-touch baseline) ----------
+
+fn mut_scalar(r: &mut i64) {
+  entry:
+    return
+}
+
+fn mut_struct(r: &mut P) {
+  entry:
+    return
+}
+
+fn mut_array(r: &mut [i64; 3]) {
+  entry:
+    return
+}
+
+fn<T: Copy + Drop> mut_param(r: &mut T) {
+  entry:
+    return
+}
+
+fn<T: Copy + Drop> mut_generic_struct(r: &mut Box<T>) {
+  entry:
+    return
+}
+
+# ---------- &uninit: pointee must be Uninit at expiry (no-touch baseline) ----------
+
+fn uninit_scalar(r: &uninit i64) {
+  entry:
+    return
+}
+
+fn uninit_struct(r: &uninit P) {
+  entry:
+    return
+}
+
+fn uninit_array(r: &uninit [i64; 3]) {
+  entry:
+    return
+}
+
+fn<T: Copy + Drop> uninit_param(r: &uninit T) {
+  entry:
+    return
+}

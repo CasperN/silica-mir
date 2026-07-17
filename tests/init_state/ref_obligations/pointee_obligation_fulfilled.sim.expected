@@ -1,0 +1,175 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+enum E: Copy + Drop {
+  A: i64
+  B: unit
+}
+
+struct<T: Copy + Drop> Box: Copy + Drop {
+  inner: T
+}
+
+enum<T: Copy + Drop> Option: Copy + Drop {
+  None: unit
+  Some: T
+}
+
+fn out_scalar(r: &out i64) {
+  entry:
+    r.* = 42;
+    unborrow r;
+    return
+}
+
+fn out_struct(src: P, r: &out P) {
+  entry:
+    r.* = move src;
+    unborrow r;
+    return
+}
+
+fn out_enum(r: &out E) {
+  entry:
+    r.* = E::A(42);
+    unborrow r;
+    return
+}
+
+fn out_array(r: &out [i64; 3]) {
+  entry:
+    r.* = [1, 2, 3];
+    unborrow r;
+    return
+}
+
+fn<T: Copy + Drop> out_param(src: T, r: &out T) {
+  entry:
+    r.* = move src;
+    unborrow r;
+    return
+}
+
+fn<T: Copy + Drop> out_generic_struct(src: Box<T>, r: &out Box<T>) {
+  entry:
+    r.* = move src;
+    unborrow r;
+    return
+}
+
+fn<T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out Option<T>) {
+  entry:
+    r.* = move src;
+    unborrow r;
+    return
+}
+
+fn drop_scalar(r: &drop i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    unborrow r;
+    drop x;
+    return
+}
+
+fn drop_struct(r: &drop P) {
+  p: P;
+  entry:
+    p = move r.*;
+    unborrow r;
+    drop p;
+    return
+}
+
+fn drop_enum(r: &drop E) {
+  e: E;
+  entry:
+    e = move r.*;
+    unborrow r;
+    drop e;
+    return
+}
+
+fn drop_array(r: &drop [i64; 3]) {
+  a: [i64; 3];
+  entry:
+    a = move r.*;
+    unborrow r;
+    drop a;
+    return
+}
+
+fn<T: Copy + Drop> drop_param(r: &drop T) {
+  x: T;
+  entry:
+    x = move r.*;
+    unborrow r;
+    drop x;
+    return
+}
+
+fn<T: Copy + Drop> drop_generic_struct(r: &drop Box<T>) {
+  b: Box<T>;
+  entry:
+    b = move r.*;
+    unborrow r;
+    drop b;
+    return
+}
+
+fn mut_scalar(r: &mut i64) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn mut_struct(r: &mut P) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn mut_array(r: &mut [i64; 3]) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn<T: Copy + Drop> mut_param(r: &mut T) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn<T: Copy + Drop> mut_generic_struct(r: &mut Box<T>) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn uninit_scalar(r: &uninit i64) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn uninit_struct(r: &uninit P) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn uninit_array(r: &uninit [i64; 3]) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn<T: Copy + Drop> uninit_param(r: &uninit T) {
+  entry:
+    unborrow r;
+    return
+}
