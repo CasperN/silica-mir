@@ -778,6 +778,35 @@ Not file size — **test count and kind**:
   API, module <500 lines.
 - **`tests/` fixture dir**: anything "program in, artifact out." Never inline.
 
+## Fixture granularity
+
+Prefer fewer, denser fixtures per concept over many one-shot files.
+For a language rule that spans a matrix of interactions (e.g. ref
+kinds × container types, or generic bounds × decl kinds), aim for:
+
+- **one success fixture** with a fn per non-trivial cell, and
+- **one failure fixture** with a fn per failure mode,
+
+both living in the same dir. Each fn's header comment states which
+cell it covers. A reader skimming either file gets the full spec of
+the concept in one place; a regression narrows to a single line in
+one expected file.
+
+Small, single-purpose fixtures fragment the spec across a dozen
+filenames and hide the matrix. Consolidate opportunistically —
+whenever you touch a topic, sweep the sibling fixtures for
+subsumed cases and delete them.
+
+## HLL over MIR when both work
+
+When a test can be written in either surface, prefer `.si` (HLL): the
+lowering path plus the checker path plus codegen is the more
+end-to-end story, and any regression in either layer surfaces from
+the same fixture. Reach for `.sim` (MIR) only when the checker
+behavior under test can't be produced from HLL — hand-crafted CFG
+shapes, specific dataflow join scenarios, or MIR features the HLL
+doesn't lower to yet.
+
 ## Anti-patterns to avoid
 
 - **Per-pass duplication of the same program.** If init_state and
