@@ -1,16 +1,24 @@
-error: at 16:22: [TC-InvalidDeclaredType] In struct 'WrongArity1', field 'field': Type 'Box' expects 1 type argument(s), got 2
+error: at 18:22: [TC-InvalidDeclaredType] In struct 'WrongArity1', field 'field': Type 'Box' expects 1 type argument(s), got 2
     |
- 16 | struct WrongArity1 { field: Box<i32, bool> }
+ 18 | struct WrongArity1 { field: Box<i32, bool> }
     |                      ^^^^^^^^^^^^^^^^^^^^^
-error: at 17:22: [TC-InvalidDeclaredType] In struct 'WrongArity2', field 'field': Type 'Box' expects 1 type argument(s), got 0
+error: at 19:22: [TC-InvalidDeclaredType] In struct 'WrongArity2', field 'field': Type 'Box' expects 1 type argument(s), got 0
     |
- 17 | struct WrongArity2 { field: Box }
+ 19 | struct WrongArity2 { field: Box }
     |                      ^^^^^^^^^^
-error: at 20:21: [TC-InvalidDeclaredType] In struct 'UsesBadBox', field 'field': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+error: at 22:21: [TC-InvalidDeclaredType] In struct 'UsesBadBox', field 'field': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
     |
- 20 | struct UsesBadBox { field: Box<Linear> }
+ 22 | struct UsesBadBox { field: Box<Linear> }
     |                     ^^^^^^^^^^^^^^^^^^
-error: at 23:9: [TC-InvalidDeclaredType] In function 'take', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+error: at 42:21: [TC-InvalidDeclaredType] In struct 'DeepBadBox', field 'field': Type argument Linear for 'Option::T' does not satisfy required bound 'Copy'
     |
- 23 | fn take(b: Box<Linear>) {
+ 42 | struct DeepBadBox { field: Box<Option<Linear>> }
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 25:9: [TC-InvalidDeclaredType] In function 'take', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+    |
+ 25 | fn take(b: Box<Linear>) {
     |         ^^^^^^^^^^^^^^
+error: at 34:27: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out U for 'Option::T' does not satisfy required bound 'Copy'
+    |
+ 34 | fn<U: Move> option_of_out(x: Option<&out U>) {
+    |                           ^^^^^^^^^^^^^^^^^

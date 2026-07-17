@@ -7,6 +7,8 @@
 
 struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
 
+enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+
 # `Linear` declares no markers — its class is empty, so it satisfies
 # neither Copy nor Drop. Any use of `Box<Linear>` fails the bound
 # check on Box's T.
@@ -24,6 +26,20 @@ fn take(b: Box<Linear>) {
   entry:
     return
 }
+
+# Nested violation: `Option<&out U>` fails because `&out U` is
+# Move only, not Copy + Drop. Runs inside a generic scope where
+# `U: Move` — the check consults the scope for U's class, then
+# rejects it against Option's stricter bound.
+fn<U: Move> option_of_out(x: Option<&out U>) {
+  entry:
+    return
+}
+
+# Nested violation at inner layer: `Box<Option<Linear>>` — inner
+# `Option<Linear>` fails Option's `T: Copy + Drop` bound. The
+# outer Box is only evaluated after the inner fails.
+struct DeepBadBox { field: Box<Option<Linear>> }
 
 fn main() {
   entry:

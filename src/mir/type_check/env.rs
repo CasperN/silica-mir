@@ -15,7 +15,7 @@ use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
-use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
+use crate::mir::substructural::composition::{class_of, ParamScope};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]

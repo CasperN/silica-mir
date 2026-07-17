@@ -44,11 +44,6 @@ pub fn scope_from(type_params: &[TypeParam]) -> IndexMap<String, Markers> {
         .collect()
 }
 
-/// Empty scope for non-generic decls / callers with no params in scope.
-fn empty_scope() -> IndexMap<String, Markers> {
-    IndexMap::new()
-}
-
 /// Machine-readable codes emitted by the class-composition check. Each
 /// variant flags "declared marker M on container C isn't satisfied by
 /// content X". The variant discriminates *which* marker was violated;
