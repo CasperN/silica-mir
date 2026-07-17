@@ -57,11 +57,14 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
         Type::Bool => 1,
         Type::Unit | Type::Never => 0,
         Type::Fn(_) | Type::Ref(_, _) | Type::RawPtr(_) => 8,
-        Type::Custom(name) => match env.types.get(name) {
+        Type::Custom(name, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_size(s, env),
             Some(TypeDecl::Enum(e)) => enum_size(e, env),
             None => panic!("layout::size_of: unknown type '{}'", name),
         },
+        Type::TypeVar(name) => {
+            panic!("layout::size_of: type variable '{}' has no size until monomorphization", name)
+        }
         Type::Array(elem, n) => n * size_of(elem, env),
     }
 }
@@ -75,11 +78,14 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
         Type::Bool => 1,
         Type::Unit | Type::Never => 1,
         Type::Fn(_) | Type::Ref(_, _) | Type::RawPtr(_) => 8,
-        Type::Custom(name) => match env.types.get(name) {
+        Type::Custom(name, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_align(s, env),
             Some(TypeDecl::Enum(e)) => enum_align(e, env),
             None => panic!("layout::align_of: unknown type '{}'", name),
         },
+        Type::TypeVar(name) => {
+            panic!("layout::align_of: type variable '{}' has no alignment until monomorphization", name)
+        }
         Type::Array(elem, _) => align_of(elem, env),
     }
 }
@@ -179,14 +185,14 @@ fn by_value_edges(name: &str, env: &Env) -> Vec<String> {
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
             for f in &s.fields {
-                if let Type::Custom(sub) = &f.ty {
+                if let Type::Custom(sub, _) = &f.ty {
                     out.push(sub.clone());
                 }
             }
         }
         Some(TypeDecl::Enum(e)) => {
             for v in &e.variants {
-                if let Type::Custom(sub) = &v.ty {
+                if let Type::Custom(sub, _) = &v.ty {
                     out.push(sub.clone());
                 }
             }

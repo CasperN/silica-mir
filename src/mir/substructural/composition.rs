@@ -90,12 +90,24 @@ pub fn class_of(ty: &Type, env: &Env) -> Markers {
             // (obligation transfers with the ref).
             RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
         },
-        Type::Custom(name) => match env.types.get(name) {
+        Type::Custom(name, _args) => match env.types.get(name) {
+            // For a generic instantiation, the declared markers on the
+            // decl are the type's markers regardless of the args — the
+            // decl-side check verified those markers under the params'
+            // bounds. Per-instantiation "does Foo<T> imply M" folds to
+            // "did Foo declare M?" once bounds pass. Substitution into
+            // fields lands with the semantic pass; args are ignored here.
             Some(TypeDecl::Struct(s)) => s.markers,
             Some(TypeDecl::Enum(e)) => e.markers,
             // Unknown name — tc has already reported "undeclared type".
             None => Markers::empty(),
         },
+        // A generic type parameter's class comes from its declared
+        // bounds. Phase 1 doesn't thread the type-param scope through
+        // class_of, so any TypeVar reached here is treated as linear.
+        // Semantically wrong for generic bodies, but generic bodies
+        // aren't checked in phase 1 — parse/roundtrip only.
+        Type::TypeVar(_) => Markers::empty(),
         // Array class inherits from its element type. Zero-length
         // arrays are trivially Copy Drop Move (no elements to worry
         // about) — treat like the element class regardless.

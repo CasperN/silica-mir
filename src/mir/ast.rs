@@ -214,7 +214,7 @@ impl std::fmt::Display for Span {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RefKind {
     Shared, // &
     Mut,    // &mut
@@ -297,14 +297,25 @@ impl FloatTy {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Type {
     Int(IntTy),
     Float(FloatTy),
     Bool,
     Unit,
     Never,
-    Custom(String), // struct or enum type reference
+    /// Struct or enum type reference. `args` is the list of type
+    /// arguments — empty for non-generic decls (`Foo`), non-empty
+    /// for instantiations of generic decls (`Vec<i32>`).
+    Custom(String, Vec<Type>),
+    /// A type-parameter reference resolved against the current
+    /// generic scope (fn/struct/enum being checked). Written as a
+    /// bare identifier in source; the parser rewrites it to
+    /// `TypeVar` when the name matches an in-scope param.
+    /// Substructural markers come from the param's declared bounds.
+    /// Codegen internal-errors on this variant until monomorphization
+    /// lands.
+    TypeVar(String),
     Fn(Vec<Type>),
     Ref(RefKind, Box<Type>),
     /// Raw pointer. Aliasing is unrestricted; no loan tracking, no
@@ -328,7 +339,21 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "unit"),
             Type::Never => write!(f, "never"),
-            Type::Custom(name) => write!(f, "{}", name),
+            Type::Custom(name, args) => {
+                write!(f, "{}", name)?;
+                if !args.is_empty() {
+                    write!(f, "<")?;
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", a)?;
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
+            }
+            Type::TypeVar(name) => write!(f, "{}", name),
             Type::Fn(params) => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {
@@ -673,7 +698,10 @@ pub enum ConstVal {
     Float { bits: u64, ty: FloatTy },
     Bool(bool),
     Unit,
-    FnName(String),
+    /// Function-name const, used as the target of `call`. `args` is
+    /// the list of type arguments — empty for non-generic fns, non-
+    /// empty for generic-fn instantiations (`call foo<i32>(x)`).
+    FnName(String, Vec<Type>),
     /// Byte string literal `b"..."`. Value semantics: has type
     /// `[u8; N]` where N = bytes.len(). Codegen emits an inline LLVM
     /// aggregate constant `c"..."`; larger strings could be moved to
@@ -828,10 +856,18 @@ impl FunctionBody {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeParam {
+    pub name: String,
+    pub bounds: Markers,
+    pub span: Span,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
     pub name: String,
     pub name_span: Span,
     pub is_extern: bool,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub body: Option<FunctionBody>,
 }
@@ -859,6 +895,7 @@ impl Function {
 pub struct StructDecl {
     pub name: String,
     pub name_span: Span,
+    pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub fields: Vec<StructField>,
 }
@@ -867,6 +904,7 @@ pub struct StructDecl {
 pub struct EnumDecl {
     pub name: String,
     pub name_span: Span,
+    pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub variants: Vec<EnumVariant>,
 }

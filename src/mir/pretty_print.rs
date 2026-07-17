@@ -48,8 +48,25 @@ fn write_markers(out: &mut String, m: &Markers) {
     out.push_str(&names.join(" + "));
 }
 
+fn write_type_params(out: &mut String, params: &[TypeParam]) {
+    if params.is_empty() {
+        return;
+    }
+    out.push('<');
+    for (i, p) in params.iter().enumerate() {
+        if i > 0 {
+            out.push_str(", ");
+        }
+        out.push_str(&p.name);
+        write_markers(out, &p.bounds);
+    }
+    out.push('>');
+}
+
 fn write_struct(out: &mut String, s: &StructDecl) {
-    out.push_str("struct ");
+    out.push_str("struct");
+    write_type_params(out, &s.type_params);
+    out.push(' ');
     out.push_str(&s.name);
     write_markers(out, &s.markers);
     out.push_str(" {\n");
@@ -62,7 +79,9 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 }
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
-    out.push_str("enum ");
+    out.push_str("enum");
+    write_type_params(out, &e.type_params);
+    out.push(' ');
     out.push_str(&e.name);
     write_markers(out, &e.markers);
     out.push_str(" {\n");
@@ -78,7 +97,9 @@ fn write_function(out: &mut String, f: &Function) {
     if f.is_extern {
         out.push_str("extern fn ");
     } else {
-        out.push_str("fn ");
+        out.push_str("fn");
+        write_type_params(out, &f.type_params);
+        out.push(' ');
     }
     out.push_str(&f.name);
     out.push('(');
@@ -219,7 +240,19 @@ fn write_const(out: &mut String, c: &ConstVal) {
         ConstVal::Bool(true) => out.push_str("true"),
         ConstVal::Bool(false) => out.push_str("false"),
         ConstVal::Unit => out.push_str("unit"),
-        ConstVal::FnName(name) => out.push_str(name),
+        ConstVal::FnName(name, type_args) => {
+            out.push_str(name);
+            if !type_args.is_empty() {
+                out.push('<');
+                for (i, a) in type_args.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    write_type(out, a);
+                }
+                out.push('>');
+            }
+        }
     }
 }
 

@@ -1,0 +1,43 @@
+# Generics — combined roundtrip fixture.
+#
+# One program exercising every syntactic form phase 1 adds:
+#
+# - Generic struct with a bare type-param (`struct<T>`).
+# - Generic struct with multiple params and marker bounds
+#   (`struct<T: Copy + Drop, U: Move>`).
+# - Generic enum with a bare type-param (`enum<T>`).
+# - Nested type-argument reference (`Box<Box<T>>`) — the outer decl
+#   has `T` in scope and `Box` appears twice with type args.
+# - Generic function declaration (`fn<T>`).
+# - Generic function call carrying explicit type args
+#   (`call touch<i32>()`). The callee is param-less so we can
+#   invoke it before per-instantiation substitution lands.
+#
+# Composition is scope-blind in phase 1, so we deliberately don't
+# claim any markers on the generic decls or the fn — that keeps the
+# pipeline clean and lets this fixture stay Elab-stage (a true
+# parse → pretty-print roundtrip through all passes).
+
+struct<T> Box { inner: T }
+
+struct<T: Copy + Drop, U: Move> Pair { first: T second: U }
+
+enum<T> Option { None: unit Some: T }
+
+struct<T> Nest { outer: Box<Box<T>> }
+
+fn<T> take_ref(r: &T) {
+  entry:
+    return
+}
+
+fn<T> touch() {
+  entry:
+    return
+}
+
+fn caller() {
+  entry:
+    call touch<i32>();
+    return
+}

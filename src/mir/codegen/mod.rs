@@ -176,14 +176,25 @@ impl<'a> CodeGenContext<'a> {
             Type::Bool => "i1".to_string(),
             Type::Unit | Type::Never => "{}".to_string(),
             Type::Ref(_, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
-            Type::Custom(name) => format!("%{}", name),
+            Type::Custom(name, args) => {
+                assert!(
+                    args.is_empty(),
+                    "codegen: generic type instantiation not yet supported (monomorphization pass missing) — {}<{}>",
+                    name,
+                    args.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(", "),
+                );
+                format!("%{}", name)
+            }
+            Type::TypeVar(name) => {
+                panic!("codegen: unmonomorphized type variable '{}' reached LLVM lowering", name);
+            }
             Type::Array(elem, n) => format!("[{} x {}]", n, self.lower_type(elem)),
         }
     }
 
     /// Zero-based struct field index and its type. Panics on non-struct.
     fn field_lookup(&self, ty: &Type, field: &str) -> (usize, Type) {
-        let Type::Custom(name) = ty else {
+        let Type::Custom(name, _) = ty else {
             panic!("field access on non-struct type {:?}", ty);
         };
         let Some(TypeDecl::Struct(s)) = self.env.types.get(name) else {
@@ -199,7 +210,7 @@ impl<'a> CodeGenContext<'a> {
     }
 
     fn enum_decl(&self, ty: &Type) -> &'a EnumDecl {
-        let Type::Custom(name) = ty else {
+        let Type::Custom(name, _) = ty else {
             panic!("expected enum type, got {:?}", ty);
         };
         match self.env.types.get(name) {
@@ -437,7 +448,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             // Intercept intrinsic calls (`call $name(...)`): emit the LLVM
             // instruction sequence inline. The intrinsic symbol never
             // appears in the emitted `.ll`.
-            if let Operand::Const(ConstVal::FnName(name)) = target {
+            if let Operand::Const(ConstVal::FnName(name, _)) = target {
                 if crate::mir::intrinsics::is_intrinsic(name) {
                     emit_intrinsic_call(cx, name, args);
                     return;
@@ -454,7 +465,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             }
             let _ = param_tys; // types are already implicit in arg_pairs
 
-            let ret_llvm = if let Operand::Const(ConstVal::FnName(name)) = target {
+            let ret_llvm = if let Operand::Const(ConstVal::FnName(name, _)) = target {
                 if let Some(f) = cx.env.functions.get(name) {
                     if let Some(p) = get_return_param(f) {
                         if let Type::Ref(_, inner) = &p.ty {
@@ -514,7 +525,7 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
         let Some(body) = &f.body else { continue };
         for block in &body.blocks {
             for (stmt, _) in &block.statements {
-                if let Statement::Call(Operand::Const(ConstVal::FnName(name)), _) = stmt {
+                if let Statement::Call(Operand::Const(ConstVal::FnName(name, _)), _) = stmt {
                     if crate::mir::intrinsics::is_intrinsic(name) {
                         called.insert(name.clone());
                     }
@@ -737,7 +748,12 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
         ConstVal::Bool(true) => ("true".to_string(), Type::Bool),
         ConstVal::Bool(false) => ("false".to_string(), Type::Bool),
         ConstVal::Unit => ("zeroinitializer".to_string(), Type::Unit),
-        ConstVal::FnName(name) => {
+        ConstVal::FnName(name, type_args) => {
+            assert!(
+                type_args.is_empty(),
+                "codegen: generic function instantiation not yet supported (monomorphization pass missing) — {}<...>",
+                name,
+            );
             let f = cx
                 .env
                 .functions

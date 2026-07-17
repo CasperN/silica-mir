@@ -207,7 +207,7 @@ struct InitStateContext<'a> {
 // ---------- Type lookups ----------
 
 fn struct_fields_of<'a>(ty: &Type, env: &'a Env) -> Option<&'a [StructField]> {
-    let Type::Custom(name) = ty else {
+    let Type::Custom(name, _) = ty else {
         return None;
     };
     match env.types.get(name) {
@@ -217,7 +217,7 @@ fn struct_fields_of<'a>(ty: &Type, env: &'a Env) -> Option<&'a [StructField]> {
 }
 
 fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
-    let Type::Custom(name) = ty else {
+    let Type::Custom(name, _) = ty else {
         return None;
     };
     match env.types.get(name) {
@@ -660,7 +660,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
 
 fn is_trivially_init(ty: &Type, env: &Env) -> bool {
     match ty {
-        Type::Custom(name) => match env.types.get(name) {
+        Type::Custom(name, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
             _ => false,
         },
@@ -1076,7 +1076,7 @@ impl<'a> InitStateContext<'a> {
                         func,
                         block,
                         format!(
-                            "cannot overwrite '{}': type {:?} is not Drop and the value is still live (consume it via `drop {}` first)",
+                            "cannot overwrite '{}': type {} is not Drop and the value is still live (consume it via `drop {}` first)",
                             path_str, leaf_ty, path_str
                         ),
                     ));

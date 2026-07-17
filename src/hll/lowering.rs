@@ -201,7 +201,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::Type::Bool => mir::Type::Bool,
         hll::Type::Unit => mir::Type::Unit,
         hll::Type::Never => mir::Type::Never,
-        hll::Type::Custom(name) => mir::Type::Custom(name.clone()),
+        hll::Type::Custom(name) => mir::Type::Custom(name.clone(), Vec::new()),
         hll::Type::Ref(kind, inner) => mir::Type::Ref(*kind, Box::new(lower_type(inner))),
         hll::Type::RawPtr(inner) => mir::Type::RawPtr(Box::new(lower_type(inner))),
         hll::Type::Fn(params, ret) => {
@@ -426,7 +426,7 @@ fn lower_expr_into(
             };
             
             let intrinsic_name = format!("${}_{}", type_name, op_name);
-            let fn_op = mir::Operand::Const(mir::ConstVal::FnName(intrinsic_name));
+            let fn_op = mir::Operand::Const(mir::ConstVal::FnName(intrinsic_name, Vec::new()));
             
             let lhs_op = lower_expr_to_operand(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
@@ -460,7 +460,7 @@ fn lower_expr_into(
             // If it is a direct function name, we match it.
             let fn_op = if let hll::ExprKind::Variable(ref name) = fn_expr.kind {
                 if ctx.functions.contains_key(name) {
-                    mir::Operand::Const(mir::ConstVal::FnName(name.clone()))
+                    mir::Operand::Const(mir::ConstVal::FnName(name.clone(), Vec::new()))
                 } else {
                     lower_expr_to_operand(ctx, fn_expr, types)?
                 }
@@ -787,6 +787,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     name: s.name.clone(),
                     name_span: s.span,
+                    type_params: Vec::new(),
                     markers: s.markers.clone(),
                     fields,
                 }));
@@ -800,6 +801,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     name: e.name.clone(),
                     name_span: e.span,
+                    type_params: Vec::new(),
                     markers: e.markers.clone(),
                     variants,
                 }));
@@ -846,6 +848,7 @@ pub fn lower_program(
                     name: f.name.clone(),
                     name_span: f.span,
                     is_extern: false,
+                    type_params: Vec::new(),
                     params,
                     body: Some(mir::FunctionBody {
                         locals: ctx.locals,

@@ -301,7 +301,7 @@ fn pre_stmt_transitions(
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
             if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals) {
-                if let Type::Custom(enum_name) = &inner_ty {
+                if let Type::Custom(enum_name, _) = &inner_ty {
                     let payload_place =
                         Place::Downcast(Box::new(inner_owned.clone()), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals) {
@@ -406,7 +406,7 @@ fn walk_diverged(place: Place, ty: &Type, state: &InitState, out: &mut Vec<(Plac
         InitState::Partial(fields) => {
             // If any field is Diverged, recurse. Type resolution for
             // struct fields is done inline.
-            let Type::Custom(struct_name) = ty else {
+            let Type::Custom(struct_name, _) = ty else {
                 return;
             };
             // We don't have env here — the caller resolves types below
@@ -507,7 +507,7 @@ fn plan_drops_for_place(
         }
         InitState::Partial(fields) => {
             // Reverse declared field order = LIFO for that container.
-            let Type::Custom(struct_name) = ty else {
+            let Type::Custom(struct_name, _) = ty else {
                 return;
             };
             let field_decls = match env.types.get(struct_name) {

@@ -26,6 +26,11 @@ function commaSep(rule) {
 // `type: choice(...)` alongside a language-specific `fn(...)` variant
 // — HLL has `fn(T,...) [-> R]`, MIR has `fn(T,...)` with no arrow.
 // `$` is the calling grammar's `$` so `$.type` recurses correctly.
+//
+// The identifier form accepts optional `type_args` (`Foo<T, U>`).
+// Both languages see the same syntactic form; parsers resolve a
+// bare identifier to either a decl reference or an in-scope type
+// parameter using their own scope tracking.
 function typeChoices($) {
   return [
     'i8', 'i16', 'i32', 'i64',
@@ -41,7 +46,7 @@ function typeChoices($) {
     prec(2, seq('&uninit', $.type)),
     prec(2, seq('*', $.type)),
     seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
-    $.identifier, // struct / enum name
+    seq($.identifier, optional($.type_args)), // struct/enum name or type var; optional args
   ];
 }
 
@@ -90,6 +95,35 @@ module.exports = {
       ':',
       $.marker,
       repeat(seq('+', $.marker)),
+    ),
+
+    // Generic type-parameter clause on a decl: `<T, U: Move + Copy>`.
+    // Each parameter names an identifier and may carry marker bounds
+    // (reusing the `markers` rule — same `: Copy + Drop` shape). Only
+    // MIR wires these into struct/enum/fn decls in this cut; HLL
+    // decls stay non-generic until HLL lowering learns to translate
+    // them.
+    type_param: $ => seq(
+      field('name', $.identifier),
+      optional($.markers),
+    ),
+    type_params: $ => seq(
+      '<',
+      $.type_param,
+      repeat(seq(',', $.type_param)),
+      optional(','),
+      '>',
+    ),
+
+    // Type arguments at a use site: `Foo<i32, T>` or `call fn<T>(...)`.
+    // Grammar-only; parsers may reject them where semantics aren't
+    // implemented yet.
+    type_args: $ => seq(
+      '<',
+      $.type,
+      repeat(seq(',', $.type)),
+      optional(','),
+      '>',
     ),
 
     // Struct/enum field and variant have identical inner shape

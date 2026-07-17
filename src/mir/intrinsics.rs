@@ -359,6 +359,7 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
         name: spec.name,
         name_span: SPAN,
         is_extern: true,
+        type_params: Vec::new(),
         params,
         body: None,
     }

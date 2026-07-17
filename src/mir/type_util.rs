@@ -26,7 +26,7 @@ pub fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
     fn walk(ty: &Type, env: &Env, visited: &mut BTreeSet<String>) -> bool {
         match ty {
             Type::Never => true,
-            Type::Custom(name) => {
+            Type::Custom(name, _) => {
                 if !visited.insert(name.clone()) {
                     return false;
                 }
@@ -81,32 +81,32 @@ mod tests {
     #[test]
     fn struct_with_never_field_is_uninhabited() {
         let env = env_of("struct S { a: i64 b: never } fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Custom("S".into()), &env));
+        assert!(is_type_uninhabited(&Type::Custom("S".into(), Vec::new()), &env));
     }
 
     #[test]
     fn struct_with_all_inhabited_fields_is_inhabited() {
         let env = env_of("struct S { a: i64 b: bool } fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Custom("S".into()), &env));
+        assert!(!is_type_uninhabited(&Type::Custom("S".into(), Vec::new()), &env));
     }
 
     #[test]
     fn empty_enum_is_uninhabited() {
         // No variants → vacuous truth: every variant is uninhabited.
         let env = env_of("enum E { } fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Custom("E".into()), &env));
+        assert!(is_type_uninhabited(&Type::Custom("E".into(), Vec::new()), &env));
     }
 
     #[test]
     fn enum_with_one_inhabited_variant_is_inhabited() {
         let env = env_of("enum E { A: i64 B: never } fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Custom("E".into()), &env));
+        assert!(!is_type_uninhabited(&Type::Custom("E".into(), Vec::new()), &env));
     }
 
     #[test]
     fn enum_with_all_never_variants_is_uninhabited() {
         let env = env_of("enum E { A: never B: never } fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Custom("E".into()), &env));
+        assert!(is_type_uninhabited(&Type::Custom("E".into(), Vec::new()), &env));
     }
 
     #[test]
@@ -131,7 +131,7 @@ mod tests {
         // infinitely recurse into `S`'s own name; the visited set
         // conservatively treats a second occurrence as inhabited.
         let env = env_of("struct S { r: &S } fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Custom("S".into()), &env));
+        assert!(!is_type_uninhabited(&Type::Custom("S".into(), Vec::new()), &env));
     }
 
     #[test]

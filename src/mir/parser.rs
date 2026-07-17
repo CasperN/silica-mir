@@ -224,11 +224,20 @@ fn decode_byte_escapes(inner: &str) -> Result<Vec<u8>, String> {
 
 pub struct Parser {
     source: std::sync::Arc<String>,
+    /// Names of type parameters currently in scope. Populated on entry
+    /// to a struct/enum/fn decl mapping (before its field/param/local
+    /// types are visited) and cleared on exit. `map_type` reads this
+    /// when it sees an identifier: a match means `TypeVar`, otherwise
+    /// `Custom`. Decls don't nest, so a single set suffices.
+    type_scope: std::cell::RefCell<std::collections::BTreeSet<String>>,
 }
 
 impl Parser {
     pub fn new(source: impl Into<String>) -> Self {
-        Self { source: std::sync::Arc::new(source.into()) }
+        Self {
+            source: std::sync::Arc::new(source.into()),
+            type_scope: std::cell::RefCell::new(std::collections::BTreeSet::new()),
+        }
     }
 
     /// Parse `self.source` into a `Program`.
@@ -407,8 +416,10 @@ impl Parser {
                 let text = self.get_text(node);
                 if text == "bool" {
                     Ok(Type::Bool)
+                } else if self.type_scope.borrow().contains(text) {
+                    Ok(Type::TypeVar(text.to_string()))
                 } else {
-                    Ok(Type::Custom(text.to_string()))
+                    Ok(Type::Custom(text.to_string(), Vec::new()))
                 }
             }
             "type" => {
@@ -422,9 +433,32 @@ impl Parser {
                 if kind == "bool"
                     || kind == "unit"
                     || kind == "never"
-                    || kind == "identifier"
                 {
                     return self.map_type(first_child);
+                }
+                if kind == "identifier" {
+                    // Identifier alt with optional type_args as sibling:
+                    // `Foo` (Custom / TypeVar) or `Foo<T, U>` (Custom with args).
+                    let text = self.get_text(first_child);
+                    let args = if let Some(ta) = node.child(1) {
+                        if ta.kind() == "type_args" {
+                            self.map_type_args(ta)?
+                        } else {
+                            Vec::new()
+                        }
+                    } else {
+                        Vec::new()
+                    };
+                    if !args.is_empty() {
+                        return Ok(Type::Custom(text.to_string(), args));
+                    }
+                    if text == "bool" {
+                        return Ok(Type::Bool);
+                    }
+                    if self.type_scope.borrow().contains(text) {
+                        return Ok(Type::TypeVar(text.to_string()));
+                    }
+                    return Ok(Type::Custom(text.to_string(), Vec::new()));
                 }
 
                 let text = self.get_text(first_child);
@@ -606,13 +640,30 @@ impl Parser {
                 })?;
                 self.map_const(child)
             }
+            // `fn_name`: identifier with optional `<T, U>` args.
+            "fn_name" => {
+                let ident_node = node.child(0).ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "fn_name missing identifier")
+                })?;
+                let name = self.get_text(ident_node).to_string();
+                let type_args = if let Some(ta) = node.child(1) {
+                    if ta.kind() == "type_args" {
+                        self.map_type_args(ta)?
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
+                Ok(ConstVal::FnName(name, type_args))
+            }
             _ => {
                 let text = self.get_text(node);
                 match text {
                     "true" => Ok(ConstVal::Bool(true)),
                     "false" => Ok(ConstVal::Bool(false)),
                     "unit" => Ok(ConstVal::Unit),
-                    _ => Ok(ConstVal::FnName(text.to_string())),
+                    _ => Ok(ConstVal::FnName(text.to_string(), Vec::new())),
                 }
             }
         }
@@ -874,6 +925,59 @@ impl Parser {
         })
     }
 
+    /// Parse a `type_args` node (`<T, U>`) into an ordered list of
+    /// types. Requires the type_scope already reflects the enclosing
+    /// decl's params so nested TypeVar refs resolve.
+    fn map_type_args(&self, node: Node) -> Result<Vec<Type>, Diagnostic> {
+        let mut out = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
+                out.push(self.map_type(child)?);
+            }
+        }
+        Ok(out)
+    }
+
+    /// Parse a `type_params` node (`<T, U: Copy + Drop>`) into a
+    /// list of `TypeParam`. Also side-effects: pushes each name into
+    /// `type_scope` so subsequent map_type calls see them as TypeVars.
+    /// Caller is responsible for clearing the scope on decl exit.
+    fn map_type_params(&self, node: Node) -> Result<Vec<TypeParam>, Diagnostic> {
+        let mut out = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "type_param" {
+                continue;
+            }
+            let name_node = child.child_by_field_name("name").ok_or_else(|| {
+                self.diag(child, ParserCode::MalformedCst, "type param missing name")
+            })?;
+            let pname = self.get_text(name_node).to_string();
+            // Duplicate params within one decl are rejected here so
+            // downstream passes can trust name-uniqueness.
+            if self.type_scope.borrow().contains(&pname) {
+                return Err(self.diag(
+                    name_node,
+                    ParserCode::MalformedCst,
+                    format!("Duplicate type parameter '{}'", pname),
+                ));
+            }
+            let bounds = if let Some(m) = child.children(&mut child.walk()).find(|c| c.kind() == "markers") {
+                self.map_markers(m)?
+            } else {
+                Markers::empty()
+            };
+            self.type_scope.borrow_mut().insert(pname.clone());
+            out.push(TypeParam {
+                name: pname,
+                bounds,
+                span: span_of(child),
+            });
+        }
+        Ok(out)
+    }
+
     /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
     /// order). Errors on duplicates.
     fn map_markers(&self, node: Node) -> Result<Markers, Diagnostic> {
@@ -916,6 +1020,15 @@ impl Parser {
         let name_span = span_of(name_node);
 
         let mut cursor = node.walk();
+        // Populate scope BEFORE walking fields so `t: T` resolves to
+        // TypeVar. Cleared on return so scopes don't leak across decls.
+        let type_params = if let Some(tp_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node)?
+        } else {
+            Vec::new()
+        };
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
         {
@@ -942,10 +1055,12 @@ impl Parser {
                 });
             }
         }
+        self.type_scope.borrow_mut().clear();
 
         Ok(StructDecl {
             name,
             name_span,
+            type_params,
             markers,
             fields,
         })
@@ -959,6 +1074,13 @@ impl Parser {
         let name_span = span_of(name_node);
 
         let mut cursor = node.walk();
+        let type_params = if let Some(tp_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node)?
+        } else {
+            Vec::new()
+        };
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
         {
@@ -993,10 +1115,12 @@ impl Parser {
                 });
             }
         }
+        self.type_scope.borrow_mut().clear();
 
         Ok(EnumDecl {
             name,
             name_span,
+            type_params,
             markers,
             variants,
         })
@@ -1009,6 +1133,19 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
         let is_extern = self.get_text(node).starts_with("extern");
+
+        // Populate the type-param scope before mapping any types in
+        // params, locals, or body — same as struct/enum. Externs have
+        // no type_params clause in the grammar; skip cleanly.
+        let mut tp_cursor = node.walk();
+        let type_params = if let Some(tp_node) = node
+            .children(&mut tp_cursor)
+            .find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node)?
+        } else {
+            Vec::new()
+        };
 
         // Attach `in_function(name)` to any error bubbling from below —
         // this includes errors already tagged `in_block(...)` by
@@ -1087,11 +1224,13 @@ impl Parser {
         } else {
             None
         };
+        self.type_scope.borrow_mut().clear();
 
         Ok(Function {
             name,
             name_span,
             is_extern,
+            type_params,
             params,
             body,
         })
@@ -1144,7 +1283,7 @@ mod tests {
             assert!(!e.markers.declared(Marker::Drop));
             assert_eq!(e.variants.len(), 2);
             assert_eq!(e.variants[0].name, "None");
-            assert_eq!(e.variants[0].ty, Type::Custom("Option".to_string()));
+            assert_eq!(e.variants[0].ty, Type::Custom("Option".to_string(), Vec::new()));
             assert_eq!(e.variants[1].name, "Some");
             assert_eq!(e.variants[1].ty, Type::Int(IntTy::I64));
         } else {

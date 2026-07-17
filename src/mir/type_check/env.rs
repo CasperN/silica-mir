@@ -101,13 +101,19 @@ impl Env {
     pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
         match ty {
             Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => Ok(()),
-            Type::Custom(name) => {
-                if self.types.contains_key(name) {
-                    Ok(())
-                } else {
-                    Err(format!("Use of undeclared type '{}'", name))
+            Type::Custom(name, args) => {
+                if !self.types.contains_key(name) {
+                    return Err(format!("Use of undeclared type '{}'", name));
                 }
+                for a in args {
+                    self.validate_type(a)?;
+                }
+                Ok(())
             }
+            // A TypeVar is validated by the parser (which only emits it
+            // for names in the current type-param scope). Nothing more
+            // to check here.
+            Type::TypeVar(_) => Ok(()),
             Type::Fn(params) => {
                 for p in params {
                     self.validate_type(p)?;
@@ -123,9 +129,13 @@ impl Env {
     /// Type of `field` in the struct type `ty`, if any. Returns `None` if
     /// `ty` isn't a declared struct or the field doesn't exist.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let Type::Custom(name) = ty else {
+        let Type::Custom(name, _args) = ty else {
             return None;
         };
+        // Returns the raw declared field type; args are NOT substituted
+        // in. Concretization happens at monomorphization time, so
+        // callers that need the specialized type after that pass runs
+        // will see it there. Correct as-is for non-generic decls.
         match self.types.get(name) {
             Some(TypeDecl::Struct(s)) => s
                 .fields
@@ -143,7 +153,15 @@ impl Env {
             (Type::Bool, Type::Bool) => true,
             (Type::Unit, Type::Unit) => true,
             (Type::Never, Type::Never) => true,
-            (Type::Custom(a), Type::Custom(b)) => a == b,
+            (Type::Custom(a_name, a_args), Type::Custom(b_name, b_args)) => {
+                a_name == b_name
+                    && a_args.len() == b_args.len()
+                    && a_args
+                        .iter()
+                        .zip(b_args.iter())
+                        .all(|(x, y)| self.types_match(x, y))
+            }
+            (Type::TypeVar(a), Type::TypeVar(b)) => a == b,
             (Type::Fn(a), Type::Fn(b)) => {
                 if a.len() != b.len() {
                     return false;
@@ -193,7 +211,7 @@ impl Env {
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
                 let name = match &inner_ty {
-                    Type::Custom(n) => n,
+                    Type::Custom(n, _) => n,
                     _ => {
                         return Err(err(
                             FieldOfNonStruct,
@@ -232,7 +250,7 @@ impl Env {
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
                 let name = match &inner_ty {
-                    Type::Custom(n) => n,
+                    Type::Custom(n, _) => n,
                     _ => {
                         return Err(err(
                             DowncastOfNonEnum,
@@ -310,7 +328,11 @@ impl Env {
                 ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
                 ConstVal::Bool(_) => Ok(Type::Bool),
                 ConstVal::Unit => Ok(Type::Unit),
-                ConstVal::FnName(name) => {
+                ConstVal::FnName(name, _type_args) => {
+                    // Returns the raw declared fn signature; `_type_args`
+                    // are NOT substituted into param types. Concretization
+                    // happens at monomorphization time. Correct as-is for
+                    // non-generic fns.
                     let f = self.functions.get(name).ok_or_else(|| {
                         Diagnostic::new(
                             UndeclaredFunction,
@@ -384,7 +406,7 @@ impl Env {
                     ));
                 }
 
-                Ok(Type::Custom(enum_name.clone()))
+                Ok(Type::Custom(enum_name.clone(), Vec::new()))
             }
             RValue::ArrayLit(ops) => {
                 // Empty array literal: `[]` has type `[Unit; 0]` as a

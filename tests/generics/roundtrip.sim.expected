@@ -1,0 +1,34 @@
+struct<T> Box {
+  inner: T
+}
+
+struct<T: Copy + Drop, U: Move> Pair {
+  first: T
+  second: U
+}
+
+enum<T> Option {
+  None: unit
+  Some: T
+}
+
+struct<T> Nest {
+  outer: Box<Box<T>>
+}
+
+fn<T> take_ref(r: & T) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn<T> touch() {
+  entry:
+    return
+}
+
+fn caller() {
+  entry:
+    call touch<i32>();
+    return
+}

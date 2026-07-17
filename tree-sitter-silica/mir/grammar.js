@@ -41,8 +41,13 @@ module.exports = grammar({
     // whitespace or `,`. Existing test programs use whitespace-only;
     // commas are also accepted so hand-written MIR can use whichever
     // reads best.
+    //
+    // Generic decls put the type-parameter clause between the keyword
+    // and the name: `struct<T: Move> Foo: Move { ... }`. Non-generic
+    // decls omit the clause entirely.
     struct_decl: $ => seq(
       'struct',
+      optional($.type_params),
       field('name', $.identifier),
       optional($.markers),
       '{',
@@ -51,6 +56,7 @@ module.exports = grammar({
     ),
     enum_decl: $ => seq(
       'enum',
+      optional($.type_params),
       field('name', $.identifier),
       optional($.markers),
       '{',
@@ -80,6 +86,7 @@ module.exports = grammar({
       ),
       seq(
         'fn',
+        optional($.type_params),
         field('name', $.identifier),
         '(', common.commaSep($.param_decl), ')',
         '{', repeat($.local_decl), repeat($.basic_block), '}',
@@ -201,8 +208,14 @@ module.exports = grammar({
       'true',
       'false',
       'unit',
-      $.identifier, // fnName
+      $.fn_name,
     ),
+
+    // Function name const, with optional type args for calling a
+    // generic function: `foo` or `foo<i32, bool>`. The parser stores
+    // args on `ConstVal::FnName`; codegen internal-errors on non-empty
+    // args until monomorphization lands.
+    fn_name: $ => seq($.identifier, optional($.type_args)),
 
     rvalue: $ => choice(
       $.operand,

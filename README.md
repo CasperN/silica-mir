@@ -805,12 +805,18 @@ Order of operations:
 - **HLL binary operators** `+ - * /` (currently intrinsic calls only).
   Prerequisite for real HLL ergonomics and for HLL versions of the
   existing MIR fixture programs.
-- **Generics** in the MIR. Prerequisite for a standard library.
-  Design doc first (how do polymorphic function signatures appear
-  in MIR? monomorphization at codegen or checker-time
-  instantiation? how do substructural markers compose across
-  parameters, and how do blanket impls surface for libraries like
-  serde?).
+- **Generics** in the MIR — phase 1 (grammar + AST + parser +
+  pretty-print + roundtrip fixture) landed with unconditional
+  bounds (`struct<T: Move> Foo`). Remaining phases: scope-aware
+  `class_of` so `TypeVar`'s markers reflect its declared bounds;
+  type-arg substitution in `field_type` and fn signatures so
+  per-instantiation checks work; decl-side verification that a
+  struct/enum's declared markers hold given the params' bounds;
+  monomorphization pass ahead of codegen (today codegen
+  internal-errors on `TypeVar` and non-empty `Custom` args).
+  Conditional marker declarations (`Foo<T>: Copy where T: Copy`)
+  are deferred behind unconditional bounds; the inline form on
+  the decl and a separate `impl`-style form will coexist.
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
   ```
   let x = 1;
