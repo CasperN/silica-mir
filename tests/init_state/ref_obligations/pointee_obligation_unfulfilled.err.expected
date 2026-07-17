@@ -1,136 +1,152 @@
-error: at 30:5: [INIT-RefObligationUnfulfilled] In function 'out_scalar_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 22:5: [INIT-RefObligationUnfulfilled] In function 'out_scalar_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 30 |     return
+ 22 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 28 | fn out_scalar_never(r: &out i64) {
+ 20 | fn out_scalar_never(r: &out i64) {
     |                     ^^^^^^^^^^^
-error: at 35:5: [INIT-RefObligationUnfulfilled] In function 'out_struct_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 27:5: [INIT-RefObligationUnfulfilled] In function 'out_struct_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 35 |     return
+ 27 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 33 | fn out_struct_never(r: &out P) {
+ 25 | fn out_struct_never(r: &out P) {
     |                     ^^^^^^^^^
-error: at 44:5: [INIT-RefObligationUnfulfilled] In function 'out_struct_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 36:5: [INIT-RefObligationUnfulfilled] In function 'out_struct_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
     |
- 44 |     return
+ 36 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 41 | fn out_struct_partial(r: &out P) {
+ 33 | fn out_struct_partial(r: &out P) {
     |                       ^^^^^^^^^
-error: at 49:5: [INIT-RefObligationUnfulfilled] In function 'out_enum_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 41:5: [INIT-RefObligationUnfulfilled] In function 'out_enum_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 49 |     return
+ 41 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 47 | fn out_enum_never(r: &out E) {
+ 39 | fn out_enum_never(r: &out E) {
     |                   ^^^^^^^^^
-error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'out_array_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 46:5: [INIT-RefObligationUnfulfilled] In function 'out_array_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 54 |     return
+ 46 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 52 | fn out_array_never(r: &out [i64; 3]) {
+ 44 | fn out_array_never(r: &out [i64; 3]) {
     |                    ^^^^^^^^^^^^^^^^
-error: at 61:5: [INIT-RefObligationUnfulfilled] In function 'out_array_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 53:5: [INIT-RefObligationUnfulfilled] In function 'out_array_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
     |
- 61 |     return
+ 53 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 58 | fn out_array_partial(r: &out [i64; 3]) {
+ 50 | fn out_array_partial(r: &out [i64; 3]) {
     |                      ^^^^^^^^^^^^^^^^
-error: at 66:5: [INIT-RefObligationUnfulfilled] In function 'out_param_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 58:5: [INIT-RefObligationUnfulfilled] In function 'out_param_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 66 |     return
+ 58 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 64 | fn<T: Copy + Drop> out_param_never(r: &out T) {
+ 56 | fn<T: Copy + Drop> out_param_never(r: &out T) {
     |                                    ^^^^^^^^^
-error: at 71:5: [INIT-RefObligationUnfulfilled] In function 'out_generic_struct_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 63:5: [INIT-RefObligationUnfulfilled] In function 'out_generic_struct_never', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 71 |     return
+ 63 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 69 | fn<T: Copy + Drop> out_generic_struct_never(r: &out Box<T>) {
+ 61 | fn<T: Copy + Drop> out_generic_struct_never(r: &out Box<T>) {
     |                                             ^^^^^^^^^^^^^^
-error: at 78:5: [INIT-RefObligationUnfulfilled] In function 'drop_scalar_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 70:5: [INIT-RefObligationUnfulfilled] In function 'drop_scalar_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
- 78 |     return
+ 70 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 76 | fn drop_scalar_untouched(r: &drop i64) {
+ 68 | fn drop_scalar_untouched(r: &drop i64) {
     |                          ^^^^^^^^^^^^
-error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'drop_struct_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 75:5: [INIT-RefObligationUnfulfilled] In function 'drop_struct_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
- 83 |     return
+ 75 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 81 | fn drop_struct_untouched(r: &drop P) {
+ 73 | fn drop_struct_untouched(r: &drop P) {
     |                          ^^^^^^^^^^
-error: at 91:5: [INIT-RefObligationUnfulfilled] In function 'drop_struct_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'drop_struct_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
     |
- 91 |     drop x;
+ 83 |     drop x;
     |     ^^^^^^
   = note: reference declared here
     |
- 87 | fn drop_struct_partial(r: &drop P) {
+ 79 | fn drop_struct_partial(r: &drop P) {
     |                        ^^^^^^^^^^
-error: at 97:5: [INIT-RefObligationUnfulfilled] In function 'drop_array_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 89:5: [INIT-RefObligationUnfulfilled] In function 'drop_array_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
- 97 |     return
+ 89 |     return
     |     ^^^^^^
   = note: reference declared here
     |
- 95 | fn drop_array_untouched(r: &drop [i64; 3]) {
+ 87 | fn drop_array_untouched(r: &drop [i64; 3]) {
     |                         ^^^^^^^^^^^^^^^^^
-error: at 102:5: [INIT-RefObligationUnfulfilled] In function 'drop_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 94:5: [INIT-RefObligationUnfulfilled] In function 'drop_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 94 |     return
+    |     ^^^^^^
+  = note: reference declared here
+    |
+ 92 | fn<T: Copy + Drop> drop_param_untouched(r: &drop T) {
+    |                                         ^^^^^^^^^^
+error: at 99:5: [INIT-RefObligationUnfulfilled] In function 'drop_generic_struct_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 99 |     return
+    |     ^^^^^^
+  = note: reference declared here
+    |
+ 97 | fn<T: Copy + Drop> drop_generic_struct_untouched(r: &drop Box<T>) {
+    |                                                  ^^^^^^^^^^^^^^^
+error: at 108:5: [INIT-RefObligationUnfulfilled] In function 'mut_scalar_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
- 102 |     return
+ 108 |     drop x;
      |     ^^^^^^
   = note: reference declared here
      |
- 100 | fn<T: Copy + Drop> drop_param_untouched(r: &drop T) {
-     |                                         ^^^^^^^^^^
-error: at 107:5: [INIT-RefObligationUnfulfilled] In function 'drop_generic_struct_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
-     |
- 107 |     return
-     |     ^^^^^^
-  = note: reference declared here
-     |
- 105 | fn<T: Copy + Drop> drop_generic_struct_untouched(r: &drop Box<T>) {
-     |                                                  ^^^^^^^^^^^^^^^
-error: at 116:5: [INIT-RefObligationUnfulfilled] In function 'mut_scalar_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
-     |
- 116 |     drop x;
-     |     ^^^^^^
-  = note: reference declared here
-     |
- 112 | fn mut_scalar_moved_no_writeback(r: &mut i64) {
+ 104 | fn mut_scalar_moved_no_writeback(r: &mut i64) {
      |                                  ^^^^^^^^^^^
-error: at 124:5: [INIT-RefObligationUnfulfilled] In function 'mut_struct_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 116:5: [INIT-RefObligationUnfulfilled] In function 'mut_struct_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
- 124 |     drop p;
+ 116 |     drop p;
      |     ^^^^^^
   = note: reference declared here
      |
- 120 | fn mut_struct_moved_no_writeback(r: &mut P) {
+ 112 | fn mut_struct_moved_no_writeback(r: &mut P) {
      |                                  ^^^^^^^^^
-error: at 133:5: [INIT-RefObligationUnfulfilled] In function 'uninit_scalar_written', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 127:5: [INIT-RefObligationUnfulfilled] In function 'mut_struct_field_moved', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
      |
- 133 |     return
+ 127 |     drop x;
      |     ^^^^^^
   = note: reference declared here
      |
- 130 | fn uninit_scalar_written(r: &uninit i64) {
+ 123 | fn mut_struct_field_moved(r: &mut P) {
+     |                           ^^^^^^^^^
+error: at 136:5: [INIT-RefObligationUnfulfilled] In function 'uninit_scalar_written', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+     |
+ 136 |     return
+     |     ^^^^^^
+  = note: reference declared here
+     |
+ 133 | fn uninit_scalar_written(r: &uninit i64) {
      |                          ^^^^^^^^^^^^^^
+error: at 145:5: [INIT-RefObligationUnfulfilled] In function 'uninit_struct_field_written', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
+     |
+ 145 |     return
+     |     ^^^^^^
+  = note: reference declared here
+     |
+ 142 | fn uninit_struct_field_written(r: &uninit P) {
+     |                                ^^^^^^^^^^^^

@@ -860,18 +860,6 @@ Order of operations:
   syntax).
 
 ## Elaboration + drop
-- **Writes / moves whose path passes through a `Deref` are
-  silently discarded.** `apply_target_write_state` /
-  `apply_operand_move` in `init_state` bail on any path through a
-  `Deref` (via `extract_path` returning `None`). Consequences:
-  writing `r.*.x = ...` on `&out P` doesn't fold up to `Init` at
-  the pointee — plus `&mut P` and `&uninit P` field-through-Deref
-  operations are silent no-ops that fail to catch obligation
-  violations (see `pointee_obligation_unfulfilled.sim`'s "should
-  error but currently doesn't" section). Fix: track pointee state
-  per-projection so `Partial{all-Init}` is equivalent to `Init` at
-  the outer level, and `Partial{some-modified}` reflects the
-  modifications.
 - **Extend downcast-target reassignment to non-operand rvalues.**
   Today `o as V = <operand>` elaborates to `drop (o as V); o =
   EnumName::V(<operand>)`, but only when the rvalue is an Operand

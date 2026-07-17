@@ -265,24 +265,26 @@ fn check_leaks_in_state(
         }
     }
 
-    // Reference obligations: any ref-typed path whose is_init != ends_init
-    // at return leaks — the loan wasn't discharged. Shares the code with
-    // the silent-forget sites in init_state (drop, overwrite, unborrow):
-    // same obligation failure, just witnessed at a different point.
+    // Reference obligations: any ref-typed path whose pointee state
+    // disagrees with its exit requirement at return leaks — the loan
+    // wasn't discharged. Shares the code with the silent-forget sites
+    // in init_state (drop, overwrite, unborrow): same failure kind,
+    // witnessed at a different point.
     for (place, rs) in &state.refs {
         if rs.obligation_fulfilled() {
             continue;
         }
+        let (cur, expected_desc) = crate::mir::init_state::describe_obligation_mismatch_labels(rs);
         d.push_error(diag(
             InitStateCode::RefObligationUnfulfilled,
             block.terminator_span,
             func,
             block,
             format!(
-                "reference '{}' has unfulfilled obligation at return (is_init={}, ends_init={})",
+                "reference '{}' has unfulfilled obligation at return: pointee is {}, but must be {}",
                 format_place(place),
-                rs.is_init,
-                rs.ends_init
+                cur,
+                expected_desc,
             ),
         ));
     }

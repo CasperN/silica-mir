@@ -134,47 +134,68 @@ pub enum InitState {
     Diverged,
 }
 
-/// Per-reference-variable state: the current and (post-expiry) required
-/// state of the pointee. Only tracked for exclusive reference kinds (`&mut`,
-/// `&out`, `&drop`, `&uninit`). Shared references (`&T`) don't carry an
-/// obligation — they're `Copy Drop`.
+/// Per-reference-variable state: the current pointee state and the
+/// (post-expiry) required state. Only tracked for exclusive reference
+/// kinds (`&mut`, `&out`, `&drop`, `&uninit`). Shared references (`&T`)
+/// don't carry an obligation — they're `Copy Drop`.
 ///
-/// `is_init` is the pointee's current initialization state at this
-/// program point; `ends_init` is what the (cur, post) rule requires by
-/// the time the loan expires.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// `pointee` tracks the pointee's initialization at this program point
+/// with full `InitState` granularity, so per-field writes via
+/// `r.*.field = ...` on a struct pointee accumulate into a `Partial`
+/// state that folds back to `Init` when every field lands (via
+/// `canonicalize`). `ends_init` is what the (cur, post) rule requires
+/// by the time the loan expires.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefState {
-    pub is_init: bool,
+    pub pointee: InitState,
     pub ends_init: bool,
 }
 
 impl RefState {
-    /// The (is_init, ends_init) at borrow creation for a given ref kind.
+    /// The (pointee, ends_init) at borrow creation for a given ref kind.
     /// Returns `None` for shared borrows (no obligation).
     pub fn from_kind(kind: &RefKind) -> Option<Self> {
         match kind {
             RefKind::Shared => None,
             RefKind::Mut => Some(RefState {
-                is_init: true,
+                pointee: InitState::Init,
                 ends_init: true,
             }),
             RefKind::Out => Some(RefState {
-                is_init: false,
+                pointee: InitState::NeverInit,
                 ends_init: true,
             }),
             RefKind::Drop => Some(RefState {
-                is_init: true,
+                pointee: InitState::Init,
                 ends_init: false,
             }),
             RefKind::Uninit => Some(RefState {
-                is_init: false,
+                pointee: InitState::NeverInit,
                 ends_init: false,
             }),
         }
     }
 
+    /// Convenience: is the pointee fully initialized right now?
+    pub fn is_init(&self) -> bool {
+        matches!(self.pointee, InitState::Init)
+    }
+
+    /// Convenience: has the pointee been fully consumed (or never init)?
+    pub fn is_uninit(&self) -> bool {
+        matches!(self.pointee, InitState::NeverInit | InitState::Moved)
+    }
+
+    /// Does the current pointee state satisfy the exit requirement?
+    /// `ends_init = true` demands a fully-Init pointee at expiry;
+    /// `ends_init = false` demands the pointee has been consumed. Any
+    /// intermediate state (Partial, Diverged) fails either obligation.
     pub fn obligation_fulfilled(&self) -> bool {
-        self.is_init == self.ends_init
+        if self.ends_init {
+            self.is_init()
+        } else {
+            self.is_uninit()
+        }
     }
 }
 
@@ -338,7 +359,7 @@ fn join_point(a: &PointState, b: &PointState) -> PointState {
     for (place, ra) in &a.refs {
         if let Some(rb) = b.refs.get(place) {
             if ra == rb {
-                refs.insert(place.clone(), *ra);
+                refs.insert(place.clone(), ra.clone());
             }
         }
     }
@@ -824,6 +845,11 @@ impl<'a> InitStateContext<'a> {
 
     fn apply_write(&self, place: &Place, state: &mut PointState, leaf: InitState) {
         let Some((root, path)) = extract_path(place) else {
+            // Path passes through a Deref (e.g. `r.*.field = ...`).
+            // Route the write into the ref's pointee state so per-field
+            // writes accumulate; `canonicalize` folds `Partial{all-Init}`
+            // back to `Init` once every field lands.
+            self.apply_pointee_write(place, leaf, state);
             return;
         };
         let Some(root_ty) = self.locals.get(&root).cloned() else {
@@ -835,6 +861,12 @@ impl<'a> InitStateContext<'a> {
 
     fn apply_move(&self, place: &Place, state: &mut PointState) {
         let Some((root, path)) = extract_path(place) else {
+            // Move out through a Deref (e.g. `move r.*.field`). Route
+            // into the ref's pointee so partial consumption of a struct
+            // pointee accumulates as `Partial{...}` and the exit
+            // obligation check catches "not fully (de)initialized"
+            // states instead of silently accepting.
+            self.apply_pointee_move(place, state);
             return;
         };
         let Some(root_ty) = self.locals.get(&root).cloned() else {
@@ -852,6 +884,88 @@ impl<'a> InitStateContext<'a> {
         // the callee's signature enforces its own.
         if let Some(consumed) = as_owned_path(place) {
             close_refs_under(state, &consumed);
+        }
+    }
+
+    /// Route a write into the pointee of a ref. `place` must have a
+    /// `Deref` node in its projection chain; the projections above the
+    /// outermost Deref address the pointee, the Place below the Deref
+    /// locates the ref.
+    fn apply_pointee_write(&self, place: &Place, leaf: InitState, state: &mut PointState) {
+        let Some((ref_place, sub_path, pointee_ty)) =
+            self.resolve_pointee_target(place, state)
+        else {
+            return;
+        };
+        let Some(rs) = state.refs.get_mut(&ref_place) else {
+            return;
+        };
+        write_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env, leaf);
+        rs.pointee = canonicalize(std::mem::replace(&mut rs.pointee, InitState::NeverInit));
+    }
+
+    /// Route a move out of the pointee of a ref. See
+    /// [`apply_pointee_write`] for the split model.
+    fn apply_pointee_move(&self, place: &Place, state: &mut PointState) {
+        let Some((ref_place, sub_path, pointee_ty)) =
+            self.resolve_pointee_target(place, state)
+        else {
+            return;
+        };
+        let Some(rs) = state.refs.get_mut(&ref_place) else {
+            return;
+        };
+        move_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env);
+        rs.pointee = canonicalize(std::mem::replace(&mut rs.pointee, InitState::NeverInit));
+    }
+
+    /// Split `place` at its outermost `Deref` into (ref location,
+    /// projections into the pointee, pointee type). Returns `None` if
+    /// no `Deref` is present or if the ref's type / state can't be
+    /// resolved.
+    fn resolve_pointee_target(
+        &self,
+        place: &Place,
+        state: &PointState,
+    ) -> Option<(Place, Vec<PathStep>, Type)> {
+        let (ref_place, sub_path) = split_at_outermost_deref(place)?;
+        // The ref must be bound at this point; otherwise there is no
+        // pointee state to update. Silent no-op mirrors the extract_path
+        // early-return elsewhere.
+        state.refs.get(&ref_place)?;
+        let ref_ty = self.infer_ref_place_type(&ref_place)?;
+        let Type::Ref(_, pointee_ty) = ref_ty else {
+            return None;
+        };
+        Some((ref_place, sub_path, *pointee_ty))
+    }
+}
+
+/// Walk `place` outer-in, collecting projection steps until an
+/// outermost `Deref` is hit. Returns (deref inner, projections above
+/// the deref, in path order) or `None` if there is no `Deref`.
+fn split_at_outermost_deref(place: &Place) -> Option<(Place, Vec<PathStep>)> {
+    let mut steps: Vec<PathStep> = Vec::new();
+    let mut cur = place;
+    loop {
+        match cur {
+            Place::Deref(inner) => {
+                steps.reverse();
+                return Some(((**inner).clone(), steps));
+            }
+            Place::Field(inner, f) => {
+                steps.push(PathStep::Field(f.clone()));
+                cur = inner;
+            }
+            Place::Downcast(inner, v) => {
+                steps.push(PathStep::Downcast(v.clone()));
+                cur = inner;
+            }
+            Place::Index(inner, op) => {
+                steps.push(PathStep::Index(const_int_operand(op)));
+                cur = inner;
+            }
+            Place::Var(_) => return None,
         }
     }
 }
@@ -934,7 +1048,7 @@ impl<'a> InitStateContext<'a> {
             return;
         }
 
-        let Some(rs) = state.refs.get(&inner_place).copied() else {
+        let Some(rs) = state.refs.get(&inner_place).cloned() else {
             if let Some((func, block, span, d)) = report {
                 d.push_error(diag(
                     ReferenceStateUnknown,
@@ -951,7 +1065,8 @@ impl<'a> InitStateContext<'a> {
             DerefOp::Read | DerefOp::Move => true,
             DerefOp::Write => false,
         };
-        if rs.is_init != required_init {
+        let currently_init = rs.is_init();
+        if currently_init != required_init {
             if let Some((func, block, span, d)) = report {
                 let action = match op {
                     DerefOp::Read => "read from",
@@ -963,11 +1078,7 @@ impl<'a> InitStateContext<'a> {
                 } else {
                     "uninitialized"
                 };
-                let actual = if rs.is_init {
-                    "initialized"
-                } else {
-                    "uninitialized"
-                };
+                let actual = describe_pointee_state(&rs.pointee);
                 d.push_error(diag(
                     DerefPointeeStateMismatch,
                     span,
@@ -983,15 +1094,15 @@ impl<'a> InitStateContext<'a> {
 
         // Apply the transition. Do this even on precondition failure so
         // downstream analysis sees consistent state.
-        let new_is_init = match op {
-            DerefOp::Read => rs.is_init,
-            DerefOp::Move => false,
-            DerefOp::Write => true,
+        let new_pointee = match op {
+            DerefOp::Read => rs.pointee,
+            DerefOp::Move => InitState::Moved,
+            DerefOp::Write => InitState::Init,
         };
         state.refs.insert(
             inner_place,
             RefState {
-                is_init: new_is_init,
+                pointee: new_pointee,
                 ends_init: rs.ends_init,
             },
         );
@@ -1135,15 +1246,33 @@ fn ref_root_decl_span(func: &Function, ref_place: &Place) -> Option<Span> {
     None
 }
 
+/// Same as [`describe_obligation_mismatch`], but exposed to other
+/// passes (e.g. `substructural::check`) that raise the same diagnostic
+/// with a slightly different template.
+pub fn describe_obligation_mismatch_labels(rs: &RefState) -> (&'static str, &'static str) {
+    describe_obligation_mismatch(rs)
+}
+
 /// Human-readable rendering of a `(cur, post)` obligation mismatch.
 /// Returns (current pointee state, exit requirement) as short phrases
 /// that read naturally in the diagnostic message.
-fn describe_obligation_mismatch(rs: RefState) -> (&'static str, &'static str) {
-    match (rs.is_init, rs.ends_init) {
-        (false, true) => ("uninitialized", "initialized before the reference expires"),
-        (true, false) => ("initialized", "consumed before the reference expires"),
-        // obligation_fulfilled() guards this call — both agree cases don't diagnose.
-        _ => ("unknown", "unknown"),
+fn describe_obligation_mismatch(rs: &RefState) -> (&'static str, &'static str) {
+    let cur = describe_pointee_state(&rs.pointee);
+    let expected = if rs.ends_init {
+        "initialized before the reference expires"
+    } else {
+        "consumed before the reference expires"
+    };
+    (cur, expected)
+}
+
+/// Short label for a pointee's `InitState` used in diagnostics.
+fn describe_pointee_state(state: &InitState) -> &'static str {
+    match state {
+        InitState::Init => "initialized",
+        InitState::NeverInit | InitState::Moved => "uninitialized",
+        InitState::Partial(_) => "partially initialized",
+        InitState::Diverged => "in an inconsistent state across control-flow paths",
     }
 }
 
@@ -1174,9 +1303,9 @@ impl<'a> InitStateContext<'a> {
             .cloned()
             .collect();
         for v in victims {
-            let rs = state.refs[&v];
+            let rs = state.refs[&v].clone();
             if !rs.obligation_fulfilled() {
-                let (cur, expected) = describe_obligation_mismatch(rs);
+                let (cur, expected) = describe_obligation_mismatch(&rs);
                 let mut diagnostic = diag(
                     RefObligationUnfulfilled,
                     span,
@@ -1233,7 +1362,11 @@ impl<'a> InitStateContext<'a> {
         };
         if let Some(parent) = deref_inner(place) {
             if let Some(rs) = state.refs.get_mut(&parent) {
-                rs.is_init = matches!(leaf, InitState::Init);
+                rs.pointee = if matches!(leaf, InitState::Init) {
+                    InitState::Init
+                } else {
+                    InitState::NeverInit
+                };
             }
             return;
         }
@@ -1281,7 +1414,7 @@ fn capture_carried_refs(
         .iter()
         .filter_map(|(k, rs)| {
             let new_key = rekey_owned_path(&src, &dst_effective, k)?;
-            Some((new_key, *rs))
+            Some((new_key, rs.clone()))
         })
         .collect()
 }
@@ -1462,9 +1595,9 @@ impl<'a> InitStateContext<'a> {
                 ));
                 return;
             };
-            if parent_rs.is_init != requires_init {
+            if parent_rs.is_init() != requires_init {
                 let expected = if requires_init { "initialized" } else { "uninitialized" };
-                let actual = if parent_rs.is_init { "initialized" } else { "uninitialized" };
+                let actual = describe_pointee_state(&parent_rs.pointee);
                 d.push_error(diag(
                     BorrowStateMismatch,
                     span,
@@ -1695,7 +1828,7 @@ impl<'a> InitStateContext<'a> {
                 continue;
             }
             if !rs.obligation_fulfilled() {
-                let (cur, expected) = describe_obligation_mismatch(*rs);
+                let (cur, expected) = describe_obligation_mismatch(rs);
                 let mut diagnostic = diag(
                     MoveWithUnfulfilledContainedRef,
                     span,

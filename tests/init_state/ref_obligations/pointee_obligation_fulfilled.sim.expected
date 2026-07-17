@@ -66,6 +66,35 @@ fn<T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out Option<T>) {
     return
 }
 
+fn out_struct_field_by_field(r: &out P) {
+  entry:
+    r.*.x = 1;
+    r.*.y = 2;
+    unborrow r;
+    return
+}
+
+fn out_array_slot_by_slot(r: &out [i64; 3]) {
+  entry:
+    r.*[0] = 1;
+    r.*[1] = 2;
+    r.*[2] = 3;
+    unborrow r;
+    return
+}
+
+fn drop_struct_field_by_field(r: &drop P) {
+  x: i64;
+  y: i64;
+  entry:
+    x = move r.*.x;
+    y = move r.*.y;
+    unborrow r;
+    drop x;
+    drop y;
+    return
+}
+
 fn drop_scalar(r: &drop i64) {
   x: i64;
   entry:

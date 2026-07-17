@@ -72,6 +72,40 @@ fn<T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out Option<T>) {
     return
 }
 
+# Field-by-field init through &out: writing every field of a struct
+# pointee accumulates into `Partial{all-Init}`, which `canonicalize`
+# folds back to `Init` — discharging the obligation.
+fn out_struct_field_by_field(r: &out P) {
+  entry:
+    r.*.x = 1;
+    r.*.y = 2;
+    return
+}
+
+# Same rule for arrays: writing every slot accumulates and folds up
+# to `Init` at ref expiry.
+fn out_array_slot_by_slot(r: &out [i64; 3]) {
+  entry:
+    r.*[0] = 1;
+    r.*[1] = 2;
+    r.*[2] = 3;
+    return
+}
+
+# Field-by-field consume through &drop: moving out every field of a
+# struct pointee accumulates into `Partial{all-Moved}`, folded to
+# `Moved` — discharging the (Init, Uninit) obligation.
+fn drop_struct_field_by_field(r: &drop P) {
+  x: i64;
+  y: i64;
+  entry:
+    x = move r.*.x;
+    y = move r.*.y;
+    drop x;
+    drop y;
+    return
+}
+
 # ---------- &drop: pointee must be Uninit at expiry ----------
 
 fn drop_scalar(r: &drop i64) {
