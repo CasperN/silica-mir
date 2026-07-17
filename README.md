@@ -800,168 +800,97 @@ Order of operations:
 3. Only add unit tests if there's an invariant the fixture can't observe.
 
 # Punch list
-- reachable/flow analysis for bools too. Or should bool be an enum?
-- Prerequisites before coroutines are attempted
-  - Generics
-  - Lifetime arguments
-  - defer in the HLL
-  - Binary operators +-*/ for intrinsics in the HLL
-- Extend downcast-target reassignment drop-elab to non-operand
-  rvalues. Today `o as V = <operand>` rewrites to
-  `drop (o as V); o = EnumName::V(<operand>)` — but only when the
-  rvalue is an operand (Copy/Move/Const), because `EnumConstr`
-  takes an Operand. For `o as V = &mut foo` or `o as V = [e0, e1]`
-  we'd need to hoist the payload into a fresh temp first, which
-  requires allocating a mid-elaboration local. Frontend can spell
-  the pattern manually today.
-- No-alias raw pointer variant (`*noalias T`) — currently we only have
-  the aliasing `*T`. Would enable `noalias` attributes on parameters
-  where the checker can prove exclusivity.
-- Support shadowed variables in lowering. Consider interaction with `defer`.
-```
-let x = 1;
-{
-  defer { x = 3 }  // This should act on outer x, right?
-  let x = 2;
-}
-```
 
-## Marker overhaul
-- Change the declaration syntax from `struct Copy Move Drop Foo {}` to
-struct `struct Foo: Copy + Move + Drop {}`.
-  - Note that `Foo: Copy` here means the compiler also must implement
-  `AutoClone, Clone, CoClone` etc.
-  - TODO: How does this work for generics where the marker depends on the
-  type parameter?
-  - TODO: In the far future, how do we enable libraries like serde? The short
-  term implementation likely requires compiler magic.
-- The HLL always makes types `Copy + Move + Drop`, once syntax is standardized
-follow the pattern.
+## Language features
+- **HLL binary operators** `+ - * /` (currently intrinsic calls only).
+  Prerequisite for real HLL ergonomics and for HLL versions of the
+  existing MIR fixture programs.
+- **Generics** in the MIR. Prerequisite for a standard library.
+  Design doc first (how do polymorphic function signatures appear
+  in MIR? monomorphization at codegen or checker-time
+  instantiation?).
+- **Shadowed variables in HLL lowering.** Consider `defer` interaction:
+  ```
+  let x = 1;
+  { defer { x = 3 }  // acts on outer x?
+    let x = 2;
+  }
+  ```
+- **Reachable/flow analysis for bools.** Or reify `bool` as an enum
+  and let variant_flow handle it?
+- **No-alias raw pointer variant** (`*noalias T`) alongside the
+  aliasing `*T`. Enables LLVM `noalias` on parameters where the
+  checker can prove exclusivity.
+- **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and
+  a Rust-shaped enum syntax (currently only newtype-with-different-
+  syntax).
+- **Marker syntax alignment.** MIR still supports the older
+  `struct Copy Drop Foo {}` form; migrate to the HLL's
+  `struct Foo: Copy + Drop {}` throughout. Open Qs: how markers
+  compose for generics, how blanket impls surface for libraries
+  like serde.
 
-## Write a standard library
-- Requires generics
-- Requires modules and multi-file support
-- `Fail` effect for exceptional control flow.
-- `Iter` effect for for loops
-- `Async` effect for executors
-
-## Quality of life
-- HLL supports tuples
-- Utilize the error rendering capabilities for all errors.
-- Should the HLL support anonymous enums? `(left: T | right: U)`.
-- Should we make enums more like Rust's? We effectively only support newtype
-variants with a slightly different syntax.
+## Elaboration + drop
+- **Extend downcast-target reassignment to non-operand rvalues.**
+  Today `o as V = <operand>` elaborates to `drop (o as V); o =
+  EnumName::V(<operand>)`, but only when the rvalue is an Operand
+  (Copy/Move/Const). For `o as V = &mut foo` or `o as V = [e0, e1]`
+  the payload would need to be hoisted into a fresh temp first,
+  which requires allocating a mid-elaboration local. HLL callers
+  can spell the pattern manually today.
+- **Drop insertion order in return blocks.** Belongs to the HLL
+  (scope-nesting determines LIFO). If the frontend emits its own
+  drops per scope-exit, the drop elaborator becomes reference-only.
+- **Move loan-conflict dedup into elaboration.** `lifetime/mod.rs`
+  currently calls `d.retain_errors` mid-check to suppress duplicate
+  conflicts caused by drop-elaboration expanding `target = <rvalue>`
+  into `drop target; target = <rvalue>`. Mutating diagnostics during
+  checking is fragile — the fix belongs in drop-elaboration (emit a
+  compound statement or synthesize a shared span).
 
 ## FFI
-- Wire codegen for `$return`-carrying externs. An extern
+- **Wire codegen for `$return`-carrying externs.** An extern
   `extern fn foo(a: T, $return: &out R)` should emit
   `%tmp = call R @foo(a); store R %tmp, R* $return` at the call
-  site — i.e., translate Silica's sret convention into C's
-  register-return convention. Today the extern-call path drops
-  non-void C returns.
-- Decide policy on function pointers to externs. `Type::Fn`
-  erases the sret-vs-C-ABI distinction, so a `fn(T) -> R`-typed
-  value called through can't tell which ABI to use at the call
-  site. Two options: (a) ban taking pointers to externs, or
-  (b) emit a Silica-shape wrapper `void @silica_foo_wrap(T, R*)`
-  and hand out pointers to the wrapper. Not urgent — needs
-  first-class function-pointer values first.
-
-## Elaboration gaps
-- Drop insertion *order* within a return block is a HLL responsibility
-  (scope-nesting determines LIFO). At the MIR level drops are already
-  explicit statements; the elaborator only inserts what would otherwise
-  leak. If the frontend emits its own drops per scope-exit rules, the
-  drop elaborator becomes reference/debug-only rather than authoritative.
+  site — translate Silica's sret convention into C's register-return
+  convention. Today the extern-call path drops non-void C returns.
+- **Function pointers to externs.** `Type::Fn` erases the sret-vs-
+  C-ABI distinction, so a `fn(T) -> R`-typed value called through
+  can't tell which ABI to use. Either ban taking pointers to externs
+  or emit a Silica-shape wrapper. Blocked on first-class function-
+  pointer values first.
 
 ## Diagnostics
-- No tags. Prefixing tests with `[init_state]` / `[lifetime]` / `[correct]`
-  etc. would speed grep-based navigation.
-- Rustc-style *interleaved* multi-span rendering (primary + labeled
-  secondaries merged into one continuous source block). Today
-  each secondary renders as its own `= note:` snippet — readable
-  but not compact when spans are on adjacent lines.
-- Cross-block borrow-origin spans. `Analysis::transfer_stmt` in
+- **Rustc-style interleaved multi-span rendering.** Primary + labeled
+  secondaries merged into one continuous source block. Today each
+  secondary renders as its own `= note:` snippet.
+- **Cross-block borrow-origin spans.** `Analysis::transfer_stmt` in
   `mir/dataflow.rs` doesn't thread `Span`, so cross-block loans
   lose their origin and the LoanConflict secondary snippet is
   suppressed (see comment in `mir/lifetime/mod.rs`).
-- Info-severity diagnostics. Fourth bucket alongside error / warning /
-  internal_error, rendered with a low-key prefix (e.g. `note:`).
-  First use case: flag redundant markers on a decl —
-  `struct X: Copy + Drop + Move { ... }` gets an info note that
-  `Move` is implied by `Copy + Drop` and canonicalized away.
-
-## Pass-internal cleanup
-- **Deduplicate init-state transfer logic.** `InitStateContext::transfer_stmt`
-  (src/mir/init_state/mod.rs:708-761, silent, used by drop-elaboration)
-  and `check_and_transfer_stmt` (lines 1238-1313, diagnostic) reimplement
-  the same state-mutation choreography in parallel branches per statement
-  kind. Extract per-kind `apply_assign_state`/`apply_call_state`/
-  `apply_drop_state`/`apply_unborrow_state` helpers (~50 lines total) and
-  have both walkers delegate. Idempotence is already covered by
-  `assert_strict_clean_after_elaboration`, so the refactor is safe.
-- **Extract `is_type_uninhabited` from `variant_flow`.** The recursive
-  inhabitedness walk with cycle detection (src/mir/variant_flow.rs:557,
-  ~30 lines) is a general type predicate — no dependency on the
-  variant-flow lattice. Move it to a `mir::type_util` module (or
-  `mir::layout`, since layout already reasons about type shape) so
-  future passes can reuse it. The rest of variant_flow.rs (1476 lines)
-  is genuinely one topic (switch-arm reachability) and doesn't need
-  splitting for its own sake.
-- **Move dedup of loan-conflict diagnostics into elaboration.**
-  `lifetime/mod.rs:194-207` calls `d.retain_errors` mid-check to
-  suppress duplicate conflicts caused by drop-elaboration expanding
-  `target = <rvalue>` into `drop target; target = <rvalue>` (two
-  conflicts at the same span). Mutating diagnostics during checking is
-  fragile — the fix belongs in drop-elaboration (emit a single
-  compound statement or synthesize a shared span) so the checker stays
-  single-pass.
+- **Info-severity diagnostics.** Fourth bucket alongside error /
+  warning / internal_error, rendered with a `note:` prefix. First
+  use case: flag redundant markers on a decl — `struct X: Copy +
+  Drop + Move { ... }` gets an info note that `Move` is implied.
 
 ## Testing gaps
-Most of the historical migration items are done — 604 fixtures now
-cover the checker/codegen surface. Remaining gaps:
-
-- **Post-elaboration init-state re-run has no dedicated test.**
-  `elaborate_and_check_mir` re-runs init_state after NLL so an
-  unfulfilled `&out`/`&drop` obligation at an inserted `unborrow`
-  fires via `close_ref_if_present`. Add one fixture per obligation
-  kind that would silently pass without the re-run (delete the
-  re-run in a scratch branch to confirm the fixture actually catches
-  the regression).
-- **Codegen fixtures never validate the emitted LLVM.** The 100+
-  `codegen-raw/*.ll.expected` files pin exact text; no fixture
-  invokes `llvm-as` (or similar) to confirm the IR is well-formed.
-  Add one round-trip fixture per codegen feature area that shells
-  out to `llvm-as` if available on `PATH` (skip when absent so CI
-  stays portable). Would catch a typo in a GEP index or type name
-  at emit time instead of at link time.
-- **HLL is missing error-path fixtures for most `HllLoweringCode`
-  variants.** `error_display/` covers ~17 rendered HLL errors, but
-  the newer `HllLoweringCode` taxonomy (MissingType,
-  BinaryOpNonNumeric, MatchTargetNotEnum, EnumDeclMissing,
-  EnumVariantMissing, BreakOutsideLoop, ContinueOutsideLoop,
-  ScopeStackUnderflow) has no coverage. Add one fixture per variant.
-- **Cross-pass truly-redundant fixtures (3 files) not yet
-  consolidated.** `substructural/check/drop_of_number.sim` =
-  `substructural/check/scalar_param_explicitly_dropped.sim` =
-  `type_check/statement/drop_statement.sim` (all 3 identical, all
-  `sim.expected`); `block_reachability/switch_enum_arms_reachable.sim`
-  = `variant_flow/coverage_all_variants_handled.sim`. Pick canonical
-  home for each, delete the rest.
-- **~30 near-duplicate fixtures** (whitespace/comments differ, same
-  program). Not obvious mechanical dedup — needs per-case judgment
-  about which pass "owns" each test. Worth cleaning opportunistically
-  when touching neighbors.
+- **Post-elab init-state re-run** has no dedicated fixture. Add one
+  per obligation kind that would silently pass without the re-run.
+- **Codegen fixtures don't validate the emitted LLVM.** Add a
+  fixture that pipes output through `llvm-as` (skip when absent
+  from `PATH`) to catch malformed IR at emit time.
+- **~30 near-duplicate fixtures** (whitespace/comments differ,
+  same program). Clean opportunistically when touching neighbors.
 
 # Longer term
+- Standard library (needs generics + modules + multi-file support).
+  Effects: `Fail` for exceptional control flow, `Iter` for for-loops,
+  `Async` for executors.
 - Round-trip fixture test (`pretty_print → parse → pretty_print`)
-  as an anti-drift check between grammar and codebase. Would also
-  catch parser walker regressions.
-- Tighten MIR struct/enum decl separators from
-  whitespace-or-comma (current: either works) to comma-required-
-  optional-trailing to match HLL. Currently permissive to keep
-  existing MIR programs working.
-- Lambdas
-- Coroutines
-- MIR polymorphic types
-- MIR traits?
+  as an anti-drift check between grammar and codebase.
+- Tighten MIR struct/enum decl separators from whitespace-or-comma
+  to comma-required-optional-trailing (match HLL).
+- Coroutines. Prerequisites: generics, lifetime arguments,
+  HLL `defer`, HLL binary operators.
+- Lambdas.
+- MIR traits.
