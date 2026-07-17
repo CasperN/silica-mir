@@ -1,0 +1,50 @@
+# Recursive factorial in MIR.
+#
+# Silica-MIR has no return values — functions receive an `&out T`
+# `$return` parameter and write through it. Recursion here goes
+# through a local `&out` bound to the caller's slot.
+#
+# `fn main(exit: &out i32)` is the recognized entry-point signature;
+# codegen synthesizes a C-conformant `i32 @main()` wrapper that
+# allocates the exit slot and returns its final value.
+#
+# Compile:  cargo run --quiet -- --llvm examples/factorial.sim
+# Run:      llc <(above) | clang -x assembler - -o /tmp/f && /tmp/f; echo $?
+# Expected: exit code 120 (= 5!)
+
+fn fact(n: i64, $return: &out i64) {
+  base: bool;
+  bo: &out bool;
+  sub: i64;
+  sub_out: &out i64;
+  sub_result: i64;
+  rec_out: &out i64;
+  mul_out: &out i64;
+  entry:
+    bo = &out base;
+    call $i64_le(copy n, 1i64, move bo);
+    branch(copy base) [true: base_arm, false: rec_arm]
+  base_arm:
+    $return.* = 1i64;
+    return
+  rec_arm:
+    sub_out = &out sub;
+    call $i64_sub(copy n, 1i64, move sub_out);
+    rec_out = &out sub_result;
+    call fact(copy sub, move rec_out);
+    mul_out = &out $return.*;
+    call $i64_mul(copy n, copy sub_result, move mul_out);
+    return
+}
+
+fn main(exit: &out i32) {
+  result: i64;
+  result_out: &out i64;
+  trunc_out: &out i32;
+  entry:
+    result_out = &out result;
+    call fact(5i64, move result_out);
+    trunc_out = &out exit.*;
+    call $i64_to_i32(copy result, move trunc_out);
+    return
+}

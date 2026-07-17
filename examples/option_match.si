@@ -1,0 +1,25 @@
+# Silica HLL example — pattern matching on an enum.
+#
+# Silica HLL is expression-oriented (if, match, blocks all evaluate
+# to a value) and lowers to MIR. Match is postfix (expr match { ... }),
+# reading subject-first. Line comments start with #.
+#
+# Compile:  cargo run --quiet -- examples/option_match.si
+#   → prints the elaborated MIR after HLL lowering.
+
+enum Option: Copy + Drop {
+  None: unit,
+  Some: i64,
+}
+
+fn unwrap_or(o: Option, fallback: i64) -> i64 {
+  o match {
+    Some(n) => n,
+    None => fallback,
+  }
+}
+
+fn main() {
+  let some_val = Option::Some(42);
+  let x = unwrap_or(some_val, 0);
+}
