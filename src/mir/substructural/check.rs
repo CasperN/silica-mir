@@ -241,8 +241,7 @@ fn check_leaks_in_state(
         // separately below. Skip the linear-leak scan on the whole Var
         // if the Var itself is bound as a ref. (Ref-typed *fields* of a
         // struct are handled via the leak walk descending into fields;
-        // Phase 2/4 will refine this to also inspect state.refs for
-        // sub-paths.)
+        // a future refinement will inspect state.refs for sub-paths too.)
         if state.refs.contains_key(&Place::Var(var.clone())) {
             continue;
         }

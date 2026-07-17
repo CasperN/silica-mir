@@ -5,10 +5,10 @@
 //! program where every loan-closing point is syntactically explicit.
 //!
 //! Structure mirrors `substructural::drop_elaboration`:
-//! - Phase 1 (immutable): plan per-function insertions using backward
+//! - Plan (immutable): compute per-function insertions using backward
 //!   liveness over borrower Vars.
-//! - Phase 2 (mutable): apply the plan — inserting statements and
-//!   splitting critical edges via `cfg_edit::split_edge`.
+//! - Apply (mutable): splice statements and split critical edges via
+//!   `cfg_edit::split_edge`.
 //!
 //! ## Semantics
 //!
@@ -62,7 +62,7 @@ use std::collections::BTreeSet;
 /// Elaborate `program` in place: insert `unborrow` statements at every
 /// borrower's last-use points. Idempotent.
 pub fn elaborate(program: &mut Program, env: &Env) {
-    // Phase 1 (immutable): plan per-function.
+    // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
     for func in env.functions.values() {
         if let Some(plan) = plan_for_function(func, env) {
@@ -70,7 +70,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         }
     }
 
-    // Phase 2 (mutable): apply.
+    // Apply (mutable): splice the planned statements and edge splits.
     for decl in &mut program.declarations {
         let Declaration::Fn(func) = decl else {
             continue;

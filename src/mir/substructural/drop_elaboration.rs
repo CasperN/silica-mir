@@ -68,7 +68,7 @@ struct FnPlan {
 /// Insert return-leak drops in `program` using analysis state from `env`.
 /// `env` should have been built from `program` before calling.
 pub fn elaborate(program: &mut Program, env: &Env) {
-    // Phase 1 (immutable): plan per function.
+    // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in env.functions.values() {
         let plan = plan_for_function(env, func);
@@ -80,7 +80,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         }
     }
 
-    // Phase 2 (mutable): apply plans.
+    // Apply (mutable): splice the planned changes into each body.
     for decl in &mut program.declarations {
         let Declaration::Fn(func) = decl else {
             continue;

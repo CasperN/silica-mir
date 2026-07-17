@@ -1,7 +1,7 @@
 use indexmap::IndexMap;
 
-/// A single substructural marker in the vocabulary. Phase 1 has only
-/// the trivial-tier markers (Copy, Drop, Move); higher tiers
+/// A single substructural marker in the vocabulary. Only the trivial-
+/// tier markers (Copy, Drop, Move) are represented today; higher tiers
 /// (AutoClone, Clone, CoClone, etc.) land with the methods project.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Marker {
@@ -21,7 +21,7 @@ impl Marker {
     }
 }
 
-/// Per-column implementation tier. Phase 1 has only Trivial —
+/// Per-column implementation tier. Only Trivial exists today;
 /// Auto/Pure/Co variants land alongside the methods project. The
 /// ordering `Trivial < Auto < Pure < Co` reflects the vertical
 /// closure: Trivial-Copy satisfies AutoClone/Clone/CoClone bounds.
