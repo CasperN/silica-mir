@@ -1113,6 +1113,40 @@ fn walk_overwrite_leaves(
     }
 }
 
+/// Locate the declaration span for the root Var of `ref_place`. Used
+/// to attach a secondary "reference declared here" span to obligation
+/// diagnostics — the primary span sits at the point of failure (the
+/// return, drop, or overwrite), which repeats across every case in a
+/// fixture and doesn't distinguish which reference was involved.
+fn ref_root_decl_span(func: &Function, ref_place: &Place) -> Option<Span> {
+    let (root, _) = extract_path_with_deref(ref_place);
+    for p in &func.params {
+        if p.name == root {
+            return Some(p.span);
+        }
+    }
+    if let Some(body) = &func.body {
+        for l in &body.locals {
+            if l.name == root {
+                return Some(l.span);
+            }
+        }
+    }
+    None
+}
+
+/// Human-readable rendering of a `(cur, post)` obligation mismatch.
+/// Returns (current pointee state, exit requirement) as short phrases
+/// that read naturally in the diagnostic message.
+fn describe_obligation_mismatch(rs: RefState) -> (&'static str, &'static str) {
+    match (rs.is_init, rs.ends_init) {
+        (false, true) => ("uninitialized", "initialized before the reference expires"),
+        (true, false) => ("initialized", "consumed before the reference expires"),
+        // obligation_fulfilled() guards this call — both agree cases don't diagnose.
+        _ => ("unknown", "unknown"),
+    }
+}
+
 impl<'a> InitStateContext<'a> {
 
     /// If `place` is a whole-var ref binding with an outstanding obligation
@@ -1142,18 +1176,23 @@ impl<'a> InitStateContext<'a> {
         for v in victims {
             let rs = state.refs[&v];
             if !rs.obligation_fulfilled() {
-                d.push_error(diag(
+                let (cur, expected) = describe_obligation_mismatch(rs);
+                let mut diagnostic = diag(
                     RefObligationUnfulfilled,
                     span,
                     func,
                     block,
                     format!(
-                        "reference '{}' has unfulfilled obligation here (is_init={}, ends_init={})",
+                        "reference '{}' has unfulfilled obligation: pointee is {}, but must be {}",
                         format_place(&v),
-                        rs.is_init,
-                        rs.ends_init
+                        cur,
+                        expected,
                     ),
-                ));
+                );
+                if let Some(decl_span) = ref_root_decl_span(func, &v) {
+                    diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+                }
+                d.push_error(diagnostic);
             }
             state.refs.shift_remove(&v);
         }
@@ -1656,16 +1695,21 @@ impl<'a> InitStateContext<'a> {
                 continue;
             }
             if !rs.obligation_fulfilled() {
-                d.push_error(diag(
+                let (cur, expected) = describe_obligation_mismatch(*rs);
+                let mut diagnostic = diag(
                     MoveWithUnfulfilledContainedRef,
                     span,
                     func,
                     block,
                     format!(
-                        "cannot move '{}': contained reference '{}' has unfulfilled obligation (is_init={}, ends_init={})",
-                        format_place(&owned), format_place(ref_place), rs.is_init, rs.ends_init
+                        "cannot move '{}': contained reference '{}' has unfulfilled obligation (pointee is {}, but must be {})",
+                        format_place(&owned), format_place(ref_place), cur, expected,
                     ),
-                ));
+                );
+                if let Some(decl_span) = ref_root_decl_span(func, ref_place) {
+                    diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+                }
+                d.push_error(diagnostic);
             }
         }
     }

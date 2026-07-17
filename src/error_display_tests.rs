@@ -84,10 +84,14 @@ fn test_hll_out_obligation_unfulfilled_display() {
         }
     ";
     let expected = "\
-at 2:27: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation here (is_init=false, ends_init=true)
+at 2:27: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
    |
  2 |         fn f(r: &out i64) {
-   |                           ^";
+   |                           ^
+  = note: reference declared here
+   |
+ 2 |         fn f(r: &out i64) {
+   |              ^^^^^^^^^^^";
     assert_first_error(src, expected);
 }
 
@@ -262,10 +266,14 @@ fn test_hll_defer_ref_obligation_unfulfilled() {
         }
     ";
     let expected = "\
-at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
    |
  5 |             defer r.* = Box { val: 5 };
-   |                   ^^^^^^^^^^^^^^^^^^^^";
+   |                   ^^^^^^^^^^^^^^^^^^^^
+  = note: reference declared here
+   |
+ 3 |         fn f(r: &drop Box) {
+   |              ^^^^^^^^^^^^";
     assert_first_error(src, expected);
 }
 

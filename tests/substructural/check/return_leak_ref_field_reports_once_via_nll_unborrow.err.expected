@@ -1,4 +1,8 @@
-error: at 7:17: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry': reference 's.r' has unfulfilled obligation here (is_init=true, ends_init=false)
+error: at 7:17: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry': reference 's.r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
    |
  7 |                 return
    |                 ^^^^^^
+  = note: reference declared here
+   |
+ 4 |               s: S;
+   |               ^^^^^

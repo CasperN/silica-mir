@@ -1,4 +1,8 @@
-error: at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation here (is_init=true, ends_init=false)
+error: at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
    |
  5 |             defer r.* = Box { val: 5 };
    |                   ^^^^^^^^^^^^^^^^^^^^
+  = note: reference declared here
+   |
+ 3 |         fn f(r: &drop Box) {
+   |              ^^^^^^^^^^^^

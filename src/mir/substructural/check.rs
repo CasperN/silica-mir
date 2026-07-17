@@ -342,11 +342,12 @@ mod tests {
              close_ref_if_present at the NLL-inserted unborrow), got {:?}",
             s_r_errs[0].code(),
         );
-        // Not "at return" — the unborrow is a separate inserted stmt,
-        // and init_state's message for close_ref_if_present says "here".
+        // Not "at return" — the unborrow is a separate inserted stmt.
+        // init_state's message for close_ref_if_present phrases the
+        // failure as "has unfulfilled obligation: pointee is …".
         assert!(
-            s_r_errs[0].message().contains("unfulfilled obligation here"),
-            "expected init_state's 'here' message, got: {}",
+            s_r_errs[0].message().contains("has unfulfilled obligation: pointee is"),
+            "expected init_state's obligation message, got: {}",
             s_r_errs[0].message(),
         );
     }
