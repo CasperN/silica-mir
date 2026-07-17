@@ -1,5 +1,0 @@
-fn f(x: i64) {
-  entry:
-    drop x;
-    return
-}
