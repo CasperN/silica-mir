@@ -808,7 +808,9 @@ Order of operations:
 - **Generics** in the MIR. Prerequisite for a standard library.
   Design doc first (how do polymorphic function signatures appear
   in MIR? monomorphization at codegen or checker-time
-  instantiation?).
+  instantiation? how do substructural markers compose across
+  parameters, and how do blanket impls surface for libraries like
+  serde?).
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
   ```
   let x = 1;
@@ -824,11 +826,6 @@ Order of operations:
 - **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and
   a Rust-shaped enum syntax (currently only newtype-with-different-
   syntax).
-- **Marker syntax alignment.** MIR still supports the older
-  `struct Copy Drop Foo {}` form; migrate to the HLL's
-  `struct Foo: Copy + Drop {}` throughout. Open Qs: how markers
-  compose for generics, how blanket impls surface for libraries
-  like serde.
 
 ## Elaboration + drop
 - **Extend downcast-target reassignment to non-operand rvalues.**
@@ -849,11 +846,6 @@ Order of operations:
   compound statement or synthesize a shared span).
 
 ## FFI
-- **Wire codegen for `$return`-carrying externs.** An extern
-  `extern fn foo(a: T, $return: &out R)` should emit
-  `%tmp = call R @foo(a); store R %tmp, R* $return` at the call
-  site — translate Silica's sret convention into C's register-return
-  convention. Today the extern-call path drops non-void C returns.
 - **Function pointers to externs.** `Type::Fn` erases the sret-vs-
   C-ABI distinction, so a `fn(T) -> R`-typed value called through
   can't tell which ABI to use. Either ban taking pointers to externs
