@@ -721,29 +721,45 @@ project skews toward the second today; the target is the first.
 ## Test tiers
 
 1. **Fixture tests — the primary surface.** For anything that's "program
-   in, artifact out." Four flavors:
-   - `mir → elaborated mir` (pretty-printed after `elaborate_and_check_mir`)
-   - `mir → diagnostic` (rendered error text is the contract)
-   - `mir → llvm` (emitted IR)
-   - `hll → mir` (full pipeline through lowering + elaboration)
-   
-   Each test is an input file paired with an expected-output file
-   under `tests/{elab,errors,codegen,hll}/`. Name expected outputs
-   with the real extension first so editors keep syntax highlighting:
-   `foo.sim` → `foo.sim.expected` (elaborated MIR),
-   `foo.sim` → `foo.ll.expected` (codegen), `foo.sim` →
-   `foo.err.expected` (rendered diagnostic), `foo.si` →
-   `foo.sim.expected` (HLL lowering). A single runner drives them,
-   and `UPDATE=1 cargo test` rewrites the expected files so cosmetic
-   diagnostic changes don't turn into a slog. Discovery = `ls`.
-   Adding a feature = adding a file.
+   in, artifact out." Each test is an input file paired with an
+   expected-output sibling. Runner: `tests/fixtures.rs`.
+
+   Layout:
+   - `tests/{init_state,lifetime,substructural,type_check,layout,
+     variant_flow,block_reachability}/{topic}/` — pass-oriented.
+   - `tests/{array,string,raw_ptr,programs,error_display,intrinsic,
+     main_wrapper}/` — cross-cutting features.
+   - `tests/codegen/` — full pipeline + codegen → LLVM.
+   - `tests/codegen-raw/` — parse + codegen (no checks) → LLVM. For
+     hand-crafted programs that exercise a specific lowering but
+     wouldn't pass substructural or leak checks.
+
+   Stage detection: within a pass/feature dir the runner infers stage
+   from which `.expected` sibling exists:
+   - `foo.sim` + `foo.sim.expected` → clean run, compare pretty-
+     printed elaborated MIR.
+   - `foo.sim` + `foo.err.expected` → run produced diagnostics,
+     compare rendered output (with source-snippet caret).
+   - Under codegen dirs, `foo.ll.expected` compares LLVM IR.
+
+   Expected-file extensions match the output language so editors keep
+   syntax highlighting. `UPDATE_EXPECT=1 cargo test --test fixtures`
+   rewrites every expected file; the runner detects stage flips
+   (ok↔error) and cleans up the stale extension.
+
+   `EXTRACT_FIXTURES=1 cargo test` — extraction mode: every test that
+   goes through `test_util::run`/`run_structured` (or
+   `codegen::test_util::ll_of`) writes its source string to a fixture
+   file as a side effect. Used to bulk-migrate unit tests; useful in
+   perpetuity when converting a new inline test to a fixture.
 
 2. **Pass-internal unit tests — narrow.** For pass private APIs whose
    behavior isn't observable end-to-end, or invariants a fixture can't
-   check (e.g. the post-elab init_state re-run catching an obligation
-   at an inserted `unborrow`). Group by test kind in sibling
-   `*_tests.rs` files, following the `init_state/` and `type_check/`
-   layout.
+   check. Examples: NLL snapshot tests in `nll_tests.rs` that pin the
+   exact pretty-printed form after NLL only (without drop-elab);
+   `check_return_leaks` invoked directly on a non-elaborated program
+   (the fixture runner would insert drops and hide the intended
+   failure).
 
 3. **Utility unit tests — inline.** For small helpers with real
    invariants and no natural fixture expression:
@@ -902,49 +918,40 @@ variants with a slightly different syntax.
   single-pass.
 
 ## Testing gaps
-Testing discipline note: the project convention is dedicated
-`*_tests.rs` sibling files grouped by test kind (see `mir/type_check/`
-and `mir/init_state/`). Several files still carry inline `#[cfg(test)]
-mod tests` blocks that predate that convention.
+Most of the historical migration items are done — 604 fixtures now
+cover the checker/codegen surface. Remaining gaps:
 
-- **Extract inline tests from core MIR files into sibling `*_tests.rs`.**
-  133 inline tests across seven files:
-  `mir/ast.rs` (8), `mir/parser.rs` (23),
-  `mir/pretty_print.rs` (9), `mir/dataflow.rs` (9),
-  `mir/intrinsics.rs` (32), `mir/block_reachability.rs` (10),
-  `mir/variant_flow.rs` (42). Straight mechanical extraction — one PR
-  per file or bundled by module.
-- **Extract inline tests from HLL files into sibling `*_tests.rs`
-  or `hll/*_tests/` mirror dirs.** 71 inline tests:
-  `hll/parser.rs` (32), `hll/lowering.rs` (15), `hll/type_check.rs`
-  (10), `hll/mut_check.rs` (14). While there, group by kind
-  (e.g. `parser_precedence_tests.rs`, `parser_decl_tests.rs`).
-- **HLL is missing error-path tests entirely.** The 71 HLL tests
-  cover success paths; none assert the diagnostic emitted for e.g.
-  a type mismatch, a defer with `break`/`continue`, or a binary op
-  on non-numeric operands. Add one per HllLoweringCode variant
-  (adds context to the "retire Result<_, String>" work above).
-- **No HLL→MIR end-to-end test.** `main.rs::lower_hll_to_mir` is
-  the seam and it isn't exercised in-crate. Add a small suite that
-  parses `.si`, runs the full pipeline through `elaborate_and_check_mir`,
-  and asserts on pretty-printed elaborated MIR — one program per
-  HLL feature (defer, match, struct constructor, loop-with-break-value).
 - **Post-elaboration init-state re-run has no dedicated test.**
-  `main.rs:66` re-runs init_state after NLL specifically so that
-  an unfulfilled `&out`/`&drop` obligation at an inserted `unborrow`
-  fires via `close_ref_if_present`. Add one case per obligation kind
-  to `mir/lifetime/nll_tests.rs` (or a new `postelab_reruns_tests.rs`)
-  that would silently pass without the re-run.
-- **Codegen tests substring-match emitted LLVM IR but never
-  validate it.** ~2,300 lines of tests in `mir/codegen/*_tests.rs`
-  check for `assert_contains(&ll, "= add i64")`-style substrings; no
-  test invokes `llvm-as` (or a similar validator) to catch malformed
-  IR at emit time. Add one round-trip test per codegen feature area
-  that shells out to `llvm-as` if available on `PATH` (skip when
-  absent so CI stays portable).
-- **`hll/mut_check.rs` doesn't test nested-deref patterns.**
-  E.g. `r.*.field = ...` where `r` is `&mut &mut T`. Cheap to add
-  once inline tests are extracted.
+  `elaborate_and_check_mir` re-runs init_state after NLL so an
+  unfulfilled `&out`/`&drop` obligation at an inserted `unborrow`
+  fires via `close_ref_if_present`. Add one fixture per obligation
+  kind that would silently pass without the re-run (delete the
+  re-run in a scratch branch to confirm the fixture actually catches
+  the regression).
+- **Codegen fixtures never validate the emitted LLVM.** The 100+
+  `codegen-raw/*.ll.expected` files pin exact text; no fixture
+  invokes `llvm-as` (or similar) to confirm the IR is well-formed.
+  Add one round-trip fixture per codegen feature area that shells
+  out to `llvm-as` if available on `PATH` (skip when absent so CI
+  stays portable). Would catch a typo in a GEP index or type name
+  at emit time instead of at link time.
+- **HLL is missing error-path fixtures for most `HllLoweringCode`
+  variants.** `error_display/` covers ~17 rendered HLL errors, but
+  the newer `HllLoweringCode` taxonomy (MissingType,
+  BinaryOpNonNumeric, MatchTargetNotEnum, EnumDeclMissing,
+  EnumVariantMissing, BreakOutsideLoop, ContinueOutsideLoop,
+  ScopeStackUnderflow) has no coverage. Add one fixture per variant.
+- **Cross-pass truly-redundant fixtures (3 files) not yet
+  consolidated.** `substructural/check/drop_of_number.sim` =
+  `substructural/check/scalar_param_explicitly_dropped.sim` =
+  `type_check/statement/drop_statement.sim` (all 3 identical, all
+  `sim.expected`); `block_reachability/switch_enum_arms_reachable.sim`
+  = `variant_flow/coverage_all_variants_handled.sim`. Pick canonical
+  home for each, delete the rest.
+- **~30 near-duplicate fixtures** (whitespace/comments differ, same
+  program). Not obvious mechanical dedup — needs per-case judgment
+  about which pass "owns" each test. Worth cleaning opportunistically
+  when touching neighbors.
 
 # Longer term
 - Round-trip fixture test (`pretty_print → parse → pretty_print`)
