@@ -62,8 +62,8 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
             Some(TypeDecl::Enum(e)) => enum_size(e, env),
             None => panic!("layout::size_of: unknown type '{}'", name),
         },
-        Type::TypeVar(name) => {
-            panic!("layout::size_of: type variable '{}' has no size until monomorphization", name)
+        Type::Param(name) => {
+            panic!("layout::size_of: type parameter '{}' has no size until monomorphization", name)
         }
         Type::Array(elem, n) => n * size_of(elem, env),
     }
@@ -83,8 +83,8 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
             Some(TypeDecl::Enum(e)) => enum_align(e, env),
             None => panic!("layout::align_of: unknown type '{}'", name),
         },
-        Type::TypeVar(name) => {
-            panic!("layout::align_of: type variable '{}' has no alignment until monomorphization", name)
+        Type::Param(name) => {
+            panic!("layout::align_of: type parameter '{}' has no alignment until monomorphization", name)
         }
         Type::Array(elem, _) => align_of(elem, env),
     }

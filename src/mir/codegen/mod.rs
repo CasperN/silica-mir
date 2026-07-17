@@ -185,8 +185,8 @@ impl<'a> CodeGenContext<'a> {
                 );
                 format!("%{}", name)
             }
-            Type::TypeVar(name) => {
-                panic!("codegen: unmonomorphized type variable '{}' reached LLVM lowering", name);
+            Type::Param(name) => {
+                panic!("codegen: unmonomorphized type parameter '{}' reached LLVM lowering", name);
             }
             Type::Array(elem, n) => format!("[{} x {}]", n, self.lower_type(elem)),
         }

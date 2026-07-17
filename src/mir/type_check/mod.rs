@@ -115,6 +115,16 @@ pub enum TypeCheckCode {
     EnumConstrPayloadTypeMismatch,
     /// Two array-literal elements have different types.
     ArrayLitElementTypeMismatch,
+
+    // ---- Generic instantiation ----
+    /// A `Custom(name, args)` reference passes the wrong number of
+    /// type arguments for the decl (e.g. `Vec<i32, bool>` when `Vec`
+    /// declared only one type parameter).
+    TypeArgArity,
+    /// A `Custom(name, args)` reference passes a type argument whose
+    /// substructural class doesn't satisfy the corresponding param's
+    /// declared bound (e.g. `Foo<Linear>` when `Foo<T: Copy>`).
+    TypeArgBoundNotSatisfied,
 }
 
 impl From<TypeCheckCode> for DiagCode {

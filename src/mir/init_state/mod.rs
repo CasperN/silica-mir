@@ -1057,13 +1057,14 @@ impl<'a> InitStateContext<'a> {
         let Some(target_ty) = self.infer_ref_place_type(target) else {
             return;
         };
+        let scope = crate::mir::substructural::composition::scope_from(&func.type_params);
         walk_overwrite_leaves(
             &target_state,
             &target_ty,
             self.env,
             &mut Vec::new(),
             &mut |leaf_path, leaf_ty| {
-                let c = class_of(leaf_ty, self.env);
+                let c = class_of(leaf_ty, self.env, &scope);
                 if !c.implies(Marker::Drop) {
                     let path_str = if leaf_path.is_empty() {
                         format_place(target)
@@ -1520,7 +1521,8 @@ impl<'a> InitStateContext<'a> {
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && matches!(leaf, InitState::Init) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, span, self.locals) {
-                if class_of(&leaf_ty, self.env).implies(Marker::Drop) {
+                let scope = crate::mir::substructural::composition::scope_from(&func.type_params);
+                if class_of(&leaf_ty, self.env, &scope).implies(Marker::Drop) {
                     return;
                 }
             }

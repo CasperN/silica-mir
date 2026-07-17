@@ -227,7 +227,7 @@ pub struct Parser {
     /// Names of type parameters currently in scope. Populated on entry
     /// to a struct/enum/fn decl mapping (before its field/param/local
     /// types are visited) and cleared on exit. `map_type` reads this
-    /// when it sees an identifier: a match means `TypeVar`, otherwise
+    /// when it sees an identifier: a match means `Param`, otherwise
     /// `Custom`. Decls don't nest, so a single set suffices.
     type_scope: std::cell::RefCell<std::collections::BTreeSet<String>>,
 }
@@ -417,7 +417,7 @@ impl Parser {
                 if text == "bool" {
                     Ok(Type::Bool)
                 } else if self.type_scope.borrow().contains(text) {
-                    Ok(Type::TypeVar(text.to_string()))
+                    Ok(Type::Param(text.to_string()))
                 } else {
                     Ok(Type::Custom(text.to_string(), Vec::new()))
                 }
@@ -438,7 +438,7 @@ impl Parser {
                 }
                 if kind == "identifier" {
                     // Identifier alt with optional type_args as sibling:
-                    // `Foo` (Custom / TypeVar) or `Foo<T, U>` (Custom with args).
+                    // `Foo` (Custom / Param) or `Foo<T, U>` (Custom with args).
                     let text = self.get_text(first_child);
                     let args = if let Some(ta) = node.child(1) {
                         if ta.kind() == "type_args" {
@@ -456,7 +456,7 @@ impl Parser {
                         return Ok(Type::Bool);
                     }
                     if self.type_scope.borrow().contains(text) {
-                        return Ok(Type::TypeVar(text.to_string()));
+                        return Ok(Type::Param(text.to_string()));
                     }
                     return Ok(Type::Custom(text.to_string(), Vec::new()));
                 }
@@ -927,7 +927,7 @@ impl Parser {
 
     /// Parse a `type_args` node (`<T, U>`) into an ordered list of
     /// types. Requires the type_scope already reflects the enclosing
-    /// decl's params so nested TypeVar refs resolve.
+    /// decl's params so nested `Param` refs resolve.
     fn map_type_args(&self, node: Node) -> Result<Vec<Type>, Diagnostic> {
         let mut out = Vec::new();
         let mut cursor = node.walk();
@@ -941,7 +941,7 @@ impl Parser {
 
     /// Parse a `type_params` node (`<T, U: Copy + Drop>`) into a
     /// list of `TypeParam`. Also side-effects: pushes each name into
-    /// `type_scope` so subsequent map_type calls see them as TypeVars.
+    /// `type_scope` so subsequent map_type calls see them as `Param`s.
     /// Caller is responsible for clearing the scope on decl exit.
     fn map_type_params(&self, node: Node) -> Result<Vec<TypeParam>, Diagnostic> {
         let mut out = Vec::new();
@@ -1021,7 +1021,7 @@ impl Parser {
 
         let mut cursor = node.walk();
         // Populate scope BEFORE walking fields so `t: T` resolves to
-        // TypeVar. Cleared on return so scopes don't leak across decls.
+        // `Param`. Cleared on return so scopes don't leak across decls.
         let type_params = if let Some(tp_node) =
             node.children(&mut cursor).find(|c| c.kind() == "type_params")
         {

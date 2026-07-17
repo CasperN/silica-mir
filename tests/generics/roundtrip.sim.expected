@@ -1,4 +1,4 @@
-struct<T> Box {
+struct<T: Copy + Drop> Box: Copy + Drop {
   inner: T
 }
 
@@ -7,12 +7,12 @@ struct<T: Copy + Drop, U: Move> Pair {
   second: U
 }
 
-enum<T> Option {
+enum<T: Copy + Drop> Option: Copy + Drop {
   None: unit
   Some: T
 }
 
-struct<T> Nest {
+struct<T: Copy + Drop> Nest: Copy + Drop {
   outer: Box<Box<T>>
 }
 
@@ -28,6 +28,7 @@ fn<T> touch() {
 }
 
 fn caller() {
+  b: Box<i32>;
   entry:
     call touch<i32>();
     return

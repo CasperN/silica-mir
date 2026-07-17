@@ -26,6 +26,28 @@
 use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::{Env, TypeDecl};
+use indexmap::IndexMap;
+
+/// Map from a generic decl's type-parameter names to the Markers each
+/// param carries via its declared bounds. `class_of` consults this when
+/// it encounters a `Type::Param(name)` — the substructural class of a
+/// param is exactly what the bounds guarantee.
+pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
+
+/// Build the param scope for a decl from its `type_params`. Params
+/// without any bounds contribute an empty `Markers` — those params are
+/// linear inside the decl body.
+pub fn scope_from(type_params: &[TypeParam]) -> IndexMap<String, Markers> {
+    type_params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds))
+        .collect()
+}
+
+/// Empty scope for non-generic decls / callers with no params in scope.
+fn empty_scope() -> IndexMap<String, Markers> {
+    IndexMap::new()
+}
 
 /// Machine-readable codes emitted by the class-composition check. Each
 /// variant flags "declared marker M on container C isn't satisfied by
@@ -58,14 +80,22 @@ fn diag(code: impl Into<DiagCode>, span: Span, msg: String) -> Diagnostic {
     Diagnostic::new(code, span, msg)
 }
 
-/// Return the substructural class of `ty` as a `Markers` value.
+/// Return the substructural class of `ty` as a `Markers` value under
+/// the given type-parameter scope.
 ///
 /// Callers query the result via `implies(Marker::X)` — this bakes in
 /// both the vertical closure (higher tiers imply lower) and the
 /// horizontal closure (Copy + Drop → Move). Composition uses the raw
 /// `declared` on the *declaration's* markers to phrase errors; that
 /// pass reads `s.markers.declared(_)` directly, not through here.
-pub fn class_of(ty: &Type, env: &Env) -> Markers {
+///
+/// `scope` maps generic-parameter names to their declared bounds. It
+/// is populated by callers that know which decl is being checked (see
+/// `scope_from`). A `Type::Param(name)` reaching an out-of-scope
+/// resolution returns empty Markers; every parse-produced Param is
+/// guaranteed to be in scope by construction, so this only matters
+/// for synthetic types outside a decl body.
+pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
     let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
     match ty {
         Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Fn(_) => all(),
@@ -94,24 +124,22 @@ pub fn class_of(ty: &Type, env: &Env) -> Markers {
             // For a generic instantiation, the declared markers on the
             // decl are the type's markers regardless of the args — the
             // decl-side check verified those markers under the params'
-            // bounds. Per-instantiation "does Foo<T> imply M" folds to
-            // "did Foo declare M?" once bounds pass. Substitution into
-            // fields lands with the semantic pass; args are ignored here.
+            // bounds, so the decl-declared class is a sound conclusion
+            // for every instantiation that passes the use-site bound
+            // check. Args are not substituted here.
             Some(TypeDecl::Struct(s)) => s.markers,
             Some(TypeDecl::Enum(e)) => e.markers,
             // Unknown name — tc has already reported "undeclared type".
             None => Markers::empty(),
         },
-        // A generic type parameter's class comes from its declared
-        // bounds. Phase 1 doesn't thread the type-param scope through
-        // class_of, so any TypeVar reached here is treated as linear.
-        // Semantically wrong for generic bodies, but generic bodies
-        // aren't checked in phase 1 — parse/roundtrip only.
-        Type::TypeVar(_) => Markers::empty(),
+        // A generic type parameter's class is exactly what its bounds
+        // guarantee. Bounds live on the enclosing decl's `type_params`;
+        // callers thread that scope in.
+        Type::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
         // Array class inherits from its element type. Zero-length
         // arrays are trivially Copy Drop Move (no elements to worry
         // about) — treat like the element class regardless.
-        Type::Array(elem, _) => class_of(elem, env),
+        Type::Array(elem, _) => class_of(elem, env, scope),
     }
 }
 
@@ -125,8 +153,9 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
+    let scope = scope_from(&s.type_params);
     for f in &s.fields {
-        let c = class_of(&f.ty, env);
+        let c = class_of(&f.ty, env, &scope);
         // `declared` on the struct + `implies` on the field: only
         // fire on markers the user actually wrote (avoids redundant
         // errors on closure-derived markers), and let the field's
@@ -169,8 +198,9 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
+    let scope = scope_from(&e.type_params);
     for v in &e.variants {
-        let c = class_of(&v.ty, env);
+        let c = class_of(&v.ty, env, &scope);
         if e.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,

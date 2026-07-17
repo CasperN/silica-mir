@@ -34,7 +34,7 @@
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::init_state::{self, InitState, PointState};
-use crate::mir::substructural::composition::class_of;
+use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
 use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
@@ -160,6 +160,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 
     let entry_states = init_state::block_entry_states(env, func);
     let locals = func.locals_map();
+    let scope = scope_from(&func.type_params);
 
     // Unified walk: for each block, walk forward from its entry state
     // and plan drops at each program point where a Drop-typed slot
@@ -180,7 +181,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         };
         let mut state = entry.clone();
         for (stmt_idx, (stmt, _)) in block.statements.iter().enumerate() {
-            let (drops, rewrite) = pre_stmt_transitions(stmt, &state, env, &locals);
+            let (drops, rewrite) = pre_stmt_transitions(stmt, &state, env, &locals, &scope);
             if !drops.is_empty() {
                 for place in &drops {
                     init_state::transfer_stmt_silent(
@@ -208,7 +209,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         // Pre-terminator cleanup for return blocks: drop everything
         // still Init-Drop at this point.
         if matches!(block.terminator, Terminator::Return) {
-            let drops = plan_drops_at_return(func, &state, env);
+            let drops = plan_drops_at_return(func, &state, env, &scope);
             if !drops.is_empty() {
                 let insert_pos = block.statements.len();
                 plan.pre_stmt.insert((block.label.clone(), insert_pos), drops);
@@ -246,7 +247,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
             }
             for (path_place, ty) in &diverged_paths {
                 if state_at(&pred_exit, path_place) == Some(InitState::Init)
-                    && class_of(ty, env).implies(Marker::Drop)
+                    && class_of(ty, env, &scope).implies(Marker::Drop)
                 {
                     plan.cross_edge
                         .entry((pred_block.label.clone(), block.label.clone()))
@@ -289,6 +290,7 @@ fn pre_stmt_transitions(
     state: &PointState,
     env: &Env,
     locals: &IndexMap<String, Type>,
+    scope: ParamScope,
 ) -> (Vec<Place>, Option<Statement>) {
     let Statement::Assign(target, rvalue) = stmt else {
         return (Vec::new(), None);
@@ -304,7 +306,7 @@ fn pre_stmt_transitions(
                 if let Type::Custom(enum_name, _) = &inner_ty {
                     let payload_place =
                         Place::Downcast(Box::new(inner_owned.clone()), variant.clone());
-                    if is_init_and_drop(&payload_place, state, env, locals) {
+                    if is_init_and_drop(&payload_place, state, env, locals, scope) {
                         drops.push(payload_place);
                         let rewrite = Statement::Assign(
                             inner_owned,
@@ -324,7 +326,7 @@ fn pre_stmt_transitions(
     // Case A: overwriting an owned-path target whose leaf state is
     // Init and whose type is Drop. Skip Downcast-containing paths.
     if let Some(owned) = as_owned_path(target) {
-        if !path_has_downcast(&owned) && is_init_and_drop(&owned, state, env, locals) {
+        if !path_has_downcast(&owned) && is_init_and_drop(&owned, state, env, locals, scope) {
             drops.push(owned);
         }
     }
@@ -334,7 +336,7 @@ fn pre_stmt_transitions(
         if deref_inner(place).is_none() {
             if let Some(owned) = as_owned_path(place) {
                 if !path_has_downcast(&owned)
-                    && is_init_and_drop(&owned, state, env, locals)
+                    && is_init_and_drop(&owned, state, env, locals, scope)
                     && !drops.contains(&owned)
                 {
                     drops.push(owned);
@@ -367,6 +369,7 @@ fn is_init_and_drop(
     state: &PointState,
     env: &Env,
     locals: &IndexMap<String, Type>,
+    scope: ParamScope,
 ) -> bool {
     let Some((root, path)) = extract_path(place) else {
         return false;
@@ -381,7 +384,7 @@ fn is_init_and_drop(
     let Ok(leaf_ty) = env.type_of_place(place, crate::mir::ast::Span::default(), locals) else {
         return false;
     };
-    class_of(&leaf_ty, env).implies(Marker::Drop)
+    class_of(&leaf_ty, env, scope).implies(Marker::Drop)
 }
 
 /// Walk `state` looking for `Diverged` leaves (or Diverged aggregates
@@ -454,7 +457,7 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
     }
 }
 
-fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env) -> Vec<Place> {
+fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env, scope: ParamScope) -> Vec<Place> {
     // Combined declaration order: params, then locals. LIFO drop = reverse.
     let mut order: Vec<(String, Type)> = Vec::new();
     for p in &func.params {
@@ -479,7 +482,7 @@ fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env) -> Vec<P
                 continue;
             }
         }
-        plan_drops_for_place(Place::Var(name.clone()), ty, s, env, &mut drops);
+        plan_drops_for_place(Place::Var(name.clone()), ty, s, env, scope, &mut drops);
     }
     drops
 }
@@ -496,12 +499,13 @@ fn plan_drops_for_place(
     ty: &Type,
     state: &InitState,
     env: &Env,
+    scope: ParamScope,
     out: &mut Vec<Place>,
 ) {
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Diverged => {}
         InitState::Init => {
-            if class_of(ty, env).implies(Marker::Drop) {
+            if class_of(ty, env, scope).implies(Marker::Drop) {
                 out.push(place);
             }
         }
@@ -519,7 +523,7 @@ fn plan_drops_for_place(
                     continue;
                 };
                 let field_place = Place::Field(Box::new(place.clone()), f.name.clone());
-                plan_drops_for_place(field_place, &f.ty, field_state, env, out);
+                plan_drops_for_place(field_place, &f.ty, field_state, env, scope, out);
             }
         }
     }

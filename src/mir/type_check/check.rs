@@ -11,6 +11,7 @@ use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::substructural::composition::scope_from;
 use indexmap::IndexMap;
 use std::collections::HashSet;
 
@@ -20,6 +21,7 @@ impl Env {
         for type_decl in self.types.values() {
             match type_decl {
                 TypeDecl::Struct(s) => {
+                    let scope = scope_from(&s.type_params);
                     let mut seen: HashSet<&str> = HashSet::new();
                     for f in &s.fields {
                         if !seen.insert(f.name.as_str()) {
@@ -30,7 +32,7 @@ impl Env {
                                     )),
                             );
                         }
-                        if let Err(e) = self.validate_type(&f.ty) {
+                        if let Err(e) = self.validate_type(&f.ty, &scope) {
                             d.push_error(
                                 Diagnostic::new(InvalidDeclaredType, f.span, format!("In struct '{}', field '{}': {}", s.name, f.name, e)),
                             );
@@ -38,6 +40,7 @@ impl Env {
                     }
                 }
                 TypeDecl::Enum(e) => {
+                    let scope = scope_from(&e.type_params);
                     let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
                         if !seen.insert(v.name.as_str()) {
@@ -48,7 +51,7 @@ impl Env {
                                     )),
                             );
                         }
-                        if let Err(err) = self.validate_type(&v.ty) {
+                        if let Err(err) = self.validate_type(&v.ty, &scope) {
                             d.push_error(
                                 Diagnostic::new(InvalidDeclaredType, v.span, format!("In enum '{}', variant '{}': {}", e.name, v.name, err)),
                             );
@@ -65,6 +68,7 @@ impl Env {
     }
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
+        let scope = scope_from(&f.type_params);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {
                 if i != f.params.len() - 1 {
@@ -81,7 +85,7 @@ impl Env {
                     }
                 }
             }
-            if let Err(e) = self.validate_type(&p.ty) {
+            if let Err(e) = self.validate_type(&p.ty, &scope) {
                 d.push_error(
                     Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '{}': {}", f.name, p.name, e)),
                 );
@@ -126,7 +130,7 @@ impl Env {
             }
         }
         for l in &body.locals {
-            if let Err(e) = self.validate_type(&l.ty) {
+            if let Err(e) = self.validate_type(&l.ty, &scope) {
                 d.push_error(
                     Diagnostic::new(InvalidDeclaredType, l.span, format!("In function '{}', local '{}': {}", f.name, l.name, e)),
                 );

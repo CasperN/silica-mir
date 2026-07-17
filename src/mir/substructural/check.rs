@@ -103,7 +103,8 @@ fn check_stmt(
             let Ok(ty) = env.type_of_place(place, span, locals) else {
                 return;
             };
-            let c = class_of(&ty, env);
+            let scope = crate::mir::substructural::composition::scope_from(&func.type_params);
+            let c = class_of(&ty, env, &scope);
             if !c.implies(Marker::Drop) {
                 d.push_error(
                     diag(
@@ -164,7 +165,8 @@ fn check_operand(
     let Ok(ty) = env.type_of_place(place, span, locals) else {
         return;
     };
-    let c = class_of(&ty, env);
+    let scope = crate::mir::substructural::composition::scope_from(&func.type_params);
+    let c = class_of(&ty, env, &scope);
     let ok = match needed {
         ClassMarker::Copy => c.implies(Marker::Copy),
         ClassMarker::Move => c.implies(Marker::Move),

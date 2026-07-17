@@ -308,14 +308,15 @@ pub enum Type {
     /// arguments — empty for non-generic decls (`Foo`), non-empty
     /// for instantiations of generic decls (`Vec<i32>`).
     Custom(String, Vec<Type>),
-    /// A type-parameter reference resolved against the current
-    /// generic scope (fn/struct/enum being checked). Written as a
-    /// bare identifier in source; the parser rewrites it to
-    /// `TypeVar` when the name matches an in-scope param.
-    /// Substructural markers come from the param's declared bounds.
-    /// Codegen internal-errors on this variant until monomorphization
-    /// lands.
-    TypeVar(String),
+    /// A reference to a generic type parameter declared on the
+    /// enclosing decl (struct/enum/fn). Written as a bare identifier
+    /// in source; the parser emits this variant when the name is in
+    /// the current decl's type-parameter scope. This is a *named*
+    /// parameter, not a solver metavariable — the checker never
+    /// substitutes or unifies it. Substructural markers come from the
+    /// param's declared bounds. Codegen internal-errors on this
+    /// variant; concretization happens at monomorphization time.
+    Param(String),
     Fn(Vec<Type>),
     Ref(RefKind, Box<Type>),
     /// Raw pointer. Aliasing is unrestricted; no loan tracking, no
@@ -353,7 +354,7 @@ impl std::fmt::Display for Type {
                 }
                 Ok(())
             }
-            Type::TypeVar(name) => write!(f, "{}", name),
+            Type::Param(name) => write!(f, "{}", name),
             Type::Fn(params) => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {

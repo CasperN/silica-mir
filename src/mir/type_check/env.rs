@@ -15,6 +15,7 @@ use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
+use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
@@ -98,32 +99,66 @@ impl Env {
         }
     }
 
-    pub fn validate_type(&self, ty: &Type) -> Result<(), String> {
+    /// Validate `ty` against the current type-parameter scope.
+    ///
+    /// Callers that don't have a scope (non-generic decls, tests) pass
+    /// the empty scope; use [`validate_type_in`] to skip constructing
+    /// it. `Custom(name, args)` triggers a use-site check: arity must
+    /// match the decl's `type_params` and each arg's substructural
+    /// class must imply the corresponding param's declared bounds.
+    pub fn validate_type(&self, ty: &Type, scope: ParamScope) -> Result<(), String> {
         match ty {
             Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => Ok(()),
             Type::Custom(name, args) => {
-                if !self.types.contains_key(name) {
-                    return Err(format!("Use of undeclared type '{}'", name));
+                let decl_params: &[TypeParam] = match self.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => &s.type_params,
+                    Some(TypeDecl::Enum(e)) => &e.type_params,
+                    None => return Err(format!("Use of undeclared type '{}'", name)),
+                };
+                if args.len() != decl_params.len() {
+                    return Err(format!(
+                        "Type '{}' expects {} type argument(s), got {}",
+                        name,
+                        decl_params.len(),
+                        args.len(),
+                    ));
                 }
-                for a in args {
-                    self.validate_type(a)?;
+                for (arg, param) in args.iter().zip(decl_params.iter()) {
+                    self.validate_type(arg, scope)?;
+                    let arg_class = class_of(arg, self, scope);
+                    for bound in param.bounds.iter_declared() {
+                        if !arg_class.implies(bound) {
+                            return Err(format!(
+                                "Type argument {} for '{}::{}' does not satisfy required bound '{}'",
+                                arg, name, param.name, bound.name(),
+                            ));
+                        }
+                    }
                 }
                 Ok(())
             }
-            // A TypeVar is validated by the parser (which only emits it
+            // A `Param` is validated by the parser (which only emits it
             // for names in the current type-param scope). Nothing more
             // to check here.
-            Type::TypeVar(_) => Ok(()),
+            Type::Param(_) => Ok(()),
             Type::Fn(params) => {
                 for p in params {
-                    self.validate_type(p)?;
+                    self.validate_type(p, scope)?;
                 }
                 Ok(())
             }
-            Type::Ref(_, inner) => self.validate_type(inner),
-            Type::RawPtr(inner) => self.validate_type(inner),
-            Type::Array(elem, _) => self.validate_type(elem),
+            Type::Ref(_, inner) => self.validate_type(inner, scope),
+            Type::RawPtr(inner) => self.validate_type(inner, scope),
+            Type::Array(elem, _) => self.validate_type(elem, scope),
         }
+    }
+
+    /// Empty-scope convenience: for callers with no in-scope type
+    /// parameters. A `Param(_)` reachable via this path is
+    /// well-formed (Ok) but its markers can't be resolved to real
+    /// bounds — use only outside of generic decl bodies.
+    pub fn validate_type_empty_scope(&self, ty: &Type) -> Result<(), String> {
+        self.validate_type(ty, &IndexMap::new())
     }
 
     /// Type of `field` in the struct type `ty`, if any. Returns `None` if
@@ -161,7 +196,7 @@ impl Env {
                         .zip(b_args.iter())
                         .all(|(x, y)| self.types_match(x, y))
             }
-            (Type::TypeVar(a), Type::TypeVar(b)) => a == b,
+            (Type::Param(a), Type::Param(b)) => a == b,
             (Type::Fn(a), Type::Fn(b)) => {
                 if a.len() != b.len() {
                     return false;
