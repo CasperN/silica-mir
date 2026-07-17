@@ -719,20 +719,7 @@ impl<'a> InitStateContext<'a> {
                 if let Some(t) = as_owned_path(target) {
                     close_refs_under(state, &t);
                 }
-                if matches!(target, Place::Deref(_)) {
-                    self.apply_deref_op(target, DerefOp::Write, state, None);
-                } else {
-                    self.apply_write(target, state, InitState::Init);
-                    if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
-                        if let Some(rs) = RefState::from_kind(kind) {
-                            state.refs.insert(t, rs);
-                        }
-                        self.apply_eager_borrow_transition(kind, place, state);
-                    }
-                    for (dst_place, rs) in carried_refs {
-                        state.refs.insert(dst_place, rs);
-                    }
-                }
+                self.apply_target_write_state(target, rvalue, carried_refs, state, None);
             }
             Statement::Call(target, args) => {
                 self.apply_operand_move(target, state);
@@ -744,9 +731,7 @@ impl<'a> InitStateContext<'a> {
                 if let Some(consumed) = as_owned_path(place) {
                     close_refs_under(state, &consumed);
                 }
-                // `drop *r` — consume the pointee, transition r's is_init.
-                self.apply_deref_op(place, DerefOp::Move, state, None);
-                self.apply_move(place, state);
+                self.apply_consume_state(place, state, None);
             }
             Statement::Unborrow(place) => {
                 // Silent side of `unborrow r`: consume the borrower's ref
@@ -764,6 +749,52 @@ impl<'a> InitStateContext<'a> {
         if let Terminator::Branch { cond, .. } = term {
             self.apply_operand_move(cond, state);
         }
+    }
+
+    /// Write phase of an assignment. Shared between the silent
+    /// (`transfer_stmt`) and diagnostic (`check_and_transfer_stmt`)
+    /// walkers — the only per-path knob is `report`, which controls
+    /// whether deref-write errors are emitted or swallowed.
+    ///
+    /// Preconditions: `apply_rvalue_moves` (or `eval_rvalue`) has
+    /// already applied source reads; the target's ref-if-any has
+    /// been closed by the caller.
+    fn apply_target_write_state(
+        &self,
+        target: &Place,
+        rvalue: &RValue,
+        carried_refs: Vec<(Place, RefState)>,
+        state: &mut PointState,
+        report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+    ) {
+        if matches!(target, Place::Deref(_)) {
+            self.apply_deref_op(target, DerefOp::Write, state, report);
+        } else {
+            self.apply_write(target, state, InitState::Init);
+            if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
+                if let Some(rs) = RefState::from_kind(kind) {
+                    state.refs.insert(t, rs);
+                }
+                self.apply_eager_borrow_transition(kind, place, state);
+            }
+            for (dst_place, rs) in carried_refs {
+                state.refs.insert(dst_place, rs);
+            }
+        }
+    }
+
+    /// Consumption tail shared by `drop place`: deref-through if
+    /// `place` is `*r` (moves the pointee), then whole-place move.
+    /// `report` is passed through to `apply_deref_op` so diagnostic
+    /// callers surface pointee-state errors at the drop site.
+    fn apply_consume_state(
+        &self,
+        place: &Place,
+        state: &mut PointState,
+        report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+    ) {
+        self.apply_deref_op(place, DerefOp::Move, state, report);
+        self.apply_move(place, state);
     }
 
     fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
@@ -1263,26 +1294,13 @@ impl<'a> InitStateContext<'a> {
                 // pointee obligation; error unless already fulfilled.
                 self.close_ref_if_present(func, block, target, span, state, d);
 
-                // Deref-write: transition the ref's pointee state through *r.
-                if matches!(target, Place::Deref(_)) {
-                    self.apply_deref_op(
-                        target,
-                        DerefOp::Write,
-                        state,
-                        Some((func, block, span, d)),
-                    );
-                } else {
-                    self.apply_write(target, state, InitState::Init);
-                    if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
-                        if let Some(rs) = RefState::from_kind(kind) {
-                            state.refs.insert(t, rs);
-                        }
-                        self.apply_eager_borrow_transition(kind, place, state);
-                    }
-                    for (dst_place, rs) in carried_refs {
-                        state.refs.insert(dst_place, rs);
-                    }
-                }
+                self.apply_target_write_state(
+                    target,
+                    rvalue,
+                    carried_refs,
+                    state,
+                    Some((func, block, span, d)),
+                );
             }
             Statement::Call(target, args) => {
                 self.eval_operand(func, block, target, span, state, d);
@@ -1297,9 +1315,7 @@ impl<'a> InitStateContext<'a> {
                 // Var, also verify the pointee obligation before forgetting.
                 self.check_place_read(func, block, place, span, state, d);
                 self.close_ref_if_present(func, block, place, span, state, d);
-                // `drop *r` — consume the pointee, transition r's is_init.
-                self.apply_deref_op(place, DerefOp::Move, state, Some((func, block, span, d)));
-                self.apply_move(place, state);
+                self.apply_consume_state(place, state, Some((func, block, span, d)));
             }
             Statement::Unborrow(place) => {
                 // Explicit end-of-loan. Requires the borrower to be Init
