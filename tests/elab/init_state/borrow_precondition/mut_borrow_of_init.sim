@@ -1,0 +1,6 @@
+fn f(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    return
+}

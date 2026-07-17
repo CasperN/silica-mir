@@ -1,0 +1,4 @@
+error: at 9:5: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
+   |
+ 9 |     r = &out p;
+   |     ^^^^^^^^^^

@@ -1,0 +1,4 @@
+error: at 15:5: [INIT-BorrowStateMismatch] In function 'g', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
+    |
+ 15 |     r = &mut p.y;
+    |     ^^^^^^^^^^^^

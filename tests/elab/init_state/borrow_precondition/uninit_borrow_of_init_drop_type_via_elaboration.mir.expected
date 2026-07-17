@@ -1,0 +1,8 @@
+fn f(x: i64) {
+  r: &uninit i64;
+  entry:
+    drop x;
+    r = &uninit x;
+    drop r;
+    return
+}

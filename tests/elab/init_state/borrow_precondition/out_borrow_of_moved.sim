@@ -1,0 +1,11 @@
+# After moving out, the place is uninitialized again — legal &out target.
+extern fn take(y: i64);
+extern fn init(out: &out i64);
+fn f(x: i64) {
+  r: &out i64;
+  entry:
+    call take(move x);
+    r = &out x;
+    call init(move r);
+    return
+}

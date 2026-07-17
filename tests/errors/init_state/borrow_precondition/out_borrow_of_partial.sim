@@ -1,0 +1,11 @@
+# Borrowing the whole `p` when only `p.x` was written: the leaf read
+# on `p` is Partial, not one of the accepted states.
+struct P: Copy + Drop { x: i64 y: i64 }
+fn f() {
+  p: P;
+  r: &out P;
+  entry:
+    p.x = 1;
+    r = &out p;
+    return
+}

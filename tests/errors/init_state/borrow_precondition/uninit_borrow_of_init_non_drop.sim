@@ -1,0 +1,8 @@
+# Linear payload → no drop to insert → precondition failure.
+struct Linear { r: &out i64 }
+fn f(x: Linear) {
+  rr: &uninit Linear;
+  entry:
+    rr = &uninit x;
+    return
+}

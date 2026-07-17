@@ -1,0 +1,4 @@
+error: at 5:5: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
+   |
+ 5 |     r = &x;
+   |     ^^^^^^

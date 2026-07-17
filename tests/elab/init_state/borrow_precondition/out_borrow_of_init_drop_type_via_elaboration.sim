@@ -1,0 +1,10 @@
+# `x: i64` is Copy Drop, so `&out x` on Init `x` is elaborated into
+# `drop x; r = &out x;` — the Uninit precondition is met after the
+# implicit drop.
+fn g(x: i64) {
+  r: &out i64;
+  entry:
+    r = &out x;
+    r.* = 2;
+    return
+}

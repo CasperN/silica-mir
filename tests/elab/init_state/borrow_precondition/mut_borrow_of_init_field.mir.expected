@@ -1,0 +1,17 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+extern fn use_mut(r: &mut i64);
+
+fn f() {
+  p: P;
+  r: &mut i64;
+  entry:
+    p.x = 1;
+    r = &mut p.x;
+    call use_mut(move r);
+    drop p.x;
+    return
+}

@@ -1,0 +1,10 @@
+# A declared but never-written local is the classic &out target.
+extern fn init_number(out: &out i64);
+fn f() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call init_number(move r);
+    return
+}

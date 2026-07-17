@@ -1764,8 +1764,6 @@ impl<'a> InitStateContext<'a> {
 }
 
 #[cfg(test)]
-mod borrow_precondition_tests;
-#[cfg(test)]
 mod cfg_shape_tests;
 #[cfg(test)]
 mod error_span_tests;

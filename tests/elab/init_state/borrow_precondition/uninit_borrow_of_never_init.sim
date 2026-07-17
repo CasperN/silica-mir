@@ -1,0 +1,9 @@
+extern fn discard(r: &uninit i64);
+fn f() {
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    call discard(move r);
+    return
+}

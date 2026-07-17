@@ -1,0 +1,10 @@
+# A linear (non-Drop) value can't be silently forgotten, so drop-elab
+# has nothing to insert. The precondition failure fires; diagnostic
+# should carry a hint telling the user to move `x` out first.
+struct Linear { r: &out i64 }
+fn f(x: Linear) {
+  rr: &out Linear;
+  entry:
+    rr = &out x;
+    return
+}
