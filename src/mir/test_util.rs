@@ -131,7 +131,7 @@ pub fn run_structured(src: &str) -> Diagnostics {
         )
     });
     let mut d = Diagnostics::default().with_source(program.source.clone());
-    elaborate_and_check_mir(&program, &mut d);
+    elaborate_and_check_mir(program, &mut d);
     maybe_write_fixture(src, d.has_errors());
     d
 }
@@ -202,7 +202,7 @@ pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
         )
     });
     let mut d = Diagnostics::default().with_source(program.source.clone());
-    elaborate_and_check_mir(&program, &mut d);
+    elaborate_and_check_mir(program, &mut d);
     maybe_write_fixture(src, d.has_errors());
     (d.errors_str(), d.warnings_str())
 }

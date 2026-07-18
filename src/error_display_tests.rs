@@ -15,7 +15,7 @@ fn run_hll_pipeline(source: &str) -> Diagnostics {
         .with_source(source_arc)
         .with_source_kind(crate::diagnostics::SourceKind::Hll);
     if let Some(program) = crate::lower_hll_to_mir(source, &mut d) {
-        crate::elaborate_and_check_mir(&program, &mut d);
+        crate::elaborate_and_check_mir(program, &mut d);
     }
     d
 }

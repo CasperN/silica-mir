@@ -317,7 +317,7 @@ fn split_then_full_pipeline_still_clean() {
     }
 
     let mut d = crate::diagnostics::Diagnostics::default().with_source(program.source.clone());
-    elaborate_and_check_mir(&program, &mut d);
+    elaborate_and_check_mir(program, &mut d);
     assert!(
         d.is_clean(),
         "expected clean, got errors: {:?}",

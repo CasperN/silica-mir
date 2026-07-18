@@ -116,7 +116,7 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
         },
     };
 
-    let elaborated_env = program.as_ref().map(|p| elaborate_and_check_mir(p, &mut d));
+    let elaborated_env = program.as_ref().map(|p| elaborate_and_check_mir(p.clone(), &mut d));
 
     match stage {
         Stage::Elab => match &elaborated_env {
@@ -132,10 +132,7 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
         Stage::Errors => render_diagnostics(&d),
         Stage::Codegen => match &elaborated_env {
             Some((elaborated, _)) if !d.has_errors() => {
-                let mut mono_prog = elaborated.clone();
-                mir::mono::monomorphize(&mut mono_prog);
-                let (mono_env, _) = mir::type_check::Env::build(&mono_prog);
-                mir::codegen::lower_mir_to_llvm(&mono_prog, &mono_env)
+                mir::codegen::lower_mir_to_llvm(elaborated.clone())
             }
             _ => panic!(
                 "codegen fixture {} produced errors:\n{}",
@@ -151,10 +148,7 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
                     render_diagnostics(&d),
                 )
             });
-            let mut mono_prog = program;
-            mir::mono::monomorphize(&mut mono_prog);
-            let (env, _) = mir::type_check::Env::build(&mono_prog);
-            mir::codegen::lower_mir_to_llvm(&mono_prog, &env)
+            mir::codegen::lower_mir_to_llvm(program)
         }
     }
 }
@@ -328,12 +322,12 @@ fn infer_stage_for_update(fixture: &Path) -> Stage {
     match source_kind {
         SourceKind::Hll => {
             if let Some(p) = lower_hll_to_mir(&source_arc, &mut d) {
-                elaborate_and_check_mir(&p, &mut d);
+                elaborate_and_check_mir(p, &mut d);
             }
         }
         SourceKind::Mir => match mir::parser::Parser::new(&**source_arc).parse() {
             Ok(p) => {
-                elaborate_and_check_mir(&p, &mut d);
+                elaborate_and_check_mir(p, &mut d);
             }
             Err(diags) => d.extend_errors(diags.errors().cloned()),
         },

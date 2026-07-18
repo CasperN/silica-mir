@@ -42,12 +42,13 @@ use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::fmt::Write;
 
-/// Lower `program` to LLVM textual IR. Assumes `program` has already
-/// passed the full check/elaborate pipeline — malformed inputs will
-/// panic.
-pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
+pub fn lower_mir_to_llvm(program: Program) -> String {
+    let mut mono_prog = program;
+    crate::mir::mono::monomorphize(&mut mono_prog);
+    let (env, _) = crate::mir::type_check::Env::build(&mono_prog);
+
     let mut cx = CodeGenContext {
-        env,
+        env: &env,
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
@@ -60,13 +61,13 @@ pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
     // lines here. Only intrinsics actually called by the program are
     // included, deduped — keeps output tight so unused intrinsics
     // don't bloat every emitted module.
-    for decl in llvm_declares_needed(program) {
+    for decl in llvm_declares_needed(&mono_prog) {
         writeln!(cx.out, "{}", decl).unwrap();
     }
     writeln!(cx.out).unwrap();
 
     let mut had_type = false;
-    for decl in &program.declarations {
+    for decl in &mono_prog.declarations {
         match decl {
             Declaration::Struct(s) => {
                 had_type = true;
@@ -84,7 +85,7 @@ pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
     }
 
     let mut had_extern = false;
-    for decl in &program.declarations {
+    for decl in &mono_prog.declarations {
         if let Declaration::Fn(f) = decl {
             if f.is_extern {
                 had_extern = true;
@@ -96,7 +97,7 @@ pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
         writeln!(cx.out).unwrap();
     }
 
-    for decl in &program.declarations {
+    for decl in &mono_prog.declarations {
         if let Declaration::Fn(f) = decl {
             if !f.is_extern {
                 emit_fn_body(&mut cx, f);
@@ -107,7 +108,7 @@ pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
     // If the program has a Silica `fn main` (renamed to `@silica.main`
     // in emission), synthesize a C-conformant `i32 @main()` wrapper so
     // the linked binary has a proper entry point + exit code.
-    for decl in &program.declarations {
+    for decl in &mono_prog.declarations {
         if let Declaration::Fn(f) = decl {
             if f.name == "main" && !f.is_extern {
                 emit_main_wrapper(&mut cx, f);

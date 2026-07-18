@@ -24,13 +24,8 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     hll::lowering::run_lowering(&hll_prog, &types, d)
 }
 
-/// Run every post-parse pass against `program`, pushing errors and
-/// warnings into `d`. Returns the elaborated MIR and its type env.
-/// Callers own the `Diagnostics` so they can pre-populate source /
-/// source-kind context and merge parse-time diagnostics in the same
-/// container.
-pub fn elaborate_and_check_mir(program: &Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
-    let (mut env, env_errs) = mir::type_check::Env::build(program);
+pub fn elaborate_and_check_mir(program: Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
+    let (mut env, env_errs) = mir::type_check::Env::build(&program);
     d.extend_errors(env_errs);
     env.typecheck(d);
     mir::substructural::composition::check_program(&env, d);
@@ -41,10 +36,10 @@ pub fn elaborate_and_check_mir(program: &Program, d: &mut Diagnostics) -> (Progr
     mir::init_state::check_program(&env, d);
 
     if d.has_errors() {
-        return (program.clone(), env);
+        return (program, env);
     }
 
-    let mut elaborated = program.clone();
+    let mut elaborated = program;
 
     // Elaboration passes mutate function bodies only; `types` never
     // changes. After each mutation, resync env's cached function bodies
