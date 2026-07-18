@@ -128,6 +128,10 @@ impl Subst {
                 fn_ty(resolved_params, self.resolve(ret))
             }
             Type::Array(inner, size) => array_ty(self.resolve(inner), *size),
+            Type::Custom(name, args) => {
+                let resolved_args = args.iter().map(|a| self.resolve(a)).collect();
+                custom_ty_with_args(name.clone(), resolved_args)
+            }
             other => other.clone(),
         }
     }
@@ -147,6 +151,10 @@ impl Subst {
             Type::Fn(params, ret) => {
                 let resolved_params = params.iter().map(|p| self.resolve_default(p)).collect();
                 fn_ty(resolved_params, self.resolve_default(ret))
+            }
+            Type::Custom(name, args) => {
+                let resolved_args = args.iter().map(|a| self.resolve_default(a)).collect();
+                custom_ty_with_args(name.clone(), resolved_args)
             }
             other => other.clone(),
         }
@@ -169,7 +177,15 @@ impl Subst {
             (Type::Bool, Type::Bool) => Ok(()),
             (Type::Unit, Type::Unit) => Ok(()),
             (Type::Never, _) | (_, Type::Never) => Ok(()),
-            (Type::Custom(n1), Type::Custom(n2)) if n1 == n2 => Ok(()),
+            (Type::Custom(n1, a1), Type::Custom(n2, a2)) if n1 == n2 && a1.len() == a2.len() => {
+                let a1 = a1.clone();
+                let a2 = a2.clone();
+                for (x, y) in a1.iter().zip(a2.iter()) {
+                    self.unify(x, y)?;
+                }
+                Ok(())
+            }
+            (Type::Param(p1), Type::Param(p2)) if p1 == p2 => Ok(()),
             (Type::Ref(k1, inner1), Type::Ref(k2, inner2)) if k1 == k2 => self.unify(inner1, inner2),
             (Type::RawPtr(inner1), Type::RawPtr(inner2)) => self.unify(inner1, inner2),
             (Type::Array(inner1, size1), Type::Array(inner2, size2)) if size1 == size2 => self.unify(inner1, inner2),
@@ -206,6 +222,7 @@ impl Subst {
             Type::Fn(params, ret) => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
+            Type::Custom(_, args) => args.iter().any(|a| self.occurs_in(id, a)),
             _ => false,
         }
     }
@@ -383,7 +400,7 @@ fn infer_inner(
                 Type::Ref(_, inner) => subst.resolve(inner),
                 other => other.clone(),
             };
-            if let Type::Custom(struct_name) = struct_ty {
+            if let Type::Custom(struct_name, _) = struct_ty {
                 if let Some(s_decl) = env.structs.get(&struct_name) {
                     if let Some(f) = s_decl.fields.iter().find(|field_decl| field_decl.name == *field) {
                         Ok(f.ty.clone())
@@ -412,7 +429,7 @@ fn infer_inner(
         ExprKind::Downcast(target, variant) => {
             let target_ty = infer_inner(env, subst, target, types)?;
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name) = resolved {
+            if let Type::Custom(enum_name, _) = resolved {
                 if let Some(e_decl) = env.enums.get(&enum_name) {
                     if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
                         Ok(v.ty.clone())
@@ -550,7 +567,7 @@ fn infer_inner(
         ExprKind::Match(target, arms) => {
             let target_ty = infer_inner(env, subst, target, types)?;
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name) = resolved {
+            if let Type::Custom(enum_name, _) = resolved {
                 let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
                     Diagnostic::new(
                         UndeclaredEnum,
@@ -760,7 +777,7 @@ fn check_inner(
         (ExprKind::Match(target, arms), expected_ty) => {
             let target_ty = infer_inner(env, subst, target, types)?;
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name) = resolved {
+            if let Type::Custom(enum_name, _) = resolved {
                 let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
                     Diagnostic::new(
                         UndeclaredEnum,

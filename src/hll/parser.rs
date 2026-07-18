@@ -11,7 +11,13 @@ use crate::hll::ast::*;
 use crate::hll::helpers::*;
 use crate::mir::ast::{FloatTy, IntTy, RefKind, Span, Markers, Marker};
 use crate::mir::parser::ParserCode;
+use std::collections::BTreeSet;
 use tree_sitter::{Node, Parser as TSParser};
+
+/// Names of type parameters in scope for the enclosing decl. Threaded
+/// explicitly through `map_type`; identifiers in scope resolve to
+/// `Type::Param`, otherwise to `Type::Custom`.
+type TypeScope = BTreeSet<String>;
 
 extern "C" {
     fn tree_sitter_silica() -> *const std::ffi::c_void;
@@ -242,7 +248,16 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
 
+        let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
+        let type_params = if let Some(tp_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node, &mut scope)?
+        } else {
+            Vec::new()
+        };
+
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
         {
@@ -262,13 +277,13 @@ impl Parser {
                 })?;
                 fields.push(StructField {
                     name: self.get_text(f_name_node).to_string(),
-                    ty: self.map_type(f_type_node)?,
+                    ty: self.map_type(f_type_node, &scope)?,
                     span: span_of(child),
                 });
             }
         }
 
-        Ok(StructDecl { name, markers, fields, span })
+        Ok(StructDecl { name, type_params, markers, fields, span })
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
@@ -278,7 +293,16 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
 
+        let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
+        let type_params = if let Some(tp_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node, &mut scope)?
+        } else {
+            Vec::new()
+        };
+
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
         {
@@ -298,13 +322,13 @@ impl Parser {
                 })?;
                 variants.push(EnumVariant {
                     name: self.get_text(v_name_node).to_string(),
-                    ty: self.map_type(v_type_node)?,
+                    ty: self.map_type(v_type_node, &scope)?,
                     span: span_of(child),
                 });
             }
         }
 
-        Ok(EnumDecl { name, markers, variants, span })
+        Ok(EnumDecl { name, type_params, markers, variants, span })
     }
 
     fn map_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
@@ -315,8 +339,17 @@ impl Parser {
         let span = span_of(node);
         let with_fn = |d: Diagnostic| d.in_function(name.clone());
 
-        let mut params = Vec::new();
+        let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
+        let type_params = if let Some(tp_node) =
+            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node, &mut scope).map_err(with_fn)?
+        } else {
+            Vec::new()
+        };
+
+        let mut params = Vec::new();
         for child in node.children(&mut cursor) {
             if child.kind() == "param_decl" {
                 let p_name_node = child.child_by_field_name("name").ok_or_else(|| {
@@ -327,14 +360,14 @@ impl Parser {
                 })?;
                 params.push(Param {
                     name: self.get_text(p_name_node).to_string(),
-                    ty: self.map_type(p_type_node).map_err(with_fn)?,
+                    ty: self.map_type(p_type_node, &scope).map_err(with_fn)?,
                     span: span_of(child),
                 });
             }
         }
 
         let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
-            self.map_type(rt_node).map_err(with_fn)?
+            self.map_type(rt_node, &scope).map_err(with_fn)?
         } else {
             unit_ty()
         };
@@ -342,12 +375,16 @@ impl Parser {
         let body_node = node.child_by_field_name("body").ok_or_else(|| {
             with_fn(self.diag(node, ParserCode::MalformedCst, "fn decl missing body"))
         })?;
-        let body = self.map_expr(body_node).map_err(with_fn)?;
+        let body = self.map_expr(body_node, &scope).map_err(with_fn)?;
 
-        Ok(FnDecl { name, params, ret_ty, body, span })
+        Ok(FnDecl { name, type_params, params, ret_ty, body, span })
     }
 
-    fn map_type(&self, node: Node) -> Result<Type, Diagnostic> {
+    /// Map a `type` (or scalar/keyword token) CST node to `Type`.
+    /// `scope` is the set of in-scope type-parameter names for the
+    /// enclosing decl; a bare identifier that matches becomes
+    /// `Type::Param`, otherwise `Type::Custom` (possibly with args).
+    fn map_type(&self, node: Node, scope: &TypeScope) -> Result<Type, Diagnostic> {
         // Shared type rule with MIR; the shape is identical.
         if let Some(ty) = scalar_kind_to_type(node.kind()) {
             return Ok(ty);
@@ -356,7 +393,7 @@ impl Parser {
             "bool" => return Ok(bool_ty()),
             "unit" => return Ok(unit_ty()),
             "never" => return Ok(never_ty()),
-            "identifier" => return Ok(custom_ty(self.get_text(node))),
+            "identifier" => return Ok(self.identifier_to_type(self.get_text(node), Vec::new(), scope)),
             "type" => {}
             _ => {
                 return Err(self.diag(
@@ -377,7 +414,21 @@ impl Parser {
             "bool" => return Ok(bool_ty()),
             "unit" => return Ok(unit_ty()),
             "never" => return Ok(never_ty()),
-            "identifier" => return Ok(custom_ty(self.get_text(first))),
+            "identifier" => {
+                // Identifier alt with optional `type_args` as sibling:
+                // `Foo` (Custom / Param) or `Foo<T, U>` (Custom with args).
+                let text = self.get_text(first);
+                let args = if let Some(ta) = node.child(1) {
+                    if ta.kind() == "type_args" {
+                        self.map_type_args(ta, scope)?
+                    } else {
+                        Vec::new()
+                    }
+                } else {
+                    Vec::new()
+                };
+                return Ok(self.identifier_to_type(text, args, scope));
+            }
             _ => {}
         }
 
@@ -394,13 +445,13 @@ impl Parser {
             let inner = node.child(1).ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, format!("missing inner type for {}", text))
             })?;
-            return Ok(ref_ty(kind, self.map_type(inner)?));
+            return Ok(ref_ty(kind, self.map_type(inner, scope)?));
         }
         if text == "*" {
             let inner = node.child(1).ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, "missing inner type for raw pointer")
             })?;
-            return Ok(raw_ptr_ty(self.map_type(inner)?));
+            return Ok(raw_ptr_ty(self.map_type(inner, scope)?));
         }
         if text == "[" {
             let elem = node.child_by_field_name("element").ok_or_else(|| {
@@ -410,7 +461,7 @@ impl Parser {
                 self.diag(node, ParserCode::MalformedCst, "array type missing length")
             })?;
             let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?;
-            return Ok(array_ty(self.map_type(elem)?, len as usize));
+            return Ok(array_ty(self.map_type(elem, scope)?, len as usize));
         }
         if text == "fn" {
             // `fn(T,...) [-> R]`. The optional `return_type` field
@@ -423,11 +474,11 @@ impl Parser {
             let mut cursor = node.walk();
             for child in node.children(&mut cursor) {
                 if child.kind() == "type" && Some(child) != ret_node {
-                    params.push(self.map_type(child)?);
+                    params.push(self.map_type(child, scope)?);
                 }
             }
             let ret = if let Some(rt) = ret_node {
-                self.map_type(rt)?
+                self.map_type(rt, scope)?
             } else {
                 unit_ty()
             };
@@ -440,20 +491,81 @@ impl Parser {
         ))
     }
 
+    /// Resolve a bare identifier that appeared in type position. If
+    /// `name` is in the current scope, produce `Type::Param(name)` —
+    /// but only when there are no type arguments, since a type
+    /// parameter can't be instantiated. Otherwise produce
+    /// `Type::Custom(name, args)`.
+    fn identifier_to_type(&self, name: &str, args: Vec<Type>, scope: &TypeScope) -> Type {
+        if args.is_empty() && scope.contains(name) {
+            param_ty(name)
+        } else {
+            custom_ty_with_args(name, args)
+        }
+    }
+
+    /// Parse a `type_params` node (`<T, U: Copy + Drop>`) into a list
+    /// of `TypeParam`. Populates `scope` with each name so subsequent
+    /// `map_type` calls see them as `Param`s.
+    fn map_type_params(&self, node: Node, scope: &mut TypeScope) -> Result<Vec<TypeParam>, Diagnostic> {
+        let mut out = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "type_param" {
+                continue;
+            }
+            let name_node = child.child_by_field_name("name").ok_or_else(|| {
+                self.diag(child, ParserCode::MalformedCst, "type param missing name")
+            })?;
+            let pname = self.get_text(name_node).to_string();
+            if scope.contains(&pname) {
+                return Err(self.diag(
+                    name_node,
+                    ParserCode::MalformedCst,
+                    format!("Duplicate type parameter '{}'", pname),
+                ));
+            }
+            let bounds = if let Some(m) = child.children(&mut child.walk()).find(|c| c.kind() == "markers") {
+                self.map_markers(m)?
+            } else {
+                Markers::empty()
+            };
+            scope.insert(pname.clone());
+            out.push(TypeParam {
+                name: pname,
+                bounds,
+                span: span_of(child),
+            });
+        }
+        Ok(out)
+    }
+
+    /// Parse a `type_args` node (`<T, U>`) into a list of `Type`.
+    fn map_type_args(&self, node: Node, scope: &TypeScope) -> Result<Vec<Type>, Diagnostic> {
+        let mut out = Vec::new();
+        let mut cursor = node.walk();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
+                out.push(self.map_type(child, scope)?);
+            }
+        }
+        Ok(out)
+    }
+
     /// Walk any expression-carrying node into a typed `Expr`. All
     /// operator forms (assign, borrow, field access, deref, downcast,
     /// call, index, match) are named rules in the grammar, so
     /// dispatch is straight by `node.kind()`. The `expr` node itself
     /// is a thin wrapper containing exactly one child — recurse into
     /// it.
-    fn map_expr(&self, node: Node) -> Result<Expr, Diagnostic> {
+    fn map_expr(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         match node.kind() {
             "expr" => {
                 let child = node.child(0).ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "expr wrapper empty")
                 })?;
-                self.map_expr(child)
+                self.map_expr(child, scope)
             }
 
             // ---- Literals + identifier ----
@@ -483,43 +595,43 @@ impl Parser {
                 let mut cursor = node.walk();
                 let inner = node.children(&mut cursor).find(|c| c.kind() == "expr");
                 if let Some(e) = inner {
-                    self.map_expr(e)
+                    self.map_expr(e, scope)
                 } else {
                     Ok(Expr { kind: ExprKind::Literal(Literal::Unit), span })
                 }
             }
-            "block_expr" => self.map_block(node),
-            "if_expr" => self.map_if(node),
+            "block_expr" => self.map_block(node, scope),
+            "if_expr" => self.map_if(node, scope),
             "loop_expr" => {
                 let body = node.child_by_field_name("body").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "loop missing body")
                 })?;
                 Ok(Expr {
-                    kind: ExprKind::Loop(Box::new(self.map_expr(body)?)),
+                    kind: ExprKind::Loop(Box::new(self.map_expr(body, scope)?)),
                     span,
                 })
             }
             "break_expr" => {
                 let mut cursor = node.walk();
                 let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
-                let val = inner.map(|n| self.map_expr(n)).transpose()?.map(Box::new);
+                let val = inner.map(|n| self.map_expr(n, scope)).transpose()?.map(Box::new);
                 Ok(Expr { kind: ExprKind::Break(val), span })
             }
             "continue_expr" => Ok(Expr { kind: ExprKind::Continue, span }),
             "return_expr" => {
                 let mut cursor = node.walk();
                 let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
-                let val = inner.map(|n| self.map_expr(n)).transpose()?.map(Box::new);
+                let val = inner.map(|n| self.map_expr(n, scope)).transpose()?.map(Box::new);
                 Ok(Expr { kind: ExprKind::Return(val), span })
             }
-            "struct_constr" => self.map_struct_constr(node),
-            "enum_constr" => self.map_enum_constr(node),
+            "struct_constr" => self.map_struct_constr(node, scope),
+            "enum_constr" => self.map_enum_constr(node, scope),
             "array_lit" => {
                 let mut cursor = node.walk();
                 let mut elems = Vec::new();
                 for c in node.children(&mut cursor) {
                     if self.is_expr_kind(&c) {
-                        elems.push(self.map_expr(c)?);
+                        elems.push(self.map_expr(c, scope)?);
                     }
                 }
                 Ok(Expr { kind: ExprKind::Array(elems), span })
@@ -535,8 +647,8 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::Assign(
-                        Box::new(self.map_expr(lhs)?),
-                        Box::new(self.map_expr(rhs)?),
+                        Box::new(self.map_expr(lhs, scope)?),
+                        Box::new(self.map_expr(rhs, scope)?),
                     ),
                     span,
                 })
@@ -563,7 +675,7 @@ impl Parser {
                     self.diag(node, ParserCode::MalformedCst, "borrow missing target")
                 })?;
                 Ok(Expr {
-                    kind: ExprKind::Borrow(ref_kind, Box::new(self.map_expr(target)?)),
+                    kind: ExprKind::Borrow(ref_kind, Box::new(self.map_expr(target, scope)?)),
                     span,
                 })
             }
@@ -572,7 +684,7 @@ impl Parser {
                     self.diag(node, ParserCode::MalformedCst, "&raw missing target")
                 })?;
                 Ok(Expr {
-                    kind: ExprKind::RawBorrow(Box::new(self.map_expr(target)?)),
+                    kind: ExprKind::RawBorrow(Box::new(self.map_expr(target, scope)?)),
                     span,
                 })
             }
@@ -608,9 +720,9 @@ impl Parser {
                 };
                 Ok(Expr {
                     kind: ExprKind::Binary(
-                        Box::new(self.map_expr(lhs)?),
+                        Box::new(self.map_expr(lhs, scope)?),
                         op,
-                        Box::new(self.map_expr(rhs)?),
+                        Box::new(self.map_expr(rhs, scope)?),
                     ),
                     span,
                 })
@@ -624,7 +736,7 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::FieldAccess(
-                        Box::new(self.map_expr(target)?),
+                        Box::new(self.map_expr(target, scope)?),
                         self.get_text(field).to_string(),
                     ),
                     span,
@@ -635,7 +747,7 @@ impl Parser {
                     self.diag(node, ParserCode::MalformedCst, "deref missing target")
                 })?;
                 Ok(Expr {
-                    kind: ExprKind::Deref(Box::new(self.map_expr(target)?)),
+                    kind: ExprKind::Deref(Box::new(self.map_expr(target, scope)?)),
                     span,
                 })
             }
@@ -648,7 +760,7 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::Downcast(
-                        Box::new(self.map_expr(target)?),
+                        Box::new(self.map_expr(target, scope)?),
                         self.get_text(variant).to_string(),
                     ),
                     span,
@@ -662,11 +774,11 @@ impl Parser {
                 let mut args = Vec::new();
                 for c in node.children(&mut cursor) {
                     if c != func && self.is_expr_kind(&c) {
-                        args.push(self.map_expr(c)?);
+                        args.push(self.map_expr(c, scope)?);
                     }
                 }
                 Ok(Expr {
-                    kind: ExprKind::Call(Box::new(self.map_expr(func)?), args),
+                    kind: ExprKind::Call(Box::new(self.map_expr(func, scope)?), args),
                     span,
                 })
             }
@@ -679,8 +791,8 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::ArrayIndex(
-                        Box::new(self.map_expr(target)?),
-                        Box::new(self.map_expr(idx)?),
+                        Box::new(self.map_expr(target, scope)?),
+                        Box::new(self.map_expr(idx, scope)?),
                     ),
                     span,
                 })
@@ -689,7 +801,7 @@ impl Parser {
                 let scrut = node.child_by_field_name("scrutinee").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "match missing scrutinee")
                 })?;
-                self.map_match(node, scrut)
+                self.map_match(node, scrut, scope)
             }
 
             other => Err(self.diag(
@@ -700,17 +812,17 @@ impl Parser {
         }
     }
 
-    fn map_block(&self, node: Node) -> Result<Expr, Diagnostic> {
+    fn map_block(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         let mut stmts = Vec::new();
         let mut tail = None;
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "stmt" {
-                stmts.push(self.map_stmt(child)?);
+                stmts.push(self.map_stmt(child, scope)?);
             } else if self.is_expr_kind(&child) {
                 // Trailing expression (has field name "tail" in grammar).
-                tail = Some(Box::new(self.map_expr(child)?));
+                tail = Some(Box::new(self.map_expr(child, scope)?));
             }
         }
         Ok(Expr {
@@ -719,31 +831,31 @@ impl Parser {
         })
     }
 
-    fn map_stmt(&self, node: Node) -> Result<Stmt, Diagnostic> {
+    fn map_stmt(&self, node: Node, scope: &TypeScope) -> Result<Stmt, Diagnostic> {
         // stmt is a choice: let_stmt | defer_stmt | (expr ';').
         let child = node.child(0).ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "empty statement")
         })?;
         match child.kind() {
-            "let_stmt" => self.map_let_stmt(child),
+            "let_stmt" => self.map_let_stmt(child, scope),
             "defer_stmt" => {
                 let body_node = child.child_by_field_name("body").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "defer missing body")
                 })?;
-                let body = self.map_expr(body_node)?;
+                let body = self.map_expr(body_node, scope)?;
                 Ok(Stmt::Defer {
                     body,
                     span: span_of(node),
                 })
             }
             _ => {
-                let e = self.map_expr(child)?;
+                let e = self.map_expr(child, scope)?;
                 Ok(Stmt::Expr(e))
             }
         }
     }
 
-    fn map_let_stmt(&self, node: Node) -> Result<Stmt, Diagnostic> {
+    fn map_let_stmt(&self, node: Node, scope: &TypeScope) -> Result<Stmt, Diagnostic> {
         let span = span_of(node);
         let name_node = node.child_by_field_name("name").ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "let missing name")
@@ -759,18 +871,18 @@ impl Parser {
             }
         }
         let ty = if let Some(t) = node.child_by_field_name("type") {
-            Some(self.map_type(t)?)
+            Some(self.map_type(t, scope)?)
         } else {
             None
         };
         let init_node = node.child_by_field_name("init").ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "let missing init")
         })?;
-        let init = self.map_expr(init_node)?;
+        let init = self.map_expr(init_node, scope)?;
         Ok(Stmt::Let { is_mut, name, ty, init, span })
     }
 
-    fn map_if(&self, node: Node) -> Result<Expr, Diagnostic> {
+    fn map_if(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         let cond_node = node.child_by_field_name("cond").ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "if missing cond")
@@ -779,7 +891,7 @@ impl Parser {
             self.diag(node, ParserCode::MalformedCst, "if missing then")
         })?;
         let else_expr = if let Some(else_node) = node.child_by_field_name("else") {
-            self.map_expr(else_node)?
+            self.map_expr(else_node, scope)?
         } else {
             Expr {
                 kind: ExprKind::Block(Vec::new(), None),
@@ -788,15 +900,15 @@ impl Parser {
         };
         Ok(Expr {
             kind: ExprKind::If(
-                Box::new(self.map_expr(cond_node)?),
-                Box::new(self.map_expr(then_node)?),
+                Box::new(self.map_expr(cond_node, scope)?),
+                Box::new(self.map_expr(then_node, scope)?),
                 Box::new(else_expr),
             ),
             span,
         })
     }
 
-    fn map_match(&self, node: Node, scrutinee_node: Node) -> Result<Expr, Diagnostic> {
+    fn map_match(&self, node: Node, scrutinee_node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         let mut arms = Vec::new();
         let mut cursor = node.walk();
@@ -808,11 +920,11 @@ impl Parser {
                 let body_node = c.child_by_field_name("body").ok_or_else(|| {
                     self.diag(c, ParserCode::MalformedCst, "match arm missing body")
                 })?;
-                arms.push((self.map_pattern(pat_node)?, self.map_expr(body_node)?));
+                arms.push((self.map_pattern(pat_node)?, self.map_expr(body_node, scope)?));
             }
         }
         Ok(Expr {
-            kind: ExprKind::Match(Box::new(self.map_expr(scrutinee_node)?), arms),
+            kind: ExprKind::Match(Box::new(self.map_expr(scrutinee_node, scope)?), arms),
             span,
         })
     }
@@ -828,7 +940,7 @@ impl Parser {
         Ok(Pattern::Variant(variant, bound))
     }
 
-    fn map_struct_constr(&self, node: Node) -> Result<Expr, Diagnostic> {
+    fn map_struct_constr(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         let name_node = node.child_by_field_name("name").ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "struct constr missing name")
@@ -844,7 +956,7 @@ impl Parser {
                 let fn_val = c.child_by_field_name("value").ok_or_else(|| {
                     self.diag(c, ParserCode::MalformedCst, "field init missing value")
                 })?;
-                fields.push((self.get_text(fn_name).to_string(), self.map_expr(fn_val)?));
+                fields.push((self.get_text(fn_name).to_string(), self.map_expr(fn_val, scope)?));
             }
         }
         Ok(Expr {
@@ -853,7 +965,7 @@ impl Parser {
         })
     }
 
-    fn map_enum_constr(&self, node: Node) -> Result<Expr, Diagnostic> {
+    fn map_enum_constr(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         let name_node = node.child_by_field_name("name").ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "enum constr missing name")
@@ -868,7 +980,7 @@ impl Parser {
             kind: ExprKind::EnumConstr(
                 self.get_text(name_node).to_string(),
                 self.get_text(variant_node).to_string(),
-                Box::new(self.map_expr(payload_node)?),
+                Box::new(self.map_expr(payload_node, scope)?),
             ),
             span,
         })

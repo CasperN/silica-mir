@@ -195,6 +195,19 @@ impl LowerCtx {
     }
 }
 
+/// HLL and MIR `TypeParam` have identical shape; this is a
+/// straight per-field copy.
+fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
+    params
+        .iter()
+        .map(|p| mir::TypeParam {
+            name: p.name.clone(),
+            bounds: p.bounds.clone(),
+            span: p.span,
+        })
+        .collect()
+}
+
 fn lower_type(ty: &hll::Type) -> mir::Type {
     match ty {
         hll::Type::Int(t) => int_ty(*t),
@@ -202,7 +215,11 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::Type::Bool => bool_ty(),
         hll::Type::Unit => unit_ty(),
         hll::Type::Never => never_ty(),
-        hll::Type::Custom(name) => custom_ty(name.clone()),
+        hll::Type::Custom(name, args) => {
+            let lowered_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
+            custom_ty_with_args(name.clone(), lowered_args)
+        }
+        hll::Type::Param(name) => param_ty(name.clone()),
         hll::Type::Ref(kind, inner) => ref_ty(*kind, lower_type(inner)),
         hll::Type::RawPtr(inner) => raw_ptr_ty(lower_type(inner)),
         hll::Type::Fn(params, ret) => {
@@ -677,7 +694,7 @@ fn lower_expr_into(
                             "missing type annotation for match target",
                         )
                     })?;
-                    let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name) = target_hll_ty {
+                    let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name, _) = target_hll_ty {
                         let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
                             diag(
                                 HllLoweringCode::EnumDeclMissing,
@@ -775,7 +792,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     name: s.name.clone(),
                     name_span: s.span,
-                    type_params: Vec::new(),
+                    type_params: lower_type_params(&s.type_params),
                     markers: s.markers.clone(),
                     fields,
                 }));
@@ -789,7 +806,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     name: e.name.clone(),
                     name_span: e.span,
-                    type_params: Vec::new(),
+                    type_params: lower_type_params(&e.type_params),
                     markers: e.markers.clone(),
                     variants,
                 }));
@@ -836,7 +853,7 @@ pub fn lower_program(
                     name: f.name.clone(),
                     name_span: f.span,
                     is_extern: false,
-                    type_params: Vec::new(),
+                    type_params: lower_type_params(&f.type_params),
                     params,
                     body: Some(mir::FunctionBody {
                         locals: ctx.locals,

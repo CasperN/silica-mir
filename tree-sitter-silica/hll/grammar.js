@@ -60,8 +60,13 @@ module.exports = grammar({
 
     // HLL struct/enum decls: mandatory comma between fields.
     // `commaSep` already tolerates a trailing comma.
+    //
+    // Generics: `struct<T: Copy + Drop> Box: Copy + Drop { ... }`.
+    // The optional `type_params` clause sits between the keyword and
+    // the decl name, mirroring MIR.
     struct_decl: $ => seq(
       'struct',
+      optional($.type_params),
       field('name', $.identifier),
       optional($.markers),
       '{',
@@ -70,6 +75,7 @@ module.exports = grammar({
     ),
     enum_decl: $ => seq(
       'enum',
+      optional($.type_params),
       field('name', $.identifier),
       optional($.markers),
       '{',
@@ -77,10 +83,12 @@ module.exports = grammar({
       '}',
     ),
 
-    // `fn name(params) [-> type] block`. Return type defaults to
-    // `unit` when the arrow is omitted. Body is a block expression.
+    // `fn [<type_params>] name(params) [-> type] block`. Return type
+    // defaults to `unit` when the arrow is omitted. Body is a block
+    // expression.
     fn_decl: $ => seq(
       'fn',
+      optional($.type_params),
       field('name', $.identifier),
       '(', common.commaSep($.param_decl), ')',
       optional(seq('->', field('return_type', $.type))),

@@ -893,6 +893,10 @@
         {
           "type": "markers",
           "named": true
+        },
+        {
+          "type": "type_params",
+          "named": true
         }
       ]
     }
@@ -1207,6 +1211,10 @@
       "types": [
         {
           "type": "param_decl",
+          "named": true
+        },
+        {
+          "type": "type_params",
           "named": true
         }
       ]
@@ -1839,6 +1847,10 @@
         {
           "type": "struct_field",
           "named": true
+        },
+        {
+          "type": "type_params",
+          "named": true
         }
       ]
     }
@@ -1933,6 +1945,47 @@
       "types": [
         {
           "type": "type",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_param",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "markers",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "type_params",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "type_param",
           "named": true
         }
       ]

@@ -356,20 +356,30 @@ program     = declaration*
 declaration = struct_decl | enum_decl | fn_decl
 
 # Fields/variants are comma-separated with an optional trailing comma.
-struct_decl = struct [Copy? Drop? Move?] identifier { field , ..., }
-enum_decl   = enum   [Copy? Drop? Move?] identifier { variant , ..., }
+# Generics: `struct<T: Copy> Box: Copy { inner: T }`. The optional
+# `type_params` clause sits between the keyword and the decl name and
+# has the same shape as MIR.
+struct_decl = struct [type_params] identifier [markers] { field , ..., }
+enum_decl   = enum   [type_params] identifier [markers] { variant , ..., }
 field       = identifier : type
 variant     = identifier : type
 
 # Functions: optional `-> ret_ty` (defaults to `unit`); body is a block.
-fn_decl = fn identifier ( param , ..., ) [ -> type ] block_expr
+# Generics: `fn<T: Copy>(x: T) -> T { ... }`.
+fn_decl = fn [type_params] identifier ( param , ..., ) [ -> type ] block_expr
 param   = identifier : type
 
+markers     = : marker (+ marker)*     # marker ∈ {Copy, Drop, Move}
+type_params = < type_param (, type_param)* [,] >
+type_param  = identifier [markers]
+type_args   = < type (, type)* [,] >
+
 # Types — same as MIR for the shared alternatives (scalars, refs,
-# raw pointers, arrays, custom names) plus HLL's function-type
-# variant `fn(T,...) [-> R]` with an optional return arrow (defaults
-# to `unit` when omitted). MIR's function type has no arrow because
-# MIR returns go through `&out $return` parameters.
+# raw pointers, arrays, custom names with optional type args, in-scope
+# type-param references) plus HLL's function-type variant
+# `fn(T,...) [-> R]` with an optional return arrow (defaults to `unit`
+# when omitted). MIR's function type has no arrow because MIR returns
+# go through `&out $return` parameters.
 type = ...   # see MIR Types, plus `fn(T,...) [-> R]`
 
 # Statements: `let` binding or expression-statement.
@@ -436,6 +446,11 @@ pattern = identifier [ ( identifier ) ]                  # Variant [ (bind) ]
 - **Integer literal defaulting.** Unsuffixed integer literals get
   type-variable defaults; the type checker resolves them to `i64`
   if no other constraint pins them.
+- **Generics have unconditional marker bounds.** `struct<T: Copy> Box`
+  requires every `Box<X>` to satisfy `X: Copy`. Conditional bounds
+  (`Box<T>: Copy where T: Copy`) are deferred behind this form; the
+  inline decl marker still applies. See the Semantics section for the
+  decl-side + use-site duality.
 
 # MIR Spec
 
@@ -901,6 +916,25 @@ Order of operations:
   are deferred behind the current unconditional-bounds form; the
   inline form on the decl and a separate `impl`-style form will
   coexist.
+- **HLL generics** — grammar/AST/parser and type-params-through-
+  lowering are in. The HLL type checker does NOT yet:
+  - unify `Type::Param(T)` with only same-name `Param` or a `Var`
+    (today the HM solver treats `Param` opaquely, so any two `Param`s
+    trivially unify by identity fallthrough — masks bugs);
+  - validate `Custom(name, args)` arity against the decl's declared
+    `type_params` at use sites;
+  - check use-site bound satisfaction (e.g. reject `Box<X>` when
+    `X` doesn't implement `Box`'s declared `T: Copy` bound);
+  - substitute `T := X` at field/variant access on `Box<X>` so that
+    downstream inference sees concrete types;
+  - resolve `Type::Param(name)` when the name is NOT in the enclosing
+    decl's scope (today it becomes `Custom` — the parser's fallback
+    is correct, but there is no post-hoc decl-side check that every
+    referenced `Param` was declared).
+  Struct constructors also don't infer / accept type args:
+  `Box { inner: 42 }` produces `Custom("Box", [])` and fails to unify
+  with the expected `Box<i64>`. Turbofish (`Box::<i64> { ... }`) is
+  the intended fallback once inference lands.
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
   ```
   let x = 1;

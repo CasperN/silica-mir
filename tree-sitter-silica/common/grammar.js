@@ -99,10 +99,9 @@ module.exports = {
 
     // Generic type-parameter clause on a decl: `<T, U: Move + Copy>`.
     // Each parameter names an identifier and may carry marker bounds
-    // (reusing the `markers` rule — same `: Copy + Drop` shape). Only
-    // MIR wires these into struct/enum/fn decls in this cut; HLL
-    // decls stay non-generic until HLL lowering learns to translate
-    // them.
+    // (reusing the `markers` rule — same `: Copy + Drop` shape). Both
+    // HLL and MIR wire these into struct/enum/fn decls; HLL lowering
+    // to MIR carries the clause through unchanged.
     type_param: $ => seq(
       field('name', $.identifier),
       optional($.markers),
@@ -116,8 +115,9 @@ module.exports = {
     ),
 
     // Type arguments at a use site: `Foo<i32, T>` or `call fn<T>(...)`.
-    // Grammar-only; parsers may reject them where semantics aren't
-    // implemented yet.
+    // Parsers resolve these against the current decl's type-parameter
+    // scope; use-site bound satisfaction is checked in the type-check
+    // pass.
     type_args: $ => seq(
       '<',
       $.type,

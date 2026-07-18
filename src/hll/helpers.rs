@@ -31,10 +31,21 @@ pub fn never_ty() -> Type { Type::Never }
 pub fn int_ty(kind: IntTy) -> Type { Type::Int(kind) }
 pub fn float_ty(kind: FloatTy) -> Type { Type::Float(kind) }
 
-// ---------- Custom ----------
+// ---------- Custom / Param ----------
 
+/// A non-generic struct/enum reference: `Foo`.
 pub fn custom_ty(name: impl Into<String>) -> Type {
-    Type::Custom(name.into())
+    Type::Custom(name.into(), Vec::new())
+}
+
+/// A generic struct/enum instantiation: `Foo<T, U>`.
+pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
+    Type::Custom(name.into(), args)
+}
+
+/// A reference to an in-scope type parameter.
+pub fn param_ty(name: impl Into<String>) -> Type {
+    Type::Param(name.into())
 }
 
 // ---------- References ----------

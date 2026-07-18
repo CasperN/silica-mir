@@ -7,7 +7,14 @@ pub enum Type {
     Bool,
     Unit,
     Never,
-    Custom(String),
+    /// Struct or enum reference. `args` is the list of type
+    /// arguments — empty for non-generic decls (`Foo`), non-empty
+    /// for instantiations of generic decls (`Foo<T, U>`).
+    Custom(String, Vec<Type>),
+    /// A reference to a generic type parameter declared on the
+    /// enclosing decl. Named parameter, not a solver metavariable —
+    /// unifies only with itself or with a `Var`, never substituted.
+    Param(String),
     Ref(RefKind, Box<Type>),
     RawPtr(Box<Type>),
     Fn(Vec<Type>, Box<Type>),
@@ -23,7 +30,21 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "unit"),
             Type::Never => write!(f, "never"),
-            Type::Custom(name) => write!(f, "{}", name),
+            Type::Custom(name, args) => {
+                write!(f, "{}", name)?;
+                if !args.is_empty() {
+                    write!(f, "<")?;
+                    for (i, a) in args.iter().enumerate() {
+                        if i > 0 {
+                            write!(f, ", ")?;
+                        }
+                        write!(f, "{}", a)?;
+                    }
+                    write!(f, ">")?;
+                }
+                Ok(())
+            }
+            Type::Param(name) => write!(f, "{}", name),
             Type::Ref(kind, inner) => {
                 let kind_str = match kind {
                     RefKind::Shared => "&",
@@ -66,9 +87,20 @@ pub struct Param {
     pub span: Span,
 }
 
+/// Generic type parameter declared on a struct/enum/fn. Bounds are
+/// unconditional markers (`T: Copy + Drop`); conditional bounds are
+/// deferred behind this form.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TypeParam {
+    pub name: String,
+    pub bounds: Markers,
+    pub span: Span,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDecl {
     pub name: String,
+    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,
     pub body: Expr,
@@ -85,6 +117,7 @@ pub struct StructField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructDecl {
     pub name: String,
+    pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub fields: Vec<StructField>,
     pub span: Span,
@@ -100,6 +133,7 @@ pub struct EnumVariant {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumDecl {
     pub name: String,
+    pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub variants: Vec<EnumVariant>,
     pub span: Span,
