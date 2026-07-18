@@ -905,16 +905,12 @@ Order of operations:
 # Punch list
 
 ## Language features
-- **HLL binary operators** `+ - * /` (currently intrinsic calls only).
-  Prerequisite for real HLL ergonomics and for HLL versions of the
-  existing MIR fixture programs.
 - **MIR must honor `extern "..."` ABI.** HLL parses both `extern fn` and `extern "C" fn` and preserves the ABI string on `FnDecl`; the ABI is dropped at HLL→MIR lowering because MIR's `Function::is_extern` is a bare bool. Wire an `abi: Option<String>` through to codegen so C-ABI externs emit register returns instead of the Silica sret convention. Today's void externs happen to work under either ABI — the divergence bites the moment someone declares a non-void C extern.
 - **HLL match arm-binding dispatch grows more arms with new markers.** Today's HLL match on an owned scrutinee picks `move X as V` for non-Copy enums and `copy X as V` for Copy. When `AutoClone` / `AutoTransfer` (pure, non-trivial) and `CoClone` / `CoTransfer` (effectful) markers land, this switch grows arms that emit `call Clone::clone(&X as V, &out binding)` and `call Transfer::transfer(&drop X as V, &out binding)` in place of the bitwise primitives. HLL owns the dispatch; MIR stays mechanical (only `copy`/`move`).
 - **HLL pointer `as` casts.** `*T as *U` reinterpretation. Blocked on MIR gaining `RValue::PtrCast` and codegen picking up a bitcast (nop at LLVM level with opaque `ptr`). Numeric `as` casts landed (sugar for the existing `$*_to_*` intrinsics); pointer casts are the pending half. Raw pointers stay non-null by construction — no `int as *T`.
-- **Casts to reference types are deliberately not on the punchlist.** A `*T as &T` cast would conjure a reference whose lifetime nothing in the type system pins (there are no MIR lifetime annotations to bound it against). The `&mut T as &T` demotion looks safe but is really a loan-tracker permission-downgrade — better modeled as a distinct MIR op with explicit semantics, not shoehorned into `as`. Both wait on lifetime annotations at the MIR level.
-- **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story.
+- **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
 - **HLL byte-string literals.** `b"hello"` is MIR-only; HLL has to build fixed-size `[u8; N]` buffers element-by-element. See `tests/programs/hll_hello_world_via_write.si` for the workaround.
-- **HLL exposes intrinsics through binary ops and `as` casts.** `$i64_popcount(...)` and similar named intrinsics parse as variable references and fire `HTC-UndeclaredVariable`; there's no way to call an arbitrary `$*` intrinsic by name from HLL. Numeric casts and arithmetic have first-class HLL syntax; other intrinsics (popcount, clz, ctz, sqrt) don't.
+- **HLL surface for `$*` intrinsic calls.** Arithmetic and casts have first-class HLL syntax that lowers to `$*_to_*` / `$iN_add` intrinsics; the other intrinsics (popcount, clz, ctz, sqrt, LLVM-intrinsic-backed) have no HLL surface — calling `$i64_popcount(x)` fires `HTC-UndeclaredVariable`. Either add a `@intrinsic_name(...)` syntax or expose these as builtin fn names.
 - **Generics** in the MIR — grammar/AST/parser/print, scope-aware
   substructural composition, decl-side marker check, and
   use-site bound + arity check are all in. Remaining:
@@ -933,9 +929,8 @@ Order of operations:
     works for fully-inferable calls; explicit type args need HLL
     grammar for `call_expr` + parser + type_check to accept them
     against the freshened signature.
-  - **Struct field, enum variant, fn param, and `let` type-annotation spans point at the whole `name: Type`.** Each of those AST nodes has one span field covering the whole declaration, so a validation error on the *type* highlights `name: Type` rather than just `Type`. Same fix shape as the ret_ty span already landed — add a `ty_span: Span` alongside each `ty: Type` and thread it through the `validate_type` calls. Cheap follow-up; low urgency because the existing spans are already decent.
-  - Conditional marker bounds (`Foo<T>: Copy where T: Copy`) are
-    still deferred behind the unconditional-bounds form.
+  - **Struct field, enum variant, fn param, and `let` type-annotation spans point at the whole `name: Type`.** Same fix shape as the ret_ty span already landed — add a `ty_span: Span` alongside each `ty: Type` and thread through the `validate_type` calls.
+  - Conditional marker bounds (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form.
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
   ```
   let x = 1;
@@ -951,7 +946,6 @@ Order of operations:
 - **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and
   a Rust-shaped enum syntax (currently only newtype-with-different-
   syntax).
-- **HLL surface for hand-crafted CFG shape.** `tests/init_state/cfg_shape/{init_across_cfg_shapes,init_across_cfg_shapes_violations,borrow_across_cfg_shapes,borrow_across_cfg_shapes_violations}.sim` have no HLL siblings because HLL lacks a way to spell `abort`/`unreachable` terminators, custom block labels, irreducible flow, or downcast-projection borrows.
 
 ## Elaboration + drop
 - **Extend downcast-target reassignment to non-operand rvalues.**
@@ -996,16 +990,14 @@ Order of operations:
   error lowering failures accumulate the same way user errors do?**
 
 ## Testing gaps
-- **Post-elab init-state re-run** has no dedicated fixture. Add one
-  per obligation kind that would silently pass without the re-run.
-- **Codegen fixtures don't validate the emitted LLVM.** Add a
-  fixture that pipes output through `llvm-as` (skip when absent
-  from `PATH`) to catch malformed IR at emit time.
-- **HLL loop with ref obligations across iterations.** New coverage
-  needed: no fixture yet exercises a `&out`/`&drop` obligation
-  carried across loop iterations from the HLL surface.
+- **Post-elab init-state re-run** has no dedicated fixture. Add one per obligation kind that would silently pass without the re-run.
+- **`llvm-as` validity check on emitted `.ll`.** Codegen fixtures pin textual LLVM as strings, but nothing verifies the output is well-formed LLVM IR. Pipe through `llvm-as` (skip when absent from `PATH`) so codegen bugs that emit garbage surface at test time rather than at downstream `clang` time.
+- **End-to-end runtime fixtures.** `tests/programs/*` today pins elaborated MIR, but real behavior — `sum_to_n(10) → 55`, `hello_world` prints `hi!\n`, linked-list `exit=6` — is only verified manually. Automate: compile to `.ll`, link any sibling C shim, execute, pin exit code + stdout in a `.run.expected`. Needs a new fixture-runner stage + `clang` gating. Bazel migration (see Longer term) is one path to the cross-language build infra this requires.
+- **HLL loop with ref obligations across iterations.** No fixture yet exercises an `&out`/`&drop` obligation carried across loop iterations from the HLL surface.
+- **`tests/init_state/cfg_shape/*.sim` have no HLL siblings.** HLL lacks a way to spell `abort` / `unreachable` terminators, custom block labels, irreducible flow, or downcast-projection borrows. Not a fix — a coverage note: these MIR fixtures test CFG shapes the HLL lowering doesn't produce.
 
 # Longer term
+- **Bazel-based build with proper cross-language infra.** Today the compiler is `cargo`, and any cross-language wiring (LLVM IR emission → `clang` link → binary → runtime → check exit) is manual. A Bazel migration would let end-to-end runtime tests, C-shim linking, and future host-language integrations (LLVM tooling, wasm, cross-compile) be first-class build actions in a hermetic graph. The immediate motivator is the End-to-end runtime fixtures item in Testing gaps.
 - Standard library (needs generics + modules + multi-file support).
   Effects: `Fail` for exceptional control flow, `Iter` for for-loops,
   `Async` for executors.
