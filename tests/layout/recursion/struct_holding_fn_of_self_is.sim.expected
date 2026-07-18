@@ -1,8 +1,0 @@
-struct S {
-  f: fn(S)
-}
-
-fn f() {
-  entry:
-    return
-}

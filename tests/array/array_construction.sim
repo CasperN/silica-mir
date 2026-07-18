@@ -1,0 +1,96 @@
+# Array construction: whole-value and piecewise init succeed.
+#
+# Array values may be introduced in two ways: whole-value literal
+# assignment and piecewise slot-by-slot initialization through `&out`
+# borrows. Both routes must reach a fully-Init array that the checker
+# accepts without error and elaboration inserts correct drops.
+#
+# Invariant: every function returns clean (no diagnostics). A
+# regression here means literal lowering, piecewise-init tracking, or
+# the fold-up from per-slot Partial to whole-value Init is broken.
+#
+#   fn                         construction               shape
+#   lit_basic                  whole-value literal        scalar element type
+#   lit_in_struct_field        whole-value literal        array nested in struct field
+#   lit_nested_array_row       piecewise whole-row lit    nested [[T;N];M]
+#   lit_of_mut_refs            whole-value literal        element type is &mut ref (move)
+#   piecewise_via_out_refs     &out a[k] per slot         all slots from extern fns
+
+struct Buf: Copy + Drop { data: [u8; 4] }
+
+extern fn set_i64(r: &out i64, v: i64);
+extern fn take(a: [&mut i64; 2]);
+
+# ---------- whole-value literal: scalar element type ----------
+
+# Assigning a fully-populated literal initializes all three slots in
+# one step; the array is uniformly Init after the assignment.
+fn lit_basic() {
+  a: [i64; 3];
+  entry:
+    a = [1i64, 2i64, 3i64];
+    return
+}
+
+# ---------- whole-value literal: array nested inside a struct field ----------
+
+# The struct field `data` is a [u8; 4] sub-place; assigning to it via
+# a literal works identically to assigning to a top-level array local.
+fn lit_in_struct_field() {
+  b: Buf;
+  entry:
+    b.data = [65u8, 66u8, 67u8, 68u8];
+    return
+}
+
+# ---------- piecewise whole-row literal: nested [[i32;2];2] ----------
+
+# Each row of the outer array is a [i32; 2] sub-place. Assigning both
+# rows by literal completes the outer array's partial-init and folds up
+# to Init; reading a nested element after that is legal.
+fn lit_nested_array_row() {
+  m: [[i32; 2]; 2];
+  x: i32;
+  entry:
+    m[0i64] = [1i32, 2i32];
+    m[1i64] = [3i32, 4i32];
+    x = copy m[1i64][0i64];
+    return
+}
+
+# ---------- whole-value literal: element type is &mut i64 ----------
+
+# Array element type may be a reference kind. The elements are moved
+# from locals into the literal; the resulting array is moved into the
+# extern call. No element is ever copied.
+fn lit_of_mut_refs(x: i64, y: i64) {
+  rx: &mut i64;
+  ry: &mut i64;
+  a: [&mut i64; 2];
+  entry:
+    rx = &mut x;
+    ry = &mut y;
+    a = [move rx, move ry];
+    call take(move a);
+    return
+}
+
+# ---------- piecewise via &out per slot ----------
+
+# Binding `&out a[k]` for each constant index k advances the
+# per-slot partial-init state; after all three calls complete their
+# obligations the array is uniformly Init.
+fn piecewise_via_out_refs() {
+  a: [i64; 3];
+  r0: &out i64;
+  r1: &out i64;
+  r2: &out i64;
+  entry:
+    r0 = &out a[0i64];
+    call set_i64(move r0, 10i64);
+    r1 = &out a[1i64];
+    call set_i64(move r1, 20i64);
+    r2 = &out a[2i64];
+    call set_i64(move r2, 30i64);
+    return
+}

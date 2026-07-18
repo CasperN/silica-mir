@@ -1,0 +1,58 @@
+# Dynamic-index loan conflicts: whole-array extent blocks per-slot access.
+#
+# A borrow via a dynamic index (`a[copy i]`) cannot be tracked to a
+# specific slot, so the checker conservatively treats the loan as
+# covering the entire array. Any subsequent access to any element of
+# that array — whether a read, a write, or a nested field write — is
+# blocked by the outstanding loan and fires LT-LoanConflict.
+#
+# These cases live in a dedicated file because LT-LoanConflict requires
+# the lifetime checker to run. The pipeline skips the lifetime checker
+# whenever type or init errors are present, so mixing these cases with
+# TC-* or INIT-* errors would suppress the loan diagnostics.
+#
+# Invariant: every function fires exactly one LT-LoanConflict
+# diagnostic. A regression here means dynamic-index loan extent
+# tracking is broken for the relevant access pattern.
+#
+#   fn                              conflict target           access kind
+#   dynamic_loan_blocks_slot_read   a[0]                     copy (read)
+#   dynamic_loan_blocks_field_write c.arr[0].v               struct-field write
+
+struct Sub: Copy + Drop { v: i64 }
+struct Container: Copy + Drop { arr: [Sub; 3] }
+
+extern fn use_mut(r: &mut i64);
+
+# ---------- dynamic-index &mut loan blocks any per-slot read ----------
+
+# `&mut a[copy i]` creates a loan whose extent is the whole array
+# because the checker cannot determine which slot is borrowed. A
+# subsequent read of a[0] (any concrete slot) conflicts with the
+# outstanding loan and fires LT-LoanConflict.
+fn dynamic_loan_blocks_slot_read(i: i64) {
+  a: [i64; 3];
+  r: &mut i64;
+  x: i64;
+  y: i64;
+  entry:
+    a = [10i64, 20i64, 30i64];
+    r = &mut a[copy i];
+    x = copy a[0i64];
+    y = copy r.*;
+    return
+}
+
+# ---------- dynamic-index loan blocks nested struct-field write ----------
+
+# The loan covers `c.arr[?].v` (whole-array extent via dynamic index).
+# Writing `c.arr[0].v` intersects that loan extent and fires
+# LT-LoanConflict, even though the write targets a concrete slot.
+fn dynamic_loan_blocks_field_write(c: Container, i: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut c.arr[copy i].v;
+    c.arr[0i64].v = 7i64;
+    call use_mut(move r);
+    return
+}

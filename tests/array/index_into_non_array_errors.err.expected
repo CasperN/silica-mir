@@ -1,4 +1,0 @@
-error: at 5:13: [TC-IndexOfNonArray] In function 'f', block 'entry': Cannot index non-array type i64
-   |
- 5 |             y = copy x[0i64];
-   |             ^^^^^^^^^^^^^^^^

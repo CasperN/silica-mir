@@ -1,0 +1,50 @@
+# Raw pointer operations rejected by the type-checker.
+#
+# Three distinct violation kinds are covered: a pointee type mismatch
+# when creating a raw pointer, a non-Copy deref used in a copy operand,
+# and a deref applied to a non-pointer type.
+#
+# Cells under test:
+#
+#   fn                          DiagCode                    trigger
+#   ────────────────────────    ──────────────────────────  ──────────────────────────────────
+#   pointee_type_mismatch       TC-AssignmentTypeMismatch   &raw i32 assigned to *i64 local
+#   copy_of_non_copy_pointee    SUB-CopyOfNonCopy           copy deref of *Linear (non-Copy)
+#   deref_of_non_pointer        TC-DerefOfNonPointer        deref applied to plain i64 local
+
+struct Linear { r: &out i64 }
+
+# ---------- pointee_type_mismatch ----------
+
+# The local `p` has type *i64 but `x` has type i32; `&raw x` produces
+# *i32, which does not match. TC-AssignmentTypeMismatch is fired.
+fn pointee_type_mismatch(x: i32) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    return
+}
+
+# ---------- copy_of_non_copy_pointee ----------
+
+# Linear is not Copy, so `copy p.*` on a *Linear pointer is rejected by
+# the substructural checker. The user must use `move` instead.
+fn copy_of_non_copy_pointee(l: Linear) {
+  p: *Linear;
+  q: Linear;
+  entry:
+    p = &raw l;
+    q = copy p.*;
+    return
+}
+
+# ---------- deref_of_non_pointer ----------
+
+# Applying `.*` to `x: i64` is rejected because i64 is not a pointer
+# type. TC-DerefOfNonPointer names the offending type.
+fn deref_of_non_pointer(x: i64) {
+  y: i64;
+  entry:
+    y = copy x.*;
+    return
+}

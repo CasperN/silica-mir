@@ -1,0 +1,11 @@
+# A main signature with two or more parameters fires
+# TC-MainBadSignature on the function name span.
+#
+# Kept separate from main_wrapper_violations (which pins the
+# wrong-parameter-type case) because MIR permits only one `fn main`
+# per file — a second declaration would fire TC-DuplicateDeclaration
+# and mask this signature check.
+fn main(a: i32, b: i32) {
+  entry:
+    return
+}

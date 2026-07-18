@@ -1,0 +1,29 @@
+# Type-checking violations for `fn main` signatures.
+#
+# The type-checker accepts exactly two shapes for `fn main`:
+# `fn main()` (no parameters) and `fn main(exit: &out i32)` (single
+# `&out i32` parameter).  Every other signature fires
+# TC-MainBadSignature.
+#
+# Note: only one `fn main` may appear per source file — a second
+# declaration fires TC-DuplicateDeclaration.  The two distinct
+# violation paths (wrong parameter type vs. too many parameters)
+# cannot be merged into one file.  This file covers the wrong-type
+# branch because the diagnostic names the exact required type, making
+# it the more precise regression anchor.  The extra-parameters branch
+# (two or more params, firing on the function name span) was dropped
+# as a less informative duplicate of the same diagnostic code.
+#
+#   fn      violation                DiagCode              trigger
+#   ──────  ───────────────────────  ────────────────────  ──────────────────────────────
+#   main    single wrong-type param  TC-MainBadSignature   &out i64 instead of &out i32
+
+# ---------- main ----------
+
+# A single parameter whose type is `&out i64` instead of `&out i32`
+# fires TC-MainBadSignature naming the found type in the message.
+fn main(exit: &out i64) {
+  entry:
+    exit.* = 0;
+    return
+}

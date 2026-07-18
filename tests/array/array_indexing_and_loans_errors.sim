@@ -1,0 +1,128 @@
+# Array indexing and borrow errors: OOB, type, and init violations.
+#
+# Indexing and borrowing arrays are rejected when:
+#   - the index is a constant that exceeds the declared length (TC-ArrayIndexOutOfBounds)
+#   - the base is not an array type (TC-IndexOfNonArray)
+#   - the index expression is not an integer (TC-ArrayIndexNotInteger)
+#   - a dynamic &mut or &out borrow requires uniform init state but the
+#     array is not uniformly initialized (INIT-BorrowDynamicIndexNonUniform)
+#   - a read touches a slot not yet initialized (INIT-UseBeforeInit)
+#
+# Dynamic-index loan conflicts (LT-LoanConflict) are in the sibling
+# array_loan_errors.sim because those require the lifetime checker to
+# run, which the pipeline skips when type or init errors are present.
+#
+# Invariant: every function fires at least one diagnostic. A regression
+# pins the wrong DiagCode, the wrong span, or lets a bad access slip
+# through.
+#
+#   fn                              error                              trigger
+#   const_index_oob                 TC-ArrayIndexOutOfBounds           k >= N (non-zero)
+#   zero_len_array_index_oob        TC-ArrayIndexOutOfBounds           k=0, N=0
+#   index_non_array                 TC-IndexOfNonArray                 base type is i64
+#   non_int_index                   TC-ArrayIndexNotInteger             index type is bool
+#   mut_borrow_dynamic_uninit_fails INIT-BorrowDynamicIndexNonUniform  &mut a[i], a Uninit
+#   out_borrow_dynamic_init_fails   INIT-BorrowDynamicIndexNonUniform  &out a[i], a Init
+#   read_partially_init_array       INIT-UseBeforeInit                 a[1] when only a[0] Init
+
+extern fn use_mut(r: &mut i64);
+extern fn set_i64(r: &out i64, v: i64);
+
+# ---------- const-index out of bounds (non-zero array) ----------
+
+# The declared length is 3; index 3 is one past the end. The checker
+# fires TC-ArrayIndexOutOfBounds at the borrow statement.
+fn const_index_oob() {
+  a: [i64; 3];
+  r: &mut i64;
+  entry:
+    a = [1i64, 2i64, 3i64];
+    r = &mut a[3i64];
+    return
+}
+
+# ---------- const-index out of bounds (zero-length array) ----------
+
+# An empty array has no valid indices. Index 0 is out of bounds for
+# [_; 0] and fires TC-ArrayIndexOutOfBounds; the borrow-state
+# precondition check also fires because slot 0 is never initialized.
+fn zero_len_array_index_oob() {
+  a: [i64; 0];
+  r: &mut i64;
+  entry:
+    r = &mut a[0i64];
+    return
+}
+
+# ---------- indexing a non-array type ----------
+
+# `x` has type i64; applying an index expression to a scalar fires
+# TC-IndexOfNonArray.
+fn index_non_array(x: i64) {
+  y: i64;
+  entry:
+    y = copy x[0i64];
+    return
+}
+
+# ---------- index expression is not an integer ----------
+
+# Array indices must be integer-typed. Using a bool index fires
+# TC-ArrayIndexNotInteger.
+fn non_int_index() {
+  a: [i64; 3];
+  b: bool;
+  x: i64;
+  entry:
+    a = [1i64, 2i64, 3i64];
+    b = true;
+    x = copy a[copy b];
+    return
+}
+
+# ---------- dynamic &mut borrow requires uniform Init, but array is Uninit ----------
+
+# The array `a` has never been assigned. A `&mut a[copy i]` requires the
+# array to be uniformly Init so the checker can guarantee the element
+# the caller receives is initialized. INIT-BorrowDynamicIndexNonUniform fires.
+fn mut_borrow_dynamic_uninit_fails(i: i64) {
+  a: [i64; 3];
+  r: &mut i64;
+  entry:
+    r = &mut a[copy i];
+    call use_mut(move r);
+    return
+}
+
+# ---------- dynamic &out borrow requires uniform Uninit, but array is Init ----------
+
+# `&out a[copy i]` is the piecewise write entry point and requires the
+# array to be uniformly Uninit. After a whole-value assignment the
+# array is uniformly Init, so the borrow fires
+# INIT-BorrowDynamicIndexNonUniform.
+fn out_borrow_dynamic_init_fails(i: i64) {
+  a: [i64; 3];
+  r: &out i64;
+  entry:
+    a = [1i64, 2i64, 3i64];
+    r = &out a[copy i];
+    call set_i64(move r, 1i64);
+    return
+}
+
+# ---------- reading a partially-init array fires UseBeforeInit ----------
+
+# `r0` initializes slot 0 via &out; slots 1 and 2 remain Uninit.
+# Reading a[1] fires INIT-UseBeforeInit because the array is in a
+# Partial state and slot 1 is not yet Init.
+fn read_partially_init_array() {
+  a: [i64; 3];
+  r0: &out i64;
+  x: i64;
+  entry:
+    r0 = &out a[0i64];
+    call set_i64(move r0, 10i64);
+    x = copy a[1i64];
+    return
+}
+

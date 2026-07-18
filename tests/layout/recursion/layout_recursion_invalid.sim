@@ -1,0 +1,52 @@
+# Layout pass rejects type declarations that are recursive by value.
+#
+# A struct or enum is rejected when any field (or variant payload)
+# would embed the containing type — or a member of the same cycle —
+# directly by value, making the size infinite. The checker reports
+# LAY-RecursiveTypeByValue and names the cycle.
+#
+# Each declaration below covers one cell of the
+# (recursion shape x recursion kind) matrix:
+#
+#   item                             recursion shape           cycle members
+#   ─────────────────────────────    ──────────────────────    ─────────────────
+#   StructSelf                       self-recursive struct     S
+#   EnumSelf                         self-recursive enum       Loop
+#   MutualStructs                    mutual struct pair        B, A
+#   StructEnumMutual                 struct+enum mutual        S, E
+#   ThreeWayCycle                    three-type chain          C, B, A
+
+# ---------- self-recursive struct by value ----------
+
+# A struct that embeds itself directly by value has infinite size;
+# the checker names the single-member cycle.
+struct StructSelf { s: StructSelf }
+
+# ---------- self-recursive enum by value ----------
+
+# An enum variant that carries the enum type directly by value has
+# infinite size; the checker names the single-member cycle.
+enum EnumSelf { A: unit  B: EnumSelf }
+
+# ---------- mutually recursive structs by value ----------
+
+# Two structs that each embed the other by value form a two-member
+# cycle with infinite size; the checker names both members.
+struct MutualStructA { b: MutualStructB }
+struct MutualStructB { a: MutualStructA }
+
+# ---------- struct+enum mutual cycle by value ----------
+
+# A struct that holds an enum whose variant embeds the struct forms
+# a two-member cross-kind cycle with infinite size.
+enum MutualEnum { V: MutualStruct }
+struct MutualStruct { e: MutualEnum }
+
+# ---------- three-type chain cycle by value ----------
+
+# Three structs chained so that each embeds the next form a
+# three-member cycle; the checker reports it with a single error
+# naming all three members.
+struct ChainA { b: ChainB }
+struct ChainB { c: ChainC }
+struct ChainC { a: ChainA }

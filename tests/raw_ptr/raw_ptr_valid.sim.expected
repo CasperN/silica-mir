@@ -1,0 +1,68 @@
+struct Node: Copy + Drop {
+  p: *i64
+  v: i64
+}
+
+fn creation_scalar(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    drop p;
+    drop x;
+    return
+}
+
+fn creation_in_struct_field(x: i64) {
+  n: Node;
+  entry:
+    n.p = &raw x;
+    n.v = 0;
+    drop n;
+    drop x;
+    return
+}
+
+fn copy_semantics(x: i64) {
+  p: *i64;
+  q: *i64;
+  entry:
+    p = &raw x;
+    q = copy p;
+    drop q;
+    drop p;
+    drop x;
+    return
+}
+
+fn no_loan_alongside_mut_borrow(x: i64) {
+  r: &mut i64;
+  p: *i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    p = &raw x;
+    y = copy r.*;
+    unborrow r;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn deref_bypasses_loan_check(x: i64) {
+  r: &mut i64;
+  p: *i64;
+  y: i64;
+  z: i64;
+  entry:
+    r = &mut x;
+    p = &raw x;
+    y = copy p.*;
+    z = copy r.*;
+    unborrow r;
+    drop z;
+    drop y;
+    drop p;
+    drop x;
+    return
+}

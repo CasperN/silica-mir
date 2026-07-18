@@ -1,8 +1,0 @@
-error: at 6:13: [TC-ArrayIndexOutOfBounds] In function 'f', block 'entry': Array index 0 out of bounds for [_; 0]
-   |
- 6 |             r = &mut a[0i64];
-   |             ^^^^^^^^^^^^^^^^
-error: at 6:13: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create &mut of 'a[0]': place must be initialized at borrow, but is not yet initialized
-   |
- 6 |             r = &mut a[0i64];
-   |             ^^^^^^^^^^^^^^^^

@@ -1,0 +1,8 @@
+error: at 23:5: [TC-ArrayLitElementTypeMismatch] In function 'wrong_element_type', block 'entry': Array literal element 1 has type i32, expected i64
+    |
+ 23 |     a = [1i64, 2i32];
+    |     ^^^^^^^^^^^^^^^^
+error: at 35:5: [TC-AssignmentTypeMismatch] In function 'wrong_length', block 'entry': Type mismatch in assignment. LHS is [i64; 3], RHS is [i64; 2]
+    |
+ 35 |     a = [1i64, 2i64];
+    |     ^^^^^^^^^^^^^^^^

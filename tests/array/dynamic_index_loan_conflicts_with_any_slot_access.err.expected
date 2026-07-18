@@ -1,9 +1,0 @@
-error: at 10:13: [LT-LoanConflict] In function 'f', block 'entry': cannot read 'a[0]': already borrowed by 'r'
-    |
- 10 |             x = copy a[0i64];
-    |             ^^^^^^^^^^^^^^^^
-  = note: borrow of 'a[0]' occurs here
-    |
-  9 |             r = &mut a[copy i];
-    |             ^^^^^^^^^^^^^^^^^^
-  hint: the borrow of 'r' is active until its last use or explicit unborrow.

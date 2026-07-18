@@ -1,0 +1,49 @@
+# Layout pass accepts type declarations that are not recursive by value.
+#
+# A struct or enum is rejected only when its size would be infinite:
+# a field (or variant payload) that embeds the containing type — or a
+# member of its cycle — directly by value. Indirection through any
+# reference kind or through a function-pointer type breaks the cycle
+# and makes the size finite.
+#
+# Each declaration below covers one cell of the
+# (recursion shape x indirection kind) matrix:
+#
+#   item                             recursion shape           indirection
+#   ─────────────────────────────    ──────────────────────    ──────────────
+#   PlainStruct                      none (baseline)           —
+#   StructRefSelf                    self-recursive struct     &mut (ref)
+#   EnumRefSelf                      self-recursive enum       &mut (ref)
+#   MutualStructsRef                 mutual struct pair        &mut (ref)
+#   StructFnSelf                     self-recursive struct     fn(Self) ptr
+
+# ---------- none: plain non-recursive struct ----------
+
+# A non-recursive struct with two scalar fields has a concrete,
+# finite size and is trivially accepted.
+struct PlainStruct { x: i64  y: i64 }
+
+# ---------- self-recursive struct: indirection via &mut ----------
+
+# A struct that refers to itself through a mutable reference has finite
+# size because the reference is pointer-sized regardless of the pointee.
+struct StructRefSelf { next: &mut StructRefSelf }
+
+# ---------- self-recursive enum: indirection via &mut ----------
+
+# An enum variant that carries the enum type through a reference is
+# finite-sized; the reference breaks the by-value cycle.
+enum EnumRefSelf { Nil: unit  Cons: &mut EnumRefSelf }
+
+# ---------- mutually recursive structs: indirection via &mut ----------
+
+# Two structs that each hold a reference to the other form a cycle
+# broken by indirection; both declarations are accepted.
+struct MutualA { b: &mut MutualB }
+struct MutualB { a: &mut MutualA }
+
+# ---------- self-recursive struct: indirection via fn pointer ----------
+
+# A function pointer whose parameter type is the enclosing struct is
+# pointer-sized; the struct has finite, concrete size.
+struct StructFnSelf { f: fn(StructFnSelf) }

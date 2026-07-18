@@ -1,0 +1,63 @@
+enum Color: Copy + Drop {
+  Red: unit
+  Green: unit
+  Blue: unit
+}
+
+fn single_block() {
+  entry:
+    return
+}
+
+fn goto_chain() {
+  entry:
+    goto middle
+  middle:
+    goto end
+  end:
+    return
+}
+
+fn branch_both_arms(b: bool) {
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    drop b;
+    return
+  f:
+    drop b;
+    return
+}
+
+fn loop_via_backedge(b: bool) {
+  entry:
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    goto head
+  done:
+    drop b;
+    return
+}
+
+fn unreachable_terminator_reachable_block() {
+  entry:
+    goto dead
+  dead:
+    unreachable
+}
+
+fn switch_enum_all_arms(c: Color) {
+  entry:
+    switchEnum(c) [Red: r, Green: g, Blue: b]
+  r:
+    drop c;
+    return
+  g:
+    drop c;
+    return
+  b:
+    drop c;
+    return
+}

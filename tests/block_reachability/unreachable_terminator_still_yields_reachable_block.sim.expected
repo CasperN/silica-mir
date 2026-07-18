@@ -1,6 +1,0 @@
-fn f() {
-  entry:
-    goto dead
-  dead:
-    unreachable
-}

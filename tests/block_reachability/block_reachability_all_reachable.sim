@@ -1,0 +1,95 @@
+# Block reachability: all blocks reachable from entry.
+#
+# The block-reachability pass walks the CFG forward from the entry
+# block and warns on any basic block that has no path from entry via
+# goto, branch, or switchEnum edges.  Every function below contains
+# only reachable blocks; the pass must emit no warnings.
+#
+#   fn                                      CFG shape
+#   single_block                            trivial single-block fn
+#   goto_chain                              linear goto chain
+#   branch_both_arms                        branch: both true and false arms reached
+#   loop_via_backedge                       natural loop: loop body reached via backedge
+#   unreachable_terminator_reachable_block  block with `unreachable` terminator, reached by goto
+#   switch_enum_all_arms                    switchEnum: each arm target reached
+
+enum Color: Copy + Drop { Red: unit  Green: unit  Blue: unit }
+
+# ---------- trivial single-block function ----------
+
+# A function whose body is exactly one block is trivially reachable;
+# there are no additional blocks for the pass to inspect.
+fn single_block() {
+  entry:
+    return
+}
+
+# ---------- linear goto chain ----------
+
+# Each block is reached by the unique predecessor's goto edge; the
+# pass must follow the chain and mark all three blocks reachable.
+fn goto_chain() {
+  entry:
+    goto middle
+  middle:
+    goto end
+  end:
+    return
+}
+
+# ---------- branch: both arms reachable ----------
+
+# A branch produces two successor edges.  Both the true arm and the
+# false arm are reachable from entry, so neither fires a warning.
+fn branch_both_arms(b: bool) {
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    return
+  f:
+    return
+}
+
+# ---------- natural loop: body reachable via backedge ----------
+
+# `head` is reached from `entry` (forward edge) and again from `body`
+# (backedge).  The fixpoint marks both `head` and `body` reachable
+# on the first iteration; no blocks are orphaned.
+fn loop_via_backedge(b: bool) {
+  entry:
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    goto head
+  done:
+    return
+}
+
+# ---------- block terminated by `unreachable` is still reachable ----------
+
+# Reachability is determined by the predecessors of a block, not its
+# own terminator.  `dead` is reached by the goto in `entry` and is
+# therefore reachable, even though its own terminator is `unreachable`.
+fn unreachable_terminator_reachable_block() {
+  entry:
+    goto dead
+  dead:
+    unreachable
+}
+
+# ---------- switchEnum: all arm targets reachable ----------
+
+# A switchEnum produces one successor edge per variant arm.  Every
+# target block is reached from entry through exactly one arm edge;
+# the pass marks all three reachable.
+fn switch_enum_all_arms(c: Color) {
+  entry:
+    switchEnum(c) [Red: r, Green: g, Blue: b]
+  r:
+    return
+  g:
+    return
+  b:
+    return
+}

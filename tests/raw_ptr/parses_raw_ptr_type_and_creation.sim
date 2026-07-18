@@ -1,8 +1,0 @@
-
-        fn f(x: i64) {
-          p: *i64;
-          entry:
-            p = &raw x;
-            return
-        }
-        

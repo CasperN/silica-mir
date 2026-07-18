@@ -1,0 +1,80 @@
+# Array indexing and borrows succeed under correct init and loan state.
+#
+# Reading an element (const or dynamic index) and borrowing a slot
+# (&mut or &out) are legal when the surrounding init and loan state
+# permit the operation. Const-index borrows track per-slot; a loan on
+# slot k does not block access to slot j (k ≠ j). Dynamic-index &out
+# is permitted only when the array is uniformly Uninit; it treats the
+# whole array as a single unknown slot.
+#
+# Invariant: every function returns clean (no diagnostics). A
+# regression here means const-index read/borrow tracking, dynamic-read
+# elaboration, slot-isolation, or dynamic-&out precondition logic is
+# broken.
+#
+#   fn                                operation                          index kind
+#   read_const_index                  copy a[k]                          const
+#   read_dynamic_index                copy a[copy i]                     dynamic
+#   out_borrow_dynamic_uninit         &out a[copy i] on uninit array     dynamic
+#   const_slot_isolation              &mut a[0], then read a[1]          const (two slots)
+
+extern fn set_i64(r: &out i64, v: i64);
+
+# ---------- const-index read after whole-value init ----------
+
+# Reading a[1] after a whole-value assignment is legal; the element
+# is Copy so elaboration inserts a drop on the copy result.
+fn read_const_index() {
+  a: [i64; 3];
+  x: i64;
+  entry:
+    a = [10i64, 20i64, 30i64];
+    x = copy a[1i64];
+    return
+}
+
+# ---------- dynamic-index read after whole-value init ----------
+
+# A dynamic index is legal when the array is uniformly Init; the
+# checker cannot track which slot is touched so it requires the whole
+# array to be Init.
+fn read_dynamic_index(i: i64) {
+  a: [i64; 3];
+  x: i64;
+  entry:
+    a = [10i64, 20i64, 30i64];
+    x = copy a[copy i];
+    return
+}
+
+# ---------- dynamic-index &out on a uniformly uninit array ----------
+
+# `&out a[copy i]` is the piecewise-init entry point for dynamic
+# indices. It is legal only when the array is uniformly Uninit,
+# because the checker cannot track which slot will receive the write.
+fn out_borrow_dynamic_uninit(i: i64) {
+  a: [i64; 3];
+  r: &out i64;
+  entry:
+    r = &out a[copy i];
+    call set_i64(move r, 1i64);
+    return
+}
+
+# ---------- slot isolation: loan on a[0] does not block a[1] ----------
+
+# Borrowing a[0] mutably creates a loan covering slot 0. Slot 1 is
+# not covered by that loan so copy a[1] proceeds without conflict.
+# Dereferencing r uses the loan before unborrow, which is required.
+fn const_slot_isolation() {
+  a: [i64; 3];
+  r: &mut i64;
+  x: i64;
+  y: i64;
+  entry:
+    a = [10i64, 20i64, 30i64];
+    r = &mut a[0i64];
+    x = copy a[1i64];
+    y = copy r.*;
+    return
+}

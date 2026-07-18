@@ -1,0 +1,13 @@
+error: at 24:5: [TC-AssignmentTypeMismatch] In function 'pointee_type_mismatch', block 'entry': Type mismatch in assignment. LHS is *i64, RHS is *i32
+    |
+ 24 |     p = &raw x;
+    |     ^^^^^^^^^^
+error: at 48:5: [TC-DerefOfNonPointer] In function 'deref_of_non_pointer', block 'entry': Cannot dereference non-pointer type i64
+    |
+ 48 |     y = copy x.*;
+    |     ^^^^^^^^^^^^
+error: at 37:5: [SUB-CopyOfNonCopy] In function 'copy_of_non_copy_pointee', block 'entry': cannot copy non-Copy type Linear
+    |
+ 37 |     q = copy p.*;
+    |     ^^^^^^^^^^^^
+  hint: since the type is not Copy, try moving it instead using 'move'

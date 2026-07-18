@@ -1,0 +1,20 @@
+error: at 23:8: [LAY-RecursiveTypeByValue] type 'StructSelf' is recursive by value (cycle: StructSelf). Break the cycle by wrapping a field/variant payload in a reference.
+    |
+ 23 | struct StructSelf { s: StructSelf }
+    |        ^^^^^^^^^^
+error: at 29:6: [LAY-RecursiveTypeByValue] type 'EnumSelf' is recursive by value (cycle: EnumSelf). Break the cycle by wrapping a field/variant payload in a reference.
+    |
+ 29 | enum EnumSelf { A: unit  B: EnumSelf }
+    |      ^^^^^^^^
+error: at 36:8: [LAY-RecursiveTypeByValue] type 'MutualStructB' is recursive by value (cycle: MutualStructB, MutualStructA). Break the cycle by wrapping a field/variant payload in a reference.
+    |
+ 36 | struct MutualStructB { a: MutualStructA }
+    |        ^^^^^^^^^^^^^
+error: at 43:8: [LAY-RecursiveTypeByValue] type 'MutualStruct' is recursive by value (cycle: MutualStruct, MutualEnum). Break the cycle by wrapping a field/variant payload in a reference.
+    |
+ 43 | struct MutualStruct { e: MutualEnum }
+    |        ^^^^^^^^^^^^
+error: at 52:8: [LAY-RecursiveTypeByValue] type 'ChainC' is recursive by value (cycle: ChainC, ChainB, ChainA). Break the cycle by wrapping a field/variant payload in a reference.
+    |
+ 52 | struct ChainC { a: ChainA }
+    |        ^^^^^^

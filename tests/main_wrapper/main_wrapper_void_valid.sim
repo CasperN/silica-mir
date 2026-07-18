@@ -1,0 +1,10 @@
+# `fn main()` (no parameters) is one of two accepted main signatures.
+# The codegen wrapper for a void main returns 0 unconditionally.
+#
+# Kept separate from main_wrapper_valid because MIR permits only one
+# `fn main` per file — a second declaration fires TC-DuplicateDeclaration
+# and would mask the signature check under test here.
+fn main() {
+  entry:
+    return
+}

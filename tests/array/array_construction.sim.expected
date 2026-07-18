@@ -1,0 +1,65 @@
+struct Buf: Copy + Drop {
+  data: [u8; 4]
+}
+
+extern fn set_i64(r: &out i64, v: i64);
+
+extern fn take(a: [&mut i64; 2]);
+
+fn lit_basic() {
+  a: [i64; 3];
+  entry:
+    a = [1, 2, 3];
+    drop a;
+    return
+}
+
+fn lit_in_struct_field() {
+  b: Buf;
+  entry:
+    b.data = [65u8, 66u8, 67u8, 68u8];
+    drop b;
+    return
+}
+
+fn lit_nested_array_row() {
+  m: [[i32; 2]; 2];
+  x: i32;
+  entry:
+    m[0] = [1i32, 2i32];
+    m[1] = [3i32, 4i32];
+    x = copy m[1][0];
+    drop x;
+    drop m;
+    return
+}
+
+fn lit_of_mut_refs(x: i64, y: i64) {
+  rx: &mut i64;
+  ry: &mut i64;
+  a: [&mut i64; 2];
+  entry:
+    rx = &mut x;
+    ry = &mut y;
+    a = [move rx, move ry];
+    call take(move a);
+    drop y;
+    drop x;
+    return
+}
+
+fn piecewise_via_out_refs() {
+  a: [i64; 3];
+  r0: &out i64;
+  r1: &out i64;
+  r2: &out i64;
+  entry:
+    r0 = &out a[0];
+    call set_i64(move r0, 10);
+    r1 = &out a[1];
+    call set_i64(move r1, 20);
+    r2 = &out a[2];
+    call set_i64(move r2, 30);
+    drop a;
+    return
+}

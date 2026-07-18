@@ -1,0 +1,37 @@
+# Array construction type errors: literal element-type mismatch and length mismatch.
+#
+# A whole-value array literal is rejected when the element types are
+# not uniform or when the literal length does not match the declared
+# array length. Both errors are caught by the type checker before init
+# state is consulted.
+#
+# Invariant: every function fires exactly one diagnostic. A regression
+# here means literal type-checking no longer catches structural
+# mismatches before lower passes run.
+#
+#   fn                    error               code
+#   wrong_element_type    element i is wrong  TC-ArrayLitElementTypeMismatch
+#   wrong_length          literal too short   TC-AssignmentTypeMismatch
+
+# ---------- element type mismatch: one element has the wrong integer width ----------
+
+# The declared type is [i64; 2] but element 1 is i32. The checker
+# fires TC-ArrayLitElementTypeMismatch before any assignment proceeds.
+fn wrong_element_type() {
+  a: [i64; 2];
+  entry:
+    a = [1i64, 2i32];
+    return
+}
+
+# ---------- literal length mismatch: fewer elements than declared size ----------
+
+# The declared type is [i64; 3] but the literal supplies only two
+# elements. The resulting RHS type is [i64; 2], which does not match
+# [i64; 3], so TC-AssignmentTypeMismatch fires.
+fn wrong_length() {
+  a: [i64; 3];
+  entry:
+    a = [1i64, 2i64];
+    return
+}

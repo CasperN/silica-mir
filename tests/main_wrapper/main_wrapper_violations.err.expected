@@ -1,0 +1,4 @@
+error: at 25:9: [TC-MainBadSignature] In function 'main': single parameter must be '&out i32', found &out i64
+    |
+ 25 | fn main(exit: &out i64) {
+    |         ^^^^^^^^^^^^^^

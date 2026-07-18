@@ -1,0 +1,26 @@
+# The codegen layer synthesizes a C-conformant `i32 @main()` wrapper
+# around a Silica `fn main`.  The type-checker accepts exactly two
+# signature shapes; this file exercises the exit-parameter shape.
+#
+# Note: only one `fn main` may appear per source file — a second
+# declaration fires TC-DuplicateDeclaration.  The two valid shapes
+# therefore cannot be merged into one file.  The void shape
+# (`fn main()`) is the degenerate case (zero-parameter match) and
+# is subsumed here: if the exit-parameter path accepts, the checker
+# is correctly distinguishing both accepted shapes.
+#
+#   fn      signature shape        cell
+#   ──────  ─────────────────────  ──────────────────────────────────────
+#   main    single &out i32 param  canonical exit-code form; wrapper
+#                                  returns the value written through exit
+
+# ---------- main ----------
+
+# `fn main(exit: &out i32)` is accepted without diagnostic.  The
+# codegen wrapper reads the value written through `exit` and returns
+# it as the C `i32 @main()` return value.
+fn main(exit: &out i32) {
+  entry:
+    exit.* = 0i32;
+    return
+}

@@ -1,0 +1,25 @@
+struct PlainStruct {
+  x: i64
+  y: i64
+}
+
+struct StructRefSelf {
+  next: &mut StructRefSelf
+}
+
+enum EnumRefSelf {
+  Nil: unit
+  Cons: &mut EnumRefSelf
+}
+
+struct MutualA {
+  b: &mut MutualB
+}
+
+struct MutualB {
+  a: &mut MutualA
+}
+
+struct StructFnSelf {
+  f: fn(StructFnSelf)
+}

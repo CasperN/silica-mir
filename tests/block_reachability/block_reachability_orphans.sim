@@ -1,0 +1,62 @@
+# Block reachability: blocks orphaned from the CFG entry.
+#
+# A basic block is orphaned when no path of terminator successor edges
+# leads from the entry block to it.  The pass emits one
+# BR-BlockUnreachable warning per orphaned block.  The pretty-printed
+# MIR still contains the orphaned blocks — warnings are not errors and
+# the elaborator does not strip dead code.
+#
+#   fn                       orphan cause
+#   isolated_block           single dead block with no in-edges from any live block
+#   orphan_cluster           two dead blocks connected by an internal goto edge, both reported
+#   after_abort              block only reachable through an `abort` terminator, which has no successors
+#   after_return             block only reachable through a `return` terminator, which has no successors
+
+# ---------- single isolated dead block ----------
+
+# `dead` has no predecessor in the live CFG; it is not the entry block
+# and no reachable block names it as a target.  The pass warns on it.
+fn isolated_block() {
+  entry:
+    return
+  dead:
+    return
+}
+
+# ---------- cluster of dead blocks connected by an internal edge ----------
+
+# Neither `dead1` nor `dead2` is reachable from `entry`.  They share
+# an internal goto edge, but that edge is irrelevant to reachability
+# from entry.  The pass reports both blocks independently.
+fn orphan_cluster() {
+  entry:
+    return
+  dead1:
+    goto dead2
+  dead2:
+    return
+}
+
+# ---------- block unreachable because `abort` has no successors ----------
+
+# `abort` terminates the process immediately; it does not transfer
+# control to any successor block.  `after_abort` therefore has no
+# live predecessor and the pass warns on it.
+fn after_abort() {
+  entry:
+    abort
+  after_abort:
+    return
+}
+
+# ---------- block unreachable because `return` has no successors ----------
+
+# `return` leaves the function immediately; it does not transfer
+# control to any successor block.  `after_return` has no live
+# predecessor and the pass warns on it.
+fn after_return() {
+  entry:
+    return
+  after_return:
+    return
+}

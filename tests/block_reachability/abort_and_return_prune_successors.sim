@@ -1,8 +1,0 @@
-
-            fn f() {
-              entry:
-                abort
-              orphan:
-                return
-            }
-            

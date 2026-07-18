@@ -1,0 +1,90 @@
+# Raw pointer operations accepted by the type-checker and borrow-checker.
+#
+# A raw pointer (*T) is created by `&raw place`; it does not introduce a
+# loan and so does not participate in borrow-checking or aliasing
+# analysis. The pointer value itself carries Copy + Drop + Move markers.
+# Dereferencing does not check init state or outstanding loans.
+#
+# Cells under test:
+#
+#   fn                                          what is checked
+#   ────────────────────────────────────────    ──────────────────────────────────────────
+#   creation_scalar                             &raw on a scalar local; type is *i64
+#   creation_in_struct_field                    *i64 field of a struct assigned via &raw
+#   copy_semantics                              raw ptr is Copy: copy to second local
+#   no_loan_alongside_mut_borrow                &raw does not conflict with live &mut loan
+#   deref_bypasses_loan_check                   deref *p alongside live &mut to same place
+
+struct Node: Copy + Drop { p: *i64  v: i64 }
+
+# ---------- creation_scalar ----------
+
+# Creating a raw pointer to a scalar local is accepted; the elaborated
+# form inserts a drop for the pointer at the end of the function.
+fn creation_scalar(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    return
+}
+
+# ---------- creation_in_struct_field ----------
+
+# A struct whose field type is *i64 is legal; the field may be written
+# using &raw just like a standalone raw-pointer local.
+fn creation_in_struct_field(x: i64) {
+  n: Node;
+  entry:
+    n.p = &raw x;
+    n.v = 0;
+    return
+}
+
+# ---------- copy_semantics ----------
+
+# Raw pointers carry the Copy marker; copying a pointer into a second
+# local does not move or invalidate the original.
+fn copy_semantics(x: i64) {
+  p: *i64;
+  q: *i64;
+  entry:
+    p = &raw x;
+    q = copy p;
+    return
+}
+
+# ---------- no_loan_alongside_mut_borrow ----------
+
+# `&raw` does not create a borrow-checker loan, so obtaining a raw
+# pointer to `x` while a &mut loan on `x` is live is accepted. The
+# existing &mut loan may still be used to read through after the raw
+# pointer is taken.
+fn no_loan_alongside_mut_borrow(x: i64) {
+  r: &mut i64;
+  p: *i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    p = &raw x;
+    y = copy r.*;
+    return
+}
+
+# ---------- deref_bypasses_loan_check ----------
+
+# Dereferencing *p does not consult outstanding loans or init state;
+# reading through the raw pointer is accepted even while a &mut loan on
+# the same place is live. Both the raw deref and the subsequent &mut
+# deref succeed.
+fn deref_bypasses_loan_check(x: i64) {
+  r: &mut i64;
+  p: *i64;
+  y: i64;
+  z: i64;
+  entry:
+    r = &mut x;
+    p = &raw x;
+    y = copy p.*;
+    z = copy r.*;
+    return
+}

@@ -1,0 +1,29 @@
+fn isolated_block() {
+  entry:
+    return
+  dead:
+    return
+}
+
+fn orphan_cluster() {
+  entry:
+    return
+  dead1:
+    goto dead2
+  dead2:
+    return
+}
+
+fn after_abort() {
+  entry:
+    abort
+  after_abort:
+    return
+}
+
+fn after_return() {
+  entry:
+    return
+  after_return:
+    return
+}
