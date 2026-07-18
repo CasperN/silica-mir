@@ -461,6 +461,7 @@ fn lower_expr_into(
             );
             Ok(())
         }
+
         hll::ExprKind::Assign(lhs, rhs) => {
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
@@ -602,7 +603,7 @@ fn lower_expr_into(
             }
             Ok(())
         }
-        hll::ExprKind::Block(stmts, last_expr) => {
+        hll::ExprKind::Block(stmts, last_expr, _) => {
             ctx.push_scope(false);
             for stmt in stmts {
                 match stmt {
@@ -1226,7 +1227,7 @@ mod tests {
             fn search_tree(tree: Tree, target: i64) -> bool {
                 tree match {
                     Empty(u) => false,
-                    Node(n) => {
+                    Node(n) => unsafe {
                         let val = n.*.value;
                         if is_equal(val, target) {
                             true

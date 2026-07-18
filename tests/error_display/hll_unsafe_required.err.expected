@@ -1,0 +1,4 @@
+error: at 6:11: [HTC-UnsafeRequired] In function 'test_unsafe_required': dereference of raw pointer requires unsafe block
+   |
+ 6 |   let y = p.*;
+   |           ^^^

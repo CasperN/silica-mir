@@ -149,6 +149,8 @@ pub enum HllTypeCheckCode {
     BoundNotSatisfied,
     /// Ambiguous type (type annotations needed).
     AmbiguousType,
+    /// Dereferencing a raw pointer outside an unsafe block.
+    UnsafeRequired,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -354,6 +356,7 @@ pub struct TypeEnv {
     /// Type-parameter names → declared marker bounds for the fn being
     /// checked. Empty outside a fn body.
     current_type_params: HashMap<String, Markers>,
+    in_unsafe: bool,
 }
 
 impl TypeEnv {
@@ -366,6 +369,7 @@ impl TypeEnv {
             fn_type_params: HashMap::new(),
             current_ret_ty: None,
             current_type_params: HashMap::new(),
+            in_unsafe: false,
         }
     }
 
@@ -837,7 +841,17 @@ fn infer_inner(
                 return error_ty();
             }
             match resolved {
-                Type::Ref(_, inner) | Type::RawPtr(inner) => *inner,
+                Type::Ref(_, inner) => *inner,
+                Type::RawPtr(inner) => {
+                    if !env.in_unsafe {
+                        d.push_error(Diagnostic::new(
+                            HllTypeCheckCode::UnsafeRequired,
+                            expr.span,
+                            "dereference of raw pointer requires unsafe block".to_string(),
+                        ));
+                    }
+                    *inner
+                }
                 other => {
                     d.push_error(Diagnostic::new(
                         ExpectedPointer,
@@ -888,7 +902,11 @@ fn infer_inner(
                 return error_ty();
             }
         }
-        ExprKind::Block(stmts, last_expr) => {
+        ExprKind::Block(stmts, last_expr, is_unsafe) => {
+            let old_unsafe = env.in_unsafe;
+            if *is_unsafe {
+                env.in_unsafe = true;
+            }
             env.push_scope();
             for stmt in stmts {
                 match stmt {
@@ -920,6 +938,7 @@ fn infer_inner(
                 unit_ty()
             };
             env.pop_scope();
+            env.in_unsafe = old_unsafe;
             res
         }
         ExprKind::If(cond, true_block, false_block) => {
@@ -1176,6 +1195,7 @@ fn infer_inner(
                 return error_ty();
             }
         }
+
     };
 
     types.insert(expr.span, ty.clone());
@@ -1192,7 +1212,11 @@ fn check_inner(
 ) {
     let resolved_expected = subst.resolve(expected);
     match (&expr.kind, &resolved_expected) {
-        (ExprKind::Block(stmts, last_expr), expected_ty) => {
+        (ExprKind::Block(stmts, last_expr, is_unsafe), expected_ty) => {
+            let old_unsafe = env.in_unsafe;
+            if *is_unsafe {
+                env.in_unsafe = true;
+            }
             env.push_scope();
             for stmt in stmts {
                 match stmt {
@@ -1226,6 +1250,7 @@ fn check_inner(
                 }
             }
             env.pop_scope();
+            env.in_unsafe = old_unsafe;
             if d.error_count() == errors_before {
                 types.insert(expr.span, resolved_expected.clone());
             }
@@ -1304,6 +1329,7 @@ fn check_inner(
             }
             types.insert(expr.span, resolved_expected.clone());
         }
+
         _ => {
             let inferred = infer_inner(env, subst, expr, types, d);
             if let Err(e) = subst.unify(&inferred, &resolved_expected) {
@@ -1341,7 +1367,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
                 "return is not allowed inside defer".to_string(),
             ));
         }
-        ExprKind::Block(stmts, last) => {
+        ExprKind::Block(stmts, last, _) => {
             for stmt in stmts {
                 match stmt {
                     Stmt::Let { init, .. } => check_no_control_flow(init, loop_depth, d),

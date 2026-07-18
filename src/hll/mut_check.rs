@@ -180,8 +180,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             }
         }
 
-        // ── blocks ───────────────────────────────────────────────
-        ExprKind::Block(stmts, trailing) => {
+        ExprKind::Block(stmts, trailing, _) => {
             scope.push();
             for stmt in stmts {
                 check_stmt(stmt, scope, func, d);

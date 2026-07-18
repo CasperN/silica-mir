@@ -255,11 +255,12 @@ module.exports = grammar({
       seq('(', $.expr, ')'),
     ),
 
-    // Block expression: `{ stmt* trailing_expr? }`. The trailing
+    // Block expression: `unsafe? { stmt* trailing_expr? }`. The trailing
     // expression (an `expr` not followed by `;`) is the block's
     // value; without a trailing expression the block evaluates to
     // unit.
     block_expr: $ => seq(
+      optional('unsafe'),
       '{',
       repeat($.stmt),
       optional(field('tail', $.expr)),

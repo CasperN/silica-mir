@@ -814,6 +814,7 @@ impl Parser {
 
     fn map_block(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
+        let is_unsafe = self.get_text(node).starts_with("unsafe");
         let mut stmts = Vec::new();
         let mut tail = None;
         let mut cursor = node.walk();
@@ -826,7 +827,7 @@ impl Parser {
             }
         }
         Ok(Expr {
-            kind: ExprKind::Block(stmts, tail),
+            kind: ExprKind::Block(stmts, tail, is_unsafe),
             span,
         })
     }
@@ -894,7 +895,7 @@ impl Parser {
             self.map_expr(else_node, scope)?
         } else {
             Expr {
-                kind: ExprKind::Block(Vec::new(), None),
+                kind: ExprKind::Block(Vec::new(), None, false),
                 span,
             }
         };
@@ -1118,7 +1119,7 @@ mod tests {
             assert_eq!(f.name, "add");
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.ret_ty, i64_ty());
-            if let ExprKind::Block(ref stmts, ref last) = f.body.kind {
+            if let ExprKind::Block(ref stmts, ref last, _) = f.body.kind {
                 assert_eq!(stmts.len(), 3);
                 assert!(last.is_none());
             } else {
@@ -1202,7 +1203,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        let ExprKind::Block(stmts, _) = &f.body.kind else {
+        let ExprKind::Block(stmts, _, _) = &f.body.kind else {
             panic!("expected block body");
         };
         let Stmt::Let { init, .. } = &stmts[0] else {
@@ -1296,7 +1297,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        let ExprKind::Block(stmts, _) = &f.body.kind else {
+        let ExprKind::Block(stmts, _, _) = &f.body.kind else {
             panic!("expected block");
         };
         let Stmt::Expr(e) = &stmts[0] else {
@@ -1350,7 +1351,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!()
         };
-        let ExprKind::Block(stmts, tail) = &f.body.kind else {
+        let ExprKind::Block(stmts, tail, _) = &f.body.kind else {
             panic!("expected block body")
         };
         assert!(stmts.is_empty());
@@ -1574,7 +1575,7 @@ mod tests {
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
-            if let ExprKind::Block(ref stmts, _) = f.body.kind {
+            if let ExprKind::Block(ref stmts, _, _) = f.body.kind {
                 assert_eq!(stmts.len(), 2);
                 assert!(matches!(stmts[0], Stmt::Defer { .. }));
                 assert!(matches!(stmts[1], Stmt::Defer { .. }));
@@ -1593,7 +1594,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        let ExprKind::Block(_, tail) = &f.body.kind else {
+        let ExprKind::Block(_, tail, _) = &f.body.kind else {
             panic!("expected block body");
         };
         *tail

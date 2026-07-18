@@ -2262,6 +2262,10 @@
     "named": false
   },
   {
+    "type": "unsafe",
+    "named": false
+  },
+  {
     "type": "{",
     "named": false
   },

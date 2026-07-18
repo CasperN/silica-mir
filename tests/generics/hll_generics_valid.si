@@ -89,3 +89,8 @@ fn call_generic_fn() -> i64 {
 fn call_generic_fn_via_ret() -> i64 {
   identity(identity(7))
 }
+
+# ---------- Unsafe block and raw pointer dereference ----------
+fn test_unsafe_deref(ptr: *i64) -> i64 {
+  unsafe { ptr.* }
+}

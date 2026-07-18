@@ -1,0 +1,16 @@
+fn test_unsafe_required() {
+  let x = 42;
+  let p: *i64 = &raw x;
+
+  # 1. Error: dereference outside unsafe block
+  let y = p.*;
+
+  # 2. OK: dereference inside unsafe block
+  let z = unsafe { p.* };
+
+  # 3. OK: dereference inside nested unsafe block
+  let w = unsafe {
+    let p2 = p;
+    p2.*
+  };
+}

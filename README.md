@@ -1039,3 +1039,6 @@ Order of operations:
   HLL `defer`, HLL binary operators.
 - Lambdas.
 - MIR traits.
+- Silica C FFI and calling conventions: Define C linkage declarations (`extern "C" fn`) and emit standard ABI parameter attributes in LLVM.
+- Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
+- Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.

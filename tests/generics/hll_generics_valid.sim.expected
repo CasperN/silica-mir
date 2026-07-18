@@ -116,3 +116,11 @@ fn call_generic_fn_via_ret($return: &out i64) {
     unborrow $return;
     return
 }
+
+fn test_unsafe_deref(ptr: *i64, $return: &out i64) {
+  entry:
+    $return.* = copy ptr.*;
+    unborrow $return;
+    drop ptr;
+    return
+}

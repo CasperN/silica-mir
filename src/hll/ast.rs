@@ -176,7 +176,7 @@ pub enum ExprKind {
     Borrow(RefKind, Box<Expr>),
     RawBorrow(Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
-    Block(Vec<Stmt>, Option<Box<Expr>>),
+    Block(Vec<Stmt>, Option<Box<Expr>>, bool), // true if it is an `unsafe { ... }` block
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),
     Break(Option<Box<Expr>>),
