@@ -31,9 +31,14 @@ impl From<HllMutCheckCode> for DiagCode {
 
 // ── scope tracker ────────────────────────────────────────────────────
 
+struct VarInfo {
+    is_mut: bool,
+    decl_span: Span,
+}
+
 struct Scope {
-    /// Stack of frames; each frame maps binding name → is_mut.
-    frames: Vec<HashMap<String, bool>>,
+    /// Stack of frames; each frame maps binding name → VarInfo.
+    frames: Vec<HashMap<String, VarInfo>>,
 }
 
 impl Scope {
@@ -51,19 +56,28 @@ impl Scope {
         self.frames.pop();
     }
 
-    fn declare(&mut self, name: &str, is_mut: bool) {
+    fn declare(&mut self, name: &str, is_mut: bool, decl_span: Span) {
         self.frames
             .last_mut()
             .expect("scope stack must be non-empty")
-            .insert(name.to_string(), is_mut);
+            .insert(name.to_string(), VarInfo { is_mut, decl_span });
     }
 
     /// Look up whether `name` is mutable.  Returns `None` if the name
     /// is not in scope (which is a type-check error, not ours).
     fn is_mut(&self, name: &str) -> Option<bool> {
         for frame in self.frames.iter().rev() {
-            if let Some(&m) = frame.get(name) {
-                return Some(m);
+            if let Some(info) = frame.get(name) {
+                return Some(info.is_mut);
+            }
+        }
+        None
+    }
+
+    fn get_info(&self, name: &str) -> Option<&VarInfo> {
+        for frame in self.frames.iter().rev() {
+            if let Some(info) = frame.get(name) {
+                return Some(info);
             }
         }
         None
@@ -87,7 +101,7 @@ fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
     let mut scope = Scope::new();
     // Parameters are immutable (Param has no is_mut field).
     for p in &f.params {
-        scope.declare(&p.name, false);
+        scope.declare(&p.name, false, p.span);
     }
     check_expr(body, &mut scope, &f.name, d);
 }
@@ -135,15 +149,18 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             check_expr(inner, scope, func, d);
             if *kind != RefKind::Shared {
                 if let PlaceRoot::Var(name, span) = place_root(inner) {
-                    if let Some(false) = scope.is_mut(name) {
-                        d.push_error(
-                            Diagnostic::new(
-                                HllMutCheckCode::BorrowImmutableAsMut,
-                                span,
-                                format!("cannot borrow immutable binding '{}' as mutable", name),
-                            )
-                            .in_function(func),
-                        );
+                    if let Some(info) = scope.get_info(name) {
+                        if !info.is_mut {
+                            d.push_error(
+                                Diagnostic::new(
+                                    HllMutCheckCode::BorrowImmutableAsMut,
+                                    span,
+                                    format!("cannot borrow immutable binding '{}' as mutable", name),
+                                )
+                                .with_secondary(info.decl_span, "variable declared as immutable here")
+                                .in_function(func),
+                            );
+                        }
                     }
                 }
             }
@@ -169,15 +186,18 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             // Walk the lhs for nested sub-expressions (index exprs etc.)
             check_assign_subexprs(lhs, scope, func, d);
             if let PlaceRoot::Var(name, span) = place_root(lhs) {
-                if let Some(false) = scope.is_mut(name) {
-                    d.push_error(
-                        Diagnostic::new(
-                            HllMutCheckCode::AssignToImmutable,
-                            span,
-                            format!("cannot assign to immutable binding '{}'", name),
-                        )
-                        .in_function(func),
-                    );
+                if let Some(info) = scope.get_info(name) {
+                    if !info.is_mut {
+                        d.push_error(
+                            Diagnostic::new(
+                                HllMutCheckCode::AssignToImmutable,
+                                span,
+                                format!("cannot assign to immutable binding '{}'", name),
+                            )
+                            .with_secondary(info.decl_span, "variable declared as immutable here")
+                            .in_function(func),
+                        );
+                    }
                 }
                 // `None` means the name wasn't in scope — type_check
                 // already rejects this, so we silently pass.
@@ -225,7 +245,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
                 scope.push();
                 // Pattern bindings are immutable.
                 if let Pattern::Variant(_, Some(bound)) = pattern {
-                    scope.declare(bound, false);
+                    scope.declare(bound, false, body.span);
                 }
                 check_expr(body, scope, func, d);
                 scope.pop();
@@ -277,12 +297,12 @@ fn check_stmt(stmt: &Stmt, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             name,
             ty: _,
             init,
-            span: _,
+            span,
         } => {
             if let Some(init) = init {
                 check_expr(init, scope, func, d);
             }
-            scope.declare(name, *is_mut);
+            scope.declare(name, *is_mut, *span);
         }
         Stmt::Defer { body, span: _ } => {
             check_expr(body, scope, func, d);

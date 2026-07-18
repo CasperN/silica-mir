@@ -4,13 +4,17 @@ error: at 15:30: [SUB-ReturnValueLeak] In function 'leak_arm_payload': value 'n'
  15 | fn leak_arm_payload(list: L) {
     |                              ^
  16 |   list match {
+ 17 |     A(u) => u,
+ 18 |     B(n) => (),
+    |             -- variable declared here
+ 19 |   }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 29:33: [SUB-ReturnValueLeak] In function 'linear_param_untouched': value 'n' of type N is not consumed at return
     |
  28 | # `linear_param_untouched`.
  29 | fn linear_param_untouched(n: N) {
-    |                                 ^
+    |                           ----  ^ variable declared here
  30 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

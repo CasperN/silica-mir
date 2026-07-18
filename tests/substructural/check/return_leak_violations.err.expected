@@ -21,6 +21,9 @@ error: at 97:5: [INIT-RefObligationUnfulfilled] In function 'ref_field_leak_via_
     |
 error: at 35:5: [SUB-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
     |
+ 32 | 
+ 33 | fn linear_struct_untouched_param(p: P) {
+    |                                  ---- variable declared here
  34 |   entry:
  35 |     return
     |     ^^^^^^
@@ -28,6 +31,13 @@ error: at 35:5: [SUB-ReturnValueLeak] In function 'linear_struct_untouched_param
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 45:5: [SUB-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
+    |
+ 40 | fn linear_struct_fully_constructed() {
+ 41 |   p: P;
+    |   ----- variable declared here
+ 42 |   entry:
+    |
+    | ...
     |
  44 |     p.y = 2;
  45 |     return
@@ -37,6 +47,9 @@ error: at 45:5: [SUB-ReturnValueLeak] In function 'linear_struct_fully_construct
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 53:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
     |
+ 50 | # Every field is non-Drop, so drop-elab cannot help; the whole `x` leaks.
+ 51 | fn fully_linear_struct_untouched(x: L) {
+    |                                  ---- variable declared here
  52 |   entry:
  53 |     return
     |     ^^^^^^
@@ -44,6 +57,13 @@ error: at 53:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_untouched
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
+    |
+ 59 | # still Init. The leak is reported on the specific field.
+ 60 | fn fully_linear_struct_partial_init(src: Pair) {
+    |                                     --------- variable declared here
+ 61 |   p: Pair;
+    |
+    | ...
     |
  63 |     p.a = move src.a;
  64 |     return
@@ -53,6 +73,13 @@ error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_i
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
     |
+ 68 | 
+ 69 | fn multiple_returns_each_checked(b: bool, x: L) {
+    |                                           ---- variable declared here
+ 70 |   entry:
+    |
+    | ...
+    |
  72 |   t:
  73 |     return
     |     ^^^^^^
@@ -60,6 +87,13 @@ error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 75:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
+    |
+ 68 | 
+ 69 | fn multiple_returns_each_checked(b: bool, x: L) {
+    |                                           ---- variable declared here
+ 70 |   entry:
+    |
+    | ...
     |
  74 |   fbr:
  75 |     return

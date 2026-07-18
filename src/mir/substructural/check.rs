@@ -226,6 +226,28 @@ pub fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
     }
 }
 
+fn place_root_var_name(place: &Place) -> &str {
+    match place {
+        Place::Var(name) => name,
+        Place::Field(base, _) => place_root_var_name(base),
+        Place::Downcast(base, _) => place_root_var_name(base),
+        Place::Deref(base) => place_root_var_name(base),
+        Place::Index(base, _) => place_root_var_name(base),
+    }
+}
+
+fn find_decl_span(func: &Function, name: &str) -> Option<Span> {
+    if let Some(param) = func.params.iter().find(|p| p.name == name) {
+        return Some(param.span);
+    }
+    if let Some(body) = &func.body {
+        if let Some(local) = body.locals.iter().find(|l| l.name == name) {
+            return Some(local.span);
+        }
+    }
+    None
+}
+
 fn check_leaks_in_state(
     env: &Env,
     func: &Function,
@@ -250,19 +272,23 @@ fn check_leaks_in_state(
         let mut leaks = Vec::new();
         find_leaks(env, s, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
-            d.push_error(
-                diag(
-                    ReturnValueLeak,
-                    block.terminator_span,
-                    func,
-                    block,
-                    format!(
-                        "value '{}' of type {} is not consumed at return",
-                        leaked_path, leaked_ty
-                    ),
-                )
-                .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.")
-            );
+            let mut diagnostic = diag(
+                ReturnValueLeak,
+                block.terminator_span,
+                func,
+                block,
+                format!(
+                    "value '{}' of type {} is not consumed at return",
+                    leaked_path, leaked_ty
+                ),
+            )
+            .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.");
+
+            let root_var = leaked_path.split('.').next().unwrap_or(&leaked_path);
+            if let Some(span) = find_decl_span(func, root_var) {
+                diagnostic = diagnostic.with_secondary(span, "variable declared here");
+            }
+            d.push_error(diagnostic);
         }
     }
 
@@ -276,7 +302,7 @@ fn check_leaks_in_state(
             continue;
         }
         let (cur, expected_desc) = crate::mir::init_state::describe_obligation_mismatch_labels(rs);
-        d.push_error(diag(
+        let mut diagnostic = diag(
             InitStateCode::RefObligationUnfulfilled,
             block.terminator_span,
             func,
@@ -287,7 +313,12 @@ fn check_leaks_in_state(
                 cur,
                 expected_desc,
             ),
-        ));
+        );
+        let root_var = place_root_var_name(place);
+        if let Some(span) = find_decl_span(func, root_var) {
+            diagnostic = diagnostic.with_secondary(span, "reference declared here");
+        }
+        d.push_error(diagnostic);
     }
 }
 

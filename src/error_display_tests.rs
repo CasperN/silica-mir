@@ -151,7 +151,9 @@ fn test_hll_immutable_assign_display() {
     ";
     let expected = r#"at 4:13: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
    |
+ 2 |         fn f() -> i64 {
  3 |             let x: i64 = 1;
+   |             --------------- variable declared as immutable here
  4 |             x = 2;
    |             ^
  5 |             x
@@ -170,7 +172,9 @@ fn test_hll_immutable_borrow_display() {
     ";
     let expected = r#"at 4:26: [HMC-BorrowImmutableAsMut] In function 'f': cannot borrow immutable binding 'x' as mutable
    |
+ 2 |         fn f() {
  3 |             let x: i64 = 1;
+   |             --------------- variable declared as immutable here
  4 |             let r = &mut x;
    |                          ^
  5 |         }
@@ -209,7 +213,9 @@ fn test_hll_defer_mutability() {
     ";
     let expected = r#"at 4:19: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
    |
+ 2 |         fn f() {
  3 |             let x = 1;
+   |             ---------- variable declared as immutable here
  4 |             defer x = 2;
    |                   ^
  5 |         }
