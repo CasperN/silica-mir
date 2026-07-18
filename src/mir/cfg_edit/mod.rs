@@ -7,6 +7,7 @@
 //! module provides the primitive so neither pass invents its own.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 
 /// Ensure a dedicated block exists on the edge from `pred_label` to
 /// `succ_label`, and return its label. The returned block has an empty
@@ -59,7 +60,7 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
         label: split_label.clone(),
         label_span: pred_span,
         statements: Vec::new(),
-        terminator: Terminator::Goto(succ_label.to_string()),
+        terminator: goto_term(succ_label),
         terminator_span: pred_span,
     };
     // Insert right after pred so the block ordering stays roughly

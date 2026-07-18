@@ -15,6 +15,7 @@ use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::substructural::composition::{class_of, ParamScope};
 use indexmap::IndexMap;
 
@@ -378,12 +379,9 @@ impl Env {
                         )
                     })?;
                     let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
-                    Ok(Type::Fn(param_tys))
+                    Ok(fn_ty(param_tys))
                 }
-                ConstVal::ByteStr(bytes) => Ok(Type::Array(
-                    Box::new(Type::Int(IntTy::U8)),
-                    bytes.len() as u64,
-                )),
+                ConstVal::ByteStr(bytes) => Ok(array_ty(u8_ty(), bytes.len() as u64)),
             },
         }
     }
@@ -399,11 +397,11 @@ impl Env {
             RValue::Use(op) => self.type_of_operand(op, span, locals),
             RValue::Ref(kind, place) => {
                 let pointee_ty = self.type_of_place(place, span, locals)?;
-                Ok(Type::Ref(kind.clone(), Box::new(pointee_ty)))
+                Ok(ref_ty(kind.clone(), pointee_ty))
             }
             RValue::RawRef(place) => {
                 let pointee_ty = self.type_of_place(place, span, locals)?;
-                Ok(Type::RawPtr(Box::new(pointee_ty)))
+                Ok(raw_ptr_ty(pointee_ty))
             }
             RValue::EnumConstr(enum_name, variant_name, op) => {
                 let e_decl = match self.types.get(enum_name) {

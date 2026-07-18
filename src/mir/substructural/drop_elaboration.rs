@@ -32,6 +32,7 @@
 //! second run finds nothing to insert.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::cfg_edit;
 use crate::mir::init_state::{self, InitState, PointState};
 use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
@@ -125,7 +126,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                     .unwrap_or(block.terminator_span);
                 let items: Vec<(Statement, Span)> = places
                     .iter()
-                    .map(|p| (Statement::Drop(p.clone()), span))
+                    .map(|p| (drop_stmt(p.clone()), span))
                     .collect();
                 block.statements.splice(pos..pos, items);
             }
@@ -143,7 +144,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
             for p in places {
                 split_block
                     .statements
-                    .push((Statement::Drop(p.clone()), span));
+                    .push((drop_stmt(p.clone()), span));
             }
         }
     }
@@ -305,16 +306,12 @@ fn pre_stmt_transitions(
             if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals) {
                 if let Type::Custom(enum_name, _) = &inner_ty {
                     let payload_place =
-                        Place::Downcast(Box::new(inner_owned.clone()), variant.clone());
+                        downcast_place(inner_owned.clone(), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals, scope) {
                         drops.push(payload_place);
-                        let rewrite = Statement::Assign(
+                        let rewrite = assign_stmt(
                             inner_owned,
-                            RValue::EnumConstr(
-                                enum_name.clone(),
-                                variant.clone(),
-                                operand.clone(),
-                            ),
+                            enum_constr_rv(enum_name.clone(), variant.clone(), operand.clone()),
                         );
                         return (drops, Some(rewrite));
                     }
@@ -397,7 +394,7 @@ fn collect_diverged_paths(func: &Function, state: &PointState) -> Vec<(Place, Ty
         let Some(root_state) = state.locals.get(name) else {
             continue;
         };
-        walk_diverged(Place::Var(name.clone()), ty, root_state, &mut out);
+        walk_diverged(var_place(name.clone()), ty, root_state, &mut out);
     }
     out
 }
@@ -477,12 +474,12 @@ fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env, scope: P
         // Refs with unfulfilled obligations must NOT be dropped: doing so
         // would silently violate their (cur, post). Skip; the leak check
         // will surface the missing consumption.
-        if let Some(rs) = state.refs.get(&Place::Var(name.clone())) {
+        if let Some(rs) = state.refs.get(&var_place(name.clone())) {
             if !rs.obligation_fulfilled() {
                 continue;
             }
         }
-        plan_drops_for_place(Place::Var(name.clone()), ty, s, env, scope, &mut drops);
+        plan_drops_for_place(var_place(name.clone()), ty, s, env, scope, &mut drops);
     }
     drops
 }
@@ -522,8 +519,8 @@ fn plan_drops_for_place(
                 let Some(field_state) = fields.get(&f.name) else {
                     continue;
                 };
-                let field_place = Place::Field(Box::new(place.clone()), f.name.clone());
-                plan_drops_for_place(field_place, &f.ty, field_state, env, scope, out);
+                let fp = field_place(place.clone(), f.name.clone());
+                plan_drops_for_place(fp, &f.ty, field_state, env, scope, out);
             }
         }
     }

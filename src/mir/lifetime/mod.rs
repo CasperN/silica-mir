@@ -25,6 +25,7 @@
 //! compatibility.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::dataflow::{self, Analysis, Direction, Results};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::Env;
@@ -323,7 +324,7 @@ fn capture_carried_loans(
             let Some(src) = as_owned_path(src_place) else {
                 return Vec::new();
             };
-            (src, Place::Downcast(Box::new(dst), variant.clone()))
+            (src, downcast_place(dst, variant.clone()))
         }
         _ => return Vec::new(),
     };

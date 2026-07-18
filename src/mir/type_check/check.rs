@@ -11,6 +11,7 @@ use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::substructural::composition::scope_from;
 use indexmap::IndexMap;
 use std::collections::HashSet;
@@ -407,7 +408,7 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
     if f.is_extern {
         return;
     }
-    let expected = Type::Ref(RefKind::Out, Box::new(Type::Int(IntTy::I32)));
+    let expected = out_ref_ty(i32_ty());
     match f.params.as_slice() {
         [] => {}
         [p] if p.ty == expected => {}

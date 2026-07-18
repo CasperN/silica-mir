@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use indexmap::IndexMap;
 use crate::hll::ast::*;
+use crate::hll::helpers::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::Span;
 
@@ -120,13 +121,13 @@ impl Subst {
                     Type::Var(*id)
                 }
             }
-            Type::Ref(kind, inner) => Type::Ref(*kind, Box::new(self.resolve(inner))),
-            Type::RawPtr(inner) => Type::RawPtr(Box::new(self.resolve(inner))),
+            Type::Ref(kind, inner) => ref_ty(*kind, self.resolve(inner)),
+            Type::RawPtr(inner) => raw_ptr_ty(self.resolve(inner)),
             Type::Fn(params, ret) => {
                 let resolved_params = params.iter().map(|p| self.resolve(p)).collect();
-                Type::Fn(resolved_params, Box::new(self.resolve(ret)))
+                fn_ty(resolved_params, self.resolve(ret))
             }
-            Type::Array(inner, size) => Type::Array(Box::new(self.resolve(inner)), *size),
+            Type::Array(inner, size) => array_ty(self.resolve(inner), *size),
             other => other.clone(),
         }
     }
@@ -137,15 +138,15 @@ impl Subst {
                     self.resolve_default(resolved)
                 } else {
                     // Default unresolved type variables to i64
-                    Type::Int(crate::mir::ast::IntTy::I64)
+                    i64_ty()
                 }
             }
-            Type::Ref(kind, inner) => Type::Ref(*kind, Box::new(self.resolve_default(inner))),
-            Type::RawPtr(inner) => Type::RawPtr(Box::new(self.resolve_default(inner))),
-            Type::Array(inner, size) => Type::Array(Box::new(self.resolve_default(inner)), *size),
+            Type::Ref(kind, inner) => ref_ty(*kind, self.resolve_default(inner)),
+            Type::RawPtr(inner) => raw_ptr_ty(self.resolve_default(inner)),
+            Type::Array(inner, size) => array_ty(self.resolve_default(inner), *size),
             Type::Fn(params, ret) => {
                 let resolved_params = params.iter().map(|p| self.resolve_default(p)).collect();
-                Type::Fn(resolved_params, Box::new(self.resolve_default(ret)))
+                fn_ty(resolved_params, self.resolve_default(ret))
             }
             other => other.clone(),
         }
@@ -333,8 +334,8 @@ fn infer_inner(
             Literal::Int(_, None) => Ok(subst.fresh_var()),
             Literal::Float(_, Some(ty)) => Ok(Type::Float(*ty)),
             Literal::Float(_, None) => Ok(subst.fresh_var()),
-            Literal::Bool(_) => Ok(Type::Bool),
-            Literal::Unit => Ok(Type::Unit),
+            Literal::Bool(_) => Ok(bool_ty()),
+            Literal::Unit => Ok(unit_ty()),
         },
         ExprKind::Binary(lhs, op, rhs) => {
             let lhs_ty = infer_inner(env, subst, lhs, types)?;
@@ -356,7 +357,7 @@ fn infer_inner(
                 BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
             );
             let res_ty = if is_cmp {
-                Type::Bool
+                bool_ty()
             } else {
                 lhs_ty.clone()
             };
@@ -366,7 +367,7 @@ fn infer_inner(
             if let Some(ty) = env.lookup_var(name) {
                 Ok(ty)
             } else if let Some((params, ret)) = env.functions.get(name) {
-                Ok(Type::Fn(params.clone(), Box::new(ret.clone())))
+                Ok(fn_ty(params.clone(), ret.clone()))
             } else {
                 err_at(
                     UndeclaredVariable,
@@ -451,11 +452,11 @@ fn infer_inner(
         }
         ExprKind::Borrow(kind, target) => {
             let inner_ty = infer_inner(env, subst, target, types)?;
-            Ok(Type::Ref(*kind, Box::new(inner_ty)))
+            Ok(ref_ty(*kind, inner_ty))
         }
         ExprKind::RawBorrow(target) => {
             let inner_ty = infer_inner(env, subst, target, types)?;
-            Ok(Type::RawPtr(Box::new(inner_ty)))
+            Ok(raw_ptr_ty(inner_ty))
         }
         ExprKind::Call(fn_expr, args) => {
             let fn_ty = infer_inner(env, subst, fn_expr, types)?;
@@ -499,7 +500,7 @@ fn infer_inner(
                     }
                     Stmt::Defer { body, span: _ } => {
                         let body_ty = infer_inner(env, subst, body, types)?;
-                        subst.unify(&body_ty, &Type::Unit).map_err(|e| e.to_diag(body.span))?;
+                        subst.unify(&body_ty, &unit_ty()).map_err(|e| e.to_diag(body.span))?;
                     }
                     Stmt::Expr(e) => {
                         infer_inner(env, subst, e, types)?;
@@ -509,42 +510,42 @@ fn infer_inner(
             let res = if let Some(last) = last_expr {
                 infer_inner(env, subst, last, types)
             } else {
-                Ok(Type::Unit)
+                Ok(unit_ty())
             };
             env.pop_scope();
             res
         }
         ExprKind::If(cond, true_block, false_block) => {
-            check_inner(env, subst, cond, &Type::Bool, types)?;
+            check_inner(env, subst, cond, &bool_ty(), types)?;
             let t1 = infer_inner(env, subst, true_block, types)?;
             let t2 = infer_inner(env, subst, false_block, types)?;
             subst.unify(&t1, &t2).map_err(|e| e.to_diag(expr.span))?;
             Ok(subst.resolve(&t1))
         }
         ExprKind::Loop(body) => {
-            check_inner(env, subst, body, &Type::Unit, types)?;
-            Ok(Type::Never)
+            check_inner(env, subst, body, &unit_ty(), types)?;
+            Ok(never_ty())
         }
         ExprKind::Break(val_expr) => {
             if let Some(val) = val_expr {
                 infer_inner(env, subst, val, types)?;
             }
-            Ok(Type::Never)
+            Ok(never_ty())
         }
         ExprKind::Continue => Ok(Type::Never),
         ExprKind::Return(val_expr) => {
-            let ret_ty = env.current_ret_ty.clone().unwrap_or(Type::Unit);
+            let ret_ty = env.current_ret_ty.clone().unwrap_or_else(unit_ty);
             if let Some(val) = val_expr {
                 check_inner(env, subst, val, &ret_ty, types)?;
             } else {
-                subst.unify(&ret_ty, &Type::Unit).map_err(|e| e.to_diag(expr.span))?;
+                subst.unify(&ret_ty, &unit_ty()).map_err(|e| e.to_diag(expr.span))?;
             }
-            Ok(Type::Never)
+            Ok(never_ty())
         }
         ExprKind::Assign(lhs, rhs) => {
             let lhs_ty = infer_inner(env, subst, lhs, types)?;
             check_inner(env, subst, rhs, &lhs_ty, types)?;
-            Ok(Type::Unit)
+            Ok(unit_ty())
         }
         ExprKind::Match(target, arms) => {
             let target_ty = infer_inner(env, subst, target, types)?;
@@ -639,7 +640,7 @@ fn infer_inner(
                 check_inner(env, subst, val_expr, &f_decl.ty, types)?;
             }
 
-            Ok(Type::Custom(name.clone()))
+            Ok(custom_ty(name.clone()))
         }
         ExprKind::EnumConstr(enum_name, variant_name, payload) => {
             let e_decl = env.enums.get(enum_name).cloned().ok_or_else(|| {
@@ -659,18 +660,18 @@ fn infer_inner(
             })?;
 
             check_inner(env, subst, payload, &variant_decl.ty, types)?;
-            Ok(Type::Custom(enum_name.clone()))
+            Ok(custom_ty(enum_name.clone()))
         }
         ExprKind::Array(elements) => {
             if elements.is_empty() {
                 let elem_ty = subst.fresh_var();
-                Ok(Type::Array(Box::new(elem_ty), 0))
+                Ok(array_ty(elem_ty, 0))
             } else {
                 let first_ty = infer_inner(env, subst, &elements[0], types)?;
                 for el in &elements[1..] {
                     check_inner(env, subst, el, &first_ty, types)?;
                 }
-                Ok(Type::Array(Box::new(first_ty), elements.len()))
+                Ok(array_ty(first_ty, elements.len()))
             }
         }
         ExprKind::ArrayIndex(arr, idx) => {
@@ -731,7 +732,7 @@ fn check_inner(
                     Stmt::Defer { body, span: _ } => {
                         check_no_control_flow(body, 0)?;
                         let body_ty = infer_inner(env, subst, body, types)?;
-                        subst.unify(&body_ty, &Type::Unit).map_err(|e| e.to_diag(body.span))?;
+                        subst.unify(&body_ty, &unit_ty()).map_err(|e| e.to_diag(body.span))?;
                     }
                     Stmt::Expr(e) => {
                         infer_inner(env, subst, e, types)?;
@@ -741,7 +742,7 @@ fn check_inner(
             let res = if let Some(last) = last_expr {
                 check_inner(env, subst, last, expected_ty, types)
             } else {
-                subst.unify(expected_ty, &Type::Unit).map_err(|e| e.to_diag(expr.span))
+                subst.unify(expected_ty, &unit_ty()).map_err(|e| e.to_diag(expr.span))
             };
             env.pop_scope();
             if res.is_ok() {
@@ -750,7 +751,7 @@ fn check_inner(
             res
         }
         (ExprKind::If(cond, true_block, false_block), expected_ty) => {
-            check_inner(env, subst, cond, &Type::Bool, types)?;
+            check_inner(env, subst, cond, &bool_ty(), types)?;
             check_inner(env, subst, true_block, expected_ty, types)?;
             check_inner(env, subst, false_block, expected_ty, types)?;
             types.insert(expr.span, resolved_expected.clone());

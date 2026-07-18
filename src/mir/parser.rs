@@ -1,4 +1,5 @@
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use tree_sitter::{Node, Parser as TSParser};
 
@@ -60,16 +61,16 @@ fn span_of(node: Node) -> Span {
 /// Returns `None` if the kind isn't one of the ten scalar keywords.
 fn scalar_kind_to_type(kind: &str) -> Option<Type> {
     Some(match kind {
-        "i8" => Type::Int(IntTy::I8),
-        "i16" => Type::Int(IntTy::I16),
-        "i32" => Type::Int(IntTy::I32),
-        "i64" => Type::Int(IntTy::I64),
-        "u8" => Type::Int(IntTy::U8),
-        "u16" => Type::Int(IntTy::U16),
-        "u32" => Type::Int(IntTy::U32),
-        "u64" => Type::Int(IntTy::U64),
-        "f32" => Type::Float(FloatTy::F32),
-        "f64" => Type::Float(FloatTy::F64),
+        "i8" => i8_ty(),
+        "i16" => i16_ty(),
+        "i32" => i32_ty(),
+        "i64" => i64_ty(),
+        "u8" => u8_ty(),
+        "u16" => u16_ty(),
+        "u32" => u32_ty(),
+        "u64" => u64_ty(),
+        "f32" => f32_ty(),
+        "f64" => f64_ty(),
         _ => return None,
     })
 }
@@ -91,7 +92,7 @@ fn parse_int_literal(text: &str) -> Result<ConstVal, String> {
     }
     let bits = u64::from_str_radix(&cleaned, radix)
         .map_err(|e| format!("invalid integer literal {:?}: {}", text, e))?;
-    Ok(ConstVal::Int { bits, ty })
+    Ok(int_const(bits, ty))
 }
 
 fn split_int_suffix(text: &str) -> (&str, IntTy) {
@@ -130,19 +131,13 @@ fn parse_float_literal(text: &str) -> Result<ConstVal, String> {
             let v: f32 = cleaned
                 .parse()
                 .map_err(|e| format!("invalid f32 literal {:?}: {}", text, e))?;
-            Ok(ConstVal::Float {
-                bits: v.to_bits() as u64,
-                ty,
-            })
+            Ok(float_const(v.to_bits() as u64, ty))
         }
         FloatTy::F64 => {
             let v: f64 = cleaned
                 .parse()
                 .map_err(|e| format!("invalid f64 literal {:?}: {}", text, e))?;
-            Ok(ConstVal::Float {
-                bits: v.to_bits(),
-                ty,
-            })
+            Ok(float_const(v.to_bits(), ty))
         }
     }
 }
@@ -156,7 +151,7 @@ fn parse_byte_str_literal(text: &str) -> Result<ConstVal, String> {
         .strip_prefix("b\"")
         .and_then(|s| s.strip_suffix('"'))
         .ok_or_else(|| format!("byte string literal missing quotes: {:?}", text))?;
-    Ok(ConstVal::ByteStr(decode_byte_escapes(inner)?))
+    Ok(byte_str_const(decode_byte_escapes(inner)?))
 }
 
 /// Parse a byte character literal token `b'X'`. Value type is `u8`,
@@ -175,10 +170,7 @@ fn parse_byte_char_literal(text: &str) -> Result<ConstVal, String> {
             text
         ));
     }
-    Ok(ConstVal::Int {
-        bits: bytes[0] as u64,
-        ty: IntTy::U8,
-    })
+    Ok(int_const(bytes[0] as u64, IntTy::U8))
 }
 
 /// Decode the escape sequences in a `b"..."` / `b'...'` literal body
@@ -409,17 +401,17 @@ impl Parser {
             return Ok(ty);
         }
         match node.kind() {
-            "bool" => Ok(Type::Bool),
-            "unit" => Ok(Type::Unit),
-            "never" => Ok(Type::Never),
+            "bool" => Ok(bool_ty()),
+            "unit" => Ok(unit_ty()),
+            "never" => Ok(never_ty()),
             "identifier" => {
                 let text = self.get_text(node);
                 if text == "bool" {
-                    Ok(Type::Bool)
+                    Ok(bool_ty())
                 } else if self.type_scope.borrow().contains(text) {
-                    Ok(Type::Param(text.to_string()))
+                    Ok(param_ty(text))
                 } else {
-                    Ok(Type::Custom(text.to_string(), Vec::new()))
+                    Ok(custom_ty(text))
                 }
             }
             "type" => {
@@ -450,15 +442,15 @@ impl Parser {
                         Vec::new()
                     };
                     if !args.is_empty() {
-                        return Ok(Type::Custom(text.to_string(), args));
+                        return Ok(custom_ty_with_args(text, args));
                     }
                     if text == "bool" {
-                        return Ok(Type::Bool);
+                        return Ok(bool_ty());
                     }
                     if self.type_scope.borrow().contains(text) {
-                        return Ok(Type::Param(text.to_string()));
+                        return Ok(param_ty(text));
                     }
-                    return Ok(Type::Custom(text.to_string(), Vec::new()));
+                    return Ok(custom_ty(text));
                 }
 
                 let text = self.get_text(first_child);
@@ -478,7 +470,7 @@ impl Parser {
                             format!("missing inner type for {}", text),
                         )
                     })?;
-                    return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
+                    return Ok(ref_ty(kind, self.map_type(inner)?));
                 }
 
                 if text == "*" {
@@ -492,7 +484,7 @@ impl Parser {
                             "missing inner type for raw pointer",
                         )
                     })?;
-                    return Ok(Type::RawPtr(Box::new(self.map_type(inner)?)));
+                    return Ok(raw_ptr_ty(self.map_type(inner)?));
                 }
 
                 if text == "[" {
@@ -516,7 +508,7 @@ impl Parser {
                             ),
                         ));
                     };
-                    return Ok(Type::Array(Box::new(elem), bits));
+                    return Ok(array_ty(elem, bits));
                 }
 
                 match text {
@@ -528,7 +520,7 @@ impl Parser {
                                 params.push(self.map_type(child)?);
                             }
                         }
-                        Ok(Type::Fn(params))
+                        Ok(fn_ty(params))
                     }
                     _ => Err(self.diag(
                         first_child,
@@ -568,20 +560,20 @@ impl Parser {
                                 "deref missing inner place",
                             )
                         })?;
-                        return Ok(Place::Deref(Box::new(self.map_place(inner)?)));
+                        return Ok(deref_place(self.map_place(inner)?));
                     }
                 }
 
                 let inner_place = self.map_place(first_child)?;
                 if let Some(variant_node) = node.child_by_field_name("variant") {
                     let variant = self.get_text(variant_node).to_string();
-                    Ok(Place::Downcast(Box::new(inner_place), variant))
+                    Ok(downcast_place(inner_place, variant))
                 } else if let Some(field_node) = node.child_by_field_name("field") {
                     let field_name = self.get_text(field_node).to_string();
-                    Ok(Place::Field(Box::new(inner_place), field_name))
+                    Ok(field_place(inner_place, field_name))
                 } else if let Some(index_node) = node.child_by_field_name("index") {
                     let index = self.map_operand(index_node)?;
-                    Ok(Place::Index(Box::new(inner_place), Box::new(index)))
+                    Ok(index_place(inner_place, index))
                 } else {
                     Err(self.diag(
                         node,
@@ -609,13 +601,13 @@ impl Parser {
                     let place_node = node.child(1).ok_or_else(|| {
                         self.diag(node, ParserCode::MalformedCst, "copy missing place")
                     })?;
-                    Ok(Operand::Copy(self.map_place(place_node)?))
+                    Ok(copy_op(self.map_place(place_node)?))
                 }
                 "move" => {
                     let place_node = node.child(1).ok_or_else(|| {
                         self.diag(node, ParserCode::MalformedCst, "move missing place")
                     })?;
-                    Ok(Operand::Move(self.map_place(place_node)?))
+                    Ok(move_op(self.map_place(place_node)?))
                 }
                 _ => Ok(Operand::Const(self.map_const(first_child)?)),
             }
@@ -655,7 +647,7 @@ impl Parser {
                 } else {
                     Vec::new()
                 };
-                Ok(ConstVal::FnName(name, type_args))
+                Ok(fn_name_const_with_args(name, type_args))
             }
             _ => {
                 let text = self.get_text(node);
@@ -689,14 +681,14 @@ impl Parser {
                     let place_node = node.child(1).ok_or_else(|| {
                         self.diag(node, ParserCode::MalformedCst, "ref missing place")
                     })?;
-                    return Ok(RValue::Ref(kind, self.map_place(place_node)?));
+                    return Ok(ref_rv(kind, self.map_place(place_node)?));
                 }
                 match text {
                     "&raw" => {
                         let place_node = node.child(1).ok_or_else(|| {
                             self.diag(node, ParserCode::MalformedCst, "&raw missing place")
                         })?;
-                        Ok(RValue::RawRef(self.map_place(place_node)?))
+                        Ok(raw_ref_rv(self.map_place(place_node)?))
                     }
                     "[" => {
                         // Array literal: [op0, op1, ..., opN-1].
@@ -706,7 +698,7 @@ impl Parser {
                             .filter(|c| c.kind() == "operand")
                             .map(|c| self.map_operand(c))
                             .collect();
-                        Ok(RValue::ArrayLit(ops?))
+                        Ok(array_lit_rv(ops?))
                     }
                     _ => {
                         let enum_name_node =
@@ -739,7 +731,7 @@ impl Parser {
                                 )
                             })?;
                         let operand = self.map_operand(operand_node)?;
-                        Ok(RValue::EnumConstr(enum_name, variant_name, operand))
+                        Ok(enum_constr_rv(enum_name, variant_name, operand))
                     }
                 }
             }
@@ -760,7 +752,7 @@ impl Parser {
                     self.diag(child, ParserCode::MalformedCst, "assignment missing rhs")
                 })?;
                 let rhs = self.map_rvalue(rhs_node)?;
-                Ok(Statement::Assign(lhs, rhs))
+                Ok(assign_stmt(lhs, rhs))
             }
             "call" => {
                 let func_node = child.child_by_field_name("function").ok_or_else(|| {
@@ -775,19 +767,19 @@ impl Parser {
                         args.push(self.map_operand(item)?);
                     }
                 }
-                Ok(Statement::Call(func, args))
+                Ok(call_stmt(func, args))
             }
             "drop_stmt" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "drop missing place")
                 })?;
-                Ok(Statement::Drop(self.map_place(place_node)?))
+                Ok(drop_stmt(self.map_place(place_node)?))
             }
             "unborrow_stmt" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "unborrow missing place")
                 })?;
-                Ok(Statement::Unborrow(self.map_place(place_node)?))
+                Ok(unborrow_stmt(self.map_place(place_node)?))
             }
             _ => Err(self.diag(
                 child,
@@ -806,7 +798,7 @@ impl Parser {
                 let label_node = child.child_by_field_name("label").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "goto missing label")
                 })?;
-                Ok(Terminator::Goto(self.get_text(label_node).to_string()))
+                Ok(goto_term(self.get_text(label_node)))
             }
             "return" => Ok(Terminator::Return),
             "branch" => {
@@ -830,11 +822,7 @@ impl Parser {
                     )
                 })?;
                 let false_label = self.get_text(false_node).to_string();
-                Ok(Terminator::Branch {
-                    cond,
-                    true_label,
-                    false_label,
-                })
+                Ok(branch_term(cond, true_label, false_label))
             }
             "switchEnum" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
@@ -869,10 +857,10 @@ impl Parser {
                         cases.push((variant, label));
                     }
                 }
-                Ok(Terminator::SwitchEnum { place, cases })
+                Ok(switch_enum_term(place, cases))
             }
-            "abort" => Ok(Terminator::Abort),
-            "unreachable" => Ok(Terminator::Unreachable),
+            "abort" => Ok(abort_term()),
+            "unreachable" => Ok(unreachable_term()),
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -1258,9 +1246,9 @@ mod tests {
             assert!(s.markers.declared(Marker::Drop));
             assert_eq!(s.fields.len(), 2);
             assert_eq!(s.fields[0].name, "x");
-            assert_eq!(s.fields[0].ty, Type::Int(IntTy::I64));
+            assert_eq!(s.fields[0].ty, i64_ty());
             assert_eq!(s.fields[1].name, "y");
-            assert_eq!(s.fields[1].ty, Type::Int(IntTy::I64));
+            assert_eq!(s.fields[1].ty, i64_ty());
         } else {
             panic!("Expected struct declaration");
         }
@@ -1283,9 +1271,9 @@ mod tests {
             assert!(!e.markers.declared(Marker::Drop));
             assert_eq!(e.variants.len(), 2);
             assert_eq!(e.variants[0].name, "None");
-            assert_eq!(e.variants[0].ty, Type::Custom("Option".to_string(), Vec::new()));
+            assert_eq!(e.variants[0].ty, custom_ty("Option"));
             assert_eq!(e.variants[1].name, "Some");
-            assert_eq!(e.variants[1].ty, Type::Int(IntTy::I64));
+            assert_eq!(e.variants[1].ty, i64_ty());
         } else {
             panic!("Expected enum declaration");
         }
@@ -1311,7 +1299,7 @@ mod tests {
             assert!(!f.is_extern);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
-            assert_eq!(f.params[0].ty, Type::Int(IntTy::I64));
+            assert_eq!(f.params[0].ty, i64_ty());
 
             let body = f.body.as_ref().unwrap();
             assert_eq!(body.locals.len(), 1);
@@ -1320,7 +1308,7 @@ mod tests {
             let block = &body.blocks[0];
             assert_eq!(block.label, "entry");
             assert_eq!(block.statements.len(), 3);
-            assert_eq!(block.terminator, Terminator::Return);
+            assert_eq!(block.terminator, return_term());
         } else {
             panic!("Expected function declaration");
         }
@@ -1339,7 +1327,7 @@ mod tests {
             assert!(f.is_extern);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
-            assert_eq!(f.params[0].ty, Type::Int(IntTy::I64));
+            assert_eq!(f.params[0].ty, i64_ty());
             assert!(f.body.is_none());
         } else {
             panic!("Expected extern function declaration");
@@ -1359,14 +1347,14 @@ mod tests {
     #[test]
     fn parse_all_int_type_keywords() {
         let src = "extern fn f(a: i8, b: i16, c: i32, d: i64, e: u8, g: u16, h: u32, i: u64);";
-        assert_eq!(ty_of_param(src, 0), Type::Int(IntTy::I8));
-        assert_eq!(ty_of_param(src, 1), Type::Int(IntTy::I16));
-        assert_eq!(ty_of_param(src, 2), Type::Int(IntTy::I32));
-        assert_eq!(ty_of_param(src, 3), Type::Int(IntTy::I64));
-        assert_eq!(ty_of_param(src, 4), Type::Int(IntTy::U8));
-        assert_eq!(ty_of_param(src, 5), Type::Int(IntTy::U16));
-        assert_eq!(ty_of_param(src, 6), Type::Int(IntTy::U32));
-        assert_eq!(ty_of_param(src, 7), Type::Int(IntTy::U64));
+        assert_eq!(ty_of_param(src, 0), i8_ty());
+        assert_eq!(ty_of_param(src, 1), i16_ty());
+        assert_eq!(ty_of_param(src, 2), i32_ty());
+        assert_eq!(ty_of_param(src, 3), i64_ty());
+        assert_eq!(ty_of_param(src, 4), u8_ty());
+        assert_eq!(ty_of_param(src, 5), u16_ty());
+        assert_eq!(ty_of_param(src, 6), u32_ty());
+        assert_eq!(ty_of_param(src, 7), u64_ty());
     }
 
     #[test]

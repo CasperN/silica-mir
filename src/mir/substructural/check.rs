@@ -18,6 +18,7 @@
 //! disagreement checks.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::init_state::{self, InitState, InitStateCode, PointState};
 use crate::mir::substructural::composition::class_of;
@@ -242,7 +243,7 @@ fn check_leaks_in_state(
         // if the Var itself is bound as a ref. (Ref-typed *fields* of a
         // struct are handled via the leak walk descending into fields;
         // a future refinement will inspect state.refs for sub-paths too.)
-        if state.refs.contains_key(&Place::Var(var.clone())) {
+        if state.refs.contains_key(&var_place(var.clone())) {
             continue;
         }
         let mut path = vec![var.clone()];

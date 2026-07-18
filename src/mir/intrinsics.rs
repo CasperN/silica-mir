@@ -25,6 +25,7 @@
 //! picks (`sdiv`/`udiv`, `ashr`/`lshr`, `sitofp`/`uitofp`, etc.).
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 
 /// One intrinsic. `inputs`/`result` build the extern signature; `emit`
 /// handles LLVM lowering.
@@ -76,15 +77,15 @@ pub fn all() -> Vec<IntrinsicSpec> {
 
     // ---------- Integer arithmetic ----------
 
-    for &int_ty in ALL_INT_TYS {
-        let value_ty = Type::Int(int_ty);
-        let type_name = int_ty.name();
-        let bits = int_ty.bits();
+    for &int_kind in ALL_INT_TYS {
+        let value_ty = int_ty(int_kind);
+        let type_name = int_kind.name();
+        let bits = int_kind.bits();
         out.push(int_binop(format!("${}_add", type_name), value_ty.clone(), "add", bits));
         out.push(int_binop(format!("${}_sub", type_name), value_ty.clone(), "sub", bits));
         out.push(int_binop(format!("${}_mul", type_name), value_ty.clone(), "mul", bits));
         // Signedness-dispatched division / remainder.
-        let (div_op, rem_op) = if int_ty.is_signed() {
+        let (div_op, rem_op) = if int_kind.is_signed() {
             ("sdiv", "srem")
         } else {
             ("udiv", "urem")
@@ -97,17 +98,17 @@ pub fn all() -> Vec<IntrinsicSpec> {
         out.push(int_binop(format!("${}_xor", type_name), value_ty.clone(), "xor", bits));
         // Shifts. shl is signedness-independent; right shift dispatches.
         out.push(int_binop(format!("${}_shl", type_name), value_ty.clone(), "shl", bits));
-        let shr_op = if int_ty.is_signed() { "ashr" } else { "lshr" };
+        let shr_op = if int_kind.is_signed() { "ashr" } else { "lshr" };
         out.push(int_binop(format!("${}_shr", type_name), value_ty.clone(), shr_op, bits));
     }
 
     // Negation (signed only — unsigned negation without conversion is
     // nonsense at the type level).
-    for &int_ty in SIGNED_INT_TYS {
-        let value_ty = Type::Int(int_ty);
-        let bits = int_ty.bits();
+    for &int_kind in SIGNED_INT_TYS {
+        let value_ty = int_ty(int_kind);
+        let bits = int_kind.bits();
         out.push(IntrinsicSpec {
-            name: format!("${}_neg", int_ty.name()),
+            name: format!("${}_neg", int_kind.name()),
             inputs: vec![value_ty.clone()],
             result: value_ty,
             emit: int_neg(bits),
@@ -117,15 +118,15 @@ pub fn all() -> Vec<IntrinsicSpec> {
 
     // ---------- Integer comparisons (result: bool) ----------
 
-    for &int_ty in ALL_INT_TYS {
-        let value_ty = Type::Int(int_ty);
-        let type_name = int_ty.name();
-        let bits = int_ty.bits();
+    for &int_kind in ALL_INT_TYS {
+        let value_ty = int_ty(int_kind);
+        let type_name = int_kind.name();
+        let bits = int_kind.bits();
         // eq/ne are signedness-independent.
         out.push(int_cmp(format!("${}_eq", type_name), value_ty.clone(), "eq", bits));
         out.push(int_cmp(format!("${}_ne", type_name), value_ty.clone(), "ne", bits));
         // Ordered comparisons pick signed vs unsigned predicates.
-        let (lt, le, gt, ge) = if int_ty.is_signed() {
+        let (lt, le, gt, ge) = if int_kind.is_signed() {
             ("slt", "sle", "sgt", "sge")
         } else {
             ("ult", "ule", "ugt", "uge")
@@ -138,10 +139,10 @@ pub fn all() -> Vec<IntrinsicSpec> {
 
     // ---------- Float arithmetic ----------
 
-    for &float_ty in FLOAT_TYS {
-        let value_ty = Type::Float(float_ty);
-        let type_name = float_ty.name();
-        let llvm_ty = float_llvm_ty(float_ty);
+    for &float_kind in FLOAT_TYS {
+        let value_ty = float_ty(float_kind);
+        let type_name = float_kind.name();
+        let llvm_ty = float_llvm_ty(float_kind);
         out.push(float_binop_spec(format!("${}_add", type_name), value_ty.clone(), "fadd", llvm_ty));
         out.push(float_binop_spec(format!("${}_sub", type_name), value_ty.clone(), "fsub", llvm_ty));
         out.push(float_binop_spec(format!("${}_mul", type_name), value_ty.clone(), "fmul", llvm_ty));
@@ -162,10 +163,10 @@ pub fn all() -> Vec<IntrinsicSpec> {
     // NaN-permissive semantics can build them from these plus
     // an explicit `$fN_ne(x, x)` NaN check.
 
-    for &float_ty in FLOAT_TYS {
-        let value_ty = Type::Float(float_ty);
-        let type_name = float_ty.name();
-        let llvm_ty = float_llvm_ty(float_ty);
+    for &float_kind in FLOAT_TYS {
+        let value_ty = float_ty(float_kind);
+        let type_name = float_kind.name();
+        let llvm_ty = float_llvm_ty(float_kind);
         for (op, pred) in [
             ("eq", "oeq"),
             ("ne", "one"),
@@ -177,7 +178,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
             out.push(IntrinsicSpec {
                 name: format!("${}_{}", type_name, op),
                 inputs: vec![value_ty.clone(), value_ty.clone()],
-                result: Type::Bool,
+                result: bool_ty(),
                 emit: fcmp(pred, llvm_ty),
                 llvm_declares: &[],
             });
@@ -214,30 +215,30 @@ pub fn all() -> Vec<IntrinsicSpec> {
             } else {
                 ("trunc", format!("${}_to_{}", from.name(), to.name()))
             };
-            out.push(int_cast_spec(name, Type::Int(from), Type::Int(to), op));
+            out.push(int_cast_spec(name, int_ty(from), int_ty(to), op));
         }
     }
 
     // Int ↔ Float. We cover the 8 int types × 2 float types both
     // directions; the LLVM op picks signedness for the int side.
-    for &int_ty in ALL_INT_TYS {
-        for &float_ty in FLOAT_TYS {
+    for &int_kind in ALL_INT_TYS {
+        for &float_kind in FLOAT_TYS {
             // int → float
-            let op = if int_ty.is_signed() { "sitofp" } else { "uitofp" };
+            let op = if int_kind.is_signed() { "sitofp" } else { "uitofp" };
             out.push(IntrinsicSpec {
-                name: format!("${}_to_{}", int_ty.name(), float_ty.name()),
-                inputs: vec![Type::Int(int_ty)],
-                result: Type::Float(float_ty),
-                emit: cast_emit(op, int_llvm_ty(int_ty), float_llvm_ty(float_ty)),
+                name: format!("${}_to_{}", int_kind.name(), float_kind.name()),
+                inputs: vec![int_ty(int_kind)],
+                result: float_ty(float_kind),
+                emit: cast_emit(op, int_llvm_ty(int_kind), float_llvm_ty(float_kind)),
                 llvm_declares: &[],
             });
             // float → int
-            let op = if int_ty.is_signed() { "fptosi" } else { "fptoui" };
+            let op = if int_kind.is_signed() { "fptosi" } else { "fptoui" };
             out.push(IntrinsicSpec {
-                name: format!("${}_to_{}", float_ty.name(), int_ty.name()),
-                inputs: vec![Type::Float(float_ty)],
-                result: Type::Int(int_ty),
-                emit: cast_emit(op, float_llvm_ty(float_ty), int_llvm_ty(int_ty)),
+                name: format!("${}_to_{}", float_kind.name(), int_kind.name()),
+                inputs: vec![float_ty(float_kind)],
+                result: int_ty(int_kind),
+                emit: cast_emit(op, float_llvm_ty(float_kind), int_llvm_ty(int_kind)),
                 llvm_declares: &[],
             });
         }
@@ -246,27 +247,27 @@ pub fn all() -> Vec<IntrinsicSpec> {
     // Float ↔ Float.
     out.push(IntrinsicSpec {
         name: "$f32_to_f64".to_string(),
-        inputs: vec![Type::Float(FloatTy::F32)],
-        result: Type::Float(FloatTy::F64),
+        inputs: vec![f32_ty()],
+        result: f64_ty(),
         emit: cast_emit("fpext", "float", "double"),
         llvm_declares: &[],
     });
     out.push(IntrinsicSpec {
         name: "$f64_to_f32".to_string(),
-        inputs: vec![Type::Float(FloatTy::F64)],
-        result: Type::Float(FloatTy::F32),
+        inputs: vec![f64_ty()],
+        result: f32_ty(),
         emit: cast_emit("fptrunc", "double", "float"),
         llvm_declares: &[],
     });
 
     // Bool ↔ Int. `bool_to_iN` = zext from i1. `iN_to_bool` =
     // truncate to i1 (only the low bit matters).
-    for &int_ty in ALL_INT_TYS {
+    for &int_kind in ALL_INT_TYS {
         out.push(IntrinsicSpec {
-            name: format!("$bool_to_{}", int_ty.name()),
-            inputs: vec![Type::Bool],
-            result: Type::Int(int_ty),
-            emit: cast_emit("zext", "i1", int_llvm_ty(int_ty)),
+            name: format!("$bool_to_{}", int_kind.name()),
+            inputs: vec![bool_ty()],
+            result: int_ty(int_kind),
+            emit: cast_emit("zext", "i1", int_llvm_ty(int_kind)),
             llvm_declares: &[],
         });
         // Truncation of an int wider than 1 bit to bool. For i8
@@ -275,12 +276,12 @@ pub fn all() -> Vec<IntrinsicSpec> {
         // C "nonzero-becomes-true" semantics if the caller pre-
         // computes `x != 0`. We don't collapse to icmp here; that's
         // the caller's job via `$iN_ne(x, 0)`.
-        if int_ty.bits() > 1 {
+        if int_kind.bits() > 1 {
             out.push(IntrinsicSpec {
-                name: format!("${}_to_bool", int_ty.name()),
-                inputs: vec![Type::Int(int_ty)],
-                result: Type::Bool,
-                emit: cast_emit("trunc", int_llvm_ty(int_ty), "i1"),
+                name: format!("${}_to_bool", int_kind.name()),
+                inputs: vec![int_ty(int_kind)],
+                result: bool_ty(),
+                emit: cast_emit("trunc", int_llvm_ty(int_kind), "i1"),
                 llvm_declares: &[],
             });
         }
@@ -289,10 +290,10 @@ pub fn all() -> Vec<IntrinsicSpec> {
     // ---------- LLVM-intrinsic-backed ops ----------
 
     // Population count / leading zeros / trailing zeros — per width.
-    for &int_ty in ALL_INT_TYS {
-        let value_ty = Type::Int(int_ty);
-        let bits = int_ty.bits();
-        let type_name = int_ty.name();
+    for &int_kind in ALL_INT_TYS {
+        let value_ty = int_ty(int_kind);
+        let bits = int_kind.bits();
+        let type_name = int_kind.name();
         out.push(llvm_unary_intrinsic(
             format!("${}_popcount", type_name),
             value_ty.clone(),
@@ -314,10 +315,10 @@ pub fn all() -> Vec<IntrinsicSpec> {
     }
 
     // Square root (float).
-    for &float_ty in FLOAT_TYS {
-        let value_ty = Type::Float(float_ty);
-        let llvm_ty = float_llvm_ty(float_ty);
-        let type_name = float_ty.name();
+    for &float_kind in FLOAT_TYS {
+        let value_ty = float_ty(float_kind);
+        let llvm_ty = float_llvm_ty(float_kind);
+        let type_name = float_kind.name();
         out.push(llvm_float_unary(
             format!("${}_sqrt", type_name),
             value_ty,
@@ -352,7 +353,7 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
     }
     params.push(Param {
         name: "out".to_string(),
-        ty: Type::Ref(RefKind::Out, Box::new(spec.result)),
+        ty: out_ref_ty(spec.result),
         span: SPAN,
     });
     Function {
@@ -394,7 +395,7 @@ fn int_cmp(name: String, ty: Type, pred: &'static str, bits: u32) -> IntrinsicSp
     IntrinsicSpec {
         name,
         inputs: vec![ty.clone(), ty],
-        result: Type::Bool,
+        result: bool_ty(),
         emit: icmp(pred, bits),
         llvm_declares: &[],
     }
@@ -418,8 +419,8 @@ fn float_binop_spec(
 
 /// One-operand int-to-int cast (sext / zext / trunc).
 fn int_cast_spec(name: String, from: Type, to: Type, op: &'static str) -> IntrinsicSpec {
-    let from_llvm = int_type_llvm(&from);
-    let to_llvm = int_type_llvm(&to);
+    let from_llvm = int_kindpe_llvm(&from);
+    let to_llvm = int_kindpe_llvm(&to);
     IntrinsicSpec {
         name,
         inputs: vec![from],
@@ -429,10 +430,10 @@ fn int_cast_spec(name: String, from: Type, to: Type, op: &'static str) -> Intrin
     }
 }
 
-fn int_type_llvm(ty: &Type) -> &'static str {
+fn int_kindpe_llvm(ty: &Type) -> &'static str {
     match ty {
         Type::Int(t) => int_llvm_ty(*t),
-        _ => panic!("int_type_llvm: not an int type: {:?}", ty),
+        _ => panic!("int_kindpe_llvm: not an int type: {:?}", ty),
     }
 }
 
@@ -602,7 +603,7 @@ mod tests {
         let spec = lookup("$i64_add").expect("$i64_add should exist");
         assert_eq!(spec.name, "$i64_add");
         assert_eq!(spec.inputs.len(), 2);
-        assert_eq!(spec.result, Type::Int(IntTy::I64));
+        assert_eq!(spec.result, i64_ty());
     }
 
     #[test]
@@ -629,8 +630,8 @@ mod tests {
     #[test]
     fn per_width_arith_coverage() {
         // Every int type has the full arithmetic surface.
-        for int_ty in ALL_INT_TYS {
-            let type_name = int_ty.name();
+        for int_kind in ALL_INT_TYS {
+            let type_name = int_kind.name();
             for op in ["add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr"] {
                 let full = format!("${}_{}", type_name, op);
                 assert!(
@@ -641,18 +642,18 @@ mod tests {
             }
         }
         // Neg only for signed.
-        for int_ty in SIGNED_INT_TYS {
-            assert!(lookup(&format!("${}_neg", int_ty.name())).is_some());
+        for int_kind in SIGNED_INT_TYS {
+            assert!(lookup(&format!("${}_neg", int_kind.name())).is_some());
         }
-        for int_ty in UNSIGNED_INT_TYS {
-            assert!(lookup(&format!("${}_neg", int_ty.name())).is_none());
+        for int_kind in UNSIGNED_INT_TYS {
+            assert!(lookup(&format!("${}_neg", int_kind.name())).is_none());
         }
     }
 
     #[test]
     fn per_width_cmp_coverage() {
-        for int_ty in ALL_INT_TYS {
-            let type_name = int_ty.name();
+        for int_kind in ALL_INT_TYS {
+            let type_name = int_kind.name();
             for op in ["eq", "ne", "lt", "le", "gt", "ge"] {
                 assert!(
                     lookup(&format!("${}_{}", type_name, op)).is_some(),
@@ -664,8 +665,8 @@ mod tests {
 
     #[test]
     fn float_full_surface() {
-        for float_ty in FLOAT_TYS {
-            let type_name = float_ty.name();
+        for float_kind in FLOAT_TYS {
+            let type_name = float_kind.name();
             for op in ["add", "sub", "mul", "div", "neg", "sqrt"] {
                 assert!(
                     lookup(&format!("${}_{}", type_name, op)).is_some(),
@@ -717,12 +718,9 @@ mod tests {
             .find(|f| f.name == "$i64_add")
             .unwrap();
         assert_eq!(f.params.len(), 3);
-        assert_eq!(f.params[0].ty, Type::Int(IntTy::I64));
-        assert_eq!(f.params[1].ty, Type::Int(IntTy::I64));
-        assert_eq!(
-            f.params[2].ty,
-            Type::Ref(RefKind::Out, Box::new(Type::Int(IntTy::I64)))
-        );
+        assert_eq!(f.params[0].ty, i64_ty());
+        assert_eq!(f.params[1].ty, i64_ty());
+        assert_eq!(f.params[2].ty, out_ref_ty(i64_ty()));
     }
 
     // ---------- llvm_declares (on the spec, not the union) ----------

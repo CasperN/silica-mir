@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use indexmap::IndexMap;
 use crate::mir::ast as mir;
+use crate::mir::helpers::*;
 use crate::hll::ast as hll;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 
@@ -132,7 +133,7 @@ impl LowerCtx {
             )
         })?;
         for defer_expr in scope.defers.into_iter().rev() {
-            let unit_temp = self.fresh_temp(mir::Type::Unit, defer_expr.span);
+            let unit_temp = self.fresh_temp(unit_ty(), defer_expr.span);
             lower_expr_into(self, &defer_expr, &unit_temp, types)?;
         }
         Ok(())
@@ -146,7 +147,7 @@ impl LowerCtx {
             }
         }
         for defer_expr in defers {
-            let unit_temp = self.fresh_temp(mir::Type::Unit, defer_expr.span);
+            let unit_temp = self.fresh_temp(unit_ty(), defer_expr.span);
             lower_expr_into(self, &defer_expr, &unit_temp, types)?;
         }
         Ok(())
@@ -160,7 +161,7 @@ impl LowerCtx {
             ty,
             span,
         });
-        mir::Place::Var(name)
+        var_place(name)
     }
 
     fn fresh_label(&mut self, prefix: &str) -> String {
@@ -196,22 +197,22 @@ impl LowerCtx {
 
 fn lower_type(ty: &hll::Type) -> mir::Type {
     match ty {
-        hll::Type::Int(t) => mir::Type::Int(*t),
-        hll::Type::Float(t) => mir::Type::Float(*t),
-        hll::Type::Bool => mir::Type::Bool,
-        hll::Type::Unit => mir::Type::Unit,
-        hll::Type::Never => mir::Type::Never,
-        hll::Type::Custom(name) => mir::Type::Custom(name.clone(), Vec::new()),
-        hll::Type::Ref(kind, inner) => mir::Type::Ref(*kind, Box::new(lower_type(inner))),
-        hll::Type::RawPtr(inner) => mir::Type::RawPtr(Box::new(lower_type(inner))),
+        hll::Type::Int(t) => int_ty(*t),
+        hll::Type::Float(t) => float_ty(*t),
+        hll::Type::Bool => bool_ty(),
+        hll::Type::Unit => unit_ty(),
+        hll::Type::Never => never_ty(),
+        hll::Type::Custom(name) => custom_ty(name.clone()),
+        hll::Type::Ref(kind, inner) => ref_ty(*kind, lower_type(inner)),
+        hll::Type::RawPtr(inner) => raw_ptr_ty(lower_type(inner)),
         hll::Type::Fn(params, ret) => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();
             if **ret != hll::Type::Unit {
-                mir_params.push(mir::Type::Ref(mir::RefKind::Out, Box::new(lower_type(ret))));
+                mir_params.push(out_ref_ty(lower_type(ret)));
             }
-            mir::Type::Fn(mir_params)
+            fn_ty(mir_params)
         }
-        hll::Type::Array(inner, size) => mir::Type::Array(Box::new(lower_type(inner)), *size as u64),
+        hll::Type::Array(inner, size) => array_ty(lower_type(inner), *size as u64),
         hll::Type::Var(_) => unreachable!("type variables must be resolved before lowering"),
     }
 }
@@ -239,20 +240,20 @@ fn lower_expr_to_place(
         hll::ExprKind::Variable(name) => Ok(mir::Place::Var(name.clone())),
         hll::ExprKind::FieldAccess(target, field) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            Ok(mir::Place::Field(Box::new(target_place), field.clone()))
+            Ok(field_place(target_place, field.clone()))
         }
         hll::ExprKind::Downcast(target, variant) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            Ok(mir::Place::Downcast(Box::new(target_place), variant.clone()))
+            Ok(downcast_place(target_place, variant.clone()))
         }
         hll::ExprKind::Deref(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            Ok(mir::Place::Deref(Box::new(target_place)))
+            Ok(deref_place(target_place))
         }
         hll::ExprKind::ArrayIndex(target, index) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             let index_op = lower_expr_to_operand(ctx, index, types)?;
-            Ok(mir::Place::Index(Box::new(target_place), Box::new(index_op)))
+            Ok(index_place(target_place, index_op))
         }
         _ => {
             // Allocate a temporary and evaluate the expression into it
@@ -288,10 +289,7 @@ fn lower_expr_to_operand(
                             _ => mir::IntTy::I64,
                         }
                     };
-                    mir::ConstVal::Int {
-                        bits: *val as u64,
-                        ty,
-                    }
+                    int_const(*val as u64, ty)
                 }
                 hll::Literal::Float(val, suffix) => {
                     let ty = if let Some(s) = suffix {
@@ -302,15 +300,12 @@ fn lower_expr_to_operand(
                             _ => mir::FloatTy::F64,
                         }
                     };
-                    mir::ConstVal::Float {
-                        bits: val.to_bits(),
-                        ty,
-                    }
+                    float_const(val.to_bits(), ty)
                 }
-                hll::Literal::Bool(val) => mir::ConstVal::Bool(*val),
-                hll::Literal::Unit => mir::ConstVal::Unit,
+                hll::Literal::Bool(val) => bool_const(*val),
+                hll::Literal::Unit => unit_const(),
             };
-            Ok(mir::Operand::Const(const_val))
+            Ok(const_op(const_val))
         }
         hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
@@ -327,15 +322,15 @@ fn lower_expr_to_operand(
             })?;
             let mir_ty = lower_type(hll_ty);
             if is_copy_type(&mir_ty) {
-                Ok(mir::Operand::Copy(place))
+                Ok(copy_op(place))
             } else {
-                Ok(mir::Operand::Move(place))
+                Ok(move_op(place))
             }
         }
         _ => {
             // Evaluate into a temporary first, then move the temporary
             let place = lower_expr_to_place(ctx, expr, types)?;
-            Ok(mir::Operand::Move(place))
+            Ok(move_op(place))
         }
     }
 }
@@ -355,7 +350,7 @@ fn lower_expr_into(
         | hll::ExprKind::ArrayIndex(_, _) => {
             let op = lower_expr_to_operand(ctx, expr, types)?;
             ctx.emit_statement(
-                mir::Statement::Assign(dest.clone(), mir::RValue::Use(op)),
+                assign_stmt(dest.clone(), use_rv(op)),
                 expr.span,
             );
             Ok(())
@@ -363,7 +358,7 @@ fn lower_expr_into(
         hll::ExprKind::Borrow(kind, target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             ctx.emit_statement(
-                mir::Statement::Assign(dest.clone(), mir::RValue::Ref(*kind, target_place)),
+                assign_stmt(dest.clone(), ref_rv(*kind, target_place)),
                 expr.span,
             );
             Ok(())
@@ -371,7 +366,7 @@ fn lower_expr_into(
         hll::ExprKind::RawBorrow(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             ctx.emit_statement(
-                mir::Statement::Assign(dest.clone(), mir::RValue::RawRef(target_place)),
+                assign_stmt(dest.clone(), raw_ref_rv(target_place)),
                 expr.span,
             );
             Ok(())
@@ -380,12 +375,12 @@ fn lower_expr_into(
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
             ctx.emit_statement(
-                mir::Statement::Assign(lhs_place, mir::RValue::Use(rhs_op)),
+                assign_stmt(lhs_place, use_rv(rhs_op)),
                 expr.span,
             );
             // Assignment expression itself evaluates to Unit
             ctx.emit_statement(
-                mir::Statement::Assign(dest.clone(), mir::RValue::Use(mir::Operand::Const(mir::ConstVal::Unit))),
+                assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
                 expr.span,
             );
             Ok(())
@@ -426,7 +421,7 @@ fn lower_expr_into(
             };
             
             let intrinsic_name = format!("${}_{}", type_name, op_name);
-            let fn_op = mir::Operand::Const(mir::ConstVal::FnName(intrinsic_name, Vec::new()));
+            let fn_op = const_op(fn_name_const(intrinsic_name));
             
             let lhs_op = lower_expr_to_operand(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
@@ -440,14 +435,14 @@ fn lower_expr_into(
                 )
             })?;
             
-            let ref_ty = mir::Type::Ref(mir::RefKind::Out, Box::new(lower_type(hll_ret_ty)));
-            let out_ref_place = ctx.fresh_temp(ref_ty, expr.span);
+            let out_ref = out_ref_ty(lower_type(hll_ret_ty));
+            let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
             ctx.emit_statement(
-                mir::Statement::Assign(out_ref_place.clone(), mir::RValue::Ref(mir::RefKind::Out, dest.clone())),
+                assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
                 expr.span,
             );
-            arg_ops.push(mir::Operand::Move(out_ref_place));
-            ctx.emit_statement(mir::Statement::Call(fn_op, arg_ops), expr.span);
+            arg_ops.push(move_op(out_ref_place));
+            ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
             Ok(())
         }
         hll::ExprKind::Call(fn_expr, args) => {
@@ -460,7 +455,7 @@ fn lower_expr_into(
             // If it is a direct function name, we match it.
             let fn_op = if let hll::ExprKind::Variable(ref name) = fn_expr.kind {
                 if ctx.functions.contains_key(name) {
-                    mir::Operand::Const(mir::ConstVal::FnName(name.clone(), Vec::new()))
+                    const_op(fn_name_const(name.clone()))
                 } else {
                     lower_expr_to_operand(ctx, fn_expr, types)?
                 }
@@ -495,19 +490,19 @@ fn lower_expr_into(
                 // assign `_temp_out_ref = &out dest`,
                 // and pass `Operand::Move(_temp_out_ref)` as the final argument in Statement::Call!
                 // Yes! That is absolutely correct and matches MIR semantics perfectly!
-                let ref_ty = mir::Type::Ref(mir::RefKind::Out, Box::new(lower_type(hll_ret_ty)));
-                let out_ref_place = ctx.fresh_temp(ref_ty, expr.span);
+                let out_ref = out_ref_ty(lower_type(hll_ret_ty));
+                let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
                 ctx.emit_statement(
-                    mir::Statement::Assign(out_ref_place.clone(), mir::RValue::Ref(mir::RefKind::Out, dest.clone())),
+                    assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
                     expr.span,
                 );
-                arg_ops.push(mir::Operand::Move(out_ref_place));
-                ctx.emit_statement(mir::Statement::Call(fn_op, arg_ops), expr.span);
+                arg_ops.push(move_op(out_ref_place));
+                ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
             } else {
-                ctx.emit_statement(mir::Statement::Call(fn_op, arg_ops), expr.span);
+                ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
                 // Function returns unit, assign Unit to dest
                 ctx.emit_statement(
-                    mir::Statement::Assign(dest.clone(), mir::RValue::Use(mir::Operand::Const(mir::ConstVal::Unit))),
+                    assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
                     expr.span,
                 );
             }
@@ -531,8 +526,8 @@ fn lower_expr_into(
                             ty: mir_ty,
                             span: *span,
                         });
-                        let var_place = mir::Place::Var(name.clone());
-                        lower_expr_into(ctx, init, &var_place, types)?;
+                        let dest = var_place(name.clone());
+                        lower_expr_into(ctx, init, &dest, types)?;
                     }
                     hll::Stmt::Defer { body, span } => {
                         let scope = ctx.scopes.last_mut().ok_or_else(|| {
@@ -546,7 +541,7 @@ fn lower_expr_into(
                     }
                     hll::Stmt::Expr(e) => {
                         // Value is ignored, lower into a dummy unit temporary
-                        let dummy = ctx.fresh_temp(mir::Type::Unit, e.span);
+                        let dummy = ctx.fresh_temp(unit_ty(), e.span);
                         lower_expr_into(ctx, e, &dummy, types)?;
                     }
                 }
@@ -555,7 +550,7 @@ fn lower_expr_into(
                 lower_expr_into(ctx, last, dest, types)?;
             } else {
                 ctx.emit_statement(
-                    mir::Statement::Assign(dest.clone(), mir::RValue::Use(mir::Operand::Const(mir::ConstVal::Unit))),
+                    assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
                     expr.span,
                 );
             }
@@ -569,23 +564,19 @@ fn lower_expr_into(
             let merge_label = ctx.fresh_label("if_merge");
 
             ctx.terminate_block(
-                mir::Terminator::Branch {
-                    cond: cond_op,
-                    true_label: true_label.clone(),
-                    false_label: false_label.clone(),
-                },
+                branch_term(cond_op, true_label.clone(), false_label.clone()),
                 expr.span,
             );
 
             // True branch
             ctx.start_block(true_label);
             lower_expr_into(ctx, true_block, dest, types)?;
-            ctx.terminate_block(mir::Terminator::Goto(merge_label.clone()), expr.span);
+            ctx.terminate_block(goto_term(merge_label.clone()), expr.span);
 
             // False branch
             ctx.start_block(false_label);
             lower_expr_into(ctx, false_block, dest, types)?;
-            ctx.terminate_block(mir::Terminator::Goto(merge_label.clone()), expr.span);
+            ctx.terminate_block(goto_term(merge_label.clone()), expr.span);
 
             // Merge block
             ctx.start_block(merge_label);
@@ -595,17 +586,17 @@ fn lower_expr_into(
             let start_label = ctx.fresh_label("loop_start");
             let end_label = ctx.fresh_label("loop_end");
 
-            ctx.terminate_block(mir::Terminator::Goto(start_label.clone()), expr.span);
+            ctx.terminate_block(goto_term(start_label.clone()), expr.span);
 
             ctx.loop_stack.push((start_label.clone(), end_label.clone(), dest.clone()));
             ctx.push_scope(true);
             ctx.start_block(start_label.clone());
 
             // Loop body value is discarded
-            let dummy = ctx.fresh_temp(mir::Type::Unit, body.span);
+            let dummy = ctx.fresh_temp(unit_ty(), body.span);
             lower_expr_into(ctx, body, &dummy, types)?;
             ctx.scopes.pop();
-            ctx.terminate_block(mir::Terminator::Goto(start_label), expr.span);
+            ctx.terminate_block(goto_term(start_label), expr.span);
 
             ctx.loop_stack.pop();
 
@@ -627,7 +618,7 @@ fn lower_expr_into(
             let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(break_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
-            ctx.terminate_block(mir::Terminator::Goto(end_label), expr.span);
+            ctx.terminate_block(goto_term(end_label), expr.span);
             Ok(())
         }
         hll::ExprKind::Continue => {
@@ -641,17 +632,17 @@ fn lower_expr_into(
             let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(continue_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
-            ctx.terminate_block(mir::Terminator::Goto(start_label), expr.span);
+            ctx.terminate_block(goto_term(start_label), expr.span);
             Ok(())
         }
         hll::ExprKind::Return(val_expr) => {
             if let Some(val) = val_expr {
                 // Return value is written to $return.*
-                let ret_place = mir::Place::Deref(Box::new(mir::Place::Var("$return".to_string())));
+                let ret_place = deref_place(var_place("$return"));
                 lower_expr_into(ctx, val, &ret_place, types)?;
             }
             ctx.emit_defers_to_depth(0, types)?;
-            ctx.terminate_block(mir::Terminator::Return, expr.span);
+            ctx.terminate_block(return_term(), expr.span);
             Ok(())
         }
         hll::ExprKind::Match(target, arms) => {
@@ -669,10 +660,7 @@ fn lower_expr_into(
             let merge_label = ctx.fresh_label("switch_merge");
             
             ctx.terminate_block(
-                mir::Terminator::SwitchEnum {
-                    place: target_place.clone(),
-                    cases,
-                },
+                switch_enum_term(target_place.clone(), cases),
                 expr.span,
             );
             
@@ -719,20 +707,20 @@ fn lower_expr_into(
                         span: body.span,
                     });
                     
-                    let downcast_place = mir::Place::Downcast(Box::new(target_place.clone()), variant.clone());
+                    let downcast = downcast_place(target_place.clone(), variant.clone());
                     let op = if is_copy_type(&bound_var_mir_ty) {
-                        mir::Operand::Copy(downcast_place)
+                        copy_op(downcast)
                     } else {
-                        mir::Operand::Move(downcast_place)
+                        move_op(downcast)
                     };
                     ctx.emit_statement(
-                        mir::Statement::Assign(mir::Place::Var(var_name.clone()), mir::RValue::Use(op)),
+                        assign_stmt(var_place(var_name.clone()), use_rv(op)),
                         body.span,
                     );
                 }
                 
                 lower_expr_into(ctx, body, dest, types)?;
-                ctx.terminate_block(mir::Terminator::Goto(merge_label.clone()), expr.span);
+                ctx.terminate_block(goto_term(merge_label.clone()), expr.span);
             }
             
             ctx.start_block(merge_label);
@@ -740,7 +728,7 @@ fn lower_expr_into(
         }
         hll::ExprKind::StructConstr(_, fields) => {
             for (field_name, value_expr) in fields {
-                let field_dest = mir::Place::Field(Box::new(dest.clone()), field_name.clone());
+                let field_dest = field_place(dest.clone(), field_name.clone());
                 lower_expr_into(ctx, value_expr, &field_dest, types)?;
             }
             Ok(())
@@ -748,9 +736,9 @@ fn lower_expr_into(
         hll::ExprKind::EnumConstr(enum_name, variant_name, payload) => {
             let payload_op = lower_expr_to_operand(ctx, payload, types)?;
             ctx.emit_statement(
-                mir::Statement::Assign(
+                assign_stmt(
                     dest.clone(),
-                    mir::RValue::EnumConstr(enum_name.clone(), variant_name.clone(), payload_op),
+                    enum_constr_rv(enum_name.clone(), variant_name.clone(), payload_op),
                 ),
                 expr.span,
             );
@@ -762,7 +750,7 @@ fn lower_expr_into(
                 ops.push(lower_expr_to_operand(ctx, el, types)?);
             }
             ctx.emit_statement(
-                mir::Statement::Assign(dest.clone(), mir::RValue::ArrayLit(ops)),
+                assign_stmt(dest.clone(), array_lit_rv(ops)),
                 expr.span,
             );
             Ok(())
@@ -819,7 +807,7 @@ pub fn lower_program(
                 if f.ret_ty != hll::Type::Unit {
                     params.push(mir::Param {
                         name: "$return".to_string(),
-                        ty: mir::Type::Ref(mir::RefKind::Out, Box::new(lower_type(&f.ret_ty))),
+                        ty: out_ref_ty(lower_type(&f.ret_ty)),
                         span: f.span,
                     });
                 }
@@ -832,16 +820,16 @@ pub fn lower_program(
                 // If return type is not Unit, we write the result to $return.*.
                 // Otherwise we write it to a dummy Unit place.
                 if f.ret_ty != hll::Type::Unit {
-                    let ret_place = mir::Place::Deref(Box::new(mir::Place::Var("$return".to_string())));
+                    let ret_place = deref_place(var_place("$return"));
                     lower_expr_into(&mut ctx, &f.body, &ret_place, types)?;
                 } else {
-                    let dummy = ctx.fresh_temp(mir::Type::Unit, f.body.span);
+                    let dummy = ctx.fresh_temp(unit_ty(), f.body.span);
                     lower_expr_into(&mut ctx, &f.body, &dummy, types)?;
                 }
 
                 // If the entry block or last block hasn't been terminated, terminate it with Return
                 if ctx.current_block_label.is_some() {
-                    ctx.terminate_block(mir::Terminator::Return, f.span);
+                    ctx.terminate_block(return_term(), f.span);
                 }
 
                 declarations.push(mir::Declaration::Fn(mir::Function {

@@ -30,6 +30,7 @@
 //! in-write does not change enum state.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::dataflow;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
@@ -662,7 +663,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
         // entry we know their pointee is in the kind's creation-cur.
         if let Type::Ref(kind, _) = &p.ty {
             if let Some(rs) = RefState::from_kind(kind) {
-                s.refs.insert(Place::Var(p.name.clone()), rs);
+                s.refs.insert(var_place(p.name.clone()), rs);
             }
         }
     }
@@ -1405,7 +1406,7 @@ fn capture_carried_refs(
             let Some(src) = as_owned_path(src_place) else {
                 return Vec::new();
             };
-            (src, Place::Downcast(Box::new(dst), variant.clone()))
+            (src, downcast_place(dst, variant.clone()))
         }
         _ => return Vec::new(),
     };

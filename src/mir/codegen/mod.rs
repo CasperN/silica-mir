@@ -36,6 +36,7 @@
 //! field order is declaration order. Padding and alignment can change.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::layout;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
@@ -688,14 +689,14 @@ fn emit_rvalue(cx: &mut CodeGenContext, rv: &RValue) -> (String, Type) {
             // A reference's runtime value is the address of the place.
             // The ref kind is compiler-time only.
             let (addr, ty) = emit_place_addr(cx, place);
-            (addr, Type::Ref(RefKind::Shared, Box::new(ty)))
+            (addr, shared_ref_ty(ty))
         }
         RValue::RawRef(place) => {
             // Raw pointer: identical LLVM emission as `&` above — an
             // address. The distinction between safe ref and raw ptr is
             // purely compiler-time (loan tracking, obligation checks).
             let (addr, ty) = emit_place_addr(cx, place);
-            (addr, Type::RawPtr(Box::new(ty)))
+            (addr, raw_ptr_ty(ty))
         }
         RValue::EnumConstr(..) => {
             unreachable!("EnumConstr is handled in Assign statement, not here")
@@ -727,7 +728,7 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
                 (1u64 << ty.bits()) - 1
             };
             let masked = bits & mask;
-            (masked.to_string(), Type::Int(*ty))
+            (masked.to_string(), int_ty(*ty))
         }
         ConstVal::Float { bits, ty } => {
             // LLVM's textual IR accepts float literals as hex bit
@@ -743,11 +744,11 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
                 }
                 FloatTy::F64 => format!("0x{:016X}", *bits),
             };
-            (hex, Type::Float(*ty))
+            (hex, float_ty(*ty))
         }
-        ConstVal::Bool(true) => ("true".to_string(), Type::Bool),
-        ConstVal::Bool(false) => ("false".to_string(), Type::Bool),
-        ConstVal::Unit => ("zeroinitializer".to_string(), Type::Unit),
+        ConstVal::Bool(true) => ("true".to_string(), bool_ty()),
+        ConstVal::Bool(false) => ("false".to_string(), bool_ty()),
+        ConstVal::Unit => ("zeroinitializer".to_string(), unit_ty()),
         ConstVal::FnName(name, type_args) => {
             assert!(
                 type_args.is_empty(),

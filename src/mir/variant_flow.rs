@@ -21,6 +21,7 @@
 //! lifetime, since we can't see what the borrower does.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::{Env, TypeDecl};
@@ -320,25 +321,19 @@ fn root_is_enum_ty(root: &str, locals: &IndexMap<String, Type>, env: &Env) -> bo
 /// extract_path_with_deref. Used to feed `format_place` a place value
 /// when the caller only has the decomposed form.
 fn build_place(root: &str, steps: &[PathStep]) -> Place {
-    let mut p = Place::Var(root.to_string());
+    let mut p = var_place(root);
     for step in steps {
         p = match step {
-            PathStep::Field(f) => Place::Field(Box::new(p), f.clone()),
-            PathStep::Downcast(v) => Place::Downcast(Box::new(p), v.clone()),
-            PathStep::Index(Some(k)) => Place::Index(
-                Box::new(p),
-                Box::new(Operand::Const(ConstVal::Int {
-                    bits: *k,
-                    ty: IntTy::I64,
-                })),
-            ),
+            PathStep::Field(f) => field_place(p, f.clone()),
+            PathStep::Downcast(v) => downcast_place(p, v.clone()),
+            PathStep::Index(Some(k)) => index_place(p, const_op(int_const(*k, IntTy::I64))),
             PathStep::Index(None) => {
                 // Sentinel: dynamic-index steps only appear via
                 // extract_path_with_deref, which variant_flow doesn't
                 // feed into build_place. Panic if we somehow get here.
                 unreachable!("variant_flow shouldn't rebuild dynamic-index paths")
             }
-            PathStep::Deref => Place::Deref(Box::new(p)),
+            PathStep::Deref => deref_place(p),
         };
     }
     p

@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod helpers;
 pub mod block_reachability;
 pub mod cfg_edit;
 pub mod codegen;

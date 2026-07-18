@@ -55,7 +55,8 @@ pub fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::ast::{IntTy, Program};
+    use crate::mir::ast::Program;
+    use crate::mir::helpers::*;
     use crate::mir::parser::Parser;
 
     /// Build an Env from MIR source, discarding any diagnostics.
@@ -67,46 +68,46 @@ mod tests {
     #[test]
     fn never_is_uninhabited() {
         let env = env_of("fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Never, &env));
+        assert!(is_type_uninhabited(&never_ty(), &env));
     }
 
     #[test]
     fn scalars_are_inhabited() {
         let env = env_of("fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Int(IntTy::I64), &env));
-        assert!(!is_type_uninhabited(&Type::Bool, &env));
-        assert!(!is_type_uninhabited(&Type::Unit, &env));
+        assert!(!is_type_uninhabited(&i64_ty(), &env));
+        assert!(!is_type_uninhabited(&bool_ty(), &env));
+        assert!(!is_type_uninhabited(&unit_ty(), &env));
     }
 
     #[test]
     fn struct_with_never_field_is_uninhabited() {
         let env = env_of("struct S { a: i64 b: never } fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Custom("S".into(), Vec::new()), &env));
+        assert!(is_type_uninhabited(&custom_ty("S"), &env));
     }
 
     #[test]
     fn struct_with_all_inhabited_fields_is_inhabited() {
         let env = env_of("struct S { a: i64 b: bool } fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Custom("S".into(), Vec::new()), &env));
+        assert!(!is_type_uninhabited(&custom_ty("S"), &env));
     }
 
     #[test]
     fn empty_enum_is_uninhabited() {
         // No variants → vacuous truth: every variant is uninhabited.
         let env = env_of("enum E { } fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Custom("E".into(), Vec::new()), &env));
+        assert!(is_type_uninhabited(&custom_ty("E"), &env));
     }
 
     #[test]
     fn enum_with_one_inhabited_variant_is_inhabited() {
         let env = env_of("enum E { A: i64 B: never } fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Custom("E".into(), Vec::new()), &env));
+        assert!(!is_type_uninhabited(&custom_ty("E"), &env));
     }
 
     #[test]
     fn enum_with_all_never_variants_is_uninhabited() {
         let env = env_of("enum E { A: never B: never } fn f() { entry: return }");
-        assert!(is_type_uninhabited(&Type::Custom("E".into(), Vec::new()), &env));
+        assert!(is_type_uninhabited(&custom_ty("E"), &env));
     }
 
     #[test]

@@ -8,6 +8,7 @@
 
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
+use crate::hll::helpers::*;
 use crate::mir::ast::{FloatTy, IntTy, RefKind, Span, Markers, Marker};
 use crate::mir::parser::ParserCode;
 use tree_sitter::{Node, Parser as TSParser};
@@ -35,16 +36,16 @@ fn span_of(node: Node) -> Span {
 /// keywords are defined once in `common/grammar.js`.
 fn scalar_kind_to_type(kind: &str) -> Option<Type> {
     Some(match kind {
-        "i8" => Type::Int(IntTy::I8),
-        "i16" => Type::Int(IntTy::I16),
-        "i32" => Type::Int(IntTy::I32),
-        "i64" => Type::Int(IntTy::I64),
-        "u8" => Type::Int(IntTy::U8),
-        "u16" => Type::Int(IntTy::U16),
-        "u32" => Type::Int(IntTy::U32),
-        "u64" => Type::Int(IntTy::U64),
-        "f32" => Type::Float(FloatTy::F32),
-        "f64" => Type::Float(FloatTy::F64),
+        "i8" => i8_ty(),
+        "i16" => i16_ty(),
+        "i32" => i32_ty(),
+        "i64" => i64_ty(),
+        "u8" => u8_ty(),
+        "u16" => u16_ty(),
+        "u32" => u32_ty(),
+        "u64" => u64_ty(),
+        "f32" => f32_ty(),
+        "f64" => f64_ty(),
         _ => return None,
     })
 }
@@ -335,7 +336,7 @@ impl Parser {
         let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
             self.map_type(rt_node).map_err(with_fn)?
         } else {
-            Type::Unit
+            unit_ty()
         };
 
         let body_node = node.child_by_field_name("body").ok_or_else(|| {
@@ -352,10 +353,10 @@ impl Parser {
             return Ok(ty);
         }
         match node.kind() {
-            "bool" => return Ok(Type::Bool),
-            "unit" => return Ok(Type::Unit),
-            "never" => return Ok(Type::Never),
-            "identifier" => return Ok(Type::Custom(self.get_text(node).to_string())),
+            "bool" => return Ok(bool_ty()),
+            "unit" => return Ok(unit_ty()),
+            "never" => return Ok(never_ty()),
+            "identifier" => return Ok(custom_ty(self.get_text(node))),
             "type" => {}
             _ => {
                 return Err(self.diag(
@@ -373,10 +374,10 @@ impl Parser {
             return Ok(ty);
         }
         match first.kind() {
-            "bool" => return Ok(Type::Bool),
-            "unit" => return Ok(Type::Unit),
-            "never" => return Ok(Type::Never),
-            "identifier" => return Ok(Type::Custom(self.get_text(first).to_string())),
+            "bool" => return Ok(bool_ty()),
+            "unit" => return Ok(unit_ty()),
+            "never" => return Ok(never_ty()),
+            "identifier" => return Ok(custom_ty(self.get_text(first))),
             _ => {}
         }
 
@@ -393,13 +394,13 @@ impl Parser {
             let inner = node.child(1).ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, format!("missing inner type for {}", text))
             })?;
-            return Ok(Type::Ref(kind, Box::new(self.map_type(inner)?)));
+            return Ok(ref_ty(kind, self.map_type(inner)?));
         }
         if text == "*" {
             let inner = node.child(1).ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, "missing inner type for raw pointer")
             })?;
-            return Ok(Type::RawPtr(Box::new(self.map_type(inner)?)));
+            return Ok(raw_ptr_ty(self.map_type(inner)?));
         }
         if text == "[" {
             let elem = node.child_by_field_name("element").ok_or_else(|| {
@@ -409,7 +410,7 @@ impl Parser {
                 self.diag(node, ParserCode::MalformedCst, "array type missing length")
             })?;
             let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?;
-            return Ok(Type::Array(Box::new(self.map_type(elem)?), len as usize));
+            return Ok(array_ty(self.map_type(elem)?, len as usize));
         }
         if text == "fn" {
             // `fn(T,...) [-> R]`. The optional `return_type` field
@@ -425,12 +426,12 @@ impl Parser {
                     params.push(self.map_type(child)?);
                 }
             }
-            let ret_ty = if let Some(rt) = ret_node {
+            let ret = if let Some(rt) = ret_node {
                 self.map_type(rt)?
             } else {
-                Type::Unit
+                unit_ty()
             };
-            return Ok(Type::Fn(params, Box::new(ret_ty)));
+            return Ok(fn_ty(params, ret));
         }
         Err(self.diag(
             first,
@@ -929,9 +930,9 @@ mod tests {
             assert_eq!(s.name, "Point");
             assert_eq!(s.fields.len(), 2);
             assert_eq!(s.fields[0].name, "x");
-            assert_eq!(s.fields[0].ty, Type::Int(IntTy::I64));
+            assert_eq!(s.fields[0].ty, i64_ty());
             assert_eq!(s.fields[1].name, "y");
-            assert_eq!(s.fields[1].ty, Type::Int(IntTy::I64));
+            assert_eq!(s.fields[1].ty, i64_ty());
             assert!(!s.markers.declared(Marker::Copy));
             assert!(!s.markers.declared(Marker::Drop));
             assert!(!s.markers.declared(Marker::Move));
@@ -949,9 +950,9 @@ mod tests {
             assert_eq!(e.name, "Option");
             assert_eq!(e.variants.len(), 2);
             assert_eq!(e.variants[0].name, "None");
-            assert_eq!(e.variants[0].ty, Type::Unit);
+            assert_eq!(e.variants[0].ty, unit_ty());
             assert_eq!(e.variants[1].name, "Some");
-            assert_eq!(e.variants[1].ty, Type::Int(IntTy::I64));
+            assert_eq!(e.variants[1].ty, i64_ty());
             assert!(!e.markers.declared(Marker::Copy));
             assert!(!e.markers.declared(Marker::Drop));
             assert!(!e.markers.declared(Marker::Move));
@@ -1004,7 +1005,7 @@ mod tests {
         if let Declaration::Fn(ref f) = program.declarations[0] {
             assert_eq!(f.name, "add");
             assert_eq!(f.params.len(), 2);
-            assert_eq!(f.ret_ty, Type::Int(IntTy::I64));
+            assert_eq!(f.ret_ty, i64_ty());
             if let ExprKind::Block(ref stmts, ref last) = f.body.kind {
                 assert_eq!(stmts.len(), 3);
                 assert!(last.is_none());
@@ -1030,10 +1031,10 @@ mod tests {
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
-            assert_eq!(f.params[0].ty, Type::RawPtr(Box::new(Type::Int(IntTy::I64))));
+            assert_eq!(f.params[0].ty, raw_ptr_ty(i64_ty()));
             assert_eq!(
                 f.params[1].ty,
-                Type::Ref(RefKind::Mut, Box::new(Type::Int(IntTy::I64)))
+                mut_ref_ty(i64_ty())
             );
         } else {
             panic!("Expected function");
@@ -1294,8 +1295,8 @@ mod tests {
         let Type::Fn(p, r) = &params[0].ty else {
             panic!("expected Fn type, got {:?}", params[0].ty);
         };
-        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64)]);
-        assert_eq!(**r, Type::Int(IntTy::I64));
+        assert_eq!(p.as_slice(), &[i64_ty()]);
+        assert_eq!(**r, i64_ty());
     }
 
     #[test]
@@ -1306,8 +1307,8 @@ mod tests {
         let Type::Fn(p, r) = &params[0].ty else {
             panic!("expected Fn type, got {:?}", params[0].ty);
         };
-        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64)]);
-        assert_eq!(**r, Type::Unit);
+        assert_eq!(p.as_slice(), &[i64_ty()]);
+        assert_eq!(**r, unit_ty());
     }
 
     #[test]
@@ -1318,7 +1319,7 @@ mod tests {
             panic!()
         };
         assert!(p.is_empty(), "expected empty param list, got {:?}", p);
-        assert_eq!(**r, Type::Unit);
+        assert_eq!(**r, unit_ty());
     }
 
     #[test]
@@ -1329,7 +1330,7 @@ mod tests {
             panic!()
         };
         assert!(p.is_empty());
-        assert_eq!(**r, Type::Int(IntTy::I64));
+        assert_eq!(**r, i64_ty());
     }
 
     #[test]
@@ -1342,7 +1343,7 @@ mod tests {
         let Type::Fn(p, r) = &params[0].ty else {
             panic!()
         };
-        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64), Type::Bool]);
+        assert_eq!(p.as_slice(), &[i64_ty(), Type::Bool]);
         assert_eq!(**r, Type::Bool);
     }
 
@@ -1358,8 +1359,8 @@ mod tests {
         let Type::Fn(inner_p, inner_r) = &outer_p[0] else {
             panic!("expected nested Fn type, got {:?}", outer_p[0]);
         };
-        assert_eq!(inner_p.as_slice(), &[Type::Int(IntTy::I64)]);
-        assert_eq!(**inner_r, Type::Unit);
+        assert_eq!(inner_p.as_slice(), &[i64_ty()]);
+        assert_eq!(**inner_r, unit_ty());
         assert_eq!(**outer_r, Type::Bool);
     }
 
@@ -1372,12 +1373,12 @@ mod tests {
         let Type::Fn(p, r) = &params[0].ty else {
             panic!()
         };
-        assert_eq!(p.as_slice(), &[Type::Int(IntTy::I64)]);
+        assert_eq!(p.as_slice(), &[i64_ty()]);
         let Type::Fn(ret_p, ret_r) = &**r else {
             panic!("expected Fn as return, got {:?}", r);
         };
         assert!(ret_p.is_empty());
-        assert_eq!(**ret_r, Type::Unit);
+        assert_eq!(**ret_r, unit_ty());
     }
 
     #[test]

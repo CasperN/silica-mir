@@ -53,6 +53,7 @@
 //!   check (post-elab) then surfaces the error at the inserted unborrow.
 
 use crate::mir::ast::*;
+use crate::mir::helpers::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::type_check::Env;
@@ -215,7 +216,7 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
     if return_reachable.contains(&entry_label) {
         if let Some(entry_live_in) = live_in_per_block.get(&entry_label) {
             for p in &func.params {
-                let param_place = Place::Var(p.name.clone());
+                let param_place = var_place(p.name.clone());
                 if !borrowers.contains(&param_place) {
                     continue;
                 }
@@ -285,7 +286,7 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
                 .unwrap_or(block.terminator_span);
             let items: Vec<(Statement, Span)> = places
                 .iter()
-                .map(|p| (Statement::Unborrow(p.clone()), span))
+                .map(|p| (unborrow_stmt(p.clone()), span))
                 .collect();
             block.statements.splice(pos..pos, items);
         }
@@ -302,7 +303,7 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
         for p in places {
             split_block
                 .statements
-                .push((Statement::Unborrow(p.clone()), span));
+                .push((unborrow_stmt(p.clone()), span));
         }
     }
 }
@@ -421,7 +422,7 @@ fn collect_borrowers(func: &Function, env: &Env) -> BTreeSet<Place> {
     let locals = func.locals_map();
     for (name, ty) in &locals {
         let mut visited = BTreeSet::new();
-        walk_ref_paths(&Place::Var(name.clone()), ty, env, &mut visited, &mut out);
+        walk_ref_paths(&var_place(name.clone()), ty, env, &mut visited, &mut out);
     }
     out
 }
@@ -449,13 +450,13 @@ fn walk_ref_paths(
     match env.types.get(name) {
         Some(crate::mir::type_check::TypeDecl::Struct(s)) => {
             for f in &s.fields {
-                let sub = Place::Field(Box::new(place.clone()), f.name.clone());
+                let sub = field_place(place.clone(), f.name.clone());
                 walk_ref_paths(&sub, &f.ty, env, visited, out);
             }
         }
         Some(crate::mir::type_check::TypeDecl::Enum(e)) => {
             for v in &e.variants {
-                let sub = Place::Downcast(Box::new(place.clone()), v.name.clone());
+                let sub = downcast_place(place.clone(), v.name.clone());
                 walk_ref_paths(&sub, &v.ty, env, visited, out);
             }
         }
