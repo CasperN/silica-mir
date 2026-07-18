@@ -1524,7 +1524,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "downcast_expr"
+          "name": "cast_expr"
         },
         {
           "type": "SYMBOL",
@@ -1594,7 +1594,7 @@
         ]
       }
     },
-    "downcast_expr": {
+    "cast_expr": {
       "type": "PREC_LEFT",
       "value": 20,
       "content": {
@@ -1614,10 +1614,10 @@
           },
           {
             "type": "FIELD",
-            "name": "variant",
+            "name": "ty",
             "content": {
               "type": "SYMBOL",
-              "name": "identifier"
+              "name": "type"
             }
           }
         ]
@@ -2366,6 +2366,9 @@
     [
       "_expr_primary",
       "struct_constr"
+    ],
+    [
+      "type"
     ]
   ],
   "precedences": [],

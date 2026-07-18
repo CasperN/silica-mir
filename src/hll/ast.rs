@@ -182,7 +182,10 @@ pub enum ExprKind {
     Literal(Literal),
     Variable(String),
     FieldAccess(Box<Expr>, String),
-    Downcast(Box<Expr>, String),
+    /// `expr as Type` — numeric cast. Enum downcasts have no HLL
+    /// surface (MIR has them; HLL uses `match` for exhaustive variant
+    /// inspection).
+    Cast(Box<Expr>, Type),
     Deref(Box<Expr>),
     Borrow(RefKind, Box<Expr>),
     RawBorrow(Box<Expr>),

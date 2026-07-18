@@ -1,25 +1,13 @@
 # HLL sibling of `heap_linked_list_of_i64.sim`. Same shape, HLL surface:
 # `extern fn` (Silica ABI, sret via `-> R`), unsafe raw-pointer deref
 # through a linear enum, recursion consuming the list (list_free), and
-# recursion borrowing it (list_sum).
-#
-# HLL match on a Move-only enum lowers to `move scrut as V` for owned
-# scrutinees, so the whole enum is consumed via enum-atomicity and
-# list_free type-checks. Borrowed scrutinees (list_sum's `list.*`
-# match) still copy — moving through a shared ref would be a
-# use-through-borrow error.
-#
-# `extern fn` uses bare Silica ABI here. When MIR codegen honors the
-# ABI string (punchlist), a real C libc `malloc` would move to
-# `extern "C" fn malloc(size: u64) -> *u8;` — but that also needs
-# `as` casts, which are the next follow-up.
+# recursion borrowing it (list_sum). The final `s as i32` truncates
+# the i64 sum into the `&out i32` exit code.
 
 extern fn malloc_node(size: i64) -> *Node;
 extern fn free_node(p: *Node);
 
-# Values are i32 so the sum flows into `exit: &out i32` without a
-# truncation intrinsic (HLL doesn't have `as` casts yet).
-struct Node: Move { value: i32, next: List }
+struct Node: Move { value: i64, next: List }
 enum List: Move { Empty: unit, Cons: *Node }
 
 fn list_empty() -> List {
@@ -27,7 +15,7 @@ fn list_empty() -> List {
 }
 
 # Consumes `tail` (Move-only) into the newly-heap-allocated node.
-fn list_cons(value: i32, tail: List) -> List {
+fn list_cons(value: i64, tail: List) -> List {
   let p: *Node = malloc_node(24i64);
   unsafe {
     p.*.value = value;
@@ -56,21 +44,21 @@ fn list_free(list: List) {
 # `value` and `next` through the raw pointer inside `Cons`. Match on
 # `list.*` (dereffed shared ref) copies the payload rather than moving
 # — moving out through a shared ref would violate the borrow.
-fn list_sum(list: &List) -> i32 {
+fn list_sum(list: &List) -> i64 {
   list.* match {
-    Empty(_) => 0i32,
+    Empty(_) => 0i64,
     Cons(p) => unsafe { (p.*.value + list_sum(&p.*.next)) },
   }
 }
 
-# Build [1, 2, 3], sum via borrow, free the list, write sum → exit.
-# Runtime exit code is 6.
+# Build [1, 2, 3], sum via borrow, free the list, truncate the sum
+# into `exit: &out i32`. Runtime exit code is 6.
 fn main(exit: &out i32) {
   let l0: List = list_empty();
-  let l1: List = list_cons(3i32, l0);
-  let l2: List = list_cons(2i32, l1);
-  let l3: List = list_cons(1i32, l2);
-  let s: i32 = list_sum(&l3);
+  let l1: List = list_cons(3i64, l0);
+  let l2: List = list_cons(2i64, l1);
+  let l3: List = list_cons(1i64, l2);
+  let s: i64 = list_sum(&l3);
   list_free(l3);
-  exit.* = s;
+  exit.* = s as i32;
 }

@@ -1,0 +1,21 @@
+# Paired negative for `hll_cast.si`. Every fn fires HTC-InvalidCast on
+# a cast pair not in the supported matrix:
+#
+#   fn                  from       to         reason
+#   int_to_bool         i64        bool       casts *to* bool are rejected; use `!= 0`
+#   float_to_bool       f64        bool       same
+#   ptr_to_ptr          *i64       *u8        pointer casts need RValue::PtrCast (punchlist)
+#   ref_to_ptr          &i64       *i64       ref↔ptr casts not supported (punchlist)
+#   struct_to_int       P          i64        no path from custom types to scalars
+#   int_to_ptr          u64        *u8        would break non-null-by-construction invariant
+#   array_to_int        [u8; 4]    u32        no path from aggregate to scalar
+
+struct P: Copy + Drop { x: i64 }
+
+fn int_to_bool(x: i64) -> bool { x as bool }
+fn float_to_bool(x: f64) -> bool { x as bool }
+fn ptr_to_ptr(p: *i64) -> *u8 { p as *u8 }
+fn ref_to_ptr(r: &i64) -> *i64 { r as *i64 }
+fn struct_to_int(p: P) -> i64 { p as i64 }
+fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
+fn array_to_int(a: [u8; 4]) -> u32 { a as u32 }

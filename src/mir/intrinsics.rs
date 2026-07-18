@@ -200,10 +200,16 @@ pub fn all() -> Vec<IntrinsicSpec> {
                 continue;
             }
             if from.bits() == to.bits() {
-                // Same-width signedness reinterpret — not exposed
-                // as an intrinsic. Users can just declare a local
-                // of the target type; the frontend can insert a
-                // reinterpret when needed.
+                // Same-width signedness reinterpret (e.g. `i32 as u32`).
+                // Nop at the LLVM level; the intrinsic exists so the
+                // MIR type system can express the type change explicitly.
+                out.push(IntrinsicSpec {
+                    name: format!("${}_to_{}", from.name(), to.name()),
+                    inputs: vec![int_ty(from)],
+                    result: int_ty(to),
+                    emit: nop_reinterpret_emit(),
+                    llvm_declares: &[],
+                });
                 continue;
             }
             let (op, name) = if to.bits() > from.bits() {
@@ -519,6 +525,15 @@ pub fn cast_emit(op: &'static str, from_ty: &'static str, to_ty: &'static str) -
         let line = format!("  {} = {} {} {} to {}", result, op, from_ty, inputs[0], to_ty);
         (vec![line], result)
     })
+}
+
+/// Same-width signedness reinterpret (e.g. `i32 as u32`, `u64 as i64`).
+/// LLVM has no distinction between signed and unsigned integer types —
+/// both are `iN` — so the reinterpret is a nop. The Silica MIR type
+/// system still differs on the two, so we need an intrinsic to bridge
+/// them. Emit returns the input register directly; no LLVM instructions.
+pub fn nop_reinterpret_emit() -> Emit {
+    Box::new(move |inputs, _mk_name| (vec![], inputs[0].clone()))
 }
 
 /// One-argument `@llvm.<name>.iN` call. `ctlz` and `cttz` take a

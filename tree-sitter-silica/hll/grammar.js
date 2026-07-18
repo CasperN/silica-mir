@@ -33,6 +33,10 @@ module.exports = grammar({
   // fields resolve to the identifier-then-block interpretation.
   conflicts: $ => [
     [$._expr_primary, $.struct_constr],
+    // `expr as Foo < rhs` — `<` starts either type_args (`Foo<...>`)
+    // or the comparison operator (`(expr as Foo) < rhs`). Tree-sitter
+    // needs to explore both.
+    [$.type],
   ],
 
   rules: {
@@ -227,7 +231,7 @@ module.exports = grammar({
       $._expr_primary,
       $.field_access,
       $.deref_expr,
-      $.downcast_expr,
+      $.cast_expr,
       $.call_expr,
       $.index_expr,
       $.match_expr,
@@ -245,10 +249,14 @@ module.exports = grammar({
       '*',
     )),
 
-    downcast_expr: $ => prec.left(20, seq(
+    // Numeric cast: `expr as type`. Postfix, same precedence as other
+    // postfix ops. Silica doesn't have HLL-level enum downcasts (unlike
+    // MIR) — variant inspection goes through `match`, which forces
+    // exhaustiveness; `as` at HLL is only for cast conversions.
+    cast_expr: $ => prec.left(20, seq(
       field('target', $._expr_postfix),
       'as',
-      field('variant', $.identifier),
+      field('ty', $.type),
     )),
 
     call_expr: $ => prec.left(20, seq(

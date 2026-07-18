@@ -113,7 +113,9 @@ fn place_root(expr: &Expr) -> PlaceRoot<'_> {
         ExprKind::Variable(name) => PlaceRoot::Var(name, expr.span),
         ExprKind::FieldAccess(inner, _) => place_root(inner),
         ExprKind::ArrayIndex(inner, _) => place_root(inner),
-        ExprKind::Downcast(inner, _) => place_root(inner),
+        // Cast produces a fresh value, not a projection onto the input.
+        // Not a place; mutability of the result is irrelevant here.
+        ExprKind::Cast(_, _) => PlaceRoot::Unknown,
         ExprKind::Deref(_) => PlaceRoot::ThroughDeref,
         _ => PlaceRoot::Unknown,
     }
@@ -149,7 +151,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
         ExprKind::RawBorrow(inner)
         | ExprKind::Deref(inner)
         | ExprKind::FieldAccess(inner, _)
-        | ExprKind::Downcast(inner, _) => check_expr(inner, scope, func, d),
+        | ExprKind::Cast(inner, _) => check_expr(inner, scope, func, d),
 
         ExprKind::ArrayIndex(arr, idx) => {
             check_expr(arr, scope, func, d);
@@ -257,8 +259,10 @@ fn check_assign_subexprs(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Dia
             check_expr(idx, scope, func, d);
         }
         ExprKind::FieldAccess(inner, _)
-        | ExprKind::Downcast(inner, _)
         | ExprKind::Deref(inner) => check_assign_subexprs(inner, scope, func, d),
+        // Cast produces a value; it cannot be an assignment target,
+        // so no subexprs to walk here.
+        ExprKind::Cast(_, _) => {}
         // The root variable itself — no sub-expressions to check.
         ExprKind::Variable(_) => {}
         // Anything else is an arbitrary expression; fully check it.

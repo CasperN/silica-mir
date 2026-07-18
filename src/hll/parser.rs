@@ -821,17 +821,17 @@ impl Parser {
                     span,
                 })
             }
-            "downcast_expr" => {
+            "cast_expr" => {
                 let target = node.child_by_field_name("target").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "downcast missing target")
+                    self.diag(node, ParserCode::MalformedCst, "cast missing target")
                 })?;
-                let variant = node.child_by_field_name("variant").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "downcast missing variant")
+                let ty_node = node.child_by_field_name("ty").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "cast missing type")
                 })?;
                 Ok(Expr {
-                    kind: ExprKind::Downcast(
+                    kind: ExprKind::Cast(
                         Box::new(self.map_expr(target, scope)?),
-                        self.get_text(variant).to_string(),
+                        self.map_type(ty_node, scope)?,
                     ),
                     span,
                 })
@@ -1698,9 +1698,9 @@ mod tests {
     }
 
     #[test]
-    fn block_tail_downcast_expr() {
-        let e = block_tail("fn f(o: Option) -> Option { o as Some }");
-        assert!(matches!(e.kind, ExprKind::Downcast(_, _)), "got {:?}", e.kind);
+    fn block_tail_cast_expr() {
+        let e = block_tail("fn f(x: i64) -> i32 { x as i32 }");
+        assert!(matches!(e.kind, ExprKind::Cast(_, _)), "got {:?}", e.kind);
     }
 
     #[test]

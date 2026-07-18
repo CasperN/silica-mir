@@ -153,6 +153,11 @@ pub enum HllTypeCheckCode {
     UnsafeRequired,
     /// `extern "..."` names an ABI other than `"C"`.
     UnknownAbi,
+    /// `expr as Type` where the pair isn't a supported cast.
+    /// Today's supported cells: numeric widths & signedness, int↔float,
+    /// bool→int. Casts *to* bool aren't supported (use `!= 0`); casts
+    /// to/from pointer/ref types are not yet supported.
+    InvalidCast,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -700,6 +705,50 @@ fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) 
     }
 }
 
+/// Return true iff `expr as to` is a supported numeric cast.
+///
+/// Supported: int↔int (any width, any signedness), float↔float, int↔float,
+/// bool→int. `from == to` is trivially supported (lowering drops it).
+///
+/// Not supported (and rejected with `HTC-InvalidCast`):
+/// - Casts to bool from any type. Rust also rejects `int as bool`; the
+///   caller should write `!= 0` explicitly. Silica's `$iN_to_bool`
+///   intrinsic exists at MIR level (as a truncation to the low bit),
+///   but HLL doesn't expose it via `as`.
+/// - Casts to or from pointer / ref types. `*T as *U`, `&T as *T`, etc.
+///   are on the punchlist; they need a distinct MIR RValue and are
+///   blocked on lifetime annotations for the ref-target cases.
+/// - Casts involving unit, never, arrays, fn types, or custom types.
+pub fn is_cast_supported(from: &Type, to: &Type) -> bool {
+    if from == to {
+        return true;
+    }
+    match (from, to) {
+        (Type::Int(_), Type::Int(_)) => true,
+        (Type::Float(_), Type::Float(_)) => true,
+        (Type::Int(_), Type::Float(_)) => true,
+        (Type::Float(_), Type::Int(_)) => true,
+        (Type::Bool, Type::Int(_)) => true,
+        _ => false,
+    }
+}
+
+/// Return the intrinsic name that implements `expr as to`, or `None`
+/// if `from == to` (no cast needed). Caller must have checked
+/// `is_cast_supported` first — this helper panics on unsupported pairs.
+pub fn cast_intrinsic_name(from: &Type, to: &Type) -> Option<String> {
+    if from == to {
+        return None;
+    }
+    let ty_name = |ty: &Type| match ty {
+        Type::Int(k) => k.name().to_string(),
+        Type::Float(k) => k.name().to_string(),
+        Type::Bool => "bool".to_string(),
+        _ => panic!("cast_intrinsic_name: unsupported type {:?}", ty),
+    };
+    Some(format!("${}_to_{}", ty_name(from), ty_name(to)))
+}
+
 fn infer_inner(
     env: &mut TypeEnv,
     subst: &mut Subst,
@@ -819,43 +868,26 @@ fn infer_inner(
                 return error_ty();
             }
         }
-        ExprKind::Downcast(target, variant) => {
-            let target_ty = infer_inner(env, subst, target, types, d);
-            let resolved = subst.resolve(&target_ty);
-            if resolved == Type::Error {
+        ExprKind::Cast(target, to_ty) => {
+            let from_ty = infer_inner(env, subst, target, types, d);
+            let from_resolved = subst.resolve(&from_ty);
+            if from_resolved == Type::Error {
                 return error_ty();
             }
-            if let Type::Custom(enum_name, args) = resolved {
-                if let Some(e_decl) = env.enums.get(&enum_name).cloned() {
-                    if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
-                        match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
-                            Some(mapping) => substitute(&v.ty, &mapping),
-                            None => return error_ty(),
-                        }
-                    } else {
-                        d.push_error(Diagnostic::new(
-                            NoSuchVariant,
-                            expr.span,
-                            format!("enum '{}' has no variant '{}'", enum_name, variant),
-                        ));
-                        return error_ty();
-                    }
-                } else {
-                    d.push_error(Diagnostic::new(
-                        UndeclaredEnum,
-                        expr.span,
-                        format!("undeclared enum '{}'", enum_name),
-                    ));
-                    return error_ty();
-                }
-            } else {
+            let scope = env.current_type_params.clone();
+            env.validate_type(to_ty, &scope, expr.span, d);
+            if !is_cast_supported(&from_resolved, to_ty) {
                 d.push_error(Diagnostic::new(
-                    ExpectedEnum,
+                    HllTypeCheckCode::InvalidCast,
                     expr.span,
-                    format!("expected enum type, found {}", resolved),
+                    format!(
+                        "cast from {} to {} is not supported",
+                        from_resolved, to_ty
+                    ),
                 ));
                 return error_ty();
             }
+            to_ty.clone()
         }
         ExprKind::Deref(target) => {
             let target_ty = infer_inner(env, subst, target, types, d);
@@ -1459,7 +1491,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::FieldAccess(base, _) => {
             check_no_control_flow(base, loop_depth, d);
         }
-        ExprKind::Downcast(base, _) => {
+        ExprKind::Cast(base, _) => {
             check_no_control_flow(base, loop_depth, d);
         }
         ExprKind::ArrayIndex(base, index) => {

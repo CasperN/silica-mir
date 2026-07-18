@@ -3,7 +3,7 @@ extern fn malloc_node(size: i64, $return: &out *Node);
 extern fn free_node(p: *Node);
 
 struct Node: Move {
-  value: i32
+  value: i64
   next: List
 }
 
@@ -19,7 +19,7 @@ fn list_empty($return: &out List) {
     return
 }
 
-fn list_cons(value: i32, tail: List, $return: &out List) {
+fn list_cons(value: i64, tail: List, $return: &out List) {
   p: *Node;
   _temp_0: &out *Node;
   _temp_1: unit;
@@ -75,19 +75,19 @@ fn list_free(list: List) {
     return
 }
 
-fn list_sum(list: & List, $return: &out i32) {
+fn list_sum(list: & List, $return: &out i64) {
   _: unit;
   p: *Node;
-  _temp_0: i32;
+  _temp_0: i64;
   _temp_1: & List;
-  _temp_2: &out i32;
-  _temp_3: &out i32;
+  _temp_2: &out i64;
+  _temp_3: &out i64;
   entry:
     switchEnum(list.*) [Empty: switch_Empty_0, Cons: switch_Cons_1]
   switch_Empty_0:
     _ = copy list.* as Empty;
     unborrow list;
-    $return.* = 0i32;
+    $return.* = 0;
     unborrow $return;
     goto switch_Empty_0__to__switch_merge_2
   switch_Empty_0__to__switch_merge_2:
@@ -100,7 +100,7 @@ fn list_sum(list: & List, $return: &out i32) {
     _temp_2 = &out _temp_0;
     call list_sum(move _temp_1, move _temp_2);
     _temp_3 = &out $return.*;
-    call $i32_add(copy p.*.value, move _temp_0, move _temp_3);
+    call $i64_add(copy p.*.value, move _temp_0, move _temp_3);
     unborrow $return;
     goto switch_Cons_1__to__switch_merge_2
   switch_Cons_1__to__switch_merge_2:
@@ -120,26 +120,30 @@ fn main(exit: &out i32) {
   _temp_3: &out List;
   l3: List;
   _temp_4: &out List;
-  s: i32;
+  s: i64;
   _temp_5: & List;
-  _temp_6: &out i32;
+  _temp_6: &out i64;
   _temp_7: unit;
   _temp_8: unit;
+  _temp_9: i32;
+  _temp_10: &out i32;
   entry:
     _temp_1 = &out l0;
     call list_empty(move _temp_1);
     _temp_2 = &out l1;
-    call list_cons(3i32, move l0, move _temp_2);
+    call list_cons(3, move l0, move _temp_2);
     _temp_3 = &out l2;
-    call list_cons(2i32, move l1, move _temp_3);
+    call list_cons(2, move l1, move _temp_3);
     _temp_4 = &out l3;
-    call list_cons(1i32, move l2, move _temp_4);
+    call list_cons(1, move l2, move _temp_4);
     _temp_5 = & l3;
     _temp_6 = &out s;
     call list_sum(move _temp_5, move _temp_6);
     call list_free(move l3);
     _temp_7 = unit;
-    exit.* = copy s;
+    _temp_10 = &out _temp_9;
+    call $i64_to_i32(copy s, move _temp_10);
+    exit.* = move _temp_9;
     unborrow exit;
     _temp_8 = unit;
     _temp_0 = unit;

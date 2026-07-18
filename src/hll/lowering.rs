@@ -332,10 +332,6 @@ fn lower_expr_to_place(
             let target_place = lower_expr_to_place(ctx, target, types)?;
             Ok(field_place(target_place, field.clone()))
         }
-        hll::ExprKind::Downcast(target, variant) => {
-            let target_place = lower_expr_to_place(ctx, target, types)?;
-            Ok(downcast_place(target_place, variant.clone()))
-        }
         hll::ExprKind::Deref(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             Ok(deref_place(target_place))
@@ -399,7 +395,6 @@ fn lower_expr_to_operand(
         }
         hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
-        | hll::ExprKind::Downcast(_, _)
         | hll::ExprKind::Deref(_)
         | hll::ExprKind::ArrayIndex(_, _) => {
             let place = lower_expr_to_place(ctx, expr, types)?;
@@ -435,7 +430,6 @@ fn lower_expr_into(
         hll::ExprKind::Literal(_)
         | hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
-        | hll::ExprKind::Downcast(_, _)
         | hll::ExprKind::Deref(_)
         | hll::ExprKind::ArrayIndex(_, _) => {
             let op = lower_expr_to_operand(ctx, expr, types)?;
@@ -534,6 +528,38 @@ fn lower_expr_into(
             );
             arg_ops.push(move_op(out_ref_place));
             ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
+            Ok(())
+        }
+        hll::ExprKind::Cast(inner, to_ty) => {
+            // Cast lowers to a call to the corresponding `$*_to_*`
+            // intrinsic. Same-type casts short-circuit — the inner
+            // expression evaluates directly into `dest` with no
+            // intermediate.
+            let from_hll_ty = lookup_type(inner, types).ok_or_else(|| {
+                diag(
+                    HllLoweringCode::MissingType,
+                    inner.span,
+                    "missing type annotation for cast target",
+                )
+            })?;
+            let Some(intrinsic) =
+                crate::hll::type_check::cast_intrinsic_name(from_hll_ty, to_ty)
+            else {
+                lower_expr_into(ctx, inner, dest, types)?;
+                return Ok(());
+            };
+            let fn_op = const_op(fn_name_const(intrinsic));
+            let inner_op = lower_expr_to_operand(ctx, inner, types)?;
+            let out_ref = out_ref_ty(lower_type(to_ty));
+            let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
+            ctx.emit_statement(
+                assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
+                expr.span,
+            );
+            ctx.emit_statement(
+                call_stmt(fn_op, vec![inner_op, move_op(out_ref_place)]),
+                expr.span,
+            );
             Ok(())
         }
         hll::ExprKind::Call(fn_expr, args) => {

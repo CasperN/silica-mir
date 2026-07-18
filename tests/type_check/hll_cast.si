@@ -1,0 +1,61 @@
+# HLL `expr as Type` numeric casts. Each fn covers one cell of the
+# (from × to) matrix, plus a couple of shape-level guards. Every cell
+# lowers to a call to the corresponding `$*_to_*` MIR intrinsic;
+# same-type casts short-circuit and no intrinsic call appears.
+#
+# Paired negative: `hll_cast_invalid.si` pins `HTC-InvalidCast` for
+# unsupported pairs (to bool, struct-to-int, pointer-to-pointer).
+#
+# Precedence guard: `x as i32 + 1` must parse as `(x as i32) + 1`
+# because `cast_expr` sits at postfix (prec 20) and `+` sits at
+# prec 12. Regression on that ordering would type-mismatch or
+# re-associate.
+
+# ---------- int → int, differing widths ----------
+
+fn i64_to_i32(x: i64) -> i32 { x as i32 }
+fn i32_to_i64(x: i32) -> i64 { x as i64 }
+fn u8_to_u64(x: u8) -> u64 { x as u64 }
+fn u64_to_u8(x: u64) -> u8 { x as u8 }
+
+# ---------- int → int, same-width signedness reinterpret ----------
+
+# Same width, different signedness. LLVM nop; MIR type-system enforces
+# the reinterpret via the same-width intrinsic (nop_reinterpret_emit).
+fn i32_to_u32(x: i32) -> u32 { x as u32 }
+fn u64_to_i64(x: u64) -> i64 { x as i64 }
+
+# ---------- int ↔ float ----------
+
+fn i64_to_f64(x: i64) -> f64 { x as f64 }
+fn f64_to_i64(x: f64) -> i64 { x as i64 }
+fn i32_to_f32(x: i32) -> f32 { x as f32 }
+
+# ---------- float ↔ float ----------
+
+fn f32_to_f64(x: f32) -> f64 { x as f64 }
+fn f64_to_f32(x: f64) -> f32 { x as f32 }
+
+# ---------- bool → int ----------
+
+fn bool_to_i32(b: bool) -> i32 { b as i32 }
+fn bool_to_u64(b: bool) -> u64 { b as u64 }
+
+# ---------- same-type: cast short-circuits ----------
+
+# `from == to`: HLL lowering emits the inner expression directly into
+# `dest`, no intrinsic call. Guards against future changes that would
+# emit a redundant `$iN_to_iN`.
+fn same_type(x: i64) -> i64 { x as i64 }
+
+# ---------- Chained casts ----------
+
+# `x as i32 as i64` = `(x as i32) as i64`. Two intrinsic calls, in
+# order. Postfix associativity gives left-to-right chaining.
+fn chained_cast(x: i64) -> i64 { x as i32 as i64 }
+
+# ---------- Precedence: cast binds tighter than binary ----------
+
+# `x as i32 + 1` = `(x as i32) + 1`. If binary `+` outranked `as`, the
+# RHS would be `as (i32 + 1)`, which isn't a valid type.
+fn cast_over_add(x: i64) -> i32 { x as i32 + 1i32 }

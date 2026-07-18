@@ -1,0 +1,165 @@
+fn i64_to_i32(x: i64, $return: &out i32) {
+  _temp_0: &out i32;
+  entry:
+    _temp_0 = &out $return.*;
+    call $i64_to_i32(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn i32_to_i64(x: i32, $return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $i32_to_i64(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn u8_to_u64(x: u8, $return: &out u64) {
+  _temp_0: &out u64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $u8_to_u64(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn u64_to_u8(x: u64, $return: &out u8) {
+  _temp_0: &out u8;
+  entry:
+    _temp_0 = &out $return.*;
+    call $u64_to_u8(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn i32_to_u32(x: i32, $return: &out u32) {
+  _temp_0: &out u32;
+  entry:
+    _temp_0 = &out $return.*;
+    call $i32_to_u32(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn u64_to_i64(x: u64, $return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $u64_to_i64(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn i64_to_f64(x: i64, $return: &out f64) {
+  _temp_0: &out f64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $i64_to_f64(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn f64_to_i64(x: f64, $return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $f64_to_i64(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn i32_to_f32(x: i32, $return: &out f32) {
+  _temp_0: &out f32;
+  entry:
+    _temp_0 = &out $return.*;
+    call $i32_to_f32(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn f32_to_f64(x: f32, $return: &out f64) {
+  _temp_0: &out f64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $f32_to_f64(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn f64_to_f32(x: f64, $return: &out f32) {
+  _temp_0: &out f32;
+  entry:
+    _temp_0 = &out $return.*;
+    call $f64_to_f32(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn bool_to_i32(b: bool, $return: &out i32) {
+  _temp_0: &out i32;
+  entry:
+    _temp_0 = &out $return.*;
+    call $bool_to_i32(copy b, move _temp_0);
+    unborrow $return;
+    drop b;
+    return
+}
+
+fn bool_to_u64(b: bool, $return: &out u64) {
+  _temp_0: &out u64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $bool_to_u64(copy b, move _temp_0);
+    unborrow $return;
+    drop b;
+    return
+}
+
+fn same_type(x: i64, $return: &out i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn chained_cast(x: i64, $return: &out i64) {
+  _temp_0: i32;
+  _temp_1: &out i32;
+  _temp_2: &out i64;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_to_i32(copy x, move _temp_1);
+    _temp_2 = &out $return.*;
+    call $i32_to_i64(move _temp_0, move _temp_2);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn cast_over_add(x: i64, $return: &out i32) {
+  _temp_0: i32;
+  _temp_1: &out i32;
+  _temp_2: &out i32;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_to_i32(copy x, move _temp_1);
+    _temp_2 = &out $return.*;
+    call $i32_add(move _temp_0, 1i32, move _temp_2);
+    unborrow $return;
+    drop x;
+    return
+}
