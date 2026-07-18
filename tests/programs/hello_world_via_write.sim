@@ -1,0 +1,24 @@
+# End-to-end FFI: build a byte-string in a fixed-size local array,
+# take a raw pointer to slot 0, and call `write(2)` on it. Exercises
+# extern-fn declaration, byte-string literal into `[u8; N]`, `&raw`
+# on an array slot, and drop of a Copy+Drop local at return.
+
+extern fn write(fd: i32, buf: *u8, count: u64);
+
+fn print_hello() {
+  s: [u8; 14];
+  p: *u8;
+  entry:
+    s = b"hello, world!\n";
+    p = &raw s[0u64];
+    call write(1i32, move p, 14u64);
+    drop s;
+    return
+}
+
+fn main(exit: &out i32) {
+  entry:
+    call print_hello();
+    exit.* = 0i32;
+    return
+}

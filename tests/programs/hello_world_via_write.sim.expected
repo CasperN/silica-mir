@@ -1,0 +1,20 @@
+extern fn write(fd: i32, buf: *u8, count: u64);
+
+fn print_hello() {
+  s: [u8; 14];
+  p: *u8;
+  entry:
+    s = b"hello, world!\n";
+    p = &raw s[0u64];
+    call write(1i32, move p, 14u64);
+    drop s;
+    return
+}
+
+fn main(exit: &out i32) {
+  entry:
+    call print_hello();
+    exit.* = 0i32;
+    unborrow exit;
+    return
+}
