@@ -363,11 +363,12 @@ impl Env {
                 ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
                 ConstVal::Bool(_) => Ok(Type::Bool),
                 ConstVal::Unit => Ok(Type::Unit),
-                ConstVal::FnName(name, _type_args) => {
-                    // Returns the raw declared fn signature; `_type_args`
-                    // are NOT substituted into param types. Concretization
-                    // happens at monomorphization time. Correct as-is for
-                    // non-generic fns.
+                ConstVal::FnName(name, type_args) => {
+                    // Substitute the fn's declared type-params with the
+                    // args on this reference: e.g. `identity<i64>` gives
+                    // `fn(i64) -> i64` after walking the declared
+                    // `fn<T>(T) -> T`. Non-generic fns have empty args
+                    // and substitution is a no-op.
                     let f = self.functions.get(name).ok_or_else(|| {
                         Diagnostic::new(
                             UndeclaredFunction,
@@ -375,7 +376,11 @@ impl Env {
                             format!("Undeclared function name '{}'", name),
                         )
                     })?;
-                    let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
+                    let param_tys = f
+                        .params
+                        .iter()
+                        .map(|p| substitute_params(&p.ty, &f.type_params, type_args))
+                        .collect();
                     Ok(fn_ty(param_tys))
                 }
                 ConstVal::ByteStr(bytes) => Ok(array_ty(u8_ty(), bytes.len() as u64)),

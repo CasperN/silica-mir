@@ -208,6 +208,78 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
         .collect()
 }
 
+/// Recover the inferred type arguments at a generic-fn call site by
+/// diffing the callee's freshened signature (recorded in `types` at
+/// `fn_expr_span` by HLL type_check) against the fn's declared
+/// signature.
+///
+/// For each declared type parameter T, find the first position where
+/// T appears in the declared signature (params or return type), then
+/// read the corresponding fresh type at the same position. Non-generic
+/// fns yield an empty vec.
+fn infer_fn_type_args(
+    f_decl: &hll::FnDecl,
+    fn_expr_span: mir::Span,
+    types: &IndexMap<mir::Span, hll::Type>,
+) -> Vec<mir::Type> {
+    if f_decl.type_params.is_empty() {
+        return Vec::new();
+    }
+    let Some(hll::Type::Fn(fresh_params, fresh_ret)) = types.get(&fn_expr_span) else {
+        return Vec::new();
+    };
+    f_decl
+        .type_params
+        .iter()
+        .map(|tp| {
+            for (decl, fresh) in f_decl.params.iter().map(|p| &p.ty).zip(fresh_params.iter()) {
+                if let Some(t) = find_param_at(&tp.name, decl, fresh) {
+                    return lower_type(&t);
+                }
+            }
+            if let Some(t) = find_param_at(&tp.name, &f_decl.ret_ty, fresh_ret) {
+                return lower_type(&t);
+            }
+            // Type param doesn't appear anywhere in the signature —
+            // HLL type_check would have left it as an unresolved Var,
+            // which resolve_default pins to i64. Fall back to unit
+            // here rather than panicking; codegen doesn't handle Param
+            // yet either, so this only matters once monomorphization
+            // lands.
+            mir::Type::Unit
+        })
+        .collect()
+}
+
+/// Walk `decl` and `fresh` in lockstep looking for `Type::Param(name)`
+/// in `decl`. Returns the corresponding `fresh` subtype at the first
+/// occurrence.
+fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll::Type> {
+    match (decl, fresh) {
+        (hll::Type::Param(n), _) if n == name => Some(fresh.clone()),
+        (hll::Type::Ref(_, a), hll::Type::Ref(_, b))
+        | (hll::Type::RawPtr(a), hll::Type::RawPtr(b))
+        | (hll::Type::Array(a, _), hll::Type::Array(b, _)) => find_param_at(name, a, b),
+        (hll::Type::Fn(a_ps, a_r), hll::Type::Fn(b_ps, b_r)) => {
+            for (a, b) in a_ps.iter().zip(b_ps.iter()) {
+                if let Some(t) = find_param_at(name, a, b) {
+                    return Some(t);
+                }
+            }
+            find_param_at(name, a_r, b_r)
+        }
+        (hll::Type::Custom(_, a_args), hll::Type::Custom(_, b_args)) => {
+            for (a, b) in a_args.iter().zip(b_args.iter()) {
+                if let Some(t) = find_param_at(name, a, b) {
+                    return Some(t);
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
 fn lower_type(ty: &hll::Type) -> mir::Type {
     match ty {
         hll::Type::Int(t) => int_ty(*t),
@@ -468,11 +540,15 @@ fn lower_expr_into(
                 arg_ops.push(lower_expr_to_operand(ctx, arg, types)?);
             }
 
-            // Lower fn_expr to operand.
-            // If it is a direct function name, we match it.
+            // Lower fn_expr to operand. Direct function names lower to
+            // a FnName const; for a generic fn, extract the inferred
+            // type args by comparing the callee's typed signature
+            // (`types[fn_expr.span]`, freshened by HLL type_check) to
+            // the fn's declared signature.
             let fn_op = if let hll::ExprKind::Variable(ref name) = fn_expr.kind {
-                if ctx.functions.contains_key(name) {
-                    const_op(fn_name_const(name.clone()))
+                if let Some(f_decl) = ctx.functions.get(name).cloned() {
+                    let mir_type_args = infer_fn_type_args(&f_decl, fn_expr.span, types);
+                    const_op(fn_name_const_with_args(name.clone(), mir_type_args))
                 } else {
                     lower_expr_to_operand(ctx, fn_expr, types)?
                 }
@@ -889,6 +965,7 @@ mod tests {
     use super::*;
     use crate::hll::parser::Parser;
     use crate::hll::type_check::typecheck_program_collect;
+    use crate::diagnostics::Diagnostics;
     use crate::mir::pretty_print::pretty_print;
 
     fn lower_source(source: &str) -> String {
@@ -899,7 +976,11 @@ mod tests {
                 source
             )
         });
-        let types = typecheck_program_collect(&hll_prog).unwrap();
+        let mut tc_d = Diagnostics::default();
+        let types = typecheck_program_collect(&hll_prog, &mut tc_d);
+        if tc_d.has_errors() {
+            panic!("typecheck error:\n{}\n--- source ---\n{}", tc_d.errors_str().join("\n"), source);
+        }
         let mir_prog = lower_program(&hll_prog, &types).unwrap();
 
         // Run MIR typecheck sanity check on the lowered program

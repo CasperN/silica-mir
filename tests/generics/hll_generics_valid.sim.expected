@@ -82,3 +82,32 @@ fn nested_container(b: Box<Option<i64>>, $return: &out i64) {
     drop inner;
     return
 }
+
+fn<T: Copy + Drop> identity(x: T, $return: &out T) {
+  entry:
+    $return.* = move x;
+    unborrow $return;
+    return
+}
+
+fn call_generic_fn($return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call identity<i64>(42, move _temp_0);
+    unborrow $return;
+    return
+}
+
+fn call_generic_fn_via_ret($return: &out i64) {
+  _temp_0: i64;
+  _temp_1: &out i64;
+  _temp_2: &out i64;
+  entry:
+    _temp_1 = &out _temp_0;
+    call identity<i64>(7, move _temp_1);
+    _temp_2 = &out $return.*;
+    call identity<i64>(move _temp_0, move _temp_2);
+    unborrow $return;
+    return
+}

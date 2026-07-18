@@ -1,0 +1,79 @@
+# HLL generics: type-annotation and use-site validation errors.
+#
+# Every fn below places an ill-formed type in an annotation position
+# (param, return, `let` binding) or an ill-formed use of a generic
+# decl. The HLL type checker rejects each at its source span rather
+# than letting it surface later in lowering or the MIR pipeline. All
+# errors accumulate — one .si file surfaces every cell's diagnostic.
+#
+#   fn                          diagnostic                     trigger
+#   undeclared_type_param       HTC-UndeclaredType             `T` used with no `T` in scope
+#   undeclared_custom_type      HTC-UndeclaredType             reference to an unknown decl
+#   arity_too_many_args         HTC-TypeArgArityMismatch       `Box<i64, i64>` on 1-param decl
+#   arity_too_few_args          HTC-TypeArgArityMismatch       `Box` on generic decl (needs arg)
+#   bound_not_satisfied_copy    HTC-BoundNotSatisfied          `Box<Linear>` where T: Copy
+#   bound_not_satisfied_drop    HTC-BoundNotSatisfied          `Sink<Linear>` where T: Drop
+#   nested_bound_violation      HTC-BoundNotSatisfied          `Box<Box<Linear>>` inner fails
+#   return_type_bad_arity       HTC-TypeArgArityMismatch       return type has wrong arity
+#   let_annotation_bad_arity    HTC-TypeArgArityMismatch       `let x: Box<i64, i64> = ...`
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+
+struct<T: Drop> Sink: Drop { inner: T }
+
+# Linear: not Copy, not Drop.
+struct Linear { r: &out i64 }
+
+# ---------- Undeclared type-param reference ----------
+
+fn undeclared_type_param(x: T) -> i64 {
+  0
+}
+
+# ---------- Undeclared custom type ----------
+
+fn undeclared_custom_type(x: Nope) -> i64 {
+  0
+}
+
+# ---------- Arity: too many type args ----------
+
+fn arity_too_many_args(x: Box<i64, i64>) -> i64 {
+  0
+}
+
+# ---------- Arity: too few (missing args on generic decl) ----------
+
+fn arity_too_few_args(x: Box) -> i64 {
+  0
+}
+
+# ---------- Bound not satisfied: T requires Copy ----------
+
+fn bound_not_satisfied_copy(x: Box<Linear>) -> i64 {
+  0
+}
+
+# ---------- Bound not satisfied: T requires Drop ----------
+
+fn bound_not_satisfied_drop(x: Sink<Linear>) -> i64 {
+  0
+}
+
+# ---------- Nested: outer OK but inner arg fails its bound ----------
+
+fn nested_bound_violation(x: Box<Box<Linear>>) -> i64 {
+  0
+}
+
+# ---------- Return type: arity mismatch ----------
+
+fn return_type_bad_arity() -> Box<i64, i64> {
+  Box { inner: 0 }
+}
+
+# ---------- Let annotation: arity mismatch ----------
+
+fn let_annotation_bad_arity() {
+  let x: Box<i64, i64> = Box { inner: 0 };
+}

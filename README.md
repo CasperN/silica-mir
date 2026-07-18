@@ -916,25 +916,23 @@ Order of operations:
   are deferred behind the current unconditional-bounds form; the
   inline form on the decl and a separate `impl`-style form will
   coexist.
-- **HLL generics** — grammar, AST, parser, type-check (HM +
-  substitution at field/variant/match binding), MIR
-  `RValue::EnumConstr` with type args, and end-to-end lowering are
+- **HLL generics** — grammar, AST, parser, HLL type-check (HM +
+  substitution + validate_type for decl-side arity/bounds/scope +
+  generic-fn call inference), MIR `RValue::EnumConstr` and
+  `ConstVal::FnName` with type args, and end-to-end lowering are
   all in. Remaining gaps:
-  - **Use-site bound satisfaction check on the HLL side.** MIR's
-    composition check catches most cases on the lowered program,
-    but HLL doesn't yet reject `Box<X>` when `X` fails `Box`'s
-    declared `T: Copy` bound with an HLL-source diagnostic.
-  - **Arity check at HLL type-annotation position.** `Box<A, B>` in
-    a signature `fn f(x: Box<A, B>)` doesn't yet trigger an HLL
-    diagnostic; the mismatch surfaces later.
-  - **Undeclared type-param references.** A stray `T` in a fn body
-    with no `T` in scope resolves to `Custom("T", [])` (parser's
-    fallback), then trips downstream. Adding a decl-side validation
-    pass would surface the error at the reference site.
-  - **`fn<T: ...>` call sites don't yet carry type args.** Generic
-    fn calls parse but the type args aren't threaded through, so
-    only fully-inferable calls work; explicit `foo<i64>(...)` is
-    grammar-only for now.
+  - **Explicit generic-fn call syntax `foo<i64>(...)`.** Inference
+    works for fully-inferable calls; explicit type args need HLL
+    grammar for `call_expr` + parser + type_check to accept them
+    against the freshened signature.
+  - **Return-type annotation span points at the fn keyword.** HLL
+    `FnDecl` doesn't carry a separate span for `ret_ty`, so any
+    validation error on the return type is reported at the fn
+    itself. Add a span field alongside `ret_ty` to fix.
+  - **Cascading errors from a poisoned type.** After a decl-side
+    validation error, downstream unification produces follow-on
+    diagnostics that repeat the root cause. A `Type::Error` sentinel
+    that unifies with anything would silence the tail.
   - Conditional marker bounds (`Foo<T>: Copy where T: Copy`) are
     still deferred behind the unconditional-bounds form.
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
@@ -1014,6 +1012,10 @@ Order of operations:
   warning / internal_error, rendered with a `note:` prefix. First
   use case: flag redundant markers on a decl — `struct X: Copy +
   Drop + Move { ... }` gets an info note that `Move` is implied.
+- **HLL parser CST→AST layer short-circuits at the first malformed
+  node — should it skip the broken decl and continue?**
+- **HLL lowering returns `Result<_, Diagnostic>` — should internal-
+  error lowering failures accumulate the same way user errors do?**
 
 ## Testing gaps
 - **Post-elab init-state re-run** has no dedicated fixture. Add one

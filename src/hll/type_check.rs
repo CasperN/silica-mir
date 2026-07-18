@@ -3,7 +3,14 @@ use indexmap::IndexMap;
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::mir::ast::Span;
+use crate::mir::ast::{Marker, Markers, RefKind, Span};
+
+/// Build a `name → bounds` map from a decl's type parameters. Used
+/// when computing a type's substructural class or validating uses
+/// against bounds — both need per-name marker info.
+fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Markers> {
+    params.iter().map(|p| (p.name.clone(), p.bounds)).collect()
+}
 
 /// Substitute type-parameter references in `ty` using `mapping`. Used
 /// when reading a declared field/variant/param type on a generic decl:
@@ -30,15 +37,16 @@ fn substitute(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
 
 /// Build a `param_name -> arg_type` substitution map, checking that
 /// the number of args matches the number of declared type parameters.
-/// Returns an error diagnostic on arity mismatch.
+/// Pushes an error diagnostic on arity mismatch and returns `None`.
 fn build_subst_map(
     decl_name: &str,
     type_params: &[TypeParam],
     args: &[Type],
     span: Span,
-) -> Result<HashMap<String, Type>, TcErr> {
+    d: &mut Diagnostics,
+) -> Option<HashMap<String, Type>> {
     if args.len() != type_params.len() {
-        return err_at(
+        d.push_error(Diagnostic::new(
             ArityMismatch,
             span,
             format!(
@@ -47,24 +55,17 @@ fn build_subst_map(
                 type_params.len(),
                 args.len()
             ),
-        );
+        ));
+        return None;
     }
     let mut mapping = HashMap::new();
     for (tp, arg) in type_params.iter().zip(args.iter()) {
         mapping.insert(tp.name.clone(), arg.clone());
     }
-    Ok(mapping)
+    Some(mapping)
 }
 
 use HllTypeCheckCode::*;
-
-/// Structured error returned by inner type-check functions. Converted
-/// to a `Diagnostic` at the public boundary.
-type TcErr = Diagnostic;
-
-fn err_at<T>(code: HllTypeCheckCode, span: Span, msg: impl Into<String>) -> Result<T, TcErr> {
-    Err(Diagnostic::new(code, span, msg))
-}
 
 /// Distinguish unification failure modes returned by [`Subst::unify`] so
 /// call sites can attach the right span and diagnostic code.
@@ -136,6 +137,16 @@ pub enum HllTypeCheckCode {
     ArrayLengthMismatch,
     /// Control flow statement (break, continue, return) inside a defer block.
     ControlFlowInDefer,
+    /// Type annotation references a struct/enum name that isn't declared.
+    UndeclaredType,
+    /// Generic type instantiation has the wrong number of type arguments
+    /// (e.g. `Box<i64, i64>` on a 1-parameter decl, or a bare `Box` on a
+    /// generic decl).
+    TypeArgArityMismatch,
+    /// A type argument at a generic instantiation site doesn't satisfy
+    /// the declared marker bound on the corresponding type parameter
+    /// (e.g. `Box<Linear>` where the decl is `struct<T: Copy> Box`).
+    BoundNotSatisfied,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -284,7 +295,13 @@ pub struct TypeEnv {
     structs: HashMap<String, StructDecl>,
     enums: HashMap<String, EnumDecl>,
     functions: HashMap<String, (Vec<Type>, Type)>,
+    /// Fn name → list of declared type-parameter names. Used at call
+    /// sites to freshen the signature into new inference vars.
+    fn_type_params: HashMap<String, Vec<String>>,
     current_ret_ty: Option<Type>,
+    /// Type-parameter names → declared marker bounds for the fn being
+    /// checked. Empty outside a fn body.
+    current_type_params: HashMap<String, Markers>,
 }
 
 impl TypeEnv {
@@ -294,7 +311,9 @@ impl TypeEnv {
             structs: HashMap::new(),
             enums: HashMap::new(),
             functions: HashMap::new(),
+            fn_type_params: HashMap::new(),
             current_ret_ty: None,
+            current_type_params: HashMap::new(),
         }
     }
 
@@ -320,17 +339,134 @@ impl TypeEnv {
         }
         None
     }
+
+    /// Substructural class of a type in this environment. Scalars,
+    /// references, raw pointers, fn-ptr types are all `Copy + Drop +
+    /// Move`. A `Custom` name resolves to the decl's declared markers
+    /// (or empty if the name is undeclared — validation catches that
+    /// separately). A `Param` uses the bounds attached to it in
+    /// `scope`. See MIR's `class_of` for the same rules.
+    fn class_of(&self, ty: &Type, scope: &HashMap<String, Markers>) -> Markers {
+        let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
+        match ty {
+            Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => all(),
+            Type::Fn(_, _) | Type::RawPtr(_) => all(),
+            Type::Ref(kind, _) => match kind {
+                RefKind::Shared => all(),
+                RefKind::Mut | RefKind::Uninit => {
+                    Markers::from_iter([Marker::Drop, Marker::Move])
+                }
+                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
+            },
+            Type::Custom(name, _args) => {
+                if let Some(s) = self.structs.get(name) {
+                    s.markers
+                } else if let Some(e) = self.enums.get(name) {
+                    e.markers
+                } else {
+                    Markers::empty()
+                }
+            }
+            Type::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
+            Type::Array(elem, _) => self.class_of(elem, scope),
+            Type::Var(_) => all(),
+        }
+    }
+
+    /// Walk `ty` and push a diagnostic per problem: an undeclared
+    /// `Custom` name, a `Param` not in scope, wrong type-arg arity,
+    /// or an arg that fails the declared bound. Each is reported at
+    /// `span`. Continues past errors so a single top-level `Type`
+    /// with multiple defects surfaces them all.
+    pub fn validate_type(
+        &self,
+        ty: &Type,
+        scope: &HashMap<String, Markers>,
+        span: Span,
+        d: &mut Diagnostics,
+    ) {
+        match ty {
+            Type::Int(_)
+            | Type::Float(_)
+            | Type::Bool
+            | Type::Unit
+            | Type::Never
+            | Type::Var(_) => {}
+            Type::Param(name) => {
+                if !scope.contains_key(name) {
+                    d.push_error(Diagnostic::new(
+                        UndeclaredType,
+                        span,
+                        format!("undeclared type '{}'", name),
+                    ));
+                }
+            }
+            Type::Ref(_, inner) | Type::RawPtr(inner) | Type::Array(inner, _) => {
+                self.validate_type(inner, scope, span, d);
+            }
+            Type::Fn(params, ret) => {
+                for p in params {
+                    self.validate_type(p, scope, span, d);
+                }
+                self.validate_type(ret, scope, span, d);
+            }
+            Type::Custom(name, args) => {
+                for a in args {
+                    self.validate_type(a, scope, span, d);
+                }
+                let type_params: &[TypeParam] = if let Some(s) = self.structs.get(name) {
+                    &s.type_params
+                } else if let Some(e) = self.enums.get(name) {
+                    &e.type_params
+                } else {
+                    d.push_error(Diagnostic::new(
+                        UndeclaredType,
+                        span,
+                        format!("undeclared type '{}'", name),
+                    ));
+                    return;
+                };
+                if args.len() != type_params.len() {
+                    d.push_error(Diagnostic::new(
+                        TypeArgArityMismatch,
+                        span,
+                        format!(
+                            "'{}' takes {} type argument(s), found {}",
+                            name,
+                            type_params.len(),
+                            args.len()
+                        ),
+                    ));
+                    return;
+                }
+                for (tp, arg) in type_params.iter().zip(args.iter()) {
+                    let arg_class = self.class_of(arg, scope);
+                    for m in [Marker::Copy, Marker::Drop, Marker::Move] {
+                        if tp.bounds.declared(m) && !arg_class.implies(m) {
+                            d.push_error(Diagnostic::new(
+                                BoundNotSatisfied,
+                                span,
+                                format!(
+                                    "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
+                                    arg, name, tp.name, m
+                                ),
+                            ));
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Run HLL type-checking, pushing errors into `d`. Returns the
-/// per-expression type map on success; `None` if any error was reported.
+/// per-expression type map; errors accumulate in `d`.
 pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<IndexMap<Span, Type>> {
-    match typecheck_program_collect(program) {
-        Ok(types) => Some(types),
-        Err(diag) => {
-            d.push_error(diag);
-            None
-        }
+    let types = typecheck_program_collect(program, d);
+    if d.has_errors() {
+        None
+    } else {
+        Some(types)
     }
 }
 
@@ -338,15 +474,19 @@ pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<IndexMap
 /// stage a typecheck without needing a `Diagnostics` container.
 /// Production callers should use `run_type_check`.
 #[cfg(test)]
-pub(super) fn typecheck_program(program: &Program) -> Result<(), Diagnostic> {
-    typecheck_program_collect(program).map(|_| ())
+pub(super) fn typecheck_program(program: &Program) -> Diagnostics {
+    let mut d = Diagnostics::default();
+    typecheck_program_collect(program, &mut d);
+    d
 }
 
-/// Test-facing wrapper that returns the per-expression type map on
-/// success. Sibling modules use this to stage lowering-time work
-/// without needing a `Diagnostics` container. Production callers
-/// should use `run_type_check`.
-pub(super) fn typecheck_program_collect(program: &Program) -> Result<IndexMap<Span, Type>, Diagnostic> {
+/// Run HLL type-checking, pushing all errors into `d` and returning the
+/// per-expression type map unconditionally. Production callers should use
+/// `run_type_check`.
+pub(super) fn typecheck_program_collect(
+    program: &Program,
+    d: &mut Diagnostics,
+) -> IndexMap<Span, Type> {
     let mut env = TypeEnv::new();
     let mut subst = Subst::new();
     let mut types = IndexMap::new();
@@ -363,6 +503,40 @@ pub(super) fn typecheck_program_collect(program: &Program) -> Result<IndexMap<Sp
             Declaration::Fn(f) => {
                 let params_tys: Vec<Type> = f.params.iter().map(|p| p.ty.clone()).collect();
                 env.functions.insert(f.name.clone(), (params_tys, f.ret_ty.clone()));
+                env.fn_type_params.insert(
+                    f.name.clone(),
+                    f.type_params.iter().map(|tp| tp.name.clone()).collect(),
+                );
+            }
+        }
+    }
+
+    // Validate every decl-level type: fields, variant payloads, fn
+    // params, fn returns. Every referenced `Custom` must be declared
+    // with matching arity, every arg must satisfy the declared bound,
+    // and every `Param` must be in scope for its enclosing decl.
+    for decl in &program.declarations {
+        match decl {
+            Declaration::Struct(s) => {
+                let scope = type_params_scope(&s.type_params);
+                for f in &s.fields {
+                    env.validate_type(&f.ty, &scope, f.span, d);
+                }
+            }
+            Declaration::Enum(e) => {
+                let scope = type_params_scope(&e.type_params);
+                for v in &e.variants {
+                    env.validate_type(&v.ty, &scope, v.span, d);
+                }
+            }
+            Declaration::Fn(f) => {
+                let scope = type_params_scope(&f.type_params);
+                let errors_before = d.error_count();
+                for p in &f.params {
+                    env.validate_type(&p.ty, &scope, p.span, d);
+                }
+                env.validate_type(&f.ret_ty, &scope, f.span, d);
+                d.annotate_errors_in_function(errors_before, &f.name);
             }
         }
     }
@@ -370,14 +544,17 @@ pub(super) fn typecheck_program_collect(program: &Program) -> Result<IndexMap<Sp
     // Typecheck function bodies
     for decl in &program.declarations {
         if let Declaration::Fn(f) = decl {
+            env.current_type_params = type_params_scope(&f.type_params);
             env.push_scope();
             env.current_ret_ty = Some(f.ret_ty.clone());
             for param in &f.params {
                 env.insert_var(param.name.clone(), param.ty.clone());
             }
-            check_inner(&mut env, &mut subst, &f.body, &f.ret_ty, &mut types)
-                .map_err(|d| d.in_function(&f.name))?;
+            let errors_before = d.error_count();
+            check_inner(&mut env, &mut subst, &f.body, &f.ret_ty, &mut types, d);
+            d.annotate_errors_in_function(errors_before, &f.name);
             env.pop_scope();
+            env.current_type_params = HashMap::new();
         }
     }
 
@@ -387,7 +564,7 @@ pub(super) fn typecheck_program_collect(program: &Program) -> Result<IndexMap<Sp
         resolved_types.insert(span, subst.resolve_default(&ty));
     }
 
-    Ok(resolved_types)
+    resolved_types
 }
 
 fn infer_inner(
@@ -395,57 +572,80 @@ fn infer_inner(
     subst: &mut Subst,
     expr: &Expr,
     types: &mut IndexMap<Span, Type>,
-) -> Result<Type, Diagnostic> {
+    d: &mut Diagnostics,
+) -> Type {
     let ty = match &expr.kind {
         ExprKind::Literal(lit) => match lit {
-            Literal::Int(_, Some(ty)) => Ok(Type::Int(*ty)),
-            Literal::Int(_, None) => Ok(subst.fresh_var()),
-            Literal::Float(_, Some(ty)) => Ok(Type::Float(*ty)),
-            Literal::Float(_, None) => Ok(subst.fresh_var()),
-            Literal::Bool(_) => Ok(bool_ty()),
-            Literal::Unit => Ok(unit_ty()),
+            Literal::Int(_, Some(ty)) => Type::Int(*ty),
+            Literal::Int(_, None) => subst.fresh_var(),
+            Literal::Float(_, Some(ty)) => Type::Float(*ty),
+            Literal::Float(_, None) => subst.fresh_var(),
+            Literal::Bool(_) => bool_ty(),
+            Literal::Unit => unit_ty(),
         },
         ExprKind::Binary(lhs, op, rhs) => {
-            let lhs_ty = infer_inner(env, subst, lhs, types)?;
-            let rhs_ty = infer_inner(env, subst, rhs, types)?;
-            subst.unify(&lhs_ty, &rhs_ty).map_err(|e| e.to_diag(expr.span))?;
+            let lhs_ty = infer_inner(env, subst, lhs, types, d);
+            let rhs_ty = infer_inner(env, subst, rhs, types, d);
+            if let Err(e) = subst.unify(&lhs_ty, &rhs_ty) {
+                d.push_error(e.to_diag(expr.span));
+            }
 
             let resolved = subst.resolve(&lhs_ty);
             match &resolved {
                 Type::Int(_) | Type::Float(_) | Type::Var(_) | Type::Never => {}
-                _ => return err_at(
-                    BinaryOpNonNumeric,
-                    expr.span,
-                    format!("binary operations only supported on numeric types, found {}", resolved),
-                ),
+                _ => {
+                    d.push_error(Diagnostic::new(
+                        BinaryOpNonNumeric,
+                        expr.span,
+                        format!("binary operations only supported on numeric types, found {}", resolved),
+                    ));
+                    return subst.fresh_var();
+                }
             }
 
             let is_cmp = matches!(
                 op,
                 BinOp::Eq | BinOp::Ne | BinOp::Lt | BinOp::Le | BinOp::Gt | BinOp::Ge
             );
-            let res_ty = if is_cmp {
+            if is_cmp {
                 bool_ty()
             } else {
                 lhs_ty.clone()
-            };
-            Ok(res_ty)
+            }
         }
         ExprKind::Variable(name) => {
             if let Some(ty) = env.lookup_var(name) {
-                Ok(ty)
-            } else if let Some((params, ret)) = env.functions.get(name) {
-                Ok(fn_ty(params.clone(), ret.clone()))
+                ty
+            } else if let Some((params, ret)) = env.functions.get(name).cloned() {
+                // Freshen the fn's declared type parameters into new
+                // inference vars, then substitute through the signature.
+                // Each call site gets its own independent binding of T.
+                // The freshening also decouples the signature from any
+                // Params still visible from the caller's scope.
+                let type_params = env
+                    .fn_type_params
+                    .get(name)
+                    .cloned()
+                    .unwrap_or_default();
+                let mut mapping: HashMap<String, Type> = HashMap::new();
+                for tp in &type_params {
+                    mapping.insert(tp.clone(), subst.fresh_var());
+                }
+                let fresh_params: Vec<Type> =
+                    params.iter().map(|p| substitute(p, &mapping)).collect();
+                let fresh_ret = substitute(&ret, &mapping);
+                fn_ty(fresh_params, fresh_ret)
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     UndeclaredVariable,
                     expr.span,
                     format!("undeclared variable '{}'", name),
-                )
+                ));
+                return subst.fresh_var();
             }
         }
         ExprKind::FieldAccess(target, field) => {
-            let target_ty = infer_inner(env, subst, target, types)?;
+            let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
             let struct_ty = match &resolved {
                 Type::Ref(_, inner) => subst.resolve(inner),
@@ -454,86 +654,99 @@ fn infer_inner(
             if let Type::Custom(struct_name, args) = struct_ty {
                 if let Some(s_decl) = env.structs.get(&struct_name).cloned() {
                     if let Some(f) = s_decl.fields.iter().find(|field_decl| field_decl.name == *field) {
-                        let mapping = build_subst_map(&struct_name, &s_decl.type_params, &args, expr.span)?;
-                        Ok(substitute(&f.ty, &mapping))
+                        match build_subst_map(&struct_name, &s_decl.type_params, &args, expr.span, d) {
+                            Some(mapping) => substitute(&f.ty, &mapping),
+                            None => return subst.fresh_var(),
+                        }
                     } else {
-                        err_at(
+                        d.push_error(Diagnostic::new(
                             NoSuchField,
                             expr.span,
                             format!("struct '{}' has no field '{}'", struct_name, field),
-                        )
+                        ));
+                        return subst.fresh_var();
                     }
                 } else {
-                    err_at(
+                    d.push_error(Diagnostic::new(
                         UndeclaredStruct,
                         expr.span,
                         format!("undeclared struct '{}'", struct_name),
-                    )
+                    ));
+                    return subst.fresh_var();
                 }
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     ExpectedStruct,
                     expr.span,
                     format!("expected struct type, found {}", resolved),
-                )
+                ));
+                return subst.fresh_var();
             }
         }
         ExprKind::Downcast(target, variant) => {
-            let target_ty = infer_inner(env, subst, target, types)?;
+            let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
             if let Type::Custom(enum_name, args) = resolved {
                 if let Some(e_decl) = env.enums.get(&enum_name).cloned() {
                     if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
-                        let mapping = build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span)?;
-                        Ok(substitute(&v.ty, &mapping))
+                        match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                            Some(mapping) => substitute(&v.ty, &mapping),
+                            None => return subst.fresh_var(),
+                        }
                     } else {
-                        err_at(
+                        d.push_error(Diagnostic::new(
                             NoSuchVariant,
                             expr.span,
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
-                        )
+                        ));
+                        return subst.fresh_var();
                     }
                 } else {
-                    err_at(
+                    d.push_error(Diagnostic::new(
                         UndeclaredEnum,
                         expr.span,
                         format!("undeclared enum '{}'", enum_name),
-                    )
+                    ));
+                    return subst.fresh_var();
                 }
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     ExpectedEnum,
                     expr.span,
                     format!("expected enum type, found {}", resolved),
-                )
+                ));
+                return subst.fresh_var();
             }
         }
         ExprKind::Deref(target) => {
-            let target_ty = infer_inner(env, subst, target, types)?;
+            let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
             match resolved {
-                Type::Ref(_, inner) | Type::RawPtr(inner) => Ok(*inner),
-                other => err_at(
-                    ExpectedPointer,
-                    expr.span,
-                    format!("cannot dereference non-pointer type {}", other),
-                ),
+                Type::Ref(_, inner) | Type::RawPtr(inner) => *inner,
+                other => {
+                    d.push_error(Diagnostic::new(
+                        ExpectedPointer,
+                        expr.span,
+                        format!("cannot dereference non-pointer type {}", other),
+                    ));
+                    return subst.fresh_var();
+                }
             }
         }
         ExprKind::Borrow(kind, target) => {
-            let inner_ty = infer_inner(env, subst, target, types)?;
-            Ok(ref_ty(*kind, inner_ty))
+            let inner_ty = infer_inner(env, subst, target, types, d);
+            ref_ty(*kind, inner_ty)
         }
         ExprKind::RawBorrow(target) => {
-            let inner_ty = infer_inner(env, subst, target, types)?;
-            Ok(raw_ptr_ty(inner_ty))
+            let inner_ty = infer_inner(env, subst, target, types, d);
+            raw_ptr_ty(inner_ty)
         }
         ExprKind::Call(fn_expr, args) => {
-            let fn_ty = infer_inner(env, subst, fn_expr, types)?;
+            let fn_ty = infer_inner(env, subst, fn_expr, types, d);
             let resolved = subst.resolve(&fn_ty);
             if let Type::Fn(param_tys, ret_ty) = resolved {
                 if param_tys.len() != args.len() {
-                    return err_at(
+                    d.push_error(Diagnostic::new(
                         ArityMismatch,
                         expr.span,
                         format!(
@@ -541,94 +754,111 @@ fn infer_inner(
                             param_tys.len(),
                             args.len()
                         ),
-                    );
+                    ));
+                    return subst.fresh_var();
                 }
                 for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
-                    check_inner(env, subst, arg, param_ty, types)?;
+                    check_inner(env, subst, arg, param_ty, types, d);
                 }
-                Ok(*ret_ty)
+                *ret_ty
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     ExpectedFunction,
                     expr.span,
                     format!("expected function type, found {}", resolved),
-                )
+                ));
+                return subst.fresh_var();
             }
         }
         ExprKind::Block(stmts, last_expr) => {
             env.push_scope();
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { is_mut: _, name, ty, init, span: _ } => {
+                    Stmt::Let { is_mut: _, name, ty, init, span } => {
                         let var_ty = if let Some(annotated_ty) = ty {
-                            check_inner(env, subst, init, annotated_ty, types)?;
+                            let scope = env.current_type_params.clone();
+                            env.validate_type(annotated_ty, &scope, *span, d);
+                            check_inner(env, subst, init, annotated_ty, types, d);
                             annotated_ty.clone()
                         } else {
-                            infer_inner(env, subst, init, types)?
+                            infer_inner(env, subst, init, types, d)
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
                     Stmt::Defer { body, span: _ } => {
-                        let body_ty = infer_inner(env, subst, body, types)?;
-                        subst.unify(&body_ty, &unit_ty()).map_err(|e| e.to_diag(body.span))?;
+                        let body_ty = infer_inner(env, subst, body, types, d);
+                        if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
+                            d.push_error(e.to_diag(body.span));
+                        }
                     }
                     Stmt::Expr(e) => {
-                        infer_inner(env, subst, e, types)?;
+                        infer_inner(env, subst, e, types, d);
                     }
                 }
             }
             let res = if let Some(last) = last_expr {
-                infer_inner(env, subst, last, types)
+                infer_inner(env, subst, last, types, d)
             } else {
-                Ok(unit_ty())
+                unit_ty()
             };
             env.pop_scope();
             res
         }
         ExprKind::If(cond, true_block, false_block) => {
-            check_inner(env, subst, cond, &bool_ty(), types)?;
-            let t1 = infer_inner(env, subst, true_block, types)?;
-            let t2 = infer_inner(env, subst, false_block, types)?;
-            subst.unify(&t1, &t2).map_err(|e| e.to_diag(expr.span))?;
-            Ok(subst.resolve(&t1))
+            check_inner(env, subst, cond, &bool_ty(), types, d);
+            let t1 = infer_inner(env, subst, true_block, types, d);
+            let t2 = infer_inner(env, subst, false_block, types, d);
+            if let Err(e) = subst.unify(&t1, &t2) {
+                d.push_error(e.to_diag(expr.span));
+            }
+            subst.resolve(&t1)
         }
         ExprKind::Loop(body) => {
-            check_inner(env, subst, body, &unit_ty(), types)?;
-            Ok(never_ty())
+            check_inner(env, subst, body, &unit_ty(), types, d);
+            never_ty()
         }
         ExprKind::Break(val_expr) => {
             if let Some(val) = val_expr {
-                infer_inner(env, subst, val, types)?;
+                infer_inner(env, subst, val, types, d);
             }
-            Ok(never_ty())
+            never_ty()
         }
-        ExprKind::Continue => Ok(Type::Never),
+        ExprKind::Continue => Type::Never,
         ExprKind::Return(val_expr) => {
             let ret_ty = env.current_ret_ty.clone().unwrap_or_else(unit_ty);
             if let Some(val) = val_expr {
-                check_inner(env, subst, val, &ret_ty, types)?;
+                check_inner(env, subst, val, &ret_ty, types, d);
             } else {
-                subst.unify(&ret_ty, &unit_ty()).map_err(|e| e.to_diag(expr.span))?;
+                if let Err(e) = subst.unify(&ret_ty, &unit_ty()) {
+                    d.push_error(e.to_diag(expr.span));
+                }
             }
-            Ok(never_ty())
+            never_ty()
         }
         ExprKind::Assign(lhs, rhs) => {
-            let lhs_ty = infer_inner(env, subst, lhs, types)?;
-            check_inner(env, subst, rhs, &lhs_ty, types)?;
-            Ok(unit_ty())
+            let lhs_ty = infer_inner(env, subst, lhs, types, d);
+            check_inner(env, subst, rhs, &lhs_ty, types, d);
+            unit_ty()
         }
         ExprKind::Match(target, arms) => {
-            let target_ty = infer_inner(env, subst, target, types)?;
+            let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
             if let Type::Custom(enum_name, args) = resolved {
-                let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
-                    Diagnostic::new(
-                        UndeclaredEnum,
-                        expr.span,
-                        format!("undeclared enum '{}'", enum_name),
-                    )
-                })?;
-                let mapping = build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span)?;
+                let e_decl = match env.enums.get(&enum_name).cloned() {
+                    Some(decl) => decl,
+                    None => {
+                        d.push_error(Diagnostic::new(
+                            UndeclaredEnum,
+                            expr.span,
+                            format!("undeclared enum '{}'", enum_name),
+                        ));
+                        return subst.fresh_var();
+                    }
+                };
+                let mapping = match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                    Some(m) => m,
+                    None => return subst.fresh_var(),
+                };
                 let mut arm_tys = Vec::new();
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
@@ -637,44 +867,58 @@ fn infer_inner(
                         if let Some(var_name) = bound_var {
                             env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
                         }
-                        let body_ty = infer_inner(env, subst, body, types)?;
+                        let body_ty = infer_inner(env, subst, body, types, d);
                         env.pop_scope();
                         arm_tys.push(body_ty);
                     } else {
-                        return err_at(
+                        d.push_error(Diagnostic::new(
                             NoSuchVariant,
                             expr.span,
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
-                        );
+                        ));
+                        // Continue checking remaining arms
+                        arm_tys.push(subst.fresh_var());
                     }
                 }
                 if arm_tys.is_empty() {
-                    return err_at(EmptySwitch, expr.span, "empty switch expression");
+                    d.push_error(Diagnostic::new(
+                        EmptySwitch,
+                        expr.span,
+                        "empty switch expression",
+                    ));
+                    return subst.fresh_var();
                 }
                 let first_ty = arm_tys[0].clone();
                 for ty in &arm_tys[1..] {
-                    subst.unify(&first_ty, ty).map_err(|e| e.to_diag(expr.span))?;
+                    if let Err(e) = subst.unify(&first_ty, ty) {
+                        d.push_error(e.to_diag(expr.span));
+                    }
                 }
-                Ok(subst.resolve(&first_ty))
+                subst.resolve(&first_ty)
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     ExpectedEnum,
                     expr.span,
                     format!("expected enum type for switch target, found {}", resolved),
-                )
+                ));
+                return subst.fresh_var();
             }
         }
         ExprKind::StructConstr(name, fields) => {
-            let s_decl = env.structs.get(name).cloned().ok_or_else(|| {
-                Diagnostic::new(
-                    UndeclaredStruct,
-                    expr.span,
-                    format!("undeclared struct '{}'", name),
-                )
-            })?;
+            let s_decl = match env.structs.get(name).cloned() {
+                Some(decl) => decl,
+                None => {
+                    d.push_error(Diagnostic::new(
+                        UndeclaredStruct,
+                        expr.span,
+                        format!("undeclared struct '{}'", name),
+                    ));
+                    return subst.fresh_var();
+                }
+            };
 
             if fields.len() != s_decl.fields.len() {
-                return err_at(
+                d.push_error(Diagnostic::new(
                     StructFieldCountMismatch,
                     expr.span,
                     format!(
@@ -683,7 +927,8 @@ fn infer_inner(
                         s_decl.fields.len(),
                         fields.len()
                     ),
-                );
+                ));
+                return subst.fresh_var();
             }
 
             // Fresh type variable per declared type parameter, so
@@ -698,47 +943,57 @@ fn infer_inner(
             for f_decl in &s_decl.fields {
                 let mut matches = fields.iter().filter(|(fname, _)| fname == &f_decl.name);
                 let Some((_, val_expr)) = matches.next() else {
-                    return err_at(
+                    d.push_error(Diagnostic::new(
                         MissingField,
                         expr.span,
                         format!(
                             "missing field '{}' in constructor for '{}'",
                             f_decl.name, name
                         ),
-                    );
+                    ));
+                    return subst.fresh_var();
                 };
                 if matches.next().is_some() {
-                    return err_at(
+                    d.push_error(Diagnostic::new(
                         DuplicateField,
                         expr.span,
                         format!(
                             "duplicate field '{}' in constructor for '{}'",
                             f_decl.name, name
                         ),
-                    );
+                    ));
+                    return subst.fresh_var();
                 }
                 let expected = substitute(&f_decl.ty, &mapping);
-                check_inner(env, subst, val_expr, &expected, types)?;
+                check_inner(env, subst, val_expr, &expected, types, d);
             }
 
-            Ok(custom_ty_with_args(name.clone(), type_args))
+            custom_ty_with_args(name.clone(), type_args)
         }
         ExprKind::EnumConstr(enum_name, variant_name, payload) => {
-            let e_decl = env.enums.get(enum_name).cloned().ok_or_else(|| {
-                Diagnostic::new(
-                    UndeclaredEnum,
-                    expr.span,
-                    format!("undeclared enum '{}'", enum_name),
-                )
-            })?;
+            let e_decl = match env.enums.get(enum_name).cloned() {
+                Some(decl) => decl,
+                None => {
+                    d.push_error(Diagnostic::new(
+                        UndeclaredEnum,
+                        expr.span,
+                        format!("undeclared enum '{}'", enum_name),
+                    ));
+                    return subst.fresh_var();
+                }
+            };
 
-            let variant_decl = e_decl.variants.iter().find(|v| v.name == *variant_name).ok_or_else(|| {
-                Diagnostic::new(
-                    NoSuchVariant,
-                    expr.span,
-                    format!("enum '{}' has no variant '{}'", enum_name, variant_name),
-                )
-            })?;
+            let variant_decl = match e_decl.variants.iter().find(|v| v.name == *variant_name) {
+                Some(v) => v.clone(),
+                None => {
+                    d.push_error(Diagnostic::new(
+                        NoSuchVariant,
+                        expr.span,
+                        format!("enum '{}' has no variant '{}'", enum_name, variant_name),
+                    ));
+                    return subst.fresh_var();
+                }
+            };
 
             // Fresh var per declared type parameter — payload inference
             // pins them via the substituted variant type.
@@ -749,52 +1004,57 @@ fn infer_inner(
                 mapping.insert(tp.name.clone(), arg.clone());
             }
             let expected_payload = substitute(&variant_decl.ty, &mapping);
-            check_inner(env, subst, payload, &expected_payload, types)?;
-            Ok(custom_ty_with_args(enum_name.clone(), type_args))
+            check_inner(env, subst, payload, &expected_payload, types, d);
+            custom_ty_with_args(enum_name.clone(), type_args)
         }
         ExprKind::Array(elements) => {
             if elements.is_empty() {
                 let elem_ty = subst.fresh_var();
-                Ok(array_ty(elem_ty, 0))
+                array_ty(elem_ty, 0)
             } else {
-                let first_ty = infer_inner(env, subst, &elements[0], types)?;
+                let first_ty = infer_inner(env, subst, &elements[0], types, d);
                 for el in &elements[1..] {
-                    check_inner(env, subst, el, &first_ty, types)?;
+                    check_inner(env, subst, el, &first_ty, types, d);
                 }
-                Ok(array_ty(first_ty, elements.len()))
+                array_ty(first_ty, elements.len())
             }
         }
         ExprKind::ArrayIndex(arr, idx) => {
-            let arr_ty = infer_inner(env, subst, arr, types)?;
+            let arr_ty = infer_inner(env, subst, arr, types, d);
             let resolved = subst.resolve(&arr_ty);
             if let Type::Array(inner, _) = resolved {
-                let idx_ty = infer_inner(env, subst, idx, types)?;
+                let idx_ty = infer_inner(env, subst, idx, types, d);
                 let idx_resolved = subst.resolve(&idx_ty);
                 match idx_resolved {
                     Type::Int(_) => {}
                     Type::Var(_) => {
-                        subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64))
-                            .map_err(|e| e.to_diag(expr.span))?;
+                        if let Err(e) = subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64)) {
+                            d.push_error(e.to_diag(expr.span));
+                        }
                     }
-                    other => return err_at(
-                        ArrayIndexNotInt,
-                        expr.span,
-                        format!("array index must be an integer, found {}", other),
-                    ),
+                    other => {
+                        d.push_error(Diagnostic::new(
+                            ArrayIndexNotInt,
+                            expr.span,
+                            format!("array index must be an integer, found {}", other),
+                        ));
+                        return subst.fresh_var();
+                    }
                 }
-                Ok(*inner)
+                *inner
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     ExpectedArray,
                     expr.span,
                     format!("expected array type, found {}", resolved),
-                )
+                ));
+                return subst.fresh_var();
             }
         }
-    }?;
+    };
 
     types.insert(expr.span, ty.clone());
-    Ok(ty)
+    ty
 }
 
 fn check_inner(
@@ -803,7 +1063,8 @@ fn check_inner(
     expr: &Expr,
     expected: &Type,
     types: &mut IndexMap<Span, Type>,
-) -> Result<(), Diagnostic> {
+    d: &mut Diagnostics,
+) {
     let resolved_expected = subst.resolve(expected);
     match (&expr.kind, &resolved_expected) {
         (ExprKind::Block(stmts, last_expr), expected_ty) => {
@@ -812,53 +1073,63 @@ fn check_inner(
                 match stmt {
                     Stmt::Let { is_mut: _, name, ty, init, span: _ } => {
                         let var_ty = if let Some(annotated_ty) = ty {
-                            check_inner(env, subst, init, annotated_ty, types)?;
+                            check_inner(env, subst, init, annotated_ty, types, d);
                             annotated_ty.clone()
                         } else {
-                            infer_inner(env, subst, init, types)?
+                            infer_inner(env, subst, init, types, d)
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
                     Stmt::Defer { body, span: _ } => {
-                        check_no_control_flow(body, 0)?;
-                        let body_ty = infer_inner(env, subst, body, types)?;
-                        subst.unify(&body_ty, &unit_ty()).map_err(|e| e.to_diag(body.span))?;
+                        check_no_control_flow(body, 0, d);
+                        let body_ty = infer_inner(env, subst, body, types, d);
+                        if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
+                            d.push_error(e.to_diag(body.span));
+                        }
                     }
                     Stmt::Expr(e) => {
-                        infer_inner(env, subst, e, types)?;
+                        infer_inner(env, subst, e, types, d);
                     }
                 }
             }
-            let res = if let Some(last) = last_expr {
-                check_inner(env, subst, last, expected_ty, types)
+            let errors_before = d.error_count();
+            if let Some(last) = last_expr {
+                check_inner(env, subst, last, expected_ty, types, d);
             } else {
-                subst.unify(expected_ty, &unit_ty()).map_err(|e| e.to_diag(expr.span))
-            };
+                if let Err(e) = subst.unify(expected_ty, &unit_ty()) {
+                    d.push_error(e.to_diag(expr.span));
+                }
+            }
             env.pop_scope();
-            if res.is_ok() {
+            if d.error_count() == errors_before {
                 types.insert(expr.span, resolved_expected.clone());
             }
-            res
         }
         (ExprKind::If(cond, true_block, false_block), expected_ty) => {
-            check_inner(env, subst, cond, &bool_ty(), types)?;
-            check_inner(env, subst, true_block, expected_ty, types)?;
-            check_inner(env, subst, false_block, expected_ty, types)?;
+            check_inner(env, subst, cond, &bool_ty(), types, d);
+            check_inner(env, subst, true_block, expected_ty, types, d);
+            check_inner(env, subst, false_block, expected_ty, types, d);
             types.insert(expr.span, resolved_expected.clone());
-            Ok(())
         }
         (ExprKind::Match(target, arms), expected_ty) => {
-            let target_ty = infer_inner(env, subst, target, types)?;
+            let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
             if let Type::Custom(enum_name, args) = resolved {
-                let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
-                    Diagnostic::new(
-                        UndeclaredEnum,
-                        expr.span,
-                        format!("undeclared enum '{}'", enum_name),
-                    )
-                })?;
-                let mapping = build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span)?;
+                let e_decl = match env.enums.get(&enum_name).cloned() {
+                    Some(decl) => decl,
+                    None => {
+                        d.push_error(Diagnostic::new(
+                            UndeclaredEnum,
+                            expr.span,
+                            format!("undeclared enum '{}'", enum_name),
+                        ));
+                        return;
+                    }
+                };
+                let mapping = match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                    Some(m) => m,
+                    None => return,
+                };
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
                     if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
@@ -866,157 +1137,158 @@ fn check_inner(
                         if let Some(var_name) = bound_var {
                             env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
                         }
-                        check_inner(env, subst, body, expected_ty, types)?;
+                        check_inner(env, subst, body, expected_ty, types, d);
                         env.pop_scope();
                     } else {
-                        return err_at(
+                        d.push_error(Diagnostic::new(
                             NoSuchVariant,
                             expr.span,
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
-                        );
+                        ));
                     }
                 }
                 types.insert(expr.span, resolved_expected.clone());
-                Ok(())
             } else {
-                err_at(
+                d.push_error(Diagnostic::new(
                     ExpectedEnum,
                     expr.span,
                     format!("expected enum type for switch target, found {}", resolved),
-                )
+                ));
             }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), Type::Int(_ty)) => {
             types.insert(expr.span, resolved_expected.clone());
-            Ok(())
         }
         (ExprKind::Literal(Literal::Float(_val, None)), Type::Float(_ty)) => {
             types.insert(expr.span, resolved_expected.clone());
-            Ok(())
         }
         (ExprKind::Array(elements), Type::Array(expected_elem, expected_size)) => {
             if elements.len() != *expected_size {
-                return err_at(
+                d.push_error(Diagnostic::new(
                     ArrayLengthMismatch,
                     expr.span,
                     format!(
                         "expected array of length {}, found length {}",
                         expected_size, elements.len()
                     ),
-                );
+                ));
+                return;
             }
             for el in elements {
-                check_inner(env, subst, el, expected_elem, types)?;
+                check_inner(env, subst, el, expected_elem, types, d);
             }
             types.insert(expr.span, resolved_expected.clone());
-            Ok(())
         }
         _ => {
-            let inferred = infer_inner(env, subst, expr, types)?;
-            subst.unify(&inferred, &resolved_expected).map_err(|e| e.to_diag(expr.span))?;
+            let inferred = infer_inner(env, subst, expr, types, d);
+            if let Err(e) = subst.unify(&inferred, &resolved_expected) {
+                d.push_error(e.to_diag(expr.span));
+            }
             types.insert(expr.span, resolved_expected.clone());
-            Ok(())
         }
     }
 }
 
-fn check_no_control_flow(expr: &Expr, loop_depth: usize) -> Result<(), TcErr> {
+fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
     match &expr.kind {
         ExprKind::Break(_) => {
             if loop_depth == 0 {
-                Err(Diagnostic::new(HllTypeCheckCode::ControlFlowInDefer, expr.span, "break is not allowed inside defer".to_string()))
-            } else {
-                Ok(())
+                d.push_error(Diagnostic::new(
+                    HllTypeCheckCode::ControlFlowInDefer,
+                    expr.span,
+                    "break is not allowed inside defer".to_string(),
+                ));
             }
         }
         ExprKind::Continue => {
             if loop_depth == 0 {
-                Err(Diagnostic::new(HllTypeCheckCode::ControlFlowInDefer, expr.span, "continue is not allowed inside defer".to_string()))
-            } else {
-                Ok(())
+                d.push_error(Diagnostic::new(
+                    HllTypeCheckCode::ControlFlowInDefer,
+                    expr.span,
+                    "continue is not allowed inside defer".to_string(),
+                ));
             }
         }
         ExprKind::Return(_) => {
-            Err(Diagnostic::new(HllTypeCheckCode::ControlFlowInDefer, expr.span, "return is not allowed inside defer".to_string()))
+            d.push_error(Diagnostic::new(
+                HllTypeCheckCode::ControlFlowInDefer,
+                expr.span,
+                "return is not allowed inside defer".to_string(),
+            ));
         }
         ExprKind::Block(stmts, last) => {
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { init, .. } => check_no_control_flow(init, loop_depth)?,
-                    Stmt::Defer { body, .. } => check_no_control_flow(body, loop_depth)?,
-                    Stmt::Expr(e) => check_no_control_flow(e, loop_depth)?,
+                    Stmt::Let { init, .. } => check_no_control_flow(init, loop_depth, d),
+                    Stmt::Defer { body, .. } => check_no_control_flow(body, loop_depth, d),
+                    Stmt::Expr(e) => check_no_control_flow(e, loop_depth, d),
                 }
             }
             if let Some(e) = last {
-                check_no_control_flow(e, loop_depth)?;
+                check_no_control_flow(e, loop_depth, d);
             }
-            Ok(())
         }
         ExprKind::If(cond, thn, els) => {
-            check_no_control_flow(cond, loop_depth)?;
-            check_no_control_flow(thn, loop_depth)?;
-            check_no_control_flow(els, loop_depth)
+            check_no_control_flow(cond, loop_depth, d);
+            check_no_control_flow(thn, loop_depth, d);
+            check_no_control_flow(els, loop_depth, d);
         }
         ExprKind::Loop(body) => {
-            check_no_control_flow(body, loop_depth + 1)
+            check_no_control_flow(body, loop_depth + 1, d);
         }
         ExprKind::Assign(lhs, rhs) => {
-            check_no_control_flow(lhs, loop_depth)?;
-            check_no_control_flow(rhs, loop_depth)
+            check_no_control_flow(lhs, loop_depth, d);
+            check_no_control_flow(rhs, loop_depth, d);
         }
         ExprKind::Binary(lhs, _, rhs) => {
-            check_no_control_flow(lhs, loop_depth)?;
-            check_no_control_flow(rhs, loop_depth)
+            check_no_control_flow(lhs, loop_depth, d);
+            check_no_control_flow(rhs, loop_depth, d);
         }
         ExprKind::FieldAccess(base, _) => {
-            check_no_control_flow(base, loop_depth)
+            check_no_control_flow(base, loop_depth, d);
         }
         ExprKind::Downcast(base, _) => {
-            check_no_control_flow(base, loop_depth)
+            check_no_control_flow(base, loop_depth, d);
         }
         ExprKind::ArrayIndex(base, index) => {
-            check_no_control_flow(base, loop_depth)?;
-            check_no_control_flow(index, loop_depth)
+            check_no_control_flow(base, loop_depth, d);
+            check_no_control_flow(index, loop_depth, d);
         }
         ExprKind::Deref(base) => {
-            check_no_control_flow(base, loop_depth)
+            check_no_control_flow(base, loop_depth, d);
         }
         ExprKind::Borrow(_, base) => {
-            check_no_control_flow(base, loop_depth)
+            check_no_control_flow(base, loop_depth, d);
         }
         ExprKind::RawBorrow(base) => {
-            check_no_control_flow(base, loop_depth)
+            check_no_control_flow(base, loop_depth, d);
         }
         ExprKind::Call(callee, args) => {
-            check_no_control_flow(callee, loop_depth)?;
+            check_no_control_flow(callee, loop_depth, d);
             for arg in args {
-                check_no_control_flow(arg, loop_depth)?;
+                check_no_control_flow(arg, loop_depth, d);
             }
-            Ok(())
         }
         ExprKind::StructConstr(_, fields) => {
             for (_, f_init) in fields {
-                check_no_control_flow(f_init, loop_depth)?;
+                check_no_control_flow(f_init, loop_depth, d);
             }
-            Ok(())
         }
         ExprKind::EnumConstr(_, _, payload) => {
-            check_no_control_flow(payload, loop_depth)
+            check_no_control_flow(payload, loop_depth, d);
         }
         ExprKind::Match(target, arms) => {
-            check_no_control_flow(target, loop_depth)?;
+            check_no_control_flow(target, loop_depth, d);
             for (_, body_expr) in arms {
-                check_no_control_flow(body_expr, loop_depth)?;
+                check_no_control_flow(body_expr, loop_depth, d);
             }
-            Ok(())
         }
         ExprKind::Array(elements) => {
             for el in elements {
-                check_no_control_flow(el, loop_depth)?;
+                check_no_control_flow(el, loop_depth, d);
             }
-            Ok(())
         }
-        ExprKind::Literal(_) | ExprKind::Variable(_) => Ok(()),
+        ExprKind::Literal(_) | ExprKind::Variable(_) => {}
     }
 }
 
@@ -1032,12 +1304,12 @@ mod tests {
             .map_err(|d| d.errors_str().join("\n"))?;
         // Render Diagnostic errors as strings for the existing
         // `.contains(...)` substring assertions.
-        typecheck_program(&program).map_err(|d| {
-            let mut ds = crate::diagnostics::Diagnostics::default()
-                .with_source(program.source.clone());
-            ds.push_error(d);
-            ds.errors_str().join("\n")
-        })
+        let d = typecheck_program(&program);
+        if d.has_errors() {
+            Err(d.errors_str().join("\n"))
+        } else {
+            Ok(())
+        }
     }
 
     #[test]
@@ -1202,4 +1474,3 @@ mod tests {
         assert!(check_program(source).is_ok());
     }
 }
-

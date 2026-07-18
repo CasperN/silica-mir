@@ -18,6 +18,8 @@
 #   make_some             enum       constructor with payload
 #   option_extract_match  enum       match with destructuring
 #   nested_container      struct     nested generic (Box<Option<i64>>)
+#   call_generic_fn       generic fn HM infers T := i64 from arg
+#   call_generic_fn_via_ret generic fn HM infers T := i64 from return context
 
 struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
 
@@ -64,4 +66,25 @@ fn nested_container(b: Box<Option<i64>>) -> i64 {
     None(_) => 0,
     Some(x) => x,
   }
+}
+
+# ---------- Generic fn call: T inferred from argument ----------
+
+# Each call site to `identity` freshens `T` into a new inference var,
+# then unifies with the argument type. Two calls with different
+# concrete args each pick their own T without interference.
+fn<T: Copy + Drop> identity(x: T) -> T {
+  x
+}
+
+fn call_generic_fn() -> i64 {
+  identity(42)
+}
+
+# ---------- Generic fn call: T inferred from return context ----------
+
+# Here the argument is another polymorphic call whose T floats until
+# the return-type annotation pins the outer call to `i64`.
+fn call_generic_fn_via_ret() -> i64 {
+  identity(identity(7))
 }

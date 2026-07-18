@@ -257,6 +257,18 @@ impl Diagnostics {
         self.errors.retain(f);
     }
 
+    /// Annotate all errors added at or after index `from` with the given
+    /// function name. Used by callers that push errors into a shared
+    /// `Diagnostics` container and then want to label the batch with the
+    /// enclosing function context.
+    pub fn annotate_errors_in_function(&mut self, from: usize, name: &str) {
+        for d in &mut self.errors[from..] {
+            if d.function.is_empty() {
+                d.function = name.to_owned();
+            }
+        }
+    }
+
     /// True if no errors OR internal errors have been recorded.
     /// Warnings are ignored.
     pub fn is_clean(&self) -> bool {
