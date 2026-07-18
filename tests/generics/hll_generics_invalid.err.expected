@@ -34,10 +34,10 @@ error: at 65:27: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': t
     |
  65 | fn nested_bound_violation(x: Box<Box<Linear>>) -> i64 {
     |                           ^^^^^^^^^^^^^^^^^^^
-error: at 71:1: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity': 'Box' takes 1 type argument(s), found 2
+error: at 71:31: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity': 'Box' takes 1 type argument(s), found 2
     |
  71 | fn return_type_bad_arity() -> Box<i64, i64> {
-    | ^
+    |                               ^^^^^^^^^^^^^
 error: at 72:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
     |
  72 |   Box { inner: 0 }

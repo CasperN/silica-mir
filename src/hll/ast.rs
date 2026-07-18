@@ -112,9 +112,17 @@ pub struct FnDecl {
     /// may be added later (`"system"`, `"fastcall"`, ...); the type
     /// checker rejects unknown strings so lowering can trust it.
     pub abi: Option<String>,
+    /// Span of the ABI string literal (including the quotes), if present.
+    /// Used by the type checker to point diagnostics at just `"..."` on
+    /// an unknown ABI rather than at the whole `extern fn` declaration.
+    pub abi_span: Option<Span>,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,
+    /// Span of the declared return type in source. When the `-> R` arrow
+    /// is omitted (unit return), this falls back to `span` (the whole fn
+    /// decl) so callers always have SOMETHING to point at.
+    pub ret_ty_span: Span,
     /// `None` for extern declarations (signature only). Downstream
     /// passes branch on this rather than on a separate ExternFn
     /// variant; keeping extern-ness as a modifier of the same node

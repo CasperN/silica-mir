@@ -601,7 +601,7 @@ pub(super) fn typecheck_program_collect(
                 for p in &f.params {
                     env.validate_type(&p.ty, &scope, p.span, d);
                 }
-                env.validate_type(&f.ret_ty, &scope, f.span, d);
+                env.validate_type(&f.ret_ty, &scope, f.ret_ty_span, d);
                 d.annotate_errors_in_function(errors_before, &f.name);
             }
         }
@@ -617,9 +617,13 @@ pub(super) fn typecheck_program_collect(
             let Some(body) = &f.body else {
                 if let Some(abi) = &f.abi {
                     if abi != "C" {
+                        // Prefer the ABI string's span; fall back to
+                        // the whole decl if it isn't populated (safety
+                        // net — parser always fills it when abi is Some).
+                        let span = f.abi_span.unwrap_or(f.span);
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnknownAbi,
-                            f.span,
+                            span,
                             format!(
                                 "unknown extern ABI '{}' — expected 'C' or bare extern",
                                 abi

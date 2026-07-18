@@ -1,10 +1,10 @@
-error: at 15:1: [SUB-ReturnValueLeak] In function 'leak_arm_payload': value 'n' of type N is not consumed at return
+error: at 15:30: [SUB-ReturnValueLeak] In function 'leak_arm_payload': value 'n' of type N is not consumed at return
     |
  15 | fn leak_arm_payload(list: L) {
-    | ^
+    |                              ^
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 29:1: [SUB-ReturnValueLeak] In function 'linear_param_untouched': value 'n' of type N is not consumed at return
+error: at 29:33: [SUB-ReturnValueLeak] In function 'linear_param_untouched': value 'n' of type N is not consumed at return
     |
  29 | fn linear_param_untouched(n: N) {
-    | ^
+    |                                 ^
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

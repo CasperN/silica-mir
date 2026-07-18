@@ -368,10 +368,13 @@ impl Parser {
             }
         }
 
-        let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
-            self.map_type(rt_node, &scope).map_err(with_fn)?
+        let (ret_ty, ret_ty_span) = if let Some(rt_node) = node.child_by_field_name("return_type") {
+            (self.map_type(rt_node, &scope).map_err(with_fn)?, span_of(rt_node))
         } else {
-            unit_ty()
+            // No `-> R` in source: fall back to the whole-fn span so
+            // diagnostics still land somewhere sensible even though
+            // there's no explicit annotation.
+            (unit_ty(), span)
         };
 
         let body_node = node.child_by_field_name("body").ok_or_else(|| {
@@ -383,9 +386,11 @@ impl Parser {
             name,
             is_unsafe,
             abi: None,
+            abi_span: None,
             type_params,
             params,
             ret_ty,
+            ret_ty_span,
             body,
             span,
         })
@@ -405,12 +410,12 @@ impl Parser {
         let span = span_of(node);
         let with_fn = |d: Diagnostic| d.in_function(name.clone());
 
-        let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
+        let (abi, abi_span) = if let Some(abi_node) = node.child_by_field_name("abi") {
             // Strip surrounding quotes; the string_lit rule matches `"..."`.
             let raw = self.get_text(abi_node);
-            Some(raw.trim_matches('"').to_string())
+            (Some(raw.trim_matches('"').to_string()), Some(span_of(abi_node)))
         } else {
-            None
+            (None, None)
         };
 
         let scope: TypeScope = BTreeSet::new();
@@ -432,19 +437,21 @@ impl Parser {
             }
         }
 
-        let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
-            self.map_type(rt_node, &scope).map_err(with_fn)?
+        let (ret_ty, ret_ty_span) = if let Some(rt_node) = node.child_by_field_name("return_type") {
+            (self.map_type(rt_node, &scope).map_err(with_fn)?, span_of(rt_node))
         } else {
-            unit_ty()
+            (unit_ty(), span)
         };
 
         Ok(FnDecl {
             name,
             is_unsafe: false,
             abi,
+            abi_span,
             type_params: Vec::new(),
             params,
             ret_ty,
+            ret_ty_span,
             body: None,
             span,
         })

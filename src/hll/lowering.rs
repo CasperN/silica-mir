@@ -1040,9 +1040,13 @@ pub fn lower_program(
                     lower_expr_into(&mut ctx, body_expr, &dummy, types)?;
                 }
 
-                // If the entry block or last block hasn't been terminated, terminate it with Return
+                // If the entry block or last block hasn't been terminated,
+                // terminate it with Return. Use the body's end span for
+                // the terminator — pointing SUB-ReturnValueLeak and
+                // ref-obligation diagnostics at the body's closing brace
+                // rather than at the whole fn signature line.
                 if ctx.current_block_label.is_some() {
-                    ctx.terminate_block(return_term(), f.span);
+                    ctx.terminate_block(return_term(), body_expr.span);
                 }
 
                 declarations.push(mir::Declaration::Fn(mir::Function {

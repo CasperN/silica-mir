@@ -18,14 +18,14 @@ error: at 36:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type 
     |
  36 |   defer 42;
     |         ^^
-error: at 44:1: [HTC-UnknownAbi] unknown extern ABI 'system' — expected 'C' or bare extern
+error: at 44:8: [HTC-UnknownAbi] unknown extern ABI 'system' — expected 'C' or bare extern
     |
  44 | extern "system" fn win_api(x: i64);
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: at 45:1: [HTC-UnknownAbi] unknown extern ABI 'fastcall' — expected 'C' or bare extern
+    |        ^^^^^^^^
+error: at 45:8: [HTC-UnknownAbi] unknown extern ABI 'fastcall' — expected 'C' or bare extern
     |
  45 | extern "fastcall" fn stdcall_thing(y: i64);
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |        ^^^^^^^^^^
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
  2 |   let x = [];

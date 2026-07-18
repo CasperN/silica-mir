@@ -933,14 +933,7 @@ Order of operations:
     works for fully-inferable calls; explicit type args need HLL
     grammar for `call_expr` + parser + type_check to accept them
     against the freshened signature.
-  - **Return-type annotation span points at the fn keyword.** HLL
-    `FnDecl` doesn't carry a separate span for `ret_ty`, so any
-    validation error on the return type is reported at the fn
-    itself. Add a span field alongside `ret_ty` to fix.
-  - **Cascading errors from a poisoned type.** After a decl-side
-    validation error, downstream unification produces follow-on
-    diagnostics that repeat the root cause. A `Type::Error` sentinel
-    that unifies with anything would silence the tail.
+  - **Struct field, enum variant, fn param, and `let` type-annotation spans point at the whole `name: Type`.** Each of those AST nodes has one span field covering the whole declaration, so a validation error on the *type* highlights `name: Type` rather than just `Type`. Same fix shape as the ret_ty span already landed — add a `ty_span: Span` alongside each `ty: Type` and thread it through the `validate_type` calls. Cheap follow-up; low urgency because the existing spans are already decent.
   - Conditional marker bounds (`Foo<T>: Copy where T: Copy`) are
     still deferred behind the unconditional-bounds form.
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
