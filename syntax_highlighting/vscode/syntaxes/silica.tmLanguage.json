@@ -1,0 +1,90 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Silica",
+  "patterns": [
+    {
+      "name": "comment.line.number-sign.silica",
+      "match": "#.*$"
+    },
+    {
+      "name": "string.quoted.double.silica",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.silica",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "name": "keyword.control.silica",
+      "match": "\\b(let|mut|fn|struct|enum|unsafe|defer|if|else|loop|break|continue|return|copy|move|match|as|out|deinit|uninit|raw)\\b"
+    },
+    {
+      "name": "storage.type.primitive.silica",
+      "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|unit|never)\\b"
+    },
+    {
+      "name": "constant.language.boolean.silica",
+      "match": "\\b(true|false)\\b"
+    },
+    {
+      "name": "constant.numeric.silica",
+      "match": "\\b[0-9]+(_[0-9]+)*(\\.[0-9]+(_[0-9]+)*)?(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64)?\\b"
+    },
+    {
+      "name": "entity.name.function.silica",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+    },
+    {
+      "name": "support.class.silica",
+      "match": "\\b(Copy|Move|Drop)\\b"
+    },
+    {
+      "name": "entity.name.type.silica",
+      "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+    },
+    {
+      "name": "keyword.operator.borrow.silica",
+      "match": "&"
+    },
+    {
+      "name": "keyword.operator.dereference.silica",
+      "match": "\\.\\*"
+    },
+    {
+      "name": "keyword.operator.arrow.silica",
+      "match": "->"
+    },
+    {
+      "name": "keyword.operator.pointer.silica",
+      "match": "\\*(?=[a-zA-Z_])"
+    },
+    {
+      "name": "variable.other.member.silica",
+      "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)"
+    },
+    {
+      "name": "variable.other.member.silica",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*:(?!\\s*:)"
+    },
+    {
+      "name": "entity.name.type.silica",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=<|::)"
+    },
+    {
+      "name": "variable.other.constant.silica",
+      "match": "::\\s*([a-zA-Z_][a-zA-Z0-9_]*)"
+    },
+    {
+      "name": "keyword.operator.namespace.silica",
+      "match": "::"
+    },
+    {
+      "name": "keyword.operator.arrow.fat.silica",
+      "match": "=>"
+    }
+  ],
+  "scopeName": "source.silica"
+}

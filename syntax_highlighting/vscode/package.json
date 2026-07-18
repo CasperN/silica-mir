@@ -1,0 +1,41 @@
+{
+  "name": "silica-vscode",
+  "displayName": "Silica Language Support",
+  "description": "Syntax highlighting for the Silica and Silica-MIR languages",
+  "version": "0.1.0",
+  "publisher": "silica",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "silica",
+        "aliases": ["Silica", "silica"],
+        "extensions": [".si"],
+        "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "silica-mir",
+        "aliases": ["Silica MIR", "silica-mir"],
+        "extensions": [".sim", ".sim.expected"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "silica",
+        "scopeName": "source.silica",
+        "path": "./syntaxes/silica.tmLanguage.json"
+      },
+      {
+        "language": "silica-mir",
+        "scopeName": "source.silica-mir",
+        "path": "./syntaxes/silica-mir.tmLanguage.json"
+      }
+    ]
+  }
+}

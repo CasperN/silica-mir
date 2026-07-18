@@ -1,0 +1,121 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Silica MIR",
+  "patterns": [
+    {
+      "name": "comment.line.number-sign.silica-mir",
+      "match": "#.*$"
+    },
+    {
+      "name": "string.quoted.double.silica-mir",
+      "begin": "\"",
+      "end": "\"",
+      "patterns": [
+        {
+          "name": "constant.character.escape.silica-mir",
+          "match": "\\\\."
+        }
+      ]
+    },
+    {
+      "match": "^[ \\t]*([a-zA-Z_][a-zA-Z0-9_]*)\\s*(:)\\s*(?:#.*)?$",
+      "captures": {
+        "1": {
+          "name": "entity.name.type.lifetime.silica-mir"
+        },
+        "2": {
+          "name": "punctuation.separator.colon.silica-mir"
+        }
+      }
+    },
+    {
+      "name": "goto-label-reference",
+      "match": "\\b(goto)\\s+([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "keyword.control.silica-mir" },
+        "2": { "name": "entity.name.type.lifetime.silica-mir" }
+      }
+    },
+    {
+      "name": "branch-switch-label-reference",
+      "match": "\\b(true|false|[A-Z][a-zA-Z0-9_]*)\\s*:\\s*([a-zA-Z_][a-zA-Z0-9_]*)\\b",
+      "captures": {
+        "1": { "name": "constant.language.silica-mir" },
+        "2": { "name": "entity.name.type.lifetime.silica-mir" }
+      }
+    },
+    {
+      "name": "keyword.control.silica-mir",
+      "match": "\\b(fn|struct|enum|unsafe|extern|goto|return|switchEnum|drop|unborrow|abort|unreachable|copy|move|call|branch|as|mut|out|deinit|uninit|raw)\\b"
+    },
+    {
+      "name": "storage.type.primitive.silica-mir",
+      "match": "\\b(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64|bool|unit|never|ptr|out|shared|exclusive)\\b"
+    },
+    {
+      "name": "variable.language.special.silica-mir",
+      "match": "\\$return\\b"
+    },
+    {
+      "name": "variable.other.special.silica-mir",
+      "match": "\\$[a-zA-Z_][a-zA-Z0-9_.]*\\b"
+    },
+    {
+      "name": "variable.other.silica-mir",
+      "match": "\\%[a-zA-Z_][a-zA-Z0-9_.]*\\b"
+    },
+    {
+      "name": "constant.language.boolean.silica-mir",
+      "match": "\\b(true|false)\\b"
+    },
+    {
+      "name": "constant.numeric.silica-mir",
+      "match": "\\b[0-9]+(_[0-9]+)*(\\.[0-9]+(_[0-9]+)*)?(i8|i16|i32|i64|u8|u16|u32|u64|f32|f64)?\\b"
+    },
+    {
+      "name": "entity.name.function.silica-mir",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=\\()"
+    },
+    {
+      "name": "support.class.silica-mir",
+      "match": "\\b(Copy|Move|Drop)\\b"
+    },
+    {
+      "name": "entity.name.type.silica-mir",
+      "match": "\\b[A-Z][a-zA-Z0-9_]*\\b"
+    },
+    {
+      "name": "keyword.operator.borrow.silica-mir",
+      "match": "&"
+    },
+    {
+      "name": "keyword.operator.dereference.silica-mir",
+      "match": "\\.\\*"
+    },
+    {
+      "name": "keyword.operator.pointer.silica-mir",
+      "match": "\\*(?=\\w)"
+    },
+    {
+      "name": "variable.other.member.silica-mir",
+      "match": "\\.([a-zA-Z_][a-zA-Z0-9_]*)"
+    },
+    {
+      "name": "variable.other.member.silica-mir",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*:(?!\\s*:)"
+    },
+    {
+      "name": "entity.name.type.silica-mir",
+      "match": "\\b([a-zA-Z_][a-zA-Z0-9_]*)\\s*(?=<|::)"
+    },
+    {
+      "name": "variable.other.constant.silica-mir",
+      "match": "::\\s*([a-zA-Z_][a-zA-Z0-9_]*)"
+    },
+    {
+      "name": "keyword.operator.namespace.silica-mir",
+      "match": "::"
+    }
+  ],
+  "scopeName": "source.silica-mir"
+}

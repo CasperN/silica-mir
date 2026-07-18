@@ -801,7 +801,7 @@ project skews toward the second today; the target is the first.
    Layout:
    - `tests/{init_state,lifetime,substructural,type_check,layout,
      variant_flow,block_reachability}/{topic}/` — pass-oriented.
-   - `tests/{array,string,raw_ptr,programs,error_display,intrinsic,
+   - `tests/{array,string,raw_ptr,programs,intrinsic,
      main_wrapper}/` — cross-cutting features.
    - `tests/codegen/` — full pipeline + codegen → LLVM.
    - `tests/codegen-raw/` — parse + codegen (no checks) → LLVM. For
@@ -902,6 +902,18 @@ Order of operations:
 2. Add a fixture per error case, one per new `DiagCode` variant.
 3. Only add unit tests if there's an invariant the fixture can't observe.
 
+# VS Code Syntax Highlighting
+
+This repository includes a lightweight VS Code extension for Silica and Silica-MIR files (`.si` and `.sim`) located under [syntax_highlighting/vscode/](file:///Users/casper/projects/silica-mir/syntax_highlighting/vscode).
+
+To load it locally:
+1. Create a symlink to the extension folder in your VS Code extensions directory:
+   ```bash
+   ln -s "$(pwd)/syntax_highlighting/vscode" ~/.vscode/extensions/silica.silica-vscode-0.1.0
+   ```
+2. Restart or reload VS Code.
+3. Open any `.si` or `.sim` file to see syntax highlighting.
+
 # Punch list
 
 ## Language features
@@ -988,7 +1000,7 @@ Order of operations:
 - **HLL loop with ref obligations across iterations.** No fixture yet exercises an `&out`/`&drop` obligation carried across loop iterations from the HLL surface.
 - **`tests/init_state/cfg_shape/*.sim` have no HLL siblings.** HLL lacks a way to spell `abort` / `unreachable` terminators, custom block labels, irreducible flow, or downcast-projection borrows. Not a fix — a coverage note: these MIR fixtures test CFG shapes the HLL lowering doesn't produce.
 
-# Longer term
+## Longer term
 - **Bazel-based build with proper cross-language infra.** Today the compiler is `cargo`, and any cross-language wiring (LLVM IR emission → `clang` link → binary → runtime → check exit) is manual. A Bazel migration would let end-to-end runtime tests, C-shim linking, and future host-language integrations (LLVM tooling, wasm, cross-compile) be first-class build actions in a hermetic graph. The immediate motivator is the End-to-end runtime fixtures item in Testing gaps.
 - Standard library (needs generics + modules + multi-file support).
   Effects: `Fail` for exceptional control flow, `Iter` for for-loops,
