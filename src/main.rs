@@ -3,28 +3,51 @@ use silica_mir::{
     elaborate_and_check_mir, lower_hll_to_mir, mir,
 };
 
-const USAGE: &str = "Usage: silica-mir [--llvm | --pre-elab] <file.si | file.sim>";
+const USAGE: &str =
+    "Usage: silica-mir [--emit=<mir|pre-elab-mir|llvm>] <file.si | file.sim>";
+
+#[derive(Clone, Copy)]
+enum EmitKind {
+    /// Post-elaboration MIR (default). Runs the full checker pipeline.
+    Mir,
+    /// Pre-elaboration MIR. Skips the checker pipeline — useful for
+    /// isolating HLL-lowering output from downstream pass errors.
+    PreElabMir,
+    /// Textual LLVM IR. Runs the full pipeline and codegen.
+    Llvm,
+}
+
+fn parse_emit(s: &str) -> Option<EmitKind> {
+    match s {
+        "mir" => Some(EmitKind::Mir),
+        "pre-elab-mir" => Some(EmitKind::PreElabMir),
+        "llvm" => Some(EmitKind::Llvm),
+        _ => None,
+    }
+}
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    let mut emit_llvm = false;
-    let mut emit_pre_elab = false;
+    let mut emit = EmitKind::Mir;
     let mut path: Option<&str> = None;
     for a in &args[1..] {
-        if a == "--llvm" {
-            emit_llvm = true;
-        } else if a == "--pre-elab" {
-            emit_pre_elab = true;
+        if let Some(rest) = a.strip_prefix("--emit=") {
+            match parse_emit(rest) {
+                Some(k) => emit = k,
+                None => {
+                    eprintln!(
+                        "Unknown --emit value '{}'. Expected one of: mir, pre-elab-mir, llvm.",
+                        rest,
+                    );
+                    std::process::exit(1);
+                }
+            }
         } else if path.is_none() {
             path = Some(a.as_str());
         } else {
             eprintln!("Unexpected extra argument: {}", a);
             std::process::exit(1);
         }
-    }
-    if emit_llvm && emit_pre_elab {
-        eprintln!("--llvm and --pre-elab are mutually exclusive");
-        std::process::exit(1);
     }
     let Some(path) = path else {
         eprintln!("{}", USAGE);
@@ -78,10 +101,7 @@ fn main() {
         report_and_exit(&d);
     };
 
-    // --pre-elab prints the pre-elaboration MIR and exits, bypassing the
-    // checker pipeline. Useful for isolating HLL-lowering bugs from
-    // downstream pass errors that mask them.
-    if emit_pre_elab {
+    if matches!(emit, EmitKind::PreElabMir) {
         print!("{}", mir::pretty_print::pretty_print(&program));
         return;
     }
@@ -99,10 +119,10 @@ fn main() {
         eprintln!("({} warning(s))", d.warning_count());
     }
 
-    if emit_llvm {
-        print!("{}", mir::codegen::lower_mir_to_llvm(&elaborated, &env));
-    } else {
-        print!("{}", mir::pretty_print::pretty_print(&elaborated));
+    match emit {
+        EmitKind::Llvm => print!("{}", mir::codegen::lower_mir_to_llvm(&elaborated, &env)),
+        EmitKind::Mir => print!("{}", mir::pretty_print::pretty_print(&elaborated)),
+        EmitKind::PreElabMir => unreachable!("handled above"),
     }
 }
 

@@ -224,7 +224,10 @@ pub enum Stmt {
         is_mut: bool,
         name: String,
         ty: Option<Type>,
-        init: Expr,
+        /// `None` = uninitialized (`let p: P;`). Type annotation is
+        /// required in that case; the type checker rejects a bare
+        /// `let p;` with `HTC-AmbiguousType`.
+        init: Option<Expr>,
         span: Span,
     },
     Defer {

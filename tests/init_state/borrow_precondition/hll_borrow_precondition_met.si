@@ -1,0 +1,85 @@
+# HLL counterpart to `borrow_precondition_met.sim`. Every fn covers
+# one (ref kind × pointee state) success cell — the HLL surface must
+# lower to a MIR that discharges the borrow's precondition.
+#
+# HLL sibling coverage was blocked on the "no uninitialized `let`"
+# gap until `let name: type;` (with a required type annotation) was
+# added.
+
+struct P: Copy + Drop { x: i64, y: i64 }
+
+# `Box: Drop + Move` — not Copy, so `r.*` lowers as a move.
+struct Box: Drop + Move { val: i64 }
+
+fn use_shared(r: &i64) -> i64 { r.* }
+fn use_mut(r: &mut i64) -> i64 { r.* }
+fn take_scalar(y: i64) -> i64 { y }
+
+# ---------- & shared: pointee Init ----------
+
+fn shared_of_init(x: i64) -> i64 {
+  use_shared(&x)
+}
+
+# ---------- &mut: pointee Init ----------
+
+fn mut_of_init(x: i64) -> i64 {
+  let mut y = x;
+  use_mut(&mut y)
+}
+
+# Field-granular: `p.x` is Init after the field write, so `&mut p.x`
+# reads the leaf even though the aggregate is only Partial.
+fn mut_of_init_field_of_partial() -> i64 {
+  let mut p: P;
+  p.x = 1;
+  let r = &mut p.x;
+  let v = r.*;
+  p.y = 2;
+  v
+}
+
+# ---------- &out: pointee Uninit (NeverInit) ----------
+
+# `x` is uninitialized; `&out x` sees NeverInit and the borrow satisfies
+# the (Uninit, Init) obligation once the referent is written.
+fn out_of_never_init() -> i64 {
+  let mut x: i64;
+  let r: &out i64 = &out x;
+  r.* = 42;
+  x
+}
+
+# ---------- &out: pointee Init, type is Drop → drop-elab handles ----------
+
+# `x: i64` is Copy Drop, so drop elab prepends `drop x` before the
+# `&out` borrow and the Uninit precondition is met.
+fn out_of_init_drop_type(x: i64) -> i64 {
+  let mut y = x;
+  let r: &out i64 = &out y;
+  r.* = 2;
+  y
+}
+
+# ---------- &deinit (type spelled `&drop T`): pointee Init ----------
+
+# The borrow operator is `&deinit place`, but the reference *type*
+# still spells as `&drop T` in HLL (the type grammar is shared with
+# MIR). The (Init, Uninit) obligation is discharged by moving the
+# pointee out. `Box` is Drop+Move (not Copy), so `r.*` lowers as
+# `move r.*` — invalidating the pointee and satisfying the obligation.
+fn deinit_of_init(b: Box) -> Box {
+  let mut owned = b;
+  let r: &drop Box = &deinit owned;
+  let taken = r.*;
+  taken
+}
+
+# ---------- &uninit: pointee Uninit (NeverInit) ----------
+
+# The `&uninit` borrow's (Uninit, Uninit) obligation is trivially
+# fulfilled — the pointee starts and stays Uninit.
+fn uninit_of_never_init() {
+  let mut x: i64;
+  let r: &uninit i64 = &uninit x;
+}

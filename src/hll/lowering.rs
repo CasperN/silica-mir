@@ -607,12 +607,20 @@ fn lower_expr_into(
             ctx.push_scope(false);
             for stmt in stmts {
                 match stmt {
-                    hll::Stmt::Let { is_mut: _, name, ty: _, init, span } => {
-                        let hll_ty = lookup_type(init, types).ok_or_else(|| {
+                    hll::Stmt::Let { is_mut: _, name, ty: annot_ty, init, span } => {
+                        // Type source: initializer's typed-slot when present,
+                        // else the required annotation. type-check has already
+                        // rejected the "no init and no annotation" case.
+                        let hll_ty = match (init, annot_ty) {
+                            (Some(init), _) => lookup_type(init, types),
+                            (None, Some(annot)) => Some(annot),
+                            (None, None) => None,
+                        }
+                        .ok_or_else(|| {
                             diag(
                                 HllLoweringCode::MissingType,
-                                init.span,
-                                "missing type annotation for let init",
+                                *span,
+                                "missing type for let binding",
                             )
                         })?;
                         let mir_ty = lower_type(hll_ty);
@@ -621,8 +629,12 @@ fn lower_expr_into(
                             ty: mir_ty,
                             span: *span,
                         });
-                        let dest = var_place(name.clone());
-                        lower_expr_into(ctx, init, &dest, types)?;
+                        if let Some(init) = init {
+                            let dest = var_place(name.clone());
+                            lower_expr_into(ctx, init, &dest, types)?;
+                        }
+                        // No init: the local exists as NeverInit — the caller
+                        // must initialize it before use (init-state enforces).
                     }
                     hll::Stmt::Defer { body, span } => {
                         let scope = ctx.scopes.last_mut().ok_or_else(|| {

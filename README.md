@@ -953,30 +953,7 @@ Order of operations:
 - **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and
   a Rust-shaped enum syntax (currently only newtype-with-different-
   syntax).
-- **HLL uninitialized `let` bindings** (`let p: P;` with no
-  initializer). Today every `let` requires an initializer, so
-  field-by-field aggregate init and Partial-with-NeverInit-fields
-  aren't spellable at the surface. Blocks the full HLL sibling of
-  `tests/init_state/partial_init/partial_init_use.sim` — the
-  current `hll_partial_init_completes.si` only covers the
-  move-out-then-partial subset. Also blocks the HLL sibling of
-  `tests/init_state/borrow_precondition/{borrow_precondition_met,
-  borrow_precondition_violated}.sim` — the `&out` / `&uninit`
-  matrix cells all require declaring an uninit-state place.
-  Also blocks the HLL siblings of
-  `tests/substructural/check/{class_check_ok,class_check_violations,
-  return_leak_ok,return_leak_violations}.sim` — every fn declares
-  an uninit destination local (for the `= copy/move` rvalue) or an
-  uninit aggregate for field-by-field init, neither of which is
-  spellable today.
-  Separately: `tests/init_state/cfg_shape/{init_across_cfg_shapes,
-  init_across_cfg_shapes_violations,borrow_across_cfg_shapes,
-  borrow_across_cfg_shapes_violations}.sim` have no HLL siblings
-  for a different reason — the HLL has no surface for `abort` /
-  `unreachable` terminators, hand-crafted CFG shape (custom
-  block labels, irreducible flow, join topology), or downcast-
-  projection borrows. Every fn in those files exercises a CFG
-  shape the HLL lowering doesn't produce.
+- **HLL surface for hand-crafted CFG shape.** `tests/init_state/cfg_shape/{init_across_cfg_shapes,init_across_cfg_shapes_violations,borrow_across_cfg_shapes,borrow_across_cfg_shapes_violations}.sim` have no HLL siblings because HLL lacks a way to spell `abort`/`unreachable` terminators, custom block labels, irreducible flow, or downcast-projection borrows.
 
 ## Elaboration + drop
 - **Drop-elab misses cross-edge drops at non-return joins.** Split-edge insertion only visits predecessors of `return` blocks, so any Init place that goes `Diverged` at an earlier join (chained matches, `if c { break; }` inside `loop`, etc.) reaches return without a drop and trips `SUB-ReturnValueLeak`. Repros pinned in `tests/substructural/check/hll_drop_elab_gaps.si`.

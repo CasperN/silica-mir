@@ -1552,7 +1552,7 @@
     "fields": {
       "init": {
         "multiple": false,
-        "required": true,
+        "required": false,
         "types": [
           {
             "type": "expr",

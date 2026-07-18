@@ -877,10 +877,10 @@ impl Parser {
         } else {
             None
         };
-        let init_node = node.child_by_field_name("init").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "let missing init")
-        })?;
-        let init = self.map_expr(init_node, scope)?;
+        let init = match node.child_by_field_name("init") {
+            Some(n) => Some(self.map_expr(n, scope)?),
+            None => None,
+        };
         Ok(Stmt::Let { is_mut, name, ty, init, span })
     }
 
@@ -1207,8 +1207,8 @@ mod tests {
         let ExprKind::Block(stmts, _, _) = &f.body.kind else {
             panic!("expected block body");
         };
-        let Stmt::Let { init, .. } = &stmts[0] else {
-            panic!("expected let stmt");
+        let Stmt::Let { init: Some(init), .. } = &stmts[0] else {
+            panic!("expected let stmt with initializer");
         };
         init.clone()
     }

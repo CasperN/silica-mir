@@ -132,13 +132,17 @@ module.exports = grammar({
       ';',
     ),
 
+    // `let [mut] name (: type)? (= init)? ;`. The init is optional to
+    // allow uninitialized bindings — needed for field-by-field aggregate
+    // init and any `&out`/`&uninit` obligation shape. When the init is
+    // omitted, a type annotation is required (the type-checker rejects
+    // the missing case with `HTC-AmbiguousType`).
     let_stmt: $ => seq(
       'let',
       optional('mut'),
       field('name', $.identifier),
       optional(seq(':', field('type', $.type))),
-      '=',
-      field('init', $.expr),
+      optional(seq('=', field('init', $.expr))),
       ';',
     ),
 

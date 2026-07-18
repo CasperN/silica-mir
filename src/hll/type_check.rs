@@ -924,13 +924,27 @@ fn infer_inner(
             for stmt in stmts {
                 match stmt {
                     Stmt::Let { is_mut: _, name, ty, init, span } => {
-                        let var_ty = if let Some(annotated_ty) = ty {
-                            let scope = env.current_type_params.clone();
-                            env.validate_type(annotated_ty, &scope, *span, d);
-                            check_inner(env, subst, init, annotated_ty, types, d);
-                            annotated_ty.clone()
-                        } else {
-                            infer_inner(env, subst, init, types, d)
+                        let var_ty = match (ty, init) {
+                            (Some(annotated_ty), Some(init)) => {
+                                let scope = env.current_type_params.clone();
+                                env.validate_type(annotated_ty, &scope, *span, d);
+                                check_inner(env, subst, init, annotated_ty, types, d);
+                                annotated_ty.clone()
+                            }
+                            (Some(annotated_ty), None) => {
+                                let scope = env.current_type_params.clone();
+                                env.validate_type(annotated_ty, &scope, *span, d);
+                                annotated_ty.clone()
+                            }
+                            (None, Some(init)) => infer_inner(env, subst, init, types, d),
+                            (None, None) => {
+                                d.push_error(Diagnostic::new(
+                                    HllTypeCheckCode::AmbiguousType,
+                                    *span,
+                                    "let binding without initializer requires an explicit type annotation",
+                                ));
+                                error_ty()
+                            }
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
@@ -1233,12 +1247,22 @@ fn check_inner(
             env.push_scope();
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { is_mut: _, name, ty, init, span: _ } => {
-                        let var_ty = if let Some(annotated_ty) = ty {
-                            check_inner(env, subst, init, annotated_ty, types, d);
-                            annotated_ty.clone()
-                        } else {
-                            infer_inner(env, subst, init, types, d)
+                    Stmt::Let { is_mut: _, name, ty, init, span } => {
+                        let var_ty = match (ty, init) {
+                            (Some(annotated_ty), Some(init)) => {
+                                check_inner(env, subst, init, annotated_ty, types, d);
+                                annotated_ty.clone()
+                            }
+                            (Some(annotated_ty), None) => annotated_ty.clone(),
+                            (None, Some(init)) => infer_inner(env, subst, init, types, d),
+                            (None, None) => {
+                                d.push_error(Diagnostic::new(
+                                    HllTypeCheckCode::AmbiguousType,
+                                    *span,
+                                    "let binding without initializer requires an explicit type annotation",
+                                ));
+                                error_ty()
+                            }
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
@@ -1383,7 +1407,10 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::Block(stmts, last, _) => {
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { init, .. } => check_no_control_flow(init, loop_depth, d),
+                    Stmt::Let { init: Some(init), .. } => {
+                        check_no_control_flow(init, loop_depth, d)
+                    }
+                    Stmt::Let { init: None, .. } => {}
                     Stmt::Defer { body, .. } => check_no_control_flow(body, loop_depth, d),
                     Stmt::Expr(e) => check_no_control_flow(e, loop_depth, d),
                 }

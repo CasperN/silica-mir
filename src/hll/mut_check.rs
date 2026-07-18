@@ -273,7 +273,9 @@ fn check_stmt(stmt: &Stmt, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             init,
             span: _,
         } => {
-            check_expr(init, scope, func, d);
+            if let Some(init) = init {
+                check_expr(init, scope, func, d);
+            }
             scope.declare(name, *is_mut);
         }
         Stmt::Defer { body, span: _ } => {

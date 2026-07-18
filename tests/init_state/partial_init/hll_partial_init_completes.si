@@ -1,16 +1,68 @@
 # HLL counterpart to `partial_init_completes.sim` — same invariant,
 # exercised through the HLL surface so the lowering path also
-# participates. Scope is deliberately smaller: HLL locals must be
-# constructed as whole values (no `let p: P;`), so field-by-field
-# aggregate init doesn't appear at the surface. What does appear is
-# per-field state after a move-out — the sibling field remains
-# usable, elaboration drops it at scope exit.
+# participates.
+#
+# With `let name: type;` (no initializer) supported, HLL can now
+# express field-by-field aggregate init and match the MIR sibling's
+# coverage of the (container × transition) matrix.
+
+struct P: Copy + Drop { x: i64, y: i64 }
+
+struct Inner: Copy + Drop { a: i64, b: i64 }
+
+struct Outer: Copy + Drop { i: Inner, c: i64 }
 
 struct Box: Drop + Move { val: i64 }
 
 struct Pair: Drop + Move { b: Box, c: Box }
 
-struct Outer: Drop + Move { p: Pair, tag: i64 }
+struct BigOuter: Drop + Move { p: Pair, tag: i64 }
+
+# ---------- Struct: field-by-field completion ----------
+
+# Each field write moves `p` through Partial; the second write
+# completes the aggregate and `canonicalize` folds to Init.
+fn struct_field_by_field() -> i64 {
+  let mut p: P;
+  p.x = 1;
+  p.y = 2;
+  p.x
+}
+
+# ---------- Nested struct: leaf-by-leaf completion ----------
+
+# `o.i` starts NeverInit; writing `o.i.a` and `o.i.b` folds `o.i` to
+# Init; that plus `o.c` folds `o` to Init.
+fn nested_struct_leaf_by_leaf() -> i64 {
+  let mut o: Outer;
+  o.i.a = 1;
+  o.i.b = 2;
+  o.c = 3;
+  o.i.a
+}
+
+# ---------- Array: slot-by-slot completion (constant index) ----------
+
+fn array_slot_by_slot() -> i64 {
+  let mut a: [i64; 3];
+  a[0] = 1;
+  a[1] = 2;
+  a[2] = 3;
+  a[1]
+}
+
+# ---------- Whole-struct overwrite from Partial ----------
+
+# Starting from `Partial{x: Init, y: NeverInit}`, a whole-value
+# assignment resets the aggregate to Init and both fields are readable.
+fn whole_struct_overwrite_from_partial(src: P) -> i64 {
+  let mut p: P;
+  p.x = 1;
+  p = src;
+  p.y
+}
+
+# ---------- Partial via move-out: remaining fields still usable ----------
 
 # Move one field out; sibling stays Init and is consumed later in
 # scope. The struct as a whole transitions through Partial.
@@ -19,9 +71,11 @@ fn move_one_field_leaves_other_init(p: Pair) {
   let remaining = p.c;
 }
 
-# Nested: moving an inner leaf leaves the sibling leaf and the outer
-# scalar field usable.
-fn nested_move_inner_leaf(o: Outer) {
+# ---------- Nested: move out inner leaf ----------
+
+# Moving an inner leaf leaves the sibling leaf and the outer scalar
+# field usable.
+fn nested_move_inner_leaf(o: BigOuter) {
   let inner_taken = o.p.b;
   let inner_kept = o.p.c;
   let tag = o.tag;

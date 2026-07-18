@@ -1,3 +1,18 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+struct Inner: Copy + Drop {
+  a: i64
+  b: i64
+}
+
+struct Outer: Copy + Drop {
+  i: Inner
+  c: i64
+}
+
 struct Box: Drop + Move {
   val: i64
 }
@@ -7,9 +22,85 @@ struct Pair: Drop + Move {
   c: Box
 }
 
-struct Outer: Drop + Move {
+struct BigOuter: Drop + Move {
   p: Pair
   tag: i64
+}
+
+fn struct_field_by_field($return: &out i64) {
+  p: P;
+  _temp_0: unit;
+  _temp_1: unit;
+  entry:
+    p.x = 1;
+    _temp_0 = unit;
+    p.y = 2;
+    _temp_1 = unit;
+    $return.* = copy p.x;
+    unborrow $return;
+    drop _temp_1;
+    drop _temp_0;
+    drop p;
+    return
+}
+
+fn nested_struct_leaf_by_leaf($return: &out i64) {
+  o: Outer;
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  entry:
+    o.i.a = 1;
+    _temp_0 = unit;
+    o.i.b = 2;
+    _temp_1 = unit;
+    o.c = 3;
+    _temp_2 = unit;
+    $return.* = copy o.i.a;
+    unborrow $return;
+    drop _temp_2;
+    drop _temp_1;
+    drop _temp_0;
+    drop o;
+    return
+}
+
+fn array_slot_by_slot($return: &out i64) {
+  a: [i64; 3];
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  entry:
+    a[0] = 1;
+    _temp_0 = unit;
+    a[1] = 2;
+    _temp_1 = unit;
+    a[2] = 3;
+    _temp_2 = unit;
+    $return.* = copy a[1];
+    unborrow $return;
+    drop _temp_2;
+    drop _temp_1;
+    drop _temp_0;
+    drop a;
+    return
+}
+
+fn whole_struct_overwrite_from_partial(src: P, $return: &out i64) {
+  p: P;
+  _temp_0: unit;
+  _temp_1: unit;
+  entry:
+    p.x = 1;
+    _temp_0 = unit;
+    p = move src;
+    _temp_1 = unit;
+    $return.* = copy p.y;
+    unborrow $return;
+    drop _temp_1;
+    drop _temp_0;
+    drop p;
+    return
 }
 
 fn move_one_field_leaves_other_init(p: Pair) {
@@ -26,7 +117,7 @@ fn move_one_field_leaves_other_init(p: Pair) {
     return
 }
 
-fn nested_move_inner_leaf(o: Outer) {
+fn nested_move_inner_leaf(o: BigOuter) {
   _temp_0: unit;
   inner_taken: Box;
   inner_kept: Box;

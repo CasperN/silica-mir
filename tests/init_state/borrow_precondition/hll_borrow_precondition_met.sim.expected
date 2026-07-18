@@ -1,0 +1,143 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+struct Box: Drop + Move {
+  val: i64
+}
+
+fn use_shared(r: & i64, $return: &out i64) {
+  entry:
+    $return.* = copy r.*;
+    unborrow $return;
+    unborrow r;
+    return
+}
+
+fn use_mut(r: &mut i64, $return: &out i64) {
+  entry:
+    $return.* = copy r.*;
+    unborrow $return;
+    unborrow r;
+    return
+}
+
+fn take_scalar(y: i64, $return: &out i64) {
+  entry:
+    $return.* = copy y;
+    unborrow $return;
+    drop y;
+    return
+}
+
+fn shared_of_init(x: i64, $return: &out i64) {
+  _temp_0: & i64;
+  _temp_1: &out i64;
+  entry:
+    _temp_0 = & x;
+    _temp_1 = &out $return.*;
+    call use_shared(move _temp_0, move _temp_1);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn mut_of_init(x: i64, $return: &out i64) {
+  y: i64;
+  _temp_0: &mut i64;
+  _temp_1: &out i64;
+  entry:
+    y = copy x;
+    _temp_0 = &mut y;
+    _temp_1 = &out $return.*;
+    call use_mut(move _temp_0, move _temp_1);
+    unborrow $return;
+    drop y;
+    drop x;
+    return
+}
+
+fn mut_of_init_field_of_partial($return: &out i64) {
+  p: P;
+  _temp_0: unit;
+  r: &mut i64;
+  v: i64;
+  _temp_1: unit;
+  entry:
+    p.x = 1;
+    _temp_0 = unit;
+    r = &mut p.x;
+    v = copy r.*;
+    unborrow r;
+    p.y = 2;
+    _temp_1 = unit;
+    $return.* = copy v;
+    unborrow $return;
+    drop _temp_1;
+    drop v;
+    drop _temp_0;
+    drop p;
+    return
+}
+
+fn out_of_never_init($return: &out i64) {
+  x: i64;
+  r: &out i64;
+  _temp_0: unit;
+  entry:
+    r = &out x;
+    r.* = 42;
+    unborrow r;
+    _temp_0 = unit;
+    $return.* = copy x;
+    unborrow $return;
+    drop _temp_0;
+    drop x;
+    return
+}
+
+fn out_of_init_drop_type(x: i64, $return: &out i64) {
+  y: i64;
+  r: &out i64;
+  _temp_0: unit;
+  entry:
+    y = copy x;
+    drop y;
+    r = &out y;
+    r.* = 2;
+    unborrow r;
+    _temp_0 = unit;
+    $return.* = copy y;
+    unborrow $return;
+    drop _temp_0;
+    drop y;
+    drop x;
+    return
+}
+
+fn deinit_of_init(b: Box, $return: &out Box) {
+  owned: Box;
+  r: &drop Box;
+  taken: Box;
+  entry:
+    owned = move b;
+    r = &drop owned;
+    taken = move r.*;
+    unborrow r;
+    $return.* = move taken;
+    unborrow $return;
+    return
+}
+
+fn uninit_of_never_init() {
+  _temp_0: unit;
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    unborrow r;
+    _temp_0 = unit;
+    drop _temp_0;
+    return
+}
