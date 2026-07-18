@@ -1,0 +1,79 @@
+extern fn malloc_node(size: i64, $return: &out *Node);
+
+extern fn free_node(p: *Node);
+
+struct Node: Move {
+  value: i32
+  next: List
+}
+
+enum List: Move {
+  Empty: unit
+  Cons: *Node
+}
+
+fn list_empty($return: &out List) {
+  entry:
+    $return.* = List::Empty(unit);
+    unborrow $return;
+    return
+}
+
+fn list_cons(value: i32, tail: List, $return: &out List) {
+  p: *Node;
+  _temp_0: &out *Node;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: unit;
+  entry:
+    _temp_0 = &out p;
+    call malloc_node(24, move _temp_0);
+    p.*.value = copy value;
+    _temp_2 = unit;
+    p.*.next = move tail;
+    _temp_3 = unit;
+    _temp_1 = unit;
+    $return.* = List::Cons(copy p);
+    unborrow $return;
+    drop _temp_3;
+    drop _temp_2;
+    drop _temp_1;
+    drop p;
+    drop value;
+    return
+}
+
+fn list_sum(list: & List, $return: &out i32) {
+  _: unit;
+  p: *Node;
+  _temp_0: i32;
+  _temp_1: & List;
+  _temp_2: &out i32;
+  _temp_3: &out i32;
+  entry:
+    switchEnum(list.*) [Empty: switch_Empty_0, Cons: switch_Cons_1]
+  switch_Empty_0:
+    _ = copy list.* as Empty;
+    unborrow list;
+    $return.* = 0i32;
+    unborrow $return;
+    goto switch_Empty_0__to__switch_merge_2
+  switch_Empty_0__to__switch_merge_2:
+    drop _;
+    goto switch_merge_2
+  switch_Cons_1:
+    p = copy list.* as Cons;
+    unborrow list;
+    _temp_1 = & p.*.next;
+    _temp_2 = &out _temp_0;
+    call list_sum(move _temp_1, move _temp_2);
+    _temp_3 = &out $return.*;
+    call $i32_add(copy p.*.value, move _temp_0, move _temp_3);
+    unborrow $return;
+    goto switch_Cons_1__to__switch_merge_2
+  switch_Cons_1__to__switch_merge_2:
+    drop p;
+    goto switch_merge_2
+  switch_merge_2:
+    return
+}

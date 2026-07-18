@@ -233,6 +233,7 @@ impl Parser {
             "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child)?)),
             "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child)?)),
             "fn_decl" => Ok(Declaration::Fn(self.map_fn_decl(child)?)),
+            "extern_fn_decl" => Ok(Declaration::Fn(self.map_extern_fn_decl(child)?)),
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -376,9 +377,77 @@ impl Parser {
         let body_node = node.child_by_field_name("body").ok_or_else(|| {
             with_fn(self.diag(node, ParserCode::MalformedCst, "fn decl missing body"))
         })?;
-        let body = self.map_expr(body_node, &scope).map_err(with_fn)?;
+        let body = Some(self.map_expr(body_node, &scope).map_err(with_fn)?);
 
-        Ok(FnDecl { name, is_unsafe, type_params, params, ret_ty, body, span })
+        Ok(FnDecl {
+            name,
+            is_unsafe,
+            abi: None,
+            type_params,
+            params,
+            ret_ty,
+            body,
+            span,
+        })
+    }
+
+    /// Extern function declaration: signature only, no body. Same
+    /// `FnDecl` node as regular functions; extern-ness is expressed
+    /// by `body: None`. `abi` is `None` for `extern fn ...` (Silica
+    /// ABI) or `Some("C")` for `extern "C" fn ...` (C ABI). The
+    /// grammar accepts any string literal — the type checker
+    /// rejects unknown ABI strings so lowering can trust it.
+    fn map_extern_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
+        let name_node = node.child_by_field_name("name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "extern fn decl missing name")
+        })?;
+        let name = self.get_text(name_node).to_string();
+        let span = span_of(node);
+        let with_fn = |d: Diagnostic| d.in_function(name.clone());
+
+        let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
+            // Strip surrounding quotes; the string_lit rule matches `"..."`.
+            let raw = self.get_text(abi_node);
+            Some(raw.trim_matches('"').to_string())
+        } else {
+            None
+        };
+
+        let scope: TypeScope = BTreeSet::new();
+        let mut cursor = node.walk();
+        let mut params = Vec::new();
+        for child in node.children(&mut cursor) {
+            if child.kind() == "param_decl" {
+                let p_name_node = child.child_by_field_name("name").ok_or_else(|| {
+                    with_fn(self.diag(child, ParserCode::MalformedCst, "param missing name"))
+                })?;
+                let p_type_node = child.child_by_field_name("type").ok_or_else(|| {
+                    with_fn(self.diag(child, ParserCode::MalformedCst, "param missing type"))
+                })?;
+                params.push(Param {
+                    name: self.get_text(p_name_node).to_string(),
+                    ty: self.map_type(p_type_node, &scope).map_err(with_fn)?,
+                    span: span_of(child),
+                });
+            }
+        }
+
+        let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
+            self.map_type(rt_node, &scope).map_err(with_fn)?
+        } else {
+            unit_ty()
+        };
+
+        Ok(FnDecl {
+            name,
+            is_unsafe: false,
+            abi,
+            type_params: Vec::new(),
+            params,
+            ret_ty,
+            body: None,
+            span,
+        })
     }
 
     /// Map a `type` (or scalar/keyword token) CST node to `Type`.
@@ -1120,7 +1189,7 @@ mod tests {
             assert_eq!(f.name, "add");
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.ret_ty, i64_ty());
-            if let ExprKind::Block(ref stmts, ref last, _) = f.body.kind {
+            if let ExprKind::Block(ref stmts, ref last, _) = f.body.as_ref().unwrap().kind {
                 assert_eq!(stmts.len(), 3);
                 assert!(last.is_none());
             } else {
@@ -1204,7 +1273,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        let ExprKind::Block(stmts, _, _) = &f.body.kind else {
+        let ExprKind::Block(stmts, _, _) = &f.body.as_ref().unwrap().kind else {
             panic!("expected block body");
         };
         let Stmt::Let { init: Some(init), .. } = &stmts[0] else {
@@ -1298,7 +1367,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        let ExprKind::Block(stmts, _, _) = &f.body.kind else {
+        let ExprKind::Block(stmts, _, _) = &f.body.as_ref().unwrap().kind else {
             panic!("expected block");
         };
         let Stmt::Expr(e) = &stmts[0] else {
@@ -1352,7 +1421,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!()
         };
-        let ExprKind::Block(stmts, tail, _) = &f.body.kind else {
+        let ExprKind::Block(stmts, tail, _) = &f.body.as_ref().unwrap().kind else {
             panic!("expected block body")
         };
         assert!(stmts.is_empty());
@@ -1576,7 +1645,7 @@ mod tests {
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
-            if let ExprKind::Block(ref stmts, _, _) = f.body.kind {
+            if let ExprKind::Block(ref stmts, _, _) = f.body.as_ref().unwrap().kind {
                 assert_eq!(stmts.len(), 2);
                 assert!(matches!(stmts[0], Stmt::Defer { .. }));
                 assert!(matches!(stmts[1], Stmt::Defer { .. }));
@@ -1595,7 +1664,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        let ExprKind::Block(_, tail, _) = &f.body.kind else {
+        let ExprKind::Block(_, tail, _) = &f.body.as_ref().unwrap().kind else {
             panic!("expected block body");
         };
         *tail

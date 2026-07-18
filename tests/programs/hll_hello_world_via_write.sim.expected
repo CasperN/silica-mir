@@ -1,0 +1,36 @@
+extern fn write(fd: i32, buf: *u8, count: u64);
+
+fn print_hi() {
+  _temp_0: unit;
+  s: [u8; 4];
+  p: *u8;
+  _temp_1: unit;
+  entry:
+    s = [104u8, 105u8, 33u8, 10u8];
+    p = &raw s[0u64];
+    call write(1i32, copy p, 4u64);
+    _temp_1 = unit;
+    _temp_0 = unit;
+    drop _temp_1;
+    drop p;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn main(exit: &out i32) {
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  entry:
+    call print_hi();
+    _temp_1 = unit;
+    exit.* = 0i32;
+    unborrow exit;
+    _temp_2 = unit;
+    _temp_0 = unit;
+    drop _temp_2;
+    drop _temp_1;
+    drop _temp_0;
+    return
+}

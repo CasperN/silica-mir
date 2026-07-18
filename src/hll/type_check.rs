@@ -151,6 +151,8 @@ pub enum HllTypeCheckCode {
     AmbiguousType,
     /// Dereferencing a raw pointer outside an unsafe block.
     UnsafeRequired,
+    /// `extern "..."` names an ABI other than `"C"`.
+    UnknownAbi,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -603,6 +605,25 @@ pub(super) fn typecheck_program_collect(
     // Typecheck function bodies
     for decl in &program.declarations {
         if let Declaration::Fn(f) = decl {
+            // Extern fn declarations carry no body; validate the ABI
+            // string (bare `extern` or `extern "C"` only for now) and
+            // skip body-checking. Signature was already registered
+            // into `env.functions` above.
+            let Some(body) = &f.body else {
+                if let Some(abi) = &f.abi {
+                    if abi != "C" {
+                        d.push_error(Diagnostic::new(
+                            HllTypeCheckCode::UnknownAbi,
+                            f.span,
+                            format!(
+                                "unknown extern ABI '{}' — expected 'C' or bare extern",
+                                abi
+                            ),
+                        ));
+                    }
+                }
+                continue;
+            };
             env.current_type_params = type_params_scope(&f.type_params);
             env.push_scope();
             env.current_ret_ty = Some(f.ret_ty.clone());
@@ -611,7 +632,7 @@ pub(super) fn typecheck_program_collect(
                 env.insert_var(param.name.clone(), param.ty.clone());
             }
             let errors_before = d.error_count();
-            check_inner(&mut env, &mut subst, &f.body, &f.ret_ty, &mut types, d);
+            check_inner(&mut env, &mut subst, body, &f.ret_ty, &mut types, d);
             d.annotate_errors_in_function(errors_before, &f.name);
             env.pop_scope();
             env.in_unsafe = false;

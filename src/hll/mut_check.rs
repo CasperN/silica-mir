@@ -82,12 +82,14 @@ pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
 }
 
 fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
+    // Extern fns have no body to check.
+    let Some(body) = &f.body else { return };
     let mut scope = Scope::new();
     // Parameters are immutable (Param has no is_mut field).
     for p in &f.params {
         scope.declare(&p.name, false);
     }
-    check_expr(&f.body, &mut scope, &f.name, d);
+    check_expr(body, &mut scope, &f.name, d);
 }
 
 // ── place-root resolution ────────────────────────────────────────────

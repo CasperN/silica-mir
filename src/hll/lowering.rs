@@ -925,8 +925,6 @@ pub fn lower_program(
                 }));
             }
             hll::Declaration::Fn(f) => {
-                let mut ctx = LowerCtx::new(program);
-                
                 let mut params: Vec<mir::Param> = f.params.iter().map(|p| mir::Param {
                     name: p.name.clone(),
                     ty: lower_type(&p.ty),
@@ -942,6 +940,27 @@ pub fn lower_program(
                     });
                 }
 
+                // Extern declarations: no body to lower; MIR carries
+                // extern-ness via `is_extern: true` and `body: None`.
+                // The ABI string (`f.abi`) is preserved in HLL but
+                // dropped here — MIR codegen currently ignores it (see
+                // punchlist). When codegen wires the ABI through,
+                // Function will grow an `abi: Option<String>` field
+                // and this call site will pass `f.abi.clone()`.
+                let Some(body_expr) = &f.body else {
+                    declarations.push(mir::Declaration::Fn(mir::Function {
+                        name: f.name.clone(),
+                        name_span: f.span,
+                        is_extern: true,
+                        type_params: lower_type_params(&f.type_params),
+                        params,
+                        body: None,
+                    }));
+                    continue;
+                };
+
+                let mut ctx = LowerCtx::new(program);
+
                 let start_label = "entry".to_string();
                 ctx.start_block(start_label);
 
@@ -951,10 +970,10 @@ pub fn lower_program(
                 // Otherwise we write it to a dummy Unit place.
                 if f.ret_ty != hll::Type::Unit {
                     let ret_place = deref_place(var_place("$return"));
-                    lower_expr_into(&mut ctx, &f.body, &ret_place, types)?;
+                    lower_expr_into(&mut ctx, body_expr, &ret_place, types)?;
                 } else {
-                    let dummy = ctx.fresh_temp(unit_ty(), f.body.span);
-                    lower_expr_into(&mut ctx, &f.body, &dummy, types)?;
+                    let dummy = ctx.fresh_temp(unit_ty(), body_expr.span);
+                    lower_expr_into(&mut ctx, body_expr, &dummy, types)?;
                 }
 
                 // If the entry block or last block hasn't been terminated, terminate it with Return

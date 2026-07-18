@@ -908,8 +908,11 @@ Order of operations:
 - **HLL binary operators** `+ - * /` (currently intrinsic calls only).
   Prerequisite for real HLL ergonomics and for HLL versions of the
   existing MIR fixture programs.
-- **HLL `extern fn` declarations.** No FFI is expressible in `.si` today — blocks HLL siblings of `tests/programs/hello_world_via_write.sim` and `heap_linked_list_of_i64.sim`. Also opens up heap allocation as a byproduct (malloc returns a raw pointer).
+- **MIR must honor `extern "..."` ABI.** HLL parses both `extern fn` and `extern "C" fn` and preserves the ABI string on `FnDecl`; the ABI is dropped at HLL→MIR lowering because MIR's `Function::is_extern` is a bare bool. Wire an `abi: Option<String>` through to codegen so C-ABI externs emit register returns instead of the Silica sret convention. Today's void externs happen to work under either ABI — the divergence bites the moment someone declares a non-void C extern.
+- **HLL match on Move-only enum uses `copy` for arm binding.** `enum List: Move { Empty: unit, Cons: *Node } ... list match { Empty(u) => ..., Cons(p) => ... }` lowers to `u = copy list as Empty` because the arm-binding site types the payload (unit, Copy) instead of consulting the scrutinee's own class. Trips `SUB-CopyOfNonCopy` at check time. Blocks HLL sibling of MIR's `list_free` (see `tests/programs/hll_heap_linked_list_of_i64.si`).
 - **HLL `as` casts between reference / raw-pointer types.** No syntax today to reinterpret between `&T` / `&mut T` / `*T` (or between `*T` / `*U`); raw pointers stay non-null by construction — you get them from `&raw place` or from an extern.
+- **HLL byte-string literals.** `b"hello"` is MIR-only; HLL has to build fixed-size `[u8; N]` buffers element-by-element. See `tests/programs/hll_hello_world_via_write.si` for the workaround.
+- **HLL exposes intrinsics through binary ops only.** `$i64_to_i32(...)` parses as a variable reference and fires `HTC-UndeclaredVariable`; there's no way to call a `$*` intrinsic by name from HLL. Blocks any HLL fixture that needs a cast or width conversion until `as` casts land.
 - **Generics** in the MIR — grammar/AST/parser/print, scope-aware
   substructural composition, decl-side marker check, and
   use-site bound + arity check are all in. Remaining:

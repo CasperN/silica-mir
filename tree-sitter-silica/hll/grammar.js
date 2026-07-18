@@ -42,6 +42,7 @@ module.exports = grammar({
       $.struct_decl,
       $.enum_decl,
       $.fn_decl,
+      $.extern_fn_decl,
     ),
 
     ...common.rules,
@@ -82,6 +83,27 @@ module.exports = grammar({
       common.commaSep($.enum_variant),
       '}',
     ),
+
+    // `extern [abi_string] fn name(params) [-> type];` — declaration only,
+    // no body. The optional string literal names the ABI:
+    //   - absent      → Silica ABI (sret via `&out $return`)
+    //   - `"C"`       → C ABI (register return, no sret)
+    // See the MIR punchlist item on wiring the ABI through codegen; the
+    // HLL parser accepts and preserves the ABI, but the current MIR
+    // codegen still ignores it (both spellings lower to the same
+    // `is_extern: true` MIR function). Non-`"C"` ABI strings are
+    // syntactically valid here; the type checker rejects unknown ABIs.
+    extern_fn_decl: $ => seq(
+      'extern',
+      optional(field('abi', $.string_lit)),
+      'fn',
+      field('name', $.identifier),
+      '(', common.commaSep($.param_decl), ')',
+      optional(seq('->', field('return_type', $.type))),
+      ';',
+    ),
+
+    string_lit: $ => /"[^"]*"/,
 
     // `[unsafe] fn [<type_params>] name(params) [-> type] block`. Return type
     // defaults to `unit` when the arrow is omitted. Body is a block

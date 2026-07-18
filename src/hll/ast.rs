@@ -107,10 +107,20 @@ pub struct TypeParam {
 pub struct FnDecl {
     pub name: String,
     pub is_unsafe: bool,
+    /// ABI string. `None` = Silica ABI (sret via `&out $return`);
+    /// `Some("C")` = C ABI (register return). Additional ABI strings
+    /// may be added later (`"system"`, `"fastcall"`, ...); the type
+    /// checker rejects unknown strings so lowering can trust it.
+    pub abi: Option<String>,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,
-    pub body: Expr,
+    /// `None` for extern declarations (signature only). Downstream
+    /// passes branch on this rather than on a separate ExternFn
+    /// variant; keeping extern-ness as a modifier of the same node
+    /// leaves room for other modifiers (`co`, ABI variants, ...) to
+    /// slot in without a full-item split.
+    pub body: Option<Expr>,
     pub span: Span,
 }
 

@@ -1,0 +1,44 @@
+# HLL sibling of `heap_linked_list_of_i64.sim`, scoped to what today's
+# HLL surface supports: `extern fn` (Silica ABI, sret via `-> R`),
+# unsafe raw-pointer deref through the linear enum, and whole-list
+# *borrowing* recursion.
+#
+# The consuming path (`list_free`, and by extension any `main` that
+# allocates and needs to free) is deferred: HLL match on a Move-only
+# scrutinee lowers as `copy o as Variant` on the arm-binding path even
+# when the enum is Move-only, tripping SUB-CopyOfNonCopy at check time.
+# See punchlist: "HLL match on Move-only enum uses copy for arm
+# binding." Fixing that unblocks the sibling of MIR's `list_free`.
+# The .sim sibling covers the full alloc + free + main pipeline.
+
+extern fn malloc_node(size: i64) -> *Node;
+extern fn free_node(p: *Node);
+
+# Values are i32 to keep sum → exit-code path free of casts.
+struct Node: Move { value: i32, next: List }
+enum List: Move { Empty: unit, Cons: *Node }
+
+fn list_empty() -> List {
+  List::Empty(unit)
+}
+
+# Consumes `tail` (Move-only) into the newly-heap-allocated node.
+fn list_cons(value: i32, tail: List) -> List {
+  let p: *Node = malloc_node(24i64);
+  unsafe {
+    p.*.value = value;
+    p.*.next = tail;
+  }
+  List::Cons(p)
+}
+
+# Recursive sum via a shared borrow — the list is not consumed. The
+# match runs on `list.*` (dereffed shared ref), so the arm binding
+# copies the payload rather than moving out — sidesteps the Move-only
+# match issue.
+fn list_sum(list: &List) -> i32 {
+  list.* match {
+    Empty(_) => 0i32,
+    Cons(p) => unsafe { (p.*.value + list_sum(&p.*.next)) },
+  }
+}

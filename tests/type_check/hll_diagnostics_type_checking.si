@@ -35,3 +35,11 @@ fn test_undeclared_variable() -> i64 {
 fn test_defer_type_mismatch() {
   defer 42;
 }
+
+# ---------- HTC-UnknownAbi: extern with a non-C ABI string ----------
+
+# Bare `extern` (Silica ABI) and `extern "C"` (C ABI) are accepted;
+# any other ABI string is rejected. When more ABIs are supported the
+# check widens.
+extern "system" fn win_api(x: i64);
+extern "fastcall" fn stdcall_thing(y: i64);

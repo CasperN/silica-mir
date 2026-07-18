@@ -1,0 +1,27 @@
+# HLL sibling of `hello_world_via_write.sim`. Exercises the end-to-end
+# FFI shape from the HLL surface: `extern "C" fn` for the C-ABI write(2)
+# declaration, an array literal to build the byte buffer, `&raw` on an
+# array slot, and drop of a Copy+Drop local at return.
+#
+# The `extern "C"` spelling declares C ABI. Today's MIR codegen ignores
+# the ABI string (see punchlist), so the lowered output is identical
+# to a bare `extern fn`. When codegen honors the ABI, this fixture's
+# `.sim.expected` will need to change.
+#
+# HLL doesn't have byte-string literals yet (`b"hello"` is MIR-only) —
+# the buffer is built element-by-element. That's the natural workaround
+# until HLL string literals land.
+
+extern "C" fn write(fd: i32, buf: *u8, count: u64);
+
+fn print_hi() {
+  # "hi!\n" as an [u8; 4]
+  let s: [u8; 4] = [104u8, 105u8, 33u8, 10u8];
+  let p: *u8 = &raw s[0u64];
+  write(1i32, p, 4u64);
+}
+
+fn main(exit: &out i32) {
+  print_hi();
+  exit.* = 0i32;
+}
