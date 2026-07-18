@@ -235,7 +235,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         let Some(block_entry) = entry_states.get(&block.label) else {
             continue;
         };
-        let diverged_paths = collect_diverged_paths(func, block_entry);
+        let diverged_paths = collect_diverged_paths(env, func, block_entry);
         if diverged_paths.is_empty() {
             continue;
         }
@@ -391,37 +391,69 @@ fn is_init_and_drop(
     class_of(&leaf_ty, env, scope).implies(Marker::Drop)
 }
 
-/// Walk `state` looking for `Diverged` leaves (or Diverged aggregates
-/// whose type is Drop). Returns each Diverged path with its type so the
-/// caller can decide per-edge insertion.
-fn collect_diverged_paths(func: &Function, state: &PointState) -> Vec<(Place, Type)> {
+/// Walk `state` looking for Diverged leaves, recursing into Partial
+/// aggregates so a struct with only some fields Diverged emits per-
+/// field entries rather than one aggregate. The caller then plans
+/// per-arm drops at the granularity that the state actually diverged.
+///
+/// Non-obvious semantic to flag for future readers: the drops planned
+/// from these entries run on the arm that *did* initialize the field.
+/// If arm A does `p.y = ...` and arm B doesn't touch `p.y`, drop-elab
+/// inserts `drop p.y` on the A → merge split edge — the destructor
+/// fires on arm A precisely because arm B didn't do anything with
+/// `p.y`. This is the only coherent merge semantics (Init sets have
+/// to agree at joins), but the causal shape is inverted from what an
+/// outsider expects. See
+/// `tests/substructural/check/hll_drop_elab_gaps.si::struct_field_diverged`
+/// for the positive fixture and
+/// `tests/init_state/partial_init/hll_partial_init_use.si` for the
+/// diagnostic on the paired misuse.
+fn collect_diverged_paths(env: &Env, func: &Function, state: &PointState) -> Vec<(Place, Type)> {
     let mut out = Vec::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
         let Some(root_state) = state.locals.get(name) else {
             continue;
         };
-        walk_diverged(var_place(name.clone()), ty, root_state, &mut out);
+        walk_diverged(env, var_place(name.clone()), ty, root_state, &mut out);
     }
     out
 }
 
-fn walk_diverged(place: Place, ty: &Type, state: &InitState, out: &mut Vec<(Place, Type)>) {
+fn walk_diverged(
+    env: &Env,
+    place: Place,
+    ty: &Type,
+    state: &InitState,
+    out: &mut Vec<(Place, Type)>,
+) {
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Init => {}
         InitState::Diverged => out.push((place, ty.clone())),
         InitState::Partial(fields) => {
-            // If any field is Diverged, recurse. Type resolution for
-            // struct fields is done inline.
-            let Type::Custom(struct_name, _) = ty else {
+            // Recurse into fields so a Partial with heterogeneous Init
+            // arms (e.g. `{x: Init, y: Init}` ⊔ `{x: Init, z: Init}` →
+            // `{x: Init, y: Diverged, z: Diverged}`) drops each
+            // diverged field on the arm that Init'd it. Without this
+            // recursion the caller sees a whole-aggregate `Partial`
+            // whose `state_at` at any pred exit reads back as `Partial`
+            // rather than `Init`, and no per-field drop is planned.
+            let Type::Custom(name, args) = ty else {
                 return;
             };
-            // We don't have env here — the caller resolves types below
-            // via a separate path. Emit the whole Partial with its
-            // struct type so the caller can walk field-by-field with env.
-            let _ = struct_name;
-            let _ = fields;
-            out.push((place, ty.clone()));
+            match env.types.get(name) {
+                Some(TypeDecl::Struct(s)) => {
+                    for f in &s.fields {
+                        let Some(field_state) = fields.get(&f.name) else {
+                            continue;
+                        };
+                        let field_ty = substitute_params(&f.ty, &s.type_params, args);
+                        let sub_place = field_place(place.clone(), f.name.clone());
+                        walk_diverged(env, sub_place, &field_ty, field_state, out);
+                    }
+                }
+                _ => {}
+            }
         }
     }
 }

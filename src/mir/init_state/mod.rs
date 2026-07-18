@@ -1954,16 +1954,39 @@ impl<'a> InitStateContext<'a> {
                 block,
                 format!("variable '{}' is used after move", root),
             )),
-            InitState::Diverged => d.push_error(diag(
-                UseInconsistent,
-                span,
-                func,
-                block,
-                format!(
-                    "variable '{}' may be used before initialization or after move (state inconsistent across paths)",
-                    root
-                ),
-            )),
+            InitState::Diverged => {
+                // Diverged means the leaf was Init on some incoming path
+                // and NeverInit / Moved on another. Point at every prior
+                // write to *this exact path* as a secondary — those are
+                // the arms where it WAS initialized; the fact that we
+                // still see Diverged tells the reader at least one other
+                // path skipped them all.
+                let mut err = diag(
+                    UseInconsistent,
+                    span,
+                    func,
+                    block,
+                    format!(
+                        "'{}' may be used before initialization or after move (state inconsistent across paths)",
+                        format_place(place)
+                    ),
+                );
+                if let Some(body) = &func.body {
+                    for b in &body.blocks {
+                        for (stmt, s) in &b.statements {
+                            if let Statement::Assign(target, _) = stmt {
+                                if target == place {
+                                    err = err.with_secondary(
+                                        *s,
+                                        "initialized here on some path",
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                d.push_error(err);
+            }
             InitState::Partial(_) => d.push_error(diag(
                 UsePartiallyInit,
                 span,

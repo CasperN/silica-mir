@@ -1,12 +1,20 @@
-error: at 37:5: [INIT-UseInconsistent] In function 'branch_join_disagreement', block 'merge': variable 'x' may be used before initialization or after move (state inconsistent across paths)
+error: at 37:5: [INIT-UseInconsistent] In function 'branch_join_disagreement', block 'merge': 'x' may be used before initialization or after move (state inconsistent across paths)
     |
  37 |     y = copy x;
     |     ^^^^^^^^^^
-error: at 54:5: [INIT-UseInconsistent] In function 'move_one_branch_read_at_merge', block 'merge': variable 'x' may be used before initialization or after move (state inconsistent across paths)
+  = note: initialized here on some path
+    |
+ 32 |     x = 1;
+    |     ^^^^^
+error: at 54:5: [INIT-UseInconsistent] In function 'move_one_branch_read_at_merge', block 'merge': 'x' may be used before initialization or after move (state inconsistent across paths)
     |
  54 |     call use_num(copy x);
     |     ^^^^^^^^^^^^^^^^^^^^
-error: at 69:5: [INIT-UseInconsistent] In function 'loop_body_reads_before_writing', block 'body': variable 'x' may be used before initialization or after move (state inconsistent across paths)
+error: at 69:5: [INIT-UseInconsistent] In function 'loop_body_reads_before_writing', block 'body': 'x' may be used before initialization or after move (state inconsistent across paths)
     |
  69 |     y = copy x;
     |     ^^^^^^^^^^
+  = note: initialized here on some path
+    |
+ 70 |     x = 1;
+    |     ^^^^^

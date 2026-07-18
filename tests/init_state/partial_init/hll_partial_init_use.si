@@ -1,15 +1,31 @@
-# HLL counterpart to `partial_init_use.sim` — same invariants
-# exercised through the HLL surface. HLL locals are constructed as
-# whole values, so `NeverInit` fields aren't reachable at the
-# surface — everything here is a use-after-move variant: the same
-# `Partial{...Moved...}` state that comes from field-by-field
-# consumption in MIR, produced through HLL's move-on-let-binding.
+# HLL counterpart to `partial_init_use.sim` — every fn triggers a
+# partial-init violation from the HLL surface. Two shapes:
+#
+# 1. Use-after-move: `let taken = p.b;` moves a Move-only field out,
+#    leaving `p` as `Partial{...Moved...}`; subsequent reads of the
+#    moved field or the parent-as-whole are rejected.
+# 2. Heterogeneous per-field init across branches: each arm inits a
+#    different subset of the aggregate's fields. Drop-elab drops the
+#    arm-only fields on the split edge so at the merge the field's
+#    state is `NeverInit` on all paths. Reading it there is rejected
+#    as use-of-inconsistent — the diagnostic's secondary points at
+#    the arm that DID initialize the field, so the reader can see
+#    the divergence without hunting.
+#
+#    Positive-side companion (the same shape without the bad read):
+#    `tests/substructural/check/hll_drop_elab_gaps.si`, which
+#    documents the non-obvious "arm A drops what arm B didn't Init"
+#    semantics in detail.
 
 struct Box: Drop + Move { val: i64 }
 
 struct Pair: Drop + Move { b: Box, c: Box }
 
 struct Outer: Drop + Move { p: Pair, tag: i64 }
+
+struct XYZ: Copy + Drop { x: i32, y: i32, z: i32 }
+
+# ---------- Use-after-move ----------
 
 # Move a field, then re-read the moved field.
 fn read_moved_field(p: Pair) {
@@ -27,4 +43,48 @@ fn read_whole_while_partial(p: Pair) {
 fn nested_read_partial_inner(o: Outer) {
   let taken = o.p.b;
   let inner = o.p;
+}
+
+# ---------- Heterogeneous per-field init across branches ----------
+
+# Arm A inits {x, y}, arm B inits {x, z}. Drop-elab drops the arm-only
+# field on each arm's split edge so at the merge only `xyz.x` is Init.
+# Reading `xyz.y` (Init only on the true arm, dropped there) is rejected.
+fn read_arm_only_field_y(cond: bool) -> i32 {
+  let mut xyz: XYZ;
+  if cond {
+    xyz.x = 1i32;
+    xyz.y = 2i32;
+  } else {
+    xyz.x = 1i32;
+    xyz.z = 2i32;
+  }
+  xyz.y
+}
+
+# Symmetric: `xyz.z` was Init only on the false arm, dropped there.
+fn read_arm_only_field_z(cond: bool) -> i32 {
+  let mut xyz: XYZ;
+  if cond {
+    xyz.x = 1i32;
+    xyz.y = 2i32;
+  } else {
+    xyz.x = 1i32;
+    xyz.z = 2i32;
+  }
+  xyz.z
+}
+
+# Reading the whole aggregate at the merge is rejected: `xyz` is
+# Partial{x: Init, y: NeverInit, z: NeverInit}, not fully Init.
+fn read_whole_aggregate(cond: bool) -> XYZ {
+  let mut xyz: XYZ;
+  if cond {
+    xyz.x = 1i32;
+    xyz.y = 2i32;
+  } else {
+    xyz.x = 1i32;
+    xyz.z = 2i32;
+  }
+  xyz
 }

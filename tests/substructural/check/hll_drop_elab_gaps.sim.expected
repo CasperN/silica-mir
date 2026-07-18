@@ -81,3 +81,51 @@ fn loop_if_break() {
     drop _temp_0;
     return
 }
+
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+  z: i64
+}
+
+fn struct_field_diverged(c: bool, $return: &out i64) {
+  p: P;
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: unit;
+  _temp_4: unit;
+  entry:
+    branch(copy c) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    p.x = 1;
+    _temp_1 = unit;
+    p.z = 3;
+    _temp_2 = unit;
+    _temp_0 = unit;
+    goto if_true_0__to__if_merge_2
+  if_true_0__to__if_merge_2:
+    drop p.z;
+    drop _temp_1;
+    drop _temp_2;
+    goto if_merge_2
+  if_false_1:
+    p.x = 1;
+    _temp_3 = unit;
+    p.y = 2;
+    _temp_4 = unit;
+    _temp_0 = unit;
+    goto if_false_1__to__if_merge_2
+  if_false_1__to__if_merge_2:
+    drop p.y;
+    drop _temp_3;
+    drop _temp_4;
+    goto if_merge_2
+  if_merge_2:
+    $return.* = copy p.x;
+    unborrow $return;
+    drop _temp_0;
+    drop p.x;
+    drop c;
+    return
+}
