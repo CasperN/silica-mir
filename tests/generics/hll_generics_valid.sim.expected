@@ -55,6 +55,73 @@ fn option_extract_match(o: Option<i64>, $return: &out i64) {
     return
 }
 
+enum MoveList: Move {
+  EmptyM: unit
+  ConsM: i64
+}
+
+fn move_only_owned_match(ml: MoveList, $return: &out i64) {
+  u: unit;
+  _temp_0: &out i64;
+  x: i64;
+  entry:
+    switchEnum(ml) [EmptyM: switch_EmptyM_0, ConsM: switch_ConsM_1]
+  switch_EmptyM_0:
+    u = move ml as EmptyM;
+    _temp_0 = &out $return.*;
+    call u_to_zero(copy u, move _temp_0);
+    unborrow $return;
+    goto switch_EmptyM_0__to__switch_merge_2
+  switch_EmptyM_0__to__switch_merge_2:
+    drop u;
+    goto switch_merge_2
+  switch_ConsM_1:
+    x = move ml as ConsM;
+    $return.* = copy x;
+    unborrow $return;
+    goto switch_ConsM_1__to__switch_merge_2
+  switch_ConsM_1__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_merge_2:
+    return
+}
+
+fn u_to_zero(u: unit, $return: &out i64) {
+  entry:
+    $return.* = 0;
+    unborrow $return;
+    drop u;
+    return
+}
+
+fn move_only_borrowed_match(ml: & MoveList, $return: &out i64) {
+  _: unit;
+  x: i64;
+  entry:
+    switchEnum(ml.*) [EmptyM: switch_EmptyM_0, ConsM: switch_ConsM_1]
+  switch_EmptyM_0:
+    _ = copy ml.* as EmptyM;
+    unborrow ml;
+    $return.* = 0;
+    unborrow $return;
+    goto switch_EmptyM_0__to__switch_merge_2
+  switch_EmptyM_0__to__switch_merge_2:
+    drop _;
+    goto switch_merge_2
+  switch_ConsM_1:
+    x = copy ml.* as ConsM;
+    unborrow ml;
+    $return.* = copy x;
+    unborrow $return;
+    goto switch_ConsM_1__to__switch_merge_2
+  switch_ConsM_1__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_merge_2:
+    return
+}
+
 fn nested_container(b: Box<Option<i64>>, $return: &out i64) {
   inner: Option<i64>;
   _: unit;

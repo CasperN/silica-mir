@@ -1,0 +1,30 @@
+# HLL sibling of `return_leak_violations.sim`. Each fn triggers
+# SUB-ReturnValueLeak from the HLL surface. Uninit-let and the
+# owned Move-only match dispatch are the two shapes that today's
+# HLL can express; add more as more HLL-surfaced shapes accumulate.
+
+# ---------- Match arm binding of Move-only payload leaked in the arm body ----------
+
+# Owned match on a Move-only enum consumes the scrutinee (positive
+# guarantee pinned in `tests/generics/hll_generics_valid.si::
+# move_only_owned_match`), but the arm binding is a fresh linear
+# value the arm body has to consume. Here the `B` arm binds
+# `n: N` (Move-only) and drops it on the floor by returning unit.
+struct N: Move { x: i32 }
+enum L: Move { A: unit, B: N }
+fn leak_arm_payload(list: L) {
+  list match {
+    A(u) => u,
+    B(n) => (),
+  }
+}
+
+# ---------- Uninit `let` at scope exit: never written, linear ----------
+
+# `let mut n: N;` declares a Move-only local and never initializes it.
+# HLL's uninit-let treats it as NeverInit and scope exit doesn't fire
+# a leak (NeverInit is consumed for leak purposes). If a param is
+# passed in but the fn never consumes it, that IS a leak — pinned in
+# `linear_param_untouched`.
+fn linear_param_untouched(n: N) {
+}

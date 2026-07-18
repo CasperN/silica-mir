@@ -790,7 +790,11 @@ fn lower_expr_into(
                             "missing type annotation for match target",
                         )
                     })?;
-                    let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name, ref args) = target_hll_ty {
+                    let (enum_is_copy, bound_var_mir_ty) = if let hll::Type::Custom(
+                        ref enum_name,
+                        ref args,
+                    ) = target_hll_ty
+                    {
                         let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
                             diag(
                                 HllLoweringCode::EnumDeclMissing,
@@ -810,7 +814,13 @@ fn lower_expr_into(
                         let mir_variant_ty = lower_type(&variant_decl.ty);
                         let mir_type_params = lower_type_params(&enum_decl.type_params);
                         let mir_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
-                        crate::mir::type_util::substitute_params(&mir_variant_ty, &mir_type_params, &mir_args)
+                        let payload_ty = crate::mir::type_util::substitute_params(
+                            &mir_variant_ty,
+                            &mir_type_params,
+                            &mir_args,
+                        );
+                        let is_copy = enum_decl.markers.implies(mir::Marker::Copy);
+                        (is_copy, payload_ty)
                     } else {
                         return Err(diag(
                             HllLoweringCode::MatchTargetNotEnum,
@@ -818,15 +828,43 @@ fn lower_expr_into(
                             format!("expected enum type for match target, found {:?}", target_hll_ty),
                         ));
                     };
-                    
+
                     ctx.locals.push(mir::Local {
                         name: var_name.clone(),
                         ty: bound_var_mir_ty.clone(),
                         span: body.span,
                     });
-                    
+
+                    // Match arm payload extraction. Dispatch table (today):
+                    //
+                    //   scrutinee class   access mode        extraction
+                    //   ---------------   ---------------   -------------------
+                    //   Copy              owned/borrowed    copy scrut as V
+                    //   Move (not Copy)   owned             move scrut as V
+                    //   Move (not Copy)   borrowed          copy scrut as V
+                    //
+                    // The owned Move-only case uses `move` so init-state's
+                    // enum-atomicity rule cascades the whole scrutinee to
+                    // `Moved`; without it the scrutinee stays Init at the
+                    // merge and (since Move-only is not Drop) trips
+                    // SUB-ReturnValueLeak at return.
+                    //
+                    // Borrowed scrutinees can't be moved through (that
+                    // would consume the pointee behind someone else's
+                    // borrow), so those still copy — the payload copies
+                    // out and the scrutinee stays live via its borrow.
+                    //
+                    // Future: when AutoClone / AutoTransfer (pure, non-
+                    // trivial) and CoClone / CoTransfer (effectful)
+                    // markers land, this switch grows arms that emit
+                    // `call Clone::clone(&scrut as V, &out binding)` and
+                    // `call Transfer::transfer(&drop scrut as V, &out
+                    // binding)` in place of the bitwise ops. MIR stays
+                    // mechanical (only `copy`/`move` primitives); HLL
+                    // owns the class-marker dispatch.
                     let downcast = downcast_place(target_place.clone(), variant.clone());
-                    let op = if is_copy_type(&bound_var_mir_ty) {
+                    let scrutinee_is_owned = mir::extract_path(&target_place).is_some();
+                    let op = if enum_is_copy || !scrutinee_is_owned {
                         copy_op(downcast)
                     } else {
                         move_op(downcast)

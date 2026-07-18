@@ -47,11 +47,36 @@ fn make_some() -> Option<i64> {
 }
 
 # Match on `Option<i64>` gives payload `x: i64` — the substitution
-# happens at the arm's pattern binding.
+# happens at the arm's pattern binding. `Option` is Copy+Drop, so the
+# arm binding uses `copy o as V`; the scrutinee `o` stays Init and is
+# dropped at the merge.
 fn option_extract_match(o: Option<i64>) -> i64 {
   o match {
     None(_) => 0,
     Some(x) => x,
+  }
+}
+
+# Move-only enum match: owned scrutinee dispatches to `move ml as V`
+# so enum-atomicity marks `ml` Moved after the extract. Without that
+# the scrutinee would stay Init at the merge and (since Move-only is
+# not Drop) trip SUB-ReturnValueLeak.
+enum MoveList: Move { EmptyM: unit, ConsM: i64 }
+fn move_only_owned_match(ml: MoveList) -> i64 {
+  ml match {
+    EmptyM(u) => u_to_zero(u),
+    ConsM(x) => x,
+  }
+}
+fn u_to_zero(u: unit) -> i64 { 0 }
+
+# Move-only enum through a shared borrow: dispatch falls back to
+# `copy ml.* as V` because moving out through a shared ref would
+# violate the borrow. The scrutinee stays live via the borrow.
+fn move_only_borrowed_match(ml: &MoveList) -> i64 {
+  ml.* match {
+    EmptyM(_) => 0,
+    ConsM(x) => x,
   }
 }
 
