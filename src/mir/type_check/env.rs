@@ -17,6 +17,7 @@ use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::{class_of, ParamScope};
+use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
@@ -166,22 +167,18 @@ impl Env {
 
     /// Type of `field` in the struct type `ty`, if any. Returns `None` if
     /// `ty` isn't a declared struct or the field doesn't exist.
+    /// Substitutes the struct's type-parameter references (`Type::Param`)
+    /// with the concrete args on `ty`, so `Box<i64>::inner` yields `i64`,
+    /// not the raw declared `T`.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let Type::Custom(name, _args) = ty else {
+        let Type::Custom(name, args) = ty else {
             return None;
         };
-        // Returns the raw declared field type; args are NOT substituted
-        // in. Concretization happens at monomorphization time, so
-        // callers that need the specialized type after that pass runs
-        // will see it there. Correct as-is for non-generic decls.
-        match self.types.get(name) {
-            Some(TypeDecl::Struct(s)) => s
-                .fields
-                .iter()
-                .find(|f| f.name == field)
-                .map(|f| f.ty.clone()),
-            _ => None,
-        }
+        let TypeDecl::Struct(s) = self.types.get(name)? else {
+            return None;
+        };
+        let f_ty = &s.fields.iter().find(|f| f.name == field)?.ty;
+        Some(substitute_params(f_ty, &s.type_params, args))
     }
 
     pub fn types_match(&self, t1: &Type, t2: &Type) -> bool {
@@ -248,8 +245,8 @@ impl Env {
             }
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
-                let name = match &inner_ty {
-                    Type::Custom(n, _) => n,
+                let (name, args) = match &inner_ty {
+                    Type::Custom(n, a) => (n, a),
                     _ => {
                         return Err(err(
                             FieldOfNonStruct,
@@ -265,7 +262,7 @@ impl Env {
                         .fields
                         .iter()
                         .find(|f| f.name == *field_name)
-                        .map(|f| f.ty.clone())
+                        .map(|f| substitute_params(&f.ty, &s.type_params, args))
                         .ok_or_else(|| {
                             err(
                                 NoSuchField,
@@ -287,8 +284,8 @@ impl Env {
             }
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
-                let name = match &inner_ty {
-                    Type::Custom(n, _) => n,
+                let (name, args) = match &inner_ty {
+                    Type::Custom(n, a) => (n, a),
                     _ => {
                         return Err(err(
                             DowncastOfNonEnum,
@@ -301,7 +298,7 @@ impl Env {
                         .variants
                         .iter()
                         .find(|v| v.name == *variant_name)
-                        .map(|v| v.ty.clone())
+                        .map(|v| substitute_params(&v.ty, &e.type_params, args))
                         .ok_or_else(|| {
                             err(
                                 NoSuchVariant,
@@ -403,7 +400,7 @@ impl Env {
                 let pointee_ty = self.type_of_place(place, span, locals)?;
                 Ok(raw_ptr_ty(pointee_ty))
             }
-            RValue::EnumConstr(enum_name, variant_name, op) => {
+            RValue::EnumConstr(enum_name, type_args, variant_name, op) => {
                 let e_decl = match self.types.get(enum_name) {
                     Some(TypeDecl::Enum(e)) => e,
                     Some(TypeDecl::Struct(_)) => {
@@ -419,6 +416,17 @@ impl Env {
                         ))
                     }
                 };
+                if type_args.len() != e_decl.type_params.len() {
+                    return Err(err(
+                        EnumConstrOnNonEnum,
+                        format!(
+                            "Enum '{}' takes {} type argument(s), found {}",
+                            enum_name,
+                            e_decl.type_params.len(),
+                            type_args.len()
+                        ),
+                    ));
+                }
                 let variant = e_decl
                     .variants
                     .iter()
@@ -430,18 +438,19 @@ impl Env {
                         )
                     })?;
 
+                let expected_payload = substitute_params(&variant.ty, &e_decl.type_params, type_args);
                 let op_ty = self.type_of_operand(op, span, locals)?;
-                if !self.types_match(&variant.ty, &op_ty) {
+                if !self.types_match(&expected_payload, &op_ty) {
                     return Err(err(
                         EnumConstrPayloadTypeMismatch,
                         format!(
                             "Variant '{}' of enum '{}' expects type {}, found {}",
-                            variant_name, enum_name, variant.ty, op_ty
+                            variant_name, enum_name, expected_payload, op_ty
                         ),
                     ));
                 }
 
-                Ok(Type::Custom(enum_name.clone(), Vec::new()))
+                Ok(Type::Custom(enum_name.clone(), type_args.clone()))
             }
             RValue::ArrayLit(ops) => {
                 // Empty array literal: `[]` has type `[Unit; 0]` as a

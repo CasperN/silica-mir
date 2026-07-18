@@ -916,25 +916,27 @@ Order of operations:
   are deferred behind the current unconditional-bounds form; the
   inline form on the decl and a separate `impl`-style form will
   coexist.
-- **HLL generics** — grammar/AST/parser and type-params-through-
-  lowering are in. The HLL type checker does NOT yet:
-  - unify `Type::Param(T)` with only same-name `Param` or a `Var`
-    (today the HM solver treats `Param` opaquely, so any two `Param`s
-    trivially unify by identity fallthrough — masks bugs);
-  - validate `Custom(name, args)` arity against the decl's declared
-    `type_params` at use sites;
-  - check use-site bound satisfaction (e.g. reject `Box<X>` when
-    `X` doesn't implement `Box`'s declared `T: Copy` bound);
-  - substitute `T := X` at field/variant access on `Box<X>` so that
-    downstream inference sees concrete types;
-  - resolve `Type::Param(name)` when the name is NOT in the enclosing
-    decl's scope (today it becomes `Custom` — the parser's fallback
-    is correct, but there is no post-hoc decl-side check that every
-    referenced `Param` was declared).
-  Struct constructors also don't infer / accept type args:
-  `Box { inner: 42 }` produces `Custom("Box", [])` and fails to unify
-  with the expected `Box<i64>`. Turbofish (`Box::<i64> { ... }`) is
-  the intended fallback once inference lands.
+- **HLL generics** — grammar, AST, parser, type-check (HM +
+  substitution at field/variant/match binding), MIR
+  `RValue::EnumConstr` with type args, and end-to-end lowering are
+  all in. Remaining gaps:
+  - **Use-site bound satisfaction check on the HLL side.** MIR's
+    composition check catches most cases on the lowered program,
+    but HLL doesn't yet reject `Box<X>` when `X` fails `Box`'s
+    declared `T: Copy` bound with an HLL-source diagnostic.
+  - **Arity check at HLL type-annotation position.** `Box<A, B>` in
+    a signature `fn f(x: Box<A, B>)` doesn't yet trigger an HLL
+    diagnostic; the mismatch surfaces later.
+  - **Undeclared type-param references.** A stray `T` in a fn body
+    with no `T` in scope resolves to `Custom("T", [])` (parser's
+    fallback), then trips downstream. Adding a decl-side validation
+    pass would surface the error at the reference site.
+  - **`fn<T: ...>` call sites don't yet carry type args.** Generic
+    fn calls parse but the type args aren't threaded through, so
+    only fully-inferable calls work; explicit `foo<i64>(...)` is
+    grammar-only for now.
+  - Conditional marker bounds (`Foo<T>: Copy where T: Copy`) are
+    still deferred behind the unconditional-bounds form.
 - **Shadowed variables in HLL lowering.** Consider `defer` interaction:
   ```
   let x = 1;

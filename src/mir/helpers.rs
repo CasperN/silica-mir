@@ -154,7 +154,16 @@ pub fn enum_constr_rv(
     variant: impl Into<String>,
     payload: Operand,
 ) -> RValue {
-    RValue::EnumConstr(enum_name.into(), variant.into(), payload)
+    RValue::EnumConstr(enum_name.into(), Vec::new(), variant.into(), payload)
+}
+
+pub fn enum_constr_rv_with_args(
+    enum_name: impl Into<String>,
+    args: Vec<Type>,
+    variant: impl Into<String>,
+    payload: Operand,
+) -> RValue {
+    RValue::EnumConstr(enum_name.into(), args, variant.into(), payload)
 }
 pub fn array_lit_rv(elems: Vec<Operand>) -> RValue {
     RValue::ArrayLit(elems)

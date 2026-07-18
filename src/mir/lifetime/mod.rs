@@ -285,7 +285,7 @@ fn close_loans_under(loans: &mut LoanMap, consumed: &Place) {
 
 fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => consume_operand(loans, op),
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => consume_operand(loans, op),
         RValue::Ref(_, _) | RValue::RawRef(_) => {}
         RValue::ArrayLit(ops) => {
             for op in ops {
@@ -320,7 +320,7 @@ fn capture_carried_loans(
             };
             (src, dst)
         }
-        RValue::EnumConstr(_, variant, Operand::Move(src_place)) => {
+        RValue::EnumConstr(_, _, variant, Operand::Move(src_place)) => {
             let Some(src) = as_owned_path(src_place) else {
                 return Vec::new();
             };
@@ -467,7 +467,7 @@ fn check_and_transfer_stmt(
     match stmt {
         Statement::Assign(target, rvalue) => {
             match rvalue {
-                RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+                RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
                     check_operand_access(func, block, op, span, loans, d);
                 }
                 RValue::Ref(kind, place) => {

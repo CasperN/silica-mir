@@ -137,7 +137,7 @@ fn check_rvalue(
     d: &mut Diagnostics,
 ) {
     match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
             check_operand(env, func, block, locals, op, span, d)
         }
         RValue::Ref(_, _) | RValue::RawRef(_) => {}

@@ -227,7 +227,16 @@ module.exports = grammar({
       // Raw pointer (unsafe): does not create a loan, no aliasing
       // guarantees, no init-state obligation. Deref is unchecked.
       seq('&raw', $.place),
-      seq(field('enum_name', $.identifier), '::', field('variant_name', $.identifier), '(', $.operand, ')'),
+      // Generic enum construction may carry type args:
+      //   Option<i64>::Some(42). No turbofish needed — Silica has no
+      //   `<` operator so `Name<Args>::Variant` is unambiguous.
+      seq(
+        field('enum_name', $.identifier),
+        optional($.type_args),
+        '::',
+        field('variant_name', $.identifier),
+        '(', $.operand, ')',
+      ),
       // Aggregate array literal: [e0, e1, ..., eN-1]. All operands
       // must share the array's element type.
       seq('[', common.commaSep($.operand), ']'),

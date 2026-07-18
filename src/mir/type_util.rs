@@ -1,12 +1,54 @@
 //! Type-level predicates and helpers shared across passes.
 //!
 //! Cross-cutting queries about MIR `Type`s that don't belong to any
-//! single pass: inhabitedness, in the future substitution / occurs-
-//! check for generics, etc.
+//! single pass: inhabitedness, generic parameter substitution, etc.
 
-use crate::mir::ast::Type;
+use crate::mir::ast::{Type, TypeParam};
+use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use std::collections::BTreeSet;
+
+/// Substitute type-parameter references in `ty` with the concrete
+/// arguments at a use site. Given a declaration's `type_params` and
+/// the args on `Custom(name, args)`, replaces every `Type::Param(T)`
+/// in `ty` with the corresponding arg.
+///
+/// If args and type_params disagree in length, returns `ty` unchanged
+/// — callers that need arity validation should check first.
+pub fn substitute_params(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
+    if args.len() != type_params.len() {
+        return ty.clone();
+    }
+    walk(ty, type_params, args)
+}
+
+fn walk(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
+    match ty {
+        Type::Param(name) => {
+            for (tp, arg) in type_params.iter().zip(args.iter()) {
+                if tp.name == *name {
+                    return arg.clone();
+                }
+            }
+            ty.clone()
+        }
+        Type::Custom(name, inner_args) => {
+            let new_args = inner_args
+                .iter()
+                .map(|a| walk(a, type_params, args))
+                .collect();
+            custom_ty_with_args(name.clone(), new_args)
+        }
+        Type::Ref(kind, inner) => ref_ty(*kind, walk(inner, type_params, args)),
+        Type::RawPtr(inner) => raw_ptr_ty(walk(inner, type_params, args)),
+        Type::Array(inner, size) => array_ty(walk(inner, type_params, args), *size),
+        Type::Fn(params) => {
+            let new_params = params.iter().map(|p| walk(p, type_params, args)).collect();
+            fn_ty(new_params)
+        }
+        _ => ty.clone(),
+    }
+}
 
 /// True if a value of `ty` cannot be constructed. Uninhabited types:
 /// - `never` — the axiom.

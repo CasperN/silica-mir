@@ -289,6 +289,15 @@ fn run_all_fixtures() {
             failures.join("\n"),
         );
     }
+
+    // Fixture count summary — helps confirm every intended fixture
+    // was discovered when a whole dir gets skipped by mistake.
+    // Visible with `cargo test -- --nocapture`.
+    if update {
+        println!("Regenerated {} fixture(s)", fixtures.len());
+    } else {
+        println!("Verified {} fixture(s)", fixtures.len());
+    }
 }
 
 /// Under UPDATE_EXPECT, decide which stage a fixture should be

@@ -724,7 +724,10 @@ pub enum RValue {
     /// Take the address of `place` as a raw pointer. Does NOT create
     /// a loan — this is the unsafe part. Written `&raw place`.
     RawRef(Place),
-    EnumConstr(String, String, Operand), // EnumName, VariantName, payload
+    /// Enum construction: `EnumName<T,U>::Variant(payload)`. The
+    /// `Vec<Type>` is the list of type arguments — empty for non-generic
+    /// enums, non-empty for generic instantiations.
+    EnumConstr(String, Vec<Type>, String, Operand),
     /// Aggregate array literal `[e0, e1, ..., eN-1]`. All operands
     /// must share the target's element type; the vec length must
     /// equal the target's `[T; N]` length. Init state treats this

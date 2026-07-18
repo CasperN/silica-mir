@@ -426,7 +426,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             // EnumConstr is a whole-value initialization: it writes both
             // the discriminant and the payload. Handled directly at LHS
             // address rather than via materialize-then-store.
-            if let RValue::EnumConstr(enum_name, variant, operand) = rhs {
+            if let RValue::EnumConstr(enum_name, _type_args, variant, operand) = rhs {
                 emit_enum_construction(cx, lhs, enum_name, variant, operand);
                 return;
             }

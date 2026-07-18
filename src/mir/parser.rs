@@ -720,6 +720,15 @@ impl Parser {
                             })?;
                         let variant_name = self.get_text(variant_name_node).to_string();
                         let mut cursor = node.walk();
+                        let type_args = if let Some(ta) = node
+                            .children(&mut cursor)
+                            .find(|c| c.kind() == "type_args")
+                        {
+                            self.map_type_args(ta)?
+                        } else {
+                            Vec::new()
+                        };
+                        let mut cursor = node.walk();
                         let operand_node = node
                             .children(&mut cursor)
                             .find(|c| c.kind() == "operand")
@@ -731,7 +740,7 @@ impl Parser {
                                 )
                             })?;
                         let operand = self.map_operand(operand_node)?;
-                        Ok(enum_constr_rv(enum_name, variant_name, operand))
+                        Ok(enum_constr_rv_with_args(enum_name, type_args, variant_name, operand))
                     }
                 }
             }

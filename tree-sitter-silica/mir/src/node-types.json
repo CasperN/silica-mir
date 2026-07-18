@@ -513,6 +513,10 @@
         {
           "type": "place",
           "named": true
+        },
+        {
+          "type": "type_args",
+          "named": true
         }
       ]
     }

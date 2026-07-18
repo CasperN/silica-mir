@@ -694,7 +694,7 @@ fn lower_expr_into(
                             "missing type annotation for match target",
                         )
                     })?;
-                    let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name, _) = target_hll_ty {
+                    let bound_var_mir_ty = if let hll::Type::Custom(ref enum_name, ref args) = target_hll_ty {
                         let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
                             diag(
                                 HllLoweringCode::EnumDeclMissing,
@@ -709,7 +709,12 @@ fn lower_expr_into(
                                 format!("enum '{}' has no variant '{}' in lowering", enum_name, variant),
                             )
                         })?;
-                        lower_type(&variant_decl.ty)
+                        // Substitute the enum's type params with the args
+                        // at this use site (e.g. `Option<i64>` binds T := i64).
+                        let mir_variant_ty = lower_type(&variant_decl.ty);
+                        let mir_type_params = lower_type_params(&enum_decl.type_params);
+                        let mir_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
+                        crate::mir::type_util::substitute_params(&mir_variant_ty, &mir_type_params, &mir_args)
                     } else {
                         return Err(diag(
                             HllLoweringCode::MatchTargetNotEnum,
@@ -752,10 +757,22 @@ fn lower_expr_into(
         }
         hll::ExprKind::EnumConstr(enum_name, variant_name, payload) => {
             let payload_op = lower_expr_to_operand(ctx, payload, types)?;
+            // Extract inferred type args from the constructor's own
+            // typed slot — HM already pinned them from the payload /
+            // context. For a non-generic enum this is empty.
+            let type_args = match types.get(&expr.span) {
+                Some(hll::Type::Custom(_, args)) => args.iter().map(lower_type).collect(),
+                _ => Vec::new(),
+            };
             ctx.emit_statement(
                 assign_stmt(
                     dest.clone(),
-                    enum_constr_rv(enum_name.clone(), variant_name.clone(), payload_op),
+                    enum_constr_rv_with_args(
+                        enum_name.clone(),
+                        type_args,
+                        variant_name.clone(),
+                        payload_op,
+                    ),
                 ),
                 expr.span,
             );

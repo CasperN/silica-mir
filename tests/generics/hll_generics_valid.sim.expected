@@ -1,0 +1,84 @@
+struct<T: Copy + Drop> Box: Copy + Drop {
+  inner: T
+}
+
+enum<T: Copy + Drop> Option: Copy + Drop {
+  None: unit
+  Some: T
+}
+
+fn make_box($return: &out Box<i64>) {
+  entry:
+    $return.*.inner = 42;
+    unborrow $return;
+    return
+}
+
+fn box_extract(b: Box<i64>, $return: &out i64) {
+  entry:
+    $return.* = copy b.inner;
+    unborrow $return;
+    drop b;
+    return
+}
+
+fn make_some($return: &out Option<i64>) {
+  entry:
+    $return.* = Option<i64>::Some(42);
+    unborrow $return;
+    return
+}
+
+fn option_extract_match(o: Option<i64>, $return: &out i64) {
+  _: unit;
+  x: i64;
+  entry:
+    switchEnum(o) [None: switch_None_0, Some: switch_Some_1]
+  switch_None_0:
+    _ = copy o as None;
+    $return.* = 0;
+    unborrow $return;
+    goto switch_None_0__to__switch_merge_2
+  switch_None_0__to__switch_merge_2:
+    drop _;
+    goto switch_merge_2
+  switch_Some_1:
+    x = copy o as Some;
+    $return.* = copy x;
+    unborrow $return;
+    goto switch_Some_1__to__switch_merge_2
+  switch_Some_1__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_merge_2:
+    drop o;
+    return
+}
+
+fn nested_container(b: Box<Option<i64>>, $return: &out i64) {
+  inner: Option<i64>;
+  _: unit;
+  x: i64;
+  entry:
+    inner = move b.inner;
+    switchEnum(inner) [None: switch_None_0, Some: switch_Some_1]
+  switch_None_0:
+    _ = copy inner as None;
+    $return.* = 0;
+    unborrow $return;
+    goto switch_None_0__to__switch_merge_2
+  switch_None_0__to__switch_merge_2:
+    drop _;
+    goto switch_merge_2
+  switch_Some_1:
+    x = copy inner as Some;
+    $return.* = copy x;
+    unborrow $return;
+    goto switch_Some_1__to__switch_merge_2
+  switch_Some_1__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_merge_2:
+    drop inner;
+    return
+}

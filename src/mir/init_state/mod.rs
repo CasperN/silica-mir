@@ -821,7 +821,7 @@ impl<'a> InitStateContext<'a> {
 
     fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
         match rv {
-            RValue::Use(op) | RValue::EnumConstr(_, _, op) => self.apply_operand_move(op, state),
+            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => self.apply_operand_move(op, state),
             RValue::Ref(_, _) | RValue::RawRef(_) => {}
             RValue::ArrayLit(ops) => {
                 for op in ops {
@@ -1402,7 +1402,7 @@ fn capture_carried_refs(
             };
             (src, dst)
         }
-        RValue::EnumConstr(_, variant, Operand::Move(src_place)) => {
+        RValue::EnumConstr(_, _, variant, Operand::Move(src_place)) => {
             let Some(src) = as_owned_path(src_place) else {
                 return Vec::new();
             };
@@ -1532,7 +1532,7 @@ impl<'a> InitStateContext<'a> {
         d: &mut Diagnostics,
     ) {
         match rv {
-            RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
                 self.eval_operand(func, block, op, span, state, d);
             }
             RValue::Ref(kind, place) => {

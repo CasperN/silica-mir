@@ -543,7 +543,7 @@ fn stmt_defs(stmt: &Statement) -> Vec<Place> {
 
 fn rvalue_uses(rv: &RValue, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
     match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => operand_uses(op, borrowers, out),
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => operand_uses(op, borrowers, out),
         // For borrower-liveness purposes `&raw place` is the same as
         // `& place`: it uses (and keeps live) any borrower mentioned
         // inside `place`. The raw-vs-safe distinction only affects
@@ -620,7 +620,7 @@ fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
 
 fn rvalue_moves(rv: &RValue, r: &Place) -> bool {
     match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, op) => operand_moves(op, r),
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => operand_moves(op, r),
         RValue::Ref(_, _) | RValue::RawRef(_) => false,
         RValue::ArrayLit(ops) => ops.iter().any(|op| operand_moves(op, r)),
     }

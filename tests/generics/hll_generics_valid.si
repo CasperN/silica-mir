@@ -1,0 +1,67 @@
+# HLL generics: parses, type-checks, and lowers to MIR end-to-end.
+#
+# HM inference pins the type args from context or payload:
+#   - Constructor `Box { inner: 42 }` in a fn returning `Box<i64>`
+#     unifies `T := i64` via the field type.
+#   - Constructor `Option::Some(42)` in a fn returning `Option<i64>`
+#     unifies `T := i64` via the payload.
+# Field access on `b: Box<i64>` substitutes T at the access site so
+# `b.inner` has type `i64`, not `T`.
+# Match binding on `Option<i64>::Some(x)` gives `x: i64` via the same
+# substitution.
+#
+# Each fn covers one cell of the (decl kind × use pattern) matrix.
+#
+#   fn                    decl kind  use pattern
+#   make_box              struct     constructor + field access
+#   box_extract           struct     field access on generic param
+#   make_some             enum       constructor with payload
+#   option_extract_match  enum       match with destructuring
+#   nested_container      struct     nested generic (Box<Option<i64>>)
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+
+enum<T: Copy + Drop> Option: Copy + Drop { None: unit, Some: T }
+
+# ---------- Struct: constructor + return the wrapped value ----------
+
+# `Box { inner: 42 }` unifies `T := i64` against the return type.
+fn make_box() -> Box<i64> {
+  Box { inner: 42 }
+}
+
+# `b.inner` substitutes T := i64 at the field access, so the return
+# type i64 matches without a mismatch diagnostic.
+fn box_extract(b: Box<i64>) -> i64 {
+  b.inner
+}
+
+# ---------- Enum: constructor with generic payload ----------
+
+# `Option::Some(42)` infers `T := i64` from the payload against the
+# return type `Option<i64>`.
+fn make_some() -> Option<i64> {
+  Option::Some(42)
+}
+
+# Match on `Option<i64>` gives payload `x: i64` — the substitution
+# happens at the arm's pattern binding.
+fn option_extract_match(o: Option<i64>) -> i64 {
+  o match {
+    None(_) => 0,
+    Some(x) => x,
+  }
+}
+
+# ---------- Nested generic ----------
+
+# `Box<Option<i64>>` — the outer decl's arg is itself a generic
+# instantiation. Extract the inner Option into a local before matching
+# (variant flow only tracks root Vars, not projections).
+fn nested_container(b: Box<Option<i64>>) -> i64 {
+  let inner = b.inner;
+  inner match {
+    None(_) => 0,
+    Some(x) => x,
+  }
+}

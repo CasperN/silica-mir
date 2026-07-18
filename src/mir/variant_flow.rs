@@ -184,7 +184,7 @@ fn check_places_in_stmt(
         Statement::Assign(target, rvalue) => {
             check_downcast_refinement(env, func, locals, block, target, span, state, d);
             match rvalue {
-                RValue::Use(op) | RValue::EnumConstr(_, _, op) => {
+                RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
                     if let Some(p) = operand_place(op) {
                         check_downcast_refinement(env, func, locals, block, p, span, state, d);
                     }
@@ -363,7 +363,7 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
                 return;
             };
             match rvalue {
-                RValue::EnumConstr(_, variant, _) => {
+                RValue::EnumConstr(_, _, variant, _) => {
                     let mut set = BTreeSet::new();
                     set.insert(variant.clone());
                     state.insert(t.clone(), set);

@@ -276,8 +276,19 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
             out.push_str("&raw ");
             write_place(out, place);
         }
-        RValue::EnumConstr(enum_name, variant, op) => {
-            write!(out, "{}::{}(", enum_name, variant).unwrap();
+        RValue::EnumConstr(enum_name, type_args, variant, op) => {
+            write!(out, "{}", enum_name).unwrap();
+            if !type_args.is_empty() {
+                out.push('<');
+                for (i, a) in type_args.iter().enumerate() {
+                    if i > 0 {
+                        out.push_str(", ");
+                    }
+                    write!(out, "{}", a).unwrap();
+                }
+                out.push('>');
+            }
+            write!(out, "::{}(", variant).unwrap();
             write_operand(out, op);
             out.push(')');
         }

@@ -5,6 +5,57 @@ use crate::hll::helpers::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::Span;
 
+/// Substitute type-parameter references in `ty` using `mapping`. Used
+/// when reading a declared field/variant/param type on a generic decl:
+/// e.g. `Box::inner` has declared type `T`, but on `Box<i64>` the
+/// caller sees `i64`. `mapping` binds each declared type-parameter
+/// name to the concrete argument at the use site.
+fn substitute(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
+    match ty {
+        Type::Param(name) => mapping.get(name).cloned().unwrap_or_else(|| ty.clone()),
+        Type::Custom(name, args) => {
+            let new_args = args.iter().map(|a| substitute(a, mapping)).collect();
+            custom_ty_with_args(name.clone(), new_args)
+        }
+        Type::Ref(kind, inner) => ref_ty(*kind, substitute(inner, mapping)),
+        Type::RawPtr(inner) => raw_ptr_ty(substitute(inner, mapping)),
+        Type::Array(inner, size) => array_ty(substitute(inner, mapping), *size),
+        Type::Fn(params, ret) => {
+            let new_params = params.iter().map(|p| substitute(p, mapping)).collect();
+            fn_ty(new_params, substitute(ret, mapping))
+        }
+        _ => ty.clone(),
+    }
+}
+
+/// Build a `param_name -> arg_type` substitution map, checking that
+/// the number of args matches the number of declared type parameters.
+/// Returns an error diagnostic on arity mismatch.
+fn build_subst_map(
+    decl_name: &str,
+    type_params: &[TypeParam],
+    args: &[Type],
+    span: Span,
+) -> Result<HashMap<String, Type>, TcErr> {
+    if args.len() != type_params.len() {
+        return err_at(
+            ArityMismatch,
+            span,
+            format!(
+                "'{}' takes {} type argument(s), found {}",
+                decl_name,
+                type_params.len(),
+                args.len()
+            ),
+        );
+    }
+    let mut mapping = HashMap::new();
+    for (tp, arg) in type_params.iter().zip(args.iter()) {
+        mapping.insert(tp.name.clone(), arg.clone());
+    }
+    Ok(mapping)
+}
+
 use HllTypeCheckCode::*;
 
 /// Structured error returned by inner type-check functions. Converted
@@ -400,10 +451,11 @@ fn infer_inner(
                 Type::Ref(_, inner) => subst.resolve(inner),
                 other => other.clone(),
             };
-            if let Type::Custom(struct_name, _) = struct_ty {
-                if let Some(s_decl) = env.structs.get(&struct_name) {
+            if let Type::Custom(struct_name, args) = struct_ty {
+                if let Some(s_decl) = env.structs.get(&struct_name).cloned() {
                     if let Some(f) = s_decl.fields.iter().find(|field_decl| field_decl.name == *field) {
-                        Ok(f.ty.clone())
+                        let mapping = build_subst_map(&struct_name, &s_decl.type_params, &args, expr.span)?;
+                        Ok(substitute(&f.ty, &mapping))
                     } else {
                         err_at(
                             NoSuchField,
@@ -429,10 +481,11 @@ fn infer_inner(
         ExprKind::Downcast(target, variant) => {
             let target_ty = infer_inner(env, subst, target, types)?;
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name, _) = resolved {
-                if let Some(e_decl) = env.enums.get(&enum_name) {
+            if let Type::Custom(enum_name, args) = resolved {
+                if let Some(e_decl) = env.enums.get(&enum_name).cloned() {
                     if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
-                        Ok(v.ty.clone())
+                        let mapping = build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span)?;
+                        Ok(substitute(&v.ty, &mapping))
                     } else {
                         err_at(
                             NoSuchVariant,
@@ -567,7 +620,7 @@ fn infer_inner(
         ExprKind::Match(target, arms) => {
             let target_ty = infer_inner(env, subst, target, types)?;
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name, _) = resolved {
+            if let Type::Custom(enum_name, args) = resolved {
                 let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
                     Diagnostic::new(
                         UndeclaredEnum,
@@ -575,13 +628,14 @@ fn infer_inner(
                         format!("undeclared enum '{}'", enum_name),
                     )
                 })?;
+                let mapping = build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span)?;
                 let mut arm_tys = Vec::new();
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
                     if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
                         env.push_scope();
                         if let Some(var_name) = bound_var {
-                            env.insert_var(var_name.clone(), v.ty.clone());
+                            env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
                         }
                         let body_ty = infer_inner(env, subst, body, types)?;
                         env.pop_scope();
@@ -632,6 +686,15 @@ fn infer_inner(
                 );
             }
 
+            // Fresh type variable per declared type parameter, so
+            // field-value inference can pin them from constructor args.
+            let type_args: Vec<Type> =
+                s_decl.type_params.iter().map(|_| subst.fresh_var()).collect();
+            let mut mapping: HashMap<String, Type> = HashMap::new();
+            for (tp, arg) in s_decl.type_params.iter().zip(type_args.iter()) {
+                mapping.insert(tp.name.clone(), arg.clone());
+            }
+
             for f_decl in &s_decl.fields {
                 let mut matches = fields.iter().filter(|(fname, _)| fname == &f_decl.name);
                 let Some((_, val_expr)) = matches.next() else {
@@ -654,10 +717,11 @@ fn infer_inner(
                         ),
                     );
                 }
-                check_inner(env, subst, val_expr, &f_decl.ty, types)?;
+                let expected = substitute(&f_decl.ty, &mapping);
+                check_inner(env, subst, val_expr, &expected, types)?;
             }
 
-            Ok(custom_ty(name.clone()))
+            Ok(custom_ty_with_args(name.clone(), type_args))
         }
         ExprKind::EnumConstr(enum_name, variant_name, payload) => {
             let e_decl = env.enums.get(enum_name).cloned().ok_or_else(|| {
@@ -676,8 +740,17 @@ fn infer_inner(
                 )
             })?;
 
-            check_inner(env, subst, payload, &variant_decl.ty, types)?;
-            Ok(custom_ty(enum_name.clone()))
+            // Fresh var per declared type parameter — payload inference
+            // pins them via the substituted variant type.
+            let type_args: Vec<Type> =
+                e_decl.type_params.iter().map(|_| subst.fresh_var()).collect();
+            let mut mapping: HashMap<String, Type> = HashMap::new();
+            for (tp, arg) in e_decl.type_params.iter().zip(type_args.iter()) {
+                mapping.insert(tp.name.clone(), arg.clone());
+            }
+            let expected_payload = substitute(&variant_decl.ty, &mapping);
+            check_inner(env, subst, payload, &expected_payload, types)?;
+            Ok(custom_ty_with_args(enum_name.clone(), type_args))
         }
         ExprKind::Array(elements) => {
             if elements.is_empty() {
@@ -777,7 +850,7 @@ fn check_inner(
         (ExprKind::Match(target, arms), expected_ty) => {
             let target_ty = infer_inner(env, subst, target, types)?;
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name, _) = resolved {
+            if let Type::Custom(enum_name, args) = resolved {
                 let e_decl = env.enums.get(&enum_name).cloned().ok_or_else(|| {
                     Diagnostic::new(
                         UndeclaredEnum,
@@ -785,12 +858,13 @@ fn check_inner(
                         format!("undeclared enum '{}'", enum_name),
                     )
                 })?;
+                let mapping = build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span)?;
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
                     if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
                         env.push_scope();
                         if let Some(var_name) = bound_var {
-                            env.insert_var(var_name.clone(), v.ty.clone());
+                            env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
                         }
                         check_inner(env, subst, body, expected_ty, types)?;
                         env.pop_scope();
