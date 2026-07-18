@@ -94,3 +94,131 @@ fn borrow_tighter_than_add(x: i64, y: i64, $return: &out i64) {
     drop x;
     return
 }
+
+fn if_as_stmt(a: i64, r: &out i64) {
+  _temp_0: unit;
+  _temp_1: bool;
+  _temp_2: &out bool;
+  entry:
+    _temp_2 = &out _temp_1;
+    call $i64_gt(copy a, 0, move _temp_2);
+    branch(move _temp_1) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    r.* = 1;
+    unborrow r;
+    _temp_0 = unit;
+    goto if_merge_2
+  if_false_1:
+    r.* = 2;
+    unborrow r;
+    _temp_0 = unit;
+    goto if_merge_2
+  if_merge_2:
+    drop _temp_0;
+    drop a;
+    return
+}
+
+fn if_as_tail(a: i64, $return: &out i64) {
+  base: i64;
+  _temp_0: bool;
+  _temp_1: &out bool;
+  entry:
+    base = 10;
+    _temp_1 = &out _temp_0;
+    call $i64_gt(copy a, 0, move _temp_1);
+    branch(move _temp_0) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    $return.* = copy base;
+    unborrow $return;
+    goto if_merge_2
+  if_false_1:
+    $return.* = 0;
+    unborrow $return;
+    goto if_merge_2
+  if_merge_2:
+    drop base;
+    drop a;
+    return
+}
+
+fn loop_and_block_as_stmts() {
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  entry:
+    goto loop_start_0
+  loop_start_0:
+    goto loop_end_1
+  loop_end_1:
+    _temp_0 = unit;
+    drop _temp_0;
+    return
+}
+
+enum Tag: Copy + Drop {
+  A: i64
+  B: i64
+}
+
+fn match_as_stmt(t: Tag, r: &out i64) {
+  _temp_0: unit;
+  x: i64;
+  y: i64;
+  entry:
+    switchEnum(t) [A: switch_A_0, B: switch_B_1]
+  switch_A_0:
+    x = copy t as A;
+    r.* = copy x;
+    unborrow r;
+    _temp_0 = unit;
+    goto switch_A_0__to__switch_merge_2
+  switch_A_0__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_B_1:
+    y = copy t as B;
+    r.* = copy y;
+    unborrow r;
+    _temp_0 = unit;
+    goto switch_B_1__to__switch_merge_2
+  switch_B_1__to__switch_merge_2:
+    drop y;
+    goto switch_merge_2
+  switch_merge_2:
+    drop _temp_0;
+    drop t;
+    return
+}
+
+struct Wrap: Copy + Drop {
+  inner: i64
+}
+
+fn postfix_chain_on_match(t: Tag, $return: &out i64) {
+  w: Wrap;
+  x: i64;
+  y: i64;
+  entry:
+    switchEnum(t) [A: switch_A_0, B: switch_B_1]
+  switch_A_0:
+    x = copy t as A;
+    w.inner = copy x;
+    goto switch_A_0__to__switch_merge_2
+  switch_A_0__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_B_1:
+    y = copy t as B;
+    w.inner = copy y;
+    goto switch_B_1__to__switch_merge_2
+  switch_B_1__to__switch_merge_2:
+    drop y;
+    goto switch_merge_2
+  switch_merge_2:
+    $return.* = copy w.inner;
+    unborrow $return;
+    drop w;
+    drop t;
+    return
+}

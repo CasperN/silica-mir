@@ -908,7 +908,6 @@ Order of operations:
 - **HLL binary operators** `+ - * /` (currently intrinsic calls only).
   Prerequisite for real HLL ergonomics and for HLL versions of the
   existing MIR fixture programs.
-- **HLL block-like expressions need `;` as statements.** `if E { ... }` (and `loop`, `match`) require a trailing `;` when used as a statement; Rust's block-like-expression rule would remove that noise.
 - **HLL `extern fn` declarations.** No FFI is expressible in `.si` today — blocks HLL siblings of `tests/programs/hello_world_via_write.sim` and `heap_linked_list_of_i64.sim`. Also opens up heap allocation as a byproduct (malloc returns a raw pointer).
 - **HLL `as` casts between reference / raw-pointer types.** No syntax today to reinterpret between `&T` / `&mut T` / `*T` (or between `*T` / `*U`); raw pointers stay non-null by construction — you get them from `&raw place` or from an extern.
 - **Generics** in the MIR — grammar/AST/parser/print, scope-aware
@@ -980,7 +979,7 @@ Order of operations:
   shape the HLL lowering doesn't produce.
 
 ## Elaboration + drop
-- **HLL `break` inside a loop skips drops of block-local unit temps.** `loop { if c { break; }; ... }` fires `SUB-ReturnValueLeak` on the loop body's `_temp: unit` because drop-elab doesn't insert drops on the break edge.
+- **Drop-elab misses cross-edge drops at non-return joins.** Split-edge insertion only visits predecessors of `return` blocks, so any Init place that goes `Diverged` at an earlier join (chained matches, `if c { break; }` inside `loop`, etc.) reaches return without a drop and trips `SUB-ReturnValueLeak`. Repros pinned in `tests/substructural/check/hll_drop_elab_gaps.si`.
 - **Extend downcast-target reassignment to non-operand rvalues.**
   Today `o as V = <operand>` elaborates to `drop (o as V); o =
   EnumName::V(<operand>)`, but only when the rvalue is an Operand

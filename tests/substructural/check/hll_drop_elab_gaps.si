@@ -1,0 +1,54 @@
+# Documented drop-elab gaps: HLL-surface patterns whose lowering leaves
+# an Init/Drop place uninhabited by any inserted `drop`, so the
+# post-elab return-leak check trips.
+#
+# Every fn here pins the wording of `SUB-ReturnValueLeak` for a
+# specific drop-elab shortcoming. Fix these in drop-elab and this
+# fixture will flip to a `.sim.expected`; leave the tests in place so
+# the fix has to prove out on the exact pattern that motivated it.
+#
+# Root cause (shared): drop-elab's cross-edge insertion only visits
+# predecessors of `return` blocks. Any join point NOT immediately
+# followed by `return` (nested match, loop head after break, etc.)
+# is skipped, so arm-local or block-local Init places transition to
+# `Diverged` at that join without a corresponding drop.
+#
+#   fn                            pattern                             leaked place
+#   chained_matches_leak          two postfix matches in a row        arm-bound `a`, `b`
+#   loop_if_break_leak            `if c { break }` inside `loop`      block-local unit temps
+#
+# When the drop-elab fix lands, extend this fixture with the next drop-
+# elab gap you find rather than making a one-off.
+
+# ---------- Chained postfix matches: arm bindings leak at the inner join ----------
+
+# The first match's arm bindings `a` / `b` are i64 (Copy), so the arm
+# bodies copy them and leave the bindings Init at arm exit. The two
+# arms then join at `switch_merge_2`, whose terminator is the SECOND
+# `switchEnum` — not `return`. Drop-elab misses the split-edge insertion
+# there, so `a` and `b` reach the eventual return still Diverged.
+enum State: Copy + Drop { On: i64, Off: i64 }
+enum Level: Copy + Drop { High: i64, Low: i64 }
+fn chained_matches_leak(s: State) -> i64 {
+  s match {
+    On(a) => Level::High(a),
+    Off(b) => Level::Low(b),
+  } match {
+    High(h) => h,
+    Low(l) => l,
+  }
+}
+
+# ---------- `if c { break }` inside `loop`: unit temps leak on the break edge ----------
+
+# Inside the loop body, HLL lowering materializes the `if`'s value into
+# a unit temp on each arm. On the `true` arm the temp becomes Init and
+# then `break` jumps to the loop's exit block — bypassing the block
+# tail where the temp would normally be dropped. Drop-elab's cross-edge
+# insertion again only triggers around returns, so the exit path never
+# gets a `drop _temp`.
+fn loop_if_break_leak() {
+  loop {
+    if true { break; };
+  };
+}

@@ -3,21 +3,28 @@ use silica_mir::{
     elaborate_and_check_mir, lower_hll_to_mir, mir,
 };
 
-const USAGE: &str = "Usage: silica-mir [--llvm] <file.si | file.sim>";
+const USAGE: &str = "Usage: silica-mir [--llvm | --pre-elab] <file.si | file.sim>";
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let mut emit_llvm = false;
+    let mut emit_pre_elab = false;
     let mut path: Option<&str> = None;
     for a in &args[1..] {
         if a == "--llvm" {
             emit_llvm = true;
+        } else if a == "--pre-elab" {
+            emit_pre_elab = true;
         } else if path.is_none() {
             path = Some(a.as_str());
         } else {
             eprintln!("Unexpected extra argument: {}", a);
             std::process::exit(1);
         }
+    }
+    if emit_llvm && emit_pre_elab {
+        eprintln!("--llvm and --pre-elab are mutually exclusive");
+        std::process::exit(1);
     }
     let Some(path) = path else {
         eprintln!("{}", USAGE);
@@ -70,6 +77,14 @@ fn main() {
     let Some(program) = program else {
         report_and_exit(&d);
     };
+
+    // --pre-elab prints the pre-elaboration MIR and exits, bypassing the
+    // checker pipeline. Useful for isolating HLL-lowering bugs from
+    // downstream pass errors that mask them.
+    if emit_pre_elab {
+        print!("{}", mir::pretty_print::pretty_print(&program));
+        return;
+    }
 
     let (elaborated, env) = elaborate_and_check_mir(&program, &mut d);
 

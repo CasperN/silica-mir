@@ -925,8 +925,37 @@
               "value": ";"
             }
           ]
+        },
+        {
+          "type": "SYMBOL",
+          "name": "_block_like_stmt"
         }
       ]
+    },
+    "_block_like_stmt": {
+      "type": "PREC",
+      "value": -1,
+      "content": {
+        "type": "CHOICE",
+        "members": [
+          {
+            "type": "SYMBOL",
+            "name": "if_expr"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "loop_expr"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "match_expr"
+          },
+          {
+            "type": "SYMBOL",
+            "name": "block_expr"
+          }
+        ]
+      }
     },
     "defer_stmt": {
       "type": "SEQ",

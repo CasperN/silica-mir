@@ -1,13 +1,12 @@
-# HLL expression precedence and associativity stress. Every function
-# below pins one edge of the parser's precedence ladder — a regression
-# in `grammar.js` will surface as a lowering mismatch here.
+# HLL parse-shape stress. Two concerns bundled here because they both
+# pin edges of `grammar.js` that don't have another natural home:
+#   * expression precedence and associativity;
+#   * block-like expressions usable as statements without `;`
+#     (Rust's `ExpressionWithBlock` rule).
+# A regression in either surfaces as a lowering mismatch.
 #
-# Ladder (loose → tight): assignment → equality → comparison → additive
-# → multiplicative → borrow → postfix → primary.
-#
-# Regression prompt: `x = x + 1` used to misparse as `(x = x) + 1`
-# because `binary_expr` accepted `assign_expr` on either side; the fix
-# restricts `binary_expr` operands to `_expr_prefix`.
+# Precedence ladder (loose → tight): assignment → equality → comparison
+# → additive → multiplicative → borrow → postfix → primary.
 
 # ---------- assignment RHS is a binary_expr ----------
 
@@ -53,3 +52,51 @@ fn read(r: &i64) -> i64 { r.* }
 fn borrow_tighter_than_add(x: i64, y: i64) -> i64 {
   read(&x) + y
 }
+
+# ---------- block-like expressions as statements without `;` ----------
+
+# `if E { ... } else { ... }` as an intermediate statement — the parser
+# accepts it without a trailing `;` because the expression ends in `}`.
+fn if_as_stmt(a: i64, r: &out i64) {
+  if a > 0 { r.* = 1 } else { r.* = 2 }
+}
+
+# `if` at the tail (with a value) is still parsed as the block's
+# trailing expression, so both roles coexist under one grammar.
+fn if_as_tail(a: i64) -> i64 {
+  let base = 10;
+  if a > 0 { base } else { 0 }
+}
+
+# `loop { ... }` and empty block `{ }` in sequence as statements.
+fn loop_and_block_as_stmts() {
+  loop { break }
+  { }
+}
+
+# Postfix `x match { arms }` as a statement (block-like ends in `}`).
+enum Tag: Copy + Drop { A: i64, B: i64 }
+fn match_as_stmt(t: Tag, r: &out i64) {
+  t match {
+    A(x) => r.* = x,
+    B(y) => r.* = y,
+  }
+}
+
+# Postfix chain on a match result — `x match { ... } .foo` should still
+# parse as a chain, not treat the match as a terminal statement. Uses
+# a field-access placeholder since UFCS method calls aren't in yet.
+struct Wrap: Copy + Drop { inner: i64 }
+fn postfix_chain_on_match(t: Tag) -> i64 {
+  let w = t match {
+    A(x) => Wrap { inner: x },
+    B(y) => Wrap { inner: y },
+  };
+  w.inner
+}
+
+# Chained postfix matches parse correctly (see `chained_matches_leak`
+# in `tests/substructural/hll_diagnostics_sub.si`) — the parse-shape
+# aspect of this idiom is guaranteed by prec(-1) on `_block_like_stmt`,
+# but the resulting MIR trips a separate drop-elab bug that lives in a
+# substructural fixture, not here.

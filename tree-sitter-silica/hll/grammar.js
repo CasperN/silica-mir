@@ -102,14 +102,29 @@ module.exports = grammar({
       field('type', $.type),
     ),
 
-    // Statement: either a `let` binding or an expression followed
-    // by `;`. The trailing expression of a block (without `;`) is
-    // parsed by `block_expr`, not here.
+    // Statement: `let`, `defer`, an expression followed by `;`, or
+    // a block-like expression on its own (Rust's rule — anything
+    // that ends in `}` can be a statement without a trailing `;`).
+    // The trailing expression of a block (without `;`) is parsed
+    // by `block_expr`, not here.
     stmt: $ => choice(
       $.let_stmt,
       $.defer_stmt,
       seq($.expr, ';'),
+      $._block_like_stmt,
     ),
+
+    // Block-like expressions usable as statements without `;`. All
+    // four alternatives end in `}`, matching Rust's expression-with-
+    // block rule. Given at prec(-1) so a following postfix operator
+    // (`.foo`, `[i]`) prefers to chain on the block-like expression
+    // rather than treating the block-like as a complete statement.
+    _block_like_stmt: $ => prec(-1, choice(
+      $.if_expr,
+      $.loop_expr,
+      $.match_expr,
+      $.block_expr,
+    )),
 
     defer_stmt: $ => seq(
       'defer',
