@@ -1,4 +1,0 @@
-error: at 19:11: [HTC-TypeMismatch] In function 'defer_type_mismatch': type mismatch: expected integer type, found unit
-    |
- 19 |     defer 42;
-    |           ^^

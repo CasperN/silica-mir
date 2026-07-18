@@ -1,0 +1,12 @@
+error: at 6:5: [HMC-AssignToImmutable] In function 'assign_immutable': cannot assign to immutable binding 'x'
+   |
+ 6 |     x = 2;
+   |     ^
+error: at 15:18: [HMC-BorrowImmutableAsMut] In function 'borrow_immutable_mut': cannot borrow immutable binding 'x' as mutable
+    |
+ 15 |     let r = &mut x;
+    |                  ^
+error: at 24:11: [HMC-AssignToImmutable] In function 'defer_assign_immutable': cannot assign to immutable binding 'x'
+    |
+ 24 |     defer x = 2;
+    |           ^

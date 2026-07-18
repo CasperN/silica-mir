@@ -10,6 +10,14 @@ error: at 23:16: [HTC-TypeMismatch] In function 'test_float_var_mismatch_with_in
     |
  23 |   let y: i64 = x;
     |                ^
+error: at 29:11: [HTC-UndeclaredVariable] In function 'test_undeclared_variable': undeclared variable 'y'
+    |
+ 29 |   let x = y;
+    |           ^
+error: at 36:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type mismatch: expected integer type, found unit
+    |
+ 36 |   defer 42;
+    |         ^^
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
  2 |   let x = [];

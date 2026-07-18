@@ -1,9 +1,0 @@
-# Rendered output of HTC-ControlFlowInDefer for `return` inside defer.
-#
-# Kept separate from `hll_defer_control_flow.si` because HLL type-check
-# short-circuits at the first HTC error, so only one HTC-* diagnostic
-# fires per file. Splitting the break/continue/return variants pins the
-# per-keyword message text ("return is not allowed inside defer").
-fn f() {
-    defer { return; };
-}

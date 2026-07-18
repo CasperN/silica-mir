@@ -1,4 +1,0 @@
-error: at 12:17: [HTC-ControlFlowInDefer] In function 'defer_break': break is not allowed inside defer
-    |
- 12 |         defer { break; };
-    |                 ^^^^^

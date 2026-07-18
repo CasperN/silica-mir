@@ -1,9 +1,0 @@
-# Rendered output of HTC-UndeclaredVariable: reference to a name not in
-# scope, caught by the HLL type-checker before any subsequent pass runs.
-
-# Using an undeclared name on the right-hand side of a let binding is
-# caught by type_check and reported with HTC-UndeclaredVariable.
-fn undeclared_variable() -> i64 {
-    let x = y;
-    x
-}

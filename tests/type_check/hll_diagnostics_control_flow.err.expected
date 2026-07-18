@@ -1,0 +1,12 @@
+error: at 15:13: [HTC-ControlFlowInDefer] In function 'defer_break': break is not allowed inside defer
+    |
+ 15 |     defer { break; };
+    |             ^^^^^
+error: at 21:13: [HTC-ControlFlowInDefer] In function 'defer_continue': continue is not allowed inside defer
+    |
+ 21 |     defer { continue; };
+    |             ^^^^^^^^
+error: at 26:11: [HTC-ControlFlowInDefer] In function 'defer_return': return is not allowed inside defer
+    |
+ 26 |   defer { return; };
+    |           ^^^^^^

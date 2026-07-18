@@ -1,0 +1,11 @@
+struct Box: Drop + Move { val: i64 }
+
+# ---------- INIT-RefObligationUnfulfilled: &drop ref not fully consumed ----------
+
+# A `&drop Box` parameter requires the caller to consume the referent before
+# the reference expires. Moving the value out and then re-assigning via
+# defer leaves the obligation unfulfilled at the point the defer executes.
+fn defer_ref_obligation(r: &drop Box) {
+    let x = r.*;
+    defer r.* = Box { val: 5 };
+}

@@ -1,4 +1,0 @@
-internal: at 5:3: [HLO-ContinueOutsideLoop] continue outside of loop
-   |
- 5 |   continue;
-   |   ^^^^^^^^

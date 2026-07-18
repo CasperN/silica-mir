@@ -1,0 +1,8 @@
+# ---------- SUB-CopyOfNonCopy: implicit copy of a non-Copy type ----------
+
+# `&mut i64` is not Copy, so each bare use of `r` attempts an implicit
+# copy and is rejected by the substructural checker.
+fn copy_of_non_copy(r: &mut i64) {
+    let y = r;
+    let z = r;
+}

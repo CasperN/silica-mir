@@ -1,0 +1,22 @@
+# ---------- LT-LoanConflict: write while a mutable borrow is live ----------
+
+# Borrowing `x` as `&mut` and then writing to `x` while the borrow is
+# still live (kept alive by the read through `r` on the next line)
+# triggers a loan conflict.
+fn loan_conflict() {
+    let mut x: i64 = 10;
+    let r = &mut x;
+    x = 20;
+    let y = r.*;
+}
+
+# ---------- LT-LoanConflict: write while a deferred read keeps borrow live ----------
+
+# The defer block reads through `r`, so the borrow on `x` stays live
+# until the deferred read executes; writing `x = 2` in between conflicts.
+fn defer_loan_conflict() {
+    let mut x = 1;
+    let r = &x;
+    defer { let y = r.*; };
+    x = 2;
+}

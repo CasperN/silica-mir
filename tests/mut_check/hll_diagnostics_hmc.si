@@ -1,12 +1,3 @@
-# Rendered output of HMC-* diagnostics: mutability violations caught by
-# the HLL mutability checker before lowering.
-#
-# | fn                    | DiagCode                    |
-# |-----------------------|-----------------------------|
-# | assign_immutable      | HMC-AssignToImmutable       |
-# | borrow_immutable_mut  | HMC-BorrowImmutableAsMut    |
-# | defer_assign_immutable| HMC-AssignToImmutable (defer)|
-
 # ---------- HMC-AssignToImmutable: plain variable reassignment ----------
 
 # Reassigning a non-mut binding is caught by mut_check before lowering.

@@ -22,3 +22,16 @@ fn test_float_var_mismatch_with_int() {
   let x = 42.2;
   let y: i64 = x;
 }
+
+# ---------- HTC-UndeclaredVariable ----------
+
+fn test_undeclared_variable() -> i64 {
+  let x = y;
+  x
+}
+
+# ---------- TC-AssignmentTypeMismatch: defer body has wrong type ----------
+
+fn test_defer_type_mismatch() {
+  defer 42;
+}

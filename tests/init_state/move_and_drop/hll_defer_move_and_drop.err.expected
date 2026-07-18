@@ -1,0 +1,8 @@
+error: at 9:21: [INIT-UseAfterMove] In function 'defer_double_drop': variable 'b' is used after move
+   |
+ 9 |     defer { let x = b; };
+   |                     ^
+error: at 18:11: [INIT-UseAfterMove] In function 'defer_use_after_move': variable 'b' is used after move
+    |
+ 18 |     defer out.* = b;
+    |           ^^^^^^^^^

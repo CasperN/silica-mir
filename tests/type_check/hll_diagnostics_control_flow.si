@@ -1,0 +1,27 @@
+# ---------- break / continue outside loop ----------
+
+fn break_outside() {
+  break;
+}
+
+fn continue_outside() {
+  continue;
+}
+
+# ---------- control flow in defer blocks ----------
+
+fn defer_break() {
+  loop {
+    defer { break; };
+  };
+}
+
+fn defer_continue() {
+  loop {
+    defer { continue; };
+  };
+}
+
+fn defer_return() {
+  defer { return; };
+}
