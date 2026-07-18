@@ -1,0 +1,24 @@
+fn test_ambiguous_type() {
+  let x = [];
+}
+
+fn test_silenced_error() {
+  # 1. First error: 'undeclared_var' is undeclared.
+  # This infers 'x' as Type::Error to poison the local variable.
+  let x = undeclared_var;
+
+  # Unification succeeds silently, and binary typecheck accepts Type::Error
+  # without pushing a secondary "non-numeric operand" error (silencing).
+  let y = x + 1;
+  let z = x + 42.0;
+}
+
+fn test_int_var_mismatch_with_float() {
+  let x = 42;
+  let y: f64 = x;
+}
+
+fn test_float_var_mismatch_with_int() {
+  let x = 42.2;
+  let y: i64 = x;
+}

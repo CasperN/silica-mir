@@ -38,11 +38,11 @@ error: at 71:1: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity': 
     |
  71 | fn return_type_bad_arity() -> Box<i64, i64> {
     | ^
-error: at 72:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<?0>, found Box<i64, i64>
+error: at 72:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
     |
  72 |   Box { inner: 0 }
     |   ^^^^^^^^^^^^^^^^
-error: at 78:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<?2>, found Box<i64, i64>
+error: at 78:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<?i3>, found Box<i64, i64>
     |
  78 |   let x: Box<i64, i64> = Box { inner: 0 };
     |                          ^^^^^^^^^^^^^^^^

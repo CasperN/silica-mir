@@ -302,7 +302,8 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
             fn_ty(mir_params)
         }
         hll::Type::Array(inner, size) => array_ty(lower_type(inner), *size as u64),
-        hll::Type::Var(_) => unreachable!("type variables must be resolved before lowering"),
+        hll::Type::Var(_) | hll::Type::IntVar(_) | hll::Type::FloatVar(_) => unreachable!("type variables must be resolved before lowering"),
+        hll::Type::Error => unreachable!("cannot lower program with type errors"),
     }
 }
 
@@ -633,8 +634,14 @@ fn lower_expr_into(
                         scope.defers.push(body.clone());
                     }
                     hll::Stmt::Expr(e) => {
-                        // Value is ignored, lower into a dummy unit temporary
-                        let dummy = ctx.fresh_temp(unit_ty(), e.span);
+                        // Value is ignored, lower into a dummy temporary matching the expr type
+                        let hll_ty = lookup_type(e, types).cloned().unwrap_or(hll::Type::Unit);
+                        let mir_ty = if hll_ty == hll::Type::Never {
+                            mir::Type::Unit
+                        } else {
+                            lower_type(&hll_ty)
+                        };
+                        let dummy = ctx.fresh_temp(mir_ty, e.span);
                         lower_expr_into(ctx, e, &dummy, types)?;
                     }
                 }

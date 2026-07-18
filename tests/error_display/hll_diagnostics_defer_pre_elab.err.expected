@@ -1,12 +1,4 @@
-error: at 19:11: [TC-AssignmentTypeMismatch] In function 'defer_type_mismatch': Type mismatch in assignment. LHS is unit, RHS is i64
+error: at 19:11: [HTC-TypeMismatch] In function 'defer_type_mismatch': type mismatch: expected integer type, found unit
     |
  19 |     defer 42;
     |           ^^
-error: at 27:21: [INIT-UseAfterMove] In function 'defer_double_drop': variable 'b' is used after move
-    |
- 27 |     defer { let x = b; };
-    |                     ^
-error: at 36:11: [INIT-UseAfterMove] In function 'defer_use_after_move': variable 'b' is used after move
-    |
- 36 |     defer out.* = b;
-    |           ^^^^^^^^^

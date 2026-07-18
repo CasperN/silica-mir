@@ -215,7 +215,7 @@ fn test_hll_defer_type_check() {
         }
     ";
     let expected = "\
-at 3:19: [TC-AssignmentTypeMismatch] In function 'f': Type mismatch in assignment. LHS is unit, RHS is i64
+at 3:19: [HTC-TypeMismatch] In function 'f': type mismatch: expected integer type, found unit
    |
  3 |             defer 42;
    |                   ^^";

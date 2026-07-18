@@ -19,6 +19,9 @@ pub enum Type {
     RawPtr(Box<Type>),
     Fn(Vec<Type>, Box<Type>),
     Var(usize),
+    IntVar(usize),
+    FloatVar(usize),
+    Error,
     Array(Box<Type>, usize),
 }
 
@@ -75,6 +78,9 @@ impl std::fmt::Display for Type {
                 Ok(())
             }
             Type::Var(id) => write!(f, "?{}", id),
+            Type::IntVar(id) => write!(f, "?i{}", id),
+            Type::FloatVar(id) => write!(f, "?f{}", id),
+            Type::Error => write!(f, "<error>"),
             Type::Array(elem, size) => write!(f, "[{}; {}]", elem, size),
         }
     }

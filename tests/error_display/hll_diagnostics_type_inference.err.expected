@@ -1,0 +1,16 @@
+error: at 8:11: [HTC-UndeclaredVariable] In function 'test_silenced_error': undeclared variable 'undeclared_var'
+   |
+ 8 |   let x = undeclared_var;
+   |           ^^^^^^^^^^^^^^
+error: at 18:16: [HTC-TypeMismatch] In function 'test_int_var_mismatch_with_float': type mismatch: expected integer type, found f64
+    |
+ 18 |   let y: f64 = x;
+    |                ^
+error: at 23:16: [HTC-TypeMismatch] In function 'test_float_var_mismatch_with_int': type mismatch: expected float type, found i64
+    |
+ 23 |   let y: i64 = x;
+    |                ^
+error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
+   |
+ 2 |   let x = [];
+   |           ^^

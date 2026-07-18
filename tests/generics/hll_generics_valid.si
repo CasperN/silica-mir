@@ -78,6 +78,7 @@ fn<T: Copy + Drop> identity(x: T) -> T {
 }
 
 fn call_generic_fn() -> i64 {
+  identity(42.2f64);
   identity(42)
 }
 

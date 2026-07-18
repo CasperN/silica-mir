@@ -91,11 +91,16 @@ fn<T: Copy + Drop> identity(x: T, $return: &out T) {
 }
 
 fn call_generic_fn($return: &out i64) {
-  _temp_0: &out i64;
+  _temp_0: f64;
+  _temp_1: &out f64;
+  _temp_2: &out i64;
   entry:
-    _temp_0 = &out $return.*;
-    call identity<i64>(42, move _temp_0);
+    _temp_1 = &out _temp_0;
+    call identity<f64>(42.2, move _temp_1);
+    _temp_2 = &out $return.*;
+    call identity<i64>(42, move _temp_2);
     unborrow $return;
+    drop _temp_0;
     return
 }
 

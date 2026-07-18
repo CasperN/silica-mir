@@ -82,3 +82,12 @@ pub fn fn_ty(params: Vec<Type>, ret: Type) -> Type {
 pub fn var_ty(id: usize) -> Type {
     Type::Var(id)
 }
+pub fn int_var_ty(id: usize) -> Type {
+    Type::IntVar(id)
+}
+pub fn float_var_ty(id: usize) -> Type {
+    Type::FloatVar(id)
+}
+pub fn error_ty() -> Type {
+    Type::Error
+}
