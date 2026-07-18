@@ -14,3 +14,27 @@ fn test_unsafe_required() {
     p2.*
   };
 }
+
+# ---------- Unsafe Functions ----------
+
+unsafe fn dangerous_op(ptr: *i64) -> i64 {
+  # 4. OK: dereference inside unsafe fn body (bodies are considered "in unsafe")
+  ptr.*
+}
+
+fn call_unsafe_from_safe(p: *i64) {
+  # 5. Error: calling unsafe function outside unsafe block
+  dangerous_op(p);
+}
+
+fn call_unsafe_from_unsafe(p: *i64) {
+  # 6. OK: calling unsafe function inside unsafe block
+  unsafe {
+    dangerous_op(p);
+  }
+}
+
+unsafe fn nested_unsafe_calls(p: *i64) -> i64 {
+  # 7. OK: calling unsafe function inside unsafe fn body
+  dangerous_op(p)
+}

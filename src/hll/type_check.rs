@@ -348,7 +348,7 @@ pub struct TypeEnv {
     variables: Vec<HashMap<String, Type>>,
     structs: HashMap<String, StructDecl>,
     enums: HashMap<String, EnumDecl>,
-    functions: HashMap<String, (Vec<Type>, Type)>,
+    functions: HashMap<String, (Vec<Type>, Type, bool)>,
     /// Fn name → list of declared type-parameter names. Used at call
     /// sites to freshen the signature into new inference vars.
     fn_type_params: HashMap<String, Vec<String>>,
@@ -561,7 +561,7 @@ pub(super) fn typecheck_program_collect(
             }
             Declaration::Fn(f) => {
                 let params_tys: Vec<Type> = f.params.iter().map(|p| p.ty.clone()).collect();
-                env.functions.insert(f.name.clone(), (params_tys, f.ret_ty.clone()));
+                env.functions.insert(f.name.clone(), (params_tys, f.ret_ty.clone(), f.is_unsafe));
                 env.fn_type_params.insert(
                     f.name.clone(),
                     f.type_params.iter().map(|tp| tp.name.clone()).collect(),
@@ -606,6 +606,7 @@ pub(super) fn typecheck_program_collect(
             env.current_type_params = type_params_scope(&f.type_params);
             env.push_scope();
             env.current_ret_ty = Some(f.ret_ty.clone());
+            env.in_unsafe = f.is_unsafe;
             for param in &f.params {
                 env.insert_var(param.name.clone(), param.ty.clone());
             }
@@ -613,6 +614,7 @@ pub(super) fn typecheck_program_collect(
             check_inner(&mut env, &mut subst, &f.body, &f.ret_ty, &mut types, d);
             d.annotate_errors_in_function(errors_before, &f.name);
             env.pop_scope();
+            env.in_unsafe = false;
             env.current_type_params = HashMap::new();
         }
     }
@@ -726,7 +728,7 @@ fn infer_inner(
         ExprKind::Variable(name) => {
             if let Some(ty) = env.lookup_var(name) {
                 ty
-            } else if let Some((params, ret)) = env.functions.get(name).cloned() {
+            } else if let Some((params, ret, _is_unsafe)) = env.functions.get(name).cloned() {
                 // Freshen the fn's declared type parameters into new
                 // inference vars, then substitute through the signature.
                 // Each call site gets its own independent binding of T.
@@ -871,6 +873,17 @@ fn infer_inner(
             raw_ptr_ty(inner_ty)
         }
         ExprKind::Call(fn_expr, args) => {
+            if let ExprKind::Variable(ref name) = fn_expr.kind {
+                if let Some((_, _, is_unsafe)) = env.functions.get(name) {
+                    if *is_unsafe && !env.in_unsafe {
+                        d.push_error(Diagnostic::new(
+                            HllTypeCheckCode::UnsafeRequired,
+                            expr.span,
+                            format!("call to unsafe function '{}' requires unsafe block", name),
+                        ));
+                    }
+                }
+            }
             let fn_ty = infer_inner(env, subst, fn_expr, types, d);
             let resolved = subst.resolve(&fn_ty);
             if resolved == Type::Error {

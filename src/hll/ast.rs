@@ -106,6 +106,7 @@ pub struct TypeParam {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDecl {
     pub name: String,
+    pub is_unsafe: bool,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,

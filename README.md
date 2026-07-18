@@ -557,8 +557,9 @@ has return types but lowers to this to simplify the MIR.
 - **Raw pointers (`*T`, created via `&raw place`) are unsafe.** Creating a
   raw pointer does NOT create a loan; deref does not check aliasing,
   init state, or lifetime. The pointer value itself is `Copy Drop Move`.
-  Use for FFI, unchecked buffer access, and pointer arithmetic
-  (once we add it).
+  In the HLL, dereferencing a raw pointer (`ptr.*`) or calling an `unsafe fn`
+  requires being inside an `unsafe { ... }` block or an `unsafe fn` body.
+  Use for FFI, unchecked buffer access, and pointer arithmetic (once we add it).
 - **Reserved `$*` namespace.** Identifiers starting with `$` are reserved
   for MIR-only names (intrinsics, compiler-generated symbols). The
   higher-level language forbids `$*` identifiers, so intrinsics can

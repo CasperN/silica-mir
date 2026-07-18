@@ -83,10 +83,11 @@ module.exports = grammar({
       '}',
     ),
 
-    // `fn [<type_params>] name(params) [-> type] block`. Return type
+    // `[unsafe] fn [<type_params>] name(params) [-> type] block`. Return type
     // defaults to `unit` when the arrow is omitted. Body is a block
     // expression.
     fn_decl: $ => seq(
+      optional('unsafe'),
       'fn',
       optional($.type_params),
       field('name', $.identifier),

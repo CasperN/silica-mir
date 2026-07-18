@@ -337,6 +337,7 @@ impl Parser {
         })?;
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
+        let is_unsafe = self.get_text(node).starts_with("unsafe");
         let with_fn = |d: Diagnostic| d.in_function(name.clone());
 
         let mut scope: TypeScope = BTreeSet::new();
@@ -377,7 +378,7 @@ impl Parser {
         })?;
         let body = self.map_expr(body_node, &scope).map_err(with_fn)?;
 
-        Ok(FnDecl { name, type_params, params, ret_ty, body, span })
+        Ok(FnDecl { name, is_unsafe, type_params, params, ret_ty, body, span })
     }
 
     /// Map a `type` (or scalar/keyword token) CST node to `Type`.
