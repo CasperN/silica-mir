@@ -1,0 +1,125 @@
+fn sum_to_n(n: i64, $return: &out i64) {
+  acc: i64;
+  i: i64;
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: bool;
+  _temp_4: &out bool;
+  _temp_5: unit;
+  _temp_6: i64;
+  _temp_7: &out i64;
+  _temp_8: unit;
+  _temp_9: i64;
+  _temp_10: &out i64;
+  entry:
+    acc = 0;
+    i = 1;
+    goto loop_start_0
+  loop_start_0:
+    _temp_4 = &out _temp_3;
+    call $i64_gt(copy i, copy n, move _temp_4);
+    branch(move _temp_3) [true: if_true_2, false: if_false_3]
+  if_true_2:
+    goto loop_end_1
+  if_false_3:
+    _temp_2 = unit;
+    goto if_merge_4
+  if_merge_4:
+    _temp_7 = &out _temp_6;
+    call $i64_add(copy acc, copy i, move _temp_7);
+    drop acc;
+    acc = move _temp_6;
+    _temp_5 = unit;
+    _temp_10 = &out _temp_9;
+    call $i64_add(copy i, 1, move _temp_10);
+    drop i;
+    i = move _temp_9;
+    _temp_8 = unit;
+    _temp_1 = unit;
+    goto if_merge_4__to__loop_start_0
+  if_merge_4__to__loop_start_0:
+    drop _temp_1;
+    drop _temp_2;
+    drop _temp_5;
+    drop _temp_8;
+    goto loop_start_0
+  loop_end_1:
+    $return.* = copy acc;
+    unborrow $return;
+    drop i;
+    drop acc;
+    drop n;
+    return
+}
+
+fn fib(n: i64, $return: &out i64) {
+  a: i64;
+  b: i64;
+  i: i64;
+  next: i64;
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: bool;
+  _temp_4: &out bool;
+  _temp_5: unit;
+  _temp_6: i64;
+  _temp_7: &out i64;
+  _temp_8: unit;
+  _temp_9: unit;
+  _temp_10: unit;
+  _temp_11: i64;
+  _temp_12: &out i64;
+  entry:
+    a = 0;
+    b = 1;
+    i = 0;
+    next = 0;
+    goto loop_start_0
+  loop_start_0:
+    _temp_4 = &out _temp_3;
+    call $i64_ge(copy i, copy n, move _temp_4);
+    branch(move _temp_3) [true: if_true_2, false: if_false_3]
+  if_true_2:
+    goto loop_end_1
+  if_false_3:
+    _temp_2 = unit;
+    goto if_merge_4
+  if_merge_4:
+    _temp_7 = &out _temp_6;
+    call $i64_add(copy a, copy b, move _temp_7);
+    drop next;
+    next = move _temp_6;
+    _temp_5 = unit;
+    drop a;
+    a = copy b;
+    _temp_8 = unit;
+    drop b;
+    b = copy next;
+    _temp_9 = unit;
+    _temp_12 = &out _temp_11;
+    call $i64_add(copy i, 1, move _temp_12);
+    drop i;
+    i = move _temp_11;
+    _temp_10 = unit;
+    _temp_1 = unit;
+    goto if_merge_4__to__loop_start_0
+  if_merge_4__to__loop_start_0:
+    drop _temp_1;
+    drop _temp_2;
+    drop _temp_5;
+    drop _temp_8;
+    drop _temp_9;
+    drop _temp_10;
+    goto loop_start_0
+  loop_end_1:
+    $return.* = copy a;
+    unborrow $return;
+    drop next;
+    drop i;
+    drop b;
+    drop a;
+    drop n;
+    return
+}

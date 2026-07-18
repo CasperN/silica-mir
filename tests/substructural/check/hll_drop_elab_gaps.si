@@ -1,35 +1,25 @@
-# Documented drop-elab gaps: HLL-surface patterns whose lowering leaves
-# an Init/Drop place uninhabited by any inserted `drop`, so the
-# post-elab return-leak check trips.
+# Drop-elab cross-edge insertion — regression guard for two patterns
+# where an arm-local or block-local Init place transitions to `Diverged`
+# at a non-return join and must be dropped on the Init-side predecessor
+# edges. Before drop-elab visited every join (not just `return`-block
+# predecessors), both fns tripped `SUB-ReturnValueLeak` at the eventual
+# return; a regression that reverts the fix will re-surface the leak
+# and diverge this fixture's pinned MIR.
 #
-# Every fn here pins the wording of `SUB-ReturnValueLeak` for a
-# specific drop-elab shortcoming. Fix these in drop-elab and this
-# fixture will flip to a `.sim.expected`; leave the tests in place so
-# the fix has to prove out on the exact pattern that motivated it.
-#
-# Root cause (shared): drop-elab's cross-edge insertion only visits
-# predecessors of `return` blocks. Any join point NOT immediately
-# followed by `return` (nested match, loop head after break, etc.)
-# is skipped, so arm-local or block-local Init places transition to
-# `Diverged` at that join without a corresponding drop.
-#
-#   fn                            pattern                             leaked place
-#   chained_matches_leak          two postfix matches in a row        arm-bound `a`, `b`
-#   loop_if_break_leak            `if c { break }` inside `loop`      block-local unit temps
-#
-# When the drop-elab fix lands, extend this fixture with the next drop-
-# elab gap you find rather than making a one-off.
+#   fn                            pattern                             cross-edge drop
+#   chained_matches          two postfix matches in a row        arm-bound `a`, `b`
+#   loop_if_break            `if c { break }` inside `loop`      block-local unit temps
 
-# ---------- Chained postfix matches: arm bindings leak at the inner join ----------
+# ---------- Chained postfix matches: arm bindings dropped at the inner join ----------
 
 # The first match's arm bindings `a` / `b` are i64 (Copy), so the arm
 # bodies copy them and leave the bindings Init at arm exit. The two
-# arms then join at `switch_merge_2`, whose terminator is the SECOND
-# `switchEnum` — not `return`. Drop-elab misses the split-edge insertion
-# there, so `a` and `b` reach the eventual return still Diverged.
+# arms join at `switch_merge_2`, whose terminator is the SECOND
+# `switchEnum` — not `return`. Drop-elab splits both arm→merge edges
+# and drops `a` / `b` there, so the eventual return sees both Uninit.
 enum State: Copy + Drop { On: i64, Off: i64 }
 enum Level: Copy + Drop { High: i64, Low: i64 }
-fn chained_matches_leak(s: State) -> i64 {
+fn chained_matches(s: State) -> i64 {
   s match {
     On(a) => Level::High(a),
     Off(b) => Level::Low(b),
@@ -39,15 +29,13 @@ fn chained_matches_leak(s: State) -> i64 {
   }
 }
 
-# ---------- `if c { break }` inside `loop`: unit temps leak on the break edge ----------
+# ---------- `if c { break }` inside `loop`: unit temps dropped on the back edge ----------
 
 # Inside the loop body, HLL lowering materializes the `if`'s value into
-# a unit temp on each arm. On the `true` arm the temp becomes Init and
-# then `break` jumps to the loop's exit block — bypassing the block
-# tail where the temp would normally be dropped. Drop-elab's cross-edge
-# insertion again only triggers around returns, so the exit path never
-# gets a `drop _temp`.
-fn loop_if_break_leak() {
+# a unit temp on each arm. The `if_merge → loop_start` back-edge is a
+# non-return join; drop-elab splits it and drops the loop-body's Init
+# unit temps there so successive iterations don't accumulate them.
+fn loop_if_break() {
   loop {
     if true { break; };
   };

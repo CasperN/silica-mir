@@ -956,7 +956,6 @@ Order of operations:
 - **HLL surface for hand-crafted CFG shape.** `tests/init_state/cfg_shape/{init_across_cfg_shapes,init_across_cfg_shapes_violations,borrow_across_cfg_shapes,borrow_across_cfg_shapes_violations}.sim` have no HLL siblings because HLL lacks a way to spell `abort`/`unreachable` terminators, custom block labels, irreducible flow, or downcast-projection borrows.
 
 ## Elaboration + drop
-- **Drop-elab misses cross-edge drops at non-return joins.** Split-edge insertion only visits predecessors of `return` blocks, so any Init place that goes `Diverged` at an earlier join (chained matches, `if c { break; }` inside `loop`, etc.) reaches return without a drop and trips `SUB-ReturnValueLeak`. Repros pinned in `tests/substructural/check/hll_drop_elab_gaps.si`.
 - **Extend downcast-target reassignment to non-operand rvalues.**
   Today `o as V = <operand>` elaborates to `drop (o as V); o =
   EnumName::V(<operand>)`, but only when the rvalue is an Operand

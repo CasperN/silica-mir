@@ -219,20 +219,26 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         }
     }
 
-    // Cross-edge: for return blocks with Diverged paths at entry,
-    // split predecessor edges and insert per-arm drops. Uses the
-    // fixpoint entry state directly (pre-elaboration) — this is
-    // fine because pre-stmt drops we plan above don't cross block
-    // boundaries, so predecessor exit states are unaffected.
-    for (block, _) in init_state::states_before_returns(env, func) {
-        let Some(return_entry) = entry_states.get(&block.label) else {
+    // Cross-edge: at every join with Diverged-at-entry paths, split the
+    // Init-side predecessor edges and insert per-arm drops. Restricting
+    // this to return blocks (the earlier shape) misses the case where a
+    // value goes Init on one arm and NeverInit on another, joins into
+    // an intermediate merge block (whose terminator is switchEnum,
+    // goto, branch, ...) rather than return, and stays Diverged all the
+    // way through — at the eventual return the direct preds already
+    // have Diverged exit states, so the pred-Init check finds nothing
+    // to drop. Handling every join catches the transition at its
+    // first occurrence. Uses fixpoint entry states directly — the
+    // pre-stmt drops above are intra-block, so predecessor exit states
+    // are unaffected.
+    for block in &body.blocks {
+        let Some(block_entry) = entry_states.get(&block.label) else {
             continue;
         };
-        let diverged_paths = collect_diverged_paths(func, return_entry);
+        let diverged_paths = collect_diverged_paths(func, block_entry);
         if diverged_paths.is_empty() {
             continue;
         }
-        // Determine predecessors and their exit states.
         for pred_block in &body.blocks {
             if !terminator_successors(&pred_block.terminator)
                 .iter()
