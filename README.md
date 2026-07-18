@@ -908,11 +908,9 @@ Order of operations:
 - **HLL binary operators** `+ - * /` (currently intrinsic calls only).
   Prerequisite for real HLL ergonomics and for HLL versions of the
   existing MIR fixture programs.
-- **HLL `x = x + 1` misparses** as `(x = x) + 1` because `binary_expr`'s operands admit `assign_expr`; restrict them to `_expr_prefix` or lower.
 - **HLL block-like expressions need `;` as statements.** `if E { ... }` (and `loop`, `match`) require a trailing `;` when used as a statement; Rust's block-like-expression rule would remove that noise.
-- **HLL `extern fn` declarations.** No FFI is expressible in `.si` today — blocks HLL siblings of `tests/programs/hello_world_via_write.sim` and `heap_linked_list_of_i64.sim`.
-- **HLL raw-pointer construction.** No int-to-ptr cast and no `null` for `*T`; combined with missing `extern fn`, `.si` cannot represent heap allocation or an empty pointer chain.
-- **HLL `unsafe fn` declarations.** Only `unsafe { ... }` blocks exist; declaring an unsafe fn boundary is missing.
+- **HLL `extern fn` declarations.** No FFI is expressible in `.si` today — blocks HLL siblings of `tests/programs/hello_world_via_write.sim` and `heap_linked_list_of_i64.sim`. Also opens up heap allocation as a byproduct (malloc returns a raw pointer).
+- **HLL `as` casts between reference / raw-pointer types.** No syntax today to reinterpret between `&T` / `&mut T` / `*T` (or between `*T` / `*U`); raw pointers stay non-null by construction — you get them from `&raw place` or from an extern.
 - **Generics** in the MIR — grammar/AST/parser/print, scope-aware
   substructural composition, decl-side marker check, and
   use-site bound + arity check are all in. Remaining:
@@ -1009,7 +1007,6 @@ Order of operations:
   pointer values first.
 
 ## Diagnostics
-- **`INIT-WriteThroughSharedRef` mis-phrased for move-out.** `move r.*` where `r: &T` fires "cannot mutate through shared reference"; the operation is a move-out through a shared ref and the message should say so.
 - **Rustc-style interleaved multi-span rendering.** Primary + labeled
   secondaries merged into one continuous source block. Today each
   secondary renders as its own `= note:` snippet.

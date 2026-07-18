@@ -1037,12 +1037,17 @@ impl<'a> InitStateContext<'a> {
         if matches!(kind, RefKind::Shared) {
             if !matches!(op, DerefOp::Read) {
                 if let Some((func, block, span, d)) = report {
+                    let action = match op {
+                        DerefOp::Move => "move out through",
+                        DerefOp::Write => "write through",
+                        DerefOp::Read => unreachable!(),
+                    };
                     d.push_error(diag(
                         WriteThroughSharedRef,
                         span,
                         func,
                         block,
-                        format!("cannot mutate through shared reference '{}'", name_str),
+                        format!("cannot {} shared reference '{}'", action, name_str),
                     ));
                 }
             }

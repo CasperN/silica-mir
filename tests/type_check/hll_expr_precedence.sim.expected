@@ -1,0 +1,96 @@
+fn assign_rhs_binop($return: &out i64) {
+  x: i64;
+  _temp_0: unit;
+  _temp_1: i64;
+  _temp_2: &out i64;
+  entry:
+    x = 0;
+    _temp_2 = &out _temp_1;
+    call $i64_add(copy x, 1, move _temp_2);
+    drop x;
+    x = move _temp_1;
+    _temp_0 = unit;
+    $return.* = copy x;
+    unborrow $return;
+    drop _temp_0;
+    drop x;
+    return
+}
+
+fn additive_left_assoc(a: i64, b: i64, c: i64, $return: &out i64) {
+  _temp_0: i64;
+  _temp_1: &out i64;
+  _temp_2: &out i64;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_sub(copy a, copy b, move _temp_1);
+    _temp_2 = &out $return.*;
+    call $i64_sub(move _temp_0, copy c, move _temp_2);
+    unborrow $return;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn mul_over_add(a: i64, b: i64, c: i64, $return: &out i64) {
+  _temp_0: i64;
+  _temp_1: &out i64;
+  _temp_2: &out i64;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_mul(copy b, copy c, move _temp_1);
+    _temp_2 = &out $return.*;
+    call $i64_add(copy a, move _temp_0, move _temp_2);
+    unborrow $return;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out bool) {
+  _temp_0: i64;
+  _temp_1: &out i64;
+  _temp_2: i64;
+  _temp_3: &out i64;
+  _temp_4: &out bool;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_add(copy a, copy b, move _temp_1);
+    _temp_3 = &out _temp_2;
+    call $i64_add(copy c, copy d, move _temp_3);
+    _temp_4 = &out $return.*;
+    call $i64_lt(move _temp_0, move _temp_2, move _temp_4);
+    unborrow $return;
+    drop d;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn read(r: & i64, $return: &out i64) {
+  entry:
+    $return.* = copy r.*;
+    unborrow $return;
+    unborrow r;
+    return
+}
+
+fn borrow_tighter_than_add(x: i64, y: i64, $return: &out i64) {
+  _temp_0: i64;
+  _temp_1: & i64;
+  _temp_2: &out i64;
+  _temp_3: &out i64;
+  entry:
+    _temp_1 = & x;
+    _temp_2 = &out _temp_0;
+    call read(move _temp_1, move _temp_2);
+    _temp_3 = &out $return.*;
+    call $i64_add(move _temp_0, copy y, move _temp_3);
+    unborrow $return;
+    drop y;
+    drop x;
+    return
+}

@@ -1,0 +1,55 @@
+# HLL expression precedence and associativity stress. Every function
+# below pins one edge of the parser's precedence ladder — a regression
+# in `grammar.js` will surface as a lowering mismatch here.
+#
+# Ladder (loose → tight): assignment → equality → comparison → additive
+# → multiplicative → borrow → postfix → primary.
+#
+# Regression prompt: `x = x + 1` used to misparse as `(x = x) + 1`
+# because `binary_expr` accepted `assign_expr` on either side; the fix
+# restricts `binary_expr` operands to `_expr_prefix`.
+
+# ---------- assignment RHS is a binary_expr ----------
+
+# Reassigning a mutable local with a binop that references the same
+# place: RHS must be evaluated before the assignment lands. Before the
+# grammar fix, this parsed as `(x = x) + 1`.
+fn assign_rhs_binop() -> i64 {
+  let mut x = 0;
+  x = x + 1;
+  x
+}
+
+# ---------- additive is left-associative ----------
+
+# `a - b - c` = `(a - b) - c`. If prec.left were dropped, this would
+# associate right and the returned value would differ.
+fn additive_left_assoc(a: i64, b: i64, c: i64) -> i64 {
+  a - b - c
+}
+
+# ---------- multiplicative binds tighter than additive ----------
+
+# `a + b * c` = `a + (b * c)` because `*` sits at prec 13, `+` at 12.
+fn mul_over_add(a: i64, b: i64, c: i64) -> i64 {
+  a + b * c
+}
+
+# ---------- comparison binds looser than additive ----------
+
+# `a + b < c + d` = `(a + b) < (c + d)`. If additive were looser than
+# comparison, the `+` in the LHS would swallow the `<`.
+fn cmp_over_add(a: i64, b: i64, c: i64, d: i64) -> bool {
+  a + b < c + d
+}
+
+# ---------- borrow binds tighter than any binary op ----------
+
+# `&x` binds tighter than `+`, so `read(&x)` still parses as a call
+# with a borrow-typed argument even when the return is used in a
+# binary op. Regression guard for the borrow_expr precedence bump
+# alongside the `binary_expr` operand fix.
+fn read(r: &i64) -> i64 { r.* }
+fn borrow_tighter_than_add(x: i64, y: i64) -> i64 {
+  read(&x) + y
+}

@@ -157,21 +157,27 @@ module.exports = grammar({
       $.binary_expr,
     ),
 
-    borrow_expr: $ => prec(10, seq(
+    // Borrows bind tighter than any binary operator: `&x + y` is
+    // `(&x) + y`, not `&(x + y)`. prec 15 sits above the tightest
+    // binary_expr tier (13).
+    borrow_expr: $ => prec(15, seq(
       field('kind', choice('&', '&mut', '&out', '&deinit', '&uninit')),
       field('target', $._expr_prefix),
     )),
 
-    raw_borrow_expr: $ => prec(10, seq(
+    raw_borrow_expr: $ => prec(15, seq(
       '&raw',
       field('target', $._expr_prefix),
     )),
 
+    // Operands are `_expr_prefix`, not the top-level `expr` — otherwise
+    // `x = x + 1` parses as `(x = x) + 1` because binary_expr's prec.left(12)
+    // outranks assign_expr's prec.right(1) when both are candidates.
     binary_expr: $ => choice(
-      prec.left(13, seq(field('lhs', $.expr), field('op', choice('*', '/', '%')), field('rhs', $.expr))),
-      prec.left(12, seq(field('lhs', $.expr), field('op', choice('+', '-')), field('rhs', $.expr))),
-      prec.left(10, seq(field('lhs', $.expr), field('op', choice('<', '>', '<=', '>=')), field('rhs', $.expr))),
-      prec.left(9, seq(field('lhs', $.expr), field('op', choice('==', '!=')), field('rhs', $.expr))),
+      prec.left(13, seq(field('lhs', $._expr_prefix), field('op', choice('*', '/', '%')), field('rhs', $._expr_prefix))),
+      prec.left(12, seq(field('lhs', $._expr_prefix), field('op', choice('+', '-')), field('rhs', $._expr_prefix))),
+      prec.left(10, seq(field('lhs', $._expr_prefix), field('op', choice('<', '>', '<=', '>=')), field('rhs', $._expr_prefix))),
+      prec.left(9, seq(field('lhs', $._expr_prefix), field('op', choice('==', '!=')), field('rhs', $._expr_prefix))),
     ),
 
     // Postfix chains bind left-to-right and tightly. Each gets its

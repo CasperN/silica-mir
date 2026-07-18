@@ -1,4 +1,8 @@
-error: at 3:5: [INIT-WriteThroughSharedRef] In function 'f', block 'entry': cannot mutate through shared reference 'r'
+error: at 9:5: [INIT-WriteThroughSharedRef] In function 'write', block 'entry': cannot write through shared reference 'r'
    |
- 3 |     r.* = 1;
+ 9 |     r.* = 1;
    |     ^^^^^^^
+error: at 16:5: [INIT-WriteThroughSharedRef] In function 'move_out', block 'entry': cannot move out through shared reference 'r'
+    |
+ 16 |     x = move r.*;
+    |     ^^^^^^^^^^^^

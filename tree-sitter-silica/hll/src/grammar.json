@@ -1088,7 +1088,7 @@
     },
     "borrow_expr": {
       "type": "PREC",
-      "value": 10,
+      "value": 15,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1134,7 +1134,7 @@
     },
     "raw_borrow_expr": {
       "type": "PREC",
-      "value": 10,
+      "value": 15,
       "content": {
         "type": "SEQ",
         "members": [
@@ -1167,7 +1167,7 @@
                 "name": "lhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               },
               {
@@ -1196,7 +1196,7 @@
                 "name": "rhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               }
             ]
@@ -1213,7 +1213,7 @@
                 "name": "lhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               },
               {
@@ -1238,7 +1238,7 @@
                 "name": "rhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               }
             ]
@@ -1255,7 +1255,7 @@
                 "name": "lhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               },
               {
@@ -1288,7 +1288,7 @@
                 "name": "rhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               }
             ]
@@ -1305,7 +1305,7 @@
                 "name": "lhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               },
               {
@@ -1330,7 +1330,7 @@
                 "name": "rhs",
                 "content": {
                   "type": "SYMBOL",
-                  "name": "expr"
+                  "name": "_expr_prefix"
                 }
               }
             ]
