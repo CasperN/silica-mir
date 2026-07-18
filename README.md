@@ -980,7 +980,6 @@ Order of operations:
   shape the HLL lowering doesn't produce.
 
 ## Elaboration + drop
-- **HLL nested struct constructor in sret position leaves `$return` uninitialized.** `Foo { f: Bar { g: x } }` in tail position doesn't recursively lower the inner constructor into the sret slot; hoisting the inner into a `let` binding works around it.
 - **HLL `break` inside a loop skips drops of block-local unit temps.** `loop { if c { break; }; ... }` fires `SUB-ReturnValueLeak` on the loop body's `_temp: unit` because drop-elab doesn't insert drops on the break edge.
 - **Extend downcast-target reassignment to non-operand rvalues.**
   Today `o as V = <operand>` elaborates to `drop (o as V); o =

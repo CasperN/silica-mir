@@ -27,6 +27,7 @@
 # | branch_write_a_at_join                       | &mut      | write            | scalar              | branch-join | LT-LoanConflict       |
 # | branch_write_b_at_join                       | &mut      | write            | scalar              | branch-join | LT-LoanConflict       |
 # | enum_wrap_keeps_loan_active                  | &mut      | write            | enum-wrapped ref    | linear      | LT-LoanConflict       |
+# | generic_struct_wraps_mut_ref                 | &mut      | write            | generic-field ref   | linear      | LT-LoanConflict       |
 # | switch_on_borrowed_enum                      | &mut      | read (switch)    | scalar enum         | linear      | LT-LoanConflict       |
 # | out_ref_param_obligation_unfulfilled         | &out      | obligation check | branch param        | branch      | INIT-RefObligationUnfulfilled |
 
@@ -358,6 +359,22 @@ fn enum_wrap_keeps_loan_active(x: i64) {
     w = Wrap::W(move r);
     x = 7;
     call take_wrap(move w);
+    return
+}
+
+struct<T: Move> Bag: Move { r: T }
+extern fn take_bag(b: Bag<&mut i64>);
+
+# ---- generic struct field carries the borrower; a write to the loanee still conflicts ----
+# `Bag<&mut i64>.r` holds a mutable borrow of `x`. The loan on `x` stays active as long as
+# `b` is live; a write to `x` before `b` is consumed conflicts. Exercises NLL's
+# `walk_ref_paths` on a generic type where the field's declared type is `Param(T)`.
+fn generic_struct_wraps_mut_ref(x: i64) {
+  b: Bag<&mut i64>;
+  entry:
+    b.r = &mut x;
+    x = 7;
+    call take_bag(move b);
     return
 }
 

@@ -56,7 +56,8 @@ use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
-use crate::mir::type_check::Env;
+use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -443,21 +444,36 @@ fn walk_ref_paths(
         out.insert(place.clone());
         return;
     }
-    let Type::Custom(name, _) = ty else { return };
+    let Type::Custom(name, args) = ty else { return };
     if !visited.insert(name.clone()) {
         return;
     }
+    // Substitute the outer args through each field / variant type — a
+    // `Bag<&mut i64>.r` recursion with the raw `Param(T)` would miss the
+    // ref and drop the borrower from NLL's tracked set.
     match env.types.get(name) {
-        Some(crate::mir::type_check::TypeDecl::Struct(s)) => {
-            for f in &s.fields {
-                let sub = field_place(place.clone(), f.name.clone());
-                walk_ref_paths(&sub, &f.ty, env, visited, out);
+        Some(TypeDecl::Struct(s)) => {
+            let type_params = s.type_params.clone();
+            let fields: Vec<_> = s
+                .fields
+                .iter()
+                .map(|f| (f.name.clone(), substitute_params(&f.ty, &type_params, args)))
+                .collect();
+            for (fname, fty) in fields {
+                let sub = field_place(place.clone(), fname);
+                walk_ref_paths(&sub, &fty, env, visited, out);
             }
         }
-        Some(crate::mir::type_check::TypeDecl::Enum(e)) => {
-            for v in &e.variants {
-                let sub = downcast_place(place.clone(), v.name.clone());
-                walk_ref_paths(&sub, &v.ty, env, visited, out);
+        Some(TypeDecl::Enum(e)) => {
+            let type_params = e.type_params.clone();
+            let variants: Vec<_> = e
+                .variants
+                .iter()
+                .map(|v| (v.name.clone(), substitute_params(&v.ty, &type_params, args)))
+                .collect();
+            for (vname, vty) in variants {
+                let sub = downcast_place(place.clone(), vname);
+                walk_ref_paths(&sub, &vty, env, visited, out);
             }
         }
         _ => {}

@@ -36,7 +36,8 @@ use crate::mir::helpers::*;
 use crate::mir::cfg_edit;
 use crate::mir::init_state::{self, InitState, PointState};
 use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
-use crate::mir::type_check::Env;
+use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.
@@ -508,19 +509,31 @@ fn plan_drops_for_place(
         }
         InitState::Partial(fields) => {
             // Reverse declared field order = LIFO for that container.
-            let Type::Custom(struct_name, _) = ty else {
+            let Type::Custom(struct_name, args) = ty else {
                 return;
             };
-            let field_decls = match env.types.get(struct_name) {
-                Some(crate::mir::type_check::TypeDecl::Struct(s)) => &s.fields,
-                _ => return,
+            let TypeDecl::Struct(s) = (match env.types.get(struct_name) {
+                Some(d) => d,
+                None => return,
+            }) else {
+                return;
             };
-            for f in field_decls.iter().rev() {
-                let Some(field_state) = fields.get(&f.name) else {
+            // Substitute the outer args through each field's declared
+            // type — otherwise a `Bag<DropVal>.b` recurses with the raw
+            // `Param(T)`, which `class_of` resolves to empty markers
+            // under an empty scope and misses the drop.
+            let type_params = s.type_params.clone();
+            let field_decls: Vec<_> = s
+                .fields
+                .iter()
+                .map(|f| (f.name.clone(), substitute_params(&f.ty, &type_params, args)))
+                .collect();
+            for (name, field_ty) in field_decls.iter().rev() {
+                let Some(field_state) = fields.get(name) else {
                     continue;
                 };
-                let fp = field_place(place.clone(), f.name.clone());
-                plan_drops_for_place(fp, &f.ty, field_state, env, scope, out);
+                let fp = field_place(place.clone(), name.clone());
+                plan_drops_for_place(fp, field_ty, field_state, env, scope, out);
             }
         }
     }

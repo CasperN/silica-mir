@@ -83,6 +83,74 @@ fn nested_container(b: Box<Option<i64>>, $return: &out i64) {
     return
 }
 
+fn make_box_of_box(x: i64, $return: &out Box<Box<i64>>) {
+  entry:
+    $return.*.inner.inner = copy x;
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn make_box_of_option(x: i64, $return: &out Box<Option<i64>>) {
+  entry:
+    $return.*.inner = Option<i64>::Some(copy x);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn make_option_of_box(x: i64, $return: &out Option<Box<i64>>) {
+  _temp_0: Box<i64>;
+  entry:
+    _temp_0.inner = copy x;
+    $return.* = Option<Box<i64>>::Some(move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn read_nested_field(b: Box<Box<i64>>, $return: &out i64) {
+  entry:
+    $return.* = copy b.inner.inner;
+    unborrow $return;
+    drop b;
+    return
+}
+
+fn write_nested_pointee(r: &out Box<Box<i64>>, x: i64) {
+  _temp_0: unit;
+  _temp_1: unit;
+  entry:
+    r.*.inner.inner = copy x;
+    unborrow r;
+    _temp_1 = unit;
+    _temp_0 = unit;
+    drop _temp_1;
+    drop _temp_0;
+    drop x;
+    return
+}
+
+struct DropCell: Drop + Move {
+  v: i64
+}
+
+struct<T: Drop + Move> DropPair: Drop + Move {
+  a: T
+  b: T
+}
+
+fn partial_move_generic_drop($return: &out DropCell) {
+  p: DropPair<DropCell>;
+  entry:
+    p.a.v = 1;
+    p.b.v = 2;
+    $return.* = move p.a;
+    unborrow $return;
+    drop p.b;
+    return
+}
+
 fn<T: Copy + Drop> identity(x: T, $return: &out T) {
   entry:
     $return.* = move x;

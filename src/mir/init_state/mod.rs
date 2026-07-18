@@ -35,6 +35,7 @@ use crate::mir::substructural::composition::class_of;
 use crate::mir::dataflow;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 
@@ -228,28 +229,38 @@ struct InitStateContext<'a> {
 
 // ---------- Type lookups ----------
 
-fn struct_fields_of<'a>(ty: &Type, env: &'a Env) -> Option<&'a [StructField]> {
-    let Type::Custom(name, _) = ty else {
+/// Fields of a struct type with type-parameter substitution applied.
+/// `Box<i64>` → `[{inner: i64}]`, not `[{inner: T}]` — otherwise deep
+/// nested projections (`p.f.g` on `Outer<Inner<i64>>`) lose the type
+/// after the first step and downstream lookups fail.
+fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
+    let Type::Custom(name, args) = ty else {
         return None;
     };
-    match env.types.get(name) {
-        Some(TypeDecl::Struct(s)) => Some(&s.fields),
-        _ => None,
-    }
+    let TypeDecl::Struct(s) = env.types.get(name)? else {
+        return None;
+    };
+    Some(
+        s.fields
+            .iter()
+            .map(|f| StructField {
+                name: f.name.clone(),
+                ty: substitute_params(&f.ty, &s.type_params, args),
+                span: f.span,
+            })
+            .collect(),
+    )
 }
 
 fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
-    let Type::Custom(name, _) = ty else {
+    let Type::Custom(name, args) = ty else {
         return None;
     };
-    match env.types.get(name) {
-        Some(TypeDecl::Enum(e)) => e
-            .variants
-            .iter()
-            .find(|v| v.name == variant)
-            .map(|v| v.ty.clone()),
-        _ => None,
-    }
+    let TypeDecl::Enum(e) = env.types.get(name)? else {
+        return None;
+    };
+    let payload = e.variants.iter().find(|v| v.name == variant)?;
+    Some(substitute_params(&payload.ty, &e.type_params, args))
 }
 
 // ---------- Canonicalization ----------
@@ -383,12 +394,12 @@ fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf
                 return;
             };
             if !matches!(state, InitState::Partial(_)) {
-                *state = InitState::Partial(expand_uniform(state, fields));
+                *state = InitState::Partial(expand_uniform(state, &fields));
             }
             let field_ty = fields
-                .iter()
+                .into_iter()
                 .find(|fd| fd.name == *f)
-                .map(|fd| fd.ty.clone());
+                .map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(f) {
                     write_at(field_state, &field_ty, &path[1..], env, leaf_state);
@@ -451,12 +462,12 @@ fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env) {
                 return;
             };
             if !matches!(state, InitState::Partial(_)) {
-                *state = InitState::Partial(expand_uniform(state, fields));
+                *state = InitState::Partial(expand_uniform(state, &fields));
             }
             let field_ty = fields
-                .iter()
+                .into_iter()
                 .find(|fd| fd.name == *f)
-                .map(|fd| fd.ty.clone());
+                .map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(f) {
                     move_at(field_state, &field_ty, &path[1..], env);
@@ -501,8 +512,8 @@ fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env) -> InitSt
             }
             InitState::Partial(map) => {
                 let field_ty = struct_fields_of(ty, env)
-                    .and_then(|fs| fs.iter().find(|fd| fd.name == *f))
-                    .map(|fd| fd.ty.clone());
+                    .and_then(|fs| fs.into_iter().find(|fd| fd.name == *f))
+                    .map(|fd| fd.ty);
                 let field_state = map.get(f).cloned().unwrap_or(InitState::NeverInit);
                 match field_ty {
                     Some(ft) => read_at(&field_state, &ft, &path[1..], env),
@@ -1125,7 +1136,7 @@ impl<'a> InitStateContext<'a> {
             match step {
                 PathStep::Field(f) => {
                     let fields = struct_fields_of(&ty, self.env)?;
-                    ty = fields.iter().find(|fd| fd.name == *f)?.ty.clone();
+                    ty = fields.into_iter().find(|fd| fd.name == *f)?.ty;
                 }
                 PathStep::Downcast(v) => {
                     ty = enum_variant_payload_ty(&ty, v, self.env)?;

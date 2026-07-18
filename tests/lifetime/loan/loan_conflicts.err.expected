@@ -1,224 +1,233 @@
-error: at 389:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__fbr': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 406:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__fbr': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
- 389 |     branch(copy b) [true: t, false: fbr]
+ 406 |     branch(copy b) [true: t, false: fbr]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = note: reference declared here
      |
- 386 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
+ 403 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
      |                                         ^^^^^^^^^^^
-error: at 389:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__t': reference 'y' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 406:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__t': reference 'y' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
- 389 |     branch(copy b) [true: t, false: fbr]
+ 406 |     branch(copy b) [true: t, false: fbr]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = note: reference declared here
      |
- 386 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
+ 403 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
      |                                                      ^^^^^^^^^^^
-error: at 48:5: [LT-LoanConflict] In function 'mut_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 49:5: [LT-LoanConflict] In function 'mut_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
     |
- 48 |     x = 1;
+ 49 |     x = 1;
     |     ^^^^^
   = note: borrow of 'x' occurs here
     |
- 47 |     r = &mut x;
+ 48 |     r = &mut x;
     |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 60:5: [LT-LoanConflict] In function 'mut_blocks_read', block 'entry': cannot read 'x': already borrowed by 'r'
+error: at 61:5: [LT-LoanConflict] In function 'mut_blocks_read', block 'entry': cannot read 'x': already borrowed by 'r'
     |
- 60 |     y = copy x;
+ 61 |     y = copy x;
     |     ^^^^^^^^^^
   = note: borrow of 'x' occurs here
     |
- 59 |     r = &mut x;
+ 60 |     r = &mut x;
     |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 71:5: [LT-LoanConflict] In function 'mut_blocks_move', block 'entry': cannot move from 'x': already borrowed by 'r'
+error: at 72:5: [LT-LoanConflict] In function 'mut_blocks_move', block 'entry': cannot move from 'x': already borrowed by 'r'
     |
- 71 |     call use_num(move x);
+ 72 |     call use_num(move x);
     |     ^^^^^^^^^^^^^^^^^^^^
   = note: borrow of 'x' occurs here
     |
- 70 |     r = &mut x;
+ 71 |     r = &mut x;
     |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 83:5: [LT-LoanConflict] In function 'mut_blocks_mut_reborrow', block 'entry': cannot borrow as &mut 'x': already borrowed by 'r'
+error: at 84:5: [LT-LoanConflict] In function 'mut_blocks_mut_reborrow', block 'entry': cannot borrow as &mut 'x': already borrowed by 'r'
     |
- 83 |     s = &mut x;
+ 84 |     s = &mut x;
     |     ^^^^^^^^^^
   = note: borrow of 'x' occurs here
     |
- 82 |     r = &mut x;
+ 83 |     r = &mut x;
     |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 95:5: [LT-LoanConflict] In function 'mut_blocks_shared_reborrow', block 'entry': cannot borrow as & 'x': already borrowed by 'r'
+error: at 96:5: [LT-LoanConflict] In function 'mut_blocks_shared_reborrow', block 'entry': cannot borrow as & 'x': already borrowed by 'r'
     |
- 95 |     s = &x;
+ 96 |     s = &x;
     |     ^^^^^^
   = note: borrow of 'x' occurs here
     |
- 94 |     r = &mut x;
+ 95 |     r = &mut x;
     |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 106:5: [LT-LoanConflict] In function 'shared_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 107:5: [LT-LoanConflict] In function 'shared_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
      |
- 106 |     x = 1;
+ 107 |     x = 1;
      |     ^^^^^
   = note: borrow of 'x' occurs here
      |
- 105 |     r = &x;
+ 106 |     r = &x;
      |     ^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 117:5: [LT-LoanConflict] In function 'shared_blocks_move', block 'entry': cannot move from 'x': already borrowed by 'r'
+error: at 118:5: [LT-LoanConflict] In function 'shared_blocks_move', block 'entry': cannot move from 'x': already borrowed by 'r'
      |
- 117 |     call take(move x);
+ 118 |     call take(move x);
      |     ^^^^^^^^^^^^^^^^^
   = note: borrow of 'x' occurs here
      |
- 116 |     r = &x;
+ 117 |     r = &x;
      |     ^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 129:5: [LT-LoanConflict] In function 'shared_blocks_mut_reborrow', block 'entry': cannot borrow as &mut 'x': already borrowed by 'r'
+error: at 130:5: [LT-LoanConflict] In function 'shared_blocks_mut_reborrow', block 'entry': cannot borrow as &mut 'x': already borrowed by 'r'
      |
- 129 |     s = &mut x;
+ 130 |     s = &mut x;
      |     ^^^^^^^^^^
   = note: borrow of 'x' occurs here
      |
- 128 |     r = &x;
+ 129 |     r = &x;
      |     ^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 141:5: [LT-LoanConflict] In function 'drop_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 142:5: [LT-LoanConflict] In function 'drop_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
      |
- 141 |     x = 42;
+ 142 |     x = 42;
      |     ^^^^^^
   = note: borrow of 'x' occurs here
      |
- 140 |     r = &drop x;
+ 141 |     r = &drop x;
      |     ^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 153:5: [LT-LoanConflict] In function 'out_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 154:5: [LT-LoanConflict] In function 'out_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
      |
- 153 |     x = 42;
+ 154 |     x = 42;
      |     ^^^^^^
   = note: borrow of 'x' occurs here
      |
- 152 |     r = &out x;
+ 153 |     r = &out x;
      |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 165:5: [LT-LoanConflict] In function 'uninit_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 166:5: [LT-LoanConflict] In function 'uninit_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
      |
- 165 |     x = 42;
+ 166 |     x = 42;
      |     ^^^^^^
   = note: borrow of 'x' occurs here
      |
- 164 |     r = &uninit x;
+ 165 |     r = &uninit x;
      |     ^^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 179:5: [LT-LoanConflict] In function 'same_field_borrow_read', block 'entry': cannot read 'p.a': already borrowed by 'r'
+error: at 180:5: [LT-LoanConflict] In function 'same_field_borrow_read', block 'entry': cannot read 'p.a': already borrowed by 'r'
      |
- 179 |     y = copy p.a;
+ 180 |     y = copy p.a;
      |     ^^^^^^^^^^^^
   = note: borrow of 'p.a' occurs here
      |
- 178 |     r = &mut p.a;
+ 179 |     r = &mut p.a;
      |     ^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 194:5: [LT-LoanConflict] In function 'field_ancestor_read', block 'entry': cannot read 'o.i': already borrowed by 'r'
+error: at 195:5: [LT-LoanConflict] In function 'field_ancestor_read', block 'entry': cannot read 'o.i': already borrowed by 'r'
      |
- 194 |     y = copy o.i;
+ 195 |     y = copy o.i;
      |     ^^^^^^^^^^^^
   = note: borrow of 'o.i' occurs here
      |
- 193 |     r = &mut o.i.x;
+ 194 |     r = &mut o.i.x;
      |     ^^^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 212:5: [LT-LoanConflict] In function 'deep_ancestor_read', block 'entry': cannot read 'o.a.x': already borrowed by 'r'
+error: at 213:5: [LT-LoanConflict] In function 'deep_ancestor_read', block 'entry': cannot read 'o.a.x': already borrowed by 'r'
      |
- 212 |     y = copy o.a.x;
+ 213 |     y = copy o.a.x;
      |     ^^^^^^^^^^^^^^
   = note: borrow of 'o.a.x' occurs here
      |
- 211 |     r = &mut o.a.x.z;
+ 212 |     r = &mut o.a.x.z;
      |     ^^^^^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 226:5: [LT-LoanConflict] In function 'parent_struct_move', block 'entry': cannot move from 'p': already borrowed by 'r'
+error: at 227:5: [LT-LoanConflict] In function 'parent_struct_move', block 'entry': cannot move from 'p': already borrowed by 'r'
      |
- 226 |     call takep(move p);
+ 227 |     call takep(move p);
      |     ^^^^^^^^^^^^^^^^^^
   = note: borrow of 'p' occurs here
      |
- 225 |     r = &mut p.a;
+ 226 |     r = &mut p.a;
      |     ^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 244:5: [LT-LoanConflict] In function 'downcast_same_variant_read', block 's_arm': cannot read 'o as Some': already borrowed by 'r'
+error: at 245:5: [LT-LoanConflict] In function 'downcast_same_variant_read', block 's_arm': cannot read 'o as Some': already borrowed by 'r'
      |
- 244 |     y = copy o as Some;
+ 245 |     y = copy o as Some;
      |     ^^^^^^^^^^^^^^^^^^
   = note: borrow of 'o as Some' occurs here
      |
- 243 |     r = &mut o as Some;
+ 244 |     r = &mut o as Some;
      |     ^^^^^^^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 259:5: [LT-LoanConflict] In function 'overwrite_new_loanee_conflict', block 'entry': cannot write to 'y': already borrowed by 'r'
+error: at 260:5: [LT-LoanConflict] In function 'overwrite_new_loanee_conflict', block 'entry': cannot write to 'y': already borrowed by 'r'
      |
- 259 |     y = 42;
+ 260 |     y = 42;
      |     ^^^^^^
   = note: borrow of 'y' occurs here
      |
- 258 |     r = &mut y;
+ 259 |     r = &mut y;
      |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 272:5: [LT-LoanConflict] In function 'deref_drop_does_not_release', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 273:5: [LT-LoanConflict] In function 'deref_drop_does_not_release', block 'entry': cannot write to 'x': already borrowed by 'r'
      |
- 272 |     x = 42;
+ 273 |     x = 42;
      |     ^^^^^^
   = note: borrow of 'x' occurs here
      |
- 270 |     r = &mut x;
+ 271 |     r = &mut x;
      |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 290:5: [LT-LoanConflict] In function 'struct_move_rekeys_loan', block 'entry': cannot write to 'x': already borrowed by 'b.p'
+error: at 291:5: [LT-LoanConflict] In function 'struct_move_rekeys_loan', block 'entry': cannot write to 'x': already borrowed by 'b.p'
      |
- 290 |     x = 42;
+ 291 |     x = 42;
      |     ^^^^^^
   = note: borrow of 'x' occurs here
      |
- 287 |     a.p = &mut x;
+ 288 |     a.p = &mut x;
      |     ^^^^^^^^^^^^
   hint: the borrow of 'b.p' is active until its last use or explicit unborrow.
-error: at 304:5: [LT-LoanConflict] In function 'ref_transfer_preserves_conflict', block 'entry': cannot write to 'a': already borrowed by 's'
+error: at 305:5: [LT-LoanConflict] In function 'ref_transfer_preserves_conflict', block 'entry': cannot write to 'a': already borrowed by 's'
      |
- 304 |     a = 1;
+ 305 |     a = 1;
      |     ^^^^^
   = note: borrow of 'a' occurs here
      |
- 302 |     r = &mut a;
+ 303 |     r = &mut a;
      |     ^^^^^^^^^^
   hint: the borrow of 's' is active until its last use or explicit unborrow.
-error: at 323:5: [LT-LoanConflict] In function 'branch_write_a_at_join', block 'merge': cannot write to 'a': already borrowed by 'r'
+error: at 324:5: [LT-LoanConflict] In function 'branch_write_a_at_join', block 'merge': cannot write to 'a': already borrowed by 'r'
      |
- 323 |     a = 1;
+ 324 |     a = 1;
      |     ^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 342:5: [LT-LoanConflict] In function 'branch_write_b_at_join', block 'merge': cannot write to 'b': already borrowed by 'r'
+error: at 343:5: [LT-LoanConflict] In function 'branch_write_b_at_join', block 'merge': cannot write to 'b': already borrowed by 'r'
      |
- 342 |     b = 2;
+ 343 |     b = 2;
      |     ^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
-error: at 359:5: [LT-LoanConflict] In function 'enum_wrap_keeps_loan_active', block 'entry': cannot write to 'x': already borrowed by 'w as W'
+error: at 360:5: [LT-LoanConflict] In function 'enum_wrap_keeps_loan_active', block 'entry': cannot write to 'x': already borrowed by 'w as W'
      |
- 359 |     x = 7;
+ 360 |     x = 7;
      |     ^^^^^
   = note: borrow of 'x' occurs here
      |
- 357 |     r = &mut x;
+ 358 |     r = &mut x;
      |     ^^^^^^^^^^
   hint: the borrow of 'w as W' is active until its last use or explicit unborrow.
-error: at 374:5: [LT-LoanConflict] In function 'switch_on_borrowed_enum', block 'entry': cannot read 'e': already borrowed by 'r'
+error: at 376:5: [LT-LoanConflict] In function 'generic_struct_wraps_mut_ref', block 'entry': cannot write to 'x': already borrowed by 'b.r'
      |
- 374 |     switchEnum(e) [A: a_lbl, B: b_lbl]
+ 376 |     x = 7;
+     |     ^^^^^
+  = note: borrow of 'x' occurs here
+     |
+ 375 |     b.r = &mut x;
+     |     ^^^^^^^^^^^^
+  hint: the borrow of 'b.r' is active until its last use or explicit unborrow.
+error: at 391:5: [LT-LoanConflict] In function 'switch_on_borrowed_enum', block 'entry': cannot read 'e': already borrowed by 'r'
+     |
+ 391 |     switchEnum(e) [A: a_lbl, B: b_lbl]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = note: borrow of 'e' occurs here
      |
- 373 |     r = &mut e;
+ 390 |     r = &mut e;
      |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.

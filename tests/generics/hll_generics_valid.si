@@ -68,6 +68,52 @@ fn nested_container(b: Box<Option<i64>>) -> i64 {
   }
 }
 
+# Nested constructor in tail position: the inner `Box { inner: x }`
+# and `Option::Some(...)` must lower into sret slots without a temp.
+# Regression guard for an init-state pass that used to see fields of a
+# generic struct without substituting T — deep projections (`.inner.inner`)
+# then failed to fold Partial back to Init at the outer `$return`.
+fn make_box_of_box(x: i64) -> Box<Box<i64>> {
+  Box { inner: Box { inner: x } }
+}
+
+fn make_box_of_option(x: i64) -> Box<Option<i64>> {
+  Box { inner: Option::Some(x) }
+}
+
+fn make_option_of_box(x: i64) -> Option<Box<i64>> {
+  Option::Some(Box { inner: x })
+}
+
+# Nested-field READ through two levels of generic projection: `b.inner.inner`
+# must type as `i64` at each hop. Regression guard for the same
+# init_state / type_of_place field-substitution issue in the opposite
+# direction (reads instead of writes).
+fn read_nested_field(b: Box<Box<i64>>) -> i64 {
+  b.inner.inner
+}
+
+# Write into pointee via a two-level generic projection: `r.*.inner.inner`.
+# Exercises the `apply_pointee_write` path where each `Field` step must
+# substitute the outer args to find the sub-field's concrete type.
+fn write_nested_pointee(r: &out Box<Box<i64>>, x: i64) {
+  r.*.inner.inner = x;
+}
+
+# Partial-move of a generic struct where the still-Init field's type
+# is a substituted `Param(T)`. Drop-elab must plan `drop p.b` at
+# return: `T := DropCell` is Drop, but the raw field type is `T` and
+# without substitution `class_of(Param(T))` sees empty markers under
+# an empty scope and silently skips the drop. This then trips
+# `SUB-ReturnValueLeak`.
+struct DropCell: Drop + Move { v: i64 }
+struct<T: Drop + Move> DropPair: Drop + Move { a: T, b: T }
+
+fn partial_move_generic_drop() -> DropCell {
+  let p = DropPair { a: DropCell { v: 1 }, b: DropCell { v: 2 } };
+  p.a
+}
+
 # ---------- Generic fn call: T inferred from argument ----------
 
 # Each call site to `identity` freshens `T` into a new inference var,
