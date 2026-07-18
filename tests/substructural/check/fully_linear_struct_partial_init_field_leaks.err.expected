@@ -1,5 +1,0 @@
-error: at 8:13: [SUB-ReturnValueLeak] In function 'f', block 'entry': value 'src.b' of type L is not consumed at return
-   |
- 8 |             return
-   |             ^^^^^^
-  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

@@ -1,0 +1,42 @@
+# Env::build accepts programs whose declarations occupy distinct
+# namespace slots.
+#
+# The type namespace and the function namespace are disjoint: a struct
+# and a function may share the same identifier without conflict.
+# Within the type namespace, struct and enum names must be unique.
+# Within the function namespace, fn names must be unique.
+#
+# Cells under test:
+#
+#   cell                                    what is checked
+#   ──────────────────────────────────────  ──────────────────────────────────
+#   mixed_distinct_names                    struct + enum + fn + extern fn,
+#                                           all unique identifiers → no error
+#   struct_and_fn_same_name_coexist         struct T and fn T live in separate
+#                                           namespaces → no clash
+
+# ---------- mixed_distinct_names ----------
+
+# Distinct names in both namespaces; the program elaborates cleanly.
+fn mixed_distinct_names() {
+  entry:
+    return
+}
+
+struct Point { x: i64  y: i64 }
+
+enum Color: Copy + Drop { Red: unit  Green: unit  Blue: unit }
+
+extern fn sink(n: i64);
+
+# ---------- struct_and_fn_same_name_coexist ----------
+
+# The identifier T names a struct in the type namespace and a function
+# in the function namespace; Env::build keeps these tables separate and
+# raises no diagnostic.
+struct T { v: i64 }
+
+fn T() {
+  entry:
+    return
+}

@@ -1,9 +1,0 @@
-
-        fn f() {
-            x: i64;
-            entry:
-            x = 42;
-            call copy x();
-            return
-        }
-        

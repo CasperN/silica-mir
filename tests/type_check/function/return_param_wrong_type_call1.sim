@@ -1,1 +1,0 @@
-fn f(x: i64, $return: &mut i64) { entry: return }

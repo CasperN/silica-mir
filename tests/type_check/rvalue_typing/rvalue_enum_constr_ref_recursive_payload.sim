@@ -1,9 +1,0 @@
-
-        enum List: Copy + Drop { Nil: unit Cons: &List }
-        fn f(l: &List) {
-            r: List;
-            entry:
-            r = List::Cons(copy l);
-            return
-        }
-        

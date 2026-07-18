@@ -1,0 +1,108 @@
+# Operand kinds accepted by the type-checker.
+#
+# An operand may be a copy of a place, a move of a place, or a constant.
+# Constants subdivide by literal form: integer, bool, unit, and a
+# function-name reference (resolved from defined or extern functions).
+# Each function below covers one cell of the (operand kind x subvariant)
+# matrix and expects a clean elaboration run.
+#
+#   fn                          operand kind      subvariant
+#   copy_place                  copy place        scalar Copy param
+#   move_place                  move place        scalar param
+#   const_int                   const             integer literal
+#   const_bool                  const             bool literal
+#   const_unit                  const             unit literal
+#   const_fnname_defined        const             name of a defined fn
+#   const_fnname_extern         const             name of an extern fn
+#   const_unit_as_enum_payload  const             unit literal in enum constructor
+
+enum Tag: Copy + Drop { A: unit  B: i64 }
+
+fn callee(x: i64) { entry: return }
+
+extern fn extern_callee(x: i64);
+
+# ---------- copy place ----------
+
+# A Copy param is Init at function entry; reading it via copy operand
+# requires no preceding write and leaves the original in place.
+fn copy_place(x: i64) {
+  y: i64;
+  entry:
+    y = copy x;
+    return
+}
+
+# ---------- move place ----------
+
+# Moving a param transfers its value into the destination; the source
+# becomes Moved and elaboration inserts a drop for the destination.
+fn move_place(x: i64) {
+  y: i64;
+  entry:
+    y = move x;
+    return
+}
+
+# ---------- const: integer literal ----------
+
+# An unsuffixed integer literal is typed as i64 and satisfies an i64 lhs.
+fn const_int() {
+  x: i64;
+  entry:
+    x = 42;
+    return
+}
+
+# ---------- const: bool literal ----------
+
+# A bool literal `true` or `false` resolves to type bool.
+fn const_bool() {
+  b: bool;
+  entry:
+    b = true;
+    return
+}
+
+# ---------- const: unit literal ----------
+
+# The unit literal `unit` has type unit; assigning it to a unit local
+# succeeds without a type mismatch.
+fn const_unit() {
+  u: unit;
+  entry:
+    u = unit;
+    return
+}
+
+# ---------- const: function name (defined fn) ----------
+
+# A function name used as an operand resolves to its fn-pointer type.
+# The resolved type fn(i64) matches the declared type of `g`.
+fn const_fnname_defined() {
+  g: fn(i64);
+  entry:
+    g = callee;
+    return
+}
+
+# ---------- const: function name (extern fn) ----------
+
+# An extern-declared function name is also a valid fn-pointer operand.
+fn const_fnname_extern() {
+  g: fn(i64);
+  entry:
+    g = extern_callee;
+    return
+}
+
+# ---------- const: unit literal as enum constructor payload ----------
+
+# The unit-payload variant A accepts `unit` as its constructor argument.
+# The resulting value has type Tag, matching the lhs.
+fn const_unit_as_enum_payload() {
+  t: Tag;
+  entry:
+    t = Tag::A(unit);
+    return
+}

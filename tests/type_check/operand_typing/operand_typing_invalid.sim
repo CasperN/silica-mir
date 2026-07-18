@@ -1,0 +1,30 @@
+# Operand-typing violations rejected by the type-checker.
+#
+# Each function exercises one cell of the (operand kind x failure mode)
+# matrix and fires exactly one TC-* diagnostic.
+#
+#   fn                    operand kind    failure mode          DiagCode
+#   unit_to_int           const unit      type mismatch lhs     TC-AssignmentTypeMismatch
+#   undeclared_fnname     const fnName    name not declared      TC-UndeclaredFunction
+
+# ---------- unit literal assigned to an integer target ----------
+
+# `unit` has type unit; the lhs expects i64. The type-checker fires
+# TC-AssignmentTypeMismatch naming the exact mismatch.
+fn unit_to_int() {
+  n: i64;
+  entry:
+    n = unit;
+    return
+}
+
+# ---------- undeclared function name used as fn-pointer operand ----------
+
+# `missing` does not appear in any fn or extern fn declaration. The
+# type-checker fires TC-UndeclaredFunction naming the absent identifier.
+fn undeclared_fnname() {
+  g: fn(i64);
+  entry:
+    g = missing;
+    return
+}

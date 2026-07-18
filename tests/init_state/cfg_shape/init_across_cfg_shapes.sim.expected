@@ -1,0 +1,153 @@
+extern fn noop();
+
+extern fn sink(r: &mut i64);
+
+extern fn use_num(n: i64);
+
+fn branch_both_init(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    x = 2;
+    goto merge
+  merge:
+    y = copy x;
+    drop y;
+    drop x;
+    drop b;
+    return
+}
+
+fn branch_aborting_predecessor(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    abort
+  merge:
+    y = copy x;
+    drop y;
+    drop x;
+    drop b;
+    return
+}
+
+fn loop_backedge_agrees(b: bool) {
+  x: i64;
+  entry:
+    x = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    drop x;
+    x = 1;
+    goto head
+  done:
+    drop x;
+    drop b;
+    return
+}
+
+fn zero_iteration_loop(b: bool, x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    goto head
+  done:
+    call sink(move r);
+    drop x;
+    drop b;
+    return
+}
+
+fn sequential_loops(b: bool) {
+  entry:
+    goto head1
+  head1:
+    branch(copy b) [true: body1, false: done1]
+  body1:
+    call noop();
+    goto head1
+  done1:
+    goto head2
+  head2:
+    branch(copy b) [true: body2, false: done2]
+  body2:
+    call noop();
+    goto head2
+  done2:
+    drop b;
+    return
+}
+
+fn nested_loops(a: bool, b: bool) {
+  entry:
+    goto outer_head
+  outer_head:
+    branch(copy a) [true: inner_head, false: outer_done]
+  inner_head:
+    branch(copy b) [true: inner_body, false: outer_back]
+  inner_body:
+    call noop();
+    goto inner_head
+  outer_back:
+    goto outer_head
+  outer_done:
+    drop b;
+    drop a;
+    return
+}
+
+fn irreducible_cfg(a: bool, b: bool) {
+  entry:
+    branch(copy a) [true: l, false: m]
+  l:
+    call noop();
+    branch(copy b) [true: m, false: exit]
+  m:
+    call noop();
+    branch(copy a) [true: l, false: exit]
+  exit:
+    drop b;
+    drop a;
+    return
+}
+
+fn move_reinit_move_cycle(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    x = 1;
+    z = move x;
+    call use_num(move y);
+    call use_num(move z);
+    return
+}
+
+fn mut_ref_writeback_cycle(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = move r.*;
+    r.* = 42;
+    call use_num(move y);
+    call sink(move r);
+    drop x;
+    return
+}

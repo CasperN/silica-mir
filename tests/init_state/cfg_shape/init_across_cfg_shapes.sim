@@ -1,0 +1,194 @@
+# Init-state dataflow converges cleanly across every CFG shape.
+#
+# The forward dataflow over locals must reach a fixpoint whether the
+# CFG is a plain diamond, a natural loop, nested loops, sequential
+# loops, or an irreducible flow with two entry points. Cycles that
+# pass a local through Init -> Moved -> Init transitions must round-
+# trip without polluting the join, and per-pointee state through
+# `&mut` must survive move-out + write-back.
+#
+# Every function exercises one cell of the (CFG shape x init-state
+# phenomenon) matrix. A regression pins the wrong shape or the wrong
+# phenomenon.
+#
+#   fn                                   shape                       phenomenon
+#   branch_both_init                     branch/merge                both preds agree Init at join
+#   branch_aborting_predecessor          branch/merge (abort sib)    only the returning arm feeds join
+#   loop_backedge_agrees                 natural loop                backedge matches header on Init
+#   zero_iteration_loop                  natural loop (may skip)     state at loop-exit still usable when body ran 0 times
+#   sequential_loops                     two loops in series         state between loops resets cleanly
+#   nested_loops                         loop inside loop            nested fixpoint converges
+#   irreducible_cfg                      two entry-point cycle       fixpoint converges without a single header
+#   move_reinit_move_cycle               straight-line               Init -> Moved -> Init -> Moved cycle on a local
+#   mut_ref_writeback_cycle              straight-line via *r        (cur, post) cycle through a pointee
+
+extern fn noop();
+extern fn sink(r: &mut i64);
+extern fn use_num(n: i64);
+
+# ---------- branch/merge: both predecessors init the local ----------
+
+fn branch_both_init(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    x = 2;
+    goto merge
+  merge:
+    y = copy x;
+    return
+}
+
+# ---------- branch/merge: one predecessor aborts, only the other feeds the join ----------
+
+# The abort arm has no successors so it never contributes to the
+# merge; the state at `merge` reflects only the returning arm's
+# writes, and `x` is Init there.
+fn branch_aborting_predecessor(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    abort
+  merge:
+    y = copy x;
+    return
+}
+
+# ---------- natural loop: backedge state matches header state ----------
+
+# `x` is Init before the loop head; each iteration reinitializes it.
+# Header join sees Init from entry and Init from the backedge, so the
+# fixpoint is Init after one round.
+fn loop_backedge_agrees(b: bool) {
+  x: i64;
+  entry:
+    x = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    x = 1;
+    goto head
+  done:
+    return
+}
+
+# ---------- natural loop: body may execute zero times ----------
+
+# The borrow of `x` is created before the loop and consumed after.
+# On the zero-iteration path the loan is carried unchanged through
+# head -> done and still consumed at `done`.
+fn zero_iteration_loop(b: bool, x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    goto head
+  done:
+    call sink(move r);
+    return
+}
+
+# ---------- two loops in series: state resets between them ----------
+
+fn sequential_loops(b: bool) {
+  entry:
+    goto head1
+  head1:
+    branch(copy b) [true: body1, false: done1]
+  body1:
+    call noop();
+    goto head1
+  done1:
+    goto head2
+  head2:
+    branch(copy b) [true: body2, false: done2]
+  body2:
+    call noop();
+    goto head2
+  done2:
+    return
+}
+
+# ---------- nested loops: inner fixpoint composes with outer fixpoint ----------
+
+fn nested_loops(a: bool, b: bool) {
+  entry:
+    goto outer_head
+  outer_head:
+    branch(copy a) [true: inner_head, false: outer_done]
+  inner_head:
+    branch(copy b) [true: inner_body, false: outer_back]
+  inner_body:
+    call noop();
+    goto inner_head
+  outer_back:
+    goto outer_head
+  outer_done:
+    return
+}
+
+# ---------- irreducible CFG: two entry points into a cycle ----------
+
+# Both `l` and `m` are reached from `entry` and from each other, so
+# there is no single loop header. The dataflow fixpoint still
+# converges.
+fn irreducible_cfg(a: bool, b: bool) {
+  entry:
+    branch(copy a) [true: l, false: m]
+  l:
+    call noop();
+    branch(copy b) [true: m, false: exit]
+  m:
+    call noop();
+    branch(copy a) [true: l, false: exit]
+  exit:
+    return
+}
+
+# ---------- straight-line: Init -> Moved -> Init -> Moved cycle on a local ----------
+
+# The tracker must round-trip `x` cleanly: move out, reassign back to
+# Init, move out again. Each transition is legal and the final state
+# is Moved.
+fn move_reinit_move_cycle(x: i64) {
+  y: i64;
+  z: i64;
+  entry:
+    y = move x;
+    x = 1;
+    z = move x;
+    call use_num(move y);
+    call use_num(move z);
+    return
+}
+
+# ---------- straight-line via `*r`: (cur, post) cycle on the pointee ----------
+
+# Moving out through `&mut` leaves the pointee Moved; writing back
+# through the same reference restores it to Init, discharging the
+# `&mut` obligation at consume.
+fn mut_ref_writeback_cycle(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = move r.*;
+    r.* = 42;
+    call use_num(move y);
+    call sink(move r);
+    return
+}

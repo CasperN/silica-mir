@@ -1,8 +1,0 @@
-
-        fn f(r: &mut i64) {
-            s: &mut i64;
-            entry:
-            s = copy r;
-            return
-        }
-        

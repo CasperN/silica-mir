@@ -1,7 +1,0 @@
-extern fn add(a: i64, b: i64);
-
-fn f() {
-  entry:
-    call add(1, 2);
-    return
-}

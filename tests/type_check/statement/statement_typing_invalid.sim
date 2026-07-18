@@ -1,0 +1,134 @@
+# Statement-typing violations rejected by the type-checker.
+#
+# Each function exercises one cell of the (statement kind x failure mode)
+# matrix and fires exactly one TC-* diagnostic. Types and extern functions
+# are declared once at the top and shared across all cells.
+#
+#   fn                       statement kind   failure mode                 DiagCode
+#   ──────────────────────── ──────────────── ──────────────────────────── ──────────────────────────
+#   assign_type_mismatch     assign           scalar type mismatch         TC-AssignmentTypeMismatch
+#   assign_field_mismatch    assign           struct field type mismatch   TC-AssignmentTypeMismatch
+#   assign_fn_arity_mismatch assign           fn-pointer arity mismatch    TC-AssignmentTypeMismatch
+#   assign_ref_kind_mismatch assign           ref-kind mismatch            TC-AssignmentTypeMismatch
+#   call_non_function_target call             callee is not fn type        TC-CallTargetNotFunction
+#   call_wrong_arity         call             too few arguments            TC-CallWrongArity
+#   call_wrong_arg_type      call             arg type mismatch (scalar)   TC-CallArgTypeMismatch
+#   call_ref_kind_mismatch   call             arg ref-kind mismatch        TC-CallArgTypeMismatch
+#   drop_undeclared_var      drop             variable not declared        TC-UndeclaredVariable
+#   unborrow_non_reference   unborrow         place is not a reference     TC-UnborrowNonReference
+
+struct S { f: i64 }
+
+extern fn takes_num(a: i64);
+extern fn takes_drop_ref(r: &drop i64);
+extern fn add(a: i64, b: i64);
+fn callee(x: i64) { entry: return }
+
+# ---------- assign_type_mismatch ----------
+
+# Assigning a bool literal to an i64 local is a scalar type mismatch; the
+# type-checker fires TC-AssignmentTypeMismatch naming both sides.
+fn assign_type_mismatch() {
+  x: i64;
+  entry:
+    x = true;
+    return
+}
+
+# ---------- assign_field_mismatch ----------
+
+# The field S.f has type i64; assigning a bool rvalue to it is a type
+# mismatch on the field projection lhs.
+fn assign_field_mismatch(s: S) {
+  entry:
+    s.f = true;
+    return
+}
+
+# ---------- assign_fn_arity_mismatch ----------
+
+# The local g is declared as fn(i64, i64), but `callee` has type fn(i64).
+# The type-checker rejects the assignment because the fn types disagree.
+fn assign_fn_arity_mismatch() {
+  g: fn(i64, i64);
+  entry:
+    g = callee;
+    return
+}
+
+# ---------- assign_ref_kind_mismatch ----------
+
+# The local r is declared as &mut i64, but `&y` produces a shared &i64.
+# Ref kinds form separate types; the type-checker fires a mismatch.
+fn assign_ref_kind_mismatch(y: i64) {
+  r: &mut i64;
+  entry:
+    r = &y;
+    return
+}
+
+# ---------- call_non_function_target ----------
+
+# The operand `copy x` resolves to type i64, not a fn type; calling it is
+# rejected with TC-CallTargetNotFunction.
+fn call_non_function_target() {
+  x: i64;
+  entry:
+    x = 42;
+    call copy x();
+    return
+}
+
+# ---------- call_wrong_arity ----------
+
+# `add` requires two i64 arguments; the call site provides only one.
+# The type-checker fires TC-CallWrongArity with the expected and actual counts.
+fn call_wrong_arity() {
+  entry:
+    call add(1);
+    return
+}
+
+# ---------- call_wrong_arg_type ----------
+
+# `takes_num` expects an i64 argument; passing `true` (bool) is a type
+# mismatch on argument 0.
+fn call_wrong_arg_type() {
+  entry:
+    call takes_num(true);
+    return
+}
+
+# ---------- call_ref_kind_mismatch ----------
+
+# `takes_drop_ref` expects &drop i64; the call passes &mut i64. Ref kinds
+# are not interchangeable, so the type-checker fires TC-CallArgTypeMismatch.
+fn call_ref_kind_mismatch(y: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut y;
+    call takes_drop_ref(move r);
+    return
+}
+
+# ---------- drop_undeclared_var ----------
+
+# Dropping a variable that was never declared fires TC-UndeclaredVariable.
+# The drop's place resolution fails before any drop-type check runs.
+fn drop_undeclared_var() {
+  entry:
+    drop x;
+    return
+}
+
+# ---------- unborrow_non_reference ----------
+
+# `unborrow` requires a reference-typed place; applying it to an i64 local
+# fires TC-UnborrowNonReference.
+fn unborrow_non_reference() {
+  x: i64;
+  entry:
+    x = 0;
+    unborrow x;
+    return
+}

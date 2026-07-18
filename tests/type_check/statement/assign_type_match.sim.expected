@@ -1,7 +1,0 @@
-fn f() {
-  x: i64;
-  entry:
-    x = 42;
-    drop x;
-    return
-}

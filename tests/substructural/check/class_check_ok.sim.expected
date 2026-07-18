@@ -1,0 +1,111 @@
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+struct L: Move {
+  r: &out i64
+}
+
+struct D: Drop {
+  x: i64
+}
+
+enum Wrap: Copy + Drop {
+  W: i64
+}
+
+extern fn take_num(x: i64);
+
+extern fn take_point(p: P);
+
+extern fn take_mut(r: &mut i64);
+
+extern fn take_out(r: &out i64);
+
+fn copy_number_as_rvalue(x: i64) {
+  y: i64;
+  entry:
+    y = copy x;
+    drop y;
+    drop x;
+    return
+}
+
+fn copy_copy_struct_as_rvalue(p: P) {
+  q: P;
+  entry:
+    q = copy p;
+    drop q;
+    drop p;
+    return
+}
+
+fn copy_shared_ref_as_rvalue(r: & i64) {
+  s: & i64;
+  entry:
+    s = copy r;
+    unborrow r;
+    unborrow s;
+    return
+}
+
+fn copy_number_as_call_arg(x: i64) {
+  entry:
+    call take_num(copy x);
+    drop x;
+    return
+}
+
+fn copy_number_as_enum_payload(x: i64) {
+  w: Wrap;
+  entry:
+    w = Wrap::W(copy x);
+    drop w;
+    drop x;
+    return
+}
+
+fn move_copy_drop_struct_via_call(p: P) {
+  entry:
+    call take_point(move p);
+    return
+}
+
+fn move_move_marker_struct_rvalue(x: L) {
+  y: L;
+  entry:
+    y = move x;
+    call take_out(move y.r);
+    return
+}
+
+fn move_mut_ref_via_call(r: &mut i64) {
+  entry:
+    call take_mut(move r);
+    return
+}
+
+fn move_out_ref_via_call(r: &out i64) {
+  entry:
+    call take_out(move r);
+    return
+}
+
+fn drop_drop_struct(d: D) {
+  entry:
+    drop d;
+    return
+}
+
+fn drop_mut_ref(r: &mut i64) {
+  entry:
+    drop r;
+    return
+}
+
+fn drop_shared_ref(r: & i64) {
+  entry:
+    drop r;
+    return
+}

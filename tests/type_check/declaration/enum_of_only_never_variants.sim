@@ -1,3 +1,0 @@
-
-        enum Uninhabited: Copy + Drop { A: never B: never }
-        

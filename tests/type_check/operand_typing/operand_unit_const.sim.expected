@@ -1,7 +1,0 @@
-fn f() {
-  u: unit;
-  entry:
-    u = unit;
-    drop u;
-    return
-}

@@ -1,0 +1,77 @@
+enum Tag: Copy + Drop {
+  A: unit
+  B: i64
+}
+
+fn callee(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+extern fn extern_callee(x: i64);
+
+fn copy_place(x: i64) {
+  y: i64;
+  entry:
+    y = copy x;
+    drop y;
+    drop x;
+    return
+}
+
+fn move_place(x: i64) {
+  y: i64;
+  entry:
+    y = move x;
+    drop y;
+    return
+}
+
+fn const_int() {
+  x: i64;
+  entry:
+    x = 42;
+    drop x;
+    return
+}
+
+fn const_bool() {
+  b: bool;
+  entry:
+    b = true;
+    drop b;
+    return
+}
+
+fn const_unit() {
+  u: unit;
+  entry:
+    u = unit;
+    drop u;
+    return
+}
+
+fn const_fnname_defined() {
+  g: fn(i64);
+  entry:
+    g = callee;
+    drop g;
+    return
+}
+
+fn const_fnname_extern() {
+  g: fn(i64);
+  entry:
+    g = extern_callee;
+    drop g;
+    return
+}
+
+fn const_unit_as_enum_payload() {
+  t: Tag;
+  entry:
+    t = Tag::A(unit);
+    drop t;
+    return
+}

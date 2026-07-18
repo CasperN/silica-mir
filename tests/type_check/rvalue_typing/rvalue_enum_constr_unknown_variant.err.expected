@@ -1,4 +1,0 @@
-error: at 6:13: [TC-NoSuchVariant] In function 'f', block 'entry': Enum 'Option' has no variant 'Wat'
-   |
- 6 |             o = Option::Wat(42);
-   |             ^^^^^^^^^^^^^^^^^^^

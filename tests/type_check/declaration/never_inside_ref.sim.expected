@@ -1,5 +1,0 @@
-fn f(r: & never) {
-  entry:
-    unborrow r;
-    return
-}

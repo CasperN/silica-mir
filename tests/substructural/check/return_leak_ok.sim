@@ -1,0 +1,110 @@
+# Return-leak check accepts functions that consume every non-Drop
+# value before return.
+#
+# At every `return`, any place still Init whose type is non-Drop is a
+# leak. Drop-typed places are handled by the drop elaborator — it
+# inserts `drop place` just before the return so the check sees them
+# as Moved. Non-Drop places must be moved or explicitly dropped by
+# the function body.
+#
+# Each fn below covers one cell of the (value class x consumption
+# path) matrix. A regression means the leak check is too strict or
+# drop elaboration is missing a case.
+#
+#   fn                                  value class          consumption path
+#   scalar_param_untouched              Drop scalar          drop-elab at return
+#   scalar_param_moved_out              Drop scalar          moved via call arg
+#   linear_ref_param_moved_out          &out (Move linear)   moved via call arg
+#   linear_struct_moved_whole           Move-linear struct   whole-value move rvalue
+#   linear_struct_moved_via_call        Move-linear struct   moved via call arg
+#   linear_struct_partial_init_dropped  Linear struct        one field init, then dropped
+#   linear_struct_all_fields_dropped    Linear struct        every field init, every field dropped
+#   linear_struct_one_field_init_drop   Linear struct        one field init, drop-elab handles it
+
+struct P { x: i64  y: i64 }
+
+struct MoveP: Move { x: i64  y: i64 }
+
+struct L: Move { r: &out i64 }
+
+extern fn take_num(a: i64);
+extern fn take_move_p(p: MoveP);
+extern fn take_linear(x: L);
+extern fn take_out(r: &out i64);
+
+# ---------- Drop scalar: untouched param — drop-elab handles it ----------
+
+# `x: i64` is Drop, so the drop elaborator inserts `drop x` before the
+# return and the leak check sees Moved.
+fn scalar_param_untouched(x: i64) {
+  entry:
+    return
+}
+
+# ---------- Drop scalar: moved out via call arg ----------
+
+fn scalar_param_moved_out(x: i64) {
+  entry:
+    call take_num(move x);
+    return
+}
+
+# ---------- &out ref (Move linear): moved out via call arg ----------
+
+# `&out i64` is Move but not Drop; the body must explicitly consume it.
+fn linear_ref_param_moved_out(r: &out i64) {
+  entry:
+    call take_out(move r);
+    return
+}
+
+# ---------- Move-linear struct: whole-value move ----------
+
+fn linear_struct_moved_whole(p: MoveP) {
+  entry:
+    call take_move_p(move p);
+    return
+}
+
+# ---------- Move-linear struct: moved via call arg ----------
+
+fn linear_struct_moved_via_call(x: L) {
+  entry:
+    call take_linear(move x);
+    return
+}
+
+# ---------- Linear struct (no Move): partial init, remaining field dropped ----------
+
+# `p.x` is initialized, `p.y` is never touched. `drop p.x` consumes the
+# only Init leaf, leaving the whole struct Uninit at return.
+fn linear_struct_partial_init_dropped() {
+  p: P;
+  entry:
+    p.x = 1;
+    drop p.x;
+    return
+}
+
+# ---------- Linear struct (no Move): all fields init, all dropped ----------
+
+fn linear_struct_all_fields_dropped() {
+  p: P;
+  entry:
+    p.x = 1;
+    p.y = 2;
+    drop p.x;
+    drop p.y;
+    return
+}
+
+# ---------- Linear struct (no Move): one field init, drop-elab handles the rest ----------
+
+# The struct itself has no Drop marker, but each i64 field is Drop; the
+# drop elaborator emits `drop p.x` at return so the leak check passes.
+fn linear_struct_one_field_init_drop() {
+  p: P;
+  entry:
+    p.x = 1;
+    return
+}

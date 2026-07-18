@@ -926,6 +926,20 @@ Order of operations:
   `tests/init_state/borrow_precondition/{borrow_precondition_met,
   borrow_precondition_violated}.sim` — the `&out` / `&uninit`
   matrix cells all require declaring an uninit-state place.
+  Also blocks the HLL siblings of
+  `tests/substructural/check/{class_check_ok,class_check_violations,
+  return_leak_ok,return_leak_violations}.sim` — every fn declares
+  an uninit destination local (for the `= copy/move` rvalue) or an
+  uninit aggregate for field-by-field init, neither of which is
+  spellable today.
+  Separately: `tests/init_state/cfg_shape/{init_across_cfg_shapes,
+  init_across_cfg_shapes_violations,borrow_across_cfg_shapes,
+  borrow_across_cfg_shapes_violations}.sim` have no HLL siblings
+  for a different reason — the HLL has no surface for `abort` /
+  `unreachable` terminators, hand-crafted CFG shape (custom
+  block labels, irreducible flow, join topology), or downcast-
+  projection borrows. Every fn in those files exercises a CFG
+  shape the HLL lowering doesn't produce.
 
 ## Elaboration + drop
 - **Extend downcast-target reassignment to non-operand rvalues.**

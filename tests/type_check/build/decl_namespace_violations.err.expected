@@ -1,0 +1,24 @@
+error: at 23:8: [TC-DuplicateDeclaration] Duplicate declaration of type 'P'
+    |
+ 23 | struct P { y: i64 }
+    |        ^
+error: at 27:6: [TC-DuplicateDeclaration] Duplicate declaration of type 'E'
+    |
+ 27 | enum E { B: i64 }
+    |      ^
+error: at 32:4: [TC-DuplicateDeclaration] Duplicate declaration of function 'f'
+    |
+ 32 | fn f() { entry: return }
+    |    ^
+error: at 37:6: [TC-DuplicateDeclaration] Duplicate declaration of type 'N'
+    |
+ 37 | enum N { A: i64 }
+    |      ^
+error: at 43:3: [TC-DuplicateStructField] In struct 'S', field 'x' is declared more than once
+    |
+ 43 |   x: bool
+    |   ^^^^^^^
+error: at 50:3: [TC-DuplicateEnumVariant] In enum 'V', variant 'A' is declared more than once
+    |
+ 50 |   A: i64
+    |   ^^^^^^

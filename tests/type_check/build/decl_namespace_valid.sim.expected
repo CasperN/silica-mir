@@ -1,0 +1,26 @@
+fn mixed_distinct_names() {
+  entry:
+    return
+}
+
+struct Point {
+  x: i64
+  y: i64
+}
+
+enum Color: Copy + Drop {
+  Red: unit
+  Green: unit
+  Blue: unit
+}
+
+extern fn sink(n: i64);
+
+struct T {
+  v: i64
+}
+
+fn T() {
+  entry:
+    return
+}

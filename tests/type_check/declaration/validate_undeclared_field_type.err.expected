@@ -1,4 +1,0 @@
-error: at 1:12: [TC-InvalidDeclaredType] In struct 'S', field 'x': Use of undeclared type 'Nope'
-   |
- 1 | struct S { x: Nope }
-   |            ^^^^^^^

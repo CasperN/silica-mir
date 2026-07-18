@@ -1,0 +1,98 @@
+struct Inner: Copy + Drop {
+  v: i64
+}
+
+enum Tag: Copy + Drop {
+  A: unit
+  B: i64
+}
+
+struct StructFieldKnownType {
+  x: i64
+  y: Inner
+}
+
+fn struct_field_known_type() {
+  entry:
+    return
+}
+
+struct StructFieldNever {
+  x: never
+}
+
+fn struct_field_never() {
+  entry:
+    return
+}
+
+struct NeverAllMarkers: Copy + Drop {
+  x: never
+}
+
+fn struct_never_field_all_markers() {
+  entry:
+    return
+}
+
+struct CopyNeverAndScalar: Copy + Drop {
+  x: i64
+  y: never
+}
+
+extern fn take_copy_never(a: CopyNeverAndScalar);
+
+fn struct_copy_never_and_scalar(a: CopyNeverAndScalar) {
+  b: CopyNeverAndScalar;
+  entry:
+    b = copy a;
+    unreachable
+}
+
+enum EnumVariantKnownType: Copy + Drop {
+  P: Inner
+  T: Tag
+}
+
+fn enum_variant_known_type() {
+  entry:
+    return
+}
+
+enum EnumVariantNever: Copy + Drop {
+  A: never
+  B: never
+}
+
+fn enum_variant_never() {
+  entry:
+    return
+}
+
+fn fn_param_never(x: never) {
+  entry:
+    unreachable
+}
+
+fn fn_param_shared_ref_never(r: & never) {
+  entry:
+    unborrow r;
+    return
+}
+
+fn fn_param_out_ref_never(r: &out never) {
+  entry:
+    abort
+}
+
+fn fn_local_never() {
+  x: never;
+  entry:
+    return
+}
+
+fn fn_local_all_never_enum() {
+  e: EnumVariantNever;
+  entry:
+    return
+}

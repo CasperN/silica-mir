@@ -1,3 +1,0 @@
-struct Void: Copy + Drop {
-  x: never
-}

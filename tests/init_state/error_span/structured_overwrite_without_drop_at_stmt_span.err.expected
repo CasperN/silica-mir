@@ -1,4 +1,0 @@
-error: at 8:17: [INIT-OverwriteWithoutDrop] In function 'f', block 'entry': cannot overwrite 'y': type A is not Drop and the value is still live (consume it via `drop y` first)
-   |
- 8 |                 y = move a2;
-   |                 ^^^^^^^^^^^

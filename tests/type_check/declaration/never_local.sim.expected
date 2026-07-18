@@ -1,5 +1,0 @@
-fn f() {
-  x: never;
-  entry:
-    return
-}

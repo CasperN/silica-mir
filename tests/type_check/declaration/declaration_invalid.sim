@@ -1,0 +1,56 @@
+# Type-checker rejects declarations that name a type which is not in scope.
+#
+# Every struct field, enum variant payload, function parameter, and function
+# local is validated against the declared type namespace. Referencing an
+# identifier that resolves to nothing fires TC-InvalidDeclaredType. The
+# diagnostic spans the entire slot (field, variant, parameter, or local
+# declaration) and names the unknown identifier in its message.
+#
+# Each item below covers one cell of the (decl kind x slot x type shape)
+# matrix. Each cell fires exactly one TC-InvalidDeclaredType diagnostic.
+#
+#   item / fn                      decl kind  slot     type shape           DiagCode
+#   ───────────────────────────────  ─────────  ───────  ───────────────────  ─────────────────────────
+#   struct_field_undeclared          struct     field    bare unknown name     TC-InvalidDeclaredType
+#   enum_variant_undeclared          enum       variant  bare unknown name     TC-InvalidDeclaredType
+#   fn_param_undeclared              fn         param    bare unknown name     TC-InvalidDeclaredType
+#   fn_param_undeclared_inside_ref   fn         param    &mut unknown          TC-InvalidDeclaredType
+#   fn_param_undeclared_inside_fn    fn         param    fn(unknown)           TC-InvalidDeclaredType
+#   fn_local_undeclared              fn         local    bare unknown name     TC-InvalidDeclaredType
+
+# ---------- struct field: undeclared type ----------
+
+# A struct field whose type names an identifier not present in the type
+# namespace fires TC-InvalidDeclaredType naming the absent type.
+struct StructFieldUndeclared { x: Nope }
+
+# ---------- enum variant: undeclared payload type ----------
+
+# An enum variant whose payload type names an undeclared identifier fires
+# TC-InvalidDeclaredType; the span covers the whole variant slot.
+enum EnumVariantUndeclared { A: Nope }
+
+# ---------- fn param: undeclared bare type ----------
+
+# A function parameter typed with an undeclared identifier fires
+# TC-InvalidDeclaredType; the span covers the parameter declaration.
+fn fn_param_undeclared(x: Nope) { entry: return }
+
+# ---------- fn param: undeclared type inside a reference ----------
+
+# An unknown pointee type nested inside a reference still triggers
+# TC-InvalidDeclaredType, because the reference itself cannot be
+# validated when its inner type is absent.
+fn fn_param_undeclared_inside_ref(x: &mut Nope) { entry: return }
+
+# ---------- fn param: undeclared type inside a fn-pointer type ----------
+
+# An unknown type appearing as a parameter inside a fn-pointer type also
+# triggers TC-InvalidDeclaredType on the enclosing parameter slot.
+fn fn_param_undeclared_inside_fn(g: fn(Nope)) { entry: return }
+
+# ---------- fn local: undeclared type ----------
+
+# A function local whose declared type is not in scope fires
+# TC-InvalidDeclaredType; the span covers the local declaration.
+fn fn_local_undeclared() { x: Nope; entry: return }

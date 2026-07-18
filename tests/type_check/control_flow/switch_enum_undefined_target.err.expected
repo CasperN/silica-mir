@@ -1,8 +1,0 @@
-error: at 5:13: [TC-TerminatorUndefinedTarget] In function 'f', block 'entry': switchEnum variant 'None' targets undefined block 'nowhere'
-   |
- 5 |             switchEnum(o) [None: nowhere]
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-error: at 5:13: [VF-SwitchNotExhaustive] In function 'f', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
-   |
- 5 |             switchEnum(o) [None: nowhere]
-   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

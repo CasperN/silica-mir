@@ -1,4 +1,0 @@
-error: at 1:6: [TC-InvalidDeclaredType] In function 'f', parameter 'x': Use of undeclared type 'Nope'
-   |
- 1 | fn f(x: Nope) { entry: return }
-   |      ^^^^^^^

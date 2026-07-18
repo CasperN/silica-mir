@@ -1,4 +1,0 @@
-error: at 4:13: [TC-SwitchOnNonEnum] In function 'f', block 'entry': switchEnum place must be an enum type, found i64
-   |
- 4 |             switchEnum(n) [A: end]
-   |             ^^^^^^^^^^^^^^^^^^^^^^

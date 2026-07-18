@@ -1,0 +1,48 @@
+# Rvalue type-checking rejects enum-construction rvalues when the enum
+# name, variant name, or payload type is inconsistent with declarations.
+#
+# Every function fires exactly one TC-* diagnostic.  The borrow-kind
+# forms (&, &mut, &out, ...) have no rvalue-level type errors beyond
+# place-resolution errors, which are covered under place_typing/.
+#
+#   fn                       rvalue form                  DiagCode
+#   undeclared_enum          Nope::Some(42)               TC-EnumConstrOnNonEnum
+#   unknown_variant          Option::Wat(42)              TC-NoSuchVariant
+#   payload_type_mismatch    Option::Some(true)           TC-EnumConstrPayloadTypeMismatch
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+# ---------- EnumConstr: enum name not declared ----------
+
+# The name on the LHS of `::` does not refer to any declared type.
+# The checker cannot resolve the enum and fires EnumConstrOnNonEnum.
+fn undeclared_enum() {
+  o: Option;
+  entry:
+    o = Nope::Some(42);
+    return
+}
+
+# ---------- EnumConstr: variant name absent from the enum ----------
+
+# Option declares only None and Some; Wat is not among its variants.
+# The checker resolves the enum but fails the variant lookup and fires
+# NoSuchVariant.
+fn unknown_variant() {
+  o: Option;
+  entry:
+    o = Option::Wat(42);
+    return
+}
+
+# ---------- EnumConstr: payload type does not match variant declaration ----------
+
+# Option::Some expects i64; the operand is a bool constant.
+# The checker resolves both the enum and the variant but then finds a
+# type mismatch between the declared payload and the operand.
+fn payload_type_mismatch() {
+  o: Option;
+  entry:
+    o = Option::Some(true);
+    return
+}

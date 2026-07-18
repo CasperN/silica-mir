@@ -1,4 +1,0 @@
-error: at 13:5: [INIT-UseInconsistent] In function 'f', block 'merge': variable 'x' may be used before initialization or after move (state inconsistent across paths)
-    |
- 13 |     y = copy x;
-    |     ^^^^^^^^^^

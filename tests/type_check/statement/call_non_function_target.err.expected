@@ -1,4 +1,0 @@
-error: at 6:13: [TC-CallTargetNotFunction] In function 'f', block 'entry': Call target is not a function type: i64
-   |
- 6 |             call copy x();
-   |             ^^^^^^^^^^^^^

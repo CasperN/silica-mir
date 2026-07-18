@@ -1,0 +1,27 @@
+fn minimal_return() {
+  entry:
+    return
+}
+
+fn unreachable_terminator() {
+  x: i64;
+  entry:
+    x = 42;
+    unreachable
+}
+
+fn return_param_last(x: i64, $return: &out i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    drop x;
+    return
+}
+
+extern fn log_value(n: i64);
+
+fn extern_callable() {
+  entry:
+    call log_value(1);
+    return
+}

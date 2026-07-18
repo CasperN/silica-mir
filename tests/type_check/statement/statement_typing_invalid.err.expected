@@ -1,0 +1,40 @@
+error: at 34:5: [TC-AssignmentTypeMismatch] In function 'assign_type_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 34 |     x = true;
+    |     ^^^^^^^^
+error: at 44:5: [TC-AssignmentTypeMismatch] In function 'assign_field_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 44 |     s.f = true;
+    |     ^^^^^^^^^^
+error: at 55:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_arity_mismatch', block 'entry': Type mismatch in assignment. LHS is fn(i64, i64), RHS is fn(i64)
+    |
+ 55 |     g = callee;
+    |     ^^^^^^^^^^
+error: at 66:5: [TC-AssignmentTypeMismatch] In function 'assign_ref_kind_mismatch', block 'entry': Type mismatch in assignment. LHS is &mut i64, RHS is & i64
+    |
+ 66 |     r = &y;
+    |     ^^^^^^
+error: at 78:5: [TC-CallTargetNotFunction] In function 'call_non_function_target', block 'entry': Call target is not a function type: i64
+    |
+ 78 |     call copy x();
+    |     ^^^^^^^^^^^^^
+error: at 88:5: [TC-CallWrongArity] In function 'call_wrong_arity', block 'entry': Wrong i64 of arguments for call. Expected 2, found 1
+    |
+ 88 |     call add(1);
+    |     ^^^^^^^^^^^
+error: at 98:5: [TC-CallArgTypeMismatch] In function 'call_wrong_arg_type', block 'entry': Call argument 0 type mismatch. Expected i64, found bool
+    |
+ 98 |     call takes_num(true);
+    |     ^^^^^^^^^^^^^^^^^^^^
+error: at 110:5: [TC-CallArgTypeMismatch] In function 'call_ref_kind_mismatch', block 'entry': Call argument 0 type mismatch. Expected &drop i64, found &mut i64
+     |
+ 110 |     call takes_drop_ref(move r);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 120:5: [TC-UndeclaredVariable] In function 'drop_undeclared_var', block 'entry': Use of undeclared variable 'x'
+     |
+ 120 |     drop x;
+     |     ^^^^^^
+error: at 132:5: [TC-UnborrowNonReference] In function 'unborrow_non_reference', block 'entry': unborrow requires a reference-typed place, found i64
+     |
+ 132 |     unborrow x;
+     |     ^^^^^^^^^^

@@ -1,8 +1,0 @@
-error: at 5:13: [TC-AssignmentTypeMismatch] In function 'main', block 'entry': Type mismatch in assignment. LHS is i32, RHS is bool
-   |
- 5 |             exit.* = copy x;
-   |             ^^^^^^^^^^^^^^^
-error: at 5:13: [INIT-UseBeforeInit] In function 'main', block 'entry': variable 'x' is used before initialization
-   |
- 5 |             exit.* = copy x;
-   |             ^^^^^^^^^^^^^^^

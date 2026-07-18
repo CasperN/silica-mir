@@ -1,0 +1,183 @@
+enum Sel: Copy + Drop {
+  A: unit
+  B: unit
+}
+
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+extern fn noop();
+
+extern fn sink(r: &mut i64);
+
+extern fn use_num(n: i64);
+
+extern fn use_ref(r: &mut i64);
+
+fn branch_both_borrow_merge_carry(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    goto merge
+  fbr:
+    r = &mut x;
+    goto merge
+  merge:
+    call sink(move r);
+    drop b;
+    drop x;
+    return
+}
+
+fn branch_both_borrow_consumed_before_merge(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    call sink(move r);
+    goto merge
+  fbr:
+    r = &mut x;
+    call sink(move r);
+    goto merge
+  merge:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}
+
+fn switch_both_borrow_merge_carry(o: Sel, x: i64) {
+  r: &mut i64;
+  entry:
+    switchEnum(o) [A: a_arm, B: b_arm]
+  a_arm:
+    r = &mut x;
+    goto merge
+  b_arm:
+    r = &mut x;
+    goto merge
+  merge:
+    call sink(move r);
+    drop x;
+    drop o;
+    return
+}
+
+fn borrow_persists_across_loop(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    call sink(move r);
+    drop b;
+    drop x;
+    return
+}
+
+fn borrow_persists_across_nested_loops(x: i64, a: bool, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto outer_head
+  outer_head:
+    branch(copy a) [true: inner_head, false: outer_done]
+  inner_head:
+    branch(copy b) [true: inner_body, false: outer_back]
+  inner_body:
+    call use_num(copy r.*);
+    goto inner_head
+  outer_back:
+    goto outer_head
+  outer_done:
+    call sink(move r);
+    drop b;
+    drop a;
+    drop x;
+    return
+}
+
+fn borrow_created_and_consumed_in_loop_body(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    r = &mut x;
+    call use_ref(move r);
+    goto head
+  done:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}
+
+fn abort_arm_holds_borrow_return_arm_clean(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    branch(copy b) [true: t, false: fbr]
+  t:
+    abort
+  fbr:
+    call sink(move r);
+    drop b;
+    drop x;
+    return
+}
+
+fn abort_arm_borrows_no_leak_to_return_arm(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    abort
+  fbr:
+    call use_num(copy x);
+    drop b;
+    drop x;
+    return
+}
+
+fn switch_downcast_borrow_unreachable_sibling() {
+  o: Option;
+  r: &mut i64;
+  entry:
+    o = Option::Some(1);
+    switchEnum(o) [None: n_arm, Some: s_arm]
+  s_arm:
+    r = &mut o as Some;
+    call sink(move r);
+    drop o;
+    return
+  n_arm:
+    unreachable
+}
+
+fn out_ref_unfulfilled_on_abort_arm_waived(r: &out i64, e: Sel) {
+  entry:
+    switchEnum(e) [A: a_arm, B: b_arm]
+  a_arm:
+    r.* = 1;
+    unborrow r;
+    drop e;
+    return
+  b_arm:
+    abort
+}

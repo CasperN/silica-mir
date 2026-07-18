@@ -1,8 +1,0 @@
-
-        enum Uninhabited: Copy + Drop { A: never B: never }
-        fn f() {
-          e: Uninhabited;
-          entry:
-            return
-        }
-        

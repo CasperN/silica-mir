@@ -1,0 +1,127 @@
+# Control-flow terminators accepted by the type-checker.
+#
+# Every terminator kind — goto, return, abort, unreachable, branch,
+# switchEnum — is legal when its targets are defined within the same
+# function and its operand or place has the required type.  Label
+# resolution is function-local: a label defined in one function is not
+# visible to any other function.
+#
+# Each function below covers one cell of the (terminator kind x scenario)
+# matrix and expects a clean elaboration run.
+#
+#   fn                              terminator    scenario
+#   goto_defined_label              goto          target defined in same fn
+#   goto_infinite_loop              goto          back-edge to entry
+#   return_only                     return        minimal fn body
+#   abort_only                      abort         minimal fn body
+#   unreachable_only                unreachable   minimal fn body
+#   branch_bool                     branch        bool condition, both targets defined
+#   switch_enum_exhaustive          switchEnum    all variants covered, all targets defined
+#   switch_enum_separate_arms       switchEnum    each variant to a distinct target block
+#   cross_function_labels           goto          labels in two fns do not leak across
+
+enum Color: Copy + Drop { Red: unit  Green: unit  Blue: unit }
+
+# ---------- goto: target defined in the same function ----------
+
+# Jumping forward to a label that exists within the same function body
+# is always valid; the type-checker resolves labels per-function.
+fn goto_defined_label() {
+  entry:
+    goto done
+  done:
+    return
+}
+
+# ---------- goto: back-edge to entry (infinite loop) ----------
+
+# A goto whose target is an already-visited block creates a back-edge.
+# The type-checker permits this; liveness analysis handles the loop.
+fn goto_infinite_loop() {
+  entry:
+    goto entry
+}
+
+# ---------- return ----------
+
+# A function whose only terminator is return elaborates cleanly.
+fn return_only() {
+  entry:
+    return
+}
+
+# ---------- abort ----------
+
+# abort terminates the process; it is always well-typed and carries no
+# operand or target that could be wrong.
+fn abort_only() {
+  entry:
+    abort
+}
+
+# ---------- unreachable ----------
+
+# unreachable marks a block that the compiler has proved cannot execute.
+# It is well-typed in all contexts; the checker does not inspect it further.
+fn unreachable_only() {
+  entry:
+    unreachable
+}
+
+# ---------- branch: bool condition, both targets defined ----------
+
+# branch accepts a bool operand and exactly two labelled targets.
+# When the operand type is bool and both targets exist in the same
+# function, elaboration succeeds.
+fn branch_bool(b: bool) {
+  entry:
+    branch(copy b) [true: yes, false: no]
+  yes:
+    return
+  no:
+    return
+}
+
+# ---------- switchEnum: all variants covered, single shared target ----------
+
+# switchEnum is exhaustive when every variant of the discriminant enum
+# appears exactly once in the arm list; here both arms share one target.
+fn switch_enum_exhaustive(c: Color) {
+  entry:
+    switchEnum(c) [Red: done, Green: done, Blue: done]
+  done:
+    return
+}
+
+# ---------- switchEnum: each variant routed to a distinct block ----------
+
+# Routing each variant to its own block is also exhaustive and tests
+# that the checker accepts multiple distinct targets in a switchEnum.
+fn switch_enum_separate_arms(c: Color) {
+  entry:
+    switchEnum(c) [Red: red_arm, Green: green_arm, Blue: blue_arm]
+  red_arm:
+    return
+  green_arm:
+    return
+  blue_arm:
+    return
+}
+
+# ---------- goto: labels are scoped to their enclosing function ----------
+
+# The label `shared` in fn alpha and in fn beta are independent symbols.
+# Neither goto can accidentally resolve to the other function's block.
+fn alpha() {
+  entry:
+    goto shared
+  shared:
+    return
+}
+
+fn beta() {
+  entry:
+    goto shared
+  shared:
+    return
+}

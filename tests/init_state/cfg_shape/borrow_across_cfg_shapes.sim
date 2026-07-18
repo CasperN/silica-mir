@@ -1,0 +1,222 @@
+# Loan and reference-obligation tracking hold across every CFG shape.
+#
+# A live loan created in one block must carry through joins and loop
+# back-edges without accumulating, aborting predecessors must not
+# leak their loans into sibling arms, and `unreachable` / `abort`
+# predecessors must waive their pointee obligations for locals whose
+# only path to `return` never went through them.
+#
+# Every function exercises one cell of the (CFG shape x loan/waiver
+# phenomenon) matrix. A regression pins the wrong shape or the wrong
+# phenomenon.
+#
+#   fn                                                  shape                                   phenomenon
+#   branch_both_borrow_merge_carry                      branch/merge                            same loan on both arms carries through join
+#   branch_both_borrow_consumed_before_merge            branch/merge                            symmetric consume in each arm; no loan at merge
+#   switch_both_borrow_merge_carry                      switchEnum/merge                        same loan on all switch arms carries through join
+#   borrow_persists_across_loop                         natural loop                            loan created pre-loop, used in body, consumed post
+#   borrow_persists_across_nested_loops                 nested loops                            loan persists through both back-edges
+#   borrow_created_and_consumed_in_loop_body            natural loop                            loan lifetime confined to one iteration
+#   abort_arm_holds_borrow_return_arm_clean             branch (abort sib)                      returning arm holds and consumes the loan; abort arm has none
+#   abort_arm_borrows_no_leak_to_return_arm             branch (abort sib)                      abort arm creates a loan; must not leak to returning sibling
+#   switch_downcast_borrow_unreachable_sibling          switchEnum (unreachable sib)            downcast borrow on the reachable arm; other arm is unreachable
+#   out_ref_unfulfilled_on_abort_arm_waived             switchEnum (abort sib)                  `&out` post-obligation waived on the aborting arm
+
+enum Sel: Copy + Drop { A: unit  B: unit }
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+extern fn noop();
+extern fn sink(r: &mut i64);
+extern fn use_num(n: i64);
+extern fn use_ref(r: &mut i64);
+
+# ---------- branch/merge: same loan on both arms carries through join ----------
+
+fn branch_both_borrow_merge_carry(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    goto merge
+  fbr:
+    r = &mut x;
+    goto merge
+  merge:
+    call sink(move r);
+    return
+}
+
+# ---------- branch/merge: loan consumed in each arm; no loan at merge ----------
+
+# Both arms create the same loan and consume it before the join, so
+# at `merge` no loan is live and a direct assignment to `x` is legal.
+fn branch_both_borrow_consumed_before_merge(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    call sink(move r);
+    goto merge
+  fbr:
+    r = &mut x;
+    call sink(move r);
+    goto merge
+  merge:
+    x = 42;
+    return
+}
+
+# ---------- switchEnum/merge: same loan on all arms carries through join ----------
+
+fn switch_both_borrow_merge_carry(o: Sel, x: i64) {
+  r: &mut i64;
+  entry:
+    switchEnum(o) [A: a_arm, B: b_arm]
+  a_arm:
+    r = &mut x;
+    goto merge
+  b_arm:
+    r = &mut x;
+    goto merge
+  merge:
+    call sink(move r);
+    return
+}
+
+# ---------- natural loop: loan persists across back-edges ----------
+
+# The loan is created before the loop, dereferenced inside the body
+# on every iteration, and consumed after the loop. Loan tracking must
+# preserve the entry through the header join without accumulating.
+fn borrow_persists_across_loop(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    call sink(move r);
+    return
+}
+
+# ---------- nested loops: loan persists through both back-edges ----------
+
+fn borrow_persists_across_nested_loops(x: i64, a: bool, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto outer_head
+  outer_head:
+    branch(copy a) [true: inner_head, false: outer_done]
+  inner_head:
+    branch(copy b) [true: inner_body, false: outer_back]
+  inner_body:
+    call use_num(copy r.*);
+    goto inner_head
+  outer_back:
+    goto outer_head
+  outer_done:
+    call sink(move r);
+    return
+}
+
+# ---------- natural loop: loan lifetime confined to one iteration ----------
+
+# The loan is created and consumed within the body; the back-edge
+# carries no loan. After the loop, direct access to `x` is legal
+# because no residual loan escapes.
+#
+# Note: `r` ends up Diverged at return here (NeverInit on the
+# skip-body path vs. Moved on the took-body path). The elaborator
+# doesn't handle Diverged yet — that's a punchlist item. What this
+# cell verifies is that no residual loan on `x` escapes the loop.
+fn borrow_created_and_consumed_in_loop_body(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    r = &mut x;
+    call use_ref(move r);
+    goto head
+  done:
+    x = 42;
+    return
+}
+
+# ---------- branch (abort sibling): returning arm holds and consumes the loan ----------
+
+# The loan is created before the branch. One arm aborts (no
+# obligation to unborrow on a path that never reaches `return`); the
+# other arm consumes the loan and returns cleanly.
+fn abort_arm_holds_borrow_return_arm_clean(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    branch(copy b) [true: t, false: fbr]
+  t:
+    abort
+  fbr:
+    call sink(move r);
+    return
+}
+
+# ---------- branch (abort sibling): abort arm creates a loan; must not leak ----------
+
+# The abort arm creates `&mut x` and then aborts. The returning arm
+# never took the loan, so a shared read of `x` there must succeed —
+# loan tracking must not carry the abort-arm loan into the sibling.
+fn abort_arm_borrows_no_leak_to_return_arm(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    abort
+  fbr:
+    call use_num(copy x);
+    return
+}
+
+# ---------- switchEnum (unreachable sibling): downcast borrow on the reachable arm ----------
+
+# `o` is constructed as `Some`, so the `None` arm is provably
+# unreachable. The `Some` arm borrows the payload via a downcast
+# projection and consumes the loan before return.
+fn switch_downcast_borrow_unreachable_sibling() {
+  o: Option;
+  r: &mut i64;
+  entry:
+    o = Option::Some(1);
+    switchEnum(o) [None: n_arm, Some: s_arm]
+  s_arm:
+    r = &mut o as Some;
+    call sink(move r);
+    return
+  n_arm:
+    unreachable
+}
+
+# ---------- switchEnum (abort sibling): `&out` post-obligation waived on abort arm ----------
+
+# `r: &out i64` has a post-obligation to leave the pointee Init at
+# expiry. The reachable arm writes through `r` and returns; the other
+# arm aborts. Obligations are only checked on paths that reach
+# `return`, so the abort arm's unwritten pointee is tolerated.
+fn out_ref_unfulfilled_on_abort_arm_waived(r: &out i64, e: Sel) {
+  entry:
+    switchEnum(e) [A: a_arm, B: b_arm]
+  a_arm:
+    r.* = 1;
+    return
+  b_arm:
+    abort
+}

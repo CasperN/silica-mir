@@ -1,0 +1,145 @@
+# Type-checker accepts well-formed declarations: struct fields, enum variant
+# payloads, function parameters, and function locals whose types are either
+# declared user types, built-in types, or the `never` type.
+#
+# Each function (or top-level item pair) covers one cell of the
+# (decl kind x slot x type shape) matrix listed below.
+#
+#   item / fn                        decl kind  slot     type shape
+#   ───────────────────────────────  ─────────  ───────  ─────────────────────
+#   struct_field_known_type          struct     field    declared struct type
+#   struct_field_never               struct     field    never
+#   struct_never_field_all_markers   struct     field    never + all markers
+#   struct_copy_never_and_scalar     struct     field    never + i64 (Copy+Drop)
+#   enum_variant_known_type          enum       variant  declared struct type
+#   enum_variant_never               enum       variant  never (uninhabited)
+#   fn_param_never                   fn         param    never (unreachable body)
+#   fn_param_shared_ref_never        fn         param    &never
+#   fn_param_out_ref_never           fn         param    &out never
+#   fn_local_never                   fn         local    never
+#   fn_local_all_never_enum          fn         local    all-never enum type
+
+struct Inner: Copy + Drop { v: i64 }
+
+enum Tag: Copy + Drop { A: unit  B: i64 }
+
+# ---------- struct field: declared type ----------
+
+# A struct whose fields reference other declared types elaborates cleanly;
+# no TC-InvalidDeclaredType diagnostic is produced.
+struct StructFieldKnownType { x: i64  y: Inner }
+
+fn struct_field_known_type() {
+  entry:
+    return
+}
+
+# ---------- struct field: never ----------
+
+# A struct may declare a field of type `never`. Such a struct is
+# uninhabited: no value of it can ever be constructed.
+struct StructFieldNever { x: never }
+
+fn struct_field_never() {
+  entry:
+    return
+}
+
+# ---------- struct field: never + all substructural markers ----------
+
+# `never` satisfies every substructural marker (Copy, Drop, Move).
+# A struct holding only `never` fields may therefore carry all three.
+struct NeverAllMarkers: Copy + Drop { x: never }
+
+fn struct_never_field_all_markers() {
+  entry:
+    return
+}
+
+# ---------- struct field: never alongside a copyable scalar ----------
+
+# A struct may mix a `never` field with a concrete scalar field.
+# The whole struct is still Copy+Drop because every field is.
+struct CopyNeverAndScalar: Copy + Drop { x: i64  y: never }
+
+extern fn take_copy_never(a: CopyNeverAndScalar);
+
+fn struct_copy_never_and_scalar(a: CopyNeverAndScalar) {
+  b: CopyNeverAndScalar;
+  entry:
+    b = copy a;
+    unreachable
+}
+
+# ---------- enum variant: declared type ----------
+
+# An enum whose variant payloads reference declared types elaborates cleanly.
+enum EnumVariantKnownType: Copy + Drop { P: Inner  T: Tag }
+
+fn enum_variant_known_type() {
+  entry:
+    return
+}
+
+# ---------- enum variant: never (uninhabited enum) ----------
+
+# An enum whose every variant carries `never` is uninhabited.
+# Declaring such an enum is legal; constructing a value of it is not.
+enum EnumVariantNever: Copy + Drop { A: never  B: never }
+
+fn enum_variant_never() {
+  entry:
+    return
+}
+
+# ---------- fn param: never (body must be unreachable) ----------
+
+# A parameter of type `never` makes the function body unreachable because
+# no caller can supply a value of the uninhabited type.
+fn fn_param_never(x: never) {
+  entry:
+    unreachable
+}
+
+# ---------- fn param: &never (shared reference to never) ----------
+
+# A shared reference to `never` is a legal type; the referee is simply
+# an uninhabited place. The body may return normally because unborrowing
+# releases the reference.
+fn fn_param_shared_ref_never(r: &never) {
+  entry:
+    unborrow r;
+    return
+}
+
+# ---------- fn param: &out never (out-ref of never signals divergence) ----------
+
+# Declaring a parameter of type `&out never` is a machine-checked way to
+# signal that the function must diverge: fulfilling the &out obligation
+# would require producing a value of the uninhabited type.
+fn fn_param_out_ref_never(r: &out never) {
+  entry:
+    abort
+}
+
+# ---------- fn local: never ----------
+
+# A local variable of type `never` is legal syntax. A well-formed body
+# may contain such a local and still return without touching it,
+# because the variable is never initialised.
+fn fn_local_never() {
+  x: never;
+  entry:
+    return
+}
+
+# ---------- fn local: all-never enum type ----------
+
+# A local whose declared type is an all-`never`-variant enum is legal.
+# The body need not initialise the local; it is treated as permanently
+# uninhabited and the checker does not require its initialisation.
+fn fn_local_all_never_enum() {
+  e: EnumVariantNever;
+  entry:
+    return
+}

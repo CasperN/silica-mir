@@ -1,0 +1,121 @@
+# Statement forms accepted by the type-checker.
+#
+# Each function exercises one well-typed statement or terminator form
+# that the type-checker must accept without error. Types and extern
+# functions are declared once at the top and shared across all cells.
+#
+#   fn                       statement form          detail
+#   ──────────────────────── ─────────────────────── ────────────────────────────
+#   assign_scalar            place = rvalue          i64 literal to i64 local
+#   assign_struct_field      place.field = rvalue    i64 to matching struct field
+#   assign_via_downcast      place as V = rvalue     integer into matched variant
+#   assign_through_deref     r.* = rvalue            write through &mut ref
+#   call_direct              call fn_name(args)      call extern fn by name
+#   call_through_local       call copy g(args)       call via fn-pointer local
+#   drop_scalar              drop place              drop an i64 param
+#   goto_defined_label       goto label              jump to a label in same fn
+#   trivial_terminators      return / abort /        all three trivial terminators
+#                            unreachable             compile cleanly
+
+struct S: Copy + Drop { f: i64 }
+
+enum Choice: Copy + Drop { None: unit  Some: i64 }
+
+extern fn add(a: i64, b: i64);
+
+# ---------- assign_scalar ----------
+
+# Assigning an i64 literal to an i64 local is the simplest valid assignment.
+fn assign_scalar() {
+  x: i64;
+  entry:
+    x = 42;
+    return
+}
+
+# ---------- assign_struct_field ----------
+
+# Assigning an i64 rvalue to an i64-typed struct field succeeds because
+# the field type and rvalue type agree exactly.
+fn assign_struct_field(s: S) {
+  entry:
+    s.f = 7;
+    return
+}
+
+# ---------- assign_via_downcast ----------
+
+# A downcast place `place as Variant` has the variant payload type; the
+# type-checker accepts an integer rvalue because the payload of Some is i64.
+fn assign_via_downcast(o: Choice) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    o as Some = 99;
+    return
+  n:
+    return
+}
+
+# ---------- assign_through_deref ----------
+
+# Writing through a &mut reference drops the old pointee first; the
+# elaborator inserts the drop and the unborrow at end-of-life. The type of
+# r.* is i64, so `r.* = 42` type-checks with no mismatch.
+fn assign_through_deref(r: &mut i64) {
+  entry:
+    drop r.*;
+    r.* = 42;
+    return
+}
+
+# ---------- call_direct ----------
+
+# Calling an extern fn by name with matching argument types is valid.
+# `add` expects two i64 arguments, and both 1 and 2 are integer literals.
+fn call_direct() {
+  entry:
+    call add(1, 2);
+    return
+}
+
+# ---------- call_through_local ----------
+
+# Loading an extern fn into a local fn-pointer and then calling through the
+# local is valid as long as the local's fn type matches the argument list.
+fn call_through_local() {
+  g: fn(i64, i64);
+  entry:
+    g = add;
+    call copy g(1, 2);
+    return
+}
+
+# ---------- drop_scalar ----------
+
+# Dropping an i64 param is the simplest valid drop statement; i64 is Copy+Drop
+# so no further constraints apply beyond the variable being declared.
+fn drop_scalar(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+# ---------- goto_defined_label ----------
+
+# A goto to a label that exists in the same function body is well-typed.
+# The type-checker resolves the target label before the pass completes.
+fn goto_defined_label() {
+  entry:
+    goto end
+  end:
+    return
+}
+
+# ---------- trivial_terminators ----------
+
+# return, abort, and unreachable are all valid terminators; none requires a
+# type operand and none can raise a type-mismatch diagnostic.
+fn trivial_return() { entry: return }
+fn trivial_abort()  { entry: abort }
+fn trivial_unreachable() { entry: unreachable }

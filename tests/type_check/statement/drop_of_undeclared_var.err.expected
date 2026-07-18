@@ -1,4 +1,0 @@
-error: at 4:13: [TC-UndeclaredVariable] In function 'f', block 'entry': Use of undeclared variable 'x'
-   |
- 4 |             drop x;
-   |             ^^^^^^

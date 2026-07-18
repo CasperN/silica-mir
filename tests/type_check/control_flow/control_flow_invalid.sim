@@ -1,0 +1,108 @@
+# Control-flow terminator violations rejected by the type-checker.
+#
+# Each function exercises one cell of the (terminator kind x failure mode)
+# matrix and fires exactly one or more diagnostics with a known code.
+#
+#   fn                                   terminator    failure mode                    DiagCode(s)
+#   goto_undefined_label                 goto          target not declared in fn        TC-TerminatorUndefinedTarget
+#   goto_label_from_other_function       goto          target declared in sibling fn    TC-TerminatorUndefinedTarget
+#   branch_non_bool_condition            branch        condition type is not bool       TC-BranchConditionNotBool
+#   branch_true_target_undefined         branch        true-arm target missing          TC-TerminatorUndefinedTarget
+#   branch_false_target_undefined        branch        false-arm target missing         TC-TerminatorUndefinedTarget
+#   switch_enum_on_non_enum_place        switchEnum    scrutinee is not an enum         TC-SwitchOnNonEnum
+#   switch_enum_unknown_variant          switchEnum    arm names absent variant         TC-SwitchArmUnknownVariant + VF-SwitchNotExhaustive
+#   switch_enum_undefined_target         switchEnum    arm target block missing         TC-TerminatorUndefinedTarget + VF-SwitchNotExhaustive
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+# ---------- goto: target not declared in the same function ----------
+
+# 'nowhere' is not defined as a block label within fn goto_undefined_label;
+# the type-checker fires TC-TerminatorUndefinedTarget naming the missing block.
+fn goto_undefined_label() {
+  entry:
+    goto nowhere
+}
+
+# ---------- goto: label scoped to a sibling function is not visible ----------
+
+# fn label_owner defines the block 'other', but fn label_seeker cannot
+# resolve it because label lookup is restricted to the enclosing function.
+fn label_owner() {
+  other:
+    return
+}
+
+fn label_seeker() {
+  entry:
+    goto other
+}
+
+# ---------- branch: condition operand type is not bool ----------
+
+# branch requires a bool scrutinee; n has type i64.  The checker fires
+# TC-BranchConditionNotBool reporting the actual type.
+fn branch_non_bool_condition(n: i64) {
+  entry:
+    branch(copy n) [true: yes, false: no]
+  yes:
+    return
+  no:
+    return
+}
+
+# ---------- branch: true-arm target not declared ----------
+
+# The true-arm label 'nowhere' does not exist in this function; the
+# false-arm label 'no' is valid.  TC-TerminatorUndefinedTarget is fired
+# for the missing true-arm.
+fn branch_true_target_undefined(b: bool) {
+  entry:
+    branch(copy b) [true: nowhere, false: no]
+  no:
+    return
+}
+
+# ---------- branch: false-arm target not declared ----------
+
+# The false-arm label 'nowhere' does not exist; the true-arm 'yes' is
+# valid.  TC-TerminatorUndefinedTarget is fired for the missing false-arm.
+fn branch_false_target_undefined(b: bool) {
+  entry:
+    branch(copy b) [true: yes, false: nowhere]
+  yes:
+    return
+}
+
+# ---------- switchEnum: scrutinee is not an enum ----------
+
+# switchEnum requires an enum-typed place; n has type i64.  The checker
+# fires TC-SwitchOnNonEnum reporting the actual type.
+fn switch_enum_on_non_enum_place(n: i64) {
+  entry:
+    switchEnum(n) [A: end]
+  end:
+    return
+}
+
+# ---------- switchEnum: arm names a variant absent from the enum ----------
+
+# 'Wat' is not a variant of Option; the checker fires TC-SwitchArmUnknownVariant.
+# Because the arm list covers no real variant, VF-SwitchNotExhaustive fires
+# for both None and Some.
+fn switch_enum_unknown_variant(o: Option) {
+  entry:
+    switchEnum(o) [Wat: end]
+  end:
+    return
+}
+
+# ---------- switchEnum: arm target block is not declared ----------
+
+# The None arm names block 'nowhere' which does not exist; the checker
+# fires TC-TerminatorUndefinedTarget for that arm.  The Some variant is
+# unhandled, so VF-SwitchNotExhaustive fires as well.
+fn switch_enum_undefined_target(o: Option) {
+  entry:
+    switchEnum(o) [None: nowhere]
+}

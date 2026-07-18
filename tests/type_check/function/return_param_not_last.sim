@@ -1,1 +1,0 @@
-fn f($return: &out i64, x: i64) { entry: return }

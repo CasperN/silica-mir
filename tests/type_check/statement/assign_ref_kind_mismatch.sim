@@ -1,8 +1,0 @@
-
-        fn f(y: i64) {
-            r: &mut i64;
-            entry:
-            r = &y;
-            return
-        }
-        

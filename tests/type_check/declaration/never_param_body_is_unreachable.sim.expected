@@ -1,4 +1,0 @@
-fn f(x: never) {
-  entry:
-    unreachable
-}

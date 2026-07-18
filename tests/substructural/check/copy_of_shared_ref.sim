@@ -1,8 +1,0 @@
-
-        fn f(r: &i64) {
-            s: &i64;
-            entry:
-            s = copy r;
-            return
-        }
-        

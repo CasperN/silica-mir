@@ -1,9 +1,0 @@
-
-        struct Linear { r: &out i64 }
-        fn f(x: Linear) {
-            y: Linear;
-            entry:
-            y = copy x;
-            return
-        }
-        

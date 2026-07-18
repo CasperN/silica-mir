@@ -1,0 +1,98 @@
+# Return-leak check rejects functions that reach a `return` with a
+# non-Drop value still Init.
+#
+# Each fn below covers one cell of the (leaked value class x cause x
+# control-flow shape) matrix and fires exactly one diagnostic per
+# offending path. Whole-value leaks of non-Drop locals fire
+# SUB-ReturnValueLeak; leaked reference obligations fire
+# INIT-RefObligationUnfulfilled since the ref-obligation pass owns
+# ref-typed leaks.
+#
+# A regression here pins the wrong DiagCode, misses one of the return
+# blocks, or double-reports a struct-with-ref-field leak.
+#
+#   fn                                 leaked value class    cause                              DiagCode
+#   linear_struct_untouched_param      Linear struct         untouched param                    SUB-ReturnValueLeak
+#   linear_struct_fully_constructed    Linear struct         both fields init, none consumed    SUB-ReturnValueLeak
+#   fully_linear_struct_untouched      Linear struct         untouched param, all-linear fields SUB-ReturnValueLeak
+#   fully_linear_struct_partial_init   Move-linear pair      one field moved, sibling leaks     SUB-ReturnValueLeak
+#   multiple_returns_each_checked      Linear struct         each return block checked          SUB-ReturnValueLeak x2
+#   out_ref_param_untouched            &out i64              untouched — obligation unfulfilled INIT-RefObligationUnfulfilled
+#   ref_field_leak_via_nll_unborrow    struct with &drop     ref-obligation reports once        INIT-RefObligationUnfulfilled
+
+struct P { x: i64  y: i64 }
+
+struct L: Move { r: &out i64 }
+
+struct Pair: Move { a: L  b: L }
+
+struct RefField { r: &drop i64 }
+
+# ---------- Linear struct: untouched param leaks ----------
+
+fn linear_struct_untouched_param(p: P) {
+  entry:
+    return
+}
+
+# ---------- Linear struct: fully constructed, never consumed ----------
+
+fn linear_struct_fully_constructed() {
+  p: P;
+  entry:
+    p.x = 1;
+    p.y = 2;
+    return
+}
+
+# ---------- Linear struct with all-linear fields: untouched param ----------
+
+# Every field is non-Drop, so drop-elab cannot help; the whole `x` leaks.
+fn fully_linear_struct_untouched(x: L) {
+  entry:
+    return
+}
+
+# ---------- Move-linear pair: one field moved, sibling leaks ----------
+
+# `src.a` is moved out; `src.b` is a non-Drop `L` and reaches return
+# still Init. The leak is reported on the specific field.
+fn fully_linear_struct_partial_init(src: Pair) {
+  p: Pair;
+  entry:
+    p.a = move src.a;
+    return
+}
+
+# ---------- Multiple returns: each return block checked independently ----------
+
+fn multiple_returns_each_checked(b: bool, x: L) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    return
+  fbr:
+    return
+}
+
+# ---------- &out ref param: untouched, ref-obligation unfulfilled ----------
+
+# `&out i64` requires the pointee to be Init at expiry. Nothing writes
+# the pointee, so the ref-obligation fires at return.
+fn out_ref_param_untouched(r: &out i64) {
+  entry:
+    return
+}
+
+# ---------- Struct with &drop field: NLL unborrow reports the leak once ----------
+
+# `s.r` is a `&drop i64` — the pointee must be consumed before the ref
+# expires. Assigning `&drop x` gives `s.r` an obligation that the body
+# never discharges; the unborrow-at-return path reports the failure
+# once (not once per aggregate).
+fn ref_field_leak_via_nll_unborrow(x: i64) {
+  s: RefField;
+  entry:
+    s.r = &drop x;
+    return
+}

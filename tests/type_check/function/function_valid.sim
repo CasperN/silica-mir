@@ -1,0 +1,60 @@
+# Type-checking invariants that hold for well-formed function
+# declarations and calls.
+#
+# The type-checker accepts all of the programs below and the
+# pipeline runs clean.  Each function exercises one cell of the
+# (feature × variant) matrix:
+#
+#   fn                              feature                variant
+#   ──────────────────────────────  ─────────────────────  ──────────────────────────
+#   minimal_return                  basic block             single entry + return
+#   unreachable_terminator          basic block             entry with unreachable
+#   return_param_last               $return param           valid: last position, &out
+#   extern_declared                 extern fn               declaration alone
+#   extern_callable                 extern fn               declaration + call-site
+
+# ---------- minimal_return ----------
+
+# A function with a single entry block that immediately returns
+# satisfies the no-entry-block and empty-body constraints.
+fn minimal_return() {
+  entry:
+    return
+}
+
+# ---------- unreachable_terminator ----------
+
+# A function may end with `unreachable`; locals declared before the
+# block are accepted, and the pipeline elaborates without error.
+fn unreachable_terminator() {
+  x: i64;
+  entry:
+    x = 42;
+    unreachable
+}
+
+# ---------- return_param_last ----------
+
+# `$return` in the final parameter position with type `&out T` is
+# valid.  The type-checker inserts elaboration (unborrow + drop).
+fn return_param_last(x: i64, $return: &out i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- extern_declared ----------
+
+# An extern fn declaration with a well-formed parameter type
+# elaborates without diagnostic.
+extern fn log_value(n: i64);
+
+# ---------- extern_callable ----------
+
+# An extern fn may be called from a defined function; the argument
+# count and type must match the declaration.
+fn extern_callable() {
+  entry:
+    call log_value(1);
+    return
+}

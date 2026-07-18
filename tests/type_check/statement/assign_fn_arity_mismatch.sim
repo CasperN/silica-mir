@@ -1,9 +1,0 @@
-
-        fn callee(x: i64) { entry: return }
-        fn f() {
-            g: fn(i64, i64);
-            entry:
-            g = callee;
-            return
-        }
-        

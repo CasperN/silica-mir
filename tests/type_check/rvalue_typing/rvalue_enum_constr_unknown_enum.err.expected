@@ -1,4 +1,0 @@
-error: at 11:13: [TC-EnumConstrOnNonEnum] In function 'g', block 'entry': Undeclared enum 'Nope'
-    |
- 11 |             o = Nope::Some(42);
-    |             ^^^^^^^^^^^^^^^^^^

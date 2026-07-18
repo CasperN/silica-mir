@@ -1,0 +1,20 @@
+error: at 29:5: [INIT-UseAfterMove] In function 'use_after_move_at_call_span', block 'entry': variable 'x' is used after move
+    |
+ 29 |     call take_m(move x);
+    |     ^^^^^^^^^^^^^^^^^^^
+error: at 41:5: [INIT-UseBeforeInit] In function 'use_before_init_at_stmt_span', block 'entry': variable 'z' is used before initialization
+    |
+ 41 |     x = copy z;
+    |     ^^^^^^^^^^
+error: at 54:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_without_drop_at_stmt_span', block 'entry': cannot overwrite 'y': type A is not Drop and the value is still live (consume it via `drop y` first)
+    |
+ 54 |     y = move a2;
+    |     ^^^^^^^^^^^
+error: at 69:5: [INIT-RefObligationUnfulfilled] In function 'ref_obligation_unfulfilled_at_drop_span', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 69 |     drop r;
+    |     ^^^^^^
+  = note: reference declared here
+    |
+ 65 | fn ref_obligation_unfulfilled_at_drop_span(r: &mut i64) {
+    |                                            ^^^^^^^^^^^

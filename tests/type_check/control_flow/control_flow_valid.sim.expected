@@ -1,0 +1,79 @@
+enum Color: Copy + Drop {
+  Red: unit
+  Green: unit
+  Blue: unit
+}
+
+fn goto_defined_label() {
+  entry:
+    goto done
+  done:
+    return
+}
+
+fn goto_infinite_loop() {
+  entry:
+    goto entry
+}
+
+fn return_only() {
+  entry:
+    return
+}
+
+fn abort_only() {
+  entry:
+    abort
+}
+
+fn unreachable_only() {
+  entry:
+    unreachable
+}
+
+fn branch_bool(b: bool) {
+  entry:
+    branch(copy b) [true: yes, false: no]
+  yes:
+    drop b;
+    return
+  no:
+    drop b;
+    return
+}
+
+fn switch_enum_exhaustive(c: Color) {
+  entry:
+    switchEnum(c) [Red: done, Green: done, Blue: done]
+  done:
+    drop c;
+    return
+}
+
+fn switch_enum_separate_arms(c: Color) {
+  entry:
+    switchEnum(c) [Red: red_arm, Green: green_arm, Blue: blue_arm]
+  red_arm:
+    drop c;
+    return
+  green_arm:
+    drop c;
+    return
+  blue_arm:
+    drop c;
+    return
+}
+
+fn alpha() {
+  entry:
+    goto shared
+  shared:
+    return
+}
+
+fn beta() {
+  entry:
+    goto shared
+  shared:
+    return
+}

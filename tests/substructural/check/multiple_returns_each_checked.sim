@@ -1,9 +1,0 @@
-
-        struct Linear { r: &out i64 }
-        fn f(b: bool, x: Linear) {
-            entry:
-            branch(copy b) [true: t, false: fbr]
-            t: return
-            fbr: return
-        }
-        

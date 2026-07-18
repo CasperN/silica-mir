@@ -1,0 +1,74 @@
+# Init-state join failures across CFG shapes.
+#
+# When predecessors of a join disagree on a local's state — one Init,
+# one NeverInit or Moved — the join produces `Diverged` and any
+# subsequent use fires `INIT-UseInconsistent`. The same rule catches
+# a loop body that reads a local before writing it: the header join
+# sees NeverInit from entry and Init from the backedge, so the read
+# at the top of the body is inconsistent.
+#
+# Every function exercises one cell of the (CFG shape x disagreement
+# cause) matrix. A regression pins the wrong shape or lets a Diverged
+# read through.
+#
+#   fn                                shape           disagreement cause
+#   branch_join_disagreement          branch/merge    one arm inits, the other doesn't
+#   move_one_branch_read_at_merge     branch/merge    one arm moves out, the other leaves Init
+#   loop_body_reads_before_writing    natural loop    first-iter NeverInit vs backedge Init
+
+extern fn take(y: i64);
+extern fn use_num(n: i64);
+
+# ---------- branch/merge: only one arm inits x ----------
+
+# The true arm writes `x`; the false arm doesn't. The join produces
+# `Diverged` and the read at `merge` fires UseInconsistent.
+fn branch_join_disagreement(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    x = 1;
+    goto merge
+  fbr:
+    goto merge
+  merge:
+    y = copy x;
+    return
+}
+
+# ---------- branch/merge: move-out on one arm, read on the merge ----------
+
+# The true arm moves `x` out; the false arm leaves it Init. The join
+# produces `Diverged` and the read at `merge` fires UseInconsistent.
+fn move_one_branch_read_at_merge(x: i64, b: bool) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    call take(move x);
+    goto merge
+  fbr:
+    goto merge
+  merge:
+    call use_num(copy x);
+    return
+}
+
+# ---------- natural loop: body reads x before writing on the first iteration ----------
+
+# On entry to `body`, `x` is NeverInit; the read at `y = copy x`
+# fires UseInconsistent (the header join sees NeverInit from entry
+# and Init from the backedge).
+fn loop_body_reads_before_writing(b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: body, false: done]
+  body:
+    y = copy x;
+    x = 1;
+    branch(copy b) [true: body, false: done]
+  done:
+    return
+}

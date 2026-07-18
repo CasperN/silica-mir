@@ -1,0 +1,46 @@
+error: at 84:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 84 |     return
+    |     ^^^^^^
+  = note: reference declared here
+    |
+ 82 | fn out_ref_param_untouched(r: &out i64) {
+    |                            ^^^^^^^^^^^
+error: at 97:5: [INIT-RefObligationUnfulfilled] In function 'ref_field_leak_via_nll_unborrow', block 'entry': reference 's.r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 97 |     return
+    |     ^^^^^^
+  = note: reference declared here
+    |
+ 94 |   s: RefField;
+    |   ^^^^^^^^^^^^
+error: at 35:5: [SUB-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
+    |
+ 35 |     return
+    |     ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 45:5: [SUB-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
+    |
+ 45 |     return
+    |     ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 53:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
+    |
+ 53 |     return
+    |     ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
+    |
+ 64 |     return
+    |     ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
+    |
+ 73 |     return
+    |     ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 75:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
+    |
+ 75 |     return
+    |     ^^^^^^
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

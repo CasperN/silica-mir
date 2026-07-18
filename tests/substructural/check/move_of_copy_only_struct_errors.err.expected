@@ -1,5 +1,0 @@
-error: at 6:13: [SUB-MoveOfNonMove] In function 'f', block 'entry': cannot move non-Move type PinnedShared
-   |
- 6 |             call take(move p);
-   |             ^^^^^^^^^^^^^^^^^
-  hint: linear types cannot be moved out of non-Move contexts

@@ -1,6 +1,0 @@
-
-        struct Point { x: i64 y: i64 }
-        enum Option: Copy + Drop { None: unit Some: i64 }
-        fn f() { entry: return }
-        extern fn g();
-        

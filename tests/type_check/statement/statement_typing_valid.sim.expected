@@ -1,0 +1,90 @@
+struct S: Copy + Drop {
+  f: i64
+}
+
+enum Choice: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+extern fn add(a: i64, b: i64);
+
+fn assign_scalar() {
+  x: i64;
+  entry:
+    x = 42;
+    drop x;
+    return
+}
+
+fn assign_struct_field(s: S) {
+  entry:
+    drop s.f;
+    s.f = 7;
+    drop s;
+    return
+}
+
+fn assign_via_downcast(o: Choice) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    drop o as Some;
+    o = Choice::Some(99);
+    drop o;
+    return
+  n:
+    drop o;
+    return
+}
+
+fn assign_through_deref(r: &mut i64) {
+  entry:
+    drop r.*;
+    r.* = 42;
+    unborrow r;
+    return
+}
+
+fn call_direct() {
+  entry:
+    call add(1, 2);
+    return
+}
+
+fn call_through_local() {
+  g: fn(i64, i64);
+  entry:
+    g = add;
+    call copy g(1, 2);
+    drop g;
+    return
+}
+
+fn drop_scalar(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+fn goto_defined_label() {
+  entry:
+    goto end
+  end:
+    return
+}
+
+fn trivial_return() {
+  entry:
+    return
+}
+
+fn trivial_abort() {
+  entry:
+    abort
+}
+
+fn trivial_unreachable() {
+  entry:
+    unreachable
+}

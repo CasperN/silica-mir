@@ -1,0 +1,119 @@
+# Rvalue type-checking accepts every syntactic rvalue form when the
+# operand, place, and payload types are consistent.
+#
+# The type checker resolves each rvalue to its result type; this file
+# pins the elaborated output (clean run, no diagnostics) for all six
+# borrow kinds and for the two enum-construction shapes that require
+# non-trivial type resolution.
+#
+#   fn                           rvalue form
+#   shared_borrow                & place
+#   mut_borrow                   &mut place
+#   out_borrow                   &out place  (NeverInit precondition met)
+#   drop_borrow                  &drop place (Init precondition met)
+#   uninit_borrow                &uninit place (NeverInit precondition met)
+#   raw_borrow                   &raw place
+#   enum_constr_basic            Name::Variant(operand) — scalar payload
+#   enum_constr_recursive_ref    Name::Variant(operand) — payload is &Self
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+enum List: Copy + Drop { Nil: unit  Cons: &List }
+
+extern fn use_shared(r: &i64);
+extern fn use_mut(r: &mut i64);
+extern fn use_out(r: &out i64);
+extern fn use_drop(r: &drop i64);
+extern fn use_uninit(r: &uninit i64);
+extern fn use_raw(r: *i64);
+
+# ---------- & shared: resolves to &i64 ----------
+
+fn shared_borrow(x: i64) {
+  r: &i64;
+  entry:
+    r = &x;
+    call use_shared(move r);
+    drop x;
+    return
+}
+
+# ---------- &mut: resolves to &mut i64 ----------
+
+fn mut_borrow(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call use_mut(move r);
+    drop x;
+    return
+}
+
+# ---------- &out: resolves to &out i64; place must be NeverInit ----------
+
+fn out_borrow() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call use_out(move r);
+    return
+}
+
+# ---------- &drop: resolves to &drop i64; place must be Init ----------
+
+fn drop_borrow(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    call use_drop(move r);
+    return
+}
+
+# ---------- &uninit: resolves to &uninit i64; place must be NeverInit ----------
+
+fn uninit_borrow() {
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    call use_uninit(move r);
+    return
+}
+
+# ---------- &raw: resolves to *i64 ----------
+
+fn raw_borrow(x: i64) {
+  r: *i64;
+  entry:
+    r = &raw x;
+    call use_raw(move r);
+    drop x;
+    return
+}
+
+# ---------- EnumConstr: scalar payload ----------
+
+# Option::Some wraps an i64; the checker verifies the operand's type
+# matches the variant's declared payload.
+fn enum_constr_basic() {
+  o: Option;
+  entry:
+    o = Option::Some(42);
+    drop o;
+    return
+}
+
+# ---------- EnumConstr: payload is &Self (recursive enum via reference) ----------
+
+# List::Cons wraps a &List; moving a shared reference is valid because
+# &List is Copy.  The recursive type resolves without infinite expansion
+# because the indirection is a reference, not a direct embed.
+fn enum_constr_recursive_ref(l: &List) {
+  r: List;
+  entry:
+    r = List::Cons(copy l);
+    unborrow l;
+    unborrow r as Cons;
+    return
+}

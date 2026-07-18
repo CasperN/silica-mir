@@ -1,9 +1,0 @@
-struct D: Drop {
-  x: i64
-}
-
-fn f(d: D) {
-  entry:
-    drop d;
-    return
-}

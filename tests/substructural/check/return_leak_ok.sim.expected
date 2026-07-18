@@ -1,0 +1,77 @@
+struct P {
+  x: i64
+  y: i64
+}
+
+struct MoveP: Move {
+  x: i64
+  y: i64
+}
+
+struct L: Move {
+  r: &out i64
+}
+
+extern fn take_num(a: i64);
+
+extern fn take_move_p(p: MoveP);
+
+extern fn take_linear(x: L);
+
+extern fn take_out(r: &out i64);
+
+fn scalar_param_untouched(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+fn scalar_param_moved_out(x: i64) {
+  entry:
+    call take_num(move x);
+    return
+}
+
+fn linear_ref_param_moved_out(r: &out i64) {
+  entry:
+    call take_out(move r);
+    return
+}
+
+fn linear_struct_moved_whole(p: MoveP) {
+  entry:
+    call take_move_p(move p);
+    return
+}
+
+fn linear_struct_moved_via_call(x: L) {
+  entry:
+    call take_linear(move x);
+    return
+}
+
+fn linear_struct_partial_init_dropped() {
+  p: P;
+  entry:
+    p.x = 1;
+    drop p.x;
+    return
+}
+
+fn linear_struct_all_fields_dropped() {
+  p: P;
+  entry:
+    p.x = 1;
+    p.y = 2;
+    drop p.x;
+    drop p.y;
+    return
+}
+
+fn linear_struct_one_field_init_drop() {
+  p: P;
+  entry:
+    p.x = 1;
+    drop p.x;
+    return
+}

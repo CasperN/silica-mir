@@ -1,0 +1,72 @@
+# Type-checking violations in function declarations and call sites.
+#
+# Every function below fires exactly one TC-* diagnostic.  The
+# pipeline stops after the type-check pass.
+#
+#   fn                          DiagCode                  trigger
+#   ─────────────────────────── ────────────────────────  ────────────────────────────────────
+#   empty_body                  TC-NoEntryBlock           fn body has no basic block
+#   duplicate_param             TC-DuplicateLocalName     two params share the same name
+#   duplicate_local             TC-DuplicateLocalName     two locals share the same name
+#   local_shadows_param         TC-DuplicateLocalName     local reuses a param name
+#   return_param_not_last       TC-InvalidDeclaredType    $return not in final position
+#   return_param_wrong_type     TC-InvalidDeclaredType    $return typed as i64, not &out T
+#   return_param_wrong_ref_kind TC-InvalidDeclaredType    $return typed as &mut T, not &out T
+#   extern_bad_param_type       TC-InvalidDeclaredType    extern fn param uses undeclared type
+
+# ---------- empty_body ----------
+
+# A function whose body contains no basic blocks violates the
+# TC-NoEntryBlock rule; even an empty brace-pair is rejected.
+fn empty_body() { }
+
+# ---------- duplicate_param ----------
+
+# Two parameters with the same name in the same signature fire
+# TC-DuplicateLocalName on the second occurrence.
+fn duplicate_param(x: i64, x: i64) { entry: return }
+
+# ---------- duplicate_local ----------
+
+# Two locals with the same name in the same function body fire
+# TC-DuplicateLocalName on the second declaration.
+fn duplicate_local() {
+  x: i64;
+  x: i64;
+  entry:
+    return
+}
+
+# ---------- local_shadows_param ----------
+
+# A local whose name matches a parameter name is treated as a
+# duplicate; TC-DuplicateLocalName fires on the local declaration.
+fn local_shadows_param(x: i64) {
+  x: i64;
+  entry:
+    return
+}
+
+# ---------- return_param_not_last ----------
+
+# `$return` must appear as the final parameter.  Placing it before
+# a regular parameter fires TC-InvalidDeclaredType.
+fn return_param_not_last($return: &out i64, x: i64) { entry: return }
+
+# ---------- return_param_wrong_type ----------
+
+# `$return` must have type `&out ReturnType`.  Declaring it as a
+# plain scalar fires TC-InvalidDeclaredType.
+fn return_param_wrong_type(x: i64, $return: i64) { entry: return }
+
+# ---------- return_param_wrong_ref_kind ----------
+
+# `&mut` is not `&out`; the type-checker requires the exact out-ref
+# kind for the return parameter and fires TC-InvalidDeclaredType.
+fn return_param_wrong_ref_kind(x: i64, $return: &mut i64) { entry: return }
+
+# ---------- extern_bad_param_type ----------
+
+# A parameter whose declared type is not in scope fires
+# TC-InvalidDeclaredType naming the unknown identifier.
+extern fn extern_bad_param_type(x: Nope);

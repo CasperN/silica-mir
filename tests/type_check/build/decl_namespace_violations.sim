@@ -1,0 +1,51 @@
+# Env::build rejects declarations that violate namespace uniqueness
+# constraints.
+#
+# The type namespace requires that every struct and enum has a unique
+# name within that namespace. The function namespace requires the same
+# for functions. Within a struct, field names must be unique. Within
+# an enum, variant names must be unique.
+#
+# Cells under test:
+#
+#   cell                    DiagCode                 trigger
+#   ──────────────────────  ───────────────────────  ────────────────────────────
+#   duplicate_struct_name   TC-DuplicateDeclaration  two structs named P
+#   duplicate_enum_name     TC-DuplicateDeclaration  two enums named E
+#   duplicate_fn_name       TC-DuplicateDeclaration  two fns named f
+#   struct_enum_name_clash  TC-DuplicateDeclaration  struct N then enum N
+#   duplicate_struct_field  TC-DuplicateStructField  field x twice in struct S
+#   duplicate_enum_variant  TC-DuplicateEnumVariant  variant A twice in enum V
+
+# duplicate_struct_name: the second struct P shadows the first name
+# and Env::build reports a TC-DuplicateDeclaration on the second decl.
+struct P { x: i64 }
+struct P { y: i64 }
+
+# duplicate_enum_name: same rule applies to enum declarations.
+enum E { A: i64 }
+enum E { B: i64 }
+
+# duplicate_fn_name: the function namespace enforces uniqueness
+# independently of the type namespace.
+fn f() { entry: return }
+fn f() { entry: return }
+
+# struct_enum_name_clash: struct and enum share the type namespace,
+# so a struct followed by an enum with the same identifier is an error.
+struct N { x: i64 }
+enum N { A: i64 }
+
+# duplicate_struct_field: field uniqueness is checked inside each
+# struct; declaring x twice in struct S fires TC-DuplicateStructField.
+struct S {
+  x: i64
+  x: bool
+}
+
+# duplicate_enum_variant: variant uniqueness is checked inside each
+# enum; declaring A twice in enum V fires TC-DuplicateEnumVariant.
+enum V {
+  A: unit
+  A: i64
+}

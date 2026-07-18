@@ -1,5 +1,0 @@
-error: at 6:13: [SUB-CopyOfNonCopy] In function 'f', block 'entry': cannot copy non-Copy type D
-   |
- 6 |             b = copy a;
-   |             ^^^^^^^^^^
-  hint: since the type is not Copy, try moving it instead using 'move'

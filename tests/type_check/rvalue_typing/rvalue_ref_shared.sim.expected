@@ -1,8 +1,0 @@
-fn f(y: i64) {
-  r: & i64;
-  entry:
-    r = & y;
-    unborrow r;
-    drop y;
-    return
-}

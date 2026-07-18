@@ -1,4 +1,0 @@
-error: at 1:14: [TC-InvalidDeclaredType] In function 'f', parameter '$return' must be of type '&out ReturnType', found i64
-   |
- 1 | fn f(x: i64, $return: i64) { entry: return }
-   |              ^^^^^^^^^^^^

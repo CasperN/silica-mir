@@ -1,0 +1,71 @@
+# This fixture pins the span information — caret position and secondary-span
+# placement — attached to structured init-state diagnostics. A regression here
+# means the renderer pointed the caret at the wrong statement or moved a
+# secondary note to the wrong source site.
+#
+# Every function exercises one (DiagCode x span-anchor) cell and fires exactly
+# one INIT-* diagnostic.
+#
+#   cell | fn
+#   UseAfterMove, caret on the call statement        | [A] use_after_move_at_call_span
+#   UseBeforeInit, caret on the offending stmt       | [B] use_before_init_at_stmt_span
+#   OverwriteWithoutDrop, caret on the overwrite stmt| [C] overwrite_without_drop_at_stmt_span
+#   RefObligationUnfulfilled, caret on drop/expiry   | [D] ref_obligation_unfulfilled_at_drop_span
+
+struct M: Move + Drop { a: i64 }
+struct A: Move { r: &out i64 }
+
+extern fn take_m(m: M);
+extern fn take_a(a: A);
+
+# ---------- [A] UseAfterMove: caret on the call statement ----------
+
+# Moving x in the first call consumes it. The second call with the already-
+# moved x fires UseAfterMove; the caret must land on that second call
+# statement, not on the original move site.
+fn use_after_move_at_call_span(x: M) {
+  entry:
+    call take_m(move x);
+    call take_m(move x);
+    return
+}
+
+# ---------- [B] UseBeforeInit: caret on the offending statement ----------
+
+# z is declared but never written. The assignment that reads z via copy fires
+# UseBeforeInit; the caret must point at the full assignment statement.
+fn use_before_init_at_stmt_span() {
+  x: i64;
+  z: i64;
+  entry:
+    x = copy z;
+    return
+}
+
+# ---------- [C] OverwriteWithoutDrop: caret on the overwrite statement ----------
+
+# y is assigned from a1 and holds a live value. The second assignment from a2
+# overwrites y without consuming it first; the caret must land on that second
+# assignment statement.
+fn overwrite_without_drop_at_stmt_span(a1: A, a2: A) {
+  y: A;
+  entry:
+    y = move a1;
+    y = move a2;
+    call take_a(move y);
+    return
+}
+
+# ---------- [D] RefObligationUnfulfilled: caret on the drop/expiry site ----------
+
+# r is a &mut reference; moving through r* leaves the pointee uninitialized.
+# Dropping r before restoring the pointee fires RefObligationUnfulfilled; the
+# caret must point at the drop statement, with a secondary note back to the
+# parameter declaration.
+fn ref_obligation_unfulfilled_at_drop_span(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    drop r;
+    return
+}

@@ -1,0 +1,32 @@
+error: at 21:4: [TC-NoEntryBlock] Function 'empty_body' has no entry block: body must contain at least one basic block
+    |
+ 21 | fn empty_body() { }
+    |    ^^^^^^^^^^
+error: at 27:28: [TC-DuplicateLocalName] Duplicate variable name 'x' in parameters of function 'duplicate_param'
+    |
+ 27 | fn duplicate_param(x: i64, x: i64) { entry: return }
+    |                            ^^^^^^
+error: at 35:3: [TC-DuplicateLocalName] Duplicate variable name 'x' in locals/parameters of function 'duplicate_local'
+    |
+ 35 |   x: i64;
+    |   ^^^^^^^
+error: at 45:3: [TC-DuplicateLocalName] Duplicate variable name 'x' in locals/parameters of function 'local_shadows_param'
+    |
+ 45 |   x: i64;
+    |   ^^^^^^^
+error: at 54:26: [TC-InvalidDeclaredType] In function 'return_param_not_last', parameter '$return' must be in the final position
+    |
+ 54 | fn return_param_not_last($return: &out i64, x: i64) { entry: return }
+    |                          ^^^^^^^^^^^^^^^^^
+error: at 60:36: [TC-InvalidDeclaredType] In function 'return_param_wrong_type', parameter '$return' must be of type '&out ReturnType', found i64
+    |
+ 60 | fn return_param_wrong_type(x: i64, $return: i64) { entry: return }
+    |                                    ^^^^^^^^^^^^
+error: at 66:40: [TC-InvalidDeclaredType] In function 'return_param_wrong_ref_kind', parameter '$return' must be of type '&out ReturnType', found &mut i64
+    |
+ 66 | fn return_param_wrong_ref_kind(x: i64, $return: &mut i64) { entry: return }
+    |                                        ^^^^^^^^^^^^^^^^^
+error: at 72:33: [TC-InvalidDeclaredType] In function 'extern_bad_param_type', parameter 'x': Use of undeclared type 'Nope'
+    |
+ 72 | extern fn extern_bad_param_type(x: Nope);
+    |                                 ^^^^^^^

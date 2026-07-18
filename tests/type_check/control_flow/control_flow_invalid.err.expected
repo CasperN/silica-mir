@@ -1,0 +1,44 @@
+error: at 24:5: [TC-TerminatorUndefinedTarget] In function 'goto_undefined_label', block 'entry': goto targets undefined block 'nowhere'
+    |
+ 24 |     goto nowhere
+    |     ^^^^^^^^^^^^
+error: at 38:5: [TC-TerminatorUndefinedTarget] In function 'label_seeker', block 'entry': goto targets undefined block 'other'
+    |
+ 38 |     goto other
+    |     ^^^^^^^^^^
+error: at 47:5: [TC-BranchConditionNotBool] In function 'branch_non_bool_condition', block 'entry': branch condition must be bool, found i64
+    |
+ 47 |     branch(copy n) [true: yes, false: no]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 61:5: [TC-TerminatorUndefinedTarget] In function 'branch_true_target_undefined', block 'entry': branch true target undefined block 'nowhere'
+    |
+ 61 |     branch(copy b) [true: nowhere, false: no]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 72:5: [TC-TerminatorUndefinedTarget] In function 'branch_false_target_undefined', block 'entry': branch false target undefined block 'nowhere'
+    |
+ 72 |     branch(copy b) [true: yes, false: nowhere]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 83:5: [TC-SwitchOnNonEnum] In function 'switch_enum_on_non_enum_place', block 'entry': switchEnum place must be an enum type, found i64
+    |
+ 83 |     switchEnum(n) [A: end]
+    |     ^^^^^^^^^^^^^^^^^^^^^^
+error: at 95:5: [TC-SwitchArmUnknownVariant] In function 'switch_enum_unknown_variant', block 'entry': variant 'Wat' is not part of enum 'Option'
+    |
+ 95 |     switchEnum(o) [Wat: end]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 107:5: [TC-TerminatorUndefinedTarget] In function 'switch_enum_undefined_target', block 'entry': switchEnum variant 'None' targets undefined block 'nowhere'
+     |
+ 107 |     switchEnum(o) [None: nowhere]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 95:5: [VF-SwitchNotExhaustive] In function 'switch_enum_unknown_variant', block 'entry': switchEnum on 'Option' does not handle variant 'None'
+    |
+ 95 |     switchEnum(o) [Wat: end]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 95:5: [VF-SwitchNotExhaustive] In function 'switch_enum_unknown_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+    |
+ 95 |     switchEnum(o) [Wat: end]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 107:5: [VF-SwitchNotExhaustive] In function 'switch_enum_undefined_target', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+     |
+ 107 |     switchEnum(o) [None: nowhere]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -1,0 +1,133 @@
+# Per-statement class checks reject operands of the wrong class.
+#
+# `copy p` on a non-Copy operand fires SUB-CopyOfNonCopy; `move p` on
+# a non-Move operand fires SUB-MoveOfNonMove; `drop p` on a non-Drop
+# operand fires SUB-DropOfNonDrop. Each fn below exercises one cell
+# of the (operation x rejecting-type x operand-position) matrix.
+# Every failing operand carries the "try move / not Copy / not Drop"
+# hint. A regression here pins the wrong DiagCode, the wrong span, or
+# lets a bad class slip through.
+#
+# The `&drop` / `&out` drop cells fire an extra
+# INIT-RefObligationUnfulfilled at return because dropping the local
+# ends the reference before its obligation is discharged — that dual
+# diagnostic is part of the pinned output.
+#
+#   fn                                  op    rejecting-type    position
+#   copy_drop_only_struct               copy  D (Drop only)     rvalue
+#   copy_linear_struct_as_rvalue        copy  Linear            rvalue
+#   copy_mut_ref                        copy  &mut i64          rvalue
+#   copy_out_ref                        copy  &out i64          rvalue
+#   copy_uninit_ref                     copy  &uninit i64       rvalue
+#   copy_linear_struct_as_call_arg      copy  Linear            call arg
+#   copy_linear_struct_as_enum_payload  copy  Linear            enum payload
+#   move_copy_only_struct               move  C (Copy only)     call arg
+#   move_non_move_struct                move  Linear (no Move)  rvalue + call arg
+#   drop_linear_struct                  drop  Linear            statement
+#   drop_drop_ref                       drop  &drop i64         statement
+#   drop_out_ref                        drop  &out i64          statement
+
+struct D: Drop { x: i64 }
+
+struct C: Copy { x: i64 }
+
+struct Linear { r: &out i64 }
+
+enum Wrap { W: Linear }
+
+extern fn take_linear(x: Linear);
+extern fn take_copy_only(c: C);
+
+# ---------- copy: non-Copy rvalues ----------
+
+fn copy_drop_only_struct(a: D) {
+  b: D;
+  entry:
+    b = copy a;
+    return
+}
+
+fn copy_linear_struct_as_rvalue(x: Linear) {
+  y: Linear;
+  entry:
+    y = copy x;
+    return
+}
+
+fn copy_mut_ref(r: &mut i64) {
+  s: &mut i64;
+  entry:
+    s = copy r;
+    return
+}
+
+fn copy_out_ref(r: &out i64) {
+  s: &out i64;
+  entry:
+    s = copy r;
+    return
+}
+
+fn copy_uninit_ref(r: &uninit i64) {
+  s: &uninit i64;
+  entry:
+    s = copy r;
+    return
+}
+
+# ---------- copy: non-Copy in call-arg position ----------
+
+fn copy_linear_struct_as_call_arg(x: Linear) {
+  entry:
+    call take_linear(copy x);
+    return
+}
+
+# ---------- copy: non-Copy in enum-payload position ----------
+
+fn copy_linear_struct_as_enum_payload(x: Linear) {
+  w: Wrap;
+  entry:
+    w = Wrap::W(copy x);
+    return
+}
+
+# ---------- move: non-Move operands ----------
+
+# Copy without Drop does not imply Move; moving a Copy-only value fires
+# SUB-MoveOfNonMove.
+fn move_copy_only_struct(c: C) {
+  entry:
+    call take_copy_only(move c);
+    return
+}
+
+# A linear struct with no Move marker is not Move; both the rvalue move
+# and the call-arg move fail independently at the same fn.
+fn move_non_move_struct(x: Linear) {
+  y: Linear;
+  entry:
+    y = move x;
+    call take_linear(move y);
+    return
+}
+
+# ---------- drop: non-Drop operands ----------
+
+fn drop_linear_struct(x: Linear) {
+  entry:
+    drop x;
+    return
+}
+
+fn drop_drop_ref(r: &drop i64) {
+  entry:
+    drop r;
+    return
+}
+
+fn drop_out_ref(r: &out i64) {
+  entry:
+    drop r;
+    return
+}

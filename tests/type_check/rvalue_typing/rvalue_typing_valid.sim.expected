@@ -1,0 +1,92 @@
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+enum List: Copy + Drop {
+  Nil: unit
+  Cons: & List
+}
+
+extern fn use_shared(r: & i64);
+
+extern fn use_mut(r: &mut i64);
+
+extern fn use_out(r: &out i64);
+
+extern fn use_drop(r: &drop i64);
+
+extern fn use_uninit(r: &uninit i64);
+
+extern fn use_raw(r: *i64);
+
+fn shared_borrow(x: i64) {
+  r: & i64;
+  entry:
+    r = & x;
+    call use_shared(move r);
+    drop x;
+    return
+}
+
+fn mut_borrow(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call use_mut(move r);
+    drop x;
+    return
+}
+
+fn out_borrow() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call use_out(move r);
+    drop x;
+    return
+}
+
+fn drop_borrow(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    call use_drop(move r);
+    return
+}
+
+fn uninit_borrow() {
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    call use_uninit(move r);
+    return
+}
+
+fn raw_borrow(x: i64) {
+  r: *i64;
+  entry:
+    r = &raw x;
+    call use_raw(move r);
+    drop x;
+    return
+}
+
+fn enum_constr_basic() {
+  o: Option;
+  entry:
+    o = Option::Some(42);
+    drop o;
+    return
+}
+
+fn enum_constr_recursive_ref(l: & List) {
+  r: List;
+  entry:
+    r = List::Cons(copy l);
+    unborrow l;
+    unborrow r as Cons;
+    return
+}

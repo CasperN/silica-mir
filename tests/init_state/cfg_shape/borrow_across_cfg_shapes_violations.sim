@@ -1,0 +1,33 @@
+# Reference-obligation failures caused by disagreeing CFG paths.
+#
+# `&out` / `&drop` post-obligations are waived only on paths that
+# reach `abort` or `unreachable` — every arm that reaches `return`
+# must discharge them. A returning arm that leaves the pointee in
+# the wrong state fires `INIT-RefObligationUnfulfilled` on the
+# critical edge into that arm.
+#
+# Every function exercises one cell of the (CFG shape x waiver
+# failure) matrix. A regression here means the waiver rule is
+# over-broad — silencing an obligation that must be checked.
+#
+#   fn                                       shape       failure
+#   out_ref_unfulfilled_on_return_arm        switchEnum  one arm returns without writing through &out
+
+enum E: Copy + Drop { A: unit  B: unit }
+
+# ---------- switchEnum: obligation not waived on any returning arm ----------
+
+# `r: &out i64` requires the pointee to be Init at expiry. The `A`
+# arm writes through `r` and returns; the `B` arm returns without
+# writing. The `B` arm reaches `return`, so the obligation is checked
+# and fires RefObligationUnfulfilled on the entry->b_arm critical
+# edge.
+fn out_ref_unfulfilled_on_return_arm(r: &out i64, e: E) {
+  entry:
+    switchEnum(e) [A: a_arm, B: b_arm]
+  a_arm:
+    r.* = 1;
+    return
+  b_arm:
+    return
+}

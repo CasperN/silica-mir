@@ -1,7 +1,0 @@
-extern fn take(r: &mut i64);
-
-fn f(r: &mut i64) {
-  entry:
-    call take(move r);
-    return
-}

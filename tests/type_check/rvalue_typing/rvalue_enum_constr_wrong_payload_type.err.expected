@@ -1,4 +1,0 @@
-error: at 6:13: [TC-EnumConstrPayloadTypeMismatch] In function 'f', block 'entry': Variant 'Some' of enum 'Option' expects type i64, found bool
-   |
- 6 |             o = Option::Some(true);
-   |             ^^^^^^^^^^^^^^^^^^^^^^

@@ -1,9 +1,0 @@
-
-        struct Point: Copy + Drop { x: i64 y: i64 }
-        extern fn take(p: Point);
-        fn f(p: Point) {
-            entry:
-            call take(move p);
-            return
-        }
-        

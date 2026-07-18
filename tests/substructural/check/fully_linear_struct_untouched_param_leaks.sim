@@ -1,7 +1,0 @@
-
-        struct L { r: &out i64 }
-        fn f(x: L) {
-            entry:
-            return
-        }
-        

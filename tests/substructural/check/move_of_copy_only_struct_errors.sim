@@ -1,9 +1,0 @@
-
-        struct PinnedShared: Copy { x: i64 }
-        extern fn take(p: PinnedShared);
-        fn f(p: PinnedShared) {
-            entry:
-            call take(move p);
-            return
-        }
-        
