@@ -904,7 +904,7 @@ Order of operations:
 
 # VS Code Syntax Highlighting
 
-This repository includes a lightweight VS Code extension for Silica and Silica-MIR files (`.si` and `.sim`) located under [syntax_highlighting/vscode/](file:///Users/casper/projects/silica-mir/syntax_highlighting/vscode).
+This repository includes a lightweight VS Code extension for Silica and Silica-MIR files (`.si` and `.sim`) located under [syntax_highlighting/vscode/](./syntax_highlighting/vscode).
 
 To load it locally:
 1. Create a symlink to the extension folder in your VS Code extensions directory:
