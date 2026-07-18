@@ -1,81 +1,124 @@
 error: at 46:5: [SUB-CopyOfNonCopy] In function 'copy_drop_only_struct', block 'entry': cannot copy non-Copy type D
     |
+ 45 |   entry:
  46 |     b = copy a;
     |     ^^^^^^^^^^
+ 47 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 53:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', block 'entry': cannot copy non-Copy type Linear
     |
+ 52 |   entry:
  53 |     y = copy x;
     |     ^^^^^^^^^^
+ 54 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 60:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut i64
     |
+ 59 |   entry:
  60 |     s = copy r;
     |     ^^^^^^^^^^
+ 61 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 67:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out i64
     |
+ 66 |   entry:
  67 |     s = copy r;
     |     ^^^^^^^^^^
+ 68 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 74:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit i64
     |
+ 73 |   entry:
  74 |     s = copy r;
     |     ^^^^^^^^^^
+ 75 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 82:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_call_arg', block 'entry': cannot copy non-Copy type Linear
     |
+ 81 |   entry:
  82 |     call take_linear(copy x);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^
+ 83 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 91:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_enum_payload', block 'entry': cannot copy non-Copy type Linear
     |
+ 90 |   entry:
  91 |     w = Wrap::W(copy x);
     |     ^^^^^^^^^^^^^^^^^^^
+ 92 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 101:5: [SUB-MoveOfNonMove] In function 'move_copy_only_struct', block 'entry': cannot move non-Move type C
      |
+ 100 |   entry:
  101 |     call take_copy_only(move c);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 102 |     return
+     |
   hint: linear types cannot be moved out of non-Move contexts
 error: at 110:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
      |
+ 109 |   entry:
  110 |     y = move x;
      |     ^^^^^^^^^^
+ 111 |     call take_linear(move y);
+     |
   hint: linear types cannot be moved out of non-Move contexts
 error: at 111:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
      |
+ 110 |     y = move x;
  111 |     call take_linear(move y);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^
+ 112 |     return
+     |
   hint: linear types cannot be moved out of non-Move contexts
 error: at 119:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'entry': cannot drop non-Drop type Linear
      |
+ 118 |   entry:
  119 |     drop x;
      |     ^^^^^^
+ 120 |     return
+     |
   hint: only types implementing the Drop class can be explicitly dropped
 error: at 125:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop i64
      |
+ 124 |   entry:
  125 |     drop r;
      |     ^^^^^^
+ 126 |     return
+     |
   hint: only types implementing the Drop class can be explicitly dropped
 error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out i64
      |
+ 130 |   entry:
  131 |     drop r;
      |     ^^^^^^
+ 132 |     return
+     |
   hint: only types implementing the Drop class can be explicitly dropped
 error: at 125:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
      |
+ 122 | 
+ 123 | fn drop_drop_ref(r: &drop i64) {
+     |                  ------------ reference declared here
+ 124 |   entry:
  125 |     drop r;
      |     ^^^^^^
-  = note: reference declared here
+ 126 |     return
      |
- 123 | fn drop_drop_ref(r: &drop i64) {
-     |                  ^^^^^^^^^^^^
 error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
+ 128 | 
+ 129 | fn drop_out_ref(r: &out i64) {
+     |                 ----------- reference declared here
+ 130 |   entry:
  131 |     drop r;
      |     ^^^^^^
-  = note: reference declared here
+ 132 |     return
      |
- 129 | fn drop_out_ref(r: &out i64) {
-     |                 ^^^^^^^^^^^

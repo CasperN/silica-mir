@@ -1,12 +1,21 @@
 error: at 22:5: [TC-EnumConstrOnNonEnum] In function 'undeclared_enum', block 'entry': Undeclared enum 'Nope'
     |
+ 21 |   entry:
  22 |     o = Nope::Some(42);
     |     ^^^^^^^^^^^^^^^^^^
+ 23 |     return
+    |
 error: at 34:5: [TC-NoSuchVariant] In function 'unknown_variant', block 'entry': Enum 'Option' has no variant 'Wat'
     |
+ 33 |   entry:
  34 |     o = Option::Wat(42);
     |     ^^^^^^^^^^^^^^^^^^^
+ 35 |     return
+    |
 error: at 46:5: [TC-EnumConstrPayloadTypeMismatch] In function 'payload_type_mismatch', block 'entry': Variant 'Some' of enum 'Option' expects type i64, found bool
     |
+ 45 |   entry:
  46 |     o = Option::Some(true);
     |     ^^^^^^^^^^^^^^^^^^^^^^
+ 47 |     return
+    |

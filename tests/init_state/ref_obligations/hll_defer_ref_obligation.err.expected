@@ -1,8 +1,10 @@
 error: at 10:11: [INIT-RefObligationUnfulfilled] In function 'defer_ref_obligation': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
+  7 | # defer leaves the obligation unfulfilled at the point the defer executes.
+  8 | fn defer_ref_obligation(r: &drop Box) {
+    |                         ------------ reference declared here
+  9 |     let x = r.*;
  10 |     defer r.* = Box { val: 5 };
     |           ^^^^^^^^^^^^^^^^^^^^
-  = note: reference declared here
+ 11 | }
     |
-  8 | fn defer_ref_obligation(r: &drop Box) {
-    |                         ^^^^^^^^^^^^

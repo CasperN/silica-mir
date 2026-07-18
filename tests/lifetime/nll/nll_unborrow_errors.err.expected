@@ -1,16 +1,20 @@
 error: at 21:5: [INIT-RefObligationUnfulfilled] In function 'out_param_never_written', block 'entry': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 18 | # writing through `x`, so the obligation is violated.
+ 19 | fn out_param_never_written(x: &out i64) {
+    |                            ----------- reference declared here
+ 20 |   entry:
  21 |     return
     |     ^^^^^^
-  = note: reference declared here
+ 22 | }
     |
- 19 | fn out_param_never_written(x: &out i64) {
-    |                            ^^^^^^^^^^^
 error: at 32:5: [INIT-RefObligationUnfulfilled] In function 'out_branch_return_without_write', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 29 | # at fault, but the borrow is still live at the branch entry.)
+ 30 | fn out_branch_return_without_write(r: &out i64, b: bool) {
+    |                                    ----------- reference declared here
+ 31 |   entry:
  32 |     branch(copy b) [true: return_arm, false: die_arm]
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  = note: reference declared here
+ 33 |   return_arm:
     |
- 30 | fn out_branch_return_without_write(r: &out i64, b: bool) {
-    |                                    ^^^^^^^^^^^

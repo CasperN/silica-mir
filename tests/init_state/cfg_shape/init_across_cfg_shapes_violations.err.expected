@@ -1,20 +1,30 @@
 error: at 37:5: [INIT-UseInconsistent] In function 'branch_join_disagreement', block 'merge': 'x' may be used before initialization or after move (state inconsistent across paths)
     |
+ 31 |   t:
+ 32 |     x = 1;
+    |     ----- initialized here on some path
+ 33 |     goto merge
+    |
+    | ...
+    |
+ 36 |   merge:
  37 |     y = copy x;
     |     ^^^^^^^^^^
-  = note: initialized here on some path
+ 38 |     return
     |
- 32 |     x = 1;
-    |     ^^^^^
 error: at 54:5: [INIT-UseInconsistent] In function 'move_one_branch_read_at_merge', block 'merge': 'x' may be used before initialization or after move (state inconsistent across paths)
     |
+ 53 |   merge:
  54 |     call use_num(copy x);
     |     ^^^^^^^^^^^^^^^^^^^^
+ 55 |     return
+    |
 error: at 69:5: [INIT-UseInconsistent] In function 'loop_body_reads_before_writing', block 'body': 'x' may be used before initialization or after move (state inconsistent across paths)
     |
+ 68 |   body:
  69 |     y = copy x;
     |     ^^^^^^^^^^
-  = note: initialized here on some path
-    |
  70 |     x = 1;
-    |     ^^^^^
+    |     ----- initialized here on some path
+ 71 |     branch(copy b) [true: body, false: done]
+    |

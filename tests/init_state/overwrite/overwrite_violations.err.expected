@@ -1,16 +1,28 @@
 error: at 38:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_whole', block 'entry': cannot overwrite 'y': type Linear is not Drop and the value is still live (consume it via `drop y` first)
     |
+ 37 |     y = move x1;
  38 |     y = move x2;
     |     ^^^^^^^^^^^
+ 39 |     call take(move y);
+    |
 error: at 51:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_field', block 'entry': cannot overwrite 'c.w1': type Wrap is not Drop and the value is still live (consume it via `drop c.w1` first)
     |
+ 50 |     c.w1 = move w0;
  51 |     c.w1 = move w1;
     |     ^^^^^^^^^^^^^^
+ 52 |     return
+    |
 error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_field_unfulfilled_oblg', block 'entry': reference 'b.p' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 62 | fn overwrite_ref_field_unfulfilled_oblg(x: i64, x2: i64) {
+ 63 |   b: RefBox;
+    |   ---------- reference declared here
+ 64 |   y: i64;
+    |
+    | ...
+    |
+ 67 |     y = move b.p.*;
  68 |     b.p = &mut x2;
     |     ^^^^^^^^^^^^^
-  = note: reference declared here
+ 69 |     return
     |
- 63 |   b: RefBox;
-    |   ^^^^^^^^^^

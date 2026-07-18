@@ -1,18 +1,20 @@
 error: at 41:5: [LT-LoanConflict] In function 'dynamic_loan_blocks_slot_read', block 'entry': cannot read 'a[0]': already borrowed by 'r'
     |
+ 39 |     a = [10i64, 20i64, 30i64];
+ 40 |     r = &mut a[copy i];
+    |     ------------------ borrow of 'a[0]' occurs here
  41 |     x = copy a[0i64];
     |     ^^^^^^^^^^^^^^^^
-  = note: borrow of 'a[0]' occurs here
+ 42 |     y = copy r.*;
     |
- 40 |     r = &mut a[copy i];
-    |     ^^^^^^^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
 error: at 55:5: [LT-LoanConflict] In function 'dynamic_loan_blocks_field_write', block 'entry': cannot write to 'c.arr[0].v': already borrowed by 'r'
     |
+ 53 |   entry:
+ 54 |     r = &mut c.arr[copy i].v;
+    |     ------------------------ borrow of 'c.arr[0].v' occurs here
  55 |     c.arr[0i64].v = 7i64;
     |     ^^^^^^^^^^^^^^^^^^^^
-  = note: borrow of 'c.arr[0].v' occurs here
+ 56 |     call use_mut(move r);
     |
- 54 |     r = &mut c.arr[copy i].v;
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.

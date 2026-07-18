@@ -1,4 +1,7 @@
 error: at 20:5: [INIT-UseAfterMove] In function 'ref_transfer_source_reuse', block 'entry': variable 'x' is used after move
     |
+ 19 |     z.* = 1;
  20 |     call sink(move x);
     |     ^^^^^^^^^^^^^^^^^
+ 21 |     return
+    |

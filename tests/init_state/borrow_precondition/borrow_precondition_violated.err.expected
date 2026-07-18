@@ -1,42 +1,72 @@
 error: at 25:5: [INIT-BorrowStateMismatch] In function 'shared_of_never_init', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
     |
+ 24 |   entry:
  25 |     r = &x;
     |     ^^^^^^
+ 26 |     return
+    |
 error: at 33:5: [INIT-BorrowStateMismatch] In function 'shared_of_moved', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is moved-from
     |
+ 32 |     call sink(move x);
  33 |     r = &x;
     |     ^^^^^^
+ 34 |     return
+    |
 error: at 42:5: [INIT-BorrowStateMismatch] In function 'shared_of_partial', block 'entry': cannot create & of 'p': place must be initialized at borrow, but is partially initialized
     |
+ 41 |     p.x = 1;
  42 |     r = &p;
     |     ^^^^^^
+ 43 |     return
+    |
 error: at 52:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init', block 'entry': cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized
     |
+ 51 |   entry:
  52 |     r = &mut x;
     |     ^^^^^^^^^^
+ 53 |     return
+    |
 error: at 63:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init_field', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
     |
+ 62 |     p.x = 1;
  63 |     r = &mut p.y;
     |     ^^^^^^^^^^^^
+ 64 |     return
+    |
 error: at 73:5: [INIT-BorrowStateMismatch] In function 'drop_of_never_init', block 'entry': cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized
     |
+ 72 |   entry:
  73 |     r = &drop x;
     |     ^^^^^^^^^^^
+ 74 |     return
+    |
 error: at 82:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
     |
+ 81 |     p.x = 1;
  82 |     r = &drop p;
     |     ^^^^^^^^^^^
+ 83 |     return
+    |
 error: at 93:5: [INIT-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
     |
+ 92 |     p.x = 1;
  93 |     r = &out p;
     |     ^^^^^^^^^^
+ 94 |     return
+    |
 error: at 102:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
      |
+ 101 |   entry:
  102 |     rr = &out x;
      |     ^^^^^^^^^^^
+ 103 |     return
+     |
   hint: move 'x' out first — linear values cannot be forgotten in place
 error: at 111:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
      |
+ 110 |   entry:
  111 |     rr = &uninit x;
      |     ^^^^^^^^^^^^^^
+ 112 |     return
+     |
   hint: move 'x' out first — linear values cannot be forgotten in place

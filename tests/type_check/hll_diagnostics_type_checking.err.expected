@@ -1,32 +1,55 @@
 error: at 8:11: [HTC-UndeclaredVariable] In function 'test_silenced_error': undeclared variable 'undeclared_var'
    |
+ 7 |   # This infers 'x' as Type::Error to poison the local variable.
  8 |   let x = undeclared_var;
    |           ^^^^^^^^^^^^^^
+ 9 | 
+   |
 error: at 18:16: [HTC-TypeMismatch] In function 'test_int_var_mismatch_with_float': type mismatch: expected integer type, found f64
     |
+ 17 |   let x = 42;
  18 |   let y: f64 = x;
     |                ^
+ 19 | }
+    |
 error: at 23:16: [HTC-TypeMismatch] In function 'test_float_var_mismatch_with_int': type mismatch: expected float type, found i64
     |
+ 22 |   let x = 42.2;
  23 |   let y: i64 = x;
     |                ^
+ 24 | }
+    |
 error: at 29:11: [HTC-UndeclaredVariable] In function 'test_undeclared_variable': undeclared variable 'y'
     |
+ 28 | fn test_undeclared_variable() -> i64 {
  29 |   let x = y;
     |           ^
+ 30 |   x
+    |
 error: at 36:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type mismatch: expected integer type, found unit
     |
+ 35 | fn test_defer_type_mismatch() {
  36 |   defer 42;
     |         ^^
+ 37 | }
+    |
 error: at 44:8: [HTC-UnknownAbi] unknown extern ABI 'system' — expected 'C' or bare extern
     |
+ 43 | # check widens.
  44 | extern "system" fn win_api(x: i64);
     |        ^^^^^^^^
+ 45 | extern "fastcall" fn stdcall_thing(y: i64);
+    |
 error: at 45:8: [HTC-UnknownAbi] unknown extern ABI 'fastcall' — expected 'C' or bare extern
     |
+ 44 | extern "system" fn win_api(x: i64);
  45 | extern "fastcall" fn stdcall_thing(y: i64);
     |        ^^^^^^^^^^
+    |
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
+ 1 | fn test_ambiguous_type() {
  2 |   let x = [];
    |           ^^
+ 3 | }
+   |

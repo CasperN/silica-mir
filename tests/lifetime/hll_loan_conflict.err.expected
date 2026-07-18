@@ -1,18 +1,21 @@
 error: at 9:5: [LT-LoanConflict] In function 'loan_conflict': cannot write to 'x': already borrowed by 'r'
    |
+ 7 |     let mut x: i64 = 10;
+ 8 |     let r = &mut x;
+   |             ------ borrow of 'x' occurs here
  9 |     x = 20;
    |     ^^^^^^
-  = note: borrow of 'x' occurs here
+ 10 |     let y = r.*;
    |
- 8 |     let r = &mut x;
-   |             ^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
 error: at 21:5: [LT-LoanConflict] In function 'defer_loan_conflict': cannot write to 'x': already borrowed by 'r'
     |
+ 18 |     let mut x = 1;
+ 19 |     let r = &x;
+    |             -- borrow of 'x' occurs here
+ 20 |     defer { let y = r.*; };
  21 |     x = 2;
     |     ^^^^^
-  = note: borrow of 'x' occurs here
+ 22 | }
     |
- 19 |     let r = &x;
-    |             ^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.

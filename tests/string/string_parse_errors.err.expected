@@ -1,4 +1,7 @@
 error: at 20:9: [PARSE-InvalidLiteral] In function 'unknown_escape', block 'entry': unknown escape sequence: \q
     |
+ 19 |   entry:
  20 |     s = b"\q";
     |         ^^^^^
+ 21 |     return
+    |

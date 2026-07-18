@@ -1,18 +1,21 @@
 error: at 27:5: [LT-LoanConflict] In function 'read_parent_while_child_live', block 'entry': cannot read 'r.*': already borrowed by 's'
     |
+ 25 |     r = &mut x;
+ 26 |     s = &mut r.*;
+    |     ------------ borrow of 'r.*' occurs here
  27 |     y = copy r.*;
     |     ^^^^^^^^^^^^
-  = note: borrow of 'r.*' occurs here
+ 28 |     call sink(move s);
     |
- 26 |     s = &mut r.*;
-    |     ^^^^^^^^^^^^
   hint: the borrow of 's' is active until its last use or explicit unborrow.
 error: at 41:5: [LT-LoanConflict] In function 'write_base_while_parent_live', block 'entry': cannot write to 'x': already borrowed by 'r'
     |
+ 38 |   entry:
+ 39 |     r = &mut x;
+    |     ---------- borrow of 'x' occurs here
+ 40 |     s = &mut r.*;
  41 |     x = 1;
     |     ^^^^^
-  = note: borrow of 'x' occurs here
+ 42 |     call sink(move s);
     |
- 39 |     r = &mut x;
-    |     ^^^^^^^^^^
   hint: the borrow of 'r' is active until its last use or explicit unborrow.

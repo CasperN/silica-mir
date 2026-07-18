@@ -1,37 +1,64 @@
 error: at 29:5: [SUB-CopyOfNonCopy] In function 'copy_whole_while_partial', block 'entry': cannot copy non-Copy type P
     |
+ 28 |     p.x = 1;
  29 |     q = copy p;
     |     ^^^^^^^^^^
+ 30 |     return
+    |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 29:5: [INIT-UsePartiallyInit] In function 'copy_whole_while_partial', block 'entry': variable 'p' is not fully initialized here
     |
+ 28 |     p.x = 1;
  29 |     q = copy p;
     |     ^^^^^^^^^^
+ 30 |     return
+    |
 error: at 43:5: [INIT-UseBeforeInit] In function 'read_never_init_field', block 'entry': variable 'p' is used before initialization
     |
+ 42 |     p.x = 1;
  43 |     a = copy p.y;
     |     ^^^^^^^^^^^^
+ 44 |     return
+    |
 error: at 56:5: [INIT-UseAfterMove] In function 'read_moved_field', block 'entry': variable 'p' is used after move
     |
+ 55 |     a = move p.x;
  56 |     b = copy p.x;
     |     ^^^^^^^^^^^^
+ 57 |     return
+    |
 error: at 70:5: [INIT-UseBeforeInit] In function 'nested_read_uninit_leaf', block 'entry': variable 'o' is used before initialization
     |
+ 69 |     o.c = 3;
  70 |     n = copy o.i.b;
     |     ^^^^^^^^^^^^^^
+ 71 |     return
+    |
 error: at 81:5: [INIT-UseBeforeInit] In function 'array_read_uninit_slot', block 'entry': variable 'a' is used before initialization
     |
+ 80 |     a[0] = 1;
  81 |     b = copy a[1];
     |     ^^^^^^^^^^^^^
+ 82 |     return
+    |
 error: at 92:5: [INIT-UsePartiallyInit] In function 'array_read_whole_while_partial', block 'entry': variable 'a' is not fully initialized here
     |
+ 91 |     a[0] = 1;
  92 |     b = copy a;
     |     ^^^^^^^^^^
+ 93 |     return
+    |
 error: at 114:5: [INIT-UsePartiallyInit] In function 'loop_carried_partial', block 'exit': variable 'p' is not fully initialized here
      |
+ 113 |   exit:
  114 |     a = copy p;
      |     ^^^^^^^^^^
+ 115 |     return
+     |
 error: at 127:5: [INIT-UseBeforeInit] In function 'pair_read_uninit_param_field', block 'entry': variable 'p' is used before initialization
      |
+ 126 |     p.a = move a;
  127 |     x = copy p.b;
      |     ^^^^^^^^^^^^
+ 128 |     return
+     |

@@ -1,44 +1,77 @@
 error: at 37:5: [TC-UndeclaredVariable] In function 'var_undeclared', block 'entry': Use of undeclared variable 'x'
     |
+ 36 |   entry:
  37 |     x = 42;
     |     ^^^^^^
+ 38 |     return
+    |
 error: at 46:5: [TC-FieldOfNonStruct] In function 'field_on_scalar', block 'entry': Cannot project field 'x' of non-struct type i64
     |
+ 45 |   entry:
  46 |     a = copy n.x;
     |     ^^^^^^^^^^^^
+ 47 |     return
+    |
 error: at 55:5: [TC-FieldOfNonStruct] In function 'field_on_enum', block 'entry': Cannot project field 'x' of enum type 'E'
     |
+ 54 |   entry:
  55 |     a = copy e.x;
     |     ^^^^^^^^^^^^
+ 56 |     return
+    |
 error: at 64:5: [TC-NoSuchField] In function 'field_unknown_on_struct', block 'entry': Struct 'P' has no field 'z'
     |
+ 63 |   entry:
  64 |     a = copy p.z;
     |     ^^^^^^^^^^^^
+ 65 |     return
+    |
 error: at 73:5: [TC-DerefOfNonPointer] In function 'deref_of_scalar', block 'entry': Cannot dereference non-pointer type i64
     |
+ 72 |   entry:
  73 |     x = copy y.*;
     |     ^^^^^^^^^^^^
+ 74 |     return
+    |
 error: at 84:5: [TC-DowncastOfNonEnum] In function 'downcast_on_ref', block 'entry': Cannot downcast non-enum type & i64
     |
+ 83 |   entry:
  84 |     x = copy r as Some;
     |     ^^^^^^^^^^^^^^^^^^
+ 85 |     return
+    |
 error: at 93:5: [TC-DowncastOfNonEnum] In function 'downcast_on_struct', block 'entry': Cannot downcast struct type 'S'
     |
+ 92 |   entry:
  93 |     x = copy s as Some;
     |     ^^^^^^^^^^^^^^^^^^
+ 94 |     return
+    |
 error: at 102:5: [TC-NoSuchVariant] In function 'downcast_variant_missing', block 'entry': Enum 'Option' has no variant 'Wat'
      |
+ 101 |   entry:
  102 |     x = copy o as Wat;
      |     ^^^^^^^^^^^^^^^^^
+ 103 |     return
+     |
 error: at 84:5: [VF-DowncastOnProjection] In function 'downcast_on_ref', block 'entry': cannot downcast 'r as Some' here: variant flow only tracks root Vars, and 'r' is a projection — extract into a local first
     |
+ 83 |   entry:
  84 |     x = copy r as Some;
     |     ^^^^^^^^^^^^^^^^^^
+ 85 |     return
+    |
 error: at 93:5: [VF-DowncastOnProjection] In function 'downcast_on_struct', block 'entry': cannot downcast 's as Some' here: variant flow only tracks root Vars, and 's' is a projection — extract into a local first
     |
+ 92 |   entry:
  93 |     x = copy s as Some;
     |     ^^^^^^^^^^^^^^^^^^
+ 94 |     return
+    |
 error: at 102:5: [VF-DowncastVariantNotRefined] In function 'downcast_variant_missing', block 'entry': cannot downcast 'o as Wat' here: 'o' is not refined to variant 'Wat'
      |
+ 101 |   entry:
  102 |     x = copy o as Wat;
      |     ^^^^^^^^^^^^^^^^^
+ 103 |     return
+     |

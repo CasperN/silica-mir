@@ -1,46 +1,69 @@
 error: at 84:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 81 | # the pointee, so the ref-obligation fires at return.
+ 82 | fn out_ref_param_untouched(r: &out i64) {
+    |                            ----------- reference declared here
+ 83 |   entry:
  84 |     return
     |     ^^^^^^
-  = note: reference declared here
+ 85 | }
     |
- 82 | fn out_ref_param_untouched(r: &out i64) {
-    |                            ^^^^^^^^^^^
 error: at 97:5: [INIT-RefObligationUnfulfilled] In function 'ref_field_leak_via_nll_unborrow', block 'entry': reference 's.r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
+ 93 | fn ref_field_leak_via_nll_unborrow(x: i64) {
+ 94 |   s: RefField;
+    |   ------------ reference declared here
+ 95 |   entry:
+ 96 |     s.r = &drop x;
  97 |     return
     |     ^^^^^^
-  = note: reference declared here
+ 98 | }
     |
- 94 |   s: RefField;
-    |   ^^^^^^^^^^^^
 error: at 35:5: [SUB-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
     |
+ 34 |   entry:
  35 |     return
     |     ^^^^^^
+ 36 | }
+    |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 45:5: [SUB-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
     |
+ 44 |     p.y = 2;
  45 |     return
     |     ^^^^^^
+ 46 | }
+    |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 53:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
     |
+ 52 |   entry:
  53 |     return
     |     ^^^^^^
+ 54 | }
+    |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
     |
+ 63 |     p.a = move src.a;
  64 |     return
     |     ^^^^^^
+ 65 | }
+    |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
     |
+ 72 |   t:
  73 |     return
     |     ^^^^^^
+ 74 |   fbr:
+    |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
 error: at 75:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
     |
+ 74 |   fbr:
  75 |     return
     |     ^^^^^^
+ 76 | }
+    |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

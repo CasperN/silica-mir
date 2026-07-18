@@ -1,16 +1,28 @@
 error: at 27:5: [TC-AssignmentTypeMismatch] In function 'wrong_element_type', block 'entry': Type mismatch in assignment. LHS is [i64; 5], RHS is [u8; 5]
     |
+ 26 |   entry:
  27 |     s = b"hello";
     |     ^^^^^^^^^^^^
+ 28 |     return
+    |
 error: at 38:5: [TC-AssignmentTypeMismatch] In function 'wrong_length', block 'entry': Type mismatch in assignment. LHS is [u8; 4], RHS is [u8; 5]
     |
+ 37 |   entry:
  38 |     s = b"hello";
     |     ^^^^^^^^^^^^
+ 39 |     return
+    |
 error: at 49:5: [TC-AssignmentTypeMismatch] In function 'byte_char_wrong_target', block 'entry': Type mismatch in assignment. LHS is i64, RHS is u8
     |
+ 48 |   entry:
  49 |     x = b'A';
     |     ^^^^^^^^
+ 50 |     return
+    |
 error: at 62:5: [TC-ArrayIndexOutOfBounds] In function 'const_index_out_of_bounds', block 'entry': Array index 5 out of bounds for [_; 5]
     |
+ 61 |     s = b"hello";
  62 |     b = copy s[5u64];
     |     ^^^^^^^^^^^^^^^^
+ 63 |     return
+    |

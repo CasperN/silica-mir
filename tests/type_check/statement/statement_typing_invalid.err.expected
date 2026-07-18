@@ -1,40 +1,70 @@
 error: at 34:5: [TC-AssignmentTypeMismatch] In function 'assign_type_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
     |
+ 33 |   entry:
  34 |     x = true;
     |     ^^^^^^^^
+ 35 |     return
+    |
 error: at 44:5: [TC-AssignmentTypeMismatch] In function 'assign_field_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
     |
+ 43 |   entry:
  44 |     s.f = true;
     |     ^^^^^^^^^^
+ 45 |     return
+    |
 error: at 55:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_arity_mismatch', block 'entry': Type mismatch in assignment. LHS is fn(i64, i64), RHS is fn(i64)
     |
+ 54 |   entry:
  55 |     g = callee;
     |     ^^^^^^^^^^
+ 56 |     return
+    |
 error: at 66:5: [TC-AssignmentTypeMismatch] In function 'assign_ref_kind_mismatch', block 'entry': Type mismatch in assignment. LHS is &mut i64, RHS is & i64
     |
+ 65 |   entry:
  66 |     r = &y;
     |     ^^^^^^
+ 67 |     return
+    |
 error: at 78:5: [TC-CallTargetNotFunction] In function 'call_non_function_target', block 'entry': Call target is not a function type: i64
     |
+ 77 |     x = 42;
  78 |     call copy x();
     |     ^^^^^^^^^^^^^
+ 79 |     return
+    |
 error: at 88:5: [TC-CallWrongArity] In function 'call_wrong_arity', block 'entry': Wrong i64 of arguments for call. Expected 2, found 1
     |
+ 87 |   entry:
  88 |     call add(1);
     |     ^^^^^^^^^^^
+ 89 |     return
+    |
 error: at 98:5: [TC-CallArgTypeMismatch] In function 'call_wrong_arg_type', block 'entry': Call argument 0 type mismatch. Expected i64, found bool
     |
+ 97 |   entry:
  98 |     call takes_num(true);
     |     ^^^^^^^^^^^^^^^^^^^^
+ 99 |     return
+    |
 error: at 110:5: [TC-CallArgTypeMismatch] In function 'call_ref_kind_mismatch', block 'entry': Call argument 0 type mismatch. Expected &drop i64, found &mut i64
      |
+ 109 |     r = &mut y;
  110 |     call takes_drop_ref(move r);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 111 |     return
+     |
 error: at 120:5: [TC-UndeclaredVariable] In function 'drop_undeclared_var', block 'entry': Use of undeclared variable 'x'
      |
+ 119 |   entry:
  120 |     drop x;
      |     ^^^^^^
+ 121 |     return
+     |
 error: at 132:5: [TC-UnborrowNonReference] In function 'unborrow_non_reference', block 'entry': unborrow requires a reference-typed place, found i64
      |
+ 131 |     x = 0;
  132 |     unborrow x;
      |     ^^^^^^^^^^
+ 133 |     return
+     |

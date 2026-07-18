@@ -1,108 +1,189 @@
 error: at 94:5: [TC-SwitchArmUnknownVariant] In function 'coverage_unknown_variant_still_reported_and_missing_still_fires', block 'entry': variant 'Bogus' is not part of enum 'Option'
     |
+ 93 |   entry:
  94 |     switchEnum(o) [None: n, Bogus: b]
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 95 |   n:
+    |
 error: at 127:5: [TC-SwitchArmUnknownVariant] In function 'empty_enum_switch_with_spurious_arm_errors', block 'entry': variant 'None' is not part of enum 'Void'
      |
+ 126 |   entry:
  127 |     switchEnum(v) [None: arm]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 128 |   arm:
+     |
 error: at 154:5: [TC-SwitchOnNonEnum] In function 'downcast_in_switch_place_without_refinement', block 'entry': switchEnum place must be an enum type, found i64
      |
+ 153 |   entry:
  154 |     switchEnum(o as Some) [None: n]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 155 |   n:
+     |
 error: at 51:5: [VF-SwitchNotExhaustive] In function 'coverage_missing_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
     |
+ 50 |   entry:
  51 |     switchEnum(o) [None: n]
     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 52 |   n:
+    |
 error: at 64:5: [VF-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'B'
     |
+ 63 |   entry:
  64 |     switchEnum(t) [A: a]
     |     ^^^^^^^^^^^^^^^^^^^^
+ 65 |   a:
+    |
 error: at 64:5: [VF-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'C'
     |
+ 63 |   entry:
  64 |     switchEnum(t) [A: a]
     |     ^^^^^^^^^^^^^^^^^^^^
+ 65 |   a:
+    |
 error: at 76:5: [VF-SwitchDuplicateArm] In function 'coverage_duplicate_arm', block 'entry': switchEnum has duplicate arm for variant 'None'
     |
+ 75 |   entry:
  76 |     switchEnum(o) [None: a, None: b, Some: s]
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 77 |   a:
+    |
 error: at 94:5: [VF-SwitchNotExhaustive] In function 'coverage_unknown_variant_still_reported_and_missing_still_fires', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
     |
+ 93 |   entry:
  94 |     switchEnum(o) [None: n, Bogus: b]
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 95 |   n:
+    |
 error: at 109:5: [VF-SwitchNoArms] In function 'empty_enum_switch_with_no_arms_rejected', block 'entry': switchEnum requires at least one arm
      |
+ 108 |   entry:
  109 |     switchEnum(v) []
      |     ^^^^^^^^^^^^^^^^
+ 110 | }
+     |
 error: at 118:5: [VF-SwitchNoArms] In function 'switch_with_no_arms', block 'entry': switchEnum requires at least one arm
      |
+ 117 |   entry:
  118 |     switchEnum(o) []
      |     ^^^^^^^^^^^^^^^^
+ 119 | }
+     |
 error: at 118:5: [VF-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'None'
      |
+ 117 |   entry:
  118 |     switchEnum(o) []
      |     ^^^^^^^^^^^^^^^^
+ 119 | }
+     |
 error: at 118:5: [VF-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
      |
+ 117 |   entry:
  118 |     switchEnum(o) []
      |     ^^^^^^^^^^^^^^^^
+ 119 | }
+     |
 error: at 140:5: [VF-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
+ 139 |   entry:
  140 |     x = copy o as Some;
      |     ^^^^^^^^^^^^^^^^^^
+ 141 |     drop x;
+     |
 error: at 154:5: [VF-DowncastVariantNotRefined] In function 'downcast_in_switch_place_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
+ 153 |   entry:
  154 |     switchEnum(o as Some) [None: n]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 155 |   n:
+     |
 error: at 169:5: [VF-DowncastOnProjection] In function 'downcast_on_field_of_struct_errors', block 'entry': cannot downcast 'w.inner as Some' here: variant flow only tracks root Vars, and 'w.inner' is a projection — extract into a local first
      |
+ 168 |   entry:
  169 |     x = copy w.inner as Some;
      |     ^^^^^^^^^^^^^^^^^^^^^^^^
+ 170 |     drop x;
+     |
 error: at 183:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_on_parameter', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 182 |   entry:
  183 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 184 |   n:
+     |
 error: at 201:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_reassign', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 200 |     o = copy other;
  201 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 202 |   n:
+     |
 error: at 227:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_ambiguous_join', block 'join': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 226 |   join:
  227 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 228 |   n:
+     |
 error: at 249:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_exclusive_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 248 |     unborrow r;
  249 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 250 |   n:
+     |
 error: at 271:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_out_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
      |
+ 270 |     unborrow r;
  271 |     switchEnum(o) [None: dead, Some: s]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 272 |   s:
+     |
 error: at 296:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
      |
+ 295 |     unborrow r;
  296 |     switchEnum(o) [None: dead, Some: s]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 297 |   dead:
+     |
 error: at 317:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 316 |     unborrow r;
  317 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 318 |   n:
+     |
 error: at 340:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_switch_in_loop_widens_variant_correctly', block 'header': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 339 |   header:
  340 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 341 |   n:
+     |
 error: at 366:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_deref_switch_place_treated_as_top', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 365 |     r = &o;
  366 |     switchEnum(r.*) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 367 |   n:
+     |
 error: at 385:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_field_switch_place_treated_as_top', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |
+ 384 |     w.inner = Option::None(unit);
  385 |     switchEnum(w.inner) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 386 |   n:
+     |
 error: at 402:5: [VF-SwitchArmFalselyUnreachable] In function 'variant_with_inhabited_struct_payload_still_reachable', block 'entry': switchEnum arm for variant 'Bad' claims unreachable but variant is reachable at this point
      |
+ 401 |   entry:
  402 |     switchEnum(e) [Good: g, Bad: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 403 |   g:
+     |
 error: at 296:5: [INIT-UseAfterMove] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
      |
+ 295 |     unborrow r;
  296 |     switchEnum(o) [None: dead, Some: s]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 297 |   dead:
+     |

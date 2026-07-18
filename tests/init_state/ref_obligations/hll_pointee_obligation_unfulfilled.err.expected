@@ -1,48 +1,48 @@
 error: at 10:27: [INIT-RefObligationUnfulfilled] In function 'out_never': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+  9 | # &out never written.
  10 | fn out_never(r: &out i64) {
-    |                           ^
-  = note: reference declared here
+    |              -----------  ^ reference declared here
+ 11 | }
     |
- 10 | fn out_never(r: &out i64) {
-    |              ^^^^^^^^^^^
 error: at 15:3: [INIT-RefObligationUnfulfilled] In function 'out_struct_partial': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
     |
+ 13 | # &out struct with only one field written; pointee ends Partial.
+ 14 | fn out_struct_partial(r: &out P) {
+    |                       --------- reference declared here
  15 |   r.*.x = 1;
     |   ^^^^^^^^^
-  = note: reference declared here
+ 16 | }
     |
- 14 | fn out_struct_partial(r: &out P) {
-    |                       ^^^^^^^^^
 error: at 19:33: [INIT-RefObligationUnfulfilled] In function 'drop_untouched': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
+ 18 | # &drop pointee left initialized.
  19 | fn drop_untouched(r: &drop Box) {
-    |                                 ^
-  = note: reference declared here
+    |                   ------------  ^ reference declared here
+ 20 | }
     |
- 19 | fn drop_untouched(r: &drop Box) {
-    |                   ^^^^^^^^^^^^
 error: at 23:40: [INIT-RefObligationUnfulfilled] In function 'mut_moved_no_writeback': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 22 | # &mut moved-out with no writeback; pointee ends Uninit.
  23 | fn mut_moved_no_writeback(r: &mut Box) {
-    |                                        ^
-  = note: reference declared here
+    |                           -----------  ^ reference declared here
+ 24 |   let x = r.*;
     |
- 23 | fn mut_moved_no_writeback(r: &mut Box) {
-    |                           ^^^^^^^^^^^
 error: at 29:3: [INIT-RefObligationUnfulfilled] In function 'uninit_written': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
+ 27 | # &uninit written into as a whole.
+ 28 | fn uninit_written(r: &uninit i64) {
+    |                   -------------- reference declared here
  29 |   r.* = 42;
     |   ^^^^^^^^
-  = note: reference declared here
+ 30 | }
     |
- 28 | fn uninit_written(r: &uninit i64) {
-    |                   ^^^^^^^^^^^^^^
 error: at 34:3: [INIT-RefObligationUnfulfilled] In function 'uninit_struct_partial': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
     |
+ 32 | # &uninit struct with one field written; pointee ends Partial.
+ 33 | fn uninit_struct_partial(r: &uninit P) {
+    |                          ------------ reference declared here
  34 |   r.*.x = 1;
     |   ^^^^^^^^^
-  = note: reference declared here
+ 35 | }
     |
- 33 | fn uninit_struct_partial(r: &uninit P) {
-    |                          ^^^^^^^^^^^^

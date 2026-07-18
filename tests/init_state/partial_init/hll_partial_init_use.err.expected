@@ -1,32 +1,52 @@
 error: at 33:17: [INIT-UseAfterMove] In function 'read_moved_field': variable 'p' is used after move
     |
+ 32 |   let taken = p.b;
  33 |   let re_read = p.b;
     |                 ^^^
+ 34 | }
+    |
 error: at 39:13: [INIT-UsePartiallyInit] In function 'read_whole_while_partial': variable 'p' is not fully initialized here
     |
+ 38 |   let taken = p.b;
  39 |   let all = p;
     |             ^
+ 40 | }
+    |
 error: at 45:15: [INIT-UsePartiallyInit] In function 'nested_read_partial_inner': variable 'o' is not fully initialized here
     |
+ 44 |   let taken = o.p.b;
  45 |   let inner = o.p;
     |               ^^^
+ 46 | }
+    |
 error: at 62:3: [INIT-UseInconsistent] In function 'read_arm_only_field_y': 'xyz.y' may be used before initialization or after move (state inconsistent across paths)
     |
+ 56 |     xyz.x = 1i32;
+ 57 |     xyz.y = 2i32;
+    |     ------------ initialized here on some path
+ 58 |   } else {
+    |
+    | ...
+    |
+ 61 |   }
  62 |   xyz.y
     |   ^^^^^
-  = note: initialized here on some path
+ 63 | }
     |
- 57 |     xyz.y = 2i32;
-    |     ^^^^^^^^^^^^
 error: at 75:3: [INIT-UseInconsistent] In function 'read_arm_only_field_z': 'xyz.z' may be used before initialization or after move (state inconsistent across paths)
     |
+ 72 |     xyz.x = 1i32;
+ 73 |     xyz.z = 2i32;
+    |     ------------ initialized here on some path
+ 74 |   }
  75 |   xyz.z
     |   ^^^^^
-  = note: initialized here on some path
+ 76 | }
     |
- 73 |     xyz.z = 2i32;
-    |     ^^^^^^^^^^^^
 error: at 89:3: [INIT-UsePartiallyInit] In function 'read_whole_aggregate': variable 'xyz' is not fully initialized here
     |
+ 88 |   }
  89 |   xyz
     |   ^^^
+ 90 | }
+    |

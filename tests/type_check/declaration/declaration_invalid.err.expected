@@ -1,24 +1,41 @@
 error: at 25:32: [TC-InvalidDeclaredType] In struct 'StructFieldUndeclared', field 'x': Use of undeclared type 'Nope'
     |
+ 24 | # namespace fires TC-InvalidDeclaredType naming the absent type.
  25 | struct StructFieldUndeclared { x: Nope }
     |                                ^^^^^^^
+ 26 | 
+    |
 error: at 31:30: [TC-InvalidDeclaredType] In enum 'EnumVariantUndeclared', variant 'A': Use of undeclared type 'Nope'
     |
+ 30 | # TC-InvalidDeclaredType; the span covers the whole variant slot.
  31 | enum EnumVariantUndeclared { A: Nope }
     |                              ^^^^^^^
+ 32 | 
+    |
 error: at 37:24: [TC-InvalidDeclaredType] In function 'fn_param_undeclared', parameter 'x': Use of undeclared type 'Nope'
     |
+ 36 | # TC-InvalidDeclaredType; the span covers the parameter declaration.
  37 | fn fn_param_undeclared(x: Nope) { entry: return }
     |                        ^^^^^^^
+ 38 | 
+    |
 error: at 44:35: [TC-InvalidDeclaredType] In function 'fn_param_undeclared_inside_ref', parameter 'x': Use of undeclared type 'Nope'
     |
+ 43 | # validated when its inner type is absent.
  44 | fn fn_param_undeclared_inside_ref(x: &mut Nope) { entry: return }
     |                                   ^^^^^^^^^^^^
+ 45 | 
+    |
 error: at 50:34: [TC-InvalidDeclaredType] In function 'fn_param_undeclared_inside_fn', parameter 'g': Use of undeclared type 'Nope'
     |
+ 49 | # triggers TC-InvalidDeclaredType on the enclosing parameter slot.
  50 | fn fn_param_undeclared_inside_fn(g: fn(Nope)) { entry: return }
     |                                  ^^^^^^^^^^^
+ 51 | 
+    |
 error: at 56:28: [TC-InvalidDeclaredType] In function 'fn_local_undeclared', local 'x': Use of undeclared type 'Nope'
     |
+ 55 | # TC-InvalidDeclaredType; the span covers the local declaration.
  56 | fn fn_local_undeclared() { x: Nope; entry: return }
     |                            ^^^^^^^^
+    |

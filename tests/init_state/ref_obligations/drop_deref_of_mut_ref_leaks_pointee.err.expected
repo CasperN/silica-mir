@@ -1,8 +1,11 @@
 error: at 6:5: [INIT-RefObligationUnfulfilled] In function 'f', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
    |
+ 2 | # (Uninit, Init). Without re-init, obligation at return is unmet.
+ 3 | fn f(r: &mut i64) {
+   |      ----------- reference declared here
+ 4 |   entry:
+ 5 |     drop r.*;
  6 |     return
    |     ^^^^^^
-  = note: reference declared here
+ 7 | }
    |
- 3 | fn f(r: &mut i64) {
-   |      ^^^^^^^^^^^

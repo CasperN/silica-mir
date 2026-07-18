@@ -1,8 +1,14 @@
 error: at 17:5: [TC-AssignmentTypeMismatch] In function 'unit_to_int', block 'entry': Type mismatch in assignment. LHS is i64, RHS is unit
     |
+ 16 |   entry:
  17 |     n = unit;
     |     ^^^^^^^^
+ 18 |     return
+    |
 error: at 28:5: [TC-UndeclaredFunction] In function 'undeclared_fnname', block 'entry': Undeclared function name 'missing'
     |
+ 27 |   entry:
  28 |     g = missing;
     |     ^^^^^^^^^^^
+ 29 |     return
+    |

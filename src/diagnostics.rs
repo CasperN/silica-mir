@@ -345,27 +345,186 @@ impl Diagnostics {
         }
         out.push_str(&d.message);
 
-        // Gutter width = digits in the largest line number across
-        // primary + secondaries, so every snippet in this diagnostic
-        // aligns to the same column. Line numbers make each snippet
-        // navigable to a specific location; a shared width keeps the
-        // stack readable when notes reference lines far from primary.
-        let max_line = std::iter::once(d.span.line)
-            .chain(d.secondary.iter().map(|(s, _)| s.line))
-            .max()
-            .unwrap_or(0);
-        let gutter_width = max_line.to_string().len();
+        // Gather all valid spans.
+        struct GroupedSpan {
+            span: Span,
+            label: Option<String>,
+            is_primary: bool,
+        }
 
+        let mut grouped_spans = Vec::new();
         if has_pos {
-            if let Some(snippet) = self.render_snippet(d.span, gutter_width) {
-                out.push_str(&snippet);
+            grouped_spans.push(GroupedSpan {
+                span: d.span,
+                label: None,
+                is_primary: true,
+            });
+        }
+        for (span, label) in &d.secondary {
+            if span.line != 0 || span.col != 0 {
+                grouped_spans.push(GroupedSpan {
+                    span: *span,
+                    label: Some(label.clone()),
+                    is_primary: false,
+                });
             }
         }
 
-        for (span, label) in &d.secondary {
-            out.push_str(&format!("\n  = note: {}", label));
-            if let Some(snippet) = self.render_snippet(*span, gutter_width) {
-                out.push_str(&snippet);
+        if !grouped_spans.is_empty() && self.source.is_some() {
+            let source = self.source.as_ref().unwrap();
+            let lines: Vec<&str> = source.lines().collect();
+
+            // Sort spans by line and column.
+            grouped_spans.sort_by(|a, b| {
+                match a.span.line.cmp(&b.span.line) {
+                    std::cmp::Ordering::Equal => a.span.col.cmp(&b.span.col),
+                    ord => ord,
+                }
+            });
+
+            // Group spans into contiguous blocks (gap <= 2 lines).
+            let mut blocks: Vec<Vec<GroupedSpan>> = Vec::new();
+            for gs in grouped_spans {
+                if let Some(last_block) = blocks.last_mut() {
+                    let last_span = last_block.last().unwrap().span;
+                    if gs.span.line.saturating_sub(last_span.line) <= 3 {
+                        last_block.push(gs);
+                        continue;
+                    }
+                }
+                blocks.push(vec![gs]);
+            }
+
+            // Gutter width = digits in the largest line number across
+            // primary + secondaries.
+            let max_line = std::iter::once(d.span.line)
+                .chain(d.secondary.iter().map(|(s, _)| s.line))
+                .max()
+                .unwrap_or(0);
+            let gutter_width = max_line.to_string().len();
+
+            // Render each block.
+            for (block_idx, block) in blocks.iter().enumerate() {
+                if block_idx > 0 {
+                    // Print a separator between blocks.
+                    out.push_str(&format!("\n {:>w$} | ...", "", w = gutter_width));
+                }
+
+                // Block range with 1 line of context before and after.
+                let min_line = block.iter().map(|gs| gs.span.line).min().unwrap();
+                let max_line = block.iter().map(|gs| gs.span.line).max().unwrap();
+                let start_line = min_line.saturating_sub(1).max(1);
+                let end_line = (max_line + 1).min(lines.len() as u32);
+
+                // Print block start padding.
+                out.push_str(&format!("\n {:>w$} |", "", w = gutter_width));
+
+                for line_num in start_line..=end_line {
+                    let line_idx = (line_num - 1) as usize;
+                    if line_idx >= lines.len() {
+                        continue;
+                    }
+                    let line_str = lines[line_idx];
+                    out.push_str(&format!("\n {:>w$} | {}", line_num, line_str, w = gutter_width));
+
+                    // Check if this line contains any spans.
+                    let spans_on_line: Vec<&GroupedSpan> = block.iter().filter(|gs| gs.span.line == line_num).collect();
+                    if !spans_on_line.is_empty() {
+                        // Find the max end column to size the caret buffer.
+                        let mut max_end_col = 0;
+                        for gs in &spans_on_line {
+                            let start_col = gs.span.col as usize;
+                            let end_col = if gs.span.end_line == gs.span.line && gs.span.end_col > gs.span.col {
+                                gs.span.end_col as usize
+                            } else {
+                                start_col + 1
+                            };
+                            max_end_col = max_end_col.max(end_col);
+                        }
+
+                        // Build the caret characters buffer, mapping tabs properly.
+                        let mut caret_chars: Vec<char> = Vec::new();
+                        for (idx, c) in line_str.chars().enumerate() {
+                            if idx >= max_end_col {
+                                break;
+                            }
+                            if c == '\t' {
+                                caret_chars.push('\t');
+                            } else {
+                                caret_chars.push(' ');
+                            }
+                        }
+                        while caret_chars.len() < max_end_col {
+                            caret_chars.push(' ');
+                        }
+
+                        // Underline the spans.
+                        for gs in &spans_on_line {
+                            let start_col = gs.span.col.saturating_sub(1) as usize;
+                            let end_col = if gs.span.end_line == gs.span.line && gs.span.end_col > gs.span.col {
+                                gs.span.end_col.saturating_sub(1) as usize
+                            } else {
+                                start_col + 1
+                            };
+                            let caret_char = if gs.is_primary { '^' } else { '-' };
+                            for idx in start_col..end_col {
+                                if idx < caret_chars.len() {
+                                    if caret_chars[idx] == ' ' || caret_chars[idx] == '\t' || caret_char == '^' {
+                                        caret_chars[idx] = caret_char;
+                                    }
+                                }
+                            }
+                        }
+
+                        let caret_str: String = caret_chars.into_iter().collect();
+                        let caret_str = caret_str.trim_end();
+                        out.push_str(&format!("\n {:>w$} | {}", "", caret_str, w = gutter_width));
+
+                        // Interleave/stack labels.
+                        let labeled_spans: Vec<&GroupedSpan> = spans_on_line.iter().filter(|gs| gs.label.is_some()).cloned().collect();
+                        if labeled_spans.len() == 1 {
+                            // Single label: print next to the caret line.
+                            let label = labeled_spans[0].label.as_ref().unwrap();
+                            out.push_str(&format!(" {}", label));
+                        } else if labeled_spans.len() > 1 {
+                            // Multiple labels: print them stacked (right-to-left).
+                            let mut labeled = labeled_spans.clone();
+                            labeled.sort_by_key(|gs| gs.span.col);
+
+                            for i in (0..labeled.len()).rev() {
+                                let mut pointer_chars: Vec<char> = Vec::new();
+                                let max_active_col = labeled[i].span.col.saturating_sub(1) as usize;
+                                for (idx, c) in line_str.chars().enumerate() {
+                                    if idx >= max_active_col {
+                                        break;
+                                    }
+                                    if c == '\t' {
+                                        pointer_chars.push('\t');
+                                    } else {
+                                        pointer_chars.push(' ');
+                                    }
+                                }
+                                while pointer_chars.len() < max_active_col {
+                                    pointer_chars.push(' ');
+                                }
+
+                                for j in 0..i {
+                                    let col = labeled[j].span.col.saturating_sub(1) as usize;
+                                    if col < pointer_chars.len() {
+                                        pointer_chars[col] = '|';
+                                    }
+                                }
+
+                                let pointer_prefix: String = pointer_chars.into_iter().collect();
+                                let label = labeled[i].label.as_ref().unwrap();
+                                out.push_str(&format!("\n {:>w$} | {}|-- {}", "", pointer_prefix, label, w = gutter_width));
+                            }
+                        }
+                    }
+                }
+
+                // Block end padding.
+                out.push_str(&format!("\n {:>w$} |", "", w = gutter_width));
             }
         }
 
@@ -374,46 +533,6 @@ impl Diagnostics {
         }
 
         out
-    }
-
-    /// Format one source-snippet block with a numbered gutter:
-    ///
-    /// ```text
-    ///    |
-    ///  4 | source line
-    ///    | ^^^
-    /// ```
-    ///
-    /// `gutter_width` is the number of digits reserved for the line
-    /// number; caller should pass the max width across all spans in
-    /// the diagnostic so blocks align. Returns `None` when there's no
-    /// source arc or the span lies outside it.
-    fn render_snippet(&self, span: Span, gutter_width: usize) -> Option<String> {
-        let source = self.source.as_ref()?;
-        let lines: Vec<&str> = source.lines().collect();
-        let line_idx = (span.line as usize).saturating_sub(1);
-        if line_idx >= lines.len() {
-            return None;
-        }
-        let line_str = lines[line_idx];
-        let start_col = span.col as usize;
-        let end_col = if span.end_line == span.line && span.end_col > span.col {
-            span.end_col as usize
-        } else {
-            start_col + 1
-        };
-        let mut caret_line = String::new();
-        for c in line_str.chars().take(start_col.saturating_sub(1)) {
-            caret_line.push(if c == '\t' { '\t' } else { ' ' });
-        }
-        let count = end_col.saturating_sub(start_col).max(1);
-        for _ in 0..count {
-            caret_line.push('^');
-        }
-        let blank = format!(" {:>w$} |", "", w = gutter_width);
-        let numbered = format!(" {:>w$} | {}", span.line, line_str, w = gutter_width);
-        let caret = format!(" {:>w$} | {}", "", caret_line, w = gutter_width);
-        Some(format!("\n{}\n{}\n{}", blank, numbered, caret))
     }
 }
 
@@ -444,16 +563,13 @@ mod tests {
         let expected = "\
 at 2:8: [TC-AssignmentTypeMismatch] primary problem
    |
+ 1 | line one
+   |      --- related thing over here
  2 | second line here
    |        ^^^^
-  = note: related thing over here
-   |
- 1 | line one
-   |      ^^^
-  = note: another related thing
-   |
  3 | third line goes here
-   |       ^^^^";
+   |       ---- another related thing
+   |";
         assert_eq!(ds.errors_str()[0], expected);
     }
 

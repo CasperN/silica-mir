@@ -1,4 +1,7 @@
 error: at 5:5: [INIT-DerefPointeeStateMismatch] In function 'f', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
    |
+ 4 |   entry:
  5 |     x = copy r.*;
    |     ^^^^^^^^^^^^
+ 6 |     r.* = 42;
+   |

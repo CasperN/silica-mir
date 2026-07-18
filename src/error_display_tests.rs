@@ -42,11 +42,13 @@ fn test_hll_use_after_move_display() {
             let z = x;
         }
     ";
-    let expected = "\
-at 6:21: [INIT-UseAfterMove] In function 'f': variable 'x' is used after move
+    let expected = r#"at 6:21: [INIT-UseAfterMove] In function 'f': variable 'x' is used after move
    |
+ 5 |             let y = x;
  6 |             let z = x;
-   |                     ^";
+   |                     ^
+ 7 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -62,16 +64,16 @@ fn test_hll_loan_conflict_display() {
             let y = r.*;
         }
     ";
-    let expected = "\
-at 5:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
+    let expected = r#"at 5:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
    |
+ 3 |             let mut x: i64 = 10;
+ 4 |             let r = &mut x;
+   |                     ------ borrow of 'x' occurs here
  5 |             x = 20;
    |             ^^^^^^
-  = note: borrow of 'x' occurs here
+ 6 |             let y = r.*;
    |
- 4 |             let r = &mut x;
-   |                     ^^^^^^
-  hint: the borrow of 'r' is active until its last use or explicit unborrow.";
+  hint: the borrow of 'r' is active until its last use or explicit unborrow."#;
     assert_first_error(src, expected);
 }
 
@@ -83,15 +85,13 @@ fn test_hll_out_obligation_unfulfilled_display() {
         fn f(r: &out i64) {
         }
     ";
-    let expected = "\
-at 2:27: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    let expected = r#"at 2:27: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
    |
+ 1 | 
  2 |         fn f(r: &out i64) {
-   |                           ^
-  = note: reference declared here
-   |
- 2 |         fn f(r: &out i64) {
-   |              ^^^^^^^^^^^";
+   |              -----------  ^ reference declared here
+ 3 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -105,11 +105,13 @@ fn test_hll_undeclared_variable_display() {
             x
         }
     ";
-    let expected = "\
-at 3:21: [HTC-UndeclaredVariable] In function 'f': undeclared variable 'y'
+    let expected = r#"at 3:21: [HTC-UndeclaredVariable] In function 'f': undeclared variable 'y'
    |
+ 2 |         fn f() -> i64 {
  3 |             let x = y;
-   |                     ^";
+   |                     ^
+ 4 |             x
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -147,11 +149,13 @@ fn test_hll_immutable_assign_display() {
             x
         }
     ";
-    let expected = "\
-at 4:13: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
+    let expected = r#"at 4:13: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
    |
+ 3 |             let x: i64 = 1;
  4 |             x = 2;
-   |             ^";
+   |             ^
+ 5 |             x
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -164,11 +168,13 @@ fn test_hll_immutable_borrow_display() {
             let r = &mut x;
         }
     ";
-    let expected = "\
-at 4:26: [HMC-BorrowImmutableAsMut] In function 'f': cannot borrow immutable binding 'x' as mutable
+    let expected = r#"at 4:26: [HMC-BorrowImmutableAsMut] In function 'f': cannot borrow immutable binding 'x' as mutable
    |
+ 3 |             let x: i64 = 1;
  4 |             let r = &mut x;
-   |                          ^";
+   |                          ^
+ 5 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -182,12 +188,14 @@ fn test_hll_copy_of_non_copy_display() {
             let z = r;
         }
     ";
-    let expected = "\
-at 3:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut i64
+    let expected = r#"at 3:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut i64
    |
+ 2 |         fn f(r: &mut i64) {
  3 |             let y = r;
    |                     ^
-  hint: since the type is not Copy, try moving it instead using 'move'";
+ 4 |             let z = r;
+   |
+  hint: since the type is not Copy, try moving it instead using 'move'"#;
     assert_first_error(src, expected);
 }
 
@@ -199,11 +207,13 @@ fn test_hll_defer_mutability() {
             defer x = 2;
         }
     ";
-    let expected = "\
-at 4:19: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
+    let expected = r#"at 4:19: [HMC-AssignToImmutable] In function 'f': cannot assign to immutable binding 'x'
    |
+ 3 |             let x = 1;
  4 |             defer x = 2;
-   |                   ^";
+   |                   ^
+ 5 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -214,11 +224,13 @@ fn test_hll_defer_type_check() {
             defer 42;
         }
     ";
-    let expected = "\
-at 3:19: [HTC-TypeMismatch] In function 'f': type mismatch: expected integer type, found unit
+    let expected = r#"at 3:19: [HTC-TypeMismatch] In function 'f': type mismatch: expected integer type, found unit
    |
+ 2 |         fn f() {
  3 |             defer 42;
-   |                   ^^";
+   |                   ^^
+ 4 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -231,11 +243,13 @@ fn test_hll_defer_double_drop() {
             let y = b;
         }
     ";
-    let expected = "\
-at 4:29: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
+    let expected = r#"at 4:29: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
    |
+ 3 |         fn f(b: Box) {
  4 |             defer { let x = b; };
-   |                             ^";
+   |                             ^
+ 5 |             let y = b;
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -248,11 +262,13 @@ fn test_hll_defer_use_after_move() {
             let c = b;
         }
     ";
-    let expected = "\
-at 4:19: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
+    let expected = r#"at 4:19: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
    |
+ 3 |         fn f(b: Box, out: &out Box) {
  4 |             defer out.* = b;
-   |                   ^^^^^^^^^";
+   |                   ^^^^^^^^^
+ 5 |             let c = b;
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -265,15 +281,16 @@ fn test_hll_defer_ref_obligation_unfulfilled() {
             defer r.* = Box { val: 5 };
         }
     ";
-    let expected = "\
-at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    let expected = r#"at 5:19: [INIT-RefObligationUnfulfilled] In function 'f': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
    |
+ 2 |         struct Box: Drop + Move { val: i64 }
+ 3 |         fn f(r: &drop Box) {
+   |              ------------ reference declared here
+ 4 |             let x = r.*;
  5 |             defer r.* = Box { val: 5 };
    |                   ^^^^^^^^^^^^^^^^^^^^
-  = note: reference declared here
-   |
- 3 |         fn f(r: &drop Box) {
-   |              ^^^^^^^^^^^^";
+ 6 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -287,16 +304,17 @@ fn test_hll_defer_loan_conflict() {
             x = 2;
         }
     ";
-    let expected = "\
-at 6:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
+    let expected = r#"at 6:13: [LT-LoanConflict] In function 'f': cannot write to 'x': already borrowed by 'r'
    |
+ 3 |             let mut x = 1;
+ 4 |             let r = &x;
+   |                     -- borrow of 'x' occurs here
+ 5 |             defer { let y = r.*; };
  6 |             x = 2;
    |             ^^^^^
-  = note: borrow of 'x' occurs here
+ 7 |         }
    |
- 4 |             let r = &x;
-   |                     ^^
-  hint: the borrow of 'r' is active until its last use or explicit unborrow.";
+  hint: the borrow of 'r' is active until its last use or explicit unborrow."#;
     assert_first_error(src, expected);
 }
 
@@ -309,11 +327,13 @@ fn test_hll_defer_reject_break() {
             };
         }
     ";
-    let expected = "\
-at 4:25: [HTC-ControlFlowInDefer] In function 'f': break is not allowed inside defer
+    let expected = r#"at 4:25: [HTC-ControlFlowInDefer] In function 'f': break is not allowed inside defer
    |
+ 3 |             loop {
  4 |                 defer { break; };
-   |                         ^^^^^";
+   |                         ^^^^^
+ 5 |             };
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -326,11 +346,13 @@ fn test_hll_defer_reject_continue() {
             };
         }
     ";
-    let expected = "\
-at 4:25: [HTC-ControlFlowInDefer] In function 'f': continue is not allowed inside defer
+    let expected = r#"at 4:25: [HTC-ControlFlowInDefer] In function 'f': continue is not allowed inside defer
    |
+ 3 |             loop {
  4 |                 defer { continue; };
-   |                         ^^^^^^^^";
+   |                         ^^^^^^^^
+ 5 |             };
+   |"#;
     assert_first_error(src, expected);
 }
 
@@ -341,11 +363,13 @@ fn test_hll_defer_reject_return() {
             defer { return; };
         }
     ";
-    let expected = "\
-at 3:21: [HTC-ControlFlowInDefer] In function 'f': return is not allowed inside defer
+    let expected = r#"at 3:21: [HTC-ControlFlowInDefer] In function 'f': return is not allowed inside defer
    |
+ 2 |         fn f() {
  3 |             defer { return; };
-   |                     ^^^^^^";
+   |                     ^^^^^^
+ 4 |         }
+   |"#;
     assert_first_error(src, expected);
 }
 

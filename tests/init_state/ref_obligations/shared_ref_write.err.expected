@@ -1,8 +1,14 @@
 error: at 9:5: [INIT-WriteThroughSharedRef] In function 'write', block 'entry': cannot write through shared reference 'r'
    |
+ 8 |   entry:
  9 |     r.* = 1;
    |     ^^^^^^^
+ 10 |     return
+   |
 error: at 16:5: [INIT-WriteThroughSharedRef] In function 'move_out', block 'entry': cannot move out through shared reference 'r'
     |
+ 15 |   entry:
  16 |     x = move r.*;
     |     ^^^^^^^^^^^^
+ 17 |     return
+    |
