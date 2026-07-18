@@ -125,10 +125,35 @@ pub fn lower_mir_to_llvm(program: &Program, env: &Env) -> String {
 /// a different name. `.` is used because MIR identifiers forbid it,
 /// making collisions with user-defined names impossible.
 fn llvm_fn_symbol(silica_name: &str) -> String {
-    if silica_name == "main" {
-        "silica.main".to_string()
+    let inner = if silica_name == "main" { "silica.main" } else { silica_name };
+    llvm_ident(inner)
+}
+
+/// Escape a Silica name for use as an LLVM identifier body. LLVM's
+/// unquoted identifiers accept `[-a-zA-Z$._][-a-zA-Z$._0-9]*`; anything
+/// else (post-mono generic names contain `<`, `>`, `,`, ` `) has to
+/// live inside `@"..."` / `%"..."` / `!"..."` quoted syntax.
+fn llvm_ident(name: &str) -> String {
+    let needs_quotes = name
+        .chars()
+        .any(|c| !(c.is_ascii_alphanumeric() || c == '_' || c == '$' || c == '.' || c == '-'));
+    if needs_quotes {
+        // LLVM quoted-identifier syntax: `"..."`. Backslash and quote
+        // need to be escaped as `\5C` and `\22` respectively. Silica
+        // names post-mono can contain `<`, `>`, `,`, and spaces from
+        // the `mangle` helper, none of which need escaping in the
+        // quoted body.
+        let escaped: String = name
+            .chars()
+            .map(|c| match c {
+                '"' => "\\22".to_string(),
+                '\\' => "\\5C".to_string(),
+                c => c.to_string(),
+            })
+            .collect();
+        format!("\"{}\"", escaped)
     } else {
-        silica_name.to_string()
+        name.to_string()
     }
 }
 
@@ -180,14 +205,18 @@ impl<'a> CodeGenContext<'a> {
             Type::Custom(name, args) => {
                 assert!(
                     args.is_empty(),
-                    "codegen: generic type instantiation not yet supported (monomorphization pass missing) — {}<{}>",
+                    "codegen: Type::Custom('{}', ...) still has type args — the mono pass \
+                     should have flattened this into a concrete instantiation",
                     name,
-                    args.iter().map(|a| a.to_string()).collect::<Vec<_>>().join(", "),
                 );
-                format!("%{}", name)
+                format!("%{}", llvm_ident(name))
             }
             Type::Param(name) => {
-                panic!("codegen: unmonomorphized type parameter '{}' reached LLVM lowering", name);
+                panic!(
+                    "codegen: Type::Param('{}') reached LLVM lowering — mono pass didn't run \
+                     or missed this position",
+                    name
+                );
             }
             Type::Array(elem, n) => format!("[{} x {}]", n, self.lower_type(elem)),
         }
@@ -224,7 +253,7 @@ impl<'a> CodeGenContext<'a> {
 // ---------- Declarations ----------
 
 fn emit_struct_decl(cx: &mut CodeGenContext, s: &StructDecl) {
-    write!(cx.out, "%{} = type {{ ", s.name).unwrap();
+    write!(cx.out, "%{} = type {{ ", llvm_ident(&s.name)).unwrap();
     for (i, f) in s.fields.iter().enumerate() {
         if i > 0 {
             write!(cx.out, ", ").unwrap();
@@ -253,7 +282,7 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
     writeln!(
         cx.out,
         "%{} = type {{ i16, [{} x i8], [{} x {}] }}",
-        e.name, pad_bytes, lane_count, lane_ty
+        llvm_ident(&e.name), pad_bytes, lane_count, lane_ty
     )
     .unwrap();
 }
@@ -652,7 +681,7 @@ fn emit_enum_construction(
     writeln!(
         cx.out,
         "  {} = getelementptr %{}, ptr {}, i32 0, i32 0",
-        disc_addr, enum_name, lhs_addr
+        disc_addr, llvm_ident(enum_name), lhs_addr
     )
     .unwrap();
     writeln!(cx.out, "  store i16 {}, ptr {}", v_idx, disc_addr).unwrap();
@@ -664,7 +693,7 @@ fn emit_enum_construction(
         writeln!(
             cx.out,
             "  {} = getelementptr %{}, ptr {}, i32 0, i32 2",
-            payload_addr, enum_name, lhs_addr
+            payload_addr, llvm_ident(enum_name), lhs_addr
         )
         .unwrap();
         let llvm_ty = cx.lower_type(&operand_ty);

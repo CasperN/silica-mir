@@ -106,7 +106,7 @@ fn main() {
         return;
     }
 
-    let (elaborated, env) = elaborate_and_check_mir(&program, &mut d);
+    let (elaborated, _env) = elaborate_and_check_mir(&program, &mut d);
 
     if d.has_errors() {
         report_and_exit(&d);
@@ -120,7 +120,16 @@ fn main() {
     }
 
     match emit {
-        EmitKind::Llvm => print!("{}", mir::codegen::lower_mir_to_llvm(&elaborated, &env)),
+        EmitKind::Llvm => {
+            // Codegen consumes a monomorphized MIR — every Custom/FnName
+            // has empty type args. Env has to be rebuilt from the mono'd
+            // program because it caches struct/enum decls by name and
+            // those names change during mono.
+            let mut mono_prog = elaborated.clone();
+            mir::mono::monomorphize(&mut mono_prog);
+            let (mono_env, _) = mir::type_check::Env::build(&mono_prog);
+            print!("{}", mir::codegen::lower_mir_to_llvm(&mono_prog, &mono_env));
+        }
         EmitKind::Mir => print!("{}", mir::pretty_print::pretty_print(&elaborated)),
         EmitKind::PreElabMir => unreachable!("handled above"),
     }

@@ -911,15 +911,7 @@ Order of operations:
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
 - **HLL byte-string literals.** `b"hello"` is MIR-only; HLL has to build fixed-size `[u8; N]` buffers element-by-element. See `tests/programs/hll_hello_world_via_write.si` for the workaround.
 - **HLL surface for `$*` intrinsic calls.** Arithmetic and casts have first-class HLL syntax that lowers to `$*_to_*` / `$iN_add` intrinsics; the other intrinsics (popcount, clz, ctz, sqrt, LLVM-intrinsic-backed) have no HLL surface — calling `$i64_popcount(x)` fires `HTC-UndeclaredVariable`. Either add a `@intrinsic_name(...)` syntax or expose these as builtin fn names.
-- **Generics** in the MIR — grammar/AST/parser/print, scope-aware
-  substructural composition, decl-side marker check, and
-  use-site bound + arity check are all in. Remaining:
-  monomorphization pass ahead of codegen (today codegen and
-  layout panic on `Type::Param` and non-empty `Custom` args).
-  Conditional marker declarations (`Foo<T>: Copy where T: Copy`)
-  are deferred behind the current unconditional-bounds form; the
-  inline form on the decl and a separate `impl`-style form will
-  coexist.
+- **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
 - **HLL generics** — grammar, AST, parser, HLL type-check (HM +
   substitution + validate_type for decl-side arity/bounds/scope +
   generic-fn call inference), MIR `RValue::EnumConstr` and

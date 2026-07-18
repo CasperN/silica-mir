@@ -1,0 +1,108 @@
+# Monomorphization end-to-end at the codegen boundary. Every generic
+# type or fn that gets instantiated produces a mono'd copy that codegen
+# emits with an LLVM quoted name (`%"Box<i32>"`, `@"identity<i32>"`) —
+# raw `<`/`>`/`,` aren't legal in unquoted LLVM identifiers.
+#
+# Positive cells (must appear in the pinned LLVM):
+#   Box<i32>            single param, struct
+#   Box<Box<i32>>       nested — inner instantiation registered first
+#   Opt<i32>            enum with generic payload
+#   Node<i32>           self-referential via *Node<T>; cycle guard
+#                       (the walker sees `*Node<T>` in the specialized
+#                       decl, needs `Node<i32>` again, but the second
+#                       lookup hits `needed` and doesn't re-queue)
+#   Pair<i32, f64>      two type params
+#   identity<i32>       generic fn call
+#
+# Negative cells (must NOT appear in the pinned LLVM):
+#   Unused<T>           declared but never instantiated → dropped
+#   Unused<i32>         no reference in reachable code → not synthesized
+#
+# A regression here means mono failed to collect an instantiation,
+# emitted the wrong mangled name, codegen didn't quote a name, or the
+# reachability filter accidentally kept an uninstantiated generic.
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop { first: T, second: U }
+enum<T: Copy + Drop> Opt: Copy + Drop { None: unit, Some: T }
+struct<T: Copy + Drop> Node: Copy + Drop { value: T, next: *Node<T> }
+
+# Declared but never referenced from any non-generic fn body. Mono's
+# reachability walk never enters this decl; the pinned LLVM contains
+# no `%"Unused<i32>"` / `%Unused` type.
+struct<T: Copy + Drop> Unused: Copy + Drop { x: T }
+
+fn<T: Copy + Drop> identity(x: T, $return: &out T) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn make_box(x: i32, $return: &out Box<i32>) {
+  entry:
+    $return.*.inner = copy x;
+    return
+}
+
+fn nested(x: i32, $return: &out Box<Box<i32>>) {
+  inner: Box<i32>;
+  entry:
+    inner.inner = copy x;
+    $return.*.inner = move inner;
+    return
+}
+
+fn make_pair(a: i32, b: f64, $return: &out Pair<i32, f64>) {
+  entry:
+    $return.*.first = copy a;
+    $return.*.second = copy b;
+    return
+}
+
+fn make_opt(x: i32, $return: &out Opt<i32>) {
+  entry:
+    $return.* = Opt<i32>::Some(copy x);
+    return
+}
+
+# Instantiate Node<i32> so mono has to walk the self-referential field
+# type `*Node<T>` on the specialized copy. The walker registers
+# `Node<i32>` before descending into fields, so the second lookup on
+# `*Node<T>` post-substitution hits `needed` and doesn't loop or emit
+# a duplicate.
+fn make_node(v: i32, tail: *Node<i32>, $return: &out Node<i32>) {
+  entry:
+    $return.*.value = copy v;
+    $return.*.next = copy tail;
+    return
+}
+
+fn main(exit: &out i32) {
+  b: Box<i32>;
+  bb: Box<Box<i32>>;
+  o: Opt<i32>;
+  p: Pair<i32, f64>;
+  n: Node<i32>;
+  null_ptr: *Node<i32>;
+  id_out: &out i32;
+  b_out: &out Box<i32>;
+  bb_out: &out Box<Box<i32>>;
+  o_out: &out Opt<i32>;
+  p_out: &out Pair<i32, f64>;
+  n_out: &out Node<i32>;
+  entry:
+    b_out = &out b;
+    call make_box(3i32, move b_out);
+    bb_out = &out bb;
+    call nested(7i32, move bb_out);
+    o_out = &out o;
+    call make_opt(11i32, move o_out);
+    p_out = &out p;
+    call make_pair(13i32, 3.14f64, move p_out);
+    null_ptr = &raw n;
+    n_out = &out n;
+    call make_node(17i32, move null_ptr, move n_out);
+    id_out = &out exit.*;
+    call identity<i32>(copy b.inner, move id_out);
+    return
+}

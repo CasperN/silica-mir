@@ -8,6 +8,7 @@ pub mod init_state;
 pub mod intrinsics;
 pub mod layout;
 pub mod lifetime;
+pub mod mono;
 pub mod parser;
 pub mod pretty_print;
 pub mod substructural;

@@ -131,8 +131,11 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
         },
         Stage::Errors => render_diagnostics(&d),
         Stage::Codegen => match &elaborated_env {
-            Some((elaborated, env)) if !d.has_errors() => {
-                mir::codegen::lower_mir_to_llvm(elaborated, env)
+            Some((elaborated, _)) if !d.has_errors() => {
+                let mut mono_prog = elaborated.clone();
+                mir::mono::monomorphize(&mut mono_prog);
+                let (mono_env, _) = mir::type_check::Env::build(&mono_prog);
+                mir::codegen::lower_mir_to_llvm(&mono_prog, &mono_env)
             }
             _ => panic!(
                 "codegen fixture {} produced errors:\n{}",
@@ -148,8 +151,10 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
                     render_diagnostics(&d),
                 )
             });
-            let (env, _) = mir::type_check::Env::build(&program);
-            mir::codegen::lower_mir_to_llvm(&program, &env)
+            let mut mono_prog = program;
+            mir::mono::monomorphize(&mut mono_prog);
+            let (env, _) = mir::type_check::Env::build(&mono_prog);
+            mir::codegen::lower_mir_to_llvm(&mono_prog, &env)
         }
     }
 }
