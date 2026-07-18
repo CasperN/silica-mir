@@ -1,0 +1,251 @@
+# The loan pass tracks active loans on places and permits accesses that do
+# not conflict with any live loan.  A loan is "live" as long as the borrower
+# variable holds the reference; it closes when the borrower is moved away,
+# dropped, or overwritten.
+#
+# Axes:
+#   A — loan kind            : mut | shared | out | mixed-kind
+#   B — place shape          : scalar | field | disjoint-fields | nested-field | enum-downcast
+#   C — cfg / access pattern : linear | branch-join | transfer | wrap-in-enum
+#
+# Matrix (A × B × C — only cells with fns listed):
+#
+#   mut  × scalar             × linear          : mut_scalar_loan_ends_at_move_to_call
+#   mut  × scalar             × linear          : mut_scalar_drop_borrower_closes_loan
+#   mut  × scalar             × linear          : mut_scalar_borrower_overwrite_releases_loan
+#   mut  × scalar             × linear          : mut_scalar_read_through_borrower
+#   mut  × scalar             × transfer        : mut_scalar_ref_transfer_carries_obligation
+#   mut  × scalar             × wrap-in-enum    : mut_scalar_enum_wrap_consumed_releases_loan
+#   mut  × field              × linear          : mut_field_overwrite_releases_old_loan
+#   mut  × field              × linear          : mut_nested_field_sibling_accessible
+#   mut  × disjoint-fields    × linear          : mut_disjoint_field_borrows
+#   mut  × disjoint-fields    × linear          : mut_multi_loan_disjoint_third_place
+#   mut  × disjoint-fields    × branch-join     : mut_multi_loan_branch_borrows_a_or_b
+#   shared × scalar           × linear          : shared_loan_permits_read
+#   shared × scalar           × linear          : shared_loan_permits_shared_reborrow
+#   mixed  × disjoint-fields  × linear          : mixed_kind_disjoint_field_loans
+
+struct P: Copy + Drop { a: i64 b: i64 }
+
+struct Inner: Copy + Drop { x: i64 y: i64 }
+struct Outer: Copy + Drop { i: Inner c: i64 }
+
+enum Wrap: Move { W: &mut i64 }
+
+extern fn sink(r: &mut i64);
+extern fn use_mut(r: &mut i64);
+extern fn use_out(r: &out i64);
+extern fn read_ref(r: &i64);
+extern fn take_wrap(w: Wrap);
+
+# ---------- mut × scalar × linear: loan ends when borrower moved to call ----------
+
+# Moving the borrower into a call transfers the reference out of scope; the
+# loan closes at the call site, so the access to `x` afterwards is clean.
+fn mut_scalar_loan_ends_at_move_to_call(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call sink(move r);
+    x = 1;
+    return
+}
+
+# ---------- mut × scalar × linear: drop of borrower closes loan ----------
+
+# Dropping the borrower variable surrenders the reference and closes the
+# loan; any subsequent access to the loaned place is unobstructed.
+fn mut_scalar_drop_borrower_closes_loan(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    drop r;
+    x = 42;
+    return
+}
+
+# ---------- mut × scalar × linear: overwriting borrower releases old loan ----------
+
+# Assigning a new borrow to `r` implicitly ends the previous loan on `x` so
+# that `x` is accessible again; only `y` is under loan when `use_mut` fires.
+fn mut_scalar_borrower_overwrite_releases_loan(x: i64, y: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    r = &mut y;
+    x = 42;
+    call use_mut(move r);
+    return
+}
+
+# ---------- mut × scalar × linear: read through the borrower ----------
+
+# A deref-read through the borrower itself does not conflict with the loan;
+# the access goes through the reference, not the underlying place directly.
+fn mut_scalar_read_through_borrower(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    return
+}
+
+# ---------- mut × scalar × transfer: obligation follows the new holder ----------
+
+# Transferring a `&mut` to a fresh variable moves the obligation; the
+# original variable is gone and the loan is carried by the new holder until
+# the new holder is consumed.
+fn mut_scalar_ref_transfer_carries_obligation(a: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut a;
+    s = move r;
+    call sink(move s);
+    a = 1;
+    return
+}
+
+# ---------- mut × scalar × wrap-in-enum: consuming the wrapper releases loan ----------
+
+# Wrapping the borrower inside an enum value and then consuming (moving) that
+# value transfers ownership out completely; the loan ends at the call that
+# consumes `w`, making `x` accessible for the subsequent write.
+fn mut_scalar_enum_wrap_consumed_releases_loan(x: i64) {
+  r: &mut i64;
+  w: Wrap;
+  entry:
+    r = &mut x;
+    w = Wrap::W(move r);
+    call take_wrap(move w);
+    x = 7;
+    return
+}
+
+# ---------- mut × field × linear: borrower overwrite releases field loan ----------
+
+# Re-assigning `r` to a different field closes the loan on `p.a`; the struct
+# field is free again while the new loan on `p.b` is the only active one.
+fn mut_field_overwrite_releases_old_loan(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    r = &mut p.b;
+    p.a = 99;
+    call sink(move r);
+    return
+}
+
+# ---------- mut × nested-field × linear: sibling sub-field accessible ----------
+
+# A borrow of `o.i.x` does not cover `o.i.y`; copying the sibling leaf does
+# not conflict with the active loan and the borrow can be used afterwards.
+fn mut_nested_field_sibling_accessible(o: Outer) {
+  r: &mut i64;
+  z: i64;
+  entry:
+    r = &mut o.i.x;
+    z = copy o.i.y;
+    call use_mut(move r);
+    return
+}
+
+# ---------- mut × disjoint-fields × linear: two borrows on separate fields ----------
+
+# `p.a` and `p.b` are distinct places; holding a `&mut p.a` does not prevent
+# a simultaneous `&out p.b`.  Both references are consumed without conflict.
+fn mut_disjoint_field_borrows(p: P) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut p.a;
+    y = copy p.b;
+    call sink(move r);
+    return
+}
+
+# ---------- mut × disjoint-fields × linear: third place stays free ----------
+
+# With `r` borrowing `a` and `s` borrowing `b`, the unrelated `c` may be
+# written freely because neither loan covers it.
+fn mut_multi_loan_disjoint_third_place(a: i64, b: i64, c: i64, cond: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy cond) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    c = 3;
+    call sink(move r);
+    return
+}
+
+# ---------- mut × disjoint-fields × branch-join: borrow a-or-b, touch neither ----------
+
+# At the join point `r` holds a loan on `a` (true-branch) or `b`
+# (false-branch).  Consuming `r` first and only then writing `a` and `b`
+# respects the loan set on every path.
+fn mut_multi_loan_branch_borrows_a_or_b(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    call sink(move r);
+    a = 1;
+    b = 2;
+    return
+}
+
+# ---------- shared × scalar × linear: shared loan permits copy of the place ----------
+
+# A shared borrow freezes the place for mutation but not for reading; copying
+# `x` while `r` is live is legal.
+fn shared_loan_permits_read(x: i64) {
+  r: &i64;
+  y: i64;
+  entry:
+    r = &x;
+    y = copy x;
+    return
+}
+
+# ---------- shared × scalar × linear: shared loan permits another shared borrow ----------
+
+# Two simultaneous shared borrows of the same place are compatible; neither
+# prevents the other from existing.
+fn shared_loan_permits_shared_reborrow(x: i64) {
+  r: &i64;
+  s: &i64;
+  entry:
+    r = &x;
+    s = &x;
+    return
+}
+
+# ---------- mixed-kind × disjoint-fields × linear: &mut and &out on separate fields ----------
+
+# `p.a` is under a `&mut` loan while `p.b` is under an `&out` loan; the two
+# places are disjoint so both borrows coexist without conflict.
+fn mixed_kind_disjoint_field_loans() {
+  p: P;
+  r: &mut i64;
+  s: &out i64;
+  entry:
+    p.a = 1;
+    r = &mut p.a;
+    s = &out p.b;
+    call use_mut(move r);
+    call use_out(move s);
+    return
+}

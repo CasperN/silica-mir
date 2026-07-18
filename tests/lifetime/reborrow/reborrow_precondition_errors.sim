@@ -1,0 +1,55 @@
+# Reborrow precondition errors: diagnostics that fire when a reborrow's
+# kind is incompatible with the parent's pointee init state, or when the
+# place syntax produces a downcast of the reference type rather than its
+# pointee.
+#
+# These errors are detected before elaboration. TC and INIT errors in any
+# function prevent the lifetime pass from running, so conflict-based errors
+# (LT-LoanConflict) live in a separate file: reborrow_conflict_errors.sim.
+#
+#   fn                                   error                        trigger
+#   mut_reborrow_of_out_parent           INIT-BorrowStateMismatch     &mut of Uninit pointee
+#   out_reborrow_of_mut_parent           INIT-BorrowStateMismatch     &out of Init pointee
+#   downcast_before_deref_parse_error    TC-DowncastOfNonEnum +       &mut e as V .*
+#                                        INIT-ReferenceStateUnknown
+
+enum E: Move { V: i64 }
+
+extern fn sink_out(r: &out i64);
+
+# ---------- INIT-BorrowStateMismatch: kind incompatible with pointee state ----------
+
+# The parent `r: &out i64` leaves its pointee Uninit; `&mut` requires
+# Init at borrow creation, so the borrow-precondition check fires.
+fn mut_reborrow_of_out_parent(r: &out i64) {
+  s: &mut i64;
+  entry:
+    s = &mut r.*;
+    return
+}
+
+# The parent `r: &mut i64` leaves its pointee Init; `&out` requires
+# Uninit at borrow creation, so the borrow-precondition check fires.
+fn out_reborrow_of_mut_parent(r: &mut i64) {
+  s: &out i64;
+  entry:
+    s = &out r.*;
+    s.* = 1;
+    call sink_out(move s);
+    return
+}
+
+# ---------- TC-DowncastOfNonEnum: wrong parse order ----------
+
+# `&mut e as V .*` parses as `&mut (e as V) .*`, which tries to
+# downcast the reference `e: &mut E` (not its pointee). The checker
+# fires TC-DowncastOfNonEnum because `&mut E` is not an enum, then
+# INIT-ReferenceStateUnknown because `e as V` has no bound state.
+fn downcast_before_deref_parse_error(e: &mut E) {
+  r: &mut i64;
+  entry:
+    switchEnum(e.*) [V: v_arm]
+  v_arm:
+    r = &mut e as V .*;
+    return
+}

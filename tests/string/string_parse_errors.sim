@@ -1,0 +1,22 @@
+# Byte-string and byte-char literal violations caught at parse time.
+#
+# Parse errors abort the pipeline before type-checking runs, so they must
+# live in a separate fixture from TC-level errors. Each function here fires
+# exactly one PARSE-* diagnostic.
+#
+# Cells under test:
+#
+#   fn                DiagCode              trigger
+#   ──────────────    ──────────────────    ──────────────────────────────────
+#   unknown_escape    PARSE-InvalidLiteral  \q in a byte-string literal
+
+# ---------- unknown_escape ----------
+
+# The escape sequence `\q` is not a recognised backslash escape.
+# PARSE-InvalidLiteral is fired at parse time, before type-checking.
+fn unknown_escape() {
+  s: [u8; 1];
+  entry:
+    s = b"\q";
+    return
+}

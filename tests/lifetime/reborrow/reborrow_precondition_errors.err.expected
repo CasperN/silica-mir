@@ -1,0 +1,16 @@
+error: at 53:5: [TC-DowncastOfNonEnum] In function 'downcast_before_deref_parse_error', block 'v_arm': Cannot downcast non-enum type &mut E
+    |
+ 53 |     r = &mut e as V .*;
+    |     ^^^^^^^^^^^^^^^^^^
+error: at 27:5: [INIT-BorrowStateMismatch] In function 'mut_reborrow_of_out_parent', block 'entry': cannot create &mut of '*r': pointee must be initialized at borrow, but is uninitialized
+    |
+ 27 |     s = &mut r.*;
+    |     ^^^^^^^^^^^^
+error: at 36:5: [INIT-BorrowStateMismatch] In function 'out_reborrow_of_mut_parent', block 'entry': cannot create &out of '*r': pointee must be uninitialized at borrow, but is initialized
+    |
+ 36 |     s = &out r.*;
+    |     ^^^^^^^^^^^^
+error: at 53:5: [INIT-ReferenceStateUnknown] In function 'downcast_before_deref_parse_error', block 'v_arm': cannot create &mut of '*e as V': parent reference 'e as V' is not bound here
+    |
+ 53 |     r = &mut e as V .*;
+    |     ^^^^^^^^^^^^^^^^^^

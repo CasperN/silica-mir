@@ -1,0 +1,34 @@
+# Rendered output of HMC-* diagnostics: mutability violations caught by
+# the HLL mutability checker before lowering.
+#
+# | fn                    | DiagCode                    |
+# |-----------------------|-----------------------------|
+# | assign_immutable      | HMC-AssignToImmutable       |
+# | borrow_immutable_mut  | HMC-BorrowImmutableAsMut    |
+# | defer_assign_immutable| HMC-AssignToImmutable (defer)|
+
+# ---------- HMC-AssignToImmutable: plain variable reassignment ----------
+
+# Reassigning a non-mut binding is caught by mut_check before lowering.
+fn assign_immutable() -> i64 {
+    let x: i64 = 1;
+    x = 2;
+    x
+}
+
+# ---------- HMC-BorrowImmutableAsMut: mutable borrow of immutable binding ----------
+
+# Taking a mutable reference to a non-mut binding is caught by mut_check.
+fn borrow_immutable_mut() {
+    let x: i64 = 1;
+    let r = &mut x;
+}
+
+# ---------- HMC-AssignToImmutable: assignment inside a defer body ----------
+
+# A defer body is lowered into the exit path; mut_check still enforces
+# immutability of bindings referenced there.
+fn defer_assign_immutable() {
+    let x = 1;
+    defer x = 2;
+}

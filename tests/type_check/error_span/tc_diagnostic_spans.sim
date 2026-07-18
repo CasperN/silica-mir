@@ -1,0 +1,182 @@
+# This fixture pins the span information — caret position and secondary-span
+# placement — attached to type-check diagnostics. A regression here means the
+# renderer pointed the caret at the wrong statement, reported the wrong column,
+# or moved a note to the wrong source site.
+#
+# Every function exercises one (DiagCode x span-anchor) cell. Where a single
+# terminator or block fires multiple diagnostics simultaneously, all of them are
+# listed in that cell's row.
+#
+#   cell | fn
+#   TC-AssignmentTypeMismatch, caret on assignment stmt (single fn)             | [A] assignment_type_mismatch_single
+#   TC-AssignmentTypeMismatch, caret on each stmt across two functions           | [B] assignment_type_mismatch_fn_f / assignment_type_mismatch_fn_g
+#   TC-AssignmentTypeMismatch, both stmts accumulate in one block                | [C] assignment_type_mismatch_accumulate_in_block
+#   TC-AssignmentTypeMismatch, distinct column positions carry distinct spans    | [D] assignment_type_mismatch_distinct_spans
+#   TC-AssignmentTypeMismatch, deep-indented col reported correctly              | [E] assignment_type_mismatch_deep_indent
+#   TC-BranchConditionNotBool + TC-TerminatorUndefinedTarget, all from branch   | [F] branch_multi_errors_fn_f / branch_multi_errors_fn_g
+#   TC-DuplicateDeclaration, caret on name token of struct                      | [G] duplicate_struct_declaration_at_name_span
+#   TC-DuplicateDeclaration, caret on name token of fn                          | [H] duplicate_fn_declaration_at_name_span
+#   TC-SwitchArmUnknownVariant + TC-TerminatorUndefinedTarget + VF-SwitchNotExhaustive, all from switchEnum | [I] switch_enum_multi_errors
+#   TC-ArrayIndexOutOfBounds, caret on the assignment stmt                      | [J] array_index_out_of_bounds_at_stmt_span
+#   TC-DerefOfNonPointer, caret on the assignment stmt                          | [K] deref_of_non_pointer_at_stmt_span
+#   TC-TerminatorUndefinedTarget (goto), caret on the terminator                | [L] goto_undefined_target_at_terminator_span
+#   TC-UndeclaredVariable, caret on the assignment stmt                         | [M] undeclared_variable_at_stmt_span
+
+# ---------- [A] TC-AssignmentTypeMismatch: single assignment ----------
+
+# Assigning bool to an i64 local fires AssignmentTypeMismatch; the caret must
+# land on the entire assignment statement.
+fn assignment_type_mismatch_single() {
+  x: i64;
+  entry:
+    x = true;
+    return
+}
+
+# ---------- [B] TC-AssignmentTypeMismatch: errors accumulate across functions ----------
+
+# Each function independently fires AssignmentTypeMismatch. Both errors must be
+# reported, with the caret pointing at the offending assignment in each function.
+fn assignment_type_mismatch_fn_f() {
+  x: i64;
+  entry:
+    x = true;
+    return
+}
+fn assignment_type_mismatch_fn_g() {
+  y: i64;
+  entry:
+    y = true;
+    return
+}
+
+# ---------- [C] TC-AssignmentTypeMismatch: two stmts accumulate in one block ----------
+
+# Both assignments in one block are type-mismatched. The checker must not stop
+# at the first error; both carets must appear in the output. The deep
+# indentation also confirms the reported column reflects actual source offset.
+fn assignment_type_mismatch_accumulate_in_block() {
+            x: i64;
+            y: i64;
+            entry:
+            x = true;
+            y = true;
+            return
+}
+
+# ---------- [D] TC-AssignmentTypeMismatch: distinct column positions ----------
+
+# Two assignments at different indentation depths produce errors with distinct
+# caret columns. This guards against the renderer collapsing them to the same
+# column.
+fn assignment_type_mismatch_distinct_spans() {
+  x: i64;
+  y: i64;
+  entry:
+    x = true;
+    y = true;
+    return
+}
+
+# ---------- [E] TC-AssignmentTypeMismatch: deep indentation, col reported correctly ----------
+
+# The assignment is indented further than usual. The reported column number must
+# reflect the actual source column, not a normalised or zero-based offset.
+fn assignment_type_mismatch_deep_indent() {
+                x: i64;
+                entry:
+                x = true;
+                return
+}
+
+# ---------- [F] TC-BranchConditionNotBool + TC-TerminatorUndefinedTarget: branch fires multiple errors ----------
+
+# branch on an i64 condition with undefined targets fires BranchConditionNotBool
+# and one TerminatorUndefinedTarget per missing target. All carets must land on
+# the full branch terminator line. The second function (g) has the targets
+# defined, so it fires only BranchConditionNotBool.
+fn branch_multi_errors_fn_f(n: i64) {
+  entry:
+    branch(copy n) [true: nowhere1, false: nowhere2]
+}
+fn branch_multi_errors_fn_g(n: i64) {
+  entry:
+    branch(copy n) [true: nowhere1, false: nowhere2]
+  nowhere1:
+    return
+  nowhere2:
+    return
+}
+
+# ---------- [G] TC-DuplicateDeclaration: caret on struct name token ----------
+
+# The second struct declaration with the same name fires DuplicateDeclaration.
+# The caret must point at the name identifier token, not the whole keyword line.
+struct DupS { x: i64 }
+struct DupS { y: i64 }
+fn duplicate_struct_declaration_at_name_span() { entry: return }
+
+# ---------- [H] TC-DuplicateDeclaration: caret on function name token ----------
+
+# Two functions with the same name fire DuplicateDeclaration on the second.
+# The caret must point at the function name token, not the whole signature.
+fn duplicate_fn_declaration_at_name_span() { entry: return }
+fn duplicate_fn_declaration_at_name_span() { entry: return }
+
+# ---------- [I] TC-SwitchArmUnknownVariant + TC-TerminatorUndefinedTarget + VF-SwitchNotExhaustive ----------
+
+# A switchEnum with an unknown variant arm ('Wat') fires three diagnostics at
+# once: SwitchArmUnknownVariant, TerminatorUndefinedTarget (for the undefined
+# block), and VF-SwitchNotExhaustive (missing 'Some'). All three carets must
+# land on the same switchEnum terminator line.
+enum SwitchOption: Copy + Drop { None: unit Some: i64 }
+fn switch_enum_multi_errors(o: SwitchOption) {
+  entry:
+    switchEnum(o) [Wat: nowhere, None: end]
+  end:
+    return
+}
+
+# ---------- [J] TC-ArrayIndexOutOfBounds: caret on assignment stmt ----------
+
+# Index 2 is out of bounds for a [_; 2] array. The caret must span the entire
+# assignment statement, not just the index expression.
+fn array_index_out_of_bounds_at_stmt_span() {
+  a: [i64; 2];
+  x: i64;
+  entry:
+    a = [1i64, 2i64];
+    x = copy a[2i64];
+    return
+}
+
+# ---------- [K] TC-DerefOfNonPointer: caret on assignment stmt ----------
+
+# Dereferencing an i64 parameter fires DerefOfNonPointer. The caret must span
+# the full assignment statement including the dereference expression.
+fn deref_of_non_pointer_at_stmt_span(x: i64) {
+  y: i64;
+  entry:
+    y = copy x.*;
+    return
+}
+
+# ---------- [L] TC-TerminatorUndefinedTarget (goto): caret on the terminator ----------
+
+# A goto to a non-existent label fires TerminatorUndefinedTarget. The caret must
+# span the entire goto terminator, not just the label name.
+fn goto_undefined_target_at_terminator_span() {
+  entry:
+    goto missing_label
+}
+
+# ---------- [M] TC-UndeclaredVariable: caret on assignment stmt ----------
+
+# Reading from an undeclared variable fires UndeclaredVariable. The caret must
+# span the full assignment statement that contains the undeclared operand.
+fn undeclared_variable_at_stmt_span() {
+  x: i64;
+  entry:
+    x = copy missing;
+    return
+}

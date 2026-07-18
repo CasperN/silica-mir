@@ -1,9 +1,0 @@
-
-            fn f() {
-              a: [i64; 2];
-              x: i64;
-              entry:
-                a = [1i64, 2i64];
-                x = copy a[2i64];
-                return
-            }

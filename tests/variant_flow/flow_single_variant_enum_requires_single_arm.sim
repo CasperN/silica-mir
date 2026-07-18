@@ -1,8 +1,0 @@
-
-            enum One: Copy + Drop { Only: i64 }
-            fn f(o: One) {
-              entry:
-                switchEnum(o) [Only: end]
-              end: return
-            }
-            

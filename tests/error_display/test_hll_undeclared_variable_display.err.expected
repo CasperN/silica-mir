@@ -1,4 +1,0 @@
-error: at 3:21: [HTC-UndeclaredVariable] In function 'f': undeclared variable 'y'
-   |
- 3 |             let x = y;
-   |                     ^

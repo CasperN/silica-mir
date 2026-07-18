@@ -1,0 +1,16 @@
+error: at 24:5: [VF-DowncastVariantNotRefined] In function 'downcast_variant_not_refined_at_stmt_span', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+    |
+ 24 |     x = copy o as Some;
+    |     ^^^^^^^^^^^^^^^^^^
+error: at 35:5: [VF-SwitchArmFalselyUnreachable] In function 'switch_arm_falsely_unreachable_at_terminator_span', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+    |
+ 35 |     switchEnum(o) [None: n, Some: dead]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 46:5: [VF-SwitchDuplicateArm] In function 'switch_duplicate_arm_at_terminator_span', block 'entry': switchEnum has duplicate arm for variant 'None'
+    |
+ 46 |     switchEnum(o) [None: a, None: b, Some: c]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 58:5: [VF-SwitchNotExhaustive] In function 'switch_not_exhaustive_at_terminator_span', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+    |
+ 58 |     switchEnum(o) [None: end]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^

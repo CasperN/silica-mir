@@ -1,0 +1,84 @@
+error: at 116:8: [TC-DuplicateDeclaration] Duplicate declaration of type 'DupS'
+     |
+ 116 | struct DupS { y: i64 }
+     |        ^^^^
+error: at 124:4: [TC-DuplicateDeclaration] Duplicate declaration of function 'duplicate_fn_declaration_at_name_span'
+     |
+ 124 | fn duplicate_fn_declaration_at_name_span() { entry: return }
+     |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 32:5: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_single', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 32 |     x = true;
+    |     ^^^^^^^^
+error: at 43:5: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_fn_f', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 43 |     x = true;
+    |     ^^^^^^^^
+error: at 49:5: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_fn_g', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 49 |     y = true;
+    |     ^^^^^^^^
+error: at 62:13: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_accumulate_in_block', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 62 |             x = true;
+    |             ^^^^^^^^
+error: at 63:13: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_accumulate_in_block', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 63 |             y = true;
+    |             ^^^^^^^^
+error: at 76:5: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_distinct_spans', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 76 |     x = true;
+    |     ^^^^^^^^
+error: at 77:5: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_distinct_spans', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 77 |     y = true;
+    |     ^^^^^^^^
+error: at 88:17: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismatch_deep_indent', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+    |
+ 88 |                 x = true;
+    |                 ^^^^^^^^
+error: at 100:5: [TC-BranchConditionNotBool] In function 'branch_multi_errors_fn_f', block 'entry': branch condition must be bool, found i64
+     |
+ 100 |     branch(copy n) [true: nowhere1, false: nowhere2]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 100:5: [TC-TerminatorUndefinedTarget] In function 'branch_multi_errors_fn_f', block 'entry': branch true target undefined block 'nowhere1'
+     |
+ 100 |     branch(copy n) [true: nowhere1, false: nowhere2]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 100:5: [TC-TerminatorUndefinedTarget] In function 'branch_multi_errors_fn_f', block 'entry': branch false target undefined block 'nowhere2'
+     |
+ 100 |     branch(copy n) [true: nowhere1, false: nowhere2]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 104:5: [TC-BranchConditionNotBool] In function 'branch_multi_errors_fn_g', block 'entry': branch condition must be bool, found i64
+     |
+ 104 |     branch(copy n) [true: nowhere1, false: nowhere2]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 135:5: [TC-SwitchArmUnknownVariant] In function 'switch_enum_multi_errors', block 'entry': variant 'Wat' is not part of enum 'SwitchOption'
+     |
+ 135 |     switchEnum(o) [Wat: nowhere, None: end]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 135:5: [TC-TerminatorUndefinedTarget] In function 'switch_enum_multi_errors', block 'entry': switchEnum variant 'Wat' targets undefined block 'nowhere'
+     |
+ 135 |     switchEnum(o) [Wat: nowhere, None: end]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 149:5: [TC-ArrayIndexOutOfBounds] In function 'array_index_out_of_bounds_at_stmt_span', block 'entry': Array index 2 out of bounds for [_; 2]
+     |
+ 149 |     x = copy a[2i64];
+     |     ^^^^^^^^^^^^^^^^
+error: at 160:5: [TC-DerefOfNonPointer] In function 'deref_of_non_pointer_at_stmt_span', block 'entry': Cannot dereference non-pointer type i64
+     |
+ 160 |     y = copy x.*;
+     |     ^^^^^^^^^^^^
+error: at 170:5: [TC-TerminatorUndefinedTarget] In function 'goto_undefined_target_at_terminator_span', block 'entry': goto targets undefined block 'missing_label'
+     |
+ 170 |     goto missing_label
+     |     ^^^^^^^^^^^^^^^^^^
+error: at 180:5: [TC-UndeclaredVariable] In function 'undeclared_variable_at_stmt_span', block 'entry': Use of undeclared variable 'missing'
+     |
+ 180 |     x = copy missing;
+     |     ^^^^^^^^^^^^^^^^
+error: at 135:5: [VF-SwitchNotExhaustive] In function 'switch_enum_multi_errors', block 'entry': switchEnum on 'SwitchOption' does not handle variant 'Some'
+     |
+ 135 |     switchEnum(o) [Wat: nowhere, None: end]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

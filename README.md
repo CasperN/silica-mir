@@ -985,23 +985,9 @@ Order of operations:
 - **Codegen fixtures don't validate the emitted LLVM.** Add a
   fixture that pipes output through `llvm-as` (skip when absent
   from `PATH`) to catch malformed IR at emit time.
-- **~30 near-duplicate fixtures** (whitespace/comments differ,
-  same program). Clean opportunistically when touching neighbors.
-- **Consolidation pass, in order.** Each = success + failure pair,
-  HLL sibling where feasible, sweep subsumed fixtures.
-  - `init_state/partial_init` (owned struct init matrix)
-  - `init_state/borrow_precondition` (ref kind × pointee state matrix)
-  - `substructural/` (marker × field-type matrix)
-  - HLL loop with ref obligations across iterations (new coverage)
-  - `type_check/` (undeclared, type mismatch, structural)
-  - `init_state/overwrite`, `cfg_shape/`, and small-dir merges
-    (`move_and_drop/`, `eager_transition/`, `projection/`,
-    `error_span/`)
-- **Codify two organization principles in testing discipline:**
-  (a) `.si` HLL siblings use `hll_*` filename prefix so they don't
-  collide with `.sim` on the `.expected` sibling; (b) when
-  consolidating, delete fixtures the new file subsumes in the same
-  commit.
+- **HLL loop with ref obligations across iterations.** New coverage
+  needed: no fixture yet exercises a `&out`/`&drop` obligation
+  carried across loop iterations from the HLL surface.
 
 # Longer term
 - Standard library (needs generics + modules + multi-file support).

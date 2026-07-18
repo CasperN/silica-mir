@@ -1,4 +1,0 @@
-error: at 8:13: [INIT-UseAfterMove] In function 'f', block 'entry': variable 'r' is used after move
-   |
- 8 |             unborrow r;
-   |             ^^^^^^^^^^

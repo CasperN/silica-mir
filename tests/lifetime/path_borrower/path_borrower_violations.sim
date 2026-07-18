@@ -1,0 +1,77 @@
+# Path-borrower pass — loan-conflict violations.
+#
+# The path-borrower tracks which specific field path is borrowed so
+# that accesses that conflict with a live loan are rejected. Each fn
+# exercises one error cell of the (path shape x conflict kind) matrix.
+#
+#   fn                              path shape           conflict                 diagnostic
+#   direct_write_to_borrowed_field  single field loan    write to borrowed place  LT-LoanConflict
+#   read_during_reborrow            field → reborrow     read while reborrow live LT-LoanConflict
+#   write_to_loan_after_merge       multi-path (branch)  write to any loan target LT-LoanConflict
+#
+# The `INIT-MoveWithUnfulfilledContainedRef` case lives in
+# `path_borrower_init_violations.sim` — the pipeline short-circuits
+# after any pre-elab error, so mixing an INIT-* violation with LT-*
+# violations in one file would suppress the LT diagnostics.
+#
+# Each fn fires exactly one error. A regression means a conflict is
+# silently accepted or a different diagnostic fires.
+
+struct RefBox: Move { p: &mut i64 }
+
+extern fn sink(r: &mut i64);
+extern fn take_box(b: RefBox);
+
+# ---------- Direct write to borrowed field ----------
+
+# `b.p = &mut x` registers a loan on `x` via path `b.p`. The
+# subsequent write `x = 42` conflicts with that live loan and fires
+# LT-LoanConflict.
+fn direct_write_to_borrowed_field(x: i64) {
+  b: RefBox;
+  entry:
+    b.p = &mut x;
+    x = 42;
+    call take_box(move b);
+    return
+}
+
+# ---------- Read through field ref while reborrow is live ----------
+
+# `s = &mut b.p.*` creates a reborrow of the field-ref pointee. The
+# subsequent `copy b.p.*` tries to read the same place while `s` holds
+# exclusive access; the path-borrower fires LT-LoanConflict.
+fn read_during_reborrow(x: i64) {
+  b: RefBox;
+  s: &mut i64;
+  y: i64;
+  entry:
+    b.p = &mut x;
+    s = &mut b.p.*;
+    y = copy b.p.*;
+    call sink(move s);
+    call take_box(move b);
+    return
+}
+
+# ---------- Write to a loan target after a merge point ----------
+
+# In each branch `b.p` borrows either `y` or `z`. After the merge the
+# path-borrower conservatively records that `y` may be borrowed. The
+# write `y = 1` conflicts with the live loan and fires LT-LoanConflict.
+fn write_to_loan_after_merge(y: i64, z: i64, cond: bool) {
+  b: RefBox;
+  entry:
+    branch(copy cond) [true: t, false: fbr]
+  t:
+    b.p = &mut y;
+    goto merge
+  fbr:
+    b.p = &mut z;
+    goto merge
+  merge:
+    y = 1;
+    call take_box(move b);
+    return
+}
+

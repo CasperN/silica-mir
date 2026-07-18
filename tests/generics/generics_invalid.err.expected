@@ -1,0 +1,40 @@
+error: at 51:22: [TC-InvalidDeclaredType] In struct 'WrongArity1', field 'field': Type 'Box' expects 1 type argument(s), got 2
+    |
+ 51 | struct WrongArity1 { field: Box<i32, bool> }
+    |                      ^^^^^^^^^^^^^^^^^^^^^
+error: at 52:22: [TC-InvalidDeclaredType] In struct 'WrongArity2', field 'field': Type 'Box' expects 1 type argument(s), got 0
+    |
+ 52 | struct WrongArity2 { field: Box }
+    |                      ^^^^^^^^^^
+error: at 55:21: [TC-InvalidDeclaredType] In struct 'UsesBadBox', field 'field': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+    |
+ 55 | struct UsesBadBox { field: Box<Linear> }
+    |                     ^^^^^^^^^^^^^^^^^^
+error: at 73:21: [TC-InvalidDeclaredType] In struct 'DeepBadBox', field 'field': Type argument Linear for 'Option::T' does not satisfy required bound 'Copy'
+    |
+ 73 | struct DeepBadBox { field: Box<Option<Linear>> }
+    |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+error: at 58:9: [TC-InvalidDeclaredType] In function 'take', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+    |
+ 58 | fn take(b: Box<Linear>) {
+    |         ^^^^^^^^^^^^^^
+error: at 66:27: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out U for 'Option::T' does not satisfy required bound 'Copy'
+    |
+ 66 | fn<U: Move> option_of_out(x: Option<&out U>) {
+    |                           ^^^^^^^^^^^^^^^^^
+error: at 36:30: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
+    |
+ 36 | struct<T> ClaimsCopy: Copy { inner: T }
+    |                              ^^^^^^^^
+error: at 39:36: [COMP-DropMarkerNotSatisfied] In struct 'ClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
+    |
+ 39 | struct<T: Copy> ClaimsDrop: Drop { inner: T }
+    |                                    ^^^^^^^^
+error: at 42:44: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopyFromMove' (marked Copy), field 'inner' has type T which is not Copy
+    |
+ 42 | struct<T: Move> ClaimsCopyFromMove: Copy { inner: T }
+    |                                            ^^^^^^^^
+error: at 46:32: [COMP-CopyMarkerNotSatisfied] In enum 'ClaimsCopyEnum' (marked Copy), variant 'A' payload type T is not Copy
+    |
+ 46 | enum<T> ClaimsCopyEnum: Copy { A: T  B: unit }
+    |                                ^^^^

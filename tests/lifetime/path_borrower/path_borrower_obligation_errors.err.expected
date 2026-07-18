@@ -1,0 +1,8 @@
+error: at 30:5: [INIT-MoveWithUnfulfilledContainedRef] In function 'move_with_unfulfilled_ref_obs', block 'entry': cannot move 'b': contained reference 'b.p' has unfulfilled obligation (pointee is uninitialized, but must be initialized before the reference expires)
+    |
+ 30 |     call take_box(move b);
+    |     ^^^^^^^^^^^^^^^^^^^^^
+  = note: reference declared here
+    |
+ 25 |   b: RefBox;
+    |   ^^^^^^^^^^

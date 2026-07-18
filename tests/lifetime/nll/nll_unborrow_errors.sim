@@ -1,0 +1,37 @@
+# NLL pass: reference obligation violations detected after NLL elaboration.
+#
+# These functions all carry `&out` references whose pointee obligation
+# cannot be discharged: the pointee is never written on at least one
+# path that reaches `return`.  The checker reports
+# `INIT-RefObligationUnfulfilled` with the specific mismatch.
+#
+# Table of functions:
+#
+#   fn                              scenario
+#   out_param_never_written         &out param, function returns without writing
+#   out_branch_both_arms_return     &out param, branch: neither arm writes before return
+
+# ---------- &out param returned without write ----------
+
+# `x` is an `&out` parameter whose pointee obligation requires the
+# pointee to be Init at return.  The body returns immediately without
+# writing through `x`, so the obligation is violated.
+fn out_param_never_written(x: &out i64) {
+  entry:
+    return
+}
+
+# ---------- &out param: branch where neither arm writes before return ----------
+
+# Both arms of the branch return without writing `r.*`.  The true arm
+# reaches `return` with the pointee still uninitialized, violating the
+# `&out` obligation.  (The false arm aborts, so only the true arm is
+# at fault, but the borrow is still live at the branch entry.)
+fn out_branch_return_without_write(r: &out i64, b: bool) {
+  entry:
+    branch(copy b) [true: return_arm, false: die_arm]
+  return_arm:
+    return
+  die_arm:
+    abort
+}

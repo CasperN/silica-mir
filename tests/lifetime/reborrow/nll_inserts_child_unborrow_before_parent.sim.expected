@@ -1,9 +1,0 @@
-fn f(r: &out i64) {
-  s: &out i64;
-  entry:
-    s = &out r.*;
-    s.* = 42;
-    unborrow s;
-    unborrow r;
-    return
-}

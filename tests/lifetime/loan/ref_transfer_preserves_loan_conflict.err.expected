@@ -1,9 +1,0 @@
-error: at 9:13: [LT-LoanConflict] In function 'f', block 'entry': cannot write to 'a': already borrowed by 's'
-   |
- 9 |             a = 1;
-   |             ^^^^^
-  = note: borrow of 'a' occurs here
-   |
- 7 |             r = &mut a;
-   |             ^^^^^^^^^^
-  hint: the borrow of 's' is active until its last use or explicit unborrow.

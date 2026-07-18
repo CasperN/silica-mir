@@ -1,0 +1,58 @@
+# `unborrow place` is illegal in four distinct situations.  Each fn
+# fires one diagnostic that pins the exact rejection reason.
+#
+# | scenario                  | diagnostic code                    |
+# |---------------------------|------------------------------------|
+# | ref moved before unborrow | INIT-UseAfterMove                  |
+# | ref never initialized     | INIT-UseBeforeInit                 |
+# | place is not a reference  | TC-UnborrowNonReference            |
+# | obligation still open     | INIT-RefObligationUnfulfilled      |
+
+extern fn sink(r: &mut i64);
+
+# ---------- ref moved before unborrow ----------
+
+# Moving a reference transfers ownership.  The original variable is
+# uninit afterward; attempting to unborrow it is use-after-move.
+fn unborrow_after_move(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call sink(move r);
+    unborrow r;
+    return
+}
+
+# ---------- ref never initialized ----------
+
+# A declared-but-never-assigned reference is uninit.  Unborrowing it
+# is use-before-init.
+fn unborrow_of_uninit() {
+  r: &mut i64;
+  entry:
+    unborrow r;
+    return
+}
+
+# ---------- place is not a reference ----------
+
+# `unborrow` requires a reference-typed operand.  Applying it to a
+# plain scalar is a type error.
+fn unborrow_of_non_ref_type(x: i64) {
+  entry:
+    unborrow x;
+    return
+}
+
+# ---------- obligation still open ----------
+
+# A `&mut` ref carries an obligation that the pointee must be Init at
+# expiry.  Moving the pointee out without writing it back leaves the
+# obligation unfulfilled; unborrow is rejected.
+fn unborrow_with_unfulfilled_obligation(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    unborrow r;
+    return
+}

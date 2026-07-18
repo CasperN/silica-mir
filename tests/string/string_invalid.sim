@@ -1,0 +1,64 @@
+# Byte-string and byte-char literal violations rejected by the type-checker.
+#
+# Three distinct type-check failure modes are covered: a wrong element
+# type on the LHS of a byte-string assignment, a length mismatch between
+# the declared array type and the literal, a byte-char assigned to a non-u8
+# target, and an out-of-bounds const index.
+#
+# Parse-time errors (unknown escape sequences) are separate because a parse
+# failure prevents type-checking from running; see string_parse_errors.sim.
+#
+# Cells under test:
+#
+#   fn                          DiagCode                    trigger
+#   ────────────────────────    ──────────────────────────  ──────────────────────────────────
+#   wrong_element_type          TC-AssignmentTypeMismatch   b"hello" assigned to [i64; 5]
+#   wrong_length                TC-AssignmentTypeMismatch   b"hello" assigned to [u8; 4]
+#   byte_char_wrong_target      TC-AssignmentTypeMismatch   b'A' assigned to i64
+#   const_index_out_of_bounds   TC-ArrayIndexOutOfBounds    s[5u64] on [u8; 5]
+
+# ---------- wrong_element_type ----------
+
+# A byte-string literal has element type u8; assigning it to `[i64; 5]`
+# is a type mismatch caught by TC-AssignmentTypeMismatch.
+fn wrong_element_type() {
+  s: [i64; 5];
+  entry:
+    s = b"hello";
+    return
+}
+
+# ---------- wrong_length ----------
+
+# The literal `b"hello"` has length 5; the declared target `[u8; 4]` has
+# length 4. TC-AssignmentTypeMismatch fires because `[u8; 5] != [u8; 4]`.
+fn wrong_length() {
+  s: [u8; 4];
+  entry:
+    s = b"hello";
+    return
+}
+
+# ---------- byte_char_wrong_target ----------
+
+# A byte-char literal produces `u8`; assigning it to an `i64` local is
+# rejected by TC-AssignmentTypeMismatch.
+fn byte_char_wrong_target() {
+  x: i64;
+  entry:
+    x = b'A';
+    return
+}
+
+# ---------- const_index_out_of_bounds ----------
+
+# Index 5 is out of bounds for a `[u8; 5]` array (valid indices are 0–4).
+# TC-ArrayIndexOutOfBounds fires, naming the index and the array length.
+fn const_index_out_of_bounds() {
+  s: [u8; 5];
+  b: u8;
+  entry:
+    s = b"hello";
+    b = copy s[5u64];
+    return
+}

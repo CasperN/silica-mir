@@ -1,9 +1,0 @@
-error: at 8:13: [LT-LoanConflict] In function 'f', block 'entry': cannot write to 'x': already borrowed by 'r'
-   |
- 8 |             x = 42;
-   |             ^^^^^^
-  = note: borrow of 'x' occurs here
-   |
- 7 |             r = &uninit x;
-   |             ^^^^^^^^^^^^^
-  hint: the borrow of 'r' is active until its last use or explicit unborrow.

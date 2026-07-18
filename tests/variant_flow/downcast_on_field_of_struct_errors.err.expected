@@ -1,4 +1,0 @@
-error: at 7:17: [VF-DowncastOnProjection] In function 'f', block 'entry': cannot downcast 'w.e as A' here: variant flow only tracks root Vars, and 'w.e' is a projection — extract into a local first
-   |
- 7 |                 switchEnum(w.e as A) [S1: s1, S2: s2]
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

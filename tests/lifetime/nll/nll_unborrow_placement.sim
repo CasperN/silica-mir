@@ -1,0 +1,219 @@
+# NLL pass: unborrow insertion at ASAP last-use point.
+#
+# The NLL pass inserts `unborrow r` immediately after the last statement
+# that uses a borrow `r`, releasing the loan so the borrowed place is
+# accessible again. The pass runs before drop elaboration. Axes:
+#
+#   borrow kind  × last-use pattern       × CFG shape
+#
+# Table of functions (borrow kind × CFG shape × last-use pattern):
+#
+#   fn                                  borrow kind  CFG shape          last-use pattern
+#   out_abort_suppresses_unborrow       &out         abort terminator    param unused — no unborrow
+#   out_unreachable_suppresses_unborrow &out         unreachable term.   param unused — no unborrow
+#   out_param_write_inserts_unborrow    &out         linear              write is last use
+#   out_branch_one_arm_aborts           &out         branch/abort        write in live arm
+#   mut_move_out_then_abort             &mut         abort terminator    move-out, no unborrow
+#   mut_param_read_last_use             &mut         linear              copy-read is last use
+#   mut_local_read_then_overwrite       &mut         linear              read before source overwrite
+#   out_local_write_last_use            &out         linear              local &out, write is last use
+#   mut_field_borrow_last_use           &mut         linear              field borrow, overwrite after unborrow
+#   mut_reborrow_same_place_twice       &mut         linear              serial reborrows, each ASAP
+#   mut_branch_each_arm_unborrows       &mut         branch              separate loans per arm
+#   mut_cross_edge_one_arm_dies         &mut         branch (asymmetric) cross-edge unborrow for dead arm
+#   mut_loop_unborrow_on_exit           &mut         loop                last use is in loop, unborrow on exit edge
+
+extern fn use_num(n: i64);
+
+struct P: Copy + Drop { a: i64  b: i64 }
+
+# ---------- &out: abort/unreachable terminators need no unborrow ----------
+
+# The function aborts unconditionally, so the `&out` parameter never
+# reaches a return that would require the pointee to be Init.  No
+# unborrow is inserted because there is no live-range end on any
+# reachable path.
+fn out_abort_suppresses_unborrow(r: &out i64) {
+  entry:
+    abort
+}
+
+# Identical to the abort case but using `unreachable` — the borrow
+# has no last use on any reachable path, so no unborrow is inserted.
+fn out_unreachable_suppresses_unborrow(r: &out i64) {
+  entry:
+    unreachable
+}
+
+# ---------- &out: linear write → unborrow at last use ----------
+
+# Writing through `x` satisfies the `&out` obligation and is the sole
+# use of `x`.  The NLL pass inserts `unborrow x` immediately after the
+# write, before return.
+fn out_param_write_inserts_unborrow(x: &out i64) {
+  entry:
+    x.* = 42;
+    return
+}
+
+# ---------- &out: branch with one arm returning and one aborting ----------
+
+# The true arm writes the pointee and returns — the write is `r`'s last
+# use, so `unborrow r` is inserted there.  The false arm aborts, so
+# no unborrow is needed there.
+fn out_branch_one_arm_aborts(r: &out i64, b: bool) {
+  entry:
+    branch(copy b) [true: init_arm, false: die_arm]
+  init_arm:
+    r.* = 42;
+    return
+  die_arm:
+    abort
+}
+
+# ---------- &mut param: move-out then abort ----------
+
+# Moving out of `r.*` consumes the borrow via a move, so there is no
+# remaining loan to unborrow.  The abort ensures we never reach a
+# return, so no drop elaboration runs either.
+fn mut_move_out_then_abort(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    abort
+}
+
+# ---------- &mut param: single copy-read is the last use ----------
+
+# `x.*` is copied into `y` and then never touched again.  The NLL pass
+# inserts `unborrow x` right after the copy, releasing the loan before
+# the caller sees the return.
+fn mut_param_read_last_use(x: &mut i64) {
+  y: i64;
+  entry:
+    y = copy x.*;
+    return
+}
+
+# ---------- &mut local: read is last use; source is later overwritten ----------
+
+# `r` is created from `&mut x`, read once into `y`, then `x` is
+# overwritten.  Unborrow is placed immediately after the read — before
+# the overwrite — because that is the ASAP last-use point.
+fn mut_local_read_then_overwrite(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    x = 42;
+    return
+}
+
+# ---------- &out local: write is last use ----------
+
+# `r` borrows `x` with `&out`, then the pointee is written.  Unborrow
+# follows the write immediately; drop elaboration then handles `x`.
+fn out_local_write_last_use() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    r.* = 42;
+    return
+}
+
+# ---------- &mut field borrow: unborrow before source field is overwritten ----------
+
+# `r` borrows field `p.a`.  The overwrite `p.a = 42` is the next
+# statement that touches the same place, but it is NOT a use of `r`
+# — the borrow must be released first.  The NLL pass inserts
+# `unborrow r` before the write.
+fn mut_field_borrow_last_use(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    p.a = 42;
+    return
+}
+
+# ---------- &mut reborrow same place twice: each unborrowed ASAP ----------
+
+# Two serial borrows of `x`.  `r` is used once (copy into `y`), then
+# `s` borrows the same place.  The NLL pass must insert `unborrow r`
+# before `s = &mut x` and `unborrow s` after `s`'s last use.
+fn mut_reborrow_same_place_twice(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    s = &mut x;
+    y = copy s.*;
+    return
+}
+
+# ---------- &mut: branch with a separate loan per arm ----------
+
+# Each branch arm takes a loan of a different local (`a` or `b`).
+# Both loans end at their last use (the assignment itself is the only
+# use of `r` in each arm), so `unborrow r` is inserted at the end of
+# each arm before the merge.
+fn mut_branch_each_arm_unborrows(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    a = 1;
+    b = 2;
+    return
+}
+
+# ---------- &mut: borrower is used only on one arm → cross-edge unborrow ----------
+
+# `r` borrows `x` before a branch.  On the true arm `r` is used (copy
+# through `use_num`).  On the false arm `r` is never used.  The NLL
+# pass must insert `unborrow r` on the edge to the false arm (a
+# synthetic cross-edge block) and after the use on the true arm.
+fn mut_cross_edge_one_arm_dies(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    branch(copy b) [true: t, false: fbr]
+  t:
+    call use_num(copy r.*);
+    goto end
+  fbr:
+    goto end
+  end:
+    x = 42;
+    return
+}
+
+# ---------- &mut: borrow used inside loop, unborrow placed on loop-exit edge ----------
+
+# `r` is created before the loop and used in the loop body.  The last
+# use of `r` is the call in `body`.  The NLL pass inserts `unborrow r`
+# on the edge from `head` to `done` (a synthetic exit block), because
+# that is where the borrow's live range ends.
+fn mut_loop_unborrow_on_exit(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    x = 42;
+    return
+}

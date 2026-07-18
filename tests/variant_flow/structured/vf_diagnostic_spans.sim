@@ -1,0 +1,60 @@
+# This fixture pins the span information — caret position — attached to
+# structured variant-flow diagnostics. A regression here means the renderer
+# pointed the caret at the wrong statement or terminator.
+#
+# Every function exercises one (DiagCode x span-anchor) cell and fires exactly
+# one VF-* diagnostic.
+#
+#   cell | fn
+#   DowncastVariantNotRefined, caret on the copy stmt  | [A] downcast_variant_not_refined_at_stmt_span
+#   SwitchArmFalselyUnreachable, caret on terminator   | [B] switch_arm_falsely_unreachable_at_terminator_span
+#   SwitchDuplicateArm, caret on terminator            | [C] switch_duplicate_arm_at_terminator_span
+#   SwitchNotExhaustive, caret on terminator           | [D] switch_not_exhaustive_at_terminator_span
+
+enum Option: Copy + Drop { None: unit Some: i64 }
+
+# ---------- [A] DowncastVariantNotRefined: caret on the copy statement ----------
+
+# o is an Option parameter with no prior refinement. Attempting to downcast
+# o as Some fires DowncastVariantNotRefined; the caret must land on the full
+# assignment statement, not on the enum declaration or parameter.
+fn downcast_variant_not_refined_at_stmt_span(o: Option) {
+  x: i64;
+  entry:
+    x = copy o as Some;
+    return
+}
+
+# ---------- [B] SwitchArmFalselyUnreachable: caret on the terminator ----------
+
+# o enters from a parameter, so both None and Some are reachable. Routing the
+# Some arm to an unreachable block fires SwitchArmFalselyUnreachable; the
+# caret must point at the switchEnum terminator, not at the unreachable block.
+fn switch_arm_falsely_unreachable_at_terminator_span(o: Option) {
+  entry:
+    switchEnum(o) [None: n, Some: dead]
+  n: return
+  dead: unreachable
+}
+
+# ---------- [C] SwitchDuplicateArm: caret on the terminator ----------
+
+# The switchEnum lists None twice. This fires SwitchDuplicateArm; the caret
+# must point at the switchEnum terminator.
+fn switch_duplicate_arm_at_terminator_span(o: Option) {
+  entry:
+    switchEnum(o) [None: a, None: b, Some: c]
+  a: return
+  b: return
+  c: return
+}
+
+# ---------- [D] SwitchNotExhaustive: caret on the terminator ----------
+
+# The switchEnum only handles None, omitting Some. This fires
+# SwitchNotExhaustive; the caret must point at the switchEnum terminator.
+fn switch_not_exhaustive_at_terminator_span(o: Option) {
+  entry:
+    switchEnum(o) [None: end]
+  end: return
+}

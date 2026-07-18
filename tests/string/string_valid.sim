@@ -1,0 +1,152 @@
+# Byte-string and byte-char literals accepted by the type-checker.
+#
+# Byte-string literals `b"..."` produce `[u8; N]` values; byte-char
+# literals `b'x'` produce `u8` values. Both support standard backslash
+# escapes (`\n \t \r \0 \\ \" \'`) and hex escapes (`\xNN`). A
+# const-index `s[ku64]` reads slot k from an array that is Init, and
+# is accepted when k < N.
+#
+# Cells under test:
+#
+#   fn                          literal kind    escape / subvariant
+#   ────────────────────────    ────────────    ──────────────────────────────────────
+#   plain_byte_string           byte-string     no escape; two distinct strings
+#   empty_byte_string           byte-string     empty (length 0)
+#   null_terminator             byte-string     \0 escape giving C-string shape
+#   newline_escape              byte-string     \n escape
+#   all_standard_escapes        byte-string     \n \t \r \0 \\ \" in one literal
+#   hex_escape                  byte-string     \xFF \x00 \x7E
+#   const_index_in_bounds       byte-string     const index 0 of length-5 string
+#   const_index_multiple        byte-string     const index 0 and 4 of length-5 string
+#   byte_char_plain             byte-char       plain ASCII character
+#   byte_char_all_escapes       byte-char       \n \0 \\ \" \' \xFF
+
+# ---------- plain_byte_string ----------
+
+# Two byte-string literals of the same length each produce a `[u8; 5]`
+# value; assigning them to correctly-typed locals runs clean.
+fn plain_byte_string() {
+  hello: [u8; 5];
+  world: [u8; 5];
+  entry:
+    hello = b"hello";
+    world = b"world";
+    return
+}
+
+# ---------- empty_byte_string ----------
+
+# An empty byte-string literal produces a `[u8; 0]` value; the array
+# length in the type is zero and the assignment is accepted.
+fn empty_byte_string() {
+  e: [u8; 0];
+  entry:
+    e = b"";
+    return
+}
+
+# ---------- null_terminator ----------
+
+# A null-terminator escape `\0` inside a byte-string is valid; the
+# resulting array has length 3, matching the declared type.
+fn null_terminator() {
+  s: [u8; 3];
+  entry:
+    s = b"hi\0";
+    return
+}
+
+# ---------- newline_escape ----------
+
+# The `\n` escape in a byte-string contributes one byte; a three-byte
+# string with one newline escape produces a `[u8; 3]` value.
+fn newline_escape() {
+  s: [u8; 3];
+  entry:
+    s = b"a\nb";
+    return
+}
+
+# ---------- all_standard_escapes ----------
+
+# All six standard backslash escapes (`\n \t \r \0 \\ \"`) are valid in a
+# byte-string literal; each contributes exactly one byte to the length.
+fn all_standard_escapes() {
+  s: [u8; 6];
+  entry:
+    s = b"\n\t\r\0\\\"";
+    return
+}
+
+# ---------- hex_escape ----------
+
+# Hex escapes `\xNN` are valid for any two-digit hexadecimal value.
+# `\xFF`, `\x00`, and `\x7E` each contribute one byte; `\x7E` is `~`
+# (tilde, ASCII 126) and round-trips through the elaborator unchanged.
+fn hex_escape() {
+  s: [u8; 3];
+  entry:
+    s = b"\xFF\x00\x7E";
+    return
+}
+
+# ---------- const_index_in_bounds ----------
+
+# A const index `s[0u64]` is accepted when the array has length 5;
+# the elaborated output retains the index expression unchanged.
+fn const_index_in_bounds() {
+  s: [u8; 5];
+  b: u8;
+  entry:
+    s = b"hello";
+    b = copy s[0u64];
+    return
+}
+
+# ---------- const_index_multiple ----------
+
+# Two const-index reads at positions 0 and 4 are both in bounds for a
+# length-5 string; both are accepted and elaborated with drops.
+fn const_index_multiple() {
+  s: [u8; 5];
+  h: u8;
+  o: u8;
+  entry:
+    s = b"hello";
+    h = copy s[0u64];
+    o = copy s[4u64];
+    return
+}
+
+# ---------- byte_char_plain ----------
+
+# A plain byte-char literal `b'A'` produces a `u8` value (65); assigning
+# it to a `u8` local is accepted and the elaborator folds it to `65u8`.
+fn byte_char_plain() {
+  x: u8;
+  entry:
+    x = b'A';
+    return
+}
+
+# ---------- byte_char_all_escapes ----------
+
+# Every escape form valid in a byte-char literal is exercised here:
+# `\n`, `\0`, `\\`, `\"`, `\'`, and `\xFF`. Each produces a `u8` value
+# and is assigned to a correctly-typed local.
+fn byte_char_all_escapes() {
+  nl: u8;
+  nul: u8;
+  bs: u8;
+  quote: u8;
+  apos: u8;
+  hex: u8;
+  entry:
+    nl = b'\n';
+    nul = b'\0';
+    bs = b'\\';
+    quote = b'"';
+    apos = b'\'';
+    hex = b'\xFF';
+    return
+}

@@ -1,4 +1,0 @@
-error: at 6:13: [INIT-BorrowStateMismatch] In function 'f', block 'entry': cannot create &out of '*r': pointee must be uninitialized at borrow, but is initialized
-   |
- 6 |             s = &out r.*;
-   |             ^^^^^^^^^^^^

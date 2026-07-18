@@ -1,0 +1,138 @@
+struct P: Copy + Drop {
+  a: i64
+  b: i64
+}
+
+fn mut_read_then_unborrow(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    unborrow r;
+    drop x;
+    x = 42;
+    drop y;
+    drop x;
+    return
+}
+
+fn mut_unborrow_releases_loan(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    y = copy x;
+    drop y;
+    drop x;
+    return
+}
+
+fn shared_unborrow_allows_write(x: i64) {
+  r: & i64;
+  entry:
+    r = & x;
+    unborrow r;
+    drop x;
+    x = 42;
+    drop x;
+    return
+}
+
+fn out_unborrow_after_write(r: &out i64) {
+  entry:
+    r.* = 42;
+    unborrow r;
+    return
+}
+
+fn mut_field_unborrow_thaws_field(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    unborrow r;
+    drop p.a;
+    p.a = 42;
+    drop p;
+    return
+}
+
+fn mut_multi_loan_unborrow(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    unborrow r;
+    drop a;
+    a = 1;
+    drop b;
+    b = 2;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn mut_unborrow_in_both_arms(x: i64, b: bool) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    unborrow r;
+    goto merge
+  fbr:
+    r = &mut x;
+    unborrow r;
+    goto merge
+  merge:
+    y = copy x;
+    drop y;
+    drop b;
+    drop x;
+    return
+}
+
+fn mut_unborrow_after_loop(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    unborrow r;
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}
+
+fn mut_reborrow_after_unborrow(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    s = &mut x;
+    y = copy s.*;
+    unborrow s;
+    drop y;
+    drop x;
+    return
+}
+
+extern fn use_num(n: i64);

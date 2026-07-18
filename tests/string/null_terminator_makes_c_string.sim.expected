@@ -1,7 +1,0 @@
-fn f() {
-  s: [u8; 3];
-  entry:
-    s = b"hi\0";
-    drop s;
-    return
-}

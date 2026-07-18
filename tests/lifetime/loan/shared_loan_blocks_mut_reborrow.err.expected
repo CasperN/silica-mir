@@ -1,9 +1,0 @@
-error: at 9:13: [LT-LoanConflict] In function 'f', block 'entry': cannot borrow as &mut 'x': already borrowed by 'r'
-   |
- 9 |             s = &mut x;
-   |             ^^^^^^^^^^
-  = note: borrow of 'x' occurs here
-   |
- 8 |             r = &x;
-   |             ^^^^^^
-  hint: the borrow of 'r' is active until its last use or explicit unborrow.

@@ -1,7 +1,0 @@
-
-        struct Box: Drop + Move { val: i64 }
-        fn f(b: Box) {
-            defer { let x = b; };
-            let y = b;
-        }
-    

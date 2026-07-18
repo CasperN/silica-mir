@@ -1,0 +1,20 @@
+error: at 43:5: [TC-UnborrowNonReference] In function 'unborrow_of_non_ref_type', block 'entry': unborrow requires a reference-typed place, found i64
+    |
+ 43 |     unborrow x;
+    |     ^^^^^^^^^^
+error: at 22:5: [INIT-UseAfterMove] In function 'unborrow_after_move', block 'entry': variable 'r' is used after move
+    |
+ 22 |     unborrow r;
+    |     ^^^^^^^^^^
+error: at 33:5: [INIT-UseBeforeInit] In function 'unborrow_of_uninit', block 'entry': variable 'r' is used before initialization
+    |
+ 33 |     unborrow r;
+    |     ^^^^^^^^^^
+error: at 56:5: [INIT-RefObligationUnfulfilled] In function 'unborrow_with_unfulfilled_obligation', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 56 |     unborrow r;
+    |     ^^^^^^^^^^
+  = note: reference declared here
+    |
+ 52 | fn unborrow_with_unfulfilled_obligation(r: &mut i64) {
+    |                                         ^^^^^^^^^^^

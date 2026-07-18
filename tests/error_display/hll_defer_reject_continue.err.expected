@@ -1,0 +1,4 @@
+error: at 9:17: [HTC-ControlFlowInDefer] In function 'f': continue is not allowed inside defer
+   |
+ 9 |         defer { continue; };
+   |                 ^^^^^^^^

@@ -1,0 +1,314 @@
+# variant_flow pass accepts well-formed switchEnum uses across all shapes.
+#
+# The pass validates switchEnum terminators: exhaustiveness, absence of
+# duplicate arms, and refinement of the switched place into its variant
+# type in each successor block. A clean run means every switch is
+# exhaustive, every arm target is reachable (or provably dead and
+# terminated with `unreachable`), and every downcast is performed in a
+# block where the place has already been refined.
+#
+# Axes:
+#   switch_shape  — enum cardinality and how the switch is written
+#   dead_code     — source of the dead arm (none / construction / prior switch / abort join / dead block)
+#   refinement    — downcast after switch (none / direct / nested field projection)
+#   payload       — variant payload type (i64 / Void enum / never / struct-with-never)
+#   borrow        — interaction with borrows before the switch
+#
+#   fn                                                    switch_shape              dead_code                refinement   payload   borrow
+#   coverage_all_variants_handled                         two-variant               none                     none         i64       none
+#   flow_single_variant_enum_requires_single_arm          one-variant               none                     none         i64       none
+#   empty_enum_via_unreachable_terminator                 zero-variant              n/a (unreachable)        none         unit      none
+#   flow_arm_target_with_abort_is_not_an_impossibility    two-variant               none (abort arm)         none         i64       none
+#   downcast_read_in_refined_arm                          two-variant               none                     direct       i64       none
+#   nested_downcast_after_refinement                      two-variant (nested)      dead (prior switch)      nested       i64       none
+#   flow_unreachable_after_construction                   two-variant               construction             none         i64       none
+#   flow_unreachable_after_prior_switch                   two-variant               prior switch             none         i64       none
+#   flow_unreachable_after_abort_join                     two-variant               abort join               none         i64       none
+#   flow_unreachable_target_may_contain_statements        two-variant               construction             none         i64       none
+#   flow_dead_code_variant_real_target_warning            two-variant               construction (warn)      none         i64       none
+#   flow_switch_in_dead_block_is_skipped                  two-variant (dead block)  n/a (dead block)         none         i64       none
+#   flow_shared_borrow_does_not_clobber                   two-variant               construction             none         i64       shared
+#   variant_with_empty_enum_payload_allows_unreachable    two-variant               Void payload             none         Void      none
+#   variant_with_never_payload_allows_unreachable         two-variant               never payload            none         never     none
+#   variant_with_transitively_never_struct_payload        two-variant               struct-with-never        none         Voidish   none
+
+enum Option: Copy + Drop { None: unit Some: i64 }
+enum One: Copy + Drop { Only: i64 }
+enum Void: Copy + Drop {}
+enum VoidPayload: Copy + Drop { A: i64 N: Void }
+enum NeverPayload: Copy + Drop { A: i64 N: never }
+enum Sub: Copy + Drop { S1: unit S2: unit }
+struct Wrap: Copy + Drop { inner: Sub }
+enum Outer: Copy + Drop { X: Wrap Y: unit }
+struct Voidish: Copy + Drop + Move { real: i64 fake: never }
+enum TransitivelyNever: Copy + Drop { A: i64 N: Voidish }
+
+# ---------- two-variant enum: all variants handled, no dead code ----------
+
+# A switchEnum with one arm per variant is exhaustive; both successors
+# are reachable when the discriminant is unknown at compile time.
+fn coverage_all_variants_handled(o: Option) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  n:
+    drop o;
+    return
+  s:
+    drop o;
+    return
+}
+
+# ---------- single-variant enum: exactly one arm required ----------
+
+# An enum with one variant needs exactly one arm; the single successor
+# is always taken and the place is refined to that variant.
+fn flow_single_variant_enum_requires_single_arm(o: One) {
+  entry:
+    switchEnum(o) [Only: end]
+  end:
+    drop o;
+    return
+}
+
+# ---------- zero-variant (empty) enum: body is unreachable ----------
+
+# A value of an empty enum cannot be constructed, so any block that
+# holds one is dead. The function body therefore terminates with
+# `unreachable` rather than a switch.
+fn empty_enum_via_unreachable_terminator(v: Void) {
+  entry:
+    unreachable
+}
+
+# ---------- abort arm: the trap target is not an impossibility marker ----------
+
+# When one arm of a switch terminates with `abort`, the pass must not
+# treat that arm's target as provably unreachable — it is reachable at
+# runtime, but the program chooses to abort there.
+fn flow_arm_target_with_abort_is_not_an_impossibility_marker() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: trap]
+  n:
+    drop o;
+    return
+  trap:
+    abort
+}
+
+# ---------- direct downcast in refined arm ----------
+
+# After a switchEnum succeeds, the place is refined to the matched
+# variant in the arm's successor block, so `copy o as Some` is legal
+# in block `s` but not in block `n`.
+fn downcast_read_in_refined_arm(o: Option) {
+  x: i64;
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    x = copy o as Some;
+    drop x;
+    drop o;
+    return
+  n:
+    drop o;
+    return
+}
+
+# ---------- nested downcast through a field projection ----------
+
+# After the outer switch refines `o` to variant `X`, the inner switch
+# can discriminate on the field `o as X.inner` because the refinement
+# narrows the outer place, making the field access well-typed.
+fn nested_downcast_after_refinement(o: Outer) {
+  entry:
+    switchEnum(o) [X: x_lbl, Y: y_lbl]
+  x_lbl:
+    switchEnum(o as X.inner) [S1: s1, S2: s2]
+  y_lbl:
+    drop o;
+    return
+  s1:
+    drop o;
+    return
+  s2:
+    drop o;
+    return
+}
+
+# ---------- dead arm from construction: variant provably not taken ----------
+
+# When the scrutinee is constructed in the same function with a known
+# variant, the pass can prove the other arms are unreachable. The dead
+# arm must still appear (exhaustiveness) but terminates with
+# `unreachable`.
+fn flow_unreachable_after_construction() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: dead]
+  n:
+    drop o;
+    return
+  dead:
+    unreachable
+}
+
+# ---------- dead arm from prior switch: variant refined away ----------
+
+# After the outer switch refines `o` to `Some`, a nested switch on the
+# same place knows the `None` arm is impossible.
+fn flow_unreachable_after_prior_switch(o: Option) {
+  entry:
+    switchEnum(o) [None: n_arm, Some: s_arm]
+  n_arm:
+    drop o;
+    return
+  s_arm:
+    switchEnum(o) [None: nested_dead, Some: s_body]
+  s_body:
+    drop o;
+    return
+  nested_dead:
+    unreachable
+}
+
+# ---------- dead arm from abort join: only the non-aborting path reaches the switch ----------
+
+# One predecessor of the join block always aborts. The only path that
+# reaches the switchEnum has constructed `o` as `None`, so the `Some`
+# arm is provably dead.
+fn flow_unreachable_after_abort_join(b: bool) {
+  o: Option;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    o = Option::None(unit);
+    goto join
+  fbr:
+    abort
+  join:
+    switchEnum(o) [None: end, Some: dead]
+  end:
+    drop o;
+    drop b;
+    return
+  dead:
+    unreachable
+}
+
+# ---------- dead arm with statements before unreachable ----------
+
+# A dead arm may contain statements (e.g. dead assignments) before its
+# `unreachable` terminator; the pass must not reject this shape.
+fn flow_unreachable_target_may_contain_statements() {
+  o: Option;
+  x: i64;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: dead]
+  n:
+    drop o;
+    return
+  dead:
+    x = 999;
+    unreachable
+}
+
+# ---------- dead code warning: known variant fires warning, not error ----------
+
+# The dead-code diagnostic for a provably unreachable variant arm is a
+# warning, not an error, so the fixture remains clean.
+fn flow_dead_code_variant_real_target_warning() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: s]
+  n:
+    drop o;
+    return
+  s:
+    drop o;
+    return
+}
+
+# ---------- switch in a dead block is skipped ----------
+
+# A switchEnum that lives in a block unreachable from the entry is
+# never executed. The pass must not report exhaustiveness errors for it.
+fn flow_switch_in_dead_block_is_skipped(o: Option) {
+  entry:
+    drop o;
+    return
+  dead_switch:
+    switchEnum(o) [None: dead_switch]
+}
+
+# ---------- shared borrow before switch does not clobber refinement ----------
+
+# Taking a shared borrow of `o` and then unborrowng it before the
+# switch must not prevent the pass from refining `o` in the arms.
+fn flow_shared_borrow_does_not_clobber() {
+  o: Option;
+  r: & Option;
+  entry:
+    o = Option::None(unit);
+    r = & o;
+    unborrow r;
+    switchEnum(o) [None: n, Some: dead]
+  n:
+    drop o;
+    return
+  dead:
+    unreachable
+}
+
+# ---------- Void-payload variant allows unreachable arm ----------
+
+# A variant whose payload is an empty enum (Void) can never be
+# constructed, so the arm for that variant is legitimately unreachable.
+fn variant_with_empty_enum_payload_allows_unreachable_arm(e: VoidPayload, out: &out i64) {
+  entry:
+    switchEnum(e) [A: a_arm, N: n_arm]
+  a_arm:
+    out.* = copy e as A;
+    unborrow out;
+    drop e;
+    return
+  n_arm:
+    unreachable
+}
+
+# ---------- never-payload variant allows unreachable arm ----------
+
+# A variant whose payload is `never` can never be constructed; its arm
+# is therefore provably dead and must terminate with `unreachable`.
+fn variant_with_never_payload_allows_unreachable_arm(e: NeverPayload, out: &out i64) {
+  entry:
+    switchEnum(e) [A: a_arm, N: n_arm]
+  a_arm:
+    out.* = copy e as A;
+    unborrow out;
+    drop e;
+    return
+  n_arm:
+    unreachable
+}
+
+# ---------- struct-with-never-field payload allows unreachable arm ----------
+
+# A variant whose payload is a struct containing a `never` field is
+# also uninhabited; its arm is provably dead just like a bare `never`
+# payload.
+fn variant_with_transitively_never_struct_payload_allows_unreachable_arm(e: TransitivelyNever, out: &out i64) {
+  entry:
+    switchEnum(e) [A: a_arm, N: n_arm]
+  a_arm:
+    out.* = copy e as A;
+    unborrow out;
+    drop e;
+    return
+  n_arm:
+    unreachable
+}

@@ -1,8 +1,0 @@
-
-            enum E { A: i64 B: i64 C: i64 }
-            fn f(e: E) {
-              entry:
-                switchEnum(e) [A: end]
-              end: return
-            }
-            

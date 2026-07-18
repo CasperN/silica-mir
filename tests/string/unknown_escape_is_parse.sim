@@ -1,6 +1,0 @@
-fn f() {
-  s: [u8; 1];
-  entry:
-    s = b"\q";
-    return
-}

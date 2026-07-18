@@ -1,0 +1,220 @@
+struct P: Copy + Drop {
+  a: i64
+  b: i64
+}
+
+struct Inner: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+struct Outer: Copy + Drop {
+  i: Inner
+  c: i64
+}
+
+enum Wrap: Move {
+  W: &mut i64
+}
+
+extern fn sink(r: &mut i64);
+
+extern fn use_mut(r: &mut i64);
+
+extern fn use_out(r: &out i64);
+
+extern fn read_ref(r: & i64);
+
+extern fn take_wrap(w: Wrap);
+
+fn mut_scalar_loan_ends_at_move_to_call(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call sink(move r);
+    drop x;
+    x = 1;
+    drop x;
+    return
+}
+
+fn mut_scalar_drop_borrower_closes_loan(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    drop r;
+    drop x;
+    x = 42;
+    drop x;
+    return
+}
+
+fn mut_scalar_borrower_overwrite_releases_loan(x: i64, y: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    r = &mut y;
+    drop x;
+    x = 42;
+    call use_mut(move r);
+    drop y;
+    drop x;
+    return
+}
+
+fn mut_scalar_read_through_borrower(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    unborrow r;
+    drop y;
+    drop x;
+    return
+}
+
+fn mut_scalar_ref_transfer_carries_obligation(a: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut a;
+    s = move r;
+    call sink(move s);
+    drop a;
+    a = 1;
+    drop a;
+    return
+}
+
+fn mut_scalar_enum_wrap_consumed_releases_loan(x: i64) {
+  r: &mut i64;
+  w: Wrap;
+  entry:
+    r = &mut x;
+    w = Wrap::W(move r);
+    call take_wrap(move w);
+    drop x;
+    x = 7;
+    drop x;
+    return
+}
+
+fn mut_field_overwrite_releases_old_loan(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    unborrow r;
+    r = &mut p.b;
+    drop p.a;
+    p.a = 99;
+    call sink(move r);
+    drop p;
+    return
+}
+
+fn mut_nested_field_sibling_accessible(o: Outer) {
+  r: &mut i64;
+  z: i64;
+  entry:
+    r = &mut o.i.x;
+    z = copy o.i.y;
+    call use_mut(move r);
+    drop z;
+    drop o;
+    return
+}
+
+fn mut_disjoint_field_borrows(p: P) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut p.a;
+    y = copy p.b;
+    call sink(move r);
+    drop y;
+    drop p;
+    return
+}
+
+fn mut_multi_loan_disjoint_third_place(a: i64, b: i64, c: i64, cond: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy cond) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    drop c;
+    c = 3;
+    call sink(move r);
+    drop cond;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn mut_multi_loan_branch_borrows_a_or_b(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    call sink(move r);
+    drop a;
+    a = 1;
+    drop b;
+    b = 2;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn shared_loan_permits_read(x: i64) {
+  r: & i64;
+  y: i64;
+  entry:
+    r = & x;
+    unborrow r;
+    y = copy x;
+    drop y;
+    drop x;
+    return
+}
+
+fn shared_loan_permits_shared_reborrow(x: i64) {
+  r: & i64;
+  s: & i64;
+  entry:
+    r = & x;
+    unborrow r;
+    s = & x;
+    unborrow s;
+    drop x;
+    return
+}
+
+fn mixed_kind_disjoint_field_loans() {
+  p: P;
+  r: &mut i64;
+  s: &out i64;
+  entry:
+    p.a = 1;
+    r = &mut p.a;
+    s = &out p.b;
+    call use_mut(move r);
+    call use_out(move s);
+    drop p;
+    return
+}

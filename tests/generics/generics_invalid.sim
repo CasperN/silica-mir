@@ -1,0 +1,78 @@
+# Generic declarations and instantiations rejected by the checker.
+#
+# Two sources of error are covered here. Both are pre-elaboration:
+#   COMP-* errors come from check_struct/check_enum (composition check),
+#   which runs before drop elaboration.
+#   TC-* errors come from validate_type, which walks Custom(name, args)
+#   nodes in declared types and function signatures.
+#
+# Axes: error source × violation kind
+#
+#   item                   source   bound/arity          expected code
+#   ClaimsCopy             COMP     T (no bounds) in Copy struct        COMP-CopyMarkerNotSatisfied
+#   ClaimsDrop             COMP     T: Copy (not Drop) in Drop struct   COMP-DropMarkerNotSatisfied
+#   ClaimsCopyFromMove     COMP     T: Move (not Copy) in Copy struct   COMP-CopyMarkerNotSatisfied
+#   ClaimsCopyEnum         COMP     T (no bounds) in Copy enum variant  COMP-CopyMarkerNotSatisfied
+#   WrongArity1            TC       Box<i32, bool>: 2 args, expects 1   TC-InvalidDeclaredType
+#   WrongArity2            TC       Box (bare): 0 args, expects 1       TC-InvalidDeclaredType
+#   UsesBadBox             TC       Box<Linear>: Linear not Copy+Drop   TC-InvalidDeclaredType
+#   take (fn param)        TC       Box<Linear> in fn signature         TC-InvalidDeclaredType
+#   option_of_out          TC       Option<&out U>: &out not Copy+Drop  TC-InvalidDeclaredType
+#   DeepBadBox             TC       Box<Option<Linear>>: inner fails     TC-InvalidDeclaredType
+
+# ── Shared type declarations ─────────────────────────────────────────
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+
+enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+
+# Linear carries no markers; it satisfies neither Copy, Drop, nor Move.
+# Any instantiation of Box<Linear> or Option<Linear> fails the bound check.
+struct Linear { x: i64 }
+
+# ── Decl-side composition violations (COMP-*) ────────────────────────
+
+# T has no bounds, so class_of(T) is empty. Claiming Copy fails.
+struct<T> ClaimsCopy: Copy { inner: T }
+
+# T is Copy but not Drop, so claiming Drop fails.
+struct<T: Copy> ClaimsDrop: Drop { inner: T }
+
+# T is only Move; Move does not imply Copy. Claiming Copy fails.
+struct<T: Move> ClaimsCopyFromMove: Copy { inner: T }
+
+# Generic enum: same rule as struct fields. T has no bounds, so the
+# Copy claim on the enum is unsatisfied by variant A's payload type T.
+enum<T> ClaimsCopyEnum: Copy { A: T  B: unit }
+
+# ── Use-site bound violations (TC-InvalidDeclaredType) ───────────────
+
+# Type-argument arity: Box takes exactly one param.
+struct WrongArity1 { field: Box<i32, bool> }
+struct WrongArity2 { field: Box }
+
+# Linear is not Copy+Drop, so Box<Linear> fails the T: Copy+Drop bound.
+struct UsesBadBox { field: Box<Linear> }
+
+# Same bound failure via a function parameter.
+fn take(b: Box<Linear>) {
+  entry:
+    return
+}
+
+# Nested violation: &out U is Move only, not Copy+Drop. Option's T:
+# Copy+Drop bound is not satisfied. The scope for U: Move is consulted
+# and still does not grant Copy or Drop.
+fn<U: Move> option_of_out(x: Option<&out U>) {
+  entry:
+    return
+}
+
+# Nested violation at inner layer: Option<Linear> fails Option's T:
+# Copy+Drop bound before the outer Box is even evaluated.
+struct DeepBadBox { field: Box<Option<Linear>> }
+
+fn main() {
+  entry:
+    return
+}

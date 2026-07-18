@@ -1,4 +1,0 @@
-error: at 6:17: [VF-DowncastVariantNotRefined] In function 'f', block 'entry': cannot downcast 'o as X' here: 'o' is not refined to variant 'X'
-   |
- 6 |                 switchEnum(o as X) [P: pb, Q: qb]
-   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

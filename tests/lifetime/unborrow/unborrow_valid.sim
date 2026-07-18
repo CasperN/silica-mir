@@ -1,0 +1,164 @@
+# `unborrow place` legally ends a loan when the reference and every
+# reborrow derived from it has been consumed or forgotten.
+#
+# Each fn covers one cell of the (ref kind x control-flow shape) matrix.
+# The pipeline runs clean and elaboration inserts drops + unborrows.
+#
+# | ref kind  | control-flow shape                              |
+# |-----------|--------------------------------------------------|
+# | &mut      | straight-line, read through ref before unborrow |
+# | &         | straight-line, write to place after unborrow    |
+# | &out      | straight-line, obligation fulfilled then unborrow|
+# | &mut field| unborrow thaws the borrowed field               |
+# | &mut multi| ref may alias multiple places (branch)           |
+# | &mut both | unborrow in every branch, merge is clean         |
+# | &mut loop | ref used inside loop, unborrow after loop        |
+# | &mut seq  | unborrow then re-borrow the same place           |
+
+struct P: Copy + Drop { a: i64 b: i64 }
+
+# ---------- &mut straight-line ----------
+
+# Unborrow after reading through the ref releases the loan and lets
+# the original place be written to again.
+fn mut_read_then_unborrow(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    unborrow r;
+    x = 42;
+    return
+}
+
+# Unborrow with no intermediate use is the minimal release case.
+fn mut_unborrow_releases_loan(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    y = copy x;
+    return
+}
+
+# ---------- & shared straight-line ----------
+
+# Unborrow of a shared ref releases the immutable loan; the place
+# becomes writable immediately after.
+fn shared_unborrow_allows_write(x: i64) {
+  r: &i64;
+  entry:
+    r = &x;
+    unborrow r;
+    x = 42;
+    return
+}
+
+# ---------- &out straight-line ----------
+
+# Unborrow of an out-ref after the obligation has been discharged
+# (pointee written) runs clean.
+fn out_unborrow_after_write(r: &out i64) {
+  entry:
+    r.* = 42;
+    unborrow r;
+    return
+}
+
+# ---------- &mut field ----------
+
+# Borrowing a struct field locks only that field.  Unborrowing it
+# thaws the field while the rest of the struct remains accessible.
+fn mut_field_unborrow_thaws_field(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    unborrow r;
+    p.a = 42;
+    return
+}
+
+# ---------- &mut multi-loan (branch) ----------
+
+# When a ref may alias one of several places depending on the branch
+# taken, unborrow must release all candidate loans.  After unborrow
+# both original places are writable.
+fn mut_multi_loan_unborrow(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    unborrow r;
+    a = 1;
+    b = 2;
+    return
+}
+
+# ---------- &mut unborrow in both arms ----------
+
+# Unborrow appearing in every arm of a branch produces a clean state
+# at the join point; the original place is usable after the merge.
+fn mut_unborrow_in_both_arms(x: i64, b: bool) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    r = &mut x;
+    unborrow r;
+    goto merge
+  fbr:
+    r = &mut x;
+    unborrow r;
+    goto merge
+  merge:
+    y = copy x;
+    return
+}
+
+# ---------- &mut across loop ----------
+
+# A ref that is used inside a loop body can be unborrown after the
+# loop exits; the loan is released at that point.
+fn mut_unborrow_after_loop(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    unborrow r;
+    x = 42;
+    return
+}
+
+# ---------- &mut sequential re-borrow ----------
+
+# After unborrowing, the same place can immediately be borrowed again.
+# The second loan is independent and is itself properly unborrown.
+fn mut_reborrow_after_unborrow(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    s = &mut x;
+    y = copy s.*;
+    unborrow s;
+    return
+}
+
+extern fn use_num(n: i64);

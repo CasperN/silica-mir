@@ -1,0 +1,23 @@
+error: at 34:5: [LT-LoanConflict] In function 'direct_write_to_borrowed_field', block 'entry': cannot write to 'x': already borrowed by 'b.p'
+    |
+ 34 |     x = 42;
+    |     ^^^^^^
+  = note: borrow of 'x' occurs here
+    |
+ 33 |     b.p = &mut x;
+    |     ^^^^^^^^^^^^
+  hint: the borrow of 'b.p' is active until its last use or explicit unborrow.
+error: at 51:5: [LT-LoanConflict] In function 'read_during_reborrow', block 'entry': cannot read 'b.p.*': already borrowed by 's'
+    |
+ 51 |     y = copy b.p.*;
+    |     ^^^^^^^^^^^^^^
+  = note: borrow of 'b.p.*' occurs here
+    |
+ 50 |     s = &mut b.p.*;
+    |     ^^^^^^^^^^^^^^
+  hint: the borrow of 's' is active until its last use or explicit unborrow.
+error: at 73:5: [LT-LoanConflict] In function 'write_to_loan_after_merge', block 'merge': cannot write to 'y': already borrowed by 'b.p'
+    |
+ 73 |     y = 1;
+    |     ^^^^^
+  hint: the borrow of 'b.p' is active until its last use or explicit unborrow.

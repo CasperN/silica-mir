@@ -1,7 +1,0 @@
-
-        fn f(x: &out i64) {
-          entry:
-            x.* = 42;
-            return
-        }
-        

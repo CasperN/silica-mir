@@ -1,8 +1,0 @@
-
-        fn f() {
-          s: [u8; 6];
-          entry:
-            s = b"\n\t\r\0\\\"";
-            return
-        }
-        

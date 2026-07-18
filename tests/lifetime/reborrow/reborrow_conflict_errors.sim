@@ -1,0 +1,44 @@
+# Reborrow conflict errors: LT-LoanConflict diagnostics fired when a
+# live reborrow blocks a subsequent access to the parent borrow or the
+# borrowed base place.
+#
+# The lifetime check runs after init_state is clean. A file that mixes
+# LT-LoanConflict cases with INIT or TC errors would abort before the
+# lifetime pass and miss these diagnostics, so conflict cases live here
+# alone.
+#
+#   fn                            error            trigger
+#   read_parent_while_child_live  LT-LoanConflict  read r.* while s = &mut r.* live
+#   write_base_while_parent_live  LT-LoanConflict  write x while r = &mut x live
+
+extern fn sink(r: &mut i64);
+
+# ---------- LT-LoanConflict: access through a locked place ----------
+
+# Reading `r.*` while `s = &mut r.*` is still live violates the
+# exclusive loan on `r`; the conflict is detected before `s` is consumed.
+fn read_parent_while_child_live(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    y = copy r.*;
+    call sink(move s);
+    return
+}
+
+# Writing directly to `x` while `r = &mut x` is live violates the
+# loan on `x` held by the parent borrow; the conflict is reported at
+# the write, not at the downstream reborrow.
+fn write_base_while_parent_live(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    x = 1;
+    call sink(move s);
+    return
+}

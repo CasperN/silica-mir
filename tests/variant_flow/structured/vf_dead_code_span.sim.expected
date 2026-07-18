@@ -1,0 +1,17 @@
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+fn vf_dead_code_span() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: s]
+  n:
+    drop o;
+    return
+  s:
+    drop o;
+    return
+}

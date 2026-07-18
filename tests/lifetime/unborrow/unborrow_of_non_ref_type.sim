@@ -1,7 +1,0 @@
-
-        fn f(x: i64) {
-          entry:
-            unborrow x;
-            return
-        }
-        

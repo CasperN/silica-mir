@@ -1,0 +1,170 @@
+extern fn use_num(n: i64);
+
+struct P: Copy + Drop {
+  a: i64
+  b: i64
+}
+
+fn out_abort_suppresses_unborrow(r: &out i64) {
+  entry:
+    abort
+}
+
+fn out_unreachable_suppresses_unborrow(r: &out i64) {
+  entry:
+    unreachable
+}
+
+fn out_param_write_inserts_unborrow(x: &out i64) {
+  entry:
+    x.* = 42;
+    unborrow x;
+    return
+}
+
+fn out_branch_one_arm_aborts(r: &out i64, b: bool) {
+  entry:
+    branch(copy b) [true: init_arm, false: die_arm]
+  init_arm:
+    r.* = 42;
+    unborrow r;
+    drop b;
+    return
+  die_arm:
+    abort
+}
+
+fn mut_move_out_then_abort(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    abort
+}
+
+fn mut_param_read_last_use(x: &mut i64) {
+  y: i64;
+  entry:
+    y = copy x.*;
+    unborrow x;
+    drop y;
+    return
+}
+
+fn mut_local_read_then_overwrite(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    unborrow r;
+    drop x;
+    x = 42;
+    drop y;
+    drop x;
+    return
+}
+
+fn out_local_write_last_use() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    r.* = 42;
+    unborrow r;
+    drop x;
+    return
+}
+
+fn mut_field_borrow_last_use(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    unborrow r;
+    drop p.a;
+    p.a = 42;
+    drop p;
+    return
+}
+
+fn mut_reborrow_same_place_twice(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy r.*;
+    unborrow r;
+    s = &mut x;
+    drop y;
+    y = copy s.*;
+    unborrow s;
+    drop y;
+    drop x;
+    return
+}
+
+fn mut_branch_each_arm_unborrows(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    unborrow r;
+    goto merge
+  fbr:
+    r = &mut b;
+    unborrow r;
+    goto merge
+  merge:
+    drop a;
+    a = 1;
+    drop b;
+    b = 2;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn mut_cross_edge_one_arm_dies(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    branch(copy b) [true: t, false: entry__to__fbr]
+  entry__to__fbr:
+    unborrow r;
+    goto fbr
+  t:
+    call use_num(copy r.*);
+    unborrow r;
+    goto end
+  fbr:
+    goto end
+  end:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}
+
+fn mut_loop_unborrow_on_exit(x: i64, b: bool) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: head__to__done]
+  head__to__done:
+    unborrow r;
+    goto done
+  body:
+    call use_num(copy r.*);
+    goto head
+  done:
+    drop x;
+    x = 42;
+    drop b;
+    drop x;
+    return
+}

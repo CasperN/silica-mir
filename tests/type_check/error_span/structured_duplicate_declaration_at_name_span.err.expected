@@ -1,4 +1,0 @@
-error: at 3:16: [TC-DuplicateDeclaration] Duplicate declaration of type 'S'
-   |
- 3 |         struct S { y: i64 }
-   |                ^

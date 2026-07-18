@@ -1,0 +1,97 @@
+enum E: Move {
+  V: i64
+}
+
+extern fn sink_mut(r: &mut i64);
+
+extern fn sink_shared(r: & i64);
+
+fn mut_from_mut_local(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    call sink_mut(move s);
+    unborrow r;
+    drop x;
+    return
+}
+
+fn shared_from_mut_local(x: i64) {
+  r: &mut i64;
+  s: & i64;
+  entry:
+    r = &mut x;
+    s = & r.*;
+    call sink_shared(move s);
+    unborrow r;
+    drop x;
+    return
+}
+
+fn shared_from_mut_param(r: &mut i64) {
+  s: & i64;
+  entry:
+    s = & r.*;
+    call sink_shared(move s);
+    unborrow r;
+    return
+}
+
+fn out_from_out_param(r: &out i64) {
+  s: &out i64;
+  entry:
+    s = &out r.*;
+    s.* = 42;
+    unborrow s;
+    unborrow r;
+    return
+}
+
+fn chained_mut_from_mut(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  t: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    t = &mut s.*;
+    call sink_mut(move t);
+    unborrow s;
+    unborrow r;
+    drop x;
+    return
+}
+
+fn mut_from_mut_via_downcast(e: &mut E) {
+  r: &mut i64;
+  entry:
+    switchEnum(e.*) [V: v_arm]
+  v_arm:
+    r = &mut e.* as V;
+    call sink_mut(move r);
+    unborrow e;
+    return
+}
+
+fn mut_from_mut_in_loop(x: i64, b: bool) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: head__to__done]
+  head__to__done:
+    unborrow r;
+    goto done
+  body:
+    s = &mut r.*;
+    call sink_mut(move s);
+    goto head
+  done:
+    drop b;
+    drop x;
+    return
+}

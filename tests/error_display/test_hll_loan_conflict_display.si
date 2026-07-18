@@ -1,8 +1,0 @@
-
-        fn f() {
-            let mut x: i64 = 10;
-            let r = &mut x;
-            x = 20;
-            let y = r.*;
-        }
-    

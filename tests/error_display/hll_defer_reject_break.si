@@ -1,0 +1,14 @@
+# Rendered output of HTC-ControlFlowInDefer: break, continue, or return
+# inside a defer block is rejected by HLL type-check before lowering.
+# Only the first function in the file fires because type_check
+# short-circuits at the first error; the break variant is the
+# representative case.
+
+# A break inside a defer block is rejected even when the defer appears
+# inside a loop, because defer bodies must not transfer control out of
+# the block.
+fn defer_break() {
+    loop {
+        defer { break; };
+    };
+}

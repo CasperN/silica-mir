@@ -1,0 +1,127 @@
+# Reborrow succeeds: a derived borrow tracks provenance to its parent,
+# and NLL elaboration inserts unborrow instructions in child-before-parent
+# order so the parent's borrow is retired after every derived borrow is gone.
+#
+# Axes: parent borrow kind × derived borrow kind × derivation pattern.
+# Every cell runs clean; a regression here means provenance tracking,
+# unborrow ordering, or borrow-precondition checking broke a legal case.
+#
+#   fn                               parent   derived  pattern
+#   mut_from_mut_local               &mut     &mut     local → call
+#   shared_from_mut_local            &mut     &        local → call
+#   shared_from_mut_param            &mut     &        param → call
+#   out_from_out_param               &out     &out     param, write, unborrow chain
+#   chained_mut_from_mut             &mut     &mut     3-deep chain, one call
+#   mut_from_mut_via_downcast        &mut     &mut     deref+downcast reborrow
+#   mut_from_mut_in_loop             &mut     &mut     child created+consumed each iteration
+
+enum E: Move { V: i64 }
+
+extern fn sink_mut(r: &mut i64);
+extern fn sink_shared(r: &i64);
+
+# ---------- &mut derived from &mut local ----------
+
+# The derived borrow is moved to a call; NLL inserts `unborrow r` after
+# the call's return to retire the parent borrow before `x` is dropped.
+fn mut_from_mut_local(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    call sink_mut(move s);
+    return
+}
+
+# ---------- & derived from &mut local ----------
+
+# A shared reborrow of a mutable borrow is legal; the parent is locked
+# for the duration and unborrows after the child is consumed.
+fn shared_from_mut_local(x: i64) {
+  r: &mut i64;
+  s: &i64;
+  entry:
+    r = &mut x;
+    s = &r.*;
+    call sink_shared(move s);
+    return
+}
+
+# ---------- & derived from &mut param ----------
+
+# The parent is a function parameter; the same unborrow rule applies
+# and `unborrow r` is inserted before the implicit function exit.
+fn shared_from_mut_param(r: &mut i64) {
+  s: &i64;
+  entry:
+    s = &r.*;
+    call sink_shared(move s);
+    return
+}
+
+# ---------- &out derived from &out param, write-through ----------
+
+# The derived borrow allows writing to the pointee; NLL inserts
+# `unborrow s` then `unborrow r` in child-before-parent order before
+# the return so both obligations are discharged.
+fn out_from_out_param(r: &out i64) {
+  s: &out i64;
+  entry:
+    s = &out r.*;
+    s.* = 42;
+    return
+}
+
+# ---------- three-deep &mut chain ----------
+
+# Two levels of reborrow each track their provenance. NLL inserts
+# `unborrow s; unborrow r` after the innermost consumer to retire
+# the chain in reverse order.
+fn chained_mut_from_mut(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  t: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    t = &mut s.*;
+    call sink_mut(move t);
+    return
+}
+
+# ---------- &mut via deref+downcast reborrow ----------
+
+# Reborrow uses a deref-then-downcast place `e.* as V`; the parent
+# `e` is a &mut E and the derived borrow targets the payload field.
+# NLL inserts `unborrow e` after the child is consumed.
+fn mut_from_mut_via_downcast(e: &mut E) {
+  r: &mut i64;
+  entry:
+    switchEnum(e.*) [V: v_arm]
+  v_arm:
+    r = &mut e.* as V;
+    call sink_mut(move r);
+    return
+}
+
+# ---------- &mut created and consumed inside a loop body ----------
+
+# A fresh derived borrow is created on each loop iteration and consumed
+# by the call before the back-edge; NLL inserts `unborrow r` on the
+# exit edge, not inside the body.
+fn mut_from_mut_in_loop(x: i64, b: bool) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut x;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    s = &mut r.*;
+    call sink_mut(move s);
+    goto head
+  done:
+    return
+}

@@ -1,7 +1,0 @@
-enum Void: Copy + Drop {
-}
-
-fn f(v: Void) {
-  entry:
-    unreachable
-}

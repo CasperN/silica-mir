@@ -1,4 +1,0 @@
-error: at 5:13: [TC-AssignmentTypeMismatch] In function 'f', block 'entry': Type mismatch in assignment. LHS is [u8; 4], RHS is [u8; 5]
-   |
- 5 |             s = b"hello";
-   |             ^^^^^^^^^^^^

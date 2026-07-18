@@ -1,4 +1,0 @@
-error: at 4:19: [INIT-UseAfterMove] In function 'f': variable 'b' is used after move
-   |
- 4 |             defer out.* = b;
-   |                   ^^^^^^^^^

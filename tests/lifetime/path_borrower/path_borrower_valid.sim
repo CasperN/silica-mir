@@ -1,0 +1,111 @@
+# Path-borrower pass — valid cases.
+#
+# The path-borrower tracks which specific field path is borrowed so
+# that a borrow of one path does not conflict with an unrelated access
+# to a sibling path. Each fn exercises one success cell of the
+# (path shape x borrow pattern) matrix.
+#
+#   fn                                  path shape          borrow pattern
+#   split_fields_independent            two sibling fields  two independent mut borrows
+#   reborrow_through_field              field → deref       reborrow of field-ref pointee
+#   move_ancestor_closes_loans          whole-struct move   ancestor move unborrrows field loan
+#   whole_struct_move_survives_loan     whole-struct move   field loan is consumed before move
+#   struct_with_ref_typed_field         field of ref type   struct containing ref moved without conflict
+#   fulfilled_field_ref_before_move     field ref           field ref obligation fulfilled before move
+#
+# The pipeline runs clean and elaboration inserts drops and unborrows.
+
+struct RefBox: Move { p: &mut i64 }
+struct RefBox2: Move { q: &mut i64  r: &mut i64 }
+struct Linear: Move { r: &out i64 }
+
+extern fn use_mut(r: &mut i64);
+extern fn sink(r: &mut i64);
+extern fn take_box(b: RefBox);
+extern fn sink_linear(y: Linear);
+
+# ---------- Two sibling fields borrowed independently ----------
+
+# Borrowing `b.q` as `&mut x` and `b.r` as `&mut y` targets disjoint
+# paths; the path-borrower allows both loans to coexist until each
+# field ref is consumed.
+fn split_fields_independent(x: i64, y: i64) {
+  b: RefBox2;
+  entry:
+    b.q = &mut x;
+    b.r = &mut y;
+    call use_mut(move b.q);
+    call use_mut(move b.r);
+    return
+}
+
+# ---------- Reborrow through field-ref pointee ----------
+
+# `b.p` holds a `&mut x`; creating a reborrow `s = &mut b.p.*` is
+# legal because `s` replaces `b.p`'s exclusive access rather than
+# conflicting with it. Once `s` is consumed the struct can be moved.
+fn reborrow_through_field(x: i64) {
+  b: RefBox;
+  s: &mut i64;
+  entry:
+    b.p = &mut x;
+    s = &mut b.p.*;
+    call sink(move s);
+    call take_box(move b);
+    return
+}
+
+# ---------- Ancestor move closes field loan ----------
+
+# Moving the whole struct `b` via `take_box` transfers ownership of
+# `b.p`'s loan; after the call the original place `x` is released and
+# can be written.
+fn move_ancestor_closes_loans(x: i64) {
+  b: RefBox;
+  entry:
+    b.p = &mut x;
+    call take_box(move b);
+    x = 1;
+    return
+}
+
+# ---------- Whole-struct move after field loan is consumed ----------
+
+# `b.p` holds a `&mut x`; moving the struct to `take_box` is valid
+# because the caller transfers the remaining loan obligation with the
+# struct. Drop elaboration releases `x` after the call returns.
+fn whole_struct_move_survives_loan(x: i64) {
+  b: RefBox;
+  entry:
+    b.p = &mut x;
+    call take_box(move b);
+    return
+}
+
+# ---------- Struct with ref-typed field moved without conflict ----------
+
+# A struct whose field has a ref type can be moved freely; moving the
+# struct moves the ref along with it — no borrow conflict is involved.
+fn struct_with_ref_typed_field(x: Linear) {
+  y: Linear;
+  entry:
+    y = move x;
+    call sink_linear(move y);
+    return
+}
+
+# ---------- Field ref obligation fulfilled before struct is moved ----------
+
+# `b.p` holds `&mut x`; moving the pointee out (`y = move b.p.*`) and
+# writing back (`b.p.* = 7`) discharges the `&mut` Init obligation
+# before `take_box` moves the struct. All obligations are satisfied.
+fn fulfilled_field_ref_before_move(x: i64, z: i64) {
+  b: RefBox;
+  y: i64;
+  entry:
+    b.p = &mut x;
+    y = move b.p.*;
+    b.p.* = 7;
+    call take_box(move b);
+    return
+}

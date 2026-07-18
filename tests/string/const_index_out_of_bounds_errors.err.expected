@@ -1,4 +1,0 @@
-error: at 7:13: [TC-ArrayIndexOutOfBounds] In function 'f', block 'entry': Array index 5 out of bounds for [_; 5]
-   |
- 7 |             b = copy s[5u64];
-   |             ^^^^^^^^^^^^^^^^

@@ -1,0 +1,261 @@
+# Generic declarations and instantiations accepted by all pipeline passes.
+#
+# The composition checker, type checker, NLL, drop elaboration, and
+# pretty-printer all walk `Type::Param` nodes; a regression in any of
+# them would turn this fixture into an Errors fixture. Each cell below
+# isolates one aspect of generic handling so the failing cell identifies
+# the regression.
+#
+#   item                        covers
+#   Box struct                  single Copy+Drop param; decl-side composition
+#   Pair struct                 two params with independent bounds
+#   Option enum                 generic enum; decl-side composition
+#   Nest struct                 nested type-arg reference Box<Box<T>>
+#   LL struct                   recursive-through-raw-pointer; by-value cycle check
+#   Container struct            concrete instantiation; use-site bound check (empty scope)
+#   Arr3 struct                 array element of Param
+#   Bag / MovePair structs      Move-only params; ref kinds nested in generics
+#   take_ref / touch / caller   generic fn decl; explicit type-arg call syntax
+#   take_by_value               drop elaboration inserts `drop x` for T: Copy+Drop param
+#   access_field                field projection on owned generic struct; type_of_place
+#   switch_on_generic_enum      switchEnum + downcast on generic enum
+#   read_through_shared_ref     deref through &T yields T
+#   mut_ref_param               &mut T trivial body (unborrow only)
+#   out_ref_param               &out T obligation: body must initialise pointee
+#   uninit_ref_param            &uninit T trivial body
+#   fn_type_with_param          fn(T) as parameter type
+#   option_of_box               two-level nesting: Option<Box<T>>
+#   ref_to_bag_of_mut_ref       Move ref nested in generic instantiation, passed by &
+#   mut_ref_to_pair_of_refs     &mut to multi-param generic with ref-typed args
+#   unwrap_or                   switchEnum with per-arm resource accounting
+#   swap                        three-step move choreography via two &mut refs
+#   replicate                   broadcast Copy source into two &out sinks
+#   pair_copy_out               shared-ref field projection into two &out sinks
+#   pick_by_flag                branch on bool; symmetric Copy+Drop cleanup
+#   unbox                       field copy from owned generic struct + whole-value drop
+
+# ── Shared type declarations ─────────────────────────────────────────
+
+struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+
+struct<T: Copy + Drop, U: Move> Pair { first: T  second: U }
+
+enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+
+struct<T: Copy + Drop> Nest: Copy + Drop { outer: Box<Box<T>> }
+
+struct<T: Copy + Drop> LL: Copy + Drop { head: T  tail: *LL<T> }
+
+struct Container: Copy + Drop { b: Box<i32> }
+
+struct<T: Copy + Drop> Arr3: Copy + Drop { xs: [T; 3] }
+
+struct<T: Move> Bag: Move { inner: T }
+
+struct<T: Move, U: Move> MovePair: Move { first: T  second: U }
+
+struct<T: Copy + Drop, U: Copy + Drop> CopyPair: Copy + Drop { first: T  second: U }
+
+# ── Generic function declarations ────────────────────────────────────
+
+# Generic fn that accepts a shared ref; exercises Param in ref position.
+fn<T> take_ref(r: &T) {
+  entry:
+    return
+}
+
+# Generic fn with no params in the signature; exercises type-arg call syntax.
+fn<T> touch() {
+  entry:
+    return
+}
+
+# Concrete caller: `call touch<i32>()` exercises use-site type-arg syntax.
+fn caller() {
+  b: Box<i32>;
+  entry:
+    call touch<i32>();
+    return
+}
+
+# ── Drop elaboration on a T-typed param ─────────────────────────────
+
+# T: Copy + Drop implies Drop, so elaboration inserts `drop x` before
+# return. Verifies that drop elaboration handles Param nodes correctly.
+fn<T: Copy + Drop> take_by_value(x: T) {
+  entry:
+    return
+}
+
+# ── Field projection on generic struct ──────────────────────────────
+
+# type_of_place through b.inner returns T. Confirms Param survives the
+# field-projection path in type_of_place.
+fn<T: Copy + Drop> access_field(b: Box<T>) {
+  x: T;
+  entry:
+    x = copy b.inner;
+    return
+}
+
+# ── switchEnum + downcast on generic enum ───────────────────────────
+
+# switchEnum dispatches on a Param-typed enum; `o as Some` downcasts to
+# the variant's declared payload type T. Exercises generic enum arms.
+fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
+  y: T;
+  entry:
+    switchEnum(o) [None: none_arm, Some: some_arm]
+  none_arm:
+    return
+  some_arm:
+    y = copy o as Some;
+    return
+}
+
+# ── Shared ref to Param ──────────────────────────────────────────────
+
+# r.* has type T. Deref through &T must yield T, not an error.
+fn<T: Copy + Drop> read_through_shared_ref(r: &T) {
+  x: T;
+  entry:
+    x = copy r.*;
+    return
+}
+
+# ── Non-shared ref kinds carrying Param inner ────────────────────────
+
+# &mut T (Init, Init): trivial — no obligation change needed.
+fn<T: Copy + Drop> mut_ref_param(m: &mut T) {
+  entry:
+    return
+}
+
+# &out T (Uninit, Init): body must initialise the pointee.
+fn<T: Copy + Drop> out_ref_param(src: T, dest: &out T) {
+  entry:
+    dest.* = copy src;
+    return
+}
+
+# &uninit T (Uninit, Uninit): trivial.
+fn<T: Copy + Drop> uninit_ref_param(u: &uninit T) {
+  entry:
+    return
+}
+
+# ── fn(T) as parameter type ──────────────────────────────────────────
+
+# Fn type carrying a Param inner: validated by type checker, never called.
+fn<T: Copy + Drop> fn_type_with_param(f: fn(T)) {
+  entry:
+    return
+}
+
+# ── Two-level nesting ────────────────────────────────────────────────
+
+# Option<Box<T>>: Box<T> satisfies Option's T: Copy+Drop bound because
+# Box is Copy+Drop when T is Copy+Drop. Each layer's bound is discharged
+# independently by the composition check.
+fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
+  entry:
+    return
+}
+
+# ── Ref kinds nested in generic instantiation ────────────────────────
+
+# Bag<&mut T>: &mut T is Move, satisfying Bag's T: Move bound. Passed
+# by shared ref because Bag is itself Move (linear at the value level).
+fn<T: Move> ref_to_bag_of_mut_ref(b: &Bag<&mut T>) {
+  entry:
+    return
+}
+
+# MovePair<&drop T, &out U>: both linear ref kinds are Move, satisfying
+# each param's Move bound. Every layer's bounds hold under scope-aware
+# validation.
+fn<T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut MovePair<&drop T, &out U>) {
+  entry:
+    return
+}
+
+# ── Multi-block workflows ────────────────────────────────────────────
+
+# switchEnum with per-arm accounting: None arm moves default into dest;
+# Some arm copies payload then drops the remaining values.
+fn<T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out T) {
+  entry:
+    switchEnum(o) [None: use_default, Some: use_some]
+  use_default:
+    drop o;
+    dest.* = move default;
+    return
+  use_some:
+    dest.* = copy o as Some;
+    drop o;
+    drop default;
+    return
+}
+
+# Three-step move choreography via two &mut refs. T: Move only — no Copy
+# or Drop. Every intermediate state has one pointee Uninit and one Init;
+# the sequence leaves both Init.
+fn<T: Move> swap(a: &mut T, b: &mut T) {
+  tmp: T;
+  entry:
+    tmp = move a.*;
+    a.* = move b.*;
+    b.* = move tmp;
+    return
+}
+
+# Broadcast a Copy source into two &out sinks. Both sink obligations
+# transition Uninit -> Init from the same operand read.
+fn<T: Copy + Drop> replicate(x: T, out_a: &out T, out_b: &out T) {
+  entry:
+    out_a.* = copy x;
+    out_b.* = copy x;
+    return
+}
+
+# Pair projection through a shared ref: reads both fields via deref,
+# copies them into distinct &out slots of matching type. p is never
+# consumed; NLL inserts an `unborrow p` after the last field read.
+fn<T: Copy + Drop, U: Copy + Drop> pair_copy_out(
+  p: &CopyPair<T, U>,
+  out_first: &out T,
+  out_second: &out U,
+) {
+  entry:
+    out_first.* = copy p.*.first;
+    out_second.* = copy p.*.second;
+    return
+}
+
+# Branch on a bool operand and choose between two Copy+Drop candidates.
+# Each arm clears the unused candidate with `drop`, so the net effect is
+# one write to dest plus symmetric cleanup on both branches.
+fn<T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out T) {
+  entry:
+    branch (copy flag) [true: pick_a, false: pick_b]
+  pick_a:
+    dest.* = copy a;
+    drop a;
+    drop b;
+    return
+  pick_b:
+    dest.* = copy b;
+    drop a;
+    drop b;
+    return
+}
+
+# Copy field from an owned generic struct, then consume the struct.
+# Exercises field projection on an owned generic value across a stmt
+# boundary: the copy leaves b still Init; the explicit drop closes it out.
+fn<T: Copy + Drop> unbox(b: Box<T>, dest: &out T) {
+  entry:
+    dest.* = copy b.inner;
+    drop b;
+    return
+}

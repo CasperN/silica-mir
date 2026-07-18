@@ -1,0 +1,22 @@
+# Pre-elaboration error fixtures for the loan/ref-transfer subsystem.
+# These cases fire diagnostics in a pass that runs BEFORE elaboration, so
+# they must live in a separate file: a pre-elab error suppresses post-elab
+# passes, which would make co-located post-elab tests vacuously pass.
+#
+# | fn                               | DiagCode          | trigger                      |
+# |----------------------------------|-------------------|------------------------------|
+# | ref_transfer_source_reuse        | INIT-UseAfterMove | use of moved-from ref source |
+
+extern fn sink(r: &out i64);
+
+# ---- use of moved-from ref source after transfer ----
+# Moving a reference out of a parameter transfers ownership; any subsequent use
+# of the original parameter is a use-after-move and fires before elaboration.
+fn ref_transfer_source_reuse(x: &out i64) {
+  z: &out i64;
+  entry:
+    z = move x;
+    z.* = 1;
+    call sink(move x);
+    return
+}

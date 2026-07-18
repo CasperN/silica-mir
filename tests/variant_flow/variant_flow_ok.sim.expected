@@ -1,0 +1,243 @@
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
+enum One: Copy + Drop {
+  Only: i64
+}
+
+enum Void: Copy + Drop {
+}
+
+enum VoidPayload: Copy + Drop {
+  A: i64
+  N: Void
+}
+
+enum NeverPayload: Copy + Drop {
+  A: i64
+  N: never
+}
+
+enum Sub: Copy + Drop {
+  S1: unit
+  S2: unit
+}
+
+struct Wrap: Copy + Drop {
+  inner: Sub
+}
+
+enum Outer: Copy + Drop {
+  X: Wrap
+  Y: unit
+}
+
+struct Voidish: Copy + Drop {
+  real: i64
+  fake: never
+}
+
+enum TransitivelyNever: Copy + Drop {
+  A: i64
+  N: Voidish
+}
+
+fn coverage_all_variants_handled(o: Option) {
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  n:
+    drop o;
+    return
+  s:
+    drop o;
+    return
+}
+
+fn flow_single_variant_enum_requires_single_arm(o: One) {
+  entry:
+    switchEnum(o) [Only: end]
+  end:
+    drop o;
+    return
+}
+
+fn empty_enum_via_unreachable_terminator(v: Void) {
+  entry:
+    unreachable
+}
+
+fn flow_arm_target_with_abort_is_not_an_impossibility_marker() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: trap]
+  n:
+    drop o;
+    return
+  trap:
+    abort
+}
+
+fn downcast_read_in_refined_arm(o: Option) {
+  x: i64;
+  entry:
+    switchEnum(o) [None: n, Some: s]
+  s:
+    x = copy o as Some;
+    drop x;
+    drop o;
+    return
+  n:
+    drop o;
+    return
+}
+
+fn nested_downcast_after_refinement(o: Outer) {
+  entry:
+    switchEnum(o) [X: x_lbl, Y: y_lbl]
+  x_lbl:
+    switchEnum(o as X.inner) [S1: s1, S2: s2]
+  y_lbl:
+    drop o;
+    return
+  s1:
+    drop o;
+    return
+  s2:
+    drop o;
+    return
+}
+
+fn flow_unreachable_after_construction() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: dead]
+  n:
+    drop o;
+    return
+  dead:
+    unreachable
+}
+
+fn flow_unreachable_after_prior_switch(o: Option) {
+  entry:
+    switchEnum(o) [None: n_arm, Some: s_arm]
+  n_arm:
+    drop o;
+    return
+  s_arm:
+    switchEnum(o) [None: nested_dead, Some: s_body]
+  s_body:
+    drop o;
+    return
+  nested_dead:
+    unreachable
+}
+
+fn flow_unreachable_after_abort_join(b: bool) {
+  o: Option;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    o = Option::None(unit);
+    goto join
+  fbr:
+    abort
+  join:
+    switchEnum(o) [None: end, Some: dead]
+  end:
+    drop o;
+    drop b;
+    return
+  dead:
+    unreachable
+}
+
+fn flow_unreachable_target_may_contain_statements() {
+  o: Option;
+  x: i64;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: dead]
+  n:
+    drop o;
+    return
+  dead:
+    x = 999;
+    unreachable
+}
+
+fn flow_dead_code_variant_real_target_warning() {
+  o: Option;
+  entry:
+    o = Option::None(unit);
+    switchEnum(o) [None: n, Some: s]
+  n:
+    drop o;
+    return
+  s:
+    drop o;
+    return
+}
+
+fn flow_switch_in_dead_block_is_skipped(o: Option) {
+  entry:
+    drop o;
+    return
+  dead_switch:
+    switchEnum(o) [None: dead_switch]
+}
+
+fn flow_shared_borrow_does_not_clobber() {
+  o: Option;
+  r: & Option;
+  entry:
+    o = Option::None(unit);
+    r = & o;
+    unborrow r;
+    switchEnum(o) [None: n, Some: dead]
+  n:
+    drop o;
+    return
+  dead:
+    unreachable
+}
+
+fn variant_with_empty_enum_payload_allows_unreachable_arm(e: VoidPayload, out: &out i64) {
+  entry:
+    switchEnum(e) [A: a_arm, N: n_arm]
+  a_arm:
+    out.* = copy e as A;
+    unborrow out;
+    drop e;
+    return
+  n_arm:
+    unreachable
+}
+
+fn variant_with_never_payload_allows_unreachable_arm(e: NeverPayload, out: &out i64) {
+  entry:
+    switchEnum(e) [A: a_arm, N: n_arm]
+  a_arm:
+    out.* = copy e as A;
+    unborrow out;
+    drop e;
+    return
+  n_arm:
+    unreachable
+}
+
+fn variant_with_transitively_never_struct_payload_allows_unreachable_arm(e: TransitivelyNever, out: &out i64) {
+  entry:
+    switchEnum(e) [A: a_arm, N: n_arm]
+  a_arm:
+    out.* = copy e as A;
+    unborrow out;
+    drop e;
+    return
+  n_arm:
+    unreachable
+}

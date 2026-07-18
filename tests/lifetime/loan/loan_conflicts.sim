@@ -1,0 +1,400 @@
+# Loan-conflict error matrix: every fn below triggers a post-elaboration
+# loan-conflict diagnostic.  The matrix axes are:
+#   loan-kind  × conflicting-op × path-shape × cfg-pattern
+#
+# | fn                                           | loan-kind | conflict-op      | path-shape          | cfg-pattern | DiagCode              |
+# |----------------------------------------------|-----------|------------------|---------------------|-------------|-----------------------|
+# | mut_blocks_write                             | &mut      | write            | scalar              | linear      | LT-LoanConflict       |
+# | mut_blocks_read                              | &mut      | read/copy        | scalar              | linear      | LT-LoanConflict       |
+# | mut_blocks_move                              | &mut      | move             | scalar              | linear      | LT-LoanConflict       |
+# | mut_blocks_mut_reborrow                      | &mut      | &mut reborrow    | scalar              | linear      | LT-LoanConflict       |
+# | mut_blocks_shared_reborrow                   | &mut      | & reborrow       | scalar              | linear      | LT-LoanConflict       |
+# | shared_blocks_write                          | &         | write            | scalar              | linear      | LT-LoanConflict       |
+# | shared_blocks_move                           | &         | move             | scalar              | linear      | LT-LoanConflict       |
+# | shared_blocks_mut_reborrow                   | &         | &mut reborrow    | scalar              | linear      | LT-LoanConflict       |
+# | drop_blocks_write                            | &drop     | write            | scalar              | linear      | LT-LoanConflict       |
+# | out_blocks_write                             | &out      | write            | scalar              | linear      | LT-LoanConflict       |
+# | uninit_blocks_write                          | &uninit   | write            | scalar              | linear      | LT-LoanConflict       |
+# | same_field_borrow_read                       | &mut      | read/copy        | same field          | linear      | LT-LoanConflict       |
+# | field_ancestor_read                          | &mut      | read/copy        | ancestor field      | linear      | LT-LoanConflict       |
+# | deep_ancestor_read                           | &mut      | read/copy        | depth-3 ancestor    | linear      | LT-LoanConflict       |
+# | parent_struct_move                           | &mut      | move             | parent struct       | linear      | LT-LoanConflict       |
+# | downcast_same_variant_read                   | &mut      | read/copy        | downcast projection | linear      | LT-LoanConflict       |
+# | overwrite_new_loanee_conflict                | &mut      | write            | scalar              | overwrite   | LT-LoanConflict       |
+# | deref_drop_does_not_release                  | &mut      | write            | scalar              | deref-drop  | LT-LoanConflict       |
+# | struct_move_rekeys_loan                      | &mut      | write            | field (moved box)   | rekey       | LT-LoanConflict       |
+# | ref_transfer_preserves_conflict              | &mut      | write            | scalar              | transfer    | LT-LoanConflict       |
+# | branch_write_a_at_join                       | &mut      | write            | scalar              | branch-join | LT-LoanConflict       |
+# | branch_write_b_at_join                       | &mut      | write            | scalar              | branch-join | LT-LoanConflict       |
+# | enum_wrap_keeps_loan_active                  | &mut      | write            | enum-wrapped ref    | linear      | LT-LoanConflict       |
+# | switch_on_borrowed_enum                      | &mut      | read (switch)    | scalar enum         | linear      | LT-LoanConflict       |
+# | out_ref_param_obligation_unfulfilled         | &out      | obligation check | branch param        | branch      | INIT-RefObligationUnfulfilled |
+
+extern fn sink(r: &mut i64);
+extern fn use_mut(r: &mut i64);
+extern fn use_num(y: i64);
+extern fn take(y: i64);
+extern fn read_ref(r: &i64);
+extern fn take_out(r: &out i64);
+extern fn take_drop(r: &drop i64);
+extern fn take_uninit(r: &uninit i64);
+
+# ---- &mut loan, direct scalar place, conflicting write ----
+# Verifies that an active &mut loan blocks a direct write to the loanee.
+fn mut_blocks_write(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    x = 1;
+    call sink(move r);
+    return
+}
+
+# ---- &mut loan, direct scalar place, conflicting read ----
+# Verifies that an active &mut loan blocks a copy read of the loanee.
+fn mut_blocks_read(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = copy x;
+    call sink(move r);
+    return
+}
+
+# ---- &mut loan, direct scalar place, conflicting move ----
+# Verifies that an active &mut loan blocks a move of the loanee.
+fn mut_blocks_move(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call use_num(move x);
+    call sink(move r);
+    return
+}
+
+# ---- &mut loan, direct scalar place, conflicting &mut reborrow ----
+# Verifies that an active &mut loan blocks a second &mut borrow of the same place.
+fn mut_blocks_mut_reborrow(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut x;
+    call sink(move r);
+    return
+}
+
+# ---- &mut loan, direct scalar place, conflicting & reborrow ----
+# Verifies that an active &mut loan blocks a shared borrow of the same place.
+fn mut_blocks_shared_reborrow(x: i64) {
+  r: &mut i64;
+  s: &i64;
+  entry:
+    r = &mut x;
+    s = &x;
+    call sink(move r);
+    return
+}
+
+# ---- & loan, direct scalar place, conflicting write ----
+# Verifies that an active shared loan blocks a write to the loanee.
+fn shared_blocks_write(x: i64) {
+  r: &i64;
+  entry:
+    r = &x;
+    x = 1;
+    call read_ref(move r);
+    return
+}
+
+# ---- & loan, direct scalar place, conflicting move ----
+# Verifies that an active shared loan blocks a move of the loanee.
+fn shared_blocks_move(x: i64) {
+  r: &i64;
+  entry:
+    r = &x;
+    call take(move x);
+    call read_ref(move r);
+    return
+}
+
+# ---- & loan, direct scalar place, conflicting &mut reborrow ----
+# Verifies that a shared loan blocks a mutable reborrow of the same place.
+fn shared_blocks_mut_reborrow(x: i64) {
+  r: &i64;
+  s: &mut i64;
+  entry:
+    r = &x;
+    s = &mut x;
+    call read_ref(move r);
+    call use_mut(move s);
+    return
+}
+
+# ---- &drop loan, direct scalar place, conflicting write ----
+# Verifies that a &drop loan blocks a write to the drop-loaned place.
+fn drop_blocks_write(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    x = 42;
+    call take_drop(move r);
+    return
+}
+
+# ---- &out loan, direct scalar place, conflicting write ----
+# Verifies that a &out loan blocks a direct write to the out-loaned place.
+fn out_blocks_write() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    x = 42;
+    call take_out(move r);
+    return
+}
+
+# ---- &uninit loan, direct scalar place, conflicting write ----
+# Verifies that a &uninit loan blocks a direct write to the uninit-loaned place.
+fn uninit_blocks_write() {
+  x: i64;
+  r: &uninit i64;
+  entry:
+    r = &uninit x;
+    x = 42;
+    call take_uninit(move r);
+    return
+}
+
+struct P: Copy + Drop { a: i64  b: i64 }
+
+# ---- &mut loan, same field path, conflicting read ----
+# Verifies that borrowing a field blocks a copy read of that exact field.
+fn same_field_borrow_read(p: P) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut p.a;
+    y = copy p.a;
+    call sink(move r);
+    return
+}
+
+struct Inner: Copy + Drop { x: i64  y: i64 }
+struct Outer: Copy + Drop { i: Inner  c: i64 }
+
+# ---- &mut loan, ancestor field path, conflicting read ----
+# Borrowing a leaf field blocks a copy of the parent struct that contains it.
+fn field_ancestor_read(o: Outer) {
+  r: &mut i64;
+  y: Inner;
+  entry:
+    r = &mut o.i.x;
+    y = copy o.i;
+    call use_mut(move r);
+    return
+}
+
+struct Innermost: Copy + Drop { z: i64  w: i64 }
+struct Inner3: Copy + Drop { x: Innermost  y: Innermost }
+struct Outer3: Copy + Drop { a: Inner3  b: Inner3 }
+extern fn sink_inner(r: &mut i64);
+extern fn take_innermost(i: Innermost);
+
+# ---- &mut loan, depth-3 ancestor, conflicting ancestor read ----
+# Borrowing a three-levels-deep field blocks a copy of the intermediate ancestor.
+fn deep_ancestor_read(o: Outer3) {
+  r: &mut i64;
+  y: Innermost;
+  entry:
+    r = &mut o.a.x.z;
+    y = copy o.a.x;
+    call sink_inner(move r);
+    call take_innermost(move y);
+    return
+}
+
+extern fn takep(p: P);
+
+# ---- &mut loan on field, parent struct move conflicts ----
+# Borrowing a field blocks moving the entire parent struct.
+fn parent_struct_move(p: P) {
+  r: &mut i64;
+  entry:
+    r = &mut p.a;
+    call takep(move p);
+    call sink(move r);
+    return
+}
+
+enum Option: Copy + Drop { None: unit  Some: i64 }
+
+# ---- &mut loan on downcast projection, same-variant read conflicts ----
+# Borrowing a variant payload blocks a copy read of the same variant projection.
+fn downcast_same_variant_read() {
+  o: Option;
+  r: &mut i64;
+  y: i64;
+  entry:
+    o = Option::Some(1);
+    switchEnum(o) [None: n_arm, Some: s_arm]
+  s_arm:
+    r = &mut o as Some;
+    y = copy o as Some;
+    call sink(move r);
+    return
+  n_arm:
+    unreachable
+}
+
+# ---- &mut loan overwrite: new loanee conflicts with immediate write ----
+# Overwriting a borrower with a new borrow releases the old loan but creates a
+# new one; a write to the newly-loaned place is still a conflict.
+fn overwrite_new_loanee_conflict(x: i64, y: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    r = &mut y;
+    y = 42;
+    call use_mut(move r);
+    return
+}
+
+# ---- drop through deref does not release the loan ----
+# Dropping through the borrower's deref does not count as releasing the borrow;
+# the underlying loan remains active, so a write to the loanee is still blocked.
+fn deref_drop_does_not_release(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    drop r.*;
+    x = 42;
+    call sink(move r);
+    return
+}
+
+struct RefBox: Move { p: &mut i64  v: i64 }
+extern fn sink_box(y: RefBox);
+
+# ---- struct move rekeys the field loan ----
+# Moving the containing struct transfers the field loan to the new binding;
+# a write to the original loanee remains blocked while the new binding is live.
+fn struct_move_rekeys_loan(x: i64) {
+  a: RefBox;
+  b: RefBox;
+  entry:
+    a.p = &mut x;
+    a.v = 0;
+    b = move a;
+    x = 42;
+    call sink_box(move b);
+    return
+}
+
+# ---- ref transfer preserves the loan conflict ----
+# Moving a borrower into a second variable does not end the loan; a write to
+# the loanee after the transfer is still blocked.
+fn ref_transfer_preserves_conflict(a: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    r = &mut a;
+    s = move r;
+    a = 1;
+    call sink(move s);
+    return
+}
+
+# ---- branch borrows a or b; write to a at join conflicts ----
+# When a borrower may hold a loan of either `a` or `b` at a join point,
+# a write to `a` conflicts because one of the incoming paths has `a` loaned.
+fn branch_write_a_at_join(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    a = 1;
+    call sink(move r);
+    return
+}
+
+# ---- branch borrows a or b; write to b at join conflicts ----
+# Symmetric to branch_write_a_at_join: writing `b` at the join point conflicts
+# because the false branch leaves `b` loaned into `r`.
+fn branch_write_b_at_join(a: i64, b: i64, c: bool) {
+  r: &mut i64;
+  entry:
+    branch(copy c) [true: t, false: fbr]
+  t:
+    r = &mut a;
+    goto merge
+  fbr:
+    r = &mut b;
+    goto merge
+  merge:
+    b = 2;
+    call sink(move r);
+    return
+}
+
+enum Wrap: Move { W: &mut i64 }
+extern fn take_wrap(w: Wrap);
+
+# ---- enum-wrapped borrower keeps the loan active ----
+# Moving a borrower into an enum variant does not end the loan; a write to the
+# loanee is blocked for as long as the wrapping enum value is live.
+fn enum_wrap_keeps_loan_active(x: i64) {
+  r: &mut i64;
+  w: Wrap;
+  entry:
+    r = &mut x;
+    w = Wrap::W(move r);
+    x = 7;
+    call take_wrap(move w);
+    return
+}
+
+enum Sel: Copy + Drop { A: unit  B: unit }
+extern fn sink_sel(r: &mut Sel);
+
+# ---- switchEnum reads the scrutinee, conflicting with an active &mut loan ----
+# An active &mut loan on an enum value blocks a switchEnum dispatch on that value,
+# because dispatch requires a read of the scrutinee.
+fn switch_on_borrowed_enum(e: Sel) {
+  r: &mut Sel;
+  entry:
+    r = &mut e;
+    switchEnum(e) [A: a_lbl, B: b_lbl]
+  a_lbl:
+    call sink_sel(move r);
+    return
+  b_lbl:
+    call sink_sel(move r);
+    return
+}
+
+# ---- &out parameter obligation unfulfilled on one branch ----
+# When a &out reference parameter is moved into a local and then only one branch
+# initializes through it, the obligation remains unfulfilled on the other branch.
+fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
+  z: &out i64;
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    z = move x;
+    z.* = 1;
+    goto end
+  fbr:
+    z = move y;
+    z.* = 2;
+    goto end
+  end:
+    return
+}

@@ -1,4 +1,0 @@
-error: at 3:21: [HTC-ControlFlowInDefer] In function 'f': return is not allowed inside defer
-   |
- 3 |             defer { return; };
-   |                     ^^^^^^
