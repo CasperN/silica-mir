@@ -1,4 +1,4 @@
-extern fn consume(r: &drop i64);
+extern fn consume(r: &drop 's0 i64);
 
 fn f(x: i64) {
   r: &drop i64;

@@ -10,7 +10,7 @@ fn unreachable_terminator() {
     unreachable
 }
 
-fn return_param_last(x: i64, $return: &out i64) {
+fn<'s0> return_param_last(x: i64, $return: &out 's0 i64) {
   entry:
     $return.* = copy x;
     unborrow $return;

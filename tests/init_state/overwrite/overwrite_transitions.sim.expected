@@ -7,8 +7,8 @@ struct D: Drop + Move {
   a: i64
 }
 
-struct Linear: Move {
-  r: &out i64
+struct<'s0> Linear: Move {
+  r: &out 's0 i64
 }
 
 extern fn use_p(p: P);

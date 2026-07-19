@@ -311,7 +311,7 @@ fn pre_stmt_transitions(
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
             if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals) {
-                if let Type::Custom(enum_name, _) = &inner_ty {
+                if let Type::Custom(enum_name, _, _) = &inner_ty {
                     let payload_place =
                         downcast_place(inner_owned.clone(), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals, scope) {
@@ -438,7 +438,7 @@ fn walk_diverged(
             // recursion the caller sees a whole-aggregate `Partial`
             // whose `state_at` at any pred exit reads back as `Partial`
             // rather than `Init`, and no per-field drop is planned.
-            let Type::Custom(name, args) = ty else {
+            let Type::Custom(name, _, args) = ty else {
                 return;
             };
             match env.types.get(name) {
@@ -547,7 +547,7 @@ fn plan_drops_for_place(
         }
         InitState::Partial(fields) => {
             // Reverse declared field order = LIFO for that container.
-            let Type::Custom(struct_name, args) = ty else {
+            let Type::Custom(struct_name, _, args) = ty else {
                 return;
             };
             let TypeDecl::Struct(s) = (match env.types.get(struct_name) {

@@ -9,10 +9,11 @@ pub enum Type {
     Bool,
     Unit,
     Never,
-    /// Struct or enum type reference. `args` is the list of type
-    /// arguments — empty for non-generic decls (`Foo`), non-empty
-    /// for instantiations of generic decls (`Vec<i32>`).
-    Custom(String, Vec<Type>),
+    /// Struct or enum type reference. `lifetime_args` and `type_args`
+    /// are the two parameter lists at the use site; both empty for a
+    /// non-generic decl (`Foo`). Order is lifetimes-first (Rust
+    /// convention): `Foo<'a, 'b, T, U>`.
+    Custom(String, Vec<Lifetime>, Vec<Type>),
     /// A reference to a generic type parameter declared on the
     /// enclosing decl (struct/enum/fn). Written as a bare identifier
     /// in source; the parser emits this variant when the name is in
@@ -45,14 +46,19 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "unit"),
             Type::Never => write!(f, "never"),
-            Type::Custom(name, args) => {
+            Type::Custom(name, lifetimes, args) => {
                 write!(f, "{}", name)?;
-                if !args.is_empty() {
+                if !lifetimes.is_empty() || !args.is_empty() {
                     write!(f, "<")?;
-                    for (i, a) in args.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
+                    let mut first = true;
+                    for lt in lifetimes {
+                        if !first { write!(f, ", ")?; }
+                        first = false;
+                        write!(f, "{}", lt)?;
+                    }
+                    for a in args {
+                        if !first { write!(f, ", ")?; }
+                        first = false;
                         write!(f, "{}", a)?;
                     }
                     write!(f, ">")?;

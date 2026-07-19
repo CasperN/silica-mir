@@ -1,6 +1,6 @@
 extern fn noop();
 
-extern fn sink(r: &mut i64);
+extern fn sink(r: &mut 's0 i64);
 
 extern fn use_num(n: i64);
 

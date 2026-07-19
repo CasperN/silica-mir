@@ -3,15 +3,15 @@ struct P: Copy + Drop {
   y: i64
 }
 
-extern fn use_shared(r: & i64);
+extern fn use_shared(r: & 's0 i64);
 
-extern fn use_mut(r: &mut i64);
+extern fn use_mut(r: &mut 's0 i64);
 
-extern fn use_out(r: &out i64);
+extern fn use_out(r: &out 's0 i64);
 
-extern fn use_drop(r: &drop i64);
+extern fn use_drop(r: &drop 's0 i64);
 
-extern fn use_uninit(r: &uninit i64);
+extern fn use_uninit(r: &uninit 's0 i64);
 
 extern fn take_scalar(y: i64);
 

@@ -7,7 +7,7 @@ struct Box: Drop + Move {
   val: i64
 }
 
-fn out_scalar(r: &out i64) {
+fn<'s0> out_scalar(r: &out 's0 i64) {
   _temp_0: unit;
   _temp_1: unit;
   entry:
@@ -20,7 +20,7 @@ fn out_scalar(r: &out i64) {
     return
 }
 
-fn out_struct_whole(src: P, r: &out P) {
+fn<'s0> out_struct_whole(src: P, r: &out 's0 P) {
   _temp_0: unit;
   _temp_1: unit;
   entry:
@@ -33,7 +33,7 @@ fn out_struct_whole(src: P, r: &out P) {
     return
 }
 
-fn out_struct_field_by_field(r: &out P) {
+fn<'s0> out_struct_field_by_field(r: &out 's0 P) {
   _temp_0: unit;
   _temp_1: unit;
   _temp_2: unit;
@@ -50,7 +50,7 @@ fn out_struct_field_by_field(r: &out P) {
     return
 }
 
-fn out_array_slot_by_slot(r: &out [i64; 3]) {
+fn<'s0> out_array_slot_by_slot(r: &out 's0 [i64; 3]) {
   _temp_0: unit;
   _temp_1: unit;
   _temp_2: unit;
@@ -71,7 +71,7 @@ fn out_array_slot_by_slot(r: &out [i64; 3]) {
     return
 }
 
-fn drop_box(r: &drop Box) {
+fn<'s0> drop_box(r: &drop 's0 Box) {
   _temp_0: unit;
   x: Box;
   entry:
@@ -83,7 +83,7 @@ fn drop_box(r: &drop Box) {
     return
 }
 
-fn mut_scalar(r: &mut i64) {
+fn<'s0> mut_scalar(r: &mut 's0 i64) {
   _temp_0: unit;
   entry:
     unborrow r;
@@ -92,7 +92,7 @@ fn mut_scalar(r: &mut i64) {
     return
 }
 
-fn uninit_scalar(r: &uninit i64) {
+fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
   _temp_0: unit;
   entry:
     unborrow r;
@@ -101,7 +101,7 @@ fn uninit_scalar(r: &uninit i64) {
     return
 }
 
-extern fn write_into(r: &out Box, v: i64);
+extern fn write_into(r: &out 's0 Box, v: i64);
 
 extern fn consume(b: Box);
 

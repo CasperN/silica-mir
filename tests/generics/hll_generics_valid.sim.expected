@@ -7,14 +7,14 @@ enum<T: Copy + Drop> Option: Copy + Drop {
   Some: T
 }
 
-fn make_box($return: &out Box<i64>) {
+fn<'s0> make_box($return: &out 's0 Box<i64>) {
   entry:
     $return.*.inner = 42;
     unborrow $return;
     return
 }
 
-fn box_extract(b: Box<i64>, $return: &out i64) {
+fn<'s0> box_extract(b: Box<i64>, $return: &out 's0 i64) {
   entry:
     $return.* = copy b.inner;
     unborrow $return;
@@ -22,14 +22,14 @@ fn box_extract(b: Box<i64>, $return: &out i64) {
     return
 }
 
-fn make_some($return: &out Option<i64>) {
+fn<'s0> make_some($return: &out 's0 Option<i64>) {
   entry:
     $return.* = Option<i64>::Some(42);
     unborrow $return;
     return
 }
 
-fn option_extract_match(o: Option<i64>, $return: &out i64) {
+fn<'s0> option_extract_match(o: Option<i64>, $return: &out 's0 i64) {
   _: unit;
   x: i64;
   entry:
@@ -60,7 +60,7 @@ enum MoveList: Move {
   ConsM: i64
 }
 
-fn move_only_owned_match(ml: MoveList, $return: &out i64) {
+fn<'s0> move_only_owned_match(ml: MoveList, $return: &out 's0 i64) {
   u: unit;
   _temp_0: &out i64;
   x: i64;
@@ -87,7 +87,7 @@ fn move_only_owned_match(ml: MoveList, $return: &out i64) {
     return
 }
 
-fn u_to_zero(u: unit, $return: &out i64) {
+fn<'s0> u_to_zero(u: unit, $return: &out 's0 i64) {
   entry:
     $return.* = 0;
     unborrow $return;
@@ -95,7 +95,7 @@ fn u_to_zero(u: unit, $return: &out i64) {
     return
 }
 
-fn move_only_borrowed_match(ml: & MoveList, $return: &out i64) {
+fn<'s0, 's1> move_only_borrowed_match(ml: & 's0 MoveList, $return: &out 's1 i64) {
   _: unit;
   x: i64;
   entry:
@@ -122,7 +122,7 @@ fn move_only_borrowed_match(ml: & MoveList, $return: &out i64) {
     return
 }
 
-fn nested_container(b: Box<Option<i64>>, $return: &out i64) {
+fn<'s0> nested_container(b: Box<Option<i64>>, $return: &out 's0 i64) {
   inner: Option<i64>;
   _: unit;
   x: i64;
@@ -150,7 +150,7 @@ fn nested_container(b: Box<Option<i64>>, $return: &out i64) {
     return
 }
 
-fn make_box_of_box(x: i64, $return: &out Box<Box<i64>>) {
+fn<'s0> make_box_of_box(x: i64, $return: &out 's0 Box<Box<i64>>) {
   entry:
     $return.*.inner.inner = copy x;
     unborrow $return;
@@ -158,7 +158,7 @@ fn make_box_of_box(x: i64, $return: &out Box<Box<i64>>) {
     return
 }
 
-fn make_box_of_option(x: i64, $return: &out Box<Option<i64>>) {
+fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
   entry:
     $return.*.inner = Option<i64>::Some(copy x);
     unborrow $return;
@@ -166,7 +166,7 @@ fn make_box_of_option(x: i64, $return: &out Box<Option<i64>>) {
     return
 }
 
-fn make_option_of_box(x: i64, $return: &out Option<Box<i64>>) {
+fn<'s0> make_option_of_box(x: i64, $return: &out 's0 Option<Box<i64>>) {
   _temp_0: Box<i64>;
   entry:
     _temp_0.inner = copy x;
@@ -176,7 +176,7 @@ fn make_option_of_box(x: i64, $return: &out Option<Box<i64>>) {
     return
 }
 
-fn read_nested_field(b: Box<Box<i64>>, $return: &out i64) {
+fn<'s0> read_nested_field(b: Box<Box<i64>>, $return: &out 's0 i64) {
   entry:
     $return.* = copy b.inner.inner;
     unborrow $return;
@@ -184,7 +184,7 @@ fn read_nested_field(b: Box<Box<i64>>, $return: &out i64) {
     return
 }
 
-fn write_nested_pointee(r: &out Box<Box<i64>>, x: i64) {
+fn<'s0> write_nested_pointee(r: &out 's0 Box<Box<i64>>, x: i64) {
   _temp_0: unit;
   _temp_1: unit;
   entry:
@@ -207,7 +207,7 @@ struct<T: Drop + Move> DropPair: Drop + Move {
   b: T
 }
 
-fn partial_move_generic_drop($return: &out DropCell) {
+fn<'s0> partial_move_generic_drop($return: &out 's0 DropCell) {
   p: DropPair<DropCell>;
   entry:
     p.a.v = 1;
@@ -218,14 +218,14 @@ fn partial_move_generic_drop($return: &out DropCell) {
     return
 }
 
-fn<T: Copy + Drop> identity(x: T, $return: &out T) {
+fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
   entry:
     $return.* = move x;
     unborrow $return;
     return
 }
 
-fn call_generic_fn($return: &out i64) {
+fn<'s0> call_generic_fn($return: &out 's0 i64) {
   _temp_0: f64;
   _temp_1: &out f64;
   _temp_2: &out i64;
@@ -239,7 +239,7 @@ fn call_generic_fn($return: &out i64) {
     return
 }
 
-fn call_generic_fn_via_ret($return: &out i64) {
+fn<'s0> call_generic_fn_via_ret($return: &out 's0 i64) {
   _temp_0: i64;
   _temp_1: &out i64;
   _temp_2: &out i64;
@@ -252,7 +252,7 @@ fn call_generic_fn_via_ret($return: &out i64) {
     return
 }
 
-fn test_unsafe_deref(ptr: *i64, $return: &out i64) {
+fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
   entry:
     $return.* = copy ptr.*;
     unborrow $return;

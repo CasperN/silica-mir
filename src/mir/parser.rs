@@ -430,19 +430,19 @@ impl Parser {
                 }
                 if kind == "identifier" {
                     // Identifier alt with optional type_args as sibling:
-                    // `Foo` (Custom / Param) or `Foo<T, U>` (Custom with args).
+                    // `Foo`, `Foo<T, U>`, `Foo<'a, T>`.
                     let text = self.get_text(first_child);
-                    let args = if let Some(ta) = node.child(1) {
+                    let (lifetimes, args) = if let Some(ta) = node.child(1) {
                         if ta.kind() == "type_args" {
                             self.map_type_args(ta)?
                         } else {
-                            Vec::new()
+                            (Vec::new(), Vec::new())
                         }
                     } else {
-                        Vec::new()
+                        (Vec::new(), Vec::new())
                     };
-                    if !args.is_empty() {
-                        return Ok(custom_ty_with_args(text, args));
+                    if !lifetimes.is_empty() || !args.is_empty() {
+                        return Ok(Type::Custom(text.to_string(), lifetimes, args));
                     }
                     if text == "bool" {
                         return Ok(bool_ty());
@@ -642,14 +642,14 @@ impl Parser {
                     self.diag(node, ParserCode::MalformedCst, "fn_name missing identifier")
                 })?;
                 let name = self.get_text(ident_node).to_string();
-                let type_args = if let Some(ta) = node.child(1) {
+                let (_lifetime_args, type_args) = if let Some(ta) = node.child(1) {
                     if ta.kind() == "type_args" {
                         self.map_type_args(ta)?
                     } else {
-                        Vec::new()
+                        (Vec::new(), Vec::new())
                     }
                 } else {
-                    Vec::new()
+                    (Vec::new(), Vec::new())
                 };
                 Ok(fn_name_const_with_args(name, type_args))
             }
@@ -724,13 +724,13 @@ impl Parser {
                             })?;
                         let variant_name = self.get_text(variant_name_node).to_string();
                         let mut cursor = node.walk();
-                        let type_args = if let Some(ta) = node
+                        let (_lifetime_args, type_args) = if let Some(ta) = node
                             .children(&mut cursor)
                             .find(|c| c.kind() == "type_args")
                         {
                             self.map_type_args(ta)?
                         } else {
-                            Vec::new()
+                            (Vec::new(), Vec::new())
                         };
                         let mut cursor = node.walk();
                         let operand_node = node
@@ -926,18 +926,22 @@ impl Parser {
         })
     }
 
-    /// Parse a `type_args` node (`<T, U>`) into an ordered list of
-    /// types. Requires the type_scope already reflects the enclosing
-    /// decl's params so nested `Param` refs resolve.
-    fn map_type_args(&self, node: Node) -> Result<Vec<Type>, Diagnostic> {
-        let mut out = Vec::new();
+    /// Parse a `type_args` node (`<'a, T, U>`) into (lifetime_args,
+    /// type_args). Requires the type_scope already reflects the
+    /// enclosing decl's params so nested `Param` refs resolve.
+    fn map_type_args(&self, node: Node) -> Result<(Vec<Lifetime>, Vec<Type>), Diagnostic> {
+        let mut lifetimes = Vec::new();
+        let mut types = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
-                out.push(self.map_type(child)?);
+            if child.kind() == "lifetime" {
+                let name = self.get_text(child).trim_start_matches('\'').to_string();
+                lifetimes.push(Lifetime(name));
+            } else if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
+                types.push(self.map_type(child)?);
             }
         }
-        Ok(out)
+        Ok((lifetimes, types))
     }
 
     /// Parse a `type_params` node (`<'a, T, U: Copy + Drop>`) into

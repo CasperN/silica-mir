@@ -3,7 +3,7 @@ enum E: Copy + Drop {
   N: never
 }
 
-fn f(e: E, out: &out i64) {
+fn<'s0> f(e: E, out: &out 's0 i64) {
   entry:
     switchEnum(e) [A: a_arm, N: n_arm]
   a_arm:

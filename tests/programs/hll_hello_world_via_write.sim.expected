@@ -18,7 +18,7 @@ fn print_hi() {
     return
 }
 
-fn main(exit: &out i32) {
+fn<'s0> main(exit: &out 's0 i32) {
   _temp_0: unit;
   _temp_1: unit;
   _temp_2: unit;

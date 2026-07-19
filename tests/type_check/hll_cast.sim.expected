@@ -1,4 +1,4 @@
-fn i64_to_i32(x: i64, $return: &out i32) {
+fn<'s0> i64_to_i32(x: i64, $return: &out 's0 i32) {
   _temp_0: &out i32;
   entry:
     _temp_0 = &out $return.*;
@@ -8,7 +8,7 @@ fn i64_to_i32(x: i64, $return: &out i32) {
     return
 }
 
-fn i32_to_i64(x: i32, $return: &out i64) {
+fn<'s0> i32_to_i64(x: i32, $return: &out 's0 i64) {
   _temp_0: &out i64;
   entry:
     _temp_0 = &out $return.*;
@@ -18,7 +18,7 @@ fn i32_to_i64(x: i32, $return: &out i64) {
     return
 }
 
-fn u8_to_u64(x: u8, $return: &out u64) {
+fn<'s0> u8_to_u64(x: u8, $return: &out 's0 u64) {
   _temp_0: &out u64;
   entry:
     _temp_0 = &out $return.*;
@@ -28,7 +28,7 @@ fn u8_to_u64(x: u8, $return: &out u64) {
     return
 }
 
-fn u64_to_u8(x: u64, $return: &out u8) {
+fn<'s0> u64_to_u8(x: u64, $return: &out 's0 u8) {
   _temp_0: &out u8;
   entry:
     _temp_0 = &out $return.*;
@@ -38,7 +38,7 @@ fn u64_to_u8(x: u64, $return: &out u8) {
     return
 }
 
-fn i32_to_u32(x: i32, $return: &out u32) {
+fn<'s0> i32_to_u32(x: i32, $return: &out 's0 u32) {
   _temp_0: &out u32;
   entry:
     _temp_0 = &out $return.*;
@@ -48,7 +48,7 @@ fn i32_to_u32(x: i32, $return: &out u32) {
     return
 }
 
-fn u64_to_i64(x: u64, $return: &out i64) {
+fn<'s0> u64_to_i64(x: u64, $return: &out 's0 i64) {
   _temp_0: &out i64;
   entry:
     _temp_0 = &out $return.*;
@@ -58,7 +58,7 @@ fn u64_to_i64(x: u64, $return: &out i64) {
     return
 }
 
-fn i64_to_f64(x: i64, $return: &out f64) {
+fn<'s0> i64_to_f64(x: i64, $return: &out 's0 f64) {
   _temp_0: &out f64;
   entry:
     _temp_0 = &out $return.*;
@@ -68,7 +68,7 @@ fn i64_to_f64(x: i64, $return: &out f64) {
     return
 }
 
-fn f64_to_i64(x: f64, $return: &out i64) {
+fn<'s0> f64_to_i64(x: f64, $return: &out 's0 i64) {
   _temp_0: &out i64;
   entry:
     _temp_0 = &out $return.*;
@@ -78,7 +78,7 @@ fn f64_to_i64(x: f64, $return: &out i64) {
     return
 }
 
-fn i32_to_f32(x: i32, $return: &out f32) {
+fn<'s0> i32_to_f32(x: i32, $return: &out 's0 f32) {
   _temp_0: &out f32;
   entry:
     _temp_0 = &out $return.*;
@@ -88,7 +88,7 @@ fn i32_to_f32(x: i32, $return: &out f32) {
     return
 }
 
-fn f32_to_f64(x: f32, $return: &out f64) {
+fn<'s0> f32_to_f64(x: f32, $return: &out 's0 f64) {
   _temp_0: &out f64;
   entry:
     _temp_0 = &out $return.*;
@@ -98,7 +98,7 @@ fn f32_to_f64(x: f32, $return: &out f64) {
     return
 }
 
-fn f64_to_f32(x: f64, $return: &out f32) {
+fn<'s0> f64_to_f32(x: f64, $return: &out 's0 f32) {
   _temp_0: &out f32;
   entry:
     _temp_0 = &out $return.*;
@@ -108,7 +108,7 @@ fn f64_to_f32(x: f64, $return: &out f32) {
     return
 }
 
-fn bool_to_i32(b: bool, $return: &out i32) {
+fn<'s0> bool_to_i32(b: bool, $return: &out 's0 i32) {
   _temp_0: &out i32;
   entry:
     _temp_0 = &out $return.*;
@@ -118,7 +118,7 @@ fn bool_to_i32(b: bool, $return: &out i32) {
     return
 }
 
-fn bool_to_u64(b: bool, $return: &out u64) {
+fn<'s0> bool_to_u64(b: bool, $return: &out 's0 u64) {
   _temp_0: &out u64;
   entry:
     _temp_0 = &out $return.*;
@@ -128,7 +128,7 @@ fn bool_to_u64(b: bool, $return: &out u64) {
     return
 }
 
-fn same_type(x: i64, $return: &out i64) {
+fn<'s0> same_type(x: i64, $return: &out 's0 i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -136,7 +136,7 @@ fn same_type(x: i64, $return: &out i64) {
     return
 }
 
-fn chained_cast(x: i64, $return: &out i64) {
+fn<'s0> chained_cast(x: i64, $return: &out 's0 i64) {
   _temp_0: i32;
   _temp_1: &out i32;
   _temp_2: &out i64;
@@ -150,7 +150,7 @@ fn chained_cast(x: i64, $return: &out i64) {
     return
 }
 
-fn cast_over_add(x: i64, $return: &out i32) {
+fn<'s0> cast_over_add(x: i64, $return: &out 's0 i32) {
   _temp_0: i32;
   _temp_1: &out i32;
   _temp_2: &out i32;

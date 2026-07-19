@@ -2,7 +2,7 @@ struct<'a> Wrap: Move {
   r: & 'a i64
 }
 
-fn<'a> dangling_return(dummy: & 'a i64, $return: &out & 'a i64) {
+fn<'a, 's0> dangling_return(dummy: & 'a i64, $return: &out 's0 & 'a i64) {
   x: i64;
   entry:
     unborrow dummy;
@@ -13,7 +13,7 @@ fn<'a> dangling_return(dummy: & 'a i64, $return: &out & 'a i64) {
     return
 }
 
-fn<'a, 'b> wrong_lifetime_side(x: & 'a i64, y: & 'b i64, $return: &out & 'a i64) {
+fn<'a, 'b, 's0> wrong_lifetime_side(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
   entry:
     unborrow x;
     $return.* = copy y;
@@ -22,7 +22,7 @@ fn<'a, 'b> wrong_lifetime_side(x: & 'a i64, y: & 'b i64, $return: &out & 'a i64)
     return
 }
 
-fn escape_struct_lifetime(caller_ref: & i64, $return: &out Wrap) {
+fn<'s0, 's1> escape_struct_lifetime(caller_ref: & 's0 i64, $return: &out 's1 Wrap) {
   local: i64;
   entry:
     unborrow caller_ref;
@@ -33,9 +33,9 @@ fn escape_struct_lifetime(caller_ref: & i64, $return: &out Wrap) {
     return
 }
 
-fn<'a> reborrow_escape($return: &out Wrap) {
+fn<'a, 's0> reborrow_escape($return: &out 's0 Wrap<'a>) {
   x: i64;
-  w: Wrap;
+  w: Wrap<'a>;
   entry:
     x = 7;
     w.r = & x;

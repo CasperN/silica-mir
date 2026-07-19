@@ -42,12 +42,12 @@ pub fn float_ty(kind: FloatTy) -> Type { Type::Float(kind) }
 
 /// A non-generic struct/enum reference: `Foo`.
 pub fn custom_ty(name: impl Into<String>) -> Type {
-    Type::Custom(name.into(), Vec::new())
+    Type::Custom(name.into(), Vec::new(), Vec::new())
 }
 
 /// A generic struct/enum instantiation: `Foo<T, U>`.
 pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
-    Type::Custom(name.into(), args)
+    Type::Custom(name.into(), Vec::new(), args)
 }
 
 /// A reference to an in-scope type parameter.

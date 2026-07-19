@@ -1,4 +1,4 @@
-extern fn set_i64(r: &out i64, v: i64);
+extern fn set_i64(r: &out 's0 i64, v: i64);
 
 fn read_const_index() {
   a: [i64; 3];

@@ -113,7 +113,7 @@ impl Env {
     pub fn validate_type(&self, ty: &Type, scope: ParamScope) -> Result<(), String> {
         match ty {
             Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => Ok(()),
-            Type::Custom(name, args) => {
+            Type::Custom(name, _, args) => {
                 let decl_params: &[TypeParam] = match self.types.get(name) {
                     Some(TypeDecl::Struct(s)) => &s.type_params,
                     Some(TypeDecl::Enum(e)) => &e.type_params,
@@ -171,7 +171,7 @@ impl Env {
     /// with the concrete args on `ty`, so `Box<i64>::inner` yields `i64`,
     /// not the raw declared `T`.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let Type::Custom(name, args) = ty else {
+        let Type::Custom(name, _, args) = ty else {
             return None;
         };
         let TypeDecl::Struct(s) = self.types.get(name)? else {
@@ -188,7 +188,7 @@ impl Env {
             (Type::Bool, Type::Bool) => true,
             (Type::Unit, Type::Unit) => true,
             (Type::Never, Type::Never) => true,
-            (Type::Custom(a_name, a_args), Type::Custom(b_name, b_args)) => {
+            (Type::Custom(a_name, _, a_args), Type::Custom(b_name, _, b_args)) => {
                 a_name == b_name
                     && a_args.len() == b_args.len()
                     && a_args
@@ -246,7 +246,7 @@ impl Env {
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
                 let (name, args) = match &inner_ty {
-                    Type::Custom(n, a) => (n, a),
+                    Type::Custom(n, _, a) => (n, a),
                     _ => {
                         return Err(err(
                             FieldOfNonStruct,
@@ -285,7 +285,7 @@ impl Env {
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
                 let (name, args) = match &inner_ty {
-                    Type::Custom(n, a) => (n, a),
+                    Type::Custom(n, _, a) => (n, a),
                     _ => {
                         return Err(err(
                             DowncastOfNonEnum,
@@ -455,7 +455,7 @@ impl Env {
                     ));
                 }
 
-                Ok(Type::Custom(enum_name.clone(), type_args.clone()))
+                Ok(Type::Custom(enum_name.clone(), Vec::new(), type_args.clone()))
             }
             RValue::ArrayLit(ops) => {
                 // Empty array literal: `[]` has type `[Unit; 0]` as a

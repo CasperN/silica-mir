@@ -43,7 +43,7 @@ struct<T: Copy + Drop, U: Copy + Drop> CopyPair: Copy + Drop {
   second: U
 }
 
-fn<T> take_ref(r: & T) {
+fn<'s0, T> take_ref(r: & 's0 T) {
   entry:
     unborrow r;
     return
@@ -90,7 +90,7 @@ fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
     return
 }
 
-fn<T: Copy + Drop> read_through_shared_ref(r: & T) {
+fn<'s0, T: Copy + Drop> read_through_shared_ref(r: & 's0 T) {
   x: T;
   entry:
     x = copy r.*;
@@ -99,13 +99,13 @@ fn<T: Copy + Drop> read_through_shared_ref(r: & T) {
     return
 }
 
-fn<T: Copy + Drop> mut_ref_param(m: &mut T) {
+fn<'s0, T: Copy + Drop> mut_ref_param(m: &mut 's0 T) {
   entry:
     unborrow m;
     return
 }
 
-fn<T: Copy + Drop> out_ref_param(src: T, dest: &out T) {
+fn<'s0, T: Copy + Drop> out_ref_param(src: T, dest: &out 's0 T) {
   entry:
     dest.* = copy src;
     unborrow dest;
@@ -113,7 +113,7 @@ fn<T: Copy + Drop> out_ref_param(src: T, dest: &out T) {
     return
 }
 
-fn<T: Copy + Drop> uninit_ref_param(u: &uninit T) {
+fn<'s0, T: Copy + Drop> uninit_ref_param(u: &uninit 's0 T) {
   entry:
     unborrow u;
     return
@@ -131,19 +131,19 @@ fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
     return
 }
 
-fn<T: Move> ref_to_bag_of_mut_ref(b: & Bag<&mut T>) {
+fn<'s0, 's1, T: Move> ref_to_bag_of_mut_ref(b: & 's0 Bag<&mut 's1 T>) {
   entry:
     unborrow b;
     return
 }
 
-fn<T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut MovePair<&drop T, &out U>) {
+fn<'s0, 's1, 's2, T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut 's0 MovePair<&drop 's1 T, &out 's2 U>) {
   entry:
     unborrow p;
     return
 }
 
-fn<T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out T) {
+fn<'s0, T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out 's0 T) {
   entry:
     switchEnum(o) [None: use_default, Some: use_some]
   use_default:
@@ -159,7 +159,7 @@ fn<T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out T) {
     return
 }
 
-fn<T: Move> swap(a: &mut T, b: &mut T) {
+fn<'s0, 's1, T: Move> swap(a: &mut 's0 T, b: &mut 's1 T) {
   tmp: T;
   entry:
     tmp = move a.*;
@@ -170,7 +170,7 @@ fn<T: Move> swap(a: &mut T, b: &mut T) {
     return
 }
 
-fn<T: Copy + Drop> replicate(x: T, out_a: &out T, out_b: &out T) {
+fn<'s0, 's1, T: Copy + Drop> replicate(x: T, out_a: &out 's0 T, out_b: &out 's1 T) {
   entry:
     out_a.* = copy x;
     unborrow out_a;
@@ -180,7 +180,7 @@ fn<T: Copy + Drop> replicate(x: T, out_a: &out T, out_b: &out T) {
     return
 }
 
-fn<T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: & CopyPair<T, U>, out_first: &out T, out_second: &out U) {
+fn<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: & 's0 CopyPair<T, U>, out_first: &out 's1 T, out_second: &out 's2 U) {
   entry:
     out_first.* = copy p.*.first;
     unborrow out_first;
@@ -190,7 +190,7 @@ fn<T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: & CopyPair<T, U>, out_first:
     return
 }
 
-fn<T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out T) {
+fn<'s0, T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out 's0 T) {
   entry:
     branch(copy flag) [true: pick_a, false: pick_b]
   pick_a:
@@ -209,7 +209,7 @@ fn<T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out T) {
     return
 }
 
-fn<T: Copy + Drop> unbox(b: Box<T>, dest: &out T) {
+fn<'s0, T: Copy + Drop> unbox(b: Box<T>, dest: &out 's0 T) {
   entry:
     dest.* = copy b.inner;
     unborrow dest;

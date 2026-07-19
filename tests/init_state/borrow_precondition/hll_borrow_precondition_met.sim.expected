@@ -7,7 +7,7 @@ struct Box: Drop + Move {
   val: i64
 }
 
-fn use_shared(r: & i64, $return: &out i64) {
+fn<'s0, 's1> use_shared(r: & 's0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -15,7 +15,7 @@ fn use_shared(r: & i64, $return: &out i64) {
     return
 }
 
-fn use_mut(r: &mut i64, $return: &out i64) {
+fn<'s0, 's1> use_mut(r: &mut 's0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -23,7 +23,7 @@ fn use_mut(r: &mut i64, $return: &out i64) {
     return
 }
 
-fn take_scalar(y: i64, $return: &out i64) {
+fn<'s0> take_scalar(y: i64, $return: &out 's0 i64) {
   entry:
     $return.* = copy y;
     unborrow $return;
@@ -31,7 +31,7 @@ fn take_scalar(y: i64, $return: &out i64) {
     return
 }
 
-fn shared_of_init(x: i64, $return: &out i64) {
+fn<'s0> shared_of_init(x: i64, $return: &out 's0 i64) {
   _temp_0: & i64;
   _temp_1: &out i64;
   entry:
@@ -43,7 +43,7 @@ fn shared_of_init(x: i64, $return: &out i64) {
     return
 }
 
-fn mut_of_init(x: i64, $return: &out i64) {
+fn<'s0> mut_of_init(x: i64, $return: &out 's0 i64) {
   y: i64;
   _temp_0: &mut i64;
   _temp_1: &out i64;
@@ -58,7 +58,7 @@ fn mut_of_init(x: i64, $return: &out i64) {
     return
 }
 
-fn mut_of_init_field_of_partial($return: &out i64) {
+fn<'s0> mut_of_init_field_of_partial($return: &out 's0 i64) {
   p: P;
   _temp_0: unit;
   r: &mut i64;
@@ -81,7 +81,7 @@ fn mut_of_init_field_of_partial($return: &out i64) {
     return
 }
 
-fn out_of_never_init($return: &out i64) {
+fn<'s0> out_of_never_init($return: &out 's0 i64) {
   x: i64;
   r: &out i64;
   _temp_0: unit;
@@ -97,7 +97,7 @@ fn out_of_never_init($return: &out i64) {
     return
 }
 
-fn out_of_init_drop_type(x: i64, $return: &out i64) {
+fn<'s0> out_of_init_drop_type(x: i64, $return: &out 's0 i64) {
   y: i64;
   r: &out i64;
   _temp_0: unit;
@@ -116,7 +116,7 @@ fn out_of_init_drop_type(x: i64, $return: &out i64) {
     return
 }
 
-fn deinit_of_init(b: Box, $return: &out Box) {
+fn<'s0> deinit_of_init(b: Box, $return: &out 's0 Box) {
   owned: Box;
   r: &drop Box;
   taken: Box;

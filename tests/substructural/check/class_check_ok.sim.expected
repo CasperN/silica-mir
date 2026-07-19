@@ -3,8 +3,8 @@ struct P: Copy + Drop {
   y: i64
 }
 
-struct L: Move {
-  r: &out i64
+struct<'s0> L: Move {
+  r: &out 's0 i64
 }
 
 struct D: Drop {
@@ -19,9 +19,9 @@ extern fn take_num(x: i64);
 
 extern fn take_point(p: P);
 
-extern fn take_mut(r: &mut i64);
+extern fn take_mut(r: &mut 's0 i64);
 
-extern fn take_out(r: &out i64);
+extern fn take_out(r: &out 's0 i64);
 
 fn copy_number_as_rvalue(x: i64) {
   y: i64;
@@ -41,7 +41,7 @@ fn copy_copy_struct_as_rvalue(p: P) {
     return
 }
 
-fn copy_shared_ref_as_rvalue(r: & i64) {
+fn<'s0> copy_shared_ref_as_rvalue(r: & 's0 i64) {
   s: & i64;
   entry:
     s = copy r;
@@ -80,13 +80,13 @@ fn move_move_marker_struct_rvalue(x: L) {
     return
 }
 
-fn move_mut_ref_via_call(r: &mut i64) {
+fn<'s0> move_mut_ref_via_call(r: &mut 's0 i64) {
   entry:
     call take_mut(move r);
     return
 }
 
-fn move_out_ref_via_call(r: &out i64) {
+fn<'s0> move_out_ref_via_call(r: &out 's0 i64) {
   entry:
     call take_out(move r);
     return
@@ -98,13 +98,13 @@ fn drop_drop_struct(d: D) {
     return
 }
 
-fn drop_mut_ref(r: &mut i64) {
+fn<'s0> drop_mut_ref(r: &mut 's0 i64) {
   entry:
     drop r;
     return
 }
 
-fn drop_shared_ref(r: & i64) {
+fn<'s0> drop_shared_ref(r: & 's0 i64) {
   entry:
     drop r;
     return

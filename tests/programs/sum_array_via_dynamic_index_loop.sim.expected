@@ -1,4 +1,4 @@
-fn sum(a: [i64; 4], $return: &out i64) {
+fn<'s0> sum(a: [i64; 4], $return: &out 's0 i64) {
   sum: i64;
   i: i64;
   _temp_0: unit;

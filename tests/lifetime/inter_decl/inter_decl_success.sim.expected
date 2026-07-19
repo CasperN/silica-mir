@@ -1,4 +1,4 @@
-fn identity(r: & i64, $return: &out & i64) {
+fn<'s0, 's1, 's2> identity(r: & 's0 i64, $return: &out 's1 & 's2 i64) {
   entry:
     $return.* = copy r;
     unborrow $return;
@@ -6,7 +6,7 @@ fn identity(r: & i64, $return: &out & i64) {
     return
 }
 
-fn<'a> pick(x: & 'a i64, y: & 'a i64, $return: &out & 'a i64) {
+fn<'a, 's0> pick(x: & 'a i64, y: & 'a i64, $return: &out 's0 & 'a i64) {
   entry:
     unborrow y;
     $return.* = copy x;
@@ -15,7 +15,7 @@ fn<'a> pick(x: & 'a i64, y: & 'a i64, $return: &out & 'a i64) {
     return
 }
 
-fn<'a, 'b> first(x: & 'a i64, y: & 'b i64, $return: &out & 'a i64) {
+fn<'a, 'b, 's0> first(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
   entry:
     unborrow y;
     $return.* = copy x;
@@ -24,7 +24,7 @@ fn<'a, 'b> first(x: & 'a i64, y: & 'b i64, $return: &out & 'a i64) {
     return
 }
 
-fn<'a, 'b> second(x: & 'a i64, y: & 'b i64, $return: &out & 'b i64) {
+fn<'a, 'b, 's0> second(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'b i64) {
   entry:
     unborrow x;
     $return.* = copy y;
@@ -37,7 +37,7 @@ struct<'a> Wrap: Move {
   r: & 'a i64
 }
 
-fn<'a> wrap_it(x: & 'a i64, $return: &out Wrap) {
+fn<'a, 's0> wrap_it(x: & 'a i64, $return: &out 's0 Wrap<'a>) {
   entry:
     $return.*.r = copy x;
     unborrow $return;
@@ -50,7 +50,7 @@ struct<'a, 'b> Both: Move {
   r: & 'b i64
 }
 
-fn<'a, 'b> make_both(x: & 'a i64, y: & 'b i64, $return: &out Both) {
+fn<'a, 'b, 's0> make_both(x: & 'a i64, y: & 'b i64, $return: &out 's0 Both<'a, 'b>) {
   entry:
     $return.*.l = copy x;
     unborrow x;
@@ -65,7 +65,7 @@ enum<'a> MaybeRef: Copy + Drop {
   Some: & 'a i64
 }
 
-fn<'a> maybe_of(r: & 'a i64, $return: &out MaybeRef) {
+fn<'a, 's0> maybe_of(r: & 'a i64, $return: &out 's0 MaybeRef<'a>) {
   entry:
     $return.* = MaybeRef::Some(copy r);
     unborrow $return;

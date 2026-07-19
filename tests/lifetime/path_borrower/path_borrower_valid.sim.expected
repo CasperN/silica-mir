@@ -1,19 +1,19 @@
-struct RefBox: Move {
-  p: &mut i64
+struct<'s0> RefBox: Move {
+  p: &mut 's0 i64
 }
 
-struct RefBox2: Move {
-  q: &mut i64
-  r: &mut i64
+struct<'s0, 's1> RefBox2: Move {
+  q: &mut 's0 i64
+  r: &mut 's1 i64
 }
 
-struct Linear: Move {
-  r: &out i64
+struct<'s0> Linear: Move {
+  r: &out 's0 i64
 }
 
-extern fn use_mut(r: &mut i64);
+extern fn use_mut(r: &mut 's0 i64);
 
-extern fn sink(r: &mut i64);
+extern fn sink(r: &mut 's0 i64);
 
 extern fn take_box(b: RefBox);
 

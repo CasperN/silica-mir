@@ -2,9 +2,9 @@ enum E: Move {
   V: i64
 }
 
-extern fn sink_mut(r: &mut i64);
+extern fn sink_mut(r: &mut 's0 i64);
 
-extern fn sink_shared(r: & i64);
+extern fn sink_shared(r: & 's0 i64);
 
 fn mut_from_mut_local(x: i64) {
   r: &mut i64;
@@ -30,7 +30,7 @@ fn shared_from_mut_local(x: i64) {
     return
 }
 
-fn shared_from_mut_param(r: &mut i64) {
+fn<'s0> shared_from_mut_param(r: &mut 's0 i64) {
   s: & i64;
   entry:
     s = & r.*;
@@ -39,7 +39,7 @@ fn shared_from_mut_param(r: &mut i64) {
     return
 }
 
-fn out_from_out_param(r: &out i64) {
+fn<'s0> out_from_out_param(r: &out 's0 i64) {
   s: &out i64;
   entry:
     s = &out r.*;
@@ -64,7 +64,7 @@ fn chained_mut_from_mut(x: i64) {
     return
 }
 
-fn mut_from_mut_via_downcast(e: &mut E) {
+fn<'s0> mut_from_mut_via_downcast(e: &mut 's0 E) {
   r: &mut i64;
   entry:
     switchEnum(e.*) [V: v_arm]

@@ -451,7 +451,7 @@ fn walk_ref_paths(
         out.insert(place.clone());
         return;
     }
-    let Type::Custom(name, args) = ty else { return };
+    let Type::Custom(name, _, args) = ty else { return };
     if !visited.insert(name.clone()) {
         return;
     }

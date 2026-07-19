@@ -33,7 +33,7 @@ error: at 58:9: [TC-InvalidDeclaredType] In function 'take', parameter 'b': Type
     |         ^^^^^^^^^^^^^^
  59 |   entry:
     |
-error: at 66:27: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out U for 'Option::T' does not satisfy required bound 'Copy'
+error: at 66:27: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out 's0 U for 'Option::T' does not satisfy required bound 'Copy'
     |
  65 | # and still does not grant Copy or Drop.
  66 | fn<U: Move> option_of_out(x: Option<&out U>) {

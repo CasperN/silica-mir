@@ -40,7 +40,7 @@ fn shared_unborrow_allows_write(x: i64) {
     return
 }
 
-fn out_unborrow_after_write(r: &out i64) {
+fn<'s0> out_unborrow_after_write(r: &out 's0 i64) {
   entry:
     r.* = 42;
     unborrow r;

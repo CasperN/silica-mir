@@ -32,7 +32,7 @@ fn walk(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
             }
             ty.clone()
         }
-        Type::Custom(name, inner_args) => {
+        Type::Custom(name, _, inner_args) => {
             let new_args = inner_args
                 .iter()
                 .map(|a| walk(a, type_params, args))
@@ -68,7 +68,7 @@ pub fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
     fn walk(ty: &Type, env: &Env, visited: &mut BTreeSet<String>) -> bool {
         match ty {
             Type::Never => true,
-            Type::Custom(name, _) => {
+            Type::Custom(name, _, _) => {
                 if !visited.insert(name.clone()) {
                     return false;
                 }
@@ -174,7 +174,7 @@ mod tests {
         // infinitely recurse into `S`'s own name; the visited set
         // conservatively treats a second occurrence as inhabited.
         let env = env_of("struct S { r: &S } fn f() { entry: return }");
-        assert!(!is_type_uninhabited(&Type::Custom("S".into(), Vec::new()), &env));
+        assert!(!is_type_uninhabited(&Type::Custom("S".into(), Vec::new(), Vec::new()), &env));
     }
 
     #[test]

@@ -1,4 +1,4 @@
-error: at 25:9: [TC-MainBadSignature] In function 'main': single parameter must be '&out i32', found &out i64
+error: at 25:9: [TC-MainBadSignature] In function 'main': single parameter must be '&out i32', found &out 's0 i64
     |
  24 | # fires TC-MainBadSignature naming the found type in the message.
  25 | fn main(exit: &out i64) {

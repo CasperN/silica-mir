@@ -8,7 +8,7 @@ enum Outer: Copy + Drop {
   B: i64
 }
 
-fn nested_downcast(o: Outer, $return: &out i64) {
+fn<'s0> nested_downcast(o: Outer, $return: &out 's0 i64) {
   inner: Inner;
   x: i64;
   y: i64;
@@ -58,7 +58,7 @@ enum Tag: Copy + Drop {
   Neg: i64
 }
 
-fn to_i64(t: Tag, $return: &out i64) {
+fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
   _: unit;
   p: i64;
   n: i64;
@@ -95,7 +95,7 @@ fn to_i64(t: Tag, $return: &out i64) {
     return
 }
 
-fn sum_two_tags(a: [Tag; 2], $return: &out i64) {
+fn<'s0> sum_two_tags(a: [Tag; 2], $return: &out 's0 i64) {
   _temp_0: i64;
   _temp_1: &out i64;
   _temp_2: i64;
@@ -117,7 +117,7 @@ enum Which: Copy + Drop {
   B: unit
 }
 
-fn asymmetric_ref_use(r: &mut i64, w: Which) {
+fn<'s0> asymmetric_ref_use(r: &mut 's0 i64, w: Which) {
   _temp_0: unit;
   a: unit;
   observed: i64;

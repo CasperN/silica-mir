@@ -20,7 +20,7 @@ fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Markers> {
 fn substitute(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
     match ty {
         Type::Param(name) => mapping.get(name).cloned().unwrap_or_else(|| ty.clone()),
-        Type::Custom(name, args) => {
+        Type::Custom(name, _, args) => {
             let new_args = args.iter().map(|a| substitute(a, mapping)).collect();
             custom_ty_with_args(name.clone(), new_args)
         }
@@ -216,7 +216,7 @@ impl Subst {
                 fn_ty(resolved_params, self.resolve(ret))
             }
             Type::Array(inner, size) => array_ty(self.resolve(inner), *size),
-            Type::Custom(name, args) => {
+            Type::Custom(name, _, args) => {
                 let resolved_args = args.iter().map(|a| self.resolve(a)).collect();
                 custom_ty_with_args(name.clone(), resolved_args)
             }
@@ -253,7 +253,7 @@ impl Subst {
                 let resolved_params = params.iter().map(|p| self.resolve_default(p)).collect();
                 fn_ty(resolved_params, self.resolve_default(ret))
             }
-            Type::Custom(name, args) => {
+            Type::Custom(name, _, args) => {
                 let resolved_args = args.iter().map(|a| self.resolve_default(a)).collect();
                 custom_ty_with_args(name.clone(), resolved_args)
             }
@@ -303,7 +303,7 @@ impl Subst {
             (Type::Float(f1), Type::Float(f2)) if f1 == f2 => Ok(()),
             (Type::Bool, Type::Bool) => Ok(()),
             (Type::Unit, Type::Unit) => Ok(()),
-            (Type::Custom(n1, a1), Type::Custom(n2, a2)) if n1 == n2 && a1.len() == a2.len() => {
+            (Type::Custom(n1, _, a1), Type::Custom(n2, _, a2)) if n1 == n2 && a1.len() == a2.len() => {
                 let a1 = a1.clone();
                 let a2 = a2.clone();
                 for (x, y) in a1.iter().zip(a2.iter()) {
@@ -348,7 +348,7 @@ impl Subst {
             Type::Fn(params, ret) => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
-            Type::Custom(_, args) => args.iter().any(|a| self.occurs_in(id, a)),
+            Type::Custom(_, _, args) => args.iter().any(|a| self.occurs_in(id, a)),
             _ => false,
         }
     }
@@ -424,7 +424,7 @@ impl TypeEnv {
                 }
                 RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
             },
-            Type::Custom(name, _args) => {
+            Type::Custom(name, _, _args) => {
                 if let Some(s) = self.structs.get(name) {
                     s.markers
                 } else if let Some(e) = self.enums.get(name) {
@@ -479,7 +479,7 @@ impl TypeEnv {
                 }
                 self.validate_type(ret, scope, span, d);
             }
-            Type::Custom(name, args) => {
+            Type::Custom(name, _, args) => {
                 for a in args {
                     self.validate_type(a, scope, span, d);
                 }
@@ -703,7 +703,7 @@ fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) 
             }
             collect_unresolved_vars(ret, subst, vars);
         }
-        Type::Custom(_, args) => {
+        Type::Custom(_, _, args) => {
             for a in args {
                 collect_unresolved_vars(a, subst, vars);
             }
@@ -863,7 +863,7 @@ fn infer_inner(
                 Type::Ref(_, _, inner) => subst.resolve(inner),
                 other => other.clone(),
             };
-            if let Type::Custom(struct_name, args) = struct_ty {
+            if let Type::Custom(struct_name, _, args) = struct_ty {
                 if let Some(s_decl) = env.structs.get(&struct_name).cloned() {
                     if let Some(f) = s_decl.fields.iter().find(|field_decl| field_decl.name == *field) {
                         match build_subst_map(&struct_name, &s_decl.type_params, &args, expr.span, d) {
@@ -1090,7 +1090,7 @@ fn infer_inner(
             if resolved == Type::Error {
                 return error_ty();
             }
-            if let Type::Custom(enum_name, args) = resolved {
+            if let Type::Custom(enum_name, _, args) = resolved {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
@@ -1381,7 +1381,7 @@ fn check_inner(
         (ExprKind::Match(target, arms), expected_ty) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name, args) = resolved {
+            if let Type::Custom(enum_name, _, args) = resolved {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {

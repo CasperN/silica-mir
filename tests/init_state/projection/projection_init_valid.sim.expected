@@ -3,9 +3,9 @@ enum Option: Copy + Drop {
   Some: i64
 }
 
-extern fn use_shared(r: & i64);
+extern fn use_shared(r: & 's0 i64);
 
-fn deref_read_of_ref_param(r: & i64) {
+fn<'s0> deref_read_of_ref_param(r: & 's0 i64) {
   a: i64;
   entry:
     a = copy r.*;
@@ -27,7 +27,7 @@ fn downcast_write_after_switch(o: Option) {
     return
 }
 
-fn deref_write_through_out_ref(r: &out i64) {
+fn<'s0> deref_write_through_out_ref(r: &out 's0 i64) {
   entry:
     r.* = 42;
     unborrow r;

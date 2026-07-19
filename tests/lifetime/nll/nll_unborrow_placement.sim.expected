@@ -5,24 +5,24 @@ struct P: Copy + Drop {
   b: i64
 }
 
-fn out_abort_suppresses_unborrow(r: &out i64) {
+fn<'s0> out_abort_suppresses_unborrow(r: &out 's0 i64) {
   entry:
     abort
 }
 
-fn out_unreachable_suppresses_unborrow(r: &out i64) {
+fn<'s0> out_unreachable_suppresses_unborrow(r: &out 's0 i64) {
   entry:
     unreachable
 }
 
-fn out_param_write_inserts_unborrow(x: &out i64) {
+fn<'s0> out_param_write_inserts_unborrow(x: &out 's0 i64) {
   entry:
     x.* = 42;
     unborrow x;
     return
 }
 
-fn out_branch_one_arm_aborts(r: &out i64, b: bool) {
+fn<'s0> out_branch_one_arm_aborts(r: &out 's0 i64, b: bool) {
   entry:
     branch(copy b) [true: init_arm, false: die_arm]
   init_arm:
@@ -34,14 +34,14 @@ fn out_branch_one_arm_aborts(r: &out i64, b: bool) {
     abort
 }
 
-fn mut_move_out_then_abort(r: &mut i64) {
+fn<'s0> mut_move_out_then_abort(r: &mut 's0 i64) {
   x: i64;
   entry:
     x = move r.*;
     abort
 }
 
-fn mut_param_read_last_use(x: &mut i64) {
+fn<'s0> mut_param_read_last_use(x: &mut 's0 i64) {
   y: i64;
   entry:
     y = copy x.*;

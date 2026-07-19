@@ -38,7 +38,7 @@ fn assign_via_downcast(o: Choice) {
     return
 }
 
-fn assign_through_deref(r: &mut i64) {
+fn<'s0> assign_through_deref(r: &mut 's0 i64) {
   entry:
     drop r.*;
     r.* = 42;

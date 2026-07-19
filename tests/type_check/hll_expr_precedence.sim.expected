@@ -1,4 +1,4 @@
-fn assign_rhs_binop($return: &out i64) {
+fn<'s0> assign_rhs_binop($return: &out 's0 i64) {
   x: i64;
   _temp_0: unit;
   _temp_1: i64;
@@ -17,7 +17,7 @@ fn assign_rhs_binop($return: &out i64) {
     return
 }
 
-fn additive_left_assoc(a: i64, b: i64, c: i64, $return: &out i64) {
+fn<'s0> additive_left_assoc(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
   _temp_0: i64;
   _temp_1: &out i64;
   _temp_2: &out i64;
@@ -33,7 +33,7 @@ fn additive_left_assoc(a: i64, b: i64, c: i64, $return: &out i64) {
     return
 }
 
-fn mul_over_add(a: i64, b: i64, c: i64, $return: &out i64) {
+fn<'s0> mul_over_add(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
   _temp_0: i64;
   _temp_1: &out i64;
   _temp_2: &out i64;
@@ -49,7 +49,7 @@ fn mul_over_add(a: i64, b: i64, c: i64, $return: &out i64) {
     return
 }
 
-fn cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out bool) {
+fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
   _temp_0: i64;
   _temp_1: &out i64;
   _temp_2: i64;
@@ -70,7 +70,7 @@ fn cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out bool) {
     return
 }
 
-fn read(r: & i64, $return: &out i64) {
+fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -78,7 +78,7 @@ fn read(r: & i64, $return: &out i64) {
     return
 }
 
-fn borrow_tighter_than_add(x: i64, y: i64, $return: &out i64) {
+fn<'s0> borrow_tighter_than_add(x: i64, y: i64, $return: &out 's0 i64) {
   _temp_0: i64;
   _temp_1: & i64;
   _temp_2: &out i64;
@@ -95,7 +95,7 @@ fn borrow_tighter_than_add(x: i64, y: i64, $return: &out i64) {
     return
 }
 
-fn if_as_stmt(a: i64, r: &out i64) {
+fn<'s0> if_as_stmt(a: i64, r: &out 's0 i64) {
   _temp_0: unit;
   _temp_1: bool;
   _temp_2: &out bool;
@@ -119,7 +119,7 @@ fn if_as_stmt(a: i64, r: &out i64) {
     return
 }
 
-fn if_as_tail(a: i64, $return: &out i64) {
+fn<'s0> if_as_tail(a: i64, $return: &out 's0 i64) {
   base: i64;
   _temp_0: bool;
   _temp_1: &out bool;
@@ -161,7 +161,7 @@ enum Tag: Copy + Drop {
   B: i64
 }
 
-fn match_as_stmt(t: Tag, r: &out i64) {
+fn<'s0> match_as_stmt(t: Tag, r: &out 's0 i64) {
   _temp_0: unit;
   x: i64;
   y: i64;
@@ -195,7 +195,7 @@ struct Wrap: Copy + Drop {
   inner: i64
 }
 
-fn postfix_chain_on_match(t: Tag, $return: &out i64) {
+fn<'s0> postfix_chain_on_match(t: Tag, $return: &out 's0 i64) {
   w: Wrap;
   x: i64;
   y: i64;

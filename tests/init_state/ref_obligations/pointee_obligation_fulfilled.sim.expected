@@ -17,56 +17,56 @@ enum<T: Copy + Drop> Option: Copy + Drop {
   Some: T
 }
 
-fn out_scalar(r: &out i64) {
+fn<'s0> out_scalar(r: &out 's0 i64) {
   entry:
     r.* = 42;
     unborrow r;
     return
 }
 
-fn out_struct(src: P, r: &out P) {
+fn<'s0> out_struct(src: P, r: &out 's0 P) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn out_enum(r: &out E) {
+fn<'s0> out_enum(r: &out 's0 E) {
   entry:
     r.* = E::A(42);
     unborrow r;
     return
 }
 
-fn out_array(r: &out [i64; 3]) {
+fn<'s0> out_array(r: &out 's0 [i64; 3]) {
   entry:
     r.* = [1, 2, 3];
     unborrow r;
     return
 }
 
-fn<T: Copy + Drop> out_param(src: T, r: &out T) {
+fn<'s0, T: Copy + Drop> out_param(src: T, r: &out 's0 T) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn<T: Copy + Drop> out_generic_struct(src: Box<T>, r: &out Box<T>) {
+fn<'s0, T: Copy + Drop> out_generic_struct(src: Box<T>, r: &out 's0 Box<T>) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn<T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out Option<T>) {
+fn<'s0, T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out 's0 Option<T>) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn out_struct_field_by_field(r: &out P) {
+fn<'s0> out_struct_field_by_field(r: &out 's0 P) {
   entry:
     r.*.x = 1;
     r.*.y = 2;
@@ -74,7 +74,7 @@ fn out_struct_field_by_field(r: &out P) {
     return
 }
 
-fn out_array_slot_by_slot(r: &out [i64; 3]) {
+fn<'s0> out_array_slot_by_slot(r: &out 's0 [i64; 3]) {
   entry:
     r.*[0] = 1;
     r.*[1] = 2;
@@ -83,7 +83,7 @@ fn out_array_slot_by_slot(r: &out [i64; 3]) {
     return
 }
 
-fn drop_struct_field_by_field(r: &drop P) {
+fn<'s0> drop_struct_field_by_field(r: &drop 's0 P) {
   x: i64;
   y: i64;
   entry:
@@ -95,7 +95,7 @@ fn drop_struct_field_by_field(r: &drop P) {
     return
 }
 
-fn drop_scalar(r: &drop i64) {
+fn<'s0> drop_scalar(r: &drop 's0 i64) {
   x: i64;
   entry:
     x = move r.*;
@@ -104,7 +104,7 @@ fn drop_scalar(r: &drop i64) {
     return
 }
 
-fn drop_struct(r: &drop P) {
+fn<'s0> drop_struct(r: &drop 's0 P) {
   p: P;
   entry:
     p = move r.*;
@@ -113,7 +113,7 @@ fn drop_struct(r: &drop P) {
     return
 }
 
-fn drop_enum(r: &drop E) {
+fn<'s0> drop_enum(r: &drop 's0 E) {
   e: E;
   entry:
     e = move r.*;
@@ -122,7 +122,7 @@ fn drop_enum(r: &drop E) {
     return
 }
 
-fn drop_array(r: &drop [i64; 3]) {
+fn<'s0> drop_array(r: &drop 's0 [i64; 3]) {
   a: [i64; 3];
   entry:
     a = move r.*;
@@ -131,7 +131,7 @@ fn drop_array(r: &drop [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> drop_param(r: &drop T) {
+fn<'s0, T: Copy + Drop> drop_param(r: &drop 's0 T) {
   x: T;
   entry:
     x = move r.*;
@@ -140,7 +140,7 @@ fn<T: Copy + Drop> drop_param(r: &drop T) {
     return
 }
 
-fn<T: Copy + Drop> drop_generic_struct(r: &drop Box<T>) {
+fn<'s0, T: Copy + Drop> drop_generic_struct(r: &drop 's0 Box<T>) {
   b: Box<T>;
   entry:
     b = move r.*;
@@ -149,55 +149,55 @@ fn<T: Copy + Drop> drop_generic_struct(r: &drop Box<T>) {
     return
 }
 
-fn mut_scalar(r: &mut i64) {
+fn<'s0> mut_scalar(r: &mut 's0 i64) {
   entry:
     unborrow r;
     return
 }
 
-fn mut_struct(r: &mut P) {
+fn<'s0> mut_struct(r: &mut 's0 P) {
   entry:
     unborrow r;
     return
 }
 
-fn mut_array(r: &mut [i64; 3]) {
+fn<'s0> mut_array(r: &mut 's0 [i64; 3]) {
   entry:
     unborrow r;
     return
 }
 
-fn<T: Copy + Drop> mut_param(r: &mut T) {
+fn<'s0, T: Copy + Drop> mut_param(r: &mut 's0 T) {
   entry:
     unborrow r;
     return
 }
 
-fn<T: Copy + Drop> mut_generic_struct(r: &mut Box<T>) {
+fn<'s0, T: Copy + Drop> mut_generic_struct(r: &mut 's0 Box<T>) {
   entry:
     unborrow r;
     return
 }
 
-fn uninit_scalar(r: &uninit i64) {
+fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
   entry:
     unborrow r;
     return
 }
 
-fn uninit_struct(r: &uninit P) {
+fn<'s0> uninit_struct(r: &uninit 's0 P) {
   entry:
     unborrow r;
     return
 }
 
-fn uninit_array(r: &uninit [i64; 3]) {
+fn<'s0> uninit_array(r: &uninit 's0 [i64; 3]) {
   entry:
     unborrow r;
     return
 }
 
-fn<T: Copy + Drop> uninit_param(r: &uninit T) {
+fn<'s0, T: Copy + Drop> uninit_param(r: &uninit 's0 T) {
   entry:
     unborrow r;
     return

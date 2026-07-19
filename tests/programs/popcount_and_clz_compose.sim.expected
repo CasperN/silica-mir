@@ -1,4 +1,4 @@
-fn f(x: i32, out: &out i32) {
+fn<'s0> f(x: i32, out: &out 's0 i32) {
   leading: i32;
   pop: i32;
   pop_out: &out i32;

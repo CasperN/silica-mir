@@ -138,10 +138,10 @@ impl MonoCtx {
     /// concrete via `need`.
     fn walk_type(&mut self, ty: &Type) -> Type {
         match ty {
-            Type::Custom(name, args) => {
+            Type::Custom(name, _, args) => {
                 let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
                 let mangled = self.need(name, &new_args);
-                Type::Custom(mangled, Vec::new())
+                Type::Custom(mangled, Vec::new(), Vec::new())
             }
             Type::Ref(kind, lt, inner) => Type::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner))),
             Type::RawPtr(inner) => Type::RawPtr(Box::new(self.walk_type(inner))),

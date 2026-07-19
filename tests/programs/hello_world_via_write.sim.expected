@@ -11,7 +11,7 @@ fn print_hello() {
     return
 }
 
-fn main(exit: &out i32) {
+fn<'s0> main(exit: &out 's0 i32) {
   entry:
     call print_hello();
     exit.* = 0i32;

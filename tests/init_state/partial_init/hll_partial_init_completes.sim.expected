@@ -27,7 +27,7 @@ struct BigOuter: Drop + Move {
   tag: i64
 }
 
-fn struct_field_by_field($return: &out i64) {
+fn<'s0> struct_field_by_field($return: &out 's0 i64) {
   p: P;
   _temp_0: unit;
   _temp_1: unit;
@@ -44,7 +44,7 @@ fn struct_field_by_field($return: &out i64) {
     return
 }
 
-fn nested_struct_leaf_by_leaf($return: &out i64) {
+fn<'s0> nested_struct_leaf_by_leaf($return: &out 's0 i64) {
   o: Outer;
   _temp_0: unit;
   _temp_1: unit;
@@ -65,7 +65,7 @@ fn nested_struct_leaf_by_leaf($return: &out i64) {
     return
 }
 
-fn array_slot_by_slot($return: &out i64) {
+fn<'s0> array_slot_by_slot($return: &out 's0 i64) {
   a: [i64; 3];
   _temp_0: unit;
   _temp_1: unit;
@@ -86,7 +86,7 @@ fn array_slot_by_slot($return: &out i64) {
     return
 }
 
-fn whole_struct_overwrite_from_partial(src: P, $return: &out i64) {
+fn<'s0> whole_struct_overwrite_from_partial(src: P, $return: &out 's0 i64) {
   p: P;
   _temp_0: unit;
   _temp_1: unit;

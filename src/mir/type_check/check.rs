@@ -330,7 +330,7 @@ impl Env {
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
                 let enum_decl: Option<&EnumDecl> = match self.type_of_place(place, ts, locals) {
-                    Ok(Type::Custom(name, _)) => match self.types.get(&name) {
+                    Ok(Type::Custom(name, _, _)) => match self.types.get(&name) {
                         Some(TypeDecl::Enum(e)) => Some(e),
                         Some(TypeDecl::Struct(_)) => {
                             d.push_error(terminator_diag(
@@ -408,10 +408,13 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
     if f.is_extern {
         return;
     }
-    let expected = out_ref_ty(i32_ty());
+    let is_out_i32 = |ty: &Type| matches!(
+        ty,
+        Type::Ref(RefKind::Out, _, inner) if **inner == i32_ty()
+    );
     match f.params.as_slice() {
         [] => {}
-        [p] if p.ty == expected => {}
+        [p] if is_out_i32(&p.ty) => {}
         [p] => {
             d.push_error(
                 Diagnostic::new(MainBadSignature, p.span, format!(

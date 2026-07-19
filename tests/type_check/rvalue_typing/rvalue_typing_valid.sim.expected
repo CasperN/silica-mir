@@ -3,20 +3,20 @@ enum Option: Copy + Drop {
   Some: i64
 }
 
-enum List: Copy + Drop {
+enum<'s0> List: Copy + Drop {
   Nil: unit
-  Cons: & List
+  Cons: & 's0 List
 }
 
-extern fn use_shared(r: & i64);
+extern fn use_shared(r: & 's0 i64);
 
-extern fn use_mut(r: &mut i64);
+extern fn use_mut(r: &mut 's0 i64);
 
-extern fn use_out(r: &out i64);
+extern fn use_out(r: &out 's0 i64);
 
-extern fn use_drop(r: &drop i64);
+extern fn use_drop(r: &drop 's0 i64);
 
-extern fn use_uninit(r: &uninit i64);
+extern fn use_uninit(r: &uninit 's0 i64);
 
 extern fn use_raw(r: *i64);
 
@@ -82,7 +82,7 @@ fn enum_constr_basic() {
     return
 }
 
-fn enum_constr_recursive_ref(l: & List) {
+fn<'s0> enum_constr_recursive_ref(l: & 's0 List) {
   r: List;
   entry:
     r = List::Cons(copy l);

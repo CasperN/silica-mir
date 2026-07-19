@@ -3,8 +3,8 @@ struct P: Copy + Drop {
   y: i64
 }
 
-struct Ptr: Copy + Drop {
-  r: & i64
+struct<'s0> Ptr: Copy + Drop {
+  r: & 's0 i64
 }
 
 enum Option: Copy + Drop {
@@ -58,7 +58,7 @@ fn downcast_on_enum(o: Option) {
     return
 }
 
-fn deref_of_ref(r: & i64) {
+fn<'s0> deref_of_ref(r: & 's0 i64) {
   x: i64;
   entry:
     x = copy r.*;
@@ -67,7 +67,7 @@ fn deref_of_ref(r: & i64) {
     return
 }
 
-fn deref_of_nested_ref(r: &mut &mut i64) {
+fn<'s0, 's1> deref_of_nested_ref(r: &mut 's0 &mut 's1 i64) {
   a: i64;
   entry:
     a = copy r.*.*;

@@ -8,8 +8,8 @@ struct MoveP: Move {
   y: i64
 }
 
-struct L: Move {
-  r: &out i64
+struct<'s0> L: Move {
+  r: &out 's0 i64
 }
 
 extern fn take_num(a: i64);
@@ -18,7 +18,7 @@ extern fn take_move_p(p: MoveP);
 
 extern fn take_linear(x: L);
 
-extern fn take_out(r: &out i64);
+extern fn take_out(r: &out 's0 i64);
 
 fn scalar_param_untouched(x: i64) {
   entry:
@@ -32,7 +32,7 @@ fn scalar_param_moved_out(x: i64) {
     return
 }
 
-fn linear_ref_param_moved_out(r: &out i64) {
+fn<'s0> linear_ref_param_moved_out(r: &out 's0 i64) {
   entry:
     call take_out(move r);
     return

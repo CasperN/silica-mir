@@ -1,4 +1,4 @@
-fn main(exit: &out i32) {
+fn<'s0> main(exit: &out 's0 i32) {
   entry:
     exit.* = 0i32;
     unborrow exit;

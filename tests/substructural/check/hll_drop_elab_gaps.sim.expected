@@ -8,7 +8,7 @@ enum Level: Copy + Drop {
   Low: i64
 }
 
-fn chained_matches(s: State, $return: &out i64) {
+fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
   _temp_0: Level;
   a: i64;
   b: i64;
@@ -88,7 +88,7 @@ struct P: Copy + Drop {
   z: i64
 }
 
-fn struct_field_diverged(c: bool, $return: &out i64) {
+fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
   p: P;
   _temp_0: unit;
   _temp_1: unit;

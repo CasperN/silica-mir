@@ -1,18 +1,18 @@
-error: at 32:27: [COMP-CopyMarkerNotSatisfied] In struct 'CopyOutRef' (marked Copy), field 'r' has type &out i64 which is not Copy
+error: at 32:27: [COMP-CopyMarkerNotSatisfied] In struct 'CopyOutRef' (marked Copy), field 'r' has type &out 's0 i64 which is not Copy
     |
  31 | # Copy constraint on that field.
  32 | struct CopyOutRef: Copy { r: &out i64 }
     |                           ^^^^^^^^^^^
  33 | 
     |
-error: at 37:27: [COMP-CopyMarkerNotSatisfied] In struct 'CopyMutRef' (marked Copy), field 'r' has type &mut i64 which is not Copy
+error: at 37:27: [COMP-CopyMarkerNotSatisfied] In struct 'CopyMutRef' (marked Copy), field 'r' has type &mut 's0 i64 which is not Copy
     |
  36 | # &mut T is exclusive and may not be duplicated; it is not Copy.
  37 | struct CopyMutRef: Copy { r: &mut i64 }
     |                           ^^^^^^^^^^^
  38 | 
     |
-error: at 42:27: [COMP-DropMarkerNotSatisfied] In struct 'DropOutRef' (marked Drop), field 'r' has type &out i64 which is not Drop
+error: at 42:27: [COMP-DropMarkerNotSatisfied] In struct 'DropOutRef' (marked Drop), field 'r' has type &out 's0 i64 which is not Drop
     |
  41 | # &out T is linear (non-Drop). A Drop struct may not contain it.
  42 | struct DropOutRef: Drop { r: &out i64 }
@@ -40,28 +40,28 @@ error: at 59:33: [COMP-CopyMarkerNotSatisfied] In struct 'CopyNestedLinear' (mar
     |                                 ^^^^^^^^^^^^^
  60 | 
     |
-error: at 65:38: [COMP-CopyMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Copy), field 'r' has type &out i64 which is not Copy
+error: at 65:38: [COMP-CopyMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Copy), field 'r' has type &out 's0 i64 which is not Copy
     |
  64 | # a field violates each marker independently, producing two diagnostics.
  65 | struct CopyDropOutRef: Copy + Drop { r: &out i64 }
     |                                      ^^^^^^^^^^^
  66 | 
     |
-error: at 65:38: [COMP-DropMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Drop), field 'r' has type &out i64 which is not Drop
+error: at 65:38: [COMP-DropMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Drop), field 'r' has type &out 's0 i64 which is not Drop
     |
  64 | # a field violates each marker independently, producing two diagnostics.
  65 | struct CopyDropOutRef: Copy + Drop { r: &out i64 }
     |                                      ^^^^^^^^^^^
  66 | 
     |
-error: at 70:32: [COMP-CopyMarkerNotSatisfied] In enum 'CopyMutRefVariant' (marked Copy), variant 'A' payload type &mut i64 is not Copy
+error: at 70:32: [COMP-CopyMarkerNotSatisfied] In enum 'CopyMutRefVariant' (marked Copy), variant 'A' payload type &mut 's0 i64 is not Copy
     |
  69 | # A variant whose payload is &mut i64 prevents the enum from being Copy.
  70 | enum CopyMutRefVariant: Copy { A: &mut i64 }
     |                                ^^^^^^^^^^^
  71 | 
     |
-error: at 75:32: [COMP-DropMarkerNotSatisfied] In enum 'DropOutRefVariant' (marked Drop), variant 'A' payload type &out i64 is not Drop
+error: at 75:32: [COMP-DropMarkerNotSatisfied] In enum 'DropOutRefVariant' (marked Drop), variant 'A' payload type &out 's0 i64 is not Drop
     |
  74 | # A variant whose payload is &out i64 prevents the enum from being Drop.
  75 | enum DropOutRefVariant: Drop { A: &out i64 }

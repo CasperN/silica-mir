@@ -7,10 +7,9 @@ pub enum Type {
     Bool,
     Unit,
     Never,
-    /// Struct or enum reference. `args` is the list of type
-    /// arguments — empty for non-generic decls (`Foo`), non-empty
-    /// for instantiations of generic decls (`Foo<T, U>`).
-    Custom(String, Vec<Type>),
+    /// Struct or enum reference. `lifetime_args` + `type_args` are the
+    /// two use-site parameter lists. Order is lifetimes-first.
+    Custom(String, Vec<Lifetime>, Vec<Type>),
     /// A reference to a generic type parameter declared on the
     /// enclosing decl. Named parameter, not a solver metavariable —
     /// unifies only with itself or with a `Var`, never substituted.
@@ -33,14 +32,19 @@ impl std::fmt::Display for Type {
             Type::Bool => write!(f, "bool"),
             Type::Unit => write!(f, "unit"),
             Type::Never => write!(f, "never"),
-            Type::Custom(name, args) => {
+            Type::Custom(name, lifetimes, args) => {
                 write!(f, "{}", name)?;
-                if !args.is_empty() {
+                if !lifetimes.is_empty() || !args.is_empty() {
                     write!(f, "<")?;
-                    for (i, a) in args.iter().enumerate() {
-                        if i > 0 {
-                            write!(f, ", ")?;
-                        }
+                    let mut first = true;
+                    for lt in lifetimes {
+                        if !first { write!(f, ", ")?; }
+                        first = false;
+                        write!(f, "{}", lt)?;
+                    }
+                    for a in args {
+                        if !first { write!(f, ", ")?; }
+                        first = false;
                         write!(f, "{}", a)?;
                     }
                     write!(f, ">")?;

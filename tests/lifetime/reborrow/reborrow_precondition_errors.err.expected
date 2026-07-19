@@ -1,4 +1,4 @@
-error: at 53:5: [TC-DowncastOfNonEnum] In function 'downcast_before_deref_parse_error', block 'v_arm': Cannot downcast non-enum type &mut E
+error: at 53:5: [TC-DowncastOfNonEnum] In function 'downcast_before_deref_parse_error', block 'v_arm': Cannot downcast non-enum type &mut 's0 E
     |
  52 |   v_arm:
  53 |     r = &mut e as V .*;

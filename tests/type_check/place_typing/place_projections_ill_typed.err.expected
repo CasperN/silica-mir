@@ -33,7 +33,7 @@ error: at 73:5: [TC-DerefOfNonPointer] In function 'deref_of_scalar', block 'ent
     |     ^^^^^^^^^^^^
  74 |     return
     |
-error: at 84:5: [TC-DowncastOfNonEnum] In function 'downcast_on_ref', block 'entry': Cannot downcast non-enum type & i64
+error: at 84:5: [TC-DowncastOfNonEnum] In function 'downcast_on_ref', block 'entry': Cannot downcast non-enum type & 's0 i64
     |
  83 |   entry:
  84 |     x = copy r as Some;

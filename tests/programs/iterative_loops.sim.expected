@@ -1,4 +1,4 @@
-fn sum_to_n(n: i64, $return: &out i64) {
+fn<'s0> sum_to_n(n: i64, $return: &out 's0 i64) {
   acc: i64;
   i: i64;
   _temp_0: unit;
@@ -53,7 +53,7 @@ fn sum_to_n(n: i64, $return: &out i64) {
     return
 }
 
-fn fib(n: i64, $return: &out i64) {
+fn<'s0> fib(n: i64, $return: &out 's0 i64) {
   a: i64;
   b: i64;
   i: i64;

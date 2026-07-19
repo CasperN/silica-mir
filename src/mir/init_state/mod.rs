@@ -234,7 +234,7 @@ struct InitStateContext<'a> {
 /// nested projections (`p.f.g` on `Outer<Inner<i64>>`) lose the type
 /// after the first step and downstream lookups fail.
 fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
-    let Type::Custom(name, args) = ty else {
+    let Type::Custom(name, _, args) = ty else {
         return None;
     };
     let TypeDecl::Struct(s) = env.types.get(name)? else {
@@ -253,7 +253,7 @@ fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
 }
 
 fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
-    let Type::Custom(name, args) = ty else {
+    let Type::Custom(name, _, args) = ty else {
         return None;
     };
     let TypeDecl::Enum(e) = env.types.get(name)? else {
@@ -693,7 +693,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
 
 fn is_trivially_init(ty: &Type, env: &Env) -> bool {
     match ty {
-        Type::Custom(name, _) => match env.types.get(name) {
+        Type::Custom(name, _, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
             _ => false,
         },

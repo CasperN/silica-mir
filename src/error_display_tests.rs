@@ -192,7 +192,7 @@ fn test_hll_copy_of_non_copy_display() {
             let z = r;
         }
     ";
-    let expected = r#"at 3:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut i64
+    let expected = r#"at 3:21: [SUB-CopyOfNonCopy] In function 'f': cannot copy non-Copy type &mut 's0 i64
    |
  2 |         fn f(r: &mut i64) {
  3 |             let y = r;

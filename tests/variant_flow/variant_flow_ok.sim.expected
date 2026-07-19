@@ -206,7 +206,7 @@ fn flow_shared_borrow_does_not_clobber() {
     unreachable
 }
 
-fn variant_with_empty_enum_payload_allows_unreachable_arm(e: VoidPayload, out: &out i64) {
+fn<'s0> variant_with_empty_enum_payload_allows_unreachable_arm(e: VoidPayload, out: &out 's0 i64) {
   entry:
     switchEnum(e) [A: a_arm, N: n_arm]
   a_arm:
@@ -218,7 +218,7 @@ fn variant_with_empty_enum_payload_allows_unreachable_arm(e: VoidPayload, out: &
     unreachable
 }
 
-fn variant_with_never_payload_allows_unreachable_arm(e: NeverPayload, out: &out i64) {
+fn<'s0> variant_with_never_payload_allows_unreachable_arm(e: NeverPayload, out: &out 's0 i64) {
   entry:
     switchEnum(e) [A: a_arm, N: n_arm]
   a_arm:
@@ -230,7 +230,7 @@ fn variant_with_never_payload_allows_unreachable_arm(e: NeverPayload, out: &out 
     unreachable
 }
 
-fn variant_with_transitively_never_struct_payload_allows_unreachable_arm(e: TransitivelyNever, out: &out i64) {
+fn<'s0> variant_with_transitively_never_struct_payload_allows_unreachable_arm(e: TransitivelyNever, out: &out 's0 i64) {
   entry:
     switchEnum(e) [A: a_arm, N: n_arm]
   a_arm:

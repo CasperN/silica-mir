@@ -14,7 +14,7 @@ error: at 53:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', 
  54 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 60:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut i64
+error: at 60:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut 's0 i64
     |
  59 |   entry:
  60 |     s = copy r;
@@ -22,7 +22,7 @@ error: at 60:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': c
  61 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 67:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out i64
+error: at 67:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out 's0 i64
     |
  66 |   entry:
  67 |     s = copy r;
@@ -30,7 +30,7 @@ error: at 67:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': c
  68 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 74:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit i64
+error: at 74:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit 's0 i64
     |
  73 |   entry:
  74 |     s = copy r;
@@ -86,7 +86,7 @@ error: at 119:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'en
  120 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 125:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop i64
+error: at 125:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop 's0 i64
      |
  124 |   entry:
  125 |     drop r;
@@ -94,7 +94,7 @@ error: at 125:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry':
  126 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out i64
+error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out 's0 i64
      |
  130 |   entry:
  131 |     drop r;

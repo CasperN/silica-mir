@@ -271,7 +271,7 @@ fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll:
             }
             find_param_at(name, a_r, b_r)
         }
-        (hll::Type::Custom(_, a_args), hll::Type::Custom(_, b_args)) => {
+        (hll::Type::Custom(_, _, a_args), hll::Type::Custom(_, _, b_args)) => {
             for (a, b) in a_args.iter().zip(b_args.iter()) {
                 if let Some(t) = find_param_at(name, a, b) {
                     return Some(t);
@@ -290,7 +290,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::Type::Bool => bool_ty(),
         hll::Type::Unit => unit_ty(),
         hll::Type::Never => never_ty(),
-        hll::Type::Custom(name, args) => {
+        hll::Type::Custom(name, _, args) => {
             let lowered_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
             custom_ty_with_args(name.clone(), lowered_args)
         }
@@ -868,6 +868,7 @@ fn lower_expr_into(
                     })?;
                     let (enum_is_copy, bound_var_mir_ty) = if let hll::Type::Custom(
                         ref enum_name,
+                        _,
                         ref args,
                     ) = target_hll_ty
                     {
@@ -971,7 +972,7 @@ fn lower_expr_into(
             // typed slot — HM already pinned them from the payload /
             // context. For a non-generic enum this is empty.
             let type_args = match types.get(&expr.span) {
-                Some(hll::Type::Custom(_, args)) => args.iter().map(lower_type).collect(),
+                Some(hll::Type::Custom(_, _, args)) => args.iter().map(lower_type).collect(),
                 _ => Vec::new(),
             };
             ctx.emit_statement(

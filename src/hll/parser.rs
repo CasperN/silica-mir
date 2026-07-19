@@ -472,7 +472,7 @@ impl Parser {
             "bool" => return Ok(bool_ty()),
             "unit" => return Ok(unit_ty()),
             "never" => return Ok(never_ty()),
-            "identifier" => return Ok(self.identifier_to_type(self.get_text(node), Vec::new(), scope)),
+            "identifier" => return Ok(self.identifier_to_type(self.get_text(node), Vec::new(), Vec::new(), scope)),
             "type" => {}
             _ => {
                 return Err(self.diag(
@@ -495,18 +495,18 @@ impl Parser {
             "never" => return Ok(never_ty()),
             "identifier" => {
                 // Identifier alt with optional `type_args` as sibling:
-                // `Foo` (Custom / Param) or `Foo<T, U>` (Custom with args).
+                // `Foo`, `Foo<T, U>`, `Foo<'a, T>`.
                 let text = self.get_text(first);
-                let args = if let Some(ta) = node.child(1) {
+                let (lifetimes, args) = if let Some(ta) = node.child(1) {
                     if ta.kind() == "type_args" {
                         self.map_type_args(ta, scope)?
                     } else {
-                        Vec::new()
+                        (Vec::new(), Vec::new())
                     }
                 } else {
-                    Vec::new()
+                    (Vec::new(), Vec::new())
                 };
-                return Ok(self.identifier_to_type(text, args, scope));
+                return Ok(self.identifier_to_type(text, lifetimes, args, scope));
             }
             _ => {}
         }
@@ -579,11 +579,17 @@ impl Parser {
     /// but only when there are no type arguments, since a type
     /// parameter can't be instantiated. Otherwise produce
     /// `Type::Custom(name, args)`.
-    fn identifier_to_type(&self, name: &str, args: Vec<Type>, scope: &TypeScope) -> Type {
-        if args.is_empty() && scope.contains(name) {
+    fn identifier_to_type(
+        &self,
+        name: &str,
+        lifetimes: Vec<Lifetime>,
+        args: Vec<Type>,
+        scope: &TypeScope,
+    ) -> Type {
+        if lifetimes.is_empty() && args.is_empty() && scope.contains(name) {
             param_ty(name)
         } else {
-            custom_ty_with_args(name, args)
+            Type::Custom(name.to_string(), lifetimes, args)
         }
     }
 
@@ -635,16 +641,24 @@ impl Parser {
         Ok((lifetimes, types))
     }
 
-    /// Parse a `type_args` node (`<T, U>`) into a list of `Type`.
-    fn map_type_args(&self, node: Node, scope: &TypeScope) -> Result<Vec<Type>, Diagnostic> {
-        let mut out = Vec::new();
+    /// Parse a `type_args` node (`<'a, T, U>`) into (lifetime_args, type_args).
+    fn map_type_args(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+    ) -> Result<(Vec<Lifetime>, Vec<Type>), Diagnostic> {
+        let mut lifetimes = Vec::new();
+        let mut types = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
-                out.push(self.map_type(child, scope)?);
+            if child.kind() == "lifetime" {
+                let name = self.get_text(child).trim_start_matches('\'').to_string();
+                lifetimes.push(Lifetime(name));
+            } else if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
+                types.push(self.map_type(child, scope)?);
             }
         }
-        Ok(out)
+        Ok((lifetimes, types))
     }
 
     /// Walk any expression-carrying node into a typed `Expr`. All

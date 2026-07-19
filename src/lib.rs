@@ -25,7 +25,8 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     hll::lowering::run_lowering(&hll_prog, &types, d)
 }
 
-pub fn elaborate_and_check_mir(program: Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
+pub fn elaborate_and_check_mir(mut program: Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
+    mir::elision::elide_program(&mut program);
     let (mut env, env_errs) = mir::type_check::Env::build(&program);
     d.extend_errors(env_errs);
     env.typecheck(d);

@@ -10,11 +10,11 @@ enum Option: Copy + Drop {
 
 extern fn noop();
 
-extern fn sink(r: &mut i64);
+extern fn sink(r: &mut 's0 i64);
 
 extern fn use_num(n: i64);
 
-extern fn use_ref(r: &mut i64);
+extern fn use_ref(r: &mut 's0 i64);
 
 fn branch_both_borrow_merge_carry(x: i64, b: bool) {
   r: &mut i64;
@@ -170,7 +170,7 @@ fn switch_downcast_borrow_unreachable_sibling() {
     unreachable
 }
 
-fn out_ref_unfulfilled_on_abort_arm_waived(r: &out i64, e: Sel) {
+fn<'s0> out_ref_unfulfilled_on_abort_arm_waived(r: &out 's0 i64, e: Sel) {
   entry:
     switchEnum(e) [A: a_arm, B: b_arm]
   a_arm:

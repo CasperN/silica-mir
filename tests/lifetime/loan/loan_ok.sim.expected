@@ -13,17 +13,17 @@ struct Outer: Copy + Drop {
   c: i64
 }
 
-enum Wrap: Move {
-  W: &mut i64
+enum<'s0> Wrap: Move {
+  W: &mut 's0 i64
 }
 
-extern fn sink(r: &mut i64);
+extern fn sink(r: &mut 's0 i64);
 
-extern fn use_mut(r: &mut i64);
+extern fn use_mut(r: &mut 's0 i64);
 
-extern fn use_out(r: &out i64);
+extern fn use_out(r: &out 's0 i64);
 
-extern fn read_ref(r: & i64);
+extern fn read_ref(r: & 's0 i64);
 
 extern fn take_wrap(w: Wrap);
 

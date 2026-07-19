@@ -1,4 +1,4 @@
-extern fn use_mut(r: &mut i64);
+extern fn use_mut(r: &mut 's0 i64);
 
 fn f(x: i64) {
   r: &mut i64;
