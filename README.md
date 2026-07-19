@@ -943,7 +943,6 @@ To load it locally:
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
 ## Refactors (deferred)
-- **`Checker` struct in `lifetime/mod.rs`.** `check_call_regions` takes 9 params, `walk_call_regions` takes 11 — all sharing `env`, `func`, `region_ctx`, `constraints`, `span`. A `Checker<'a>` with `&mut self` methods would collapse the plumbing. Rustc uses the same pattern. Pairs with a diagnostic-builder helper (`Checker::error(code, span, msg)` pre-fills fn context) to collapse 5-line push sites to 1.
 - **`extern fn` as flag on Function, not parallel grammar branch.** Simplifies grammar + parser + AST. Also unblocks `extern fn<'a>(...)` syntax.
 - **Decl X/XKind: `Decl { name, name_span, lifetime_params, type_params, kind: DeclKind }`.** Rustc pattern. Real payoff when adding shared fields (visibility, docs, mono keys) later. Big touch.
 
