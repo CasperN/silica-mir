@@ -1,3 +1,4 @@
+pub mod common;
 pub mod mir;
 pub mod hll;
 pub mod diagnostics;

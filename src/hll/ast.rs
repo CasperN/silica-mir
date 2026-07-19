@@ -1,4 +1,4 @@
-use crate::mir::ast::{IntTy, FloatTy, RefKind, Span, Markers};
+use crate::common::{IntTy, FloatTy, RefKind, Span, Markers};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -48,20 +48,7 @@ impl std::fmt::Display for Type {
                 Ok(())
             }
             Type::Param(name) => write!(f, "{}", name),
-            Type::Ref(kind, inner) => {
-                let kind_str = match kind {
-                    RefKind::Shared => "&",
-                    RefKind::Mut => "&mut ",
-                    RefKind::Out => "&out ",
-                    RefKind::Drop => "&drop ",
-                    RefKind::Uninit => "&uninit ",
-                };
-                if *kind == RefKind::Shared {
-                    write!(f, "& {}", inner)
-                } else {
-                    write!(f, "{}{}", kind_str, inner)
-                }
-            }
+            Type::Ref(kind, inner) => write!(f, "{} {}", kind, inner),
             Type::RawPtr(inner) => write!(f, "*{}", inner),
             Type::Fn(params, ret) => {
                 write!(f, "fn(")?;

@@ -9,7 +9,7 @@
 /// field/index writes on owned places need it.
 
 use crate::hll::ast::*;
-use crate::mir::ast::{Span, RefKind};
+use crate::common::{Span, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use std::collections::HashMap;
 

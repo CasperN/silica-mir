@@ -260,16 +260,7 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
     match rv {
         RValue::Use(op) => write_operand(out, op),
         RValue::Ref(kind, place) => {
-            out.push_str(match kind {
-                RefKind::Shared => "&",
-                RefKind::Mut => "&mut ",
-                RefKind::Out => "&out ",
-                RefKind::Drop => "&drop ",
-                RefKind::Uninit => "&uninit ",
-            });
-            if matches!(kind, RefKind::Shared) {
-                out.push(' ');
-            }
+            write!(out, "{} ", kind).unwrap();
             write_place(out, place);
         }
         RValue::RawRef(place) => {

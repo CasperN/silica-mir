@@ -10,7 +10,7 @@
 //! and glob-import the other.
 
 use crate::hll::ast::*;
-use crate::mir::ast::{FloatTy, IntTy, RefKind};
+use crate::common::{FloatTy, IntTy, RefKind};
 
 // ---------- Scalars ----------
 

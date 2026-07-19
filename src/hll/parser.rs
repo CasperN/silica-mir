@@ -9,7 +9,7 @@
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
-use crate::mir::ast::{FloatTy, IntTy, RefKind, Span, Markers, Marker};
+use crate::common::{FloatTy, IntTy, RefKind, Span, Markers, Marker};
 use crate::mir::parser::ParserCode;
 use std::collections::BTreeSet;
 use tree_sitter::{Node, Parser as TSParser};

@@ -3,7 +3,7 @@ use indexmap::IndexMap;
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::mir::ast::{Marker, Markers, RefKind, Span};
+use crate::common::{Marker, Markers, RefKind, Span};
 
 /// Build a `name → bounds` map from a decl's type parameters. Used
 /// when computing a type's substructural class or validating uses
