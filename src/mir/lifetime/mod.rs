@@ -471,7 +471,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         };
         let mut loans = entry.clone();
         for (stmt, span) in &block.statements {
-            check_and_transfer_stmt(func, block, stmt, *span, &mut loans, &region_ctx, d);
+            check_and_transfer_stmt(env, func, block, stmt, *span, &mut loans, &region_ctx, &mut constraints, d);
             emit_stmt_constraints(env, func, stmt, *span, &region_ctx, &mut constraints);
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
@@ -689,6 +689,203 @@ fn emit_stmt_constraints(
     }
 }
 
+/// Emit outlives constraints for a `call callee(args)` statement,
+/// and register synthetic loans on caller-side output slots so the
+/// loan tracker can detect aliasing of caller-side inputs through
+/// callee-returned refs.
+///
+/// Algorithm:
+/// 1. Look up callee's Function in env. If callee isn't a static
+///    fn name (call-through-fn-pointer, intrinsic without a Function
+///    entry, ...), skip — call-site propagation is fn-name-only.
+/// 2. Allocate fresh Free regions for each callee lifetime param.
+/// 3. For each caller arg matched with callee param position:
+///    walk both types in parallel; at each lifetime slot emit an
+///    outlives constraint between caller region and instantiated
+///    callee region. Direction depends on the surrounding ref kind:
+///    input (regular ref pointee) → `caller outlives inst`;
+///    output (`&mut`/`&out` pointee) → `inst outlives caller`.
+/// 4. Snapshot each caller arg's loans keyed by the callee region
+///    that same arg position maps to.
+/// 5. After callee's signature_outlives axioms are instantiated
+///    and emitted, register synthetic loans on caller output
+///    positions: each output slot with callee region 'out gets a
+///    loan whose `loaned` set is the union of the snapshotted
+///    input loans that shared 'out.
+fn check_call_regions(
+    env: &Env,
+    func: &Function,
+    target: &Operand,
+    args: &[Operand],
+    span: Span,
+    loans: &mut LoanMap,
+    region_ctx: &region::RegionCtx,
+    constraints: &mut constraints::ConstraintSet,
+    _d: &mut Diagnostics,
+) {
+    let Operand::Const(ConstVal::FnName(callee_name, _)) = target else { return };
+    let Some(callee) = env.functions.get(callee_name) else { return };
+    if callee.params.len() != args.len() {
+        return;
+    }
+
+    // Fresh instantiation region per callee lifetime param.
+    let inst: IndexMap<Lifetime, Region> = callee
+        .lifetime_params
+        .iter()
+        .enumerate()
+        .map(|(i, lt)| (lt.clone(), Region::Free(u32::MAX - 1 - i as u32)))
+        .collect();
+
+    let locals = func.locals_map();
+
+    // Walk each (caller arg, callee param) in parallel, emitting
+    // constraints and collecting output-position information for
+    // synthetic loan registration.
+    let mut per_output_inputs: IndexMap<Region, BTreeSet<Place>> = IndexMap::new();
+
+    for (arg, param) in args.iter().zip(callee.params.iter()) {
+        let Some(arg_place) = operand_place(arg) else { continue };
+        walk_call_regions(
+            &param.ty,
+            arg_place,
+            &inst,
+            &locals,
+            env,
+            region_ctx,
+            CallPos::Input,
+            loans,
+            &mut per_output_inputs,
+            constraints,
+            span,
+        );
+    }
+
+    // Instantiate callee's signature outlives axioms.
+    for (a, b) in &callee.signature_outlives {
+        let a_r = inst.get(a).cloned().unwrap_or(Region::Named(a.clone()));
+        let b_r = inst.get(b).cloned().unwrap_or(Region::Named(b.clone()));
+        constraints.emit(a_r, b_r, span);
+    }
+
+    // Register synthetic loans on caller-side output slots. For each
+    // caller arg that is `&out T` where T contains a ref, look up
+    // the arg's own loan to find the caller-side backing storage,
+    // and place a synthetic loan there whose `loaned` = union of
+    // input loans sharing that output's callee region.
+    for (arg, param) in args.iter().zip(callee.params.iter()) {
+        let Some(arg_place) = operand_place(arg) else { continue };
+        let Some(arg_owned) = as_owned_path(arg_place) else { continue };
+        // Only outer &out/&mut positions can be write-outputs.
+        let Type::Ref(kind, _, inner_ty) = &param.ty else { continue };
+        if !matches!(kind, RefKind::Out | RefKind::Mut) { continue }
+        let Some(inner_lt) = extract_outer_lifetime(inner_ty) else { continue };
+        let out_region = inst.get(&inner_lt).cloned().unwrap_or(Region::Named(inner_lt));
+        let Some(input_places) = per_output_inputs.get(&out_region) else { continue };
+        if input_places.is_empty() { continue }
+
+        // Merge loaned places from inputs sharing this region.
+        let mut merged: BTreeSet<Place> = BTreeSet::new();
+        for src in input_places {
+            if let Some(loan) = loans.get(src) {
+                merged.extend(loan.loaned.iter().cloned());
+            }
+        }
+        if merged.is_empty() { continue }
+
+        // The caller's backing storage for this output slot: the
+        // places pointed at by the arg's own loan.
+        let arg_loan = loans.get(&arg_owned).cloned();
+        if let Some(arg_loan) = arg_loan {
+            for slot in arg_loan.loaned {
+                loans.insert(
+                    slot,
+                    Loan {
+                        kind: RefKind::Mut,
+                        region: out_region.clone(),
+                        loaned: merged.clone(),
+                        create_span: span,
+                    },
+                );
+            }
+        }
+    }
+}
+
+#[derive(Copy, Clone, PartialEq)]
+enum CallPos {
+    Input,
+    Output,
+}
+
+/// Walk callee param type and caller arg place in parallel, at each
+/// ref boundary emit the appropriate outlives constraint and record
+/// output-position info for synthetic loans.
+fn walk_call_regions(
+    callee_ty: &Type,
+    caller_place: &Place,
+    inst: &IndexMap<Lifetime, Region>,
+    locals: &IndexMap<String, Type>,
+    env: &Env,
+    region_ctx: &region::RegionCtx,
+    pos: CallPos,
+    loans: &LoanMap,
+    per_output_inputs: &mut IndexMap<Region, BTreeSet<Place>>,
+    constraints: &mut constraints::ConstraintSet,
+    span: Span,
+) {
+    match callee_ty {
+        Type::Ref(kind, Some(lt), inner) => {
+            let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
+            if let Some(caller_r) = region_of_ref_place(caller_place, locals, env, region_ctx) {
+                match pos {
+                    CallPos::Input => {
+                        constraints.emit(caller_r, inst_region.clone(), span);
+                        if let Some(owned) = as_owned_path(caller_place) {
+                            if loans.contains_key(&owned) {
+                                per_output_inputs
+                                    .entry(inst_region.clone())
+                                    .or_default()
+                                    .insert(owned);
+                            }
+                        }
+                    }
+                    CallPos::Output => {
+                        constraints.emit(inst_region.clone(), caller_r, span);
+                    }
+                }
+            }
+            // Recurse into inner. Exclusive-write kinds flip position.
+            let inner_pos = match kind {
+                RefKind::Mut | RefKind::Out => CallPos::Output,
+                _ => pos,
+            };
+            let inner_caller = crate::mir::helpers::deref_place(caller_place.clone());
+            walk_call_regions(
+                inner,
+                &inner_caller,
+                inst,
+                locals,
+                env,
+                region_ctx,
+                inner_pos,
+                loans,
+                per_output_inputs,
+                constraints,
+                span,
+            );
+        }
+        _ => {}
+    }
+}
+
+fn extract_outer_lifetime(ty: &Type) -> Option<Lifetime> {
+    match ty {
+        Type::Ref(_, lt, _) => lt.clone(),
+        _ => None,
+    }
+}
+
 /// Get the outer ref-kind of `place` when its type is `Type::Ref`.
 fn ref_kind_of_place(
     place: &Place,
@@ -736,12 +933,14 @@ fn operand_place(op: &Operand) -> Option<&Place> {
 /// so operand-by-operand consumption sees prior operands' releases —
 /// e.g. `call f(move r, copy y)` where `y` is loaned by `r` must pass.
 fn check_and_transfer_stmt(
+    env: &Env,
     func: &Function,
     block: &BasicBlock,
     stmt: &Statement,
     span: Span,
     loans: &mut LoanMap,
     region_ctx: &region::RegionCtx,
+    constraints: &mut constraints::ConstraintSet,
     d: &mut Diagnostics,
 ) {
     match stmt {
@@ -777,6 +976,7 @@ fn check_and_transfer_stmt(
         }
         Statement::Call(target, args) => {
             check_operand_access(func, block, target, span, loans, d);
+            check_call_regions(env, func, target, args, span, loans, region_ctx, constraints, d);
             consume_operand(loans, target);
             for a in args {
                 check_operand_access(func, block, a, span, loans, d);

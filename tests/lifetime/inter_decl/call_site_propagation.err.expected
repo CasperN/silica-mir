@@ -1,0 +1,20 @@
+error: at 31:5: [LT-LoanConflict] In function 'caller_writes_through_input_alias', block 'entry': cannot write to 'x': already borrowed by 'ret_slot'
+    |
+ 29 |     ret_out = &out ret_slot;
+ 30 |     call identity(move r, move ret_out);
+    |     ----------------------------------- borrow of 'x' occurs here
+ 31 |     x = 2;
+    |     ^^^^^
+ 32 |     read = copy ret_slot.*;
+    |
+  hint: the borrow of 'ret_slot' is active until its last use or explicit unborrow.
+error: at 83:5: [LT-LoanConflict] In function 'caller_uses_make_ref', block 'entry': cannot write to 'seed': already borrowed by 'ret_slot'
+    |
+ 81 |     ret_out = &out ret_slot;
+ 82 |     call make_ref(move s, move ret_out);
+    |     ----------------------------------- borrow of 'seed' occurs here
+ 83 |     seed = 99;
+    |     ^^^^^^^^^
+ 84 |     read = copy ret_slot.*;
+    |
+  hint: the borrow of 'ret_slot' is active until its last use or explicit unborrow.
