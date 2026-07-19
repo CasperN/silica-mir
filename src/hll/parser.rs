@@ -693,6 +693,33 @@ impl Parser {
                 kind: ExprKind::Literal(Literal::Unit),
                 span,
             }),
+            "byte_str_lit" => {
+                let raw = self.get_text(node);
+                let inner = raw
+                    .strip_prefix("b\"")
+                    .and_then(|s| s.strip_suffix('"'))
+                    .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "malformed byte string literal"))?;
+                let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node)?;
+                Ok(Expr {
+                    kind: ExprKind::Literal(Literal::ByteStr(bytes)),
+                    span,
+                })
+            }
+            "byte_char_lit" => {
+                let raw = self.get_text(node);
+                let inner = raw
+                    .strip_prefix("b'")
+                    .and_then(|s| s.strip_suffix('\''))
+                    .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "malformed byte character literal"))?;
+                let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node)?;
+                if bytes.len() != 1 {
+                    return Err(self.diag(node, ParserCode::MalformedCst, "byte character literal must be exactly one byte"));
+                }
+                Ok(Expr {
+                    kind: ExprKind::Literal(Literal::Int(bytes[0] as i64, Some(IntTy::U8))),
+                    span,
+                })
+            }
             "identifier" => Ok(Expr {
                 kind: ExprKind::Variable(self.get_text(node).to_string()),
                 span,
@@ -1400,6 +1427,7 @@ mod tests {
             }
         ";
         let program = Parser::new(source).parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
     }
 
     #[test]
@@ -1436,6 +1464,32 @@ mod tests {
         assert_eq!(f.type_params.len(), 1);
         assert_eq!(f.type_params[0].name, "T");
         assert!(f.body.is_none());
+    }
+
+    #[test]
+    fn parse_byte_str_and_byte_char() {
+        let source = "
+            fn check() {
+                let s = b\"hello\\nworld\";
+                let c = b'A';
+            }
+        ";
+        let program = Parser::new(source).parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+        let Declaration::Fn(f) = &program.declarations[0] else { panic!() };
+        let ExprKind::Block(stmts, _, _) = &f.body.as_ref().unwrap().kind else { panic!() };
+        
+        let Stmt::Let { init: Some(init_s), .. } = &stmts[0] else { panic!() };
+        assert_eq!(
+            init_s.kind,
+            ExprKind::Literal(Literal::ByteStr(b"hello\nworld".to_vec()))
+        );
+
+        let Stmt::Let { init: Some(init_c), .. } = &stmts[1] else { panic!() };
+        assert_eq!(
+            init_c.kind,
+            ExprKind::Literal(Literal::Int(65, Some(IntTy::U8)))
+        );
     }
 
     // Helper: extract the initializer of the first `let` statement

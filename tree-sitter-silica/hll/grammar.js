@@ -105,8 +105,6 @@ module.exports = grammar({
       ),
     ),
 
-    string_lit: $ => /"[^"]*"/,
-
     param_decl: $ => seq(
       field('name', $.identifier),
       ':',
@@ -282,6 +280,8 @@ module.exports = grammar({
       $.float_lit,
       $.bool_lit,
       $.unit_lit,
+      $.byte_str_lit,
+      $.byte_char_lit,
       $.paren_expr,
       $.block_expr,
       $.if_expr,

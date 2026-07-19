@@ -55,6 +55,10 @@
       "type": "PATTERN",
       "value": "b'([^'\\\\]|\\\\x[0-9a-fA-F]{2}|\\\\.)'"
     },
+    "string_lit": {
+      "type": "PATTERN",
+      "value": "\"[^\"]*\""
+    },
     "marker": {
       "type": "CHOICE",
       "members": [
@@ -1004,10 +1008,6 @@
         }
       ]
     },
-    "string_lit": {
-      "type": "PATTERN",
-      "value": "\"[^\"]*\""
-    },
     "param_decl": {
       "type": "SEQ",
       "members": [
@@ -1851,6 +1851,14 @@
         {
           "type": "SYMBOL",
           "name": "unit_lit"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "byte_str_lit"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "byte_char_lit"
         },
         {
           "type": "SYMBOL",

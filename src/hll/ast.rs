@@ -184,6 +184,7 @@ pub enum Literal {
     Float(f64, Option<FloatTy>),
     Bool(bool),
     Unit,
+    ByteStr(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

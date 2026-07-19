@@ -1,0 +1,136 @@
+fn plain_byte_string() {
+  _temp_0: unit;
+  hello: [u8; 5];
+  world: [u8; 5];
+  entry:
+    hello = b"hello";
+    world = b"world";
+    _temp_0 = unit;
+    drop world;
+    drop hello;
+    drop _temp_0;
+    return
+}
+
+fn empty_byte_string() {
+  _temp_0: unit;
+  e: [u8; 0];
+  entry:
+    e = b"";
+    _temp_0 = unit;
+    drop e;
+    drop _temp_0;
+    return
+}
+
+fn null_terminator() {
+  _temp_0: unit;
+  s: [u8; 3];
+  entry:
+    s = b"hi\0";
+    _temp_0 = unit;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn newline_escape() {
+  _temp_0: unit;
+  s: [u8; 3];
+  entry:
+    s = b"a\nb";
+    _temp_0 = unit;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn all_standard_escapes() {
+  _temp_0: unit;
+  s: [u8; 6];
+  entry:
+    s = b"\n\t\r\0\\\"";
+    _temp_0 = unit;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn hex_escape() {
+  _temp_0: unit;
+  s: [u8; 3];
+  entry:
+    s = b"\xFF\0~";
+    _temp_0 = unit;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn const_index_in_bounds() {
+  _temp_0: unit;
+  s: [u8; 5];
+  b: u8;
+  entry:
+    s = b"hello";
+    b = copy s[0u64];
+    _temp_0 = unit;
+    drop b;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn const_index_multiple() {
+  _temp_0: unit;
+  s: [u8; 5];
+  h: u8;
+  o: u8;
+  entry:
+    s = b"hello";
+    h = copy s[0u64];
+    o = copy s[4u64];
+    _temp_0 = unit;
+    drop o;
+    drop h;
+    drop s;
+    drop _temp_0;
+    return
+}
+
+fn byte_char_plain() {
+  _temp_0: unit;
+  x: u8;
+  entry:
+    x = 65u8;
+    _temp_0 = unit;
+    drop x;
+    drop _temp_0;
+    return
+}
+
+fn byte_char_all_escapes() {
+  _temp_0: unit;
+  nl: u8;
+  nul: u8;
+  bs: u8;
+  quote: u8;
+  apos: u8;
+  hex: u8;
+  entry:
+    nl = 10u8;
+    nul = 0u8;
+    bs = 92u8;
+    quote = 34u8;
+    apos = 39u8;
+    hex = 255u8;
+    _temp_0 = unit;
+    drop hex;
+    drop apos;
+    drop quote;
+    drop bs;
+    drop nul;
+    drop nl;
+    drop _temp_0;
+    return
+}

@@ -47,6 +47,14 @@
             "named": true
           },
           {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
+            "named": true
+          },
+          {
             "type": "call_expr",
             "named": true
           },
@@ -154,6 +162,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -266,6 +282,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -422,6 +446,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -594,6 +626,14 @@
             "named": true
           },
           {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
+            "named": true
+          },
+          {
             "type": "call_expr",
             "named": true
           },
@@ -713,6 +753,14 @@
             "named": true
           },
           {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
+            "named": true
+          },
+          {
             "type": "call_expr",
             "named": true
           },
@@ -816,6 +864,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -961,6 +1017,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -1168,6 +1232,14 @@
           "named": true
         },
         {
+          "type": "byte_char_lit",
+          "named": true
+        },
+        {
+          "type": "byte_str_lit",
+          "named": true
+        },
+        {
           "type": "call_expr",
           "named": true
         },
@@ -1278,6 +1350,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -1509,6 +1589,14 @@
             "named": true
           },
           {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
+            "named": true
+          },
+          {
             "type": "call_expr",
             "named": true
           },
@@ -1700,6 +1788,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -1897,6 +1993,14 @@
           },
           {
             "type": "break_expr",
+            "named": true
+          },
+          {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
             "named": true
           },
           {
@@ -2284,6 +2388,14 @@
             "named": true
           },
           {
+            "type": "byte_char_lit",
+            "named": true
+          },
+          {
+            "type": "byte_str_lit",
+            "named": true
+          },
+          {
             "type": "call_expr",
             "named": true
           },
@@ -2511,6 +2623,14 @@
   {
     "type": "break",
     "named": false
+  },
+  {
+    "type": "byte_char_lit",
+    "named": true
+  },
+  {
+    "type": "byte_str_lit",
+    "named": true
   },
   {
     "type": "comment",

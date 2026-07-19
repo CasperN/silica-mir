@@ -6,7 +6,7 @@ fn print_hi() {
   p: *u8;
   _temp_1: unit;
   entry:
-    s = [104u8, 105u8, 33u8, 10u8];
+    s = b"hi!\n";
     p = &raw s[0u64];
     call write(1i32, copy p, 4u64);
     _temp_1 = unit;

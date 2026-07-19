@@ -1,0 +1,53 @@
+# Byte-string and byte-char literals in HLL.
+#
+# Byte-string literals `b"..."` produce `[u8; N]` values; byte-char
+# literals `b'x'` produce `u8` values.
+
+fn plain_byte_string() {
+  let hello: [u8; 5] = b"hello";
+  let world: [u8; 5] = b"world";
+}
+
+fn empty_byte_string() {
+  let e: [u8; 0] = b"";
+}
+
+fn null_terminator() {
+  let s: [u8; 3] = b"hi\0";
+}
+
+fn newline_escape() {
+  let s: [u8; 3] = b"a\nb";
+}
+
+fn all_standard_escapes() {
+  let s: [u8; 6] = b"\n\t\r\0\\\"";
+}
+
+fn hex_escape() {
+  let s: [u8; 3] = b"\xFF\x00\x7E";
+}
+
+fn const_index_in_bounds() {
+  let s: [u8; 5] = b"hello";
+  let b: u8 = s[0u64];
+}
+
+fn const_index_multiple() {
+  let s: [u8; 5] = b"hello";
+  let h: u8 = s[0u64];
+  let o: u8 = s[4u64];
+}
+
+fn byte_char_plain() {
+  let x: u8 = b'A';
+}
+
+fn byte_char_all_escapes() {
+  let nl: u8 = b'\n';
+  let nul: u8 = b'\0';
+  let bs: u8 = b'\\';
+  let quote: u8 = b'"';
+  let apos: u8 = b'\'';
+  let hex: u8 = b'\xFF';
+}

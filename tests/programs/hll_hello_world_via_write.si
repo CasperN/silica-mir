@@ -16,7 +16,7 @@ extern "C" fn write(fd: i32, buf: *u8, count: u64);
 
 fn print_hi() {
   # "hi!\n" as an [u8; 4]
-  let s: [u8; 4] = [104u8, 105u8, 33u8, 10u8];
+  let s: [u8; 4] = b"hi!\n";
   let p: *u8 = &raw s[0u64];
   write(1i32, p, 4u64);
 }

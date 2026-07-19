@@ -176,7 +176,7 @@ fn parse_byte_char_literal(text: &str) -> Result<ConstVal, String> {
 /// Decode the escape sequences in a `b"..."` / `b'...'` literal body
 /// (quote delimiters already stripped). Shared by both parsers so the
 /// escape set stays consistent.
-fn decode_byte_escapes(inner: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn decode_byte_escapes(inner: &str) -> Result<Vec<u8>, String> {
     let mut out: Vec<u8> = Vec::new();
     let mut chars = inner.chars();
     while let Some(c) = chars.next() {

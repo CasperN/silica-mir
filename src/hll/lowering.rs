@@ -401,6 +401,7 @@ fn lower_expr_to_operand(
                 }
                 hll::Literal::Bool(val) => bool_const(*val),
                 hll::Literal::Unit => unit_const(),
+                hll::Literal::ByteStr(bytes) => byte_str_const(bytes.clone()),
             };
             Ok(const_op(const_val))
         }

@@ -1,4 +1,4 @@
-use crate::common::{Marker, Markers, RefKind, Span};
+use crate::common::{IntTy, Marker, Markers, RefKind, Span};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
@@ -773,6 +773,7 @@ fn infer_inner(
             Literal::Float(_, None) => subst.fresh_float_var(),
             Literal::Bool(_) => bool_ty(),
             Literal::Unit => unit_ty(),
+            Literal::ByteStr(bytes) => Type::Array(Box::new(Type::Int(IntTy::U8)), bytes.len()),
         },
         ExprKind::Binary(lhs, op, rhs) => {
             let lhs_ty = infer_inner(env, subst, lhs, types, d);
