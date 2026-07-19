@@ -28,7 +28,7 @@ use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::dataflow::{self, Analysis, Direction, Results};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::mir::type_check::Env;
+use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -47,6 +47,7 @@ impl From<LifetimeCode> for DiagCode {
     }
 }
 
+pub mod constraints;
 pub mod nll;
 pub mod region;
 
@@ -435,11 +436,11 @@ pub fn run(body: &FunctionBody) -> Results<LoanMap> {
 /// borrows and accesses, without regard to the ref kind's init obligation.
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
-        check_function(f, d);
+        check_function(env, f, d);
     }
 }
 
-fn check_function(func: &Function, d: &mut Diagnostics) {
+fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -447,16 +448,121 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
         return;
     }
     let entry_states = run(body);
+    let region_ctx = region::build_region_ctx(func, env);
+    let mut constraints = constraints::ConstraintSet::new();
     for block in &body.blocks {
         let Some(entry) = entry_states.get(&block.label) else {
             continue;
         };
         let mut loans = entry.clone();
+        // Patch placeholder regions on entry-set loans with the real
+        // per-fn region assignment.
+        stamp_loan_regions(&mut loans, &region_ctx);
         for (stmt, span) in &block.statements {
             check_and_transfer_stmt(func, block, stmt, *span, &mut loans, d);
+            stamp_loan_regions(&mut loans, &region_ctx);
+            emit_stmt_constraints(env, func, stmt, *span, &region_ctx, &mut constraints);
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
     }
+    // Constraints computed but unused this phase; phase 4 will solve
+    // and enforce.
+    let _ = constraints;
+}
+
+/// Test-only: compute the outlives constraints emitted for `func`
+/// without running any check. Exercises the accumulation path.
+#[cfg(test)]
+pub fn constraints_for(env: &Env, func: &Function) -> constraints::ConstraintSet {
+    let mut cs = constraints::ConstraintSet::new();
+    let Some(body) = &func.body else { return cs };
+    if body.blocks.is_empty() {
+        return cs;
+    }
+    let region_ctx = region::build_region_ctx(func, env);
+    for block in &body.blocks {
+        for (stmt, span) in &block.statements {
+            emit_stmt_constraints(env, func, stmt, *span, &region_ctx, &mut cs);
+        }
+    }
+    cs
+}
+
+/// Overwrite each loan's placeholder region with the per-fn region
+/// assigned to its borrower place. Idempotent (real → real is a no-op).
+fn stamp_loan_regions(loans: &mut LoanMap, region_ctx: &region::RegionCtx) {
+    for (place, loan) in loans.iter_mut() {
+        if let Some(r) = region_ctx.get(place) {
+            loan.region = r.clone();
+        }
+    }
+}
+
+/// Emit outlives constraints for one statement. Currently covers
+/// assignment `dst = src` where both sides are ref-typed: the
+/// source's region must outlive the destination's.
+fn emit_stmt_constraints(
+    env: &Env,
+    func: &Function,
+    stmt: &Statement,
+    span: Span,
+    region_ctx: &region::RegionCtx,
+    constraints: &mut constraints::ConstraintSet,
+) {
+    let locals = func.locals_map();
+    if let Statement::Assign(target, RValue::Use(op)) = stmt {
+        let Some(src) = operand_place(op) else { return };
+        let Some(t_owned) = as_owned_path(target) else { return };
+        let Some(s_owned) = as_owned_path(src) else { return };
+        // Only ref-to-ref assignments generate outlives.
+        let t_ty = place_type(&locals, env, &t_owned);
+        let s_ty = place_type(&locals, env, &s_owned);
+        if !matches!(t_ty, Some(Type::Ref(..))) || !matches!(s_ty, Some(Type::Ref(..))) {
+            return;
+        }
+        let (Some(t_r), Some(s_r)) = (region_ctx.get(&t_owned), region_ctx.get(&s_owned)) else {
+            return;
+        };
+        constraints.emit(s_r.clone(), t_r.clone(), span);
+    }
+}
+
+fn operand_place(op: &Operand) -> Option<&Place> {
+    match op {
+        Operand::Copy(p) | Operand::Move(p) => Some(p),
+        Operand::Const(_) => None,
+    }
+}
+
+fn place_type(
+    locals: &IndexMap<String, Type>,
+    env: &Env,
+    place: &Place,
+) -> Option<Type> {
+    use crate::mir::type_util::substitute_params;
+    let (root, steps) = extract_path(place)?;
+    let mut ty = locals.get(&root)?.clone();
+    for step in steps {
+        ty = match (step, ty) {
+            (PathStep::Field(f), Type::Custom(name, _, args)) => {
+                let decl = env.types.get(&name)?;
+                let TypeDecl::Struct(s) = decl else { return None };
+                let field = s.fields.iter().find(|fd| fd.name == f)?;
+                substitute_params(&field.ty, &s.type_params, &args)
+            }
+            (PathStep::Downcast(v), Type::Custom(name, _, args)) => {
+                let decl = env.types.get(&name)?;
+                let TypeDecl::Enum(e) = decl else { return None };
+                let variant = e.variants.iter().find(|vd| vd.name == v)?;
+                substitute_params(&variant.ty, &e.type_params, &args)
+            }
+            (PathStep::Deref, Type::Ref(_, _, inner)) => *inner,
+            (PathStep::Deref, Type::RawPtr(inner)) => *inner,
+            (PathStep::Index(_), Type::Array(elem, _)) => *elem,
+            _ => return None,
+        };
+    }
+    Some(ty)
 }
 
 /// Check accesses in `stmt` against `loans`, then advance `loans` via
