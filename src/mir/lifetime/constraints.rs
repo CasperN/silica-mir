@@ -15,6 +15,7 @@
 
 use crate::mir::lifetime::region::Region;
 use crate::mir::ast::Span;
+use std::collections::BTreeSet;
 
 /// One outlives relation: `outlives` outlives `sub` (i.e. `outlives`
 /// is at least as long-lived as `sub`).
@@ -68,6 +69,42 @@ impl ConstraintSet {
     }
 }
 
+/// Compute the transitive closure of a set of outlives axioms. Given
+/// axioms `[(a, b), (b, c)]`, the closure contains `(a, b)`, `(b, c)`,
+/// and `(a, c)`. Also adds reflexive pairs `(r, r)` for every region
+/// mentioned, and `(Static, r)` for every non-Static region.
+pub fn transitive_closure(axioms: &[(Region, Region)]) -> BTreeSet<(Region, Region)> {
+    let mut closure: BTreeSet<(Region, Region)> = axioms.iter().cloned().collect();
+    let mut regions: BTreeSet<Region> = BTreeSet::new();
+    for (a, b) in axioms {
+        regions.insert(a.clone());
+        regions.insert(b.clone());
+    }
+    for r in &regions {
+        closure.insert((r.clone(), r.clone()));
+        if !matches!(r, Region::Static) {
+            closure.insert((Region::Static, r.clone()));
+        }
+    }
+    // Naive transitive closure — sufficient for the small constraint
+    // sets we see in practice. Iterate until no new pairs added.
+    loop {
+        let mut added = false;
+        let snapshot: Vec<_> = closure.iter().cloned().collect();
+        for (a, b) in &snapshot {
+            for (b2, c) in &snapshot {
+                if b == b2 && closure.insert((a.clone(), c.clone())) {
+                    added = true;
+                }
+            }
+        }
+        if !added {
+            break;
+        }
+    }
+    closure
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -97,6 +134,18 @@ mod tests {
         let mut cs = ConstraintSet::new();
         cs.emit(Region::Static, Region::Free(0), Span::default());
         assert!(cs.is_empty());
+    }
+
+    #[test]
+    fn transitive_closure_chains() {
+        let a = Region::Named(Lifetime("a".into()));
+        let b = Region::Named(Lifetime("b".into()));
+        let c = Region::Named(Lifetime("c".into()));
+        let axioms = vec![(a.clone(), b.clone()), (b.clone(), c.clone())];
+        let closure = transitive_closure(&axioms);
+        assert!(closure.contains(&(a.clone(), c.clone())));
+        assert!(closure.contains(&(a.clone(), a.clone())));
+        assert!(closure.contains(&(Region::Static, a)));
     }
 
     #[test]

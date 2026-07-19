@@ -1,14 +1,21 @@
-error: at 24:5: [LT-LifetimeMismatch] In function 'shorten_shared': lifetime mismatch: expected value with region 'b, found value with region 'a
+error: at 18:5: [LT-LifetimeMismatch] In function 'shorten_shared': lifetime mismatch: expected value with region 'b, found value with region 'a
     |
- 23 |   entry:
- 24 |     dst.* = copy x;
+ 17 |   entry:
+ 18 |     dst.* = copy x;
     |     ^^^^^^^^^^^^^^
- 25 |     return
+ 19 |     return
     |
-error: at 49:5: [LT-LifetimeMismatch] In function 'narrow_mut': lifetime mismatch: expected value with region 'b, found value with region 'a
+error: at 26:5: [LT-LifetimeMismatch] In function 'narrow_mut': lifetime mismatch: expected value with region 'b, found value with region 'a
     |
- 48 |   entry:
- 49 |     dst.* = move src;
+ 25 |   entry:
+ 26 |     dst.* = move src;
     |     ^^^^^^^^^^^^^^^^
- 50 |     return
+ 27 |     return
+    |
+error: at 26:5: [LT-LifetimeMismatch] In function 'narrow_mut': lifetime mismatch: expected value with region 'a, found value with region 'b
+    |
+ 25 |   entry:
+ 26 |     dst.* = move src;
+    |     ^^^^^^^^^^^^^^^^
+ 27 |     return
     |

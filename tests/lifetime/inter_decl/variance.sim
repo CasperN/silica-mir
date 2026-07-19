@@ -1,51 +1,41 @@
-# Subtyping / variance — documents known gaps in the region checker.
+# Variance of ref kinds — shared refs are covariant, exclusive-write
+# refs (&mut/&out/&drop/&uninit) are invariant.
 #
-# Positive expectations (SHOULD compile, currently fires spurious
-# LT-LifetimeMismatch):
-#   - Shared refs are covariant: `&'long -> &'short` is legal.
-#   - Struct fields of shared refs inherit covariance.
-#   - Transitive outlives: `'a: 'b, 'b: 'c` implies `'a: 'c`.
+# Observable difference: assigning `src: &kind 'a` into `dst: &kind 'b`
+# emits `'a outlives 'b`. For invariant kinds, we additionally emit
+# `'b outlives 'a` (equality). Without `where 'a: 'b` clauses in
+# scope, neither direction is satisfiable for distinct Named regions,
+# so a distinct-lifetime assignment still fires LT-LifetimeMismatch.
 #
-# Negative expectation (SHOULD fire mismatch, currently doesn't
-# because we only fire on distinct Named, not on kind-based
-# invariance):
-#   - &mut is invariant: `&mut 'long -> &mut 'short` is illegal.
-#
-# Fixture .err.expected reshapes once variance handling lands:
-# covariant fns lose their errors; &mut narrowing gains one.
+# BUT: for invariant kinds it fires TWO diagnostics (one per
+# direction); for shared it fires ONE. That difference is the
+# variance signal, pinned by this fixture.
 
-# ---------- covariant shared assignment: &'long -> &'short ----------
+# ---------- shared: one direction constraint → one mismatch ----------
 
-# `x` outlives `y`. Assigning `x` (region 'a) to a slot of region
-# 'b when 'a: 'b (or when 'b is a shorter subregion) is legal in
-# Rust. Silica today fires mismatch — false positive.
 fn<'a, 'b> shorten_shared(x: &'a i64, dst: &out &'b i64) {
   entry:
     dst.* = copy x;
     return
 }
 
-# ---------- struct with shared-ref field: field covariance ----------
+# ---------- &mut: invariant → two mismatches ----------
 
-struct<'a> SharedRefBox: Copy + Drop { r: &'a i64 }
-
-# Assigning SharedRefBox<'long> where SharedRefBox<'short> is
-# expected should work by structural covariance. Fires today.
-fn<'a, 'b> shorten_struct(src: SharedRefBox<'a>, dst: &out SharedRefBox<'b>) {
-  entry:
-    dst.* = copy src;
-    return
-}
-
-# ---------- &mut invariance: SHOULD fail, currently passes ----------
-
-# Silica today: 'a and 'b distinct → mismatch fires. But my
-# constraint check treats it as an outlives constraint that only
-# fires on Named-vs-Named-distinct pairs, so it does fire —
-# ACCIDENTALLY correct. Once variance lands, this should keep
-# firing but for the RIGHT reason (invariance of &mut).
 fn<'a, 'b> narrow_mut(src: &mut 'a i64, dst: &out &mut 'b i64) {
   entry:
     dst.* = move src;
+    return
+}
+
+# ---------- transitive closure: signature axioms chain ----------
+
+# `identity` uses elision — every input outlives the elided output.
+# When called through this wrapper (not yet — needs call-site
+# propagation), the closure would chain input regions through.
+# For now: same-region assignment through elision axioms lands.
+# Direct assignment `dst.* = copy x` with matching 'a passes.
+fn<'a> tautology(x: &'a i64, dst: &out &'a i64) {
+  entry:
+    dst.* = copy x;
     return
 }

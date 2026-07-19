@@ -575,10 +575,16 @@ fn check_constraints(
     escape_visible: &BTreeSet<Lifetime>,
     d: &mut Diagnostics,
 ) {
+    let axioms: Vec<(Region, Region)> = func
+        .signature_outlives
+        .iter()
+        .map(|(a, b)| (Region::Named(a.clone()), Region::Named(b.clone())))
+        .collect();
+    let closure = constraints::transitive_closure(&axioms);
     for c in cs.iter() {
         match (&c.outlives, &c.sub) {
-            (Region::Named(a), Region::Named(b)) if a != b => {
-                if func.signature_outlives.contains(&(a.clone(), b.clone())) {
+            (Region::Named(_), Region::Named(_)) if c.outlives != c.sub => {
+                if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                     continue;
                 }
                 d.push_error(
@@ -609,6 +615,10 @@ fn check_constraints(
                     .in_function(&func.name),
                 );
             }
+            // Named outlives Free: source is a real (signature)
+            // region, dst is a body-local. Always satisfiable — a
+            // named region outlives any local temp.
+            (Region::Named(_), Region::Free(_)) => {}
             _ => {}
         }
     }
@@ -669,7 +679,26 @@ fn emit_stmt_constraints(
     let Some(t_r) = region_of_ref_place(&target_place, &locals, env, region_ctx) else {
         return;
     };
-    constraints.emit(src_region, t_r, span);
+    // Emit variance-aware constraint. Shared refs are covariant
+    // (source outlives dst is enough). Exclusive-write kinds are
+    // invariant (source outlives dst AND dst outlives source).
+    let target_kind = ref_kind_of_place(&target_place, &locals, env);
+    constraints.emit(src_region.clone(), t_r.clone(), span);
+    if !matches!(target_kind, Some(RefKind::Shared)) {
+        constraints.emit(t_r, src_region, span);
+    }
+}
+
+/// Get the outer ref-kind of `place` when its type is `Type::Ref`.
+fn ref_kind_of_place(
+    place: &Place,
+    locals: &IndexMap<String, Type>,
+    env: &Env,
+) -> Option<RefKind> {
+    match crate::mir::type_util::place_type(locals, env, place)? {
+        Type::Ref(kind, _, _) => Some(kind),
+        _ => None,
+    }
 }
 
 /// Region of `place` when it's ref-typed. Falls back to reading the
