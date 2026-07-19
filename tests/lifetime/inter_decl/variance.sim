@@ -1,0 +1,51 @@
+# Subtyping / variance — documents known gaps in the region checker.
+#
+# Positive expectations (SHOULD compile, currently fires spurious
+# LT-LifetimeMismatch):
+#   - Shared refs are covariant: `&'long -> &'short` is legal.
+#   - Struct fields of shared refs inherit covariance.
+#   - Transitive outlives: `'a: 'b, 'b: 'c` implies `'a: 'c`.
+#
+# Negative expectation (SHOULD fire mismatch, currently doesn't
+# because we only fire on distinct Named, not on kind-based
+# invariance):
+#   - &mut is invariant: `&mut 'long -> &mut 'short` is illegal.
+#
+# Fixture .err.expected reshapes once variance handling lands:
+# covariant fns lose their errors; &mut narrowing gains one.
+
+# ---------- covariant shared assignment: &'long -> &'short ----------
+
+# `x` outlives `y`. Assigning `x` (region 'a) to a slot of region
+# 'b when 'a: 'b (or when 'b is a shorter subregion) is legal in
+# Rust. Silica today fires mismatch — false positive.
+fn<'a, 'b> shorten_shared(x: &'a i64, dst: &out &'b i64) {
+  entry:
+    dst.* = copy x;
+    return
+}
+
+# ---------- struct with shared-ref field: field covariance ----------
+
+struct<'a> SharedRefBox: Copy + Drop { r: &'a i64 }
+
+# Assigning SharedRefBox<'long> where SharedRefBox<'short> is
+# expected should work by structural covariance. Fires today.
+fn<'a, 'b> shorten_struct(src: SharedRefBox<'a>, dst: &out SharedRefBox<'b>) {
+  entry:
+    dst.* = copy src;
+    return
+}
+
+# ---------- &mut invariance: SHOULD fail, currently passes ----------
+
+# Silica today: 'a and 'b distinct → mismatch fires. But my
+# constraint check treats it as an outlives constraint that only
+# fires on Named-vs-Named-distinct pairs, so it does fire —
+# ACCIDENTALLY correct. Once variance lands, this should keep
+# firing but for the RIGHT reason (invariance of &mut).
+fn<'a, 'b> narrow_mut(src: &mut 'a i64, dst: &out &mut 'b i64) {
+  entry:
+    dst.* = move src;
+    return
+}

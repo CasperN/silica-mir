@@ -1,0 +1,33 @@
+# Reject body-local Named regions that aren't declared on the
+# enclosing fn — documents a known gap. Every fn here SHOULD fire
+# a new diagnostic (LT-UndeclaredLifetime or similar) but passes
+# silently today. Named regions in locals unify with each other by
+# string identity, which is undefined semantics.
+#
+# Fixture .err.expected will populate once the scope check lands.
+
+# ---------- local declares 'a but fn has no lifetime params ----------
+
+fn local_names_undeclared_lifetime() {
+  r: &'a i64;
+  entry:
+    return
+}
+
+# ---------- local declares 'b but fn only declares 'a ----------
+
+fn<'a> local_names_different_lifetime(x: &'a i64) {
+  r: &'b i64;
+  entry:
+    return
+}
+
+# ---------- struct type-arg references an undeclared lifetime ----------
+
+struct<'a> WrapMe: Move { r: &'a i64 }
+
+fn uses_wrap_with_undeclared_lifetime() {
+  w: WrapMe<'nope>;
+  entry:
+    return
+}

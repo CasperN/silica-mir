@@ -1,0 +1,43 @@
+# Generalized elision rule 2 — documents a known gap. Every fn
+# here SHOULD compile cleanly but fires spurious LT-LifetimeMismatch
+# today because elision synthesizes distinct regions for every
+# unannotated ref, without emitting outlives axioms between them.
+#
+# Rule to implement: each elided output ref gets a fresh region
+# constrained by `in_i outlives out` for every ref-typed input.
+# Single-input case reduces to Rust's rule 2 (output = input);
+# multi-input case gives output = intersection of inputs.
+#
+# Fixture flips to .sim.expected once the rule lands.
+
+# ---------- single-input ref, single output ref ----------
+
+fn identity(r: &i64, $return: &out &i64) {
+  entry:
+    $return.* = copy r;
+    return
+}
+
+# ---------- multi-input, output from either arg ----------
+
+fn pick_first(x: &i64, y: &i64, $return: &out &i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn pick_second(x: &i64, y: &i64, $return: &out &i64) {
+  entry:
+    $return.* = copy y;
+    return
+}
+
+# ---------- one arg has a declared lifetime, one is elided ----------
+
+# Rule: elided output constrained by every input, whether declared
+# or synthesized. `'a outlives out` AND `'s0 outlives out`.
+fn<'a> mixed_elision(x: &'a i64, y: &i64, $return: &out &i64) {
+  entry:
+    $return.* = copy x;
+    return
+}

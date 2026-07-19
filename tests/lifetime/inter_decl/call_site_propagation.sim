@@ -1,0 +1,89 @@
+# Call-site region propagation — documents a known gap. Every fn
+# here SHOULD error but passes silently today because `call
+# callee(...)` is opaque to the region checker: the returned refs
+# are treated as freshly-materialized, unrelated to any input, so
+# caller-side loans don't propagate to caller-side outputs and
+# post-call access to the input's pointee isn't blocked by the
+# returned ref.
+#
+# Fixture flips to .err.expected once call-site propagation lands.
+
+fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy r;
+    return
+}
+
+# ---------- returned ref aliases the input; mutating input is UB ----------
+
+# `ret` should hold an alias to `x` after the call. Writing to `x`
+# while `ret` is still live is aliasing violation. Today: the loan
+# on `x` closes when `r` is moved into the call; `ret` is treated
+# as unrelated, so `x = 2` slips through.
+fn caller_writes_through_input_alias() {
+  x: i64;
+  r: &i64;
+  ret_slot: &i64;
+  ret_out: &out &i64;
+  read: i64;
+  entry:
+    x = 1;
+    r = &x;
+    ret_out = &out ret_slot;
+    call identity(move r, move ret_out);
+    x = 2;
+    read = copy ret_slot.*;
+    return
+}
+
+fn<'a> take_ref(r: &'a i64) {
+  entry:
+    unborrow r;
+    return
+}
+
+# ---------- passing a ref to callee outlives callee's use ----------
+#
+# Trivially safe — but exercises the call-site region unification
+# path. Should compile silently both before and after call-site
+# propagation lands.
+fn caller_passes_through() {
+  x: i64;
+  r: &i64;
+  entry:
+    x = 1;
+    r = &x;
+    call take_ref(move r);
+    x = 2;
+    return
+}
+
+# make_ref: callee claims to produce a &'a ref with no input.
+# Impossible in real code without unsafe or 'static; used here to
+# demonstrate the checker's silence.
+fn<'a> make_ref(seed: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy seed;
+    return
+}
+
+# ---------- returned ref via make_ref inherits seed's alias ----------
+#
+# Same shape as caller_writes_through_input_alias but uses the
+# generic make_ref callee. Under call-site propagation: ret_slot
+# should alias seed.
+fn caller_uses_make_ref() {
+  seed: i64;
+  s: &i64;
+  ret_slot: &i64;
+  ret_out: &out &i64;
+  read: i64;
+  entry:
+    seed = 7;
+    s = &seed;
+    ret_out = &out ret_slot;
+    call make_ref(move s, move ret_out);
+    seed = 99;
+    read = copy ret_slot.*;
+    return
+}
