@@ -1,0 +1,84 @@
+# Inter-decl lifetime violations — documents a known gap. Every
+# function here SHOULD error under a lifetime-region-honoring loan
+# checker, but ALL FOUR CASES PASS TODAY. Cross-fn / cross-decl
+# lifetime propagation is not implemented; the loan tracker treats
+# ref types as region-free.
+#
+# Pinning: today's `.sim.expected` records the (wrong) success. When
+# region-based lifetime checking lands, the fixture runner flips this
+# to `.err.expected` with the new diagnostics — the flip is the
+# regression signal that the semantic change worked.
+#
+# Axes covered:
+#   E1 — fn returning a ref to a caller-local (dangling)
+#   E2 — fn body returning wrong-lifetime side of a multi-'a signature
+#   E3 — struct constructed from short-lived ref, escapes as longer
+#   E4 — reborrow chain that outlives its root
+
+# ---------- helper declarations reused below ----------
+
+struct<'a> Wrap: Move { r: &'a i64 }
+
+# ---------- E1: fn returning a ref to a local ----------
+
+# Sig claims `$return.* : &'a i64` but the body borrows a local.
+# Under lifetime honoring: the returned ref must trace back to a
+# 'a-tagged input, not a local. Under current NLL: the loan on
+# `x` is live via `$return.*` at return, but drop of `x` happens
+# after `$return`'s unborrow, so the local NLL might or might not
+# flag it — pin the actual behavior.
+fn<'a> dangling_return(dummy: &'a i64, $return: &out &'a i64) {
+  x: i64;
+  entry:
+    x = 42;
+    $return.* = &x;
+    return
+}
+
+# ---------- E2: fn body returns wrong-lifetime side ----------
+
+# Sig: takes 'a and 'b, returns 'a. Body returns y (which is 'b).
+# Under lifetime honoring: the assignment `$return.* = copy y` is
+# a type mismatch — &'b i64 doesn't unify with &'a i64. Under
+# current checker: type-check treats all refs as one kind and
+# passes; no diagnostic.
+fn<'a, 'b> wrong_lifetime_side(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+  entry:
+    unborrow x;
+    $return.* = copy y;
+    return
+}
+
+# ---------- E3: struct outlives its ref source ----------
+
+# Constructor takes a ref valid for 'short (a caller-local) and
+# builds a Wrap<'a> where 'a is claimed to outlive 'short. Under
+# lifetime honoring: the struct's declared lifetime must match
+# the input ref's lifetime; a shorter-lived ref can't satisfy
+# 'a. Under current checker: field write goes through without
+# any lifetime-relation check.
+fn escape_struct_lifetime(caller_ref: &i64, $return: &out Wrap) {
+  local: i64;
+  entry:
+    local = 1;
+    $return.*.r = &local;
+    return
+}
+
+# ---------- E4: reborrow chain outliving root ----------
+
+# `outer` builds a Wrap<'a> from a local ref, then hands it out
+# through `$return`. Even though we're threading through Wrap,
+# the pointee is a caller-invisible local. Under lifetime honoring:
+# the assignment `$return.* = move w` requires the produced value
+# to satisfy `Wrap<'a>` where 'a matches the outer signature; but
+# w's real lifetime is bounded by `x`, which is a local.
+fn<'a> reborrow_escape($return: &out Wrap<'a>) {
+  x: i64;
+  w: Wrap<'a>;
+  entry:
+    x = 7;
+    w.r = &x;
+    $return.* = move w;
+    return
+}
