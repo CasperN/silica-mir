@@ -1,7 +1,49 @@
-error: at 48:5: [LT-LifetimeMismatch] In function 'wrong_lifetime_side': lifetime mismatch: expected value with region 'a, found value with region 'b
+error: at 26:5: [LT-LifetimeEscape] In function 'dangling_return': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
     |
- 47 |     unborrow x;
- 48 |     $return.* = copy y;
+ 25 |     x = 42;
+ 26 |     $return.* = &x;
+    |     ^^^^^^^^^^^^^^
+ 27 |     return
+    |
+error: at 40:5: [LT-LifetimeMismatch] In function 'wrong_lifetime_side': lifetime mismatch: expected value with region 'a, found value with region 'b
+    |
+ 39 |     unborrow x;
+ 40 |     $return.* = copy y;
     |     ^^^^^^^^^^^^^^^^^^
- 49 |     return
+ 41 |     return
     |
+error: at 53:5: [LT-LifetimeEscape] In function 'escape_struct_lifetime': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+    |
+ 52 |     local = 1;
+ 53 |     $return.*.r = &local;
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 54 |     return
+    |
+error: at 67:5: [LT-LifetimeEscape] In function 'reborrow_escape': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+    |
+ 66 |     x = 7;
+ 67 |     w.r = &x;
+    |     ^^^^^^^^
+ 68 |     $return.* = move w;
+    |
+error: at 80:5: [LT-LifetimeEscape] In function 'escape_via_out_param': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+    |
+ 79 |     local = 5;
+ 80 |     dst.* = &local;
+    |     ^^^^^^^^^^^^^^
+ 81 |     return
+    |
+error: at 94:5: [LT-LifetimeEscape] In function 'escape_via_enum_variant': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+    |
+ 93 |     r = &local;
+ 94 |     $return.* = RefEnum::R(move r);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 95 |     return
+    |
+error: at 108:5: [LT-LifetimeEscape] In function 'multi_lifetime_local_leak': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+     |
+ 107 |     local = 11;
+ 108 |     $return.* = &local;
+     |     ^^^^^^^^^^^^^^^^^^
+ 109 |     return
+     |

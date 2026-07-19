@@ -1,13 +1,5 @@
-# Inter-decl lifetime violations — documents a known gap. Every
-# function here SHOULD error under a lifetime-region-honoring loan
-# checker, but ALL FOUR CASES PASS TODAY. Cross-fn / cross-decl
-# lifetime propagation is not implemented; the loan tracker treats
-# ref types as region-free.
-#
-# Pinning: today's `.sim.expected` records the (wrong) success. When
-# region-based lifetime checking lands, the fixture runner flips this
-# to `.err.expected` with the new diagnostics — the flip is the
-# regression signal that the semantic change worked.
+# Inter-decl lifetime violations. Every function here fires a
+# region-based check (either LT-LifetimeMismatch or LT-LifetimeEscape).
 #
 # Axes covered:
 #   E1 — fn returning a ref to a caller-local (dangling)
@@ -50,14 +42,11 @@ fn<'a, 'b> wrong_lifetime_side(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
 }
 
 # ---------- E3: struct outlives its ref source ----------
-
-# Constructor takes a ref valid for 'short (a caller-local) and
-# builds a Wrap<'a> where 'a is claimed to outlive 'short. Under
-# lifetime honoring: the struct's declared lifetime must match
-# the input ref's lifetime; a shorter-lived ref can't satisfy
-# 'a. Under current checker: field write goes through without
-# any lifetime-relation check.
-fn escape_struct_lifetime(caller_ref: &i64, $return: &out Wrap) {
+#
+# Currently detected: the field write `$return.*.r = &local` fires
+# LifetimeEscape because `local` (body-local) has a Free region and
+# the field's declared region is Wrap<'a>'s 'a (via the struct decl).
+fn<'a> escape_struct_lifetime(caller_ref: &'a i64, $return: &out Wrap<'a>) {
   local: i64;
   entry:
     local = 1;
@@ -66,13 +55,10 @@ fn escape_struct_lifetime(caller_ref: &i64, $return: &out Wrap) {
 }
 
 # ---------- E4: reborrow chain outliving root ----------
-
-# `outer` builds a Wrap<'a> from a local ref, then hands it out
-# through `$return`. Even though we're threading through Wrap,
-# the pointee is a caller-invisible local. Under lifetime honoring:
-# the assignment `$return.* = move w` requires the produced value
-# to satisfy `Wrap<'a>` where 'a matches the outer signature; but
-# w's real lifetime is bounded by `x`, which is a local.
+#
+# `w` is a body-local Wrap<'a>; its field `w.r` gets a &local
+# (Free-region). Then the whole struct is moved into $return, whose
+# region is 'a. The field-write emits Free outlives 'a → escape.
 fn<'a> reborrow_escape($return: &out Wrap<'a>) {
   x: i64;
   w: Wrap<'a>;
@@ -80,5 +66,45 @@ fn<'a> reborrow_escape($return: &out Wrap<'a>) {
     x = 7;
     w.r = &x;
     $return.* = move w;
+    return
+}
+
+# ---------- E5: escape via &out param, not $return ----------
+
+# The output slot isn't $return but a caller-provided &out ref.
+# Should still be caught as an escape.
+fn<'a> escape_via_out_param(dst: &out &'a i64) {
+  local: i64;
+  entry:
+    local = 5;
+    dst.* = &local;
+    return
+}
+
+# ---------- E6: escape via nested enum-payload write ----------
+
+enum<'a> RefEnum: Copy + Drop { N: unit, R: &'a i64 }
+
+fn<'a> escape_via_enum_variant($return: &out RefEnum<'a>) {
+  local: i64;
+  r: &i64;
+  entry:
+    local = 9;
+    r = &local;
+    $return.* = RefEnum::R(move r);
+    return
+}
+
+# ---------- E7: multi-lifetime, return tied to 'a but body uses local ----------
+
+# Sig says the returned ref is 'a. Body sneaks in a local-borrowed
+# ref instead. Region check: source is Free, dst is 'a → escape.
+fn<'a, 'b> multi_lifetime_local_leak(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+  local: i64;
+  entry:
+    unborrow x;
+    unborrow y;
+    local = 11;
+    $return.* = &local;
     return
 }

@@ -43,6 +43,11 @@ pub enum LifetimeCode {
     /// is required but cannot be proven. E.g. `dst: &'a T = src: &'b T`
     /// with no `where 'b: 'a` bound in scope.
     LifetimeMismatch,
+    /// A borrow rooted in a body-local (no signature-visible name for
+    /// its region) is stored into a signature-visible slot whose
+    /// region is a named lifetime. The loan would outlive the
+    /// storage that backs it — an escape.
+    LifetimeEscape,
 }
 
 impl From<LifetimeCode> for DiagCode {
@@ -469,7 +474,90 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
     }
-    check_constraints(&constraints, func, d);
+    let escape_visible = signature_visible_regions(func, env);
+    check_constraints(&constraints, func, &escape_visible, d);
+}
+
+/// Return the set of Named regions that are reachable from a
+/// caller-visible slot: through `$return`, or through any
+/// caller-provided `&mut` / `&out` parameter (i.e. any pointer the
+/// callee can write into, whose target the caller reads back).
+///
+/// A Named region that only appears in body-local types (e.g. a
+/// struct field of a locally-owned struct decl instantiated at
+/// use-site with no lifetime args) is NOT escape-visible.
+fn signature_visible_regions(
+    func: &Function,
+    env: &Env,
+) -> BTreeSet<Lifetime> {
+    let mut out = BTreeSet::new();
+    for p in &func.params {
+        // $return is the sret slot; any &out or &mut is caller-provided
+        // storage the callee writes into.
+        let visible = p.name == "$return"
+            || matches!(&p.ty, Type::Ref(RefKind::Out, _, _) | Type::Ref(RefKind::Mut, _, _));
+        if !visible {
+            continue;
+        }
+        // Peel off the outer ref (that ref's own lifetime is the
+        // caller's storage lifetime; irrelevant to escape) and collect
+        // named regions in the pointee.
+        let pointee = match &p.ty {
+            Type::Ref(_, _, inner) => inner.as_ref().clone(),
+            other => other.clone(),
+        };
+        let mut visited = BTreeSet::new();
+        collect_named_regions(&pointee, env, &mut visited, &mut out);
+    }
+    out
+}
+
+fn collect_named_regions(
+    ty: &Type,
+    env: &Env,
+    visited: &mut BTreeSet<String>,
+    out: &mut BTreeSet<Lifetime>,
+) {
+    use crate::mir::type_util::substitute_params;
+    match ty {
+        Type::Ref(_, Some(lt), inner) => {
+            out.insert(lt.clone());
+            collect_named_regions(inner, env, visited, out);
+        }
+        Type::Ref(_, None, inner) | Type::RawPtr(inner) | Type::Array(inner, _) => {
+            collect_named_regions(inner, env, visited, out);
+        }
+        Type::Custom(name, lifetime_args, type_args) => {
+            for lt in lifetime_args {
+                out.insert(lt.clone());
+            }
+            if !visited.insert(name.clone()) {
+                return;
+            }
+            match env.types.get(name) {
+                Some(TypeDecl::Struct(s)) => {
+                    for f in &s.fields {
+                        let sub = substitute_params(&f.ty, &s.type_params, type_args);
+                        collect_named_regions(&sub, env, visited, out);
+                    }
+                }
+                Some(TypeDecl::Enum(e)) => {
+                    for v in &e.variants {
+                        let sub = substitute_params(&v.ty, &e.type_params, type_args);
+                        collect_named_regions(&sub, env, visited, out);
+                    }
+                }
+                _ => {}
+            }
+            visited.remove(name);
+        }
+        Type::Fn(args) => {
+            for a in args {
+                collect_named_regions(a, env, visited, out);
+            }
+        }
+        _ => {}
+    }
 }
 
 /// Enforce accumulated outlives constraints. Without `where`-clause
@@ -482,11 +570,12 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 fn check_constraints(
     cs: &constraints::ConstraintSet,
     func: &Function,
+    escape_visible: &BTreeSet<Lifetime>,
     d: &mut Diagnostics,
 ) {
     for c in cs.iter() {
-        if let (Region::Named(a), Region::Named(b)) = (&c.outlives, &c.sub) {
-            if a != b {
+        match (&c.outlives, &c.sub) {
+            (Region::Named(a), Region::Named(b)) if a != b => {
                 d.push_error(
                     Diagnostic::new(
                         LifetimeCode::LifetimeMismatch,
@@ -499,6 +588,23 @@ fn check_constraints(
                     .in_function(&func.name),
                 );
             }
+            // Escape: a Free-region loan (body-local storage) flowing
+            // into a Named region that's actually reachable through a
+            // caller-visible output ($return or &out/&mut param).
+            (Region::Free(_), Region::Named(dst)) if escape_visible.contains(dst) => {
+                d.push_error(
+                    Diagnostic::new(
+                        LifetimeCode::LifetimeEscape,
+                        c.origin,
+                        format!(
+                            "borrow escapes function: value with local (unnamed) region cannot be stored into region {}",
+                            dst,
+                        ),
+                    )
+                    .in_function(&func.name),
+                );
+            }
+            _ => {}
         }
     }
 }
@@ -543,16 +649,32 @@ fn emit_stmt_constraints(
     constraints: &mut constraints::ConstraintSet,
 ) {
     let locals = func.locals_map();
-    if let Statement::Assign(target, RValue::Use(op)) = stmt {
-        let Some(src) = operand_place(op) else { return };
-        let (Some(t_r), Some(s_r)) = (
-            region_of_ref_place(target, &locals, env, region_ctx),
-            region_of_ref_place(src, &locals, env, region_ctx),
-        ) else {
-            return;
-        };
-        constraints.emit(s_r, t_r, span);
-    }
+    let Statement::Assign(target, rvalue) = stmt else { return };
+    let (src_region, target_place) = match rvalue {
+        RValue::Use(op) => {
+            let Some(src) = operand_place(op) else { return };
+            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else { return };
+            (r, target.clone())
+        }
+        RValue::Ref(_, place) => {
+            let r = if let Some(owned) = as_owned_path(place) {
+                region_ctx.get(&owned).cloned().unwrap_or(Region::Free(u32::MAX))
+            } else {
+                Region::Free(u32::MAX)
+            };
+            (r, target.clone())
+        }
+        RValue::EnumConstr(_, _, variant, op) => {
+            let Some(src) = operand_place(op) else { return };
+            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else { return };
+            (r, downcast_place(target.clone(), variant.clone()))
+        }
+        _ => return,
+    };
+    let Some(t_r) = region_of_ref_place(&target_place, &locals, env, region_ctx) else {
+        return;
+    };
+    constraints.emit(src_region, t_r, span);
 }
 
 /// Region of `place` when it's ref-typed. Falls back to reading the

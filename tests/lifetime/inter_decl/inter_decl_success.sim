@@ -90,9 +90,9 @@ fn<'a> maybe_of(r: &'a i64, $return: &out MaybeRef<'a>) {
 # access through the returned ref.
 fn use_identity() {
   x: i64;
-  r: &i64;
-  ret_slot: &i64;
-  ret_out: &out &i64;
+  r: &'a i64;
+  ret_slot: &'a i64;
+  ret_out: &out &'a i64;
   read: i64;
   entry:
     x = 42;
@@ -100,5 +100,38 @@ fn use_identity() {
     ret_out = &out ret_slot;
     call identity(move r, move ret_out);
     read = copy ret_slot.*;
+    return
+}
+
+# ---------- body-local Wrap not stored anywhere: no escape ----------
+
+# Move the caller-provided ref into a locally-declared Wrap, then
+# consume the Wrap via extern. Nothing escapes past return.
+extern fn use_wrap(w: Wrap);
+
+fn<'a> local_wrap_consumed(x: &'a i64) {
+  w: Wrap<'a>;
+  entry:
+    w.r = copy x;
+    call use_wrap(move w);
+    return
+}
+
+# ---------- write through &out param, source is caller's ref ----------
+
+# Writing a caller-provided ref through a caller-provided &out slot.
+# Source region 'a matches destination region 'a; escape check
+# permits it because the source is signature-visible.
+fn<'a> write_through_out(dst: &out &'a i64, src: &'a i64) {
+  entry:
+    dst.* = copy src;
+    return
+}
+
+# ---------- enum with ref variant, wrapped and returned ----------
+
+fn<'a> wrap_ref_in_enum(r: &'a i64, $return: &out MaybeRef<'a>) {
+  entry:
+    $return.* = MaybeRef::Some(copy r);
     return
 }

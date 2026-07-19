@@ -47,7 +47,7 @@ error: at 98:5: [TC-CallArgTypeMismatch] In function 'call_wrong_arg_type', bloc
     |     ^^^^^^^^^^^^^^^^^^^^
  99 |     return
     |
-error: at 110:5: [TC-CallArgTypeMismatch] In function 'call_ref_kind_mismatch', block 'entry': Call argument 0 type mismatch. Expected &drop i64, found &mut i64
+error: at 110:5: [TC-CallArgTypeMismatch] In function 'call_ref_kind_mismatch', block 'entry': Call argument 0 type mismatch. Expected &drop 's0 i64, found &mut i64
      |
  109 |     r = &mut y;
  110 |     call takes_drop_ref(move r);

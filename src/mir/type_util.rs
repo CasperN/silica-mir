@@ -32,14 +32,16 @@ fn walk(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
             }
             ty.clone()
         }
-        Type::Custom(name, _, inner_args) => {
+        Type::Custom(name, lifetimes, inner_args) => {
             let new_args = inner_args
                 .iter()
                 .map(|a| walk(a, type_params, args))
                 .collect();
-            custom_ty_with_args(name.clone(), new_args)
+            Type::Custom(name.clone(), lifetimes.clone(), new_args)
         }
-        Type::Ref(kind, _, inner) => ref_ty(*kind, walk(inner, type_params, args)),
+        Type::Ref(kind, lt, inner) => {
+            Type::Ref(kind.clone(), lt.clone(), Box::new(walk(inner, type_params, args)))
+        }
         Type::RawPtr(inner) => raw_ptr_ty(walk(inner, type_params, args)),
         Type::Array(inner, size) => array_ty(walk(inner, type_params, args), *size),
         Type::Fn(params) => {
@@ -183,6 +185,48 @@ mod tests {
         let env = env_of("fn f() { entry: return }");
         let ty = Type::Ref(crate::mir::ast::RefKind::Shared, None, Box::new(Type::Never));
         assert!(!is_type_uninhabited(&ty, &env));
+    }
+
+    #[test]
+    fn substitute_params_preserves_ref_lifetime() {
+        use crate::common::Lifetime;
+        use crate::mir::ast::RefKind;
+        let ty = Type::Ref(
+            RefKind::Shared,
+            Some(Lifetime("a".into())),
+            Box::new(i64_ty()),
+        );
+        let out = substitute_params(&ty, &[], &[]);
+        assert_eq!(out, ty, "substitute_params must not drop the ref's lifetime");
+    }
+
+    #[test]
+    fn substitute_params_preserves_custom_lifetime_args() {
+        use crate::common::Lifetime;
+        let ty = Type::Custom("Wrap".into(), vec![Lifetime("a".into())], vec![]);
+        let out = substitute_params(&ty, &[], &[]);
+        assert_eq!(out, ty, "substitute_params must not drop Custom's lifetime args");
+    }
+
+    #[test]
+    fn substitute_params_still_substitutes_nested_type_params() {
+        use crate::common::{Lifetime, Markers, Span};
+        use crate::mir::ast::{RefKind, TypeParam};
+        let tp = TypeParam { name: "T".into(), bounds: Markers::empty(), span: Span::default() };
+        let ty = Type::Ref(
+            RefKind::Shared,
+            Some(Lifetime("a".into())),
+            Box::new(param_ty("T")),
+        );
+        let out = substitute_params(&ty, &[tp], &[i64_ty()]);
+        assert_eq!(
+            out,
+            Type::Ref(
+                RefKind::Shared,
+                Some(Lifetime("a".into())),
+                Box::new(i64_ty()),
+            ),
+        );
     }
 }
 
