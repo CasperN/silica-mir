@@ -1133,8 +1133,8 @@ impl Parser {
         let is_extern = self.get_text(node).starts_with("extern");
 
         // Populate the type-param scope before mapping any types in
-        // params, locals, or body — same as struct/enum. Externs have
-        // no type_params clause in the grammar; skip cleanly.
+        // params, locals, or body — same as struct/enum. Both extern and
+        // defined functions can have type parameters.
         let mut tp_cursor = node.walk();
         let (lifetime_params, type_params) = if let Some(tp_node) = node
             .children(&mut tp_cursor)
@@ -1348,6 +1348,28 @@ mod tests {
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
             assert_eq!(f.params[0].ty, i64_ty());
+            assert!(f.body.is_none());
+        } else {
+            panic!("Expected extern function declaration");
+        }
+    }
+
+    #[test]
+    fn test_parse_generic_extern_fn() {
+        let source = "
+            extern fn<'a, T: Move> add_impl(a: &mut i64, b: T);
+        ";
+        let parser = Parser::new(source.to_string());
+        let program = parser.parse().unwrap();
+        assert_eq!(program.declarations.len(), 1);
+        if let Declaration::Fn(f) = &program.declarations[0] {
+            assert_eq!(f.name, "add_impl");
+            assert!(f.is_extern);
+            assert_eq!(f.lifetime_params.len(), 1);
+            assert_eq!(f.lifetime_params[0].0, "a");
+            assert_eq!(f.type_params.len(), 1);
+            assert_eq!(f.type_params[0].name, "T");
+            assert_eq!(f.params.len(), 2);
             assert!(f.body.is_none());
         } else {
             panic!("Expected extern function declaration");

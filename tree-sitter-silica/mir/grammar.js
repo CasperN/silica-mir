@@ -77,19 +77,15 @@ module.exports = grammar({
       ';',
     ),
 
-    function_decl: $ => choice(
-      seq(
-        'extern', 'fn',
-        field('name', $.identifier),
-        '(', common.commaSep($.param_decl), ')',
+    function_decl: $ => seq(
+      optional('extern'),
+      'fn',
+      optional($.type_params),
+      field('name', $.identifier),
+      '(', common.commaSep($.param_decl), ')',
+      choice(
         ';',
-      ),
-      seq(
-        'fn',
-        optional($.type_params),
-        field('name', $.identifier),
-        '(', common.commaSep($.param_decl), ')',
-        '{', repeat($.local_decl), repeat($.basic_block), '}',
+        seq('{', repeat($.local_decl), repeat($.basic_block), '}'),
       ),
     ),
 

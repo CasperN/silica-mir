@@ -235,7 +235,6 @@ impl Parser {
             "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child)?)),
             "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child)?)),
             "fn_decl" => Ok(Declaration::Fn(self.map_fn_decl(child)?)),
-            "extern_fn_decl" => Ok(Declaration::Fn(self.map_extern_fn_decl(child)?)),
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -356,7 +355,21 @@ impl Parser {
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "fn decl missing name"))?;
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
-        let is_unsafe = self.get_text(node).starts_with("unsafe");
+
+        let mut temp_cursor = node.walk();
+        let is_unsafe = node.children(&mut temp_cursor).any(|c| c.kind() == "unsafe");
+
+        let (abi, abi_span) = if let Some(abi_node) = node.child_by_field_name("abi") {
+            // Strip surrounding quotes; the string_lit rule matches `"..."`.
+            let raw = self.get_text(abi_node);
+            (
+                Some(raw.trim_matches('"').to_string()),
+                Some(span_of(abi_node)),
+            )
+        } else {
+            (None, None)
+        };
+
         let with_fn = |d: Diagnostic| d.in_function(name.clone());
 
         let mut scope: TypeScope = BTreeSet::new();
@@ -399,94 +412,23 @@ impl Parser {
             (unit_ty(), span)
         };
 
-        let body_node = node.child_by_field_name("body").ok_or_else(|| {
-            with_fn(self.diag(node, ParserCode::MalformedCst, "fn decl missing body"))
-        })?;
-        let body = Some(self.map_expr(body_node, &scope).map_err(with_fn)?);
+        let body = if let Some(body_node) = node.child_by_field_name("body") {
+            Some(self.map_expr(body_node, &scope).map_err(with_fn)?)
+        } else {
+            None
+        };
 
         Ok(FnDecl {
             name,
             is_unsafe,
-            abi: None,
-            abi_span: None,
+            abi,
+            abi_span,
             lifetime_params,
             type_params,
             params,
             ret_ty,
             ret_ty_span,
             body,
-            span,
-        })
-    }
-
-    /// Extern function declaration: signature only, no body. Same
-    /// `FnDecl` node as regular functions; extern-ness is expressed
-    /// by `body: None`. `abi` is `None` for `extern fn ...` (Silica
-    /// ABI) or `Some("C")` for `extern "C" fn ...` (C ABI). The
-    /// grammar accepts any string literal — the type checker
-    /// rejects unknown ABI strings so lowering can trust it.
-    fn map_extern_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(
-                node,
-                ParserCode::MalformedCst,
-                "extern fn decl missing name",
-            )
-        })?;
-        let name = self.get_text(name_node).to_string();
-        let span = span_of(node);
-        let with_fn = |d: Diagnostic| d.in_function(name.clone());
-
-        let (abi, abi_span) = if let Some(abi_node) = node.child_by_field_name("abi") {
-            // Strip surrounding quotes; the string_lit rule matches `"..."`.
-            let raw = self.get_text(abi_node);
-            (
-                Some(raw.trim_matches('"').to_string()),
-                Some(span_of(abi_node)),
-            )
-        } else {
-            (None, None)
-        };
-
-        let scope: TypeScope = BTreeSet::new();
-        let mut cursor = node.walk();
-        let mut params = Vec::new();
-        for child in node.children(&mut cursor) {
-            if child.kind() == "param_decl" {
-                let p_name_node = child.child_by_field_name("name").ok_or_else(|| {
-                    with_fn(self.diag(child, ParserCode::MalformedCst, "param missing name"))
-                })?;
-                let p_type_node = child.child_by_field_name("type").ok_or_else(|| {
-                    with_fn(self.diag(child, ParserCode::MalformedCst, "param missing type"))
-                })?;
-                params.push(Param {
-                    name: self.get_text(p_name_node).to_string(),
-                    ty: self.map_type(p_type_node, &scope).map_err(with_fn)?,
-                    span: span_of(child),
-                });
-            }
-        }
-
-        let (ret_ty, ret_ty_span) = if let Some(rt_node) = node.child_by_field_name("return_type") {
-            (
-                self.map_type(rt_node, &scope).map_err(with_fn)?,
-                span_of(rt_node),
-            )
-        } else {
-            (unit_ty(), span)
-        };
-
-        Ok(FnDecl {
-            name,
-            is_unsafe: false,
-            abi,
-            abi_span,
-            lifetime_params: Vec::new(),
-            type_params: Vec::new(),
-            params,
-            ret_ty,
-            ret_ty_span,
-            body: None,
             span,
         })
     }
@@ -1458,7 +1400,42 @@ mod tests {
             }
         ";
         let program = Parser::new(source).parse().unwrap();
+    }
+
+    #[test]
+    fn parse_extern_fn() {
+        let source = "
+            extern fn add_impl(a: i64, b: i64) -> i64;
+            extern \"C\" fn c_fn(a: f64) -> f64;
+        ";
+        let program = Parser::new(source).parse().unwrap();
+        assert_eq!(program.declarations.len(), 2);
+        
+        let Declaration::Fn(f1) = &program.declarations[0] else { panic!() };
+        assert_eq!(f1.name, "add_impl");
+        assert_eq!(f1.abi, None);
+        assert!(f1.body.is_none());
+
+        let Declaration::Fn(f2) = &program.declarations[1] else { panic!() };
+        assert_eq!(f2.name, "c_fn");
+        assert_eq!(f2.abi.as_deref(), Some("C"));
+        assert!(f2.body.is_none());
+    }
+
+    #[test]
+    fn parse_generic_extern_fn() {
+        let source = "
+            extern fn<'a, T: Move> add_impl(a: &mut i64, b: T);
+        ";
+        let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
+        let Declaration::Fn(f) = &program.declarations[0] else { panic!() };
+        assert_eq!(f.name, "add_impl");
+        assert_eq!(f.lifetime_params.len(), 1);
+        assert_eq!(f.lifetime_params[0].0, "a");
+        assert_eq!(f.type_params.len(), 1);
+        assert_eq!(f.type_params[0].name, "T");
+        assert!(f.body.is_none());
     }
 
     // Helper: extract the initializer of the first `let` statement

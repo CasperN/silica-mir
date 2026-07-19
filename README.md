@@ -942,8 +942,7 @@ To load it locally:
   which `x` does `defer` capture — the outer or the shadowing inner? Lowering must commit and land a fixture that pins the chosen semantics.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
-## Refactors (deferred)
-- **`extern fn` as flag on Function, not parallel grammar branch.** Simplifies grammar + parser + AST. Also unblocks `extern fn<'a>(...)` syntax.
+## Refactors
 - **Decl X/XKind: `Decl { name, name_span, lifetime_params, type_params, kind: DeclKind }`.** Rustc pattern. Real payoff when adding shared fields (visibility, docs, mono keys) later. Big touch.
 
 ## Lifetime checker gaps (semantic)
