@@ -180,11 +180,7 @@ mod tests {
 
     #[test]
     fn already_annotated_ref_is_untouched() {
-        let mut ty = Type::no_span(TypeKind::Ref(
-            RefKind::Shared,
-            Some(Lifetime("a".into())),
-            Box::new(i64_ty()),
-        ));
+        let mut ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty());
         let mut ctx = ElideCtx::new(&[Lifetime("a".into())]);
         elide_type_pos(&mut ty, Pos::Input, &mut ctx);
         assert!(ctx.synthesized.is_empty());
@@ -221,11 +217,7 @@ mod tests {
                 },
                 Param {
                     name: "y".into(),
-                    ty: Type::no_span(TypeKind::Ref(
-                        RefKind::Shared,
-                        Some(Lifetime("a".into())),
-                        Box::new(i64_ty()),
-                    )),
+                    ty: named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty()),
                     span: Span::default(),
                 },
             ],

@@ -944,7 +944,6 @@ To load it locally:
 
 ## Refactors (deferred)
 - **`Checker` struct in `lifetime/mod.rs`.** `check_call_regions` takes 9 params, `walk_call_regions` takes 11 — all sharing `env`, `func`, `region_ctx`, `constraints`, `span`. A `Checker<'a>` with `&mut self` methods would collapse the plumbing. Rustc uses the same pattern. Pairs with a diagnostic-builder helper (`Checker::error(code, span, msg)` pre-fills fn context) to collapse 5-line push sites to 1.
-- **Unify region lookup.** `region_ctx.get(place)`, `region_of_ref_place(place, ...)`, and reading `Region::Named(lt)` from a `Type::Ref` are three ways to spell "region of this ref." Consolidate to one method on `RegionCtx`.
 - **`extern fn` as flag on Function, not parallel grammar branch.** Simplifies grammar + parser + AST. Also unblocks `extern fn<'a>(...)` syntax.
 - **Decl X/XKind: `Decl { name, name_span, lifetime_params, type_params, kind: DeclKind }`.** Rustc pattern. Real payoff when adding shared fields (visibility, docs, mono keys) later. Big touch.
 

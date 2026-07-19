@@ -83,6 +83,16 @@ pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
     Type::no_span(TypeKind::Custom(name.into(), Vec::new(), args))
 }
 
+/// A generic struct/enum instantiation with both lifetime and type
+/// arguments: `Foo<'a, 'b, T, U>`.
+pub fn custom_ty_generic(
+    name: impl Into<String>,
+    lifetimes: Vec<Lifetime>,
+    args: Vec<Type>,
+) -> Type {
+    Type::no_span(TypeKind::Custom(name.into(), lifetimes, args))
+}
+
 /// A reference to an in-scope type parameter.
 pub fn param_ty(name: impl Into<String>) -> Type {
     Type::no_span(TypeKind::Param(name.into()))
@@ -92,6 +102,12 @@ pub fn param_ty(name: impl Into<String>) -> Type {
 
 pub fn ref_ty(kind: RefKind, pointee: Type) -> Type {
     Type::no_span(TypeKind::Ref(kind, None, Box::new(pointee)))
+}
+
+/// Reference with an explicit lifetime annotation: `&'a T`, `&'a mut T`,
+/// etc. For refs without a source-visible lifetime, use [`ref_ty`].
+pub fn named_ref_ty(kind: RefKind, lt: Lifetime, pointee: Type) -> Type {
+    Type::no_span(TypeKind::Ref(kind, Some(lt), Box::new(pointee)))
 }
 pub fn shared_ref_ty(pointee: Type) -> Type {
     ref_ty(RefKind::Shared, pointee)

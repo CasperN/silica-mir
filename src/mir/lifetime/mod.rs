@@ -112,19 +112,13 @@ pub enum AccessKind {
     Borrow(RefKind),
 }
 
-impl AccessKind {
-    fn describe(&self) -> &'static str {
+impl std::fmt::Display for AccessKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AccessKind::Read => "read",
-            AccessKind::Write => "write to",
-            AccessKind::Move => "move from",
-            AccessKind::Borrow(k) => match k {
-                RefKind::Shared => "borrow as &",
-                RefKind::Mut => "borrow as &mut",
-                RefKind::Out => "borrow as &out",
-                RefKind::Drop => "borrow as &drop",
-                RefKind::Uninit => "borrow as &uninit",
-            },
+            AccessKind::Read => write!(f, "read"),
+            AccessKind::Write => write!(f, "write to"),
+            AccessKind::Move => write!(f, "move from"),
+            AccessKind::Borrow(k) => write!(f, "borrow as {}", k),
         }
     }
 }
@@ -234,7 +228,7 @@ pub fn check_loan_conflict(
                 span,
                 format!(
                     "cannot {} '{}': already borrowed by '{}'",
-                    access.describe(),
+                    access,
                     format_place(place),
                     borrower_name,
                 ),
@@ -673,7 +667,7 @@ fn emit_stmt_constraints(
     let (src_region, target_place) = match rvalue {
         RValue::Use(op) => {
             let Some(src) = operand_place(op) else { return };
-            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else {
+            let Some(r) = region_ctx.region_of_place(src, &locals, env) else {
                 return;
             };
             (r, target.clone())
@@ -691,14 +685,14 @@ fn emit_stmt_constraints(
         }
         RValue::EnumConstr(_, _, variant, op) => {
             let Some(src) = operand_place(op) else { return };
-            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else {
+            let Some(r) = region_ctx.region_of_place(src, &locals, env) else {
                 return;
             };
             (r, downcast_place(target.clone(), variant.clone()))
         }
         _ => return,
     };
-    let Some(t_r) = region_of_ref_place(&target_place, &locals, env, region_ctx) else {
+    let Some(t_r) = region_ctx.region_of_place(&target_place, &locals, env) else {
         return;
     };
     // Emit variance-aware constraint. Shared refs are covariant
@@ -895,7 +889,7 @@ fn walk_call_regions(
     match &callee_ty.kind {
         TypeKind::Ref(kind, Some(lt), inner) => {
             let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
-            if let Some(caller_r) = region_of_ref_place(caller_place, locals, env, region_ctx) {
+            if let Some(caller_r) = region_ctx.region_of_place(caller_place, locals, env) {
                 emit_variance(&caller_r, &inst_region, variance, constraints, span);
                 if matches!(variance, Variance::Contravariant | Variance::Invariant) {
                     if let Some(owned) = as_owned_path(caller_place) {
@@ -1029,28 +1023,6 @@ fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &Env) 
     match crate::mir::type_util::place_type(locals, env, place)?.kind {
         TypeKind::Ref(kind, _, _) => Some(kind),
         _ => None,
-    }
-}
-
-/// Region of `place` when it's ref-typed. Falls back to reading the
-/// lifetime slot from `place`'s computed type for non-owned paths
-/// (e.g. `$return.*` — a Deref that isn't in the region map).
-fn region_of_ref_place(
-    place: &Place,
-    locals: &IndexMap<String, Type>,
-    env: &Env,
-    region_ctx: &region::RegionCtx,
-) -> Option<Region> {
-    if let Some(owned) = as_owned_path(place) {
-        if let Some(r) = region_ctx.get(&owned) {
-            return Some(r.clone());
-        }
-    }
-    let ty = crate::mir::type_util::place_type(locals, env, place)?;
-    if let TypeKind::Ref(_, Some(lt), _) = ty.kind {
-        Some(Region::Named(lt))
-    } else {
-        None
     }
 }
 

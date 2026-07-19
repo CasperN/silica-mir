@@ -5,7 +5,6 @@
 
 use crate::common::Lifetime;
 use crate::mir::ast::{Type, TypeKind, TypeParam};
-use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use std::collections::BTreeSet;
 
@@ -207,6 +206,7 @@ pub fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
 mod tests {
     use super::*;
     use crate::mir::ast::Program;
+    use crate::mir::helpers::*;
     use crate::mir::parser::Parser;
 
     /// Build an Env from MIR source, discarding any diagnostics.
@@ -297,11 +297,7 @@ mod tests {
     fn substitute_params_preserves_ref_lifetime() {
         use crate::common::Lifetime;
         use crate::mir::ast::RefKind;
-        let ty = Type::no_span(TypeKind::Ref(
-            RefKind::Shared,
-            Some(Lifetime("a".into())),
-            Box::new(i64_ty()),
-        ));
+        let ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty());
         let out = substitute_params(&ty, &[], &[]);
         assert_eq!(
             out, ty,
@@ -312,11 +308,7 @@ mod tests {
     #[test]
     fn substitute_params_preserves_custom_lifetime_args() {
         use crate::common::Lifetime;
-        let ty = Type::no_span(TypeKind::Custom(
-            "Wrap".into(),
-            vec![Lifetime("a".into())],
-            vec![],
-        ));
+        let ty = custom_ty_generic("Wrap", vec![Lifetime("a".into())], vec![]);
         let out = substitute_params(&ty, &[], &[]);
         assert_eq!(
             out, ty,
@@ -333,30 +325,18 @@ mod tests {
             bounds: Markers::empty(),
             span: Span::default(),
         };
-        let ty = Type::no_span(TypeKind::Ref(
-            RefKind::Shared,
-            Some(Lifetime("a".into())),
-            Box::new(param_ty("T")),
-        ));
+        let ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), param_ty("T"));
         let out = substitute_params(&ty, &[tp], &[i64_ty()]);
         assert_eq!(
             out,
-            Type::no_span(TypeKind::Ref(
-                RefKind::Shared,
-                Some(Lifetime("a".into())),
-                Box::new(i64_ty()),
-            )),
+            named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty()),
         );
     }
 
     #[test]
     fn substitute_all_replaces_ref_lifetime() {
         use crate::mir::ast::RefKind;
-        let ty = Type::no_span(TypeKind::Ref(
-            RefKind::Shared,
-            Some(Lifetime("a".into())),
-            Box::new(i64_ty()),
-        ));
+        let ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty());
         let out = substitute_all(
             &ty,
             &[Lifetime("a".into())],
@@ -366,21 +346,13 @@ mod tests {
         );
         assert_eq!(
             out,
-            Type::no_span(TypeKind::Ref(
-                RefKind::Shared,
-                Some(Lifetime("b".into())),
-                Box::new(i64_ty())
-            )),
+            named_ref_ty(RefKind::Shared, Lifetime("b".into()), i64_ty()),
         );
     }
 
     #[test]
     fn substitute_all_replaces_custom_lifetime_args() {
-        let ty = Type::no_span(TypeKind::Custom(
-            "Wrap".into(),
-            vec![Lifetime("a".into())],
-            vec![],
-        ));
+        let ty = custom_ty_generic("Wrap", vec![Lifetime("a".into())], vec![]);
         let out = substitute_all(
             &ty,
             &[Lifetime("a".into())],
@@ -390,21 +362,13 @@ mod tests {
         );
         assert_eq!(
             out,
-            Type::no_span(TypeKind::Custom(
-                "Wrap".into(),
-                vec![Lifetime("x".into())],
-                vec![]
-            )),
+            custom_ty_generic("Wrap", vec![Lifetime("x".into())], vec![]),
         );
     }
 
     #[test]
     fn substitute_all_no_op_when_lifetime_not_in_params() {
-        let ty = Type::no_span(TypeKind::Custom(
-            "Wrap".into(),
-            vec![Lifetime("other".into())],
-            vec![],
-        ));
+        let ty = custom_ty_generic("Wrap", vec![Lifetime("other".into())], vec![]);
         let out = substitute_all(
             &ty,
             &[Lifetime("a".into())],

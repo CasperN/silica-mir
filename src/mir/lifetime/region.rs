@@ -81,6 +81,30 @@ impl RegionCtx {
     pub fn get(&self, place: &Place) -> Option<&Region> {
         self.place_region.get(place)
     }
+
+    /// Region of `place`, treating it as a reference-typed place. First
+    /// tries the owned-path map; falls back to reading the `Named`
+    /// lifetime slot from `place`'s computed type. The fallback covers
+    /// cases like `$return.*` — a `Deref` that isn't an owned path and
+    /// so has no entry in `place_region`.
+    pub fn region_of_place(
+        &self,
+        place: &Place,
+        locals: &IndexMap<String, Type>,
+        env: &crate::mir::type_check::Env,
+    ) -> Option<Region> {
+        if let Some(owned) = as_owned_path(place) {
+            if let Some(r) = self.get(&owned) {
+                return Some(r.clone());
+            }
+        }
+        let ty = crate::mir::type_util::place_type(locals, env, place)?;
+        if let TypeKind::Ref(_, Some(lt), _) = ty.kind {
+            Some(Region::Named(lt))
+        } else {
+            None
+        }
+    }
 }
 
 /// Build the per-function region map. Walks every ref-typed owned

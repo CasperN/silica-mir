@@ -439,11 +439,7 @@ impl Parser {
                         (Vec::new(), Vec::new())
                     };
                     if !lifetimes.is_empty() || !args.is_empty() {
-                        return Ok(Type::no_span(TypeKind::Custom(
-                            text.to_string(),
-                            lifetimes,
-                            args,
-                        )));
+                        return Ok(custom_ty_generic(text, lifetimes, args));
                     }
                     if text == "bool" {
                         return Ok(bool_ty());
@@ -476,11 +472,11 @@ impl Parser {
                             format!("missing inner type for {}", text),
                         )
                     })?;
-                    return Ok(Type::no_span(TypeKind::Ref(
-                        kind,
-                        lt,
-                        Box::new(self.map_type(inner)?),
-                    )));
+                    let inner = self.map_type(inner)?;
+                    return Ok(match lt {
+                        Some(lt) => named_ref_ty(kind, lt, inner),
+                        None => ref_ty(kind, inner),
+                    });
                 }
 
                 if text == "*" {

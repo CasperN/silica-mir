@@ -545,8 +545,8 @@ fn float_binop_spec(
 
 /// One-operand int-to-int cast (sext / zext / trunc).
 fn int_cast_spec(name: String, from: Type, to: Type, op: &'static str) -> IntrinsicSpec {
-    let from_llvm = int_kindpe_llvm(&from);
-    let to_llvm = int_kindpe_llvm(&to);
+    let from_llvm = int_type_llvm(&from);
+    let to_llvm = int_type_llvm(&to);
     IntrinsicSpec {
         name,
         inputs: vec![from],
@@ -556,10 +556,10 @@ fn int_cast_spec(name: String, from: Type, to: Type, op: &'static str) -> Intrin
     }
 }
 
-fn int_kindpe_llvm(ty: &Type) -> &'static str {
+fn int_type_llvm(ty: &Type) -> &'static str {
     match &ty.kind {
         TypeKind::Int(t) => int_llvm_ty(*t),
-        _ => panic!("int_kindpe_llvm: not an int type: {:?}", ty),
+        _ => panic!("int_type_llvm: not an int type: {:?}", ty),
     }
 }
 

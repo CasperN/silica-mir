@@ -62,17 +62,6 @@ impl Scope {
             .insert(name.to_string(), VarInfo { is_mut, decl_span });
     }
 
-    /// Look up whether `name` is mutable.  Returns `None` if the name
-    /// is not in scope (which is a type-check error, not ours).
-    fn is_mut(&self, name: &str) -> Option<bool> {
-        for frame in self.frames.iter().rev() {
-            if let Some(info) = frame.get(name) {
-                return Some(info.is_mut);
-            }
-        }
-        None
-    }
-
     fn get_info(&self, name: &str) -> Option<&VarInfo> {
         for frame in self.frames.iter().rev() {
             if let Some(info) = frame.get(name) {
