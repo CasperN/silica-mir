@@ -151,7 +151,7 @@ impl Env {
                 }
                 Ok(())
             }
-            Type::Ref(_, inner) => self.validate_type(inner, scope),
+            Type::Ref(_, _, inner) => self.validate_type(inner, scope),
             Type::RawPtr(inner) => self.validate_type(inner, scope),
             Type::Array(elem, _) => self.validate_type(elem, scope),
         }
@@ -203,7 +203,7 @@ impl Env {
                 }
                 a.iter().zip(b.iter()).all(|(x, y)| self.types_match(x, y))
             }
-            (Type::Ref(k1, i1), Type::Ref(k2, i2)) => k1 == k2 && self.types_match(i1, i2),
+            (Type::Ref(k1, _, i1), Type::Ref(k2, _, i2)) => k1 == k2 && self.types_match(i1, i2),
             (Type::RawPtr(i1), Type::RawPtr(i2)) => self.types_match(i1, i2),
             (Type::Array(e1, n1), Type::Array(e2, n2)) => {
                 n1 == n2 && self.types_match(e1, e2)
@@ -235,7 +235,7 @@ impl Env {
             Place::Deref(inner) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
                 match inner_ty {
-                    Type::Ref(_, pointee) => Ok(*pointee),
+                    Type::Ref(_, _, pointee) => Ok(*pointee),
                     Type::RawPtr(pointee) => Ok(*pointee),
                     other => Err(err(
                         DerefOfNonPointer,

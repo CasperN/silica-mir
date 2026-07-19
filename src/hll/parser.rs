@@ -9,7 +9,7 @@
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
-use crate::common::{FloatTy, IntTy, RefKind, Span, Markers, Marker};
+use crate::common::{FloatTy, IntTy, RefKind, Span, Markers, Marker, Lifetime};
 use crate::mir::parser::ParserCode;
 use std::collections::BTreeSet;
 use tree_sitter::{Node, Parser as TSParser};
@@ -251,12 +251,12 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let type_params = if let Some(tp_node) =
+        let (lifetime_params, type_params) = if let Some(tp_node) =
             node.children(&mut cursor).find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope)?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
         let markers = if let Some(markers_node) =
@@ -284,7 +284,7 @@ impl Parser {
             }
         }
 
-        Ok(StructDecl { name, type_params, markers, fields, span })
+        Ok(StructDecl { name, lifetime_params, type_params, markers, fields, span })
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
@@ -296,12 +296,12 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let type_params = if let Some(tp_node) =
+        let (lifetime_params, type_params) = if let Some(tp_node) =
             node.children(&mut cursor).find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope)?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
         let markers = if let Some(markers_node) =
@@ -329,7 +329,7 @@ impl Parser {
             }
         }
 
-        Ok(EnumDecl { name, type_params, markers, variants, span })
+        Ok(EnumDecl { name, lifetime_params, type_params, markers, variants, span })
     }
 
     fn map_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
@@ -343,12 +343,12 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let type_params = if let Some(tp_node) =
+        let (lifetime_params, type_params) = if let Some(tp_node) =
             node.children(&mut cursor).find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope).map_err(with_fn)?
         } else {
-            Vec::new()
+            (Vec::new(), Vec::new())
         };
 
         let mut params = Vec::new();
@@ -387,6 +387,7 @@ impl Parser {
             is_unsafe,
             abi: None,
             abi_span: None,
+            lifetime_params,
             type_params,
             params,
             ret_ty,
@@ -448,6 +449,7 @@ impl Parser {
             is_unsafe: false,
             abi,
             abi_span,
+            lifetime_params: Vec::new(),
             type_params: Vec::new(),
             params,
             ret_ty,
@@ -519,10 +521,14 @@ impl Parser {
             _ => None,
         };
         if let Some(kind) = ref_kind {
-            let inner = node.child(1).ok_or_else(|| {
+            let lt = node.child(1)
+                .filter(|c| c.kind() == "lifetime")
+                .map(|c| Lifetime(self.get_text(c).trim_start_matches('\'').to_string()));
+            let inner_idx = if lt.is_some() { 2 } else { 1 };
+            let inner = node.child(inner_idx).ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, format!("missing inner type for {}", text))
             })?;
-            return Ok(ref_ty(kind, self.map_type(inner, scope)?));
+            return Ok(Type::Ref(kind, lt, Box::new(self.map_type(inner, scope)?)));
         }
         if text == "*" {
             let inner = node.child(1).ok_or_else(|| {
@@ -581,40 +587,52 @@ impl Parser {
         }
     }
 
-    /// Parse a `type_params` node (`<T, U: Copy + Drop>`) into a list
-    /// of `TypeParam`. Populates `scope` with each name so subsequent
-    /// `map_type` calls see them as `Param`s.
-    fn map_type_params(&self, node: Node, scope: &mut TypeScope) -> Result<Vec<TypeParam>, Diagnostic> {
-        let mut out = Vec::new();
+    /// Parse a `type_params` node (`<'a, T, U: Copy + Drop>`) into
+    /// (lifetime_params, type_params). Populates `scope` with each
+    /// type-param name so subsequent `map_type` calls see them as
+    /// `Param`s.
+    fn map_type_params(
+        &self,
+        node: Node,
+        scope: &mut TypeScope,
+    ) -> Result<(Vec<Lifetime>, Vec<TypeParam>), Diagnostic> {
+        let mut lifetimes = Vec::new();
+        let mut types = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() != "type_param" {
-                continue;
+            match child.kind() {
+                "lifetime" => {
+                    let name = self.get_text(child).trim_start_matches('\'').to_string();
+                    lifetimes.push(Lifetime(name));
+                }
+                "type_param" => {
+                    let name_node = child.child_by_field_name("name").ok_or_else(|| {
+                        self.diag(child, ParserCode::MalformedCst, "type param missing name")
+                    })?;
+                    let pname = self.get_text(name_node).to_string();
+                    if scope.contains(&pname) {
+                        return Err(self.diag(
+                            name_node,
+                            ParserCode::MalformedCst,
+                            format!("Duplicate type parameter '{}'", pname),
+                        ));
+                    }
+                    let bounds = if let Some(m) = child.children(&mut child.walk()).find(|c| c.kind() == "markers") {
+                        self.map_markers(m)?
+                    } else {
+                        Markers::empty()
+                    };
+                    scope.insert(pname.clone());
+                    types.push(TypeParam {
+                        name: pname,
+                        bounds,
+                        span: span_of(child),
+                    });
+                }
+                _ => {}
             }
-            let name_node = child.child_by_field_name("name").ok_or_else(|| {
-                self.diag(child, ParserCode::MalformedCst, "type param missing name")
-            })?;
-            let pname = self.get_text(name_node).to_string();
-            if scope.contains(&pname) {
-                return Err(self.diag(
-                    name_node,
-                    ParserCode::MalformedCst,
-                    format!("Duplicate type parameter '{}'", pname),
-                ));
-            }
-            let bounds = if let Some(m) = child.children(&mut child.walk()).find(|c| c.kind() == "markers") {
-                self.map_markers(m)?
-            } else {
-                Markers::empty()
-            };
-            scope.insert(pname.clone());
-            out.push(TypeParam {
-                name: pname,
-                bounds,
-                span: span_of(child),
-            });
         }
-        Ok(out)
+        Ok((lifetimes, types))
     }
 
     /// Parse a `type_args` node (`<T, U>`) into a list of `Type`.

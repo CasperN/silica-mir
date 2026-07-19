@@ -56,7 +56,7 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
         Type::Float(f) => f.bytes(),
         Type::Bool => 1,
         Type::Unit | Type::Never => 0,
-        Type::Fn(_) | Type::Ref(_, _) | Type::RawPtr(_) => 8,
+        Type::Fn(_) | Type::Ref(_, _, _) | Type::RawPtr(_) => 8,
         Type::Custom(name, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_size(s, env),
             Some(TypeDecl::Enum(e)) => enum_size(e, env),
@@ -77,7 +77,7 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
         Type::Float(f) => f.bytes(),
         Type::Bool => 1,
         Type::Unit | Type::Never => 1,
-        Type::Fn(_) | Type::Ref(_, _) | Type::RawPtr(_) => 8,
+        Type::Fn(_) | Type::Ref(_, _, _) | Type::RawPtr(_) => 8,
         Type::Custom(name, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_align(s, env),
             Some(TypeDecl::Enum(e)) => enum_align(e, env),

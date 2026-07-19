@@ -1,4 +1,4 @@
-use crate::common::{IntTy, FloatTy, RefKind, Span, Markers};
+use crate::common::{IntTy, FloatTy, RefKind, Span, Markers, Lifetime};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -15,7 +15,7 @@ pub enum Type {
     /// enclosing decl. Named parameter, not a solver metavariable —
     /// unifies only with itself or with a `Var`, never substituted.
     Param(String),
-    Ref(RefKind, Box<Type>),
+    Ref(RefKind, Option<Lifetime>, Box<Type>),
     RawPtr(Box<Type>),
     Fn(Vec<Type>, Box<Type>),
     Var(usize),
@@ -48,7 +48,10 @@ impl std::fmt::Display for Type {
                 Ok(())
             }
             Type::Param(name) => write!(f, "{}", name),
-            Type::Ref(kind, inner) => write!(f, "{} {}", kind, inner),
+            Type::Ref(kind, lt, inner) => match lt {
+                Some(lt) => write!(f, "{} {} {}", kind, lt, inner),
+                None => write!(f, "{} {}", kind, inner),
+            },
             Type::RawPtr(inner) => write!(f, "*{}", inner),
             Type::Fn(params, ret) => {
                 write!(f, "fn(")?;
@@ -103,6 +106,7 @@ pub struct FnDecl {
     /// Used by the type checker to point diagnostics at just `"..."` on
     /// an unknown ABI rather than at the whole `extern fn` declaration.
     pub abi_span: Option<Span>,
+    pub lifetime_params: Vec<Lifetime>,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,
@@ -129,6 +133,7 @@ pub struct StructField {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructDecl {
     pub name: String,
+    pub lifetime_params: Vec<Lifetime>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub fields: Vec<StructField>,
@@ -145,6 +150,7 @@ pub struct EnumVariant {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumDecl {
     pub name: String,
+    pub lifetime_params: Vec<Lifetime>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub variants: Vec<EnumVariant>,

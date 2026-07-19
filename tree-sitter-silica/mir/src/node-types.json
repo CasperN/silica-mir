@@ -729,6 +729,10 @@
           "named": true
         },
         {
+          "type": "lifetime",
+          "named": true
+        },
+        {
           "type": "type",
           "named": true
         },
@@ -747,6 +751,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "lifetime",
+          "named": true
+        },
         {
           "type": "type",
           "named": true
@@ -788,6 +796,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "lifetime",
+          "named": true
+        },
         {
           "type": "type_param",
           "named": true
@@ -998,6 +1010,10 @@
   },
   {
     "type": "int_lit",
+    "named": true
+  },
+  {
+    "type": "lifetime",
     "named": true
   },
   {

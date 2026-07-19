@@ -78,7 +78,7 @@ impl Env {
                     );
                 }
                 match &p.ty {
-                    Type::Ref(RefKind::Out, _) => {}
+                    Type::Ref(RefKind::Out, _, _) => {}
                     _ => {
                         d.push_error(
                             Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", f.name, p.ty)),
@@ -259,7 +259,7 @@ impl Env {
                 let ty = self
                     .type_of_place(place, stmt_span, locals)
                     .map_err(with_context)?;
-                if !matches!(ty, Type::Ref(_, _)) {
+                if !matches!(ty, Type::Ref(_, _, _)) {
                     return Err(stmt_diag(
                         UnborrowNonReference,
                         format!("unborrow requires a reference-typed place, found {}", ty),

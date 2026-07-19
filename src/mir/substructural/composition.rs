@@ -108,7 +108,7 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
         // relocatable) — same class as shared refs. No loan / no
         // obligation, so no linearity to worry about.
         Type::RawPtr(_) => all(),
-        Type::Ref(kind, _) => match kind {
+        Type::Ref(kind, _, _) => match kind {
             // Shared refs are unrestricted and relocatable.
             RefKind::Shared => all(),
             // Exclusive mutable/uninit refs: affine + movable. The ref

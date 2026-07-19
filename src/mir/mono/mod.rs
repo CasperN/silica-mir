@@ -143,7 +143,7 @@ impl MonoCtx {
                 let mangled = self.need(name, &new_args);
                 Type::Custom(mangled, Vec::new())
             }
-            Type::Ref(kind, inner) => Type::Ref(*kind, Box::new(self.walk_type(inner))),
+            Type::Ref(kind, lt, inner) => Type::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner))),
             Type::RawPtr(inner) => Type::RawPtr(Box::new(self.walk_type(inner))),
             Type::Array(inner, n) => Type::Array(Box::new(self.walk_type(inner)), *n),
             Type::Fn(params) => {
@@ -244,6 +244,7 @@ impl MonoCtx {
                 Declaration::Struct(StructDecl {
                     name: mangled,
                     name_span: s.name_span,
+                    lifetime_params: Vec::new(),
                     type_params: Vec::new(),
                     markers: s.markers,
                     fields,
@@ -264,6 +265,7 @@ impl MonoCtx {
                 Declaration::Enum(EnumDecl {
                     name: mangled,
                     name_span: e.name_span,
+                    lifetime_params: Vec::new(),
                     type_params: Vec::new(),
                     markers: e.markers,
                     variants,
@@ -323,6 +325,7 @@ impl MonoCtx {
                     name: mangled,
                     name_span: f.name_span,
                     is_extern: f.is_extern,
+                    lifetime_params: Vec::new(),
                     type_params: Vec::new(),
                     params,
                     body,

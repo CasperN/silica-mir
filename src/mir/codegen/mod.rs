@@ -202,7 +202,7 @@ impl<'a> CodeGenContext<'a> {
             Type::Float(FloatTy::F64) => "double".to_string(),
             Type::Bool => "i1".to_string(),
             Type::Unit | Type::Never => "{}".to_string(),
-            Type::Ref(_, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
+            Type::Ref(_, _, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
             Type::Custom(name, args) => {
                 assert!(
                     args.is_empty(),
@@ -292,7 +292,7 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     let ret_param = get_return_param(f);
     let ret_llvm = match ret_param {
         Some(p) => match &p.ty {
-            Type::Ref(_, inner) => cx.lower_type(inner),
+            Type::Ref(_, _, inner) => cx.lower_type(inner),
             _ => "void".to_string(),
         },
         None => "void".to_string(),
@@ -356,7 +356,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     let ret_param = get_return_param(f);
     let ret_llvm = match ret_param {
         Some(p) => match &p.ty {
-            Type::Ref(_, inner) => cx.lower_type(inner),
+            Type::Ref(_, _, inner) => cx.lower_type(inner),
             _ => "void".to_string(),
         },
         None => "void".to_string(),
@@ -388,7 +388,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, ".init:").unwrap();
 
     if let Some(p) = ret_param {
-        if let Type::Ref(_, inner) = &p.ty {
+        if let Type::Ref(_, _, inner) = &p.ty {
             let inner_llvm = cx.lower_type(inner);
             let inner_align = layout::align_of(inner, cx.env);
             writeln!(cx.out, "  %local.$return_val = alloca {}, align {}", inner_llvm, inner_align).unwrap();
@@ -499,7 +499,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             let ret_llvm = if let Operand::Const(ConstVal::FnName(name, _)) = target {
                 if let Some(f) = cx.env.functions.get(name) {
                     if let Some(p) = get_return_param(f) {
-                        if let Type::Ref(_, inner) = &p.ty {
+                        if let Type::Ref(_, _, inner) = &p.ty {
                             Some(cx.lower_type(inner))
                         } else {
                             None
@@ -846,7 +846,7 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
         Place::Deref(inner) => {
             let (base_addr, base_ty) = emit_place_addr(cx, inner);
             let pointee = match base_ty {
-                Type::Ref(_, p) => p,
+                Type::Ref(_, _, p) => p,
                 Type::RawPtr(p) => p,
                 other => panic!("deref of non-pointer type {:?}", other),
             };
@@ -941,7 +941,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             writeln!(cx.out, "  br label %{}", label).unwrap();
         }
         Terminator::Return => {
-            if let Some(Type::Ref(RefKind::Out, inner_ty)) = cx.locals.get("$return") {
+            if let Some(Type::Ref(RefKind::Out, _, inner_ty)) = cx.locals.get("$return") {
                 let llvm_ty = cx.lower_type(inner_ty);
                 let val_reg = cx.fresh();
                 writeln!(

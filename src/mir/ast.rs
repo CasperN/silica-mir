@@ -1,4 +1,4 @@
-pub use crate::common::{FloatTy, IntTy, Marker, Markers, RefKind, Span};
+pub use crate::common::{FloatTy, IntTy, Lifetime, Marker, Markers, RefKind, Span};
 
 use indexmap::IndexMap;
 
@@ -23,7 +23,7 @@ pub enum Type {
     /// variant; concretization happens at monomorphization time.
     Param(String),
     Fn(Vec<Type>),
-    Ref(RefKind, Box<Type>),
+    Ref(RefKind, Option<Lifetime>, Box<Type>),
     /// Raw pointer. Aliasing is unrestricted; no loan tracking, no
     /// `(cur, post)` obligation. Deref is unchecked — the caller is
     /// responsible for the pointee's init state and lifetime. The
@@ -70,7 +70,10 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
-            Type::Ref(kind, inner) => write!(f, "{} {}", kind, inner),
+            Type::Ref(kind, lt, inner) => match lt {
+                Some(lt) => write!(f, "{} {} {}", kind, lt, inner),
+                None => write!(f, "{} {}", kind, inner),
+            },
             Type::RawPtr(inner) => write!(f, "*{}", inner),
             Type::Array(elem, size) => write!(f, "[{}; {}]", elem, size),
         }
@@ -563,6 +566,7 @@ pub struct Function {
     pub name: String,
     pub name_span: Span,
     pub is_extern: bool,
+    pub lifetime_params: Vec<Lifetime>,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub body: Option<FunctionBody>,
@@ -591,6 +595,7 @@ impl Function {
 pub struct StructDecl {
     pub name: String,
     pub name_span: Span,
+    pub lifetime_params: Vec<Lifetime>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub fields: Vec<StructField>,
@@ -600,6 +605,7 @@ pub struct StructDecl {
 pub struct EnumDecl {
     pub name: String,
     pub name_span: Span,
+    pub lifetime_params: Vec<Lifetime>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub variants: Vec<EnumVariant>,

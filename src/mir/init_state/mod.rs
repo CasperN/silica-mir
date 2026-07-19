@@ -672,7 +672,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
         s.locals.insert(p.name.clone(), InitState::Init);
         // Reference parameters carry the loan for the whole body, so at
         // entry we know their pointee is in the kind's creation-cur.
-        if let Type::Ref(kind, _) = &p.ty {
+        if let Type::Ref(kind, _, _) = &p.ty {
             if let Some(rs) = RefState::from_kind(kind) {
                 s.refs.insert(var_place(p.name.clone()), rs);
             }
@@ -946,7 +946,7 @@ impl<'a> InitStateContext<'a> {
         // early-return elsewhere.
         state.refs.get(&ref_place)?;
         let ref_ty = self.infer_ref_place_type(&ref_place)?;
-        let Type::Ref(_, pointee_ty) = ref_ty else {
+        let Type::Ref(_, _, pointee_ty) = ref_ty else {
             return None;
         };
         Some((ref_place, sub_path, *pointee_ty))
@@ -1039,7 +1039,7 @@ impl<'a> InitStateContext<'a> {
         let Some(inner_ty) = self.infer_ref_place_type(&inner_place) else {
             return;
         };
-        let Type::Ref(kind, _) = inner_ty else {
+        let Type::Ref(kind, _, _) = inner_ty else {
             return;
         };
 

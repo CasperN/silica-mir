@@ -48,15 +48,24 @@ fn write_markers(out: &mut String, m: &Markers) {
     out.push_str(&names.join(" + "));
 }
 
-fn write_type_params(out: &mut String, params: &[TypeParam]) {
-    if params.is_empty() {
+fn write_type_params(out: &mut String, lifetimes: &[Lifetime], params: &[TypeParam]) {
+    if lifetimes.is_empty() && params.is_empty() {
         return;
     }
     out.push('<');
-    for (i, p) in params.iter().enumerate() {
-        if i > 0 {
+    let mut first = true;
+    for lt in lifetimes {
+        if !first {
             out.push_str(", ");
         }
+        first = false;
+        write!(out, "{}", lt).unwrap();
+    }
+    for p in params {
+        if !first {
+            out.push_str(", ");
+        }
+        first = false;
         out.push_str(&p.name);
         write_markers(out, &p.bounds);
     }
@@ -65,7 +74,7 @@ fn write_type_params(out: &mut String, params: &[TypeParam]) {
 
 fn write_struct(out: &mut String, s: &StructDecl) {
     out.push_str("struct");
-    write_type_params(out, &s.type_params);
+    write_type_params(out, &s.lifetime_params, &s.type_params);
     out.push(' ');
     out.push_str(&s.name);
     write_markers(out, &s.markers);
@@ -80,7 +89,7 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
     out.push_str("enum");
-    write_type_params(out, &e.type_params);
+    write_type_params(out, &e.lifetime_params, &e.type_params);
     out.push(' ');
     out.push_str(&e.name);
     write_markers(out, &e.markers);
@@ -98,7 +107,7 @@ fn write_function(out: &mut String, f: &Function) {
         out.push_str("extern fn ");
     } else {
         out.push_str("fn");
-        write_type_params(out, &f.type_params);
+        write_type_params(out, &f.lifetime_params, &f.type_params);
         out.push(' ');
     }
     out.push_str(&f.name);
@@ -400,18 +409,27 @@ mod tests {
             match decl {
                 Declaration::Struct(s) => {
                     s.name_span = zero;
+                    for tp in &mut s.type_params {
+                        tp.span = zero;
+                    }
                     for f in &mut s.fields {
                         f.span = zero;
                     }
                 }
                 Declaration::Enum(e) => {
                     e.name_span = zero;
+                    for tp in &mut e.type_params {
+                        tp.span = zero;
+                    }
                     for v in &mut e.variants {
                         v.span = zero;
                     }
                 }
                 Declaration::Fn(f) => {
                     f.name_span = zero;
+                    for tp in &mut f.type_params {
+                        tp.span = zero;
+                    }
                     for p in &mut f.params {
                         p.span = zero;
                     }
@@ -477,6 +495,20 @@ mod tests {
         assert_roundtrip(
             "
             fn f(a: &i64, b: &mut i64, c: &out i64, d: &drop i64, e: &uninit i64) {
+              entry:
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn roundtrip_named_lifetimes_on_decls_and_refs() {
+        assert_roundtrip(
+            "
+            struct<'a> Pair { x: &'a i64 y: &'a i64 }
+            enum<'a> Either { L: &'a i64 R: i64 }
+            fn<'a, T> id(x: &'a T) {
               entry:
                 return
             }

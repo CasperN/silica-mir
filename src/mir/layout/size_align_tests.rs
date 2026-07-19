@@ -50,7 +50,7 @@ fn all_ref_kinds_and_fn_are_pointer_sized() {
         RefKind::Drop,
         RefKind::Uninit,
     ] {
-        let ty = Type::Ref(kind, inner.clone());
+        let ty = Type::Ref(kind, None, inner.clone());
         assert_eq!(size_of(&ty, &env), 8);
         assert_eq!(align_of(&ty, &env), 8);
     }

@@ -58,7 +58,7 @@ pub fn param_ty(name: impl Into<String>) -> Type {
 // ---------- References ----------
 
 pub fn ref_ty(kind: RefKind, pointee: Type) -> Type {
-    Type::Ref(kind, Box::new(pointee))
+    Type::Ref(kind, None, Box::new(pointee))
 }
 pub fn shared_ref_ty(pointee: Type) -> Type { ref_ty(RefKind::Shared, pointee) }
 pub fn mut_ref_ty(pointee: Type) -> Type { ref_ty(RefKind::Mut, pointee) }

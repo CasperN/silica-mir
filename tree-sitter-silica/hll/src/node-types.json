@@ -2203,6 +2203,10 @@
           "named": true
         },
         {
+          "type": "lifetime",
+          "named": true
+        },
+        {
           "type": "type",
           "named": true
         },
@@ -2221,6 +2225,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "lifetime",
+          "named": true
+        },
         {
           "type": "type",
           "named": true
@@ -2262,6 +2270,10 @@
       "multiple": true,
       "required": true,
       "types": [
+        {
+          "type": "lifetime",
+          "named": true
+        },
         {
           "type": "type_param",
           "named": true
@@ -2616,6 +2628,10 @@
   {
     "type": "let",
     "named": false
+  },
+  {
+    "type": "lifetime",
+    "named": true
   },
   {
     "type": "loop",

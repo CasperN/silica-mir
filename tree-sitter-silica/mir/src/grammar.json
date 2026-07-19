@@ -35,6 +35,10 @@
       "type": "PATTERN",
       "value": "\\$?[a-zA-Z_][a-zA-Z0-9_]*"
     },
+    "lifetime": {
+      "type": "PATTERN",
+      "value": "'[a-zA-Z_][a-zA-Z0-9_]*"
+    },
     "int_lit": {
       "type": "PATTERN",
       "value": "(0x[0-9a-fA-F_]+|0b[01_]+|[0-9][0-9_]*)(i8|i16|i32|i64|u8|u16|u32|u64)?"
@@ -122,6 +126,19 @@
         }
       ]
     },
+    "_generic_param": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "lifetime"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type_param"
+        }
+      ]
+    },
     "type_params": {
       "type": "SEQ",
       "members": [
@@ -131,7 +148,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "type_param"
+          "name": "_generic_param"
         },
         {
           "type": "REPEAT",
@@ -144,7 +161,7 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "type_param"
+                "name": "_generic_param"
               }
             ]
           }
@@ -167,6 +184,19 @@
         }
       ]
     },
+    "_type_arg": {
+      "type": "CHOICE",
+      "members": [
+        {
+          "type": "SYMBOL",
+          "name": "lifetime"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "type"
+        }
+      ]
+    },
     "type_args": {
       "type": "SEQ",
       "members": [
@@ -176,7 +206,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "type"
+          "name": "_type_arg"
         },
         {
           "type": "REPEAT",
@@ -189,7 +219,7 @@
               },
               {
                 "type": "SYMBOL",
-                "name": "type"
+                "name": "_type_arg"
               }
             ]
           }
@@ -328,6 +358,18 @@
                 "value": "&"
               },
               {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "lifetime"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
                 "type": "SYMBOL",
                 "name": "type"
               }
@@ -343,6 +385,18 @@
               {
                 "type": "STRING",
                 "value": "&mut"
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "lifetime"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
               },
               {
                 "type": "SYMBOL",
@@ -362,6 +416,18 @@
                 "value": "&out"
               },
               {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "lifetime"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
                 "type": "SYMBOL",
                 "name": "type"
               }
@@ -379,6 +445,18 @@
                 "value": "&drop"
               },
               {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "lifetime"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
+              },
+              {
                 "type": "SYMBOL",
                 "name": "type"
               }
@@ -394,6 +472,18 @@
               {
                 "type": "STRING",
                 "value": "&uninit"
+              },
+              {
+                "type": "CHOICE",
+                "members": [
+                  {
+                    "type": "SYMBOL",
+                    "name": "lifetime"
+                  },
+                  {
+                    "type": "BLANK"
+                  }
+                ]
               },
               {
                 "type": "SYMBOL",

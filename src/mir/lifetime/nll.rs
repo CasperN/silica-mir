@@ -447,7 +447,7 @@ fn walk_ref_paths(
     visited: &mut BTreeSet<String>,
     out: &mut BTreeSet<Place>,
 ) {
-    if matches!(ty, Type::Ref(_, _)) {
+    if matches!(ty, Type::Ref(_, _, _)) {
         out.insert(place.clone());
         return;
     }

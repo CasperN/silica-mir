@@ -24,7 +24,7 @@ fn substitute(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
             let new_args = args.iter().map(|a| substitute(a, mapping)).collect();
             custom_ty_with_args(name.clone(), new_args)
         }
-        Type::Ref(kind, inner) => ref_ty(*kind, substitute(inner, mapping)),
+        Type::Ref(kind, _, inner) => ref_ty(*kind, substitute(inner, mapping)),
         Type::RawPtr(inner) => raw_ptr_ty(substitute(inner, mapping)),
         Type::Array(inner, size) => array_ty(substitute(inner, mapping), *size),
         Type::Fn(params, ret) => {
@@ -209,7 +209,7 @@ impl Subst {
                     ty.clone()
                 }
             }
-            Type::Ref(kind, inner) => ref_ty(*kind, self.resolve(inner)),
+            Type::Ref(kind, _, inner) => ref_ty(*kind, self.resolve(inner)),
             Type::RawPtr(inner) => raw_ptr_ty(self.resolve(inner)),
             Type::Fn(params, ret) => {
                 let resolved_params = params.iter().map(|p| self.resolve(p)).collect();
@@ -246,7 +246,7 @@ impl Subst {
                     f64_ty()
                 }
             }
-            Type::Ref(kind, inner) => ref_ty(*kind, self.resolve_default(inner)),
+            Type::Ref(kind, _, inner) => ref_ty(*kind, self.resolve_default(inner)),
             Type::RawPtr(inner) => raw_ptr_ty(self.resolve_default(inner)),
             Type::Array(inner, size) => array_ty(self.resolve_default(inner), *size),
             Type::Fn(params, ret) => {
@@ -312,7 +312,7 @@ impl Subst {
                 Ok(())
             }
             (Type::Param(p1), Type::Param(p2)) if p1 == p2 => Ok(()),
-            (Type::Ref(k1, inner1), Type::Ref(k2, inner2)) if k1 == k2 => self.unify(inner1, inner2),
+            (Type::Ref(k1, _, inner1), Type::Ref(k2, _, inner2)) if k1 == k2 => self.unify(inner1, inner2),
             (Type::RawPtr(inner1), Type::RawPtr(inner2)) => self.unify(inner1, inner2),
             (Type::Array(inner1, size1), Type::Array(inner2, size2)) if size1 == size2 => self.unify(inner1, inner2),
             (Type::Fn(p1, r1), Type::Fn(p2, r2)) => {
@@ -342,7 +342,7 @@ impl Subst {
                     false
                 }
             }
-            Type::Ref(_, inner) => self.occurs_in(id, inner),
+            Type::Ref(_, _, inner) => self.occurs_in(id, inner),
             Type::RawPtr(inner) => self.occurs_in(id, inner),
             Type::Array(inner, _) => self.occurs_in(id, inner),
             Type::Fn(params, ret) => {
@@ -417,7 +417,7 @@ impl TypeEnv {
         match ty {
             Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => all(),
             Type::Fn(_, _) | Type::RawPtr(_) => all(),
-            Type::Ref(kind, _) => match kind {
+            Type::Ref(kind, _, _) => match kind {
                 RefKind::Shared => all(),
                 RefKind::Mut | RefKind::Uninit => {
                     Markers::from_iter([Marker::Drop, Marker::Move])
@@ -470,7 +470,7 @@ impl TypeEnv {
                     ));
                 }
             }
-            Type::Ref(_, inner) | Type::RawPtr(inner) | Type::Array(inner, _) => {
+            Type::Ref(_, _, inner) | Type::RawPtr(inner) | Type::Array(inner, _) => {
                 self.validate_type(inner, scope, span, d);
             }
             Type::Fn(params, ret) => {
@@ -694,7 +694,7 @@ fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) 
                 collect_unresolved_vars(resolved, subst, vars);
             }
         }
-        Type::Ref(_, inner) => collect_unresolved_vars(inner, subst, vars),
+        Type::Ref(_, _, inner) => collect_unresolved_vars(inner, subst, vars),
         Type::RawPtr(inner) => collect_unresolved_vars(inner, subst, vars),
         Type::Array(inner, _) => collect_unresolved_vars(inner, subst, vars),
         Type::Fn(params, ret) => {
@@ -860,7 +860,7 @@ fn infer_inner(
                 return error_ty();
             }
             let struct_ty = match &resolved {
-                Type::Ref(_, inner) => subst.resolve(inner),
+                Type::Ref(_, _, inner) => subst.resolve(inner),
                 other => other.clone(),
             };
             if let Type::Custom(struct_name, args) = struct_ty {
@@ -923,7 +923,7 @@ fn infer_inner(
                 return error_ty();
             }
             match resolved {
-                Type::Ref(_, inner) => *inner,
+                Type::Ref(_, _, inner) => *inner,
                 Type::RawPtr(inner) => {
                     if !env.in_unsafe {
                         d.push_error(Diagnostic::new(

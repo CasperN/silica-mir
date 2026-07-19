@@ -260,7 +260,7 @@ fn infer_fn_type_args(
 fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll::Type> {
     match (decl, fresh) {
         (hll::Type::Param(n), _) if n == name => Some(fresh.clone()),
-        (hll::Type::Ref(_, a), hll::Type::Ref(_, b))
+        (hll::Type::Ref(_, _, a), hll::Type::Ref(_, _, b))
         | (hll::Type::RawPtr(a), hll::Type::RawPtr(b))
         | (hll::Type::Array(a, _), hll::Type::Array(b, _)) => find_param_at(name, a, b),
         (hll::Type::Fn(a_ps, a_r), hll::Type::Fn(b_ps, b_r)) => {
@@ -295,7 +295,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
             custom_ty_with_args(name.clone(), lowered_args)
         }
         hll::Type::Param(name) => param_ty(name.clone()),
-        hll::Type::Ref(kind, inner) => ref_ty(*kind, lower_type(inner)),
+        hll::Type::Ref(kind, _, inner) => ref_ty(*kind, lower_type(inner)),
         hll::Type::RawPtr(inner) => raw_ptr_ty(lower_type(inner)),
         hll::Type::Fn(params, ret) => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();
@@ -317,7 +317,7 @@ fn is_copy_type(ty: &mir::Type) -> bool {
         | mir::Type::Bool
         | mir::Type::Unit
         | mir::Type::Never
-        | mir::Type::Ref(_, _)
+        | mir::Type::Ref(_, _, _)
         | mir::Type::RawPtr(_) => true,
         mir::Type::Array(inner, _) => is_copy_type(inner),
         _ => false,
@@ -1019,6 +1019,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     name: s.name.clone(),
                     name_span: s.span,
+                    lifetime_params: Vec::new(),
                     type_params: lower_type_params(&s.type_params),
                     markers: s.markers.clone(),
                     fields,
@@ -1033,6 +1034,7 @@ pub fn lower_program(
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     name: e.name.clone(),
                     name_span: e.span,
+                    lifetime_params: Vec::new(),
                     type_params: lower_type_params(&e.type_params),
                     markers: e.markers.clone(),
                     variants,
@@ -1066,6 +1068,7 @@ pub fn lower_program(
                         name: f.name.clone(),
                         name_span: f.span,
                         is_extern: true,
+                        lifetime_params: Vec::new(),
                         type_params: lower_type_params(&f.type_params),
                         params,
                         body: None,
@@ -1103,6 +1106,7 @@ pub fn lower_program(
                     name: f.name.clone(),
                     name_span: f.span,
                     is_extern: false,
+                    lifetime_params: Vec::new(),
                     type_params: lower_type_params(&f.type_params),
                     params,
                     body: Some(mir::FunctionBody {

@@ -39,7 +39,7 @@ fn walk(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
                 .collect();
             custom_ty_with_args(name.clone(), new_args)
         }
-        Type::Ref(kind, inner) => ref_ty(*kind, walk(inner, type_params, args)),
+        Type::Ref(kind, _, inner) => ref_ty(*kind, walk(inner, type_params, args)),
         Type::RawPtr(inner) => raw_ptr_ty(walk(inner, type_params, args)),
         Type::Array(inner, size) => array_ty(walk(inner, type_params, args), *size),
         Type::Fn(params) => {
@@ -181,7 +181,7 @@ mod tests {
     fn references_are_always_inhabited() {
         // Even a reference to Never is a fine reference value.
         let env = env_of("fn f() { entry: return }");
-        let ty = Type::Ref(crate::mir::ast::RefKind::Shared, Box::new(Type::Never));
+        let ty = Type::Ref(crate::mir::ast::RefKind::Shared, None, Box::new(Type::Never));
         assert!(!is_type_uninhabited(&ty, &env));
     }
 }

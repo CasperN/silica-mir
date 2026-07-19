@@ -366,6 +366,7 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
         name: spec.name,
         name_span: SPAN,
         is_extern: true,
+        lifetime_params: Vec::new(),
         type_params: Vec::new(),
         params,
         body: None,
@@ -716,7 +717,7 @@ mod tests {
             let last = f.params.last().unwrap();
             assert_eq!(last.name, "out");
             match &last.ty {
-                Type::Ref(RefKind::Out, _) => {}
+                Type::Ref(RefKind::Out, _, _) => {}
                 other => panic!(
                     "intrinsic {} last param should be &out, got {:?}",
                     f.name, other

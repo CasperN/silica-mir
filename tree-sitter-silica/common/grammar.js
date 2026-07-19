@@ -39,11 +39,11 @@ function typeChoices($) {
     'bool',
     'unit',
     'never',
-    prec(2, seq('&', $.type)),
-    prec(2, seq('&mut', $.type)),
-    prec(2, seq('&out', $.type)),
-    prec(2, seq('&drop', $.type)),
-    prec(2, seq('&uninit', $.type)),
+    prec(2, seq('&', optional($.lifetime), $.type)),
+    prec(2, seq('&mut', optional($.lifetime), $.type)),
+    prec(2, seq('&out', optional($.lifetime), $.type)),
+    prec(2, seq('&drop', optional($.lifetime), $.type)),
+    prec(2, seq('&uninit', optional($.lifetime), $.type)),
     prec(2, seq('*', $.type)),
     seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
     seq($.identifier, optional($.type_args)), // struct/enum name or type var; optional args
@@ -63,6 +63,8 @@ module.exports = {
     // the higher-level language forbids in user code. Guarantees no
     // HLL name can shadow an intrinsic.
     identifier: $ => /\$?[a-zA-Z_][a-zA-Z0-9_]*/,
+
+    lifetime: $ => /'[a-zA-Z_][a-zA-Z0-9_]*/,
 
     // Integer literals: decimal / hex (0x…) / binary (0b…). Underscore
     // separators allowed anywhere in the digits. Optional type suffix
@@ -97,31 +99,31 @@ module.exports = {
       repeat(seq('+', $.marker)),
     ),
 
-    // Generic type-parameter clause on a decl: `<T, U: Move + Copy>`.
-    // Each parameter names an identifier and may carry marker bounds
-    // (reusing the `markers` rule — same `: Copy + Drop` shape). Both
-    // HLL and MIR wire these into struct/enum/fn decls; HLL lowering
-    // to MIR carries the clause through unchanged.
+    // Generic parameter clause on a decl: `<'a, T, U: Move + Copy>`.
+    // Accepts a mix of lifetime and type parameters in any order; the
+    // parser buckets them into `lifetime_params` and `type_params`.
+    // Rust convention is lifetimes-first; not grammar-enforced today.
     type_param: $ => seq(
       field('name', $.identifier),
       optional($.markers),
     ),
+    _generic_param: $ => choice($.lifetime, $.type_param),
     type_params: $ => seq(
       '<',
-      $.type_param,
-      repeat(seq(',', $.type_param)),
+      $._generic_param,
+      repeat(seq(',', $._generic_param)),
       optional(','),
       '>',
     ),
 
-    // Type arguments at a use site: `Foo<i32, T>` or `call fn<T>(...)`.
-    // Parsers resolve these against the current decl's type-parameter
-    // scope; use-site bound satisfaction is checked in the type-check
-    // pass.
+    // Type arguments at a use site: `Foo<'a, i32, T>` or `call fn<T>(...)`.
+    // Parsers resolve these against the current decl's parameter scope;
+    // use-site bound satisfaction is checked in the type-check pass.
+    _type_arg: $ => choice($.lifetime, $.type),
     type_args: $ => seq(
       '<',
-      $.type,
-      repeat(seq(',', $.type)),
+      $._type_arg,
+      repeat(seq(',', $._type_arg)),
       optional(','),
       '>',
     ),
