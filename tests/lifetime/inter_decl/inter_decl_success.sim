@@ -11,11 +11,14 @@
 #   - enum with ref-carrying variant
 #   - cross-fn ref-return threading
 
-# ---------- fn returning a ref from a single input (elision) ----------
+# ---------- fn returning a ref from a single input (explicit) ----------
 
-# Single-ref input, single-ref output. Elision synthesizes a fresh 'a
-# tying input and output; caller sees a ref bounded by the input.
-fn identity(r: &i64, $return: &out &i64) {
+# Single-ref input, single-ref output. Explicit 'a ties input to
+# output so the returned ref's region matches the input's. Silica
+# elision synthesizes a distinct fresh lifetime per unannotated ref
+# (no Rust-style rule-2 unification), so the caller must write 'a
+# whenever they want two refs to share a region.
+fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy r;
     return

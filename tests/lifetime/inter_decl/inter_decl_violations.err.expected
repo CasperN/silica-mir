@@ -1,0 +1,7 @@
+error: at 48:5: [LT-LifetimeMismatch] In function 'wrong_lifetime_side': lifetime mismatch: expected value with region 'a, found value with region 'b
+    |
+ 47 |     unborrow x;
+ 48 |     $return.* = copy y;
+    |     ^^^^^^^^^^^^^^^^^^
+ 49 |     return
+    |

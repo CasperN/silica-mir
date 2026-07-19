@@ -1,4 +1,4 @@
-fn<'s0, 's1, 's2> identity(r: & 's0 i64, $return: &out 's1 & 's2 i64) {
+fn<'a, 's0> identity(r: & 'a i64, $return: &out 's0 & 'a i64) {
   entry:
     $return.* = copy r;
     unborrow $return;

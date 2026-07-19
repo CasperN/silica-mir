@@ -39,6 +39,10 @@ pub enum LifetimeCode {
     /// otherwise incompatible loan) covers it. Includes reads,
     /// writes, moves, drops, and new borrows.
     LoanConflict,
+    /// An outlives constraint between two distinct named lifetimes
+    /// is required but cannot be proven. E.g. `dst: &'a T = src: &'b T`
+    /// with no `where 'b: 'a` bound in scope.
+    LifetimeMismatch,
 }
 
 impl From<LifetimeCode> for DiagCode {
@@ -465,9 +469,38 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
     }
-    // Constraints computed but unused this phase; phase 4 will solve
-    // and enforce.
-    let _ = constraints;
+    check_constraints(&constraints, func, d);
+}
+
+/// Enforce accumulated outlives constraints. Without `where`-clause
+/// bounds in scope, the only satisfiable inter-named-region relation
+/// is equality (or `Static outlives anything`, already pruned at
+/// emit). Any constraint pairing two distinct Named regions fires
+/// `LT-LifetimeMismatch`. Free ↔ Named or Free ↔ Free are treated as
+/// unifiable at this phase (escape checking handles the interesting
+/// Free ↔ signature-visible case in phase 5).
+fn check_constraints(
+    cs: &constraints::ConstraintSet,
+    func: &Function,
+    d: &mut Diagnostics,
+) {
+    for c in cs.iter() {
+        if let (Region::Named(a), Region::Named(b)) = (&c.outlives, &c.sub) {
+            if a != b {
+                d.push_error(
+                    Diagnostic::new(
+                        LifetimeCode::LifetimeMismatch,
+                        c.origin,
+                        format!(
+                            "lifetime mismatch: expected value with region {}, found value with region {}",
+                            c.sub, c.outlives,
+                        ),
+                    )
+                    .in_function(&func.name),
+                );
+            }
+        }
+    }
 }
 
 /// Test-only: compute the outlives constraints emitted for `func`
@@ -512,18 +545,35 @@ fn emit_stmt_constraints(
     let locals = func.locals_map();
     if let Statement::Assign(target, RValue::Use(op)) = stmt {
         let Some(src) = operand_place(op) else { return };
-        let Some(t_owned) = as_owned_path(target) else { return };
-        let Some(s_owned) = as_owned_path(src) else { return };
-        // Only ref-to-ref assignments generate outlives.
-        let t_ty = place_type(&locals, env, &t_owned);
-        let s_ty = place_type(&locals, env, &s_owned);
-        if !matches!(t_ty, Some(Type::Ref(..))) || !matches!(s_ty, Some(Type::Ref(..))) {
-            return;
-        }
-        let (Some(t_r), Some(s_r)) = (region_ctx.get(&t_owned), region_ctx.get(&s_owned)) else {
+        let (Some(t_r), Some(s_r)) = (
+            region_of_ref_place(target, &locals, env, region_ctx),
+            region_of_ref_place(src, &locals, env, region_ctx),
+        ) else {
             return;
         };
-        constraints.emit(s_r.clone(), t_r.clone(), span);
+        constraints.emit(s_r, t_r, span);
+    }
+}
+
+/// Region of `place` when it's ref-typed. Falls back to reading the
+/// lifetime slot from `place`'s computed type for non-owned paths
+/// (e.g. `$return.*` — a Deref that isn't in the region map).
+fn region_of_ref_place(
+    place: &Place,
+    locals: &IndexMap<String, Type>,
+    env: &Env,
+    region_ctx: &region::RegionCtx,
+) -> Option<Region> {
+    if let Some(owned) = as_owned_path(place) {
+        if let Some(r) = region_ctx.get(&owned) {
+            return Some(r.clone());
+        }
+    }
+    let ty = place_type(locals, env, place)?;
+    if let Type::Ref(_, Some(lt), _) = ty {
+        Some(Region::Named(lt))
+    } else {
+        None
     }
 }
 
@@ -540,7 +590,7 @@ fn place_type(
     place: &Place,
 ) -> Option<Type> {
     use crate::mir::type_util::substitute_params;
-    let (root, steps) = extract_path(place)?;
+    let (root, steps) = extract_path_with_deref(place);
     let mut ty = locals.get(&root)?.clone();
     for step in steps {
         ty = match (step, ty) {
