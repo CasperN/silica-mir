@@ -1,0 +1,33 @@
+# Raw pointer projection and packing references into a struct.
+# Covers two related shapes: an unsafe raw-pointer field-access
+# chain, and a linear struct constructed field-by-field from two
+# `&mut i64` refs and then moved to an extern.
+
+# ---------- Raw pointer, field access through deref ----------
+
+# `&raw pt` creates a raw pointer without a loan; `p.*.x` projects
+# through the deref inside an `unsafe` block. Point is Copy + Drop
+# so the parameter is dropped at return.
+struct Point: Copy + Drop { x: i64, y: i64 }
+
+fn read_field_via_raw_ptr(pt: Point) -> i64 {
+  let p: *Point = &raw pt;
+  unsafe { p.*.x }
+}
+
+# ---------- Pack two &mut i64 into a linear struct, pass by move ----------
+
+# Struct is Move (linear over the two &mut fields); passing it
+# forward is the only way to discharge the obligation. HLL fn
+# params are immutable, so the pointees are locally-owned
+# `let mut` copies of the parameter values rather than the params
+# themselves.
+struct Pair: Move { a: &mut i64, b: &mut i64 }
+extern fn use_pair(p: Pair);
+
+fn pack_and_pass(x: i64, y: i64) {
+  let mut xm = x;
+  let mut ym = y;
+  let p: Pair = Pair { a: &mut xm, b: &mut ym };
+  use_pair(p);
+}

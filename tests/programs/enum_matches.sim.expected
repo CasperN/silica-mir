@@ -1,0 +1,151 @@
+enum Inner: Copy + Drop {
+  X: i64
+  Y: i64
+}
+
+enum Outer: Copy + Drop {
+  A: Inner
+  B: i64
+}
+
+fn nested_downcast(o: Outer, $return: &out i64) {
+  inner: Inner;
+  x: i64;
+  y: i64;
+  b: i64;
+  entry:
+    switchEnum(o) [A: switch_A_0, B: switch_B_1]
+  switch_A_0:
+    inner = copy o as A;
+    switchEnum(inner) [X: switch_X_3, Y: switch_Y_4]
+  switch_X_3:
+    x = copy inner as X;
+    $return.* = copy x;
+    unborrow $return;
+    goto switch_X_3__to__switch_merge_5
+  switch_X_3__to__switch_merge_5:
+    drop x;
+    goto switch_merge_5
+  switch_Y_4:
+    y = copy inner as Y;
+    $return.* = copy y;
+    unborrow $return;
+    goto switch_Y_4__to__switch_merge_5
+  switch_Y_4__to__switch_merge_5:
+    drop y;
+    goto switch_merge_5
+  switch_merge_5:
+    goto switch_merge_5__to__switch_merge_2
+  switch_merge_5__to__switch_merge_2:
+    drop inner;
+    goto switch_merge_2
+  switch_B_1:
+    b = copy o as B;
+    $return.* = copy b;
+    unborrow $return;
+    goto switch_B_1__to__switch_merge_2
+  switch_B_1__to__switch_merge_2:
+    drop b;
+    goto switch_merge_2
+  switch_merge_2:
+    drop o;
+    return
+}
+
+enum Tag: Copy + Drop {
+  Zero: unit
+  Pos: i64
+  Neg: i64
+}
+
+fn to_i64(t: Tag, $return: &out i64) {
+  _: unit;
+  p: i64;
+  n: i64;
+  _temp_0: &out i64;
+  entry:
+    switchEnum(t) [Zero: switch_Zero_0, Pos: switch_Pos_1, Neg: switch_Neg_2]
+  switch_Zero_0:
+    _ = copy t as Zero;
+    $return.* = 0;
+    unborrow $return;
+    goto switch_Zero_0__to__switch_merge_3
+  switch_Zero_0__to__switch_merge_3:
+    drop _;
+    goto switch_merge_3
+  switch_Pos_1:
+    p = copy t as Pos;
+    $return.* = copy p;
+    unborrow $return;
+    goto switch_Pos_1__to__switch_merge_3
+  switch_Pos_1__to__switch_merge_3:
+    drop p;
+    goto switch_merge_3
+  switch_Neg_2:
+    n = copy t as Neg;
+    _temp_0 = &out $return.*;
+    call $i64_sub(0, copy n, move _temp_0);
+    unborrow $return;
+    goto switch_Neg_2__to__switch_merge_3
+  switch_Neg_2__to__switch_merge_3:
+    drop n;
+    goto switch_merge_3
+  switch_merge_3:
+    drop t;
+    return
+}
+
+fn sum_two_tags(a: [Tag; 2], $return: &out i64) {
+  _temp_0: i64;
+  _temp_1: &out i64;
+  _temp_2: i64;
+  _temp_3: &out i64;
+  _temp_4: &out i64;
+  entry:
+    _temp_1 = &out _temp_0;
+    call to_i64(move a[0], move _temp_1);
+    _temp_3 = &out _temp_2;
+    call to_i64(move a[1], move _temp_3);
+    _temp_4 = &out $return.*;
+    call $i64_add(move _temp_0, move _temp_2, move _temp_4);
+    unborrow $return;
+    return
+}
+
+enum Which: Copy + Drop {
+  A: unit
+  B: unit
+}
+
+fn asymmetric_ref_use(r: &mut i64, w: Which) {
+  _temp_0: unit;
+  a: unit;
+  observed: i64;
+  b: unit;
+  entry:
+    switchEnum(w) [A: switch_A_0, B: entry__to__switch_B_1]
+  entry__to__switch_B_1:
+    unborrow r;
+    goto switch_B_1
+  switch_A_0:
+    a = copy w as A;
+    observed = copy r.*;
+    unborrow r;
+    _temp_0 = unit;
+    goto switch_A_0__to__switch_merge_2
+  switch_A_0__to__switch_merge_2:
+    drop a;
+    drop observed;
+    goto switch_merge_2
+  switch_B_1:
+    b = copy w as B;
+    _temp_0 = unit;
+    goto switch_B_1__to__switch_merge_2
+  switch_B_1__to__switch_merge_2:
+    drop b;
+    goto switch_merge_2
+  switch_merge_2:
+    drop _temp_0;
+    drop w;
+    return
+}

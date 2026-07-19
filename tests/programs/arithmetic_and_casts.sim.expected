@@ -1,0 +1,81 @@
+fn bool_to_i32(x: i64, $return: &out i32) {
+  _temp_0: bool;
+  _temp_1: &out bool;
+  _temp_2: &out i32;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_lt(copy x, 0, move _temp_1);
+    _temp_2 = &out $return.*;
+    call $bool_to_i32(move _temp_0, move _temp_2);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn i32_round_trip(x: i32, $return: &out i32) {
+  _temp_0: i64;
+  _temp_1: &out i64;
+  _temp_2: &out i32;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i32_to_i64(copy x, move _temp_1);
+    _temp_2 = &out $return.*;
+    call $i64_to_i32(move _temp_0, move _temp_2);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn fact(n: i64, $return: &out i64) {
+  _temp_0: bool;
+  _temp_1: &out bool;
+  _temp_2: i64;
+  _temp_3: i64;
+  _temp_4: &out i64;
+  _temp_5: &out i64;
+  _temp_6: &out i64;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_le(copy n, 1, move _temp_1);
+    branch(move _temp_0) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    $return.* = 1;
+    unborrow $return;
+    goto if_merge_2
+  if_false_1:
+    _temp_4 = &out _temp_3;
+    call $i64_sub(copy n, 1, move _temp_4);
+    _temp_5 = &out _temp_2;
+    call fact(move _temp_3, move _temp_5);
+    _temp_6 = &out $return.*;
+    call $i64_mul(copy n, move _temp_2, move _temp_6);
+    unborrow $return;
+    goto if_merge_2
+  if_merge_2:
+    drop n;
+    return
+}
+
+fn straight_line_reassign(a: i64, b: i64, c: i64, $return: &out i64) {
+  r: i64;
+  _temp_0: &out i64;
+  _temp_1: unit;
+  _temp_2: i64;
+  _temp_3: &out i64;
+  entry:
+    _temp_0 = &out r;
+    call $i64_add(copy a, copy b, move _temp_0);
+    _temp_3 = &out _temp_2;
+    call $i64_mul(copy a, copy c, move _temp_3);
+    drop r;
+    r = move _temp_2;
+    _temp_1 = unit;
+    $return.* = copy r;
+    unborrow $return;
+    drop _temp_1;
+    drop r;
+    drop c;
+    drop b;
+    drop a;
+    return
+}

@@ -1,0 +1,45 @@
+struct Point: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+fn read_field_via_raw_ptr(pt: Point, $return: &out i64) {
+  p: *Point;
+  entry:
+    p = &raw pt;
+    $return.* = copy p.*.x;
+    unborrow $return;
+    drop p;
+    drop pt;
+    return
+}
+
+struct Pair: Move {
+  a: &mut i64
+  b: &mut i64
+}
+
+extern fn use_pair(p: Pair);
+
+fn pack_and_pass(x: i64, y: i64) {
+  _temp_0: unit;
+  xm: i64;
+  ym: i64;
+  p: Pair;
+  _temp_1: unit;
+  entry:
+    xm = copy x;
+    ym = copy y;
+    p.a = &mut xm;
+    p.b = &mut ym;
+    call use_pair(move p);
+    _temp_1 = unit;
+    _temp_0 = unit;
+    drop _temp_1;
+    drop ym;
+    drop xm;
+    drop _temp_0;
+    drop y;
+    drop x;
+    return
+}

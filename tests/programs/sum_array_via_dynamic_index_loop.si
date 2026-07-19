@@ -1,0 +1,15 @@
+# Sum a fixed-size i64 array via a dynamic-index loop. `a[i]` with a
+# non-constant `i` widens init-tracking to the whole array; each read
+# is a copy of an i64 slot. Exercises loop + array index + arithmetic
+# on the HLL surface.
+
+fn sum(a: [i64; 4]) -> i64 {
+  let mut sum = 0i64;
+  let mut i = 0i64;
+  loop {
+    if i >= 4i64 { break }
+    sum = sum + a[i];
+    i = i + 1i64;
+  }
+  sum
+}

@@ -1,0 +1,32 @@
+# Small end-to-end functions exercising HLL arithmetic, comparisons,
+# and numeric casts. Each fn is one cell in the "does this shape
+# lower correctly?" matrix — trivial in isolation, denser as a batch.
+
+# `x < 0` lowers to `$i64_lt`; `as i32` on a bool lowers to
+# `$bool_to_i32`. Verifies the comparison-then-zext chain.
+fn bool_to_i32(x: i64) -> i32 {
+  (x < 0i64) as i32
+}
+
+# Chained postfix `as` associates left, so this parses as
+# `((x as i64) as i32)` and emits two intrinsic calls in order.
+fn i32_round_trip(x: i32) -> i32 {
+  x as i64 as i32
+}
+
+# Recursive factorial. `if` at the tail is the block's value; the
+# `else` branch recurses. Exercises `$i64_le`, `$i64_sub`, `$i64_mul`
+# in one fn.
+fn fact(n: i64) -> i64 {
+  if n <= 1i64 { 1i64 } else { n * fact(n - 1i64) }
+}
+
+# Reassigning an Init local. The second `r = ...` only type-checks
+# because drop-elab inserts `drop r` between the two writes —
+# otherwise the second `&out r` would fail the Uninit precondition.
+# Regression witness for the drop-elab insertion at reassignment.
+fn straight_line_reassign(a: i64, b: i64, c: i64) -> i64 {
+  let mut r = a + b;
+  r = a * c;
+  r
+}

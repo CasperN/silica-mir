@@ -1,0 +1,63 @@
+# Enum + match end-to-end shapes. Covers nested-enum downcast,
+# per-slot decode of an array of enums (via a helper to sidestep
+# VF-DowncastOnProjection), and asymmetric arm use of an &mut
+# borrow with a unit-payload enum.
+
+# ---------- Nested enum: downcast, then downcast again ----------
+
+# The outer `A` variant carries an `Inner` enum; the outer match
+# binds the inner scrutinee and a nested match refines further.
+# Both enums are Copy + Drop so the arms read payloads without
+# moving out.
+enum Inner: Copy + Drop { X: i64, Y: i64 }
+enum Outer: Copy + Drop { A: Inner, B: i64 }
+
+fn nested_downcast(o: Outer) -> i64 {
+  o match {
+    A(inner) => inner match {
+      X(x) => x,
+      Y(y) => y,
+    },
+    B(b) => b,
+  }
+}
+
+# ---------- Per-slot decode of an array of Copy+Drop enums ----------
+
+# Wrapping the per-slot decode in `to_i64` extracts each slot into
+# the callee's owned parameter; a direct `a[i] match { ... }` would
+# trip VF-DowncastOnProjection (variant flow tracks root Vars, not
+# projections).
+#
+# The `Neg` arm uses `0i64 - x` — HLL has no unary minus, so the
+# pinned MIR shows `$i64_sub(0i64, x)` where the original MIR
+# fixture used `$i64_neg(x)`.
+enum Tag: Copy + Drop { Zero: unit, Pos: i64, Neg: i64 }
+
+fn to_i64(t: Tag) -> i64 {
+  t match {
+    Zero(_) => 0i64,
+    Pos(p) => p,
+    Neg(n) => 0i64 - n,
+  }
+}
+
+fn sum_two_tags(a: [Tag; 2]) -> i64 {
+  to_i64(a[0i64]) + to_i64(a[1i64])
+}
+
+# ---------- Asymmetric &mut use across arms ----------
+
+# `A` reads through the ref; `B` never touches it. The join point
+# reconciles both arms' effects — both leave the pointee Init.
+# (The MIR sibling used `move r.*; r.* = 99i64;` to exercise
+# reinitialization; HLL can't move a Copy value or spell an
+# explicit drop, so the HLL shape is asymmetric read-vs-no-op.)
+enum Which: Copy + Drop { A: unit, B: unit }
+
+fn asymmetric_ref_use(r: &mut i64, w: Which) {
+  w match {
+    A(a) => { let observed = r.*; },
+    B(b) => { },
+  }
+}
