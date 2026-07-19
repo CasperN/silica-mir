@@ -168,7 +168,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         if s.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,
-                f.span,
+                f.ty.span,
                 format!(
                     "In struct '{}' (marked Copy), field '{}' has type {} which is not Copy",
                     s.name, f.name, f.ty
@@ -178,7 +178,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         if s.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
             d.push_error(diag(
                 DropMarkerNotSatisfied,
-                f.span,
+                f.ty.span,
                 format!(
                     "In struct '{}' (marked Drop), field '{}' has type {} which is not Drop",
                     s.name, f.name, f.ty
@@ -191,7 +191,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         if s.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
             d.push_error(diag(
                 MoveMarkerNotSatisfied,
-                f.span,
+                f.ty.span,
                 format!(
                     "In struct '{}' (marked Move), field '{}' has type {} which is not Move",
                     s.name, f.name, f.ty
@@ -208,7 +208,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         if e.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,
-                v.span,
+                v.ty.span,
                 format!(
                     "In enum '{}' (marked Copy), variant '{}' payload type {} is not Copy",
                     e.name, v.name, v.ty
@@ -218,7 +218,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         if e.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
             d.push_error(diag(
                 DropMarkerNotSatisfied,
-                v.span,
+                v.ty.span,
                 format!(
                     "In enum '{}' (marked Drop), variant '{}' payload type {} is not Drop",
                     e.name, v.name, v.ty
@@ -228,7 +228,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         if e.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
             d.push_error(diag(
                 MoveMarkerNotSatisfied,
-                v.span,
+                v.ty.span,
                 format!(
                     "In enum '{}' (marked Move), variant '{}' payload type {} is not Move",
                     e.name, v.name, v.ty

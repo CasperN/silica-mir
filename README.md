@@ -947,7 +947,6 @@ To load it locally:
 - **Unify region lookup.** `region_ctx.get(place)`, `region_of_ref_place(place, ...)`, and reading `Region::Named(lt)` from a `Type::Ref` are three ways to spell "region of this ref." Consolidate to one method on `RegionCtx`.
 - **`extern fn` as flag on Function, not parallel grammar branch.** Simplifies grammar + parser + AST. Also unblocks `extern fn<'a>(...)` syntax.
 - **Decl X/XKind: `Decl { name, name_span, lifetime_params, type_params, kind: DeclKind }`.** Rustc pattern. Real payoff when adding shared fields (visibility, docs, mono keys) later. Big touch.
-- **Wire `Type::span` into diagnostics.** The struct-with-span shape landed; every construction now carries a `Span` (parser plumbs source ranges, synthetic sites use `Span::default()`). Nothing yet consumes the field — diagnostic sites that currently point at surrounding scaffolding (`StructField.span`, `Param.span`, `Local.span`, whole-decl spans) can be tightened to the offending `ty.span`.
 
 ## Lifetime checker gaps (semantic)
 - **`where 'a: 'b` outlives clauses.** No syntax today; `signature_outlives: Vec<(Lifetime, Lifetime)>` is the right shape to build on. Any real generic library needs this.

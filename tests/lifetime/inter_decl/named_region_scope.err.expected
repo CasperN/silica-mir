@@ -1,21 +1,21 @@
-error: at 9:3: [TC-UndeclaredLifetime] In function 'local_names_undeclared_lifetime', local 'r': undeclared lifetime 'a
+error: at 9:6: [TC-UndeclaredLifetime] In function 'local_names_undeclared_lifetime', local 'r': undeclared lifetime 'a
    |
  8 | fn local_names_undeclared_lifetime() {
  9 |   r: &'a i64;
-   |   ^^^^^^^^^^^
+   |      ^^^^^^^
  10 |   entry:
    |
-error: at 17:3: [TC-UndeclaredLifetime] In function 'local_names_different_lifetime', local 'r': undeclared lifetime 'b
+error: at 17:6: [TC-UndeclaredLifetime] In function 'local_names_different_lifetime', local 'r': undeclared lifetime 'b
     |
  16 | fn<'a> local_names_different_lifetime(x: &'a i64) {
  17 |   r: &'b i64;
-    |   ^^^^^^^^^^^
+    |      ^^^^^^^
  18 |   entry:
     |
-error: at 27:3: [TC-UndeclaredLifetime] In function 'uses_wrap_with_undeclared_lifetime', local 'w': undeclared lifetime 'nope
+error: at 27:6: [TC-UndeclaredLifetime] In function 'uses_wrap_with_undeclared_lifetime', local 'w': undeclared lifetime 'nope
     |
  26 | fn uses_wrap_with_undeclared_lifetime() {
  27 |   w: WrapMe<'nope>;
-    |   ^^^^^^^^^^^^^^^^^
+    |      ^^^^^^^^^^^^^
  28 |   entry:
     |

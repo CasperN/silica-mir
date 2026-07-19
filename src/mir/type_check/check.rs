@@ -83,14 +83,14 @@ impl Env {
                         if let Err(e) = self.validate_type(&f.ty, &scope) {
                             d.push_error(Diagnostic::new(
                                 InvalidDeclaredType,
-                                f.span,
+                                f.ty.span,
                                 format!("In struct '{}', field '{}': {}", s.name, f.name, e),
                             ));
                         }
                         for lt in undeclared_lifetimes(&f.ty, &lt_scope) {
                             d.push_error(Diagnostic::new(
                                 UndeclaredLifetime,
-                                f.span,
+                                f.ty.span,
                                 format!(
                                     "In struct '{}', field '{}': undeclared lifetime {}",
                                     s.name, f.name, lt,
@@ -117,14 +117,14 @@ impl Env {
                         if let Err(err) = self.validate_type(&v.ty, &scope) {
                             d.push_error(Diagnostic::new(
                                 InvalidDeclaredType,
-                                v.span,
+                                v.ty.span,
                                 format!("In enum '{}', variant '{}': {}", e.name, v.name, err),
                             ));
                         }
                         for lt in undeclared_lifetimes(&v.ty, &lt_scope) {
                             d.push_error(Diagnostic::new(
                                 UndeclaredLifetime,
-                                v.span,
+                                v.ty.span,
                                 format!(
                                     "In enum '{}', variant '{}': undeclared lifetime {}",
                                     e.name, v.name, lt,
@@ -161,7 +161,7 @@ impl Env {
                     TypeKind::Ref(RefKind::Out, _, _) => {}
                     _ => {
                         d.push_error(
-                            Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", f.name, p.ty)),
+                            Diagnostic::new(InvalidDeclaredType, p.ty.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", f.name, p.ty)),
                         );
                     }
                 }
@@ -169,14 +169,14 @@ impl Env {
             if let Err(e) = self.validate_type(&p.ty, &scope) {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
-                    p.span,
+                    p.ty.span,
                     format!("In function '{}', parameter '{}': {}", f.name, p.name, e),
                 ));
             }
             for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    p.span,
+                    p.ty.span,
                     format!(
                         "In function '{}', parameter '{}': undeclared lifetime {}",
                         f.name, p.name, lt,
@@ -230,14 +230,14 @@ impl Env {
             if let Err(e) = self.validate_type(&l.ty, &scope) {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
-                    l.span,
+                    l.ty.span,
                     format!("In function '{}', local '{}': {}", f.name, l.name, e),
                 ));
             }
             for lt in undeclared_lifetimes(&l.ty, &lt_scope) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    l.span,
+                    l.ty.span,
                     format!(
                         "In function '{}', local '{}': undeclared lifetime {}",
                         f.name, l.name, lt,

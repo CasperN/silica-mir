@@ -3,8 +3,8 @@
 # Every struct field, enum variant payload, function parameter, and function
 # local is validated against the declared type namespace. Referencing an
 # identifier that resolves to nothing fires TC-InvalidDeclaredType. The
-# diagnostic spans the entire slot (field, variant, parameter, or local
-# declaration) and names the unknown identifier in its message.
+# diagnostic points at the offending type expression (not the surrounding
+# slot) and names the unknown identifier in its message.
 #
 # Each item below covers one cell of the (decl kind x slot x type shape)
 # matrix. Each cell fires exactly one TC-InvalidDeclaredType diagnostic.
@@ -27,13 +27,13 @@ struct StructFieldUndeclared { x: Nope }
 # ---------- enum variant: undeclared payload type ----------
 
 # An enum variant whose payload type names an undeclared identifier fires
-# TC-InvalidDeclaredType; the span covers the whole variant slot.
+# TC-InvalidDeclaredType; the span covers just the payload type.
 enum EnumVariantUndeclared { A: Nope }
 
 # ---------- fn param: undeclared bare type ----------
 
 # A function parameter typed with an undeclared identifier fires
-# TC-InvalidDeclaredType; the span covers the parameter declaration.
+# TC-InvalidDeclaredType; the span covers just the parameter type.
 fn fn_param_undeclared(x: Nope) { entry: return }
 
 # ---------- fn param: undeclared type inside a reference ----------
@@ -46,11 +46,11 @@ fn fn_param_undeclared_inside_ref(x: &mut Nope) { entry: return }
 # ---------- fn param: undeclared type inside a fn-pointer type ----------
 
 # An unknown type appearing as a parameter inside a fn-pointer type also
-# triggers TC-InvalidDeclaredType on the enclosing parameter slot.
+# triggers TC-InvalidDeclaredType; the span covers the enclosing fn type.
 fn fn_param_undeclared_inside_fn(g: fn(Nope)) { entry: return }
 
 # ---------- fn local: undeclared type ----------
 
 # A function local whose declared type is not in scope fires
-# TC-InvalidDeclaredType; the span covers the local declaration.
+# TC-InvalidDeclaredType; the span covers just the local's declared type.
 fn fn_local_undeclared() { x: Nope; entry: return }
