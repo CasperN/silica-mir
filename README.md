@@ -980,6 +980,11 @@ To load it locally:
 - Standard library (needs generics + modules + multi-file support).
   Effects: `Fail` for exceptional control flow, `Iter` for for-loops,
   `Async` for executors.
+- `std::span<'a, T>` and `std::String`
+  - Pointer arithmetic.
+  - `impl AutoDestroy for String`
+  - HLL lifetimes.
+  - Phantom data?
 - Round-trip fixture test (`pretty_print → parse → pretty_print`)
   as an anti-drift check between grammar and codebase.
 - Tighten MIR struct/enum decl separators from whitespace-or-comma
