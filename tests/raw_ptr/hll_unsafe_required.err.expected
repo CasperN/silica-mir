@@ -9,6 +9,6 @@ error: at 27:3: [HTC-UnsafeRequired] In function 'call_unsafe_from_safe': call t
     |
  26 |   # 5. Error: calling unsafe function outside unsafe block
  27 |   dangerous_op(p);
-    |   ^^^^^^^^^^^^^^^
+    |   ^^^^^^^^^^^^
  28 | }
     |

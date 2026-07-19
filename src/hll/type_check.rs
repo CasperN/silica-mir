@@ -785,7 +785,7 @@ fn infer_inner(
                 _ => {
                     d.push_error(Diagnostic::new(
                         BinaryOpNonNumeric,
-                        expr.span,
+                        lhs.span,
                         format!("binary operations only supported on numeric types, found {}", resolved),
                     ));
                     return error_ty();
@@ -813,7 +813,7 @@ fn infer_inner(
                     _ => {
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnaryOpInvalidOperand,
-                            expr.span,
+                            operand.span,
                             format!("unary '-' requires a signed integer or float operand, found {}", resolved),
                         ));
                         return error_ty();
@@ -873,7 +873,7 @@ fn infer_inner(
                     } else {
                         d.push_error(Diagnostic::new(
                             NoSuchField,
-                            expr.span,
+                            target.span,
                             format!("struct '{}' has no field '{}'", struct_name, field),
                         ));
                         return error_ty();
@@ -881,7 +881,7 @@ fn infer_inner(
                 } else {
                     d.push_error(Diagnostic::new(
                         UndeclaredStruct,
-                        expr.span,
+                        target.span,
                         format!("undeclared struct '{}'", struct_name),
                     ));
                     return error_ty();
@@ -889,7 +889,7 @@ fn infer_inner(
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedStruct,
-                    expr.span,
+                    target.span,
                     format!("expected struct type, found {}", resolved),
                 ));
                 return error_ty();
@@ -937,7 +937,7 @@ fn infer_inner(
                 other => {
                     d.push_error(Diagnostic::new(
                         ExpectedPointer,
-                        expr.span,
+                        target.span,
                         format!("cannot dereference non-pointer type {}", other),
                     ));
                     return error_ty();
@@ -958,7 +958,7 @@ fn infer_inner(
                     if *is_unsafe && !env.in_unsafe {
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnsafeRequired,
-                            expr.span,
+                            fn_expr.span,
                             format!("call to unsafe function '{}' requires unsafe block", name),
                         ));
                     }
@@ -1286,7 +1286,7 @@ fn infer_inner(
                     other => {
                         d.push_error(Diagnostic::new(
                             ArrayIndexNotInt,
-                            expr.span,
+                            idx.span,
                             format!("array index must be an integer, found {}", other),
                         ));
                         return error_ty();
@@ -1296,7 +1296,7 @@ fn infer_inner(
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedArray,
-                    expr.span,
+                    arr.span,
                     format!("expected array type, found {}", resolved),
                 ));
                 return error_ty();
