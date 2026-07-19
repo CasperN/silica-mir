@@ -100,3 +100,59 @@ fn uninit_scalar(r: &uninit i64) {
     drop _temp_0;
     return
 }
+
+extern fn write_into(r: &out Box, v: i64);
+
+extern fn consume(b: Box);
+
+fn loop_out_write_and_consume(n: i64) {
+  _temp_0: unit;
+  buf: Box;
+  i: i64;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: bool;
+  _temp_4: &out bool;
+  _temp_5: unit;
+  _temp_6: &out Box;
+  _temp_7: unit;
+  _temp_8: unit;
+  _temp_9: i64;
+  _temp_10: &out i64;
+  entry:
+    i = 0;
+    goto loop_start_0
+  loop_start_0:
+    _temp_4 = &out _temp_3;
+    call $i64_ge(copy i, copy n, move _temp_4);
+    branch(move _temp_3) [true: if_true_2, false: if_false_3]
+  if_true_2:
+    goto loop_end_1
+  if_false_3:
+    _temp_2 = unit;
+    goto if_merge_4
+  if_merge_4:
+    _temp_6 = &out buf;
+    call write_into(move _temp_6, copy i);
+    _temp_5 = unit;
+    call consume(move buf);
+    _temp_7 = unit;
+    _temp_10 = &out _temp_9;
+    call $i64_add(copy i, 1, move _temp_10);
+    drop i;
+    i = move _temp_9;
+    _temp_8 = unit;
+    _temp_1 = unit;
+    goto if_merge_4__to__loop_start_0
+  if_merge_4__to__loop_start_0:
+    drop _temp_1;
+    drop _temp_2;
+    drop _temp_5;
+    drop _temp_7;
+    drop _temp_8;
+    goto loop_start_0
+  loop_end_1:
+    drop i;
+    drop n;
+    return
+}

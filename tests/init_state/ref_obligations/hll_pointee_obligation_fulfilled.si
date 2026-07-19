@@ -49,3 +49,22 @@ fn mut_scalar(r: &mut i64) {
 # &uninit: pointee stays Uninit (no-touch baseline).
 fn uninit_scalar(r: &uninit i64) {
 }
+
+extern fn write_into(r: &out Box, v: i64);
+extern fn consume(b: Box);
+
+# Loop-carried &out fulfillment: each iteration passes `&out buf`
+# to a callee that fills the pointee, then moves `buf` into
+# `consume` — so `buf` is Uninit at the back-edge and the next
+# iteration's `&out buf` precondition (pointee Uninit) still holds.
+# The dataflow reconciles buf's Uninit state across the back-edge.
+fn loop_out_write_and_consume(n: i64) {
+  let mut buf: Box;
+  let mut i = 0i64;
+  loop {
+    if i >= n { break }
+    write_into(&out buf, i);
+    consume(buf);
+    i = i + 1i64;
+  }
+}

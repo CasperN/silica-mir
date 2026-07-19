@@ -46,3 +46,12 @@ error: at 34:3: [INIT-RefObligationUnfulfilled] In function 'uninit_struct_parti
     |   ^^^^^^^^^
  35 | }
     |
+error: at 42:15: [INIT-RefObligationUnfulfilled] In function 'loop_out_never_writes': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 40 | # sibling where the loop body writes each iteration and consumes.
+ 41 | fn loop_out_never_writes(r: &out i64, n: i64) {
+    |                          ----------- reference declared here
+ 42 |   let mut i = 0i64;
+    |               ^^^^
+ 43 |   loop {
+    |

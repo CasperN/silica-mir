@@ -33,3 +33,15 @@ fn uninit_written(r: &uninit i64) {
 fn uninit_struct_partial(r: &uninit P) {
   r.*.x = 1;
 }
+
+# Loop-carried &out obligation unfulfilled: the loop body counts up
+# to `n` but never writes through `r`. At fn return the pointee is
+# still Uninit — obligation unfulfilled. Contrasts with the fulfilled
+# sibling where the loop body writes each iteration and consumes.
+fn loop_out_never_writes(r: &out i64, n: i64) {
+  let mut i = 0i64;
+  loop {
+    if i >= n { break }
+    i = i + 1i64;
+  }
+}
