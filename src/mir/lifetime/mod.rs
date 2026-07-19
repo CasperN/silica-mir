@@ -353,12 +353,8 @@ impl Analysis for LoanAnalysis {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join_loans(a, b)
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
-        // Cross-block flow discards the borrow-origin span: the analysis
-        // trait doesn't thread per-statement spans, and the diagnostic
-        // walk (`check_and_transfer_stmt`) fills in a real span for
-        // within-block loans, which is where LoanConflict is reported.
-        transfer_stmt(state, stmt, Span::default());
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, span: Span) {
+        transfer_stmt(state, stmt, span);
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         if let Terminator::Branch { cond, .. } = term {

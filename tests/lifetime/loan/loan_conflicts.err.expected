@@ -232,6 +232,13 @@ error: at 305:5: [LT-LoanConflict] In function 'ref_transfer_preserves_conflict'
   hint: the borrow of 's' is active until its last use or explicit unborrow.
 error: at 324:5: [LT-LoanConflict] In function 'branch_write_a_at_join', block 'merge': cannot write to 'a': already borrowed by 'r'
      |
+ 317 |   t:
+ 318 |     r = &mut a;
+     |     ---------- borrow of 'a' occurs here
+ 319 |     goto merge
+     |
+     | ...
+     |
  323 |   merge:
  324 |     a = 1;
      |     ^^^^^
@@ -239,6 +246,13 @@ error: at 324:5: [LT-LoanConflict] In function 'branch_write_a_at_join', block '
      |
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
 error: at 343:5: [LT-LoanConflict] In function 'branch_write_b_at_join', block 'merge': cannot write to 'b': already borrowed by 'r'
+     |
+ 336 |   t:
+ 337 |     r = &mut a;
+     |     ---------- borrow of 'b' occurs here
+ 338 |     goto merge
+     |
+     | ...
      |
  342 |   merge:
  343 |     b = 2;

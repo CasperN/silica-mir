@@ -98,7 +98,7 @@ impl Analysis for VariantFlow {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join(a, b)
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
         transfer_stmt(stmt, state);
     }
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}

@@ -20,6 +20,13 @@ error: at 51:5: [LT-LoanConflict] In function 'read_during_reborrow', block 'ent
   hint: the borrow of 's' is active until its last use or explicit unborrow.
 error: at 73:5: [LT-LoanConflict] In function 'write_to_loan_after_merge', block 'merge': cannot write to 'y': already borrowed by 'b.p'
     |
+ 66 |   t:
+ 67 |     b.p = &mut y;
+    |     ------------ borrow of 'y' occurs here
+ 68 |     goto merge
+    |
+    | ...
+    |
  72 |   merge:
  73 |     y = 1;
     |     ^^^^^

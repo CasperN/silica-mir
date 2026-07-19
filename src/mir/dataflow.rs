@@ -41,8 +41,10 @@ pub trait Analysis {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State;
 
     /// Apply the statement's forward semantics. Framework iterates
-    /// backward internally for backward direction.
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement);
+    /// backward internally for backward direction. `span` is the
+    /// source span attached to `stmt`; analyses can carry it into
+    /// state for later cross-block diagnostics.
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, span: Span);
 
     /// Apply the terminator's forward semantics.
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator);
@@ -129,7 +131,7 @@ pub fn walk_forward<A, F>(
                 stmt,
                 span: *span,
             });
-            analysis.transfer_stmt(&mut state, stmt);
+            analysis.transfer_stmt(&mut state, stmt, *span);
         }
         visit(WalkPoint::Terminator {
             state: &state,
@@ -154,8 +156,8 @@ fn run_forward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::Sta
     while let Some(label) = worklist.pop_front() {
         let block = blocks_by_label[label.as_str()];
         let mut state = states[&label].clone();
-        for (stmt, _) in &block.statements {
-            analysis.transfer_stmt(&mut state, stmt);
+        for (stmt, span) in &block.statements {
+            analysis.transfer_stmt(&mut state, stmt, *span);
         }
         analysis.transfer_terminator(&mut state, &block.terminator);
 
@@ -219,7 +221,7 @@ mod tests {
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
             a.union(b).cloned().collect()
         }
-        fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+        fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
             if let Statement::Assign(Place::Var(name), _) = stmt {
                 state.insert(name.clone());
             }
@@ -315,7 +317,7 @@ mod tests {
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
             a.union(b).cloned().collect()
         }
-        fn transfer_stmt(&self, _: &mut Self::State, _: &Statement) {}
+        fn transfer_stmt(&self, _: &mut Self::State, _: &Statement, _: Span) {}
         fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
         fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ: &str) {
             if let Terminator::Branch {
@@ -370,7 +372,7 @@ mod tests {
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
             a.union(b).cloned().collect()
         }
-        fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+        fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
             if let Statement::Drop(Place::Var(name)) = stmt {
                 state.insert(name.clone());
             }
@@ -560,8 +562,8 @@ fn run_backward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::St
         // terminator then statements (reversed) to get the entry state.
         let mut state = states[&label].clone();
         analysis.transfer_terminator(&mut state, &block.terminator);
-        for (stmt, _) in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut state, stmt);
+        for (stmt, span) in block.statements.iter().rev() {
+            analysis.transfer_stmt(&mut state, stmt, *span);
         }
         // `state` is now the entry state of `block`.
 

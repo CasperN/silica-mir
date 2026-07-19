@@ -957,10 +957,6 @@ To load it locally:
 - **`Type::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
 
 ## Diagnostics
-- **Cross-block borrow-origin spans.** `Analysis::transfer_stmt` in
-  `mir/dataflow.rs` doesn't thread `Span`, so cross-block loans
-  lose their origin and the LoanConflict secondary snippet is
-  suppressed (see comment in `mir/lifetime/mod.rs`).
 - **Info-severity diagnostics.** Fourth bucket alongside error /
   warning / internal_error, rendered with a `note:` prefix. First
   use case: flag redundant markers on a decl — `struct X: Copy +

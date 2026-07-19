@@ -719,7 +719,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join_point(a, b)
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
         self.ctx.transfer_stmt(stmt, state)
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {

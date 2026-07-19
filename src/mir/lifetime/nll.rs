@@ -133,8 +133,8 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         };
         let mut state = live_out.clone();
         analysis.transfer_terminator(&mut state, &block.terminator);
-        for (stmt, _) in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut state, stmt);
+        for (stmt, span) in block.statements.iter().rev() {
+            analysis.transfer_stmt(&mut state, stmt, *span);
         }
         live_in_per_block.insert(block.label.clone(), state);
     }
@@ -154,8 +154,8 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         let mut cur = live_out.clone();
         analysis.transfer_terminator(&mut cur, &block.terminator);
         live_states.push(cur.clone());
-        for (stmt, _) in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut cur, stmt);
+        for (stmt, span) in block.statements.iter().rev() {
+            analysis.transfer_stmt(&mut cur, stmt, *span);
             live_states.push(cur.clone());
         }
         live_states.reverse();
@@ -360,7 +360,7 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         a.union(b).cloned().collect()
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement) {
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
         // Backward transfer: pre = (post - defs) ∪ uses.
         for def in stmt_defs(stmt) {
             // A def at `def` kills the borrower entry at `def` AND any
