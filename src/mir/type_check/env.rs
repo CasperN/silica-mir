@@ -117,9 +117,13 @@ impl Env {
     /// together they license `class_of(Custom(_, args))` returning
     /// the decl's declared markers without substitution.
     pub fn validate_type(&self, ty: &Type, scope: ParamScope) -> Result<(), String> {
-        match ty {
-            Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => Ok(()),
-            Type::Custom(name, _, args) => {
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Never => Ok(()),
+            TypeKind::Custom(name, _, args) => {
                 let decl_params: &[TypeParam] = match self.types.get(name) {
                     Some(TypeDecl::Struct(s)) => &s.type_params,
                     Some(TypeDecl::Enum(e)) => &e.type_params,
@@ -150,16 +154,16 @@ impl Env {
             // A `Param` is validated by the parser (which only emits it
             // for names in the current type-param scope). Nothing more
             // to check here.
-            Type::Param(_) => Ok(()),
-            Type::Fn(params) => {
+            TypeKind::Param(_) => Ok(()),
+            TypeKind::Fn(params) => {
                 for p in params {
                     self.validate_type(p, scope)?;
                 }
                 Ok(())
             }
-            Type::Ref(_, _, inner) => self.validate_type(inner, scope),
-            Type::RawPtr(inner) => self.validate_type(inner, scope),
-            Type::Array(elem, _) => self.validate_type(elem, scope),
+            TypeKind::Ref(_, _, inner) => self.validate_type(inner, scope),
+            TypeKind::RawPtr(inner) => self.validate_type(inner, scope),
+            TypeKind::Array(elem, _) => self.validate_type(elem, scope),
         }
     }
 
@@ -173,11 +177,11 @@ impl Env {
 
     /// Type of `field` in the struct type `ty`, if any. Returns `None` if
     /// `ty` isn't a declared struct or the field doesn't exist.
-    /// Substitutes the struct's type-parameter references (`Type::Param`)
+    /// Substitutes the struct's type-parameter references (`TypeKind::Param`)
     /// with the concrete args on `ty`, so `Box<i64>::inner` yields `i64`,
     /// not the raw declared `T`.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let Type::Custom(name, _, args) = ty else {
+        let TypeKind::Custom(name, _, args) = &ty.kind else {
             return None;
         };
         let TypeDecl::Struct(s) = self.types.get(name)? else {
@@ -188,13 +192,13 @@ impl Env {
     }
 
     pub fn types_match(&self, t1: &Type, t2: &Type) -> bool {
-        match (t1, t2) {
-            (Type::Int(a), Type::Int(b)) => a == b,
-            (Type::Float(a), Type::Float(b)) => a == b,
-            (Type::Bool, Type::Bool) => true,
-            (Type::Unit, Type::Unit) => true,
-            (Type::Never, Type::Never) => true,
-            (Type::Custom(a_name, _, a_args), Type::Custom(b_name, _, b_args)) => {
+        match (&t1.kind, &t2.kind) {
+            (TypeKind::Int(a), TypeKind::Int(b)) => a == b,
+            (TypeKind::Float(a), TypeKind::Float(b)) => a == b,
+            (TypeKind::Bool, TypeKind::Bool) => true,
+            (TypeKind::Unit, TypeKind::Unit) => true,
+            (TypeKind::Never, TypeKind::Never) => true,
+            (TypeKind::Custom(a_name, _, a_args), TypeKind::Custom(b_name, _, b_args)) => {
                 a_name == b_name
                     && a_args.len() == b_args.len()
                     && a_args
@@ -202,16 +206,20 @@ impl Env {
                         .zip(b_args.iter())
                         .all(|(x, y)| self.types_match(x, y))
             }
-            (Type::Param(a), Type::Param(b)) => a == b,
-            (Type::Fn(a), Type::Fn(b)) => {
+            (TypeKind::Param(a), TypeKind::Param(b)) => a == b,
+            (TypeKind::Fn(a), TypeKind::Fn(b)) => {
                 if a.len() != b.len() {
                     return false;
                 }
                 a.iter().zip(b.iter()).all(|(x, y)| self.types_match(x, y))
             }
-            (Type::Ref(k1, _, i1), Type::Ref(k2, _, i2)) => k1 == k2 && self.types_match(i1, i2),
-            (Type::RawPtr(i1), Type::RawPtr(i2)) => self.types_match(i1, i2),
-            (Type::Array(e1, n1), Type::Array(e2, n2)) => n1 == n2 && self.types_match(e1, e2),
+            (TypeKind::Ref(k1, _, i1), TypeKind::Ref(k2, _, i2)) => {
+                k1 == k2 && self.types_match(i1, i2)
+            }
+            (TypeKind::RawPtr(i1), TypeKind::RawPtr(i2)) => self.types_match(i1, i2),
+            (TypeKind::Array(e1, n1), TypeKind::Array(e2, n2)) => {
+                n1 == n2 && self.types_match(e1, e2)
+            }
             _ => false,
         }
     }
@@ -238,19 +246,19 @@ impl Env {
             }),
             Place::Deref(inner) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
-                match inner_ty {
-                    Type::Ref(_, _, pointee) => Ok(*pointee),
-                    Type::RawPtr(pointee) => Ok(*pointee),
-                    other => Err(err(
+                match &inner_ty.kind {
+                    TypeKind::Ref(_, _, pointee) => Ok(*pointee.clone()),
+                    TypeKind::RawPtr(pointee) => Ok(*pointee.clone()),
+                    _ => Err(err(
                         DerefOfNonPointer,
-                        format!("Cannot dereference non-pointer type {}", other),
+                        format!("Cannot dereference non-pointer type {}", inner_ty),
                     )),
                 }
             }
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
-                let (name, args) = match &inner_ty {
-                    Type::Custom(n, _, a) => (n, a),
+                let (name, args) = match &inner_ty.kind {
+                    TypeKind::Custom(n, _, a) => (n, a),
                     _ => {
                         return Err(err(
                             FieldOfNonStruct,
@@ -288,8 +296,8 @@ impl Env {
             }
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
-                let (name, args) = match &inner_ty {
-                    Type::Custom(n, _, a) => (n, a),
+                let (name, args) = match &inner_ty.kind {
+                    TypeKind::Custom(n, _, a) => (n, a),
                     _ => {
                         return Err(err(
                             DowncastOfNonEnum,
@@ -321,15 +329,16 @@ impl Env {
             }
             Place::Index(inner, op) => {
                 let inner_ty = self.type_of_place(inner, span, locals)?;
-                let Type::Array(elem, n) = inner_ty else {
+                let inner_ty_str = format!("{}", inner_ty);
+                let TypeKind::Array(elem, n) = inner_ty.kind else {
                     return Err(err(
                         IndexOfNonArray,
-                        format!("Cannot index non-array type {}", inner_ty),
+                        format!("Cannot index non-array type {}", inner_ty_str),
                     ));
                 };
                 // Index operand must be an integer type.
                 let op_ty = self.type_of_operand(op, span, locals)?;
-                if !matches!(op_ty, Type::Int(_)) {
+                if !matches!(&op_ty.kind, TypeKind::Int(_)) {
                     return Err(err(
                         ArrayIndexNotInteger,
                         format!("Array index must be an integer, got {}", op_ty),
@@ -361,10 +370,10 @@ impl Env {
         match op {
             Operand::Copy(place) | Operand::Move(place) => self.type_of_place(place, span, locals),
             Operand::Const(c) => match c {
-                ConstVal::Int { ty, .. } => Ok(Type::Int(*ty)),
-                ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
-                ConstVal::Bool(_) => Ok(Type::Bool),
-                ConstVal::Unit => Ok(Type::Unit),
+                ConstVal::Int { ty, .. } => Ok(int_ty(*ty)),
+                ConstVal::Float { ty, .. } => Ok(float_ty(*ty)),
+                ConstVal::Bool(_) => Ok(bool_ty()),
+                ConstVal::Unit => Ok(unit_ty()),
                 ConstVal::FnName(name, type_args) => {
                     // Substitute the fn's declared type-params with the
                     // args on this reference: e.g. `identity<i64>` gives
@@ -458,11 +467,11 @@ impl Env {
                     ));
                 }
 
-                Ok(Type::Custom(
+                Ok(Type::no_span(TypeKind::Custom(
                     enum_name.clone(),
                     Vec::new(),
                     type_args.clone(),
-                ))
+                )))
             }
             RValue::ArrayLit(ops) => {
                 // Empty array literal: `[]` has type `[Unit; 0]` as a
@@ -470,7 +479,7 @@ impl Env {
                 // target type mismatch. Effectively unusable but not
                 // an error at inference time.
                 if ops.is_empty() {
-                    return Ok(Type::Array(Box::new(Type::Unit), 0));
+                    return Ok(array_ty(unit_ty(), 0));
                 }
                 let first_ty = self.type_of_operand(&ops[0], span, locals)?;
                 for (i, op) in ops.iter().enumerate().skip(1) {
@@ -485,7 +494,7 @@ impl Env {
                         ));
                     }
                 }
-                Ok(Type::Array(Box::new(first_ty), ops.len() as u64))
+                Ok(array_ty(first_ty, ops.len() as u64))
             }
         }
     }

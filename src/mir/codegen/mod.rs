@@ -200,36 +200,36 @@ impl<'a> CodeGenContext<'a> {
     /// carried in LLVM — signed/unsigned differ only at operation sites
     /// (`add` vs `add`, but `sdiv` vs `udiv` etc.), not at value type.
     fn lower_type(&self, ty: &Type) -> String {
-        match ty {
-            Type::Int(i) => format!("i{}", i.bits()),
-            Type::Float(FloatTy::F32) => "float".to_string(),
-            Type::Float(FloatTy::F64) => "double".to_string(),
-            Type::Bool => "i1".to_string(),
-            Type::Unit | Type::Never => "{}".to_string(),
-            Type::Ref(_, _, _) | Type::Fn(_) | Type::RawPtr(_) => "ptr".to_string(),
-            Type::Custom(name, _, args) => {
+        match &ty.kind {
+            TypeKind::Int(i) => format!("i{}", i.bits()),
+            TypeKind::Float(FloatTy::F32) => "float".to_string(),
+            TypeKind::Float(FloatTy::F64) => "double".to_string(),
+            TypeKind::Bool => "i1".to_string(),
+            TypeKind::Unit | TypeKind::Never => "{}".to_string(),
+            TypeKind::Ref(_, _, _) | TypeKind::Fn(_) | TypeKind::RawPtr(_) => "ptr".to_string(),
+            TypeKind::Custom(name, _, args) => {
                 assert!(
                     args.is_empty(),
-                    "codegen: Type::Custom('{}', ...) still has type args — the mono pass \
+                    "codegen: TypeKind::Custom('{}', ...) still has type args — the mono pass \
                      should have flattened this into a concrete instantiation",
                     name,
                 );
                 format!("%{}", llvm_ident(name))
             }
-            Type::Param(name) => {
+            TypeKind::Param(name) => {
                 panic!(
-                    "codegen: Type::Param('{}') reached LLVM lowering — mono pass didn't run \
+                    "codegen: TypeKind::Param('{}') reached LLVM lowering — mono pass didn't run \
                      or missed this position",
                     name
                 );
             }
-            Type::Array(elem, n) => format!("[{} x {}]", n, self.lower_type(elem)),
+            TypeKind::Array(elem, n) => format!("[{} x {}]", n, self.lower_type(elem)),
         }
     }
 
     /// Zero-based struct field index and its type. Panics on non-struct.
     fn field_lookup(&self, ty: &Type, field: &str) -> (usize, Type) {
-        let Type::Custom(name, _, _) = ty else {
+        let TypeKind::Custom(name, _, _) = &ty.kind else {
             panic!("field access on non-struct type {:?}", ty);
         };
         let Some(TypeDecl::Struct(s)) = self.env.types.get(name) else {
@@ -245,7 +245,7 @@ impl<'a> CodeGenContext<'a> {
     }
 
     fn enum_decl(&self, ty: &Type) -> &'a EnumDecl {
-        let Type::Custom(name, _, _) = ty else {
+        let TypeKind::Custom(name, _, _) = &ty.kind else {
             panic!("expected enum type, got {:?}", ty);
         };
         match self.env.types.get(name) {
@@ -298,8 +298,8 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
 fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     let ret_param = get_return_param(f);
     let ret_llvm = match ret_param {
-        Some(p) => match &p.ty {
-            Type::Ref(_, _, inner) => cx.lower_type(inner),
+        Some(p) => match &p.ty.kind {
+            TypeKind::Ref(_, _, inner) => cx.lower_type(inner),
             _ => "void".to_string(),
         },
         None => "void".to_string(),
@@ -362,8 +362,8 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
 
     let ret_param = get_return_param(f);
     let ret_llvm = match ret_param {
-        Some(p) => match &p.ty {
-            Type::Ref(_, _, inner) => cx.lower_type(inner),
+        Some(p) => match &p.ty.kind {
+            TypeKind::Ref(_, _, inner) => cx.lower_type(inner),
             _ => "void".to_string(),
         },
         None => "void".to_string(),
@@ -395,7 +395,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, ".init:").unwrap();
 
     if let Some(p) = ret_param {
-        if let Type::Ref(_, _, inner) = &p.ty {
+        if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
             let inner_llvm = cx.lower_type(inner);
             let inner_align = layout::align_of(inner, cx.env);
             writeln!(
@@ -503,7 +503,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 }
             }
             let (target_val, target_ty) = emit_operand(cx, target);
-            let Type::Fn(param_tys) = &target_ty else {
+            let TypeKind::Fn(param_tys) = &target_ty.kind else {
                 panic!("call target is not a function type: {:?}", target_ty);
             };
             let mut arg_pairs: Vec<(String, String)> = Vec::with_capacity(args.len());
@@ -516,7 +516,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             let ret_llvm = if let Operand::Const(ConstVal::FnName(name, _)) = target {
                 if let Some(f) = cx.env.functions.get(name) {
                     if let Some(p) = get_return_param(f) {
-                        if let Type::Ref(_, _, inner) = &p.ty {
+                        if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
                             Some(cx.lower_type(inner))
                         } else {
                             None
@@ -670,7 +670,7 @@ fn emit_array_lit(cx: &mut CodeGenContext, lhs: &Place, operands: &[Operand]) {
     let materialized: Vec<(String, Type)> =
         operands.iter().map(|op| emit_operand(cx, op)).collect();
     let (lhs_addr, lhs_ty) = emit_place_addr(cx, lhs);
-    let Type::Array(elem, _) = lhs_ty else {
+    let TypeKind::Array(elem, _) = lhs_ty.kind else {
         panic!("ArrayLit target must have array type, got {:?}", lhs_ty);
     };
     let elem_llvm = cx.lower_type(&elem);
@@ -824,11 +824,11 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
                 .get(name)
                 .unwrap_or_else(|| panic!("undeclared function '{}'", name));
             let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
-            (format!("@{}", llvm_fn_symbol(name)), Type::Fn(param_tys))
+            (format!("@{}", llvm_fn_symbol(name)), fn_ty(param_tys))
         }
         ConstVal::ByteStr(bytes) => (
             llvm_byte_str_literal(bytes),
-            Type::Array(Box::new(Type::Int(IntTy::U8)), bytes.len() as u64),
+            array_ty(u8_ty(), bytes.len() as u64),
         ),
     }
 }
@@ -878,9 +878,9 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
         }
         Place::Deref(inner) => {
             let (base_addr, base_ty) = emit_place_addr(cx, inner);
-            let pointee = match base_ty {
-                Type::Ref(_, _, p) => p,
-                Type::RawPtr(p) => p,
+            let pointee = match base_ty.kind {
+                TypeKind::Ref(_, _, p) => p,
+                TypeKind::RawPtr(p) => p,
                 other => panic!("deref of non-pointer type {:?}", other),
             };
             // `base_addr` points to the pointer's own storage (a slot
@@ -911,7 +911,7 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
         }
         Place::Index(inner, op) => {
             let (base_addr, base_ty) = emit_place_addr(cx, inner);
-            let Type::Array(elem, _) = base_ty else {
+            let TypeKind::Array(elem, _) = base_ty.kind else {
                 panic!("index into non-array type {:?}", base_ty);
             };
             let elem_ty = *elem;
@@ -940,9 +940,9 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
 /// (type_check should have rejected them).
 fn emit_operand_as_i64(cx: &mut CodeGenContext, op: &Operand) -> String {
     let (val, ty) = emit_operand(cx, op);
-    match ty {
-        Type::Int(IntTy::I64) | Type::Int(IntTy::U64) => val,
-        Type::Int(i) => {
+    match ty.kind {
+        TypeKind::Int(IntTy::I64) | TypeKind::Int(IntTy::U64) => val,
+        TypeKind::Int(i) => {
             let dst = cx.fresh();
             let src_ty = format!("i{}", i.bits());
             // Signed types get sext, unsigned get zext.
@@ -972,8 +972,15 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             writeln!(cx.out, "  br label %{}", label).unwrap();
         }
         TerminatorKind::Return => {
-            if let Some(Type::Ref(RefKind::Out, _, inner_ty)) = cx.locals.get("$return") {
-                let llvm_ty = cx.lower_type(inner_ty);
+            let ret_inner = cx.locals.get("$return").and_then(|ty| {
+                if let TypeKind::Ref(RefKind::Out, _, inner_ty) = &ty.kind {
+                    Some(inner_ty.as_ref().clone())
+                } else {
+                    None
+                }
+            });
+            if let Some(inner_ty) = ret_inner {
+                let llvm_ty = cx.lower_type(&inner_ty);
                 let val_reg = cx.fresh();
                 writeln!(
                     cx.out,

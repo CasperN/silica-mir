@@ -497,8 +497,8 @@ fn signature_visible_regions(func: &Function, env: &Env) -> BTreeSet<Lifetime> {
         // storage the callee writes into.
         let visible = p.name == "$return"
             || matches!(
-                &p.ty,
-                Type::Ref(RefKind::Out, _, _) | Type::Ref(RefKind::Mut, _, _)
+                &p.ty.kind,
+                TypeKind::Ref(RefKind::Out, _, _) | TypeKind::Ref(RefKind::Mut, _, _)
             );
         if !visible {
             continue;
@@ -506,9 +506,9 @@ fn signature_visible_regions(func: &Function, env: &Env) -> BTreeSet<Lifetime> {
         // Peel off the outer ref (that ref's own lifetime is the
         // caller's storage lifetime; irrelevant to escape) and collect
         // named regions in the pointee.
-        let pointee = match &p.ty {
-            Type::Ref(_, _, inner) => inner.as_ref().clone(),
-            other => other.clone(),
+        let pointee = match &p.ty.kind {
+            TypeKind::Ref(_, _, inner) => inner.as_ref().clone(),
+            _ => p.ty.clone(),
         };
         let mut visited = BTreeSet::new();
         collect_named_regions(&pointee, env, &mut visited, &mut out);
@@ -523,15 +523,15 @@ fn collect_named_regions(
     out: &mut BTreeSet<Lifetime>,
 ) {
     use crate::mir::type_util::substitute_all;
-    match ty {
-        Type::Ref(_, Some(lt), inner) => {
+    match &ty.kind {
+        TypeKind::Ref(_, Some(lt), inner) => {
             out.insert(lt.clone());
             collect_named_regions(inner, env, visited, out);
         }
-        Type::Ref(_, None, inner) | Type::RawPtr(inner) | Type::Array(inner, _) => {
+        TypeKind::Ref(_, None, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             collect_named_regions(inner, env, visited, out);
         }
-        Type::Custom(name, lifetime_args, type_args) => {
+        TypeKind::Custom(name, lifetime_args, type_args) => {
             for lt in lifetime_args {
                 out.insert(lt.clone());
             }
@@ -567,7 +567,7 @@ fn collect_named_regions(
             }
             visited.remove(name);
         }
-        Type::Fn(args) => {
+        TypeKind::Fn(args) => {
             for a in args {
                 collect_named_regions(a, env, visited, out);
             }
@@ -803,7 +803,7 @@ fn check_call_regions(
         let Some(arg_owned) = as_owned_path(arg_place) else {
             continue;
         };
-        let Type::Ref(kind, _, inner_ty) = &param.ty else {
+        let TypeKind::Ref(kind, _, inner_ty) = &param.ty.kind else {
             continue;
         };
         if matches!(kind, RefKind::Shared) {
@@ -832,8 +832,8 @@ fn check_call_regions(
         }
 
         // Synthetic loan's kind mirrors the callee's returned ref.
-        let synth_kind = match inner_ty.as_ref() {
-            Type::Ref(k, _, _) => k.clone(),
+        let synth_kind = match &inner_ty.kind {
+            TypeKind::Ref(k, _, _) => k.clone(),
             _ => kind.clone(),
         };
         let arg_loan = loans.get(&arg_owned).cloned();
@@ -892,8 +892,8 @@ fn walk_call_regions(
     constraints: &mut constraints::ConstraintSet,
     span: Span,
 ) {
-    match callee_ty {
-        Type::Ref(kind, Some(lt), inner) => {
+    match &callee_ty.kind {
+        TypeKind::Ref(kind, Some(lt), inner) => {
             let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
             if let Some(caller_r) = region_of_ref_place(caller_place, locals, env, region_ctx) {
                 emit_variance(&caller_r, &inst_region, variance, constraints, span);
@@ -929,22 +929,24 @@ fn walk_call_regions(
                 span,
             );
         }
-        Type::Custom(_, lts, args) => {
+        TypeKind::Custom(_, lts, args) => {
             // A generic type's lifetime args behave like a container
             // reference: default to invariance (conservative, safe).
             for lt in lts {
                 let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
                 let caller_ty = crate::mir::type_util::place_type(locals, env, caller_place);
-                if let Some(Type::Custom(_, caller_lts, _)) = caller_ty {
-                    if let Some(caller_lt) = caller_lts.first() {
-                        let caller_r = Region::Named(caller_lt.clone());
-                        emit_variance(
-                            &caller_r,
-                            &inst_region,
-                            variance.combine(Variance::Invariant),
-                            constraints,
-                            span,
-                        );
+                if let Some(caller_ty) = caller_ty {
+                    if let TypeKind::Custom(_, caller_lts, _) = &caller_ty.kind {
+                        if let Some(caller_lt) = caller_lts.first() {
+                            let caller_r = Region::Named(caller_lt.clone());
+                            emit_variance(
+                                &caller_r,
+                                &inst_region,
+                                variance.combine(Variance::Invariant),
+                                constraints,
+                                span,
+                            );
+                        }
                     }
                 }
             }
@@ -965,7 +967,7 @@ fn walk_call_regions(
                 );
             }
         }
-        Type::Array(elem, _) | Type::RawPtr(elem) => {
+        TypeKind::Array(elem, _) | TypeKind::RawPtr(elem) => {
             walk_call_regions(
                 elem,
                 caller_place,
@@ -1009,23 +1011,23 @@ fn emit_variance(
 /// substituted through `inst`. Used to identify the "returned ref's
 /// region" for synthetic loan placement.
 fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Region> {
-    match ty {
-        Type::Ref(_, Some(lt), _) => {
+    match &ty.kind {
+        TypeKind::Ref(_, Some(lt), _) => {
             Some(inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone())))
         }
-        Type::Custom(_, lts, _) => {
+        TypeKind::Custom(_, lts, _) => {
             let lt = lts.first()?;
             Some(inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone())))
         }
-        Type::Array(elem, _) | Type::RawPtr(elem) => first_named_region(elem, inst),
+        TypeKind::Array(elem, _) | TypeKind::RawPtr(elem) => first_named_region(elem, inst),
         _ => None,
     }
 }
 
-/// Get the outer ref-kind of `place` when its type is `Type::Ref`.
+/// Get the outer ref-kind of `place` when its type is `TypeKind::Ref`.
 fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &Env) -> Option<RefKind> {
-    match crate::mir::type_util::place_type(locals, env, place)? {
-        Type::Ref(kind, _, _) => Some(kind),
+    match crate::mir::type_util::place_type(locals, env, place)?.kind {
+        TypeKind::Ref(kind, _, _) => Some(kind),
         _ => None,
     }
 }
@@ -1045,7 +1047,7 @@ fn region_of_ref_place(
         }
     }
     let ty = crate::mir::type_util::place_type(locals, env, place)?;
-    if let Type::Ref(_, Some(lt), _) = ty {
+    if let TypeKind::Ref(_, Some(lt), _) = ty.kind {
         Some(Region::Named(lt))
     } else {
         None

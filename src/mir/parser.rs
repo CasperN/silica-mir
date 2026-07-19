@@ -390,8 +390,15 @@ impl Parser {
     }
 
     fn map_type(&self, node: Node) -> Result<Type, Diagnostic> {
-        // Scalar type keywords are tokenized as anonymous tree-sitter
-        // nodes whose `kind()` equals the keyword itself.
+        let span = span_of(node);
+        Ok(self.map_type_inner(node)?.with_span(span))
+    }
+
+    /// Same as `map_type` but leaves the outermost span at
+    /// `Span::default()`; the caller (`map_type`) stamps the node's
+    /// span. Inner types built recursively via `map_type` already
+    /// carry their own child-node spans.
+    fn map_type_inner(&self, node: Node) -> Result<Type, Diagnostic> {
         if let Some(ty) = scalar_kind_to_type(node.kind()) {
             return Ok(ty);
         }
@@ -418,11 +425,9 @@ impl Parser {
                 }
                 let kind = first_child.kind();
                 if kind == "bool" || kind == "unit" || kind == "never" {
-                    return self.map_type(first_child);
+                    return self.map_type_inner(first_child);
                 }
                 if kind == "identifier" {
-                    // Identifier alt with optional type_args as sibling:
-                    // `Foo`, `Foo<T, U>`, `Foo<'a, T>`.
                     let text = self.get_text(first_child);
                     let (lifetimes, args) = if let Some(ta) = node.child(1) {
                         if ta.kind() == "type_args" {
@@ -434,7 +439,11 @@ impl Parser {
                         (Vec::new(), Vec::new())
                     };
                     if !lifetimes.is_empty() || !args.is_empty() {
-                        return Ok(Type::Custom(text.to_string(), lifetimes, args));
+                        return Ok(Type::no_span(TypeKind::Custom(
+                            text.to_string(),
+                            lifetimes,
+                            args,
+                        )));
                     }
                     if text == "bool" {
                         return Ok(bool_ty());
@@ -467,7 +476,11 @@ impl Parser {
                             format!("missing inner type for {}", text),
                         )
                     })?;
-                    return Ok(Type::Ref(kind, lt, Box::new(self.map_type(inner)?)));
+                    return Ok(Type::no_span(TypeKind::Ref(
+                        kind,
+                        lt,
+                        Box::new(self.map_type(inner)?),
+                    )));
                 }
 
                 if text == "*" {
@@ -1371,8 +1384,8 @@ mod tests {
     #[test]
     fn parse_float_type_keywords() {
         let src = "extern fn f(a: f32, b: f64);";
-        assert_eq!(ty_of_param(src, 0), Type::Float(FloatTy::F32));
-        assert_eq!(ty_of_param(src, 1), Type::Float(FloatTy::F64));
+        assert_eq!(ty_of_param(src, 0), f32_ty());
+        assert_eq!(ty_of_param(src, 1), f64_ty());
     }
 
     // ---------- Integer literal parsing ----------
@@ -1636,7 +1649,7 @@ mod tests {
         // keyword as `boolean` while the rest of the codebase (Rust
         // sources, pretty printer, HLL) used `bool`. Source text `bool`
         // silently fell through to the `identifier` alternative and
-        // produced `Type::Custom("bool")`, which downstream typecheck
+        // produced `TypeKind::Custom("bool")`, which downstream typecheck
         // rejected as "undeclared type 'bool'". The pretty printer emits
         // `bool`, so round-tripping any bool-using program was broken.
         let src = "fn f(x: bool) { entry: return }";
@@ -1646,7 +1659,7 @@ mod tests {
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
-        assert_eq!(f.params[0].ty, Type::Bool);
+        assert_eq!(f.params[0].ty, bool_ty());
     }
 
     #[test]

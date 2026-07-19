@@ -234,7 +234,7 @@ struct InitStateContext<'a> {
 /// nested projections (`p.f.g` on `Outer<Inner<i64>>`) lose the type
 /// after the first step and downstream lookups fail.
 fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
-    let Type::Custom(name, _, args) = ty else {
+    let TypeKind::Custom(name, _, args) = &ty.kind else {
         return None;
     };
     let TypeDecl::Struct(s) = env.types.get(name)? else {
@@ -253,7 +253,7 @@ fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
 }
 
 fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
-    let Type::Custom(name, _, args) = ty else {
+    let TypeKind::Custom(name, _, args) = &ty.kind else {
         return None;
     };
     let TypeDecl::Enum(e) = env.types.get(name)? else {
@@ -430,10 +430,10 @@ fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf
     *state = canonicalize(taken);
 }
 
-/// Array info helpers for init tracking. `Type::Array(elem, n)` →
+/// Array info helpers for init tracking. `TypeKind::Array(elem, n)` →
 /// `(elem, n)`; otherwise `None`.
 fn array_info(ty: &Type) -> Option<(Type, u64)> {
-    if let Type::Array(elem, n) = ty {
+    if let TypeKind::Array(elem, n) = &ty.kind {
         Some(((**elem).clone(), *n))
     } else {
         None
@@ -664,7 +664,7 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
         s.locals.insert(p.name.clone(), InitState::Init);
         // Reference parameters carry the loan for the whole body, so at
         // entry we know their pointee is in the kind's creation-cur.
-        if let Type::Ref(kind, _, _) = &p.ty {
+        if let TypeKind::Ref(kind, _, _) = &p.ty.kind {
             if let Some(rs) = RefState::from_kind(kind) {
                 s.refs.insert(var_place(p.name.clone()), rs);
             }
@@ -684,8 +684,8 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
 }
 
 fn is_trivially_init(ty: &Type, env: &Env) -> bool {
-    match ty {
-        Type::Custom(name, _, _) => match env.types.get(name) {
+    match &ty.kind {
+        TypeKind::Custom(name, _, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
             _ => false,
         },
@@ -940,7 +940,7 @@ impl<'a> InitStateContext<'a> {
         // early-return elsewhere.
         state.refs.get(&ref_place)?;
         let ref_ty = self.infer_ref_place_type(&ref_place)?;
-        let Type::Ref(_, _, pointee_ty) = ref_ty else {
+        let TypeKind::Ref(_, _, pointee_ty) = ref_ty.kind else {
             return None;
         };
         Some((ref_place, sub_path, *pointee_ty))
@@ -1032,7 +1032,7 @@ impl<'a> InitStateContext<'a> {
         let Some(inner_ty) = self.infer_ref_place_type(&inner_place) else {
             return;
         };
-        let Type::Ref(kind, _, _) = inner_ty else {
+        let TypeKind::Ref(kind, _, _) = inner_ty.kind else {
             return;
         };
 

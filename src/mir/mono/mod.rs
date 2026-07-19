@@ -138,20 +138,20 @@ impl MonoCtx {
     /// type-param mapping, then rewrite every Custom's args to
     /// concrete via `need`.
     fn walk_type(&mut self, ty: &Type) -> Type {
-        match ty {
-            Type::Custom(name, _, args) => {
+        match &ty.kind {
+            TypeKind::Custom(name, _, args) => {
                 let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
                 let mangled = self.need(name, &new_args);
-                Type::Custom(mangled, Vec::new(), Vec::new())
+                Type::no_span(TypeKind::Custom(mangled, Vec::new(), Vec::new()))
             }
-            Type::Ref(kind, lt, inner) => Type::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner))),
-            Type::RawPtr(inner) => Type::RawPtr(Box::new(self.walk_type(inner))),
-            Type::Array(inner, n) => Type::Array(Box::new(self.walk_type(inner)), *n),
-            Type::Fn(params) => {
-                Type::Fn(params.iter().map(|p| self.walk_type(p)).collect())
+            TypeKind::Ref(kind, lt, inner) => Type::no_span(TypeKind::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner)))),
+            TypeKind::RawPtr(inner) => Type::no_span(TypeKind::RawPtr(Box::new(self.walk_type(inner)))),
+            TypeKind::Array(inner, n) => Type::no_span(TypeKind::Array(Box::new(self.walk_type(inner)), *n)),
+            TypeKind::Fn(params) => {
+                Type::no_span(TypeKind::Fn(params.iter().map(|p| self.walk_type(p)).collect()))
             }
-            Type::Param(name) => panic!(
-                "mono: unsubstituted Type::Param '{}' — caller should have subst'd it before walk_type",
+            TypeKind::Param(name) => panic!(
+                "mono: unsubstituted TypeKind::Param '{}' — caller should have subst'd it before walk_type",
                 name
             ),
             _ => ty.clone(),

@@ -557,8 +557,8 @@ fn int_cast_spec(name: String, from: Type, to: Type, op: &'static str) -> Intrin
 }
 
 fn int_kindpe_llvm(ty: &Type) -> &'static str {
-    match ty {
-        Type::Int(t) => int_llvm_ty(*t),
+    match &ty.kind {
+        TypeKind::Int(t) => int_llvm_ty(*t),
         _ => panic!("int_kindpe_llvm: not an int type: {:?}", ty),
     }
 }
@@ -854,8 +854,8 @@ mod tests {
         for f in prelude_fns() {
             let last = f.params.last().unwrap();
             assert_eq!(last.name, "out");
-            match &last.ty {
-                Type::Ref(RefKind::Out, _, _) => {}
+            match &last.ty.kind {
+                TypeKind::Ref(RefKind::Out, _, _) => {}
                 other => panic!(
                     "intrinsic {} last param should be &out, got {:?}",
                     f.name, other

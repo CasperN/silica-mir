@@ -2,8 +2,61 @@ pub use crate::common::{FloatTy, IntTy, Lifetime, Marker, Markers, RefKind, Span
 
 use indexmap::IndexMap;
 
+/// A MIR type value with source position. See [`TypeKind`] for the
+/// shape variants. Two types with the same kind but different spans
+/// compare equal — span is metadata for diagnostics, not identity.
+#[derive(Debug, Clone)]
+pub struct Type {
+    pub kind: TypeKind,
+    pub span: Span,
+}
+
+impl Type {
+    pub fn new(kind: TypeKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+
+    /// Construct a type with `Span::default()` (rendered as "no
+    /// position" by diagnostics). Use at synthetic sites where no
+    /// source range is meaningful (test helpers, substitution
+    /// results, checker-manufactured types).
+    pub fn no_span(kind: TypeKind) -> Self {
+        Self {
+            kind,
+            span: Span::default(),
+        }
+    }
+
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = span;
+        self
+    }
+}
+
+impl PartialEq for Type {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind
+    }
+}
+impl Eq for Type {}
+impl PartialOrd for Type {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+impl Ord for Type {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.kind.cmp(&other.kind)
+    }
+}
+impl std::hash::Hash for Type {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Type {
+pub enum TypeKind {
     Int(IntTy),
     Float(FloatTy),
     Bool,
@@ -38,15 +91,29 @@ pub enum Type {
     Array(Box<Type>, u64),
 }
 
+impl TypeKind {
+    /// Wrap a `TypeKind` with a span. Convenient for construction
+    /// sites where the kind is built up piecewise.
+    pub fn at(self, span: Span) -> Type {
+        Type { kind: self, span }
+    }
+}
+
 impl std::fmt::Display for Type {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.kind, f)
+    }
+}
+
+impl std::fmt::Display for TypeKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Type::Int(i) => write!(f, "{}", i.name()),
-            Type::Float(fl) => write!(f, "{}", fl.name()),
-            Type::Bool => write!(f, "bool"),
-            Type::Unit => write!(f, "unit"),
-            Type::Never => write!(f, "never"),
-            Type::Custom(name, lifetimes, args) => {
+            TypeKind::Int(i) => write!(f, "{}", i.name()),
+            TypeKind::Float(fl) => write!(f, "{}", fl.name()),
+            TypeKind::Bool => write!(f, "bool"),
+            TypeKind::Unit => write!(f, "unit"),
+            TypeKind::Never => write!(f, "never"),
+            TypeKind::Custom(name, lifetimes, args) => {
                 write!(f, "{}", name)?;
                 if !lifetimes.is_empty() || !args.is_empty() {
                     write!(f, "<")?;
@@ -69,8 +136,8 @@ impl std::fmt::Display for Type {
                 }
                 Ok(())
             }
-            Type::Param(name) => write!(f, "{}", name),
-            Type::Fn(params) => {
+            TypeKind::Param(name) => write!(f, "{}", name),
+            TypeKind::Fn(params) => {
                 write!(f, "fn(")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
@@ -80,12 +147,12 @@ impl std::fmt::Display for Type {
                 }
                 write!(f, ")")
             }
-            Type::Ref(kind, lt, inner) => match lt {
+            TypeKind::Ref(kind, lt, inner) => match lt {
                 Some(lt) => write!(f, "{} {} {}", kind, lt, inner),
                 None => write!(f, "{} {}", kind, inner),
             },
-            Type::RawPtr(inner) => write!(f, "*{}", inner),
-            Type::Array(elem, size) => write!(f, "[{}; {}]", elem, size),
+            TypeKind::RawPtr(inner) => write!(f, "*{}", inner),
+            TypeKind::Array(elem, size) => write!(f, "[{}; {}]", elem, size),
         }
     }
 }

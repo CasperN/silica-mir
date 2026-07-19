@@ -37,7 +37,7 @@ use indexmap::IndexMap;
 
 /// Map from a generic decl's type-parameter names to the Markers each
 /// param carries via its declared bounds. `class_of` consults this when
-/// it encounters a `Type::Param(name)` — the substructural class of a
+/// it encounters a `TypeKind::Param(name)` — the substructural class of a
 /// param is exactly what the bounds guarantee.
 pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
 
@@ -93,22 +93,26 @@ fn diag(code: impl Into<DiagCode>, span: Span, msg: String) -> Diagnostic {
 ///
 /// `scope` maps generic-parameter names to their declared bounds. It
 /// is populated by callers that know which decl is being checked (see
-/// `scope_from`). A `Type::Param(name)` reaching an out-of-scope
+/// `scope_from`). A `TypeKind::Param(name)` reaching an out-of-scope
 /// resolution returns empty Markers; every parse-produced Param is
 /// guaranteed to be in scope by construction, so this only matters
 /// for synthetic types outside a decl body.
 pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
     let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
-    match ty {
-        Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Fn(_) => all(),
+    match &ty.kind {
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Fn(_) => all(),
         // Never is uninhabited: the substructural rules quantify over
         // values, and there are none. All three ops apply vacuously.
-        Type::Never => all(),
+        TypeKind::Never => all(),
         // Raw pointers are unrestricted (aliasable, forgettable,
         // relocatable) — same class as shared refs. No loan / no
         // obligation, so no linearity to worry about.
-        Type::RawPtr(_) => all(),
-        Type::Ref(kind, _, _) => match kind {
+        TypeKind::RawPtr(_) => all(),
+        TypeKind::Ref(kind, _, _) => match kind {
             // Shared refs are unrestricted and relocatable.
             RefKind::Shared => all(),
             // Exclusive mutable/uninit refs: affine + movable. The ref
@@ -120,7 +124,7 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
             // (obligation transfers with the ref).
             RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
         },
-        Type::Custom(name, _, _args) => match env.types.get(name) {
+        TypeKind::Custom(name, _, _args) => match env.types.get(name) {
             // For a generic instantiation, the declared markers on the
             // decl are the type's markers regardless of the args — the
             // decl-side check verified those markers under the params'
@@ -135,11 +139,11 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
         // A generic type parameter's class is exactly what its bounds
         // guarantee. Bounds live on the enclosing decl's `type_params`;
         // callers thread that scope in.
-        Type::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
+        TypeKind::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
         // Array class inherits from its element type. Zero-length
         // arrays are trivially Copy Drop Move (no elements to worry
         // about) — treat like the element class regardless.
-        Type::Array(elem, _) => class_of(elem, env, scope),
+        TypeKind::Array(elem, _) => class_of(elem, env, scope),
     }
 }
 

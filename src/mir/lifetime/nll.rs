@@ -421,7 +421,7 @@ fn deref_ancestor(place: &Place) -> Option<Place> {
 }
 
 /// Enumerate every ref-typed owned path in `func`. A path is included
-/// if its inferred type is a `Type::Ref(...)`. Recursion through
+/// if its inferred type is a `TypeKind::Ref(...)`. Recursion through
 /// self-referential type declarations is bounded by tracking visited
 /// type names on each root walk.
 fn collect_borrowers(func: &Function, env: &Env) -> BTreeSet<Place> {
@@ -446,11 +446,11 @@ fn walk_ref_paths(
     visited: &mut BTreeSet<String>,
     out: &mut BTreeSet<Place>,
 ) {
-    if matches!(ty, Type::Ref(_, _, _)) {
+    if matches!(ty.kind, TypeKind::Ref(_, _, _)) {
         out.insert(place.clone());
         return;
     }
-    let Type::Custom(name, _, args) = ty else {
+    let TypeKind::Custom(name, _, args) = &ty.kind else {
         return;
     };
     if !visited.insert(name.clone()) {

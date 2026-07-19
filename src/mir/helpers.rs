@@ -17,78 +17,81 @@
 use crate::mir::ast::*;
 
 // ---------- Scalars ----------
+//
+// The `_ty` helpers return `Type` with `Span::default()`. Intended for
+// synthetic construction (tests, checker-manufactured types, pretty-
+// print round-trips) where no source position is meaningful. Parsers
+// plumb real spans via `TypeKind::X.at(span)` directly.
 
 pub fn i8_ty() -> Type {
-    Type::Int(IntTy::I8)
+    Type::no_span(TypeKind::Int(IntTy::I8))
 }
 pub fn i16_ty() -> Type {
-    Type::Int(IntTy::I16)
+    Type::no_span(TypeKind::Int(IntTy::I16))
 }
 pub fn i32_ty() -> Type {
-    Type::Int(IntTy::I32)
+    Type::no_span(TypeKind::Int(IntTy::I32))
 }
 pub fn i64_ty() -> Type {
-    Type::Int(IntTy::I64)
+    Type::no_span(TypeKind::Int(IntTy::I64))
 }
 pub fn u8_ty() -> Type {
-    Type::Int(IntTy::U8)
+    Type::no_span(TypeKind::Int(IntTy::U8))
 }
 pub fn u16_ty() -> Type {
-    Type::Int(IntTy::U16)
+    Type::no_span(TypeKind::Int(IntTy::U16))
 }
 pub fn u32_ty() -> Type {
-    Type::Int(IntTy::U32)
+    Type::no_span(TypeKind::Int(IntTy::U32))
 }
 pub fn u64_ty() -> Type {
-    Type::Int(IntTy::U64)
+    Type::no_span(TypeKind::Int(IntTy::U64))
 }
 pub fn f32_ty() -> Type {
-    Type::Float(FloatTy::F32)
+    Type::no_span(TypeKind::Float(FloatTy::F32))
 }
 pub fn f64_ty() -> Type {
-    Type::Float(FloatTy::F64)
+    Type::no_span(TypeKind::Float(FloatTy::F64))
 }
 pub fn bool_ty() -> Type {
-    Type::Bool
+    Type::no_span(TypeKind::Bool)
 }
 pub fn unit_ty() -> Type {
-    Type::Unit
+    Type::no_span(TypeKind::Unit)
 }
 pub fn never_ty() -> Type {
-    Type::Never
+    Type::no_span(TypeKind::Never)
 }
 
-/// `Type::Int(kind)` — use when the width is not statically known.
 pub fn int_ty(kind: IntTy) -> Type {
-    Type::Int(kind)
+    Type::no_span(TypeKind::Int(kind))
 }
 
-/// `Type::Float(kind)` — use when the width is not statically known.
 pub fn float_ty(kind: FloatTy) -> Type {
-    Type::Float(kind)
+    Type::no_span(TypeKind::Float(kind))
 }
 
 // ---------- Custom / Param ----------
 
 /// A non-generic struct/enum reference: `Foo`.
 pub fn custom_ty(name: impl Into<String>) -> Type {
-    Type::Custom(name.into(), Vec::new(), Vec::new())
+    Type::no_span(TypeKind::Custom(name.into(), Vec::new(), Vec::new()))
 }
 
 /// A generic struct/enum instantiation: `Foo<T, U>`.
 pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
-    Type::Custom(name.into(), Vec::new(), args)
+    Type::no_span(TypeKind::Custom(name.into(), Vec::new(), args))
 }
 
 /// A reference to an in-scope type parameter.
 pub fn param_ty(name: impl Into<String>) -> Type {
-    Type::Param(name.into())
+    Type::no_span(TypeKind::Param(name.into()))
 }
 
 // ---------- References ----------
 
 pub fn ref_ty(kind: RefKind, pointee: Type) -> Type {
-    Type::Ref(kind, None, Box::new(pointee))
+    Type::no_span(TypeKind::Ref(kind, None, Box::new(pointee)))
 }
 pub fn shared_ref_ty(pointee: Type) -> Type {
     ref_ty(RefKind::Shared, pointee)
@@ -108,19 +111,19 @@ pub fn uninit_ref_ty(pointee: Type) -> Type {
 
 /// Raw pointer `*T` — unsafe, no loan tracking.
 pub fn raw_ptr_ty(pointee: Type) -> Type {
-    Type::RawPtr(Box::new(pointee))
+    Type::no_span(TypeKind::RawPtr(Box::new(pointee)))
 }
 
 // ---------- Aggregates ----------
 
 pub fn array_ty(elem: Type, n: u64) -> Type {
-    Type::Array(Box::new(elem), n)
+    Type::no_span(TypeKind::Array(Box::new(elem), n))
 }
 
 /// Function-pointer type. MIR has no return type — results go through
 /// `&out $return`.
 pub fn fn_ty(params: Vec<Type>) -> Type {
-    Type::Fn(params)
+    Type::no_span(TypeKind::Fn(params))
 }
 
 // ---------- Places ----------

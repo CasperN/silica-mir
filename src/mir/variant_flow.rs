@@ -312,8 +312,8 @@ fn root_is_enum_ty(root: &str, locals: &IndexMap<String, Type>, env: &Env) -> bo
         return false;
     };
     matches!(
-        root_ty,
-        Type::Custom(n, _, _) if matches!(env.types.get(n), Some(TypeDecl::Enum(_)))
+        &root_ty.kind,
+        TypeKind::Custom(n, _, _) if matches!(env.types.get(n), Some(TypeDecl::Enum(_)))
     )
 }
 
@@ -546,7 +546,7 @@ fn resolve_enum_of_place<'a>(
     let ty = env
         .type_of_place(place, crate::mir::ast::Span::default(), locals)
         .ok()?;
-    let Type::Custom(name, _, _) = ty else {
+    let TypeKind::Custom(name, _, _) = ty.kind else {
         return None;
     };
     match env.types.get(&name) {

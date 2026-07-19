@@ -64,7 +64,7 @@ impl RegionCtx {
         Region::Free(n)
     }
 
-    /// Region for a specific `Type::Ref(_, lt_opt, _)`. `Some(lt)` →
+    /// Region for a specific `TypeKind::Ref(_, lt_opt, _)`. `Some(lt)` →
     /// Named; `None` → Free. Callers usually only see `Some` after
     /// elision has run on signature-position types.
     pub fn region_for_ref(&self, lt_opt: &Option<Lifetime>) -> Region {
@@ -110,12 +110,12 @@ fn walk_regions(
     use crate::mir::helpers::{downcast_place, field_place};
     use crate::mir::type_check::TypeDecl;
     use crate::mir::type_util::substitute_all;
-    match ty {
-        Type::Ref(_, lt_opt, _) => {
+    match &ty.kind {
+        TypeKind::Ref(_, lt_opt, _) => {
             let region = ctx.region_for_ref(lt_opt);
             ctx.assign(place.clone(), region);
         }
-        Type::Custom(name, lifetime_args, args) => {
+        TypeKind::Custom(name, lifetime_args, args) => {
             if !visited.insert(name.clone()) {
                 return;
             }

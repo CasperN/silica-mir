@@ -255,7 +255,7 @@ fn infer_fn_type_args(
             // here rather than panicking; codegen doesn't handle Param
             // yet either, so this only matters once monomorphization
             // lands.
-            mir::Type::Unit
+            unit_ty()
         })
         .collect()
 }
@@ -319,15 +319,15 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
 }
 
 fn is_copy_type(ty: &mir::Type) -> bool {
-    match ty {
-        mir::Type::Int(_)
-        | mir::Type::Float(_)
-        | mir::Type::Bool
-        | mir::Type::Unit
-        | mir::Type::Never
-        | mir::Type::Ref(_, _, _)
-        | mir::Type::RawPtr(_) => true,
-        mir::Type::Array(inner, _) => is_copy_type(inner),
+    match &ty.kind {
+        mir::TypeKind::Int(_)
+        | mir::TypeKind::Float(_)
+        | mir::TypeKind::Bool
+        | mir::TypeKind::Unit
+        | mir::TypeKind::Never
+        | mir::TypeKind::Ref(_, _, _)
+        | mir::TypeKind::RawPtr(_) => true,
+        mir::TypeKind::Array(inner, _) => is_copy_type(inner),
         _ => false,
     }
 }
@@ -501,9 +501,9 @@ fn lower_expr_into(
             let op_name = match op {
                 hll::UnOp::Neg => "neg",
             };
-            let type_name = match &mir_ty {
-                mir::Type::Int(int_ty) => int_ty.name(),
-                mir::Type::Float(float_ty) => float_ty.name(),
+            let type_name = match &mir_ty.kind {
+                mir::TypeKind::Int(int_ty) => int_ty.name(),
+                mir::TypeKind::Float(float_ty) => float_ty.name(),
                 _ => {
                     return Err(diag(
                         HllLoweringCode::UnaryOpNonNumeric,
@@ -556,9 +556,9 @@ fn lower_expr_into(
                 hll::BinOp::Ge => "ge",
             };
 
-            let type_name = match &mir_ty {
-                mir::Type::Int(int_ty) => int_ty.name(),
-                mir::Type::Float(float_ty) => float_ty.name(),
+            let type_name = match &mir_ty.kind {
+                mir::TypeKind::Int(int_ty) => int_ty.name(),
+                mir::TypeKind::Float(float_ty) => float_ty.name(),
                 _ => {
                     return Err(diag(
                         HllLoweringCode::BinaryOpNonNumeric,
@@ -749,7 +749,7 @@ fn lower_expr_into(
                         // Value is ignored, lower into a dummy temporary matching the expr type
                         let hll_ty = lookup_type(e, types).cloned().unwrap_or(hll::Type::Unit);
                         let mir_ty = if hll_ty == hll::Type::Never {
-                            mir::Type::Unit
+                            unit_ty()
                         } else {
                             lower_type(&hll_ty)
                         };

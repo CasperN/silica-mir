@@ -32,15 +32,15 @@ fn undeclared_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>) -> Vec<Lifetime> 
 }
 
 fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>) {
-    match ty {
-        Type::Ref(_, Some(lt), inner) => {
+    match &ty.kind {
+        TypeKind::Ref(_, Some(lt), inner) => {
             if !scope.contains(lt) {
                 out.push(lt.clone());
             }
             walk_lifetimes(inner, scope, out);
         }
-        Type::Ref(_, None, inner) => walk_lifetimes(inner, scope, out),
-        Type::Custom(_, lts, args) => {
+        TypeKind::Ref(_, None, inner) => walk_lifetimes(inner, scope, out),
+        TypeKind::Custom(_, lts, args) => {
             for lt in lts {
                 if !scope.contains(lt) {
                     out.push(lt.clone());
@@ -50,8 +50,8 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
                 walk_lifetimes(a, scope, out);
             }
         }
-        Type::RawPtr(inner) | Type::Array(inner, _) => walk_lifetimes(inner, scope, out),
-        Type::Fn(args) => {
+        TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => walk_lifetimes(inner, scope, out),
+        TypeKind::Fn(args) => {
             for a in args {
                 walk_lifetimes(a, scope, out);
             }
@@ -157,8 +157,8 @@ impl Env {
                         ),
                     ));
                 }
-                match &p.ty {
-                    Type::Ref(RefKind::Out, _, _) => {}
+                match &p.ty.kind {
+                    TypeKind::Ref(RefKind::Out, _, _) => {}
                     _ => {
                         d.push_error(
                             Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", f.name, p.ty)),
@@ -324,10 +324,11 @@ impl Env {
                     .type_of_operand(target, stmt_span, locals)
                     .map_err(with_context)?;
 
-                let Type::Fn(param_tys) = target_ty else {
+                let target_ty_str = format!("{}", target_ty);
+                let TypeKind::Fn(param_tys) = target_ty.kind else {
                     return Err(stmt_diag(
                         CallTargetNotFunction,
-                        format!("Call target is not a function type: {}", target_ty),
+                        format!("Call target is not a function type: {}", target_ty_str),
                     ));
                 };
 
@@ -368,7 +369,7 @@ impl Env {
                 let ty = self
                     .type_of_place(place, stmt_span, locals)
                     .map_err(with_context)?;
-                if !matches!(ty, Type::Ref(_, _, _)) {
+                if !matches!(&ty.kind, TypeKind::Ref(_, _, _)) {
                     return Err(stmt_diag(
                         UnborrowNonReference,
                         format!("unborrow requires a reference-typed place, found {}", ty),
@@ -410,7 +411,7 @@ impl Env {
                 false_label,
             } => {
                 match self.type_of_operand(cond, ts, locals) {
-                    Ok(cond_ty) if cond_ty != Type::Bool => d.push_error(terminator_diag(
+                    Ok(cond_ty) if cond_ty.kind != TypeKind::Bool => d.push_error(terminator_diag(
                         TypeCheckCode::BranchConditionNotBool,
                         format!("branch condition must be bool, found {}", cond_ty),
                     )),
@@ -437,33 +438,35 @@ impl Env {
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
                 let enum_decl: Option<&EnumDecl> = match self.type_of_place(place, ts, locals) {
-                    Ok(Type::Custom(name, _, _)) => match self.types.get(&name) {
-                        Some(TypeDecl::Enum(e)) => Some(e),
-                        Some(TypeDecl::Struct(_)) => {
+                    Ok(ty) => match ty.kind {
+                        TypeKind::Custom(name, _, _) => match self.types.get(&name) {
+                            Some(TypeDecl::Enum(e)) => Some(e),
+                            Some(TypeDecl::Struct(_)) => {
+                                d.push_error(terminator_diag(
+                                    TypeCheckCode::SwitchOnNonEnum,
+                                    format!(
+                                        "switchEnum place must be an enum type, found struct '{}'",
+                                        name
+                                    ),
+                                ));
+                                None
+                            }
+                            None => {
+                                d.push_error(terminator_diag(
+                                    TypeCheckCode::SwitchOnNonEnum,
+                                    format!("Undeclared enum '{}' in switchEnum", name),
+                                ));
+                                None
+                            }
+                        },
+                        _ => {
                             d.push_error(terminator_diag(
                                 TypeCheckCode::SwitchOnNonEnum,
-                                format!(
-                                    "switchEnum place must be an enum type, found struct '{}'",
-                                    name
-                                ),
-                            ));
-                            None
-                        }
-                        None => {
-                            d.push_error(terminator_diag(
-                                TypeCheckCode::SwitchOnNonEnum,
-                                format!("Undeclared enum '{}' in switchEnum", name),
+                                format!("switchEnum place must be an enum type, found {}", ty),
                             ));
                             None
                         }
                     },
-                    Ok(other) => {
-                        d.push_error(terminator_diag(
-                            TypeCheckCode::SwitchOnNonEnum,
-                            format!("switchEnum place must be an enum type, found {}", other),
-                        ));
-                        None
-                    }
                     Err(inner_diag) => {
                         d.push_error(inner_diag.in_function(&func.name).in_block(&block.label));
                         None
@@ -513,8 +516,8 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
     }
     let is_out_i32 = |ty: &Type| {
         matches!(
-            ty,
-            Type::Ref(RefKind::Out, _, inner) if **inner == i32_ty()
+            &ty.kind,
+            TypeKind::Ref(RefKind::Out, _, inner) if **inner == i32_ty()
         )
     };
     match f.params.as_slice() {

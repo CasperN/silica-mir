@@ -51,48 +51,48 @@ use std::collections::BTreeSet;
 
 /// Size of `ty` in bytes on a 64-bit target.
 pub fn size_of(ty: &Type, env: &Env) -> u64 {
-    match ty {
-        Type::Int(i) => i.bytes(),
-        Type::Float(f) => f.bytes(),
-        Type::Bool => 1,
-        Type::Unit | Type::Never => 0,
-        Type::Fn(_) | Type::Ref(_, _, _) | Type::RawPtr(_) => 8,
-        Type::Custom(name, _, _) => match env.types.get(name) {
+    match &ty.kind {
+        TypeKind::Int(i) => i.bytes(),
+        TypeKind::Float(f) => f.bytes(),
+        TypeKind::Bool => 1,
+        TypeKind::Unit | TypeKind::Never => 0,
+        TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
+        TypeKind::Custom(name, _, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_size(s, env),
             Some(TypeDecl::Enum(e)) => enum_size(e, env),
             None => panic!("layout::size_of: unknown type '{}'", name),
         },
-        Type::Param(name) => {
+        TypeKind::Param(name) => {
             panic!(
                 "layout::size_of: type parameter '{}' has no size until monomorphization",
                 name
             )
         }
-        Type::Array(elem, n) => n * size_of(elem, env),
+        TypeKind::Array(elem, n) => n * size_of(elem, env),
     }
 }
 
 /// Alignment of `ty` in bytes on a 64-bit target. Always a power of two.
 /// For scalars, alignment equals the type's own size (natural alignment).
 pub fn align_of(ty: &Type, env: &Env) -> u64 {
-    match ty {
-        Type::Int(i) => i.bytes(),
-        Type::Float(f) => f.bytes(),
-        Type::Bool => 1,
-        Type::Unit | Type::Never => 1,
-        Type::Fn(_) | Type::Ref(_, _, _) | Type::RawPtr(_) => 8,
-        Type::Custom(name, _, _) => match env.types.get(name) {
+    match &ty.kind {
+        TypeKind::Int(i) => i.bytes(),
+        TypeKind::Float(f) => f.bytes(),
+        TypeKind::Bool => 1,
+        TypeKind::Unit | TypeKind::Never => 1,
+        TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
+        TypeKind::Custom(name, _, _) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_align(s, env),
             Some(TypeDecl::Enum(e)) => enum_align(e, env),
             None => panic!("layout::align_of: unknown type '{}'", name),
         },
-        Type::Param(name) => {
+        TypeKind::Param(name) => {
             panic!(
                 "layout::align_of: type parameter '{}' has no alignment until monomorphization",
                 name
             )
         }
-        Type::Array(elem, _) => align_of(elem, env),
+        TypeKind::Array(elem, _) => align_of(elem, env),
     }
 }
 
@@ -196,14 +196,14 @@ fn by_value_edges(name: &str, env: &Env) -> Vec<String> {
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
             for f in &s.fields {
-                if let Type::Custom(sub, _, _) = &f.ty {
+                if let TypeKind::Custom(sub, _, _) = &f.ty.kind {
                     out.push(sub.clone());
                 }
             }
         }
         Some(TypeDecl::Enum(e)) => {
             for v in &e.variants {
-                if let Type::Custom(sub, _, _) = &v.ty {
+                if let TypeKind::Custom(sub, _, _) = &v.ty.kind {
                     out.push(sub.clone());
                 }
             }

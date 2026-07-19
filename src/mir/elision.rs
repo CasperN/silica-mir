@@ -1,4 +1,4 @@
-//! Lifetime elision desugar. Each `Type::Ref(kind, None, T)` in a
+//! Lifetime elision desugar. Each `TypeKind::Ref(kind, None, T)` in a
 //! decl-position (fn param / return, struct field, enum variant
 //! payload) receives a freshly-synthesized `'sN` name, appended to
 //! the enclosing decl's `lifetime_params`. After this pass, every
@@ -115,8 +115,8 @@ impl ElideCtx {
 }
 
 fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
-    match ty {
-        Type::Ref(kind, slot, inner) => {
+    match &mut ty.kind {
+        TypeKind::Ref(kind, slot, inner) => {
             let (lt, is_synth) = match slot.take() {
                 Some(existing) => (existing, false),
                 None => (ctx.fresh(), true),
@@ -137,19 +137,24 @@ fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
             };
             elide_type_pos(inner, inner_pos, ctx);
         }
-        Type::RawPtr(inner) => elide_type_pos(inner, pos, ctx),
-        Type::Array(elem, _) => elide_type_pos(elem, pos, ctx),
-        Type::Fn(args) => {
+        TypeKind::RawPtr(inner) => elide_type_pos(inner, pos, ctx),
+        TypeKind::Array(elem, _) => elide_type_pos(elem, pos, ctx),
+        TypeKind::Fn(args) => {
             for a in args {
                 elide_type_pos(a, pos, ctx);
             }
         }
-        Type::Custom(_, _lifetime_args, args) => {
+        TypeKind::Custom(_, _lifetime_args, args) => {
             for a in args {
                 elide_type_pos(a, pos, ctx);
             }
         }
-        Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never | Type::Param(_) => {}
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
     }
 }
 
@@ -169,21 +174,21 @@ mod tests {
             ctx.synthesized,
             vec![Lifetime("s0".into()), Lifetime("s1".into())]
         );
-        assert!(matches!(ty1, Type::Ref(_, Some(_), _)));
-        assert!(matches!(ty2, Type::Ref(_, Some(_), _)));
+        assert!(matches!(ty1.kind, TypeKind::Ref(_, Some(_), _)));
+        assert!(matches!(ty2.kind, TypeKind::Ref(_, Some(_), _)));
     }
 
     #[test]
     fn already_annotated_ref_is_untouched() {
-        let mut ty = Type::Ref(
+        let mut ty = Type::no_span(TypeKind::Ref(
             RefKind::Shared,
             Some(Lifetime("a".into())),
             Box::new(i64_ty()),
-        );
+        ));
         let mut ctx = ElideCtx::new(&[Lifetime("a".into())]);
         elide_type_pos(&mut ty, Pos::Input, &mut ctx);
         assert!(ctx.synthesized.is_empty());
-        if let Type::Ref(_, Some(lt), _) = &ty {
+        if let TypeKind::Ref(_, Some(lt), _) = &ty.kind {
             assert_eq!(lt.0, "a");
         } else {
             panic!("expected annotated ref");
@@ -216,11 +221,11 @@ mod tests {
                 },
                 Param {
                     name: "y".into(),
-                    ty: Type::Ref(
+                    ty: Type::no_span(TypeKind::Ref(
                         RefKind::Shared,
                         Some(Lifetime("a".into())),
                         Box::new(i64_ty()),
-                    ),
+                    )),
                     span: Span::default(),
                 },
             ],
