@@ -211,6 +211,7 @@ pub enum ExprKind {
     Array(Vec<Expr>),
     ArrayIndex(Box<Expr>, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
+    Unary(UnOp, Box<Expr>),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -226,6 +227,11 @@ pub enum BinOp {
     Le,
     Gt,
     Ge,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnOp {
+    Neg,
 }
 
 #[derive(Debug, Clone, PartialEq)]

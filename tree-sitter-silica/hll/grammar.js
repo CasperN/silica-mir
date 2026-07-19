@@ -200,6 +200,7 @@ module.exports = grammar({
       $.borrow_expr,
       $.raw_borrow_expr,
       $.binary_expr,
+      $.unary_expr,
     ),
 
     // Borrows bind tighter than any binary operator: `&x + y` is
@@ -213,6 +214,14 @@ module.exports = grammar({
     raw_borrow_expr: $ => prec(15, seq(
       '&raw',
       field('target', $._expr_prefix),
+    )),
+
+    // Unary minus binds tighter than any binary op but looser than
+    // borrows: `-x + y` = `(-x) + y`, `&-x` = `&(-x)`. `--x` = `-(-x)`
+    // via prec.right.
+    unary_expr: $ => prec.right(14, seq(
+      field('op', '-'),
+      field('operand', $._expr_prefix),
     )),
 
     // Operands are `_expr_prefix`, not the top-level `expr` — otherwise

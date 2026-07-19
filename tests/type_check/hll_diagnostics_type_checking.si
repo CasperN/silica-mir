@@ -43,3 +43,11 @@ fn test_defer_type_mismatch() {
 # check widens.
 extern "system" fn win_api(x: i64);
 extern "fastcall" fn stdcall_thing(y: i64);
+
+# ---------- HTC-UnaryOpInvalidOperand ----------
+
+# Unary `-` requires a signed integer or float operand. u64 is rejected;
+# same for bool. Positive coverage: `enum_matches.si` uses `-n` on i64
+# in the `Neg` arm of `to_i64`.
+fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+fn test_unary_neg_on_bool(b: bool) -> bool { -b }

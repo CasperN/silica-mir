@@ -1,6 +1,7 @@
 # Small end-to-end functions exercising HLL arithmetic, comparisons,
-# and numeric casts. Each fn is one cell in the "does this shape
-# lower correctly?" matrix — trivial in isolation, denser as a batch.
+# numeric casts, and fn-value operands. Each fn is one cell in the
+# "does this shape lower correctly?" matrix — trivial in isolation,
+# denser as a batch.
 
 # `x < 0` lowers to `$i64_lt`; `as i32` on a bool lowers to
 # `$bool_to_i32`. Verifies the comparison-then-zext chain.
@@ -30,3 +31,11 @@ fn straight_line_reassign(a: i64, b: i64, c: i64) -> i64 {
   r = a * c;
   r
 }
+
+# Bare fn name in argument position lowers to a `Const::FnName`
+# operand — same mechanism as the callee-side special case. The
+# `sret` shape (`fn(i64) -> i64` at the HLL surface) turns into
+# MIR's `fn(i64, &out i64)` at lowering.
+fn double(x: i64) -> i64 { x + x }
+fn call_it(f: fn(i64) -> i64, x: i64) -> i64 { f(x) }
+fn double_via_call_it(x: i64) -> i64 { call_it(double, x) }

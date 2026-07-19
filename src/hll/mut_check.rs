@@ -180,6 +180,10 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             check_expr(rhs, scope, func, d);
         }
 
+        ExprKind::Unary(_, operand) => {
+            check_expr(operand, scope, func, d);
+        }
+
         // ── assignment — the core check ──────────────────────────
         ExprKind::Assign(lhs, rhs) => {
             check_expr(rhs, scope, func, d);

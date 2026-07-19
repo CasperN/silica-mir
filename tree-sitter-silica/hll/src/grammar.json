@@ -1252,6 +1252,10 @@
         {
           "type": "SYMBOL",
           "name": "binary_expr"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "unary_expr"
         }
       ]
     },
@@ -1314,6 +1318,31 @@
           {
             "type": "FIELD",
             "name": "target",
+            "content": {
+              "type": "SYMBOL",
+              "name": "_expr_prefix"
+            }
+          }
+        ]
+      }
+    },
+    "unary_expr": {
+      "type": "PREC_RIGHT",
+      "value": 14,
+      "content": {
+        "type": "SEQ",
+        "members": [
+          {
+            "type": "FIELD",
+            "name": "op",
+            "content": {
+              "type": "STRING",
+              "value": "-"
+            }
+          },
+          {
+            "type": "FIELD",
+            "name": "operand",
             "content": {
               "type": "SYMBOL",
               "name": "_expr_prefix"

@@ -79,3 +79,33 @@ fn straight_line_reassign(a: i64, b: i64, c: i64, $return: &out i64) {
     drop a;
     return
 }
+
+fn double(x: i64, $return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call $i64_add(copy x, copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn call_it(f: fn(i64, &out i64), x: i64, $return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call move f(copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn double_via_call_it(x: i64, $return: &out i64) {
+  _temp_0: &out i64;
+  entry:
+    _temp_0 = &out $return.*;
+    call call_it(double, copy x, move _temp_0);
+    unborrow $return;
+    drop x;
+    return
+}

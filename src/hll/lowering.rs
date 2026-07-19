@@ -21,6 +21,9 @@ pub enum HllLoweringCode {
     /// Binary op emitted on a non-numeric type. Type-check should have
     /// rejected this before lowering ran.
     BinaryOpNonNumeric,
+    /// Unary op emitted on an incompatible operand type. Type-check
+    /// should have rejected this before lowering ran.
+    UnaryOpNonNumeric,
     /// `match` scrutinee has a non-enum type.
     MatchTargetNotEnum,
     /// Match arm references an enum name with no declaration.
@@ -393,6 +396,14 @@ fn lower_expr_to_operand(
             };
             Ok(const_op(const_val))
         }
+        hll::ExprKind::Variable(name)
+            if ctx.functions.contains_key(name)
+                && !ctx.locals.iter().any(|l| l.name == *name) =>
+        {
+            let f_decl = ctx.functions.get(name).cloned().unwrap();
+            let mir_type_args = infer_fn_type_args(&f_decl, expr.span, types);
+            Ok(const_op(fn_name_const_with_args(name.clone(), mir_type_args)))
+        }
         hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
         | hll::ExprKind::Deref(_)
@@ -466,6 +477,45 @@ fn lower_expr_into(
             // Assignment expression itself evaluates to Unit
             ctx.emit_statement(
                 assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
+                expr.span,
+            );
+            Ok(())
+        }
+        hll::ExprKind::Unary(op, operand) => {
+            let operand_hll_ty = lookup_type(operand, types).ok_or_else(|| {
+                diag(
+                    HllLoweringCode::MissingType,
+                    operand.span,
+                    "missing type annotation for unary operand",
+                )
+            })?;
+            let mir_ty = lower_type(operand_hll_ty);
+
+            let op_name = match op {
+                hll::UnOp::Neg => "neg",
+            };
+            let type_name = match &mir_ty {
+                mir::Type::Int(int_ty) => int_ty.name(),
+                mir::Type::Float(float_ty) => float_ty.name(),
+                _ => return Err(diag(
+                    HllLoweringCode::UnaryOpNonNumeric,
+                    expr.span,
+                    format!("unary op on non-numeric type {:?}", mir_ty),
+                )),
+            };
+            let intrinsic_name = format!("${}_{}", type_name, op_name);
+            let fn_op = const_op(fn_name_const(intrinsic_name));
+
+            let operand_op = lower_expr_to_operand(ctx, operand, types)?;
+
+            let out_ref = out_ref_ty(mir_ty);
+            let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
+            ctx.emit_statement(
+                assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
+                expr.span,
+            );
+            ctx.emit_statement(
+                call_stmt(fn_op, vec![operand_op, move_op(out_ref_place)]),
                 expr.span,
             );
             Ok(())

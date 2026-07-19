@@ -125,6 +125,9 @@ pub enum HllTypeCheckCode {
     EmptySwitch,
     /// Binary operator applied to non-numeric operand types.
     BinaryOpNonNumeric,
+    /// Unary operator applied to an incompatible operand type
+    /// (e.g. unary `-` on an unsigned int or bool).
+    UnaryOpInvalidOperand,
     /// Struct constructor initializes wrong number of fields.
     StructFieldCountMismatch,
     /// Struct constructor is missing a field.
@@ -798,6 +801,26 @@ fn infer_inner(
             } else {
                 lhs_ty.clone()
             }
+        }
+        ExprKind::Unary(op, operand) => {
+            let operand_ty = infer_inner(env, subst, operand, types, d);
+            let resolved = subst.resolve(&operand_ty);
+            match op {
+                UnOp::Neg => match &resolved {
+                    Type::Int(int_ty) if int_ty.is_signed() => {}
+                    Type::Float(_) => {}
+                    Type::IntVar(_) | Type::FloatVar(_) | Type::Var(_) | Type::Never | Type::Error => {}
+                    _ => {
+                        d.push_error(Diagnostic::new(
+                            HllTypeCheckCode::UnaryOpInvalidOperand,
+                            expr.span,
+                            format!("unary '-' requires a signed integer or float operand, found {}", resolved),
+                        ));
+                        return error_ty();
+                    }
+                },
+            }
+            operand_ty
         }
         ExprKind::Variable(name) => {
             if let Some(ty) = env.lookup_var(name) {
@@ -1491,6 +1514,9 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::Binary(lhs, _, rhs) => {
             check_no_control_flow(lhs, loop_depth, d);
             check_no_control_flow(rhs, loop_depth, d);
+        }
+        ExprKind::Unary(_, operand) => {
+            check_no_control_flow(operand, loop_depth, d);
         }
         ExprKind::FieldAccess(base, _) => {
             check_no_control_flow(base, loop_depth, d);

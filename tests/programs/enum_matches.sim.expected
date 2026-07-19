@@ -84,7 +84,7 @@ fn to_i64(t: Tag, $return: &out i64) {
   switch_Neg_2:
     n = copy t as Neg;
     _temp_0 = &out $return.*;
-    call $i64_sub(0, copy n, move _temp_0);
+    call $i64_neg(copy n, move _temp_0);
     unborrow $return;
     goto switch_Neg_2__to__switch_merge_3
   switch_Neg_2__to__switch_merge_3:

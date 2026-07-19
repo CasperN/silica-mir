@@ -45,6 +45,20 @@ error: at 45:8: [HTC-UnknownAbi] unknown extern ABI 'fastcall' — expected 'C' 
  44 | extern "system" fn win_api(x: i64);
  45 | extern "fastcall" fn stdcall_thing(y: i64);
     |        ^^^^^^^^^^
+ 46 | 
+    |
+error: at 52:48: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
+    |
+ 51 | # in the `Neg` arm of `to_i64`.
+ 52 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+    |                                                ^^
+ 53 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+    |
+error: at 53:46: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
+    |
+ 52 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 53 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+    |                                              ^^
     |
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |

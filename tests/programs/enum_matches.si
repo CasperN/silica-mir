@@ -27,18 +27,15 @@ fn nested_downcast(o: Outer) -> i64 {
 # Wrapping the per-slot decode in `to_i64` extracts each slot into
 # the callee's owned parameter; a direct `a[i] match { ... }` would
 # trip VF-DowncastOnProjection (variant flow tracks root Vars, not
-# projections).
-#
-# The `Neg` arm uses `0i64 - x` — HLL has no unary minus, so the
-# pinned MIR shows `$i64_sub(0i64, x)` where the original MIR
-# fixture used `$i64_neg(x)`.
+# projections). The `Neg` arm uses HLL unary `-`, lowered to
+# `$i64_neg`.
 enum Tag: Copy + Drop { Zero: unit, Pos: i64, Neg: i64 }
 
 fn to_i64(t: Tag) -> i64 {
   t match {
     Zero(_) => 0i64,
     Pos(p) => p,
-    Neg(n) => 0i64 - n,
+    Neg(n) => -n,
   }
 }
 

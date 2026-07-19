@@ -765,6 +765,28 @@ impl Parser {
                     span,
                 })
             }
+            "unary_expr" => {
+                let operand = node.child_by_field_name("operand").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "unary expression missing operand")
+                })?;
+                let op_node = node.child_by_field_name("op").ok_or_else(|| {
+                    self.diag(node, ParserCode::MalformedCst, "unary expression missing op")
+                })?;
+                let op = match self.get_text(op_node) {
+                    "-" => UnOp::Neg,
+                    other => {
+                        return Err(self.diag(
+                            op_node,
+                            ParserCode::MalformedCst,
+                            format!("unknown unary operator: {}", other),
+                        ));
+                    }
+                };
+                Ok(Expr {
+                    kind: ExprKind::Unary(op, Box::new(self.map_expr(operand, scope)?)),
+                    span,
+                })
+            }
             "binary_expr" => {
                 let lhs = node.child_by_field_name("lhs").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "binary expression missing lhs")
