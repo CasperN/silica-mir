@@ -4,6 +4,7 @@
 //! single pass: inhabitedness, generic parameter substitution, etc.
 
 use crate::mir::ast::{Type, TypeParam};
+use crate::common::Lifetime;
 use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use std::collections::BTreeSet;
@@ -19,37 +20,110 @@ pub fn substitute_params(ty: &Type, type_params: &[TypeParam], args: &[Type]) ->
     if args.len() != type_params.len() {
         return ty.clone();
     }
-    walk(ty, type_params, args)
+    substitute(ty, &[], &[], type_params, args)
 }
 
-fn walk(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
+/// Substitute both lifetime and type parameter references in `ty`. Use
+/// when a decl carries both `<'a, T>` lifetimes and type parameters and
+/// a use site supplies both.
+pub fn substitute_all(
+    ty: &Type,
+    lifetime_params: &[Lifetime],
+    lifetime_args: &[Lifetime],
+    type_params: &[TypeParam],
+    type_args: &[Type],
+) -> Type {
+    if lifetime_args.len() != lifetime_params.len() || type_args.len() != type_params.len() {
+        return ty.clone();
+    }
+    substitute(ty, lifetime_params, lifetime_args, type_params, type_args)
+}
+
+fn substitute(
+    ty: &Type,
+    lifetime_params: &[Lifetime],
+    lifetime_args: &[Lifetime],
+    type_params: &[TypeParam],
+    type_args: &[Type],
+) -> Type {
     match ty {
         Type::Param(name) => {
-            for (tp, arg) in type_params.iter().zip(args.iter()) {
+            for (tp, arg) in type_params.iter().zip(type_args.iter()) {
                 if tp.name == *name {
                     return arg.clone();
                 }
             }
             ty.clone()
         }
-        Type::Custom(name, lifetimes, inner_args) => {
+        Type::Custom(name, lts, inner_args) => {
+            let new_lts = lts.iter().map(|l| subst_lifetime(l, lifetime_params, lifetime_args)).collect();
             let new_args = inner_args
                 .iter()
-                .map(|a| walk(a, type_params, args))
+                .map(|a| substitute(a, lifetime_params, lifetime_args, type_params, type_args))
                 .collect();
-            Type::Custom(name.clone(), lifetimes.clone(), new_args)
+            Type::Custom(name.clone(), new_lts, new_args)
         }
         Type::Ref(kind, lt, inner) => {
-            Type::Ref(kind.clone(), lt.clone(), Box::new(walk(inner, type_params, args)))
+            let new_lt = lt.as_ref().map(|l| subst_lifetime(l, lifetime_params, lifetime_args));
+            Type::Ref(
+                kind.clone(),
+                new_lt,
+                Box::new(substitute(inner, lifetime_params, lifetime_args, type_params, type_args)),
+            )
         }
-        Type::RawPtr(inner) => raw_ptr_ty(walk(inner, type_params, args)),
-        Type::Array(inner, size) => array_ty(walk(inner, type_params, args), *size),
+        Type::RawPtr(inner) => raw_ptr_ty(substitute(inner, lifetime_params, lifetime_args, type_params, type_args)),
+        Type::Array(inner, size) => array_ty(substitute(inner, lifetime_params, lifetime_args, type_params, type_args), *size),
         Type::Fn(params) => {
-            let new_params = params.iter().map(|p| walk(p, type_params, args)).collect();
+            let new_params = params.iter().map(|p| substitute(p, lifetime_params, lifetime_args, type_params, type_args)).collect();
             fn_ty(new_params)
         }
         _ => ty.clone(),
     }
+}
+
+fn subst_lifetime(lt: &Lifetime, params: &[Lifetime], args: &[Lifetime]) -> Lifetime {
+    for (p, a) in params.iter().zip(args.iter()) {
+        if p == lt {
+            return a.clone();
+        }
+    }
+    lt.clone()
+}
+
+/// Compute the type of `place` inside `func`. Walks the place's
+/// projections against the locals map + env's decl table, substituting
+/// both type and lifetime parameters at each `Custom` boundary.
+/// Returns None if the place is malformed (missing local, unknown
+/// field/variant, etc.).
+pub fn place_type(
+    locals: &indexmap::IndexMap<String, Type>,
+    env: &Env,
+    place: &crate::mir::ast::Place,
+) -> Option<Type> {
+    use crate::mir::ast::{extract_path_with_deref, PathStep};
+    let (root, steps) = extract_path_with_deref(place);
+    let mut ty = locals.get(&root)?.clone();
+    for step in steps {
+        ty = match (step, ty) {
+            (PathStep::Field(f), Type::Custom(name, lts, args)) => {
+                let TypeDecl::Struct(s) = env.types.get(&name)? else { return None };
+                let field = s.fields.iter().find(|fd| fd.name == f)?;
+                let decl_lts: Vec<Lifetime> = s.lifetime_params.clone();
+                substitute_all(&field.ty, &decl_lts, &lts, &s.type_params, &args)
+            }
+            (PathStep::Downcast(v), Type::Custom(name, lts, args)) => {
+                let TypeDecl::Enum(e) = env.types.get(&name)? else { return None };
+                let variant = e.variants.iter().find(|vd| vd.name == v)?;
+                let decl_lts: Vec<Lifetime> = e.lifetime_params.clone();
+                substitute_all(&variant.ty, &decl_lts, &lts, &e.type_params, &args)
+            }
+            (PathStep::Deref, Type::Ref(_, _, inner)) => *inner,
+            (PathStep::Deref, Type::RawPtr(inner)) => *inner,
+            (PathStep::Index(_), Type::Array(elem, _)) => *elem,
+            _ => return None,
+        };
+    }
+    Some(ty)
 }
 
 /// True if a value of `ty` cannot be constructed. Uninhabited types:
@@ -227,6 +301,56 @@ mod tests {
                 Box::new(i64_ty()),
             ),
         );
+    }
+
+    #[test]
+    fn substitute_all_replaces_ref_lifetime() {
+        use crate::mir::ast::RefKind;
+        let ty = Type::Ref(
+            RefKind::Shared,
+            Some(Lifetime("a".into())),
+            Box::new(i64_ty()),
+        );
+        let out = substitute_all(
+            &ty,
+            &[Lifetime("a".into())],
+            &[Lifetime("b".into())],
+            &[],
+            &[],
+        );
+        assert_eq!(
+            out,
+            Type::Ref(RefKind::Shared, Some(Lifetime("b".into())), Box::new(i64_ty())),
+        );
+    }
+
+    #[test]
+    fn substitute_all_replaces_custom_lifetime_args() {
+        let ty = Type::Custom("Wrap".into(), vec![Lifetime("a".into())], vec![]);
+        let out = substitute_all(
+            &ty,
+            &[Lifetime("a".into())],
+            &[Lifetime("x".into())],
+            &[],
+            &[],
+        );
+        assert_eq!(
+            out,
+            Type::Custom("Wrap".into(), vec![Lifetime("x".into())], vec![]),
+        );
+    }
+
+    #[test]
+    fn substitute_all_no_op_when_lifetime_not_in_params() {
+        let ty = Type::Custom("Wrap".into(), vec![Lifetime("other".into())], vec![]);
+        let out = substitute_all(
+            &ty,
+            &[Lifetime("a".into())],
+            &[Lifetime("x".into())],
+            &[],
+            &[],
+        );
+        assert_eq!(out, ty);
     }
 }
 

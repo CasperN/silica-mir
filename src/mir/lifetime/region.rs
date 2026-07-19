@@ -109,23 +109,22 @@ fn walk_regions(
 ) {
     use crate::mir::helpers::{downcast_place, field_place};
     use crate::mir::type_check::TypeDecl;
-    use crate::mir::type_util::substitute_params;
+    use crate::mir::type_util::substitute_all;
     match ty {
         Type::Ref(_, lt_opt, _) => {
             let region = ctx.region_for_ref(lt_opt);
             ctx.assign(place.clone(), region);
         }
-        Type::Custom(name, _lifetime_args, args) => {
+        Type::Custom(name, lifetime_args, args) => {
             if !visited.insert(name.clone()) {
                 return;
             }
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
-                    let type_params = s.type_params.clone();
                     let fields: Vec<_> = s
                         .fields
                         .iter()
-                        .map(|f| (f.name.clone(), substitute_params(&f.ty, &type_params, args)))
+                        .map(|f| (f.name.clone(), substitute_all(&f.ty, &s.lifetime_params, lifetime_args, &s.type_params, args)))
                         .collect();
                     for (fname, fty) in fields {
                         let sub = field_place(place.clone(), fname);
@@ -133,11 +132,10 @@ fn walk_regions(
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
-                    let type_params = e.type_params.clone();
                     let variants: Vec<_> = e
                         .variants
                         .iter()
-                        .map(|v| (v.name.clone(), substitute_params(&v.ty, &type_params, args)))
+                        .map(|v| (v.name.clone(), substitute_all(&v.ty, &e.lifetime_params, lifetime_args, &e.type_params, args)))
                         .collect();
                     for (vname, vty) in variants {
                         let sub = downcast_place(place.clone(), vname);

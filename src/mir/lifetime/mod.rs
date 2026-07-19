@@ -359,9 +359,11 @@ fn capture_carried_loans(
 /// Forward dataflow analysis over `LoanMap`. Runs independently of the
 /// init-state analysis — the two share nothing beyond the statement they
 /// both observe.
-struct LoanAnalysis;
+struct LoanAnalysis<'a> {
+    region_ctx: &'a region::RegionCtx,
+}
 
-impl Analysis for LoanAnalysis {
+impl<'a> Analysis for LoanAnalysis<'a> {
     type State = LoanMap;
     fn direction(&self) -> Direction {
         Direction::Forward
@@ -373,7 +375,7 @@ impl Analysis for LoanAnalysis {
         join_loans(a, b)
     }
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, span: Span) {
-        transfer_stmt(state, stmt, span);
+        transfer_stmt(state, stmt, span, self.region_ctx);
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         if let Terminator::Branch { cond, .. } = term {
@@ -385,7 +387,12 @@ impl Analysis for LoanAnalysis {
 /// Apply the whole-statement loan transition. Silent (no diagnostics);
 /// the diagnostic walk in `init_state` uses the smaller `consume_operand`
 /// helper alongside inline inserts/removes.
-fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement, span: Span) {
+fn transfer_stmt(
+    loans: &mut LoanMap,
+    stmt: &Statement,
+    span: Span,
+    region_ctx: &region::RegionCtx,
+) {
     match stmt {
         Statement::Assign(target, rvalue) => {
             // Capture BEFORE consume: the loans rooted at the moved
@@ -399,11 +406,10 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement, span: Span) {
                 loans.shift_remove(&t);
             }
             if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
-                // Placeholder region — phase 3 stamps the real region
-                // from the per-fn RegionCtx at check time.
+                let region = region_ctx.get(&t).cloned().unwrap_or(Region::Static);
                 loans.insert(
                     t,
-                    Loan::single(kind.clone(), Region::Free(u32::MAX), place.clone(), span),
+                    Loan::single(kind.clone(), region, place.clone(), span),
                 );
             }
             for (new_key, loan) in carried {
@@ -428,10 +434,10 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement, span: Span) {
     }
 }
 
-/// Run the LoanAnalysis fixpoint over `body`. Returns per-block entry
-/// `LoanMap`.
-pub fn run(body: &FunctionBody) -> Results<LoanMap> {
-    dataflow::run(&LoanAnalysis, body)
+/// Run the LoanAnalysis fixpoint over `body` using the per-fn region
+/// context.
+pub fn run(body: &FunctionBody, region_ctx: &region::RegionCtx) -> Results<LoanMap> {
+    dataflow::run(&LoanAnalysis { region_ctx }, body)
 }
 
 // ---------- Check pass ----------
@@ -456,20 +462,16 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     if body.blocks.is_empty() {
         return;
     }
-    let entry_states = run(body);
     let region_ctx = region::build_region_ctx(func, env);
+    let entry_states = run(body, &region_ctx);
     let mut constraints = constraints::ConstraintSet::new();
     for block in &body.blocks {
         let Some(entry) = entry_states.get(&block.label) else {
             continue;
         };
         let mut loans = entry.clone();
-        // Patch placeholder regions on entry-set loans with the real
-        // per-fn region assignment.
-        stamp_loan_regions(&mut loans, &region_ctx);
         for (stmt, span) in &block.statements {
-            check_and_transfer_stmt(func, block, stmt, *span, &mut loans, d);
-            stamp_loan_regions(&mut loans, &region_ctx);
+            check_and_transfer_stmt(func, block, stmt, *span, &mut loans, &region_ctx, d);
             emit_stmt_constraints(env, func, stmt, *span, &region_ctx, &mut constraints);
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
@@ -518,7 +520,7 @@ fn collect_named_regions(
     visited: &mut BTreeSet<String>,
     out: &mut BTreeSet<Lifetime>,
 ) {
-    use crate::mir::type_util::substitute_params;
+    use crate::mir::type_util::substitute_all;
     match ty {
         Type::Ref(_, Some(lt), inner) => {
             out.insert(lt.clone());
@@ -537,13 +539,13 @@ fn collect_named_regions(
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
-                        let sub = substitute_params(&f.ty, &s.type_params, type_args);
+                        let sub = substitute_all(&f.ty, &s.lifetime_params, lifetime_args, &s.type_params, type_args);
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
                     for v in &e.variants {
-                        let sub = substitute_params(&v.ty, &e.type_params, type_args);
+                        let sub = substitute_all(&v.ty, &e.lifetime_params, lifetime_args, &e.type_params, type_args);
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }
@@ -627,16 +629,6 @@ pub fn constraints_for(env: &Env, func: &Function) -> constraints::ConstraintSet
     cs
 }
 
-/// Overwrite each loan's placeholder region with the per-fn region
-/// assigned to its borrower place. Idempotent (real → real is a no-op).
-fn stamp_loan_regions(loans: &mut LoanMap, region_ctx: &region::RegionCtx) {
-    for (place, loan) in loans.iter_mut() {
-        if let Some(r) = region_ctx.get(place) {
-            loan.region = r.clone();
-        }
-    }
-}
-
 /// Emit outlives constraints for one statement. Currently covers
 /// assignment `dst = src` where both sides are ref-typed: the
 /// source's region must outlive the destination's.
@@ -691,7 +683,7 @@ fn region_of_ref_place(
             return Some(r.clone());
         }
     }
-    let ty = place_type(locals, env, place)?;
+    let ty = crate::mir::type_util::place_type(locals, env, place)?;
     if let Type::Ref(_, Some(lt), _) = ty {
         Some(Region::Named(lt))
     } else {
@@ -706,36 +698,6 @@ fn operand_place(op: &Operand) -> Option<&Place> {
     }
 }
 
-fn place_type(
-    locals: &IndexMap<String, Type>,
-    env: &Env,
-    place: &Place,
-) -> Option<Type> {
-    use crate::mir::type_util::substitute_params;
-    let (root, steps) = extract_path_with_deref(place);
-    let mut ty = locals.get(&root)?.clone();
-    for step in steps {
-        ty = match (step, ty) {
-            (PathStep::Field(f), Type::Custom(name, _, args)) => {
-                let decl = env.types.get(&name)?;
-                let TypeDecl::Struct(s) = decl else { return None };
-                let field = s.fields.iter().find(|fd| fd.name == f)?;
-                substitute_params(&field.ty, &s.type_params, &args)
-            }
-            (PathStep::Downcast(v), Type::Custom(name, _, args)) => {
-                let decl = env.types.get(&name)?;
-                let TypeDecl::Enum(e) = decl else { return None };
-                let variant = e.variants.iter().find(|vd| vd.name == v)?;
-                substitute_params(&variant.ty, &e.type_params, &args)
-            }
-            (PathStep::Deref, Type::Ref(_, _, inner)) => *inner,
-            (PathStep::Deref, Type::RawPtr(inner)) => *inner,
-            (PathStep::Index(_), Type::Array(elem, _)) => *elem,
-            _ => return None,
-        };
-    }
-    Some(ty)
-}
 
 /// Check accesses in `stmt` against `loans`, then advance `loans` via
 /// `transfer_stmt`. `Call` is handled inline (not via `transfer_stmt`)
@@ -747,6 +709,7 @@ fn check_and_transfer_stmt(
     stmt: &Statement,
     span: Span,
     loans: &mut LoanMap,
+    region_ctx: &region::RegionCtx,
     d: &mut Diagnostics,
 ) {
     match stmt {
@@ -778,7 +741,7 @@ fn check_and_transfer_stmt(
                 }
             }
             check_loan_conflict(func, block, target, AccessKind::Write, span, loans, d);
-            transfer_stmt(loans, stmt, span);
+            transfer_stmt(loans, stmt, span, region_ctx);
         }
         Statement::Call(target, args) => {
             check_operand_access(func, block, target, span, loans, d);
@@ -790,7 +753,7 @@ fn check_and_transfer_stmt(
         }
         Statement::Drop(place) => {
             check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
-            transfer_stmt(loans, stmt, span);
+            transfer_stmt(loans, stmt, span, region_ctx);
         }
         Statement::Unborrow(place) => {
             // Consumes the borrower Var. Its own loan is skipped in
@@ -798,7 +761,7 @@ fn check_and_transfer_stmt(
             // empty path" case), but a *reborrow* of this borrower —
             // loan borrowed by s on `*r` — still needs to block `unborrow r`.
             check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
-            transfer_stmt(loans, stmt, span);
+            transfer_stmt(loans, stmt, span, region_ctx);
         }
     }
 }
