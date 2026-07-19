@@ -1,10 +1,10 @@
 //! Size and alignment computation for scalars, references, function
 //! types, structs, and enums.
 
+use crate::mir::ast::*;
 use crate::mir::layout::{align_of, size_of};
 use crate::mir::parser::Parser;
 use crate::mir::type_check::Env;
-use crate::mir::ast::*;
 
 /// Parse `src` and build an `Env`. Doesn't run any check pass — the
 /// tests just need type-name resolution.
@@ -99,9 +99,7 @@ fn struct_rounds_up_trailing_padding_to_alignment() {
 #[test]
 fn packed_bool_only_struct_is_tightly_packed() {
     // Three bools, all align 1: no padding.
-    let env = env_of(
-        "struct P { a: bool b: bool c: bool } fn f() { entry: return }",
-    );
+    let env = env_of("struct P { a: bool b: bool c: bool } fn f() { entry: return }");
     let ty = Type::Custom("P".to_string(), Vec::new(), Vec::new());
     assert_eq!(size_of(&ty, &env), 3);
     assert_eq!(align_of(&ty, &env), 1);

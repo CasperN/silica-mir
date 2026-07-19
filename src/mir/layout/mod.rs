@@ -26,8 +26,8 @@
 //! `type_check` first. `check_program` runs before that becomes a
 //! problem — it only walks the declared-type graph.
 
-use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::mir::ast::*;
 
 /// Machine-readable codes emitted by the layout pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -63,7 +63,10 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
             None => panic!("layout::size_of: unknown type '{}'", name),
         },
         Type::Param(name) => {
-            panic!("layout::size_of: type parameter '{}' has no size until monomorphization", name)
+            panic!(
+                "layout::size_of: type parameter '{}' has no size until monomorphization",
+                name
+            )
         }
         Type::Array(elem, n) => n * size_of(elem, env),
     }
@@ -84,7 +87,10 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
             None => panic!("layout::align_of: unknown type '{}'", name),
         },
         Type::Param(name) => {
-            panic!("layout::align_of: type parameter '{}' has no alignment until monomorphization", name)
+            panic!(
+                "layout::align_of: type parameter '{}' has no alignment until monomorphization",
+                name
+            )
         }
         Type::Array(elem, _) => align_of(elem, env),
     }
@@ -173,7 +179,12 @@ fn decl_span(name: &str, env: &Env) -> Span {
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => s.name_span,
         Some(TypeDecl::Enum(e)) => e.name_span,
-        None => Span { line: 0, col: 0, end_line: 0, end_col: 0 },
+        None => Span {
+            line: 0,
+            col: 0,
+            end_line: 0,
+            end_col: 0,
+        },
     }
 }
 

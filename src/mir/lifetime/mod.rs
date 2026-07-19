@@ -24,10 +24,10 @@
 //! diagnostic ("borrow as &out", etc.) and to enable shared/shared
 //! compatibility.
 
-use crate::mir::ast::*;
-use crate::mir::helpers::*;
-use crate::mir::dataflow::{self, Analysis, Direction, Results};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::mir::ast::*;
+use crate::mir::dataflow::{self, Analysis, Direction, Results};
+use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
@@ -324,11 +324,7 @@ fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
 ///
 /// Returns `Vec<(new_key, loan)>` to be re-inserted after the source's
 /// loans are removed by `consume_rvalue`.
-fn capture_carried_loans(
-    target: &Place,
-    rvalue: &RValue,
-    loans: &LoanMap,
-) -> Vec<(Place, Loan)> {
+fn capture_carried_loans(target: &Place, rvalue: &RValue, loans: &LoanMap) -> Vec<(Place, Loan)> {
     let Some(dst) = as_owned_path(target) else {
         return Vec::new();
     };
@@ -407,10 +403,7 @@ fn transfer_stmt(
             }
             if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                 let region = region_ctx.get(&t).cloned().unwrap_or(Region::Static);
-                loans.insert(
-                    t,
-                    Loan::single(kind.clone(), region, place.clone(), span),
-                );
+                loans.insert(t, Loan::single(kind.clone(), region, place.clone(), span));
             }
             for (new_key, loan) in carried {
                 loans.insert(new_key, loan);
@@ -471,7 +464,16 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         };
         let mut loans = entry.clone();
         for stmt in &block.statements {
-            check_and_transfer_stmt(env, func, block, stmt, &mut loans, &region_ctx, &mut constraints, d);
+            check_and_transfer_stmt(
+                env,
+                func,
+                block,
+                stmt,
+                &mut loans,
+                &region_ctx,
+                &mut constraints,
+                d,
+            );
             emit_stmt_constraints(env, func, stmt, &region_ctx, &mut constraints);
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
@@ -488,16 +490,16 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 /// A Named region that only appears in body-local types (e.g. a
 /// struct field of a locally-owned struct decl instantiated at
 /// use-site with no lifetime args) is NOT escape-visible.
-fn signature_visible_regions(
-    func: &Function,
-    env: &Env,
-) -> BTreeSet<Lifetime> {
+fn signature_visible_regions(func: &Function, env: &Env) -> BTreeSet<Lifetime> {
     let mut out = BTreeSet::new();
     for p in &func.params {
         // $return is the sret slot; any &out or &mut is caller-provided
         // storage the callee writes into.
         let visible = p.name == "$return"
-            || matches!(&p.ty, Type::Ref(RefKind::Out, _, _) | Type::Ref(RefKind::Mut, _, _));
+            || matches!(
+                &p.ty,
+                Type::Ref(RefKind::Out, _, _) | Type::Ref(RefKind::Mut, _, _)
+            );
         if !visible {
             continue;
         }
@@ -539,13 +541,25 @@ fn collect_named_regions(
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
-                        let sub = substitute_all(&f.ty, &s.lifetime_params, lifetime_args, &s.type_params, type_args);
+                        let sub = substitute_all(
+                            &f.ty,
+                            &s.lifetime_params,
+                            lifetime_args,
+                            &s.type_params,
+                            type_args,
+                        );
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
                     for v in &e.variants {
-                        let sub = substitute_all(&v.ty, &e.lifetime_params, lifetime_args, &e.type_params, type_args);
+                        let sub = substitute_all(
+                            &v.ty,
+                            &e.lifetime_params,
+                            lifetime_args,
+                            &e.type_params,
+                            type_args,
+                        );
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }
@@ -653,16 +667,23 @@ fn emit_stmt_constraints(
     constraints: &mut constraints::ConstraintSet,
 ) {
     let locals = func.locals_map();
-    let StatementKind::Assign(target, rvalue) = &stmt.kind else { return };
+    let StatementKind::Assign(target, rvalue) = &stmt.kind else {
+        return;
+    };
     let (src_region, target_place) = match rvalue {
         RValue::Use(op) => {
             let Some(src) = operand_place(op) else { return };
-            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else { return };
+            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else {
+                return;
+            };
             (r, target.clone())
         }
         RValue::Ref(_, place) => {
             let r = if let Some(owned) = as_owned_path(place) {
-                region_ctx.get(&owned).cloned().unwrap_or(Region::Free(u32::MAX))
+                region_ctx
+                    .get(&owned)
+                    .cloned()
+                    .unwrap_or(Region::Free(u32::MAX))
             } else {
                 Region::Free(u32::MAX)
             };
@@ -670,7 +691,9 @@ fn emit_stmt_constraints(
         }
         RValue::EnumConstr(_, _, variant, op) => {
             let Some(src) = operand_place(op) else { return };
-            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else { return };
+            let Some(r) = region_of_ref_place(src, &locals, env, region_ctx) else {
+                return;
+            };
             (r, downcast_place(target.clone(), variant.clone()))
         }
         _ => return,
@@ -728,8 +751,12 @@ fn check_call_regions(
     constraints: &mut constraints::ConstraintSet,
     _d: &mut Diagnostics,
 ) {
-    let Operand::Const(ConstVal::FnName(callee_name, _)) = target else { return };
-    let Some(callee) = env.functions.get(callee_name) else { return };
+    let Operand::Const(ConstVal::FnName(callee_name, _)) = target else {
+        return;
+    };
+    let Some(callee) = env.functions.get(callee_name) else {
+        return;
+    };
     if callee.params.len() != args.len() {
         return;
     }
@@ -745,7 +772,9 @@ fn check_call_regions(
     let mut per_output_inputs: IndexMap<Region, BTreeSet<Place>> = IndexMap::new();
 
     for (arg, param) in args.iter().zip(callee.params.iter()) {
-        let Some(arg_place) = operand_place(arg) else { continue };
+        let Some(arg_place) = operand_place(arg) else {
+            continue;
+        };
         walk_call_regions(
             &param.ty,
             arg_place,
@@ -768,15 +797,29 @@ fn check_call_regions(
     }
 
     for (arg, param) in args.iter().zip(callee.params.iter()) {
-        let Some(arg_place) = operand_place(arg) else { continue };
-        let Some(arg_owned) = as_owned_path(arg_place) else { continue };
-        let Type::Ref(kind, _, inner_ty) = &param.ty else { continue };
-        if matches!(kind, RefKind::Shared) { continue }
+        let Some(arg_place) = operand_place(arg) else {
+            continue;
+        };
+        let Some(arg_owned) = as_owned_path(arg_place) else {
+            continue;
+        };
+        let Type::Ref(kind, _, inner_ty) = &param.ty else {
+            continue;
+        };
+        if matches!(kind, RefKind::Shared) {
+            continue;
+        }
         // The value the callee writes has a region: the outermost
         // named region in the inner type.
-        let Some(out_region) = first_named_region(inner_ty, &inst) else { continue };
-        let Some(input_places) = per_output_inputs.get(&out_region) else { continue };
-        if input_places.is_empty() { continue }
+        let Some(out_region) = first_named_region(inner_ty, &inst) else {
+            continue;
+        };
+        let Some(input_places) = per_output_inputs.get(&out_region) else {
+            continue;
+        };
+        if input_places.is_empty() {
+            continue;
+        }
 
         let mut merged: BTreeSet<Place> = BTreeSet::new();
         for src in input_places {
@@ -784,7 +827,9 @@ fn check_call_regions(
                 merged.extend(loan.loaned.iter().cloned());
             }
         }
-        if merged.is_empty() { continue }
+        if merged.is_empty() {
+            continue;
+        }
 
         // Synthetic loan's kind mirrors the callee's returned ref.
         let synth_kind = match inner_ty.as_ref() {
@@ -871,8 +916,17 @@ fn walk_call_regions(
             };
             let inner_caller = crate::mir::helpers::deref_place(caller_place.clone());
             walk_call_regions(
-                inner, &inner_caller, inst, locals, env, region_ctx,
-                inner_variance, loans, per_output_inputs, constraints, span,
+                inner,
+                &inner_caller,
+                inst,
+                locals,
+                env,
+                region_ctx,
+                inner_variance,
+                loans,
+                per_output_inputs,
+                constraints,
+                span,
             );
         }
         Type::Custom(_, lts, args) => {
@@ -885,9 +939,11 @@ fn walk_call_regions(
                     if let Some(caller_lt) = caller_lts.first() {
                         let caller_r = Region::Named(caller_lt.clone());
                         emit_variance(
-                            &caller_r, &inst_region,
+                            &caller_r,
+                            &inst_region,
                             variance.combine(Variance::Invariant),
-                            constraints, span,
+                            constraints,
+                            span,
                         );
                     }
                 }
@@ -895,16 +951,33 @@ fn walk_call_regions(
             // Recurse into type args (invariant for now).
             for a in args {
                 walk_call_regions(
-                    a, caller_place, inst, locals, env, region_ctx,
+                    a,
+                    caller_place,
+                    inst,
+                    locals,
+                    env,
+                    region_ctx,
                     variance.combine(Variance::Invariant),
-                    loans, per_output_inputs, constraints, span,
+                    loans,
+                    per_output_inputs,
+                    constraints,
+                    span,
                 );
             }
         }
         Type::Array(elem, _) | Type::RawPtr(elem) => {
             walk_call_regions(
-                elem, caller_place, inst, locals, env, region_ctx,
-                variance, loans, per_output_inputs, constraints, span,
+                elem,
+                caller_place,
+                inst,
+                locals,
+                env,
+                region_ctx,
+                variance,
+                loans,
+                per_output_inputs,
+                constraints,
+                span,
             );
         }
         _ => {}
@@ -950,11 +1023,7 @@ fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Re
 }
 
 /// Get the outer ref-kind of `place` when its type is `Type::Ref`.
-fn ref_kind_of_place(
-    place: &Place,
-    locals: &IndexMap<String, Type>,
-    env: &Env,
-) -> Option<RefKind> {
+fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &Env) -> Option<RefKind> {
     match crate::mir::type_util::place_type(locals, env, place)? {
         Type::Ref(kind, _, _) => Some(kind),
         _ => None,
@@ -989,7 +1058,6 @@ fn operand_place(op: &Operand) -> Option<&Place> {
         Operand::Const(_) => None,
     }
 }
-
 
 /// Check accesses in `stmt` against `loans`, then advance `loans` via
 /// `transfer_stmt`. `Call` is handled inline (not via `transfer_stmt`)
@@ -1038,7 +1106,17 @@ fn check_and_transfer_stmt(
         }
         StatementKind::Call(target, args) => {
             check_operand_access(func, block, target, stmt.span, loans, d);
-            check_call_regions(env, func, target, args, stmt.span, loans, region_ctx, constraints, d);
+            check_call_regions(
+                env,
+                func,
+                target,
+                args,
+                stmt.span,
+                loans,
+                region_ctx,
+                constraints,
+                d,
+            );
             consume_operand(loans, target);
             for a in args {
                 check_operand_access(func, block, a, stmt.span, loans, d);
@@ -1074,7 +1152,15 @@ fn check_and_transfer_terminator(
         }
         TerminatorKind::SwitchEnum { place, .. } => {
             // Discriminant read.
-            check_loan_conflict(func, block, place, AccessKind::Read, terminator_span, loans, d);
+            check_loan_conflict(
+                func,
+                block,
+                place,
+                AccessKind::Read,
+                terminator_span,
+                loans,
+                d,
+            );
         }
         _ => {}
     }
@@ -1095,7 +1181,6 @@ fn check_operand_access(
     };
     check_loan_conflict(func, block, place, access, span, loans, d);
 }
-
 
 // nll_tests covers pass-specific snapshot behavior (assert_elab_eq)
 // that the fixture runner can't observe. Most of its round-trip tests

@@ -3,8 +3,7 @@ use silica_mir::{
     elaborate_and_check_mir, lower_hll_to_mir, mir,
 };
 
-const USAGE: &str =
-    "Usage: silica-mir [--emit=<mir|pre-elab-mir|llvm>] <file.si | file.sim>";
+const USAGE: &str = "Usage: silica-mir [--emit=<mir|pre-elab-mir|llvm>] <file.si | file.sim>";
 
 #[derive(Clone, Copy)]
 enum EmitKind {

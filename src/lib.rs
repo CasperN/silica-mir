@@ -1,10 +1,10 @@
 pub mod common;
-pub mod mir;
-pub mod hll;
 pub mod diagnostics;
+pub mod hll;
+pub mod mir;
 
-use mir::ast::Program;
 use diagnostics::Diagnostics;
+use mir::ast::Program;
 
 /// Run the HLL frontend (parse → typecheck → mutability check → lower)
 /// and return the resulting MIR program. Errors are pushed into `d` and
@@ -25,7 +25,10 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     hll::lowering::run_lowering(&hll_prog, &types, d)
 }
 
-pub fn elaborate_and_check_mir(mut program: Program, d: &mut Diagnostics) -> (Program, mir::type_check::Env) {
+pub fn elaborate_and_check_mir(
+    mut program: Program,
+    d: &mut Diagnostics,
+) -> (Program, mir::type_check::Env) {
     mir::elision::elide_program(&mut program);
     let (mut env, env_errs) = mir::type_check::Env::build(&program);
     d.extend_errors(env_errs);

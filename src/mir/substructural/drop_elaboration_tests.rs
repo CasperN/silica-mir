@@ -1,6 +1,6 @@
 use super::drop_elaboration::*;
-use crate::mir::ast::Program;
 use crate::diagnostics::Diagnostics;
+use crate::mir::ast::Program;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print;
 use crate::mir::substructural::check::check_return_leaks;
@@ -927,8 +927,7 @@ fn strict_check_still_fails_for_linear_leak() {
 
     let errs = d2.errors_str();
     assert!(
-        errs
-            .iter()
+        errs.iter()
             .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
         "expected linear leak to survive elaboration; got: {:?}",
         errs

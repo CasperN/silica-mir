@@ -1,10 +1,10 @@
 pub mod ast;
-pub mod helpers;
 pub mod block_reachability;
 pub mod cfg_edit;
 pub mod codegen;
 pub mod dataflow;
 pub mod elision;
+pub mod helpers;
 pub mod init_state;
 pub mod intrinsics;
 pub mod layout;

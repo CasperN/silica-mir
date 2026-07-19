@@ -61,7 +61,11 @@ fn source_kind_for(path: &Path) -> SourceKind {
     match path.extension().and_then(|e| e.to_str()) {
         Some("si") => SourceKind::Hll,
         Some("sim") => SourceKind::Mir,
-        other => panic!("fixture {} has unexpected extension {:?}", path.display(), other),
+        other => panic!(
+            "fixture {} has unexpected extension {:?}",
+            path.display(),
+            other
+        ),
     }
 }
 
@@ -97,8 +101,8 @@ fn detect_stage(fixture: &Path) -> Option<Stage> {
 
 /// Run the pipeline for a fixture and produce the actual output.
 fn run_fixture(path: &Path, stage: Stage) -> String {
-    let source = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
+    let source =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let source_arc = Arc::new(source);
     let source_kind = source_kind_for(path);
     let mut d = Diagnostics::default()
@@ -116,13 +120,13 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
         },
     };
 
-    let elaborated_env = program.as_ref().map(|p| elaborate_and_check_mir(p.clone(), &mut d));
+    let elaborated_env = program
+        .as_ref()
+        .map(|p| elaborate_and_check_mir(p.clone(), &mut d));
 
     match stage {
         Stage::Elab => match &elaborated_env {
-            Some((elaborated, _)) if !d.has_errors() => {
-                mir::pretty_print::pretty_print(elaborated)
-            }
+            Some((elaborated, _)) if !d.has_errors() => mir::pretty_print::pretty_print(elaborated),
             _ => panic!(
                 "elab fixture {} produced errors — rename to .err.expected or fix it:\n{}",
                 path.display(),
@@ -179,7 +183,9 @@ fn fixtures_root() -> PathBuf {
 }
 
 fn collect_fixtures(dir: &Path, out: &mut Vec<PathBuf>) {
-    for entry in std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {}", dir.display(), e)) {
+    for entry in
+        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("read_dir {}: {}", dir.display(), e))
+    {
         let path = entry.unwrap().path();
         if path.is_dir() {
             collect_fixtures(&path, out);
@@ -200,7 +206,10 @@ fn update_expect_enabled() -> bool {
 /// sibling with the wrong extension (e.g. a test that used to error
 /// but now runs clean). Returns the path that WAS written.
 fn write_expected(fixture: &Path, stage: Stage, actual: &str) -> PathBuf {
-    let stem = fixture.file_stem().expect("fixture has no stem").to_string_lossy();
+    let stem = fixture
+        .file_stem()
+        .expect("fixture has no stem")
+        .to_string_lossy();
     let expected_path = fixture.with_file_name(format!("{}.{}", stem, stage.expected_extension()));
 
     // Remove the *other* stage's .expected if it exists (stage flipped).
@@ -256,7 +265,8 @@ fn run_all_fixtures() {
 
         let actual = run_fixture(fixture, stage);
         let stem = fixture.file_stem().unwrap().to_string_lossy();
-        let expected_path = fixture.with_file_name(format!("{}.{}", stem, stage.expected_extension()));
+        let expected_path =
+            fixture.with_file_name(format!("{}.{}", stem, stage.expected_extension()));
 
         let expected = match std::fs::read_to_string(&expected_path) {
             Ok(s) => s,

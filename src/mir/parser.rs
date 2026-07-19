@@ -1,6 +1,6 @@
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use tree_sitter::{Node, Parser as TSParser};
 
 /// Machine-readable error codes emitted by the MIR parser.
@@ -285,12 +285,7 @@ impl Parser {
     }
 
     /// Build a `Diagnostic` at `node`'s start position.
-    fn diag(
-        &self,
-        node: Node,
-        code: ParserCode,
-        message: impl Into<String>,
-    ) -> Diagnostic {
+    fn diag(&self, node: Node, code: ParserCode, message: impl Into<String>) -> Diagnostic {
         Diagnostic::new(code, span_of(node), message)
     }
 
@@ -422,10 +417,7 @@ impl Parser {
                     return Ok(ty);
                 }
                 let kind = first_child.kind();
-                if kind == "bool"
-                    || kind == "unit"
-                    || kind == "never"
-                {
+                if kind == "bool" || kind == "unit" || kind == "never" {
                     return self.map_type(first_child);
                 }
                 if kind == "identifier" {
@@ -463,7 +455,8 @@ impl Parser {
                     _ => None,
                 };
                 if let Some(kind) = ref_kind {
-                    let lt = node.child(1)
+                    let lt = node
+                        .child(1)
                         .filter(|c| c.kind() == "lifetime")
                         .map(|c| Lifetime(self.get_text(c).trim_start_matches('\'').to_string()));
                     let inner_idx = if lt.is_some() { 2 } else { 1 };
@@ -558,11 +551,7 @@ impl Parser {
                     let second_to_last = node.child((n - 2) as u32).unwrap();
                     if self.get_text(last_child) == "*" && self.get_text(second_to_last) == "." {
                         let inner = node.child(0).ok_or_else(|| {
-                            self.diag(
-                                node,
-                                ParserCode::MalformedCst,
-                                "deref missing inner place",
-                            )
+                            self.diag(node, ParserCode::MalformedCst, "deref missing inner place")
                         })?;
                         return Ok(deref_place(self.map_place(inner)?));
                     }
@@ -666,9 +655,9 @@ impl Parser {
     }
 
     fn map_rvalue(&self, node: Node) -> Result<RValue, Diagnostic> {
-        let child = node.child(0).ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "rvalue node is empty")
-        })?;
+        let child = node
+            .child(0)
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "rvalue node is empty"))?;
         match child.kind() {
             "operand" => Ok(RValue::Use(self.map_operand(child)?)),
             _ => {
@@ -724,9 +713,8 @@ impl Parser {
                             })?;
                         let variant_name = self.get_text(variant_name_node).to_string();
                         let mut cursor = node.walk();
-                        let (_lifetime_args, type_args) = if let Some(ta) = node
-                            .children(&mut cursor)
-                            .find(|c| c.kind() == "type_args")
+                        let (_lifetime_args, type_args) = if let Some(ta) =
+                            node.children(&mut cursor).find(|c| c.kind() == "type_args")
                         {
                             self.map_type_args(ta)?
                         } else {
@@ -744,7 +732,12 @@ impl Parser {
                                 )
                             })?;
                         let operand = self.map_operand(operand_node)?;
-                        Ok(enum_constr_rv_with_args(enum_name, type_args, variant_name, operand))
+                        Ok(enum_constr_rv_with_args(
+                            enum_name,
+                            type_args,
+                            variant_name,
+                            operand,
+                        ))
                     }
                 }
             }
@@ -822,11 +815,7 @@ impl Parser {
                 })?;
                 let cond = self.map_operand(cond_node)?;
                 let true_node = child.child_by_field_name("true_label").ok_or_else(|| {
-                    self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        "branch missing true_label",
-                    )
+                    self.diag(child, ParserCode::MalformedCst, "branch missing true_label")
                 })?;
                 let true_label = self.get_text(true_node).to_string();
                 let false_node = child.child_by_field_name("false_label").ok_or_else(|| {
@@ -841,11 +830,7 @@ impl Parser {
             }
             "switchEnum" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
-                    self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        "switchEnum missing place",
-                    )
+                    self.diag(child, ParserCode::MalformedCst, "switchEnum missing place")
                 })?;
                 let place = self.map_place(place_node)?;
 
@@ -853,20 +838,17 @@ impl Parser {
                 let mut cursor = child.walk();
                 for item in child.children(&mut cursor) {
                     if item.kind() == "switch_case" {
-                        let variant_node = item.child_by_field_name("variant").ok_or_else(|| {
-                            self.diag(
-                                item,
-                                ParserCode::MalformedCst,
-                                "switch case missing variant",
-                            )
-                        })?;
+                        let variant_node =
+                            item.child_by_field_name("variant").ok_or_else(|| {
+                                self.diag(
+                                    item,
+                                    ParserCode::MalformedCst,
+                                    "switch case missing variant",
+                                )
+                            })?;
                         let variant = self.get_text(variant_node).to_string();
                         let label_node = item.child_by_field_name("label").ok_or_else(|| {
-                            self.diag(
-                                item,
-                                ParserCode::MalformedCst,
-                                "switch case missing label",
-                            )
+                            self.diag(item, ParserCode::MalformedCst, "switch case missing label")
                         })?;
                         let label = self.get_text(label_node).to_string();
                         cases.push((variant, label));
@@ -968,7 +950,10 @@ impl Parser {
                             format!("Duplicate type parameter '{}'", pname),
                         ));
                     }
-                    let bounds = if let Some(m) = child.children(&mut child.walk()).find(|c| c.kind() == "markers") {
+                    let bounds = if let Some(m) = child
+                        .children(&mut child.walk())
+                        .find(|c| c.kind() == "markers")
+                    {
                         self.map_markers(m)?
                     } else {
                         Markers::empty()
@@ -1021,17 +1006,18 @@ impl Parser {
     }
 
     fn map_struct_decl(&self, node: Node) -> Result<StructDecl, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "struct decl missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "struct decl missing name"))?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
         let mut cursor = node.walk();
         // Populate scope BEFORE walking fields so `t: T` resolves to
         // `Param`. Cleared on return so scopes don't leak across decls.
-        let (lifetime_params, type_params) = if let Some(tp_node) =
-            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        let (lifetime_params, type_params) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node)?
         } else {
@@ -1076,15 +1062,16 @@ impl Parser {
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "enum decl missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "enum decl missing name"))?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
 
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) =
-            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        let (lifetime_params, type_params) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node)?
         } else {
@@ -1102,19 +1089,11 @@ impl Parser {
         for child in node.children(&mut cursor) {
             if child.kind() == "enum_variant" {
                 let v_name_node = child.child_by_field_name("name").ok_or_else(|| {
-                    self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        "enum variant missing name",
-                    )
+                    self.diag(child, ParserCode::MalformedCst, "enum variant missing name")
                 })?;
                 let v_name = self.get_text(v_name_node).to_string();
                 let v_type_node = child.child_by_field_name("type").ok_or_else(|| {
-                    self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        "enum variant missing type",
-                    )
+                    self.diag(child, ParserCode::MalformedCst, "enum variant missing type")
                 })?;
                 let v_type = self.map_type(v_type_node)?;
                 variants.push(EnumVariant {
@@ -1137,9 +1116,9 @@ impl Parser {
     }
 
     fn map_function_decl(&self, node: Node) -> Result<Function, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "function missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "function missing name"))?;
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
         let is_extern = self.get_text(node).starts_with("extern");
@@ -1332,12 +1311,15 @@ mod tests {
             let block = &body.blocks[0];
             assert_eq!(block.label, "entry");
             assert_eq!(block.statements.len(), 3);
-            assert_eq!(block.terminator, return_term(Span {
-                line: 8,
-                col: 21,
-                end_line: 8,
-                end_col: 27
-            }));
+            assert_eq!(
+                block.terminator,
+                return_term(Span {
+                    line: 8,
+                    col: 21,
+                    end_line: 8,
+                    end_col: 27
+                })
+            );
         } else {
             panic!("Expected function declaration");
         }
@@ -1681,4 +1663,3 @@ mod tests {
         }
     }
 }
-

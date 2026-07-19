@@ -53,9 +53,9 @@
 //!   check (post-elab) then surfaces the error at the inserted unborrow.
 
 use crate::mir::ast::*;
-use crate::mir::helpers::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
+use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
@@ -149,8 +149,7 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         // Per-statement live sets: live_states[i] = live before stmt i
         // for i in 0..n_stmts. live_states[n_stmts] = live before
         // terminator = live after last statement.
-        let mut live_states: Vec<BTreeSet<Place>> =
-            Vec::with_capacity(block.statements.len() + 1);
+        let mut live_states: Vec<BTreeSet<Place>> = Vec::with_capacity(block.statements.len() + 1);
         let mut cur = live_out.clone();
         analysis.transfer_terminator(&mut cur, &block.terminator);
         live_states.push(cur.clone());
@@ -413,9 +412,9 @@ fn deref_ancestor(place: &Place) -> Option<Place> {
     loop {
         match cur {
             Place::Deref(inner) => return as_owned_path(inner),
-            Place::Field(inner, _)
-            | Place::Downcast(inner, _)
-            | Place::Index(inner, _) => cur = inner,
+            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
+                cur = inner
+            }
             Place::Var(_) => return None,
         }
     }
@@ -451,7 +450,9 @@ fn walk_ref_paths(
         out.insert(place.clone());
         return;
     }
-    let Type::Custom(name, _, args) = ty else { return };
+    let Type::Custom(name, _, args) = ty else {
+        return;
+    };
     if !visited.insert(name.clone()) {
         return;
     }
@@ -487,7 +488,6 @@ fn walk_ref_paths(
     }
     visited.remove(name);
 }
-
 
 /// Enumerate borrower places used by referencing `place`. Yields any
 /// borrower that shares storage with `place`:
@@ -571,9 +571,7 @@ fn rvalue_uses(rv: &RValue, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
         // `& place`: it uses (and keeps live) any borrower mentioned
         // inside `place`. The raw-vs-safe distinction only affects
         // loan tracking, not borrower liveness.
-        RValue::Ref(_, place) | RValue::RawRef(place) => {
-            place_borrower_uses(place, borrowers, out)
-        }
+        RValue::Ref(_, place) | RValue::RawRef(place) => place_borrower_uses(place, borrowers, out),
         RValue::ArrayLit(ops) => {
             for op in ops {
                 operand_uses(op, borrowers, out);
@@ -658,4 +656,3 @@ fn operand_moves(op: &Operand, r: &Place) -> bool {
         _ => false,
     }
 }
-

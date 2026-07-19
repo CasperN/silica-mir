@@ -1,4 +1,4 @@
-use crate::common::{IntTy, FloatTy, RefKind, Span, Markers, Lifetime};
+use crate::common::{FloatTy, IntTy, Lifetime, Markers, RefKind, Span};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
@@ -38,12 +38,16 @@ impl std::fmt::Display for Type {
                     write!(f, "<")?;
                     let mut first = true;
                     for lt in lifetimes {
-                        if !first { write!(f, ", ")?; }
+                        if !first {
+                            write!(f, ", ")?;
+                        }
                         first = false;
                         write!(f, "{}", lt)?;
                     }
                     for a in args {
-                        if !first { write!(f, ", ")?; }
+                        if !first {
+                            write!(f, ", ")?;
+                        }
                         first = false;
                         write!(f, "{}", a)?;
                     }

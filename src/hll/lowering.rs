@@ -1,9 +1,9 @@
-use std::collections::HashMap;
-use indexmap::IndexMap;
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::hll::ast as hll;
 use crate::mir::ast as mir;
 use crate::mir::helpers::*;
-use crate::hll::ast as hll;
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use indexmap::IndexMap;
+use std::collections::HashMap;
 
 /// Machine-readable code for each HLL → MIR lowering error kind.
 ///
@@ -127,7 +127,10 @@ impl LowerCtx {
         });
     }
 
-    fn pop_and_emit_defers(&mut self, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), Diagnostic> {
+    fn pop_and_emit_defers(
+        &mut self,
+        types: &IndexMap<mir::Span, hll::Type>,
+    ) -> Result<(), Diagnostic> {
         let scope = self.scopes.pop().ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
@@ -142,7 +145,11 @@ impl LowerCtx {
         Ok(())
     }
 
-    fn emit_defers_to_depth(&mut self, depth: usize, types: &IndexMap<mir::Span, hll::Type>) -> Result<(), Diagnostic> {
+    fn emit_defers_to_depth(
+        &mut self,
+        depth: usize,
+        types: &IndexMap<mir::Span, hll::Type>,
+    ) -> Result<(), Diagnostic> {
         let mut defers = Vec::new();
         for i in (depth..self.scopes.len()).rev() {
             for defer_expr in self.scopes[i].defers.iter().rev() {
@@ -304,7 +311,9 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
             fn_ty(mir_params)
         }
         hll::Type::Array(inner, size) => array_ty(lower_type(inner), *size as u64),
-        hll::Type::Var(_) | hll::Type::IntVar(_) | hll::Type::FloatVar(_) => unreachable!("type variables must be resolved before lowering"),
+        hll::Type::Var(_) | hll::Type::IntVar(_) | hll::Type::FloatVar(_) => {
+            unreachable!("type variables must be resolved before lowering")
+        }
         hll::Type::Error => unreachable!("cannot lower program with type errors"),
     }
 }
@@ -396,12 +405,14 @@ fn lower_expr_to_operand(
             Ok(const_op(const_val))
         }
         hll::ExprKind::Variable(name)
-            if ctx.functions.contains_key(name)
-                && !ctx.locals.iter().any(|l| l.name == *name) =>
+            if ctx.functions.contains_key(name) && !ctx.locals.iter().any(|l| l.name == *name) =>
         {
             let f_decl = ctx.functions.get(name).cloned().unwrap();
             let mir_type_args = infer_fn_type_args(&f_decl, expr.span, types);
-            Ok(const_op(fn_name_const_with_args(name.clone(), mir_type_args)))
+            Ok(const_op(fn_name_const_with_args(
+                name.clone(),
+                mir_type_args,
+            )))
         }
         hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
@@ -443,36 +454,38 @@ fn lower_expr_into(
         | hll::ExprKind::Deref(_)
         | hll::ExprKind::ArrayIndex(_, _) => {
             let op = lower_expr_to_operand(ctx, expr, types)?;
-            ctx.emit_statement(
-                assign_stmt(dest.clone(), use_rv(op), expr.span)
-            );
+            ctx.emit_statement(assign_stmt(dest.clone(), use_rv(op), expr.span));
             Ok(())
         }
         hll::ExprKind::Borrow(kind, target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            ctx.emit_statement(
-                assign_stmt(dest.clone(), ref_rv(*kind, target_place), expr.span)
-            );
+            ctx.emit_statement(assign_stmt(
+                dest.clone(),
+                ref_rv(*kind, target_place),
+                expr.span,
+            ));
             Ok(())
         }
         hll::ExprKind::RawBorrow(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            ctx.emit_statement(
-                assign_stmt(dest.clone(), raw_ref_rv(target_place), expr.span)
-            );
+            ctx.emit_statement(assign_stmt(
+                dest.clone(),
+                raw_ref_rv(target_place),
+                expr.span,
+            ));
             Ok(())
         }
 
         hll::ExprKind::Assign(lhs, rhs) => {
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
-            ctx.emit_statement(
-                assign_stmt(lhs_place, use_rv(rhs_op), expr.span)
-            );
+            ctx.emit_statement(assign_stmt(lhs_place, use_rv(rhs_op), expr.span));
             // Assignment expression itself evaluates to Unit
-            ctx.emit_statement(
-                assign_stmt(dest.clone(), use_rv(const_op(unit_const())), expr.span)
-            );
+            ctx.emit_statement(assign_stmt(
+                dest.clone(),
+                use_rv(const_op(unit_const())),
+                expr.span,
+            ));
             Ok(())
         }
         hll::ExprKind::Unary(op, operand) => {
@@ -491,11 +504,13 @@ fn lower_expr_into(
             let type_name = match &mir_ty {
                 mir::Type::Int(int_ty) => int_ty.name(),
                 mir::Type::Float(float_ty) => float_ty.name(),
-                _ => return Err(diag(
-                    HllLoweringCode::UnaryOpNonNumeric,
-                    expr.span,
-                    format!("unary op on non-numeric type {:?}", mir_ty),
-                )),
+                _ => {
+                    return Err(diag(
+                        HllLoweringCode::UnaryOpNonNumeric,
+                        expr.span,
+                        format!("unary op on non-numeric type {:?}", mir_ty),
+                    ))
+                }
             };
             let intrinsic_name = format!("${}_{}", type_name, op_name);
             let fn_op = const_op(fn_name_const(intrinsic_name));
@@ -504,19 +519,16 @@ fn lower_expr_into(
 
             let out_ref = out_ref_ty(mir_ty);
             let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
-            ctx.emit_statement(
-                assign_stmt(
-                    out_ref_place.clone(),
-                    ref_rv(mir::RefKind::Out, dest.clone()),
-                    expr.span),
-            );
-            ctx.emit_statement(
-                call_stmt(
-                    fn_op,
-                    vec![operand_op, move_op(out_ref_place)],
-                    expr.span
-                ),
-            );
+            ctx.emit_statement(assign_stmt(
+                out_ref_place.clone(),
+                ref_rv(mir::RefKind::Out, dest.clone()),
+                expr.span,
+            ));
+            ctx.emit_statement(call_stmt(
+                fn_op,
+                vec![operand_op, move_op(out_ref_place)],
+                expr.span,
+            ));
             Ok(())
         }
         hll::ExprKind::Binary(lhs, op, rhs) => {
@@ -528,7 +540,7 @@ fn lower_expr_into(
                 )
             })?;
             let mir_ty = lower_type(lhs_hll_ty);
-            
+
             // Map BinOp to string name
             let op_name = match op {
                 hll::BinOp::Add => "add",
@@ -543,24 +555,26 @@ fn lower_expr_into(
                 hll::BinOp::Gt => "gt",
                 hll::BinOp::Ge => "ge",
             };
-            
+
             let type_name = match &mir_ty {
                 mir::Type::Int(int_ty) => int_ty.name(),
                 mir::Type::Float(float_ty) => float_ty.name(),
-                _ => return Err(diag(
-                    HllLoweringCode::BinaryOpNonNumeric,
-                    expr.span,
-                    format!("binary op on non-numeric type {:?}", mir_ty),
-                )),
+                _ => {
+                    return Err(diag(
+                        HllLoweringCode::BinaryOpNonNumeric,
+                        expr.span,
+                        format!("binary op on non-numeric type {:?}", mir_ty),
+                    ))
+                }
             };
-            
+
             let intrinsic_name = format!("${}_{}", type_name, op_name);
             let fn_op = const_op(fn_name_const(intrinsic_name));
-            
+
             let lhs_op = lower_expr_to_operand(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
             let mut arg_ops = vec![lhs_op, rhs_op];
-            
+
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
@@ -568,16 +582,14 @@ fn lower_expr_into(
                     "missing type annotation for binary expression",
                 )
             })?;
-            
+
             let out_ref = out_ref_ty(lower_type(hll_ret_ty));
             let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
-            ctx.emit_statement(
-                assign_stmt(
-                    out_ref_place.clone(),
-                    ref_rv(mir::RefKind::Out, dest.clone()),
-                    expr.span,
-                ),
-            );
+            ctx.emit_statement(assign_stmt(
+                out_ref_place.clone(),
+                ref_rv(mir::RefKind::Out, dest.clone()),
+                expr.span,
+            ));
             arg_ops.push(move_op(out_ref_place));
             ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
             Ok(())
@@ -594,8 +606,7 @@ fn lower_expr_into(
                     "missing type annotation for cast target",
                 )
             })?;
-            let Some(intrinsic) =
-                crate::hll::type_check::cast_intrinsic_name(from_hll_ty, to_ty)
+            let Some(intrinsic) = crate::hll::type_check::cast_intrinsic_name(from_hll_ty, to_ty)
             else {
                 lower_expr_into(ctx, inner, dest, types)?;
                 return Ok(());
@@ -604,16 +615,16 @@ fn lower_expr_into(
             let inner_op = lower_expr_to_operand(ctx, inner, types)?;
             let out_ref = out_ref_ty(lower_type(to_ty));
             let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
-            ctx.emit_statement(
-                assign_stmt(
-                    out_ref_place.clone(),
-                    ref_rv(mir::RefKind::Out, dest.clone()),
-                    expr.span
-                )
-            );
-            ctx.emit_statement(
-                call_stmt(fn_op, vec![inner_op, move_op(out_ref_place)], expr.span)
-            );
+            ctx.emit_statement(assign_stmt(
+                out_ref_place.clone(),
+                ref_rv(mir::RefKind::Out, dest.clone()),
+                expr.span,
+            ));
+            ctx.emit_statement(call_stmt(
+                fn_op,
+                vec![inner_op, move_op(out_ref_place)],
+                expr.span,
+            ));
             Ok(())
         }
         hll::ExprKind::Call(fn_expr, args) => {
@@ -667,21 +678,21 @@ fn lower_expr_into(
                 // Yes! That is absolutely correct and matches MIR semantics perfectly!
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
                 let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
-                ctx.emit_statement(
-                    assign_stmt(
-                        out_ref_place.clone(),
-                        ref_rv(mir::RefKind::Out,dest.clone()),
-                        expr.span
-                    ),
-                );
+                ctx.emit_statement(assign_stmt(
+                    out_ref_place.clone(),
+                    ref_rv(mir::RefKind::Out, dest.clone()),
+                    expr.span,
+                ));
                 arg_ops.push(move_op(out_ref_place));
                 ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
             } else {
                 ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
                 // Function returns unit, assign Unit to dest
-                ctx.emit_statement(
-                    assign_stmt(dest.clone(), use_rv(const_op(unit_const())), expr.span),
-                );
+                ctx.emit_statement(assign_stmt(
+                    dest.clone(),
+                    use_rv(const_op(unit_const())),
+                    expr.span,
+                ));
             }
             Ok(())
         }
@@ -689,7 +700,13 @@ fn lower_expr_into(
             ctx.push_scope(false);
             for stmt in stmts {
                 match stmt {
-                    hll::Stmt::Let { is_mut: _, name, ty: annot_ty, init, span } => {
+                    hll::Stmt::Let {
+                        is_mut: _,
+                        name,
+                        ty: annot_ty,
+                        init,
+                        span,
+                    } => {
                         // Type source: initializer's typed-slot when present,
                         // else the required annotation. type-check has already
                         // rejected the "no init and no annotation" case.
@@ -744,9 +761,11 @@ fn lower_expr_into(
             if let Some(last) = last_expr {
                 lower_expr_into(ctx, last, dest, types)?;
             } else {
-                ctx.emit_statement(
-                    assign_stmt(dest.clone(), use_rv(const_op(unit_const())), expr.span)
-                );
+                ctx.emit_statement(assign_stmt(
+                    dest.clone(),
+                    use_rv(const_op(unit_const())),
+                    expr.span,
+                ));
             }
             ctx.pop_and_emit_defers(types)?;
             Ok(())
@@ -757,9 +776,12 @@ fn lower_expr_into(
             let false_label = ctx.fresh_label("if_false");
             let merge_label = ctx.fresh_label("if_merge");
 
-            ctx.terminate_block(
-                branch_term(cond_op, true_label.clone(), false_label.clone(), cond.span),
-            );
+            ctx.terminate_block(branch_term(
+                cond_op,
+                true_label.clone(),
+                false_label.clone(),
+                cond.span,
+            ));
 
             // True branch
             ctx.start_block(true_label);
@@ -781,7 +803,8 @@ fn lower_expr_into(
 
             ctx.terminate_block(goto_term(start_label.clone(), expr.span));
 
-            ctx.loop_stack.push((start_label.clone(), end_label.clone(), dest.clone()));
+            ctx.loop_stack
+                .push((start_label.clone(), end_label.clone(), dest.clone()));
             ctx.push_scope(true);
             ctx.start_block(start_label.clone());
 
@@ -797,32 +820,44 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Break(val_expr) => {
-            let break_err = || diag(
-                HllLoweringCode::BreakOutsideLoop,
-                expr.span,
-                "break outside of loop",
-            );
+            let break_err = || {
+                diag(
+                    HllLoweringCode::BreakOutsideLoop,
+                    expr.span,
+                    "break outside of loop",
+                )
+            };
             let (_, end_label, dest_place) = ctx.loop_stack.last().ok_or_else(break_err)?.clone();
 
             if let Some(val) = val_expr {
                 lower_expr_into(ctx, val, &dest_place, types)?;
             }
 
-            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(break_err)?;
+            let loop_depth = ctx
+                .scopes
+                .iter()
+                .rposition(|s| s.is_loop)
+                .ok_or_else(break_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
             ctx.terminate_block(goto_term(end_label, expr.span));
             Ok(())
         }
         hll::ExprKind::Continue => {
-            let continue_err = || diag(
-                HllLoweringCode::ContinueOutsideLoop,
-                expr.span,
-                "continue outside of loop",
-            );
+            let continue_err = || {
+                diag(
+                    HllLoweringCode::ContinueOutsideLoop,
+                    expr.span,
+                    "continue outside of loop",
+                )
+            };
             let (start_label, _, _) = ctx.loop_stack.last().ok_or_else(continue_err)?.clone();
 
-            let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(continue_err)?;
+            let loop_depth = ctx
+                .scopes
+                .iter()
+                .rposition(|s| s.is_loop)
+                .ok_or_else(continue_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
             ctx.terminate_block(goto_term(start_label, expr.span));
@@ -840,7 +875,7 @@ fn lower_expr_into(
         }
         hll::ExprKind::Match(target, arms) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            
+
             let mut cases = Vec::new();
             let mut case_labels = Vec::new();
             for (pattern, _) in arms {
@@ -849,16 +884,16 @@ fn lower_expr_into(
                 cases.push((variant.clone(), label.clone()));
                 case_labels.push(label);
             }
-            
+
             let merge_label = ctx.fresh_label("switch_merge");
-            
+
             ctx.terminate_block(switch_enum_term(target_place.clone(), cases, target.span));
-            
+
             // Lower each arm block
             for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
                 let hll::Pattern::Variant(variant, bound_var) = pattern;
                 ctx.start_block(label.clone());
-                
+
                 if let Some(var_name) = bound_var {
                     let target_hll_ty = lookup_type(target, types).ok_or_else(|| {
                         diag(
@@ -867,45 +902,51 @@ fn lower_expr_into(
                             "missing type annotation for match target",
                         )
                     })?;
-                    let (enum_is_copy, bound_var_mir_ty) = if let hll::Type::Custom(
-                        ref enum_name,
-                        _,
-                        ref args,
-                    ) = target_hll_ty
-                    {
-                        let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
-                            diag(
-                                HllLoweringCode::EnumDeclMissing,
+                    let (enum_is_copy, bound_var_mir_ty) =
+                        if let hll::Type::Custom(ref enum_name, _, ref args) = target_hll_ty {
+                            let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
+                                diag(
+                                    HllLoweringCode::EnumDeclMissing,
+                                    target.span,
+                                    format!("undeclared enum '{}' in lowering", enum_name),
+                                )
+                            })?;
+                            let variant_decl = enum_decl
+                                .variants
+                                .iter()
+                                .find(|v| v.name == *variant)
+                                .ok_or_else(|| {
+                                    diag(
+                                        HllLoweringCode::EnumVariantMissing,
+                                        body.span,
+                                        format!(
+                                            "enum '{}' has no variant '{}' in lowering",
+                                            enum_name, variant
+                                        ),
+                                    )
+                                })?;
+                            // Substitute the enum's type params with the args
+                            // at this use site (e.g. `Option<i64>` binds T := i64).
+                            let mir_variant_ty = lower_type(&variant_decl.ty);
+                            let mir_type_params = lower_type_params(&enum_decl.type_params);
+                            let mir_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
+                            let payload_ty = crate::mir::type_util::substitute_params(
+                                &mir_variant_ty,
+                                &mir_type_params,
+                                &mir_args,
+                            );
+                            let is_copy = enum_decl.markers.implies(mir::Marker::Copy);
+                            (is_copy, payload_ty)
+                        } else {
+                            return Err(diag(
+                                HllLoweringCode::MatchTargetNotEnum,
                                 target.span,
-                                format!("undeclared enum '{}' in lowering", enum_name),
-                            )
-                        })?;
-                        let variant_decl = enum_decl.variants.iter().find(|v| v.name == *variant).ok_or_else(|| {
-                            diag(
-                                HllLoweringCode::EnumVariantMissing,
-                                body.span,
-                                format!("enum '{}' has no variant '{}' in lowering", enum_name, variant),
-                            )
-                        })?;
-                        // Substitute the enum's type params with the args
-                        // at this use site (e.g. `Option<i64>` binds T := i64).
-                        let mir_variant_ty = lower_type(&variant_decl.ty);
-                        let mir_type_params = lower_type_params(&enum_decl.type_params);
-                        let mir_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
-                        let payload_ty = crate::mir::type_util::substitute_params(
-                            &mir_variant_ty,
-                            &mir_type_params,
-                            &mir_args,
-                        );
-                        let is_copy = enum_decl.markers.implies(mir::Marker::Copy);
-                        (is_copy, payload_ty)
-                    } else {
-                        return Err(diag(
-                            HllLoweringCode::MatchTargetNotEnum,
-                            target.span,
-                            format!("expected enum type for match target, found {:?}", target_hll_ty),
-                        ));
-                    };
+                                format!(
+                                    "expected enum type for match target, found {:?}",
+                                    target_hll_ty
+                                ),
+                            ));
+                        };
 
                     ctx.locals.push(mir::Local {
                         name: var_name.clone(),
@@ -947,15 +988,17 @@ fn lower_expr_into(
                     } else {
                         move_op(downcast)
                     };
-                    ctx.emit_statement(
-                        assign_stmt(var_place(var_name.clone()), use_rv(op), body.span),
-                    );
+                    ctx.emit_statement(assign_stmt(
+                        var_place(var_name.clone()),
+                        use_rv(op),
+                        body.span,
+                    ));
                 }
-                
+
                 lower_expr_into(ctx, body, dest, types)?;
                 ctx.terminate_block(goto_term(merge_label.clone(), body.span));
             }
-            
+
             ctx.start_block(merge_label);
             Ok(())
         }
@@ -975,18 +1018,16 @@ fn lower_expr_into(
                 Some(hll::Type::Custom(_, _, args)) => args.iter().map(lower_type).collect(),
                 _ => Vec::new(),
             };
-            ctx.emit_statement(
-                assign_stmt(
-                    dest.clone(),
-                    enum_constr_rv_with_args(
-                        enum_name.clone(),
-                        type_args,
-                        variant_name.clone(),
-                        payload_op,
-                    ),
-                    expr.span,
+            ctx.emit_statement(assign_stmt(
+                dest.clone(),
+                enum_constr_rv_with_args(
+                    enum_name.clone(),
+                    type_args,
+                    variant_name.clone(),
+                    payload_op,
                 ),
-            );
+                expr.span,
+            ));
             Ok(())
         }
         hll::ExprKind::Array(elements) => {
@@ -994,9 +1035,7 @@ fn lower_expr_into(
             for el in elements {
                 ops.push(lower_expr_to_operand(ctx, el, types)?);
             }
-            ctx.emit_statement(
-                assign_stmt(dest.clone(), array_lit_rv(ops), expr.span),
-            );
+            ctx.emit_statement(assign_stmt(dest.clone(), array_lit_rv(ops), expr.span));
             Ok(())
         }
     }
@@ -1007,45 +1046,57 @@ pub fn lower_program(
     types: &IndexMap<mir::Span, hll::Type>,
 ) -> Result<mir::Program, Diagnostic> {
     let mut declarations = Vec::new();
-    
+
     for decl in &program.declarations {
         match decl {
             hll::Declaration::Struct(s) => {
-                let fields = s.fields.iter().map(|f| mir::StructField {
-                    name: f.name.clone(),
-                    ty: lower_type(&f.ty),
-                    span: f.span,
-                }).collect();
+                let fields = s
+                    .fields
+                    .iter()
+                    .map(|f| mir::StructField {
+                        name: f.name.clone(),
+                        ty: lower_type(&f.ty),
+                        span: f.span,
+                    })
+                    .collect();
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     name: s.name.clone(),
                     name_span: s.span,
                     lifetime_params: Vec::new(),
-            type_params: lower_type_params(&s.type_params),
+                    type_params: lower_type_params(&s.type_params),
                     markers: s.markers.clone(),
                     fields,
                 }));
             }
             hll::Declaration::Enum(e) => {
-                let variants = e.variants.iter().map(|v| mir::EnumVariant {
-                    name: v.name.clone(),
-                    ty: lower_type(&v.ty),
-                    span: v.span,
-                }).collect();
+                let variants = e
+                    .variants
+                    .iter()
+                    .map(|v| mir::EnumVariant {
+                        name: v.name.clone(),
+                        ty: lower_type(&v.ty),
+                        span: v.span,
+                    })
+                    .collect();
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     name: e.name.clone(),
                     name_span: e.span,
                     lifetime_params: Vec::new(),
-            type_params: lower_type_params(&e.type_params),
+                    type_params: lower_type_params(&e.type_params),
                     markers: e.markers.clone(),
                     variants,
                 }));
             }
             hll::Declaration::Fn(f) => {
-                let mut params: Vec<mir::Param> = f.params.iter().map(|p| mir::Param {
-                    name: p.name.clone(),
-                    ty: lower_type(&p.ty),
-                    span: p.span,
-                }).collect();
+                let mut params: Vec<mir::Param> = f
+                    .params
+                    .iter()
+                    .map(|p| mir::Param {
+                        name: p.name.clone(),
+                        ty: lower_type(&p.ty),
+                        span: p.span,
+                    })
+                    .collect();
 
                 // If return type is not Unit, append $return parameter
                 if f.ret_ty != hll::Type::Unit {
@@ -1069,7 +1120,7 @@ pub fn lower_program(
                         name_span: f.span,
                         is_extern: true,
                         lifetime_params: Vec::new(),
-            signature_outlives: Vec::new(),
+                        signature_outlives: Vec::new(),
                         type_params: lower_type_params(&f.type_params),
                         params,
                         body: None,
@@ -1108,7 +1159,7 @@ pub fn lower_program(
                     name_span: f.span,
                     is_extern: false,
                     lifetime_params: Vec::new(),
-            signature_outlives: Vec::new(),
+                    signature_outlives: Vec::new(),
                     type_params: lower_type_params(&f.type_params),
                     params,
                     body: Some(mir::FunctionBody {
@@ -1120,15 +1171,18 @@ pub fn lower_program(
         }
     }
 
-    Ok(mir::Program { declarations, source: program.source.clone() })
+    Ok(mir::Program {
+        declarations,
+        source: program.source.clone(),
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::diagnostics::Diagnostics;
     use crate::hll::parser::Parser;
     use crate::hll::type_check::typecheck_program_collect;
-    use crate::diagnostics::Diagnostics;
     use crate::mir::pretty_print::pretty_print;
 
     fn lower_source(source: &str) -> String {
@@ -1142,7 +1196,11 @@ mod tests {
         let mut tc_d = Diagnostics::default();
         let types = typecheck_program_collect(&hll_prog, &mut tc_d);
         if tc_d.has_errors() {
-            panic!("typecheck error:\n{}\n--- source ---\n{}", tc_d.errors_str().join("\n"), source);
+            panic!(
+                "typecheck error:\n{}\n--- source ---\n{}",
+                tc_d.errors_str().join("\n"),
+                source
+            );
         }
         let mir_prog = lower_program(&hll_prog, &types).unwrap();
 
@@ -1154,7 +1212,10 @@ mod tests {
         let mut d = crate::Diagnostics::default();
         env.typecheck(&mut d);
         if d.has_errors() {
-            panic!("MIR typecheck failed on lowered program: {:?}", d.errors_str());
+            panic!(
+                "MIR typecheck failed on lowered program: {:?}",
+                d.errors_str()
+            );
         }
 
         pretty_print(&mir_prog)
@@ -1162,8 +1223,16 @@ mod tests {
 
     fn assert_lower_eq(source: &str, expected_mir: &str) {
         let actual = lower_source(source);
-        let actual_clean: Vec<&str> = actual.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
-        let expected_clean: Vec<&str> = expected_mir.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+        let actual_clean: Vec<&str> = actual
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
+        let expected_clean: Vec<&str> = expected_mir
+            .lines()
+            .map(|l| l.trim())
+            .filter(|l| !l.is_empty())
+            .collect();
         assert_eq!(actual_clean, expected_clean);
     }
 
@@ -1189,7 +1258,7 @@ mod tests {
                 $return.* = copy sum;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1217,7 +1286,7 @@ mod tests {
                 $return.* = copy x;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1254,7 +1323,7 @@ mod tests {
               switch_merge_2:
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1288,7 +1357,7 @@ mod tests {
               loop_end_1:
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1319,7 +1388,7 @@ mod tests {
               if_merge_2:
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1363,7 +1432,7 @@ mod tests {
                 $return.* = copy val;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1473,7 +1542,7 @@ mod tests {
                 $return.* = true;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1503,7 +1572,7 @@ mod tests {
                 call $i64_lt(copy x, 10, move _temp_3);
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1524,7 +1593,7 @@ mod tests {
                 call $u32_add(copy a, 1u32, move _temp_0);
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1545,7 +1614,7 @@ mod tests {
                 $return.* = 1;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1560,7 +1629,7 @@ mod tests {
             struct Foo {
               x: i64
             }
-            "
+            ",
         );
 
         // Copy marker only
@@ -1572,7 +1641,7 @@ mod tests {
             struct Foo: Copy {
               x: i64
             }
-            "
+            ",
         );
 
         // Drop marker only
@@ -1584,7 +1653,7 @@ mod tests {
             struct Foo: Drop {
               x: i64
             }
-            "
+            ",
         );
         // Two markers, Drop + Move
         assert_lower_eq(
@@ -1595,7 +1664,7 @@ mod tests {
             struct Foo: Drop + Move {
               x: i64
             }
-            "
+            ",
         );
 
         // Move marker only.
@@ -1607,7 +1676,7 @@ mod tests {
             struct Foo: Move {
               x: i64
             }
-            "
+            ",
         );
     }
 
@@ -1645,7 +1714,7 @@ mod tests {
                 _temp_0 = unit;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1668,7 +1737,7 @@ mod tests {
                 _temp_0 = unit;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1710,7 +1779,7 @@ mod tests {
                 _temp_5 = unit;
                 return
             }
-            "
+            ",
         );
     }
 
@@ -1770,16 +1839,7 @@ mod tests {
                 _temp_0 = unit;
                 return
             }
-            "
+            ",
         );
     }
 }
-
-
-
-
-
-
-
-
-

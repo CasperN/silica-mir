@@ -17,9 +17,9 @@
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks.
 
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::init_state::{self, InitState, InitStateCode, PointState};
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
@@ -115,7 +115,7 @@ fn check_stmt(
                         block,
                         format!("cannot drop non-Drop type {}", ty),
                     )
-                    .with_hint("only types implementing the Drop class can be explicitly dropped")
+                    .with_hint("only types implementing the Drop class can be explicitly dropped"),
                 );
             }
         }
@@ -174,8 +174,16 @@ fn check_operand(
     };
     if !ok {
         let (code, marker_name, hint) = match needed {
-            ClassMarker::Copy => (CopyOfNonCopy, "Copy", "since the type is not Copy, try moving it instead using 'move'"),
-            ClassMarker::Move => (MoveOfNonMove, "Move", "linear types cannot be moved out of non-Move contexts"),
+            ClassMarker::Copy => (
+                CopyOfNonCopy,
+                "Copy",
+                "since the type is not Copy, try moving it instead using 'move'",
+            ),
+            ClassMarker::Move => (
+                MoveOfNonMove,
+                "Move",
+                "linear types cannot be moved out of non-Move contexts",
+            ),
         };
         d.push_error(
             diag(
@@ -185,7 +193,7 @@ fn check_operand(
                 block,
                 format!("cannot {} non-{} type {}", kind_name, marker_name, ty),
             )
-            .with_hint(hint)
+            .with_hint(hint),
         );
     }
 }
@@ -322,7 +330,6 @@ fn check_leaks_in_state(
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::DiagCode;
@@ -380,7 +387,9 @@ mod tests {
         // init_state's message for close_ref_if_present phrases the
         // failure as "has unfulfilled obligation: pointee is …".
         assert!(
-            s_r_errs[0].message().contains("has unfulfilled obligation: pointee is"),
+            s_r_errs[0]
+                .message()
+                .contains("has unfulfilled obligation: pointee is"),
             "expected init_state's obligation message, got: {}",
             s_r_errs[0].message(),
         );
@@ -444,7 +453,8 @@ mod direct_leak_check_tests {
         check_return_leaks(&env, &mut d);
         let errs = d.errors_str();
         assert!(
-            errs.iter().any(|e| e.contains("value 'x'") && e.contains("not consumed")),
+            errs.iter()
+                .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
             "expected leak error, got {:?}",
             errs
         );
@@ -458,7 +468,10 @@ mod direct_leak_check_tests {
         let env = type_check::Env::build(&program).0;
         check_return_leaks(&env, &mut d);
         let errs = d.errors_str();
-        let leak_errs: Vec<_> = errs.iter().filter(|e| e.contains("not consumed at return")).collect();
+        let leak_errs: Vec<_> = errs
+            .iter()
+            .filter(|e| e.contains("not consumed at return"))
+            .collect();
         assert!(leak_errs.is_empty(), "expected no leaks, got {:?}", errs);
     }
 }

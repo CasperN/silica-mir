@@ -54,7 +54,11 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
     }
 
     let pred_span = body.blocks[pred_idx].terminator.span;
-    replace_target_label(&mut body.blocks[pred_idx].terminator, succ_label, &split_label);
+    replace_target_label(
+        &mut body.blocks[pred_idx].terminator,
+        succ_label,
+        &split_label,
+    );
 
     let split_block = BasicBlock {
         label: split_label.clone(),

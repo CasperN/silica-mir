@@ -1,3 +1,5 @@
+use crate::common::{RefKind, Span};
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 /// HLL mutability check.
 ///
 /// Walks the HLL AST after type-checking and before lowering.  Tracks
@@ -7,10 +9,7 @@
 /// Mutations *through* a reference (`x.* = ...`) do **not** require the
 /// reference variable itself to be `mut` — only direct reassignment or
 /// field/index writes on owned places need it.
-
 use crate::hll::ast::*;
-use crate::common::{Span, RefKind};
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use std::collections::HashMap;
 
 /// Machine-readable code for each HLL mutability-check error kind.
@@ -140,9 +139,7 @@ fn place_root(expr: &Expr) -> PlaceRoot<'_> {
 fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
     match &expr.kind {
         // ── leaf / simple ────────────────────────────────────────
-        ExprKind::Literal(_)
-        | ExprKind::Variable(_)
-        | ExprKind::Continue => {}
+        ExprKind::Literal(_) | ExprKind::Variable(_) | ExprKind::Continue => {}
 
         // ── unary wrappers ───────────────────────────────────────
         ExprKind::Borrow(kind, inner) => {
@@ -155,9 +152,15 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
                                 Diagnostic::new(
                                     HllMutCheckCode::BorrowImmutableAsMut,
                                     span,
-                                    format!("cannot borrow immutable binding '{}' as mutable", name),
+                                    format!(
+                                        "cannot borrow immutable binding '{}' as mutable",
+                                        name
+                                    ),
                                 )
-                                .with_secondary(info.decl_span, "variable declared as immutable here")
+                                .with_secondary(
+                                    info.decl_span,
+                                    "variable declared as immutable here",
+                                )
                                 .in_function(func),
                             );
                         }
@@ -282,8 +285,9 @@ fn check_assign_subexprs(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Dia
             check_assign_subexprs(arr, scope, func, d);
             check_expr(idx, scope, func, d);
         }
-        ExprKind::FieldAccess(inner, _)
-        | ExprKind::Deref(inner) => check_assign_subexprs(inner, scope, func, d),
+        ExprKind::FieldAccess(inner, _) | ExprKind::Deref(inner) => {
+            check_assign_subexprs(inner, scope, func, d)
+        }
         // Cast produces a value; it cannot be an assignment target,
         // so no subexprs to walk here.
         ExprKind::Cast(_, _) => {}

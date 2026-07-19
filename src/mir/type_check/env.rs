@@ -53,27 +53,33 @@ impl Env {
             match decl {
                 Declaration::Struct(s) => {
                     if types.contains_key(&s.name) {
-                        errors.push(
-                            Diagnostic::new(DuplicateDeclaration, s.name_span, format!("Duplicate declaration of type '{}'", s.name)),
-                        );
+                        errors.push(Diagnostic::new(
+                            DuplicateDeclaration,
+                            s.name_span,
+                            format!("Duplicate declaration of type '{}'", s.name),
+                        ));
                     } else {
                         types.insert(s.name.clone(), TypeDecl::Struct(s.clone()));
                     }
                 }
                 Declaration::Enum(e) => {
                     if types.contains_key(&e.name) {
-                        errors.push(
-                            Diagnostic::new(DuplicateDeclaration, e.name_span, format!("Duplicate declaration of type '{}'", e.name)),
-                        );
+                        errors.push(Diagnostic::new(
+                            DuplicateDeclaration,
+                            e.name_span,
+                            format!("Duplicate declaration of type '{}'", e.name),
+                        ));
                     } else {
                         types.insert(e.name.clone(), TypeDecl::Enum(e.clone()));
                     }
                 }
                 Declaration::Fn(f) => {
                     if functions.contains_key(&f.name) {
-                        errors.push(
-                            Diagnostic::new(DuplicateDeclaration, f.name_span, format!("Duplicate declaration of function '{}'", f.name)),
-                        );
+                        errors.push(Diagnostic::new(
+                            DuplicateDeclaration,
+                            f.name_span,
+                            format!("Duplicate declaration of function '{}'", f.name),
+                        ));
                     } else {
                         functions.insert(f.name.clone(), f.clone());
                     }
@@ -205,9 +211,7 @@ impl Env {
             }
             (Type::Ref(k1, _, i1), Type::Ref(k2, _, i2)) => k1 == k2 && self.types_match(i1, i2),
             (Type::RawPtr(i1), Type::RawPtr(i2)) => self.types_match(i1, i2),
-            (Type::Array(e1, n1), Type::Array(e2, n2)) => {
-                n1 == n2 && self.types_match(e1, e2)
-            }
+            (Type::Array(e1, n1), Type::Array(e2, n2)) => n1 == n2 && self.types_match(e1, e2),
             _ => false,
         }
     }
@@ -355,9 +359,7 @@ impl Env {
         locals: &IndexMap<String, Type>,
     ) -> Result<Type, Diagnostic> {
         match op {
-            Operand::Copy(place) | Operand::Move(place) => {
-                self.type_of_place(place, span, locals)
-            }
+            Operand::Copy(place) | Operand::Move(place) => self.type_of_place(place, span, locals),
             Operand::Const(c) => match c {
                 ConstVal::Int { ty, .. } => Ok(Type::Int(*ty)),
                 ConstVal::Float { ty, .. } => Ok(Type::Float(*ty)),
@@ -443,7 +445,8 @@ impl Env {
                         )
                     })?;
 
-                let expected_payload = substitute_params(&variant.ty, &e_decl.type_params, type_args);
+                let expected_payload =
+                    substitute_params(&variant.ty, &e_decl.type_params, type_args);
                 let op_ty = self.type_of_operand(op, span, locals)?;
                 if !self.types_match(&expected_payload, &op_ty) {
                     return Err(err(
@@ -455,7 +458,11 @@ impl Env {
                     ));
                 }
 
-                Ok(Type::Custom(enum_name.clone(), Vec::new(), type_args.clone()))
+                Ok(Type::Custom(
+                    enum_name.clone(),
+                    Vec::new(),
+                    type_args.clone(),
+                ))
             }
             RValue::ArrayLit(ops) => {
                 // Empty array literal: `[]` has type `[Unit; 0]` as a

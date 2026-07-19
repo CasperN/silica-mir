@@ -60,8 +60,14 @@ pub struct IntrinsicSpec {
 pub type Emit = Box<dyn Fn(&[String], &mut dyn FnMut() -> String) -> (Vec<String>, String)>;
 
 const ALL_INT_TYS: &[IntTy] = &[
-    IntTy::I8, IntTy::I16, IntTy::I32, IntTy::I64,
-    IntTy::U8, IntTy::U16, IntTy::U32, IntTy::U64,
+    IntTy::I8,
+    IntTy::I16,
+    IntTy::I32,
+    IntTy::I64,
+    IntTy::U8,
+    IntTy::U16,
+    IntTy::U32,
+    IntTy::U64,
 ];
 const SIGNED_INT_TYS: &[IntTy] = &[IntTy::I8, IntTy::I16, IntTy::I32, IntTy::I64];
 const FLOAT_TYS: &[FloatTy] = &[FloatTy::F32, FloatTy::F64];
@@ -81,25 +87,75 @@ pub fn all() -> Vec<IntrinsicSpec> {
         let value_ty = int_ty(int_kind);
         let type_name = int_kind.name();
         let bits = int_kind.bits();
-        out.push(int_binop(format!("${}_add", type_name), value_ty.clone(), "add", bits));
-        out.push(int_binop(format!("${}_sub", type_name), value_ty.clone(), "sub", bits));
-        out.push(int_binop(format!("${}_mul", type_name), value_ty.clone(), "mul", bits));
+        out.push(int_binop(
+            format!("${}_add", type_name),
+            value_ty.clone(),
+            "add",
+            bits,
+        ));
+        out.push(int_binop(
+            format!("${}_sub", type_name),
+            value_ty.clone(),
+            "sub",
+            bits,
+        ));
+        out.push(int_binop(
+            format!("${}_mul", type_name),
+            value_ty.clone(),
+            "mul",
+            bits,
+        ));
         // Signedness-dispatched division / remainder.
         let (div_op, rem_op) = if int_kind.is_signed() {
             ("sdiv", "srem")
         } else {
             ("udiv", "urem")
         };
-        out.push(int_binop(format!("${}_div", type_name), value_ty.clone(), div_op, bits));
-        out.push(int_binop(format!("${}_rem", type_name), value_ty.clone(), rem_op, bits));
+        out.push(int_binop(
+            format!("${}_div", type_name),
+            value_ty.clone(),
+            div_op,
+            bits,
+        ));
+        out.push(int_binop(
+            format!("${}_rem", type_name),
+            value_ty.clone(),
+            rem_op,
+            bits,
+        ));
         // Bitwise — same LLVM ops for signed/unsigned.
-        out.push(int_binop(format!("${}_and", type_name), value_ty.clone(), "and", bits));
-        out.push(int_binop(format!("${}_or", type_name), value_ty.clone(), "or", bits));
-        out.push(int_binop(format!("${}_xor", type_name), value_ty.clone(), "xor", bits));
+        out.push(int_binop(
+            format!("${}_and", type_name),
+            value_ty.clone(),
+            "and",
+            bits,
+        ));
+        out.push(int_binop(
+            format!("${}_or", type_name),
+            value_ty.clone(),
+            "or",
+            bits,
+        ));
+        out.push(int_binop(
+            format!("${}_xor", type_name),
+            value_ty.clone(),
+            "xor",
+            bits,
+        ));
         // Shifts. shl is signedness-independent; right shift dispatches.
-        out.push(int_binop(format!("${}_shl", type_name), value_ty.clone(), "shl", bits));
+        out.push(int_binop(
+            format!("${}_shl", type_name),
+            value_ty.clone(),
+            "shl",
+            bits,
+        ));
         let shr_op = if int_kind.is_signed() { "ashr" } else { "lshr" };
-        out.push(int_binop(format!("${}_shr", type_name), value_ty.clone(), shr_op, bits));
+        out.push(int_binop(
+            format!("${}_shr", type_name),
+            value_ty.clone(),
+            shr_op,
+            bits,
+        ));
     }
 
     // Negation (signed only — unsigned negation without conversion is
@@ -123,18 +179,48 @@ pub fn all() -> Vec<IntrinsicSpec> {
         let type_name = int_kind.name();
         let bits = int_kind.bits();
         // eq/ne are signedness-independent.
-        out.push(int_cmp(format!("${}_eq", type_name), value_ty.clone(), "eq", bits));
-        out.push(int_cmp(format!("${}_ne", type_name), value_ty.clone(), "ne", bits));
+        out.push(int_cmp(
+            format!("${}_eq", type_name),
+            value_ty.clone(),
+            "eq",
+            bits,
+        ));
+        out.push(int_cmp(
+            format!("${}_ne", type_name),
+            value_ty.clone(),
+            "ne",
+            bits,
+        ));
         // Ordered comparisons pick signed vs unsigned predicates.
         let (lt, le, gt, ge) = if int_kind.is_signed() {
             ("slt", "sle", "sgt", "sge")
         } else {
             ("ult", "ule", "ugt", "uge")
         };
-        out.push(int_cmp(format!("${}_lt", type_name), value_ty.clone(), lt, bits));
-        out.push(int_cmp(format!("${}_le", type_name), value_ty.clone(), le, bits));
-        out.push(int_cmp(format!("${}_gt", type_name), value_ty.clone(), gt, bits));
-        out.push(int_cmp(format!("${}_ge", type_name), value_ty.clone(), ge, bits));
+        out.push(int_cmp(
+            format!("${}_lt", type_name),
+            value_ty.clone(),
+            lt,
+            bits,
+        ));
+        out.push(int_cmp(
+            format!("${}_le", type_name),
+            value_ty.clone(),
+            le,
+            bits,
+        ));
+        out.push(int_cmp(
+            format!("${}_gt", type_name),
+            value_ty.clone(),
+            gt,
+            bits,
+        ));
+        out.push(int_cmp(
+            format!("${}_ge", type_name),
+            value_ty.clone(),
+            ge,
+            bits,
+        ));
     }
 
     // ---------- Float arithmetic ----------
@@ -143,10 +229,30 @@ pub fn all() -> Vec<IntrinsicSpec> {
         let value_ty = float_ty(float_kind);
         let type_name = float_kind.name();
         let llvm_ty = float_llvm_ty(float_kind);
-        out.push(float_binop_spec(format!("${}_add", type_name), value_ty.clone(), "fadd", llvm_ty));
-        out.push(float_binop_spec(format!("${}_sub", type_name), value_ty.clone(), "fsub", llvm_ty));
-        out.push(float_binop_spec(format!("${}_mul", type_name), value_ty.clone(), "fmul", llvm_ty));
-        out.push(float_binop_spec(format!("${}_div", type_name), value_ty.clone(), "fdiv", llvm_ty));
+        out.push(float_binop_spec(
+            format!("${}_add", type_name),
+            value_ty.clone(),
+            "fadd",
+            llvm_ty,
+        ));
+        out.push(float_binop_spec(
+            format!("${}_sub", type_name),
+            value_ty.clone(),
+            "fsub",
+            llvm_ty,
+        ));
+        out.push(float_binop_spec(
+            format!("${}_mul", type_name),
+            value_ty.clone(),
+            "fmul",
+            llvm_ty,
+        ));
+        out.push(float_binop_spec(
+            format!("${}_div", type_name),
+            value_ty.clone(),
+            "fdiv",
+            llvm_ty,
+        ));
         out.push(IntrinsicSpec {
             name: format!("${}_neg", type_name),
             inputs: vec![value_ty.clone()],
@@ -230,7 +336,11 @@ pub fn all() -> Vec<IntrinsicSpec> {
     for &int_kind in ALL_INT_TYS {
         for &float_kind in FLOAT_TYS {
             // int → float
-            let op = if int_kind.is_signed() { "sitofp" } else { "uitofp" };
+            let op = if int_kind.is_signed() {
+                "sitofp"
+            } else {
+                "uitofp"
+            };
             out.push(IntrinsicSpec {
                 name: format!("${}_to_{}", int_kind.name(), float_kind.name()),
                 inputs: vec![int_ty(int_kind)],
@@ -239,7 +349,11 @@ pub fn all() -> Vec<IntrinsicSpec> {
                 llvm_declares: &[],
             });
             // float → int
-            let op = if int_kind.is_signed() { "fptosi" } else { "fptoui" };
+            let op = if int_kind.is_signed() {
+                "fptosi"
+            } else {
+                "fptoui"
+            };
             out.push(IntrinsicSpec {
                 name: format!("${}_to_{}", float_kind.name(), int_kind.name()),
                 inputs: vec![float_ty(float_kind)],
@@ -347,7 +461,6 @@ pub fn prelude_fns() -> Vec<Function> {
     all().into_iter().map(spec_to_function).collect()
 }
 
-
 fn spec_to_function(spec: IntrinsicSpec) -> Function {
     let mut params = Vec::with_capacity(spec.inputs.len() + 1);
     for (i, ty) in spec.inputs.iter().enumerate() {
@@ -367,14 +480,19 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
         name_span: SPAN,
         is_extern: true,
         lifetime_params: Vec::new(),
-            signature_outlives: Vec::new(),
+        signature_outlives: Vec::new(),
         type_params: Vec::new(),
         params,
         body: None,
     }
 }
 
-const SPAN: Span = Span { line: 0, col: 0, end_line: 0, end_col: 0 };
+const SPAN: Span = Span {
+    line: 0,
+    col: 0,
+    end_line: 0,
+    end_col: 0,
+};
 
 /// True if `name` is an intrinsic name (starts with the reserved `$`).
 pub fn is_intrinsic(name: &str) -> bool {
@@ -465,7 +583,10 @@ fn float_llvm_ty(t: FloatTy) -> &'static str {
 pub fn bin_int(op: &'static str, bits: u32) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();
-        let line = format!("  {} = {} i{} {}, {}", result, op, bits, inputs[0], inputs[1]);
+        let line = format!(
+            "  {} = {} i{} {}, {}",
+            result, op, bits, inputs[0], inputs[1]
+        );
         (vec![line], result)
     })
 }
@@ -475,7 +596,10 @@ pub fn bin_int(op: &'static str, bits: u32) -> Emit {
 pub fn icmp(pred: &'static str, bits: u32) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();
-        let line = format!("  {} = icmp {} i{} {}, {}", result, pred, bits, inputs[0], inputs[1]);
+        let line = format!(
+            "  {} = icmp {} i{} {}, {}",
+            result, pred, bits, inputs[0], inputs[1]
+        );
         (vec![line], result)
     })
 }
@@ -485,7 +609,10 @@ pub fn icmp(pred: &'static str, bits: u32) -> Emit {
 pub fn float_binop(op: &'static str, llvm_ty: &'static str) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();
-        let line = format!("  {} = {} {} {}, {}", result, op, llvm_ty, inputs[0], inputs[1]);
+        let line = format!(
+            "  {} = {} {} {}, {}",
+            result, op, llvm_ty, inputs[0], inputs[1]
+        );
         (vec![line], result)
     })
 }
@@ -495,7 +622,10 @@ pub fn float_binop(op: &'static str, llvm_ty: &'static str) -> Emit {
 pub fn fcmp(pred: &'static str, llvm_ty: &'static str) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();
-        let line = format!("  {} = fcmp {} {} {}, {}", result, pred, llvm_ty, inputs[0], inputs[1]);
+        let line = format!(
+            "  {} = fcmp {} {} {}, {}",
+            result, pred, llvm_ty, inputs[0], inputs[1]
+        );
         (vec![line], result)
     })
 }
@@ -524,7 +654,10 @@ pub fn float_neg(llvm_ty: &'static str) -> Emit {
 pub fn cast_emit(op: &'static str, from_ty: &'static str, to_ty: &'static str) -> Emit {
     Box::new(move |inputs, mk_name| {
         let result = mk_name();
-        let line = format!("  {} = {} {} {} to {}", result, op, from_ty, inputs[0], to_ty);
+        let line = format!(
+            "  {} = {} {} {} to {}",
+            result, op, from_ty, inputs[0], to_ty
+        );
         (vec![line], result)
     })
 }
@@ -649,13 +782,11 @@ mod tests {
         // Every int type has the full arithmetic surface.
         for int_kind in ALL_INT_TYS {
             let type_name = int_kind.name();
-            for op in ["add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr"] {
+            for op in [
+                "add", "sub", "mul", "div", "rem", "and", "or", "xor", "shl", "shr",
+            ] {
                 let full = format!("${}_{}", type_name, op);
-                assert!(
-                    lookup(&full).is_some(),
-                    "expected intrinsic {}",
-                    full
-                );
+                assert!(lookup(&full).is_some(), "expected intrinsic {}", full);
             }
         }
         // Neg only for signed.
@@ -674,7 +805,9 @@ mod tests {
             for op in ["eq", "ne", "lt", "le", "gt", "ge"] {
                 assert!(
                     lookup(&format!("${}_{}", type_name, op)).is_some(),
-                    "missing ${}_{}", type_name, op
+                    "missing ${}_{}",
+                    type_name,
+                    op
                 );
             }
         }
@@ -687,13 +820,17 @@ mod tests {
             for op in ["add", "sub", "mul", "div", "neg", "sqrt"] {
                 assert!(
                     lookup(&format!("${}_{}", type_name, op)).is_some(),
-                    "missing ${}_{}", type_name, op
+                    "missing ${}_{}",
+                    type_name,
+                    op
                 );
             }
             for op in ["eq", "ne", "lt", "le", "gt", "ge"] {
                 assert!(
                     lookup(&format!("${}_{}", type_name, op)).is_some(),
-                    "missing ${}_{}", type_name, op
+                    "missing ${}_{}",
+                    type_name,
+                    op
                 );
             }
         }
@@ -777,8 +914,7 @@ mod tests {
     fn emit_i64_add_produces_single_add_line() {
         let spec = lookup("$i64_add").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, result) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, result) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = add i64 %a, %b".to_string()]);
         assert_eq!(result, "%t.0");
     }
@@ -795,8 +931,7 @@ mod tests {
     fn emit_f64_mul_uses_double_type() {
         let spec = lookup("$f64_mul").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, _) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, _) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = fmul double %a, %b".to_string()]);
     }
 
@@ -812,8 +947,7 @@ mod tests {
     fn emit_f64_lt_uses_ordered_predicate() {
         let spec = lookup("$f64_lt").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, _) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, _) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = fcmp olt double %a, %b".to_string()]);
     }
 
@@ -821,8 +955,7 @@ mod tests {
     fn emit_signed_shr_uses_ashr() {
         let spec = lookup("$i32_shr").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, _) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, _) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = ashr i32 %a, %b".to_string()]);
     }
 
@@ -830,8 +963,7 @@ mod tests {
     fn emit_unsigned_shr_uses_lshr() {
         let spec = lookup("$u32_shr").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, _) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, _) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = lshr i32 %a, %b".to_string()]);
     }
 
@@ -839,8 +971,7 @@ mod tests {
     fn emit_signed_div_uses_sdiv() {
         let spec = lookup("$i32_div").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, _) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, _) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = sdiv i32 %a, %b".to_string()]);
     }
 
@@ -848,8 +979,7 @@ mod tests {
     fn emit_unsigned_div_uses_udiv() {
         let spec = lookup("$u32_div").unwrap();
         let mut mk_name = alloc_ssa_name_for_tests();
-        let (lines, _) =
-            (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
+        let (lines, _) = (spec.emit)(&["%a".to_string(), "%b".to_string()], &mut mk_name);
         assert_eq!(lines, vec!["  %t.0 = udiv i32 %a, %b".to_string()]);
     }
 

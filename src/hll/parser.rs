@@ -6,10 +6,10 @@
 //! for syntax errors (multi-error output) and CST-to-AST invariant
 //! failures — same error-code shape as the MIR parser.
 
+use crate::common::{FloatTy, IntTy, Lifetime, Marker, Markers, RefKind, Span};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
-use crate::common::{FloatTy, IntTy, RefKind, Span, Markers, Marker, Lifetime};
 use crate::mir::parser::ParserCode;
 use std::collections::BTreeSet;
 use tree_sitter::{Node, Parser as TSParser};
@@ -113,7 +113,9 @@ pub struct Parser {
 
 impl Parser {
     pub fn new(source: impl Into<String>) -> Self {
-        Self { source: std::sync::Arc::new(source.into()) }
+        Self {
+            source: std::sync::Arc::new(source.into()),
+        }
     }
 
     pub fn parse(&self) -> Result<Program, Diagnostics> {
@@ -243,16 +245,17 @@ impl Parser {
     }
 
     fn map_struct_decl(&self, node: Node) -> Result<StructDecl, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "struct decl missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "struct decl missing name"))?;
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) =
-            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        let (lifetime_params, type_params) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope)?
         } else {
@@ -284,20 +287,28 @@ impl Parser {
             }
         }
 
-        Ok(StructDecl { name, lifetime_params, type_params, markers, fields, span })
+        Ok(StructDecl {
+            name,
+            lifetime_params,
+            type_params,
+            markers,
+            fields,
+            span,
+        })
     }
 
     fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "enum decl missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "enum decl missing name"))?;
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) =
-            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        let (lifetime_params, type_params) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope)?
         } else {
@@ -329,13 +340,20 @@ impl Parser {
             }
         }
 
-        Ok(EnumDecl { name, lifetime_params, type_params, markers, variants, span })
+        Ok(EnumDecl {
+            name,
+            lifetime_params,
+            type_params,
+            markers,
+            variants,
+            span,
+        })
     }
 
     fn map_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "fn decl missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "fn decl missing name"))?;
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
         let is_unsafe = self.get_text(node).starts_with("unsafe");
@@ -343,8 +361,9 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) =
-            node.children(&mut cursor).find(|c| c.kind() == "type_params")
+        let (lifetime_params, type_params) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope).map_err(with_fn)?
         } else {
@@ -369,7 +388,10 @@ impl Parser {
         }
 
         let (ret_ty, ret_ty_span) = if let Some(rt_node) = node.child_by_field_name("return_type") {
-            (self.map_type(rt_node, &scope).map_err(with_fn)?, span_of(rt_node))
+            (
+                self.map_type(rt_node, &scope).map_err(with_fn)?,
+                span_of(rt_node),
+            )
         } else {
             // No `-> R` in source: fall back to the whole-fn span so
             // diagnostics still land somewhere sensible even though
@@ -405,7 +427,11 @@ impl Parser {
     /// rejects unknown ABI strings so lowering can trust it.
     fn map_extern_fn_decl(&self, node: Node) -> Result<FnDecl, Diagnostic> {
         let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "extern fn decl missing name")
+            self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "extern fn decl missing name",
+            )
         })?;
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
@@ -414,7 +440,10 @@ impl Parser {
         let (abi, abi_span) = if let Some(abi_node) = node.child_by_field_name("abi") {
             // Strip surrounding quotes; the string_lit rule matches `"..."`.
             let raw = self.get_text(abi_node);
-            (Some(raw.trim_matches('"').to_string()), Some(span_of(abi_node)))
+            (
+                Some(raw.trim_matches('"').to_string()),
+                Some(span_of(abi_node)),
+            )
         } else {
             (None, None)
         };
@@ -439,7 +468,10 @@ impl Parser {
         }
 
         let (ret_ty, ret_ty_span) = if let Some(rt_node) = node.child_by_field_name("return_type") {
-            (self.map_type(rt_node, &scope).map_err(with_fn)?, span_of(rt_node))
+            (
+                self.map_type(rt_node, &scope).map_err(with_fn)?,
+                span_of(rt_node),
+            )
         } else {
             (unit_ty(), span)
         };
@@ -472,7 +504,14 @@ impl Parser {
             "bool" => return Ok(bool_ty()),
             "unit" => return Ok(unit_ty()),
             "never" => return Ok(never_ty()),
-            "identifier" => return Ok(self.identifier_to_type(self.get_text(node), Vec::new(), Vec::new(), scope)),
+            "identifier" => {
+                return Ok(self.identifier_to_type(
+                    self.get_text(node),
+                    Vec::new(),
+                    Vec::new(),
+                    scope,
+                ))
+            }
             "type" => {}
             _ => {
                 return Err(self.diag(
@@ -521,18 +560,27 @@ impl Parser {
             _ => None,
         };
         if let Some(kind) = ref_kind {
-            let lt = node.child(1)
+            let lt = node
+                .child(1)
                 .filter(|c| c.kind() == "lifetime")
                 .map(|c| Lifetime(self.get_text(c).trim_start_matches('\'').to_string()));
             let inner_idx = if lt.is_some() { 2 } else { 1 };
             let inner = node.child(inner_idx).ok_or_else(|| {
-                self.diag(node, ParserCode::MalformedCst, format!("missing inner type for {}", text))
+                self.diag(
+                    node,
+                    ParserCode::MalformedCst,
+                    format!("missing inner type for {}", text),
+                )
             })?;
             return Ok(Type::Ref(kind, lt, Box::new(self.map_type(inner, scope)?)));
         }
         if text == "*" {
             let inner = node.child(1).ok_or_else(|| {
-                self.diag(node, ParserCode::MalformedCst, "missing inner type for raw pointer")
+                self.diag(
+                    node,
+                    ParserCode::MalformedCst,
+                    "missing inner type for raw pointer",
+                )
             })?;
             return Ok(raw_ptr_ty(self.map_type(inner, scope)?));
         }
@@ -623,7 +671,10 @@ impl Parser {
                             format!("Duplicate type parameter '{}'", pname),
                         ));
                     }
-                    let bounds = if let Some(m) = child.children(&mut child.walk()).find(|c| c.kind() == "markers") {
+                    let bounds = if let Some(m) = child
+                        .children(&mut child.walk())
+                        .find(|c| c.kind() == "markers")
+                    {
                         self.map_markers(m)?
                     } else {
                         Markers::empty()
@@ -680,11 +731,17 @@ impl Parser {
             // ---- Literals + identifier ----
             "int_lit" => {
                 let (val, ty) = self.lit_diag(parse_int_literal(self.get_text(node)), node)?;
-                Ok(Expr { kind: ExprKind::Literal(Literal::Int(val, ty)), span })
+                Ok(Expr {
+                    kind: ExprKind::Literal(Literal::Int(val, ty)),
+                    span,
+                })
             }
             "float_lit" => {
                 let (val, ty) = self.lit_diag(parse_float_literal(self.get_text(node)), node)?;
-                Ok(Expr { kind: ExprKind::Literal(Literal::Float(val, ty)), span })
+                Ok(Expr {
+                    kind: ExprKind::Literal(Literal::Float(val, ty)),
+                    span,
+                })
             }
             "bool_lit" => Ok(Expr {
                 kind: ExprKind::Literal(Literal::Bool(self.get_text(node) == "true")),
@@ -706,7 +763,10 @@ impl Parser {
                 if let Some(e) = inner {
                     self.map_expr(e, scope)
                 } else {
-                    Ok(Expr { kind: ExprKind::Literal(Literal::Unit), span })
+                    Ok(Expr {
+                        kind: ExprKind::Literal(Literal::Unit),
+                        span,
+                    })
                 }
             }
             "block_expr" => self.map_block(node, scope),
@@ -723,15 +783,30 @@ impl Parser {
             "break_expr" => {
                 let mut cursor = node.walk();
                 let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
-                let val = inner.map(|n| self.map_expr(n, scope)).transpose()?.map(Box::new);
-                Ok(Expr { kind: ExprKind::Break(val), span })
+                let val = inner
+                    .map(|n| self.map_expr(n, scope))
+                    .transpose()?
+                    .map(Box::new);
+                Ok(Expr {
+                    kind: ExprKind::Break(val),
+                    span,
+                })
             }
-            "continue_expr" => Ok(Expr { kind: ExprKind::Continue, span }),
+            "continue_expr" => Ok(Expr {
+                kind: ExprKind::Continue,
+                span,
+            }),
             "return_expr" => {
                 let mut cursor = node.walk();
                 let inner = node.children(&mut cursor).find(|c| self.is_expr_kind(c));
-                let val = inner.map(|n| self.map_expr(n, scope)).transpose()?.map(Box::new);
-                Ok(Expr { kind: ExprKind::Return(val), span })
+                let val = inner
+                    .map(|n| self.map_expr(n, scope))
+                    .transpose()?
+                    .map(Box::new);
+                Ok(Expr {
+                    kind: ExprKind::Return(val),
+                    span,
+                })
             }
             "struct_constr" => self.map_struct_constr(node, scope),
             "enum_constr" => self.map_enum_constr(node, scope),
@@ -743,7 +818,10 @@ impl Parser {
                         elems.push(self.map_expr(c, scope)?);
                     }
                 }
-                Ok(Expr { kind: ExprKind::Array(elems), span })
+                Ok(Expr {
+                    kind: ExprKind::Array(elems),
+                    span,
+                })
             }
 
             // ---- Operators (named for nested CST structure) ----
@@ -799,10 +877,18 @@ impl Parser {
             }
             "unary_expr" => {
                 let operand = node.child_by_field_name("operand").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "unary expression missing operand")
+                    self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "unary expression missing operand",
+                    )
                 })?;
                 let op_node = node.child_by_field_name("op").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "unary expression missing op")
+                    self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "unary expression missing op",
+                    )
                 })?;
                 let op = match self.get_text(op_node) {
                     "-" => UnOp::Neg,
@@ -821,13 +907,25 @@ impl Parser {
             }
             "binary_expr" => {
                 let lhs = node.child_by_field_name("lhs").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "binary expression missing lhs")
+                    self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "binary expression missing lhs",
+                    )
                 })?;
                 let op_node = node.child_by_field_name("op").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "binary expression missing op")
+                    self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "binary expression missing op",
+                    )
                 })?;
                 let rhs = node.child_by_field_name("rhs").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "binary expression missing rhs")
+                    self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "binary expression missing rhs",
+                    )
                 })?;
                 let op = match self.get_text(op_node) {
                     "+" => BinOp::Add,
@@ -860,7 +958,11 @@ impl Parser {
             }
             "field_access" => {
                 let target = node.child_by_field_name("target").ok_or_else(|| {
-                    self.diag(node, ParserCode::MalformedCst, "field access missing target")
+                    self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "field access missing target",
+                    )
                 })?;
                 let field = node.child_by_field_name("field").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "field access missing field")
@@ -965,9 +1067,9 @@ impl Parser {
 
     fn map_stmt(&self, node: Node, scope: &TypeScope) -> Result<Stmt, Diagnostic> {
         // stmt is a choice: let_stmt | defer_stmt | (expr ';').
-        let child = node.child(0).ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "empty statement")
-        })?;
+        let child = node
+            .child(0)
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "empty statement"))?;
         match child.kind() {
             "let_stmt" => self.map_let_stmt(child, scope),
             "defer_stmt" => {
@@ -989,9 +1091,9 @@ impl Parser {
 
     fn map_let_stmt(&self, node: Node, scope: &TypeScope) -> Result<Stmt, Diagnostic> {
         let span = span_of(node);
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "let missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "let missing name"))?;
         let name = self.get_text(name_node).to_string();
         // `mut` is an anonymous token, detect via child text.
         let mut is_mut = false;
@@ -1011,17 +1113,23 @@ impl Parser {
             Some(n) => Some(self.map_expr(n, scope)?),
             None => None,
         };
-        Ok(Stmt::Let { is_mut, name, ty, init, span })
+        Ok(Stmt::Let {
+            is_mut,
+            name,
+            ty,
+            init,
+            span,
+        })
     }
 
     fn map_if(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
-        let cond_node = node.child_by_field_name("cond").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "if missing cond")
-        })?;
-        let then_node = node.child_by_field_name("then").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "if missing then")
-        })?;
+        let cond_node = node
+            .child_by_field_name("cond")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "if missing cond"))?;
+        let then_node = node
+            .child_by_field_name("then")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "if missing then"))?;
         let else_expr = if let Some(else_node) = node.child_by_field_name("else") {
             self.map_expr(else_node, scope)?
         } else {
@@ -1033,7 +1141,12 @@ impl Parser {
             let col = (then_end.column as u32).saturating_add(1);
             Expr {
                 kind: ExprKind::Block(Vec::new(), None, false),
-                span: Span { line, col, end_line: line, end_col: col },
+                span: Span {
+                    line,
+                    col,
+                    end_line: line,
+                    end_col: col,
+                },
             }
         };
         Ok(Expr {
@@ -1046,7 +1159,12 @@ impl Parser {
         })
     }
 
-    fn map_match(&self, node: Node, scrutinee_node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
+    fn map_match(
+        &self,
+        node: Node,
+        scrutinee_node: Node,
+        scope: &TypeScope,
+    ) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
         let mut arms = Vec::new();
         let mut cursor = node.walk();
@@ -1058,7 +1176,10 @@ impl Parser {
                 let body_node = c.child_by_field_name("body").ok_or_else(|| {
                     self.diag(c, ParserCode::MalformedCst, "match arm missing body")
                 })?;
-                arms.push((self.map_pattern(pat_node)?, self.map_expr(body_node, scope)?));
+                arms.push((
+                    self.map_pattern(pat_node)?,
+                    self.map_expr(body_node, scope)?,
+                ));
             }
         }
         Ok(Expr {
@@ -1068,9 +1189,9 @@ impl Parser {
     }
 
     fn map_pattern(&self, node: Node) -> Result<Pattern, Diagnostic> {
-        let variant_node = node.child_by_field_name("variant").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "pattern missing variant")
-        })?;
+        let variant_node = node
+            .child_by_field_name("variant")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "pattern missing variant"))?;
         let variant = self.get_text(variant_node).to_string();
         let bound = node
             .child_by_field_name("bound")
@@ -1094,7 +1215,10 @@ impl Parser {
                 let fn_val = c.child_by_field_name("value").ok_or_else(|| {
                     self.diag(c, ParserCode::MalformedCst, "field init missing value")
                 })?;
-                fields.push((self.get_text(fn_name).to_string(), self.map_expr(fn_val, scope)?));
+                fields.push((
+                    self.get_text(fn_name).to_string(),
+                    self.map_expr(fn_val, scope)?,
+                ));
             }
         }
         Ok(Expr {
@@ -1105,14 +1229,22 @@ impl Parser {
 
     fn map_enum_constr(&self, node: Node, scope: &TypeScope) -> Result<Expr, Diagnostic> {
         let span = span_of(node);
-        let name_node = node.child_by_field_name("name").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "enum constr missing name")
-        })?;
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "enum constr missing name"))?;
         let variant_node = node.child_by_field_name("variant").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "enum constr missing variant")
+            self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "enum constr missing variant",
+            )
         })?;
         let payload_node = node.child_by_field_name("payload").ok_or_else(|| {
-            self.diag(node, ParserCode::MalformedCst, "enum constr missing payload")
+            self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "enum constr missing payload",
+            )
         })?;
         Ok(Expr {
             kind: ExprKind::EnumConstr(
@@ -1282,10 +1414,7 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
             assert_eq!(f.params[0].ty, raw_ptr_ty(i64_ty()));
-            assert_eq!(
-                f.params[1].ty,
-                mut_ref_ty(i64_ty())
-            );
+            assert_eq!(f.params[1].ty, mut_ref_ty(i64_ty()));
         } else {
             panic!("Expected function");
         }
@@ -1343,7 +1472,10 @@ mod tests {
         let ExprKind::Block(stmts, _, _) = &f.body.as_ref().unwrap().kind else {
             panic!("expected block body");
         };
-        let Stmt::Let { init: Some(init), .. } = &stmts[0] else {
+        let Stmt::Let {
+            init: Some(init), ..
+        } = &stmts[0]
+        else {
             panic!("expected let stmt with initializer");
         };
         init.clone()
@@ -1454,12 +1586,8 @@ mod tests {
     fn trailing_comma_in_struct_decl() {
         // `commaSep` in the common grammar accepts an optional
         // trailing comma. Verify both with and without trailing.
-        let with = Parser::new("struct P { x: i64, y: i64, }")
-            .parse()
-            .unwrap();
-        let without = Parser::new("struct P { x: i64, y: i64 }")
-            .parse()
-            .unwrap();
+        let with = Parser::new("struct P { x: i64, y: i64, }").parse().unwrap();
+        let without = Parser::new("struct P { x: i64, y: i64 }").parse().unwrap();
         let Declaration::Struct(a) = &with.declarations[0] else {
             panic!()
         };
@@ -1650,9 +1778,7 @@ mod tests {
         let src = "\
             fn a() { @@; }\n\
             fn b() { @@; }\n";
-        let diags = Parser::new(src)
-            .parse()
-            .expect_err("two broken functions");
+        let diags = Parser::new(src).parse().expect_err("two broken functions");
         assert!(
             diags.error_count() >= 2,
             "expected ≥2 errors, got {}: {:?}",
@@ -1743,7 +1869,11 @@ mod tests {
     fn block_tail_binary_expr() {
         // `{ a + b }` — trailing binary op must be captured as tail.
         let e = block_tail("fn f(a: i64, b: i64) -> i64 { a + b }");
-        assert!(matches!(e.kind, ExprKind::Binary(_, _, _)), "got {:?}", e.kind);
+        assert!(
+            matches!(e.kind, ExprKind::Binary(_, _, _)),
+            "got {:?}",
+            e.kind
+        );
     }
 
     #[test]
@@ -1755,7 +1885,11 @@ mod tests {
     #[test]
     fn block_tail_field_access() {
         let e = block_tail("fn f(p: Point) -> i64 { p.x }");
-        assert!(matches!(e.kind, ExprKind::FieldAccess(_, _)), "got {:?}", e.kind);
+        assert!(
+            matches!(e.kind, ExprKind::FieldAccess(_, _)),
+            "got {:?}",
+            e.kind
+        );
     }
 
     #[test]
@@ -1773,14 +1907,16 @@ mod tests {
     #[test]
     fn block_tail_index_expr() {
         let e = block_tail("fn f(a: [i64; 4]) -> i64 { a[0] }");
-        assert!(matches!(e.kind, ExprKind::ArrayIndex(_, _)), "got {:?}", e.kind);
+        assert!(
+            matches!(e.kind, ExprKind::ArrayIndex(_, _)),
+            "got {:?}",
+            e.kind
+        );
     }
 
     #[test]
     fn block_tail_match_expr() {
-        let e = block_tail(
-            "fn f(o: Option) -> i64 { o match { Some(x) => 1, None => 0 } }",
-        );
+        let e = block_tail("fn f(o: Option) -> i64 { o match { Some(x) => 1, None => 0 } }");
         assert!(matches!(e.kind, ExprKind::Match(_, _)), "got {:?}", e.kind);
     }
 
@@ -1807,7 +1943,11 @@ mod tests {
     #[test]
     fn block_tail_int_literal() {
         let e = block_tail("fn f() -> i64 { 42 }");
-        assert!(matches!(e.kind, ExprKind::Literal(Literal::Int(_, _))), "got {:?}", e.kind);
+        assert!(
+            matches!(e.kind, ExprKind::Literal(Literal::Int(_, _))),
+            "got {:?}",
+            e.kind
+        );
     }
 
     #[test]
@@ -1816,5 +1956,3 @@ mod tests {
         assert!(matches!(e.kind, ExprKind::Variable(_)), "got {:?}", e.kind);
     }
 }
-
-

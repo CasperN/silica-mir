@@ -126,7 +126,11 @@ pub fn lower_mir_to_llvm(program: Program) -> String {
 /// a different name. `.` is used because MIR identifiers forbid it,
 /// making collisions with user-defined names impossible.
 fn llvm_fn_symbol(silica_name: &str) -> String {
-    let inner = if silica_name == "main" { "silica.main" } else { silica_name };
+    let inner = if silica_name == "main" {
+        "silica.main"
+    } else {
+        silica_name
+    };
     llvm_ident(inner)
 }
 
@@ -283,7 +287,10 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
     writeln!(
         cx.out,
         "%{} = type {{ i16, [{} x i8], [{} x {}] }}",
-        llvm_ident(&e.name), pad_bytes, lane_count, lane_ty
+        llvm_ident(&e.name),
+        pad_bytes,
+        lane_count,
+        lane_ty
     )
     .unwrap();
 }
@@ -391,9 +398,19 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
         if let Type::Ref(_, _, inner) = &p.ty {
             let inner_llvm = cx.lower_type(inner);
             let inner_align = layout::align_of(inner, cx.env);
-            writeln!(cx.out, "  %local.$return_val = alloca {}, align {}", inner_llvm, inner_align).unwrap();
+            writeln!(
+                cx.out,
+                "  %local.$return_val = alloca {}, align {}",
+                inner_llvm, inner_align
+            )
+            .unwrap();
             emit_alloca(cx, &p.name, &p.ty);
-            writeln!(cx.out, "  store ptr %local.$return_val, ptr %local.{}", p.name).unwrap();
+            writeln!(
+                cx.out,
+                "  store ptr %local.$return_val, ptr %local.{}",
+                p.name
+            )
+            .unwrap();
         }
     }
 
@@ -517,7 +534,12 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             if let Some(ret_ty_str) = ret_llvm {
                 let (_, ret_ptr_val) = arg_pairs.pop().expect("must have at least the $return arg");
                 let ret_reg = cx.fresh();
-                write!(cx.out, "  {} = call {} {}(", ret_reg, ret_ty_str, target_val).unwrap();
+                write!(
+                    cx.out,
+                    "  {} = call {} {}(",
+                    ret_reg, ret_ty_str, target_val
+                )
+                .unwrap();
                 for (i, (t, v)) in arg_pairs.iter().enumerate() {
                     if i > 0 {
                         write!(cx.out, ", ").unwrap();
@@ -525,7 +547,12 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                     write!(cx.out, "{} {}", t, v).unwrap();
                 }
                 writeln!(cx.out, ")").unwrap();
-                writeln!(cx.out, "  store {} {}, ptr {}", ret_ty_str, ret_reg, ret_ptr_val).unwrap();
+                writeln!(
+                    cx.out,
+                    "  store {} {}, ptr {}",
+                    ret_ty_str, ret_reg, ret_ptr_val
+                )
+                .unwrap();
             } else {
                 write!(cx.out, "  call void {}(", target_val).unwrap();
                 for (i, (t, v)) in arg_pairs.iter().enumerate() {
@@ -556,7 +583,9 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
         let Some(body) = &f.body else { continue };
         for block in &body.blocks {
             for stmt in &block.statements {
-                if let StatementKind::Call(Operand::Const(ConstVal::FnName(name, _)), _) = &stmt.kind {
+                if let StatementKind::Call(Operand::Const(ConstVal::FnName(name, _)), _) =
+                    &stmt.kind
+                {
                     if crate::mir::intrinsics::is_intrinsic(name) {
                         called.insert(name.clone());
                     }
@@ -682,7 +711,9 @@ fn emit_enum_construction(
     writeln!(
         cx.out,
         "  {} = getelementptr %{}, ptr {}, i32 0, i32 0",
-        disc_addr, llvm_ident(enum_name), lhs_addr
+        disc_addr,
+        llvm_ident(enum_name),
+        lhs_addr
     )
     .unwrap();
     writeln!(cx.out, "  store i16 {}, ptr {}", v_idx, disc_addr).unwrap();
@@ -694,7 +725,9 @@ fn emit_enum_construction(
         writeln!(
             cx.out,
             "  {} = getelementptr %{}, ptr {}, i32 0, i32 2",
-            payload_addr, llvm_ident(enum_name), lhs_addr
+            payload_addr,
+            llvm_ident(enum_name),
+            lhs_addr
         )
         .unwrap();
         let llvm_ty = cx.lower_type(&operand_ty);
@@ -864,9 +897,7 @@ fn emit_place_addr(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
                 .iter()
                 .find(|v| v.name == *variant)
                 .map(|v| v.ty.clone())
-                .unwrap_or_else(|| {
-                    panic!("no variant '{}' on enum {:?}", variant, base_ty)
-                });
+                .unwrap_or_else(|| panic!("no variant '{}' on enum {:?}", variant, base_ty));
             let base_llvm = cx.lower_type(&base_ty);
             // Payload lives at field index 2: {i16, [pad x i8], [N x i8]}.
             let dst = cx.fresh();
@@ -986,10 +1017,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             // Reserve a `.switch_default.N` label. MIR guarantees the
             // switch is exhaustive (variant_flow); the default block is
             // just LLVM's syntactic requirement, filled with `unreachable`.
-            let default_label = format!(
-                ".switch_default.{}",
-                cx.pending_default_blocks.len()
-            );
+            let default_label = format!(".switch_default.{}", cx.pending_default_blocks.len());
             cx.pending_default_blocks.push(default_label.clone());
 
             writeln!(
@@ -1056,11 +1084,9 @@ fn variant_index(e: &EnumDecl, variant: &str) -> u64 {
     e.variants
         .iter()
         .position(|v| v.name == variant)
-        .unwrap_or_else(|| panic!("no variant '{}' on enum '{}'", variant, e.name))
-        as u64
+        .unwrap_or_else(|| panic!("no variant '{}' on enum '{}'", variant, e.name)) as u64
 }
 
 fn align_up(x: u64, a: u64) -> u64 {
     (x + a - 1) & !(a - 1)
 }
-

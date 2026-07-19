@@ -32,8 +32,8 @@
 //! second run finds nothing to insert.
 
 use crate::mir::ast::*;
-use crate::mir::helpers::*;
 use crate::mir::cfg_edit;
+use crate::mir::helpers::*;
 use crate::mir::init_state::{self, InitState, PointState};
 use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
 use crate::mir::type_check::{Env, TypeDecl};
@@ -74,9 +74,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in env.functions.values() {
         let plan = plan_for_function(env, func);
-        if !plan.pre_stmt.is_empty()
-            || !plan.rewrite_stmt.is_empty()
-            || !plan.cross_edge.is_empty()
+        if !plan.pre_stmt.is_empty() || !plan.rewrite_stmt.is_empty() || !plan.cross_edge.is_empty()
         {
             plans.insert(func.name.clone(), plan);
         }
@@ -125,10 +123,8 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                     .get(pos)
                     .map(|s| s.span)
                     .unwrap_or(block.terminator.span);
-                let items: Vec<Statement> = places
-                    .iter()
-                    .map(|p| drop_stmt(p.clone(), span))
-                    .collect();
+                let items: Vec<Statement> =
+                    places.iter().map(|p| drop_stmt(p.clone(), span)).collect();
                 block.statements.splice(pos..pos, items);
             }
         }
@@ -143,9 +139,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 .expect("split_edge just guaranteed this block exists");
             let span = split_block.terminator.span;
             for p in places {
-                split_block
-                    .statements
-                    .push(drop_stmt(p.clone(), span));
+                split_block.statements.push(drop_stmt(p.clone(), span));
             }
         }
     }
@@ -193,8 +187,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
                         &mut state,
                     );
                 }
-                plan.pre_stmt
-                    .insert((block.label.clone(), stmt_idx), drops);
+                plan.pre_stmt.insert((block.label.clone(), stmt_idx), drops);
             }
             // Transfer whichever form we're going to leave in the
             // elaborated MIR: the rewrite if present, else the
@@ -214,7 +207,8 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
             let drops = plan_drops_at_return(func, &state, env, &scope);
             if !drops.is_empty() {
                 let insert_pos = block.statements.len();
-                plan.pre_stmt.insert((block.label.clone(), insert_pos), drops);
+                plan.pre_stmt
+                    .insert((block.label.clone(), insert_pos), drops);
             }
         }
     }
@@ -310,16 +304,16 @@ fn pre_stmt_transitions(
     // because Case A skips Downcast paths.
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
-            if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals) {
+            if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals)
+            {
                 if let Type::Custom(enum_name, _, _) = &inner_ty {
-                    let payload_place =
-                        downcast_place(inner_owned.clone(), variant.clone());
+                    let payload_place = downcast_place(inner_owned.clone(), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals, scope) {
                         drops.push(payload_place);
                         let rewrite = assign_stmt(
                             inner_owned,
                             enum_constr_rv(enum_name.clone(), variant.clone(), operand.clone()),
-                            stmt.span  // TODO: Is this the right span?
+                            stmt.span, // TODO: Is this the right span?
                         );
                         return (drops, Some(rewrite));
                     }
@@ -481,7 +475,10 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
         },
         PathStep::Index(Some(k)) => match state {
             InitState::Partial(map) => {
-                let sub = map.get(&k.to_string()).cloned().unwrap_or(InitState::NeverInit);
+                let sub = map
+                    .get(&k.to_string())
+                    .cloned()
+                    .unwrap_or(InitState::NeverInit);
                 read_state_at_path(&sub, &path[1..])
             }
             other => other.clone(),
@@ -494,7 +491,12 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
     }
 }
 
-fn plan_drops_at_return(func: &Function, state: &PointState, env: &Env, scope: ParamScope) -> Vec<Place> {
+fn plan_drops_at_return(
+    func: &Function,
+    state: &PointState,
+    env: &Env,
+    scope: ParamScope,
+) -> Vec<Place> {
     // Combined declaration order: params, then locals. LIFO drop = reverse.
     let mut order: Vec<(String, Type)> = Vec::new();
     for p in &func.params {

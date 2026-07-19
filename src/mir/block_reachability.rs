@@ -6,9 +6,9 @@
 //! Implemented as a trivial forward `dataflow::Analysis` with unit state.
 //! A block is reachable iff the fixpoint records a state for it.
 
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::Env;
 
 /// Machine-readable codes emitted by the block-reachability pass.

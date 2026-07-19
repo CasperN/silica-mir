@@ -89,10 +89,7 @@ impl RegionCtx {
 ///
 /// Recursion through generic type parameters uses the same
 /// param-substitution rule as `collect_borrowers`.
-pub fn build_region_ctx(
-    func: &Function,
-    env: &crate::mir::type_check::Env,
-) -> RegionCtx {
+pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::Env) -> RegionCtx {
     use crate::mir::helpers::var_place;
     let mut ctx = RegionCtx::new();
     let locals = func.locals_map();
@@ -127,7 +124,18 @@ fn walk_regions(
                     let fields: Vec<_> = s
                         .fields
                         .iter()
-                        .map(|f| (f.name.clone(), substitute_all(&f.ty, &s.lifetime_params, lifetime_args, &s.type_params, args)))
+                        .map(|f| {
+                            (
+                                f.name.clone(),
+                                substitute_all(
+                                    &f.ty,
+                                    &s.lifetime_params,
+                                    lifetime_args,
+                                    &s.type_params,
+                                    args,
+                                ),
+                            )
+                        })
                         .collect();
                     for (fname, fty) in fields {
                         let sub = field_place(place.clone(), fname);
@@ -138,7 +146,18 @@ fn walk_regions(
                     let variants: Vec<_> = e
                         .variants
                         .iter()
-                        .map(|v| (v.name.clone(), substitute_all(&v.ty, &e.lifetime_params, lifetime_args, &e.type_params, args)))
+                        .map(|v| {
+                            (
+                                v.name.clone(),
+                                substitute_all(
+                                    &v.ty,
+                                    &e.lifetime_params,
+                                    lifetime_args,
+                                    &e.type_params,
+                                    args,
+                                ),
+                            )
+                        })
                         .collect();
                     for (vname, vty) in variants {
                         let sub = downcast_place(place.clone(), vname);
@@ -191,8 +210,8 @@ mod tests {
 
     #[test]
     fn build_region_ctx_assigns_named_to_signature_free_to_locals() {
-        use crate::mir::parser::Parser;
         use crate::mir::helpers::var_place;
+        use crate::mir::parser::Parser;
         use crate::mir::type_check::Env;
         // Signature refs get Named (from elision or user); body-local
         // refs get Free (elision doesn't run on locals).

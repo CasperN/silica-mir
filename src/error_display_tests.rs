@@ -378,4 +378,3 @@ fn test_hll_defer_reject_return() {
    |"#;
     assert_first_error(src, expected);
 }
-

@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet};
-use indexmap::IndexMap;
+use crate::common::{Marker, Markers, RefKind, Span};
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::common::{Marker, Markers, RefKind, Span};
+use indexmap::IndexMap;
+use std::collections::{HashMap, HashSet};
 
 /// Build a `name → bounds` map from a decl's type parameters. Used
 /// when computing a type's substructural class or validating uses
@@ -303,7 +303,9 @@ impl Subst {
             (Type::Float(f1), Type::Float(f2)) if f1 == f2 => Ok(()),
             (Type::Bool, Type::Bool) => Ok(()),
             (Type::Unit, Type::Unit) => Ok(()),
-            (Type::Custom(n1, _, a1), Type::Custom(n2, _, a2)) if n1 == n2 && a1.len() == a2.len() => {
+            (Type::Custom(n1, _, a1), Type::Custom(n2, _, a2))
+                if n1 == n2 && a1.len() == a2.len() =>
+            {
                 let a1 = a1.clone();
                 let a2 = a2.clone();
                 for (x, y) in a1.iter().zip(a2.iter()) {
@@ -312,9 +314,13 @@ impl Subst {
                 Ok(())
             }
             (Type::Param(p1), Type::Param(p2)) if p1 == p2 => Ok(()),
-            (Type::Ref(k1, _, inner1), Type::Ref(k2, _, inner2)) if k1 == k2 => self.unify(inner1, inner2),
+            (Type::Ref(k1, _, inner1), Type::Ref(k2, _, inner2)) if k1 == k2 => {
+                self.unify(inner1, inner2)
+            }
             (Type::RawPtr(inner1), Type::RawPtr(inner2)) => self.unify(inner1, inner2),
-            (Type::Array(inner1, size1), Type::Array(inner2, size2)) if size1 == size2 => self.unify(inner1, inner2),
+            (Type::Array(inner1, size1), Type::Array(inner2, size2)) if size1 == size2 => {
+                self.unify(inner1, inner2)
+            }
             (Type::Fn(p1, r1), Type::Fn(p2, r2)) => {
                 if p1.len() != p2.len() {
                     return Err(UnifyError::ArityMismatch);
@@ -419,9 +425,7 @@ impl TypeEnv {
             Type::Fn(_, _) | Type::RawPtr(_) => all(),
             Type::Ref(kind, _, _) => match kind {
                 RefKind::Shared => all(),
-                RefKind::Mut | RefKind::Uninit => {
-                    Markers::from_iter([Marker::Drop, Marker::Move])
-                }
+                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
                 RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
             },
             Type::Custom(name, _, _args) => {
@@ -571,7 +575,8 @@ pub(super) fn typecheck_program_collect(
             }
             Declaration::Fn(f) => {
                 let params_tys: Vec<Type> = f.params.iter().map(|p| p.ty.clone()).collect();
-                env.functions.insert(f.name.clone(), (params_tys, f.ret_ty.clone(), f.is_unsafe));
+                env.functions
+                    .insert(f.name.clone(), (params_tys, f.ret_ty.clone(), f.is_unsafe));
                 env.fn_type_params.insert(
                     f.name.clone(),
                     f.type_params.iter().map(|tp| tp.name.clone()).collect(),
@@ -627,10 +632,7 @@ pub(super) fn typecheck_program_collect(
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnknownAbi,
                             span,
-                            format!(
-                                "unknown extern ABI '{}' — expected 'C' or bare extern",
-                                abi
-                            ),
+                            format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
                         ));
                     }
                 }
@@ -781,12 +783,21 @@ fn infer_inner(
 
             let resolved = subst.resolve(&lhs_ty);
             match &resolved {
-                Type::Int(_) | Type::Float(_) | Type::Var(_) | Type::IntVar(_) | Type::FloatVar(_) | Type::Never | Type::Error => {}
+                Type::Int(_)
+                | Type::Float(_)
+                | Type::Var(_)
+                | Type::IntVar(_)
+                | Type::FloatVar(_)
+                | Type::Never
+                | Type::Error => {}
                 _ => {
                     d.push_error(Diagnostic::new(
                         BinaryOpNonNumeric,
                         lhs.span,
-                        format!("binary operations only supported on numeric types, found {}", resolved),
+                        format!(
+                            "binary operations only supported on numeric types, found {}",
+                            resolved
+                        ),
                     ));
                     return error_ty();
                 }
@@ -806,19 +817,25 @@ fn infer_inner(
             let operand_ty = infer_inner(env, subst, operand, types, d);
             let resolved = subst.resolve(&operand_ty);
             match op {
-                UnOp::Neg => match &resolved {
-                    Type::Int(int_ty) if int_ty.is_signed() => {}
-                    Type::Float(_) => {}
-                    Type::IntVar(_) | Type::FloatVar(_) | Type::Var(_) | Type::Never | Type::Error => {}
-                    _ => {
-                        d.push_error(Diagnostic::new(
+                UnOp::Neg => {
+                    match &resolved {
+                        Type::Int(int_ty) if int_ty.is_signed() => {}
+                        Type::Float(_) => {}
+                        Type::IntVar(_)
+                        | Type::FloatVar(_)
+                        | Type::Var(_)
+                        | Type::Never
+                        | Type::Error => {}
+                        _ => {
+                            d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnaryOpInvalidOperand,
                             operand.span,
                             format!("unary '-' requires a signed integer or float operand, found {}", resolved),
                         ));
-                        return error_ty();
+                            return error_ty();
+                        }
                     }
-                },
+                }
             }
             operand_ty
         }
@@ -831,11 +848,7 @@ fn infer_inner(
                 // Each call site gets its own independent binding of T.
                 // The freshening also decouples the signature from any
                 // Params still visible from the caller's scope.
-                let type_params = env
-                    .fn_type_params
-                    .get(name)
-                    .cloned()
-                    .unwrap_or_default();
+                let type_params = env.fn_type_params.get(name).cloned().unwrap_or_default();
                 let mut mapping: HashMap<String, Type> = HashMap::new();
                 for tp in &type_params {
                     mapping.insert(tp.clone(), subst.fresh_var());
@@ -865,8 +878,18 @@ fn infer_inner(
             };
             if let Type::Custom(struct_name, _, args) = struct_ty {
                 if let Some(s_decl) = env.structs.get(&struct_name).cloned() {
-                    if let Some(f) = s_decl.fields.iter().find(|field_decl| field_decl.name == *field) {
-                        match build_subst_map(&struct_name, &s_decl.type_params, &args, expr.span, d) {
+                    if let Some(f) = s_decl
+                        .fields
+                        .iter()
+                        .find(|field_decl| field_decl.name == *field)
+                    {
+                        match build_subst_map(
+                            &struct_name,
+                            &s_decl.type_params,
+                            &args,
+                            expr.span,
+                            d,
+                        ) {
                             Some(mapping) => substitute(&f.ty, &mapping),
                             None => return error_ty(),
                         }
@@ -907,10 +930,7 @@ fn infer_inner(
                 d.push_error(Diagnostic::new(
                     HllTypeCheckCode::InvalidCast,
                     expr.span,
-                    format!(
-                        "cast from {} to {} is not supported",
-                        from_resolved, to_ty
-                    ),
+                    format!("cast from {} to {} is not supported", from_resolved, to_ty),
                 ));
                 return error_ty();
             }
@@ -1003,7 +1023,13 @@ fn infer_inner(
             env.push_scope();
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { is_mut: _, name, ty, init, span } => {
+                    Stmt::Let {
+                        is_mut: _,
+                        name,
+                        ty,
+                        init,
+                        span,
+                    } => {
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 let scope = env.current_type_params.clone();
@@ -1102,14 +1128,19 @@ fn infer_inner(
                         return error_ty();
                     }
                 };
-                let mapping = match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
-                    Some(m) => m,
-                    None => return error_ty(),
-                };
+                let mapping =
+                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                        Some(m) => m,
+                        None => return error_ty(),
+                    };
                 let mut arm_tys = Vec::new();
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
-                    if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
+                    if let Some(v) = e_decl
+                        .variants
+                        .iter()
+                        .find(|var_decl| var_decl.name == *variant)
+                    {
                         env.push_scope();
                         if let Some(var_name) = bound_var {
                             env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
@@ -1180,8 +1211,11 @@ fn infer_inner(
 
             // Fresh type variable per declared type parameter, so
             // field-value inference can pin them from constructor args.
-            let type_args: Vec<Type> =
-                s_decl.type_params.iter().map(|_| subst.fresh_var()).collect();
+            let type_args: Vec<Type> = s_decl
+                .type_params
+                .iter()
+                .map(|_| subst.fresh_var())
+                .collect();
             let mut mapping: HashMap<String, Type> = HashMap::new();
             for (tp, arg) in s_decl.type_params.iter().zip(type_args.iter()) {
                 mapping.insert(tp.name.clone(), arg.clone());
@@ -1244,8 +1278,11 @@ fn infer_inner(
 
             // Fresh var per declared type parameter — payload inference
             // pins them via the substituted variant type.
-            let type_args: Vec<Type> =
-                e_decl.type_params.iter().map(|_| subst.fresh_var()).collect();
+            let type_args: Vec<Type> = e_decl
+                .type_params
+                .iter()
+                .map(|_| subst.fresh_var())
+                .collect();
             let mut mapping: HashMap<String, Type> = HashMap::new();
             for (tp, arg) in e_decl.type_params.iter().zip(type_args.iter()) {
                 mapping.insert(tp.name.clone(), arg.clone());
@@ -1278,7 +1315,9 @@ fn infer_inner(
                 match idx_resolved {
                     Type::Int(_) => {}
                     Type::Var(_) | Type::IntVar(_) => {
-                        if let Err(e) = subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64)) {
+                        if let Err(e) =
+                            subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64))
+                        {
                             d.push_error(e.to_diag(expr.span));
                         }
                     }
@@ -1302,7 +1341,6 @@ fn infer_inner(
                 return error_ty();
             }
         }
-
     };
 
     types.insert(expr.span, ty.clone());
@@ -1327,7 +1365,13 @@ fn check_inner(
             env.push_scope();
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { is_mut: _, name, ty, init, span } => {
+                    Stmt::Let {
+                        is_mut: _,
+                        name,
+                        ty,
+                        init,
+                        span,
+                    } => {
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 check_inner(env, subst, init, annotated_ty, types, d);
@@ -1393,13 +1437,18 @@ fn check_inner(
                         return;
                     }
                 };
-                let mapping = match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
-                    Some(m) => m,
-                    None => return,
-                };
+                let mapping =
+                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                        Some(m) => m,
+                        None => return,
+                    };
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
-                    if let Some(v) = e_decl.variants.iter().find(|var_decl| var_decl.name == *variant) {
+                    if let Some(v) = e_decl
+                        .variants
+                        .iter()
+                        .find(|var_decl| var_decl.name == *variant)
+                    {
                         env.push_scope();
                         if let Some(var_name) = bound_var {
                             env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
@@ -1436,7 +1485,8 @@ fn check_inner(
                     expr.span,
                     format!(
                         "expected array of length {}, found length {}",
-                        expected_size, elements.len()
+                        expected_size,
+                        elements.len()
                     ),
                 ));
                 return;
@@ -1487,9 +1537,9 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::Block(stmts, last, _) => {
             for stmt in stmts {
                 match stmt {
-                    Stmt::Let { init: Some(init), .. } => {
-                        check_no_control_flow(init, loop_depth, d)
-                    }
+                    Stmt::Let {
+                        init: Some(init), ..
+                    } => check_no_control_flow(init, loop_depth, d),
                     Stmt::Let { init: None, .. } => {}
                     Stmt::Defer { body, .. } => check_no_control_flow(body, loop_depth, d),
                     Stmt::Expr(e) => check_no_control_flow(e, loop_depth, d),
@@ -1565,7 +1615,6 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::Literal(_) | ExprKind::Variable(_) => {}
     }
 }
-
 
 #[cfg(test)]
 mod tests {

@@ -10,8 +10,8 @@
 //! the fixture runner (see `tests/fixtures.rs`).
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
-use crate::mir::parser::Parser;
 use crate::elaborate_and_check_mir;
+use crate::mir::parser::Parser;
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 
@@ -96,7 +96,11 @@ fn maybe_write_fixture_impl(src: &str, forced_subdir: Option<&str>, has_errors: 
 ///   `mod tests` blocks).
 /// * Strip trailing `_ok` (clean) or `_error` (has errors) from the
 ///   test fn.
-fn derive_fixture_path(test_name: &str, forced_subdir: Option<&str>, has_errors: bool) -> (String, String) {
+fn derive_fixture_path(
+    test_name: &str,
+    forced_subdir: Option<&str>,
+    has_errors: bool,
+) -> (String, String) {
     let mut parts: Vec<&str> = test_name.split("::").collect();
     if parts.first() == Some(&"silica_mir") {
         parts.remove(0);
@@ -150,7 +154,8 @@ pub fn assert_error_at(d: &Diagnostics, code: impl Into<DiagCode>, at: (u32, u32
         panic!(
             "no error matched code={:?} at {}:{}\n--- got {} error(s) ---\n{}",
             expected_code,
-            at.0, at.1,
+            at.0,
+            at.1,
             d.error_count(),
             format_diagnostics(d.errors()),
         );
@@ -169,7 +174,8 @@ pub fn assert_warning_at(d: &Diagnostics, code: impl Into<DiagCode>, at: (u32, u
         panic!(
             "no warning matched code={:?} at {}:{}\n--- got {} warning(s) ---\n{}",
             expected_code,
-            at.0, at.1,
+            at.0,
+            at.1,
             d.warning_count(),
             format_diagnostics(d.warnings()),
         );
@@ -179,7 +185,12 @@ pub fn assert_warning_at(d: &Diagnostics, code: impl Into<DiagCode>, at: (u32, u
 fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> String {
     let mut lines = Vec::new();
     for diag in diagnostics {
-        lines.push(format!("  [{:?}] at {}: {}", diag.code(), diag.span(), diag.message()));
+        lines.push(format!(
+            "  [{:?}] at {}: {}",
+            diag.code(),
+            diag.span(),
+            diag.message()
+        ));
     }
     if lines.is_empty() {
         "  (none)".to_string()

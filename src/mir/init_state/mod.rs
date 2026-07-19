@@ -29,11 +29,11 @@
 //! sets the whole enum to `Moved` (enum atomicity, per README); downcast-
 //! in-write does not change enum state.
 
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::dataflow;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::class_of;
-use crate::mir::dataflow;
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::type_check::{Env, TypeDecl};
 use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
@@ -396,10 +396,7 @@ fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf
             if !matches!(state, InitState::Partial(_)) {
                 *state = InitState::Partial(expand_uniform(state, &fields));
             }
-            let field_ty = fields
-                .into_iter()
-                .find(|fd| fd.name == *f)
-                .map(|fd| fd.ty);
+            let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(f) {
                     write_at(field_state, &field_ty, &path[1..], env, leaf_state);
@@ -464,10 +461,7 @@ fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env) {
             if !matches!(state, InitState::Partial(_)) {
                 *state = InitState::Partial(expand_uniform(state, &fields));
             }
-            let field_ty = fields
-                .into_iter()
-                .find(|fd| fd.name == *f)
-                .map(|fd| fd.ty);
+            let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(f) {
                     move_at(field_state, &field_ty, &path[1..], env);
@@ -539,7 +533,10 @@ fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env) -> InitSt
             }
             InitState::Partial(map) => {
                 let elem_ty = array_info(ty).map(|(e, _)| e);
-                let slot_state = map.get(&k.to_string()).cloned().unwrap_or(InitState::NeverInit);
+                let slot_state = map
+                    .get(&k.to_string())
+                    .cloned()
+                    .unwrap_or(InitState::NeverInit);
                 match elem_ty {
                     Some(et) => read_at(&slot_state, &et, &path[1..], env),
                     None => slot_state,
@@ -592,12 +589,7 @@ pub fn block_entry_states(env: &Env, func: &Function) -> IndexMap<String, PointS
 /// same transfer as the fixpoint. For callers that hold a per-block
 /// entry state and want to reconstruct the state at any point inside
 /// the block.
-pub fn transfer_stmt_silent(
-    env: &Env,
-    func: &Function,
-    stmt: &Statement,
-    state: &mut PointState,
-) {
+pub fn transfer_stmt_silent(env: &Env, func: &Function, stmt: &Statement, state: &mut PointState) {
     let locals = func.locals_map();
     let ctx = InitStateContext {
         env,
@@ -727,7 +719,11 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     }
 }
 
-fn run_fixpoint(ctx: &InitStateContext, func: &Function, body: &FunctionBody) -> IndexMap<String, PointState> {
+fn run_fixpoint(
+    ctx: &InitStateContext,
+    func: &Function,
+    body: &FunctionBody,
+) -> IndexMap<String, PointState> {
     let analysis = InitAnalysis {
         ctx,
         initial: initial_state(func, body, ctx.env),
@@ -904,8 +900,7 @@ impl<'a> InitStateContext<'a> {
     /// outermost Deref address the pointee, the Place below the Deref
     /// locates the ref.
     fn apply_pointee_write(&self, place: &Place, leaf: InitState, state: &mut PointState) {
-        let Some((ref_place, sub_path, pointee_ty)) =
-            self.resolve_pointee_target(place, state)
+        let Some((ref_place, sub_path, pointee_ty)) = self.resolve_pointee_target(place, state)
         else {
             return;
         };
@@ -919,8 +914,7 @@ impl<'a> InitStateContext<'a> {
     /// Route a move out of the pointee of a ref. See
     /// [`apply_pointee_write`] for the split model.
     fn apply_pointee_move(&self, place: &Place, state: &mut PointState) {
-        let Some((ref_place, sub_path, pointee_ty)) =
-            self.resolve_pointee_target(place, state)
+        let Some((ref_place, sub_path, pointee_ty)) = self.resolve_pointee_target(place, state)
         else {
             return;
         };
@@ -997,7 +991,6 @@ fn close_refs_under(state: &mut PointState, consumed: &Place) {
     }
 }
 
-
 /// Which kind of dereference operation is being performed. Distinguishes
 /// state precondition (init vs uninit) and post-condition transition.
 #[derive(Debug, Clone, Copy)]
@@ -1072,7 +1065,10 @@ impl<'a> InitStateContext<'a> {
                     span,
                     func,
                     block,
-                    format!("cannot dereference '{}': reference state is unknown here", name_str),
+                    format!(
+                        "cannot dereference '{}': reference state is unknown here",
+                        name_str
+                    ),
                 ));
             }
             return;
@@ -1294,7 +1290,6 @@ fn describe_pointee_state(state: &InitState) -> &'static str {
 }
 
 impl<'a> InitStateContext<'a> {
-
     /// If `place` is a whole-var ref binding with an outstanding obligation
     /// (`refs[name]` exists), verify its obligation is fulfilled and remove
     /// the entry. Called at any point where the reference value is being
@@ -1613,7 +1608,11 @@ impl<'a> InitStateContext<'a> {
                 return;
             };
             if parent_rs.is_init() != requires_init {
-                let expected = if requires_init { "initialized" } else { "uninitialized" };
+                let expected = if requires_init {
+                    "initialized"
+                } else {
+                    "uninitialized"
+                };
                 let actual = describe_pointee_state(&parent_rs.pointee);
                 d.push_error(diag(
                     BorrowStateMismatch,
@@ -1976,10 +1975,8 @@ impl<'a> InitStateContext<'a> {
                         for stmt in &b.statements {
                             if let StatementKind::Assign(target, _) = &stmt.kind {
                                 if target == place {
-                                    err = err.with_secondary(
-                                        stmt.span,
-                                        "initialized here on some path",
-                                    );
+                                    err = err
+                                        .with_secondary(stmt.span, "initialized here on some path");
                                 }
                             }
                         }
@@ -1997,4 +1994,3 @@ impl<'a> InitStateContext<'a> {
         }
     }
 }
-

@@ -52,12 +52,16 @@ impl std::fmt::Display for Type {
                     write!(f, "<")?;
                     let mut first = true;
                     for lt in lifetimes {
-                        if !first { write!(f, ", ")?; }
+                        if !first {
+                            write!(f, ", ")?;
+                        }
                         first = false;
                         write!(f, "{}", lt)?;
                     }
                     for a in args {
-                        if !first { write!(f, ", ")?; }
+                        if !first {
+                            write!(f, ", ")?;
+                        }
                         first = false;
                         write!(f, "{}", a)?;
                     }
@@ -392,12 +396,18 @@ pub enum ConstVal {
     /// Integer literal. `bits` is the raw bit pattern; interpretation
     /// as signed/unsigned comes from `ty`. Bit widths narrower than 64
     /// use the low `ty.bits()` bits, upper bits zero.
-    Int { bits: u64, ty: IntTy },
+    Int {
+        bits: u64,
+        ty: IntTy,
+    },
     /// Floating-point literal, stored as its IEEE-754 bit pattern.
     /// `f32` literals are stored in the low 32 bits (upper 32 bits
     /// zero); `f64` fills all 64. Bit-pattern storage lets ConstVal
     /// stay `Eq` (NaN comparisons preserved as bit-equality).
-    Float { bits: u64, ty: FloatTy },
+    Float {
+        bits: u64,
+        ty: FloatTy,
+    },
     Bool(bool),
     Unit,
     /// Function-name const, used as the target of `call`. `args` is

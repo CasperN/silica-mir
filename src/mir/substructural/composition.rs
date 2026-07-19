@@ -30,8 +30,8 @@
 //! together they mean `class_of(Custom(_, args))` can return the
 //! decl's declared markers without inspecting the args.
 
-use crate::mir::ast::*;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::mir::ast::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 
@@ -114,9 +114,7 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
             // Exclusive mutable/uninit refs: affine + movable. The ref
             // itself is a pointer we can freely relocate; the referent's
             // obligation goes with it.
-            RefKind::Mut | RefKind::Uninit => {
-                Markers::from_iter([Marker::Drop, Marker::Move])
-            }
+            RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
             // `&out` / `&drop` carry linear obligations, but the
             // reference value itself is a pointer that can be relocated
             // (obligation transfers with the ref).
@@ -235,4 +233,3 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         }
     }
 }
-

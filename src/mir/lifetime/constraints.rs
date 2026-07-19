@@ -13,8 +13,8 @@
 //!    callee param regions; the returned ref's region matches the
 //!    instantiated callee return region.
 
-use crate::mir::lifetime::region::Region;
 use crate::mir::ast::Span;
+use crate::mir::lifetime::region::Region;
 use std::collections::BTreeSet;
 
 /// One outlives relation: `outlives` outlives `sub` (i.e. `outlives`
@@ -29,7 +29,11 @@ pub struct Constraint {
 
 impl Constraint {
     pub fn new(outlives: Region, sub: Region, origin: Span) -> Self {
-        Self { outlives, sub, origin }
+        Self {
+            outlives,
+            sub,
+            origin,
+        }
     }
 }
 
@@ -52,7 +56,8 @@ impl ConstraintSet {
             return;
         }
         if self.seen.insert((outlives.clone(), sub.clone())) {
-            self.constraints.push(Constraint::new(outlives, sub, origin));
+            self.constraints
+                .push(Constraint::new(outlives, sub, origin));
         }
     }
 
@@ -150,9 +155,9 @@ mod tests {
 
     #[test]
     fn ref_to_ref_assignment_emits_outlives() {
+        use crate::mir::elision;
         use crate::mir::parser::Parser;
         use crate::mir::type_check::Env;
-        use crate::mir::elision;
         // `r = copy x` where both are `&i64`: source region must
         // outlive destination region. After elision x's region is
         // 's0 (from signature). r is a body-local, so its region is

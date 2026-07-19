@@ -179,7 +179,6 @@ impl Diagnostic {
     }
 }
 
-
 /// Which surface language the diagnostics apply to. Controls
 /// user-facing rendering choices — HLL users don't know about MIR
 /// concepts like basic blocks, so those get suppressed for `Hll`.
@@ -315,17 +314,26 @@ impl Diagnostics {
     /// Used by the test harness so existing `assert_errors_contain`
     /// assertions keep matching.
     pub fn errors_str(&self) -> Vec<String> {
-        self.errors.iter().map(|d| self.render_diagnostic(d)).collect()
+        self.errors
+            .iter()
+            .map(|d| self.render_diagnostic(d))
+            .collect()
     }
 
     /// String view of `warnings`. Mirrors [`errors_str`].
     pub fn warnings_str(&self) -> Vec<String> {
-        self.warnings.iter().map(|d| self.render_diagnostic(d)).collect()
+        self.warnings
+            .iter()
+            .map(|d| self.render_diagnostic(d))
+            .collect()
     }
 
     /// String view of `internal_errors`. Mirrors [`errors_str`].
     pub fn internal_errors_str(&self) -> Vec<String> {
-        self.internal_errors.iter().map(|d| self.render_diagnostic(d)).collect()
+        self.internal_errors
+            .iter()
+            .map(|d| self.render_diagnostic(d))
+            .collect()
     }
 
     fn render_diagnostic(&self, d: &Diagnostic) -> String {
@@ -338,7 +346,10 @@ impl Diagnostics {
         let show_block = self.source_kind == SourceKind::Mir;
         if !d.function.is_empty() {
             if !d.block.is_empty() && show_block {
-                out.push_str(&format!("In function '{}', block '{}': ", d.function, d.block));
+                out.push_str(&format!(
+                    "In function '{}', block '{}': ",
+                    d.function, d.block
+                ));
             } else {
                 out.push_str(&format!("In function '{}': ", d.function));
             }
@@ -375,11 +386,9 @@ impl Diagnostics {
             let lines: Vec<&str> = source.lines().collect();
 
             // Sort spans by line and column.
-            grouped_spans.sort_by(|a, b| {
-                match a.span.line.cmp(&b.span.line) {
-                    std::cmp::Ordering::Equal => a.span.col.cmp(&b.span.col),
-                    ord => ord,
-                }
+            grouped_spans.sort_by(|a, b| match a.span.line.cmp(&b.span.line) {
+                std::cmp::Ordering::Equal => a.span.col.cmp(&b.span.col),
+                ord => ord,
             });
 
             // Group spans into contiguous blocks (gap <= 2 lines).
@@ -425,16 +434,24 @@ impl Diagnostics {
                         continue;
                     }
                     let line_str = lines[line_idx];
-                    out.push_str(&format!("\n {:>w$} | {}", line_num, line_str, w = gutter_width));
+                    out.push_str(&format!(
+                        "\n {:>w$} | {}",
+                        line_num,
+                        line_str,
+                        w = gutter_width
+                    ));
 
                     // Check if this line contains any spans.
-                    let spans_on_line: Vec<&GroupedSpan> = block.iter().filter(|gs| gs.span.line == line_num).collect();
+                    let spans_on_line: Vec<&GroupedSpan> =
+                        block.iter().filter(|gs| gs.span.line == line_num).collect();
                     if !spans_on_line.is_empty() {
                         // Find the max end column to size the caret buffer.
                         let mut max_end_col = 0;
                         for gs in &spans_on_line {
                             let start_col = gs.span.col as usize;
-                            let end_col = if gs.span.end_line == gs.span.line && gs.span.end_col > gs.span.col {
+                            let end_col = if gs.span.end_line == gs.span.line
+                                && gs.span.end_col > gs.span.col
+                            {
                                 gs.span.end_col as usize
                             } else {
                                 start_col + 1
@@ -461,7 +478,9 @@ impl Diagnostics {
                         // Underline the spans.
                         for gs in &spans_on_line {
                             let start_col = gs.span.col.saturating_sub(1) as usize;
-                            let end_col = if gs.span.end_line == gs.span.line && gs.span.end_col > gs.span.col {
+                            let end_col = if gs.span.end_line == gs.span.line
+                                && gs.span.end_col > gs.span.col
+                            {
                                 gs.span.end_col.saturating_sub(1) as usize
                             } else {
                                 start_col + 1
@@ -469,7 +488,10 @@ impl Diagnostics {
                             let caret_char = if gs.is_primary { '^' } else { '-' };
                             for idx in start_col..end_col {
                                 if idx < caret_chars.len() {
-                                    if caret_chars[idx] == ' ' || caret_chars[idx] == '\t' || caret_char == '^' {
+                                    if caret_chars[idx] == ' '
+                                        || caret_chars[idx] == '\t'
+                                        || caret_char == '^'
+                                    {
                                         caret_chars[idx] = caret_char;
                                     }
                                 }
@@ -481,7 +503,11 @@ impl Diagnostics {
                         out.push_str(&format!("\n {:>w$} | {}", "", caret_str, w = gutter_width));
 
                         // Interleave/stack labels.
-                        let labeled_spans: Vec<&GroupedSpan> = spans_on_line.iter().filter(|gs| gs.label.is_some()).cloned().collect();
+                        let labeled_spans: Vec<&GroupedSpan> = spans_on_line
+                            .iter()
+                            .filter(|gs| gs.label.is_some())
+                            .cloned()
+                            .collect();
                         if labeled_spans.len() == 1 {
                             // Single label: print next to the caret line.
                             let label = labeled_spans[0].label.as_ref().unwrap();
@@ -517,7 +543,13 @@ impl Diagnostics {
 
                                 let pointer_prefix: String = pointer_chars.into_iter().collect();
                                 let label = labeled[i].label.as_ref().unwrap();
-                                out.push_str(&format!("\n {:>w$} | {}|-- {}", "", pointer_prefix, label, w = gutter_width));
+                                out.push_str(&format!(
+                                    "\n {:>w$} | {}|-- {}",
+                                    "",
+                                    pointer_prefix,
+                                    label,
+                                    w = gutter_width
+                                ));
                             }
                         }
                     }
@@ -542,14 +574,18 @@ mod tests {
     use crate::mir::type_check::TypeCheckCode;
 
     fn span(line: u32, col: u32, end_col: u32) -> Span {
-        Span { line, col, end_line: line, end_col }
+        Span {
+            line,
+            col,
+            end_line: line,
+            end_col,
+        }
     }
 
     #[test]
     fn secondary_spans_render_as_notes_with_snippets() {
-        let source = std::sync::Arc::new(
-            "line one\nsecond line here\nthird line goes here\n".to_string(),
-        );
+        let source =
+            std::sync::Arc::new("line one\nsecond line here\nthird line goes here\n".to_string());
         let d = Diagnostic::new(
             TypeCheckCode::AssignmentTypeMismatch,
             span(2, 8, 12),

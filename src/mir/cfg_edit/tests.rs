@@ -116,10 +116,7 @@ fn split_branch_both_arms_same_succ_rewrites_both() {
     // same block. Splitting funnels both flows through the split.
     let mut body = FunctionBody {
         locals: Vec::new(),
-        blocks: vec![
-            block("entry", branch("j", "j")),
-            block("j", return_()),
-        ],
+        blocks: vec![block("entry", branch("j", "j")), block("j", return_())],
     };
 
     let split = split_edge(&mut body, "entry", "j");
@@ -183,10 +180,7 @@ fn split_goto_edge() {
     // Even non-critical edges get split — always-split contract.
     let mut body = FunctionBody {
         locals: Vec::new(),
-        blocks: vec![
-            block("entry", goto("next")),
-            block("next", return_()),
-        ],
+        blocks: vec![block("entry", goto("next")), block("next", return_())],
     };
 
     let split = split_edge(&mut body, "entry", "next");
@@ -288,9 +282,9 @@ fn split_then_full_pipeline_still_clean() {
     // Parse a simple program, split a critical edge in the AST, then
     // run the full pipeline — semantics are preserved so the check
     // should still be clean.
+    use crate::elaborate_and_check_mir;
     use crate::mir::ast::Declaration;
     use crate::mir::parser::Parser;
-    use crate::elaborate_and_check_mir;
 
     let src = "
         fn f(b: bool, x: i64) {

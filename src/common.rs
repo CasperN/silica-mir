@@ -250,8 +250,14 @@ impl std::fmt::Display for RefKind {
 /// `IntTy`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum IntTy {
-    I8, I16, I32, I64,
-    U8, U16, U32, U64,
+    I8,
+    I16,
+    I32,
+    I64,
+    U8,
+    U16,
+    U32,
+    U64,
 }
 
 impl IntTy {

@@ -20,10 +20,10 @@
 //! tracked Var clobber that Var back to ⊤ for the rest of its
 //! lifetime, since we can't see what the borrower does.
 
-use crate::mir::ast::*;
-use crate::mir::helpers::*;
-use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::mir::ast::*;
+use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
+use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use crate::mir::type_util::is_type_uninhabited;
 use indexmap::IndexMap;
@@ -554,4 +554,3 @@ fn resolve_enum_of_place<'a>(
         _ => None,
     }
 }
-

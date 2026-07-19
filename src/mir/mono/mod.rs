@@ -58,8 +58,8 @@
 //!   the instantiation is already registered, so no infinite loop.
 
 use crate::mir::helpers::{call_stmt, drop_stmt, unborrow_stmt};
-use crate::mir::{ast::*, helpers::*};
 use crate::mir::type_util::substitute_params;
+use crate::mir::{ast::*, helpers::*};
 use std::collections::{BTreeMap, VecDeque};
 
 /// Rewrite `program` in place: erase generic decls, emit specialized
@@ -169,8 +169,7 @@ impl MonoCtx {
     fn walk_const(&mut self, c: &ConstVal) -> ConstVal {
         match c {
             ConstVal::FnName(name, args) => {
-                let new_args: Vec<Type> =
-                    args.iter().map(|a| self.walk_type(a)).collect();
+                let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
                 let mangled = self.need(name, &new_args);
                 ConstVal::FnName(mangled, Vec::new())
             }
@@ -184,8 +183,7 @@ impl MonoCtx {
             RValue::Ref(k, p) => RValue::Ref(*k, p.clone()),
             RValue::RawRef(p) => RValue::RawRef(p.clone()),
             RValue::EnumConstr(name, args, variant, payload) => {
-                let new_args: Vec<Type> =
-                    args.iter().map(|a| self.walk_type(a)).collect();
+                let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
                 let mangled = self.need(name, &new_args);
                 RValue::EnumConstr(
                     mangled,
@@ -215,7 +213,11 @@ impl MonoCtx {
 
     fn walk_terminator(&mut self, t: &Terminator) -> Terminator {
         match &t.kind {
-            TerminatorKind::Branch { cond, true_label, false_label } => branch_term(
+            TerminatorKind::Branch {
+                cond,
+                true_label,
+                false_label,
+            } => branch_term(
                 self.walk_operand(cond),
                 true_label.clone(),
                 false_label.clone(),
@@ -225,12 +227,7 @@ impl MonoCtx {
         }
     }
 
-    fn specialize(
-        &mut self,
-        decl: Declaration,
-        args: &[Type],
-        mangled: String,
-    ) -> Declaration {
+    fn specialize(&mut self, decl: Declaration, args: &[Type], mangled: String) -> Declaration {
         match decl {
             Declaration::Struct(s) => {
                 let type_params = s.type_params.clone();
@@ -248,7 +245,7 @@ impl MonoCtx {
                     name: mangled,
                     name_span: s.name_span,
                     lifetime_params: Vec::new(),
-            type_params: Vec::new(),
+                    type_params: Vec::new(),
                     markers: s.markers,
                     fields,
                 })
@@ -269,7 +266,7 @@ impl MonoCtx {
                     name: mangled,
                     name_span: e.name_span,
                     lifetime_params: Vec::new(),
-            type_params: Vec::new(),
+                    type_params: Vec::new(),
                     markers: e.markers,
                     variants,
                 })
@@ -328,7 +325,7 @@ impl MonoCtx {
                     name_span: f.name_span,
                     is_extern: f.is_extern,
                     lifetime_params: Vec::new(),
-            signature_outlives: Vec::new(),
+                    signature_outlives: Vec::new(),
                     type_params: Vec::new(),
                     params,
                     body,
@@ -367,33 +364,27 @@ fn decl_is_generic(d: &Declaration) -> bool {
 }
 
 /// Substitute Params in every Type-carrying position inside a statement.
-fn substitute_stmt_types(
-    s: &Statement,
-    type_params: &[TypeParam],
-    args: &[Type],
-) -> Statement {
+fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]) -> Statement {
     match &s.kind {
-        StatementKind::Assign(p, r) => {
-            assign_stmt(p.clone(), substitute_rvalue_types(r, type_params, args), s.span)
-        }
+        StatementKind::Assign(p, r) => assign_stmt(
+            p.clone(),
+            substitute_rvalue_types(r, type_params, args),
+            s.span,
+        ),
         StatementKind::Call(callee, cargs) => call_stmt(
             substitute_operand_types(callee, type_params, args),
             cargs
                 .iter()
                 .map(|a| substitute_operand_types(a, type_params, args))
                 .collect(),
-            s.span
+            s.span,
         ),
         StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
         StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
     }
 }
 
-fn substitute_rvalue_types(
-    r: &RValue,
-    type_params: &[TypeParam],
-    args: &[Type],
-) -> RValue {
+fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Type]) -> RValue {
     match r {
         RValue::EnumConstr(name, targs, variant, payload) => RValue::EnumConstr(
             name.clone(),
@@ -415,11 +406,7 @@ fn substitute_rvalue_types(
     }
 }
 
-fn substitute_operand_types(
-    op: &Operand,
-    type_params: &[TypeParam],
-    args: &[Type],
-) -> Operand {
+fn substitute_operand_types(op: &Operand, type_params: &[TypeParam], args: &[Type]) -> Operand {
     match op {
         Operand::Const(ConstVal::FnName(name, targs)) => Operand::Const(ConstVal::FnName(
             name.clone(),

@@ -149,12 +149,7 @@ fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
                 elide_type_pos(a, pos, ctx);
             }
         }
-        Type::Int(_)
-        | Type::Float(_)
-        | Type::Bool
-        | Type::Unit
-        | Type::Never
-        | Type::Param(_) => {}
+        Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never | Type::Param(_) => {}
     }
 }
 
@@ -170,14 +165,21 @@ mod tests {
         let mut ctx = ElideCtx::new(&[]);
         elide_type_pos(&mut ty1, Pos::Input, &mut ctx);
         elide_type_pos(&mut ty2, Pos::Input, &mut ctx);
-        assert_eq!(ctx.synthesized, vec![Lifetime("s0".into()), Lifetime("s1".into())]);
+        assert_eq!(
+            ctx.synthesized,
+            vec![Lifetime("s0".into()), Lifetime("s1".into())]
+        );
         assert!(matches!(ty1, Type::Ref(_, Some(_), _)));
         assert!(matches!(ty2, Type::Ref(_, Some(_), _)));
     }
 
     #[test]
     fn already_annotated_ref_is_untouched() {
-        let mut ty = Type::Ref(RefKind::Shared, Some(Lifetime("a".into())), Box::new(i64_ty()));
+        let mut ty = Type::Ref(
+            RefKind::Shared,
+            Some(Lifetime("a".into())),
+            Box::new(i64_ty()),
+        );
         let mut ctx = ElideCtx::new(&[Lifetime("a".into())]);
         elide_type_pos(&mut ty, Pos::Input, &mut ctx);
         assert!(ctx.synthesized.is_empty());
@@ -207,17 +209,28 @@ mod tests {
             signature_outlives: Vec::new(),
             type_params: vec![],
             params: vec![
-                Param { name: "x".into(), ty: mut_ref_ty(i64_ty()), span: Span::default() },
+                Param {
+                    name: "x".into(),
+                    ty: mut_ref_ty(i64_ty()),
+                    span: Span::default(),
+                },
                 Param {
                     name: "y".into(),
-                    ty: Type::Ref(RefKind::Shared, Some(Lifetime("a".into())), Box::new(i64_ty())),
+                    ty: Type::Ref(
+                        RefKind::Shared,
+                        Some(Lifetime("a".into())),
+                        Box::new(i64_ty()),
+                    ),
                     span: Span::default(),
                 },
             ],
             body: None,
         };
         elide_function(&mut f);
-        assert_eq!(f.lifetime_params, vec![Lifetime("a".into()), Lifetime("s0".into())]);
+        assert_eq!(
+            f.lifetime_params,
+            vec![Lifetime("a".into()), Lifetime("s0".into())]
+        );
     }
 
     #[test]
@@ -246,10 +259,14 @@ mod tests {
         use crate::mir::parser::Parser;
         let mut program = Parser::new(src.to_string()).parse().expect("parse");
         elide_program(&mut program);
-        program.declarations.into_iter().find_map(|d| match d {
-            Declaration::Fn(f) => Some(f),
-            _ => None,
-        }).expect("fn decl")
+        program
+            .declarations
+            .into_iter()
+            .find_map(|d| match d {
+                Declaration::Fn(f) => Some(f),
+                _ => None,
+            })
+            .expect("fn decl")
     }
 
     #[test]
@@ -258,37 +275,41 @@ mod tests {
         //   r: &'s0 i64,  $return: &out 's1 &'s2 i64
         // 's0 (input) outlives 's2 (elided output).
         // 's1 (input, outer &out lifetime) outlives 's2 too.
-        let f = parse_and_elide("
+        let f = parse_and_elide(
+            "
             fn identity(r: &i64, $return: &out &i64) {
               entry:
                 return
             }
-        ");
-        assert!(f.signature_outlives.contains(
-            &(Lifetime("s0".into()), Lifetime("s2".into()))
-        ));
-        assert!(f.signature_outlives.contains(
-            &(Lifetime("s1".into()), Lifetime("s2".into()))
-        ));
+        ",
+        );
+        assert!(f
+            .signature_outlives
+            .contains(&(Lifetime("s0".into()), Lifetime("s2".into()))));
+        assert!(f
+            .signature_outlives
+            .contains(&(Lifetime("s1".into()), Lifetime("s2".into()))));
     }
 
     #[test]
     fn multi_input_gives_intersection_axiom() {
         // fn pick(x: &i64, y: &i64, $return: &out &i64) — every
         // input outlives the elided output.
-        let f = parse_and_elide("
+        let f = parse_and_elide(
+            "
             fn pick(x: &i64, y: &i64, $return: &out &i64) {
               entry:
                 return
             }
-        ");
+        ",
+        );
         // Output: 's3 (inner of $return). Inputs: 's0, 's1, 's2.
         for input in ["s0", "s1", "s2"] {
             assert!(
-                f.signature_outlives.contains(
-                    &(Lifetime(input.into()), Lifetime("s3".into()))
-                ),
-                "expected {} outlives s3", input,
+                f.signature_outlives
+                    .contains(&(Lifetime(input.into()), Lifetime("s3".into()))),
+                "expected {} outlives s3",
+                input,
             );
         }
     }
@@ -297,13 +318,18 @@ mod tests {
     fn explicit_output_lifetime_no_axiom() {
         // Fully-explicit signature: no axioms because nothing was
         // synthesized in output position.
-        let f = parse_and_elide("
+        let f = parse_and_elide(
+            "
             fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
               entry:
                 return
             }
-        ");
-        assert!(f.signature_outlives.is_empty(),
-            "explicit signature should have no axioms, got {:?}", f.signature_outlives);
+        ",
+        );
+        assert!(
+            f.signature_outlives.is_empty(),
+            "explicit signature should have no axioms, got {:?}",
+            f.signature_outlives
+        );
     }
 }
