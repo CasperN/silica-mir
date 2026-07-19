@@ -49,6 +49,11 @@ pub enum TypeCheckCode {
     /// `fn main` has a parameter list that doesn't match one of the
     /// two accepted shapes (`()` or `(&out i32)`).
     MainBadSignature,
+    /// A type mentions a named lifetime (`'a`, `'other`, ...) that
+    /// isn't declared on the enclosing decl's lifetime parameter
+    /// list. Fires on struct field, enum variant, fn param, local,
+    /// or type-argument positions.
+    UndeclaredLifetime,
 
     // ---- Statement typing ----
     /// LHS and RHS of an assignment have incompatible types.

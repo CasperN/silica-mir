@@ -13,8 +13,52 @@ use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::scope_from;
+use crate::common::Lifetime;
 use indexmap::IndexMap;
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
+
+/// Build the set of lifetime names in scope for a decl.
+fn lifetime_scope(params: &[Lifetime]) -> BTreeSet<Lifetime> {
+    params.iter().cloned().collect()
+}
+
+/// Collect all Named lifetimes referenced in `ty` that aren't in
+/// `scope`. Duplicates are preserved so each occurrence gets a
+/// diagnostic at its enclosing decl's span.
+fn undeclared_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>) -> Vec<Lifetime> {
+    let mut out = Vec::new();
+    walk_lifetimes(ty, scope, &mut out);
+    out
+}
+
+fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>) {
+    match ty {
+        Type::Ref(_, Some(lt), inner) => {
+            if !scope.contains(lt) {
+                out.push(lt.clone());
+            }
+            walk_lifetimes(inner, scope, out);
+        }
+        Type::Ref(_, None, inner) => walk_lifetimes(inner, scope, out),
+        Type::Custom(_, lts, args) => {
+            for lt in lts {
+                if !scope.contains(lt) {
+                    out.push(lt.clone());
+                }
+            }
+            for a in args {
+                walk_lifetimes(a, scope, out);
+            }
+        }
+        Type::RawPtr(inner) | Type::Array(inner, _) => walk_lifetimes(inner, scope, out),
+        Type::Fn(args) => {
+            for a in args {
+                walk_lifetimes(a, scope, out);
+            }
+        }
+        _ => {}
+    }
+}
 
 impl Env {
     pub fn typecheck(&self, d: &mut Diagnostics) {
@@ -23,6 +67,7 @@ impl Env {
             match type_decl {
                 TypeDecl::Struct(s) => {
                     let scope = scope_from(&s.type_params);
+                    let lt_scope = lifetime_scope(&s.lifetime_params);
                     let mut seen: HashSet<&str> = HashSet::new();
                     for f in &s.fields {
                         if !seen.insert(f.name.as_str()) {
@@ -38,10 +83,19 @@ impl Env {
                                 Diagnostic::new(InvalidDeclaredType, f.span, format!("In struct '{}', field '{}': {}", s.name, f.name, e)),
                             );
                         }
+                        for lt in undeclared_lifetimes(&f.ty, &lt_scope) {
+                            d.push_error(
+                                Diagnostic::new(UndeclaredLifetime, f.span, format!(
+                                        "In struct '{}', field '{}': undeclared lifetime {}",
+                                        s.name, f.name, lt,
+                                    )),
+                            );
+                        }
                     }
                 }
                 TypeDecl::Enum(e) => {
                     let scope = scope_from(&e.type_params);
+                    let lt_scope = lifetime_scope(&e.lifetime_params);
                     let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
                         if !seen.insert(v.name.as_str()) {
@@ -57,6 +111,14 @@ impl Env {
                                 Diagnostic::new(InvalidDeclaredType, v.span, format!("In enum '{}', variant '{}': {}", e.name, v.name, err)),
                             );
                         }
+                        for lt in undeclared_lifetimes(&v.ty, &lt_scope) {
+                            d.push_error(
+                                Diagnostic::new(UndeclaredLifetime, v.span, format!(
+                                        "In enum '{}', variant '{}': undeclared lifetime {}",
+                                        e.name, v.name, lt,
+                                    )),
+                            );
+                        }
                     }
                 }
             }
@@ -70,6 +132,7 @@ impl Env {
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
         let scope = scope_from(&f.type_params);
+        let lt_scope = lifetime_scope(&f.lifetime_params);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {
                 if i != f.params.len() - 1 {
@@ -89,6 +152,14 @@ impl Env {
             if let Err(e) = self.validate_type(&p.ty, &scope) {
                 d.push_error(
                     Diagnostic::new(InvalidDeclaredType, p.span, format!("In function '{}', parameter '{}': {}", f.name, p.name, e)),
+                );
+            }
+            for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
+                d.push_error(
+                    Diagnostic::new(UndeclaredLifetime, p.span, format!(
+                            "In function '{}', parameter '{}': undeclared lifetime {}",
+                            f.name, p.name, lt,
+                        )),
                 );
             }
         }
@@ -134,6 +205,14 @@ impl Env {
             if let Err(e) = self.validate_type(&l.ty, &scope) {
                 d.push_error(
                     Diagnostic::new(InvalidDeclaredType, l.span, format!("In function '{}', local '{}': {}", f.name, l.name, e)),
+                );
+            }
+            for lt in undeclared_lifetimes(&l.ty, &lt_scope) {
+                d.push_error(
+                    Diagnostic::new(UndeclaredLifetime, l.span, format!(
+                            "In function '{}', local '{}': undeclared lifetime {}",
+                            f.name, l.name, lt,
+                        )),
                 );
             }
             if locals_map.contains_key(&l.name) {

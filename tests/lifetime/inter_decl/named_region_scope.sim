@@ -1,10 +1,7 @@
-# Reject body-local Named regions that aren't declared on the
-# enclosing fn — documents a known gap. Every fn here SHOULD fire
-# a new diagnostic (LT-UndeclaredLifetime or similar) but passes
-# silently today. Named regions in locals unify with each other by
-# string identity, which is undefined semantics.
-#
-# Fixture .err.expected will populate once the scope check lands.
+# Named lifetimes referenced in a decl (struct field, enum variant,
+# fn param, fn local, or type-argument position) must appear on the
+# enclosing decl's lifetime-parameter list. Any reference to an
+# undeclared lifetime fires TC-UndeclaredLifetime.
 
 # ---------- local declares 'a but fn has no lifetime params ----------
 
