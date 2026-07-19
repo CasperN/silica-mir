@@ -1021,7 +1021,7 @@ pub fn lower_program(
                     name: s.name.clone(),
                     name_span: s.span,
                     lifetime_params: Vec::new(),
-                    type_params: lower_type_params(&s.type_params),
+            type_params: lower_type_params(&s.type_params),
                     markers: s.markers.clone(),
                     fields,
                 }));
@@ -1036,7 +1036,7 @@ pub fn lower_program(
                     name: e.name.clone(),
                     name_span: e.span,
                     lifetime_params: Vec::new(),
-                    type_params: lower_type_params(&e.type_params),
+            type_params: lower_type_params(&e.type_params),
                     markers: e.markers.clone(),
                     variants,
                 }));
@@ -1070,6 +1070,7 @@ pub fn lower_program(
                         name_span: f.span,
                         is_extern: true,
                         lifetime_params: Vec::new(),
+            signature_outlives: Vec::new(),
                         type_params: lower_type_params(&f.type_params),
                         params,
                         body: None,
@@ -1108,6 +1109,7 @@ pub fn lower_program(
                     name_span: f.span,
                     is_extern: false,
                     lifetime_params: Vec::new(),
+            signature_outlives: Vec::new(),
                     type_params: lower_type_params(&f.type_params),
                     params,
                     body: Some(mir::FunctionBody {

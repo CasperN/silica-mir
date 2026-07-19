@@ -578,6 +578,9 @@ fn check_constraints(
     for c in cs.iter() {
         match (&c.outlives, &c.sub) {
             (Region::Named(a), Region::Named(b)) if a != b => {
+                if func.signature_outlives.contains(&(a.clone(), b.clone())) {
+                    continue;
+                }
                 d.push_error(
                     Diagnostic::new(
                         LifetimeCode::LifetimeMismatch,

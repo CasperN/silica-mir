@@ -245,7 +245,7 @@ impl MonoCtx {
                     name: mangled,
                     name_span: s.name_span,
                     lifetime_params: Vec::new(),
-                    type_params: Vec::new(),
+            type_params: Vec::new(),
                     markers: s.markers,
                     fields,
                 })
@@ -266,7 +266,7 @@ impl MonoCtx {
                     name: mangled,
                     name_span: e.name_span,
                     lifetime_params: Vec::new(),
-                    type_params: Vec::new(),
+            type_params: Vec::new(),
                     markers: e.markers,
                     variants,
                 })
@@ -326,6 +326,7 @@ impl MonoCtx {
                     name_span: f.name_span,
                     is_extern: f.is_extern,
                     lifetime_params: Vec::new(),
+            signature_outlives: Vec::new(),
                     type_params: Vec::new(),
                     params,
                     body,

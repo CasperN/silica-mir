@@ -573,6 +573,12 @@ pub struct Function {
     pub name_span: Span,
     pub is_extern: bool,
     pub lifetime_params: Vec<Lifetime>,
+    /// Elision-derived outlives axioms on the function's signature.
+    /// Each `(a, b)` means "region `a` outlives region `b`" is a
+    /// known fact holding for any invocation. Populated by the
+    /// elision pass; used by the region checker to justify
+    /// assignments whose regions relate via elision unification.
+    pub signature_outlives: Vec<(Lifetime, Lifetime)>,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub body: Option<FunctionBody>,

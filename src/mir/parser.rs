@@ -1242,6 +1242,7 @@ impl Parser {
             name_span,
             is_extern,
             lifetime_params,
+            signature_outlives: Vec::new(),
             type_params,
             params,
             body,
