@@ -942,6 +942,18 @@ To load it locally:
   which `x` does `defer` capture — the outer or the shadowing inner? Lowering must commit and land a fixture that pins the chosen semantics.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
+## Refactors (deferred)
+- **`Checker` struct in `lifetime/mod.rs`.** `check_call_regions` takes 9 params, `walk_call_regions` takes 11 — all sharing `env`, `func`, `region_ctx`, `constraints`, `span`. A `Checker<'a>` with `&mut self` methods would collapse the plumbing. Rustc uses the same pattern. Pairs with a diagnostic-builder helper (`Checker::error(code, span, msg)` pre-fills fn context) to collapse 5-line push sites to 1.
+- **Unify region lookup.** `region_ctx.get(place)`, `region_of_ref_place(place, ...)`, and reading `Region::Named(lt)` from a `Type::Ref` are three ways to spell "region of this ref." Consolidate to one method on `RegionCtx`.
+- **`extern fn` as flag on Function, not parallel grammar branch.** Simplifies grammar + parser + AST. Also unblocks `extern fn<'a>(...)` syntax.
+- **Decl X/XKind: `Decl { name, name_span, lifetime_params, type_params, kind: DeclKind }`.** Rustc pattern. Real payoff when adding shared fields (visibility, docs, mono keys) later. Big touch.
+- **`Type` with span.** Enables tight diagnostics pointing at the offending type in error messages. Would fix the "spans point at whole `name: Type`" existing punchlist item. Touches many construction sites, may reshuffle fixtures.
+
+## Lifetime checker gaps (semantic)
+- **`where 'a: 'b` outlives clauses.** No syntax today; `signature_outlives: Vec<(Lifetime, Lifetime)>` is the right shape to build on. Any real generic library needs this.
+- **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today).
+- **No fixture for nested-ref case (`&&i64`, `&Wrap<i64>`), shared-ref returns read multiple times, or `Wrap<'a>` in fn signatures.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands.
+
 ## Elaboration + drop
 - **Drop insertion order in return blocks.** Belongs to the HLL
   (scope-nesting determines LIFO). If the frontend emits its own
