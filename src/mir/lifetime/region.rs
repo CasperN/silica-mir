@@ -45,7 +45,7 @@ impl std::fmt::Display for Region {
 /// name, and constraints will pin them.
 #[derive(Debug, Clone, Default)]
 pub struct RegionCtx {
-    fresh: u32,
+    fresh: std::cell::Cell<u32>,
     pub place_region: IndexMap<Place, Region>,
 }
 
@@ -54,17 +54,20 @@ impl RegionCtx {
         Self::default()
     }
 
-    /// Allocate a fresh Free region.
-    pub fn fresh(&mut self) -> Region {
-        let r = Region::Free(self.fresh);
-        self.fresh += 1;
-        r
+    /// Allocate a fresh Free region. Uses interior mutability so the
+    /// per-fn `RegionCtx` can hand out fresh regions to call-site
+    /// instantiation without requiring `&mut` cascade through every
+    /// caller of the check walk.
+    pub fn fresh(&self) -> Region {
+        let n = self.fresh.get();
+        self.fresh.set(n + 1);
+        Region::Free(n)
     }
 
     /// Region for a specific `Type::Ref(_, lt_opt, _)`. `Some(lt)` →
     /// Named; `None` → Free. Callers usually only see `Some` after
     /// elision has run on signature-position types.
-    pub fn region_for_ref(&mut self, lt_opt: &Option<Lifetime>) -> Region {
+    pub fn region_for_ref(&self, lt_opt: &Option<Lifetime>) -> Region {
         match lt_opt {
             Some(lt) => Region::Named(lt.clone()),
             None => self.fresh(),

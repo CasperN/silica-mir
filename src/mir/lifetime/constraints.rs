@@ -33,11 +33,13 @@ impl Constraint {
     }
 }
 
-/// Accumulated outlives constraints for one function. Grows during
-/// the check walk; consumed by phase 4's solver.
+/// Accumulated outlives constraints for one function. Deduped by
+/// `(outlives, sub)` — a repeat of the same pair keeps the earliest
+/// origin span for diagnostics. Consumed by the constraint solver.
 #[derive(Debug, Clone, Default)]
 pub struct ConstraintSet {
     pub constraints: Vec<Constraint>,
+    seen: std::collections::BTreeSet<(Region, Region)>,
 }
 
 impl ConstraintSet {
@@ -46,14 +48,12 @@ impl ConstraintSet {
     }
 
     pub fn emit(&mut self, outlives: Region, sub: Region, origin: Span) {
-        // Trivial cases pruned to keep the set focused.
-        if outlives == sub {
+        if outlives == sub || matches!(outlives, Region::Static) {
             return;
         }
-        if matches!(outlives, Region::Static) {
-            return;
+        if self.seen.insert((outlives.clone(), sub.clone())) {
+            self.constraints.push(Constraint::new(outlives, sub, origin));
         }
-        self.constraints.push(Constraint::new(outlives, sub, origin));
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Constraint> {

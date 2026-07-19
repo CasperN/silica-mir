@@ -694,24 +694,30 @@ fn emit_stmt_constraints(
 /// loan tracker can detect aliasing of caller-side inputs through
 /// callee-returned refs.
 ///
+/// From the lifetime pass's view, all four exclusive-borrow kinds
+/// (`&mut`, `&out`, `&drop`, `&uninit`) behave the same: they're
+/// exclusive borrows whose pointee lifetimes are invariant. Init-
+/// state discipline distinguishes them; lifetime doesn't.
+///
 /// Algorithm:
-/// 1. Look up callee's Function in env. If callee isn't a static
-///    fn name (call-through-fn-pointer, intrinsic without a Function
-///    entry, ...), skip — call-site propagation is fn-name-only.
-/// 2. Allocate fresh Free regions for each callee lifetime param.
-/// 3. For each caller arg matched with callee param position:
-///    walk both types in parallel; at each lifetime slot emit an
-///    outlives constraint between caller region and instantiated
-///    callee region. Direction depends on the surrounding ref kind:
-///    input (regular ref pointee) → `caller outlives inst`;
-///    output (`&mut`/`&out` pointee) → `inst outlives caller`.
-/// 4. Snapshot each caller arg's loans keyed by the callee region
-///    that same arg position maps to.
-/// 5. After callee's signature_outlives axioms are instantiated
-///    and emitted, register synthetic loans on caller output
-///    positions: each output slot with callee region 'out gets a
-///    loan whose `loaned` set is the union of the snapshotted
-///    input loans that shared 'out.
+/// 1. Look up callee's Function in env. Bail on fn-pointer /
+///    non-fn-name callees.
+/// 2. Allocate fresh Free regions from `region_ctx.fresh()` for
+///    each callee lifetime param.
+/// 3. Walk each (caller arg, callee param) in parallel. At each
+///    lifetime slot emit constraints:
+///    - Argument-position (contravariant): `caller outlives inst`.
+///    - Return-position (covariant, i.e. inside an exclusive
+///      pointee): `inst outlives caller`.
+///    - Exclusive descent: emit BOTH directions (invariance).
+///    Snapshot input arg loans by instantiated region for step 5.
+/// 4. Instantiate the callee's signature_outlives axioms.
+/// 5. Register synthetic loans on caller-side output slots: for
+///    each arg that's `&mut T`/`&out T`/... containing an inner
+///    ref of instantiated region R, look at the arg's own loan's
+///    loaned places (caller-side backing storage) and place a
+///    synthetic loan there whose `loaned` = union of input loans
+///    sharing region R.
 fn check_call_regions(
     env: &Env,
     func: &Function,
@@ -733,15 +739,10 @@ fn check_call_regions(
     let inst: IndexMap<Lifetime, Region> = callee
         .lifetime_params
         .iter()
-        .enumerate()
-        .map(|(i, lt)| (lt.clone(), Region::Free(u32::MAX - 1 - i as u32)))
+        .map(|lt| (lt.clone(), region_ctx.fresh()))
         .collect();
 
     let locals = func.locals_map();
-
-    // Walk each (caller arg, callee param) in parallel, emitting
-    // constraints and collecting output-position information for
-    // synthetic loan registration.
     let mut per_output_inputs: IndexMap<Region, BTreeSet<Place>> = IndexMap::new();
 
     for (arg, param) in args.iter().zip(callee.params.iter()) {
@@ -753,7 +754,7 @@ fn check_call_regions(
             &locals,
             env,
             region_ctx,
-            CallPos::Input,
+            Variance::Contravariant,
             loans,
             &mut per_output_inputs,
             constraints,
@@ -761,30 +762,23 @@ fn check_call_regions(
         );
     }
 
-    // Instantiate callee's signature outlives axioms.
     for (a, b) in &callee.signature_outlives {
         let a_r = inst.get(a).cloned().unwrap_or(Region::Named(a.clone()));
         let b_r = inst.get(b).cloned().unwrap_or(Region::Named(b.clone()));
         constraints.emit(a_r, b_r, span);
     }
 
-    // Register synthetic loans on caller-side output slots. For each
-    // caller arg that is `&out T` where T contains a ref, look up
-    // the arg's own loan to find the caller-side backing storage,
-    // and place a synthetic loan there whose `loaned` = union of
-    // input loans sharing that output's callee region.
     for (arg, param) in args.iter().zip(callee.params.iter()) {
         let Some(arg_place) = operand_place(arg) else { continue };
         let Some(arg_owned) = as_owned_path(arg_place) else { continue };
-        // Only outer &out/&mut positions can be write-outputs.
         let Type::Ref(kind, _, inner_ty) = &param.ty else { continue };
-        if !matches!(kind, RefKind::Out | RefKind::Mut) { continue }
-        let Some(inner_lt) = extract_outer_lifetime(inner_ty) else { continue };
-        let out_region = inst.get(&inner_lt).cloned().unwrap_or(Region::Named(inner_lt));
+        if matches!(kind, RefKind::Shared) { continue }
+        // The value the callee writes has a region: the outermost
+        // named region in the inner type.
+        let Some(out_region) = first_named_region(inner_ty, &inst) else { continue };
         let Some(input_places) = per_output_inputs.get(&out_region) else { continue };
         if input_places.is_empty() { continue }
 
-        // Merge loaned places from inputs sharing this region.
         let mut merged: BTreeSet<Place> = BTreeSet::new();
         for src in input_places {
             if let Some(loan) = loans.get(src) {
@@ -793,15 +787,18 @@ fn check_call_regions(
         }
         if merged.is_empty() { continue }
 
-        // The caller's backing storage for this output slot: the
-        // places pointed at by the arg's own loan.
+        // Synthetic loan's kind mirrors the callee's returned ref.
+        let synth_kind = match inner_ty.as_ref() {
+            Type::Ref(k, _, _) => k.clone(),
+            _ => kind.clone(),
+        };
         let arg_loan = loans.get(&arg_owned).cloned();
         if let Some(arg_loan) = arg_loan {
             for slot in arg_loan.loaned {
                 loans.insert(
                     slot,
                     Loan {
-                        kind: RefKind::Mut,
+                        kind: synth_kind.clone(),
                         region: out_region.clone(),
                         loaned: merged.clone(),
                         create_span: span,
@@ -812,15 +809,32 @@ fn check_call_regions(
     }
 }
 
+/// Variance of a position, used to determine which direction an
+/// outlives constraint is emitted at a lifetime slot.
 #[derive(Copy, Clone, PartialEq)]
-enum CallPos {
-    Input,
-    Output,
+enum Variance {
+    /// Arg position: `caller_region outlives inst_region`.
+    Contravariant,
+    /// Return position (inside an exclusive pointee): `inst outlives caller`.
+    Covariant,
+    /// Descended through an exclusive kind: emit both directions.
+    Invariant,
 }
 
-/// Walk callee param type and caller arg place in parallel, at each
-/// ref boundary emit the appropriate outlives constraint and record
-/// output-position info for synthetic loans.
+impl Variance {
+    fn combine(self, other: Variance) -> Variance {
+        match (self, other) {
+            (Variance::Invariant, _) | (_, Variance::Invariant) => Variance::Invariant,
+            (Variance::Contravariant, Variance::Covariant)
+            | (Variance::Covariant, Variance::Contravariant) => Variance::Invariant,
+            (a, _) => a,
+        }
+    }
+}
+
+/// Walk callee param type and caller arg place in parallel, emitting
+/// outlives constraints at each lifetime slot and recording input-
+/// side loans for synthetic-loan registration on outputs.
 fn walk_call_regions(
     callee_ty: &Type,
     caller_place: &Place,
@@ -828,7 +842,7 @@ fn walk_call_regions(
     locals: &IndexMap<String, Type>,
     env: &Env,
     region_ctx: &region::RegionCtx,
-    pos: CallPos,
+    variance: Variance,
     loans: &LoanMap,
     per_output_inputs: &mut IndexMap<Region, BTreeSet<Place>>,
     constraints: &mut constraints::ConstraintSet,
@@ -838,50 +852,100 @@ fn walk_call_regions(
         Type::Ref(kind, Some(lt), inner) => {
             let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
             if let Some(caller_r) = region_of_ref_place(caller_place, locals, env, region_ctx) {
-                match pos {
-                    CallPos::Input => {
-                        constraints.emit(caller_r, inst_region.clone(), span);
-                        if let Some(owned) = as_owned_path(caller_place) {
-                            if loans.contains_key(&owned) {
-                                per_output_inputs
-                                    .entry(inst_region.clone())
-                                    .or_default()
-                                    .insert(owned);
-                            }
+                emit_variance(&caller_r, &inst_region, variance, constraints, span);
+                if matches!(variance, Variance::Contravariant | Variance::Invariant) {
+                    if let Some(owned) = as_owned_path(caller_place) {
+                        if loans.contains_key(&owned) {
+                            per_output_inputs
+                                .entry(inst_region.clone())
+                                .or_default()
+                                .insert(owned);
                         }
-                    }
-                    CallPos::Output => {
-                        constraints.emit(inst_region.clone(), caller_r, span);
                     }
                 }
             }
-            // Recurse into inner. Exclusive-write kinds flip position.
-            let inner_pos = match kind {
-                RefKind::Mut | RefKind::Out => CallPos::Output,
-                _ => pos,
+            // Exclusive kinds make the pointee's lifetimes invariant.
+            // Shared preserves the current variance.
+            let inner_variance = match kind {
+                RefKind::Shared => variance,
+                _ => Variance::Invariant,
             };
             let inner_caller = crate::mir::helpers::deref_place(caller_place.clone());
             walk_call_regions(
-                inner,
-                &inner_caller,
-                inst,
-                locals,
-                env,
-                region_ctx,
-                inner_pos,
-                loans,
-                per_output_inputs,
-                constraints,
-                span,
+                inner, &inner_caller, inst, locals, env, region_ctx,
+                inner_variance, loans, per_output_inputs, constraints, span,
+            );
+        }
+        Type::Custom(_, lts, args) => {
+            // A generic type's lifetime args behave like a container
+            // reference: default to invariance (conservative, safe).
+            for lt in lts {
+                let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
+                let caller_ty = crate::mir::type_util::place_type(locals, env, caller_place);
+                if let Some(Type::Custom(_, caller_lts, _)) = caller_ty {
+                    if let Some(caller_lt) = caller_lts.first() {
+                        let caller_r = Region::Named(caller_lt.clone());
+                        emit_variance(
+                            &caller_r, &inst_region,
+                            variance.combine(Variance::Invariant),
+                            constraints, span,
+                        );
+                    }
+                }
+            }
+            // Recurse into type args (invariant for now).
+            for a in args {
+                walk_call_regions(
+                    a, caller_place, inst, locals, env, region_ctx,
+                    variance.combine(Variance::Invariant),
+                    loans, per_output_inputs, constraints, span,
+                );
+            }
+        }
+        Type::Array(elem, _) | Type::RawPtr(elem) => {
+            walk_call_regions(
+                elem, caller_place, inst, locals, env, region_ctx,
+                variance, loans, per_output_inputs, constraints, span,
             );
         }
         _ => {}
     }
 }
 
-fn extract_outer_lifetime(ty: &Type) -> Option<Lifetime> {
+fn emit_variance(
+    caller: &Region,
+    inst: &Region,
+    v: Variance,
+    constraints: &mut constraints::ConstraintSet,
+    span: Span,
+) {
+    match v {
+        Variance::Contravariant => {
+            constraints.emit(caller.clone(), inst.clone(), span);
+        }
+        Variance::Covariant => {
+            constraints.emit(inst.clone(), caller.clone(), span);
+        }
+        Variance::Invariant => {
+            constraints.emit(caller.clone(), inst.clone(), span);
+            constraints.emit(inst.clone(), caller.clone(), span);
+        }
+    }
+}
+
+/// Return the first named-region-like lifetime found in `ty`,
+/// substituted through `inst`. Used to identify the "returned ref's
+/// region" for synthetic loan placement.
+fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Region> {
     match ty {
-        Type::Ref(_, lt, _) => lt.clone(),
+        Type::Ref(_, Some(lt), _) => {
+            Some(inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone())))
+        }
+        Type::Custom(_, lts, _) => {
+            let lt = lts.first()?;
+            Some(inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone())))
+        }
+        Type::Array(elem, _) | Type::RawPtr(elem) => first_named_region(elem, inst),
         _ => None,
     }
 }
