@@ -48,6 +48,9 @@ impl From<LifetimeCode> for DiagCode {
 }
 
 pub mod nll;
+pub mod region;
+
+pub use region::Region;
 
 /// A record of a borrow that's currently in force. `loaned` is a set to
 /// support multi-loan: when a branch-of-borrows produces different loaned
@@ -56,16 +59,22 @@ pub mod nll;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loan {
     pub kind: RefKind,
+    /// The region this loan lives in. Set when the loan is registered
+    /// (at `x = &p`) from the borrower's region assignment. Body-local
+    /// borrowers get `Region::Free`; signature borrowers get
+    /// `Region::Named`.
+    pub region: Region,
     pub loaned: BTreeSet<Place>,
     pub create_span: Span,
 }
 
 impl Loan {
-    pub fn single(kind: RefKind, loaned: Place, create_span: Span) -> Self {
+    pub fn single(kind: RefKind, region: Region, loaned: Place, create_span: Span) -> Self {
         let mut set = BTreeSet::new();
         set.insert(loaned);
         Loan {
             kind,
+            region,
             loaned: set,
             create_span,
         }
@@ -380,9 +389,11 @@ fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement, span: Span) {
                 loans.shift_remove(&t);
             }
             if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
+                // Placeholder region — phase 3 stamps the real region
+                // from the per-fn RegionCtx at check time.
                 loans.insert(
                     t,
-                    Loan::single(kind.clone(), place.clone(), span),
+                    Loan::single(kind.clone(), Region::Free(u32::MAX), place.clone(), span),
                 );
             }
             for (new_key, loan) in carried {
