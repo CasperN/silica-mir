@@ -170,21 +170,21 @@ mod tests {
 
     #[test]
     fn fresh_advances_counter() {
-        let mut ctx = RegionCtx::new();
+        let ctx = RegionCtx::new();
         assert_eq!(ctx.fresh(), Region::Free(0));
         assert_eq!(ctx.fresh(), Region::Free(1));
     }
 
     #[test]
     fn region_for_ref_named_when_some() {
-        let mut ctx = RegionCtx::new();
+        let ctx = RegionCtx::new();
         let r = ctx.region_for_ref(&Some(Lifetime("a".into())));
         assert_eq!(r, Region::Named(Lifetime("a".into())));
     }
 
     #[test]
     fn region_for_ref_free_when_none() {
-        let mut ctx = RegionCtx::new();
+        let ctx = RegionCtx::new();
         let r = ctx.region_for_ref(&None);
         assert_eq!(r, Region::Free(0));
     }

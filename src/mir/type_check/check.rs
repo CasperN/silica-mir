@@ -242,8 +242,8 @@ impl Env {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        for (stmt, span) in &block.statements {
-            if let Err(e) = self.typecheck_statement(func, block, stmt, *span, locals) {
+        for stmt in &block.statements {
+            if let Err(e) = self.typecheck_statement(func, block, stmt, stmt.span, locals) {
                 d.push_error(e);
             }
         }
@@ -270,8 +270,8 @@ impl Env {
         let with_context = |d: Diagnostic| -> Diagnostic {
             d.in_function(&func.name).in_block(&block.label)
         };
-        match stmt {
-            Statement::Assign(place, rvalue) => {
+        match &stmt.kind {
+            StatementKind::Assign(place, rvalue) => {
                 let lhs_ty = self
                     .type_of_place(place, stmt_span, locals)
                     .map_err(with_context)?;
@@ -289,7 +289,7 @@ impl Env {
                 }
                 Ok(())
             }
-            Statement::Call(target, args) => {
+            StatementKind::Call(target, args) => {
                 let target_ty = self
                     .type_of_operand(target, stmt_span, locals)
                     .map_err(with_context)?;
@@ -327,14 +327,14 @@ impl Env {
                 }
                 Ok(())
             }
-            Statement::Drop(place) => {
+            StatementKind::Drop(place) => {
                 // Just resolve the place — any legality (Drop,
                 // currently init) is enforced by the substructural checker.
                 self.type_of_place(place, stmt_span, locals)
                     .map_err(with_context)?;
                 Ok(())
             }
-            Statement::Unborrow(place) => {
+            StatementKind::Unborrow(place) => {
                 let ty = self
                     .type_of_place(place, stmt_span, locals)
                     .map_err(with_context)?;
@@ -357,15 +357,15 @@ impl Env {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        let ts = block.terminator_span;
+        let ts = block.terminator.span;
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, ts, msg)
                 .in_function(&func.name)
                 .in_block(&block.label)
         };
-        match &block.terminator {
-            Terminator::Goto(label) => {
+        match &block.terminator.kind {
+            TerminatorKind::Goto(label) => {
                 if !block_labels.contains(label) {
                     d.push_error(terminator_diag(
                         TypeCheckCode::TerminatorUndefinedTarget,
@@ -373,8 +373,8 @@ impl Env {
                     ));
                 }
             }
-            Terminator::Return => {}
-            Terminator::Branch {
+            TerminatorKind::Return => {}
+            TerminatorKind::Branch {
                 cond,
                 true_label,
                 false_label,
@@ -404,7 +404,7 @@ impl Env {
                     ));
                 }
             }
-            Terminator::SwitchEnum { place, cases } => {
+            TerminatorKind::SwitchEnum { place, cases } => {
                 // Resolve the place to (enum_name, decl) or record an error.
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
@@ -469,8 +469,8 @@ impl Env {
                     }
                 }
             }
-            Terminator::Abort => {}
-            Terminator::Unreachable => {}
+            TerminatorKind::Abort => {}
+            TerminatorKind::Unreachable => {}
         }
     }
 }

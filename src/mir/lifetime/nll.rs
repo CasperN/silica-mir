@@ -133,8 +133,8 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         };
         let mut state = live_out.clone();
         analysis.transfer_terminator(&mut state, &block.terminator);
-        for (stmt, span) in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut state, stmt, *span);
+        for stmt in block.statements.iter().rev() {
+            analysis.transfer_stmt(&mut state, stmt, stmt.span);
         }
         live_in_per_block.insert(block.label.clone(), state);
     }
@@ -154,8 +154,8 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         let mut cur = live_out.clone();
         analysis.transfer_terminator(&mut cur, &block.terminator);
         live_states.push(cur.clone());
-        for (stmt, span) in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut cur, stmt, *span);
+        for stmt in block.statements.iter().rev() {
+            analysis.transfer_stmt(&mut cur, stmt, stmt.span);
             live_states.push(cur.clone());
         }
         live_states.reverse();
@@ -167,7 +167,7 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         // Intra-block insertions. See notes on the two rules
         // (transition, bind-and-dead) in the pre-refactor version.
         if block_reaches_return {
-            for (i, (stmt, _)) in block.statements.iter().enumerate() {
+            for (i, stmt) in block.statements.iter().enumerate() {
                 let live_before = &live_states[i];
                 let live_after = &live_states[i + 1];
                 for r in &borrowers {
@@ -283,11 +283,11 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             let span = block
                 .statements
                 .get(pos)
-                .map(|(_, s)| *s)
-                .unwrap_or(block.terminator_span);
-            let items: Vec<(Statement, Span)> = places
+                .map(|s| s.span)
+                .unwrap_or(block.terminator.span);
+            let items: Vec<Statement> = places
                 .iter()
-                .map(|p| (unborrow_stmt(p.clone()), span))
+                .map(|p| unborrow_stmt(p.clone(), span))
                 .collect();
             block.statements.splice(pos..pos, items);
         }
@@ -300,7 +300,7 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             .blocks
             .iter()
             .find(|b| b.label == *succ)
-            .map(|b| b.terminator_span)
+            .map(|b| b.terminator.span)
             .unwrap_or_default();
         let split_label = cfg_edit::split_edge(body, pred, succ);
         let split_block = body
@@ -311,7 +311,7 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
         for p in places {
             split_block
                 .statements
-                .push((unborrow_stmt(p.clone()), succ_span));
+                .push(unborrow_stmt(p.clone(), succ_span));
         }
     }
 }
@@ -387,8 +387,8 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
 fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
     let mut map = IndexMap::new();
     for block in &body.blocks {
-        for (stmt, _) in &block.statements {
-            if let Statement::Assign(target, RValue::Ref(_, place)) = stmt {
+        for stmt in &block.statements {
+            if let StatementKind::Assign(target, RValue::Ref(_, place)) = &stmt.kind {
                 let Some(s) = as_owned_path(target) else {
                     continue;
                 };
@@ -532,8 +532,8 @@ fn place_borrower_uses(place: &Place, borrowers: &BTreeSet<Place>, out: &mut Vec
 
 fn stmt_uses(stmt: &Statement, borrowers: &BTreeSet<Place>) -> Vec<Place> {
     let mut out = Vec::new();
-    match stmt {
-        Statement::Assign(target, rvalue) => {
+    match &stmt.kind {
+        StatementKind::Assign(target, rvalue) => {
             // If target isn't an owned path (e.g. deref target), or has
             // projections, its structural parts are uses.
             match target {
@@ -542,13 +542,13 @@ fn stmt_uses(stmt: &Statement, borrowers: &BTreeSet<Place>) -> Vec<Place> {
             }
             rvalue_uses(rvalue, borrowers, &mut out);
         }
-        Statement::Call(target, args) => {
+        StatementKind::Call(target, args) => {
             operand_uses(target, borrowers, &mut out);
             for a in args {
                 operand_uses(a, borrowers, &mut out);
             }
         }
-        Statement::Drop(place) | Statement::Unborrow(place) => {
+        StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             place_borrower_uses(place, borrowers, &mut out);
         }
     }
@@ -556,7 +556,7 @@ fn stmt_uses(stmt: &Statement, borrowers: &BTreeSet<Place>) -> Vec<Place> {
 }
 
 fn stmt_defs(stmt: &Statement) -> Vec<Place> {
-    if let Statement::Assign(target, _) = stmt {
+    if let StatementKind::Assign(target, _) = &stmt.kind {
         if let Some(owned) = as_owned_path(target) {
             return vec![owned];
         }
@@ -593,9 +593,9 @@ fn operand_uses(op: &Operand, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>)
 
 fn terminator_uses(term: &Terminator, borrowers: &BTreeSet<Place>) -> Vec<Place> {
     let mut out = Vec::new();
-    match term {
-        Terminator::Branch { cond, .. } => operand_uses(cond, borrowers, &mut out),
-        Terminator::SwitchEnum { place, .. } => {
+    match &term.kind {
+        TerminatorKind::Branch { cond, .. } => operand_uses(cond, borrowers, &mut out),
+        TerminatorKind::SwitchEnum { place, .. } => {
             place_borrower_uses(place, borrowers, &mut out);
         }
         _ => {}
@@ -608,7 +608,7 @@ fn terminator_uses(term: &Terminator, borrowers: &BTreeSet<Place>) -> Vec<Place>
 /// covering r's storage. Used by the bind-and-dead rule to catch
 /// created-then-never-used borrowers.
 fn stmt_binds_borrower(stmt: &Statement, r: &Place) -> bool {
-    if let Statement::Assign(target, _) = stmt {
+    if let StatementKind::Assign(target, _) = &stmt.kind {
         if let Some(owned) = as_owned_path(target) {
             return is_ancestor_or_self(&owned, r);
         }
@@ -618,15 +618,15 @@ fn stmt_binds_borrower(stmt: &Statement, r: &Place) -> bool {
 
 /// True iff `stmt` naturally closes/consumes borrower `r`.
 fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
-    match stmt {
-        Statement::Drop(place) | Statement::Unborrow(place) => {
+    match &stmt.kind {
+        StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             if let Some(owned) = as_owned_path(place) {
                 is_ancestor_or_self(&owned, r)
             } else {
                 false
             }
         }
-        Statement::Assign(target, rvalue) => {
+        StatementKind::Assign(target, rvalue) => {
             // Redefinition of r (or an ancestor) consumes r's old value.
             if let Some(owned) = as_owned_path(target) {
                 if is_ancestor_or_self(&owned, r) {
@@ -635,7 +635,7 @@ fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
             }
             rvalue_moves(rvalue, r)
         }
-        Statement::Call(target, args) => {
+        StatementKind::Call(target, args) => {
             operand_moves(target, r) || args.iter().any(|a| operand_moves(a, r))
         }
     }

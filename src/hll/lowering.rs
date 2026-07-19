@@ -82,7 +82,7 @@ struct LowerCtx {
     locals: Vec<mir::Local>,
     blocks: Vec<mir::BasicBlock>,
     current_block_label: Option<String>,
-    current_statements: Vec<(mir::Statement, mir::Span)>,
+    current_statements: Vec<mir::Statement>,
     temp_counter: usize,
     block_counter: usize,
     loop_stack: Vec<(String, String, mir::Place)>, // (start_label, end_label, dest_place)
@@ -179,21 +179,20 @@ impl LowerCtx {
         self.current_statements.clear();
     }
 
-    fn terminate_block(&mut self, term: mir::Terminator, span: mir::Span) {
+    fn terminate_block(&mut self, term: mir::Terminator) {
         if let Some(label) = self.current_block_label.take() {
             self.blocks.push(mir::BasicBlock {
                 label,
-                label_span: span,
+                label_span: term.span,
                 statements: std::mem::take(&mut self.current_statements),
                 terminator: term,
-                terminator_span: span,
             });
         }
     }
 
-    fn emit_statement(&mut self, stmt: mir::Statement, span: mir::Span) {
+    fn emit_statement(&mut self, stmt: mir::Statement) {
         if self.current_block_label.is_some() {
-            self.current_statements.push((stmt, span));
+            self.current_statements.push(stmt);
         }
     }
 }
@@ -445,24 +444,21 @@ fn lower_expr_into(
         | hll::ExprKind::ArrayIndex(_, _) => {
             let op = lower_expr_to_operand(ctx, expr, types)?;
             ctx.emit_statement(
-                assign_stmt(dest.clone(), use_rv(op)),
-                expr.span,
+                assign_stmt(dest.clone(), use_rv(op), expr.span)
             );
             Ok(())
         }
         hll::ExprKind::Borrow(kind, target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             ctx.emit_statement(
-                assign_stmt(dest.clone(), ref_rv(*kind, target_place)),
-                expr.span,
+                assign_stmt(dest.clone(), ref_rv(*kind, target_place), expr.span)
             );
             Ok(())
         }
         hll::ExprKind::RawBorrow(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             ctx.emit_statement(
-                assign_stmt(dest.clone(), raw_ref_rv(target_place)),
-                expr.span,
+                assign_stmt(dest.clone(), raw_ref_rv(target_place), expr.span)
             );
             Ok(())
         }
@@ -471,13 +467,11 @@ fn lower_expr_into(
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
             ctx.emit_statement(
-                assign_stmt(lhs_place, use_rv(rhs_op)),
-                expr.span,
+                assign_stmt(lhs_place, use_rv(rhs_op), expr.span)
             );
             // Assignment expression itself evaluates to Unit
             ctx.emit_statement(
-                assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
-                expr.span,
+                assign_stmt(dest.clone(), use_rv(const_op(unit_const())), expr.span)
             );
             Ok(())
         }
@@ -511,12 +505,17 @@ fn lower_expr_into(
             let out_ref = out_ref_ty(mir_ty);
             let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
             ctx.emit_statement(
-                assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
-                expr.span,
+                assign_stmt(
+                    out_ref_place.clone(),
+                    ref_rv(mir::RefKind::Out, dest.clone()),
+                    expr.span),
             );
             ctx.emit_statement(
-                call_stmt(fn_op, vec![operand_op, move_op(out_ref_place)]),
-                expr.span,
+                call_stmt(
+                    fn_op,
+                    vec![operand_op, move_op(out_ref_place)],
+                    expr.span
+                ),
             );
             Ok(())
         }
@@ -573,11 +572,14 @@ fn lower_expr_into(
             let out_ref = out_ref_ty(lower_type(hll_ret_ty));
             let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
             ctx.emit_statement(
-                assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
-                expr.span,
+                assign_stmt(
+                    out_ref_place.clone(),
+                    ref_rv(mir::RefKind::Out, dest.clone()),
+                    expr.span,
+                ),
             );
             arg_ops.push(move_op(out_ref_place));
-            ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
+            ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
             Ok(())
         }
         hll::ExprKind::Cast(inner, to_ty) => {
@@ -603,12 +605,14 @@ fn lower_expr_into(
             let out_ref = out_ref_ty(lower_type(to_ty));
             let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
             ctx.emit_statement(
-                assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
-                expr.span,
+                assign_stmt(
+                    out_ref_place.clone(),
+                    ref_rv(mir::RefKind::Out, dest.clone()),
+                    expr.span
+                )
             );
             ctx.emit_statement(
-                call_stmt(fn_op, vec![inner_op, move_op(out_ref_place)]),
-                expr.span,
+                call_stmt(fn_op, vec![inner_op, move_op(out_ref_place)], expr.span)
             );
             Ok(())
         }
@@ -664,17 +668,19 @@ fn lower_expr_into(
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
                 let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
                 ctx.emit_statement(
-                    assign_stmt(out_ref_place.clone(), ref_rv(mir::RefKind::Out, dest.clone())),
-                    expr.span,
+                    assign_stmt(
+                        out_ref_place.clone(),
+                        ref_rv(mir::RefKind::Out,dest.clone()),
+                        expr.span
+                    ),
                 );
                 arg_ops.push(move_op(out_ref_place));
-                ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
+                ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
             } else {
-                ctx.emit_statement(call_stmt(fn_op, arg_ops), expr.span);
+                ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
                 // Function returns unit, assign Unit to dest
                 ctx.emit_statement(
-                    assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
-                    expr.span,
+                    assign_stmt(dest.clone(), use_rv(const_op(unit_const())), expr.span),
                 );
             }
             Ok(())
@@ -739,8 +745,7 @@ fn lower_expr_into(
                 lower_expr_into(ctx, last, dest, types)?;
             } else {
                 ctx.emit_statement(
-                    assign_stmt(dest.clone(), use_rv(const_op(unit_const()))),
-                    expr.span,
+                    assign_stmt(dest.clone(), use_rv(const_op(unit_const())), expr.span)
                 );
             }
             ctx.pop_and_emit_defers(types)?;
@@ -753,19 +758,18 @@ fn lower_expr_into(
             let merge_label = ctx.fresh_label("if_merge");
 
             ctx.terminate_block(
-                branch_term(cond_op, true_label.clone(), false_label.clone()),
-                cond.span,
+                branch_term(cond_op, true_label.clone(), false_label.clone(), cond.span),
             );
 
             // True branch
             ctx.start_block(true_label);
             lower_expr_into(ctx, true_block, dest, types)?;
-            ctx.terminate_block(goto_term(merge_label.clone()), true_block.span);
+            ctx.terminate_block(goto_term(merge_label.clone(), true_block.span));
 
             // False branch
             ctx.start_block(false_label);
             lower_expr_into(ctx, false_block, dest, types)?;
-            ctx.terminate_block(goto_term(merge_label.clone()), false_block.span);
+            ctx.terminate_block(goto_term(merge_label.clone(), false_block.span));
 
             // Merge block
             ctx.start_block(merge_label);
@@ -775,7 +779,7 @@ fn lower_expr_into(
             let start_label = ctx.fresh_label("loop_start");
             let end_label = ctx.fresh_label("loop_end");
 
-            ctx.terminate_block(goto_term(start_label.clone()), expr.span);
+            ctx.terminate_block(goto_term(start_label.clone(), expr.span));
 
             ctx.loop_stack.push((start_label.clone(), end_label.clone(), dest.clone()));
             ctx.push_scope(true);
@@ -785,7 +789,7 @@ fn lower_expr_into(
             let dummy = ctx.fresh_temp(unit_ty(), body.span);
             lower_expr_into(ctx, body, &dummy, types)?;
             ctx.scopes.pop();
-            ctx.terminate_block(goto_term(start_label), body.span);
+            ctx.terminate_block(goto_term(start_label, body.span));
 
             ctx.loop_stack.pop();
 
@@ -807,7 +811,7 @@ fn lower_expr_into(
             let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(break_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
-            ctx.terminate_block(goto_term(end_label), expr.span);
+            ctx.terminate_block(goto_term(end_label, expr.span));
             Ok(())
         }
         hll::ExprKind::Continue => {
@@ -821,7 +825,7 @@ fn lower_expr_into(
             let loop_depth = ctx.scopes.iter().rposition(|s| s.is_loop).ok_or_else(continue_err)?;
             ctx.emit_defers_to_depth(loop_depth, types)?;
 
-            ctx.terminate_block(goto_term(start_label), expr.span);
+            ctx.terminate_block(goto_term(start_label, expr.span));
             Ok(())
         }
         hll::ExprKind::Return(val_expr) => {
@@ -831,7 +835,7 @@ fn lower_expr_into(
                 lower_expr_into(ctx, val, &ret_place, types)?;
             }
             ctx.emit_defers_to_depth(0, types)?;
-            ctx.terminate_block(return_term(), expr.span);
+            ctx.terminate_block(return_term(expr.span));
             Ok(())
         }
         hll::ExprKind::Match(target, arms) => {
@@ -848,10 +852,7 @@ fn lower_expr_into(
             
             let merge_label = ctx.fresh_label("switch_merge");
             
-            ctx.terminate_block(
-                switch_enum_term(target_place.clone(), cases),
-                target.span,
-            );
+            ctx.terminate_block(switch_enum_term(target_place.clone(), cases, target.span));
             
             // Lower each arm block
             for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
@@ -947,13 +948,12 @@ fn lower_expr_into(
                         move_op(downcast)
                     };
                     ctx.emit_statement(
-                        assign_stmt(var_place(var_name.clone()), use_rv(op)),
-                        body.span,
+                        assign_stmt(var_place(var_name.clone()), use_rv(op), body.span),
                     );
                 }
                 
                 lower_expr_into(ctx, body, dest, types)?;
-                ctx.terminate_block(goto_term(merge_label.clone()), body.span);
+                ctx.terminate_block(goto_term(merge_label.clone(), body.span));
             }
             
             ctx.start_block(merge_label);
@@ -984,8 +984,8 @@ fn lower_expr_into(
                         variant_name.clone(),
                         payload_op,
                     ),
+                    expr.span,
                 ),
-                expr.span,
             );
             Ok(())
         }
@@ -995,8 +995,7 @@ fn lower_expr_into(
                 ops.push(lower_expr_to_operand(ctx, el, types)?);
             }
             ctx.emit_statement(
-                assign_stmt(dest.clone(), array_lit_rv(ops)),
-                expr.span,
+                assign_stmt(dest.clone(), array_lit_rv(ops), expr.span),
             );
             Ok(())
         }
@@ -1101,7 +1100,7 @@ pub fn lower_program(
                 // ref-obligation diagnostics at the body's closing brace
                 // rather than at the whole fn signature line.
                 if ctx.current_block_label.is_some() {
-                    ctx.terminate_block(return_term(), body_expr.span);
+                    ctx.terminate_block(return_term(body_expr.span));
                 }
 
                 declarations.push(mir::Declaration::Fn(mir::Function {

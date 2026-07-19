@@ -16,16 +16,19 @@ fn block(label: &str, term: Terminator) -> BasicBlock {
         label_span: span(),
         statements: Vec::new(),
         terminator: term,
-        terminator_span: span(),
     }
 }
 
 fn goto(label: &str) -> Terminator {
-    goto_term(label)
+    goto_term(label, span())
 }
 
 fn branch(t: &str, f: &str) -> Terminator {
-    branch_term(const_op(bool_const(true)), t, f)
+    branch_term(const_op(bool_const(true)), t, f, span())
+}
+
+fn return_() -> Terminator {
+    return_term(span())
 }
 
 fn switch(cases: &[(&str, &str)]) -> Terminator {
@@ -35,6 +38,7 @@ fn switch(cases: &[(&str, &str)]) -> Terminator {
             .iter()
             .map(|(v, l)| (v.to_string(), l.to_string()))
             .collect(),
+        span(),
     )
 }
 
@@ -55,7 +59,7 @@ fn split_branch_true_arm() {
             block("entry", branch("t", "f")),
             block("t", goto("end")),
             block("f", goto("end")),
-            block("end", return_term()),
+            block("end", return_()),
         ],
     };
 
@@ -63,8 +67,8 @@ fn split_branch_true_arm() {
     assert_eq!(split, "entry__to__t");
 
     // entry.true_label now points at the split.
-    match &find(&body, "entry").terminator {
-        Terminator::Branch {
+    match &find(&body, "entry").terminator.kind {
+        TerminatorKind::Branch {
             true_label,
             false_label,
             ..
@@ -87,14 +91,14 @@ fn split_branch_false_arm() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", branch("t", "f")),
-            block("t", return_term()),
-            block("f", return_term()),
+            block("t", return_term(span())),
+            block("f", return_term(span())),
         ],
     };
 
     let split = split_edge(&mut body, "entry", "f");
-    match &find(&body, "entry").terminator {
-        Terminator::Branch {
+    match &find(&body, "entry").terminator.kind {
+        TerminatorKind::Branch {
             true_label,
             false_label,
             ..
@@ -114,13 +118,13 @@ fn split_branch_both_arms_same_succ_rewrites_both() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", branch("j", "j")),
-            block("j", return_term()),
+            block("j", return_()),
         ],
     };
 
     let split = split_edge(&mut body, "entry", "j");
-    match &find(&body, "entry").terminator {
-        Terminator::Branch {
+    match &find(&body, "entry").terminator.kind {
+        TerminatorKind::Branch {
             true_label,
             false_label,
             ..
@@ -139,14 +143,14 @@ fn split_switchenum_arm() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", switch(&[("A", "a_lbl"), ("B", "b_lbl")])),
-            block("a_lbl", return_term()),
-            block("b_lbl", return_term()),
+            block("a_lbl", return_()),
+            block("b_lbl", return_()),
         ],
     };
 
     let split = split_edge(&mut body, "entry", "a_lbl");
-    match &find(&body, "entry").terminator {
-        Terminator::SwitchEnum { cases, .. } => {
+    match &find(&body, "entry").terminator.kind {
+        TerminatorKind::SwitchEnum { cases, .. } => {
             assert_eq!(cases[0].1, split);
             assert_eq!(cases[1].1, "b_lbl");
         }
@@ -160,13 +164,13 @@ fn split_switchenum_two_arms_same_succ_rewrites_both() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", switch(&[("A", "j"), ("B", "j")])),
-            block("j", return_term()),
+            block("j", return_()),
         ],
     };
 
     let split = split_edge(&mut body, "entry", "j");
-    match &find(&body, "entry").terminator {
-        Terminator::SwitchEnum { cases, .. } => {
+    match &find(&body, "entry").terminator.kind {
+        TerminatorKind::SwitchEnum { cases, .. } => {
             assert_eq!(cases[0].1, split);
             assert_eq!(cases[1].1, split);
         }
@@ -181,7 +185,7 @@ fn split_goto_edge() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", goto("next")),
-            block("next", return_term()),
+            block("next", return_()),
         ],
     };
 
@@ -198,8 +202,8 @@ fn split_edge_is_idempotent() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", branch("t", "f")),
-            block("t", return_term()),
-            block("f", return_term()),
+            block("t", return_()),
+            block("f", return_()),
         ],
     };
 
@@ -218,8 +222,8 @@ fn split_edge_idempotent_on_switchenum() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", switch(&[("A", "a_lbl"), ("B", "b_lbl")])),
-            block("a_lbl", return_term()),
-            block("b_lbl", return_term()),
+            block("a_lbl", return_()),
+            block("b_lbl", return_()),
         ],
     };
 
@@ -238,8 +242,8 @@ fn split_block_inserted_after_pred() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", branch("t", "f")),
-            block("t", return_term()),
-            block("f", return_term()),
+            block("t", return_()),
+            block("f", return_()),
         ],
     };
 
@@ -259,8 +263,8 @@ fn split_edge_panics_when_edge_missing() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", goto("next")),
-            block("next", return_term()),
-            block("orphan", return_term()),
+            block("next", return_()),
+            block("orphan", return_()),
         ],
     };
     // entry doesn't target orphan.
@@ -272,7 +276,7 @@ fn split_edge_panics_when_edge_missing() {
 fn split_edge_panics_when_pred_missing() {
     let mut body = FunctionBody {
         locals: Vec::new(),
-        blocks: vec![block("entry", return_term())],
+        blocks: vec![block("entry", return_())],
     };
     split_edge(&mut body, "ghost", "entry");
 }

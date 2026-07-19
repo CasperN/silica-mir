@@ -755,6 +755,7 @@ impl Parser {
         let child = node
             .child(0)
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "statement empty"))?;
+        let child_span = span_of(child);
         match child.kind() {
             "assignment" => {
                 let lhs_node = child.child_by_field_name("lhs").ok_or_else(|| {
@@ -765,7 +766,7 @@ impl Parser {
                     self.diag(child, ParserCode::MalformedCst, "assignment missing rhs")
                 })?;
                 let rhs = self.map_rvalue(rhs_node)?;
-                Ok(assign_stmt(lhs, rhs))
+                Ok(assign_stmt(lhs, rhs, child_span))
             }
             "call" => {
                 let func_node = child.child_by_field_name("function").ok_or_else(|| {
@@ -780,19 +781,19 @@ impl Parser {
                         args.push(self.map_operand(item)?);
                     }
                 }
-                Ok(call_stmt(func, args))
+                Ok(call_stmt(func, args, child_span))
             }
             "drop_stmt" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "drop missing place")
                 })?;
-                Ok(drop_stmt(self.map_place(place_node)?))
+                Ok(drop_stmt(self.map_place(place_node)?, child_span))
             }
             "unborrow_stmt" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "unborrow missing place")
                 })?;
-                Ok(unborrow_stmt(self.map_place(place_node)?))
+                Ok(unborrow_stmt(self.map_place(place_node)?, child_span))
             }
             _ => Err(self.diag(
                 child,
@@ -806,14 +807,15 @@ impl Parser {
         let child = node
             .child(0)
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "terminator empty"))?;
+        let child_span = span_of(child);
         match child.kind() {
             "goto" => {
                 let label_node = child.child_by_field_name("label").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "goto missing label")
                 })?;
-                Ok(goto_term(self.get_text(label_node)))
+                Ok(goto_term(self.get_text(label_node), child_span))
             }
-            "return" => Ok(Terminator::Return),
+            "return" => Ok(return_term(child_span)),
             "branch" => {
                 let cond_node = child.child_by_field_name("condition").ok_or_else(|| {
                     self.diag(child, ParserCode::MalformedCst, "branch missing condition")
@@ -835,7 +837,7 @@ impl Parser {
                     )
                 })?;
                 let false_label = self.get_text(false_node).to_string();
-                Ok(branch_term(cond, true_label, false_label))
+                Ok(branch_term(cond, true_label, false_label, child_span))
             }
             "switchEnum" => {
                 let place_node = child.child_by_field_name("place").ok_or_else(|| {
@@ -870,10 +872,10 @@ impl Parser {
                         cases.push((variant, label));
                     }
                 }
-                Ok(switch_enum_term(place, cases))
+                Ok(switch_enum_term(place, cases, child_span))
             }
-            "abort" => Ok(abort_term()),
-            "unreachable" => Ok(unreachable_term()),
+            "abort" => Ok(abort_term(child_span)),
+            "unreachable" => Ok(unreachable_term(child_span)),
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -898,8 +900,7 @@ impl Parser {
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "statement" {
-                let span = span_of(child);
-                statements.push((self.map_statement(child).map_err(with_block_ctx)?, span));
+                statements.push(self.map_statement(child).map_err(with_block_ctx)?);
             }
         }
 
@@ -914,7 +915,6 @@ impl Parser {
                 )
                 .in_block(label.clone())
             })?;
-        let terminator_span = span_of(term_node);
         let terminator = self.map_terminator(term_node).map_err(with_block_ctx)?;
 
         Ok(BasicBlock {
@@ -922,7 +922,6 @@ impl Parser {
             label_span,
             statements,
             terminator,
-            terminator_span,
         })
     }
 
@@ -1333,7 +1332,12 @@ mod tests {
             let block = &body.blocks[0];
             assert_eq!(block.label, "entry");
             assert_eq!(block.statements.len(), 3);
-            assert_eq!(block.terminator, return_term());
+            assert_eq!(block.terminator, return_term(Span {
+                line: 8,
+                col: 21,
+                end_line: 8,
+                end_col: 27
+            }));
         } else {
             panic!("Expected function declaration");
         }
@@ -1398,8 +1402,8 @@ mod tests {
             panic!("expected fn");
         };
         let body = f.body.as_ref().unwrap();
-        let (stmt, _) = &body.blocks[0].statements[0];
-        let Statement::Assign(_, RValue::Use(Operand::Const(c))) = stmt else {
+        let stmt = &body.blocks[0].statements[0];
+        let StatementKind::Assign(_, RValue::Use(Operand::Const(c))) = &stmt.kind else {
             panic!("expected assign of const, got {:?}", stmt);
         };
         c.clone()

@@ -626,14 +626,14 @@ pub fn states_before_returns<'a>(
     let entry_states = run_fixpoint(&ctx, func, body);
 
     for block in &body.blocks {
-        if !matches!(block.terminator, Terminator::Return) {
+        if !matches!(block.terminator.kind, TerminatorKind::Return) {
             continue;
         }
         let Some(entry) = entry_states.get(&block.label) else {
             continue;
         };
         let mut state = entry.clone();
-        for (stmt, _) in &block.statements {
+        for stmt in &block.statements {
             ctx.transfer_stmt(stmt, &mut state);
         }
         // Return terminator has no state effect.
@@ -739,8 +739,8 @@ fn run_fixpoint(ctx: &InitStateContext, func: &Function, body: &FunctionBody) ->
 
 impl<'a> InitStateContext<'a> {
     fn transfer_stmt(&self, stmt: &Statement, state: &mut PointState) {
-        match stmt {
-            Statement::Assign(target, rvalue) => {
+        match &stmt.kind {
+            StatementKind::Assign(target, rvalue) => {
                 // Capture ref-state entries to transfer via `move src`
                 // BEFORE apply_rvalue_moves removes them. If src has
                 // ref-typed descendants (e.g. moving a whole struct),
@@ -754,19 +754,19 @@ impl<'a> InitStateContext<'a> {
                 }
                 self.apply_target_write_state(target, rvalue, carried_refs, state, None);
             }
-            Statement::Call(target, args) => {
+            StatementKind::Call(target, args) => {
                 self.apply_operand_move(target, state);
                 for a in args {
                     self.apply_operand_move(a, state);
                 }
             }
-            Statement::Drop(place) => {
+            StatementKind::Drop(place) => {
                 if let Some(consumed) = as_owned_path(place) {
                     close_refs_under(state, &consumed);
                 }
                 self.apply_consume_state(place, state, None);
             }
-            Statement::Unborrow(place) => {
+            StatementKind::Unborrow(place) => {
                 // Silent side of `unborrow r`: consume the borrower's ref
                 // entry. Obligation checks happen in the diagnostic pass;
                 // loan removal is handled by lifetime.
@@ -779,7 +779,7 @@ impl<'a> InitStateContext<'a> {
     }
 
     fn transfer_terminator(&self, term: &Terminator, state: &mut PointState) {
-        if let Terminator::Branch { cond, .. } = term {
+        if let TerminatorKind::Branch { cond, .. } = &term.kind {
             self.apply_operand_move(cond, state);
         }
     }
@@ -1446,8 +1446,8 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        for (stmt, span) in &block.statements {
-            self.check_and_transfer_stmt(func, block, stmt, *span, state, d);
+        for stmt in &block.statements {
+            self.check_and_transfer_stmt(func, block, stmt, state, d);
         }
         self.check_and_transfer_terminator(func, block, state, d);
     }
@@ -1461,12 +1461,12 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
-        span: Span,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        match stmt {
-            Statement::Assign(target, rvalue) => {
+        let span = stmt.span;
+        match &stmt.kind {
+            StatementKind::Assign(target, rvalue) => {
                 // Capture ref-state entries to transfer via `move src`
                 // BEFORE eval_rvalue runs. Cascade re-keys src.f → dst.f.
                 let carried_refs = capture_carried_refs(target, rvalue, state);
@@ -1492,13 +1492,13 @@ impl<'a> InitStateContext<'a> {
                     Some((func, block, span, d)),
                 );
             }
-            Statement::Call(target, args) => {
+            StatementKind::Call(target, args) => {
                 self.eval_operand(func, block, target, span, state, d);
                 for a in args {
                     self.eval_operand(func, block, a, span, state, d);
                 }
             }
-            Statement::Drop(place) => {
+            StatementKind::Drop(place) => {
                 // Read the place, then consume it. Same effect on state as
                 // `move`. The substructural checker (separate pass) is the
                 // one that will require the type to be Drop. For a ref-typed
@@ -1507,7 +1507,7 @@ impl<'a> InitStateContext<'a> {
                 self.close_ref_if_present(func, block, place, span, state, d);
                 self.apply_consume_state(place, state, Some((func, block, span, d)));
             }
-            Statement::Unborrow(place) => {
+            StatementKind::Unborrow(place) => {
                 // Explicit end-of-loan. Requires the borrower to be Init
                 // and its (is_init, ends_init) obligation fulfilled — both
                 // checked by close_ref_if_present. Then consume the borrower.
@@ -1525,12 +1525,12 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let ts = block.terminator_span;
-        match &block.terminator {
-            Terminator::Branch { cond, .. } => {
+        let ts = block.terminator.span;
+        match &block.terminator.kind {
+            TerminatorKind::Branch { cond, .. } => {
                 self.eval_operand(func, block, cond, ts, state, d)
             }
-            Terminator::SwitchEnum { place, .. } => {
+            TerminatorKind::SwitchEnum { place, .. } => {
                 // Discriminant read: no move, no consumption.
                 self.check_place_read(func, block, place, ts, state, d);
             }
@@ -1973,11 +1973,11 @@ impl<'a> InitStateContext<'a> {
                 );
                 if let Some(body) = &func.body {
                     for b in &body.blocks {
-                        for (stmt, s) in &b.statements {
-                            if let Statement::Assign(target, _) = stmt {
+                        for stmt in &b.statements {
+                            if let StatementKind::Assign(target, _) = &stmt.kind {
                                 if target == place {
                                     err = err.with_secondary(
-                                        *s,
+                                        stmt.span,
                                         "initialized here on some path",
                                     );
                                 }

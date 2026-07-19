@@ -171,44 +171,48 @@ pub fn array_lit_rv(elems: Vec<Operand>) -> RValue {
 
 // ---------- Statements ----------
 
-pub fn assign_stmt(dst: Place, src: RValue) -> Statement {
-    Statement::Assign(dst, src)
+pub fn assign_stmt(dst: Place, src: RValue, span: Span) -> Statement {
+    Statement::new(StatementKind::Assign(dst, src), span)
 }
-pub fn call_stmt(callee: Operand, args: Vec<Operand>) -> Statement {
-    Statement::Call(callee, args)
+pub fn call_stmt(callee: Operand, args: Vec<Operand>, span: Span) -> Statement {
+    Statement::new(StatementKind::Call(callee, args), span)
 }
-pub fn drop_stmt(place: Place) -> Statement {
-    Statement::Drop(place)
+pub fn drop_stmt(place: Place, span: Span) -> Statement {
+    Statement::new(StatementKind::Drop(place), span)
 }
-pub fn unborrow_stmt(place: Place) -> Statement {
-    Statement::Unborrow(place)
+pub fn unborrow_stmt(place: Place, span: Span) -> Statement {
+    Statement::new(StatementKind::Unborrow(place), span)
 }
 
 // ---------- Terminators ----------
 
-pub fn goto_term(label: impl Into<String>) -> Terminator {
-    Terminator::Goto(label.into())
+pub fn goto_term(label: impl Into<String>, span: Span) -> Terminator {
+    Terminator::new(TerminatorKind::Goto(label.into()), span)
 }
-pub fn return_term() -> Terminator {
-    Terminator::Return
+pub fn return_term(span: Span) -> Terminator {
+    Terminator::new(TerminatorKind::Return, span)
 }
 pub fn branch_term(
     cond: Operand,
     true_label: impl Into<String>,
     false_label: impl Into<String>,
+    span: Span,
 ) -> Terminator {
-    Terminator::Branch {
-        cond,
-        true_label: true_label.into(),
-        false_label: false_label.into(),
-    }
+    Terminator::new(
+        TerminatorKind::Branch {
+            cond,
+            true_label: true_label.into(),
+            false_label: false_label.into(),
+        },
+        span,
+    )
 }
-pub fn switch_enum_term(place: Place, cases: Vec<(String, String)>) -> Terminator {
-    Terminator::SwitchEnum { place, cases }
+pub fn switch_enum_term(place: Place, cases: Vec<(String, String)>, span: Span) -> Terminator {
+    Terminator::new(TerminatorKind::SwitchEnum { place, cases }, span)
 }
-pub fn abort_term() -> Terminator {
-    Terminator::Abort
+pub fn abort_term(span: Span) -> Terminator {
+    Terminator::new(TerminatorKind::Abort, span)
 }
-pub fn unreachable_term() -> Terminator {
-    Terminator::Unreachable
+pub fn unreachable_term(span: Span) -> Terminator {
+    Terminator::new(TerminatorKind::Unreachable, span)
 }

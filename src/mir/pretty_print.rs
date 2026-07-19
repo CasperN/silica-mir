@@ -133,7 +133,7 @@ fn write_function(out: &mut String, f: &Function) {
     }
     for block in &body.blocks {
         write!(out, "  {}:\n", block.label).unwrap();
-        for (stmt, _) in &block.statements {
+        for stmt in block.statements.iter() {
             out.push_str("    ");
             write_statement(out, stmt);
             out.push_str(";\n");
@@ -306,13 +306,13 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
 }
 
 fn write_statement(out: &mut String, stmt: &Statement) {
-    match stmt {
-        Statement::Assign(place, rvalue) => {
+    match &stmt.kind {
+        StatementKind::Assign(place, rvalue) => {
             write_place(out, place);
             out.push_str(" = ");
             write_rvalue(out, rvalue);
         }
-        Statement::Call(target, args) => {
+        StatementKind::Call(target, args) => {
             out.push_str("call ");
             write_operand(out, target);
             out.push('(');
@@ -324,11 +324,11 @@ fn write_statement(out: &mut String, stmt: &Statement) {
             }
             out.push(')');
         }
-        Statement::Drop(place) => {
+        StatementKind::Drop(place) => {
             out.push_str("drop ");
             write_place(out, place);
         }
-        Statement::Unborrow(place) => {
+        StatementKind::Unborrow(place) => {
             out.push_str("unborrow ");
             write_place(out, place);
         }
@@ -336,10 +336,10 @@ fn write_statement(out: &mut String, stmt: &Statement) {
 }
 
 fn write_terminator(out: &mut String, term: &Terminator) {
-    match term {
-        Terminator::Goto(label) => write!(out, "goto {}", label).unwrap(),
-        Terminator::Return => out.push_str("return"),
-        Terminator::Branch {
+    match &term.kind {
+        TerminatorKind::Goto(label) => write!(out, "goto {}", label).unwrap(),
+        TerminatorKind::Return => out.push_str("return"),
+        TerminatorKind::Branch {
             cond,
             true_label,
             false_label,
@@ -348,7 +348,7 @@ fn write_terminator(out: &mut String, term: &Terminator) {
             write_operand(out, cond);
             write!(out, ") [true: {}, false: {}]", true_label, false_label).unwrap();
         }
-        Terminator::SwitchEnum { place, cases } => {
+        TerminatorKind::SwitchEnum { place, cases } => {
             out.push_str("switchEnum(");
             write_place(out, place);
             out.push_str(") [");
@@ -360,8 +360,8 @@ fn write_terminator(out: &mut String, term: &Terminator) {
             }
             out.push(']');
         }
-        Terminator::Abort => out.push_str("abort"),
-        Terminator::Unreachable => out.push_str("unreachable"),
+        TerminatorKind::Abort => out.push_str("abort"),
+        TerminatorKind::Unreachable => out.push_str("unreachable"),
     }
 }
 
@@ -439,9 +439,9 @@ mod tests {
                         }
                         for b in &mut body.blocks {
                             b.label_span = zero;
-                            b.terminator_span = zero;
-                            for (_, s) in &mut b.statements {
-                                *s = zero;
+                            b.terminator.span = zero;
+                            for statement in b.statements.iter_mut() {
+                                statement.span = zero;
                             }
                         }
                     }

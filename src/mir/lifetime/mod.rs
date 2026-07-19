@@ -378,7 +378,7 @@ impl<'a> Analysis for LoanAnalysis<'a> {
         transfer_stmt(state, stmt, span, self.region_ctx);
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
-        if let Terminator::Branch { cond, .. } = term {
+        if let TerminatorKind::Branch { cond, .. } = &term.kind {
             consume_operand(state, cond);
         }
     }
@@ -393,8 +393,8 @@ fn transfer_stmt(
     span: Span,
     region_ctx: &region::RegionCtx,
 ) {
-    match stmt {
-        Statement::Assign(target, rvalue) => {
+    match &stmt.kind {
+        StatementKind::Assign(target, rvalue) => {
             // Capture BEFORE consume: the loans rooted at the moved
             // source (whole-var or struct-descendant) will be removed
             // by consume_rvalue, so grab them first for re-key.
@@ -416,13 +416,13 @@ fn transfer_stmt(
                 loans.insert(new_key, loan);
             }
         }
-        Statement::Call(target, args) => {
+        StatementKind::Call(target, args) => {
             consume_operand(loans, target);
             for a in args {
                 consume_operand(loans, a);
             }
         }
-        Statement::Drop(place) | Statement::Unborrow(place) => {
+        StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             // Consume of a borrower place ends its loan (and any
             // ref-field loans it holds). `drop *r` consumes the pointee,
             // not the borrower; the borrower path passes through Deref
@@ -470,9 +470,9 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
             continue;
         };
         let mut loans = entry.clone();
-        for (stmt, span) in &block.statements {
-            check_and_transfer_stmt(env, func, block, stmt, *span, &mut loans, &region_ctx, &mut constraints, d);
-            emit_stmt_constraints(env, func, stmt, *span, &region_ctx, &mut constraints);
+        for stmt in &block.statements {
+            check_and_transfer_stmt(env, func, block, stmt, &mut loans, &region_ctx, &mut constraints, d);
+            emit_stmt_constraints(env, func, stmt, &region_ctx, &mut constraints);
         }
         check_and_transfer_terminator(func, block, &mut loans, d);
     }
@@ -635,8 +635,8 @@ pub fn constraints_for(env: &Env, func: &Function) -> constraints::ConstraintSet
     }
     let region_ctx = region::build_region_ctx(func, env);
     for block in &body.blocks {
-        for (stmt, span) in &block.statements {
-            emit_stmt_constraints(env, func, stmt, *span, &region_ctx, &mut cs);
+        for stmt in &block.statements {
+            emit_stmt_constraints(env, func, stmt, &region_ctx, &mut cs);
         }
     }
     cs
@@ -649,12 +649,11 @@ fn emit_stmt_constraints(
     env: &Env,
     func: &Function,
     stmt: &Statement,
-    span: Span,
     region_ctx: &region::RegionCtx,
     constraints: &mut constraints::ConstraintSet,
 ) {
     let locals = func.locals_map();
-    let Statement::Assign(target, rvalue) = stmt else { return };
+    let StatementKind::Assign(target, rvalue) = &stmt.kind else { return };
     let (src_region, target_place) = match rvalue {
         RValue::Use(op) => {
             let Some(src) = operand_place(op) else { return };
@@ -683,9 +682,9 @@ fn emit_stmt_constraints(
     // (source outlives dst is enough). Exclusive-write kinds are
     // invariant (source outlives dst AND dst outlives source).
     let target_kind = ref_kind_of_place(&target_place, &locals, env);
-    constraints.emit(src_region.clone(), t_r.clone(), span);
+    constraints.emit(src_region.clone(), t_r.clone(), stmt.span);
     if !matches!(target_kind, Some(RefKind::Shared)) {
-        constraints.emit(t_r, src_region, span);
+        constraints.emit(t_r, src_region, stmt.span);
     }
 }
 
@@ -1001,17 +1000,16 @@ fn check_and_transfer_stmt(
     func: &Function,
     block: &BasicBlock,
     stmt: &Statement,
-    span: Span,
     loans: &mut LoanMap,
     region_ctx: &region::RegionCtx,
     constraints: &mut constraints::ConstraintSet,
     d: &mut Diagnostics,
 ) {
-    match stmt {
-        Statement::Assign(target, rvalue) => {
+    match &stmt.kind {
+        StatementKind::Assign(target, rvalue) => {
             match rvalue {
                 RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
-                    check_operand_access(func, block, op, span, loans, d);
+                    check_operand_access(func, block, op, stmt.span, loans, d);
                 }
                 RValue::Ref(kind, place) => {
                     check_loan_conflict(
@@ -1019,7 +1017,7 @@ fn check_and_transfer_stmt(
                         block,
                         place,
                         AccessKind::Borrow(kind.clone()),
-                        span,
+                        stmt.span,
                         loans,
                         d,
                     );
@@ -1031,33 +1029,33 @@ fn check_and_transfer_stmt(
                 }
                 RValue::ArrayLit(ops) => {
                     for op in ops {
-                        check_operand_access(func, block, op, span, loans, d);
+                        check_operand_access(func, block, op, stmt.span, loans, d);
                     }
                 }
             }
-            check_loan_conflict(func, block, target, AccessKind::Write, span, loans, d);
-            transfer_stmt(loans, stmt, span, region_ctx);
+            check_loan_conflict(func, block, target, AccessKind::Write, stmt.span, loans, d);
+            transfer_stmt(loans, stmt, stmt.span, region_ctx);
         }
-        Statement::Call(target, args) => {
-            check_operand_access(func, block, target, span, loans, d);
-            check_call_regions(env, func, target, args, span, loans, region_ctx, constraints, d);
+        StatementKind::Call(target, args) => {
+            check_operand_access(func, block, target, stmt.span, loans, d);
+            check_call_regions(env, func, target, args, stmt.span, loans, region_ctx, constraints, d);
             consume_operand(loans, target);
             for a in args {
-                check_operand_access(func, block, a, span, loans, d);
+                check_operand_access(func, block, a, stmt.span, loans, d);
                 consume_operand(loans, a);
             }
         }
-        Statement::Drop(place) => {
-            check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
-            transfer_stmt(loans, stmt, span, region_ctx);
+        StatementKind::Drop(place) => {
+            check_loan_conflict(func, block, place, AccessKind::Move, stmt.span, loans, d);
+            transfer_stmt(loans, stmt, stmt.span, region_ctx);
         }
-        Statement::Unborrow(place) => {
+        StatementKind::Unborrow(place) => {
             // Consumes the borrower Var. Its own loan is skipped in
             // check_loan_conflict (the "borrower == access_root with
             // empty path" case), but a *reborrow* of this borrower —
             // loan borrowed by s on `*r` — still needs to block `unborrow r`.
-            check_loan_conflict(func, block, place, AccessKind::Move, span, loans, d);
-            transfer_stmt(loans, stmt, span, region_ctx);
+            check_loan_conflict(func, block, place, AccessKind::Move, stmt.span, loans, d);
+            transfer_stmt(loans, stmt, stmt.span, region_ctx);
         }
     }
 }
@@ -1068,15 +1066,15 @@ fn check_and_transfer_terminator(
     loans: &mut LoanMap,
     d: &mut Diagnostics,
 ) {
-    let ts = block.terminator_span;
-    match &block.terminator {
-        Terminator::Branch { cond, .. } => {
-            check_operand_access(func, block, cond, ts, loans, d);
+    let terminator_span = block.terminator.span;
+    match &block.terminator.kind {
+        TerminatorKind::Branch { cond, .. } => {
+            check_operand_access(func, block, cond, terminator_span, loans, d);
             consume_operand(loans, cond);
         }
-        Terminator::SwitchEnum { place, .. } => {
+        TerminatorKind::SwitchEnum { place, .. } => {
             // Discriminant read.
-            check_loan_conflict(func, block, place, AccessKind::Read, ts, loans, d);
+            check_loan_conflict(func, block, place, AccessKind::Read, terminator_span, loans, d);
         }
         _ => {}
     }

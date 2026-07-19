@@ -124,20 +124,20 @@ pub fn walk_forward<A, F>(
             continue;
         };
         let mut state = entry.clone();
-        for (stmt, span) in &block.statements {
+        for stmt in &block.statements {
             visit(WalkPoint::Stmt {
                 state: &state,
                 block,
                 stmt,
-                span: *span,
+                span: stmt.span,
             });
-            analysis.transfer_stmt(&mut state, stmt, *span);
+            analysis.transfer_stmt(&mut state, stmt, stmt.span);
         }
         visit(WalkPoint::Terminator {
             state: &state,
             block,
             term: &block.terminator,
-            span: block.terminator_span,
+            span: block.terminator.span,
         });
         analysis.transfer_terminator(&mut state, &block.terminator);
     }
@@ -156,8 +156,8 @@ fn run_forward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::Sta
     while let Some(label) = worklist.pop_front() {
         let block = blocks_by_label[label.as_str()];
         let mut state = states[&label].clone();
-        for (stmt, span) in &block.statements {
-            analysis.transfer_stmt(&mut state, stmt, *span);
+        for stmt in &block.statements {
+            analysis.transfer_stmt(&mut state, stmt, stmt.span);
         }
         analysis.transfer_terminator(&mut state, &block.terminator);
 
@@ -222,7 +222,7 @@ mod tests {
             a.union(b).cloned().collect()
         }
         fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
-            if let Statement::Assign(Place::Var(name), _) = stmt {
+            if let StatementKind::Assign(Place::Var(name), _) = &stmt.kind {
                 state.insert(name.clone());
             }
         }
@@ -320,11 +320,11 @@ mod tests {
         fn transfer_stmt(&self, _: &mut Self::State, _: &Statement, _: Span) {}
         fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
         fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ: &str) {
-            if let Terminator::Branch {
+            if let TerminatorKind::Branch {
                 true_label,
                 false_label,
                 ..
-            } = &block.terminator
+            } = &block.terminator.kind
             {
                 if succ == true_label {
                     state.insert("T".to_string());
@@ -373,7 +373,7 @@ mod tests {
             a.union(b).cloned().collect()
         }
         fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
-            if let Statement::Drop(Place::Var(name)) = stmt {
+            if let StatementKind::Drop(Place::Var(name)) = &stmt.kind {
                 state.insert(name.clone());
             }
         }
@@ -562,8 +562,8 @@ fn run_backward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::St
         // terminator then statements (reversed) to get the entry state.
         let mut state = states[&label].clone();
         analysis.transfer_terminator(&mut state, &block.terminator);
-        for (stmt, span) in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut state, stmt, *span);
+        for stmt in block.statements.iter().rev() {
+            analysis.transfer_stmt(&mut state, stmt, stmt.span);
         }
         // `state` is now the entry state of `block`.
 

@@ -104,7 +104,7 @@ impl Analysis for VariantFlow {
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
     fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ: &str) {
         // switchEnum arm edges refine the switched Var to the matched variant.
-        let Terminator::SwitchEnum { place, cases } = &block.terminator else {
+        let TerminatorKind::SwitchEnum { place, cases } = &block.terminator.kind else {
             return;
         };
         let Some(root) = root_var(place) else {
@@ -152,7 +152,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         }
         WalkPoint::Terminator { state, block, .. } => {
             check_places_in_terminator(env, func, &locals, block, state, d);
-            if let Terminator::SwitchEnum { place, cases } = &block.terminator {
+            if let TerminatorKind::SwitchEnum { place, cases } = &block.terminator.kind {
                 check_switch(env, func, body, &locals, block, place, cases, state, d);
             }
         }
@@ -180,8 +180,8 @@ fn check_places_in_stmt(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    match stmt {
-        Statement::Assign(target, rvalue) => {
+    match &stmt.kind {
+        StatementKind::Assign(target, rvalue) => {
             check_downcast_refinement(env, func, locals, block, target, span, state, d);
             match rvalue {
                 RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
@@ -201,7 +201,7 @@ fn check_places_in_stmt(
                 }
             }
         }
-        Statement::Call(target, args) => {
+        StatementKind::Call(target, args) => {
             if let Some(p) = operand_place(target) {
                 check_downcast_refinement(env, func, locals, block, p, span, state, d);
             }
@@ -211,7 +211,7 @@ fn check_places_in_stmt(
                 }
             }
         }
-        Statement::Drop(place) | Statement::Unborrow(place) => {
+        StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             check_downcast_refinement(env, func, locals, block, place, span, state, d);
         }
     }
@@ -225,14 +225,14 @@ fn check_places_in_terminator(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let ts = block.terminator_span;
-    match &block.terminator {
-        Terminator::Branch { cond, .. } => {
+    let ts = block.terminator.span;
+    match &block.terminator.kind {
+        TerminatorKind::Branch { cond, .. } => {
             if let Some(p) = operand_place(cond) {
                 check_downcast_refinement(env, func, locals, block, p, ts, state, d);
             }
         }
-        Terminator::SwitchEnum { place, .. } => {
+        TerminatorKind::SwitchEnum { place, .. } => {
             check_downcast_refinement(env, func, locals, block, place, ts, state, d);
         }
         _ => {}
@@ -340,8 +340,8 @@ fn build_place(root: &str, steps: &[PathStep]) -> Place {
 }
 
 fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
-    match stmt {
-        Statement::Assign(target, rvalue) => {
+    match &stmt.kind {
+        StatementKind::Assign(target, rvalue) => {
             // Exclusive borrow of a tracked Var → clobber it: we can't see
             // what the borrower does. Raw pointer creation clobbers
             // for the same reason (aliasing writes possible).
@@ -385,12 +385,12 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
                 }
             }
         }
-        Statement::Call(_, _) => {
+        StatementKind::Call(_, _) => {
             // Return values flow through `&out` params; those references were
             // borrowed at some earlier assignment (which already clobbered
             // the underlying Var). Nothing to do here.
         }
-        Statement::Drop(place) | Statement::Unborrow(place) => {
+        StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             // Consumes the place — kill any variant refinement.
             if let Some(root) = root_var(place) {
                 state.shift_remove(root);
@@ -424,11 +424,11 @@ fn check_switch(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let ts = block.terminator_span;
+    let terminator_span = block.terminator.span;
     if cases.is_empty() {
         d.push_error(diag(
             SwitchNoArms,
-            ts,
+            terminator_span,
             func,
             block,
             "switchEnum requires at least one arm".to_string(),
@@ -448,7 +448,7 @@ fn check_switch(
         if !handled.contains(variant) {
             d.push_error(diag(
                 SwitchNotExhaustive,
-                ts,
+                terminator_span,
                 func,
                 block,
                 format!(
@@ -465,7 +465,7 @@ fn check_switch(
         if !seen.insert(variant.as_str()) {
             d.push_error(diag(
                 SwitchDuplicateArm,
-                ts,
+                terminator_span,
                 func,
                 block,
                 format!("switchEnum has duplicate arm for variant '{}'", variant),
@@ -488,7 +488,7 @@ fn check_switch(
         let Some(target) = blocks_by_label.get(label.as_str()) else {
             continue;
         };
-        let target_unreachable = matches!(target.terminator, Terminator::Unreachable);
+        let target_unreachable = matches!(target.terminator.kind, TerminatorKind::Unreachable);
 
         let variant_reachable = match known {
             Some(set) => set.contains(variant),
@@ -513,7 +513,7 @@ fn check_switch(
         match (target_unreachable, variant_reachable) {
             (true, true) => d.push_error(diag(
                 SwitchArmFalselyUnreachable,
-                ts,
+                terminator_span,
                 func,
                 block,
                 format!(
@@ -523,7 +523,7 @@ fn check_switch(
             )),
             (false, false) => d.push_warning(diag(
                 SwitchArmDeadCode,
-                ts,
+                terminator_span,
                 func,
                 block,
                 format!(

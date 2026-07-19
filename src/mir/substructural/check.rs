@@ -76,8 +76,8 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     };
     let locals = func.locals_map();
     for block in &body.blocks {
-        for (stmt, span) in &block.statements {
-            check_stmt(env, func, block, &locals, stmt, *span, d);
+        for stmt in &block.statements {
+            check_stmt(env, func, block, &locals, stmt, stmt.span, d);
         }
         check_terminator(env, func, block, &locals, d);
     }
@@ -92,15 +92,15 @@ fn check_stmt(
     span: Span,
     d: &mut Diagnostics,
 ) {
-    match stmt {
-        Statement::Assign(_, rvalue) => check_rvalue(env, func, block, locals, rvalue, span, d),
-        Statement::Call(target, args) => {
+    match &stmt.kind {
+        StatementKind::Assign(_, rvalue) => check_rvalue(env, func, block, locals, rvalue, span, d),
+        StatementKind::Call(target, args) => {
             check_operand(env, func, block, locals, target, span, d);
             for a in args {
                 check_operand(env, func, block, locals, a, span, d);
             }
         }
-        Statement::Drop(place) => {
+        StatementKind::Drop(place) => {
             let Ok(ty) = env.type_of_place(place, span, locals) else {
                 return;
             };
@@ -119,7 +119,7 @@ fn check_stmt(
                 );
             }
         }
-        Statement::Unborrow(_) => {
+        StatementKind::Unborrow(_) => {
             // No class precondition — unborrow works on any reference
             // regardless of Drop marker. Its precondition (obligation
             // fulfilled) is checked by init_state.
@@ -204,8 +204,8 @@ fn check_terminator(
 ) {
     // `branch` uses an operand; `switchEnum` reads a place but does not
     // consume it, so no class check applies.
-    if let Terminator::Branch { cond, .. } = &block.terminator {
-        check_operand(env, func, block, locals, cond, block.terminator_span, d);
+    if let TerminatorKind::Branch { cond, .. } = &block.terminator.kind {
+        check_operand(env, func, block, locals, cond, block.terminator.span, d);
     }
 }
 
@@ -274,7 +274,7 @@ fn check_leaks_in_state(
         for (leaked_path, leaked_ty) in leaks {
             let mut diagnostic = diag(
                 ReturnValueLeak,
-                block.terminator_span,
+                block.terminator.span,
                 func,
                 block,
                 format!(
@@ -304,7 +304,7 @@ fn check_leaks_in_state(
         let (cur, expected_desc) = crate::mir::init_state::describe_obligation_mismatch_labels(rs);
         let mut diagnostic = diag(
             InitStateCode::RefObligationUnfulfilled,
-            block.terminator_span,
+            block.terminator.span,
             func,
             block,
             format!(

@@ -57,7 +57,8 @@
 //!   per concrete arg — the second time the walker sees `Node<i32>`
 //!   the instantiation is already registered, so no infinite loop.
 
-use crate::mir::ast::*;
+use crate::mir::helpers::{call_stmt, drop_stmt, unborrow_stmt};
+use crate::mir::{ast::*, helpers::*};
 use crate::mir::type_util::substitute_params;
 use std::collections::{BTreeMap, VecDeque};
 
@@ -200,24 +201,26 @@ impl MonoCtx {
     }
 
     fn walk_stmt(&mut self, s: &Statement) -> Statement {
-        match s {
-            Statement::Assign(p, r) => Statement::Assign(p.clone(), self.walk_rvalue(r)),
-            Statement::Call(callee, args) => Statement::Call(
+        match &s.kind {
+            StatementKind::Assign(p, r) => assign_stmt(p.clone(), self.walk_rvalue(r), s.span),
+            StatementKind::Call(callee, args) => call_stmt(
                 self.walk_operand(callee),
                 args.iter().map(|a| self.walk_operand(a)).collect(),
+                s.span,
             ),
-            Statement::Drop(p) => Statement::Drop(p.clone()),
-            Statement::Unborrow(p) => Statement::Unborrow(p.clone()),
+            StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
+            StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
         }
     }
 
     fn walk_terminator(&mut self, t: &Terminator) -> Terminator {
-        match t {
-            Terminator::Branch { cond, true_label, false_label } => Terminator::Branch {
-                cond: self.walk_operand(cond),
-                true_label: true_label.clone(),
-                false_label: false_label.clone(),
-            },
+        match &t.kind {
+            TerminatorKind::Branch { cond, true_label, false_label } => branch_term(
+                self.walk_operand(cond),
+                true_label.clone(),
+                false_label.clone(),
+                t.span,
+            ),
             _ => t.clone(),
         }
     }
@@ -302,11 +305,11 @@ impl MonoCtx {
                             statements: blk
                                 .statements
                                 .iter()
-                                .map(|(s, span)| {
+                                .map(|s| {
                                     // Substitute params in any FnName /
                                     // EnumConstr type args before walk.
                                     let s = substitute_stmt_types(s, &type_params, args);
-                                    (self.walk_stmt(&s), *span)
+                                    self.walk_stmt(&s)
                                 })
                                 .collect(),
                             terminator: {
@@ -317,7 +320,6 @@ impl MonoCtx {
                                 );
                                 self.walk_terminator(&t)
                             },
-                            terminator_span: blk.terminator_span,
                         })
                         .collect(),
                 });
@@ -370,19 +372,20 @@ fn substitute_stmt_types(
     type_params: &[TypeParam],
     args: &[Type],
 ) -> Statement {
-    match s {
-        Statement::Assign(p, r) => {
-            Statement::Assign(p.clone(), substitute_rvalue_types(r, type_params, args))
+    match &s.kind {
+        StatementKind::Assign(p, r) => {
+            assign_stmt(p.clone(), substitute_rvalue_types(r, type_params, args), s.span)
         }
-        Statement::Call(callee, cargs) => Statement::Call(
+        StatementKind::Call(callee, cargs) => call_stmt(
             substitute_operand_types(callee, type_params, args),
             cargs
                 .iter()
                 .map(|a| substitute_operand_types(a, type_params, args))
                 .collect(),
+            s.span
         ),
-        Statement::Drop(p) => Statement::Drop(p.clone()),
-        Statement::Unborrow(p) => Statement::Unborrow(p.clone()),
+        StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
+        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
     }
 }
 

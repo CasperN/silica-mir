@@ -371,17 +371,17 @@ pub fn operand_place(op: &Operand) -> Option<&Place> {
 /// Labels of the blocks a terminator flows into. Empty for terminators
 /// with no successors (`return`, `abort`, `unreachable`).
 pub fn terminator_successors(term: &Terminator) -> Vec<&str> {
-    match term {
-        Terminator::Goto(label) => vec![label.as_str()],
-        Terminator::Return | Terminator::Abort | Terminator::Unreachable => vec![],
-        Terminator::Branch {
+    match &term.kind {
+        TerminatorKind::Goto(label) => vec![label.as_str()],
+        TerminatorKind::Return | TerminatorKind::Abort | TerminatorKind::Unreachable => vec![],
+        TerminatorKind::Branch {
             true_label,
             false_label,
             ..
         } => {
             vec![true_label.as_str(), false_label.as_str()]
         }
-        Terminator::SwitchEnum { cases, .. } => {
+        TerminatorKind::SwitchEnum { cases, .. } => {
             cases.iter().map(|(_, label)| label.as_str()).collect()
         }
     }
@@ -437,7 +437,19 @@ pub enum RValue {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Statement {
+pub struct Statement {
+    pub kind: StatementKind,
+    pub span: Span,
+}
+
+impl Statement {
+    pub fn new(kind: StatementKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StatementKind {
     Assign(Place, RValue),
     Call(Operand, Vec<Operand>),
     /// Consume a place. In the current MIR this is a bitwise forget
@@ -454,7 +466,19 @@ pub enum Statement {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum Terminator {
+pub struct Terminator {
+    pub kind: TerminatorKind,
+    pub span: Span,
+}
+
+impl Terminator {
+    pub fn new(kind: TerminatorKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TerminatorKind {
     Goto(String),
     Return,
     Branch {
@@ -474,9 +498,8 @@ pub enum Terminator {
 pub struct BasicBlock {
     pub label: String,
     pub label_span: Span,
-    pub statements: Vec<(Statement, Span)>,
+    pub statements: Vec<Statement>,
     pub terminator: Terminator,
-    pub terminator_span: Span,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -542,7 +565,7 @@ impl FunctionBody {
         let mut reachable = std::collections::BTreeSet::new();
         let mut worklist: Vec<&str> = Vec::new();
         for block in &self.blocks {
-            if matches!(block.terminator, Terminator::Return) {
+            if matches!(block.terminator.kind, TerminatorKind::Return) {
                 reachable.insert(block.label.clone());
                 worklist.push(block.label.as_str());
             }

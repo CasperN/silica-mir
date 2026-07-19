@@ -442,7 +442,7 @@ fn emit_alloca(cx: &mut CodeGenContext, name: &str, ty: &Type) {
 
 fn emit_block(cx: &mut CodeGenContext, block: &BasicBlock) {
     writeln!(cx.out, "{}:", block.label).unwrap();
-    for (stmt, _) in &block.statements {
+    for stmt in &block.statements {
         emit_stmt(cx, stmt);
     }
     emit_terminator(cx, &block.terminator);
@@ -451,8 +451,8 @@ fn emit_block(cx: &mut CodeGenContext, block: &BasicBlock) {
 // ---------- Statements ----------
 
 fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
-    match stmt {
-        Statement::Assign(lhs, rhs) => {
+    match &stmt.kind {
+        StatementKind::Assign(lhs, rhs) => {
             // EnumConstr is a whole-value initialization: it writes both
             // the discriminant and the payload. Handled directly at LHS
             // address rather than via materialize-then-store.
@@ -475,7 +475,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             let ty_llvm = cx.lower_type(&val_ty);
             writeln!(cx.out, "  store {} {}, ptr {}", ty_llvm, val, addr).unwrap();
         }
-        Statement::Call(target, args) => {
+        StatementKind::Call(target, args) => {
             // Intercept intrinsic calls (`call $name(...)`): emit the LLVM
             // instruction sequence inline. The intrinsic symbol never
             // appears in the emitted `.ll`.
@@ -537,7 +537,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 writeln!(cx.out, ")").unwrap();
             }
         }
-        Statement::Drop(_) | Statement::Unborrow(_) => {
+        StatementKind::Drop(_) | StatementKind::Unborrow(_) => {
             // Erased. `Drop` lowers to a real call once `Destroy`
             // (pure custom destructor) lands; unborrow is checker-only
             // and never has runtime effect.
@@ -555,8 +555,8 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
         let Declaration::Fn(f) = decl else { continue };
         let Some(body) = &f.body else { continue };
         for block in &body.blocks {
-            for (stmt, _) in &block.statements {
-                if let Statement::Call(Operand::Const(ConstVal::FnName(name, _)), _) = stmt {
+            for stmt in &block.statements {
+                if let StatementKind::Call(Operand::Const(ConstVal::FnName(name, _)), _) = &stmt.kind {
                     if crate::mir::intrinsics::is_intrinsic(name) {
                         called.insert(name.clone());
                     }
@@ -936,11 +936,11 @@ fn read_place(cx: &mut CodeGenContext, place: &Place) -> (String, Type) {
 // ---------- Terminators ----------
 
 fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
-    match term {
-        Terminator::Goto(label) => {
+    match &term.kind {
+        TerminatorKind::Goto(label) => {
             writeln!(cx.out, "  br label %{}", label).unwrap();
         }
-        Terminator::Return => {
+        TerminatorKind::Return => {
             if let Some(Type::Ref(RefKind::Out, _, inner_ty)) = cx.locals.get("$return") {
                 let llvm_ty = cx.lower_type(inner_ty);
                 let val_reg = cx.fresh();
@@ -955,7 +955,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
                 writeln!(cx.out, "  ret void").unwrap();
             }
         }
-        Terminator::Branch {
+        TerminatorKind::Branch {
             cond,
             true_label,
             false_label,
@@ -968,7 +968,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             )
             .unwrap();
         }
-        Terminator::SwitchEnum { place, cases } => {
+        TerminatorKind::SwitchEnum { place, cases } => {
             let (place_addr, place_ty) = emit_place_addr(cx, place);
             let e_decl = cx.enum_decl(&place_ty).clone();
             let base_llvm = cx.lower_type(&place_ty);
@@ -1004,11 +1004,11 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             }
             writeln!(cx.out, "  ]").unwrap();
         }
-        Terminator::Abort => {
+        TerminatorKind::Abort => {
             writeln!(cx.out, "  call void @abort()").unwrap();
             writeln!(cx.out, "  unreachable").unwrap();
         }
-        Terminator::Unreachable => {
+        TerminatorKind::Unreachable => {
             writeln!(cx.out, "  unreachable").unwrap();
         }
     }

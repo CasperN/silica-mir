@@ -53,15 +53,14 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
         );
     }
 
-    let pred_span = body.blocks[pred_idx].terminator_span;
+    let pred_span = body.blocks[pred_idx].terminator.span;
     replace_target_label(&mut body.blocks[pred_idx].terminator, succ_label, &split_label);
 
     let split_block = BasicBlock {
         label: split_label.clone(),
         label_span: pred_span,
         statements: Vec::new(),
-        terminator: goto_term(succ_label),
-        terminator_span: pred_span,
+        terminator: goto_term(succ_label, pred_span),
     };
     // Insert right after pred so the block ordering stays roughly
     // control-flow adjacent. Not load-bearing for correctness.
@@ -71,13 +70,13 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
 }
 
 fn replace_target_label(term: &mut Terminator, old: &str, new: &str) {
-    match term {
-        Terminator::Goto(lbl) => {
+    match &mut term.kind {
+        TerminatorKind::Goto(lbl) => {
             if lbl == old {
                 *lbl = new.to_string();
             }
         }
-        Terminator::Branch {
+        TerminatorKind::Branch {
             true_label,
             false_label,
             ..
@@ -89,14 +88,14 @@ fn replace_target_label(term: &mut Terminator, old: &str, new: &str) {
                 *false_label = new.to_string();
             }
         }
-        Terminator::SwitchEnum { cases, .. } => {
+        TerminatorKind::SwitchEnum { cases, .. } => {
             for (_, lbl) in cases.iter_mut() {
                 if lbl == old {
                     *lbl = new.to_string();
                 }
             }
         }
-        Terminator::Return | Terminator::Abort | Terminator::Unreachable => {}
+        TerminatorKind::Return | TerminatorKind::Abort | TerminatorKind::Unreachable => {}
     }
 }
 

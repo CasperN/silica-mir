@@ -101,7 +101,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 if label != &block.label {
                     continue;
                 }
-                if let Some((slot, _)) = block.statements.get_mut(*idx) {
+                if let Some(slot) = block.statements.get_mut(*idx) {
                     *slot = new_stmt.clone();
                 }
             }
@@ -123,11 +123,11 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 let span = block
                     .statements
                     .get(pos)
-                    .map(|(_, s)| *s)
-                    .unwrap_or(block.terminator_span);
-                let items: Vec<(Statement, Span)> = places
+                    .map(|s| s.span)
+                    .unwrap_or(block.terminator.span);
+                let items: Vec<Statement> = places
                     .iter()
-                    .map(|p| (drop_stmt(p.clone()), span))
+                    .map(|p| drop_stmt(p.clone(), span))
                     .collect();
                 block.statements.splice(pos..pos, items);
             }
@@ -141,11 +141,11 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 .iter_mut()
                 .find(|b| b.label == split_label)
                 .expect("split_edge just guaranteed this block exists");
-            let span = split_block.terminator_span;
+            let span = split_block.terminator.span;
             for p in places {
                 split_block
                     .statements
-                    .push((drop_stmt(p.clone()), span));
+                    .push(drop_stmt(p.clone(), span));
             }
         }
     }
@@ -182,14 +182,14 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
             continue;
         };
         let mut state = entry.clone();
-        for (stmt_idx, (stmt, _)) in block.statements.iter().enumerate() {
+        for (stmt_idx, stmt) in block.statements.iter().enumerate() {
             let (drops, rewrite) = pre_stmt_transitions(stmt, &state, env, &locals, &scope);
             if !drops.is_empty() {
                 for place in &drops {
                     init_state::transfer_stmt_silent(
                         env,
                         func,
-                        &Statement::Drop(place.clone()),
+                        &drop_stmt(place.clone(), stmt.span),
                         &mut state,
                     );
                 }
@@ -210,7 +210,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
         }
         // Pre-terminator cleanup for return blocks: drop everything
         // still Init-Drop at this point.
-        if matches!(block.terminator, Terminator::Return) {
+        if matches!(block.terminator.kind, TerminatorKind::Return) {
             let drops = plan_drops_at_return(func, &state, env, &scope);
             if !drops.is_empty() {
                 let insert_pos = block.statements.len();
@@ -250,7 +250,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
                 continue;
             };
             let mut pred_exit = pred_entry.clone();
-            for (stmt, _) in &pred_block.statements {
+            for stmt in &pred_block.statements {
                 init_state::transfer_stmt_silent(env, func, stmt, &mut pred_exit);
             }
             for (path_place, ty) in &diverged_paths {
@@ -300,7 +300,7 @@ fn pre_stmt_transitions(
     locals: &IndexMap<String, Type>,
     scope: ParamScope,
 ) -> (Vec<Place>, Option<Statement>) {
-    let Statement::Assign(target, rvalue) = stmt else {
+    let StatementKind::Assign(target, rvalue) = &stmt.kind else {
         return (Vec::new(), None);
     };
     let mut drops = Vec::new();
@@ -319,6 +319,7 @@ fn pre_stmt_transitions(
                         let rewrite = assign_stmt(
                             inner_owned,
                             enum_constr_rv(enum_name.clone(), variant.clone(), operand.clone()),
+                            stmt.span  // TODO: Is this the right span?
                         );
                         return (drops, Some(rewrite));
                     }
