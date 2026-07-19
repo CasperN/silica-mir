@@ -87,6 +87,8 @@ module.exports = {
     // sequence (including `\xNN`). Value type is `u8`.
     byte_char_lit: $ => /b'([^'\\]|\\x[0-9a-fA-F]{2}|\\.)'/,
 
+    string_lit: $ => /"[^"]*"/,
+
     // Substructural marker keywords on a struct or enum declaration.
     // Any subset of {Copy, Drop, Move} in any order, no duplicates
     // (duplicate check is enforced by the parser, not the grammar).

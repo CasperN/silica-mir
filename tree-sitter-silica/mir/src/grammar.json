@@ -55,6 +55,10 @@
       "type": "PATTERN",
       "value": "b'([^'\\\\]|\\\\x[0-9a-fA-F]{2}|\\\\.)'"
     },
+    "string_lit": {
+      "type": "PATTERN",
+      "value": "\"[^\"]*\""
+    },
     "marker": {
       "type": "CHOICE",
       "members": [
@@ -836,6 +840,22 @@
             {
               "type": "STRING",
               "value": "extern"
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "FIELD",
+              "name": "abi",
+              "content": {
+                "type": "SYMBOL",
+                "name": "string_lit"
+              }
             },
             {
               "type": "BLANK"

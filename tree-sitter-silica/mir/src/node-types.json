@@ -270,6 +270,16 @@
     "type": "function_decl",
     "named": true,
     "fields": {
+      "abi": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string_lit",
+            "named": true
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -1026,6 +1036,10 @@
   },
   {
     "type": "return",
+    "named": true
+  },
+  {
+    "type": "string_lit",
     "named": true
   },
   {

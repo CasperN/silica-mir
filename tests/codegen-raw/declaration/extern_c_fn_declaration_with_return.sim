@@ -1,0 +1,1 @@
+extern "C" fn get_value($return: &out i64);

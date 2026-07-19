@@ -1,17 +1,15 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
-define i64 @callee() {
+define void @callee(ptr %arg.$return) {
 .init:
-  %local.$return_val = alloca i64, align 8
   %local.$return = alloca ptr, align 8
-  store ptr %local.$return_val, ptr %local.$return
+  store ptr %arg.$return, ptr %local.$return
   br label %entry
 entry:
   %t.0 = load ptr, ptr %local.$return
   store i64 42, ptr %t.0
-  %t.1 = load i64, ptr %local.$return_val
-  ret i64 %t.1
+  ret void
 }
 
 define void @caller(ptr %arg.out) {
@@ -21,8 +19,7 @@ define void @caller(ptr %arg.out) {
   br label %entry
 entry:
   %t.0 = load ptr, ptr %local.out
-  %t.1 = call i64 @callee()
-  store i64 %t.1, ptr %t.0
+  call void @callee(ptr %t.0)
   ret void
 }
 

@@ -324,6 +324,7 @@ impl MonoCtx {
                     name: mangled,
                     name_span: f.name_span,
                     is_extern: f.is_extern,
+                    abi: f.abi.clone(),
                     lifetime_params: Vec::new(),
                     signature_outlives: Vec::new(),
                     type_params: Vec::new(),

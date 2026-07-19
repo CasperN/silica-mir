@@ -672,6 +672,7 @@ pub struct Function {
     pub name: String,
     pub name_span: Span,
     pub is_extern: bool,
+    pub abi: Option<String>,
     pub lifetime_params: Vec<Lifetime>,
     /// Elision-derived outlives axioms on the function's signature.
     /// Each `(a, b)` means "region `a` outlives region `b`" is a

@@ -52,6 +52,7 @@ pub fn lower_mir_to_llvm(program: Program) -> String {
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
+        current_fn_abi: None,
         pending_default_blocks: Vec::new(),
     };
 
@@ -166,6 +167,17 @@ fn get_return_param(f: &Function) -> Option<&Param> {
     f.params.last().filter(|p| p.name == "$return")
 }
 
+fn uses_register_return(f: &Function) -> bool {
+    if let Some(ref abi) = f.abi {
+        if abi != "C" {
+            panic!("unsupported ABI: {:?}", abi);
+        }
+        true
+    } else {
+        false
+    }
+}
+
 // ---------- Context ----------
 
 struct CodeGenContext<'a> {
@@ -173,6 +185,7 @@ struct CodeGenContext<'a> {
     out: String,
     v_counter: u32,
     locals: IndexMap<String, Type>,
+    current_fn_abi: Option<String>,
     /// Labels of synthetic default-arm blocks for `switch i16` terminators.
     /// Accumulated per-fn during block emission and flushed as
     /// `<label>: unreachable` blocks right before the fn's closing brace.
@@ -192,6 +205,7 @@ impl<'a> CodeGenContext<'a> {
     fn reset_for_function(&mut self, f: &Function) {
         self.v_counter = 0;
         self.locals = f.locals_map();
+        self.current_fn_abi = f.abi.clone();
         self.pending_default_blocks.clear();
     }
 
@@ -297,16 +311,22 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
 
 fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     let ret_param = get_return_param(f);
-    let ret_llvm = match ret_param {
-        Some(p) => match &p.ty.kind {
-            TypeKind::Ref(_, _, inner) => cx.lower_type(inner),
-            _ => "void".to_string(),
-        },
-        None => "void".to_string(),
+    let use_reg_ret = uses_register_return(f);
+    let ret_llvm = if let Some(p) = ret_param {
+        if use_reg_ret {
+            match &p.ty.kind {
+                TypeKind::Ref(_, _, inner) => cx.lower_type(inner),
+                _ => "void".to_string(),
+            }
+        } else {
+            "void".to_string()
+        }
+    } else {
+        "void".to_string()
     };
     write!(cx.out, "declare {} @{}(", ret_llvm, llvm_fn_symbol(&f.name)).unwrap();
     let mut params_to_emit = &f.params[..];
-    if ret_param.is_some() {
+    if ret_param.is_some() && use_reg_ret {
         params_to_emit = &f.params[..f.params.len() - 1];
     }
     for (i, p) in params_to_emit.iter().enumerate() {
@@ -330,9 +350,16 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
 /// them earlier).
 fn emit_main_wrapper(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, "define i32 @main() {{").unwrap();
-    if get_return_param(f).is_some() {
-        writeln!(cx.out, "  %code = call i32 @silica.main()").unwrap();
-        writeln!(cx.out, "  ret i32 %code").unwrap();
+    if let Some(p) = get_return_param(f) {
+        if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
+            let inner_llvm = cx.lower_type(inner);
+            writeln!(cx.out, "  %exit = alloca {}, align 4", inner_llvm).unwrap();
+            writeln!(cx.out, "  call void @silica.main(ptr %exit)").unwrap();
+            writeln!(cx.out, "  %code = load {}, ptr %exit", inner_llvm).unwrap();
+            writeln!(cx.out, "  ret {} %code", inner_llvm).unwrap();
+        } else {
+            panic!("main return param must be ref");
+        }
     } else {
         match f.params.len() {
             0 => {
@@ -361,17 +388,23 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     cx.reset_for_function(f);
 
     let ret_param = get_return_param(f);
-    let ret_llvm = match ret_param {
-        Some(p) => match &p.ty.kind {
-            TypeKind::Ref(_, _, inner) => cx.lower_type(inner),
-            _ => "void".to_string(),
-        },
-        None => "void".to_string(),
+    let use_reg_ret = uses_register_return(f);
+    let ret_llvm = if let Some(p) = ret_param {
+        if use_reg_ret {
+            match &p.ty.kind {
+                TypeKind::Ref(_, _, inner) => cx.lower_type(inner),
+                _ => "void".to_string(),
+            }
+        } else {
+            "void".to_string()
+        }
+    } else {
+        "void".to_string()
     };
 
     write!(cx.out, "define {} @{}(", ret_llvm, llvm_fn_symbol(&f.name)).unwrap();
     let mut params_to_emit = &f.params[..];
-    if ret_param.is_some() {
+    if ret_param.is_some() && use_reg_ret {
         params_to_emit = &f.params[..f.params.len() - 1];
     }
     for (i, p) in params_to_emit.iter().enumerate() {
@@ -395,26 +428,40 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, ".init:").unwrap();
 
     if let Some(p) = ret_param {
-        if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
-            let inner_llvm = cx.lower_type(inner);
-            let inner_align = layout::align_of(inner, cx.env);
-            writeln!(
-                cx.out,
-                "  %local.$return_val = alloca {}, align {}",
-                inner_llvm, inner_align
-            )
-            .unwrap();
+        if use_reg_ret {
+            if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
+                let inner_llvm = cx.lower_type(inner);
+                let inner_align = layout::align_of(inner, cx.env);
+                writeln!(
+                    cx.out,
+                    "  %local.$return_val = alloca {}, align {}",
+                    inner_llvm, inner_align
+                )
+                .unwrap();
+                emit_alloca(cx, &p.name, &p.ty);
+                writeln!(
+                    cx.out,
+                    "  store ptr %local.$return_val, ptr %local.{}",
+                    p.name
+                )
+                .unwrap();
+            }
+        } else {
             emit_alloca(cx, &p.name, &p.ty);
             writeln!(
                 cx.out,
-                "  store ptr %local.$return_val, ptr %local.{}",
-                p.name
+                "  store ptr %arg.{}, ptr %local.{}",
+                p.name, p.name
             )
             .unwrap();
         }
     }
 
-    for p in params_to_emit {
+    let mut init_params_to_emit = &f.params[..];
+    if ret_param.is_some() {
+        init_params_to_emit = &f.params[..f.params.len() - 1];
+    }
+    for p in init_params_to_emit {
         emit_alloca(cx, &p.name, &p.ty);
         let ty = cx.lower_type(&p.ty);
         writeln!(
@@ -513,11 +560,25 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             }
             let _ = param_tys; // types are already implicit in arg_pairs
 
-            let ret_llvm = if let Operand::Const(ConstVal::FnName(name, _)) = target {
-                if let Some(f) = cx.env.functions.get(name) {
-                    if let Some(p) = get_return_param(f) {
-                        if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
-                            Some(cx.lower_type(inner))
+            let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(name, _)) = target {
+                if let Some(callee_f) = cx.env.functions.get(name) {
+                    uses_register_return(callee_f)
+                } else {
+                    false
+                }
+            } else {
+                false
+            };
+
+            let ret_llvm = if callee_use_reg_ret {
+                if let Operand::Const(ConstVal::FnName(name, _)) = target {
+                    if let Some(f) = cx.env.functions.get(name) {
+                        if let Some(p) = get_return_param(f) {
+                            if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
+                                Some(cx.lower_type(inner))
+                            } else {
+                                None
+                            }
                         } else {
                             None
                         }
@@ -972,13 +1033,25 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             writeln!(cx.out, "  br label %{}", label).unwrap();
         }
         TerminatorKind::Return => {
-            let ret_inner = cx.locals.get("$return").and_then(|ty| {
-                if let TypeKind::Ref(RefKind::Out, _, inner_ty) = &ty.kind {
-                    Some(inner_ty.as_ref().clone())
-                } else {
-                    None
+            let use_reg_ret = if let Some(ref abi) = cx.current_fn_abi {
+                if abi != "C" {
+                    panic!("unsupported ABI: {:?}", abi);
                 }
-            });
+                true
+            } else {
+                false
+            };
+            let ret_inner = if use_reg_ret {
+                cx.locals.get("$return").and_then(|ty| {
+                    if let TypeKind::Ref(RefKind::Out, _, inner_ty) = &ty.kind {
+                        Some(inner_ty.as_ref().clone())
+                    } else {
+                        None
+                    }
+                })
+            } else {
+                None
+            };
             if let Some(inner_ty) = ret_inner {
                 let llvm_ty = cx.lower_type(&inner_ty);
                 let val_reg = cx.fresh();
@@ -1096,4 +1169,31 @@ fn variant_index(e: &EnumDecl, variant: &str) -> u64 {
 
 fn align_up(x: u64, a: u64) -> u64 {
     (x + a - 1) & !(a - 1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::ast::{Function, Program, Span};
+
+    #[test]
+    #[should_panic(expected = "unsupported ABI: \"system\"")]
+    fn test_unsupported_abi_panics() {
+        let f = Function {
+            name: "dummy".to_string(),
+            name_span: Span::default(),
+            is_extern: true,
+            abi: Some("system".to_string()),
+            lifetime_params: Vec::new(),
+            signature_outlives: Vec::new(),
+            type_params: Vec::new(),
+            params: Vec::new(),
+            body: None,
+        };
+        let program = Program {
+            declarations: vec![crate::mir::ast::Declaration::Fn(f)],
+            source: std::sync::Arc::new("".to_string()),
+        };
+        lower_mir_to_llvm(program);
+    }
 }

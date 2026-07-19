@@ -1131,6 +1131,12 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
         let is_extern = self.get_text(node).starts_with("extern");
+        let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
+            let raw = self.get_text(abi_node);
+            Some(raw.trim_matches('"').to_string())
+        } else {
+            None
+        };
 
         // Populate the type-param scope before mapping any types in
         // params, locals, or body — same as struct/enum. Both extern and
@@ -1228,6 +1234,7 @@ impl Parser {
             name,
             name_span,
             is_extern,
+            abi,
             lifetime_params,
             signature_outlives: Vec::new(),
             type_params,

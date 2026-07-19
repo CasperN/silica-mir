@@ -1,0 +1,7 @@
+extern "C" fn get_value($return: &out i64);
+
+fn caller($return: &out i64) {
+  entry:
+    call get_value(move $return);
+    return
+}
