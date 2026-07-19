@@ -45,3 +45,15 @@ fn loop_out_never_writes(r: &out i64, n: i64) {
     i = i + 1i64;
   }
 }
+
+extern fn consume_box(b: Box);
+
+# Asymmetric `&drop` discharge across an `if`: the true arm consumes
+# the pointee, the false (implicit else) arm doesn't. `box`'s
+# obligation is unfulfilled on the false path — diagnostic should
+# land at the missing else side, not at the `if` keyword.
+fn maybe_not_drop(cond: bool, box: &drop Box) {
+  if cond {
+    consume_box(box.*);
+  }
+}

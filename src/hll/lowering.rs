@@ -754,18 +754,18 @@ fn lower_expr_into(
 
             ctx.terminate_block(
                 branch_term(cond_op, true_label.clone(), false_label.clone()),
-                expr.span,
+                cond.span,
             );
 
             // True branch
             ctx.start_block(true_label);
             lower_expr_into(ctx, true_block, dest, types)?;
-            ctx.terminate_block(goto_term(merge_label.clone()), expr.span);
+            ctx.terminate_block(goto_term(merge_label.clone()), true_block.span);
 
             // False branch
             ctx.start_block(false_label);
             lower_expr_into(ctx, false_block, dest, types)?;
-            ctx.terminate_block(goto_term(merge_label.clone()), expr.span);
+            ctx.terminate_block(goto_term(merge_label.clone()), false_block.span);
 
             // Merge block
             ctx.start_block(merge_label);
@@ -785,7 +785,7 @@ fn lower_expr_into(
             let dummy = ctx.fresh_temp(unit_ty(), body.span);
             lower_expr_into(ctx, body, &dummy, types)?;
             ctx.scopes.pop();
-            ctx.terminate_block(goto_term(start_label), expr.span);
+            ctx.terminate_block(goto_term(start_label), body.span);
 
             ctx.loop_stack.pop();
 
@@ -850,7 +850,7 @@ fn lower_expr_into(
             
             ctx.terminate_block(
                 switch_enum_term(target_place.clone(), cases),
-                expr.span,
+                target.span,
             );
             
             // Lower each arm block
@@ -952,7 +952,7 @@ fn lower_expr_into(
                 }
                 
                 lower_expr_into(ctx, body, dest, types)?;
-                ctx.terminate_block(goto_term(merge_label.clone()), expr.span);
+                ctx.terminate_block(goto_term(merge_label.clone()), body.span);
             }
             
             ctx.start_block(merge_label);

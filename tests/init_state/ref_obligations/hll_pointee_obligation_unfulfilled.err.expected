@@ -55,3 +55,14 @@ error: at 42:15: [INIT-RefObligationUnfulfilled] In function 'loop_out_never_wri
     |               ^^^^
  43 |   loop {
     |
+error: at 58:4: [INIT-RefObligationUnfulfilled] In function 'maybe_not_drop': reference 'box' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 54 | # land at the missing else side, not at the `if` keyword.
+ 55 | fn maybe_not_drop(cond: bool, box: &drop Box) {
+    |                               -------------- reference declared here
+ 56 |   if cond {
+ 57 |     consume_box(box.*);
+ 58 |   }
+    |    ^
+ 59 | }
+    |

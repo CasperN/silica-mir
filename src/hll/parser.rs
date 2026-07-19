@@ -993,9 +993,15 @@ impl Parser {
         let else_expr = if let Some(else_node) = node.child_by_field_name("else") {
             self.map_expr(else_node, scope)?
         } else {
+            // Implicit-else's span is a point at the position where
+            // an `else` keyword would appear, so diagnostics on the
+            // implicit-else path don't collide with the whole if.
+            let then_end = then_node.end_position();
+            let line = (then_end.row as u32).saturating_add(1);
+            let col = (then_end.column as u32).saturating_add(1);
             Expr {
                 kind: ExprKind::Block(Vec::new(), None, false),
-                span,
+                span: Span { line, col, end_line: line, end_col: col },
             }
         };
         Ok(Expr {

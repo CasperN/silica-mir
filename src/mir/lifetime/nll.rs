@@ -294,17 +294,24 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
     }
 
     for ((pred, succ), places) in &plan.cross_edge {
+        // Use succ's span so diagnostics land on the branch being
+        // cut off, not on the predecessor's branch terminator.
+        let succ_span = body
+            .blocks
+            .iter()
+            .find(|b| b.label == *succ)
+            .map(|b| b.terminator_span)
+            .unwrap_or_default();
         let split_label = cfg_edit::split_edge(body, pred, succ);
         let split_block = body
             .blocks
             .iter_mut()
             .find(|b| b.label == split_label)
             .expect("split_edge just guaranteed this block exists");
-        let span = split_block.terminator_span;
         for p in places {
             split_block
                 .statements
-                .push((unborrow_stmt(p.clone()), span));
+                .push((unborrow_stmt(p.clone()), succ_span));
         }
     }
 }

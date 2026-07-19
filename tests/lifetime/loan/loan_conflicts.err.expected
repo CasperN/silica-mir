@@ -1,24 +1,30 @@
-error: at 406:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__fbr': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 414:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__fbr': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  402 | # initializes through it, the obligation remains unfulfilled on the other branch.
  403 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
      |                                         ----------- reference declared here
  404 |   z: &out i64;
- 405 |   entry:
- 406 |     branch(copy b) [true: t, false: fbr]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 407 |   t:
      |
-error: at 406:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__t': reference 'y' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     | ...
+     |
+ 413 |     z.* = 2;
+ 414 |     goto end
+     |     ^^^^^^^^
+ 415 |   end:
+     |
+error: at 410:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__t': reference 'y' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  402 | # initializes through it, the obligation remains unfulfilled on the other branch.
  403 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
      |                                                      ----------- reference declared here
  404 |   z: &out i64;
- 405 |   entry:
- 406 |     branch(copy b) [true: t, false: fbr]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 407 |   t:
+     |
+     | ...
+     |
+ 409 |     z.* = 1;
+ 410 |     goto end
+     |     ^^^^^^^^
+ 411 |   fbr:
      |
 error: at 49:5: [LT-LoanConflict] In function 'mut_blocks_write', block 'entry': cannot write to 'x': already borrowed by 'r'
     |

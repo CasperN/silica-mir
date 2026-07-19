@@ -1,10 +1,14 @@
-error: at 27:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_unfulfilled_on_return_arm', block 'entry__to__b_arm': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 32:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_unfulfilled_on_return_arm', block 'entry__to__b_arm': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  24 | # edge.
  25 | fn out_ref_unfulfilled_on_return_arm(r: &out i64, e: E) {
     |                                      ----------- reference declared here
  26 |   entry:
- 27 |     switchEnum(e) [A: a_arm, B: b_arm]
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 28 |   a_arm:
+    |
+    | ...
+    |
+ 31 |   b_arm:
+ 32 |     return
+    |     ^^^^^^
+ 33 | }
     |
