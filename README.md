@@ -949,7 +949,7 @@ To load it locally:
 
 ## Lifetime checker gaps (semantic)
 - **`where 'a: 'b` outlives clauses.** No syntax today; `signature_outlives: Vec<(Lifetime, Lifetime)>` is the right shape to build on. Any real generic library needs this.
-- **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today).
+- **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
 - **No fixture for nested-ref case (`&&i64`, `&Wrap<i64>`), shared-ref returns read multiple times, or `Wrap<'a>` in fn signatures.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands.
 
 ## Elaboration + drop

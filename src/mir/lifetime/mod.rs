@@ -853,7 +853,14 @@ fn check_call_regions(
 enum Variance {
     /// Arg position: `caller_region outlives inst_region`.
     Contravariant,
-    /// Return position (inside an exclusive pointee): `inst outlives caller`.
+    /// Return position: `inst_region outlives caller_region`. Reached
+    /// only by walking through a contravariant position — currently
+    /// only fn-pointer arg positions produce that flip, and `Type::Fn`
+    /// isn't walked yet (see the "Call-site handling ignores fn
+    /// pointers" punchlist item). `combine`'s `(Contra, Co) →
+    /// Invariant` rule and `emit_variance`'s `Covariant` branch are
+    /// pre-wired for that walk.
+    #[allow(dead_code)]
     Covariant,
     /// Descended through an exclusive kind: emit both directions.
     Invariant,
