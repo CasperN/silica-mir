@@ -690,7 +690,8 @@ impl<'a> Checker<'a> {
     /// unifiable at this phase (escape checking handles the interesting
     /// Free ↔ signature-visible case in phase 5).
     fn check_constraints(&mut self, escape_visible: &BTreeSet<Lifetime>) {
-        let axioms: Vec<(Region, Region)> = self.func
+        let axioms: Vec<(Region, Region)> = self
+            .func
             .meta
             .outlives
             .iter()
@@ -707,7 +708,8 @@ impl<'a> Checker<'a> {
                         "lifetime mismatch: expected value with region {}, found value with region {}",
                         c.sub, c.outlives,
                     );
-                    self.d.push_error(self.error(LifetimeCode::LifetimeMismatch, c.origin, msg));
+                    self.d
+                        .push_error(self.error(LifetimeCode::LifetimeMismatch, c.origin, msg));
                 }
                 // Escape: a Free-region loan (body-local storage) flowing
                 // into a Named region that's actually reachable through a
@@ -717,7 +719,8 @@ impl<'a> Checker<'a> {
                         "borrow escapes function: value with local (unnamed) region cannot be stored into region {}",
                         dst,
                     );
-                    self.d.push_error(self.error(LifetimeCode::LifetimeEscape, c.origin, msg));
+                    self.d
+                        .push_error(self.error(LifetimeCode::LifetimeEscape, c.origin, msg));
                 }
                 // Named outlives Free: source is a real (signature)
                 // region, dst is a body-local. Always satisfiable — a
@@ -763,14 +766,18 @@ impl<'a> Checker<'a> {
             }
             _ => return,
         };
-        let Some(t_r) = self.region_ctx.region_of_place(&target_place, &self.locals, self.env) else {
+        let Some(t_r) = self
+            .region_ctx
+            .region_of_place(&target_place, &self.locals, self.env)
+        else {
             return;
         };
         // Emit variance-aware constraint. Shared refs are covariant
         // (source outlives dst is enough). Exclusive-write kinds are
         // invariant (source outlives dst AND dst outlives source).
         let target_kind = ref_kind_of_place(&target_place, &self.locals, self.env);
-        self.constraints.emit(src_region.clone(), t_r.clone(), stmt.span);
+        self.constraints
+            .emit(src_region.clone(), t_r.clone(), stmt.span);
         if !matches!(target_kind, Some(RefKind::Shared)) {
             self.constraints.emit(t_r, src_region, stmt.span);
         }
@@ -844,7 +851,8 @@ impl<'a> Checker<'a> {
                     format_place(place),
                     borrower_name,
                 );
-                let mut diag = self.error(LifetimeCode::LoanConflict, span, msg)
+                let mut diag = self
+                    .error(LifetimeCode::LoanConflict, span, msg)
                     .in_block(&block.label)
                     .with_hint(hint);
                 // Attach the borrow's origin as a secondary span if we
@@ -1028,7 +1036,10 @@ impl<'a> Checker<'a> {
         match &callee_ty.kind {
             TypeKind::Ref(kind, Some(lt), inner) => {
                 let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
-                if let Some(caller_r) = self.region_ctx.region_of_place(caller_place, &self.locals, self.env) {
+                if let Some(caller_r) =
+                    self.region_ctx
+                        .region_of_place(caller_place, &self.locals, self.env)
+                {
                     emit_variance(&caller_r, &inst_region, variance, self.constraints, span);
                     if matches!(variance, Variance::Contravariant | Variance::Invariant) {
                         if let Some(owned) = as_owned_path(caller_place) {
@@ -1063,7 +1074,8 @@ impl<'a> Checker<'a> {
                 // reference: default to invariance (conservative, safe).
                 for lt in lts {
                     let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
-                    let caller_ty = crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
+                    let caller_ty =
+                        crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
                     if let Some(caller_ty) = caller_ty {
                         if let TypeKind::Custom(_, caller_lts, _) = &caller_ty.kind {
                             if let Some(caller_lt) = caller_lts.first() {
@@ -1179,13 +1191,7 @@ impl<'a> Checker<'a> {
             }
             TerminatorKind::SwitchEnum { place, .. } => {
                 // Discriminant read.
-                self.check_loan_conflict(
-                    block,
-                    place,
-                    AccessKind::Read,
-                    terminator_span,
-                    loans,
-                );
+                self.check_loan_conflict(block, place, AccessKind::Read, terminator_span, loans);
             }
             _ => {}
         }

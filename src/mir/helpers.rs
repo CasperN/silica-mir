@@ -27,11 +27,10 @@ pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
         name_span: Span::default(),
         markers: trivial_markers(),
         lifetime_params: vec![],
-        outlives:  vec![],
-        type_params:  vec![],
+        outlives: vec![],
+        type_params: vec![],
     }
 }
-
 
 // ---------- Scalars ----------
 //

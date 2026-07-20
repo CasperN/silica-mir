@@ -282,10 +282,12 @@ mod tests {
         ",
         );
         assert!(f
-            .meta.outlives
+            .meta
+            .outlives
             .contains(&(Lifetime("s0".into()), Lifetime("s2".into()))));
         assert!(f
-            .meta.outlives
+            .meta
+            .outlives
             .contains(&(Lifetime("s1".into()), Lifetime("s2".into()))));
     }
 
@@ -304,7 +306,8 @@ mod tests {
         // Output: 's3 (inner of $return). Inputs: 's0, 's1, 's2.
         for input in ["s0", "s1", "s2"] {
             assert!(
-                f.meta.outlives
+                f.meta
+                    .outlives
                     .contains(&(Lifetime(input.into()), Lifetime("s3".into()))),
                 "expected {} outlives s3",
                 input,

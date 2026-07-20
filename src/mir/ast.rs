@@ -702,12 +702,11 @@ pub struct DeclMeta {
     pub lifetime_params: Vec<Lifetime>,
     /// Elision-derived outlives axioms on the function's signature.
     /// Each `(a, b)` means "region `a` outlives region `b`" is a
-    /// known fact holding for any invocation. 
+    /// known fact holding for any invocation.
     pub outlives: Vec<(Lifetime, Lifetime)>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
 }
-
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructDecl {

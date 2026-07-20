@@ -159,7 +159,10 @@ impl Env {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
                     p.ty.span,
-                    format!("In function '{}', parameter '{}': {}", f.meta.name, p.name, e),
+                    format!(
+                        "In function '{}', parameter '{}': {}",
+                        f.meta.name, p.name, e
+                    ),
                 ));
             }
             for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
@@ -405,9 +408,11 @@ impl Env {
                         format!("branch condition must be bool, found {}", cond_ty),
                     )),
                     Ok(_) => {}
-                    Err(inner_diag) => {
-                        d.push_error(inner_diag.in_function(&func.meta.name).in_block(&block.label))
-                    }
+                    Err(inner_diag) => d.push_error(
+                        inner_diag
+                            .in_function(&func.meta.name)
+                            .in_block(&block.label),
+                    ),
                 }
                 if !block_labels.contains(true_label) {
                     d.push_error(terminator_diag(
@@ -457,7 +462,11 @@ impl Env {
                         }
                     },
                     Err(inner_diag) => {
-                        d.push_error(inner_diag.in_function(&func.meta.name).in_block(&block.label));
+                        d.push_error(
+                            inner_diag
+                                .in_function(&func.meta.name)
+                                .in_block(&block.label),
+                        );
                         None
                     }
                 };

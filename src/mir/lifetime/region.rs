@@ -147,7 +147,12 @@ fn walk_regions(
                     let fields: Vec<_> = s
                         .fields
                         .iter()
-                        .map(|f| (f.name.clone(), s.meta.substitute(&f.ty, lifetime_args, args)))
+                        .map(|f| {
+                            (
+                                f.name.clone(),
+                                s.meta.substitute(&f.ty, lifetime_args, args),
+                            )
+                        })
                         .collect();
                     for (fname, fty) in fields {
                         let sub = field_place(place.clone(), fname);
@@ -158,7 +163,12 @@ fn walk_regions(
                     let variants: Vec<_> = e
                         .variants
                         .iter()
-                        .map(|v| (v.name.clone(), e.meta.substitute(&v.ty, lifetime_args, args)))
+                        .map(|v| {
+                            (
+                                v.name.clone(),
+                                e.meta.substitute(&v.ty, lifetime_args, args),
+                            )
+                        })
                         .collect();
                     for (vname, vty) in variants {
                         let sub = downcast_place(place.clone(), vname);

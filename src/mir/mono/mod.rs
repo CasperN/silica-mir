@@ -243,13 +243,13 @@ impl MonoCtx {
                     })
                     .collect();
                 Declaration::Struct(StructDecl {
-                    meta: DeclMeta { 
+                    meta: DeclMeta {
                         name: mangled,
                         name_span: s.meta.name_span,
                         lifetime_params: Vec::new(),
                         type_params: Vec::new(),
                         markers: s.meta.markers,
-                        outlives: vec![],  // TODO
+                        outlives: vec![], // TODO
                     },
                     fields,
                 })

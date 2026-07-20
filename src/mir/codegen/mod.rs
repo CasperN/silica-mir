@@ -324,7 +324,13 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     } else {
         "void".to_string()
     };
-    write!(cx.out, "declare {} @{}(", ret_llvm, llvm_fn_symbol(&f.meta.name)).unwrap();
+    write!(
+        cx.out,
+        "declare {} @{}(",
+        ret_llvm,
+        llvm_fn_symbol(&f.meta.name)
+    )
+    .unwrap();
     let mut params_to_emit = &f.params[..];
     if ret_param.is_some() && use_reg_ret {
         params_to_emit = &f.params[..f.params.len() - 1];
@@ -402,7 +408,13 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
         "void".to_string()
     };
 
-    write!(cx.out, "define {} @{}(", ret_llvm, llvm_fn_symbol(&f.meta.name)).unwrap();
+    write!(
+        cx.out,
+        "define {} @{}(",
+        ret_llvm,
+        llvm_fn_symbol(&f.meta.name)
+    )
+    .unwrap();
     let mut params_to_emit = &f.params[..];
     if ret_param.is_some() && use_reg_ret {
         params_to_emit = &f.params[..f.params.len() - 1];
@@ -448,12 +460,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
             }
         } else {
             emit_alloca(cx, &p.name, &p.ty);
-            writeln!(
-                cx.out,
-                "  store ptr %arg.{}, ptr %local.{}",
-                p.name, p.name
-            )
-            .unwrap();
+            writeln!(cx.out, "  store ptr %arg.{}, ptr %local.{}", p.name, p.name).unwrap();
         }
     }
 

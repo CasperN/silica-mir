@@ -357,7 +357,9 @@ impl Parser {
         let span = span_of(node);
 
         let mut temp_cursor = node.walk();
-        let is_unsafe = node.children(&mut temp_cursor).any(|c| c.kind() == "unsafe");
+        let is_unsafe = node
+            .children(&mut temp_cursor)
+            .any(|c| c.kind() == "unsafe");
 
         let (abi, abi_span) = if let Some(abi_node) = node.child_by_field_name("abi") {
             // Strip surrounding quotes; the string_lit rule matches `"..."`.
@@ -698,7 +700,13 @@ impl Parser {
                 let inner = raw
                     .strip_prefix("b\"")
                     .and_then(|s| s.strip_suffix('"'))
-                    .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "malformed byte string literal"))?;
+                    .ok_or_else(|| {
+                        self.diag(
+                            node,
+                            ParserCode::MalformedCst,
+                            "malformed byte string literal",
+                        )
+                    })?;
                 let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node)?;
                 Ok(Expr {
                     kind: ExprKind::Literal(Literal::ByteStr(bytes)),
@@ -710,10 +718,20 @@ impl Parser {
                 let inner = raw
                     .strip_prefix("b'")
                     .and_then(|s| s.strip_suffix('\''))
-                    .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "malformed byte character literal"))?;
+                    .ok_or_else(|| {
+                        self.diag(
+                            node,
+                            ParserCode::MalformedCst,
+                            "malformed byte character literal",
+                        )
+                    })?;
                 let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node)?;
                 if bytes.len() != 1 {
-                    return Err(self.diag(node, ParserCode::MalformedCst, "byte character literal must be exactly one byte"));
+                    return Err(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "byte character literal must be exactly one byte",
+                    ));
                 }
                 Ok(Expr {
                     kind: ExprKind::Literal(Literal::Int(bytes[0] as i64, Some(IntTy::U8))),
@@ -1438,13 +1456,17 @@ mod tests {
         ";
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 2);
-        
-        let Declaration::Fn(f1) = &program.declarations[0] else { panic!() };
+
+        let Declaration::Fn(f1) = &program.declarations[0] else {
+            panic!()
+        };
         assert_eq!(f1.name, "add_impl");
         assert_eq!(f1.abi, None);
         assert!(f1.body.is_none());
 
-        let Declaration::Fn(f2) = &program.declarations[1] else { panic!() };
+        let Declaration::Fn(f2) = &program.declarations[1] else {
+            panic!()
+        };
         assert_eq!(f2.name, "c_fn");
         assert_eq!(f2.abi.as_deref(), Some("C"));
         assert!(f2.body.is_none());
@@ -1457,7 +1479,9 @@ mod tests {
         ";
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
-        let Declaration::Fn(f) = &program.declarations[0] else { panic!() };
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!()
+        };
         assert_eq!(f.name, "add_impl");
         assert_eq!(f.lifetime_params.len(), 1);
         assert_eq!(f.lifetime_params[0].0, "a");
@@ -1476,16 +1500,30 @@ mod tests {
         ";
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
-        let Declaration::Fn(f) = &program.declarations[0] else { panic!() };
-        let ExprKind::Block(stmts, _, _) = &f.body.as_ref().unwrap().kind else { panic!() };
-        
-        let Stmt::Let { init: Some(init_s), .. } = &stmts[0] else { panic!() };
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!()
+        };
+        let ExprKind::Block(stmts, _, _) = &f.body.as_ref().unwrap().kind else {
+            panic!()
+        };
+
+        let Stmt::Let {
+            init: Some(init_s), ..
+        } = &stmts[0]
+        else {
+            panic!()
+        };
         assert_eq!(
             init_s.kind,
             ExprKind::Literal(Literal::ByteStr(b"hello\nworld".to_vec()))
         );
 
-        let Stmt::Let { init: Some(init_c), .. } = &stmts[1] else { panic!() };
+        let Stmt::Let {
+            init: Some(init_c), ..
+        } = &stmts[1]
+        else {
+            panic!()
+        };
         assert_eq!(
             init_c.kind,
             ExprKind::Literal(Literal::Int(65, Some(IntTy::U8)))

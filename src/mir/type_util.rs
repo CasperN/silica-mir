@@ -13,12 +13,7 @@ impl DeclMeta {
     /// `ty` with the args at a use site. Convenience wrapper around
     /// [`substitute_all`] so callers don't have to spell the four
     /// slices in the right order every time.
-    pub fn substitute(
-        &self,
-        ty: &Type,
-        lifetime_args: &[Lifetime],
-        type_args: &[Type],
-    ) -> Type {
+    pub fn substitute(&self, ty: &Type, lifetime_args: &[Lifetime], type_args: &[Type]) -> Type {
         substitute_all(
             ty,
             &self.lifetime_params,

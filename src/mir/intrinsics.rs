@@ -841,7 +841,11 @@ mod tests {
         assert_eq!(fns.len(), all().len());
         for f in &fns {
             assert!(f.is_extern, "intrinsic {} should be extern", f.meta.name);
-            assert!(f.body.is_none(), "intrinsic {} should have no body", f.meta.name);
+            assert!(
+                f.body.is_none(),
+                "intrinsic {} should have no body",
+                f.meta.name
+            );
         }
     }
 

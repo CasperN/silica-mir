@@ -1061,11 +1061,13 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Ok(StructDecl {
-            meta: DeclMeta { 
-                name, name_span,
-                lifetime_params, 
+            meta: DeclMeta {
+                name,
+                name_span,
+                lifetime_params,
                 outlives: vec![], // TODO
-                type_params, markers
+                type_params,
+                markers,
             },
             fields,
         })
@@ -1116,8 +1118,14 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Ok(EnumDecl {
-            meta: DeclMeta { name, name_span, lifetime_params, outlives: vec![], // TODO
-                type_params, markers },
+            meta: DeclMeta {
+                name,
+                name_span,
+                lifetime_params,
+                outlives: vec![], // TODO
+                type_params,
+                markers,
+            },
             variants,
         })
     }
@@ -1229,7 +1237,14 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Ok(Function {
-            meta: DeclMeta { name, name_span, lifetime_params, outlives: vec![], type_params, markers: trivial_markers() },
+            meta: DeclMeta {
+                name,
+                name_span,
+                lifetime_params,
+                outlives: vec![],
+                type_params,
+                markers: trivial_markers(),
+            },
             is_extern,
             abi,
             params,
