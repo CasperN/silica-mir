@@ -180,6 +180,13 @@ error: at 402:5: [VF-SwitchArmFalselyUnreachable] In function 'variant_with_inha
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  403 |   g:
      |
+error: at 431:5: [VF-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
+     |
+ 430 |     call set_a(move ab_ref);
+ 431 |     f = copy ab as B;  # Variant read not okay - it could have changed.
+     |     ^^^^^^^^^^^^^^^^
+ 432 |     goto ret;
+     |
 error: at 296:5: [INIT-UseAfterMove] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
      |
  295 |     unborrow r;
