@@ -728,6 +728,19 @@ pub enum Declaration {
     Fn(Function),
 }
 
+impl Declaration {
+    /// Shared declaration metadata (name, generics, markers). Present
+    /// on every variant at the same field name — this accessor lets
+    /// callers read the metadata without pattern-matching on the kind.
+    pub fn meta(&self) -> &DeclMeta {
+        match self {
+            Declaration::Struct(s) => &s.meta,
+            Declaration::Enum(e) => &e.meta,
+            Declaration::Fn(f) => &f.meta,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Program {
     pub declarations: Vec<Declaration>,

@@ -69,7 +69,7 @@ pub fn monomorphize(program: &mut Program) {
     let originals: BTreeMap<String, Declaration> = program
         .declarations
         .iter()
-        .map(|d| (decl_name(d).to_string(), d.clone()))
+        .map(|d| (d.meta().name.clone(), d.clone()))
         .collect();
 
     let mut ctx = MonoCtx {
@@ -82,8 +82,9 @@ pub fn monomorphize(program: &mut Program) {
     // decls are only pulled in via instantiations found while walking
     // reachable code.
     for decl in &program.declarations {
-        if !decl_is_generic(decl) {
-            ctx.need(decl_name(decl), &[]);
+        let m = decl.meta();
+        if m.type_params.is_empty() {
+            ctx.need(&m.name, &[]);
         }
     }
 
@@ -355,23 +356,6 @@ fn mangle(name: &str, args: &[Type]) -> String {
     }
     let parts: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
     format!("{}<{}>", name, parts.join(", "))
-}
-
-fn decl_name(d: &Declaration) -> &str {
-    match d {
-        Declaration::Struct(s) => &s.meta.name,
-        Declaration::Enum(e) => &e.meta.name,
-        Declaration::Fn(f) => &f.meta.name,
-    }
-}
-
-fn decl_is_generic(d: &Declaration) -> bool {
-    match d {
-        // TODO: What about lifetime generic?
-        Declaration::Struct(s) => !s.meta.type_params.is_empty(),
-        Declaration::Enum(e) => !e.meta.type_params.is_empty(),
-        Declaration::Fn(f) => !f.meta.type_params.is_empty(),
-    }
 }
 
 /// Substitute Params in every Type-carrying position inside a statement.

@@ -35,7 +35,6 @@ use crate::mir::dataflow;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::{Env, TypeDecl};
-use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 
@@ -245,7 +244,7 @@ fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
             .iter()
             .map(|f| StructField {
                 name: f.name.clone(),
-                ty: substitute_params(&f.ty, &s.meta.type_params, args),
+                ty: s.meta.substitute_types(&f.ty, args),
                 span: f.span,
             })
             .collect(),
@@ -260,7 +259,7 @@ fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> 
         return None;
     };
     let payload = e.variants.iter().find(|v| v.name == variant)?;
-    Some(substitute_params(&payload.ty, &e.meta.type_params, args))
+    Some(e.meta.substitute_types(&payload.ty, args))
 }
 
 // ---------- Canonicalization ----------

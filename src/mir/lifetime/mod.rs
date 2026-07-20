@@ -516,7 +516,6 @@ fn collect_named_regions(
     visited: &mut BTreeSet<String>,
     out: &mut BTreeSet<Lifetime>,
 ) {
-    use crate::mir::type_util::substitute_all;
     match &ty.kind {
         TypeKind::Ref(_, Some(lt), inner) => {
             out.insert(lt.clone());
@@ -535,25 +534,13 @@ fn collect_named_regions(
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
-                        let sub = substitute_all(
-                            &f.ty,
-                            &s.meta.lifetime_params,
-                            lifetime_args,
-                            &s.meta.type_params,
-                            type_args,
-                        );
+                        let sub = s.meta.substitute(&f.ty, lifetime_args, type_args);
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
                     for v in &e.variants {
-                        let sub = substitute_all(
-                            &v.ty,
-                            &e.meta.lifetime_params,
-                            lifetime_args,
-                            &e.meta.type_params,
-                            type_args,
-                        );
+                        let sub = e.meta.substitute(&v.ty, lifetime_args, type_args);
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }

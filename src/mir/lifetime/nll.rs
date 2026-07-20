@@ -57,7 +57,6 @@ use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
-use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -461,11 +460,10 @@ fn walk_ref_paths(
     // ref and drop the borrower from NLL's tracked set.
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
-            let type_params = s.meta.type_params.clone();
             let fields: Vec<_> = s
                 .fields
                 .iter()
-                .map(|f| (f.name.clone(), substitute_params(&f.ty, &type_params, args)))
+                .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
                 .collect();
             for (fname, fty) in fields {
                 let sub = field_place(place.clone(), fname);
@@ -473,11 +471,10 @@ fn walk_ref_paths(
             }
         }
         Some(TypeDecl::Enum(e)) => {
-            let type_params = e.meta.type_params.clone();
             let variants: Vec<_> = e
                 .variants
                 .iter()
-                .map(|v| (v.name.clone(), substitute_params(&v.ty, &type_params, args)))
+                .map(|v| (v.name.clone(), e.meta.substitute_types(&v.ty, args)))
                 .collect();
             for (vname, vty) in variants {
                 let sub = downcast_place(place.clone(), vname);

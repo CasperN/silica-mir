@@ -13,7 +13,7 @@
 //! variables to solve; only well-typedness to verify.
 
 use crate::diagnostics::DiagCode;
-use crate::mir::ast::{EnumDecl, StructDecl};
+use crate::mir::ast::{DeclMeta, EnumDecl, StructDecl};
 
 pub mod check;
 pub mod env;
@@ -142,4 +142,17 @@ impl From<TypeCheckCode> for DiagCode {
 pub enum TypeDecl {
     Struct(StructDecl),
     Enum(EnumDecl),
+}
+
+impl TypeDecl {
+    /// Shared declaration metadata (name, generics, markers). Present
+    /// on both struct and enum variants at the same field name — this
+    /// accessor lets callers read the metadata without pattern-matching
+    /// on the variant.
+    pub fn meta(&self) -> &DeclMeta {
+        match self {
+            TypeDecl::Struct(s) => &s.meta,
+            TypeDecl::Enum(e) => &e.meta,
+        }
+    }
 }

@@ -17,7 +17,6 @@ use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::{class_of, ParamScope};
-use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone)]
@@ -50,39 +49,30 @@ impl Env {
         }
 
         for decl in &program.declarations {
+            let m = decl.meta();
+            let (existing, kind_word) = match decl {
+                Declaration::Struct(_) | Declaration::Enum(_) => {
+                    (types.contains_key(&m.name), "type")
+                }
+                Declaration::Fn(_) => (functions.contains_key(&m.name), "function"),
+            };
+            if existing {
+                errors.push(Diagnostic::new(
+                    DuplicateDeclaration,
+                    m.name_span,
+                    format!("Duplicate declaration of {} '{}'", kind_word, m.name),
+                ));
+                continue;
+            }
             match decl {
                 Declaration::Struct(s) => {
-                    if types.contains_key(&s.meta.name) {
-                        errors.push(Diagnostic::new(
-                            DuplicateDeclaration,
-                            s.meta.name_span,
-                            format!("Duplicate declaration of type '{}'", s.meta.name),
-                        ));
-                    } else {
-                        types.insert(s.meta.name.clone(), TypeDecl::Struct(s.clone()));
-                    }
+                    types.insert(m.name.clone(), TypeDecl::Struct(s.clone()));
                 }
                 Declaration::Enum(e) => {
-                    if types.contains_key(&e.meta.name) {
-                        errors.push(Diagnostic::new(
-                            DuplicateDeclaration,
-                            e.meta.name_span,
-                            format!("Duplicate declaration of type '{}'", e.meta.name),
-                        ));
-                    } else {
-                        types.insert(e.meta.name.clone(), TypeDecl::Enum(e.clone()));
-                    }
+                    types.insert(m.name.clone(), TypeDecl::Enum(e.clone()));
                 }
                 Declaration::Fn(f) => {
-                    if functions.contains_key(&f.meta.name) {
-                        errors.push(Diagnostic::new(
-                            DuplicateDeclaration,
-                            f.meta.name_span,
-                            format!("Duplicate declaration of function '{}'", f.meta.name),
-                        ));
-                    } else {
-                        functions.insert(f.meta.name.clone(), f.clone());
-                    }
+                    functions.insert(m.name.clone(), f.clone());
                 }
             }
         }
@@ -124,11 +114,10 @@ impl Env {
             | TypeKind::Unit
             | TypeKind::Never => Ok(()),
             TypeKind::Custom(name, _, args) => {
-                let decl_params: &[TypeParam] = match self.types.get(name) {
-                    Some(TypeDecl::Struct(s)) => &s.meta.type_params,
-                    Some(TypeDecl::Enum(e)) => &e.meta.type_params,
-                    None => return Err(format!("Use of undeclared type '{}'", name)),
+                let Some(decl) = self.types.get(name) else {
+                    return Err(format!("Use of undeclared type '{}'", name));
                 };
+                let decl_params: &[TypeParam] = &decl.meta().type_params;
                 if args.len() != decl_params.len() {
                     return Err(format!(
                         "Type '{}' expects {} type argument(s), got {}",
@@ -188,7 +177,7 @@ impl Env {
             return None;
         };
         let f_ty = &s.fields.iter().find(|f| f.name == field)?.ty;
-        Some(substitute_params(f_ty, &s.meta.type_params, args))
+        Some(s.meta.substitute_types(f_ty, args))
     }
 
     pub fn types_match(&self, t1: &Type, t2: &Type) -> bool {
@@ -274,7 +263,7 @@ impl Env {
                         .fields
                         .iter()
                         .find(|f| f.name == *field_name)
-                        .map(|f| substitute_params(&f.ty, &s.meta.type_params, args))
+                        .map(|f| s.meta.substitute_types(&f.ty, args))
                         .ok_or_else(|| {
                             err(
                                 NoSuchField,
@@ -310,7 +299,7 @@ impl Env {
                         .variants
                         .iter()
                         .find(|v| v.name == *variant_name)
-                        .map(|v| substitute_params(&v.ty, &e.meta.type_params, args))
+                        .map(|v| e.meta.substitute_types(&v.ty, args))
                         .ok_or_else(|| {
                             err(
                                 NoSuchVariant,
@@ -390,7 +379,7 @@ impl Env {
                     let param_tys = f
                         .params
                         .iter()
-                        .map(|p| substitute_params(&p.ty, &f.meta.type_params, type_args))
+                        .map(|p| f.meta.substitute_types(&p.ty, type_args))
                         .collect();
                     Ok(fn_ty(param_tys))
                 }
@@ -454,8 +443,7 @@ impl Env {
                         )
                     })?;
 
-                let expected_payload =
-                    substitute_params(&variant.ty, &e_decl.meta.type_params, type_args);
+                let expected_payload = e_decl.meta.substitute_types(&variant.ty, type_args);
                 let op_ty = self.type_of_operand(op, span, locals)?;
                 if !self.types_match(&expected_payload, &op_ty) {
                     return Err(err(

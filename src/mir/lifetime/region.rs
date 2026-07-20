@@ -133,7 +133,6 @@ fn walk_regions(
 ) {
     use crate::mir::helpers::{downcast_place, field_place};
     use crate::mir::type_check::TypeDecl;
-    use crate::mir::type_util::substitute_all;
     match &ty.kind {
         TypeKind::Ref(_, lt_opt, _) => {
             let region = ctx.region_for_ref(lt_opt);
@@ -148,18 +147,7 @@ fn walk_regions(
                     let fields: Vec<_> = s
                         .fields
                         .iter()
-                        .map(|f| {
-                            (
-                                f.name.clone(),
-                                substitute_all(
-                                    &f.ty,
-                                    &s.meta.lifetime_params,
-                                    lifetime_args,
-                                    &s.meta.type_params,
-                                    args,
-                                ),
-                            )
-                        })
+                        .map(|f| (f.name.clone(), s.meta.substitute(&f.ty, lifetime_args, args)))
                         .collect();
                     for (fname, fty) in fields {
                         let sub = field_place(place.clone(), fname);
@@ -170,18 +158,7 @@ fn walk_regions(
                     let variants: Vec<_> = e
                         .variants
                         .iter()
-                        .map(|v| {
-                            (
-                                v.name.clone(),
-                                substitute_all(
-                                    &v.ty,
-                                    &e.meta.lifetime_params,
-                                    lifetime_args,
-                                    &e.meta.type_params,
-                                    args,
-                                ),
-                            )
-                        })
+                        .map(|v| (v.name.clone(), e.meta.substitute(&v.ty, lifetime_args, args)))
                         .collect();
                     for (vname, vty) in variants {
                         let sub = downcast_place(place.clone(), vname);

@@ -4,9 +4,37 @@
 //! single pass: inhabitedness, generic parameter substitution, etc.
 
 use crate::common::Lifetime;
-use crate::mir::ast::{Type, TypeKind, TypeParam};
+use crate::mir::ast::{DeclMeta, Type, TypeKind, TypeParam};
 use crate::mir::type_check::{Env, TypeDecl};
 use std::collections::BTreeSet;
+
+impl DeclMeta {
+    /// Substitute the decl's declared lifetime and type parameters in
+    /// `ty` with the args at a use site. Convenience wrapper around
+    /// [`substitute_all`] so callers don't have to spell the four
+    /// slices in the right order every time.
+    pub fn substitute(
+        &self,
+        ty: &Type,
+        lifetime_args: &[Lifetime],
+        type_args: &[Type],
+    ) -> Type {
+        substitute_all(
+            ty,
+            &self.lifetime_params,
+            lifetime_args,
+            &self.type_params,
+            type_args,
+        )
+    }
+
+    /// Type-only degenerate case of [`DeclMeta::substitute`] for callers
+    /// that only have `type_args` on hand (a decl with no lifetime
+    /// parameters, or a caller that doesn't need lifetime substitution).
+    pub fn substitute_types(&self, ty: &Type, type_args: &[Type]) -> Type {
+        substitute_params(ty, &self.type_params, type_args)
+    }
+}
 
 /// Substitute type-parameter references in `ty` with the concrete
 /// arguments at a use site. Given a declaration's `type_params` and

@@ -37,7 +37,6 @@ use crate::mir::helpers::*;
 use crate::mir::init_state::{self, InitState, PointState};
 use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
 use crate::mir::type_check::{Env, TypeDecl};
-use crate::mir::type_util::substitute_params;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.
@@ -442,7 +441,7 @@ fn walk_diverged(
                         let Some(field_state) = fields.get(&f.name) else {
                             continue;
                         };
-                        let field_ty = substitute_params(&f.ty, &s.meta.type_params, args);
+                        let field_ty = s.meta.substitute_types(&f.ty, args);
                         let sub_place = field_place(place.clone(), f.name.clone());
                         walk_diverged(env, sub_place, &field_ty, field_state, out);
                     }
@@ -563,11 +562,10 @@ fn plan_drops_for_place(
             // type — otherwise a `Bag<DropVal>.b` recurses with the raw
             // `Param(T)`, which `class_of` resolves to empty markers
             // under an empty scope and misses the drop.
-            let type_params = s.meta.type_params.clone();
             let field_decls: Vec<_> = s
                 .fields
                 .iter()
-                .map(|f| (f.name.clone(), substitute_params(&f.ty, &type_params, args)))
+                .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
                 .collect();
             for (name, field_ty) in field_decls.iter().rev() {
                 let Some(field_state) = fields.get(name) else {
