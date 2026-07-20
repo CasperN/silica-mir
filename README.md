@@ -917,10 +917,8 @@ To load it locally:
 # Punch list
 
 ## Language features
-- **MIR must honor `extern "..."` ABI.** HLL parses both `extern fn` and `extern "C" fn` and preserves the ABI string on `FnDecl`; the ABI is dropped at HLL→MIR lowering because MIR's `Function::is_extern` is a bare bool. Wire an `abi: Option<String>` through to codegen so C-ABI externs emit register returns instead of the Silica sret convention. Today's void externs happen to work under either ABI — the divergence bites the moment someone declares a non-void C extern.
 - **HLL pointer `as` casts.** `*T as *U` reinterpretation. Blocked on MIR gaining `RValue::PtrCast` and codegen picking up a bitcast (nop at LLVM level with opaque `ptr`). Numeric `as` casts landed (sugar for the existing `$*_to_*` intrinsics); pointer casts are the pending half. Raw pointers stay non-null by construction — no `int as *T`.
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
-- **HLL byte-string literals.** `b"hello"` is MIR-only; HLL has to build fixed-size `[u8; N]` buffers element-by-element. See `tests/programs/hll_hello_world_via_write.si` for the workaround.
 - **HLL match arm bindings collide across arms in the same fn.** All arm bindings get hoisted to fn scope, so `A(x) => ..., B(x) => ...` in one fn fires `TC-DuplicateLocalName`; even `_` counts. Blocks the natural idiom of reusing binding names across mutually exclusive arms — every arm needs a unique identifier today.
 - **HLL move-then-write through `&mut` for Copy types.** MIR can spell `move r.*; r.* = v;` to deinit-then-reinit through a mutable ref, but HLL always emits `copy` for Copy types and has no `drop` / explicit `move` surface, so an inline reassignment through `&mut` on a Copy pointee fails init-state checks. Blocks the natural "consume-and-replace through a ref" pattern in HLL.
 - **HLL match on projection places.** `a[i] match { ... }` and `foo.field match { ... }` fire `VF-DowncastOnProjection` because variant flow tracks root Vars only. Users must extract to a local first (`let t = a[i]; t match { ... }`) or wrap the decode in a helper fn that takes the value by parameter. Fixable by either (a) copying/moving the projection into a fresh local during HLL lowering or (b) extending variant flow to track projections.
@@ -960,12 +958,6 @@ To load it locally:
 
 ## FFI
 - **`Type::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
-
-## Diagnostics
-- **Info-severity diagnostics.** Fourth bucket alongside error /
-  warning / internal_error, rendered with a `note:` prefix. First
-  use case: flag redundant markers on a decl — `struct X: Copy +
-  Drop + Move { ... }` gets an info note that `Move` is implied.
 
 ## Testing gaps
 - **End-to-end runtime fixtures.** `tests/programs/*` today pins elaborated MIR, but real behavior — `sum_to_n(10) → 55`, `hello_world` prints `hi!\n`, linked-list `exit=6` — is only verified manually. Automate: compile to `.ll`, link any sibling C shim, execute, pin exit code + stdout in a `.run.expected`. Needs a new fixture-runner stage + `clang` gating. Bazel migration (see Longer term) is one path to the cross-language build infra this requires.

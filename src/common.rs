@@ -39,7 +39,7 @@ enum Tier {
 /// - [`implies`] — semantic satisfaction, accounting for the
 ///   vertical closure (higher tiers imply lower) and the horizontal
 ///   closure (Copy + Drop implies Move). Used by every other query.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, Default)]
 pub struct Markers {
     // One tier per column, `None` = the type has no impl for that
     // operation (linear in that dimension). Kept private so callers
@@ -47,7 +47,15 @@ pub struct Markers {
     copy: Option<Tier>,
     drop: Option<Tier>,
     mov: Option<Tier>,
+    redundant_move: bool,
 }
+
+impl PartialEq for Markers {
+    fn eq(&self, other: &Self) -> bool {
+        self.copy == other.copy && self.drop == other.drop && self.mov == other.mov
+    }
+}
+impl Eq for Markers {}
 
 impl Markers {
     /// A marker set with nothing declared — linear in every dimension.
@@ -63,12 +71,27 @@ impl Markers {
     /// since it's already implied by Copy + Drop.
     pub fn from_iter(ms: impl IntoIterator<Item = Marker>) -> Self {
         let mut out = Self::empty();
+        let mut has_copy = false;
+        let mut has_drop = false;
+        let mut has_move = false;
         for m in ms {
             match m {
-                Marker::Copy => out.copy = Some(Tier::Trivial),
-                Marker::Drop => out.drop = Some(Tier::Trivial),
-                Marker::Move => out.mov = Some(Tier::Trivial),
+                Marker::Copy => {
+                    out.copy = Some(Tier::Trivial);
+                    has_copy = true;
+                }
+                Marker::Drop => {
+                    out.drop = Some(Tier::Trivial);
+                    has_drop = true;
+                }
+                Marker::Move => {
+                    out.mov = Some(Tier::Trivial);
+                    has_move = true;
+                }
             }
+        }
+        if has_copy && has_drop && has_move {
+            out.redundant_move = true;
         }
         out.canonicalize();
         out
@@ -93,6 +116,12 @@ impl Markers {
             Marker::Drop => self.drop.is_some(),
             Marker::Move => self.mov.is_some(),
         }
+    }
+
+    /// True if the Move marker was explicitly declared but redundant
+    /// because both Copy and Drop were also declared.
+    pub fn is_redundant_move(&self) -> bool {
+        self.redundant_move
     }
 
     /// True iff the type semantically satisfies this marker, considering

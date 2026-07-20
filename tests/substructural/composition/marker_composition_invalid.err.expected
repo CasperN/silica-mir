@@ -73,4 +73,18 @@ error: at 81:35: [COMP-MoveMarkerNotSatisfied] In enum 'MoveLinearVariant' (mark
  80 | # it from the Move constraint declared on the enum.
  81 | enum MoveLinearVariant: Move { W: Linear }
     |                                   ^^^^^^
+ 82 | 
+    |
+note: at 86:8: [COMP-RedundantMoveMarker] Move marker is redundant on 'RedundantStruct' because both Copy and Drop are present
+    |
+ 85 | # Move is implied by Copy + Drop. Declaring it is redundant.
+ 86 | struct RedundantStruct: Copy + Drop + Move { x: i64 }
+    |        ^^^^^^^^^^^^^^^
+ 87 | 
+    |
+note: at 89:6: [COMP-RedundantMoveMarker] Move marker is redundant on 'RedundantEnum' because both Copy and Drop are present
+    |
+ 88 | # Move is implied by Copy + Drop. Declaring it is redundant on an enum.
+ 89 | enum RedundantEnum: Copy + Drop + Move { A: i64 }
+    |      ^^^^^^^^^^^^^
     |

@@ -200,6 +200,7 @@ pub enum SourceKind {
 pub struct Diagnostics {
     errors: Vec<Diagnostic>,
     warnings: Vec<Diagnostic>,
+    infos: Vec<Diagnostic>,
     /// Internal compiler errors — invariant violations, "should've been
     /// caught by an earlier pass," unreachable branches. Distinct from
     /// user-facing errors so we can render them with a bug-report
@@ -231,6 +232,11 @@ impl Diagnostics {
     /// Append a warning.
     pub fn push_warning(&mut self, diagnostic: Diagnostic) {
         self.warnings.push(diagnostic);
+    }
+
+    /// Append an info/note diagnostic.
+    pub fn push_info(&mut self, diagnostic: Diagnostic) {
+        self.infos.push(diagnostic);
     }
 
     /// Append an internal compiler error. Use for invariant violations
@@ -289,6 +295,11 @@ impl Diagnostics {
         self.warnings.len()
     }
 
+    /// Number of recorded info/note diagnostics.
+    pub fn info_count(&self) -> usize {
+        self.infos.len()
+    }
+
     /// Number of recorded internal errors.
     pub fn internal_error_count(&self) -> usize {
         self.internal_errors.len()
@@ -302,6 +313,11 @@ impl Diagnostics {
     /// Iterate structured warnings.
     pub fn warnings(&self) -> impl Iterator<Item = &Diagnostic> {
         self.warnings.iter()
+    }
+
+    /// Iterate structured info/note diagnostics.
+    pub fn infos(&self) -> impl Iterator<Item = &Diagnostic> {
+        self.infos.iter()
     }
 
     /// Iterate structured internal errors.
@@ -323,6 +339,14 @@ impl Diagnostics {
     /// String view of `warnings`. Mirrors [`errors_str`].
     pub fn warnings_str(&self) -> Vec<String> {
         self.warnings
+            .iter()
+            .map(|d| self.render_diagnostic(d))
+            .collect()
+    }
+
+    /// String view of `infos`. Mirrors [`errors_str`].
+    pub fn infos_str(&self) -> Vec<String> {
+        self.infos
             .iter()
             .map(|d| self.render_diagnostic(d))
             .collect()
@@ -639,6 +663,24 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
         assert!(errs[0].contains("user error"));
         assert!(internals[0].contains("[HLO-MissingType]"));
         assert!(internals[0].contains("internal boom"));
+    }
+
+    #[test]
+    fn info_diagnostics_are_separate() {
+        let mut ds = Diagnostics::default();
+        ds.push_info(Diagnostic::new(
+            TypeCheckCode::AssignmentTypeMismatch,
+            Span::default(),
+            "info note",
+        ));
+
+        assert_eq!(ds.info_count(), 1);
+        assert!(ds.is_clean());
+        assert!(!ds.has_errors());
+
+        let infos = ds.infos_str();
+        assert_eq!(infos.len(), 1);
+        assert!(infos[0].contains("info note"));
     }
 
     #[test]

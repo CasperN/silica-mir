@@ -113,9 +113,12 @@ fn main() {
     for w in d.warnings_str() {
         eprintln!("Warning: {}", w);
     }
+    for i in d.infos_str() {
+        eprintln!("Note: {}", i);
+    }
 
-    if d.warning_count() > 0 {
-        eprintln!("({} warning(s))", d.warning_count());
+    if d.warning_count() > 0 || d.info_count() > 0 {
+        eprintln!("({} warning(s), {} note(s))", d.warning_count(), d.info_count());
     }
     match emit {
         EmitKind::Llvm => {
@@ -133,6 +136,9 @@ fn report_and_exit(d: &Diagnostics) -> ! {
     for w in d.warnings_str() {
         eprintln!("Warning: {}", w);
     }
+    for i in d.infos_str() {
+        eprintln!("Note: {}", i);
+    }
     if d.internal_error_count() > 0 {
         eprintln!();
         eprintln!("!!! Internal compiler error(s) — please file a bug !!!");
@@ -141,9 +147,10 @@ fn report_and_exit(d: &Diagnostics) -> ! {
         }
     }
     eprintln!(
-        "{} error(s), {} warning(s), {} internal error(s)",
+        "{} error(s), {} warning(s), {} note(s), {} internal error(s)",
         d.error_count(),
         d.warning_count(),
+        d.info_count(),
         d.internal_error_count(),
     );
     std::process::exit(1);

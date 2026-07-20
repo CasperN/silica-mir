@@ -175,6 +175,11 @@ fn render_diagnostics(d: &Diagnostics) -> String {
         out.push_str(&w);
         out.push('\n');
     }
+    for i in d.infos_str() {
+        out.push_str("note: ");
+        out.push_str(&i);
+        out.push('\n');
+    }
     out
 }
 

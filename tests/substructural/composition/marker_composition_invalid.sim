@@ -79,3 +79,11 @@ enum DropOutRefVariant: Drop { A: &out i64 }
 # `Linear` is not Move. Wrapping it in an enum variant does not exempt
 # it from the Move constraint declared on the enum.
 enum MoveLinearVariant: Move { W: Linear }
+
+# ---------- Redundant Move: Copy + Drop + Move struct/enum ----------
+
+# Move is implied by Copy + Drop. Declaring it is redundant.
+struct RedundantStruct: Copy + Drop + Move { x: i64 }
+
+# Move is implied by Copy + Drop. Declaring it is redundant on an enum.
+enum RedundantEnum: Copy + Drop + Move { A: i64 }
