@@ -1174,7 +1174,7 @@ fn align_up(x: u64, a: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::ast::{Function, Program, Span};
+    use crate::mir::ast::{Function, Program};
 
     #[test]
     #[should_panic(expected = "unsupported ABI: \"system\"")]

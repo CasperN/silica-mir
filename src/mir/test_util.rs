@@ -39,13 +39,6 @@ pub(crate) fn maybe_write_fixture_ext(src: &str, has_errors: bool, ext: &str) {
     maybe_write_fixture_impl(src, None, has_errors, ext)
 }
 
-/// Codegen extraction: writes to `tests/codegen-raw/` regardless of
-/// diagnostic content, since these tests bypass the checker pipeline
-/// entirely.
-pub(crate) fn maybe_write_fixture_stage(src: &str, stage: &str, ext: &str) {
-    maybe_write_fixture_impl(src, Some(stage), false, ext)
-}
-
 fn maybe_write_fixture_impl(src: &str, forced_subdir: Option<&str>, has_errors: bool, ext: &str) {
     if !extract_mode() {
         return;
