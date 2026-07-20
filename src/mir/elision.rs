@@ -41,35 +41,35 @@ pub fn elide_program(program: &mut Program) {
 }
 
 fn elide_function(f: &mut Function) {
-    let mut ctx = ElideCtx::new(&f.lifetime_params);
+    let mut ctx = ElideCtx::new(&f.meta.lifetime_params);
     for p in &mut f.params {
         elide_type_pos(&mut p.ty, Pos::Input, &mut ctx);
     }
-    f.lifetime_params.extend(ctx.synthesized);
+    f.meta.lifetime_params.extend(ctx.synthesized);
     // Rule 2 (generalized): every synthesized output lifetime is
     // outlived by every input lifetime. Explicit output lifetimes
     // are not axiomatized — the user annotated them intentionally.
     for out_lt in &ctx.synth_output {
         for in_lt in &ctx.input {
-            f.signature_outlives.push((in_lt.clone(), out_lt.clone()));
+            f.meta.outlives.push((in_lt.clone(), out_lt.clone()));
         }
     }
 }
 
 fn elide_struct(s: &mut StructDecl) {
-    let mut ctx = ElideCtx::new(&s.lifetime_params);
+    let mut ctx = ElideCtx::new(&s.meta.lifetime_params);
     for f in &mut s.fields {
         elide_type_pos(&mut f.ty, Pos::Input, &mut ctx);
     }
-    s.lifetime_params.extend(ctx.synthesized);
+    s.meta.lifetime_params.extend(ctx.synthesized);
 }
 
 fn elide_enum(e: &mut EnumDecl) {
-    let mut ctx = ElideCtx::new(&e.lifetime_params);
+    let mut ctx = ElideCtx::new(&e.meta.lifetime_params);
     for v in &mut e.variants {
         elide_type_pos(&mut v.ty, Pos::Input, &mut ctx);
     }
-    e.lifetime_params.extend(ctx.synthesized);
+    e.meta.lifetime_params.extend(ctx.synthesized);
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -203,13 +203,16 @@ mod tests {
     #[test]
     fn function_gets_synthesized_params_appended() {
         let mut f = Function {
-            name: "f".into(),
-            name_span: Span::default(),
+            meta: DeclMeta {
+                name: "f".into(),
+                name_span: Span::default(),
+                lifetime_params: vec![Lifetime("a".into())],
+                outlives: vec![],
+                type_params: vec![],
+                markers: trivial_markers(),
+            },
             is_extern: false,
             abi: None,
-            lifetime_params: vec![Lifetime("a".into())],
-            signature_outlives: Vec::new(),
-            type_params: vec![],
             params: vec![
                 Param {
                     name: "x".into(),
@@ -226,7 +229,7 @@ mod tests {
         };
         elide_function(&mut f);
         assert_eq!(
-            f.lifetime_params,
+            f.meta.lifetime_params,
             vec![Lifetime("a".into()), Lifetime("s0".into())]
         );
     }
@@ -234,13 +237,9 @@ mod tests {
     #[test]
     fn idempotent() {
         let mut f = Function {
-            name: "f".into(),
-            name_span: Span::default(),
+            meta: basic_meta("f"),
             is_extern: false,
             abi: None,
-            lifetime_params: vec![],
-            signature_outlives: Vec::new(),
-            type_params: vec![],
             params: vec![Param {
                 name: "x".into(),
                 ty: mut_ref_ty(i64_ty()),
@@ -283,10 +282,10 @@ mod tests {
         ",
         );
         assert!(f
-            .signature_outlives
+            .meta.outlives
             .contains(&(Lifetime("s0".into()), Lifetime("s2".into()))));
         assert!(f
-            .signature_outlives
+            .meta.outlives
             .contains(&(Lifetime("s1".into()), Lifetime("s2".into()))));
     }
 
@@ -305,7 +304,7 @@ mod tests {
         // Output: 's3 (inner of $return). Inputs: 's0, 's1, 's2.
         for input in ["s0", "s1", "s2"] {
             assert!(
-                f.signature_outlives
+                f.meta.outlives
                     .contains(&(Lifetime(input.into()), Lifetime("s3".into()))),
                 "expected {} outlives s3",
                 input,
@@ -326,9 +325,9 @@ mod tests {
         ",
         );
         assert!(
-            f.signature_outlives.is_empty(),
+            f.meta.outlives.is_empty(),
             "explicit signature should have no axioms, got {:?}",
-            f.signature_outlives
+            f.meta.outlives
         );
     }
 }

@@ -142,16 +142,16 @@ pub fn place_type(
                     return None;
                 };
                 let field = s.fields.iter().find(|fd| fd.name == f)?;
-                let decl_lts: Vec<Lifetime> = s.lifetime_params.clone();
-                substitute_all(&field.ty, &decl_lts, &lts, &s.type_params, &args)
+                let decl_lts: Vec<Lifetime> = s.meta.lifetime_params.clone();
+                substitute_all(&field.ty, &decl_lts, &lts, &s.meta.type_params, &args)
             }
             (PathStep::Downcast(v), TypeKind::Custom(name, lts, args)) => {
                 let TypeDecl::Enum(e) = env.types.get(&name)? else {
                     return None;
                 };
                 let variant = e.variants.iter().find(|vd| vd.name == v)?;
-                let decl_lts: Vec<Lifetime> = e.lifetime_params.clone();
-                substitute_all(&variant.ty, &decl_lts, &lts, &e.type_params, &args)
+                let decl_lts: Vec<Lifetime> = e.meta.lifetime_params.clone();
+                substitute_all(&variant.ty, &decl_lts, &lts, &e.meta.type_params, &args)
             }
             (PathStep::Deref, TypeKind::Ref(_, _, inner)) => *inner,
             (PathStep::Deref, TypeKind::RawPtr(inner)) => *inner,

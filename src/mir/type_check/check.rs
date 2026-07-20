@@ -66,8 +66,8 @@ impl Env {
         for type_decl in self.types.values() {
             match type_decl {
                 TypeDecl::Struct(s) => {
-                    let scope = scope_from(&s.type_params);
-                    let lt_scope = lifetime_scope(&s.lifetime_params);
+                    let scope = scope_from(&s.meta.type_params);
+                    let lt_scope = lifetime_scope(&s.meta.lifetime_params);
                     let mut seen: HashSet<&str> = HashSet::new();
                     for f in &s.fields {
                         if !seen.insert(f.name.as_str()) {
@@ -76,7 +76,7 @@ impl Env {
                                 f.span,
                                 format!(
                                     "In struct '{}', field '{}' is declared more than once",
-                                    s.name, f.name
+                                    s.meta.name, f.name
                                 ),
                             ));
                         }
@@ -84,7 +84,7 @@ impl Env {
                             d.push_error(Diagnostic::new(
                                 InvalidDeclaredType,
                                 f.ty.span,
-                                format!("In struct '{}', field '{}': {}", s.name, f.name, e),
+                                format!("In struct '{}', field '{}': {}", s.meta.name, f.name, e),
                             ));
                         }
                         for lt in undeclared_lifetimes(&f.ty, &lt_scope) {
@@ -93,15 +93,15 @@ impl Env {
                                 f.ty.span,
                                 format!(
                                     "In struct '{}', field '{}': undeclared lifetime {}",
-                                    s.name, f.name, lt,
+                                    s.meta.name, f.name, lt,
                                 ),
                             ));
                         }
                     }
                 }
                 TypeDecl::Enum(e) => {
-                    let scope = scope_from(&e.type_params);
-                    let lt_scope = lifetime_scope(&e.lifetime_params);
+                    let scope = scope_from(&e.meta.type_params);
+                    let lt_scope = lifetime_scope(&e.meta.lifetime_params);
                     let mut seen: HashSet<&str> = HashSet::new();
                     for v in &e.variants {
                         if !seen.insert(v.name.as_str()) {
@@ -110,7 +110,7 @@ impl Env {
                                 v.span,
                                 format!(
                                     "In enum '{}', variant '{}' is declared more than once",
-                                    e.name, v.name
+                                    e.meta.name, v.name
                                 ),
                             ));
                         }
@@ -118,7 +118,7 @@ impl Env {
                             d.push_error(Diagnostic::new(
                                 InvalidDeclaredType,
                                 v.ty.span,
-                                format!("In enum '{}', variant '{}': {}", e.name, v.name, err),
+                                format!("In enum '{}', variant '{}': {}", e.meta.name, v.name, err),
                             ));
                         }
                         for lt in undeclared_lifetimes(&v.ty, &lt_scope) {
@@ -127,7 +127,7 @@ impl Env {
                                 v.ty.span,
                                 format!(
                                     "In enum '{}', variant '{}': undeclared lifetime {}",
-                                    e.name, v.name, lt,
+                                    e.meta.name, v.name, lt,
                                 ),
                             ));
                         }
@@ -143,8 +143,8 @@ impl Env {
     }
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
-        let scope = scope_from(&f.type_params);
-        let lt_scope = lifetime_scope(&f.lifetime_params);
+        let scope = scope_from(&f.meta.type_params);
+        let lt_scope = lifetime_scope(&f.meta.lifetime_params);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {
                 if i != f.params.len() - 1 {
@@ -153,7 +153,7 @@ impl Env {
                         p.span,
                         format!(
                             "In function '{}', parameter '$return' must be in the final position",
-                            f.name
+                            f.meta.name
                         ),
                     ));
                 }
@@ -161,7 +161,11 @@ impl Env {
                     TypeKind::Ref(RefKind::Out, _, _) => {}
                     _ => {
                         d.push_error(
-                            Diagnostic::new(InvalidDeclaredType, p.ty.span, format!("In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", f.name, p.ty)),
+                            Diagnostic::new(InvalidDeclaredType, p.ty.span,
+                                format!(
+                                    "In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", 
+                                    f.meta.name,
+                                    p.ty)),
                         );
                     }
                 }
@@ -170,7 +174,7 @@ impl Env {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
                     p.ty.span,
-                    format!("In function '{}', parameter '{}': {}", f.name, p.name, e),
+                    format!("In function '{}', parameter '{}': {}", f.meta.name, p.name, e),
                 ));
             }
             for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
@@ -179,7 +183,7 @@ impl Env {
                     p.ty.span,
                     format!(
                         "In function '{}', parameter '{}': undeclared lifetime {}",
-                        f.name, p.name, lt,
+                        f.meta.name, p.name, lt,
                     ),
                 ));
             }
@@ -189,7 +193,7 @@ impl Env {
         // an `i32 @main()` wrapper that calls it. Reject any other
         // shape here so bad programs fail at check time instead of
         // producing invalid IR.
-        if f.name == "main" {
+        if f.meta.name == "main" {
             check_main_signature(f, d);
         }
 
@@ -200,10 +204,10 @@ impl Env {
         if body.blocks.is_empty() {
             d.push_error(Diagnostic::new(
                 NoEntryBlock,
-                f.name_span,
+                f.meta.name_span,
                 format!(
                     "Function '{}' has no entry block: body must contain at least one basic block",
-                    f.name
+                    f.meta.name
                 ),
             ));
             return;
@@ -219,7 +223,7 @@ impl Env {
                     p.span,
                     format!(
                         "Duplicate variable name '{}' in parameters of function '{}'",
-                        p.name, f.name
+                        p.name, f.meta.name
                     ),
                 ));
             } else {
@@ -231,7 +235,7 @@ impl Env {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
                     l.ty.span,
-                    format!("In function '{}', local '{}': {}", f.name, l.name, e),
+                    format!("In function '{}', local '{}': {}", f.meta.name, l.name, e),
                 ));
             }
             for lt in undeclared_lifetimes(&l.ty, &lt_scope) {
@@ -240,7 +244,7 @@ impl Env {
                     l.ty.span,
                     format!(
                         "In function '{}', local '{}': undeclared lifetime {}",
-                        f.name, l.name, lt,
+                        f.meta.name, l.name, lt,
                     ),
                 ));
             }
@@ -250,7 +254,7 @@ impl Env {
                     l.span,
                     format!(
                         "Duplicate variable name '{}' in locals/parameters of function '{}'",
-                        l.name, f.name
+                        l.name, f.meta.name
                     ),
                 ));
             } else {
@@ -292,14 +296,14 @@ impl Env {
         // Local helper: build a Diagnostic with statement context.
         let stmt_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, stmt_span, msg)
-                .in_function(&func.name)
+                .in_function(&func.meta.name)
                 .in_block(&block.label)
         };
         // Attach the current function/block to a Diagnostic produced
         // by an inner helper (which knows its code + span but not the
         // enclosing context).
         let with_context =
-            |d: Diagnostic| -> Diagnostic { d.in_function(&func.name).in_block(&block.label) };
+            |d: Diagnostic| -> Diagnostic { d.in_function(&func.meta.name).in_block(&block.label) };
         match &stmt.kind {
             StatementKind::Assign(place, rvalue) => {
                 let lhs_ty = self
@@ -392,7 +396,7 @@ impl Env {
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, ts, msg)
-                .in_function(&func.name)
+                .in_function(&func.meta.name)
                 .in_block(&block.label)
         };
         match &block.terminator.kind {
@@ -417,7 +421,7 @@ impl Env {
                     )),
                     Ok(_) => {}
                     Err(inner_diag) => {
-                        d.push_error(inner_diag.in_function(&func.name).in_block(&block.label))
+                        d.push_error(inner_diag.in_function(&func.meta.name).in_block(&block.label))
                     }
                 }
                 if !block_labels.contains(true_label) {
@@ -468,7 +472,7 @@ impl Env {
                         }
                     },
                     Err(inner_diag) => {
-                        d.push_error(inner_diag.in_function(&func.name).in_block(&block.label));
+                        d.push_error(inner_diag.in_function(&func.meta.name).in_block(&block.label));
                         None
                     }
                 };
@@ -480,7 +484,7 @@ impl Env {
                                 TypeCheckCode::SwitchArmUnknownVariant,
                                 format!(
                                     "variant '{}' is not part of enum '{}'",
-                                    variant, e_decl.name
+                                    variant, e_decl.meta.name
                                 ),
                             ));
                         }
@@ -536,7 +540,7 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         _ => {
             d.push_error(Diagnostic::new(
                 MainBadSignature,
-                f.name_span,
+                f.meta.name_span,
                 format!(
                     "In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
                     f.params.len()

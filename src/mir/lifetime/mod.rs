@@ -233,7 +233,7 @@ pub fn check_loan_conflict(
                     borrower_name,
                 ),
             )
-            .in_function(&func.name)
+            .in_function(&func.meta.name)
             .in_block(&block.label)
             .with_hint(hint);
             // Attach the borrow's origin as a secondary span if we
@@ -537,9 +537,9 @@ fn collect_named_regions(
                     for f in &s.fields {
                         let sub = substitute_all(
                             &f.ty,
-                            &s.lifetime_params,
+                            &s.meta.lifetime_params,
                             lifetime_args,
-                            &s.type_params,
+                            &s.meta.type_params,
                             type_args,
                         );
                         collect_named_regions(&sub, env, visited, out);
@@ -549,9 +549,9 @@ fn collect_named_regions(
                     for v in &e.variants {
                         let sub = substitute_all(
                             &v.ty,
-                            &e.lifetime_params,
+                            &e.meta.lifetime_params,
                             lifetime_args,
-                            &e.type_params,
+                            &e.meta.type_params,
                             type_args,
                         );
                         collect_named_regions(&sub, env, visited, out);
@@ -692,7 +692,7 @@ struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     fn error(&self, code: LifetimeCode, span: Span, msg: String) -> Diagnostic {
-        Diagnostic::new(code, span, msg).in_function(&self.func.name)
+        Diagnostic::new(code, span, msg).in_function(&self.func.meta.name)
     }
 
     /// Enforce accumulated outlives constraints. Without `where`-clause
@@ -704,7 +704,8 @@ impl<'a> Checker<'a> {
     /// Free ↔ signature-visible case in phase 5).
     fn check_constraints(&mut self, escape_visible: &BTreeSet<Lifetime>) {
         let axioms: Vec<(Region, Region)> = self.func
-            .signature_outlives
+            .meta
+            .outlives
             .iter()
             .map(|(a, b)| (Region::Named(a.clone()), Region::Named(b.clone())))
             .collect();
@@ -938,6 +939,7 @@ impl<'a> Checker<'a> {
 
         // Fresh instantiation region per callee lifetime param.
         let inst: IndexMap<Lifetime, Region> = callee
+            .meta
             .lifetime_params
             .iter()
             .map(|lt| (lt.clone(), self.region_ctx.fresh()))
@@ -960,7 +962,7 @@ impl<'a> Checker<'a> {
             );
         }
 
-        for (a, b) in &callee.signature_outlives {
+        for (a, b) in &callee.meta.outlives {
             let a_r = inst.get(a).cloned().unwrap_or(Region::Named(a.clone()));
             let b_r = inst.get(b).cloned().unwrap_or(Region::Named(b.clone()));
             self.constraints.emit(a_r, b_r, span);

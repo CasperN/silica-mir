@@ -76,7 +76,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         let plan = plan_for_function(env, func);
         if !plan.pre_stmt.is_empty() || !plan.rewrite_stmt.is_empty() || !plan.cross_edge.is_empty()
         {
-            plans.insert(func.name.clone(), plan);
+            plans.insert(func.meta.name.clone(), plan);
         }
     }
 
@@ -85,7 +85,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         let Declaration::Fn(func) = decl else {
             continue;
         };
-        let Some(plan) = plans.get(&func.name) else {
+        let Some(plan) = plans.get(&func.meta.name) else {
             continue;
         };
         let Some(body) = &mut func.body else {
@@ -156,7 +156,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 
     let entry_states = init_state::block_entry_states(env, func);
     let locals = func.locals_map();
-    let scope = scope_from(&func.type_params);
+    let scope = scope_from(&func.meta.type_params);
 
     // Unified walk: for each block, walk forward from its entry state
     // and plan drops at each program point where a Drop-typed slot
@@ -442,7 +442,7 @@ fn walk_diverged(
                         let Some(field_state) = fields.get(&f.name) else {
                             continue;
                         };
-                        let field_ty = substitute_params(&f.ty, &s.type_params, args);
+                        let field_ty = substitute_params(&f.ty, &s.meta.type_params, args);
                         let sub_place = field_place(place.clone(), f.name.clone());
                         walk_diverged(env, sub_place, &field_ty, field_state, out);
                     }
@@ -563,7 +563,7 @@ fn plan_drops_for_place(
             // type — otherwise a `Bag<DropVal>.b` recurses with the raw
             // `Param(T)`, which `class_of` resolves to empty markers
             // under an empty scope and misses the drop.
-            let type_params = s.type_params.clone();
+            let type_params = s.meta.type_params.clone();
             let field_decls: Vec<_> = s
                 .fields
                 .iter()

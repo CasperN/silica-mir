@@ -230,7 +230,7 @@ impl MonoCtx {
     fn specialize(&mut self, decl: Declaration, args: &[Type], mangled: String) -> Declaration {
         match decl {
             Declaration::Struct(s) => {
-                let type_params = s.type_params.clone();
+                let type_params = s.meta.type_params.clone();
                 let subst = |ty: &Type| substitute_params(ty, &type_params, args);
                 let fields = s
                     .fields
@@ -242,16 +242,19 @@ impl MonoCtx {
                     })
                     .collect();
                 Declaration::Struct(StructDecl {
-                    name: mangled,
-                    name_span: s.name_span,
-                    lifetime_params: Vec::new(),
-                    type_params: Vec::new(),
-                    markers: s.markers,
+                    meta: DeclMeta { 
+                        name: mangled,
+                        name_span: s.meta.name_span,
+                        lifetime_params: Vec::new(),
+                        type_params: Vec::new(),
+                        markers: s.meta.markers,
+                        outlives: vec![],  // TODO
+                    },
                     fields,
                 })
             }
             Declaration::Enum(e) => {
-                let type_params = e.type_params.clone();
+                let type_params = e.meta.type_params.clone();
                 let subst = |ty: &Type| substitute_params(ty, &type_params, args);
                 let variants = e
                     .variants
@@ -263,16 +266,19 @@ impl MonoCtx {
                     })
                     .collect();
                 Declaration::Enum(EnumDecl {
-                    name: mangled,
-                    name_span: e.name_span,
-                    lifetime_params: Vec::new(),
-                    type_params: Vec::new(),
-                    markers: e.markers,
+                    meta: DeclMeta {
+                        name: mangled,
+                        name_span: e.meta.name_span,
+                        lifetime_params: Vec::new(),
+                        type_params: Vec::new(),
+                        outlives: Vec::new(),
+                        markers: e.meta.markers,
+                    },
                     variants,
                 })
             }
             Declaration::Fn(f) => {
-                let type_params = f.type_params.clone();
+                let type_params = f.meta.type_params.clone();
                 let subst = |ty: &Type| substitute_params(ty, &type_params, args);
                 let params = f
                     .params
@@ -321,13 +327,16 @@ impl MonoCtx {
                         .collect(),
                 });
                 Declaration::Fn(Function {
-                    name: mangled,
-                    name_span: f.name_span,
+                    meta: DeclMeta {
+                        name: mangled,
+                        name_span: f.meta.name_span,
+                        lifetime_params: Vec::new(),
+                        outlives: Vec::new(),
+                        type_params: Vec::new(),
+                        markers: trivial_markers(),
+                    },
                     is_extern: f.is_extern,
                     abi: f.abi.clone(),
-                    lifetime_params: Vec::new(),
-                    signature_outlives: Vec::new(),
-                    type_params: Vec::new(),
                     params,
                     body,
                 })
@@ -350,17 +359,18 @@ fn mangle(name: &str, args: &[Type]) -> String {
 
 fn decl_name(d: &Declaration) -> &str {
     match d {
-        Declaration::Struct(s) => &s.name,
-        Declaration::Enum(e) => &e.name,
-        Declaration::Fn(f) => &f.name,
+        Declaration::Struct(s) => &s.meta.name,
+        Declaration::Enum(e) => &e.meta.name,
+        Declaration::Fn(f) => &f.meta.name,
     }
 }
 
 fn decl_is_generic(d: &Declaration) -> bool {
     match d {
-        Declaration::Struct(s) => !s.type_params.is_empty(),
-        Declaration::Enum(e) => !e.type_params.is_empty(),
-        Declaration::Fn(f) => !f.type_params.is_empty(),
+        // TODO: What about lifetime generic?
+        Declaration::Struct(s) => !s.meta.type_params.is_empty(),
+        Declaration::Enum(e) => !e.meta.type_params.is_empty(),
+        Declaration::Fn(f) => !f.meta.type_params.is_empty(),
     }
 }
 

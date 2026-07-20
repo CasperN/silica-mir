@@ -153,9 +153,9 @@ fn walk_regions(
                                 f.name.clone(),
                                 substitute_all(
                                     &f.ty,
-                                    &s.lifetime_params,
+                                    &s.meta.lifetime_params,
                                     lifetime_args,
-                                    &s.type_params,
+                                    &s.meta.type_params,
                                     args,
                                 ),
                             )
@@ -175,9 +175,9 @@ fn walk_regions(
                                 v.name.clone(),
                                 substitute_all(
                                     &v.ty,
-                                    &e.lifetime_params,
+                                    &e.meta.lifetime_params,
                                     lifetime_args,
-                                    &e.type_params,
+                                    &e.meta.type_params,
                                     args,
                                 ),
                             )

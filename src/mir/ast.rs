@@ -669,18 +669,9 @@ pub struct TypeParam {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
-    pub name: String,
-    pub name_span: Span,
+    pub meta: DeclMeta,
     pub is_extern: bool,
     pub abi: Option<String>,
-    pub lifetime_params: Vec<Lifetime>,
-    /// Elision-derived outlives axioms on the function's signature.
-    /// Each `(a, b)` means "region `a` outlives region `b`" is a
-    /// known fact holding for any invocation. Populated by the
-    /// elision pass; used by the region checker to justify
-    /// assignments whose regions relate via elision unification.
-    pub signature_outlives: Vec<(Lifetime, Lifetime)>,
-    pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub body: Option<FunctionBody>,
 }
@@ -705,22 +696,28 @@ impl Function {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct StructDecl {
+pub struct DeclMeta {
     pub name: String,
     pub name_span: Span,
     pub lifetime_params: Vec<Lifetime>,
+    /// Elision-derived outlives axioms on the function's signature.
+    /// Each `(a, b)` means "region `a` outlives region `b`" is a
+    /// known fact holding for any invocation. 
+    pub outlives: Vec<(Lifetime, Lifetime)>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
+}
+
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StructDecl {
+    pub meta: DeclMeta,
     pub fields: Vec<StructField>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumDecl {
-    pub name: String,
-    pub name_span: Span,
-    pub lifetime_params: Vec<Lifetime>,
-    pub type_params: Vec<TypeParam>,
-    pub markers: Markers,
+    pub meta: DeclMeta,
     pub variants: Vec<EnumVariant>,
 }
 

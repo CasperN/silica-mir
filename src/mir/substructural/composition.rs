@@ -89,7 +89,7 @@ fn diag(code: impl Into<DiagCode>, span: Span, msg: String) -> Diagnostic {
 /// both the vertical closure (higher tiers imply lower) and the
 /// horizontal closure (Copy + Drop → Move). Composition uses the raw
 /// `declared` on the *declaration's* markers to phrase errors; that
-/// pass reads `s.markers.declared(_)` directly, not through here.
+/// pass reads `s.meta.markers.declared(_)` directly, not through here.
 ///
 /// `scope` maps generic-parameter names to their declared bounds. It
 /// is populated by callers that know which decl is being checked (see
@@ -131,8 +131,8 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
             // bounds, so the decl-declared class is a sound conclusion
             // for every instantiation that passes the use-site bound
             // check. Args are not substituted here.
-            Some(TypeDecl::Struct(s)) => s.markers,
-            Some(TypeDecl::Enum(e)) => e.markers,
+            Some(TypeDecl::Struct(s)) => s.meta.markers,
+            Some(TypeDecl::Enum(e)) => e.meta.markers,
             // Unknown name — tc has already reported "undeclared type".
             None => Markers::empty(),
         },
@@ -157,7 +157,7 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
-    let scope = scope_from(&s.type_params);
+    let scope = scope_from(&s.meta.type_params);
     for f in &s.fields {
         let c = class_of(&f.ty, env, &scope);
         // `declared` on the struct + `implies` on the field: only
@@ -165,36 +165,36 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         // errors on closure-derived markers), and let the field's
         // closure satisfy the requirement (a field that's Copy + Drop
         // implies Move without needing explicit Move).
-        if s.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
+        if s.meta.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,
                 f.ty.span,
                 format!(
                     "In struct '{}' (marked Copy), field '{}' has type {} which is not Copy",
-                    s.name, f.name, f.ty
+                    s.meta.name, f.name, f.ty
                 ),
             ));
         }
-        if s.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
+        if s.meta.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
             d.push_error(diag(
                 DropMarkerNotSatisfied,
                 f.ty.span,
                 format!(
                     "In struct '{}' (marked Drop), field '{}' has type {} which is not Drop",
-                    s.name, f.name, f.ty
+                    s.meta.name, f.name, f.ty
                 ),
             ));
         }
         // Only check explicit Move against fields — an implicit Move
         // via Copy+Drop is guaranteed to succeed because those fields
         // are already Copy AND Drop, hence Move.
-        if s.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
+        if s.meta.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
             d.push_error(diag(
                 MoveMarkerNotSatisfied,
                 f.ty.span,
                 format!(
                     "In struct '{}' (marked Move), field '{}' has type {} which is not Move",
-                    s.name, f.name, f.ty
+                    s.meta.name, f.name, f.ty
                 ),
             ));
         }
@@ -202,36 +202,36 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
-    let scope = scope_from(&e.type_params);
+    let scope = scope_from(&e.meta.type_params);
     for v in &e.variants {
         let c = class_of(&v.ty, env, &scope);
-        if e.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
+        if e.meta.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
             d.push_error(diag(
                 CopyMarkerNotSatisfied,
                 v.ty.span,
                 format!(
                     "In enum '{}' (marked Copy), variant '{}' payload type {} is not Copy",
-                    e.name, v.name, v.ty
+                    e.meta.name, v.name, v.ty
                 ),
             ));
         }
-        if e.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
+        if e.meta.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
             d.push_error(diag(
                 DropMarkerNotSatisfied,
                 v.ty.span,
                 format!(
                     "In enum '{}' (marked Drop), variant '{}' payload type {} is not Drop",
-                    e.name, v.name, v.ty
+                    e.meta.name, v.name, v.ty
                 ),
             ));
         }
-        if e.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
+        if e.meta.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
             d.push_error(diag(
                 MoveMarkerNotSatisfied,
                 v.ty.span,
                 format!(
                     "In enum '{}' (marked Move), variant '{}' payload type {} is not Move",
-                    e.name, v.name, v.ty
+                    e.meta.name, v.name, v.ty
                 ),
             ));
         }

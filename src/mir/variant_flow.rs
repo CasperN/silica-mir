@@ -78,7 +78,7 @@ fn diag(
     msg: String,
 ) -> Diagnostic {
     Diagnostic::new(code, span, msg)
-        .in_function(&func.name)
+        .in_function(&func.meta.name)
         .in_block(&block.label)
 }
 
@@ -453,7 +453,7 @@ fn check_switch(
                 block,
                 format!(
                     "switchEnum on '{}' does not handle variant '{}'",
-                    enum_decl.name, variant
+                    enum_decl.meta.name, variant
                 ),
             ));
         }

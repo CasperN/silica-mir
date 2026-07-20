@@ -1,6 +1,6 @@
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
-use crate::mir::ast as mir;
+use crate::mir::ast::{self as mir, DeclMeta};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::HashMap;
@@ -1061,11 +1061,14 @@ pub fn lower_program(
                     })
                     .collect();
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
-                    name: s.name.clone(),
-                    name_span: s.span,
-                    lifetime_params: Vec::new(),
-                    type_params: lower_type_params(&s.type_params),
-                    markers: s.markers.clone(),
+                    meta: DeclMeta {
+                        name: s.name.clone(),
+                        name_span: s.span,
+                        lifetime_params: Vec::new(),
+                        outlives: Vec::new(),
+                        type_params: lower_type_params(&s.type_params),
+                        markers: s.markers.clone(),
+                    },
                     fields,
                 }));
             }
@@ -1080,11 +1083,14 @@ pub fn lower_program(
                     })
                     .collect();
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
-                    name: e.name.clone(),
-                    name_span: e.span,
-                    lifetime_params: Vec::new(),
-                    type_params: lower_type_params(&e.type_params),
-                    markers: e.markers.clone(),
+                    meta: DeclMeta {
+                        name: e.name.clone(),
+                        name_span: e.span,
+                        lifetime_params: Vec::new(),
+                        outlives: Vec::new(),
+                        type_params: lower_type_params(&e.type_params),
+                        markers: e.markers.clone(),
+                    },
                     variants,
                 }));
             }
@@ -1117,13 +1123,16 @@ pub fn lower_program(
                 // and this call site will pass `f.abi.clone()`.
                 let Some(body_expr) = &f.body else {
                     declarations.push(mir::Declaration::Fn(mir::Function {
-                        name: f.name.clone(),
-                        name_span: f.span,
+                        meta: DeclMeta {
+                            name: f.name.clone(),
+                            name_span: f.span,
+                            lifetime_params: Vec::new(),
+                            outlives: Vec::new(),
+                            type_params: lower_type_params(&f.type_params),
+                            markers: trivial_markers(),
+                        },
                         is_extern: true,
                         abi: f.abi.clone(),
-                        lifetime_params: Vec::new(),
-                        signature_outlives: Vec::new(),
-                        type_params: lower_type_params(&f.type_params),
                         params,
                         body: None,
                     }));
@@ -1157,13 +1166,16 @@ pub fn lower_program(
                 }
 
                 declarations.push(mir::Declaration::Fn(mir::Function {
-                    name: f.name.clone(),
-                    name_span: f.span,
+                    meta: DeclMeta {
+                        name: f.name.clone(),
+                        name_span: f.span,
+                        lifetime_params: Vec::new(),
+                        outlives: Vec::new(),
+                        type_params: lower_type_params(&f.type_params),
+                        markers: trivial_markers(),
+                    },
                     is_extern: false,
                     abi: None,
-                    lifetime_params: Vec::new(),
-                    signature_outlives: Vec::new(),
-                    type_params: lower_type_params(&f.type_params),
                     params,
                     body: Some(mir::FunctionBody {
                         locals: ctx.locals,

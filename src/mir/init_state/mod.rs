@@ -120,7 +120,7 @@ fn diag(
     msg: String,
 ) -> Diagnostic {
     Diagnostic::new(code, span, msg)
-        .in_function(&func.name)
+        .in_function(&func.meta.name)
         .in_block(&block.label)
 }
 
@@ -245,7 +245,7 @@ fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
             .iter()
             .map(|f| StructField {
                 name: f.name.clone(),
-                ty: substitute_params(&f.ty, &s.type_params, args),
+                ty: substitute_params(&f.ty, &s.meta.type_params, args),
                 span: f.span,
             })
             .collect(),
@@ -260,7 +260,7 @@ fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> 
         return None;
     };
     let payload = e.variants.iter().find(|v| v.name == variant)?;
-    Some(substitute_params(&payload.ty, &e.type_params, args))
+    Some(substitute_params(&payload.ty, &e.meta.type_params, args))
 }
 
 // ---------- Canonicalization ----------
@@ -1181,7 +1181,7 @@ impl<'a> InitStateContext<'a> {
         let Some(target_ty) = self.infer_ref_place_type(target) else {
             return;
         };
-        let scope = crate::mir::substructural::composition::scope_from(&func.type_params);
+        let scope = crate::mir::substructural::composition::scope_from(&func.meta.type_params);
         walk_overwrite_leaves(
             &target_state,
             &target_ty,
@@ -1709,7 +1709,7 @@ impl<'a> InitStateContext<'a> {
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && matches!(leaf, InitState::Init) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, span, self.locals) {
-                let scope = crate::mir::substructural::composition::scope_from(&func.type_params);
+                let scope = crate::mir::substructural::composition::scope_from(&func.meta.type_params);
                 if class_of(&leaf_ty, self.env, &scope).implies(Marker::Drop) {
                     return;
                 }

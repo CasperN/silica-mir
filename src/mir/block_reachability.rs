@@ -61,7 +61,7 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
                     block.label_span,
                     format!("block '{}' is unreachable from entry", block.label),
                 )
-                .in_function(&func.name),
+                .in_function(&func.meta.name),
             );
         }
     }

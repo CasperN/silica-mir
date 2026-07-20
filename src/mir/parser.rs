@@ -1061,11 +1061,12 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Ok(StructDecl {
-            name,
-            name_span,
-            lifetime_params,
-            type_params,
-            markers,
+            meta: DeclMeta { 
+                name, name_span,
+                lifetime_params, 
+                outlives: vec![], // TODO
+                type_params, markers
+            },
             fields,
         })
     }
@@ -1115,11 +1116,8 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Ok(EnumDecl {
-            name,
-            name_span,
-            lifetime_params,
-            type_params,
-            markers,
+            meta: DeclMeta { name, name_span, lifetime_params, outlives: vec![], // TODO
+                type_params, markers },
             variants,
         })
     }
@@ -1231,13 +1229,9 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Ok(Function {
-            name,
-            name_span,
+            meta: DeclMeta { name, name_span, lifetime_params, outlives: vec![], type_params, markers: trivial_markers() },
             is_extern,
             abi,
-            lifetime_params,
-            signature_outlives: Vec::new(),
-            type_params,
             params,
             body,
         })
@@ -1260,9 +1254,9 @@ mod tests {
         let program = parser.parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Struct(s) = &program.declarations[0] {
-            assert_eq!(s.name, "Point");
-            assert!(s.markers.declared(Marker::Copy));
-            assert!(s.markers.declared(Marker::Drop));
+            assert_eq!(s.meta.name, "Point");
+            assert!(s.meta.markers.declared(Marker::Copy));
+            assert!(s.meta.markers.declared(Marker::Drop));
             assert_eq!(s.fields.len(), 2);
             assert_eq!(s.fields[0].name, "x");
             assert_eq!(s.fields[0].ty, i64_ty());
@@ -1285,9 +1279,9 @@ mod tests {
         let program = parser.parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(e) = &program.declarations[0] {
-            assert_eq!(e.name, "Option");
-            assert!(!e.markers.declared(Marker::Copy));
-            assert!(!e.markers.declared(Marker::Drop));
+            assert_eq!(e.meta.name, "Option");
+            assert!(!e.meta.markers.declared(Marker::Copy));
+            assert!(!e.meta.markers.declared(Marker::Drop));
             assert_eq!(e.variants.len(), 2);
             assert_eq!(e.variants[0].name, "None");
             assert_eq!(e.variants[0].ty, custom_ty("Option"));
@@ -1314,7 +1308,7 @@ mod tests {
         let program = parser.parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
-            assert_eq!(f.name, "add");
+            assert_eq!(f.meta.name, "add");
             assert!(!f.is_extern);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
@@ -1350,7 +1344,7 @@ mod tests {
         let program = parser.parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
-            assert_eq!(f.name, "add_impl");
+            assert_eq!(f.meta.name, "add_impl");
             assert!(f.is_extern);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
@@ -1370,12 +1364,12 @@ mod tests {
         let program = parser.parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
-            assert_eq!(f.name, "add_impl");
+            assert_eq!(f.meta.name, "add_impl");
             assert!(f.is_extern);
-            assert_eq!(f.lifetime_params.len(), 1);
-            assert_eq!(f.lifetime_params[0].0, "a");
-            assert_eq!(f.type_params.len(), 1);
-            assert_eq!(f.type_params[0].name, "T");
+            assert_eq!(f.meta.lifetime_params.len(), 1);
+            assert_eq!(f.meta.lifetime_params[0].0, "a");
+            assert_eq!(f.meta.type_params.len(), 1);
+            assert_eq!(f.meta.type_params[0].name, "T");
             assert_eq!(f.params.len(), 2);
             assert!(f.body.is_none());
         } else {
@@ -1551,7 +1545,7 @@ mod tests {
             let Declaration::Struct(s) = &program.declarations[0] else {
                 panic!("expected struct");
             };
-            s.markers
+            s.meta.markers
         }
         let a = markers_of("struct P: Copy + Drop + Move { x: i64 }");
         let b = markers_of("struct P: Move + Drop + Copy { x: i64 }");

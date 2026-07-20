@@ -68,7 +68,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
     for func in env.functions.values() {
         if let Some(plan) = plan_for_function(func, env) {
-            plans.insert(func.name.clone(), plan);
+            plans.insert(func.meta.name.clone(), plan);
         }
     }
 
@@ -77,7 +77,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         let Declaration::Fn(func) = decl else {
             continue;
         };
-        let Some(plan) = plans.get(&func.name) else {
+        let Some(plan) = plans.get(&func.meta.name) else {
             continue;
         };
         let Some(body) = &mut func.body else {
@@ -461,7 +461,7 @@ fn walk_ref_paths(
     // ref and drop the borrower from NLL's tracked set.
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
-            let type_params = s.type_params.clone();
+            let type_params = s.meta.type_params.clone();
             let fields: Vec<_> = s
                 .fields
                 .iter()
@@ -473,7 +473,7 @@ fn walk_ref_paths(
             }
         }
         Some(TypeDecl::Enum(e)) => {
-            let type_params = e.type_params.clone();
+            let type_params = e.meta.type_params.clone();
             let variants: Vec<_> = e
                 .variants
                 .iter()

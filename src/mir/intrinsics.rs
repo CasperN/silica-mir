@@ -476,13 +476,9 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
         span: SPAN,
     });
     Function {
-        name: spec.name,
-        name_span: SPAN,
+        meta: basic_meta(spec.name),
         is_extern: true,
         abi: None,
-        lifetime_params: Vec::new(),
-        signature_outlives: Vec::new(),
-        type_params: Vec::new(),
         params,
         body: None,
     }
@@ -844,8 +840,8 @@ mod tests {
         let fns = prelude_fns();
         assert_eq!(fns.len(), all().len());
         for f in &fns {
-            assert!(f.is_extern, "intrinsic {} should be extern", f.name);
-            assert!(f.body.is_none(), "intrinsic {} should have no body", f.name);
+            assert!(f.is_extern, "intrinsic {} should be extern", f.meta.name);
+            assert!(f.body.is_none(), "intrinsic {} should have no body", f.meta.name);
         }
     }
 
@@ -859,7 +855,7 @@ mod tests {
                 TypeKind::Ref(RefKind::Out, _, _) => {}
                 other => panic!(
                     "intrinsic {} last param should be &out, got {:?}",
-                    f.name, other
+                    f.meta.name, other
                 ),
             }
         }
@@ -870,7 +866,7 @@ mod tests {
         // `$i64_add` → params [in0: i64, in1: i64, out: &out i64].
         let f = prelude_fns()
             .into_iter()
-            .find(|f| f.name == "$i64_add")
+            .find(|f| f.meta.name == "$i64_add")
             .unwrap();
         assert_eq!(f.params.len(), 3);
         assert_eq!(f.params[0].ty, i64_ty());

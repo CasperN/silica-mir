@@ -111,7 +111,7 @@ pub fn lower_mir_to_llvm(program: Program) -> String {
     // the linked binary has a proper entry point + exit code.
     for decl in &mono_prog.declarations {
         if let Declaration::Fn(f) = decl {
-            if f.name == "main" && !f.is_extern {
+            if f.meta.name == "main" && !f.is_extern {
                 emit_main_wrapper(&mut cx, f);
                 break;
             }
@@ -272,7 +272,7 @@ impl<'a> CodeGenContext<'a> {
 // ---------- Declarations ----------
 
 fn emit_struct_decl(cx: &mut CodeGenContext, s: &StructDecl) {
-    write!(cx.out, "%{} = type {{ ", llvm_ident(&s.name)).unwrap();
+    write!(cx.out, "%{} = type {{ ", llvm_ident(&s.meta.name)).unwrap();
     for (i, f) in s.fields.iter().enumerate() {
         if i > 0 {
             write!(cx.out, ", ").unwrap();
@@ -301,7 +301,7 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
     writeln!(
         cx.out,
         "%{} = type {{ i16, [{} x i8], [{} x {}] }}",
-        llvm_ident(&e.name),
+        llvm_ident(&e.meta.name),
         pad_bytes,
         lane_count,
         lane_ty
@@ -324,7 +324,7 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     } else {
         "void".to_string()
     };
-    write!(cx.out, "declare {} @{}(", ret_llvm, llvm_fn_symbol(&f.name)).unwrap();
+    write!(cx.out, "declare {} @{}(", ret_llvm, llvm_fn_symbol(&f.meta.name)).unwrap();
     let mut params_to_emit = &f.params[..];
     if ret_param.is_some() && use_reg_ret {
         params_to_emit = &f.params[..f.params.len() - 1];
@@ -402,7 +402,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
         "void".to_string()
     };
 
-    write!(cx.out, "define {} @{}(", ret_llvm, llvm_fn_symbol(&f.name)).unwrap();
+    write!(cx.out, "define {} @{}(", ret_llvm, llvm_fn_symbol(&f.meta.name)).unwrap();
     let mut params_to_emit = &f.params[..];
     if ret_param.is_some() && use_reg_ret {
         params_to_emit = &f.params[..f.params.len() - 1];
@@ -1164,7 +1164,7 @@ fn variant_index(e: &EnumDecl, variant: &str) -> u64 {
     e.variants
         .iter()
         .position(|v| v.name == variant)
-        .unwrap_or_else(|| panic!("no variant '{}' on enum '{}'", variant, e.name)) as u64
+        .unwrap_or_else(|| panic!("no variant '{}' on enum '{}'", variant, e.meta.name)) as u64
 }
 
 fn align_up(x: u64, a: u64) -> u64 {
@@ -1180,13 +1180,9 @@ mod tests {
     #[should_panic(expected = "unsupported ABI: \"system\"")]
     fn test_unsupported_abi_panics() {
         let f = Function {
-            name: "dummy".to_string(),
-            name_span: Span::default(),
+            meta: basic_meta("dummy"),
             is_extern: true,
             abi: Some("system".to_string()),
-            lifetime_params: Vec::new(),
-            signature_outlives: Vec::new(),
-            type_params: Vec::new(),
             params: Vec::new(),
             body: None,
         };

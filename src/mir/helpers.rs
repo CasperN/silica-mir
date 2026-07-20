@@ -16,6 +16,23 @@
 
 use crate::mir::ast::*;
 
+// ---------- Misc --------------
+
+pub fn trivial_markers() -> Markers {
+    Markers::from_iter([Marker::Copy, Marker::Drop])
+}
+pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
+    DeclMeta {
+        name: name.into(),
+        name_span: Span::default(),
+        markers: trivial_markers(),
+        lifetime_params: vec![],
+        outlives:  vec![],
+        type_params:  vec![],
+    }
+}
+
+
 // ---------- Scalars ----------
 //
 // The `_ty` helpers return `Type` with `Span::default()`. Intended for

@@ -74,10 +74,10 @@ fn write_type_params(out: &mut String, lifetimes: &[Lifetime], params: &[TypePar
 
 fn write_struct(out: &mut String, s: &StructDecl) {
     out.push_str("struct");
-    write_type_params(out, &s.lifetime_params, &s.type_params);
+    write_type_params(out, &s.meta.lifetime_params, &s.meta.type_params);
     out.push(' ');
-    out.push_str(&s.name);
-    write_markers(out, &s.markers);
+    out.push_str(&s.meta.name);
+    write_markers(out, &s.meta.markers);
     out.push_str(" {\n");
     for f in &s.fields {
         write!(out, "  {}: ", f.name).unwrap();
@@ -89,10 +89,10 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
     out.push_str("enum");
-    write_type_params(out, &e.lifetime_params, &e.type_params);
+    write_type_params(out, &e.meta.lifetime_params, &e.meta.type_params);
     out.push(' ');
-    out.push_str(&e.name);
-    write_markers(out, &e.markers);
+    out.push_str(&e.meta.name);
+    write_markers(out, &e.meta.markers);
     out.push_str(" {\n");
     for v in &e.variants {
         write!(out, "  {}: ", v.name).unwrap();
@@ -107,10 +107,10 @@ fn write_function(out: &mut String, f: &Function) {
         out.push_str("extern fn ");
     } else {
         out.push_str("fn");
-        write_type_params(out, &f.lifetime_params, &f.type_params);
+        write_type_params(out, &f.meta.lifetime_params, &f.meta.type_params);
         out.push(' ');
     }
-    out.push_str(&f.name);
+    out.push_str(&f.meta.name);
     out.push('(');
     for (i, p) in f.params.iter().enumerate() {
         if i > 0 {
@@ -408,8 +408,8 @@ mod tests {
         for decl in &mut p.declarations {
             match decl {
                 Declaration::Struct(s) => {
-                    s.name_span = zero;
-                    for tp in &mut s.type_params {
+                    s.meta.name_span = zero;
+                    for tp in &mut s.meta.type_params {
                         tp.span = zero;
                     }
                     for f in &mut s.fields {
@@ -417,8 +417,8 @@ mod tests {
                     }
                 }
                 Declaration::Enum(e) => {
-                    e.name_span = zero;
-                    for tp in &mut e.type_params {
+                    e.meta.name_span = zero;
+                    for tp in &mut e.meta.type_params {
                         tp.span = zero;
                     }
                     for v in &mut e.variants {
@@ -426,8 +426,8 @@ mod tests {
                     }
                 }
                 Declaration::Fn(f) => {
-                    f.name_span = zero;
-                    for tp in &mut f.type_params {
+                    f.meta.name_span = zero;
+                    for tp in &mut f.meta.type_params {
                         tp.span = zero;
                     }
                     for p in &mut f.params {
