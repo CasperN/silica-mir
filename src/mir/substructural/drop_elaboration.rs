@@ -35,7 +35,7 @@ use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
 use crate::mir::init_state::{self, InitState, PointState};
-use crate::mir::substructural::composition::{class_of, scope_from, ParamScope};
+use crate::mir::substructural::composition::{class_of, ParamScope};
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 
@@ -155,7 +155,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 
     let entry_states = init_state::block_entry_states(env, func);
     let locals = func.locals_map();
-    let scope = scope_from(&func.meta.type_params);
+    let scope = func.meta.param_scope();
 
     // Unified walk: for each block, walk forward from its entry state
     // and plan drops at each program point where a Drop-typed slot

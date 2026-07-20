@@ -13,7 +13,6 @@ use crate::common::Lifetime;
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
-use crate::mir::substructural::composition::scope_from;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashSet};
 
@@ -64,74 +63,60 @@ impl Env {
     pub fn typecheck(&self, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
-            match type_decl {
-                TypeDecl::Struct(s) => {
-                    let scope = scope_from(&s.meta.type_params);
-                    let lt_scope = lifetime_scope(&s.meta.lifetime_params);
-                    let mut seen: HashSet<&str> = HashSet::new();
-                    for f in &s.fields {
-                        if !seen.insert(f.name.as_str()) {
-                            d.push_error(Diagnostic::new(
-                                DuplicateStructField,
-                                f.span,
-                                format!(
-                                    "In struct '{}', field '{}' is declared more than once",
-                                    s.meta.name, f.name
-                                ),
-                            ));
-                        }
-                        if let Err(e) = self.validate_type(&f.ty, &scope) {
-                            d.push_error(Diagnostic::new(
-                                InvalidDeclaredType,
-                                f.ty.span,
-                                format!("In struct '{}', field '{}': {}", s.meta.name, f.name, e),
-                            ));
-                        }
-                        for lt in undeclared_lifetimes(&f.ty, &lt_scope) {
-                            d.push_error(Diagnostic::new(
-                                UndeclaredLifetime,
-                                f.ty.span,
-                                format!(
-                                    "In struct '{}', field '{}': undeclared lifetime {}",
-                                    s.meta.name, f.name, lt,
-                                ),
-                            ));
-                        }
-                    }
+            let (container_kind, item_kind, duplicate_code, items) = match type_decl {
+                TypeDecl::Struct(s) => (
+                    "struct",
+                    "field",
+                    DuplicateStructField,
+                    s.fields
+                        .iter()
+                        .map(|f| (f.name.as_str(), &f.ty, f.span))
+                        .collect::<Vec<_>>(),
+                ),
+                TypeDecl::Enum(e) => (
+                    "enum",
+                    "variant",
+                    DuplicateEnumVariant,
+                    e.variants
+                        .iter()
+                        .map(|v| (v.name.as_str(), &v.ty, v.span))
+                        .collect::<Vec<_>>(),
+                ),
+            };
+            let meta = type_decl.meta();
+            let scope = meta.param_scope();
+            let lt_scope = lifetime_scope(&meta.lifetime_params);
+            let mut seen: HashSet<&str> = HashSet::new();
+            for (name, ty, span) in items {
+                if !seen.insert(name) {
+                    d.push_error(Diagnostic::new(
+                        duplicate_code,
+                        span,
+                        format!(
+                            "In {} '{}', {} '{}' is declared more than once",
+                            container_kind, meta.name, item_kind, name
+                        ),
+                    ));
                 }
-                TypeDecl::Enum(e) => {
-                    let scope = scope_from(&e.meta.type_params);
-                    let lt_scope = lifetime_scope(&e.meta.lifetime_params);
-                    let mut seen: HashSet<&str> = HashSet::new();
-                    for v in &e.variants {
-                        if !seen.insert(v.name.as_str()) {
-                            d.push_error(Diagnostic::new(
-                                DuplicateEnumVariant,
-                                v.span,
-                                format!(
-                                    "In enum '{}', variant '{}' is declared more than once",
-                                    e.meta.name, v.name
-                                ),
-                            ));
-                        }
-                        if let Err(err) = self.validate_type(&v.ty, &scope) {
-                            d.push_error(Diagnostic::new(
-                                InvalidDeclaredType,
-                                v.ty.span,
-                                format!("In enum '{}', variant '{}': {}", e.meta.name, v.name, err),
-                            ));
-                        }
-                        for lt in undeclared_lifetimes(&v.ty, &lt_scope) {
-                            d.push_error(Diagnostic::new(
-                                UndeclaredLifetime,
-                                v.ty.span,
-                                format!(
-                                    "In enum '{}', variant '{}': undeclared lifetime {}",
-                                    e.meta.name, v.name, lt,
-                                ),
-                            ));
-                        }
-                    }
+                if let Err(e) = self.validate_type(ty, &scope) {
+                    d.push_error(Diagnostic::new(
+                        InvalidDeclaredType,
+                        ty.span,
+                        format!(
+                            "In {} '{}', {} '{}': {}",
+                            container_kind, meta.name, item_kind, name, e
+                        ),
+                    ));
+                }
+                for lt in undeclared_lifetimes(ty, &lt_scope) {
+                    d.push_error(Diagnostic::new(
+                        UndeclaredLifetime,
+                        ty.span,
+                        format!(
+                            "In {} '{}', {} '{}': undeclared lifetime {}",
+                            container_kind, meta.name, item_kind, name, lt,
+                        ),
+                    ));
                 }
             }
         }
@@ -143,7 +128,7 @@ impl Env {
     }
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
-        let scope = scope_from(&f.meta.type_params);
+        let scope = f.meta.param_scope();
         let lt_scope = lifetime_scope(&f.meta.lifetime_params);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {

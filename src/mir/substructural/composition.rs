@@ -41,14 +41,16 @@ use indexmap::IndexMap;
 /// param is exactly what the bounds guarantee.
 pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
 
-/// Build the param scope for a decl from its `type_params`. Params
-/// without any bounds contribute an empty `Markers` — those params are
-/// linear inside the decl body.
-pub fn scope_from(type_params: &[TypeParam]) -> IndexMap<String, Markers> {
-    type_params
-        .iter()
-        .map(|p| (p.name.clone(), p.bounds))
-        .collect()
+impl DeclMeta {
+    /// Build the param scope for this decl. Params without any bounds
+    /// contribute an empty `Markers` — those params are linear inside
+    /// the decl body.
+    pub fn param_scope(&self) -> IndexMap<String, Markers> {
+        self.type_params
+            .iter()
+            .map(|p| (p.name.clone(), p.bounds))
+            .collect()
+    }
 }
 
 /// Machine-readable codes emitted by the class-composition check. Each
@@ -156,84 +158,73 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
     }
 }
 
-fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
-    let scope = scope_from(&s.meta.type_params);
-    for f in &s.fields {
-        let c = class_of(&f.ty, env, &scope);
-        // `declared` on the struct + `implies` on the field: only
-        // fire on markers the user actually wrote (avoids redundant
-        // errors on closure-derived markers), and let the field's
-        // closure satisfy the requirement (a field that's Copy + Drop
-        // implies Move without needing explicit Move).
-        if s.meta.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
-            d.push_error(diag(
-                CopyMarkerNotSatisfied,
-                f.ty.span,
-                format!(
-                    "In struct '{}' (marked Copy), field '{}' has type {} which is not Copy",
-                    s.meta.name, f.name, f.ty
-                ),
-            ));
-        }
-        if s.meta.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
-            d.push_error(diag(
-                DropMarkerNotSatisfied,
-                f.ty.span,
-                format!(
-                    "In struct '{}' (marked Drop), field '{}' has type {} which is not Drop",
-                    s.meta.name, f.name, f.ty
-                ),
-            ));
-        }
-        // Only check explicit Move against fields — an implicit Move
-        // via Copy+Drop is guaranteed to succeed because those fields
-        // are already Copy AND Drop, hence Move.
-        if s.meta.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
-            d.push_error(diag(
-                MoveMarkerNotSatisfied,
-                f.ty.span,
-                format!(
-                    "In struct '{}' (marked Move), field '{}' has type {} which is not Move",
-                    s.meta.name, f.name, f.ty
-                ),
-            ));
+/// For each marker declared on `decl_meta`, if `class` doesn't imply it,
+/// push a diagnostic built by `make_msg(marker)`. `declared` on the
+/// container + `implies` on the content: only fires on markers the user
+/// actually wrote (avoids redundant errors on closure-derived markers),
+/// and lets the content's closure satisfy the requirement (a field that's
+/// Copy + Drop implies Move without needing explicit Move).
+fn check_markers_against(
+    decl_meta: &DeclMeta,
+    class: Markers,
+    span: Span,
+    make_msg: impl Fn(Marker) -> String,
+    d: &mut Diagnostics,
+) {
+    const CHECKS: [(Marker, SubstructuralCompositionCode); 3] = [
+        (Marker::Copy, CopyMarkerNotSatisfied),
+        (Marker::Drop, DropMarkerNotSatisfied),
+        (Marker::Move, MoveMarkerNotSatisfied),
+    ];
+    for (marker, code) in CHECKS {
+        if decl_meta.markers.declared(marker) && !class.implies(marker) {
+            d.push_error(diag(code, span, make_msg(marker)));
         }
     }
 }
 
+fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
+    let scope = s.meta.param_scope();
+    for f in &s.fields {
+        let c = class_of(&f.ty, env, &scope);
+        check_markers_against(
+            &s.meta,
+            c,
+            f.ty.span,
+            |m| {
+                format!(
+                    "In struct '{}' (marked {}), field '{}' has type {} which is not {}",
+                    s.meta.name,
+                    m.name(),
+                    f.name,
+                    f.ty,
+                    m.name(),
+                )
+            },
+            d,
+        );
+    }
+}
+
 fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
-    let scope = scope_from(&e.meta.type_params);
+    let scope = e.meta.param_scope();
     for v in &e.variants {
         let c = class_of(&v.ty, env, &scope);
-        if e.meta.markers.declared(Marker::Copy) && !c.implies(Marker::Copy) {
-            d.push_error(diag(
-                CopyMarkerNotSatisfied,
-                v.ty.span,
+        check_markers_against(
+            &e.meta,
+            c,
+            v.ty.span,
+            |m| {
                 format!(
-                    "In enum '{}' (marked Copy), variant '{}' payload type {} is not Copy",
-                    e.meta.name, v.name, v.ty
-                ),
-            ));
-        }
-        if e.meta.markers.declared(Marker::Drop) && !c.implies(Marker::Drop) {
-            d.push_error(diag(
-                DropMarkerNotSatisfied,
-                v.ty.span,
-                format!(
-                    "In enum '{}' (marked Drop), variant '{}' payload type {} is not Drop",
-                    e.meta.name, v.name, v.ty
-                ),
-            ));
-        }
-        if e.meta.markers.declared(Marker::Move) && !c.implies(Marker::Move) {
-            d.push_error(diag(
-                MoveMarkerNotSatisfied,
-                v.ty.span,
-                format!(
-                    "In enum '{}' (marked Move), variant '{}' payload type {} is not Move",
-                    e.meta.name, v.name, v.ty
-                ),
-            ));
-        }
+                    "In enum '{}' (marked {}), variant '{}' payload type {} is not {}",
+                    e.meta.name,
+                    m.name(),
+                    v.name,
+                    v.ty,
+                    m.name(),
+                )
+            },
+            d,
+        );
     }
 }

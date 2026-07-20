@@ -942,9 +942,6 @@ To load it locally:
   which `x` does `defer` capture — the outer or the shadowing inner? Lowering must commit and land a fixture that pins the chosen semantics.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
-## Refactors
-- **Decl X/XKind: `Decl { name, name_span, lifetime_params, type_params, kind: DeclKind }`.** Rustc pattern. Real payoff when adding shared fields (visibility, docs, mono keys) later. Big touch.
-
 ## Lifetime checker gaps (semantic)
 - **`where 'a: 'b` outlives clauses.** No syntax today; `signature_outlives: Vec<(Lifetime, Lifetime)>` is the right shape to build on. Any real generic library needs this.
 - **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
