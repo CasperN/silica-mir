@@ -69,11 +69,6 @@ pub enum InitStateCode {
     /// unborrow) while its (is_init, ends_init) obligation is
     /// unfulfilled.
     RefObligationUnfulfilled,
-    /// `move place` where `place` contains a ref-typed descendant
-    /// whose obligation is unfulfilled — the descendant's borrow
-    /// contract can't be transferred to the callee.
-    MoveWithUnfulfilledContainedRef,
-
     // ---- Through-reference operations (`*r`) ----
     /// Attempted write or move through a shared reference (`&T`).
     /// Shared refs only permit reads.
@@ -1813,67 +1808,14 @@ impl<'a> InitStateContext<'a> {
             }
             Operand::Move(place) => {
                 self.apply_deref_op(place, DerefOp::Move, state, Some((func, block, span, d)));
-                // Boundary invariant: when a place is moved as an
-                // operand, we're handing its whole storage to the
-                // callee (or a matching position). Any ref-typed field
-                // inside with an unfulfilled (cur, post) obligation
-                // would be silently violated by the transfer — the
-                // callee's signature promises to consume the type, not
-                // to rebalance mid-borrow state. Exception: the whole
-                // place itself IS a ref-typed borrower — moving a bare
-                // ref like `move r` transfers the obligation intact to
-                // the callee's signature, so we skip that case (only
-                // check strict descendants).
-                self.check_move_boundary(func, block, place, span, state, d);
+                // Moving a reference or an aggregate that contains one
+                // transfers every nested obligation to the callee. The
+                // caller must stop tracking those paths, but need not
+                // discharge them before the transfer.
             }
             Operand::Const(_) => {}
         }
         self.apply_operand_move(op, state);
-    }
-
-    /// For a `move place` operand, verify that every strict ref-typed
-    /// descendant of `place` in state.refs has its obligation fulfilled.
-    /// Emits an error per violation. Does not modify state (the cascade
-    /// happens later in apply_operand_move → apply_move → close_refs_under).
-    fn check_move_boundary(
-        &self,
-        func: &Function,
-        block: &BasicBlock,
-        place: &Place,
-        span: Span,
-        state: &PointState,
-        d: &mut Diagnostics,
-    ) {
-        let Some(owned) = as_owned_path(place) else {
-            return;
-        };
-        for (ref_place, rs) in &state.refs {
-            // Skip the exact-self case: moving `r` where r is a bare ref
-            // transfers the obligation to the callee via signature.
-            if ref_place == &owned {
-                continue;
-            }
-            if !is_ancestor_or_self(&owned, ref_place) {
-                continue;
-            }
-            if !rs.obligation_fulfilled() {
-                let (cur, expected) = describe_obligation_mismatch(rs);
-                let mut diagnostic = diag(
-                    MoveWithUnfulfilledContainedRef,
-                    span,
-                    func,
-                    block,
-                    format!(
-                        "cannot move '{}': contained reference '{}' has unfulfilled obligation (pointee is {}, but must be {})",
-                        format_place(&owned), format_place(ref_place), cur, expected,
-                    ),
-                );
-                if let Some(decl_span) = ref_root_decl_span(func, ref_place) {
-                    diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
-                }
-                d.push_error(diagnostic);
-            }
-        }
     }
 
     fn check_operand_read(

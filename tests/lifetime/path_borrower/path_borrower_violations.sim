@@ -9,10 +9,8 @@
 #   read_during_reborrow            field → reborrow     read while reborrow live LT-LoanConflict
 #   write_to_loan_after_merge       multi-path (branch)  write to any loan target LT-LoanConflict
 #
-# The `INIT-MoveWithUnfulfilledContainedRef` case lives in
-# `path_borrower_init_violations.sim` — the pipeline short-circuits
-# after any pre-elab error, so mixing an INIT-* violation with LT-*
-# violations in one file would suppress the LT diagnostics.
+# Moving an aggregate transfers any reference-field obligation to the
+# callee, so that operation is intentionally not a loan-conflict error.
 #
 # Each fn fires exactly one error. A regression means a conflict is
 # silently accepted or a different diagnostic fires.
@@ -74,4 +72,3 @@ fn write_to_loan_after_merge(y: i64, z: i64, cond: bool) {
     call take_box(move b);
     return
 }
-

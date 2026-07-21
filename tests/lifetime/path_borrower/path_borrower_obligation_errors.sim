@@ -1,15 +1,8 @@
-# Path-borrower pass — unfulfilled field-ref obligation.
+# Path-borrower pass — transfer of an unfulfilled field-ref obligation.
 #
-# Moving a struct whose field holds a reference with an unsatisfied
-# obligation is illegal. This fixture covers that single error cell.
-#
-#   fn                             path shape     violation
-#   move_with_unfulfilled_ref_obs  field ref      move before Init obligation met
-#
-# This case is separated from path_borrower_violations.sim because the
-# init-state pass runs before the lifetime pass; an
-# INIT-MoveWithUnfulfilledContainedRef error in any function suppresses
-# LT-LoanConflict diagnostics for other functions in the same file.
+# Moving a struct transfers every reference-field obligation to the callee,
+# just as moving a bare reference does. The caller must not be forced to
+# fulfill the obligation before transferring ownership of the container.
 
 struct RefBox: Move { p: &mut i64 }
 
@@ -19,8 +12,8 @@ extern fn take_box(b: RefBox);
 
 # `b.p = &mut x` opens a loan that imposes an Init obligation: the
 # pointee must be Init when `b.p` expires. Moving `b.p.*` out without
-# writing back leaves `x` Uninit. Moving `b` via `take_box` while the
-# obligation remains unsatisfied fires INIT-MoveWithUnfulfilledContainedRef.
+# writing back leaves `x` Uninit. Moving `b` via `take_box` transfers
+# that outstanding obligation to the callee, so the caller is valid.
 fn move_with_unfulfilled_ref_obs(x: i64) {
   b: RefBox;
   y: i64;
