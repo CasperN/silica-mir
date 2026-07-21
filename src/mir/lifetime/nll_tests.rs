@@ -10,7 +10,7 @@
 //! - **Negative**: programs with unfulfilled `&out` obligations still
 //!   fail after elaboration (NLL inserts naively; check surfaces error).
 
-use crate::mir::lifetime::nll::elaborate;
+use crate::mir::lifetime::elaborate;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print;
 use crate::mir::test_util::*;

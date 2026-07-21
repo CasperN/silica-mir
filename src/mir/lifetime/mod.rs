@@ -57,10 +57,16 @@ impl From<LifetimeCode> for DiagCode {
 }
 
 pub mod constraints;
-pub mod nll;
+mod nll;
 pub mod region;
 
 pub use region::Region;
+
+/// Elaborate non-lexical lifetimes by inserting explicit `unborrow`
+/// statements at borrower last-use points.
+pub fn elaborate(program: &mut Program, env: &Env) {
+    nll::elaborate(program, env);
+}
 
 /// A record of a borrow that's currently in force. `loaned` is a set to
 /// support multi-loan: when a branch-of-borrows produces different loaned

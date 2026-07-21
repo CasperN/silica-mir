@@ -108,7 +108,7 @@ pub fn elaborate_and_check_mir(
     // Elaboration passes mutate function bodies only; `types` never
     // changes. After each mutation, resync env's cached function bodies
     // so downstream passes see the up-to-date form.
-    mir::lifetime::nll::elaborate(&mut elaborated, &env);
+    mir::lifetime::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
     mir::init_state::elaborate(&mut elaborated, &env);
