@@ -37,7 +37,7 @@ use crate::mir::substructural::check::SubstructuralCheckCode;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 mod drop_elaboration;
 
@@ -556,6 +556,7 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
         check_function(env, f, d);
     }
+    check_return_leaks(env, d);
 }
 
 /// Insert state-proven `Drop` transitions. Planning remains private to this
@@ -640,11 +641,8 @@ pub fn states_before_returns<'a>(
     out
 }
 
-/// Post-elaboration return validation. This remains separate from
-/// [`check_program`] while the pipeline still has a pre-elaboration
-/// compatibility check; once that check is removed, it becomes part of the
-/// single final place-state validation entry point.
-pub(crate) fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
+/// Return validation is part of the single final place-state check.
+fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
     for func in env.functions.values() {
         if func.body.is_none() {
             continue;
@@ -786,13 +784,19 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
     let mut s = PointState::default();
     for p in &func.params {
         s.locals.insert(p.name.clone(), InitState::Init);
-        // Reference parameters carry the loan for the whole body, so at
-        // entry we know their pointee is in the kind's creation-cur.
-        if let TypeKind::Ref(kind, _, _) = &p.ty.kind {
-            if let Some(rs) = RefState::from_kind(kind) {
-                s.refs.insert(var_place(p.name.clone()), rs);
-            }
-        }
+        // Parameters are fully initialized at entry, including every
+        // reference-typed field of a by-value struct parameter. Enum
+        // payloads deliberately stop the walk: only one variant exists at
+        // runtime, so seeding every variant would invent obligations for
+        // inactive storage until we have discriminant-sensitive entry facts.
+        let mut visited = BTreeSet::new();
+        seed_parameter_ref_states(
+            var_place(p.name.clone()),
+            &p.ty,
+            env,
+            &mut visited,
+            &mut s.refs,
+        );
     }
     for l in &body.locals {
         // A struct with zero declared fields is trivially initialized —
@@ -805,6 +809,45 @@ fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState 
         s.locals.insert(l.name.clone(), init);
     }
     s
+}
+
+fn seed_parameter_ref_states(
+    place: Place,
+    ty: &Type,
+    env: &Env,
+    visited: &mut BTreeSet<String>,
+    refs: &mut IndexMap<Place, RefState>,
+) {
+    if let TypeKind::Ref(kind, _, _) = &ty.kind {
+        if let Some(state) = RefState::from_kind(kind) {
+            refs.insert(place, state);
+        }
+        return;
+    }
+
+    let TypeKind::Custom(name, _, args) = &ty.kind else {
+        return;
+    };
+    if !visited.insert(name.clone()) {
+        return;
+    }
+    if let Some(TypeDecl::Struct(def)) = env.types.get(name) {
+        let fields: Vec<_> = def
+            .fields
+            .iter()
+            .map(|field| (field.name.clone(), def.meta.substitute_types(&field.ty, args)))
+            .collect();
+        for (field_name, field_ty) in fields {
+            seed_parameter_ref_states(
+                field_place(place.clone(), field_name),
+                &field_ty,
+                env,
+                visited,
+                refs,
+            );
+        }
+    }
+    visited.remove(name);
 }
 
 fn is_trivially_init(ty: &Type, env: &Env) -> bool {
@@ -1076,6 +1119,38 @@ impl<'a> InitStateContext<'a> {
             return None;
         };
         Some((ref_place, sub_path, *pointee_ty))
+    }
+}
+
+#[cfg(test)]
+mod parameter_ref_tests {
+    use super::*;
+    use crate::mir::parser::Parser;
+
+    #[test]
+    fn seeds_nested_struct_parameter_reference_obligations() {
+        let program = Parser::new(
+            "
+            struct Inner: Move { r: &out i64 }
+            struct Outer: Move { inner: Inner }
+            fn f(p: Outer) { entry: return }
+            ",
+        )
+        .parse()
+        .expect("parse");
+        let env = Env::build(&program).0;
+        let func = env.functions.get("f").expect("function");
+        let body = func.body.as_ref().expect("body");
+
+        let state = initial_state(func, body, &env);
+        let field = field_place(field_place(var_place("p"), "inner"), "r");
+        assert_eq!(
+            state.refs.get(&field),
+            Some(&RefState {
+                pointee: InitState::NeverInit,
+                ends_init: true,
+            })
+        );
     }
 }
 

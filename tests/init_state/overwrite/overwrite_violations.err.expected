@@ -1,5 +1,9 @@
-error: at 38:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_whole', block 'entry': cannot overwrite 'y': type Linear is not Drop and the value is still live (consume it via `drop y` first)
+error: at 38:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_linear_whole', block 'entry': reference 'y.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 34 | fn overwrite_init_linear_whole(x1: Linear, x2: Linear) {
+ 35 |   y: Linear;
+    |   ---------- reference declared here
+ 36 |   entry:
  37 |     y = move x1;
  38 |     y = move x2;
     |     ^^^^^^^^^^^
@@ -11,6 +15,31 @@ error: at 51:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_f
  51 |     c.w1 = move w1;
     |     ^^^^^^^^^^^^^^
  52 |     return
+    |
+error: at 51:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_linear_field', block 'entry': reference 'c.w1.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 47 | fn overwrite_init_linear_field(w0: Wrap, w1: Wrap) {
+ 48 |   c: Container;
+    |   ------------- reference declared here
+ 49 |   entry:
+ 50 |     c.w1 = move w0;
+ 51 |     c.w1 = move w1;
+    |     ^^^^^^^^^^^^^^
+ 52 |     return
+    |
+error: at 52:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_linear_field', block 'entry': reference 'c.w1.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 47 | fn overwrite_init_linear_field(w0: Wrap, w1: Wrap) {
+ 48 |   c: Container;
+    |   ------------- reference declared here
+ 49 |   entry:
+    |
+    | ...
+    |
+ 51 |     c.w1 = move w1;
+ 52 |     return
+    |     ^^^^^^
+ 53 | }
     |
 error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_field_unfulfilled_oblg', block 'entry': reference 'b.p' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |

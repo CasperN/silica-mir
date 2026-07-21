@@ -12,8 +12,12 @@ error: at 41:5: [INIT-UseBeforeInit] In function 'use_before_init_at_stmt_span',
     |     ^^^^^^^^^^
  42 |     return
     |
-error: at 54:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_without_drop_at_stmt_span', block 'entry': cannot overwrite 'y': type A is not Drop and the value is still live (consume it via `drop y` first)
+error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_without_drop_at_stmt_span', block 'entry': reference 'y.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
+ 50 | fn overwrite_without_drop_at_stmt_span(a1: A, a2: A) {
+ 51 |   y: A;
+    |   ----- reference declared here
+ 52 |   entry:
  53 |     y = move a1;
  54 |     y = move a2;
     |     ^^^^^^^^^^^

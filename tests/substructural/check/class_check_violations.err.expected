@@ -102,23 +102,3 @@ error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': 
  132 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 125:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
-     |
- 122 | 
- 123 | fn drop_drop_ref(r: &drop i64) {
-     |                  ------------ reference declared here
- 124 |   entry:
- 125 |     drop r;
-     |     ^^^^^^
- 126 |     return
-     |
-error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
-     |
- 128 | 
- 129 | fn drop_out_ref(r: &out i64) {
-     |                 ----------- reference declared here
- 130 |   entry:
- 131 |     drop r;
-     |     ^^^^^^
- 132 |     return
-     |

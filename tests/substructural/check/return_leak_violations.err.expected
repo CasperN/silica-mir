@@ -1,3 +1,14 @@
+error: at 64:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct_partial_init', block 'entry': reference 'p.a.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 60 | fn fully_linear_struct_partial_init(src: Pair) {
+ 61 |   p: Pair;
+    |   -------- reference declared here
+ 62 |   entry:
+ 63 |     p.a = move src.a;
+ 64 |     return
+    |     ^^^^^^
+ 65 | }
+    |
 error: at 84:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  81 | # the pointee, so the ref-obligation fires at return.
@@ -56,6 +67,16 @@ error: at 53:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_untouched
  54 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 53:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct_untouched', block 'entry': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 50 | # Every field is non-Drop, so drop-elab cannot help; the whole `x` leaks.
+ 51 | fn fully_linear_struct_untouched(x: L) {
+    |                                  ---- reference declared here
+ 52 |   entry:
+ 53 |     return
+    |     ^^^^^^
+ 54 | }
+    |
 error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
     |
  59 | # still Init. The leak is reported on the specific field.
@@ -71,6 +92,20 @@ error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_i
  65 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 64:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct_partial_init', block 'entry': reference 'src.b.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 59 | # still Init. The leak is reported on the specific field.
+ 60 | fn fully_linear_struct_partial_init(src: Pair) {
+    |                                     --------- reference declared here
+ 61 |   p: Pair;
+    |
+    | ...
+    |
+ 63 |     p.a = move src.a;
+ 64 |     return
+    |     ^^^^^^
+ 65 | }
+    |
 error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
     |
  68 | 
@@ -86,6 +121,20 @@ error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked
  74 |   fbr:
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 73:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_each_checked', block 't': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 68 | 
+ 69 | fn multiple_returns_each_checked(b: bool, x: L) {
+    |                                           ---- reference declared here
+ 70 |   entry:
+    |
+    | ...
+    |
+ 72 |   t:
+ 73 |     return
+    |     ^^^^^^
+ 74 |   fbr:
+    |
 error: at 75:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
     |
  68 | 
@@ -101,3 +150,17 @@ error: at 75:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked
  76 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 75:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_each_checked', block 'fbr': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 68 | 
+ 69 | fn multiple_returns_each_checked(b: bool, x: L) {
+    |                                           ---- reference declared here
+ 70 |   entry:
+    |
+    | ...
+    |
+ 74 |   fbr:
+ 75 |     return
+    |     ^^^^^^
+ 76 | }
+    |

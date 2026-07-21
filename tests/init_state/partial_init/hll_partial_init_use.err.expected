@@ -19,25 +19,15 @@ error: at 45:15: [INIT-UsePartiallyInit] In function 'nested_read_partial_inner'
     |               ^^^
  46 | }
     |
-error: at 62:3: [INIT-UseInconsistent] In function 'read_arm_only_field_y': 'xyz.y' may be used before initialization or after move (state inconsistent across paths)
-    |
- 56 |     xyz.x = 1i32;
- 57 |     xyz.y = 2i32;
-    |     ------------ initialized here on some path
- 58 |   } else {
-    |
-    | ...
+error: at 62:3: [INIT-UseBeforeInit] In function 'read_arm_only_field_y': variable 'xyz' is used before initialization
     |
  61 |   }
  62 |   xyz.y
     |   ^^^^^
  63 | }
     |
-error: at 75:3: [INIT-UseInconsistent] In function 'read_arm_only_field_z': 'xyz.z' may be used before initialization or after move (state inconsistent across paths)
+error: at 75:3: [INIT-UseBeforeInit] In function 'read_arm_only_field_z': variable 'xyz' is used before initialization
     |
- 72 |     xyz.x = 1i32;
- 73 |     xyz.z = 2i32;
-    |     ------------ initialized here on some path
  74 |   }
  75 |   xyz.z
     |   ^^^^^

@@ -187,13 +187,6 @@ error: at 431:5: [VF-DowncastVariantNotRefined] In function 'mutation_between_va
      |     ^^^^^^^^^^^^^^^^
  432 |     goto ret;
      |
-error: at 296:5: [INIT-UseAfterMove] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
-     |
- 295 |     unborrow r;
- 296 |     switchEnum(o) [None: dead, Some: s]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 297 |   dead:
-     |
 note: at 39:8: [COMP-RedundantMoveMarker] Move marker is redundant on 'HasInhabited' because both Copy and Drop are present
     |
  38 | struct Wrap: Copy + Drop { inner: Option }

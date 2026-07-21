@@ -40,6 +40,17 @@ error: at 73:5: [INIT-BorrowStateMismatch] In function 'drop_of_never_init', blo
     |     ^^^^^^^^^^^
  74 |     return
     |
+error: at 74:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_never_init', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 70 |   x: i64;
+ 71 |   r: &drop i64;
+    |   ------------- reference declared here
+ 72 |   entry:
+ 73 |     r = &drop x;
+ 74 |     return
+    |     ^^^^^^
+ 75 | }
+    |
 error: at 82:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
     |
  81 |     p.x = 1;
@@ -47,12 +58,40 @@ error: at 82:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 
     |     ^^^^^^^^^^^
  83 |     return
     |
+error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 78 |   p: P;
+ 79 |   r: &drop P;
+    |   ----------- reference declared here
+ 80 |   entry:
+    |
+    | ...
+    |
+ 82 |     r = &drop p;
+ 83 |     return
+    |     ^^^^^^
+ 84 | }
+    |
 error: at 93:5: [INIT-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
     |
  92 |     p.x = 1;
  93 |     r = &out p;
     |     ^^^^^^^^^^
  94 |     return
+    |
+error: at 94:5: [INIT-RefObligationUnfulfilled] In function 'out_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 89 |   p: P;
+ 90 |   r: &out P;
+    |   ---------- reference declared here
+ 91 |   entry:
+    |
+    | ...
+    |
+ 93 |     r = &out p;
+ 94 |     return
+    |     ^^^^^^
+ 95 | }
     |
 error: at 102:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
      |
@@ -62,6 +101,31 @@ error: at 102:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', 
  103 |     return
      |
   hint: move 'x' out first — linear values cannot be forgotten in place
+error: at 103:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'rr' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     |
+  99 | fn out_of_init_non_drop(x: Linear) {
+ 100 |   rr: &out Linear;
+     |   ---------------- reference declared here
+ 101 |   entry:
+ 102 |     rr = &out x;
+ 103 |     return
+     |     ^^^^^^
+ 104 | }
+     |
+error: at 103:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     |
+  98 | # failure carries the "move out first" hint.
+  99 | fn out_of_init_non_drop(x: Linear) {
+     |                         --------- reference declared here
+ 100 |   rr: &out Linear;
+     |
+     | ...
+     |
+ 102 |     rr = &out x;
+ 103 |     return
+     |     ^^^^^^
+ 104 | }
+     |
 error: at 111:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
      |
  110 |   entry:
@@ -70,3 +134,17 @@ error: at 111:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop
  112 |     return
      |
   hint: move 'x' out first — linear values cannot be forgotten in place
+error: at 112:5: [INIT-RefObligationUnfulfilled] In function 'uninit_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     |
+ 107 | 
+ 108 | fn uninit_of_init_non_drop(x: Linear) {
+     |                            --------- reference declared here
+ 109 |   rr: &uninit Linear;
+     |
+     | ...
+     |
+ 111 |     rr = &uninit x;
+ 112 |     return
+     |     ^^^^^^
+ 113 | }
+     |

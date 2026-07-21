@@ -97,8 +97,6 @@ pub fn elaborate_and_check_mir(
     mir::substructural::check::check_statements(&env, d);
     mir::variant_flow::check_program(&env, d);
     mir::block_reachability::check_program(&env, d);
-    mir::init_state::check_program(&env, d);
-
     if d.has_errors() {
         return (program, env);
     }
@@ -114,11 +112,10 @@ pub fn elaborate_and_check_mir(
     mir::init_state::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
-    // Post-elab checks. init_state re-runs so NLL-inserted `unborrow r`
-    // on an unfulfilled `&out`/`&drop` obligation surfaces its error at
-    // the insertion site (via close_ref_if_present), not silently.
+    // Final dynamic validation runs once, over the canonical elaborated MIR.
+    // This surfaces invalid source transitions that no elaborator repaired,
+    // plus obligations exposed by NLL-inserted `unborrow` statements.
     mir::init_state::check_program(&env, d);
-    mir::init_state::check_return_leaks(&env, d);
     mir::lifetime::check_program(&env, d);
 
     (elaborated, env)

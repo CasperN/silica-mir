@@ -12,3 +12,15 @@ error: at 16:5: [INIT-WriteThroughSharedRef] In function 'move_out', block 'entr
     |     ^^^^^^^^^^^^
  17 |     return
     |
+error: at 17:5: [SUB-ReturnValueLeak] In function 'move_out', block 'entry': value 'x' of type Owned is not consumed at return
+    |
+ 13 | fn move_out(r: &Owned) {
+ 14 |   x: Owned;
+    |   --------- variable declared here
+ 15 |   entry:
+ 16 |     x = move r.*;
+ 17 |     return
+    |     ^^^^^^
+ 18 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

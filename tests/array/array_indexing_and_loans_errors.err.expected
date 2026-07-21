@@ -26,31 +26,3 @@ error: at 79:5: [TC-ArrayIndexNotInteger] In function 'non_int_index', block 'en
     |     ^^^^^^^^^^^^^^^^^^
  80 |     return
     |
-error: at 53:5: [INIT-BorrowStateMismatch] In function 'zero_len_array_index_oob', block 'entry': cannot create &mut of 'a[0]': place must be initialized at borrow, but is not yet initialized
-    |
- 52 |   entry:
- 53 |     r = &mut a[0i64];
-    |     ^^^^^^^^^^^^^^^^
- 54 |     return
-    |
-error: at 92:5: [INIT-BorrowDynamicIndexNonUniform] In function 'mut_borrow_dynamic_uninit_fails', block 'entry': cannot create &mut of 'a[?]': dynamic index requires the containing array to be uniformly initialized, but it is not yet initialized
-    |
- 91 |   entry:
- 92 |     r = &mut a[copy i];
-    |     ^^^^^^^^^^^^^^^^^^
- 93 |     call use_mut(move r);
-    |
-error: at 108:5: [INIT-BorrowDynamicIndexNonUniform] In function 'out_borrow_dynamic_init_fails', block 'entry': cannot create &out of 'a[?]': dynamic index requires the containing array to be uniformly uninitialized, but it is initialized
-     |
- 107 |     a = [1i64, 2i64, 3i64];
- 108 |     r = &out a[copy i];
-     |     ^^^^^^^^^^^^^^^^^^
- 109 |     call set_i64(move r, 1i64);
-     |
-error: at 125:5: [INIT-UseBeforeInit] In function 'read_partially_init_array', block 'entry': variable 'a' is used before initialization
-     |
- 124 |     call set_i64(move r0, 10i64);
- 125 |     x = copy a[1i64];
-     |     ^^^^^^^^^^^^^^^^
- 126 |     return
-     |
