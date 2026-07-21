@@ -38,6 +38,11 @@ use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeMap;
 
+mod drop_elaboration;
+
+#[cfg(test)]
+mod drop_elaboration_tests;
+
 /// Machine-readable error codes emitted by the initialization-state
 /// pass. One variant per user-observable failure kind; message text
 /// carries the specifics (place name, kinds, etc).
@@ -550,6 +555,12 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for f in env.functions.values() {
         check_function(env, f, d);
     }
+}
+
+/// Insert state-proven `Drop` transitions. Planning remains private to this
+/// subsystem because it depends on the same transfer semantics as validation.
+pub fn elaborate(program: &mut Program, env: &Env) {
+    drop_elaboration::elaborate(program, env);
 }
 
 /// For each `Return`-terminated block in `func`, compute the init state at

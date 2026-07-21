@@ -5,12 +5,6 @@
 //! - `check` — verifies statements respect substructural preconditions
 //!   (`copy p` requires Copy; `drop p` requires Drop) and, post-
 //!   elaboration, verifies no value is leaked at `return`.
-//! - `drop_elaboration` — inserts explicit `drop` statements so the
-//!   elaborated MIR satisfies the leak check.
 
 pub mod check;
 pub mod composition;
-pub mod drop_elaboration;
-
-#[cfg(test)]
-mod drop_elaboration_tests;

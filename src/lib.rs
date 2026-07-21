@@ -111,7 +111,7 @@ pub fn elaborate_and_check_mir(
     mir::lifetime::nll::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
-    mir::substructural::drop_elaboration::elaborate(&mut elaborated, &env);
+    mir::init_state::elaborate(&mut elaborated, &env);
     env.sync_functions(&elaborated);
 
     // Post-elab checks. init_state re-runs so NLL-inserted `unborrow r`
