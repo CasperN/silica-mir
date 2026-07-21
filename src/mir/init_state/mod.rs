@@ -799,11 +799,19 @@ impl<'a> InitStateContext<'a> {
             self.apply_deref_op(target, DerefOp::Write, state, report);
         } else {
             self.apply_write(target, state, InitState::Init);
-            if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
-                if let Some(rs) = RefState::from_kind(kind) {
-                    state.refs.insert(t, rs);
+            if let Some(t) = as_owned_path(target) {
+                if let RValue::Ref(kind, place) = rvalue {
+                    if let Some(rs) = RefState::from_kind(kind) {
+                        state.refs.insert(t.clone(), rs);
+                    }
+                    self.apply_eager_borrow_transition(kind, place, state);
+                } else if let RValue::PtrCast(_, to_ty) = rvalue {
+                    if let TypeKind::Ref(kind, _, _) = &to_ty.kind {
+                        if let Some(rs) = RefState::from_kind(kind) {
+                            state.refs.insert(t.clone(), rs);
+                        }
+                    }
                 }
-                self.apply_eager_borrow_transition(kind, place, state);
             }
             for (dst_place, rs) in carried_refs {
                 state.refs.insert(dst_place, rs);
@@ -827,7 +835,7 @@ impl<'a> InitStateContext<'a> {
 
     fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
         match rv {
-            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => self.apply_operand_move(op, state),
+            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => self.apply_operand_move(op, state),
             RValue::Ref(_, _) | RValue::RawRef(_) => {}
             RValue::ArrayLit(ops) => {
                 for op in ops {
@@ -1418,6 +1426,12 @@ fn capture_carried_refs(
             };
             (src, downcast_place(dst, variant.clone()))
         }
+        RValue::PtrCast(Operand::Move(src_place), _) => {
+            let Some(src) = as_owned_path(src_place) else {
+                return Vec::new();
+            };
+            (src, dst)
+        }
         _ => return Vec::new(),
     };
     state
@@ -1542,7 +1556,7 @@ impl<'a> InitStateContext<'a> {
         d: &mut Diagnostics,
     ) {
         match rv {
-            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
+            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
                 self.eval_operand(func, block, op, span, state, d);
             }
             RValue::Ref(kind, place) => {

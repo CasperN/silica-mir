@@ -607,6 +607,16 @@ fn lower_expr_into(
                     "missing type annotation for cast target",
                 )
             })?;
+            if matches!(from_hll_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_)) && matches!(to_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_)) {
+                let inner_op = lower_expr_to_operand(ctx, inner, types)?;
+                let to_mir_ty = lower_type(to_ty);
+                ctx.emit_statement(assign_stmt(
+                    dest.clone(),
+                    mir::RValue::PtrCast(inner_op, to_mir_ty),
+                    expr.span,
+                ));
+                return Ok(());
+            }
             let Some(intrinsic) = crate::hll::type_check::cast_intrinsic_name(from_hll_ty, to_ty)
             else {
                 lower_expr_into(ctx, inner, dest, types)?;

@@ -1,0 +1,31 @@
+# Paired negative for `pointer_cast.si`. Every fn fires HTC-InvalidCast or
+# HTC-UnsafeRequired on unsupported or unsafe casts.
+
+struct P: Copy + Drop { x: i64 }
+
+# 1. Cast to reference outside unsafe block (requires unsafe block)
+fn ptr_to_ref_safe(p: *i64) -> &i64 {
+  p as &i64
+}
+
+fn ref_to_ref_safe(r: &i64) -> &u8 {
+  r as &u8
+}
+
+# 2. Cast from non-pointer/non-ref to pointer/ref (not supported)
+fn int_to_ptr(x: u64) -> *i64 {
+  x as *i64
+}
+
+fn struct_to_ptr(p: P) -> *i64 {
+  p as *i64
+}
+
+# 3. Cast from pointer/ref to non-pointer/non-ref (not supported)
+fn ptr_to_int(p: *i64) -> u64 {
+  p as u64
+}
+
+fn ref_to_struct(r: &i64) -> P {
+  r as P
+}

@@ -1,0 +1,42 @@
+error: at 8:3: [HTC-UnsafeRequired] In function 'ptr_to_ref_safe': cast to reference type requires unsafe block
+   |
+ 7 | fn ptr_to_ref_safe(p: *i64) -> &i64 {
+ 8 |   p as &i64
+   |   ^^^^^^^^^
+ 9 | }
+   |
+error: at 12:3: [HTC-UnsafeRequired] In function 'ref_to_ref_safe': cast to reference type requires unsafe block
+    |
+ 11 | fn ref_to_ref_safe(r: &i64) -> &u8 {
+ 12 |   r as &u8
+    |   ^^^^^^^^
+ 13 | }
+    |
+error: at 17:3: [HTC-InvalidCast] In function 'int_to_ptr': cast from u64 to *i64 is not supported
+    |
+ 16 | fn int_to_ptr(x: u64) -> *i64 {
+ 17 |   x as *i64
+    |   ^^^^^^^^^
+ 18 | }
+    |
+error: at 21:3: [HTC-InvalidCast] In function 'struct_to_ptr': cast from P to *i64 is not supported
+    |
+ 20 | fn struct_to_ptr(p: P) -> *i64 {
+ 21 |   p as *i64
+    |   ^^^^^^^^^
+ 22 | }
+    |
+error: at 26:3: [HTC-InvalidCast] In function 'ptr_to_int': cast from *i64 to u64 is not supported
+    |
+ 25 | fn ptr_to_int(p: *i64) -> u64 {
+ 26 |   p as u64
+    |   ^^^^^^^^
+ 27 | }
+    |
+error: at 30:3: [HTC-InvalidCast] In function 'ref_to_struct': cast from & i64 to P is not supported
+    |
+ 29 | fn ref_to_struct(r: &i64) -> P {
+ 30 |   r as P
+    |   ^^^^^^
+ 31 | }
+    |

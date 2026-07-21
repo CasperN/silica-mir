@@ -184,7 +184,7 @@ fn check_places_in_stmt(
         StatementKind::Assign(target, rvalue) => {
             check_downcast_refinement(env, func, locals, block, target, span, state, d);
             match rvalue {
-                RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
+                RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
                     if let Some(p) = operand_place(op) {
                         check_downcast_refinement(env, func, locals, block, p, span, state, d);
                     }

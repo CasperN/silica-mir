@@ -120,6 +120,10 @@ pub enum TypeCheckCode {
     EnumConstrPayloadTypeMismatch,
     /// Two array-literal elements have different types.
     ArrayLitElementTypeMismatch,
+    /// Source of a pointer cast is not a pointer or reference.
+    PtrCastSourceNotPointer,
+    /// Target of a pointer cast is not a pointer or reference.
+    PtrCastTargetNotPointer,
 
     // ---- Generic instantiation ----
     /// A `Custom(name, args)` reference passes the wrong number of

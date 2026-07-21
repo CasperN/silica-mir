@@ -835,6 +835,10 @@ fn emit_rvalue(cx: &mut CodeGenContext, rv: &RValue) -> (String, Type) {
         RValue::ArrayLit(..) => {
             unreachable!("ArrayLit is handled in Assign statement, not here")
         }
+        RValue::PtrCast(op, to_ty) => {
+            let (val, _) = emit_operand(cx, op);
+            (val, to_ty.clone())
+        }
     }
 }
 

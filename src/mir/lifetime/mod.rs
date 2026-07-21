@@ -298,7 +298,7 @@ fn close_loans_under(loans: &mut LoanMap, consumed: &Place) {
 
 fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => consume_operand(loans, op),
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => consume_operand(loans, op),
         RValue::Ref(_, _) | RValue::RawRef(_) => {}
         RValue::ArrayLit(ops) => {
             for op in ops {
@@ -334,6 +334,12 @@ fn capture_carried_loans(target: &Place, rvalue: &RValue, loans: &LoanMap) -> Ve
                 return Vec::new();
             };
             (src, downcast_place(dst, variant.clone()))
+        }
+        RValue::PtrCast(Operand::Move(src_place), _) => {
+            let Some(src) = as_owned_path(src_place) else {
+                return Vec::new();
+            };
+            (src, dst)
         }
         _ => return Vec::new(),
     };
@@ -764,6 +770,13 @@ impl<'a> Checker<'a> {
                 };
                 (r, downcast_place(target.clone(), variant.clone()))
             }
+            RValue::PtrCast(op, _) => {
+                let Some(src) = operand_place(op) else { return };
+                let Some(r) = self.region_ctx.region_of_place(src, &self.locals, self.env) else {
+                    return;
+                };
+                (r, target.clone())
+            }
             _ => return,
         };
         let Some(t_r) = self
@@ -1132,7 +1145,7 @@ impl<'a> Checker<'a> {
         match &stmt.kind {
             StatementKind::Assign(target, rvalue) => {
                 match rvalue {
-                    RValue::Use(op) | RValue::EnumConstr(_, _, _, op) => {
+                    RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
                         self.check_operand_access(block, op, stmt.span, loans);
                     }
                     RValue::Ref(kind, place) => {

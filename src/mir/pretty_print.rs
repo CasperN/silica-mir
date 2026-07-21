@@ -302,6 +302,13 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
             }
             out.push(']');
         }
+        RValue::PtrCast(op, ty) => {
+            out.push_str("ptr_cast(");
+            write_operand(out, op);
+            out.push_str(", ");
+            write!(out, "{}", ty).unwrap();
+            out.push(')');
+        }
     }
 }
 

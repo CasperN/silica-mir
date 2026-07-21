@@ -1,48 +1,34 @@
-error: at 15:34: [HTC-InvalidCast] In function 'int_to_bool': cast from i64 to bool is not supported
+error: at 14:34: [HTC-InvalidCast] In function 'int_to_bool': cast from i64 to bool is not supported
     |
- 14 | 
- 15 | fn int_to_bool(x: i64) -> bool { x as bool }
+ 13 | 
+ 14 | fn int_to_bool(x: i64) -> bool { x as bool }
     |                                  ^^^^^^^^^
- 16 | fn float_to_bool(x: f64) -> bool { x as bool }
+ 15 | fn float_to_bool(x: f64) -> bool { x as bool }
     |
-error: at 16:36: [HTC-InvalidCast] In function 'float_to_bool': cast from f64 to bool is not supported
+error: at 15:36: [HTC-InvalidCast] In function 'float_to_bool': cast from f64 to bool is not supported
     |
- 15 | fn int_to_bool(x: i64) -> bool { x as bool }
- 16 | fn float_to_bool(x: f64) -> bool { x as bool }
+ 14 | fn int_to_bool(x: i64) -> bool { x as bool }
+ 15 | fn float_to_bool(x: f64) -> bool { x as bool }
     |                                    ^^^^^^^^^
- 17 | fn ptr_to_ptr(p: *i64) -> *u8 { p as *u8 }
+ 16 | fn struct_to_int(p: P) -> i64 { p as i64 }
     |
-error: at 17:33: [HTC-InvalidCast] In function 'ptr_to_ptr': cast from *i64 to *u8 is not supported
+error: at 16:33: [HTC-InvalidCast] In function 'struct_to_int': cast from P to i64 is not supported
     |
- 16 | fn float_to_bool(x: f64) -> bool { x as bool }
- 17 | fn ptr_to_ptr(p: *i64) -> *u8 { p as *u8 }
+ 15 | fn float_to_bool(x: f64) -> bool { x as bool }
+ 16 | fn struct_to_int(p: P) -> i64 { p as i64 }
     |                                 ^^^^^^^^
- 18 | fn ref_to_ptr(r: &i64) -> *i64 { r as *i64 }
+ 17 | fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
     |
-error: at 18:34: [HTC-InvalidCast] In function 'ref_to_ptr': cast from & i64 to *i64 is not supported
+error: at 17:32: [HTC-InvalidCast] In function 'int_to_ptr': cast from u64 to *u8 is not supported
     |
- 17 | fn ptr_to_ptr(p: *i64) -> *u8 { p as *u8 }
- 18 | fn ref_to_ptr(r: &i64) -> *i64 { r as *i64 }
-    |                                  ^^^^^^^^^
- 19 | fn struct_to_int(p: P) -> i64 { p as i64 }
-    |
-error: at 19:33: [HTC-InvalidCast] In function 'struct_to_int': cast from P to i64 is not supported
-    |
- 18 | fn ref_to_ptr(r: &i64) -> *i64 { r as *i64 }
- 19 | fn struct_to_int(p: P) -> i64 { p as i64 }
-    |                                 ^^^^^^^^
- 20 | fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
-    |
-error: at 20:32: [HTC-InvalidCast] In function 'int_to_ptr': cast from u64 to *u8 is not supported
-    |
- 19 | fn struct_to_int(p: P) -> i64 { p as i64 }
- 20 | fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
+ 16 | fn struct_to_int(p: P) -> i64 { p as i64 }
+ 17 | fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
     |                                ^^^^^^^^
- 21 | fn array_to_int(a: [u8; 4]) -> u32 { a as u32 }
+ 18 | fn array_to_int(a: [u8; 4]) -> u32 { a as u32 }
     |
-error: at 21:38: [HTC-InvalidCast] In function 'array_to_int': cast from [u8; 4] to u32 is not supported
+error: at 18:38: [HTC-InvalidCast] In function 'array_to_int': cast from [u8; 4] to u32 is not supported
     |
- 20 | fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
- 21 | fn array_to_int(a: [u8; 4]) -> u32 { a as u32 }
+ 17 | fn int_to_ptr(x: u64) -> *u8 { x as *u8 }
+ 18 | fn array_to_int(a: [u8; 4]) -> u32 { a as u32 }
     |                                      ^^^^^^^^
     |

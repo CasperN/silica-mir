@@ -669,6 +669,17 @@ impl Parser {
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "rvalue node is empty"))?;
         match child.kind() {
             "operand" => Ok(RValue::Use(self.map_operand(child)?)),
+            "pointer_cast" => {
+                let val_node = child.child_by_field_name("value").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "ptr_cast missing value")
+                })?;
+                let ty_node = child.child_by_field_name("type").ok_or_else(|| {
+                    self.diag(child, ParserCode::MalformedCst, "ptr_cast missing type")
+                })?;
+                let op = self.map_operand(val_node)?;
+                let ty = self.map_type(ty_node)?;
+                Ok(RValue::PtrCast(op, ty))
+            }
             _ => {
                 let text = self.get_text(child);
                 let ref_kind = match text {

@@ -472,6 +472,32 @@
     }
   },
   {
+    "type": "pointer_cast",
+    "named": true,
+    "fields": {
+      "type": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "value": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "operand",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "program",
     "named": true,
     "root": true,
@@ -522,6 +548,10 @@
         },
         {
           "type": "place",
+          "named": true
+        },
+        {
+          "type": "pointer_cast",
           "named": true
         },
         {
@@ -1032,6 +1062,10 @@
   },
   {
     "type": "never",
+    "named": false
+  },
+  {
+    "type": "ptr_cast",
     "named": false
   },
   {

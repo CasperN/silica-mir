@@ -1,0 +1,34 @@
+# Test raw pointer and reference reinterpretation casts across all matrix cells:
+# 1. *T as *U (pointer to pointer)
+# 2. &T as *U (reference to pointer)
+# 3. *T as &U (pointer to reference)
+# 4. &T as &U (reference to reference)
+
+fn ptr_to_ptr(p: *i64) -> *u8 {
+  p as *u8
+}
+
+fn ref_to_ptr(r: &i64) -> *u8 {
+  r as *u8
+}
+
+fn ptr_to_ref(p: *i64) -> &i64 {
+  unsafe { p as &i64 }
+}
+
+fn ref_to_ref(r: &i64) -> &u8 {
+  unsafe { r as &u8 }
+}
+
+# Verify that mutable reference casting works as well
+fn mut_ref_to_mut_ptr(r: &mut i64) -> *u8 {
+  (&raw r.*) as *u8
+}
+
+fn mut_ptr_to_mut_ref(p: *i64) -> &mut i64 {
+  unsafe { p as &mut i64 }
+}
+
+fn mut_ref_to_mut_ref(r: &mut i64) -> &mut u8 {
+  unsafe { ((&raw r.*) as *u8) as &mut u8 }
+}

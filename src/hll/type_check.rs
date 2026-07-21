@@ -732,6 +732,9 @@ pub fn is_cast_supported(from: &Type, to: &Type) -> bool {
     if from == to {
         return true;
     }
+    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_)) && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_)) {
+        return true;
+    }
     match (from, to) {
         (Type::Int(_), Type::Int(_)) => true,
         (Type::Float(_), Type::Float(_)) => true,
@@ -747,6 +750,9 @@ pub fn is_cast_supported(from: &Type, to: &Type) -> bool {
 /// `is_cast_supported` first — this helper panics on unsupported pairs.
 pub fn cast_intrinsic_name(from: &Type, to: &Type) -> Option<String> {
     if from == to {
+        return None;
+    }
+    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_)) && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_)) {
         return None;
     }
     let ty_name = |ty: &Type| match ty {
@@ -934,6 +940,13 @@ fn infer_inner(
                     format!("cast from {} to {} is not supported", from_resolved, to_ty),
                 ));
                 return error_ty();
+            }
+            if matches!(to_ty, Type::Ref(_, _, _)) && !env.in_unsafe {
+                d.push_error(Diagnostic::new(
+                    HllTypeCheckCode::UnsafeRequired,
+                    expr.span,
+                    "cast to reference type requires unsafe block".to_string(),
+                ));
             }
             to_ty.clone()
         }

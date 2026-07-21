@@ -511,6 +511,9 @@ pub enum RValue {
     /// equal the target's `[T; N]` length. Init state treats this
     /// as whole-array atomic init.
     ArrayLit(Vec<Operand>),
+    /// Cast a raw pointer or reference operand to another raw pointer or reference type.
+    /// Written `ptr_cast(operand, Type)`.
+    PtrCast(Operand, Type),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

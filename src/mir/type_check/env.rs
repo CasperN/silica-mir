@@ -484,6 +484,22 @@ impl Env {
                 }
                 Ok(array_ty(first_ty, ops.len() as u64))
             }
+            RValue::PtrCast(op, to_ty) => {
+                let op_ty = self.type_of_operand(op, span, locals)?;
+                if !matches!(op_ty.kind, TypeKind::RawPtr(_) | TypeKind::Ref(_, _, _)) {
+                    return Err(err(
+                        PtrCastSourceNotPointer,
+                        format!("Pointer cast source must be a raw pointer or reference type, found {}", op_ty),
+                    ));
+                }
+                if !matches!(to_ty.kind, TypeKind::RawPtr(_) | TypeKind::Ref(_, _, _)) {
+                    return Err(err(
+                        PtrCastTargetNotPointer,
+                        format!("Pointer cast target must be a raw pointer or reference type, found {}", to_ty),
+                    ));
+                }
+                Ok(to_ty.clone())
+            }
         }
     }
 }

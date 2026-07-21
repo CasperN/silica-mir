@@ -196,6 +196,9 @@ impl MonoCtx {
             RValue::ArrayLit(ops) => {
                 RValue::ArrayLit(ops.iter().map(|o| self.walk_operand(o)).collect())
             }
+            RValue::PtrCast(op, ty) => {
+                RValue::PtrCast(self.walk_operand(op), self.walk_type(ty))
+            }
         }
     }
 
@@ -397,6 +400,10 @@ fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Type])
             ops.iter()
                 .map(|o| substitute_operand_types(o, type_params, args))
                 .collect(),
+        ),
+        RValue::PtrCast(op, ty) => RValue::PtrCast(
+            substitute_operand_types(op, type_params, args),
+            substitute_params(ty, type_params, args),
         ),
     }
 }

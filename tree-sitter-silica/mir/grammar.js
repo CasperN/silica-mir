@@ -237,6 +237,16 @@ module.exports = grammar({
       // Aggregate array literal: [e0, e1, ..., eN-1]. All operands
       // must share the array's element type.
       seq('[', common.commaSep($.operand), ']'),
+      $.pointer_cast,
+    ),
+
+    pointer_cast: $ => seq(
+      'ptr_cast',
+      '(',
+      field('value', $.operand),
+      ',',
+      field('type', $.type),
+      ')'
     ),
   },
 });
