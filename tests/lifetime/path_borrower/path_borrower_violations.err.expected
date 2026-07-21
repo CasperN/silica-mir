@@ -1,35 +1,35 @@
-error: at 34:5: [LT-LoanConflict] In function 'direct_write_to_borrowed_field', block 'entry': cannot write to 'x': already borrowed by 'b.p'
+error: at 32:5: [LT-LoanConflict] In function 'direct_write_to_borrowed_field', block 'entry': cannot write to 'x': already borrowed by 'b.p'
     |
- 32 |   entry:
- 33 |     b.p = &mut x;
+ 30 |   entry:
+ 31 |     b.p = &mut x;
     |     ------------ borrow of 'x' occurs here
- 34 |     x = 42;
+ 32 |     x = 42;
     |     ^^^^^^
- 35 |     call take_box(move b);
+ 33 |     call take_box(move b);
     |
   hint: the borrow of 'b.p' is active until its last use or explicit unborrow.
-error: at 51:5: [LT-LoanConflict] In function 'read_during_reborrow', block 'entry': cannot read 'b.p.*': already borrowed by 's'
+error: at 49:5: [LT-LoanConflict] In function 'read_during_reborrow', block 'entry': cannot read 'b.p.*': already borrowed by 's'
     |
- 49 |     b.p = &mut x;
- 50 |     s = &mut b.p.*;
+ 47 |     b.p = &mut x;
+ 48 |     s = &mut b.p.*;
     |     -------------- borrow of 'b.p.*' occurs here
- 51 |     y = copy b.p.*;
+ 49 |     y = copy b.p.*;
     |     ^^^^^^^^^^^^^^
- 52 |     call sink(move s);
+ 50 |     call sink(move s);
     |
   hint: the borrow of 's' is active until its last use or explicit unborrow.
-error: at 73:5: [LT-LoanConflict] In function 'write_to_loan_after_merge', block 'merge': cannot write to 'y': already borrowed by 'b.p'
+error: at 71:5: [LT-LoanConflict] In function 'write_to_loan_after_merge', block 'merge': cannot write to 'y': already borrowed by 'b.p'
     |
- 66 |   t:
- 67 |     b.p = &mut y;
+ 64 |   t:
+ 65 |     b.p = &mut y;
     |     ------------ borrow of 'y' occurs here
- 68 |     goto merge
+ 66 |     goto merge
     |
     | ...
     |
- 72 |   merge:
- 73 |     y = 1;
+ 70 |   merge:
+ 71 |     y = 1;
     |     ^^^^^
- 74 |     call take_box(move b);
+ 72 |     call take_box(move b);
     |
   hint: the borrow of 'b.p' is active until its last use or explicit unborrow.

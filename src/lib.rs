@@ -118,7 +118,7 @@ pub fn elaborate_and_check_mir(
     // on an unfulfilled `&out`/`&drop` obligation surfaces its error at
     // the insertion site (via close_ref_if_present), not silently.
     mir::init_state::check_program(&env, d);
-    mir::substructural::check::check_return_leaks(&env, d);
+    mir::init_state::check_return_leaks(&env, d);
     mir::lifetime::check_program(&env, d);
 
     (elaborated, env)

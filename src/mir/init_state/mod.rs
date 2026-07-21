@@ -33,6 +33,7 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow;
 use crate::mir::helpers::*;
+use crate::mir::substructural::check::SubstructuralCheckCode;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
@@ -637,6 +638,124 @@ pub fn states_before_returns<'a>(
         out.push((block, state));
     }
     out
+}
+
+/// Post-elaboration return validation. This remains separate from
+/// [`check_program`] while the pipeline still has a pre-elaboration
+/// compatibility check; once that check is removed, it becomes part of the
+/// single final place-state validation entry point.
+pub(crate) fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
+    for func in env.functions.values() {
+        if func.body.is_none() {
+            continue;
+        }
+        let locals = func.locals_map();
+        for (block, state) in states_before_returns(env, func) {
+            check_return_state(env, func, block, &locals, &state, d);
+        }
+    }
+}
+
+fn check_return_state(
+    env: &Env,
+    func: &Function,
+    block: &BasicBlock,
+    locals: &IndexMap<String, Type>,
+    state: &PointState,
+    d: &mut Diagnostics,
+) {
+    for (var, place_state) in &state.locals {
+        let Some(ty) = locals.get(var) else {
+            continue;
+        };
+        // A whole reference has a (cur, post) rule rather than the ordinary
+        // value-leak rule. Ref fields are handled by the recursive walk and
+        // by the obligation loop below.
+        if state.refs.contains_key(&var_place(var.clone())) {
+            continue;
+        }
+        let mut path = vec![var.clone()];
+        let mut leaks = Vec::new();
+        find_return_leaks(env, place_state, ty, &mut path, &mut leaks);
+        for (leaked_path, leaked_ty) in leaks {
+            let mut diagnostic = diag(
+                SubstructuralCheckCode::ReturnValueLeak,
+                block.terminator.span,
+                func,
+                block,
+                format!(
+                    "value '{}' of type {} is not consumed at return",
+                    leaked_path, leaked_ty
+                ),
+            )
+            .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.");
+            if let Some(span) = find_decl_span(func, leaked_path.split('.').next().unwrap_or(&leaked_path)) {
+                diagnostic = diagnostic.with_secondary(span, "variable declared here");
+            }
+            d.push_error(diagnostic);
+        }
+    }
+
+    for (place, rs) in &state.refs {
+        if rs.obligation_fulfilled() {
+            continue;
+        }
+        let (cur, expected) = describe_obligation_mismatch(rs);
+        let mut diagnostic = diag(
+            RefObligationUnfulfilled,
+            block.terminator.span,
+            func,
+            block,
+            format!(
+                "reference '{}' has unfulfilled obligation at return: pointee is {}, but must be {}",
+                format_place(place), cur, expected,
+            ),
+        );
+        if let Some(span) = find_decl_span(func, place_root_var_name(place)) {
+            diagnostic = diagnostic.with_secondary(span, "reference declared here");
+        }
+        d.push_error(diagnostic);
+    }
+}
+
+fn find_return_leaks(
+    env: &Env,
+    state: &InitState,
+    ty: &Type,
+    path: &mut Vec<String>,
+    out: &mut Vec<(String, Type)>,
+) {
+    match state {
+        InitState::NeverInit | InitState::Moved => {}
+        InitState::Init | InitState::Diverged => out.push((path.join("."), ty.clone())),
+        InitState::Partial(fields) => {
+            for (field_name, field_state) in fields {
+                let Some(field_ty) = env.field_type(ty, field_name) else {
+                    continue;
+                };
+                path.push(field_name.clone());
+                find_return_leaks(env, field_state, &field_ty, path, out);
+                path.pop();
+            }
+        }
+    }
+}
+
+fn place_root_var_name(place: &Place) -> &str {
+    match place {
+        Place::Var(name) => name,
+        Place::Field(base, _)
+        | Place::Downcast(base, _)
+        | Place::Deref(base)
+        | Place::Index(base, _) => place_root_var_name(base),
+    }
+}
+
+fn find_decl_span(func: &Function, name: &str) -> Option<Span> {
+    if let Some(param) = func.params.iter().find(|param| param.name == name) {
+        return Some(param.span);
+    }
+    func.body.as_ref()?.locals.iter().find(|local| local.name == name).map(|local| local.span)
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
@@ -1958,5 +2077,50 @@ impl<'a> InitStateContext<'a> {
                 format!("variable '{}' is not fully initialized here", root),
             )),
         }
+    }
+}
+
+#[cfg(test)]
+mod direct_leak_check_tests {
+    //! Pass-level tests that invoke `check_return_leaks` directly on a
+    //! non-elaborated program. Kept as unit tests because the fixture
+    //! runner exercises the full pipeline (post-drop-elab), which would
+    //! insert `drop x` and hide the pre-elaboration leak these tests
+    //! deliberately observe.
+
+    use super::check_return_leaks;
+    use crate::diagnostics::Diagnostics;
+    use crate::mir::parser::Parser;
+    use crate::mir::type_check;
+
+    #[test]
+    fn flags_pre_elaboration_drop_leak() {
+        let src = "fn f(x: i64) { entry: return }";
+        let program = Parser::new(src.to_string()).parse().unwrap();
+        let mut d = Diagnostics::default();
+        let env = type_check::Env::build(&program).0;
+        check_return_leaks(&env, &mut d);
+        let errs = d.errors_str();
+        assert!(
+            errs.iter()
+                .any(|e| e.contains("value 'x'") && e.contains("not consumed")),
+            "expected leak error, got {:?}",
+            errs
+        );
+    }
+
+    #[test]
+    fn ok_when_explicitly_dropped() {
+        let src = "fn f(x: i64) { entry: drop x; return }";
+        let program = Parser::new(src.to_string()).parse().unwrap();
+        let mut d = Diagnostics::default();
+        let env = type_check::Env::build(&program).0;
+        check_return_leaks(&env, &mut d);
+        let errs = d.errors_str();
+        let leak_errs: Vec<_> = errs
+            .iter()
+            .filter(|e| e.contains("not consumed at return"))
+            .collect();
+        assert!(leak_errs.is_empty(), "expected no leaks, got {:?}", errs);
     }
 }
