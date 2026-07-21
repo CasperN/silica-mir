@@ -1087,43 +1087,28 @@ impl<'a> InitStateContext<'a> {
         };
         let currently_init = rs.is_init();
         if currently_init != required_init {
-            // Write on an Init Drop pointee is drop-elab territory: the
-            // elaborator inserts `drop *r` before this statement and the
-            // post-elab re-run sees a Uninit pointee. Owned-path writes
-            // are already unchecked at this point for the same reason;
-            // matching that behavior keeps deref-writes symmetric. Non-
-            // Drop pointees stay strict — drop-elab can't discharge them
-            // and the leak would be silent.
-            let handled_by_drop_elab = matches!(op, DerefOp::Write)
-                && currently_init
-                && report
-                    .as_ref()
-                    .map(|(func, _, _, _)| self.pointee_is_drop(place, func))
-                    .unwrap_or(false);
-            if !handled_by_drop_elab {
-                if let Some((func, block, span, d)) = report {
-                    let action = match op {
-                        DerefOp::Read => "read from",
-                        DerefOp::Move => "move out of",
-                        DerefOp::Write => "write into",
-                    };
-                    let expected = if required_init {
-                        "initialized"
-                    } else {
-                        "uninitialized"
-                    };
-                    let actual = describe_pointee_state(&rs.pointee);
-                    d.push_error(diag(
-                        DerefPointeeStateMismatch,
-                        span,
-                        func,
-                        block,
-                        format!(
-                            "cannot {} pointee of '{}': pointee must be {} here, but is {}",
-                            action, name_str, expected, actual
-                        ),
-                    ));
-                }
+            if let Some((func, block, span, d)) = report {
+                let action = match op {
+                    DerefOp::Read => "read from",
+                    DerefOp::Move => "move out of",
+                    DerefOp::Write => "write into",
+                };
+                let expected = if required_init {
+                    "initialized"
+                } else {
+                    "uninitialized"
+                };
+                let actual = describe_pointee_state(&rs.pointee);
+                d.push_error(diag(
+                    DerefPointeeStateMismatch,
+                    span,
+                    func,
+                    block,
+                    format!(
+                        "cannot {} pointee of '{}': pointee must be {} here, but is {}",
+                        action, name_str, expected, actual
+                    ),
+                ));
             }
         }
 
@@ -1141,20 +1126,6 @@ impl<'a> InitStateContext<'a> {
                 ends_init: rs.ends_init,
             },
         );
-    }
-
-    /// True iff `deref_place = *r` (or a projection of one) resolves to a
-    /// pointee type that satisfies `Drop`. Used to gate the drop-elab-
-    /// handled path in `apply_deref_op`.
-    fn pointee_is_drop(&self, deref_place: &Place, func: &Function) -> bool {
-        let Ok(pointee_ty) = self
-            .env
-            .type_of_place(deref_place, Span::default(), self.locals)
-        else {
-            return false;
-        };
-        let scope = func.meta.param_scope();
-        class_of(&pointee_ty, self.env, &scope).implies(Marker::Drop)
     }
 
     /// Infer the type of an owned-path place by walking the ctx's

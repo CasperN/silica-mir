@@ -940,6 +940,13 @@ To load it locally:
   (scope-nesting determines LIFO). If the frontend emits its own
   drops per scope-exit, the drop elaborator becomes reference-only.
 
+## Init-state: split analysis from checking
+
+Architecture invariant, current violation, target shape, and
+prerequisite blocker are documented on `elaborate_and_check_mir`
+in `src/lib.rs`, next to the code they describe.
+
+
 ## FFI
 - **`Type::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
 
