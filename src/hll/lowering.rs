@@ -73,8 +73,19 @@ pub fn run_lowering(
     }
 }
 
+/// A deferred HLL expression paired with the binding-scope snapshot at
+/// registration time. Silica's `defer` captures identifiers lexically:
+/// `x` in the defer body resolves to whatever `x` was bound to when the
+/// `defer` statement was written, not what a later shadow rebinds it
+/// to. Emitting the defer restores this snapshot for the duration of
+/// the re-lowering.
+struct DeferredWork {
+    body: hll::Expr,
+    binding_snapshot: Vec<HashMap<String, String>>,
+}
+
 struct Scope {
-    defers: Vec<hll::Expr>,
+    defers: Vec<DeferredWork>,
     is_loop: bool,
 }
 
@@ -87,6 +98,16 @@ struct LowerCtx {
     block_counter: usize,
     loop_stack: Vec<(String, String, mir::Place)>, // (start_label, end_label, dest_place)
     scopes: Vec<Scope>,
+    /// HLL identifier → MIR name, one map per lexical scope (innermost
+    /// at top). Every fn body starts with a base scope containing
+    /// identity mappings for parameters. Shadowing binds a fresh
+    /// `${hll_name}_{N}` MIR name so the flat MIR local namespace stays
+    /// unique while the HLL surface allows the usual scope shadowing.
+    binding_scopes: Vec<HashMap<String, String>>,
+    /// MIR names already claimed in this fn (params, temps, bindings —
+    /// including renames). Guards `intro_binding` when deciding whether
+    /// to rewrite an HLL name.
+    taken_names: std::collections::HashSet<String>,
     functions: HashMap<String, hll::FnDecl>,
     enums: HashMap<String, hll::EnumDecl>,
 }
@@ -115,8 +136,72 @@ impl LowerCtx {
             block_counter: 0,
             loop_stack: Vec::new(),
             scopes: Vec::new(),
+            binding_scopes: Vec::new(),
+            taken_names: std::collections::HashSet::new(),
             functions,
             enums,
+        }
+    }
+
+    /// Push a fresh lexical scope for HLL bindings.
+    fn push_binding_scope(&mut self) {
+        self.binding_scopes.push(HashMap::new());
+    }
+
+    fn pop_binding_scope(&mut self) {
+        self.binding_scopes.pop();
+    }
+
+    /// True if `hll_name` is bound to a local/param in any visible
+    /// binding scope. Used to disambiguate a fn-name reference from a
+    /// local variable that shadows it.
+    fn is_scoped_binding(&self, hll_name: &str) -> bool {
+        self.binding_scopes
+            .iter()
+            .any(|scope| scope.contains_key(hll_name))
+    }
+
+    /// Return the MIR name currently bound to `hll_name`. Falls back to
+    /// `hll_name` when the identifier isn't a scoped binding (fn names,
+    /// `$return`, other compiler-owned symbols).
+    fn resolve_binding(&self, hll_name: &str) -> String {
+        for scope in self.binding_scopes.iter().rev() {
+            if let Some(mir_name) = scope.get(hll_name) {
+                return mir_name.clone();
+            }
+        }
+        hll_name.to_string()
+    }
+
+    /// Allocate a MIR name for an HLL binding and push its local. If
+    /// `hll_name` clashes with an already-claimed MIR name (param, prior
+    /// binding, or temp), a fresh `${hll_name}_{N}` name is chosen — the
+    /// `$` prefix is HLL-unspellable so the rewrite can't collide with
+    /// user code. Does NOT yet install the scope mapping — call
+    /// `bind_in_scope` after the RHS of the introducing `let` has been
+    /// lowered (so `let x = x` reads the outer `x`).
+    fn alloc_binding(&mut self, hll_name: &str, ty: mir::Type, span: mir::Span) -> String {
+        let mir_name = if self.taken_names.contains(hll_name) {
+            let name = format!("${}_{}", hll_name, self.temp_counter);
+            self.temp_counter += 1;
+            name
+        } else {
+            hll_name.to_string()
+        };
+        self.taken_names.insert(mir_name.clone());
+        self.locals.push(mir::Local {
+            name: mir_name.clone(),
+            ty,
+            span,
+        });
+        mir_name
+    }
+
+    /// Install `hll_name → mir_name` in the innermost binding scope.
+    /// Later references to `hll_name` resolve here first.
+    fn bind_in_scope(&mut self, hll_name: &str, mir_name: String) {
+        if let Some(scope) = self.binding_scopes.last_mut() {
+            scope.insert(hll_name.to_string(), mir_name);
         }
     }
 
@@ -125,6 +210,20 @@ impl LowerCtx {
             defers: Vec::new(),
             is_loop,
         });
+    }
+
+    /// Lower a deferred expression with its registration-time binding
+    /// snapshot temporarily swapped in. Restores the live scope after.
+    fn lower_deferred(
+        &mut self,
+        work: DeferredWork,
+        types: &IndexMap<mir::Span, hll::Type>,
+    ) -> Result<(), Diagnostic> {
+        let live = std::mem::replace(&mut self.binding_scopes, work.binding_snapshot);
+        let unit_temp = self.fresh_temp(unit_ty(), work.body.span);
+        let result = lower_expr_into(self, &work.body, &unit_temp, types);
+        self.binding_scopes = live;
+        result
     }
 
     fn pop_and_emit_defers(
@@ -138,9 +237,8 @@ impl LowerCtx {
                 "pop_and_emit_defers called with empty scope stack",
             )
         })?;
-        for defer_expr in scope.defers.into_iter().rev() {
-            let unit_temp = self.fresh_temp(unit_ty(), defer_expr.span);
-            lower_expr_into(self, &defer_expr, &unit_temp, types)?;
+        for work in scope.defers.into_iter().rev() {
+            self.lower_deferred(work, types)?;
         }
         Ok(())
     }
@@ -152,13 +250,15 @@ impl LowerCtx {
     ) -> Result<(), Diagnostic> {
         let mut defers = Vec::new();
         for i in (depth..self.scopes.len()).rev() {
-            for defer_expr in self.scopes[i].defers.iter().rev() {
-                defers.push(defer_expr.clone());
+            for work in self.scopes[i].defers.iter().rev() {
+                defers.push(DeferredWork {
+                    body: work.body.clone(),
+                    binding_snapshot: work.binding_snapshot.clone(),
+                });
             }
         }
-        for defer_expr in defers {
-            let unit_temp = self.fresh_temp(unit_ty(), defer_expr.span);
-            lower_expr_into(self, &defer_expr, &unit_temp, types)?;
+        for work in defers {
+            self.lower_deferred(work, types)?;
         }
         Ok(())
     }
@@ -166,6 +266,7 @@ impl LowerCtx {
     fn fresh_temp(&mut self, ty: mir::Type, span: mir::Span) -> mir::Place {
         let name = format!("_temp_{}", self.temp_counter);
         self.temp_counter += 1;
+        self.taken_names.insert(name.clone());
         self.locals.push(mir::Local {
             name: name.clone(),
             ty,
@@ -338,7 +439,7 @@ fn lower_expr_to_place(
     types: &IndexMap<mir::Span, hll::Type>,
 ) -> Result<mir::Place, Diagnostic> {
     match &expr.kind {
-        hll::ExprKind::Variable(name) => Ok(mir::Place::Var(name.clone())),
+        hll::ExprKind::Variable(name) => Ok(mir::Place::Var(ctx.resolve_binding(name))),
         hll::ExprKind::FieldAccess(target, field) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             Ok(field_place(target_place, field.clone()))
@@ -406,7 +507,7 @@ fn lower_expr_to_operand(
             Ok(const_op(const_val))
         }
         hll::ExprKind::Variable(name)
-            if ctx.functions.contains_key(name) && !ctx.locals.iter().any(|l| l.name == *name) =>
+            if ctx.functions.contains_key(name) && !ctx.is_scoped_binding(name) =>
         {
             let f_decl = ctx.functions.get(name).cloned().unwrap();
             let mir_type_args = infer_fn_type_args(&f_decl, expr.span, types);
@@ -651,8 +752,12 @@ fn lower_expr_into(
             // the fn's declared signature.
             let fn_op = if let hll::ExprKind::Variable(ref name) = fn_expr.kind {
                 if let Some(f_decl) = ctx.functions.get(name).cloned() {
-                    let mir_type_args = infer_fn_type_args(&f_decl, fn_expr.span, types);
-                    const_op(fn_name_const_with_args(name.clone(), mir_type_args))
+                    if ctx.is_scoped_binding(name) {
+                        lower_expr_to_operand(ctx, fn_expr, types)?
+                    } else {
+                        let mir_type_args = infer_fn_type_args(&f_decl, fn_expr.span, types);
+                        const_op(fn_name_const_with_args(name.clone(), mir_type_args))
+                    }
                 } else {
                     lower_expr_to_operand(ctx, fn_expr, types)?
                 }
@@ -709,6 +814,7 @@ fn lower_expr_into(
         }
         hll::ExprKind::Block(stmts, last_expr, _) => {
             ctx.push_scope(false);
+            ctx.push_binding_scope();
             for stmt in stmts {
                 match stmt {
                     hll::Stmt::Let {
@@ -734,19 +840,24 @@ fn lower_expr_into(
                             )
                         })?;
                         let mir_ty = lower_type(hll_ty);
-                        ctx.locals.push(mir::Local {
-                            name: name.clone(),
-                            ty: mir_ty,
-                            span: *span,
-                        });
+                        // Allocate first, lower init against the *outer*
+                        // scope, then install the mapping — so `let x = x`
+                        // reads the previous binding of `x`.
+                        let mir_name = ctx.alloc_binding(name, mir_ty, *span);
                         if let Some(init) = init {
-                            let dest = var_place(name.clone());
+                            let dest = var_place(mir_name.clone());
                             lower_expr_into(ctx, init, &dest, types)?;
                         }
+                        ctx.bind_in_scope(name, mir_name);
                         // No init: the local exists as NeverInit — the caller
                         // must initialize it before use (init-state enforces).
                     }
                     hll::Stmt::Defer { body, span } => {
+                        // Capture the binding scope at registration time so
+                        // the body resolves identifiers lexically — a later
+                        // `let x = ...` in the same block does not affect
+                        // which `x` this defer sees.
+                        let binding_snapshot = ctx.binding_scopes.clone();
                         let scope = ctx.scopes.last_mut().ok_or_else(|| {
                             diag(
                                 HllLoweringCode::ScopeStackUnderflow,
@@ -754,7 +865,10 @@ fn lower_expr_into(
                                 "defer registered with empty scope stack",
                             )
                         })?;
-                        scope.defers.push(body.clone());
+                        scope.defers.push(DeferredWork {
+                            body: body.clone(),
+                            binding_snapshot,
+                        });
                     }
                     hll::Stmt::Expr(e) => {
                         // Value is ignored, lower into a dummy temporary matching the expr type
@@ -779,6 +893,7 @@ fn lower_expr_into(
                 ));
             }
             ctx.pop_and_emit_defers(types)?;
+            ctx.pop_binding_scope();
             Ok(())
         }
         hll::ExprKind::If(cond, true_block, false_block) => {
@@ -904,6 +1019,7 @@ fn lower_expr_into(
             for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
                 let hll::Pattern::Variant(variant, bound_var) = pattern;
                 ctx.start_block(label.clone());
+                ctx.push_binding_scope();
 
                 if let Some(var_name) = bound_var {
                     let target_hll_ty = lookup_type(target, types).ok_or_else(|| {
@@ -959,11 +1075,9 @@ fn lower_expr_into(
                             ));
                         };
 
-                    ctx.locals.push(mir::Local {
-                        name: var_name.clone(),
-                        ty: bound_var_mir_ty.clone(),
-                        span: body.span,
-                    });
+                    let bound_mir_name =
+                        ctx.alloc_binding(var_name, bound_var_mir_ty.clone(), body.span);
+                    ctx.bind_in_scope(var_name, bound_mir_name.clone());
 
                     // Match arm payload extraction. Dispatch table (today):
                     //
@@ -1000,13 +1114,14 @@ fn lower_expr_into(
                         move_op(downcast)
                     };
                     ctx.emit_statement(assign_stmt(
-                        var_place(var_name.clone()),
+                        var_place(bound_mir_name),
                         use_rv(op),
                         body.span,
                     ));
                 }
 
                 lower_expr_into(ctx, body, dest, types)?;
+                ctx.pop_binding_scope();
                 ctx.terminate_block(goto_term(merge_label.clone(), body.span));
             }
 
@@ -1150,6 +1265,15 @@ pub fn lower_program(
                 };
 
                 let mut ctx = LowerCtx::new(program);
+
+                // Seed the base binding scope with fn params so body-level
+                // references resolve to them and later `let` bindings that
+                // clash get renamed rather than fired as duplicate locals.
+                ctx.push_binding_scope();
+                for p in &params {
+                    ctx.taken_names.insert(p.name.clone());
+                    ctx.bind_in_scope(&p.name, p.name.clone());
+                }
 
                 let start_label = "entry".to_string();
                 ctx.start_block(start_label);

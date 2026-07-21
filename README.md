@@ -918,7 +918,6 @@ To load it locally:
 
 ## Language features
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
-- **HLL match arm bindings collide across arms in the same fn.** All arm bindings get hoisted to fn scope, so `A(x) => ..., B(x) => ...` in one fn fires `TC-DuplicateLocalName`; even `_` counts. Blocks the natural idiom of reusing binding names across mutually exclusive arms — every arm needs a unique identifier today.
 - **HLL move-then-write through `&mut` for Copy types.** MIR can spell `move r.*; r.* = v;` to deinit-then-reinit through a mutable ref, but HLL always emits `copy` for Copy types and has no `drop` / explicit `move` surface, so an inline reassignment through `&mut` on a Copy pointee fails init-state checks. Blocks the natural "consume-and-replace through a ref" pattern in HLL.
 - **HLL match on projection places.** `a[i] match { ... }` and `foo.field match { ... }` fire `VF-DowncastOnProjection` because variant flow tracks root Vars only. Users must extract to a local first (`let t = a[i]; t match { ... }`) or wrap the decode in a helper fn that takes the value by parameter. Fixable by either (a) copying/moving the projection into a fresh local during HLL lowering or (b) extending variant flow to track projections.
 - **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
@@ -929,14 +928,6 @@ To load it locally:
     against the freshened signature.
   - **Struct field, enum variant, fn param, and `let` type-annotation spans point at the whole `name: Type`.** Same fix shape as the ret_ty span already landed — add a `ty_span: Span` alongside each `ty: Type` and thread through the `validate_type` calls.
   - Conditional marker bounds (`impl<T: Copy> Copy for Foo<T> {}`).
-- **Decide shadowing semantics in HLL, then encode.** `defer` interacts with `let` shadowing in a way the current lowering doesn't pin down. Given
-  ```
-  let x = 1;
-  { defer { x = 3 }
-    let x = 2;
-  }
-  ```
-  which `x` does `defer` capture — the outer or the shadowing inner? Lowering must commit and land a fixture that pins the chosen semantics.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
 ## Lifetime checker gaps (semantic)

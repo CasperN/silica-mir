@@ -1,0 +1,71 @@
+# HLL binding shadowing. The surface language allows the usual
+# lexical shadowing (repeated `let` in a scope, match arm bindings
+# reused across arms, params shadowed by locals). The lowering
+# renames every shadowed occurrence to a `${name}_{N}` MIR local so
+# the flat MIR local namespace stays unique. The `$` prefix is
+# HLL-unspellable, so the rewrite can never collide with user code.
+#
+#   fn                          axis                       resolves to
+#   let_shadow_same_scope       repeated let in one block  last let's local
+#   let_shadow_reads_outer      let x = x + 1              RHS binds outer x
+#   let_shadow_inner_block      inner block re-let         outer restored on exit
+#   let_shadows_param           fn param + let of same     inner let wins in body
+#   match_arm_bindings_reused   A(x) => .., B(x) => ..     each arm's own local
+#   fn_name_shadowed_by_let     let f = 5 hides fn f       call resolves to local
+
+extern fn use_i64(x: i64);
+extern fn f() -> i64;
+
+fn let_shadow_same_scope() -> i64 {
+  let x: i64 = 1;
+  use_i64(x);
+  let x: i64 = 2;
+  use_i64(x);
+  x
+}
+
+fn let_shadow_reads_outer() -> i64 {
+  let x: i64 = 1;
+  let x: i64 = x;
+  x
+}
+
+fn let_shadow_inner_block() -> i64 {
+  let x: i64 = 1;
+  {
+    let x: i64 = 2;
+    use_i64(x);
+  };
+  x
+}
+
+fn let_shadows_param(x: i64) -> i64 {
+  use_i64(x);
+  let x: i64 = 99;
+  x
+}
+
+enum E: Copy + Drop {
+  A: i64,
+  B: i64,
+}
+
+fn match_arm_bindings_reused(e: E) -> i64 {
+  e match {
+    A(x) => x,
+    B(x) => x,
+  }
+}
+
+fn fn_name_shadowed_by_let() -> i64 {
+  let f: i64 = 7;
+  f
+}
+
+fn shadow_and_defer() {
+  let mut x = 1;
+  { 
+    defer { x = 3 };
+    let x = 2;
+  }
+}

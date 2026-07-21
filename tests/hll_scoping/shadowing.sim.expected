@@ -1,0 +1,132 @@
+extern fn use_i64(x: i64);
+
+extern fn f($return: &out 's0 i64);
+
+fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
+  x: i64;
+  _temp_0: unit;
+  $x_1: i64;
+  _temp_2: unit;
+  entry:
+    x = 1;
+    call use_i64(copy x);
+    _temp_0 = unit;
+    $x_1 = 2;
+    call use_i64(copy $x_1);
+    _temp_2 = unit;
+    $return.* = copy $x_1;
+    unborrow $return;
+    drop _temp_2;
+    drop $x_1;
+    drop _temp_0;
+    drop x;
+    return
+}
+
+fn<'s0> let_shadow_reads_outer($return: &out 's0 i64) {
+  x: i64;
+  $x_0: i64;
+  entry:
+    x = 1;
+    $x_0 = copy x;
+    $return.* = copy $x_0;
+    unborrow $return;
+    drop $x_0;
+    drop x;
+    return
+}
+
+fn<'s0> let_shadow_inner_block($return: &out 's0 i64) {
+  x: i64;
+  _temp_0: unit;
+  $x_1: i64;
+  _temp_2: unit;
+  entry:
+    x = 1;
+    $x_1 = 2;
+    call use_i64(copy $x_1);
+    _temp_2 = unit;
+    _temp_0 = unit;
+    $return.* = copy x;
+    unborrow $return;
+    drop _temp_2;
+    drop $x_1;
+    drop _temp_0;
+    drop x;
+    return
+}
+
+fn<'s0> let_shadows_param(x: i64, $return: &out 's0 i64) {
+  _temp_0: unit;
+  $x_1: i64;
+  entry:
+    call use_i64(copy x);
+    _temp_0 = unit;
+    $x_1 = 99;
+    $return.* = copy $x_1;
+    unborrow $return;
+    drop $x_1;
+    drop _temp_0;
+    drop x;
+    return
+}
+
+enum E: Copy + Drop {
+  A: i64
+  B: i64
+}
+
+fn<'s0> match_arm_bindings_reused(e: E, $return: &out 's0 i64) {
+  x: i64;
+  $x_0: i64;
+  entry:
+    switchEnum(e) [A: switch_A_0, B: switch_B_1]
+  switch_A_0:
+    x = copy e as A;
+    $return.* = copy x;
+    unborrow $return;
+    goto switch_A_0__to__switch_merge_2
+  switch_A_0__to__switch_merge_2:
+    drop x;
+    goto switch_merge_2
+  switch_B_1:
+    $x_0 = copy e as B;
+    $return.* = copy $x_0;
+    unborrow $return;
+    goto switch_B_1__to__switch_merge_2
+  switch_B_1__to__switch_merge_2:
+    drop $x_0;
+    goto switch_merge_2
+  switch_merge_2:
+    drop e;
+    return
+}
+
+fn<'s0> fn_name_shadowed_by_let($return: &out 's0 i64) {
+  f: i64;
+  entry:
+    f = 7;
+    $return.* = copy f;
+    unborrow $return;
+    drop f;
+    return
+}
+
+fn shadow_and_defer() {
+  _temp_0: unit;
+  x: i64;
+  $x_1: i64;
+  _temp_2: unit;
+  entry:
+    x = 1;
+    $x_1 = 2;
+    _temp_0 = unit;
+    drop x;
+    x = 3;
+    _temp_2 = unit;
+    drop _temp_2;
+    drop $x_1;
+    drop x;
+    drop _temp_0;
+    return
+}
