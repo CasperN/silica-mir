@@ -12,7 +12,7 @@ fn elaborate_src(src: &str) -> Program {
     let mut program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
-    env.typecheck(&mut d);
+    env.typecheck(&program, &mut d);
     elaborate(&mut program, &env);
     program
 }
@@ -40,8 +40,8 @@ fn assert_strict_clean_after_elaboration(src: &str) {
     let program = elaborate_src(src);
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
-    env.typecheck(&mut d);
-    check_return_leaks(&env, &mut d);
+    env.typecheck(&program, &mut d);
+    check_return_leaks(&program, &env, &mut d);
     let errs = d.errors_str();
     let leak_errs: Vec<&String> = errs
         .iter()
@@ -415,7 +415,7 @@ fn diverged_elab_idempotent() {
         let mut program = once.clone();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program).0;
-        env.typecheck(&mut d);
+        env.typecheck(&program, &mut d);
         elaborate(&mut program, &env);
         program
     };
@@ -496,7 +496,7 @@ fn elaboration_is_idempotent() {
     let mut twice = once.clone();
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&twice).0;
-    env.typecheck(&mut d);
+    env.typecheck(&twice, &mut d);
     elaborate(&mut twice, &env);
 
     assert_eq!(pretty_print(&once), pretty_print(&twice));
@@ -765,7 +765,7 @@ fn assert_idempotent(src: &str) {
     let mut twice = once.clone();
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&twice).0;
-    env.typecheck(&mut d);
+    env.typecheck(&twice, &mut d);
     elaborate(&mut twice, &env);
     assert_eq!(
         pretty_print(&once),
@@ -917,13 +917,13 @@ fn strict_check_still_fails_for_linear_leak() {
     let mut program = Parser::new(src.to_string()).parse().unwrap();
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
-    env.typecheck(&mut d);
+    env.typecheck(&program, &mut d);
     elaborate(&mut program, &env);
 
     let mut d2 = Diagnostics::default();
     let env2 = type_check::Env::build(&program).0;
-    env2.typecheck(&mut d2);
-    check_return_leaks(&env2, &mut d2);
+    env2.typecheck(&program, &mut d2);
+    check_return_leaks(&program, &env2, &mut d2);
 
     let errs = d2.errors_str();
     assert!(

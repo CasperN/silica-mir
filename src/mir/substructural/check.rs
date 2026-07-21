@@ -64,8 +64,8 @@ fn diag(
 
 /// Class-precondition checks over statements (does not include
 /// `check_return_leaks`, which callers run separately after elaboration).
-pub fn check_statements(env: &Env, d: &mut Diagnostics) {
-    for f in env.functions.values() {
+pub fn check_statements(program: &Program, env: &Env, d: &mut Diagnostics) {
+    for f in program.functions() {
         check_function(env, f, d);
     }
 }

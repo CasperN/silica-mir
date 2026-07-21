@@ -560,11 +560,11 @@ fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env) -> InitSt
 
 // ---------- Top-level pipeline ----------
 
-pub fn check_program(env: &Env, d: &mut Diagnostics) {
-    for f in env.functions.values() {
+pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
+    for f in program.functions() {
         check_function(env, f, d);
     }
-    check_return_leaks(env, d);
+    check_return_leaks(program, env, d);
 }
 
 /// Insert state-proven `Drop` transitions. Planning remains private to this
@@ -650,8 +650,8 @@ pub fn states_before_returns<'a>(
 }
 
 /// Return validation is part of the single final place-state check.
-fn check_return_leaks(env: &Env, d: &mut Diagnostics) {
-    for func in env.functions.values() {
+fn check_return_leaks(program: &Program, env: &Env, d: &mut Diagnostics) {
+    for func in program.functions() {
         if func.body.is_none() {
             continue;
         }
@@ -1150,7 +1150,7 @@ mod parameter_ref_tests {
         .parse()
         .expect("parse");
         let env = Env::build(&program).0;
-        let func = env.functions.get("f").expect("function");
+        let func = program.find_fn("f").expect("fn f");
         let body = func.body.as_ref().expect("body");
 
         let state = initial_state(func, body, &env);
@@ -2267,7 +2267,7 @@ mod direct_leak_check_tests {
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program).0;
-        check_return_leaks(&env, &mut d);
+        check_return_leaks(&program, &env, &mut d);
         let errs = d.errors_str();
         assert!(
             errs.iter()
@@ -2283,7 +2283,7 @@ mod direct_leak_check_tests {
         let program = Parser::new(src.to_string()).parse().unwrap();
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program).0;
-        check_return_leaks(&env, &mut d);
+        check_return_leaks(&program, &env, &mut d);
         let errs = d.errors_str();
         let leak_errs: Vec<_> = errs
             .iter()

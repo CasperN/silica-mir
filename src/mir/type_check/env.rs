@@ -25,8 +25,13 @@ pub struct Env {
     /// iteration order matches declaration order — analyses that iterate
     /// (e.g. field validation) produce diagnostics deterministically.
     pub types: IndexMap<String, TypeDecl>,
-    /// Function declarations, keyed by name. Same rationale as `types`.
-    pub functions: IndexMap<String, Function>,
+    /// Function signatures, keyed by name. Bodies live in
+    /// [`Program`](crate::mir::ast::Program) — callers that need to
+    /// walk statements iterate `Program::functions()` and use `Env` for
+    /// name resolution (`env.functions[callee_name].params`, etc.).
+    /// Keeping only signatures in `Env` means elaboration can mutate
+    /// bodies in-place on `Program` without an `Env` resync step.
+    pub functions: IndexMap<String, FunctionSignature>,
 }
 
 impl Env {
@@ -45,7 +50,7 @@ impl Env {
         // level, but if we ever add non-`$` prelude items, redeclarations
         // will hit the duplicate-declaration path below.
         for f in crate::mir::intrinsics::prelude_fns() {
-            functions.insert(f.meta.name.clone(), f);
+            functions.insert(f.meta.name.clone(), FunctionSignature::from_function(&f));
         }
 
         for decl in &program.declarations {
@@ -72,29 +77,12 @@ impl Env {
                     types.insert(m.name.clone(), TypeDecl::Enum(e.clone()));
                 }
                 Declaration::Fn(f) => {
-                    functions.insert(m.name.clone(), f.clone());
+                    functions.insert(m.name.clone(), FunctionSignature::from_function(f));
                 }
             }
         }
 
         (Env { types, functions }, errors)
-    }
-
-    /// Refresh cached function definitions from `program` in place.
-    /// Elaboration passes mutate function bodies; after that the cloned
-    /// `functions` map in `Env` is stale. This resyncs the map without
-    /// touching `types` (declarations aren't mutated by elaboration).
-    /// Intrinsic signatures are re-preloaded so they survive the sync.
-    pub fn sync_functions(&mut self, program: &Program) {
-        self.functions.clear();
-        for f in crate::mir::intrinsics::prelude_fns() {
-            self.functions.insert(f.meta.name.clone(), f);
-        }
-        for decl in &program.declarations {
-            if let Declaration::Fn(f) = decl {
-                self.functions.insert(f.meta.name.clone(), f.clone());
-            }
-        }
     }
 
     /// Validate `ty` against the current type-parameter scope.

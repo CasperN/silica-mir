@@ -173,7 +173,8 @@ mod tests {
         let mut program = Parser::new(src.to_string()).parse().expect("parse");
         elision::elide_program(&mut program);
         let (env, _errs) = Env::build(&program);
-        let cs = crate::mir::lifetime::constraints_for(&env, &env.functions["f"]);
+        let func = program.find_fn("f").expect("fn f");
+        let cs = crate::mir::lifetime::constraints_for(&env, func);
         assert_eq!(cs.len(), 1, "expected one outlives constraint");
         let c = &cs.constraints[0];
         assert_eq!(c.outlives, Region::Named(Lifetime("s0".into())));

@@ -38,8 +38,8 @@ impl Analysis for Reachability {
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
 }
 
-pub fn check_program(env: &Env, d: &mut Diagnostics) {
-    for f in env.functions.values() {
+pub fn check_program(program: &Program, _env: &Env, d: &mut Diagnostics) {
+    for f in program.functions() {
         check_function(f, d);
     }
 }

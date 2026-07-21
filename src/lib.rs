@@ -89,14 +89,14 @@ pub fn elaborate_and_check_mir(
     d: &mut Diagnostics,
 ) -> (Program, mir::type_check::Env) {
     mir::elision::elide_program(&mut program);
-    let (mut env, env_errs) = mir::type_check::Env::build(&program);
+    let (env, env_errs) = mir::type_check::Env::build(&program);
     d.extend_errors(env_errs);
-    env.typecheck(d);
+    env.typecheck(&program, d);
     mir::substructural::composition::check_program(&env, d);
     mir::layout::check_sizes_finite(&env, d);
-    mir::substructural::check::check_statements(&env, d);
-    mir::variant_flow::check_program(&env, d);
-    mir::block_reachability::check_program(&env, d);
+    mir::substructural::check::check_statements(&program, &env, d);
+    mir::variant_flow::check_program(&program, &env, d);
+    mir::block_reachability::check_program(&program, &env, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
     // diagnostics and elaboration proceeds regardless. Elaborators are
@@ -109,20 +109,18 @@ pub fn elaborate_and_check_mir(
 
     let mut elaborated = program;
 
-    // Elaboration passes mutate function bodies only; `types` never
-    // changes. After each mutation, resync env's cached function bodies
-    // so downstream passes see the up-to-date form.
+    // Elaboration passes mutate function bodies in-place. `Env` caches
+    // only signatures (see `Env.functions`), so no resync is needed
+    // between passes — subsequent passes read bodies straight from the
+    // mutated `Program`.
     mir::lifetime::elaborate(&mut elaborated, &env);
-    env.sync_functions(&elaborated);
-
     mir::init_state::elaborate(&mut elaborated, &env);
-    env.sync_functions(&elaborated);
 
     // Final dynamic validation runs once, over the canonical elaborated MIR.
     // This surfaces invalid source transitions that no elaborator repaired,
     // plus obligations exposed by NLL-inserted `unborrow` statements.
-    mir::init_state::check_program(&env, d);
-    mir::lifetime::check_program(&env, d);
+    mir::init_state::check_program(&elaborated, &env, d);
+    mir::lifetime::check_program(&elaborated, &env, d);
 
     (elaborated, env)
 }

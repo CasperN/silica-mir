@@ -71,7 +71,7 @@ struct FnPlan {
 pub fn elaborate(program: &mut Program, env: &Env) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
-    for func in env.functions.values() {
+    for func in program.functions() {
         let plan = plan_for_function(env, func);
         if !plan.pre_stmt.is_empty() || !plan.rewrite_stmt.is_empty() || !plan.cross_edge.is_empty()
         {
@@ -80,10 +80,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     }
 
     // Apply (mutable): splice the planned changes into each body.
-    for decl in &mut program.declarations {
-        let Declaration::Fn(func) = decl else {
-            continue;
-        };
+    for func in program.functions_mut() {
         let Some(plan) = plans.get(&func.meta.name) else {
             continue;
         };

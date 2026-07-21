@@ -374,8 +374,8 @@ pub fn run(body: &FunctionBody, region_ctx: &region::RegionCtx) -> Results<LoanM
 ///
 /// Independent of `init_state`: this pass sees a program purely as
 /// borrows and accesses, without regard to the ref kind's init obligation.
-pub fn check_program(env: &Env, d: &mut Diagnostics) {
-    for f in env.functions.values() {
+pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
+    for f in program.functions() {
         check_function(env, f, d);
     }
 }

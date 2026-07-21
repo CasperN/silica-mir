@@ -121,8 +121,8 @@ impl Analysis for VariantFlow {
     }
 }
 
-pub fn check_program(env: &Env, d: &mut Diagnostics) {
-    for f in env.functions.values() {
+pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
+    for f in program.functions() {
         check_function(env, f, d);
     }
 }

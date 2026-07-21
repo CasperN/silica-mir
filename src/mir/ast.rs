@@ -679,6 +679,29 @@ pub struct Function {
     pub body: Option<FunctionBody>,
 }
 
+/// A `Function` without its body — the name-resolution view used by
+/// [`Env`](crate::mir::type_check::Env). Bodies live in [`Program`] and
+/// are mutated by elaboration; `Env` caches only what's stable across
+/// elaboration so no resync is needed between passes.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FunctionSignature {
+    pub meta: DeclMeta,
+    pub is_extern: bool,
+    pub abi: Option<String>,
+    pub params: Vec<Param>,
+}
+
+impl FunctionSignature {
+    pub fn from_function(f: &Function) -> Self {
+        Self {
+            meta: f.meta.clone(),
+            is_extern: f.is_extern,
+            abi: f.abi.clone(),
+            params: f.params.clone(),
+        }
+    }
+}
+
 impl Function {
     /// Build a `name -> type` map from the function's parameters and (if
     /// present) its body's locals. Iteration follows declaration order:
@@ -747,4 +770,36 @@ impl Declaration {
 pub struct Program {
     pub declarations: Vec<Declaration>,
     pub source: std::sync::Arc<String>,
+}
+
+impl Program {
+    /// Iterate over function declarations in declaration order. Callers
+    /// that need bodies (checkers walking blocks, elaborators inspecting
+    /// state, drop-elab planning drops) go through here rather than
+    /// through [`Env`](crate::mir::type_check::Env), which caches only
+    /// signatures.
+    pub fn functions(&self) -> impl Iterator<Item = &Function> + '_ {
+        self.declarations.iter().filter_map(|d| match d {
+            Declaration::Fn(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    /// Mutable counterpart of [`functions`](Self::functions). Elaboration
+    /// passes iterate through here to splice statements and rewrite
+    /// bodies in place; the immutable form is preferred everywhere else.
+    pub fn functions_mut(&mut self) -> impl Iterator<Item = &mut Function> + '_ {
+        self.declarations.iter_mut().filter_map(|d| match d {
+            Declaration::Fn(f) => Some(f),
+            _ => None,
+        })
+    }
+
+    /// Look up a function declaration by name. `None` if no `Declaration::Fn`
+    /// with the matching name exists — callers that need the presence
+    /// invariant use `.expect(...)`; production code branches on the
+    /// `Option`.
+    pub fn find_fn(&self, name: &str) -> Option<&Function> {
+        self.functions().find(|f| f.meta.name == name)
+    }
 }

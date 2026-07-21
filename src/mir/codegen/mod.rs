@@ -163,12 +163,12 @@ fn llvm_ident(name: &str) -> String {
     }
 }
 
-fn get_return_param(f: &Function) -> Option<&Param> {
-    f.params.last().filter(|p| p.name == "$return")
+fn get_return_param(params: &[Param]) -> Option<&Param> {
+    params.last().filter(|p| p.name == "$return")
 }
 
-fn uses_register_return(f: &Function) -> bool {
-    if let Some(ref abi) = f.abi {
+fn uses_register_return(abi: &Option<String>) -> bool {
+    if let Some(ref abi) = abi {
         if abi != "C" {
             panic!("unsupported ABI: {:?}", abi);
         }
@@ -310,8 +310,8 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
 }
 
 fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
-    let ret_param = get_return_param(f);
-    let use_reg_ret = uses_register_return(f);
+    let ret_param = get_return_param(&f.params);
+    let use_reg_ret = uses_register_return(&f.abi);
     let ret_llvm = if let Some(p) = ret_param {
         if use_reg_ret {
             match &p.ty.kind {
@@ -356,7 +356,7 @@ fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
 /// them earlier).
 fn emit_main_wrapper(cx: &mut CodeGenContext, f: &Function) {
     writeln!(cx.out, "define i32 @main() {{").unwrap();
-    if let Some(p) = get_return_param(f) {
+    if let Some(p) = get_return_param(&f.params) {
         if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
             let inner_llvm = cx.lower_type(inner);
             writeln!(cx.out, "  %exit = alloca {}, align 4", inner_llvm).unwrap();
@@ -393,8 +393,8 @@ fn emit_main_wrapper(cx: &mut CodeGenContext, f: &Function) {
 fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     cx.reset_for_function(f);
 
-    let ret_param = get_return_param(f);
-    let use_reg_ret = uses_register_return(f);
+    let ret_param = get_return_param(&f.params);
+    let use_reg_ret = uses_register_return(&f.abi);
     let ret_llvm = if let Some(p) = ret_param {
         if use_reg_ret {
             match &p.ty.kind {
@@ -569,7 +569,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
 
             let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(name, _)) = target {
                 if let Some(callee_f) = cx.env.functions.get(name) {
-                    uses_register_return(callee_f)
+                    uses_register_return(&callee_f.abi)
                 } else {
                     false
                 }
@@ -580,7 +580,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             let ret_llvm = if callee_use_reg_ret {
                 if let Operand::Const(ConstVal::FnName(name, _)) = target {
                     if let Some(f) = cx.env.functions.get(name) {
-                        if let Some(p) = get_return_param(f) {
+                        if let Some(p) = get_return_param(&f.params) {
                             if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
                                 Some(cx.lower_type(inner))
                             } else {

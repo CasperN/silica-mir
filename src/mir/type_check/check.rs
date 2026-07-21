@@ -60,7 +60,7 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
 }
 
 impl Env {
-    pub fn typecheck(&self, d: &mut Diagnostics) {
+    pub fn typecheck(&self, program: &Program, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
             let (container_kind, item_kind, duplicate_code, items) = match type_decl {
@@ -122,7 +122,7 @@ impl Env {
         }
 
         // Validate all functions
-        for f in self.functions.values() {
+        for f in program.functions() {
             self.typecheck_function(f, d);
         }
     }

@@ -65,17 +65,14 @@ use std::collections::BTreeSet;
 pub fn elaborate(program: &mut Program, env: &Env) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
-    for func in env.functions.values() {
+    for func in program.functions() {
         if let Some(plan) = plan_for_function(func, env) {
             plans.insert(func.meta.name.clone(), plan);
         }
     }
 
     // Apply (mutable): splice the planned statements and edge splits.
-    for decl in &mut program.declarations {
-        let Declaration::Fn(func) = decl else {
-            continue;
-        };
+    for func in program.functions_mut() {
         let Some(plan) = plans.get(&func.meta.name) else {
             continue;
         };
