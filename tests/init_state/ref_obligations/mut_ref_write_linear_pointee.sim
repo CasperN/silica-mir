@@ -1,0 +1,13 @@
+# `*r = v` on an Init pointee whose type is linear (not Drop): the
+# old value would be silently forgotten and drop-elab can't insert a
+# destructor for a non-Drop type. Init-state stays strict here and
+# emits the deref precondition mismatch, so the user must first move
+# the pointee out (`move r.*` into a local) before reassigning.
+
+enum Linear { V: i64 }
+
+fn f(r: &mut Linear) {
+  entry:
+    r.* = Linear::V(5);
+    return
+}

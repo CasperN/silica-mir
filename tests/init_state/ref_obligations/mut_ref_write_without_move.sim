@@ -1,5 +1,7 @@
-# `*r = v` on an Init pointee would silently forget the old
-# value — rejected as pre-overwrite of the pointee.
+# `*r = v` on an Init pointee. Drop-elab inserts `drop r.*` before
+# the write so the pointee transitions to Uninit as the write's
+# precondition requires. Symmetric with the owned-path `x = v` case
+# where the Init x also gets an auto-inserted drop.
 fn f(r: &mut i64) {
   entry:
     r.* = 42;

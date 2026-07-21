@@ -160,96 +160,22 @@ fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
         )
 }
 
-/// Check whether accessing `place` in the given way conflicts with any
-/// active loan. Uses `extract_path_with_deref` so accesses through `*r`
-/// or ancestors of `*r` (like `r` itself) can conflict with a reborrow
-/// loan on `Deref(Var(r))`.
-///
-/// A conflict is reported when: the access root matches a loan's root
-/// (i.e. touches the same base variable) AND the access path shares a
-/// prefix with the loaned path AND the loan kind is not compatible with
-/// the access kind.
-pub fn check_loan_conflict(
-    func: &Function,
-    block: &BasicBlock,
-    place: &Place,
-    access: AccessKind,
-    span: Span,
-    loans: &LoanMap,
-    d: &mut Diagnostics,
-) {
-    let (access_root, access_path) = extract_path_with_deref(place);
-
-    for (borrower_place, loan) in loans {
-        // Ignore the borrower itself. Consumption of the borrower's own
-        // storage (`move r`, `move b.p`) doesn't conflict with the loan
-        // it holds — that's handled by close_ref_if_present. But an
-        // *ancestor* consumption (`move b` when `b.p` holds a loan)
-        // still needs to fire on `b.p`'s loan, so this skip only fires
-        // when the access is exactly the borrower place.
-        let (borrower_root, borrower_path) = extract_path_with_deref(borrower_place);
-        if borrower_root == access_root && borrower_path == access_path {
-            continue;
-        }
-        if is_compatible(&loan.kind, &access) {
-            continue;
-        }
-        // Multi-loan: any place in the set may be the actual pointee.
-        // Report at most one error per loan (first matching place).
-        for loaned in &loan.loaned {
-            let (loan_root, loan_path) = extract_path_with_deref(loaned);
-            if loan_root != access_root {
-                continue;
-            }
-            if !paths_conflict(&access_path, &loan_path) {
-                continue;
-            }
-            let borrower_name = format_place(borrower_place);
-            // Dedup: drop-elaboration expands `target = <rvalue>` into
-            // `drop target; target = <rvalue>` when target's type is
-            // Drop. Both statements then produce a LoanConflict against
-            // the same borrower at the same span (Move + Write access).
-            // Keep the *later* emission — for a drop-elab-expanded
-            // assign that's the Write, which matches what the user
-            // actually wrote. Remove any prior LoanConflict matching
-            // this (span, borrower) before pushing the new one.
-            let borrower_msg = format!("already borrowed by '{}'", borrower_name);
-            d.retain_errors(|e| {
-                !(e.code() == DiagCode::Lifetime(LifetimeCode::LoanConflict)
-                    && e.span() == span
-                    && e.message().contains(&borrower_msg))
-            });
-            let hint = format!(
-                "the borrow of '{}' is active until its last use or explicit unborrow.",
-                borrower_name,
-            );
-            let mut diag = Diagnostic::new(
-                LifetimeCode::LoanConflict,
-                span,
-                format!(
-                    "cannot {} '{}': already borrowed by '{}'",
-                    access,
-                    format_place(place),
-                    borrower_name,
-                ),
-            )
-            .in_function(&func.meta.name)
-            .in_block(&block.label)
-            .with_hint(hint);
-            // Attach the borrow's origin as a secondary span if we
-            // captured one (within-block loans have real spans;
-            // cross-block dataflow-propagated loans have Span::default,
-            // which renders as no snippet).
-            if loan.create_span.line != 0 || loan.create_span.col != 0 {
-                diag = diag.with_secondary(
-                    loan.create_span,
-                    format!("borrow of '{}' occurs here", format_place(place)),
-                );
-            }
-            d.push_error(diag);
-            break;
-        }
+/// True if `stmt` is a `drop <place>` that drop-elaboration inserted
+/// immediately before an assign to the same owned path. Drop-elab
+/// preserves the assign's span on the inserted drop, so both share
+/// `drop_span`; the checker uses this to suppress a duplicate
+/// LoanConflict — the assign carries the authoritative diagnostic.
+fn is_elab_inserted_drop(place: &Place, drop_span: Span, next: Option<&Statement>) -> bool {
+    let Some(next_stmt) = next else {
+        return false;
+    };
+    if next_stmt.span != drop_span {
+        return false;
     }
+    let StatementKind::Assign(target, _) = &next_stmt.kind else {
+        return false;
+    };
+    as_owned_path(target).as_ref() == Some(place)
 }
 
 /// Join two `LoanMap`s. Same-borrower entries merge by unioning their
@@ -472,8 +398,9 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
             continue;
         };
         let mut loans = entry.clone();
-        for stmt in &block.statements {
-            checker.check_and_transfer_stmt(block, stmt, &mut loans);
+        for (i, stmt) in block.statements.iter().enumerate() {
+            let next = block.statements.get(i + 1);
+            checker.check_and_transfer_stmt(block, stmt, next, &mut loans);
             checker.emit_stmt_constraints(stmt);
         }
         checker.check_and_transfer_terminator(block, &mut loans);
@@ -850,20 +777,6 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 let borrower_name = format_place(borrower_place);
-                // Dedup: drop-elaboration expands `target = <rvalue>` into
-                // `drop target; target = <rvalue>` when target's type is
-                // Drop. Both statements then produce a LoanConflict against
-                // the same borrower at the same span (Move + Write access).
-                // Keep the *later* emission — for a drop-elab-expanded
-                // assign that's the Write, which matches what the user
-                // actually wrote. Remove any prior LoanConflict matching
-                // this (span, borrower) before pushing the new one.
-                let borrower_msg = format!("already borrowed by '{}'", borrower_name);
-                self.d.retain_errors(|e| {
-                    !(e.code() == DiagCode::Lifetime(LifetimeCode::LoanConflict)
-                        && e.span() == span
-                        && e.message().contains(&borrower_msg))
-                });
                 let hint = format!(
                     "the borrow of '{}' is active until its last use or explicit unborrow.",
                     borrower_name,
@@ -1146,10 +1059,15 @@ impl<'a> Checker<'a> {
     /// `transfer_stmt`. `Call` is handled inline (not via `transfer_stmt`)
     /// so operand-by-operand consumption sees prior operands' releases —
     /// e.g. `call f(move r, copy y)` where `y` is loaned by `r` must pass.
+    ///
+    /// `next` is the immediately-following statement in the block, used
+    /// to skip loan-conflict emission on drop-elab-inserted drops (see
+    /// the Drop arm).
     fn check_and_transfer_stmt(
         &mut self,
         block: &BasicBlock,
         stmt: &Statement,
+        next: Option<&Statement>,
         loans: &mut LoanMap,
     ) {
         match &stmt.kind {
@@ -1191,7 +1109,17 @@ impl<'a> Checker<'a> {
                 }
             }
             StatementKind::Drop(place) => {
-                self.check_loan_conflict(block, place, AccessKind::Move, stmt.span, loans);
+                // Skip the loan-conflict emission on drop-elab-inserted
+                // drops. Drop-elab rewrites `x = <rvalue>` (Init x, Drop
+                // type) into `drop x; x = <rvalue>` with the inserted
+                // drop carrying the *assign's* span. Both statements
+                // would fire against the same borrower at the same span,
+                // reporting a single user event twice. The assign
+                // carries the authoritative diagnostic; the auto-drop is
+                // silent but still advances the loan map.
+                if !is_elab_inserted_drop(place, stmt.span, next) {
+                    self.check_loan_conflict(block, place, AccessKind::Move, stmt.span, loans);
+                }
                 transfer_stmt(loans, stmt, stmt.span, self.region_ctx);
             }
             StatementKind::Unborrow(place) => {

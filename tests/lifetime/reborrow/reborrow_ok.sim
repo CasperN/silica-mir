@@ -140,12 +140,10 @@ fn mut_from_mut_conditional(r: &mut i64, cond: bool) {
     branch(copy cond) [true: left, false: right]
   left:
     call sink_mut(move s);
-    drop r.*;  # TODO: This should be added by drop-elaborator.
     r.* = 5;
     return
   right:
     # s is not used in this arm; NLL releases s on the entry→right edge.
-    drop r.*;  # TODO: This should be added by drop-elaborator.
     r.* = 10;
     return
 }

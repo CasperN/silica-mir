@@ -264,7 +264,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 /// Return `(drops_to_insert_before, optional_statement_rewrite)` for
 /// `stmt` given the init state at this program point.
 ///
-/// Three Init → Uninit transition shapes:
+/// Four Init → Uninit transition shapes:
 ///
 /// - **Overwriting assign (Var/Field target)**: `target = <rvalue>`
 ///   where `target` is an owned path currently Init and its type is
@@ -282,6 +282,12 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 /// - **`&out` / `&uninit` borrow of an Init Drop place**: `foo =
 ///   &out place` where `place` is Init Drop. Inserts `drop place`
 ///   so the Uninit precondition is satisfied.
+/// - **Overwriting assign through a deref**: `*r = <rvalue>` where
+///   `r` is an exclusive ref, the pointee is currently Init, and the
+///   pointee type is Drop. Same rationale as the Var/Field case — the
+///   write's Uninit precondition needs the old pointee destructed
+///   first. Matches init-state's shallow `*r` tracking; nested
+///   `(*r).field` targets aren't handled here.
 ///
 /// All cases skip `Partial` states (per-leaf drops are complex; the
 /// existing overwrite check handles the common non-Drop cases) and
@@ -338,6 +344,28 @@ fn pre_stmt_transitions(
                     && !drops.contains(&owned)
                 {
                     drops.push(owned);
+                }
+            }
+        }
+    }
+
+    // Case C: overwriting assign through `*r`. The pointee's Init state
+    // is tracked in `state.refs[r]`; a write requires Uninit, so insert
+    // `drop *r` when the current pointee is Init and its type is Drop.
+    // The ref must be exclusive (Shared refs can't be written through)
+    // — `state.refs` is only populated for exclusive kinds, so the
+    // presence of an entry is sufficient.
+    if let Place::Deref(inner) = target {
+        if let Some(inner_owned) = as_owned_path(inner) {
+            if let Some(rs) = state.refs.get(&inner_owned) {
+                if rs.is_init() {
+                    if let Ok(pointee_ty) =
+                        env.type_of_place(target, crate::mir::ast::Span::default(), locals)
+                    {
+                        if class_of(&pointee_ty, env, scope).implies(Marker::Drop) {
+                            drops.push(target.clone());
+                        }
+                    }
                 }
             }
         }

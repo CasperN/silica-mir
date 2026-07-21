@@ -939,12 +939,6 @@ To load it locally:
 - **Drop insertion order in return blocks.** Belongs to the HLL
   (scope-nesting determines LIFO). If the frontend emits its own
   drops per scope-exit, the drop elaborator becomes reference-only.
-- **Move loan-conflict dedup into elaboration.** `lifetime/mod.rs`
-  currently calls `d.retain_errors` mid-check to suppress duplicate
-  conflicts caused by drop-elaboration expanding `target = <rvalue>`
-  into `drop target; target = <rvalue>`. Mutating diagnostics during
-  checking is fragile — the fix belongs in drop-elaboration (emit a
-  compound statement or synthesize a shared span).
 
 ## FFI
 - **`Type::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
