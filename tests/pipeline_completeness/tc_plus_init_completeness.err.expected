@@ -1,0 +1,14 @@
+error: at 18:5: [TC-UnborrowNonReference] In function 'tc_unborrow_non_ref', block 'entry': unborrow requires a reference-typed place, found i64
+    |
+ 17 |   entry:
+ 18 |     unborrow x;
+    |     ^^^^^^^^^^
+ 19 |     return
+    |
+error: at 30:5: [INIT-UseBeforeInit] In function 'init_use_before_init', block 'entry': variable 'y' is used before initialization
+    |
+ 29 |   entry:
+ 30 |     z = copy y;
+    |     ^^^^^^^^^^
+ 31 |     return
+    |

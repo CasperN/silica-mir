@@ -1,0 +1,38 @@
+# Cross-pass diagnostic completeness — SUB-* alongside INIT-*.
+#
+# Pre-elab substructural statement-check errors used to gate the
+# pipeline, silencing every other pass's diagnostics. After removing
+# that gate, both classes emit in a single run.
+#
+#   fn                          diagnostic
+#   sub_copy_of_non_copy        SUB-CopyOfNonCopy
+#   init_use_after_move         INIT-UseAfterMove
+#
+# A regression here means one fn's error suppresses the other's.
+
+struct Linear: Move { v: i64 }
+
+# ---------- SUB-CopyOfNonCopy ----------
+
+# `copy` of a non-Copy type is a substructural-statement violation.
+fn sub_copy_of_non_copy(a: Linear) {
+  b: Linear;
+  entry:
+    b = copy a;
+    call take(move b);
+    return
+}
+
+extern fn take(v: Linear);
+
+# ---------- INIT-UseAfterMove ----------
+
+# Reading a Moved local is an init-state violation. Independent of
+# the substructural case above; both must surface.
+fn init_use_after_move(a: Linear) {
+  b: Linear;
+  entry:
+    b = move a;
+    call take(move a);
+    return
+}

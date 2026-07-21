@@ -20,3 +20,17 @@ error: at 37:5: [SUB-CopyOfNonCopy] In function 'copy_of_non_copy_pointee', bloc
  38 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
+error: at 37:5: [INIT-RefObligationUnfulfilled] In function 'copy_of_non_copy_pointee', block 'entry': reference 'l.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 31 | # the substructural checker. The user must use `move` instead.
+ 32 | fn copy_of_non_copy_pointee(l: Linear) {
+    |                             --------- reference declared here
+ 33 |   p: *Linear;
+    |
+    | ...
+    |
+ 36 |     p = &raw l;
+ 37 |     q = copy p.*;
+    |     ^^^^^^^^^^^^
+ 38 |     return
+    |

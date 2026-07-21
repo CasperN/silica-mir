@@ -102,3 +102,86 @@ error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': 
  132 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
+error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 49 | 
+ 50 | fn copy_linear_struct_as_rvalue(x: Linear) {
+    |                                 --------- reference declared here
+ 51 |   y: Linear;
+    |
+    | ...
+    |
+ 53 |     y = copy x;
+ 54 |     return
+    |     ^^^^^^
+ 55 | }
+    |
+error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'copy_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 63 | 
+ 64 | fn copy_out_ref(r: &out i64) {
+    |                 ----------- reference declared here
+ 65 |   s: &out i64;
+    |
+    | ...
+    |
+ 67 |     s = copy r;
+ 68 |     return
+    |     ^^^^^^
+ 69 | }
+    |
+error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_call_arg', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 79 | 
+ 80 | fn copy_linear_struct_as_call_arg(x: Linear) {
+    |                                   --------- reference declared here
+ 81 |   entry:
+ 82 |     call take_linear(copy x);
+ 83 |     return
+    |     ^^^^^^
+ 84 | }
+    |
+error: at 92:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_enum_payload', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 87 | 
+ 88 | fn copy_linear_struct_as_enum_payload(x: Linear) {
+    |                                       --------- reference declared here
+ 89 |   w: Wrap;
+    |
+    | ...
+    |
+ 91 |     w = Wrap::W(copy x);
+ 92 |     return
+    |     ^^^^^^
+ 93 | }
+    |
+error: at 119:5: [INIT-RefObligationUnfulfilled] In function 'drop_linear_struct', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     |
+ 116 | 
+ 117 | fn drop_linear_struct(x: Linear) {
+     |                       --------- reference declared here
+ 118 |   entry:
+ 119 |     drop x;
+     |     ^^^^^^
+ 120 |     return
+     |
+error: at 125:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+     |
+ 122 | 
+ 123 | fn drop_drop_ref(r: &drop i64) {
+     |                  ------------ reference declared here
+ 124 |   entry:
+ 125 |     drop r;
+     |     ^^^^^^
+ 126 |     return
+     |
+error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     |
+ 128 | 
+ 129 | fn drop_out_ref(r: &out i64) {
+     |                 ----------- reference declared here
+ 130 |   entry:
+ 131 |     drop r;
+     |     ^^^^^^
+ 132 |     return
+     |

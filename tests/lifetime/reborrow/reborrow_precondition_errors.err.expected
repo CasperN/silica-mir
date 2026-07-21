@@ -5,3 +5,52 @@ error: at 53:5: [TC-DowncastOfNonEnum] In function 'downcast_before_deref_parse_
     |     ^^^^^^^^^^^^^^^^^^
  54 |     return
     |
+error: at 27:5: [INIT-BorrowStateMismatch] In function 'mut_reborrow_of_out_parent', block 'entry': cannot create &mut of '*r': pointee must be initialized at borrow, but is uninitialized
+    |
+ 26 |   entry:
+ 27 |     s = &mut r.*;
+    |     ^^^^^^^^^^^^
+ 28 |     return
+    |
+error: at 28:5: [INIT-RefObligationUnfulfilled] In function 'mut_reborrow_of_out_parent', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 23 | # Init at borrow creation, so the borrow-precondition check fires.
+ 24 | fn mut_reborrow_of_out_parent(r: &out i64) {
+    |                               ----------- reference declared here
+ 25 |   s: &mut i64;
+    |
+    | ...
+    |
+ 27 |     s = &mut r.*;
+ 28 |     return
+    |     ^^^^^^
+ 29 | }
+    |
+error: at 36:5: [INIT-BorrowStateMismatch] In function 'out_reborrow_of_mut_parent', block 'entry': cannot create &out of '*r': pointee must be uninitialized at borrow, but is initialized
+    |
+ 35 |   entry:
+ 36 |     s = &out r.*;
+    |     ^^^^^^^^^^^^
+ 37 |     s.* = 1;
+    |
+error: at 38:5: [INIT-RefCallEntryMismatch] In function 'out_reborrow_of_mut_parent', block 'entry': cannot transfer 's' across call boundary: &out requires pointee uninitialized at handoff, but pointee is initialized
+    |
+ 33 | fn out_reborrow_of_mut_parent(r: &mut i64) {
+ 34 |   s: &out i64;
+    |   ------------ reference declared here
+ 35 |   entry:
+    |
+    | ...
+    |
+ 37 |     s.* = 1;
+ 38 |     call sink_out(move s);
+    |     ^^^^^^^^^^^^^^^^^^^^^
+ 39 |     return
+    |
+error: at 53:5: [INIT-ReferenceStateUnknown] In function 'downcast_before_deref_parse_error', block 'v_arm': cannot create &mut of '*e as V': parent reference 'e as V' is not bound here
+    |
+ 52 |   v_arm:
+ 53 |     r = &mut e as V .*;
+    |     ^^^^^^^^^^^^^^^^^^
+ 54 |     return
+    |

@@ -1,0 +1,32 @@
+# Cross-pass diagnostic completeness — TC-* alongside INIT-*.
+#
+# Pre-elab type-check errors used to gate the pipeline, silencing every
+# other pass's diagnostics. After removing that gate, both classes emit
+# in a single run.
+#
+#   fn                          diagnostic
+#   tc_unborrow_non_ref         TC-UnborrowNonReference
+#   init_use_before_init        INIT-UseBeforeInit
+#
+# A regression here means one fn's error suppresses the other's.
+
+# ---------- TC-UnborrowNonReference ----------
+
+# `unborrow` on a non-reference type is a type-check violation.
+fn tc_unborrow_non_ref(x: i64) {
+  entry:
+    unborrow x;
+    return
+}
+
+# ---------- INIT-UseBeforeInit ----------
+
+# Reading a NeverInit local is an init-state violation. Independent of
+# the type-check case above; both must surface.
+fn init_use_before_init() {
+  y: i64;
+  z: i64;
+  entry:
+    z = copy y;
+    return
+}

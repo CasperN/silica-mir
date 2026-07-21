@@ -75,3 +75,48 @@ error: at 102:5: [VF-DowncastVariantNotRefined] In function 'downcast_variant_mi
      |     ^^^^^^^^^^^^^^^^^
  103 |     return
      |
+error: at 56:5: [SUB-ReturnValueLeak] In function 'field_on_enum', block 'entry': value 'e' of type E is not consumed at return
+    |
+ 51 | 
+ 52 | fn field_on_enum(e: E) {
+    |                  ---- variable declared here
+ 53 |   a: i64;
+    |
+    | ...
+    |
+ 55 |     a = copy e.x;
+ 56 |     return
+    |     ^^^^^^
+ 57 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 65:5: [SUB-ReturnValueLeak] In function 'field_unknown_on_struct', block 'entry': value 'p' of type P is not consumed at return
+    |
+ 60 | 
+ 61 | fn field_unknown_on_struct(p: P) {
+    |                            ---- variable declared here
+ 62 |   a: i64;
+    |
+    | ...
+    |
+ 64 |     a = copy p.z;
+ 65 |     return
+    |     ^^^^^^
+ 66 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 94:5: [SUB-ReturnValueLeak] In function 'downcast_on_struct', block 'entry': value 's' of type S is not consumed at return
+    |
+ 89 | 
+ 90 | fn downcast_on_struct(s: S) {
+    |                       ---- variable declared here
+ 91 |   x: i64;
+    |
+    | ...
+    |
+ 93 |     x = copy s as Some;
+ 94 |     return
+    |     ^^^^^^
+ 95 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

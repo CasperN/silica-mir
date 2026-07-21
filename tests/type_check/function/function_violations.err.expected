@@ -53,3 +53,17 @@ error: at 72:36: [TC-InvalidDeclaredType] In function 'extern_bad_param_type', p
  72 | extern fn extern_bad_param_type(x: Nope);
     |                                    ^^^^
     |
+error: at 27:45: [INIT-UseAfterMove] In function 'duplicate_param', block 'entry': variable 'x' is used after move
+    |
+ 26 | # TC-DuplicateLocalName on the second occurrence.
+ 27 | fn duplicate_param(x: i64, x: i64) { entry: return }
+    |                                             ^^^^^^
+ 28 | 
+    |
+error: at 54:62: [INIT-RefObligationUnfulfilled] In function 'return_param_not_last', block 'entry': reference '$return' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 53 | # a regular parameter fires TC-InvalidDeclaredType.
+ 54 | fn return_param_not_last($return: &out i64, x: i64) { entry: return }
+    |                          -----------------                   ^^^^^^ reference declared here
+ 55 | 
+    |

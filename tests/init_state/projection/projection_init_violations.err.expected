@@ -19,3 +19,38 @@ error: at 81:5: [VF-DowncastVariantNotRefined] In function 'downcast_write_throu
     |     ^^^^^^^^^^^^^
  82 |     return
     |
+error: at 29:5: [INIT-UseBeforeInit] In function 'branch_on_uninit_bool', block 'entry': variable 'b' is used before initialization
+    |
+ 28 |   entry:
+ 29 |     branch(copy b) [true: t, false: f]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 30 |   t: return
+    |
+error: at 41:5: [INIT-UseBeforeInit] In function 'switch_enum_on_uninit', block 'entry': variable 'o' is used before initialization
+    |
+ 40 |   entry:
+ 41 |     switchEnum(o) [None: end, Some: end]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 42 |   end:
+    |
+error: at 55:5: [INIT-UseBeforeInit] In function 'downcast_read_of_uninit_enum', block 'entry': variable 'o' is used before initialization
+    |
+ 54 |   entry:
+ 55 |     a = copy o as Some;
+    |     ^^^^^^^^^^^^^^^^^^
+ 56 |     return
+    |
+error: at 67:5: [INIT-WriteThroughUninitEnumProjection] In function 'downcast_write_through_uninit_enum', block 'entry': cannot write through variant projection: 'o' is not initialized here
+    |
+ 66 |   entry:
+ 67 |     o as Some = 7;
+    |     ^^^^^^^^^^^^^
+ 68 |     return
+    |
+error: at 81:5: [INIT-WriteThroughUninitEnumProjection] In function 'downcast_write_through_moved_enum', block 'entry': cannot write through variant projection: 'o' is not initialized here
+    |
+ 80 |     sink = move o;
+ 81 |     o as Some = 7;
+    |     ^^^^^^^^^^^^^
+ 82 |     return
+    |

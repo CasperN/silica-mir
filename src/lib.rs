@@ -97,9 +97,15 @@ pub fn elaborate_and_check_mir(
     mir::substructural::check::check_statements(&env, d);
     mir::variant_flow::check_program(&env, d);
     mir::block_reachability::check_program(&env, d);
-    if d.has_errors() {
-        return (program, env);
-    }
+
+    // No `d.has_errors()` gate here: pre-elab checks accumulate their
+    // diagnostics and elaboration proceeds regardless. Elaborators are
+    // total on parsed+typed MIR — they compute states via
+    // `transfer_stmt_silent` (never emits) and degrade conservatively
+    // on garbage input. Post-elab checks below then emit their own
+    // diagnostics on the elaborated form. This way a program with
+    // a `TC-*` violation in one fn and an `INIT-*` violation in
+    // another surfaces both classes in a single run.
 
     let mut elaborated = program;
 

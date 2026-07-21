@@ -68,3 +68,15 @@ error: at 132:5: [TC-UnborrowNonReference] In function 'unborrow_non_reference',
      |     ^^^^^^^^^^
  133 |     return
      |
+error: at 45:5: [SUB-ReturnValueLeak] In function 'assign_field_mismatch', block 'entry': value 's' of type S is not consumed at return
+    |
+ 41 | # mismatch on the field projection lhs.
+ 42 | fn assign_field_mismatch(s: S) {
+    |                          ---- variable declared here
+ 43 |   entry:
+ 44 |     s.f = true;
+ 45 |     return
+    |     ^^^^^^
+ 46 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
