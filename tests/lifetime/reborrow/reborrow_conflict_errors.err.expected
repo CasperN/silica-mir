@@ -1,21 +1,52 @@
-error: at 27:5: [LT-LoanConflict] In function 'read_parent_while_child_live', block 'entry': cannot read 'r.*': already borrowed by 's'
+error: at 62:5: [INIT-UseAfterMove] In function 'move_parent_while_child_live', block 'entry': variable 'r' is used after move
     |
- 25 |     r = &mut x;
- 26 |     s = &mut r.*;
+ 61 |     call sink(move s);
+ 62 |     return
+    |     ^^^^^^
+ 63 | }
+    |
+error: at 31:5: [LT-LoanConflict] In function 'read_parent_while_child_live', block 'entry': cannot read 'r.*': already borrowed by 's'
+    |
+ 29 |     r = &mut x;
+ 30 |     s = &mut r.*;
     |     ------------ borrow of 'r.*' occurs here
- 27 |     y = copy r.*;
+ 31 |     y = copy r.*;
     |     ^^^^^^^^^^^^
- 28 |     call sink(move s);
+ 32 |     call sink(move s);
     |
   hint: the borrow of 's' is active until its last use or explicit unborrow.
-error: at 41:5: [LT-LoanConflict] In function 'write_base_while_parent_live', block 'entry': cannot write to 'x': already borrowed by 'r'
+error: at 45:5: [LT-LoanConflict] In function 'write_base_while_parent_live', block 'entry': cannot write to 'x': already borrowed by 'r'
     |
- 38 |   entry:
- 39 |     r = &mut x;
+ 42 |   entry:
+ 43 |     r = &mut x;
     |     ---------- borrow of 'x' occurs here
- 40 |     s = &mut r.*;
- 41 |     x = 1;
+ 44 |     s = &mut r.*;
+ 45 |     x = 1;
     |     ^^^^^
- 42 |     call sink(move s);
+ 46 |     call sink(move s);
     |
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
+error: at 60:5: [LT-LoanConflict] In function 'move_parent_while_child_live', block 'entry': cannot move from 'r': already borrowed by 's'
+    |
+ 58 |   entry:
+ 59 |     s = &mut r.*;
+    |     ------------ borrow of 'r' occurs here
+ 60 |     call sink(move r);
+    |     ^^^^^^^^^^^^^^^^^
+ 61 |     call sink(move s);
+    |
+  hint: the borrow of 's' is active until its last use or explicit unborrow.
+error: at 73:5: [LT-LifetimeMismatch] In function 'returned_reborrow_lifetime_mismatch': lifetime mismatch: expected value with region 'b, found value with region 'a
+    |
+ 72 |   entry:
+ 73 |     $return.* = &mut r.*;
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 74 |     unborrow $return;
+    |
+error: at 73:5: [LT-LifetimeMismatch] In function 'returned_reborrow_lifetime_mismatch': lifetime mismatch: expected value with region 'a, found value with region 'b
+    |
+ 72 |   entry:
+ 73 |     $return.* = &mut r.*;
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 74 |     unborrow $return;
+    |

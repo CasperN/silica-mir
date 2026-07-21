@@ -95,3 +95,34 @@ fn mut_from_mut_in_loop(x: i64, b: bool) {
     drop x;
     return
 }
+
+fn<'s0> mut_from_mut_conditional(r: &mut 's0 i64, cond: bool) {
+  s: &mut i64;
+  entry:
+    s = &mut r.*;
+    branch(copy cond) [true: left, false: entry__to__right]
+  entry__to__right:
+    unborrow s;
+    goto right
+  left:
+    call sink_mut(move s);
+    drop r.*;
+    r.* = 5;
+    unborrow r;
+    drop cond;
+    return
+  right:
+    drop r.*;
+    r.* = 10;
+    unborrow r;
+    drop cond;
+    return
+}
+
+fn<'a, 's0> mut_from_mut_returned(r: &mut 'a i64, $return: &out 's0 &mut 'a i64) {
+  entry:
+    $return.* = &mut r.*;
+    unborrow $return;
+    unborrow r;
+    return
+}

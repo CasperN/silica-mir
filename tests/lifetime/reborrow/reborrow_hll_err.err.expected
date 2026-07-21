@@ -1,0 +1,24 @@
+error: at 11:7: [LT-LoanConflict] In function 'reborrow_invalid': cannot move from 'r': already borrowed by 'y'
+    |
+  7 |   let mut r = &mut x;
+  8 |   let y = &mut r.*;
+    |           -------- borrow of 'r' occurs here
+  9 |   
+ 10 |   # Trying to reassign r while y is still active (must fail with LoanConflict)
+ 11 |   r = &mut x;
+    |       ^^^^^^
+ 12 |   
+    |
+  hint: the borrow of 'y' is active until its last use or explicit unborrow.
+error: at 11:3: [LT-LoanConflict] In function 'reborrow_invalid': cannot write to 'r': already borrowed by 'y'
+    |
+  7 |   let mut r = &mut x;
+  8 |   let y = &mut r.*;
+    |           -------- borrow of 'r' occurs here
+  9 |   
+ 10 |   # Trying to reassign r while y is still active (must fail with LoanConflict)
+ 11 |   r = &mut x;
+    |   ^^^^^^^^^^
+ 12 |   
+    |
+  hint: the borrow of 'y' is active until its last use or explicit unborrow.

@@ -1,0 +1,29 @@
+fn<'s0> use_val(x: &mut 's0 i64) {
+  _temp_0: unit;
+  entry:
+    unborrow x;
+    _temp_0 = unit;
+    drop _temp_0;
+    return
+}
+
+fn<'s0> reborrow_ok(r: &mut 's0 i64) {
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: &mut i64;
+  _temp_3: unit;
+  _temp_4: &mut i64;
+  entry:
+    _temp_2 = &mut r.*;
+    call use_val(move _temp_2);
+    _temp_1 = unit;
+    _temp_4 = &mut r.*;
+    call use_val(move _temp_4);
+    unborrow r;
+    _temp_3 = unit;
+    _temp_0 = unit;
+    drop _temp_3;
+    drop _temp_1;
+    drop _temp_0;
+    return
+}

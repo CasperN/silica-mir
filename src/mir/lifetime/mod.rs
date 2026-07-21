@@ -759,7 +759,17 @@ impl<'a> Checker<'a> {
                         .cloned()
                         .unwrap_or(Region::Free(u32::MAX))
                 } else {
-                    Region::Free(u32::MAX)
+                    let mut cur = place;
+                    while let Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) = cur {
+                        cur = inner;
+                    }
+                    if let Place::Deref(inner) = cur {
+                        self.region_ctx
+                            .region_of_place(inner, &self.locals, self.env)
+                            .unwrap_or(Region::Free(u32::MAX))
+                    } else {
+                        Region::Free(u32::MAX)
+                    }
                 };
                 (r, target.clone())
             }

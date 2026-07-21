@@ -1,0 +1,11 @@
+# Test reborrowing and NLL lifetime nesting at the HLL level (valid cases)
+
+fn use_val(x: &mut i64) {}
+
+fn reborrow_ok(r: &mut i64) {
+  # 1. Borrowing r.* (explicit reborrow)
+  use_val(&mut r.*);
+  
+  # 2. r is reusable here after the first borrow expires
+  use_val(&mut r.*);
+}

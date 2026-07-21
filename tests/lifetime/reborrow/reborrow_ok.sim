@@ -14,6 +14,8 @@
 #   chained_mut_from_mut             &mut     &mut     3-deep chain, one call
 #   mut_from_mut_via_downcast        &mut     &mut     deref+downcast reborrow
 #   mut_from_mut_in_loop             &mut     &mut     child created+consumed each iteration
+#   mut_from_mut_conditional         &mut     &mut     child consumed in one arm only
+#   mut_from_mut_returned            &mut     &mut     child returned via $return, shared 'a
 
 enum E: Move { V: i64 }
 
@@ -123,5 +125,41 @@ fn mut_from_mut_in_loop(x: i64, b: bool) {
     call sink_mut(move s);
     goto head
   done:
+    return
+}
+
+# ---------- &mut derived from &mut param, conditionally consumed ----------
+
+# `s = &mut r.*` is created in entry and consumed only in the true arm.
+# NLL splits the false edge and inserts `unborrow s` there so `r.*` is
+# writable in both arms without a loan conflict.
+fn mut_from_mut_conditional(r: &mut i64, cond: bool) {
+  s: &mut i64;
+  entry:
+    s = &mut r.*;
+    branch(copy cond) [true: left, false: right]
+  left:
+    call sink_mut(move s);
+    drop r.*;  # TODO: This should be added by drop-elaborator.
+    r.* = 5;
+    return
+  right:
+    # s is not used in this arm; NLL releases s on the entry→right edge.
+    drop r.*;  # TODO: This should be added by drop-elaborator.
+    r.* = 10;
+    return
+}
+
+# ---------- &mut derived from &mut param, returned via $return ----------
+
+# The reborrow `&mut r.*` inherits r's lifetime 'a and satisfies
+# $return's payload type `&mut 'a i64`. Both regions must be discharged
+# before return: the explicit `unborrow $return; unborrow r` chain does
+# so in outer-then-parent order.
+fn<'a> mut_from_mut_returned(r: &mut 'a i64, $return: &out &mut 'a i64) {
+  entry:
+    $return.* = &mut r.*;
+    unborrow $return;
+    unborrow r;
     return
 }

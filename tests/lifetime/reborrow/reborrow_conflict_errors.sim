@@ -1,15 +1,19 @@
-# Reborrow conflict errors: LT-LoanConflict diagnostics fired when a
-# live reborrow blocks a subsequent access to the parent borrow or the
-# borrowed base place.
+# Reborrow errors from the lifetime pass: LT-LoanConflict when a live
+# reborrow blocks access to the parent/base, and LT-LifetimeMismatch when
+# a reborrow's inferred region doesn't satisfy the destination's declared
+# region. TC/pre-elab INIT errors would abort before the lifetime pass,
+# so those live in reborrow_precondition_errors.sim.
 #
-# The lifetime check runs after init_state is clean. A file that mixes
-# LT-LoanConflict cases with INIT or TC errors would abort before the
-# lifetime pass and miss these diagnostics, so conflict cases live here
-# alone.
+# Post-elaboration INIT re-run may fire secondary INIT-UseAfterMove
+# diagnostics when NLL inserts `unborrow r` after the parent has been
+# moved. See the "move loan-conflict dedup" punch-list item.
 #
-#   fn                            error            trigger
-#   read_parent_while_child_live  LT-LoanConflict  read r.* while s = &mut r.* live
-#   write_base_while_parent_live  LT-LoanConflict  write x while r = &mut x live
+#   fn                                    error                trigger
+#   read_parent_while_child_live          LT-LoanConflict      read r.* while s = &mut r.* live
+#   write_base_while_parent_live          LT-LoanConflict      write x while r = &mut x live
+#   move_parent_while_child_live          LT-LoanConflict +    move r into call while s = &mut r.* live
+#                                         INIT-UseAfterMove    (post-elab: NLL unborrow r on moved r)
+#   returned_reborrow_lifetime_mismatch   LT-LifetimeMismatch  reborrow yields 'a; $return needs 'b (&mut invariant)
 
 extern fn sink(r: &mut i64);
 
@@ -40,5 +44,34 @@ fn write_base_while_parent_live(x: i64) {
     s = &mut r.*;
     x = 1;
     call sink(move s);
+    return
+}
+
+# ---------- LT-LoanConflict: move parent while reborrow child live ----------
+
+# Moving `r` into a call while `s = &mut r.*` is still live violates the
+# loan on `r`. NLL then inserts `unborrow r` after s's last use, which
+# the post-elab INIT re-run reports as UseAfterMove on the already-moved
+# r — a secondary diagnostic tied to the same source issue.
+fn move_parent_while_child_live(r: &mut i64) {
+  s: &mut i64;
+  entry:
+    s = &mut r.*;
+    call sink(move r);
+    call sink(move s);
+    return
+}
+
+# ---------- LT-LifetimeMismatch: reborrow lifetime doesn't reach $return ----------
+
+# The reborrow `&mut r.*` inherits r's region 'a, but $return's payload
+# type demands region 'b, and 'a and 'b have no outlives relation. `&mut`
+# is invariant in its region, so both directions of the constraint are
+# checked and both fail, yielding two mirror-image mismatch diagnostics.
+fn<'a, 'b> returned_reborrow_lifetime_mismatch(r: &mut 'a i64, $return: &out 'b &mut 'b i64) {
+  entry:
+    $return.* = &mut r.*;
+    unborrow $return;
+    unborrow r;
     return
 }

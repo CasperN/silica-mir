@@ -386,16 +386,31 @@ fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
     let mut map = IndexMap::new();
     for block in &body.blocks {
         for stmt in &block.statements {
-            if let StatementKind::Assign(target, RValue::Ref(_, place)) = &stmt.kind {
-                let Some(s) = as_owned_path(target) else {
-                    continue;
-                };
-                // Walk through `Downcast`/`Field`/`Index` projections
-                // to find an inner `Deref`. `r = &mut *p` and
-                // `r = &mut (*p) as V` both reborrow p.
-                if let Some(parent) = deref_ancestor(place) {
-                    map.insert(s, parent);
+            match &stmt.kind {
+                StatementKind::Assign(target, RValue::Ref(_, place)) => {
+                    let Some(s) = as_owned_path(target) else {
+                        continue;
+                    };
+                    if let Some(parent) = deref_ancestor(place) {
+                        map.insert(s, parent);
+                    }
                 }
+                StatementKind::Assign(target, RValue::PtrCast(op, to_ty)) => {
+                    use crate::mir::ast::TypeKind;
+                    if matches!(to_ty.kind, TypeKind::Ref(_, _, _)) {
+                        let Some(s) = as_owned_path(target) else {
+                            continue;
+                        };
+                        if let Some(op_place) = operand_place(op) {
+                            if let Some(parent) = deref_ancestor(op_place) {
+                                map.insert(s, parent);
+                            } else if let Some(parent) = as_owned_path(op_place) {
+                                map.insert(s, parent);
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }

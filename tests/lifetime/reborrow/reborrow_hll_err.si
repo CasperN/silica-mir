@@ -1,0 +1,14 @@
+# Test reborrowing and NLL lifetime nesting at the HLL level (invalid cases)
+
+fn use_val(x: &mut i64) {}
+
+fn reborrow_invalid() {
+  let mut x = 5;
+  let mut r = &mut x;
+  let y = &mut r.*;
+  
+  # Trying to reassign r while y is still active (must fail with LoanConflict)
+  r = &mut x;
+  
+  use_val(&mut y.*);
+}
