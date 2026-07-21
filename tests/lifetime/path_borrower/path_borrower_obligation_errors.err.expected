@@ -1,0 +1,14 @@
+error: at 29:5: [INIT-RefCallEntryMismatch] In function 'move_with_unfulfilled_ref_obs', block 'entry': cannot transfer 'b.p' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
+    |
+ 23 | fn move_with_unfulfilled_ref_obs(x: i64) {
+ 24 |   b: RefBox;
+    |   ---------- reference declared here
+ 25 |   y: i64;
+    |
+    | ...
+    |
+ 28 |     y = move b.p.*;
+ 29 |     call take_box(move b);
+    |     ^^^^^^^^^^^^^^^^^^^^^
+ 30 |     return
+    |

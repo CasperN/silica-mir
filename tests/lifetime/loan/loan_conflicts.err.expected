@@ -1,3 +1,17 @@
+error: at 274:5: [INIT-RefCallEntryMismatch] In function 'deref_drop_does_not_release', block 'entry': cannot transfer 'r' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
+     |
+ 268 | fn deref_drop_does_not_release(x: i64) {
+ 269 |   r: &mut i64;
+     |   ------------ reference declared here
+ 270 |   entry:
+     |
+     | ...
+     |
+ 273 |     x = 42;
+ 274 |     call sink(move r);
+     |     ^^^^^^^^^^^^^^^^^
+ 275 |     return
+     |
 error: at 414:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block 'entry__to__fbr': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  402 | # initializes through it, the obligation remains unfulfilled on the other branch.

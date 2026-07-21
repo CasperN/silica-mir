@@ -1,0 +1,14 @@
+error: at 17:5: [INIT-RefCallEntryMismatch] In function 'f', block 'entry': cannot transfer 'r' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
+    |
+ 11 | fn f(x: i64) {
+ 12 |   r: &mut i64;
+    |   ------------ reference declared here
+ 13 |   y: i64;
+    |
+    | ...
+    |
+ 16 |     y = move r.*;
+ 17 |     call take_mut(move r);
+    |     ^^^^^^^^^^^^^^^^^^^^^
+ 18 |     return
+    |

@@ -1,0 +1,33 @@
+fn<'a, 's0> identity(r: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy r;
+    unborrow $return;
+    unborrow r;
+    return
+}
+
+fn bypass() {
+  x: i64;
+  y: i64;
+  r: & i64;
+  ret_slot: & i64;
+  ret_out: &out & i64;
+  g: fn(& i64, &out & i64);
+  read: i64;
+  entry:
+    x = 42;
+    y = 24;
+    r = & x;
+    ret_out = &out ret_slot;
+    g = identity;
+    call copy g(move r, move ret_out);
+    drop x;
+    x = 100;
+    read = copy ret_slot.*;
+    unborrow ret_slot;
+    drop read;
+    drop g;
+    drop y;
+    drop x;
+    return
+}

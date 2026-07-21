@@ -1,0 +1,21 @@
+# Call-boundary transfer — aggregate containing a drifted ref field.
+#
+# `RefBox { p: &mut i64 }` holds a `&mut` field. Moving the pointee
+# out through `b.p` leaves `b.p`'s pointee Moved (Uninit). Passing the
+# whole `b` to a callee that takes `RefBox` by value would tell the
+# callee that `b.p` is a fresh `&mut` (Init pointee) — but it isn't.
+# The recursive walk of ref-typed leaves catches this.
+
+struct RefBox: Move { p: &mut i64 }
+
+extern fn take_box(b: RefBox);
+
+fn f(x: i64) {
+  b: RefBox;
+  y: i64;
+  entry:
+    b.p = &mut x;
+    y = move b.p.*;
+    call take_box(move b);
+    return
+}

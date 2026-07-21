@@ -1,0 +1,19 @@
+# Call-boundary transfer — `&mut T` after `move *r` is invalid.
+#
+# `r = &mut x` opens a &mut with Init pointee. `move r.*` moves x out
+# through the ref, leaving the pointee Moved (Uninit). Passing `r` to
+# a callee that expects a `&mut i64` with Init pointee at entry is a
+# lie about the pointee state. INIT-RefCallEntryMismatch fires on the
+# call.
+
+extern fn take_mut(r: &mut i64);
+
+fn f(x: i64) {
+  r: &mut i64;
+  y: i64;
+  entry:
+    r = &mut x;
+    y = move r.*;
+    call take_mut(move r);
+    return
+}

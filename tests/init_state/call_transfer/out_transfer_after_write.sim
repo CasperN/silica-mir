@@ -1,0 +1,20 @@
+# Call-boundary transfer — `&out T` after writing through it is invalid.
+#
+# `r = &out x` opens an `&out` with an Uninit pointee. `r.* = 5` writes
+# the pointee to Init. Passing `r` to a callee that expects a `&out i64`
+# with Uninit pointee at entry is a lie about the pointee state. The
+# callee will assume the pointee is uninitialized and (likely) write
+# to it again, silently forgetting our value. INIT-RefCallEntryMismatch
+# fires on the call.
+
+extern fn take_out(r: &out i64);
+
+fn f() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    r.* = 5;
+    call take_out(move r);
+    return
+}

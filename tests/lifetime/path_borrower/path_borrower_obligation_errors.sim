@@ -1,19 +1,25 @@
-# Path-borrower pass — transfer of an unfulfilled field-ref obligation.
+# Path-borrower pass — call-boundary transfer of a drifted field-ref state.
 #
-# Moving a struct transfers every reference-field obligation to the callee,
-# just as moving a bare reference does. The caller must not be forced to
-# fulfill the obligation before transferring ownership of the container.
+# Aggregate moves at a call boundary are allowed to transfer reference
+# obligations (there is no "fulfill it first" rule). The one thing they
+# must maintain is that every ref-typed leaf's *current* pointee state
+# matches the receiving kind's entry state — the callee's signature
+# will treat the reference as freshly-received. See the valid /
+# invalid pairings in `tests/init_state/call_transfer/`.
+#
+#   fn                             path shape     violation
+#   move_with_unfulfilled_ref_obs  field ref      &mut b.p passed with Uninit pointee
 
 struct RefBox: Move { p: &mut i64 }
 
 extern fn take_box(b: RefBox);
 
-# ---------- Move struct before field-ref obligation is met ----------
+# ---------- Move struct after `move b.p.*` ----------
 
-# `b.p = &mut x` opens a loan that imposes an Init obligation: the
-# pointee must be Init when `b.p` expires. Moving `b.p.*` out without
-# writing back leaves `x` Uninit. Moving `b` via `take_box` transfers
-# that outstanding obligation to the callee, so the caller is valid.
+# `b.p = &mut x` opens a &mut with an Init pointee. `move b.p.*` moves
+# the pointee out, leaving it Uninit. Passing `b` to `take_box` now
+# would hand the callee a &mut whose entry contract (Init pointee) is
+# violated. INIT-RefCallEntryMismatch fires on the call.
 fn move_with_unfulfilled_ref_obs(x: i64) {
   b: RefBox;
   y: i64;

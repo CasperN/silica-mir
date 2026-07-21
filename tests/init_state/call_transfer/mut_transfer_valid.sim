@@ -1,0 +1,15 @@
+# Call-boundary transfer — `&mut T` with Init pointee is a valid handoff.
+#
+# The reference's current pointee state (Init from `&mut x`) matches
+# the receiving kind's entry contract (`&mut` requires Init), so the
+# transfer is allowed. Compiles clean.
+
+extern fn take_mut(r: &mut i64);
+
+fn f(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call take_mut(move r);
+    return
+}

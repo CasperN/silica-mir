@@ -1,0 +1,17 @@
+# Call-boundary transfer — fresh `&out T` is a valid handoff.
+#
+# `&out T` requires the pointee to be Uninit at entry — that's the
+# whole point of `&out` (the callee initializes it). A freshly-created
+# `&out` with a NeverInit pointee matches the entry contract, so the
+# transfer is allowed. Compiles clean.
+
+extern fn take_out(r: &out i64);
+
+fn f() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    call take_out(move r);
+    return
+}

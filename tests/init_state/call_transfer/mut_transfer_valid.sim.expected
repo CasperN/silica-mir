@@ -1,0 +1,10 @@
+extern fn take_mut(r: &mut 's0 i64);
+
+fn f(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call take_mut(move r);
+    drop x;
+    return
+}

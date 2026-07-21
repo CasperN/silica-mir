@@ -75,6 +75,14 @@ pub enum InitStateCode {
     /// unborrow) while its (is_init, ends_init) obligation is
     /// unfulfilled.
     RefObligationUnfulfilled,
+    /// A `move` operand crossing a call boundary carries a ref-typed
+    /// place (or a container of one) whose current pointee state
+    /// doesn't match the declared kind's entry state. The callee's
+    /// signature promises to receive a reference in its kind's
+    /// creation-state (`&mut` → Init pointee, `&out` → Uninit,
+    /// `&drop` → Init, `&uninit` → Uninit); a caller that has drifted
+    /// from that state can't hand it off without lying to the callee.
+    RefCallEntryMismatch,
     // ---- Through-reference operations (`*r`) ----
     /// Attempted write or move through a shared reference (`&T`).
     /// Shared refs only permit reads.
@@ -1063,8 +1071,11 @@ impl<'a> InitStateContext<'a> {
         // Move of a borrower place: drop its ref entry, and cascade
         // through any ref-typed descendants (an ancestor move like
         // `move b` closes all `b.p`, `b.q`, ...). Loans are handled by
-        // lifetime; no obligation check here — that'd double-count if
-        // the callee's signature enforces its own.
+        // lifetime. Obligation checks belong at the operation that
+        // *observes* the transfer: `close_ref_if_present` runs at
+        // drop / unborrow / assign-target overwrite for the expiry
+        // side, and `check_call_transfer` runs at call-boundary moves
+        // for the entry side.
         if let Some(consumed) = as_owned_path(place) {
             close_refs_under(state, &consumed);
         }
@@ -1545,6 +1556,78 @@ impl<'a> InitStateContext<'a> {
             state.refs.shift_remove(&v);
         }
     }
+
+    /// Verify that every ref-typed leaf reachable from `moved` is in
+    /// its declared kind's *entry* state — the state the callee's
+    /// signature will assume when it inherits the reference. Fires
+    /// `RefCallEntryMismatch` on any leaf that has drifted.
+    ///
+    /// This is the call-boundary complement of `close_ref_if_present`'s
+    /// expiry check. Both walk `state.refs` for descendants of the
+    /// consumed place; they differ in the predicate:
+    ///
+    /// - `close_ref_if_present` checks `obligation_fulfilled()` — the
+    ///   `(post)` side of the (cur, post) contract. Runs on drop,
+    ///   unborrow, and assign-target overwrite.
+    /// - `check_call_transfer` checks `pointee == from_kind(kind).pointee`
+    ///   — the `(cur)` side. Runs only on `move` operands to `call`,
+    ///   because that's the only site where a reference crosses to a
+    ///   callee whose signature will treat it as freshly-received. An
+    ///   intra-fn `y = move x` preserves actual state via
+    ///   `capture_carried_refs`, so it doesn't need this check.
+    fn check_call_transfer(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        moved: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some(owned) = as_owned_path(moved) else {
+            return;
+        };
+        let victims: Vec<Place> = state
+            .refs
+            .keys()
+            .filter(|k| is_ancestor_or_self(&owned, k))
+            .cloned()
+            .collect();
+        for v in victims {
+            let Some(ref_ty) = self.infer_ref_place_type(&v) else {
+                continue;
+            };
+            let TypeKind::Ref(kind, _, _) = &ref_ty.kind else {
+                continue;
+            };
+            let Some(declared) = RefState::from_kind(kind) else {
+                continue;
+            };
+            let rs = &state.refs[&v];
+            let matches = match declared.pointee {
+                InitState::Init => rs.is_init(),
+                InitState::NeverInit => rs.is_uninit(),
+                // from_kind only returns Init or NeverInit as declared.
+                _ => true,
+            };
+            if !matches {
+                let current = describe_pointee_state(&rs.pointee);
+                let expected = describe_pointee_state(&declared.pointee);
+                let msg = format!(
+                    "cannot transfer '{}' across call boundary: {} requires pointee {} at handoff, but pointee is {}",
+                    format_place(&v),
+                    kind,
+                    expected,
+                    current,
+                );
+                let mut diagnostic = diag(RefCallEntryMismatch, span, func, block, msg);
+                if let Some(decl_span) = ref_root_decl_span(func, &v) {
+                    diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+                }
+                d.push_error(diagnostic);
+            }
+        }
+    }
 }
 
 // ---------- Loan conflict check ----------
@@ -1701,8 +1784,18 @@ impl<'a> InitStateContext<'a> {
                 );
             }
             StatementKind::Call(target, args) => {
+                // Fire the call-boundary check BEFORE consumption so we
+                // see each operand's live state. Every `move` operand
+                // that carries a ref (or an aggregate containing one)
+                // must be in its declared kind's entry state.
+                if let Operand::Move(place) = target {
+                    self.check_call_transfer(func, block, place, span, state, d);
+                }
                 self.eval_operand(func, block, target, span, state, d);
                 for a in args {
+                    if let Operand::Move(place) = a {
+                        self.check_call_transfer(func, block, place, span, state, d);
+                    }
                     self.eval_operand(func, block, a, span, state, d);
                 }
             }
