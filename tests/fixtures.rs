@@ -10,12 +10,17 @@
 //! two codegen dirs (`codegen/` = full pipeline, `codegen-raw/` =
 //! parse+codegen only).
 //!
-//! Stage is auto-detected from the sibling `.expected` extension:
+//! The pipeline stage and expected artifact are auto-detected from the
+//! sibling `.expected` extension:
 //!
 //!   - `foo.sim.expected` → run parse+elaborate+check, compare
 //!     pretty-printed MIR.
 //!   - `foo.err.expected` → run parse+elaborate+check, compare
 //!     rendered diagnostics.
+//!   - `foo.check.expected` → run parse+check without elaboration,
+//!     compare pretty-printed MIR.
+//!   - `foo.check.err.expected` → run parse+check without elaboration,
+//!     compare rendered diagnostics.
 //!   - `foo.ll.expected` under `codegen/` → run full pipeline +
 //!     codegen, compare LLVM IR.
 //!   - `foo.ll.expected` under `codegen-raw/` → parse + codegen (no
@@ -26,6 +31,7 @@
 //! sibling `.expected` fails with a pointer to UPDATE_EXPECT.
 
 use silica_mir::{
+    check_mir_without_elaboration,
     diagnostics::{Diagnostics, SourceKind},
     elaborate_and_check_mir, lower_hll_to_mir, mir,
 };
@@ -34,10 +40,10 @@ use std::sync::Arc;
 
 #[derive(Clone, Copy, Debug)]
 enum Stage {
-    /// Full check pipeline → clean run → pretty-printed elaborated MIR.
+    /// Full check pipeline, including elaboration.
     Elab,
-    /// Full check pipeline → diagnostics.
-    Errors,
+    /// Parse + check without NLL/place-state elaboration.
+    Check,
     /// Full check pipeline + codegen → LLVM IR.
     Codegen,
     /// Parse + codegen (no checker pipeline) → LLVM IR. For hand-crafted
@@ -47,12 +53,28 @@ enum Stage {
     CodegenRaw,
 }
 
-impl Stage {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Expectation {
+    Mir,
+    Diagnostics,
+    Llvm,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct FixtureKind {
+    stage: Stage,
+    expectation: Expectation,
+}
+
+impl FixtureKind {
     fn expected_extension(self) -> &'static str {
-        match self {
-            Stage::Elab => "sim.expected",
-            Stage::Errors => "err.expected",
-            Stage::Codegen | Stage::CodegenRaw => "ll.expected",
+        match (self.stage, self.expectation) {
+            (Stage::Elab, Expectation::Mir) => "sim.expected",
+            (Stage::Elab, Expectation::Diagnostics) => "err.expected",
+            (Stage::Check, Expectation::Mir) => "check.expected",
+            (Stage::Check, Expectation::Diagnostics) => "check.err.expected",
+            (Stage::Codegen | Stage::CodegenRaw, Expectation::Llvm) => "ll.expected",
+            _ => panic!("invalid fixture stage and expectation"),
         }
     }
 }
@@ -69,38 +91,75 @@ fn source_kind_for(path: &Path) -> SourceKind {
     }
 }
 
-/// Determine which stage a fixture belongs to. Codegen fixtures are
-/// identified by their location under `tests/codegen{,-raw}/`; other
-/// fixtures pick between Elab and Errors based on which sibling
-/// `.expected` file exists.
+fn expected_path(fixture: &Path, kind: FixtureKind) -> PathBuf {
+    let stem = fixture
+        .file_stem()
+        .expect("fixture has no stem")
+        .to_string_lossy();
+    fixture.with_file_name(format!("{}.{}", stem, kind.expected_extension()))
+}
+
+/// Determine a fixture's pipeline stage and expected artifact. Codegen
+/// fixtures are identified by their location under `tests/codegen{,-raw}/`;
+/// other fixtures select a kind from their sibling `.expected` file.
 ///
 /// Returns `None` if the fixture has no `.expected` sibling — the
 /// caller reports it as an unpinned fixture.
-fn detect_stage(fixture: &Path) -> Option<Stage> {
+fn detect_fixture_kind(fixture: &Path) -> Option<FixtureKind> {
     let root = fixtures_root();
     let rel = fixture.strip_prefix(&root).unwrap_or(fixture);
     let first = rel.components().next().and_then(|c| c.as_os_str().to_str());
     match first {
-        Some("codegen") => Some(Stage::Codegen),
-        Some("codegen-raw") => Some(Stage::CodegenRaw),
+        Some("codegen") => Some(FixtureKind {
+            stage: Stage::Codegen,
+            expectation: Expectation::Llvm,
+        }),
+        Some("codegen-raw") => Some(FixtureKind {
+            stage: Stage::CodegenRaw,
+            expectation: Expectation::Llvm,
+        }),
         _ => {
-            // Check for sibling .sim.expected or .err.expected.
-            let stem = fixture.file_stem()?.to_string_lossy();
-            let sim_expected = fixture.with_file_name(format!("{}.sim.expected", stem));
-            let err_expected = fixture.with_file_name(format!("{}.err.expected", stem));
-            if sim_expected.exists() {
-                Some(Stage::Elab)
-            } else if err_expected.exists() {
-                Some(Stage::Errors)
-            } else {
-                None
+            let candidates = [
+                FixtureKind {
+                    stage: Stage::Elab,
+                    expectation: Expectation::Mir,
+                },
+                FixtureKind {
+                    stage: Stage::Elab,
+                    expectation: Expectation::Diagnostics,
+                },
+                FixtureKind {
+                    stage: Stage::Check,
+                    expectation: Expectation::Mir,
+                },
+                FixtureKind {
+                    stage: Stage::Check,
+                    expectation: Expectation::Diagnostics,
+                },
+            ];
+            let found: Vec<_> = candidates
+                .into_iter()
+                .filter(|kind| expected_path(fixture, *kind).exists())
+                .collect();
+            match found.as_slice() {
+                [] => None,
+                [kind] => Some(*kind),
+                _ => panic!(
+                    "fixture {} has multiple .expected siblings; keep exactly one",
+                    fixture.display()
+                ),
             }
         }
     }
 }
 
-/// Run the pipeline for a fixture and produce the actual output.
-fn run_fixture(path: &Path, stage: Stage) -> String {
+struct FixtureRun {
+    program: Option<mir::ast::Program>,
+    diagnostics: Diagnostics,
+}
+
+/// Parse and run one pipeline stage for a fixture.
+fn execute_fixture(path: &Path, stage: Stage) -> FixtureRun {
     let source =
         std::fs::read_to_string(path).unwrap_or_else(|e| panic!("read {}: {}", path.display(), e));
     let source_arc = Arc::new(source);
@@ -120,40 +179,46 @@ fn run_fixture(path: &Path, stage: Stage) -> String {
         },
     };
 
-    let elaborated_env = program
-        .as_ref()
-        .map(|p| elaborate_and_check_mir(p.clone(), &mut d));
+    let program = match stage {
+        Stage::Elab | Stage::Codegen => program
+            .as_ref()
+            .map(|p| elaborate_and_check_mir(p.clone(), &mut d).0),
+        Stage::Check => program
+            .as_ref()
+            .map(|p| check_mir_without_elaboration(p.clone(), &mut d).0),
+        Stage::CodegenRaw => program,
+    };
 
-    match stage {
-        Stage::Elab => match &elaborated_env {
-            Some((elaborated, _)) if !d.has_errors() => mir::pretty_print::pretty_print(elaborated),
+    FixtureRun {
+        program,
+        diagnostics: d,
+    }
+}
+
+/// Render a completed fixture run according to its expected artifact.
+fn render_fixture(path: &Path, run: &FixtureRun, expectation: Expectation) -> String {
+    match expectation {
+        Expectation::Mir => match &run.program {
+            Some(program) if !run.diagnostics.has_errors() => {
+                mir::pretty_print::pretty_print(program)
+            }
             _ => panic!(
-                "elab fixture {} produced errors — rename to .err.expected or fix it:\n{}",
+                "MIR fixture {} produced errors — use an .err.expected sibling or fix it:\n{}",
                 path.display(),
-                render_diagnostics(&d),
+                render_diagnostics(&run.diagnostics),
             ),
         },
-        Stage::Errors => render_diagnostics(&d),
-        Stage::Codegen => match &elaborated_env {
-            Some((elaborated, _)) if !d.has_errors() => {
-                mir::codegen::lower_mir_to_llvm(elaborated.clone())
+        Expectation::Diagnostics => render_diagnostics(&run.diagnostics),
+        Expectation::Llvm => match &run.program {
+            Some(program) if !run.diagnostics.has_errors() => {
+                mir::codegen::lower_mir_to_llvm(program.clone())
             }
             _ => panic!(
                 "codegen fixture {} produced errors:\n{}",
                 path.display(),
-                render_diagnostics(&d),
+                render_diagnostics(&run.diagnostics),
             ),
         },
-        Stage::CodegenRaw => {
-            let program = program.unwrap_or_else(|| {
-                panic!(
-                    "codegen-raw fixture {} failed to parse:\n{}",
-                    path.display(),
-                    render_diagnostics(&d),
-                )
-            });
-            mir::codegen::lower_mir_to_llvm(program)
-        }
     }
 }
 
@@ -210,29 +275,31 @@ fn update_expect_enabled() -> bool {
 /// Under UPDATE_EXPECT, we may need to remove a stale `.expected`
 /// sibling with the wrong extension (e.g. a test that used to error
 /// but now runs clean). Returns the path that WAS written.
-fn write_expected(fixture: &Path, stage: Stage, actual: &str) -> PathBuf {
-    let stem = fixture
-        .file_stem()
-        .expect("fixture has no stem")
-        .to_string_lossy();
-    let expected_path = fixture.with_file_name(format!("{}.{}", stem, stage.expected_extension()));
+fn write_expected(fixture: &Path, kind: FixtureKind, actual: &str) -> PathBuf {
+    let path = expected_path(fixture, kind);
 
-    // Remove the *other* stage's .expected if it exists (stage flipped).
-    let other_ext = match stage {
-        Stage::Elab => Some("err.expected"),
-        Stage::Errors => Some("sim.expected"),
-        _ => None,
+    // Remove the opposite expectation for this same pipeline stage if the
+    // fixture flipped between clean MIR and diagnostics.
+    let other_expectation = match kind.expectation {
+        Expectation::Mir => Some(Expectation::Diagnostics),
+        Expectation::Diagnostics => Some(Expectation::Mir),
+        Expectation::Llvm => None,
     };
-    if let Some(ext) = other_ext {
-        let other = fixture.with_file_name(format!("{}.{}", stem, ext));
+    if let Some(expectation) = other_expectation {
+        let other = expected_path(
+            fixture,
+            FixtureKind {
+                stage: kind.stage,
+                expectation,
+            },
+        );
         if other.exists() {
             let _ = std::fs::remove_file(&other);
         }
     }
 
-    std::fs::write(&expected_path, actual)
-        .unwrap_or_else(|e| panic!("write {}: {}", expected_path.display(), e));
-    expected_path
+    std::fs::write(&path, actual).unwrap_or_else(|e| panic!("write {}: {}", path.display(), e));
+    path
 }
 
 fn run_all_fixtures() {
@@ -248,17 +315,21 @@ fn run_all_fixtures() {
         let rel = fixture.strip_prefix(&root).unwrap_or(fixture);
 
         if update {
-            // In update mode we need to know the stage. For codegen paths
-            // it's fixed; for others we run the pipeline and let
-            // has_errors() decide (Errors if any errors else Elab).
             let stage = infer_stage_for_update(fixture);
-            let actual = run_fixture(fixture, stage);
-            write_expected(fixture, stage, &actual);
+            let run = execute_fixture(fixture, stage);
+            let expectation = match stage {
+                Stage::Codegen | Stage::CodegenRaw => Expectation::Llvm,
+                _ if run.diagnostics.has_errors() => Expectation::Diagnostics,
+                _ => Expectation::Mir,
+            };
+            let kind = FixtureKind { stage, expectation };
+            let actual = render_fixture(fixture, &run, expectation);
+            write_expected(fixture, kind, &actual);
             continue;
         }
 
-        let stage = match detect_stage(fixture) {
-            Some(s) => s,
+        let kind = match detect_fixture_kind(fixture) {
+            Some(kind) => kind,
             None => {
                 failures.push(format!(
                     "  {}: no sibling .expected file — run `UPDATE_EXPECT=1 cargo test --test fixtures` to create",
@@ -268,10 +339,9 @@ fn run_all_fixtures() {
             }
         };
 
-        let actual = run_fixture(fixture, stage);
-        let stem = fixture.file_stem().unwrap().to_string_lossy();
-        let expected_path =
-            fixture.with_file_name(format!("{}.{}", stem, stage.expected_extension()));
+        let run = execute_fixture(fixture, kind.stage);
+        let actual = render_fixture(fixture, &run, kind.expectation);
+        let expected_path = expected_path(fixture, kind);
 
         let expected = match std::fs::read_to_string(&expected_path) {
             Ok(s) => s,
@@ -314,11 +384,9 @@ fn run_all_fixtures() {
     }
 }
 
-/// Under UPDATE_EXPECT, decide which stage a fixture should be
-/// pinned to. Codegen paths are fixed by directory; everything else
-/// runs the pipeline dry and picks Errors if it produced errors,
-/// else Elab. Called only in update mode; in verify mode we use
-/// `detect_stage` based on the existing `.expected` sibling.
+/// Under UPDATE_EXPECT, preserve an existing check-only pipeline; otherwise
+/// use the full elaboration pipeline. The completed run selects whether the
+/// fixture expects MIR or diagnostics.
 fn infer_stage_for_update(fixture: &Path) -> Stage {
     let root = fixtures_root();
     let rel = fixture.strip_prefix(&root).unwrap_or(fixture);
@@ -328,30 +396,11 @@ fn infer_stage_for_update(fixture: &Path) -> Stage {
         _ => {}
     }
 
-    let source = std::fs::read_to_string(fixture).unwrap();
-    let source_arc = Arc::new(source);
-    let source_kind = source_kind_for(fixture);
-    let mut d = Diagnostics::default()
-        .with_source(source_arc.clone())
-        .with_source_kind(source_kind);
-    match source_kind {
-        SourceKind::Hll => {
-            if let Some(p) = lower_hll_to_mir(&source_arc, &mut d) {
-                elaborate_and_check_mir(p, &mut d);
-            }
-        }
-        SourceKind::Mir => match mir::parser::Parser::new(&**source_arc).parse() {
-            Ok(p) => {
-                elaborate_and_check_mir(p, &mut d);
-            }
-            Err(diags) => d.extend_errors(diags.errors().cloned()),
-        },
-    }
-    if d.has_errors() {
-        Stage::Errors
-    } else {
-        Stage::Elab
-    }
+    // Existing check-only expectations select the no-elaboration pipeline;
+    // the observed diagnostics below still select its expected artifact.
+    detect_fixture_kind(fixture)
+        .map(|kind| kind.stage)
+        .unwrap_or(Stage::Elab)
 }
 
 #[test]

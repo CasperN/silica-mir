@@ -25,6 +25,48 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     hll::lowering::run_lowering(&hll_prog, &types, d)
 }
 
+/// Normalize and run the checks that precede MIR elaboration.
+///
+/// This preparation is deliberately shared by both pipelines below: the
+/// check-only pipeline validates MIR exactly as written, while the full
+/// pipeline elaborates it before the final dynamic checks.
+fn prepare_mir_for_analysis(
+    mut program: Program,
+    d: &mut Diagnostics,
+) -> (Program, mir::type_check::Env) {
+    mir::elision::elide_program(&mut program);
+    let (env, env_errs) = mir::type_check::Env::build(&program);
+    d.extend_errors(env_errs);
+    env.typecheck(&program, d);
+    mir::substructural::composition::check_program(&env, d);
+    mir::layout::check_sizes_finite(&env, d);
+    mir::substructural::check::check_statements(&program, &env, d);
+    mir::variant_flow::check_program(&program, &env, d);
+    mir::block_reachability::check_program(&program, d);
+    (program, env)
+}
+
+/// Validate initialization state and lifetime loans.
+fn check_place_and_loan_state(program: &Program, env: &mir::type_check::Env, d: &mut Diagnostics) {
+    mir::init_state::check_program(program, env, d);
+    mir::lifetime::check_program(program, env, d);
+}
+
+/// Type-check and validate MIR without running NLL or place-state
+/// elaboration. This is for MIR that must exercise the checker without a
+/// repair pass changing it first.
+///
+/// Lifetime elision still runs: it is signature normalization, not an
+/// ownership/lifetime elaboration pass.
+pub fn check_mir_without_elaboration(
+    program: Program,
+    d: &mut Diagnostics,
+) -> (Program, mir::type_check::Env) {
+    let (program, env) = prepare_mir_for_analysis(program, d);
+    check_place_and_loan_state(&program, &env, d);
+    (program, env)
+}
+
 /// Run the MIR pipeline: pre-elab sanity checks, elaboration
 /// passes, post-elab checks. Returns the elaborated program and
 /// its type environment.
@@ -85,18 +127,10 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
 /// Land the coverage extension first, verify no fixture
 /// regresses, then delete the pre-elab call as its own commit.
 pub fn elaborate_and_check_mir(
-    mut program: Program,
+    program: Program,
     d: &mut Diagnostics,
 ) -> (Program, mir::type_check::Env) {
-    mir::elision::elide_program(&mut program);
-    let (env, env_errs) = mir::type_check::Env::build(&program);
-    d.extend_errors(env_errs);
-    env.typecheck(&program, d);
-    mir::substructural::composition::check_program(&env, d);
-    mir::layout::check_sizes_finite(&env, d);
-    mir::substructural::check::check_statements(&program, &env, d);
-    mir::variant_flow::check_program(&program, &env, d);
-    mir::block_reachability::check_program(&program, d);
+    let (program, env) = prepare_mir_for_analysis(program, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
     // diagnostics and elaboration proceeds regardless. Elaborators are
@@ -119,8 +153,7 @@ pub fn elaborate_and_check_mir(
     // Final dynamic validation runs once, over the canonical elaborated MIR.
     // This surfaces invalid source transitions that no elaborator repaired,
     // plus obligations exposed by NLL-inserted `unborrow` statements.
-    mir::init_state::check_program(&elaborated, &env, d);
-    mir::lifetime::check_program(&elaborated, &env, d);
+    check_place_and_loan_state(&elaborated, &env, d);
 
     (elaborated, env)
 }
