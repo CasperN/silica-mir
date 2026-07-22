@@ -96,7 +96,7 @@ pub fn elaborate_and_check_mir(
     mir::layout::check_sizes_finite(&env, d);
     mir::substructural::check::check_statements(&program, &env, d);
     mir::variant_flow::check_program(&program, &env, d);
-    mir::block_reachability::check_program(&program, &env, d);
+    mir::block_reachability::check_program(&program, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
     // diagnostics and elaboration proceeds regardless. Elaborators are

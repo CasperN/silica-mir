@@ -1,5 +1,5 @@
 # HLL sibling of `return_leak_violations.sim`. Each fn triggers
-# SUB-ReturnValueLeak from the HLL surface. Uninit-let and the
+# INIT-ReturnValueLeak from the HLL surface. Uninit-let and the
 # owned Move-only match dispatch are the two shapes that today's
 # HLL can express; add more as more HLL-surfaced shapes accumulate.
 

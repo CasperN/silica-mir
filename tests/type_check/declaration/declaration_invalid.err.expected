@@ -39,7 +39,7 @@ error: at 56:31: [TC-InvalidDeclaredType] In function 'fn_local_undeclared', loc
  56 | fn fn_local_undeclared() { x: Nope; entry: return }
     |                               ^^^^
     |
-error: at 37:42: [SUB-ReturnValueLeak] In function 'fn_param_undeclared', block 'entry': value 'x' of type Nope is not consumed at return
+error: at 37:42: [INIT-ReturnValueLeak] In function 'fn_param_undeclared', block 'entry': value 'x' of type Nope is not consumed at return
     |
  36 | # TC-InvalidDeclaredType; the span covers just the parameter type.
  37 | fn fn_param_undeclared(x: Nope) { entry: return }

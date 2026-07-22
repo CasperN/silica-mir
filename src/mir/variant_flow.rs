@@ -20,7 +20,7 @@
 //! tracked Var clobber that Var back to ⊤ for the rest of its
 //! lifetime, since we can't see what the borrower does.
 
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::mir::helpers::*;
@@ -67,20 +67,6 @@ impl From<VariantFlowCode> for DiagCode {
     }
 }
 use VariantFlowCode::*;
-
-/// Build a diagnostic with the standard function/block context set.
-/// Local shorthand for the builder chain used at every push site.
-fn diag(
-    code: impl Into<DiagCode>,
-    span: Span,
-    func: &Function,
-    block: &BasicBlock,
-    msg: String,
-) -> Diagnostic {
-    Diagnostic::new(code, span, msg)
-        .in_function(&func.meta.name)
-        .in_block(&block.label)
-}
 
 /// State at one program point: per-Var variant set. Absent = ⊤.
 type PointState = IndexMap<String, BTreeSet<String>>;

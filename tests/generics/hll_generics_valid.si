@@ -60,7 +60,7 @@ fn option_extract_match(o: Option<i64>) -> i64 {
 # Move-only enum match: owned scrutinee dispatches to `move ml as V`
 # so enum-atomicity marks `ml` Moved after the extract. Without that
 # the scrutinee would stay Init at the merge and (since Move-only is
-# not Drop) trip SUB-ReturnValueLeak.
+# not Drop) trip INIT-ReturnValueLeak.
 enum MoveList: Move { EmptyM: unit, ConsM: i64 }
 fn move_only_owned_match(ml: MoveList) -> i64 {
   ml match {
@@ -130,7 +130,7 @@ fn write_nested_pointee(r: &out Box<Box<i64>>, x: i64) {
 # return: `T := DropCell` is Drop, but the raw field type is `T` and
 # without substitution `class_of(Param(T))` sees empty markers under
 # an empty scope and silently skips the drop. This then trips
-# `SUB-ReturnValueLeak`.
+# `INIT-ReturnValueLeak`.
 struct DropCell: Drop + Move { v: i64 }
 struct<T: Drop + Move> DropPair: Drop + Move { a: T, b: T }
 

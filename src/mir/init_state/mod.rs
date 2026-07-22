@@ -29,11 +29,10 @@
 //! sets the whole enum to `Moved` (enum atomicity, per README); downcast-
 //! in-write does not change enum state.
 
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow;
 use crate::mir::helpers::*;
-use crate::mir::substructural::check::SubstructuralCheckCode;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
@@ -75,6 +74,10 @@ pub enum InitStateCode {
     /// unborrow) while its (is_init, ends_init) obligation is
     /// unfulfilled.
     RefObligationUnfulfilled,
+    /// At `return`, some non-ref path is still `Init` (or `Diverged`)
+    /// — the value would leak. After elaboration, this means
+    /// drop-elab couldn't insert enough drops.
+    ReturnValueLeak,
     /// A `move` operand crossing a call boundary carries a ref-typed
     /// place (or a container of one) whose current pointee state
     /// doesn't match the declared kind's entry state. The callee's
@@ -117,20 +120,6 @@ impl From<InitStateCode> for DiagCode {
     }
 }
 use InitStateCode::*;
-
-/// Build a diagnostic with the standard function/block context set.
-/// Local shorthand for the builder chain used at every push site.
-fn diag(
-    code: impl Into<DiagCode>,
-    span: Span,
-    func: &Function,
-    block: &BasicBlock,
-    msg: String,
-) -> Diagnostic {
-    Diagnostic::new(code, span, msg)
-        .in_function(&func.meta.name)
-        .in_block(&block.label)
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitState {
@@ -651,10 +640,7 @@ pub fn states_before_returns<'a>(
 
 /// Return validation is part of the single final place-state check.
 fn check_return_leaks(program: &Program, env: &Env, d: &mut Diagnostics) {
-    for func in program.functions() {
-        if func.body.is_none() {
-            continue;
-        }
+    for (func, _body) in program.function_bodies() {
         let locals = func.locals_map();
         for (block, state) in states_before_returns(env, func) {
             check_return_state(env, func, block, &locals, &state, d);
@@ -685,7 +671,7 @@ fn check_return_state(
         find_return_leaks(env, place_state, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
             let mut diagnostic = diag(
-                SubstructuralCheckCode::ReturnValueLeak,
+                ReturnValueLeak,
                 block.terminator.span,
                 func,
                 block,

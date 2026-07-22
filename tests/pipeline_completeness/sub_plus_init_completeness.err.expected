@@ -13,7 +13,7 @@ error: at 36:5: [INIT-UseAfterMove] In function 'init_use_after_move', block 'en
     |     ^^^^^^^^^^^^^^^^^
  37 |     return
     |
-error: at 23:5: [SUB-ReturnValueLeak] In function 'sub_copy_of_non_copy', block 'entry': value 'a' of type Linear is not consumed at return
+error: at 23:5: [INIT-ReturnValueLeak] In function 'sub_copy_of_non_copy', block 'entry': value 'a' of type Linear is not consumed at return
     |
  17 | # `copy` of a non-Copy type is a substructural-statement violation.
  18 | fn sub_copy_of_non_copy(a: Linear) {
@@ -28,7 +28,7 @@ error: at 23:5: [SUB-ReturnValueLeak] In function 'sub_copy_of_non_copy', block 
  24 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 37:5: [SUB-ReturnValueLeak] In function 'init_use_after_move', block 'entry': value 'b' of type Linear is not consumed at return
+error: at 37:5: [INIT-ReturnValueLeak] In function 'init_use_after_move', block 'entry': value 'b' of type Linear is not consumed at return
     |
  32 | fn init_use_after_move(a: Linear) {
  33 |   b: Linear;

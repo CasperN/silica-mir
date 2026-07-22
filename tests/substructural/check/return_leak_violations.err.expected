@@ -30,7 +30,7 @@ error: at 97:5: [INIT-RefObligationUnfulfilled] In function 'ref_field_leak_via_
     |     ^^^^^^
  98 | }
     |
-error: at 35:5: [SUB-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
+error: at 35:5: [INIT-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
     |
  32 | 
  33 | fn linear_struct_untouched_param(p: P) {
@@ -41,7 +41,7 @@ error: at 35:5: [SUB-ReturnValueLeak] In function 'linear_struct_untouched_param
  36 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 45:5: [SUB-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
+error: at 45:5: [INIT-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
     |
  40 | fn linear_struct_fully_constructed() {
  41 |   p: P;
@@ -56,7 +56,7 @@ error: at 45:5: [SUB-ReturnValueLeak] In function 'linear_struct_fully_construct
  46 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 53:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
+error: at 53:5: [INIT-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
     |
  50 | # Every field is non-Drop, so drop-elab cannot help; the whole `x` leaks.
  51 | fn fully_linear_struct_untouched(x: L) {
@@ -77,7 +77,7 @@ error: at 53:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct
     |     ^^^^^^
  54 | }
     |
-error: at 64:5: [SUB-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
+error: at 64:5: [INIT-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
     |
  59 | # still Init. The leak is reported on the specific field.
  60 | fn fully_linear_struct_partial_init(src: Pair) {
@@ -106,7 +106,7 @@ error: at 64:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct
     |     ^^^^^^
  65 | }
     |
-error: at 73:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
+error: at 73:5: [INIT-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
     |
  68 | 
  69 | fn multiple_returns_each_checked(b: bool, x: L) {
@@ -135,7 +135,7 @@ error: at 73:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_ea
     |     ^^^^^^
  74 |   fbr:
     |
-error: at 75:5: [SUB-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
+error: at 75:5: [INIT-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
     |
  68 | 
  69 | fn multiple_returns_each_checked(b: bool, x: L) {

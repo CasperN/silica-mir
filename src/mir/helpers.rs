@@ -14,6 +14,7 @@
 //! - Statements get `_stmt`.
 //! - Terminators get `_term`.
 
+use crate::diagnostics::{DiagCode, Diagnostic};
 use crate::mir::ast::*;
 
 // ---------- Misc --------------
@@ -290,4 +291,24 @@ pub fn abort_term(span: Span) -> Terminator {
 }
 pub fn unreachable_term(span: Span) -> Terminator {
     Terminator::new(TerminatorKind::Unreachable, span)
+}
+
+// ---------- Diagnostics ----------
+
+/// Build a diagnostic with function and block context attached. Every
+/// per-fn per-block checker emits errors through this shape; the helper
+/// lives here so each subsystem doesn't redefine the same 3-line
+/// builder. Declaration-scope checks (e.g.
+/// `substructural::composition`) don't have a block cursor and use
+/// `Diagnostic::new(...)` directly.
+pub fn diag(
+    code: impl Into<DiagCode>,
+    span: Span,
+    func: &Function,
+    block: &BasicBlock,
+    msg: String,
+) -> Diagnostic {
+    Diagnostic::new(code, span, msg)
+        .in_function(&func.meta.name)
+        .in_block(&block.label)
 }

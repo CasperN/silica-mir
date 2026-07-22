@@ -17,10 +17,9 @@
 //! Deferred: overwrite checks (`p = ...` where `p` was Init) and CFG-join
 //! disagreement checks.
 
-use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
+use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
-use crate::mir::init_state::{self, InitState, InitStateCode, PointState};
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
 use indexmap::IndexMap;
@@ -37,10 +36,6 @@ pub enum SubstructuralCheckCode {
     /// `move p` operand where `p`'s type doesn't have the `Move`
     /// marker.
     MoveOfNonMove,
-    /// At `return`, some non-ref path is still `Init` (or `Diverged`)
-    /// — the value would leak. After elaboration, this means the
-    /// drop-elaborator couldn't insert enough drops.
-    ReturnValueLeak,
 }
 
 impl From<SubstructuralCheckCode> for DiagCode {
@@ -49,18 +44,6 @@ impl From<SubstructuralCheckCode> for DiagCode {
     }
 }
 use SubstructuralCheckCode::*;
-
-fn diag(
-    code: impl Into<DiagCode>,
-    span: Span,
-    func: &Function,
-    block: &BasicBlock,
-    msg: String,
-) -> Diagnostic {
-    Diagnostic::new(code, span, msg)
-        .in_function(&func.meta.name)
-        .in_block(&block.label)
-}
 
 /// Class-precondition checks over statements (does not include
 /// `check_return_leaks`, which callers run separately after elaboration).

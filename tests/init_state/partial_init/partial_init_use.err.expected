@@ -62,7 +62,7 @@ error: at 127:5: [INIT-UseBeforeInit] In function 'pair_read_uninit_param_field'
      |     ^^^^^^^^^^^^
  128 |     return
      |
-error: at 30:5: [SUB-ReturnValueLeak] In function 'copy_whole_while_partial', block 'entry': value 'q' of type P is not consumed at return
+error: at 30:5: [INIT-ReturnValueLeak] In function 'copy_whole_while_partial', block 'entry': value 'q' of type P is not consumed at return
     |
  25 |   p: P;
  26 |   q: P;

@@ -9,7 +9,6 @@
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
-use crate::mir::type_check::Env;
 
 /// Machine-readable codes emitted by the block-reachability pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +37,7 @@ impl Analysis for Reachability {
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
 }
 
-pub fn check_program(program: &Program, _env: &Env, d: &mut Diagnostics) {
+pub fn check_program(program: &Program, d: &mut Diagnostics) {
     for f in program.functions() {
         check_function(f, d);
     }

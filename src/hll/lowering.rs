@@ -1091,7 +1091,7 @@ fn lower_expr_into(
                     // enum-atomicity rule cascades the whole scrutinee to
                     // `Moved`; without it the scrutinee stays Init at the
                     // merge and (since Move-only is not Drop) trips
-                    // SUB-ReturnValueLeak at return.
+                    // INIT-ReturnValueLeak at return.
                     //
                     // Borrowed scrutinees can't be moved through (that
                     // would consume the pointee behind someone else's
@@ -1292,7 +1292,7 @@ pub fn lower_program(
 
                 // If the entry block or last block hasn't been terminated,
                 // terminate it with Return. Use the body's end span for
-                // the terminator — pointing SUB-ReturnValueLeak and
+                // the terminator — pointing INIT-ReturnValueLeak and
                 // ref-obligation diagnostics at the body's closing brace
                 // rather than at the whole fn signature line.
                 if ctx.current_block_label.is_some() {
