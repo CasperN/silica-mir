@@ -1330,7 +1330,7 @@ impl<'a> InitStateContext<'a> {
     /// Returns `None` if the place isn't a valid owned path or the
     /// projection doesn't resolve.
     fn infer_ref_place_type(&self, place: &Place) -> Option<Type> {
-        let (root, path) = extract_path(place)?;
+        let (root, path) = extract_path_with_deref(place);
         let mut ty = self.locals.get(&root)?.clone();
         for step in &path {
             match step {
@@ -1372,7 +1372,7 @@ impl<'a> InitStateContext<'a> {
         state: &PointState,
         d: &mut Diagnostics,
     ) {
-        let Some((root, path)) = extract_path(target) else {
+        let Some((root, path)) = extract_init_path(target) else {
             return;
         };
         let Some(root_ty) = self.locals.get(&root).cloned() else {
@@ -2166,7 +2166,7 @@ impl<'a> InitStateContext<'a> {
         state: &PointState,
         d: &mut Diagnostics,
     ) {
-        let Some((root, path)) = extract_path(place) else {
+        let Some((root, path)) = extract_init_path(place) else {
             return;
         };
         let Some(root_ty) = self.locals.get(&root).cloned() else {
@@ -2231,6 +2231,26 @@ impl<'a> InitStateContext<'a> {
                 format!("variable '{}' is not fully initialized here", root),
             )),
         }
+    }
+}
+
+/// Extract the owned path for initialization tracking up to the first dynamic index.
+/// Returns `None` if the path contains a `Deref` prior to any dynamic index.
+fn extract_init_path(place: &Place) -> Option<(String, Vec<PathStep>)> {
+    let (root_widen, path_widen) = extract_path_with_deref(place);
+    if let Some(dyn_pos) = path_widen
+        .iter()
+        .position(|s| matches!(s, PathStep::Index(None)))
+    {
+        if path_widen[..dyn_pos]
+            .iter()
+            .any(|s| matches!(s, PathStep::Deref))
+        {
+            return None;
+        }
+        Some((root_widen, path_widen[..dyn_pos].to_vec()))
+    } else {
+        extract_path(place)
     }
 }
 

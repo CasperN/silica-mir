@@ -126,3 +126,16 @@ fn read_partially_init_array() {
     return
 }
 
+# ---------- reading an uninitialized array via dynamic index fires UseBeforeInit ----------
+
+# The array `a` has never been initialized. Reading `a[copy i]` via a dynamic
+# index requires `a` to be Init and fires INIT-UseBeforeInit.
+fn read_uninit_array_dynamic(i: i64) {
+  a: [i64; 3];
+  x: i64;
+  entry:
+    x = copy a[copy i];
+    return
+}
+
+

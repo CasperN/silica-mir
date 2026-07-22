@@ -68,3 +68,17 @@ fn overwrite_ref_field_unfulfilled_oblg(x: i64, x2: i64) {
     b.p = &mut x2;
     return
 }
+
+extern fn consume_array(a: [Linear; 3]);
+
+# ---------- Init non-Drop dynamic element: OverwriteWithoutDrop ----------
+
+# Overwriting an element of a linear array via dynamic index without
+# dropping it first fires INIT-OverwriteWithoutDrop.
+fn overwrite_init_linear_dynamic_index(a: [Linear; 3], i: i64, new_linear: Linear) {
+  entry:
+    a[copy i] = move new_linear;
+    call consume_array(move a);
+    return
+}
+

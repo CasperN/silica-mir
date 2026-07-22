@@ -54,3 +54,10 @@ error: at 125:5: [INIT-UseBeforeInit] In function 'read_partially_init_array', b
      |     ^^^^^^^^^^^^^^^^
  126 |     return
      |
+error: at 137:5: [INIT-UseBeforeInit] In function 'read_uninit_array_dynamic', block 'entry': variable 'a' is used before initialization
+     |
+ 136 |   entry:
+ 137 |     x = copy a[copy i];
+     |     ^^^^^^^^^^^^^^^^^^
+ 138 |     return
+     |

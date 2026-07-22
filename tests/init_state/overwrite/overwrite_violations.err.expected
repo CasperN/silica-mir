@@ -55,3 +55,10 @@ error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_field
     |     ^^^^^^^^^^^^^
  69 |     return
     |
+error: at 80:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot overwrite 'a[?]': type Linear is not Drop and the value is still live (consume it via `drop a[?]` first)
+    |
+ 79 |   entry:
+ 80 |     a[copy i] = move new_linear;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 81 |     call consume_array(move a);
+    |
