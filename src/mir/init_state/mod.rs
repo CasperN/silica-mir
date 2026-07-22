@@ -932,6 +932,10 @@ impl<'a> InitStateContext<'a> {
                 }
                 self.apply_move(place, state);
             }
+            StatementKind::RequireUninit(_) => {
+                // This first plumbing slice gives the statement no transfer
+                // effect. The next slice will validate and elaborate it.
+            }
         }
     }
 
@@ -1801,6 +1805,9 @@ impl<'a> InitStateContext<'a> {
                 self.check_place_read(func, block, place, span, state, d);
                 self.close_ref_if_present(func, block, place, span, state, d);
                 self.apply_move(place, state);
+            }
+            StatementKind::RequireUninit(_) => {
+                // Checked and elaborated by the forthcoming requirement pass.
             }
         }
     }

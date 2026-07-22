@@ -107,6 +107,9 @@ fn check_stmt(
             // regardless of Drop marker. Its precondition (obligation
             // fulfilled) is checked by init_state.
         }
+        StatementKind::RequireUninit(_) => {
+            // Place-state owns this ghost assertion's validation.
+        }
     }
 }
 
@@ -272,4 +275,3 @@ mod tests {
             .join("\n")
     }
 }
-

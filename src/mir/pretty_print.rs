@@ -339,6 +339,10 @@ fn write_statement(out: &mut String, stmt: &Statement) {
             out.push_str("unborrow ");
             write_place(out, place);
         }
+        StatementKind::RequireUninit(place) => {
+            out.push_str("require_uninit ");
+            write_place(out, place);
+        }
     }
 }
 
@@ -553,6 +557,19 @@ mod tests {
                 abort
             }
             ",
+        );
+    }
+
+    #[test]
+    fn roundtrip_require_uninit() {
+        assert_roundtrip(
+            r#"
+                fn f(x: i64) {
+                    entry:
+                        require_uninit x;
+                        return
+                }
+            "#,
         );
     }
 

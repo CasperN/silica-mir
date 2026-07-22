@@ -808,6 +808,16 @@ impl Parser {
                 })?;
                 Ok(unborrow_stmt(self.map_place(place_node)?, child_span))
             }
+            "require_uninit_stmt" => {
+                let place_node = child.child_by_field_name("place").ok_or_else(|| {
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "require_uninit missing place",
+                    )
+                })?;
+                Ok(require_uninit_stmt(self.map_place(place_node)?, child_span))
+            }
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -1359,6 +1369,29 @@ mod tests {
         } else {
             panic!("Expected function declaration");
         }
+    }
+
+    #[test]
+    fn test_parse_require_uninit_stmt() {
+        let source = "
+            fn f(x: i64) {
+                entry:
+                    require_uninit x;
+                    return
+            }
+        ";
+        let program = Parser::new(source.to_string()).parse().unwrap();
+        let Declaration::Fn(f) = &program.declarations[0] else {
+            panic!("expected function declaration");
+        };
+        let body = f.body.as_ref().unwrap();
+        assert!(matches!(
+            body.blocks[0].statements.as_slice(),
+            [Statement {
+                kind: StatementKind::RequireUninit(Place::Var(name)),
+                ..
+            }] if name == "x"
+        ));
     }
 
     #[test]

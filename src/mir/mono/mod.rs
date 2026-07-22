@@ -57,7 +57,7 @@
 //!   per concrete arg — the second time the walker sees `Node<i32>`
 //!   the instantiation is already registered, so no infinite loop.
 
-use crate::mir::helpers::{call_stmt, drop_stmt, unborrow_stmt};
+use crate::mir::helpers::{call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt};
 use crate::mir::type_util::substitute_params;
 use crate::mir::{ast::*, helpers::*};
 use std::collections::{BTreeMap, VecDeque};
@@ -212,6 +212,7 @@ impl MonoCtx {
             ),
             StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
             StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
+            StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span),
         }
     }
 
@@ -379,6 +380,7 @@ fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]
         ),
         StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
         StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
+        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span),
     }
 }
 

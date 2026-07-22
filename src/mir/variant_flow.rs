@@ -197,7 +197,9 @@ fn check_places_in_stmt(
                 }
             }
         }
-        StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
+        StatementKind::Drop(place)
+        | StatementKind::Unborrow(place)
+        | StatementKind::RequireUninit(place) => {
             check_downcast_refinement(env, func, locals, block, place, span, state, d);
         }
     }
@@ -381,6 +383,10 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
             if let Some(root) = root_var(place) {
                 state.shift_remove(root);
             }
+        }
+        StatementKind::RequireUninit(_) => {
+            // Ghost assertion; it has no transfer effect until place-state
+            // elaboration materializes any required cleanup.
         }
     }
 }

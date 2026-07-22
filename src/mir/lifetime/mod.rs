@@ -356,6 +356,9 @@ fn transfer_stmt(
                 close_loans_under(loans, &consumed);
             }
         }
+        StatementKind::RequireUninit(_) => {
+            // Ghost assertion; it has no loan-state effect.
+        }
     }
 }
 
@@ -1135,6 +1138,10 @@ impl<'a> Checker<'a> {
                 // loan borrowed by s on `*r` — still needs to block `unborrow r`.
                 self.check_loan_conflict(block, place, AccessKind::Move, stmt.span, loans);
                 transfer_stmt(loans, stmt, stmt.span, self.region_ctx);
+            }
+            StatementKind::RequireUninit(_) => {
+                // Place-state validates the assertion. It is not a runtime
+                // access and therefore does not participate in loan checks.
             }
         }
     }

@@ -1044,6 +1044,10 @@
         {
           "type": "SYMBOL",
           "name": "unborrow_stmt"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "require_uninit_stmt"
         }
       ]
     },
@@ -1070,6 +1074,23 @@
         {
           "type": "STRING",
           "value": "unborrow"
+        },
+        {
+          "type": "FIELD",
+          "name": "place",
+          "content": {
+            "type": "SYMBOL",
+            "name": "place"
+          }
+        }
+      ]
+    },
+    "require_uninit_stmt": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "require_uninit"
         },
         {
           "type": "FIELD",

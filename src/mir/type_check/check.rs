@@ -369,6 +369,11 @@ impl Env {
                 }
                 Ok(())
             }
+            StatementKind::RequireUninit(place) => {
+                self.type_of_place(place, stmt_span, locals)
+                    .map_err(with_context)?;
+                Ok(())
+            }
         }
     }
 

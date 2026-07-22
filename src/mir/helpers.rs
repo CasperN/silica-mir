@@ -259,6 +259,9 @@ pub fn drop_stmt(place: Place, span: Span) -> Statement {
 pub fn unborrow_stmt(place: Place, span: Span) -> Statement {
     Statement::new(StatementKind::Unborrow(place), span)
 }
+pub fn require_uninit_stmt(place: Place, span: Span) -> Statement {
+    Statement::new(StatementKind::RequireUninit(place), span)
+}
 
 // ---------- Terminators ----------
 

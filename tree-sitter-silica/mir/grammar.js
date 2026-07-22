@@ -103,6 +103,7 @@ module.exports = grammar({
       $.call,
       $.drop_stmt,
       $.unborrow_stmt,
+      $.require_uninit_stmt,
     ),
 
     drop_stmt: $ => seq(
@@ -112,6 +113,11 @@ module.exports = grammar({
 
     unborrow_stmt: $ => seq(
       'unborrow',
+      field('place', $.place),
+    ),
+
+    require_uninit_stmt: $ => seq(
+      'require_uninit',
       field('place', $.place),
     ),
 

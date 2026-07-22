@@ -24,9 +24,9 @@
 //!   the MIR entry block. All functions are `void`; return values ride
 //!   `&out` parameters (sret-by-hand).
 //! - Statements: `Assign` (including `EnumConstr` as a specialized
-//!   whole-value write), `Call`. `Drop` and `Unborrow` are erased —
-//!   this is a POD-only world (trivial `Drop` only) until `Destroy`
-//!   and above land.
+//!   whole-value write), `Call`. `Drop`, `Unborrow`, and
+//!   `RequireUninit` are erased — this is a POD-only world (trivial
+//!   `Drop` only) until `Destroy` and above land.
 //! - Terminators: `Goto`, `Return`, `Branch`, `SwitchEnum` (with an
 //!   `unreachable` default block for LLVM; MIR requires the switch to
 //!   be exhaustive), `Abort` (→ `@abort` + `unreachable`), `Unreachable`.
@@ -632,10 +632,11 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 writeln!(cx.out, ")").unwrap();
             }
         }
-        StatementKind::Drop(_) | StatementKind::Unborrow(_) => {
+        StatementKind::Drop(_) | StatementKind::Unborrow(_) | StatementKind::RequireUninit(_) => {
             // Erased. `Drop` lowers to a real call once `Destroy`
             // (pure custom destructor) lands; unborrow is checker-only
-            // and never has runtime effect.
+            // and never has runtime effect. `RequireUninit` is likewise a
+            // checker-only ownership assertion.
         }
     }
 }

@@ -560,6 +560,10 @@ fn stmt_uses(stmt: &Statement, borrowers: &BTreeSet<Place>) -> Vec<Place> {
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             place_borrower_uses(place, borrowers, &mut out);
         }
+        StatementKind::RequireUninit(_) => {
+            // A ghost assertion is neither a borrower use nor an actual loan
+            // close. NLL inserts any needed `unborrow` before it.
+        }
     }
     out
 }
@@ -633,6 +637,7 @@ fn stmt_consumes(stmt: &Statement, r: &Place) -> bool {
                 false
             }
         }
+        StatementKind::RequireUninit(_) => false,
         StatementKind::Assign(target, rvalue) => {
             // Redefinition of r (or an ancestor) consumes r's old value.
             if let Some(owned) = as_owned_path(target) {

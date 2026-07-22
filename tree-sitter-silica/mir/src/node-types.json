@@ -514,6 +514,22 @@
     }
   },
   {
+    "type": "require_uninit_stmt",
+    "named": true,
+    "fields": {
+      "place": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "place",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "rvalue",
     "named": true,
     "fields": {
@@ -579,6 +595,10 @@
         },
         {
           "type": "drop_stmt",
+          "named": true
+        },
+        {
+          "type": "require_uninit_stmt",
           "named": true
         },
         {
@@ -1066,6 +1086,10 @@
   },
   {
     "type": "ptr_cast",
+    "named": false
+  },
+  {
+    "type": "require_uninit",
     "named": false
   },
   {

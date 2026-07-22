@@ -543,6 +543,11 @@ pub enum StatementKind {
     /// loan is removed. Inserted by `lifetime::nll` at last-use
     /// points; the checker just observes the marker.
     Unborrow(Place),
+    /// Ghost ownership assertion: `place` must not hold a live owned value
+    /// at this point. Place-state elaboration may insert cleanup before this
+    /// statement; the final checker verifies the requirement. It has no
+    /// runtime effect and is erased by codegen.
+    RequireUninit(Place),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
