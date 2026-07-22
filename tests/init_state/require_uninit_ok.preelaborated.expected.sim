@@ -1,0 +1,55 @@
+struct Pair: Copy + Drop {
+  left: i64
+  right: i64
+}
+
+fn never_initialized_is_satisfied() {
+  x: i64;
+  entry:
+    require_uninit x;
+    return
+}
+
+fn moved_is_satisfied(x: i64) {
+  entry:
+    drop x;
+    require_uninit x;
+    return
+}
+
+fn transfer_is_satisfied(x: i64) {
+  y: i64;
+  entry:
+    y = move x;
+    require_uninit x;
+    drop y;
+    return
+}
+
+fn uninitialized_field_is_satisfied() {
+  p: Pair;
+  entry:
+    p.left = 1;
+    require_uninit p.right;
+    drop p.left;
+    return
+}
+
+fn uninitialized_array_slot_is_satisfied() {
+  a: [i64; 2];
+  entry:
+    a[0] = 1;
+    require_uninit a[1];
+    drop a[0];
+    return
+}
+
+fn ended_reference_is_satisfied(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    require_uninit r;
+    drop x;
+    return
+}

@@ -1,0 +1,67 @@
+# `require_uninit` is a ghost place-state assertion. These cases are
+# already satisfied before the assertion, so elaboration leaves it in the
+# canonical MIR and the final checker accepts it.
+
+struct Pair: Copy + Drop { left: i64 right: i64 }
+
+# A declared-but-never-written local has no owned value.
+fn never_initialized_is_satisfied() {
+  x: i64;
+  entry:
+    require_uninit x;
+    return
+}
+
+# An explicit drop consumes the parameter before the assertion.
+fn moved_is_satisfied(x: i64) {
+  entry:
+    drop x;
+    require_uninit x;
+    return
+}
+
+# A real ownership transfer, rather than a destruction, also leaves the
+# source binding uninitialized. The destination remains responsible for the
+# value.
+fn transfer_is_satisfied(x: i64) {
+  y: i64;
+  entry:
+    y = move x;
+    require_uninit x;
+    drop y;
+    return
+}
+
+# The requirement is about its exact owned projection, not the aggregate's
+# folded state. A sibling may be initialized while this field remains fresh.
+fn uninitialized_field_is_satisfied() {
+  p: Pair;
+  entry:
+    p.left = 1;
+    require_uninit p.right;
+    drop p.left;
+    return
+}
+
+# Constant indices name a particular owned array element, just like fields.
+fn uninitialized_array_slot_is_satisfied() {
+  a: [i64; 2];
+  entry:
+    a[0] = 1;
+    require_uninit a[1];
+    drop a[0];
+    return
+}
+
+# A fulfilled mutable-reference obligation can be ended before its binding is
+# required to be uninitialized. The parameter's explicit drop keeps this
+# fixture post-elaboration rather than relying on return cleanup.
+fn ended_reference_is_satisfied(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    require_uninit r;
+    drop x;
+    return
+}

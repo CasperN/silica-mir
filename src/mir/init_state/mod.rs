@@ -78,6 +78,10 @@ pub enum InitStateCode {
     /// — the value would leak. After elaboration, this means
     /// drop-elab couldn't insert enough drops.
     ReturnValueLeak,
+    /// A `require_uninit place` assertion reached the final checker while
+    /// `place` still held a value, was only partially consumed, differed
+    /// across control-flow paths, or was not a statically-owned place.
+    RequireUninitNotSatisfied,
     /// A `move` operand crossing a call boundary carries a ref-typed
     /// place (or a container of one) whose current pointee state
     /// doesn't match the declared kind's entry state. The callee's
@@ -1820,8 +1824,8 @@ impl<'a> InitStateContext<'a> {
                 self.close_ref_if_present(func, block, place, span, state, d);
                 self.apply_move(place, state);
             }
-            StatementKind::RequireUninit(_) => {
-                // Checked and elaborated by the forthcoming requirement pass.
+            StatementKind::RequireUninit(place) => {
+                self.check_require_uninit(func, block, place, span, state, d);
             }
         }
     }
@@ -2251,6 +2255,100 @@ impl<'a> InitStateContext<'a> {
                 block,
                 format!("variable '{}' is not fully initialized here", root),
             )),
+        }
+    }
+
+    /// Verify a ghost `require_uninit place` assertion. The assertion does
+    /// not itself consume `place`; elaboration is responsible for inserting
+    /// any cleanup needed to make this precondition true before the final
+    /// checker runs.
+    ///
+    /// Requirements intentionally start with the same owned, statically
+    /// trackable place domain as `state.refs`: locals and constant-index / field
+    /// projections, but not dereferences or dynamic indices. HLL scope exits
+    /// naturally emit roots in that domain. Broader projection semantics can
+    /// be added with a corresponding place-state rule rather than silently
+    /// widening the assertion.
+    fn check_require_uninit(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        place: &Place,
+        span: Span,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some(owned) = as_owned_path(place) else {
+            d.push_error(diag(
+                RequireUninitNotSatisfied,
+                span,
+                func,
+                block,
+                format!(
+                    "require_uninit requires an owned, statically trackable place; '{}' is not one",
+                    format_place(place)
+                ),
+            ));
+            return;
+        };
+        let (root, path) = extract_path(&owned).expect("owned path has an init-state path");
+        let Some(root_ty) = self.locals.get(&root) else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root) else {
+            return;
+        };
+
+        let observed = read_at(root_state, root_ty, &path, self.env);
+        let reason = match observed {
+            InitState::NeverInit | InitState::Moved => None,
+            InitState::Init => Some("it is still initialized"),
+            InitState::Partial(_) => Some("it is only partially consumed"),
+            InitState::Diverged => Some("its state differs across control-flow paths"),
+        };
+        if let Some(reason) = reason {
+            d.push_error(diag(
+                RequireUninitNotSatisfied,
+                span,
+                func,
+                block,
+                format!(
+                    "require_uninit '{}' is not satisfied: {}",
+                    format_place(place),
+                    reason
+                ),
+            ));
+        }
+
+        // A requirement is not a consume operation, so do not remove these
+        // entries. It nevertheless promises that the owned place has gone
+        // away, which would silently abandon every nested reference
+        // obligation if any remained outstanding.
+        for (ref_place, rs) in state
+            .refs
+            .iter()
+            .filter(|(ref_place, _)| is_ancestor_or_self(&owned, ref_place))
+        {
+            if rs.obligation_fulfilled() {
+                continue;
+            }
+            let (cur, expected) = describe_obligation_mismatch(rs);
+            let mut diagnostic = diag(
+                RefObligationUnfulfilled,
+                span,
+                func,
+                block,
+                format!(
+                    "reference '{}' has unfulfilled obligation: pointee is {}, but must be {}",
+                    format_place(ref_place),
+                    cur,
+                    expected,
+                ),
+            );
+            if let Some(decl_span) = ref_root_decl_span(func, ref_place) {
+                diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+            }
+            d.push_error(diagnostic);
         }
     }
 }

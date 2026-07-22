@@ -1,0 +1,93 @@
+# `require_uninit` errors. The assertion is checked after elaboration at its
+# exact program point; later cleanup cannot repair a failed requirement.
+
+struct Pair: Copy + Drop { left: i64 right: i64 }
+struct Linear: Move { }
+struct RefBox: Move { r: &out i64 }
+
+extern fn consume(x: Linear);
+
+# A live whole value fails the requirement even though the following drop
+# makes the return itself clean.
+fn live_place_is_rejected(x: i64) {
+  entry:
+    require_uninit x;
+    drop x;
+    return
+}
+
+# A partially initialized aggregate still owns its initialized field.
+fn partial_place_is_rejected() {
+  p: Pair;
+  entry:
+    p.left = 1;
+    require_uninit p;
+    drop p.left;
+    return
+}
+
+# The true path consumes x, while the false path retains it. At the join the
+# assertion cannot prove x uninitialized on every incoming path.
+fn divergent_place_is_rejected(b: bool, x: Linear) {
+  entry:
+    branch(copy b) [true: consumed, false: retained]
+  consumed:
+    call consume(move x);
+    goto join
+  retained:
+    goto join
+  join:
+    require_uninit x;
+    abort
+}
+
+# The assertion must not hide a live `&out` obligation. The later write and
+# unborrow satisfy that obligation, but they occur after the failed assertion.
+fn unfulfilled_reference_is_rejected() {
+  x: i64;
+  r: &out i64;
+  entry:
+    r = &out x;
+    require_uninit r;
+    r.* = 1;
+    unborrow r;
+    drop x;
+    return
+}
+
+# Requirements are only for owned, statically trackable places. A pointee
+# behind a reference is not an owned local place.
+fn dereference_is_rejected(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    require_uninit r.*;
+    unborrow r;
+    drop x;
+    return
+}
+
+# A dynamic index cannot name a stable owned place, even when the entire
+# array is otherwise uninitialized.
+fn dynamic_index_is_rejected(i: u64) {
+  a: [i64; 2];
+  entry:
+    require_uninit a[copy i];
+    drop i;
+    return
+}
+
+# Requiring an aggregate does not abandon obligations held by its reference
+# fields. The aggregate's partial state and the field's &out obligation are
+# both reported at the assertion; later cleanup makes the function valid.
+fn nested_reference_obligation_is_rejected() {
+  x: i64;
+  b: RefBox;
+  entry:
+    b.r = &out x;
+    require_uninit b;
+    b.r.* = 1;
+    unborrow b.r;
+    drop x;
+    return
+}
