@@ -1,0 +1,120 @@
+struct Buffer: Copy + Drop {
+  values: [i32; 3]
+}
+
+extern fn set_i64(slot: &out 's0 i64, value: i64);
+
+fn<'s0> literal_and_constant_read($return: &out 's0 i64) {
+  a: [i64; 3];
+  entry:
+    a = [10, 20, 30];
+    $return.* = copy a[1];
+    unborrow $return;
+    drop a;
+    return
+}
+
+fn<'s0> struct_field_and_nested_array($return: &out 's0 i32) {
+  b: Buffer;
+  m: [[i32; 2]; 2];
+  _temp_0: [i32; 2];
+  _temp_1: [i32; 2];
+  _temp_2: &out i32;
+  entry:
+    b.values = [1i32, 2i32, 3i32];
+    _temp_0 = [1i32, 2i32];
+    _temp_1 = [3i32, 4i32];
+    m = [move _temp_0, move _temp_1];
+    _temp_2 = &out $return.*;
+    call $i32_add(copy b.values[2], copy m[1][0], move _temp_2);
+    unborrow $return;
+    drop m;
+    drop b;
+    return
+}
+
+fn<'s0> constant_slot_initialization($return: &out 's0 i64) {
+  a: [i64; 3];
+  _temp_0: unit;
+  _temp_1: &out i64;
+  _temp_2: unit;
+  _temp_3: &out i64;
+  _temp_4: unit;
+  _temp_5: &out i64;
+  entry:
+    _temp_1 = &out a[0];
+    call set_i64(move _temp_1, 10);
+    _temp_0 = unit;
+    _temp_3 = &out a[1];
+    call set_i64(move _temp_3, 20);
+    _temp_2 = unit;
+    _temp_5 = &out a[2];
+    call set_i64(move _temp_5, 30);
+    _temp_4 = unit;
+    $return.* = copy a[1];
+    unborrow $return;
+    drop _temp_4;
+    drop _temp_2;
+    drop _temp_0;
+    drop a;
+    return
+}
+
+fn<'s0> constant_slot_isolation($return: &out 's0 i64) {
+  a: [i64; 3];
+  r: &mut i64;
+  other: i64;
+  _temp_0: &out i64;
+  entry:
+    a = [10, 20, 30];
+    r = &mut a[0];
+    other = copy a[1];
+    _temp_0 = &out $return.*;
+    call $i64_add(copy r.*, copy other, move _temp_0);
+    unborrow $return;
+    unborrow r;
+    drop other;
+    drop a;
+    return
+}
+
+fn<'s0> dynamic_read(a: [i64; 3], i: i64, $return: &out 's0 i64) {
+  _temp_0: bool;
+  _temp_1: &out bool;
+  entry:
+    _temp_1 = &out _temp_0;
+    call $i64_lt(copy i, 3, move _temp_1);
+    branch(copy _temp_0) [true: index_in_bounds_0, false: index_out_of_bounds_1]
+  index_out_of_bounds_1:
+    abort
+  index_in_bounds_0:
+    $return.* = copy a[copy i];
+    unborrow $return;
+    drop _temp_0;
+    drop i;
+    drop a;
+    return
+}
+
+fn<'s0> dynamic_mut_borrow(i: i64, $return: &out 's0 i64) {
+  a: [i64; 3];
+  r: &mut i64;
+  _temp_0: bool;
+  _temp_1: &out bool;
+  entry:
+    a = [10, 20, 30];
+    _temp_1 = &out _temp_0;
+    call $i64_lt(copy i, 3, move _temp_1);
+    branch(copy _temp_0) [true: index_in_bounds_0, false: index_out_of_bounds_1]
+  index_out_of_bounds_1:
+    abort
+  index_in_bounds_0:
+    r = &mut a[copy i];
+    $return.* = copy r.*;
+    unborrow $return;
+    unborrow r;
+    drop _temp_0;
+    drop a;
+    drop i;
+    return
+}

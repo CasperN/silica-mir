@@ -24,6 +24,12 @@ pub enum HllLoweringCode {
     /// Unary op emitted on an incompatible operand type. Type-check
     /// should have rejected this before lowering ran.
     UnaryOpNonNumeric,
+    /// Array indexing reached lowering with a non-integer index. The HLL
+    /// type checker should have rejected it first.
+    ArrayIndexNotInteger,
+    /// Array indexing reached lowering with a non-array target. The HLL
+    /// type checker should have rejected it first.
+    ArrayIndexTargetNotArray,
     /// `match` scrutinee has a non-enum type.
     MatchTargetNotEnum,
     /// Match arm references an enum name with no declaration.
@@ -450,7 +456,91 @@ fn lower_expr_to_place(
         }
         hll::ExprKind::ArrayIndex(target, index) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
+            let index_ty = lookup_type(index, types).ok_or_else(|| {
+                diag(
+                    HllLoweringCode::MissingType,
+                    index.span,
+                    "missing type annotation for array index",
+                )
+            })?;
+            let hll::Type::Int(index_kind) = index_ty else {
+                return Err(diag(
+                    HllLoweringCode::ArrayIndexNotInteger,
+                    index.span,
+                    "array index was not inferred as an integer",
+                ));
+            };
+            let target_ty = lookup_type(target, types).ok_or_else(|| {
+                diag(
+                    HllLoweringCode::MissingType,
+                    target.span,
+                    "missing type annotation for indexed array",
+                )
+            })?;
+            let hll::Type::Array(_, len) = target_ty else {
+                return Err(diag(
+                    HllLoweringCode::ArrayIndexTargetNotArray,
+                    target.span,
+                    "array-index target was not inferred as an array",
+                ));
+            };
+
             let index_op = lower_expr_to_operand(ctx, index, types)?;
+            // Evaluate a computed index once, then use the saved Copy value
+            // for both the comparison and the eventual projection. Preserve
+            // literal indices as constants: MIR tracks constant slots
+            // precisely, whereas spilling `a[2]` into a temporary would
+            // turn it into an imprecise dynamic projection.
+            let index_op = match index_op {
+                mir::Operand::Const(_) | mir::Operand::Copy(_) => index_op,
+                mir::Operand::Move(_) => {
+                    let index_value = ctx.fresh_temp(int_ty(*index_kind), index.span);
+                    ctx.emit_statement(assign_stmt(
+                        index_value.clone(),
+                        use_rv(index_op),
+                        index.span,
+                    ));
+                    copy_op(index_value)
+                }
+            };
+
+            // HLL dynamic array indexing is checked. MIR's `Index` remains
+            // an unchecked low-level projection; known constant indexes stay
+            // as such so MIR can retain precise per-slot state (and reject a
+            // constant out-of-bounds access statically). For every computed
+            // index, emit `index < array_len` and abort before forming the
+            // projection when the check fails.
+            if !matches!(&index_op, mir::Operand::Const(_)) {
+                let in_bounds = ctx.fresh_temp(bool_ty(), index.span);
+                let out_ref = ctx.fresh_temp(out_ref_ty(bool_ty()), index.span);
+                ctx.emit_statement(assign_stmt(
+                    out_ref.clone(),
+                    ref_rv(crate::common::RefKind::Out, in_bounds.clone()),
+                    index.span,
+                ));
+                ctx.emit_statement(call_stmt(
+                    const_op(fn_name_const(format!("${}_lt", index_kind.name()))),
+                    vec![
+                        index_op.clone(),
+                        const_op(int_const(*len as u64, *index_kind)),
+                        move_op(out_ref),
+                    ],
+                    index.span,
+                ));
+
+                let in_bounds_label = ctx.fresh_label("index_in_bounds");
+                let out_of_bounds_label = ctx.fresh_label("index_out_of_bounds");
+                ctx.terminate_block(branch_term(
+                    copy_op(in_bounds),
+                    in_bounds_label.clone(),
+                    out_of_bounds_label.clone(),
+                    index.span,
+                ));
+                ctx.start_block(out_of_bounds_label);
+                ctx.terminate_block(abort_term(index.span));
+                ctx.start_block(in_bounds_label);
+            }
+
             Ok(index_place(target_place, index_op))
         }
         _ => {
@@ -1582,6 +1672,56 @@ mod tests {
                 return
             }
             ",
+        );
+    }
+
+    #[test]
+    fn test_lower_array_index_evaluates_index_once_and_checks_bounds() {
+        let source = "
+            fn next() -> i64 { 1 }
+            fn get(a: [i64; 3]) -> i64 { a[next()] }
+        ";
+        let lowered = lower_source(source);
+
+        assert_eq!(
+            lowered.matches("call next(").count(),
+            1,
+            "index expression must be evaluated exactly once:\n{lowered}"
+        );
+        assert!(
+            lowered.contains("call $i64_lt(copy _temp_"),
+            "lowered index must compare its saved value against the array length:\n{lowered}"
+        );
+        assert!(
+            lowered.contains(", 3, move _temp_"),
+            "bounds check must use the array length:\n{lowered}"
+        );
+        assert!(
+            lowered.contains("index_out_of_bounds_") && lowered.contains("abort"),
+            "out-of-bounds path must abort before the projection:\n{lowered}"
+        );
+    }
+
+    #[test]
+    fn test_lower_nested_dynamic_array_indexes_check_each_dimension_once() {
+        let source = "
+            fn outer() -> i64 { 1 }
+            fn inner() -> i64 { 0 }
+            fn get(a: [[i64; 2]; 3]) -> i64 { a[outer()][inner()] }
+        ";
+        let lowered = lower_source(source);
+
+        assert_eq!(lowered.matches("call outer(").count(), 1, "{lowered}");
+        assert_eq!(lowered.matches("call inner(").count(), 1, "{lowered}");
+        assert_eq!(
+            lowered.matches("call $i64_lt(").count(),
+            2,
+            "each dynamic indexing operation needs its own bound check:\n{lowered}"
+        );
+        assert_eq!(
+            lowered.matches("index_out_of_bounds_").count(),
+            4,
+            "each check contributes one label use and one label definition:\n{lowered}"
         );
     }
 

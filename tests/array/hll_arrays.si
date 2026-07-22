@@ -1,0 +1,56 @@
+# HLL array coverage. This is the surface-language counterpart to the
+# hand-written MIR array fixtures in this directory.
+#
+# It deliberately covers only safe, accepted operations. Dynamic element
+# initialization and moves remain in MIR's negative coverage until the
+# place-state domain can represent their per-slot effects.
+
+struct Buffer: Copy + Drop { values: [i32; 3] }
+
+extern fn set_i64(slot: &out i64, value: i64);
+
+# Whole-value literal construction plus a precise constant-slot read.
+fn literal_and_constant_read() -> i64 {
+  let a: [i64; 3] = [10, 20, 30];
+  a[1]
+}
+
+# Arrays work as struct fields and nested array rows retain constant-slot
+# precision at each projection level.
+fn struct_field_and_nested_array() -> i32 {
+  let b: Buffer = Buffer { values: [1, 2, 3] };
+  let m: [[i32; 2]; 2] = [[1, 2], [3, 4]];
+  b.values[2] + m[1][0]
+}
+
+# A fresh array can be initialized one known slot at a time through &out.
+# Once all three obligations are fulfilled, the array folds to Init.
+fn constant_slot_initialization() -> i64 {
+  let mut a: [i64; 3];
+  set_i64(&out a[0], 10);
+  set_i64(&out a[1], 20);
+  set_i64(&out a[2], 30);
+  a[1]
+}
+
+# A loan on one constant slot does not conflict with a read of another.
+fn constant_slot_isolation() -> i64 {
+  let mut a: [i64; 3] = [10, 20, 30];
+  let r: &mut i64 = &mut a[0];
+  let other: i64 = a[1];
+  r.* + other
+}
+
+# Computed indexes are checked by HLL lowering before the unchecked MIR
+# projection. The array parameter is uniformly initialized on entry.
+fn dynamic_read(a: [i64; 3], i: i64) -> i64 {
+  a[i]
+}
+
+# The same bounds guard is emitted for a computed mutable borrow. Its
+# pointee is read before NLL closes the loan.
+fn dynamic_mut_borrow(i: i64) -> i64 {
+  let mut a: [i64; 3] = [10, 20, 30];
+  let r: &mut i64 = &mut a[i];
+  r.*
+}

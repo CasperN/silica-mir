@@ -1,0 +1,14 @@
+error: at 7:5: [HTC-ArrayIndexNotInt] In function 'non_integer_index': array index must be an integer, found bool
+   |
+ 6 | fn non_integer_index(a: [i64; 3], b: bool) -> i64 {
+ 7 |   a[b]
+   |     ^
+ 8 | }
+   |
+error: at 12:3: [HTC-ExpectedArray] In function 'index_non_array': expected array type, found i64
+    |
+ 11 | fn index_non_array(x: i64) -> i64 {
+ 12 |   x[0]
+    |   ^
+ 13 | }
+    |

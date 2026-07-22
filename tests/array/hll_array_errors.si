@@ -1,0 +1,26 @@
+# Array-specific HLL frontend errors. MIR-only state errors (such as
+# uninitialized dynamic reads and illegal dynamic initialization) remain in
+# the sibling `.sim` fixtures, because HLL frontend errors stop lowering.
+
+# The index expression must have an integer type.
+fn non_integer_index(a: [i64; 3], b: bool) -> i64 {
+  a[b]
+}
+
+# The indexed base must be an array.
+fn index_non_array(x: i64) -> i64 {
+  x[0]
+}
+
+# Assigning an array slot requires a mutable binding.
+fn write_immutable_array_slot() {
+  let a: [i64; 3] = [1, 2, 3];
+  a[0] = 4;
+}
+
+# Borrowing an array slot as mutable likewise requires a mutable binding.
+fn mut_borrow_immutable_array_slot(i: i64) -> i64 {
+  let a: [i64; 3] = [1, 2, 3];
+  let r: &mut i64 = &mut a[i];
+  r.*
+}
