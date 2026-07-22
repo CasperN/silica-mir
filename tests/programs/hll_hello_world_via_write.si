@@ -6,7 +6,7 @@
 # The `extern "C"` spelling declares C ABI. Today's MIR codegen ignores
 # the ABI string (see punchlist), so the lowered output is identical
 # to a bare `extern fn`. When codegen honors the ABI, this fixture's
-# `.sim.expected` will need to change.
+# `.expected.sim` will need to change.
 #
 # HLL doesn't have byte-string literals yet (`b"hello"` is MIR-only) —
 # the buffer is built element-by-element. That's the natural workaround

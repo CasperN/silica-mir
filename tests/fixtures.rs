@@ -13,17 +13,17 @@
 //! The pipeline stage and expected artifact are auto-detected from the
 //! sibling `.expected` extension:
 //!
-//!   - `foo.sim.expected` → run parse+elaborate+check, compare
+//!   - `foo.expected.sim` → run parse+elaborate+check, compare
 //!     pretty-printed MIR.
 //!   - `foo.err.expected` → run parse+elaborate+check, compare
 //!     rendered diagnostics.
-//!   - `foo.check.expected` → run parse+check without elaboration,
+//!   - `foo.preelaborated.sim` with `foo.preelaborated.expected.sim` or
+//!     `foo.preelaborated.err.expected`
+//!     → run parse+check without elaboration,
 //!     compare pretty-printed MIR.
-//!   - `foo.check.err.expected` → run parse+check without elaboration,
-//!     compare rendered diagnostics.
-//!   - `foo.ll.expected` under `codegen/` → run full pipeline +
+//!   - `foo.expected.ll` under `codegen/` → run full pipeline +
 //!     codegen, compare LLVM IR.
-//!   - `foo.ll.expected` under `codegen-raw/` → parse + codegen (no
+//!   - `foo.expected.ll` under `codegen-raw/` → parse + codegen (no
 //!     checks), compare LLVM IR.
 //!
 //! `UPDATE_EXPECT=1 cargo test --test fixtures` rewrites every
@@ -42,7 +42,8 @@ use std::sync::Arc;
 enum Stage {
     /// Full check pipeline, including elaboration.
     Elab,
-    /// Parse + check without NLL/place-state elaboration.
+    /// Parse an already-elaborated `.preelaborated.sim` fixture and check it
+    /// without running NLL/place-state elaboration again.
     Check,
     /// Full check pipeline + codegen → LLVM IR.
     Codegen,
@@ -69,11 +70,9 @@ struct FixtureKind {
 impl FixtureKind {
     fn expected_extension(self) -> &'static str {
         match (self.stage, self.expectation) {
-            (Stage::Elab, Expectation::Mir) => "sim.expected",
-            (Stage::Elab, Expectation::Diagnostics) => "err.expected",
-            (Stage::Check, Expectation::Mir) => "check.expected",
-            (Stage::Check, Expectation::Diagnostics) => "check.err.expected",
-            (Stage::Codegen | Stage::CodegenRaw, Expectation::Llvm) => "ll.expected",
+            (Stage::Elab | Stage::Check, Expectation::Mir) => "expected.sim",
+            (Stage::Elab | Stage::Check, Expectation::Diagnostics) => "err.expected",
+            (Stage::Codegen | Stage::CodegenRaw, Expectation::Llvm) => "expected.ll",
             _ => panic!("invalid fixture stage and expectation"),
         }
     }
@@ -99,9 +98,23 @@ fn expected_path(fixture: &Path, kind: FixtureKind) -> PathBuf {
     fixture.with_file_name(format!("{}.{}", stem, kind.expected_extension()))
 }
 
+fn stage_for_fixture(fixture: &Path) -> Stage {
+    let is_elaborated_mir = fixture.extension().and_then(|ext| ext.to_str()) == Some("sim")
+        && fixture
+            .file_stem()
+            .is_some_and(|stem| stem.to_string_lossy().ends_with(".preelaborated"));
+    if is_elaborated_mir {
+        Stage::Check
+    } else {
+        Stage::Elab
+    }
+}
+
 /// Determine a fixture's pipeline stage and expected artifact. Codegen
 /// fixtures are identified by their location under `tests/codegen{,-raw}/`;
-/// other fixtures select a kind from their sibling `.expected` file.
+/// a `.preelaborated.sim` input selects the no-elaboration pipeline; all other
+/// fixtures select the full pipeline. The sibling `.expected` file chooses
+/// the expected artifact.
 ///
 /// Returns `None` if the fixture has no `.expected` sibling — the
 /// caller reports it as an unpinned fixture.
@@ -119,21 +132,14 @@ fn detect_fixture_kind(fixture: &Path) -> Option<FixtureKind> {
             expectation: Expectation::Llvm,
         }),
         _ => {
+            let stage = stage_for_fixture(fixture);
             let candidates = [
                 FixtureKind {
-                    stage: Stage::Elab,
+                    stage,
                     expectation: Expectation::Mir,
                 },
                 FixtureKind {
-                    stage: Stage::Elab,
-                    expectation: Expectation::Diagnostics,
-                },
-                FixtureKind {
-                    stage: Stage::Check,
-                    expectation: Expectation::Mir,
-                },
-                FixtureKind {
-                    stage: Stage::Check,
+                    stage,
                     expectation: Expectation::Diagnostics,
                 },
             ];
@@ -259,10 +265,14 @@ fn collect_fixtures(dir: &Path, out: &mut Vec<PathBuf>) {
         let path = entry.unwrap().path();
         if path.is_dir() {
             collect_fixtures(&path, out);
-        } else if matches!(
-            path.extension().and_then(|e| e.to_str()),
-            Some("si") | Some("sim")
-        ) {
+        } else if !path
+            .file_name()
+            .is_some_and(|name| name.to_string_lossy().contains(".expected."))
+            && matches!(
+                path.extension().and_then(|e| e.to_str()),
+                Some("si") | Some("sim")
+            )
+        {
             out.push(path);
         }
     }
@@ -384,9 +394,9 @@ fn run_all_fixtures() {
     }
 }
 
-/// Under UPDATE_EXPECT, preserve an existing check-only pipeline; otherwise
-/// use the full elaboration pipeline. The completed run selects whether the
-/// fixture expects MIR or diagnostics.
+/// Under UPDATE_EXPECT, a `.preelaborated.sim` input preserves the check-only
+/// pipeline; every other input uses the full elaboration pipeline. The
+/// completed run selects whether the fixture expects MIR or diagnostics.
 fn infer_stage_for_update(fixture: &Path) -> Stage {
     let root = fixtures_root();
     let rel = fixture.strip_prefix(&root).unwrap_or(fixture);
@@ -396,11 +406,7 @@ fn infer_stage_for_update(fixture: &Path) -> Stage {
         _ => {}
     }
 
-    // Existing check-only expectations select the no-elaboration pipeline;
-    // the observed diagnostics below still select its expected artifact.
-    detect_fixture_kind(fixture)
-        .map(|kind| kind.stage)
-        .unwrap_or(Stage::Elab)
+    stage_for_fixture(fixture)
 }
 
 #[test]

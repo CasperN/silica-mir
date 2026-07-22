@@ -808,16 +808,18 @@ project skews toward the second today; the target is the first.
      hand-crafted programs that exercise a specific lowering but
      wouldn't pass substructural or leak checks.
 
-   Stage detection: within a pass/feature dir the runner infers stage
-   from which `.expected` sibling exists:
-   - `foo.sim` + `foo.sim.expected` → clean run, compare pretty-
+   Fixture names select the pipeline and expected artifact:
+   - `foo.sim` + `foo.expected.sim` → full pipeline, compare pretty-
      printed elaborated MIR.
    - `foo.sim` + `foo.err.expected` → run produced diagnostics,
      compare rendered output (with source-snippet caret).
-   - Under codegen dirs, `foo.ll.expected` compares LLVM IR.
+   - `foo.preelaborated.sim` + `foo.preelaborated.expected.sim` or
+     `foo.preelaborated.err.expected` → validate the already-elaborated MIR without
+     running NLL/place-state elaboration again.
+   - Under codegen dirs, `foo.expected.ll` compares LLVM IR.
 
-   Expected-file extensions match the output language so editors keep
-   syntax highlighting. `UPDATE_EXPECT=1 cargo test --test fixtures`
+   Code snapshots keep their output language as the final suffix so editors
+   retain syntax highlighting. `UPDATE_EXPECT=1 cargo test --test fixtures`
    rewrites every expected file; the runner detects stage flips
    (ok↔error) and cleans up the stale extension.
 

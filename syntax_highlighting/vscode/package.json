@@ -21,7 +21,7 @@
       {
         "id": "silica-mir",
         "aliases": ["Silica MIR", "silica-mir"],
-        "extensions": [".sim", ".sim.expected"],
+        "extensions": [".sim"],
         "configuration": "./language-configuration.json"
       }
     ],
