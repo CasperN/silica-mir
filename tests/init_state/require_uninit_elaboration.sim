@@ -1,0 +1,62 @@
+# Full-pipeline `require_uninit` elaboration. These requirements are HLL
+# scope-exit anchors: drop elaboration inserts only legal cleanup before each
+# assertion, then the final place-state checker verifies it.
+
+struct Pair: Copy + Drop { left: i64 right: i64 }
+
+# A fully initialized Drop value is cleaned immediately before its anchor.
+fn direct_cleanup(x: i64) {
+  entry:
+    require_uninit x;
+    return
+}
+
+# A partly initialized aggregate must be cleaned by its initialized leaf; the
+# aggregate itself was never a complete value that could be dropped as a unit.
+fn partial_struct_cleanup() {
+  p: Pair;
+  entry:
+    p.left = 1;
+    require_uninit p;
+    return
+}
+
+# Constant-index array slots are independent place-state leaves. Cleanup is
+# deterministic reverse-index order, just as struct cleanup is reverse-field
+# order.
+fn partial_array_cleanup() {
+  a: [i64; 3];
+  entry:
+    a[0] = 1;
+    a[2] = 2;
+    require_uninit a;
+    return
+}
+
+# NLL runs first: it can end the dead mutable borrow, after which the
+# reference requirement is already true and drop elaboration cleans the
+# thawed pointee at its own requirement.
+fn dead_borrow_then_cleanup(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    require_uninit r;
+    require_uninit x;
+    return
+}
+
+# When paths disagree, cleanup occurs only on the initialized edge before the
+# join. The requirement then sees an uninitialized x on every incoming path.
+fn branch_cleanup(b: bool) {
+  x: i64;
+  entry:
+    branch(copy b) [true: initialized, false: empty]
+  initialized:
+    x = 1;
+    goto join
+  empty:
+    goto join
+  join:
+    require_uninit x;
+    return
+}

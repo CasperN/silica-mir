@@ -1,4 +1,4 @@
-use super::check_return_leaks;
+use super::{check_program, check_return_leaks};
 use super::drop_elaboration::*;
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::Program;
@@ -242,6 +242,198 @@ fn f(r: &out i64) {
   entry:
     return
 }",
+    );
+}
+
+// ---------- `require_uninit` cleanup ----------
+
+#[test]
+fn require_uninit_drops_a_live_drop_value_before_the_assertion() {
+    // The assertion is preserved for the final checker. It is not a consume
+    // operation: the inserted drop is what changes x's place state.
+    assert_elaborated_eq(
+        "
+            fn f(x: i64) {
+              entry:
+                require_uninit x;
+                return
+            }
+            ",
+        "\
+fn f(x: i64) {
+  entry:
+    drop x;
+    require_uninit x;
+    return
+}",
+    );
+}
+
+#[test]
+fn require_uninit_cleans_initialized_fields_of_a_partial_aggregate() {
+    // p itself is only partially initialized, so dropping the aggregate is
+    // not valid. Cleanup must operate on the initialized field instead.
+    assert_elaborated_eq(
+        "
+            struct P: Copy + Drop { x: i64 y: i64 }
+            fn f() {
+              p: P;
+              entry:
+                p.x = 1;
+                require_uninit p;
+                return
+            }
+            ",
+        "\
+struct P: Copy + Drop {
+  x: i64
+  y: i64
+}
+
+fn f() {
+  p: P;
+  entry:
+    p.x = 1;
+    drop p.x;
+    require_uninit p;
+    return
+}",
+    );
+}
+
+#[test]
+fn require_uninit_cleans_initialized_slots_of_a_partial_array() {
+    assert_elaborated_eq(
+        "
+            fn f() {
+              a: [i64; 3];
+              entry:
+                a[0] = 1;
+                a[2] = 2;
+                require_uninit a;
+                return
+            }
+            ",
+        "\
+fn f() {
+  a: [i64; 3];
+  entry:
+    a[0] = 1;
+    a[2] = 2;
+    drop a[2];
+    drop a[0];
+    require_uninit a;
+    return
+}",
+    );
+}
+
+#[test]
+fn require_uninit_does_not_forget_a_linear_value() {
+    // The requirement stays unsatisfied. This test deliberately inspects
+    // elaboration only; the post-elaboration place-state checker owns the
+    // diagnostic.
+    assert_elaborated_eq(
+        "
+            struct Linear: Move { }
+            fn f(x: Linear) {
+              entry:
+                require_uninit x;
+                abort
+            }
+            ",
+        "\
+struct Linear: Move {
+}
+
+fn f(x: Linear) {
+  entry:
+    require_uninit x;
+    abort
+}",
+    );
+}
+
+#[test]
+fn linear_require_uninit_remains_an_error_after_elaboration() {
+    let mut program = Parser::new(
+        "
+        struct Linear: Move { }
+        fn f(x: Linear) {
+          entry:
+            require_uninit x;
+            abort
+        }
+        "
+        .to_owned(),
+    )
+    .parse()
+    .unwrap();
+    let env = type_check::Env::build(&program).0;
+    elaborate(&mut program, &env);
+
+    let mut d = Diagnostics::default();
+    check_program(&program, &env, &mut d);
+    assert!(
+        d.errors_str()
+            .iter()
+            .any(|error| error.contains("[INIT-RequireUninitNotSatisfied]")),
+        "linear value was silently accepted after elaboration: {:?}",
+        d.errors_str(),
+    );
+}
+
+#[test]
+fn require_uninit_is_satisfied_by_divergent_edge_cleanup() {
+    // Only the initialized predecessor is cleaned. After the split edge,
+    // both paths reach the assertion with x uninitialized.
+    assert_elaborated_eq(
+        "
+            fn f(b: bool) {
+              x: i64;
+              entry:
+                branch(copy b) [true: initialized, false: empty]
+              initialized:
+                x = 1;
+                goto join
+              empty:
+                goto join
+              join:
+                require_uninit x;
+                return
+            }
+            ",
+        "\
+fn f(b: bool) {
+  x: i64;
+  entry:
+    branch(copy b) [true: initialized, false: empty]
+  initialized:
+    x = 1;
+    goto initialized__to__join
+  initialized__to__join:
+    drop x;
+    goto join
+  empty:
+    goto join
+  join:
+    require_uninit x;
+    drop b;
+    return
+}",
+    );
+}
+
+#[test]
+fn require_uninit_elaboration_is_idempotent() {
+    assert_idempotent(
+        "
+            fn f(x: i64) {
+              entry:
+                require_uninit x;
+                return
+            }
+            ",
     );
 }
 

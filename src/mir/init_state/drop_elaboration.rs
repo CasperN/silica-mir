@@ -1,9 +1,9 @@
 //! Drop elaboration pass.
 //!
-//! Inserts explicit `drop p` statements before each `return` for every
-//! variable whose init state is `Init` at that point and whose type is
-//! Drop. Turns implicit forgets into explicit consumption so a
-//! subsequent leak check can validate the elaborated MIR.
+//! Inserts explicit `drop p` statements at cleanup sites where a live
+//! `Drop` value must become uninitialized. Turns implicit cleanup into
+//! explicit consumption so a subsequent place-state check can validate the
+//! elaborated MIR.
 //!
 //! **Design status:** in the final compiler pipeline, drop *placement*
 //! is a HLL responsibility — the source language's scope rules dictate
@@ -20,12 +20,15 @@
 //!   * `Partial` states at return — per-leaf drops walking the struct
 //!     field tree.
 //!   * `Diverged` states — per-edge drops inserted via `cfg_edit` on the
-//!     Init-side predecessors of a return block.
+//!     Init-side predecessors of the first divergent join.
+//!   * `require_uninit p` — cleanup immediately before the assertion for
+//!     each live, Drop-typed leaf of `p`. The assertion remains in the MIR
+//!     for the final place-state check; it is never itself a consume.
 //!
 //! **Not handled (delegated to the frontend or the checker):**
-//!   * Pre-overwrite drops (`p = ...` where p was Init). The overwrite
-//!     check in `init_state` rejects these as errors, expecting the
-//!     frontend to emit `drop p` before the reassignment.
+//!   * An initialized non-Drop leaf at a cleanup site. Elaborating it away
+//!     would silently forget a linear value, so the final requirement check
+//!     reports the unsatisfied assertion instead.
 //!
 //! **Idempotent**: rerunning the pass produces no additional drops. A
 //! dropped variable transitions to `Moved` in the init dataflow, so a
@@ -156,10 +159,13 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 
     // Unified walk: for each block, walk forward from its entry state
     // and plan drops at each program point where a Drop-typed slot
-    // transitions Init → Uninit.
+    // must transition Init → Uninit.
     //   - Mid-block: before an `Assign(_, Ref(Out|Uninit, place))`
     //     where `place` is Init Drop, insert `drop place` so the
     //     Uninit precondition holds after elaboration.
+    //   - Mid-block: before `require_uninit place`, insert the drops
+    //     that make the assertion true without ever forgetting a
+    //     non-Drop value.
     //   - End-of-block (return terminator): treat the return as a
     //     "use" that consumes every still-Init Drop local — insert
     //     drops in LIFO order right before the terminator.
@@ -261,7 +267,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 /// Return `(drops_to_insert_before, optional_statement_rewrite)` for
 /// `stmt` given the init state at this program point.
 ///
-/// Three Init → Uninit transition shapes:
+/// Init → Uninit transition shapes:
 ///
 /// - **Overwriting assign (Var/Field target)**: `target = <rvalue>`
 ///   where `target` is an owned path currently Init and its type is
@@ -279,10 +285,14 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 /// - **`&out` / `&uninit` borrow of an Init Drop place**: `foo =
 ///   &out place` where `place` is Init Drop. Inserts `drop place`
 ///   so the Uninit precondition is satisfied.
+/// - **`require_uninit place`**: recursively drops every initialized,
+///   Drop-typed leaf of the asserted owned path. The ghost statement
+///   remains for the post-elaboration checker to prove.
 ///
-/// All cases skip `Partial` states (per-leaf drops are complex; the
-/// existing overwrite check handles the common non-Drop cases) and
-/// reborrow shapes (`&out *r`) which are governed by RefState.
+/// Reborrow shapes (`&out *r`) remain governed by RefState. A
+/// `require_uninit` on a dereference or dynamic index deliberately plans
+/// nothing: those places are outside its statically-trackable contract and
+/// the final checker reports that directly.
 fn pre_stmt_transitions(
     stmt: &Statement,
     state: &PointState,
@@ -290,6 +300,13 @@ fn pre_stmt_transitions(
     locals: &IndexMap<String, Type>,
     scope: ParamScope,
 ) -> (Vec<Place>, Option<Statement>) {
+    if let StatementKind::RequireUninit(place) = &stmt.kind {
+        return (
+            plan_drops_for_requirement(place, state, env, locals, scope),
+            None,
+        );
+    }
+
     let StatementKind::Assign(target, rvalue) = &stmt.kind else {
         return (Vec::new(), None);
     };
@@ -341,6 +358,39 @@ fn pre_stmt_transitions(
     }
 
     (drops, None)
+}
+
+/// Plan the cleanup needed immediately before `require_uninit place`.
+///
+/// This is intentionally narrower than a generic "make it uninitialized"
+/// operation: only statically-owned paths participate, and every inserted
+/// operation must be a legal `drop`. If a live leaf is linear, no operation
+/// is planned; the requirement is left in place for the final checker to
+/// reject rather than treating the assertion as permission to forget it.
+fn plan_drops_for_requirement(
+    place: &Place,
+    state: &PointState,
+    env: &Env,
+    locals: &IndexMap<String, Type>,
+    scope: ParamScope,
+) -> Vec<Place> {
+    let Some(owned) = as_owned_path(place) else {
+        return Vec::new();
+    };
+    let Some((root, path)) = extract_path(&owned) else {
+        return Vec::new();
+    };
+    let Some(root_state) = state.locals.get(&root) else {
+        return Vec::new();
+    };
+    let Ok(ty) = env.type_of_place(&owned, Span::default(), locals) else {
+        return Vec::new();
+    };
+
+    let state = read_state_at_path(root_state, &path);
+    let mut drops = Vec::new();
+    plan_drops_for_place(owned, &ty, &state, env, scope, &mut drops);
+    drops
 }
 
 /// True if `place`'s projection path contains a `Downcast` step.
@@ -526,9 +576,10 @@ fn plan_drops_at_return(
 /// leave every leaf `Moved`/`NeverInit`. Emitted in LIFO order — for a
 /// `Partial`, fields are iterated in reverse declaration order.
 ///
-/// `Diverged` sub-paths are skipped: the elaborator can't insert
-/// unconditional drops there without splitting the join edges (a future
-/// slice). The strict leak check will flag them.
+/// `Diverged` sub-paths are skipped here because they require CFG edge
+/// cleanup rather than an unconditional pre-statement drop. The cross-edge
+/// phase handles the first divergent join; if no legal cleanup exists, the
+/// final requirement check remains authoritative.
 fn plan_drops_for_place(
     place: Place,
     ty: &Type,
@@ -545,31 +596,56 @@ fn plan_drops_for_place(
             }
         }
         InitState::Partial(fields) => {
-            // Reverse declared field order = LIFO for that container.
-            let TypeKind::Custom(struct_name, _, args) = &ty.kind else {
-                return;
-            };
-            let TypeDecl::Struct(s) = (match env.types.get(struct_name) {
-                Some(d) => d,
-                None => return,
-            }) else {
-                return;
-            };
-            // Substitute the outer args through each field's declared
-            // type — otherwise a `Bag<DropVal>.b` recurses with the raw
-            // `Param(T)`, which `class_of` resolves to empty markers
-            // under an empty scope and misses the drop.
-            let field_decls: Vec<_> = s
-                .fields
-                .iter()
-                .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
-                .collect();
-            for (name, field_ty) in field_decls.iter().rev() {
-                let Some(field_state) = fields.get(name) else {
-                    continue;
-                };
-                let fp = field_place(place.clone(), name.clone());
-                plan_drops_for_place(fp, field_ty, field_state, env, scope, out);
+            match &ty.kind {
+                // Reverse declared field order = LIFO for that container.
+                TypeKind::Custom(struct_name, _, args) => {
+                    let TypeDecl::Struct(s) = (match env.types.get(struct_name) {
+                        Some(d) => d,
+                        None => return,
+                    }) else {
+                        return;
+                    };
+                    // Substitute the outer args through each field's declared
+                    // type — otherwise a `Bag<DropVal>.b` recurses with the raw
+                    // `Param(T)`, which `class_of` resolves to empty markers
+                    // under an empty scope and misses the drop.
+                    let field_decls: Vec<_> = s
+                        .fields
+                        .iter()
+                        .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
+                        .collect();
+                    for (name, field_ty) in field_decls.iter().rev() {
+                        let Some(field_state) = fields.get(name) else {
+                            continue;
+                        };
+                        let fp = field_place(place.clone(), name.clone());
+                        plan_drops_for_place(fp, field_ty, field_state, env, scope, out);
+                    }
+                }
+                // Constant-index places are tracked independently. Reverse
+                // element order gives the same deterministic LIFO rule as
+                // fields and avoids making array cleanup a special case in
+                // `require_uninit`.
+                TypeKind::Array(elem, n) => {
+                    for index in (0..*n).rev() {
+                        let key = index.to_string();
+                        let Some(element_state) = fields.get(&key) else {
+                            continue;
+                        };
+                        let ip = index_place(
+                            place.clone(),
+                            Operand::Const(ConstVal::Int {
+                                bits: index,
+                                // Match the parser's unsuffixed integer
+                                // literal type so inserted constant-index
+                                // drops round-trip like their source places.
+                                ty: IntTy::I64,
+                            }),
+                        );
+                        plan_drops_for_place(ip, elem, element_state, env, scope, out);
+                    }
+                }
+                _ => {}
             }
         }
     }

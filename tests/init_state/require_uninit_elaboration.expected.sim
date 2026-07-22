@@ -1,0 +1,60 @@
+struct Pair: Copy + Drop {
+  left: i64
+  right: i64
+}
+
+fn direct_cleanup(x: i64) {
+  entry:
+    drop x;
+    require_uninit x;
+    return
+}
+
+fn partial_struct_cleanup() {
+  p: Pair;
+  entry:
+    p.left = 1;
+    drop p.left;
+    require_uninit p;
+    return
+}
+
+fn partial_array_cleanup() {
+  a: [i64; 3];
+  entry:
+    a[0] = 1;
+    a[2] = 2;
+    drop a[2];
+    drop a[0];
+    require_uninit a;
+    return
+}
+
+fn dead_borrow_then_cleanup(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    unborrow r;
+    require_uninit r;
+    drop x;
+    require_uninit x;
+    return
+}
+
+fn branch_cleanup(b: bool) {
+  x: i64;
+  entry:
+    branch(copy b) [true: initialized, false: empty]
+  initialized:
+    x = 1;
+    goto initialized__to__join
+  initialized__to__join:
+    drop x;
+    goto join
+  empty:
+    goto join
+  join:
+    require_uninit x;
+    drop b;
+    return
+}

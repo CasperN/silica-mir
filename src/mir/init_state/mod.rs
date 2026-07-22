@@ -2302,6 +2302,11 @@ impl<'a> InitStateContext<'a> {
         let observed = read_at(root_state, root_ty, &path, self.env);
         let reason = match observed {
             InitState::NeverInit | InitState::Moved => None,
+            // Partial records the history of independently tracked fields or
+            // array slots. Once cleanup has consumed every initialized leaf,
+            // a mixed NeverInit/Moved tree contains no owned value even
+            // though it cannot be represented by either simple state alone.
+            InitState::Partial(fields) if partial_is_uninit(&fields) => None,
             InitState::Init => Some("it is still initialized"),
             InitState::Partial(_) => Some("it is only partially consumed"),
             InitState::Diverged => Some("its state differs across control-flow paths"),
@@ -2351,6 +2356,21 @@ impl<'a> InitStateContext<'a> {
             d.push_error(diagnostic);
         }
     }
+}
+
+/// Whether a `Partial` init-state tree contains no initialized leaf.
+///
+/// `Partial` preserves projection history, so a fully cleaned aggregate can
+/// legitimately be represented as `{ left: Moved, right: NeverInit }` rather
+/// than collapsing to a single simple state. `require_uninit` is concerned
+/// with ownership, not that history: it succeeds exactly when every tracked
+/// descendant is already absent.
+fn partial_is_uninit(fields: &BTreeMap<String, InitState>) -> bool {
+    fields.values().all(|state| match state {
+        InitState::NeverInit | InitState::Moved => true,
+        InitState::Partial(fields) => partial_is_uninit(fields),
+        InitState::Init | InitState::Diverged => false,
+    })
 }
 
 /// Extract the owned path for initialization tracking up to the first dynamic index.
