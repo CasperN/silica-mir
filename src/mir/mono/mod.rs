@@ -196,9 +196,7 @@ impl MonoCtx {
             RValue::ArrayLit(ops) => {
                 RValue::ArrayLit(ops.iter().map(|o| self.walk_operand(o)).collect())
             }
-            RValue::PtrCast(op, ty) => {
-                RValue::PtrCast(self.walk_operand(op), self.walk_type(ty))
-            }
+            RValue::PtrCast(op, ty) => RValue::PtrCast(self.walk_operand(op), self.walk_type(ty)),
         }
     }
 

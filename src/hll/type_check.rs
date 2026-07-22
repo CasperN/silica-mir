@@ -732,7 +732,9 @@ pub fn is_cast_supported(from: &Type, to: &Type) -> bool {
     if from == to {
         return true;
     }
-    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_)) && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_)) {
+    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_))
+        && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_))
+    {
         return true;
     }
     match (from, to) {
@@ -752,7 +754,9 @@ pub fn cast_intrinsic_name(from: &Type, to: &Type) -> Option<String> {
     if from == to {
         return None;
     }
-    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_)) && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_)) {
+    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_))
+        && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_))
+    {
         return None;
     }
     let ty_name = |ty: &Type| match ty {

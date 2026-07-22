@@ -118,7 +118,11 @@ fn main() {
     }
 
     if d.warning_count() > 0 || d.info_count() > 0 {
-        eprintln!("({} warning(s), {} note(s))", d.warning_count(), d.info_count());
+        eprintln!(
+            "({} warning(s), {} note(s))",
+            d.warning_count(),
+            d.info_count()
+        );
     }
     match emit {
         EmitKind::Llvm => {

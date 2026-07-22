@@ -798,7 +798,9 @@ fn lower_expr_into(
                     "missing type annotation for cast target",
                 )
             })?;
-            if matches!(from_hll_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_)) && matches!(to_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_)) {
+            if matches!(from_hll_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_))
+                && matches!(to_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_))
+            {
                 let inner_op = lower_expr_to_operand(ctx, inner, types)?;
                 let to_mir_ty = lower_type(to_ty);
                 ctx.emit_statement(assign_stmt(

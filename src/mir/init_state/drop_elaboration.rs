@@ -31,10 +31,10 @@
 //! dropped variable transitions to `Moved` in the init dataflow, so a
 //! second run finds nothing to insert.
 
+use super::{block_entry_states, transfer_stmt_silent, InitState, PointState};
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
-use super::{block_entry_states, transfer_stmt_silent, InitState, PointState};
 use crate::mir::substructural::composition::{class_of, ParamScope};
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;

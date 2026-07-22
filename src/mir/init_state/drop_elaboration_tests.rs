@@ -1,9 +1,9 @@
+use super::check_return_leaks;
 use super::drop_elaboration::*;
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::Program;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print;
-use super::check_return_leaks;
 use crate::mir::type_check;
 
 /// Run the full parse → typecheck → elaborate pipeline, returning the

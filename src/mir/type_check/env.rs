@@ -477,13 +477,19 @@ impl Env {
                 if !matches!(op_ty.kind, TypeKind::RawPtr(_) | TypeKind::Ref(_, _, _)) {
                     return Err(err(
                         PtrCastSourceNotPointer,
-                        format!("Pointer cast source must be a raw pointer or reference type, found {}", op_ty),
+                        format!(
+                            "Pointer cast source must be a raw pointer or reference type, found {}",
+                            op_ty
+                        ),
                     ));
                 }
                 if !matches!(to_ty.kind, TypeKind::RawPtr(_) | TypeKind::Ref(_, _, _)) {
                     return Err(err(
                         PtrCastTargetNotPointer,
-                        format!("Pointer cast target must be a raw pointer or reference type, found {}", to_ty),
+                        format!(
+                            "Pointer cast target must be a raw pointer or reference type, found {}",
+                            to_ty
+                        ),
                     ));
                 }
                 Ok(to_ty.clone())

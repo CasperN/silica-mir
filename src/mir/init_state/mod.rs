@@ -681,7 +681,9 @@ fn check_return_state(
                 ),
             )
             .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.");
-            if let Some(span) = find_decl_span(func, leaked_path.split('.').next().unwrap_or(&leaked_path)) {
+            if let Some(span) =
+                find_decl_span(func, leaked_path.split('.').next().unwrap_or(&leaked_path))
+            {
                 diagnostic = diagnostic.with_secondary(span, "variable declared here");
             }
             d.push_error(diagnostic);
@@ -747,7 +749,12 @@ fn find_decl_span(func: &Function, name: &str) -> Option<Span> {
     if let Some(param) = func.params.iter().find(|param| param.name == name) {
         return Some(param.span);
     }
-    func.body.as_ref()?.locals.iter().find(|local| local.name == name).map(|local| local.span)
+    func.body
+        .as_ref()?
+        .locals
+        .iter()
+        .find(|local| local.name == name)
+        .map(|local| local.span)
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
@@ -829,7 +836,12 @@ fn seed_parameter_ref_states(
         let fields: Vec<_> = def
             .fields
             .iter()
-            .map(|field| (field.name.clone(), def.meta.substitute_types(&field.ty, args)))
+            .map(|field| {
+                (
+                    field.name.clone(),
+                    def.meta.substitute_types(&field.ty, args),
+                )
+            })
             .collect();
         for (field_name, field_ty) in fields {
             seed_parameter_ref_states(
@@ -1001,7 +1013,9 @@ impl<'a> InitStateContext<'a> {
 
     fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
         match rv {
-            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => self.apply_operand_move(op, state),
+            RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
+                self.apply_operand_move(op, state)
+            }
             RValue::Ref(_, _) | RValue::RawRef(_) => {}
             RValue::ArrayLit(ops) => {
                 for op in ops {

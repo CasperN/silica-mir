@@ -230,7 +230,9 @@ fn close_loans_under(loans: &mut LoanMap, consumed: &Place) {
 
 fn consume_rvalue(loans: &mut LoanMap, rv: &RValue) {
     match rv {
-        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => consume_operand(loans, op),
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
+            consume_operand(loans, op)
+        }
         RValue::Ref(_, _) | RValue::RawRef(_) => {}
         RValue::ArrayLit(ops) => {
             for op in ops {
@@ -696,7 +698,10 @@ impl<'a> Checker<'a> {
                         .unwrap_or(Region::Free(u32::MAX))
                 } else {
                     let mut cur = place;
-                    while let Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) = cur {
+                    while let Place::Field(inner, _)
+                    | Place::Downcast(inner, _)
+                    | Place::Index(inner, _) = cur
+                    {
                         cur = inner;
                     }
                     if let Place::Deref(inner) = cur {
