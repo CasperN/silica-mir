@@ -30,6 +30,15 @@ fn test_undeclared_variable() -> i64 {
   x
 }
 
+# ---------- HTC-TypeMismatch: block value vs declared return type ----------
+
+# The block's trailing expression is a `bool`; the declared return
+# type is `i64`. Distinct from the let-annotation mismatch above —
+# this is the fn-body unification path.
+fn test_return_type_mismatch() -> i64 {
+  true
+}
+
 # ---------- TC-AssignmentTypeMismatch: defer body has wrong type ----------
 
 fn test_defer_type_mismatch() {

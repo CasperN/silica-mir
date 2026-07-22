@@ -1,0 +1,53 @@
+# Deref-site pointee-state preconditions. Every fn fires at the
+# deref itself, not at borrow creation nor at borrow expiry:
+#
+#   `borrow_precondition/`             borrow-creation preconditions
+#   `pointee_obligation_unfulfilled`   borrow-expiry (return) obligations
+#   THIS FILE                          preconditions at each deref
+#
+# Two diagnostic codes live here:
+#
+#   INIT-DerefPointeeStateMismatch   read/write through a mutable
+#                                    ref whose pointee is in the
+#                                    wrong state for the operation
+#   INIT-WriteThroughSharedRef       any mutation through `&T`
+
+struct Owned: Drop + Move { val: i64 }
+
+# ---------- INIT-DerefPointeeStateMismatch ----------
+
+# Read through `&out` before writing: pointee is still Uninit.
+fn read_out_ref_before_write(r: &out i64) {
+  x: i64;
+  entry:
+    x = copy r.*;
+    r.* = 42;
+    return
+}
+
+# Write through `&mut` without moving out first: would silently
+# forget the Init pointee.
+fn write_mut_ref_without_move(r: &mut i64) {
+  entry:
+    r.* = 42;
+    return
+}
+
+# ---------- INIT-WriteThroughSharedRef ----------
+
+# Plain `r.* = v` on a shared ref.
+fn write_through_shared_ref(r: &i64) {
+  entry:
+    r.* = 1;
+    return
+}
+
+# `move r.*` on a shared ref — the message distinguishes this from
+# the write case with "cannot move out through shared reference".
+fn move_out_through_shared_ref(r: &Owned) {
+  x: Owned;
+  entry:
+    x = move r.*;
+    drop x;
+    return
+}

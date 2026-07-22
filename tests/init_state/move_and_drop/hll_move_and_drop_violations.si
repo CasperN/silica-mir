@@ -1,6 +1,15 @@
 struct Box: Drop + Move { val: i64 }
 struct CopyBox: Copy + Drop { val: i64 }
 
+# ---------- INIT-UseAfterMove: plain re-use after `let`-move ----------
+
+# Every HLL `let y = x` lowers to a move of `x` regardless of whether
+# the type is Copy at the surface — reading `x` again is caught.
+fn use_after_move(b: CopyBox) {
+    let y = b;
+    let z = b;
+}
+
 # ---------- INIT-UseAfterMove: deferred block moves a value already moved ----------
 
 # The defer block captures `b` by moving it into a local. The subsequent

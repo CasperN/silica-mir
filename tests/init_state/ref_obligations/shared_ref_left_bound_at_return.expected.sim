@@ -1,5 +1,0 @@
-fn<'s0> f(r: & 's0 i64) {
-  entry:
-    unborrow r;
-    return
-}

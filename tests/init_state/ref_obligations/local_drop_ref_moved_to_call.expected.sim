@@ -1,9 +1,0 @@
-extern fn consume(r: &drop 's0 i64);
-
-fn f(x: i64) {
-  r: &drop i64;
-  entry:
-    r = &drop x;
-    call consume(move r);
-    return
-}

@@ -1,0 +1,21 @@
+error: at 10:13: [INIT-UseAfterMove] In function 'use_after_move': variable 'b' is used after move
+    |
+  9 |     let y = b;
+ 10 |     let z = b;
+    |             ^
+ 11 | }
+    |
+error: at 18:21: [INIT-UseAfterMove] In function 'defer_double_drop': variable 'b' is used after move
+    |
+ 17 | fn defer_double_drop(b: Box) {
+ 18 |     defer { let x = b; };
+    |                     ^
+ 19 |     let y = b;
+    |
+error: at 27:11: [INIT-UseAfterMove] In function 'defer_use_after_move': variable 'b' is used after move
+    |
+ 26 | fn defer_use_after_move(b: CopyBox, out: &out CopyBox) {
+ 27 |     defer out.* = b;
+    |           ^^^^^^^^^
+ 28 |     let c = b;
+    |

@@ -1,8 +1,0 @@
-fn<'s0> f(r: & 's0 i64) {
-  x: i64;
-  entry:
-    x = copy r.*;
-    unborrow r;
-    drop x;
-    return
-}

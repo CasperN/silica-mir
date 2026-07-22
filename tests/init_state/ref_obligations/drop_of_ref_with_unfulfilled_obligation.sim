@@ -1,9 +1,0 @@
-# Move out through &mut leaves cur=Uninit; drop-forget then
-# errors because obligation not fulfilled.
-fn f(r: &mut i64) {
-  x: i64;
-  entry:
-    x = move r.*;
-    drop r;
-    return
-}

@@ -157,6 +157,3 @@ pub fn elaborate_and_check_mir(
 
     (elaborated, env)
 }
-
-#[cfg(test)]
-mod error_display_tests;

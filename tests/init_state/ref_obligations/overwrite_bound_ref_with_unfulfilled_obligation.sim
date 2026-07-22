@@ -1,9 +1,0 @@
-# After `x = move r.*`, r is (Uninit, Init); overwriting r would
-# silently forget the pending re-init obligation on the pointee.
-fn f(r: &mut i64, z: i64) {
-  x: i64;
-  entry:
-    x = move r.*;
-    r = &mut z;
-    return
-}

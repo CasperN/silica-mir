@@ -1,0 +1,28 @@
+error: at 23:5: [INIT-DerefPointeeStateMismatch] In function 'read_out_ref_before_write', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
+    |
+ 22 |   entry:
+ 23 |     x = copy r.*;
+    |     ^^^^^^^^^^^^
+ 24 |     r.* = 42;
+    |
+error: at 32:5: [INIT-DerefPointeeStateMismatch] In function 'write_mut_ref_without_move', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
+    |
+ 31 |   entry:
+ 32 |     r.* = 42;
+    |     ^^^^^^^^
+ 33 |     return
+    |
+error: at 41:5: [INIT-WriteThroughSharedRef] In function 'write_through_shared_ref', block 'entry': cannot write through shared reference 'r'
+    |
+ 40 |   entry:
+ 41 |     r.* = 1;
+    |     ^^^^^^^
+ 42 |     return
+    |
+error: at 50:5: [INIT-WriteThroughSharedRef] In function 'move_out_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+    |
+ 49 |   entry:
+ 50 |     x = move r.*;
+    |     ^^^^^^^^^^^^
+ 51 |     drop x;
+    |

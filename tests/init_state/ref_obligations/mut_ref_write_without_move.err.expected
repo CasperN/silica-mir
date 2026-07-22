@@ -1,7 +1,0 @@
-error: at 5:5: [INIT-DerefPointeeStateMismatch] In function 'f', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
-   |
- 4 |   entry:
- 5 |     r.* = 42;
-   |     ^^^^^^^^
- 6 |     return
-   |

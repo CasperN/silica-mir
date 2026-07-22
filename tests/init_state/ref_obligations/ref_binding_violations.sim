@@ -1,0 +1,41 @@
+# Negative tests for reference-variable lifecycle operations that
+# extinguish the borrow with the previous binding's obligation unmet.
+# Every fn fires INIT-RefObligationUnfulfilled at the extinction site
+# (explicit `drop r`, side-channel `drop r.*`, or `r = &...`
+# overwrite).
+#
+# The return-time counterpart lives in
+# `pointee_obligation_unfulfilled.sim`.
+
+# ---------- explicit `drop r` on a ref var with unmet obligation ----------
+
+# Move out through `&mut` leaves cur=Uninit; `drop r` then forgets
+# the outstanding re-init obligation.
+fn drop_mut_ref_after_move_out(r: &mut i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    drop r;
+    return
+}
+
+# `drop r.*` on `r: &mut` consumes the pointee, transitioning the
+# ref to a locally (Uninit, Init) state. Without re-init, the
+# obligation is unmet at return.
+fn drop_deref_leaves_mut_pointee_uninit(r: &mut i64) {
+  entry:
+    drop r.*;
+    return
+}
+
+# ---------- overwrite `r = &...` on a ref var with unmet obligation ----------
+
+# After `x = move r.*`, r is (Uninit, Init); overwriting r silently
+# forgets the pending re-init obligation on the pointee.
+fn overwrite_ref_previous_unfulfilled(r: &mut i64, z: i64) {
+  x: i64;
+  entry:
+    x = move r.*;
+    r = &mut z;
+    return
+}

@@ -1,7 +1,0 @@
-# `*r = v` on an Init pointee would silently forget the old
-# value — rejected as pre-overwrite of the pointee.
-fn f(r: &mut i64) {
-  entry:
-    r.* = 42;
-    return
-}

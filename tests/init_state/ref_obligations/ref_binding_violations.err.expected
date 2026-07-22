@@ -1,0 +1,39 @@
+error: at 18:5: [INIT-RefObligationUnfulfilled] In function 'drop_mut_ref_after_move_out', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 13 | # the outstanding re-init obligation.
+ 14 | fn drop_mut_ref_after_move_out(r: &mut i64) {
+    |                                ----------- reference declared here
+ 15 |   x: i64;
+    |
+    | ...
+    |
+ 17 |     x = move r.*;
+ 18 |     drop r;
+    |     ^^^^^^
+ 19 |     return
+    |
+error: at 28:5: [INIT-RefObligationUnfulfilled] In function 'drop_deref_leaves_mut_pointee_uninit', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 24 | # obligation is unmet at return.
+ 25 | fn drop_deref_leaves_mut_pointee_uninit(r: &mut i64) {
+    |                                         ----------- reference declared here
+ 26 |   entry:
+ 27 |     drop r.*;
+ 28 |     return
+    |     ^^^^^^
+ 29 | }
+    |
+error: at 39:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_previous_unfulfilled', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 34 | # forgets the pending re-init obligation on the pointee.
+ 35 | fn overwrite_ref_previous_unfulfilled(r: &mut i64, z: i64) {
+    |                                       ----------- reference declared here
+ 36 |   x: i64;
+    |
+    | ...
+    |
+ 38 |     x = move r.*;
+ 39 |     r = &mut z;
+    |     ^^^^^^^^^^
+ 40 |     return
+    |

@@ -66,3 +66,13 @@ error: at 58:4: [INIT-RefObligationUnfulfilled] In function 'maybe_not_drop': re
     |    ^
  59 | }
     |
+error: at 67:9: [INIT-RefObligationUnfulfilled] In function 'defer_ref_obligation': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 64 | # violating the (Init, Uninit) obligation of `&drop`.
+ 65 | fn defer_ref_obligation(r: &drop Box) {
+    |                         ------------ reference declared here
+ 66 |   let x = r.*;
+ 67 |   defer r.* = Box { val: 5 };
+    |         ^^^^^^^^^^^^^^^^^^^^
+ 68 | }
+    |

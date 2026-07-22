@@ -1,5 +1,0 @@
-fn<'s0> f(r: &mut 's0 i64) {
-  entry:
-    drop r;
-    return
-}

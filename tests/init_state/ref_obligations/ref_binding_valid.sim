@@ -1,0 +1,86 @@
+# Positive tests for reference-variable lifecycle operations that
+# extinguish the borrow other than by return: explicit `drop r`,
+# `move r` into a callee, overwrite `r = &...`, and pointee-state
+# writes that leave `&uninit` locally acting like `&drop` before
+# discharging.
+#
+# The canonical (ref kind x container) matrix for return-time
+# obligation lives in `pointee_obligation_fulfilled.sim`; this file
+# covers the alternative expiry mechanisms and shared-ref idioms.
+
+extern fn sink_mut(r: &mut i64);
+extern fn sink_drop(r: &drop i64);
+
+# ---------- explicit `drop r` on a ref var ----------
+
+# `&mut` is (Init, Init) at every point; dropping the ref var when
+# the pointee is untouched discharges the obligation trivially.
+fn drop_mut_ref_untouched(r: &mut i64) {
+  entry:
+    drop r;
+    return
+}
+
+# ---------- `move r` into a callee ----------
+
+# Moving a mutable ref transfers the obligation to the callee. Legal
+# for every mutable kind; `&drop` and `&mut` shown as representatives.
+fn move_drop_ref_to_call(x: i64) {
+  r: &drop i64;
+  entry:
+    r = &drop x;
+    call sink_drop(move r);
+    return
+}
+
+fn move_mut_ref_to_call(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call sink_mut(move r);
+    return
+}
+
+# ---------- overwrite `r = &...` on a ref var ----------
+
+# The first binding is (Init, Init) with the pointee untouched — the
+# obligation is already discharged at the overwrite point, so
+# silently retiring the old ref is legal.
+fn overwrite_ref_previous_fulfilled(x: i64, y: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    r = &mut y;
+    call sink_mut(move r);
+    return
+}
+
+# ---------- shared ref: Copy + Drop, no obligation ----------
+
+# `&T` is Copy + Drop; leaving it bound at return elaborates to a
+# trivial `unborrow r`.
+fn shared_ref_left_bound(r: &i64) {
+  entry:
+    return
+}
+
+# Read through `&T`.
+fn shared_ref_read(r: &i64) {
+  x: i64;
+  entry:
+    x = copy r.*;
+    return
+}
+
+# ---------- state-shifting operations on the pointee via the ref ----------
+
+# `r: &uninit T` after `r.* = v` locally acts like `&drop`
+# (cur=Init, post=Uninit). Moving out again returns pointee to
+# Uninit, satisfying the (Uninit, Uninit) obligation.
+fn uninit_write_then_move(r: &uninit i64) {
+  x: i64;
+  entry:
+    r.* = 42;
+    x = move r.*;
+    return
+}

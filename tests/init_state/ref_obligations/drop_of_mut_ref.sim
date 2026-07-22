@@ -1,6 +1,0 @@
-# &mut is (Init, Init) at every point; drop is trivially legal.
-fn f(r: &mut i64) {
-  entry:
-    drop r;
-    return
-}

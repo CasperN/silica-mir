@@ -57,3 +57,12 @@ fn maybe_not_drop(cond: bool, box: &drop Box) {
     consume_box(box.*);
   }
 }
+
+# `defer` runs at scope exit *before* the ref extinguishes. Moving
+# the value out via `let x = r.*` leaves the pointee Uninit, then the
+# deferred write reinits it — so at ref expiry the pointee is Init,
+# violating the (Init, Uninit) obligation of `&drop`.
+fn defer_ref_obligation(r: &drop Box) {
+  let x = r.*;
+  defer r.* = Box { val: 5 };
+}
