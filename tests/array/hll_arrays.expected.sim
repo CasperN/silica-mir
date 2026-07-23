@@ -11,6 +11,8 @@ fn<'s0> literal_and_constant_read($return: &out 's0 i64) {
     $return.* = copy a[1];
     unborrow $return;
     drop a;
+    require_uninit a;
+    require_uninit $return;
     return
 }
 
@@ -25,11 +27,17 @@ fn<'s0> struct_field_and_nested_array($return: &out 's0 i32) {
     _temp_0 = [1i32, 2i32];
     _temp_1 = [3i32, 4i32];
     m = [move _temp_0, move _temp_1];
+    require_uninit _temp_1;
+    require_uninit _temp_0;
     _temp_2 = &out $return.*;
     call $i32_add(copy b.values[2], copy m[1][0], move _temp_2);
     unborrow $return;
+    require_uninit _temp_2;
     drop m;
+    require_uninit m;
     drop b;
+    require_uninit b;
+    require_uninit $return;
     return
 }
 
@@ -45,18 +53,26 @@ fn<'s0> constant_slot_initialization($return: &out 's0 i64) {
     _temp_1 = &out a[0];
     call set_i64(move _temp_1, 10);
     _temp_0 = unit;
+    require_uninit _temp_1;
+    drop _temp_0;
+    require_uninit _temp_0;
     _temp_3 = &out a[1];
     call set_i64(move _temp_3, 20);
     _temp_2 = unit;
+    require_uninit _temp_3;
+    drop _temp_2;
+    require_uninit _temp_2;
     _temp_5 = &out a[2];
     call set_i64(move _temp_5, 30);
     _temp_4 = unit;
+    require_uninit _temp_5;
+    drop _temp_4;
+    require_uninit _temp_4;
     $return.* = copy a[1];
     unborrow $return;
-    drop _temp_4;
-    drop _temp_2;
-    drop _temp_0;
     drop a;
+    require_uninit a;
+    require_uninit $return;
     return
 }
 
@@ -73,8 +89,13 @@ fn<'s0> constant_slot_isolation($return: &out 's0 i64) {
     call $i64_add(copy r.*, copy other, move _temp_0);
     unborrow $return;
     unborrow r;
+    require_uninit _temp_0;
     drop other;
+    require_uninit other;
+    require_uninit r;
     drop a;
+    require_uninit a;
+    require_uninit $return;
     return
 }
 
@@ -90,9 +111,14 @@ fn<'s0> dynamic_read(a: [i64; 3], i: i64, $return: &out 's0 i64) {
   index_in_bounds_0:
     $return.* = copy a[copy i];
     unborrow $return;
+    require_uninit _temp_1;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop i;
+    require_uninit i;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -110,11 +136,17 @@ fn<'s0> dynamic_mut_borrow(i: i64, $return: &out 's0 i64) {
     abort
   index_in_bounds_0:
     r = &mut a[copy i];
+    require_uninit _temp_1;
+    drop _temp_0;
+    require_uninit _temp_0;
     $return.* = copy r.*;
     unborrow $return;
     unborrow r;
-    drop _temp_0;
+    require_uninit r;
     drop a;
+    require_uninit a;
+    require_uninit $return;
     drop i;
+    require_uninit i;
     return
 }

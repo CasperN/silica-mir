@@ -34,13 +34,17 @@ fn<'s0> struct_field_by_field($return: &out 's0 i64) {
   entry:
     p.x = 1;
     _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
     p.y = 2;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     $return.* = copy p.x;
     unborrow $return;
-    drop _temp_1;
-    drop _temp_0;
     drop p;
+    require_uninit p;
+    require_uninit $return;
     return
 }
 
@@ -52,16 +56,21 @@ fn<'s0> nested_struct_leaf_by_leaf($return: &out 's0 i64) {
   entry:
     o.i.a = 1;
     _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
     o.i.b = 2;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     o.c = 3;
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     $return.* = copy o.i.a;
     unborrow $return;
-    drop _temp_2;
-    drop _temp_1;
-    drop _temp_0;
     drop o;
+    require_uninit o;
+    require_uninit $return;
     return
 }
 
@@ -73,16 +82,21 @@ fn<'s0> array_slot_by_slot($return: &out 's0 i64) {
   entry:
     a[0] = 1;
     _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
     a[1] = 2;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     a[2] = 3;
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     $return.* = copy a[1];
     unborrow $return;
-    drop _temp_2;
-    drop _temp_1;
-    drop _temp_0;
     drop a;
+    require_uninit a;
+    require_uninit $return;
     return
 }
 
@@ -93,13 +107,18 @@ fn<'s0> whole_struct_overwrite_from_partial(src: P, $return: &out 's0 i64) {
   entry:
     p.x = 1;
     _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
     p = move src;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     $return.* = copy p.y;
     unborrow $return;
-    drop _temp_1;
-    drop _temp_0;
     drop p;
+    require_uninit p;
+    require_uninit $return;
+    require_uninit src;
     return
 }
 
@@ -112,8 +131,12 @@ fn move_one_field_leaves_other_init(p: Pair) {
     remaining = move p.c;
     _temp_0 = unit;
     drop remaining;
+    require_uninit remaining;
     drop taken;
+    require_uninit taken;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit p;
     return
 }
 
@@ -128,9 +151,14 @@ fn nested_move_inner_leaf(o: BigOuter) {
     tag = copy o.tag;
     _temp_0 = unit;
     drop tag;
+    require_uninit tag;
     drop inner_kept;
+    require_uninit inner_kept;
     drop inner_taken;
+    require_uninit inner_taken;
     drop _temp_0;
+    require_uninit _temp_0;
     drop o.tag;
+    require_uninit o;
     return
 }

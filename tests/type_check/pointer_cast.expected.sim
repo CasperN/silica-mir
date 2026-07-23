@@ -2,7 +2,9 @@ fn<'s0> ptr_to_ptr(p: *i64, $return: &out 's0 *u8) {
   entry:
     $return.* = ptr_cast(copy p, *u8);
     unborrow $return;
+    require_uninit $return;
     drop p;
+    require_uninit p;
     return
 }
 
@@ -11,6 +13,8 @@ fn<'s0, 's1> ref_to_ptr(r: & 's0 i64, $return: &out 's1 *u8) {
     $return.* = ptr_cast(copy r, *u8);
     unborrow $return;
     unborrow r;
+    require_uninit $return;
+    require_uninit r;
     return
 }
 
@@ -18,7 +22,9 @@ fn<'s0, 's1> ptr_to_ref(p: *i64, $return: &out 's0 & 's1 i64) {
   entry:
     $return.* = ptr_cast(copy p, & i64);
     unborrow $return;
+    require_uninit $return;
     drop p;
+    require_uninit p;
     return
 }
 
@@ -27,6 +33,8 @@ fn<'s0, 's1, 's2> ref_to_ref(r: & 's0 i64, $return: &out 's1 & 's2 u8) {
     $return.* = ptr_cast(copy r, & u8);
     unborrow $return;
     unborrow r;
+    require_uninit $return;
+    require_uninit r;
     return
 }
 
@@ -37,6 +45,9 @@ fn<'s0, 's1> mut_ref_to_mut_ptr(r: &mut 's0 i64, $return: &out 's1 *u8) {
     unborrow r;
     $return.* = ptr_cast(move _temp_0, *u8);
     unborrow $return;
+    require_uninit _temp_0;
+    require_uninit $return;
+    require_uninit r;
     return
 }
 
@@ -44,7 +55,9 @@ fn<'s0, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
   entry:
     $return.* = ptr_cast(copy p, &mut i64);
     unborrow $return;
+    require_uninit $return;
     drop p;
+    require_uninit p;
     return
 }
 
@@ -57,5 +70,9 @@ fn<'s0, 's1, 's2> mut_ref_to_mut_ref(r: &mut 's0 i64, $return: &out 's1 &mut 's2
     _temp_0 = ptr_cast(move _temp_1, *u8);
     $return.* = ptr_cast(move _temp_0, &mut u8);
     unborrow $return;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
+    require_uninit r;
     return
 }

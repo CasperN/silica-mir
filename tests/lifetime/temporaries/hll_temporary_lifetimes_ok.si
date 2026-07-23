@@ -1,0 +1,22 @@
+# HLL temporary lifetime rules: a named binding owns its value until its
+# lexical scope ends, while `continue` exits the loop body and runs both its
+# deferred work and its body-local cleanup before restarting the loop.
+
+fn read(r: &i64) -> i64 { r.* }
+
+fn named_value_borrow() -> i64 {
+  let value = 41;
+  read(&value)
+}
+
+fn continue_cleans_loop_body() -> i64 {
+  let mut i = 0;
+  loop {
+    let value = i;
+    defer i = i + 1;
+    if i < 1 {
+      continue;
+    }
+    break value;
+  }
+}

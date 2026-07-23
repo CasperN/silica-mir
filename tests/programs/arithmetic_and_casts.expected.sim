@@ -8,7 +8,12 @@ fn<'s0> bool_to_i32(x: i64, $return: &out 's0 i32) {
     _temp_2 = &out $return.*;
     call $bool_to_i32(move _temp_0, move _temp_2);
     unborrow $return;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -22,7 +27,12 @@ fn<'s0> i32_round_trip(x: i32, $return: &out 's0 i32) {
     _temp_2 = &out $return.*;
     call $i64_to_i32(move _temp_0, move _temp_2);
     unborrow $return;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -50,9 +60,18 @@ fn<'s0> fact(n: i64, $return: &out 's0 i64) {
     _temp_6 = &out $return.*;
     call $i64_mul(copy n, move _temp_2, move _temp_6);
     unborrow $return;
+    require_uninit _temp_6;
+    require_uninit _temp_5;
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
     goto if_merge_2
   if_merge_2:
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop n;
+    require_uninit n;
     return
 }
 
@@ -65,18 +84,27 @@ fn<'s0> straight_line_reassign(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
   entry:
     _temp_0 = &out r;
     call $i64_add(copy a, copy b, move _temp_0);
+    require_uninit _temp_0;
     _temp_3 = &out _temp_2;
     call $i64_mul(copy a, copy c, move _temp_3);
     drop r;
     r = move _temp_2;
     _temp_1 = unit;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    drop _temp_1;
+    require_uninit _temp_1;
     $return.* = copy r;
     unborrow $return;
-    drop _temp_1;
     drop r;
+    require_uninit r;
+    require_uninit $return;
     drop c;
+    require_uninit c;
     drop b;
+    require_uninit b;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -86,7 +114,10 @@ fn<'s0> double(x: i64, $return: &out 's0 i64) {
     _temp_0 = &out $return.*;
     call $i64_add(copy x, copy x, move _temp_0);
     unborrow $return;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -96,7 +127,11 @@ fn<'s0, 's1> call_it(f: fn(i64, &out 's0 i64), x: i64, $return: &out 's1 i64) {
     _temp_0 = &out $return.*;
     call move f(copy x, move _temp_0);
     unborrow $return;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop x;
+    require_uninit x;
+    require_uninit f;
     return
 }
 
@@ -106,6 +141,9 @@ fn<'s0> double_via_call_it(x: i64, $return: &out 's0 i64) {
     _temp_0 = &out $return.*;
     call call_it(double, copy x, move _temp_0);
     unborrow $return;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }

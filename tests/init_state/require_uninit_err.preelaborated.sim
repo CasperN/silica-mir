@@ -7,13 +7,12 @@ struct RefBox: Move { r: &out i64 }
 
 extern fn consume(x: Linear);
 
-# A live whole value fails the requirement even though the following drop
-# makes the return itself clean.
+# A live whole value fails the requirement. Its postcondition prevents a
+# duplicate leak diagnostic at a later scope exit or return.
 fn live_place_is_rejected(x: i64) {
   entry:
     require_uninit x;
-    drop x;
-    return
+    abort
 }
 
 # A partially initialized aggregate still owns its initialized field.
@@ -22,8 +21,7 @@ fn partial_place_is_rejected() {
   entry:
     p.left = 1;
     require_uninit p;
-    drop p.left;
-    return
+    abort
 }
 
 # The true path consumes x, while the false path retains it. At the join the
@@ -41,18 +39,15 @@ fn divergent_place_is_rejected(b: bool, x: Linear) {
     abort
 }
 
-# The assertion must not hide a live `&out` obligation. The later write and
-# unborrow satisfy that obligation, but they occur after the failed assertion.
+# The assertion must not hide a live `&out` obligation: both the owned place
+# and the outstanding reference obligation are reported at the assertion.
 fn unfulfilled_reference_is_rejected() {
   x: i64;
   r: &out i64;
   entry:
     r = &out x;
     require_uninit r;
-    r.* = 1;
-    unborrow r;
-    drop x;
-    return
+    abort
 }
 
 # Requirements are only for owned, statically trackable places. A pointee
@@ -79,15 +74,12 @@ fn dynamic_index_is_rejected(i: u64) {
 
 # Requiring an aggregate does not abandon obligations held by its reference
 # fields. The aggregate's partial state and the field's &out obligation are
-# both reported at the assertion; later cleanup makes the function valid.
+# both reported at the assertion.
 fn nested_reference_obligation_is_rejected() {
   x: i64;
   b: RefBox;
   entry:
     b.r = &out x;
     require_uninit b;
-    b.r.* = 1;
-    unborrow b.r;
-    drop x;
-    return
+    abort
 }

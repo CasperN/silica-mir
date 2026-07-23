@@ -16,6 +16,7 @@ fn<'s0> list_empty($return: &out 's0 List) {
   entry:
     $return.* = List::Empty(unit);
     unborrow $return;
+    require_uninit $return;
     return
 }
 
@@ -28,18 +29,26 @@ fn<'s0> list_cons(value: i64, tail: List, $return: &out 's0 List) {
   entry:
     _temp_0 = &out p;
     call malloc_node(24, move _temp_0);
+    require_uninit _temp_0;
     p.*.value = copy value;
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     p.*.next = move tail;
     _temp_3 = unit;
+    drop _temp_3;
+    require_uninit _temp_3;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     $return.* = List::Cons(copy p);
     unborrow $return;
-    drop _temp_3;
-    drop _temp_2;
-    drop _temp_1;
     drop p;
+    require_uninit p;
+    require_uninit $return;
+    require_uninit tail;
     drop value;
+    require_uninit value;
     return
 }
 
@@ -54,24 +63,26 @@ fn list_free(list: List) {
   switch_Empty_0:
     u = move list as Empty;
     _temp_0 = copy u;
-    goto switch_Empty_0__to__switch_merge_2
-  switch_Empty_0__to__switch_merge_2:
     drop u;
+    require_uninit u;
     goto switch_merge_2
   switch_Cons_1:
     p = move list as Cons;
     tail = move p.*.next;
     call free_node(copy p);
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     call list_free(move tail);
     _temp_0 = unit;
-    goto switch_Cons_1__to__switch_merge_2
-  switch_Cons_1__to__switch_merge_2:
+    require_uninit tail;
     drop p;
-    drop _temp_1;
+    require_uninit p;
     goto switch_merge_2
   switch_merge_2:
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit list;
     return
 }
 
@@ -89,9 +100,8 @@ fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
     unborrow list;
     $return.* = 0;
     unborrow $return;
-    goto switch_Empty_0__to__switch_merge_2
-  switch_Empty_0__to__switch_merge_2:
     drop _;
+    require_uninit _;
     goto switch_merge_2
   switch_Cons_1:
     p = copy list.* as Cons;
@@ -102,11 +112,16 @@ fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
     _temp_3 = &out $return.*;
     call $i64_add(copy p.*.value, move _temp_0, move _temp_3);
     unborrow $return;
-    goto switch_Cons_1__to__switch_merge_2
-  switch_Cons_1__to__switch_merge_2:
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
     drop p;
+    require_uninit p;
     goto switch_merge_2
   switch_merge_2:
+    require_uninit $return;
+    require_uninit list;
     return
 }
 
@@ -130,26 +145,43 @@ fn<'s0> main(exit: &out 's0 i32) {
   entry:
     _temp_1 = &out l0;
     call list_empty(move _temp_1);
+    require_uninit _temp_1;
     _temp_2 = &out l1;
     call list_cons(3, move l0, move _temp_2);
+    require_uninit _temp_2;
     _temp_3 = &out l2;
     call list_cons(2, move l1, move _temp_3);
+    require_uninit _temp_3;
     _temp_4 = &out l3;
     call list_cons(1, move l2, move _temp_4);
+    require_uninit _temp_4;
     _temp_5 = & l3;
     _temp_6 = &out s;
     call list_sum(move _temp_5, move _temp_6);
+    require_uninit _temp_6;
+    require_uninit _temp_5;
     call list_free(move l3);
     _temp_7 = unit;
+    drop _temp_7;
+    require_uninit _temp_7;
     _temp_10 = &out _temp_9;
     call $i64_to_i32(copy s, move _temp_10);
     exit.* = move _temp_9;
     unborrow exit;
     _temp_8 = unit;
-    _temp_0 = unit;
+    require_uninit _temp_10;
+    require_uninit _temp_9;
     drop _temp_8;
-    drop _temp_7;
+    require_uninit _temp_8;
+    _temp_0 = unit;
     drop s;
+    require_uninit s;
+    require_uninit l3;
+    require_uninit l2;
+    require_uninit l1;
+    require_uninit l0;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit exit;
     return
 }

@@ -19,16 +19,14 @@ fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
   switch_On_0:
     a = copy s as On;
     _temp_0 = Level::High(copy a);
-    goto switch_On_0__to__switch_merge_2
-  switch_On_0__to__switch_merge_2:
     drop a;
+    require_uninit a;
     goto switch_merge_2
   switch_Off_1:
     b = copy s as Off;
     _temp_0 = Level::Low(copy b);
-    goto switch_Off_1__to__switch_merge_2
-  switch_Off_1__to__switch_merge_2:
     drop b;
+    require_uninit b;
     goto switch_merge_2
   switch_merge_2:
     switchEnum(_temp_0) [High: switch_High_3, Low: switch_Low_4]
@@ -36,21 +34,22 @@ fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
     h = copy _temp_0 as High;
     $return.* = copy h;
     unborrow $return;
-    goto switch_High_3__to__switch_merge_5
-  switch_High_3__to__switch_merge_5:
     drop h;
+    require_uninit h;
     goto switch_merge_5
   switch_Low_4:
     l = copy _temp_0 as Low;
     $return.* = copy l;
     unborrow $return;
-    goto switch_Low_4__to__switch_merge_5
-  switch_Low_4__to__switch_merge_5:
     drop l;
+    require_uninit l;
     goto switch_merge_5
   switch_merge_5:
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop s;
+    require_uninit s;
     return
 }
 
@@ -65,20 +64,25 @@ fn loop_if_break() {
   loop_start_0:
     branch(true) [true: if_true_2, false: if_false_3]
   if_true_2:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
     goto loop_end_1
   if_false_3:
     _temp_3 = unit;
     goto if_merge_4
   if_merge_4:
-    _temp_2 = unit;
-    goto if_merge_4__to__loop_start_0
-  if_merge_4__to__loop_start_0:
-    drop _temp_2;
     drop _temp_3;
+    require_uninit _temp_3;
+    _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     goto loop_start_0
   loop_end_1:
+    require_uninit _temp_1;
     _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
     return
 }
 
@@ -100,32 +104,40 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
   if_true_0:
     p.x = 1;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     p.z = 3;
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     _temp_0 = unit;
     goto if_true_0__to__if_merge_2
   if_true_0__to__if_merge_2:
     drop p.z;
-    drop _temp_1;
-    drop _temp_2;
     goto if_merge_2
   if_false_1:
     p.x = 1;
     _temp_3 = unit;
+    drop _temp_3;
+    require_uninit _temp_3;
     p.y = 2;
     _temp_4 = unit;
+    drop _temp_4;
+    require_uninit _temp_4;
     _temp_0 = unit;
     goto if_false_1__to__if_merge_2
   if_false_1__to__if_merge_2:
     drop p.y;
-    drop _temp_3;
-    drop _temp_4;
     goto if_merge_2
   if_merge_2:
+    drop _temp_0;
+    require_uninit _temp_0;
     $return.* = copy p.x;
     unborrow $return;
-    drop _temp_0;
     drop p.x;
+    require_uninit p;
+    require_uninit $return;
     drop c;
+    require_uninit c;
     return
 }

@@ -362,7 +362,7 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
         fn f(x: Linear) {
           entry:
             require_uninit x;
-            abort
+            return
         }
         "
         .to_owned(),
@@ -374,12 +374,18 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
 
     let mut d = Diagnostics::default();
     check_program(&program, &env, &mut d);
+    let errors = d.errors_str();
     assert!(
-        d.errors_str()
+        errors
             .iter()
             .any(|error| error.contains("[INIT-RequireUninitNotSatisfied]")),
-        "linear value was silently accepted after elaboration: {:?}",
-        d.errors_str(),
+        "linear value was silently accepted after elaboration: {errors:?}",
+    );
+    assert!(
+        !errors
+            .iter()
+            .any(|error| error.contains("[INIT-ReturnValueLeak]")),
+        "require_uninit should be the single authoritative leak diagnostic: {errors:?}",
     );
 }
 
@@ -418,6 +424,47 @@ fn f(b: bool) {
     goto join
   join:
     require_uninit x;
+    drop b;
+    return
+}",
+    );
+}
+
+#[test]
+fn require_uninit_prevents_redundant_divergent_edge_cleanup() {
+    // The requirement cleans the initialized arm before it reaches the join.
+    // The legacy divergent-edge fallback must plan from that elaborated
+    // predecessor state, rather than inserting a second `drop x` on a split
+    // edge after the requirement.
+    assert_elaborated_eq(
+        "
+            fn f(b: bool) {
+              x: i64;
+              entry:
+                branch(copy b) [true: initialized, false: empty]
+              initialized:
+                x = 1;
+                require_uninit x;
+                goto join
+              empty:
+                goto join
+              join:
+                return
+            }
+            ",
+        "\
+fn f(b: bool) {
+  x: i64;
+  entry:
+    branch(copy b) [true: initialized, false: empty]
+  initialized:
+    x = 1;
+    drop x;
+    require_uninit x;
+    goto join
+  empty:
+    goto join
+  join:
     drop b;
     return
 }",

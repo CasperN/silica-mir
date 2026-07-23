@@ -948,9 +948,11 @@ impl<'a> InitStateContext<'a> {
                 }
                 self.apply_move(place, state);
             }
-            StatementKind::RequireUninit(_) => {
-                // This first plumbing slice gives the statement no transfer
-                // effect. The next slice will validate and elaborate it.
+            StatementKind::RequireUninit(place) => {
+                // A requirement is a checked postcondition for dataflow,
+                // including drop-elaboration planning: later program points
+                // may assume the owned place is gone.
+                self.apply_require_uninit_postcondition(place, state);
             }
         }
     }
@@ -1086,6 +1088,19 @@ impl<'a> InitStateContext<'a> {
         // for the entry side.
         if let Some(consumed) = as_owned_path(place) {
             close_refs_under(state, &consumed);
+        }
+    }
+
+    /// A valid `require_uninit` establishes an analysis postcondition even
+    /// when the preceding check reported that it was not satisfied. This is
+    /// error recovery: later scope exits must not repeat the same leak.
+    ///
+    /// Invalid assertion targets establish no postcondition. In particular, a
+    /// dereference would otherwise mutate its pointee state despite being
+    /// outside the assertion's statically-owned-place contract.
+    fn apply_require_uninit_postcondition(&self, place: &Place, state: &mut PointState) {
+        if as_owned_path(place).is_some() {
+            self.apply_move(place, state);
         }
     }
 
@@ -1826,6 +1841,9 @@ impl<'a> InitStateContext<'a> {
             }
             StatementKind::RequireUninit(place) => {
                 self.check_require_uninit(func, block, place, span, state, d);
+                // This prevents a later scope exit or return from repeating
+                // the same leak diagnostic.
+                self.apply_require_uninit_postcondition(place, state);
             }
         }
     }
@@ -2258,10 +2276,10 @@ impl<'a> InitStateContext<'a> {
         }
     }
 
-    /// Verify a ghost `require_uninit place` assertion. The assertion does
-    /// not itself consume `place`; elaboration is responsible for inserting
-    /// any cleanup needed to make this precondition true before the final
-    /// checker runs.
+    /// Verify a ghost `require_uninit place` assertion. Elaboration is
+    /// responsible for inserting any cleanup needed to make this precondition
+    /// true before the final checker runs. Once checked, the statement gives
+    /// later analysis the postcondition that `place` is uninitialized.
     ///
     /// Requirements intentionally start with the same owned, statically
     /// trackable place domain as `state.refs`: locals and constant-index / field
@@ -2285,7 +2303,7 @@ impl<'a> InitStateContext<'a> {
                 func,
                 block,
                 format!(
-                    "require_uninit requires an owned, statically trackable place; '{}' is not one",
+                    "value '{}' must be fully uninitialized by this point, but its place is not statically trackable",
                     format_place(place)
                 ),
             ));
@@ -2318,17 +2336,16 @@ impl<'a> InitStateContext<'a> {
                 func,
                 block,
                 format!(
-                    "require_uninit '{}' is not satisfied: {}",
+                    "value '{}' must be fully uninitialized by this point, but {}",
                     format_place(place),
                     reason
                 ),
             ));
         }
 
-        // A requirement is not a consume operation, so do not remove these
-        // entries. It nevertheless promises that the owned place has gone
-        // away, which would silently abandon every nested reference
-        // obligation if any remained outstanding.
+        // Check nested references before applying the requirement's recovery
+        // postcondition. The postcondition removes their states, so checking
+        // afterward would silently abandon any outstanding obligation.
         for (ref_place, rs) in state
             .refs
             .iter()

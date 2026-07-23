@@ -10,10 +10,15 @@ fn<'s0> assign_rhs_binop($return: &out 's0 i64) {
     drop x;
     x = move _temp_1;
     _temp_0 = unit;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    drop _temp_0;
+    require_uninit _temp_0;
     $return.* = copy x;
     unborrow $return;
-    drop _temp_0;
     drop x;
+    require_uninit x;
+    require_uninit $return;
     return
 }
 
@@ -27,9 +32,16 @@ fn<'s0> additive_left_assoc(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
     _temp_2 = &out $return.*;
     call $i64_sub(move _temp_0, copy c, move _temp_2);
     unborrow $return;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop c;
+    require_uninit c;
     drop b;
+    require_uninit b;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -43,9 +55,16 @@ fn<'s0> mul_over_add(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
     _temp_2 = &out $return.*;
     call $i64_add(copy a, move _temp_0, move _temp_2);
     unborrow $return;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop c;
+    require_uninit c;
     drop b;
+    require_uninit b;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -63,10 +82,20 @@ fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
     _temp_4 = &out $return.*;
     call $i64_lt(move _temp_0, move _temp_2, move _temp_4);
     unborrow $return;
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop d;
+    require_uninit d;
     drop c;
+    require_uninit c;
     drop b;
+    require_uninit b;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -75,6 +104,8 @@ fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
     $return.* = copy r.*;
     unborrow $return;
     unborrow r;
+    require_uninit $return;
+    require_uninit r;
     return
 }
 
@@ -90,8 +121,15 @@ fn<'s0> borrow_tighter_than_add(x: i64, y: i64, $return: &out 's0 i64) {
     _temp_3 = &out $return.*;
     call $i64_add(move _temp_0, copy y, move _temp_3);
     unborrow $return;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop y;
+    require_uninit y;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -114,8 +152,13 @@ fn<'s0> if_as_stmt(a: i64, r: &out 's0 i64) {
     _temp_0 = unit;
     goto if_merge_2
   if_merge_2:
+    require_uninit _temp_2;
+    require_uninit _temp_1;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -137,8 +180,13 @@ fn<'s0> if_as_tail(a: i64, $return: &out 's0 i64) {
     unborrow $return;
     goto if_merge_2
   if_merge_2:
+    require_uninit _temp_1;
+    require_uninit _temp_0;
     drop base;
+    require_uninit base;
+    require_uninit $return;
     drop a;
+    require_uninit a;
     return
 }
 
@@ -149,10 +197,13 @@ fn loop_and_block_as_stmts() {
   entry:
     goto loop_start_0
   loop_start_0:
+    require_uninit _temp_2;
     goto loop_end_1
   loop_end_1:
+    require_uninit _temp_1;
     _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
     return
 }
 
@@ -172,22 +223,23 @@ fn<'s0> match_as_stmt(t: Tag, r: &out 's0 i64) {
     r.* = copy x;
     unborrow r;
     _temp_0 = unit;
-    goto switch_A_0__to__switch_merge_2
-  switch_A_0__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_B_1:
     y = copy t as B;
     r.* = copy y;
     unborrow r;
     _temp_0 = unit;
-    goto switch_B_1__to__switch_merge_2
-  switch_B_1__to__switch_merge_2:
     drop y;
+    require_uninit y;
     goto switch_merge_2
   switch_merge_2:
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     drop t;
+    require_uninit t;
     return
 }
 
@@ -204,21 +256,22 @@ fn<'s0> postfix_chain_on_match(t: Tag, $return: &out 's0 i64) {
   switch_A_0:
     x = copy t as A;
     w.inner = copy x;
-    goto switch_A_0__to__switch_merge_2
-  switch_A_0__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_B_1:
     y = copy t as B;
     w.inner = copy y;
-    goto switch_B_1__to__switch_merge_2
-  switch_B_1__to__switch_merge_2:
     drop y;
+    require_uninit y;
     goto switch_merge_2
   switch_merge_2:
     $return.* = copy w.inner;
     unborrow $return;
     drop w;
+    require_uninit w;
+    require_uninit $return;
     drop t;
+    require_uninit t;
     return
 }

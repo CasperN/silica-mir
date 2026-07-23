@@ -21,35 +21,52 @@ fn<'s0> sum_to_n(n: i64, $return: &out 's0 i64) {
     call $i64_gt(copy i, copy n, move _temp_4);
     branch(move _temp_3) [true: if_true_2, false: if_false_3]
   if_true_2:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
     goto loop_end_1
   if_false_3:
     _temp_2 = unit;
     goto if_merge_4
   if_merge_4:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    drop _temp_2;
+    require_uninit _temp_2;
     _temp_7 = &out _temp_6;
     call $i64_add(copy acc, copy i, move _temp_7);
     drop acc;
     acc = move _temp_6;
     _temp_5 = unit;
+    require_uninit _temp_7;
+    require_uninit _temp_6;
+    drop _temp_5;
+    require_uninit _temp_5;
     _temp_10 = &out _temp_9;
     call $i64_add(copy i, 1, move _temp_10);
     drop i;
     i = move _temp_9;
     _temp_8 = unit;
-    _temp_1 = unit;
-    goto if_merge_4__to__loop_start_0
-  if_merge_4__to__loop_start_0:
-    drop _temp_1;
-    drop _temp_2;
-    drop _temp_5;
+    require_uninit _temp_10;
+    require_uninit _temp_9;
     drop _temp_8;
+    require_uninit _temp_8;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     goto loop_start_0
   loop_end_1:
+    require_uninit _temp_0;
     $return.* = copy acc;
     unborrow $return;
     drop i;
+    require_uninit i;
     drop acc;
+    require_uninit acc;
+    require_uninit $return;
     drop n;
+    require_uninit n;
     return
 }
 
@@ -82,44 +99,65 @@ fn<'s0> fib(n: i64, $return: &out 's0 i64) {
     call $i64_ge(copy i, copy n, move _temp_4);
     branch(move _temp_3) [true: if_true_2, false: if_false_3]
   if_true_2:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
     goto loop_end_1
   if_false_3:
     _temp_2 = unit;
     goto if_merge_4
   if_merge_4:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    drop _temp_2;
+    require_uninit _temp_2;
     _temp_7 = &out _temp_6;
     call $i64_add(copy a, copy b, move _temp_7);
     drop next;
     next = move _temp_6;
     _temp_5 = unit;
+    require_uninit _temp_7;
+    require_uninit _temp_6;
+    drop _temp_5;
+    require_uninit _temp_5;
     drop a;
     a = copy b;
     _temp_8 = unit;
+    drop _temp_8;
+    require_uninit _temp_8;
     drop b;
     b = copy next;
     _temp_9 = unit;
+    drop _temp_9;
+    require_uninit _temp_9;
     _temp_12 = &out _temp_11;
     call $i64_add(copy i, 1, move _temp_12);
     drop i;
     i = move _temp_11;
     _temp_10 = unit;
-    _temp_1 = unit;
-    goto if_merge_4__to__loop_start_0
-  if_merge_4__to__loop_start_0:
-    drop _temp_1;
-    drop _temp_2;
-    drop _temp_5;
-    drop _temp_8;
-    drop _temp_9;
+    require_uninit _temp_12;
+    require_uninit _temp_11;
     drop _temp_10;
+    require_uninit _temp_10;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     goto loop_start_0
   loop_end_1:
+    require_uninit _temp_0;
     $return.* = copy a;
     unborrow $return;
     drop next;
+    require_uninit next;
     drop i;
+    require_uninit i;
     drop b;
+    require_uninit b;
     drop a;
+    require_uninit a;
+    require_uninit $return;
     drop n;
+    require_uninit n;
     return
 }

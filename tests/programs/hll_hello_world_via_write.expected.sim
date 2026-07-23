@@ -10,11 +10,15 @@ fn print_hi() {
     p = &raw s[0u64];
     call write(1i32, copy p, 4u64);
     _temp_1 = unit;
-    _temp_0 = unit;
     drop _temp_1;
+    require_uninit _temp_1;
+    _temp_0 = unit;
     drop p;
+    require_uninit p;
     drop s;
+    require_uninit s;
     drop _temp_0;
+    require_uninit _temp_0;
     return
 }
 
@@ -25,12 +29,16 @@ fn<'s0> main(exit: &out 's0 i32) {
   entry:
     call print_hi();
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     exit.* = 0i32;
     unborrow exit;
     _temp_2 = unit;
-    _temp_0 = unit;
     drop _temp_2;
-    drop _temp_1;
+    require_uninit _temp_2;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit exit;
     return
 }

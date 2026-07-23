@@ -1,0 +1,10 @@
+# An unnamed call result is expression-bound. Borrowing it into `r` does not
+# extend its lifetime; the next statement cannot read through that borrow.
+
+fn make() -> i64 { 41 }
+fn read(r: &i64) -> i64 { r.* }
+
+fn escaped_temporary_borrow() -> i64 {
+  let r = &make();
+  read(r)
+}

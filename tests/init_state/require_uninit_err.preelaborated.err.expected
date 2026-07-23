@@ -1,71 +1,71 @@
-error: at 14:5: [INIT-RequireUninitNotSatisfied] In function 'live_place_is_rejected', block 'entry': require_uninit 'x' is not satisfied: it is still initialized
+error: at 14:5: [INIT-RequireUninitNotSatisfied] In function 'live_place_is_rejected', block 'entry': value 'x' must be fully uninitialized by this point, but it is still initialized
     |
  13 |   entry:
  14 |     require_uninit x;
     |     ^^^^^^^^^^^^^^^^
- 15 |     drop x;
+ 15 |     abort
     |
-error: at 24:5: [INIT-RequireUninitNotSatisfied] In function 'partial_place_is_rejected', block 'entry': require_uninit 'p' is not satisfied: it is only partially consumed
+error: at 23:5: [INIT-RequireUninitNotSatisfied] In function 'partial_place_is_rejected', block 'entry': value 'p' must be fully uninitialized by this point, but it is only partially consumed
     |
- 23 |     p.left = 1;
- 24 |     require_uninit p;
+ 22 |     p.left = 1;
+ 23 |     require_uninit p;
     |     ^^^^^^^^^^^^^^^^
- 25 |     drop p.left;
+ 24 |     abort
     |
-error: at 40:5: [INIT-RequireUninitNotSatisfied] In function 'divergent_place_is_rejected', block 'join': require_uninit 'x' is not satisfied: its state differs across control-flow paths
+error: at 38:5: [INIT-RequireUninitNotSatisfied] In function 'divergent_place_is_rejected', block 'join': value 'x' must be fully uninitialized by this point, but its state differs across control-flow paths
     |
- 39 |   join:
- 40 |     require_uninit x;
+ 37 |   join:
+ 38 |     require_uninit x;
     |     ^^^^^^^^^^^^^^^^
- 41 |     abort
+ 39 |     abort
     |
-error: at 51:5: [INIT-RequireUninitNotSatisfied] In function 'unfulfilled_reference_is_rejected', block 'entry': require_uninit 'r' is not satisfied: it is still initialized
+error: at 49:5: [INIT-RequireUninitNotSatisfied] In function 'unfulfilled_reference_is_rejected', block 'entry': value 'r' must be fully uninitialized by this point, but it is still initialized
     |
- 50 |     r = &out x;
- 51 |     require_uninit r;
+ 48 |     r = &out x;
+ 49 |     require_uninit r;
     |     ^^^^^^^^^^^^^^^^
- 52 |     r.* = 1;
+ 50 |     abort
     |
-error: at 51:5: [INIT-RefObligationUnfulfilled] In function 'unfulfilled_reference_is_rejected', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 49:5: [INIT-RefObligationUnfulfilled] In function 'unfulfilled_reference_is_rejected', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 47 |   x: i64;
- 48 |   r: &out i64;
+ 45 |   x: i64;
+ 46 |   r: &out i64;
     |   ------------ reference declared here
- 49 |   entry:
- 50 |     r = &out x;
- 51 |     require_uninit r;
+ 47 |   entry:
+ 48 |     r = &out x;
+ 49 |     require_uninit r;
     |     ^^^^^^^^^^^^^^^^
- 52 |     r.* = 1;
+ 50 |     abort
     |
-error: at 64:5: [INIT-RequireUninitNotSatisfied] In function 'dereference_is_rejected', block 'entry': require_uninit requires an owned, statically trackable place; 'r.*' is not one
+error: at 59:5: [INIT-RequireUninitNotSatisfied] In function 'dereference_is_rejected', block 'entry': value 'r.*' must be fully uninitialized by this point, but its place is not statically trackable
     |
- 63 |     r = &mut x;
- 64 |     require_uninit r.*;
+ 58 |     r = &mut x;
+ 59 |     require_uninit r.*;
     |     ^^^^^^^^^^^^^^^^^^
- 65 |     unborrow r;
+ 60 |     unborrow r;
     |
-error: at 75:5: [INIT-RequireUninitNotSatisfied] In function 'dynamic_index_is_rejected', block 'entry': require_uninit requires an owned, statically trackable place; 'a[?]' is not one
+error: at 70:5: [INIT-RequireUninitNotSatisfied] In function 'dynamic_index_is_rejected', block 'entry': value 'a[?]' must be fully uninitialized by this point, but its place is not statically trackable
     |
- 74 |   entry:
- 75 |     require_uninit a[copy i];
+ 69 |   entry:
+ 70 |     require_uninit a[copy i];
     |     ^^^^^^^^^^^^^^^^^^^^^^^^
- 76 |     drop i;
+ 71 |     drop i;
     |
-error: at 88:5: [INIT-RequireUninitNotSatisfied] In function 'nested_reference_obligation_is_rejected', block 'entry': require_uninit 'b' is not satisfied: it is still initialized
+error: at 83:5: [INIT-RequireUninitNotSatisfied] In function 'nested_reference_obligation_is_rejected', block 'entry': value 'b' must be fully uninitialized by this point, but it is still initialized
     |
- 87 |     b.r = &out x;
- 88 |     require_uninit b;
+ 82 |     b.r = &out x;
+ 83 |     require_uninit b;
     |     ^^^^^^^^^^^^^^^^
- 89 |     b.r.* = 1;
+ 84 |     abort
     |
-error: at 88:5: [INIT-RefObligationUnfulfilled] In function 'nested_reference_obligation_is_rejected', block 'entry': reference 'b.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'nested_reference_obligation_is_rejected', block 'entry': reference 'b.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 84 |   x: i64;
- 85 |   b: RefBox;
+ 79 |   x: i64;
+ 80 |   b: RefBox;
     |   ---------- reference declared here
- 86 |   entry:
- 87 |     b.r = &out x;
- 88 |     require_uninit b;
+ 81 |   entry:
+ 82 |     b.r = &out x;
+ 83 |     require_uninit b;
     |     ^^^^^^^^^^^^^^^^
- 89 |     b.r.* = 1;
+ 84 |     abort
     |

@@ -11,6 +11,7 @@ fn<'s0> make_box($return: &out 's0 Box<i64>) {
   entry:
     $return.*.inner = 42;
     unborrow $return;
+    require_uninit $return;
     return
 }
 
@@ -18,7 +19,9 @@ fn<'s0> box_extract(b: Box<i64>, $return: &out 's0 i64) {
   entry:
     $return.* = copy b.inner;
     unborrow $return;
+    require_uninit $return;
     drop b;
+    require_uninit b;
     return
 }
 
@@ -26,6 +29,7 @@ fn<'s0> make_some($return: &out 's0 Option<i64>) {
   entry:
     $return.* = Option<i64>::Some(42);
     unborrow $return;
+    require_uninit $return;
     return
 }
 
@@ -38,20 +42,20 @@ fn<'s0> option_extract_match(o: Option<i64>, $return: &out 's0 i64) {
     _ = copy o as None;
     $return.* = 0;
     unborrow $return;
-    goto switch_None_0__to__switch_merge_2
-  switch_None_0__to__switch_merge_2:
     drop _;
+    require_uninit _;
     goto switch_merge_2
   switch_Some_1:
     x = copy o as Some;
     $return.* = copy x;
     unborrow $return;
-    goto switch_Some_1__to__switch_merge_2
-  switch_Some_1__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_merge_2:
+    require_uninit $return;
     drop o;
+    require_uninit o;
     return
 }
 
@@ -71,19 +75,20 @@ fn<'s0> move_only_owned_match(ml: MoveList, $return: &out 's0 i64) {
     _temp_0 = &out $return.*;
     call u_to_zero(copy u, move _temp_0);
     unborrow $return;
-    goto switch_EmptyM_0__to__switch_merge_2
-  switch_EmptyM_0__to__switch_merge_2:
+    require_uninit _temp_0;
     drop u;
+    require_uninit u;
     goto switch_merge_2
   switch_ConsM_1:
     x = move ml as ConsM;
     $return.* = copy x;
     unborrow $return;
-    goto switch_ConsM_1__to__switch_merge_2
-  switch_ConsM_1__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_merge_2:
+    require_uninit $return;
+    require_uninit ml;
     return
 }
 
@@ -91,7 +96,9 @@ fn<'s0> u_to_zero(u: unit, $return: &out 's0 i64) {
   entry:
     $return.* = 0;
     unborrow $return;
+    require_uninit $return;
     drop u;
+    require_uninit u;
     return
 }
 
@@ -105,20 +112,20 @@ fn<'s0, 's1> move_only_borrowed_match(ml: & 's0 MoveList, $return: &out 's1 i64)
     unborrow ml;
     $return.* = 0;
     unborrow $return;
-    goto switch_EmptyM_0__to__switch_merge_2
-  switch_EmptyM_0__to__switch_merge_2:
     drop _;
+    require_uninit _;
     goto switch_merge_2
   switch_ConsM_1:
     x = copy ml.* as ConsM;
     unborrow ml;
     $return.* = copy x;
     unborrow $return;
-    goto switch_ConsM_1__to__switch_merge_2
-  switch_ConsM_1__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_merge_2:
+    require_uninit $return;
+    require_uninit ml;
     return
 }
 
@@ -133,20 +140,21 @@ fn<'s0> nested_container(b: Box<Option<i64>>, $return: &out 's0 i64) {
     _ = copy inner as None;
     $return.* = 0;
     unborrow $return;
-    goto switch_None_0__to__switch_merge_2
-  switch_None_0__to__switch_merge_2:
     drop _;
+    require_uninit _;
     goto switch_merge_2
   switch_Some_1:
     x = copy inner as Some;
     $return.* = copy x;
     unborrow $return;
-    goto switch_Some_1__to__switch_merge_2
-  switch_Some_1__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_merge_2:
     drop inner;
+    require_uninit inner;
+    require_uninit $return;
+    require_uninit b;
     return
 }
 
@@ -154,7 +162,9 @@ fn<'s0> make_box_of_box(x: i64, $return: &out 's0 Box<Box<i64>>) {
   entry:
     $return.*.inner.inner = copy x;
     unborrow $return;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -162,7 +172,9 @@ fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
   entry:
     $return.*.inner = Option<i64>::Some(copy x);
     unborrow $return;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -172,7 +184,10 @@ fn<'s0> make_option_of_box(x: i64, $return: &out 's0 Option<Box<i64>>) {
     _temp_0.inner = copy x;
     $return.* = Option<Box<i64>>::Some(move _temp_0);
     unborrow $return;
+    require_uninit _temp_0;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -180,7 +195,9 @@ fn<'s0> read_nested_field(b: Box<Box<i64>>, $return: &out 's0 i64) {
   entry:
     $return.* = copy b.inner.inner;
     unborrow $return;
+    require_uninit $return;
     drop b;
+    require_uninit b;
     return
 }
 
@@ -191,10 +208,14 @@ fn<'s0> write_nested_pointee(r: &out 's0 Box<Box<i64>>, x: i64) {
     r.*.inner.inner = copy x;
     unborrow r;
     _temp_1 = unit;
-    _temp_0 = unit;
     drop _temp_1;
+    require_uninit _temp_1;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
     drop x;
+    require_uninit x;
+    require_uninit r;
     return
 }
 
@@ -215,6 +236,8 @@ fn<'s0> partial_move_generic_drop($return: &out 's0 DropCell) {
     $return.* = move p.a;
     unborrow $return;
     drop p.b;
+    require_uninit p;
+    require_uninit $return;
     return
 }
 
@@ -222,6 +245,8 @@ fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
   entry:
     $return.* = move x;
     unborrow $return;
+    require_uninit $return;
+    require_uninit x;
     return
 }
 
@@ -232,10 +257,14 @@ fn<'s0> call_generic_fn($return: &out 's0 i64) {
   entry:
     _temp_1 = &out _temp_0;
     call identity<f64>(42.2, move _temp_1);
+    require_uninit _temp_1;
+    drop _temp_0;
+    require_uninit _temp_0;
     _temp_2 = &out $return.*;
     call identity<i64>(42, move _temp_2);
     unborrow $return;
-    drop _temp_0;
+    require_uninit _temp_2;
+    require_uninit $return;
     return
 }
 
@@ -249,6 +278,10 @@ fn<'s0> call_generic_fn_via_ret($return: &out 's0 i64) {
     _temp_2 = &out $return.*;
     call identity<i64>(move _temp_0, move _temp_2);
     unborrow $return;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    require_uninit $return;
     return
 }
 
@@ -256,6 +289,8 @@ fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
   entry:
     $return.* = copy ptr.*;
     unborrow $return;
+    require_uninit $return;
     drop ptr;
+    require_uninit ptr;
     return
 }

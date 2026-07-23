@@ -11,15 +11,20 @@ fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
     x = 1;
     call use_i64(copy x);
     _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
     $x_1 = 2;
     call use_i64(copy $x_1);
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     $return.* = copy $x_1;
     unborrow $return;
-    drop _temp_2;
     drop $x_1;
-    drop _temp_0;
+    require_uninit $x_1;
     drop x;
+    require_uninit x;
+    require_uninit $return;
     return
 }
 
@@ -32,7 +37,10 @@ fn<'s0> let_shadow_reads_outer($return: &out 's0 i64) {
     $return.* = copy $x_0;
     unborrow $return;
     drop $x_0;
+    require_uninit $x_0;
     drop x;
+    require_uninit x;
+    require_uninit $return;
     return
 }
 
@@ -46,13 +54,18 @@ fn<'s0> let_shadow_inner_block($return: &out 's0 i64) {
     $x_1 = 2;
     call use_i64(copy $x_1);
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     _temp_0 = unit;
+    drop $x_1;
+    require_uninit $x_1;
+    drop _temp_0;
+    require_uninit _temp_0;
     $return.* = copy x;
     unborrow $return;
-    drop _temp_2;
-    drop $x_1;
-    drop _temp_0;
     drop x;
+    require_uninit x;
+    require_uninit $return;
     return
 }
 
@@ -62,12 +75,16 @@ fn<'s0> let_shadows_param(x: i64, $return: &out 's0 i64) {
   entry:
     call use_i64(copy x);
     _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
     $x_1 = 99;
     $return.* = copy $x_1;
     unborrow $return;
     drop $x_1;
-    drop _temp_0;
+    require_uninit $x_1;
+    require_uninit $return;
     drop x;
+    require_uninit x;
     return
 }
 
@@ -85,20 +102,20 @@ fn<'s0> match_arm_bindings_reused(e: E, $return: &out 's0 i64) {
     x = copy e as A;
     $return.* = copy x;
     unborrow $return;
-    goto switch_A_0__to__switch_merge_2
-  switch_A_0__to__switch_merge_2:
     drop x;
+    require_uninit x;
     goto switch_merge_2
   switch_B_1:
     $x_0 = copy e as B;
     $return.* = copy $x_0;
     unborrow $return;
-    goto switch_B_1__to__switch_merge_2
-  switch_B_1__to__switch_merge_2:
     drop $x_0;
+    require_uninit $x_0;
     goto switch_merge_2
   switch_merge_2:
+    require_uninit $return;
     drop e;
+    require_uninit e;
     return
 }
 
@@ -109,6 +126,8 @@ fn<'s0> fn_name_shadowed_by_let($return: &out 's0 i64) {
     $return.* = copy f;
     unborrow $return;
     drop f;
+    require_uninit f;
+    require_uninit $return;
     return
 }
 
@@ -125,8 +144,12 @@ fn shadow_and_defer() {
     x = 3;
     _temp_2 = unit;
     drop _temp_2;
+    require_uninit _temp_2;
     drop $x_1;
+    require_uninit $x_1;
     drop x;
+    require_uninit x;
     drop _temp_0;
+    require_uninit _temp_0;
     return
 }

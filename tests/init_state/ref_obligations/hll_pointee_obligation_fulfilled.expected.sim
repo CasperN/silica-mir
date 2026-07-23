@@ -14,9 +14,12 @@ fn<'s0> out_scalar(r: &out 's0 i64) {
     r.* = 42;
     unborrow r;
     _temp_1 = unit;
-    _temp_0 = unit;
     drop _temp_1;
+    require_uninit _temp_1;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }
 
@@ -27,9 +30,13 @@ fn<'s0> out_struct_whole(src: P, r: &out 's0 P) {
     r.* = move src;
     unborrow r;
     _temp_1 = unit;
-    _temp_0 = unit;
     drop _temp_1;
+    require_uninit _temp_1;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
+    require_uninit src;
     return
 }
 
@@ -40,13 +47,17 @@ fn<'s0> out_struct_field_by_field(r: &out 's0 P) {
   entry:
     r.*.x = 1;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     r.*.y = 2;
     unborrow r;
     _temp_2 = unit;
-    _temp_0 = unit;
     drop _temp_2;
-    drop _temp_1;
+    require_uninit _temp_2;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }
 
@@ -58,16 +69,21 @@ fn<'s0> out_array_slot_by_slot(r: &out 's0 [i64; 3]) {
   entry:
     r.*[0] = 1;
     _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     r.*[1] = 2;
     _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
     r.*[2] = 3;
     unborrow r;
     _temp_3 = unit;
-    _temp_0 = unit;
     drop _temp_3;
-    drop _temp_2;
-    drop _temp_1;
+    require_uninit _temp_3;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }
 
@@ -79,7 +95,10 @@ fn<'s0> drop_box(r: &drop 's0 Box) {
     unborrow r;
     _temp_0 = unit;
     drop x;
+    require_uninit x;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }
 
@@ -89,6 +108,8 @@ fn<'s0> mut_scalar(r: &mut 's0 i64) {
     unborrow r;
     _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }
 
@@ -98,6 +119,8 @@ fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
     unborrow r;
     _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }
 
@@ -127,32 +150,48 @@ fn loop_out_write_and_consume(n: i64) {
     call $i64_ge(copy i, copy n, move _temp_4);
     branch(move _temp_3) [true: if_true_2, false: if_false_3]
   if_true_2:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
     goto loop_end_1
   if_false_3:
     _temp_2 = unit;
     goto if_merge_4
   if_merge_4:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    drop _temp_2;
+    require_uninit _temp_2;
     _temp_6 = &out buf;
     call write_into(move _temp_6, copy i);
     _temp_5 = unit;
+    require_uninit _temp_6;
+    drop _temp_5;
+    require_uninit _temp_5;
     call consume(move buf);
     _temp_7 = unit;
+    drop _temp_7;
+    require_uninit _temp_7;
     _temp_10 = &out _temp_9;
     call $i64_add(copy i, 1, move _temp_10);
     drop i;
     i = move _temp_9;
     _temp_8 = unit;
-    _temp_1 = unit;
-    goto if_merge_4__to__loop_start_0
-  if_merge_4__to__loop_start_0:
-    drop _temp_1;
-    drop _temp_2;
-    drop _temp_5;
-    drop _temp_7;
+    require_uninit _temp_10;
+    require_uninit _temp_9;
     drop _temp_8;
+    require_uninit _temp_8;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
     goto loop_start_0
   loop_end_1:
     drop i;
+    require_uninit i;
+    require_uninit buf;
+    require_uninit _temp_0;
     drop n;
+    require_uninit n;
     return
 }

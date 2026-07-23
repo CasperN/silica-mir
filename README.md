@@ -443,6 +443,9 @@ pattern = identifier [ ( identifier ) ]                  # Variant [ (bind) ]
   works. Tree-sitter's dynamic conflict resolution handles both.
 - **No lifetime annotations at the surface.** All reference lifetimes
   are inferred at the MIR level (NLL-style).
+- **Cleanup order.** Unnamed temporaries end with their expression; at a
+  scope exit, `defer`s run LIFO, then bindings are cleaned in reverse
+  declaration order.
 - **Integer literal defaulting.** Unsuffixed integer literals get
   type-variable defaults; the type checker resolves them to `i64`
   if no other constraint pins them.

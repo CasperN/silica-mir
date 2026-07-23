@@ -4,6 +4,8 @@ fn<'s0> use_val(x: &mut 's0 i64) {
     unborrow x;
     _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit x;
     return
 }
 
@@ -17,13 +19,19 @@ fn<'s0> reborrow_ok(r: &mut 's0 i64) {
     _temp_2 = &mut r.*;
     call use_val(move _temp_2);
     _temp_1 = unit;
+    require_uninit _temp_2;
+    drop _temp_1;
+    require_uninit _temp_1;
     _temp_4 = &mut r.*;
     call use_val(move _temp_4);
     unborrow r;
     _temp_3 = unit;
-    _temp_0 = unit;
+    require_uninit _temp_4;
     drop _temp_3;
-    drop _temp_1;
+    require_uninit _temp_3;
+    _temp_0 = unit;
     drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
     return
 }

@@ -55,6 +55,17 @@ fn diag(code: HllLoweringCode, span: mir::Span, msg: impl Into<String>) -> Diagn
     Diagnostic::new(code, span, msg)
 }
 
+/// Point a generated HLL scope-exit assertion at the closing delimiter of
+/// the scope rather than at the declaration it is cleaning up.
+fn scope_exit_span(span: mir::Span) -> mir::Span {
+    mir::Span {
+        line: span.end_line,
+        col: span.end_col,
+        end_line: span.end_line,
+        end_col: span.end_col,
+    }
+}
+
 fn lookup_type<'a>(
     expr: &hll::Expr,
     types: &'a IndexMap<mir::Span, hll::Type>,
@@ -90,8 +101,26 @@ struct DeferredWork {
     binding_snapshot: Vec<HashMap<String, String>>,
 }
 
+#[derive(Clone)]
+struct CleanupTarget {
+    place: mir::Place,
+    span: mir::Span,
+}
+
+/// Temporaries produced while lowering one HLL expression. `scope_depth`
+/// records the active lexical-scope stack when the expression began, so a
+/// nonlocal exit only destroys temporaries owned by scopes it actually exits.
+struct TempRegion {
+    scope_depth: usize,
+    targets: Vec<CleanupTarget>,
+}
+
 struct Scope {
     defers: Vec<DeferredWork>,
+    /// HLL bindings declared in this lexical scope. Scope exit first runs
+    /// defers, then emits requirements in reverse declaration order.
+    cleanup_targets: Vec<CleanupTarget>,
+    exit_span: mir::Span,
     is_loop: bool,
 }
 
@@ -104,6 +133,11 @@ struct LowerCtx {
     block_counter: usize,
     loop_stack: Vec<(String, String, mir::Place)>, // (start_label, end_label, dest_place)
     scopes: Vec<Scope>,
+    /// Compiler temporaries are normally expression-bound, rather than
+    /// lexical bindings. A region records every temporary created while an
+    /// HLL expression is evaluated; it emits `require_uninit` as soon as
+    /// that expression has transferred its result to its destination.
+    temp_regions: Vec<TempRegion>,
     /// HLL identifier → MIR name, one map per lexical scope (innermost
     /// at top). Every fn body starts with a base scope containing
     /// identity mappings for parameters. Shadowing binds a fresh
@@ -142,6 +176,7 @@ impl LowerCtx {
             block_counter: 0,
             loop_stack: Vec::new(),
             scopes: Vec::new(),
+            temp_regions: Vec::new(),
             binding_scopes: Vec::new(),
             taken_names: std::collections::HashSet::new(),
             functions,
@@ -211,11 +246,56 @@ impl LowerCtx {
         }
     }
 
-    fn push_scope(&mut self, is_loop: bool) {
+    fn push_scope(&mut self, is_loop: bool, exit_span: mir::Span) {
         self.scopes.push(Scope {
             defers: Vec::new(),
+            cleanup_targets: Vec::new(),
+            exit_span,
             is_loop,
         });
+    }
+
+    fn register_scope_cleanup(&mut self, place: mir::Place, span: mir::Span) {
+        self.scopes
+            .last_mut()
+            .expect("HLL binding declared without a lexical cleanup scope")
+            .cleanup_targets
+            .push(CleanupTarget { place, span });
+    }
+
+    fn begin_temp_region(&mut self) {
+        self.temp_regions.push(TempRegion {
+            scope_depth: self.scopes.len(),
+            targets: Vec::new(),
+        });
+    }
+
+    fn end_temp_region(&mut self) {
+        let targets = self
+            .temp_regions
+            .pop()
+            .expect("temporary cleanup region stack underflow")
+            .targets;
+        for target in targets.into_iter().rev() {
+            self.emit_statement(require_uninit_stmt(target.place, target.span));
+        }
+    }
+
+    /// Materialize requirements for active temporary regions whose owner is
+    /// among the lexical scopes exited by a nonlocal terminator. Regions are
+    /// deliberately not popped: lowering still unwinds its ordinary
+    /// bookkeeping, although no later statement can reach this MIR block.
+    fn emit_temp_requirements_for_exits(&mut self, first_exited_scope: usize) {
+        let targets: Vec<_> = self
+            .temp_regions
+            .iter()
+            .rev()
+            .filter(|region| region.scope_depth > first_exited_scope)
+            .flat_map(|region| region.targets.iter().rev().cloned())
+            .collect();
+        for target in targets {
+            self.emit_statement(require_uninit_stmt(target.place, target.span));
+        }
     }
 
     /// Lower a deferred expression with its registration-time binding
@@ -226,46 +306,75 @@ impl LowerCtx {
         types: &IndexMap<mir::Span, hll::Type>,
     ) -> Result<(), Diagnostic> {
         let live = std::mem::replace(&mut self.binding_scopes, work.binding_snapshot);
+        self.begin_temp_region();
         let unit_temp = self.fresh_temp(unit_ty(), work.body.span);
         let result = lower_expr_into(self, &work.body, &unit_temp, types);
+        self.end_temp_region();
         self.binding_scopes = live;
         result
     }
 
-    fn pop_and_emit_defers(
+    /// Emit all normal-exit work for one active lexical scope without
+    /// popping it. This form is used by nonlocal exits (`return`, `break`,
+    /// `continue`), which leave the lowerer's bookkeeping intact even though
+    /// they terminate the current MIR block.
+    fn emit_scope_exit(
         &mut self,
+        index: usize,
         types: &IndexMap<mir::Span, hll::Type>,
     ) -> Result<(), Diagnostic> {
-        let scope = self.scopes.pop().ok_or_else(|| {
+        let scope = self.scopes.get(index).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
                 mir::Span::default(),
-                "pop_and_emit_defers called with empty scope stack",
+                "scope exit requested with empty scope stack",
             )
         })?;
-        for work in scope.defers.into_iter().rev() {
+        let defers: Vec<_> = scope
+            .defers
+            .iter()
+            .rev()
+            .map(|work| DeferredWork {
+                body: work.body.clone(),
+                binding_snapshot: work.binding_snapshot.clone(),
+            })
+            .collect();
+        let cleanup_targets = scope.cleanup_targets.clone();
+        let exit_span = scope.exit_span;
+
+        for work in defers {
             self.lower_deferred(work, types)?;
+        }
+        for target in cleanup_targets.into_iter().rev() {
+            self.emit_statement(require_uninit_stmt(target.place, exit_span));
         }
         Ok(())
     }
 
-    fn emit_defers_to_depth(
+    fn emit_scope_exits_to_depth(
         &mut self,
         depth: usize,
         types: &IndexMap<mir::Span, hll::Type>,
     ) -> Result<(), Diagnostic> {
-        let mut defers = Vec::new();
         for i in (depth..self.scopes.len()).rev() {
-            for work in self.scopes[i].defers.iter().rev() {
-                defers.push(DeferredWork {
-                    body: work.body.clone(),
-                    binding_snapshot: work.binding_snapshot.clone(),
-                });
-            }
+            self.emit_scope_exit(i, types)?;
         }
-        for work in defers {
-            self.lower_deferred(work, types)?;
-        }
+        Ok(())
+    }
+
+    fn pop_and_emit_scope_exit(
+        &mut self,
+        types: &IndexMap<mir::Span, hll::Type>,
+    ) -> Result<(), Diagnostic> {
+        let index = self.scopes.len().checked_sub(1).ok_or_else(|| {
+            diag(
+                HllLoweringCode::ScopeStackUnderflow,
+                mir::Span::default(),
+                "normal scope exit requested with empty scope stack",
+            )
+        })?;
+        self.emit_scope_exit(index, types)?;
+        self.scopes.pop();
         Ok(())
     }
 
@@ -273,12 +382,28 @@ impl LowerCtx {
         let name = format!("_temp_{}", self.temp_counter);
         self.temp_counter += 1;
         self.taken_names.insert(name.clone());
+        let place = var_place(name.clone());
         self.locals.push(mir::Local {
             name: name.clone(),
             ty,
             span,
         });
-        var_place(name)
+        let target = CleanupTarget {
+            place: place.clone(),
+            span,
+        };
+        if let Some(region) = self.temp_regions.last_mut() {
+            region.targets.push(target);
+        } else {
+            // Every HLL expression boundary opens a temporary region. Keep a
+            // lexical fallback for compiler-owned setup values so lowering
+            // remains total while those boundaries evolve.
+            // TODO: Split temporary allocation by lifetime owner and remove
+            // this fallback once every compiler-generated local has an
+            // explicit owning region or scope.
+            self.register_scope_cleanup(place.clone(), span);
+        }
+        place
     }
 
     fn fresh_label(&mut self, prefix: &str) -> String {
@@ -905,7 +1030,7 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Block(stmts, last_expr, _) => {
-            ctx.push_scope(false);
+            ctx.push_scope(false, scope_exit_span(expr.span));
             ctx.push_binding_scope();
             for stmt in stmts {
                 match stmt {
@@ -938,9 +1063,12 @@ fn lower_expr_into(
                         let mir_name = ctx.alloc_binding(name, mir_ty, *span);
                         if let Some(init) = init {
                             let dest = var_place(mir_name.clone());
+                            ctx.begin_temp_region();
                             lower_expr_into(ctx, init, &dest, types)?;
+                            ctx.end_temp_region();
                         }
                         ctx.bind_in_scope(name, mir_name);
+                        ctx.register_scope_cleanup(var_place(ctx.resolve_binding(name)), *span);
                         // No init: the local exists as NeverInit — the caller
                         // must initialize it before use (init-state enforces).
                     }
@@ -970,13 +1098,17 @@ fn lower_expr_into(
                         } else {
                             lower_type(&hll_ty)
                         };
+                        ctx.begin_temp_region();
                         let dummy = ctx.fresh_temp(mir_ty, e.span);
                         lower_expr_into(ctx, e, &dummy, types)?;
+                        ctx.end_temp_region();
                     }
                 }
             }
             if let Some(last) = last_expr {
+                ctx.begin_temp_region();
                 lower_expr_into(ctx, last, dest, types)?;
+                ctx.end_temp_region();
             } else {
                 ctx.emit_statement(assign_stmt(
                     dest.clone(),
@@ -984,7 +1116,7 @@ fn lower_expr_into(
                     expr.span,
                 ));
             }
-            ctx.pop_and_emit_defers(types)?;
+            ctx.pop_and_emit_scope_exit(types)?;
             ctx.pop_binding_scope();
             Ok(())
         }
@@ -1023,12 +1155,14 @@ fn lower_expr_into(
 
             ctx.loop_stack
                 .push((start_label.clone(), end_label.clone(), dest.clone()));
-            ctx.push_scope(true);
+            ctx.push_scope(true, scope_exit_span(body.span));
             ctx.start_block(start_label.clone());
 
             // Loop body value is discarded
+            ctx.begin_temp_region();
             let dummy = ctx.fresh_temp(unit_ty(), body.span);
             lower_expr_into(ctx, body, &dummy, types)?;
+            ctx.end_temp_region();
             ctx.scopes.pop();
             ctx.terminate_block(goto_term(start_label, body.span));
 
@@ -1048,7 +1182,9 @@ fn lower_expr_into(
             let (_, end_label, dest_place) = ctx.loop_stack.last().ok_or_else(break_err)?.clone();
 
             if let Some(val) = val_expr {
+                ctx.begin_temp_region();
                 lower_expr_into(ctx, val, &dest_place, types)?;
+                ctx.end_temp_region();
             }
 
             let loop_depth = ctx
@@ -1056,7 +1192,8 @@ fn lower_expr_into(
                 .iter()
                 .rposition(|s| s.is_loop)
                 .ok_or_else(break_err)?;
-            ctx.emit_defers_to_depth(loop_depth, types)?;
+            ctx.emit_temp_requirements_for_exits(loop_depth);
+            ctx.emit_scope_exits_to_depth(loop_depth, types)?;
 
             ctx.terminate_block(goto_term(end_label, expr.span));
             Ok(())
@@ -1076,7 +1213,8 @@ fn lower_expr_into(
                 .iter()
                 .rposition(|s| s.is_loop)
                 .ok_or_else(continue_err)?;
-            ctx.emit_defers_to_depth(loop_depth, types)?;
+            ctx.emit_temp_requirements_for_exits(loop_depth + 1);
+            ctx.emit_scope_exits_to_depth(loop_depth + 1, types)?;
 
             ctx.terminate_block(goto_term(start_label, expr.span));
             Ok(())
@@ -1085,9 +1223,12 @@ fn lower_expr_into(
             if let Some(val) = val_expr {
                 // Return value is written to $return.*
                 let ret_place = deref_place(var_place("$return"));
+                ctx.begin_temp_region();
                 lower_expr_into(ctx, val, &ret_place, types)?;
+                ctx.end_temp_region();
             }
-            ctx.emit_defers_to_depth(0, types)?;
+            ctx.emit_temp_requirements_for_exits(0);
+            ctx.emit_scope_exits_to_depth(0, types)?;
             ctx.terminate_block(return_term(expr.span));
             Ok(())
         }
@@ -1111,6 +1252,7 @@ fn lower_expr_into(
             for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
                 let hll::Pattern::Variant(variant, bound_var) = pattern;
                 ctx.start_block(label.clone());
+                ctx.push_scope(false, scope_exit_span(body.span));
                 ctx.push_binding_scope();
 
                 if let Some(var_name) = bound_var {
@@ -1170,6 +1312,7 @@ fn lower_expr_into(
                     let bound_mir_name =
                         ctx.alloc_binding(var_name, bound_var_mir_ty.clone(), body.span);
                     ctx.bind_in_scope(var_name, bound_mir_name.clone());
+                    ctx.register_scope_cleanup(var_place(bound_mir_name.clone()), body.span);
 
                     // Match arm payload extraction. Dispatch table (today):
                     //
@@ -1212,7 +1355,10 @@ fn lower_expr_into(
                     ));
                 }
 
+                ctx.begin_temp_region();
                 lower_expr_into(ctx, body, dest, types)?;
+                ctx.end_temp_region();
+                ctx.pop_and_emit_scope_exit(types)?;
                 ctx.pop_binding_scope();
                 ctx.terminate_block(goto_term(merge_label.clone(), body.span));
             }
@@ -1358,13 +1504,21 @@ pub fn lower_program(
 
                 let mut ctx = LowerCtx::new(program);
 
-                // Seed the base binding scope with fn params so body-level
-                // references resolve to them and later `let` bindings that
-                // clash get renamed rather than fired as duplicate locals.
+                // The function itself is the outermost lexical cleanup scope.
+                // Parameters are bindings in it, so a normal return (or an
+                // explicit return from a nested block) demands that each has
+                // been consumed after its last use.
+                ctx.push_scope(false, scope_exit_span(body_expr.span));
+
+                // Seed the matching base binding scope with fn params so
+                // body-level references resolve to them and later `let`
+                // bindings that clash get renamed rather than fired as
+                // duplicate locals.
                 ctx.push_binding_scope();
                 for p in &params {
                     ctx.taken_names.insert(p.name.clone());
                     ctx.bind_in_scope(&p.name, p.name.clone());
+                    ctx.register_scope_cleanup(var_place(p.name.clone()), p.span);
                 }
 
                 let start_label = "entry".to_string();
@@ -1388,6 +1542,8 @@ pub fn lower_program(
                 // ref-obligation diagnostics at the body's closing brace
                 // rather than at the whole fn signature line.
                 if ctx.current_block_label.is_some() {
+                    ctx.pop_and_emit_scope_exit(types)?;
+                    ctx.pop_binding_scope();
                     ctx.terminate_block(return_term(body_expr.span));
                 }
 
@@ -1496,7 +1652,12 @@ mod tests {
                 sum = copy a;
                 sum = copy b;
                 _temp_0 = unit;
+                require_uninit _temp_0;
                 $return.* = copy sum;
+                require_uninit sum;
+                require_uninit $return;
+                require_uninit b;
+                require_uninit a;
                 return
             }
             ",
@@ -1525,6 +1686,9 @@ mod tests {
               entry:
                 x = copy p.x;
                 $return.* = copy x;
+                require_uninit x;
+                require_uninit $return;
+                require_uninit p;
                 return
             }
             ",
@@ -1557,11 +1721,14 @@ mod tests {
               switch_Some_0:
                 val = copy v as Some;
                 $return.* = copy val;
+                require_uninit val;
                 goto switch_merge_2
               switch_None_1:
                 $return.* = 0;
                 goto switch_merge_2
               switch_merge_2:
+                require_uninit $return;
+                require_uninit v;
                 return
             }
             ",
@@ -1593,9 +1760,14 @@ mod tests {
               loop_start_0:
                 x = 42;
                 _temp_1 = unit;
+                require_uninit _temp_1;
                 $return.* = copy x;
+                require_uninit _temp_2;
+                require_uninit _temp_0;
                 goto loop_end_1
               loop_end_1:
+                require_uninit x;
+                require_uninit $return;
                 return
             }
             ",
@@ -1622,11 +1794,14 @@ mod tests {
               if_true_0:
                 a = 1;
                 _temp_0 = unit;
+                require_uninit a;
                 goto if_merge_2
               if_false_1:
                 _temp_0 = unit;
                 goto if_merge_2
               if_merge_2:
+                require_uninit _temp_0;
+                require_uninit cond;
                 return
             }
             ",
@@ -1671,6 +1846,12 @@ mod tests {
                 a = [1, 2, 3];
                 val = copy arr[0];
                 $return.* = copy val;
+                require_uninit val;
+                require_uninit a;
+                require_uninit o;
+                require_uninit p;
+                require_uninit $return;
+                require_uninit arr;
                 return
             }
             ",
@@ -1792,6 +1973,7 @@ mod tests {
               switch_Empty_0:
                 u = copy tree as Empty;
                 $return.* = false;
+                require_uninit u;
                 goto switch_merge_2
               switch_Node_1:
                 n = copy tree as Node;
@@ -1809,28 +1991,45 @@ mod tests {
               if_true_6:
                 _temp_4 = &out $return.*;
                 call search_tree(move n.*.left, copy target, move _temp_4);
+                require_uninit _temp_4;
                 goto if_merge_8
               if_false_7:
                 _temp_5 = &out $return.*;
                 call search_tree(move n.*.right, copy target, move _temp_5);
+                require_uninit _temp_5;
                 goto if_merge_8
               if_merge_8:
+                require_uninit _temp_3;
+                require_uninit _temp_2;
                 goto if_merge_5
               if_merge_5:
+                require_uninit _temp_1;
+                require_uninit _temp_0;
+                require_uninit val;
+                require_uninit n;
                 goto switch_merge_2
               switch_merge_2:
+                require_uninit $return;
+                require_uninit target;
+                require_uninit tree;
                 return
             }
 
             fn is_equal(x: i64, y: i64, $return: &out bool) {
               entry:
                 $return.* = true;
+                require_uninit $return;
+                require_uninit y;
+                require_uninit x;
                 return
             }
 
             fn is_greater(x: i64, y: i64, $return: &out bool) {
               entry:
                 $return.* = true;
+                require_uninit $return;
+                require_uninit y;
+                require_uninit x;
                 return
             }
             ",
@@ -1859,8 +2058,16 @@ mod tests {
                 call $i64_mul(copy b, 2, move _temp_1);
                 _temp_2 = &out x;
                 call $i64_add(copy a, move _temp_0, move _temp_2);
+                require_uninit _temp_2;
+                require_uninit _temp_1;
+                require_uninit _temp_0;
                 _temp_3 = &out $return.*;
                 call $i64_lt(copy x, 10, move _temp_3);
+                require_uninit _temp_3;
+                require_uninit x;
+                require_uninit $return;
+                require_uninit b;
+                require_uninit a;
                 return
             }
             ",
@@ -1882,6 +2089,9 @@ mod tests {
               entry:
                 _temp_0 = &out $return.*;
                 call $u32_add(copy a, 1u32, move _temp_0);
+                require_uninit _temp_0;
+                require_uninit $return;
+                require_uninit a;
                 return
             }
             ",
@@ -1903,6 +2113,9 @@ mod tests {
               _temp_1: &out i64;
               entry:
                 $return.* = 1;
+                require_uninit _temp_0;
+                require_uninit $return;
+                require_uninit a;
                 return
             }
             ",
@@ -1998,11 +2211,18 @@ mod tests {
                 _temp_1 = unit;
                 x = 20;
                 _temp_2 = unit;
+                require_uninit _temp_2;
                 x = 10;
                 _temp_3 = unit;
+                require_uninit _temp_3;
+                require_uninit _temp_1;
                 res.* = copy x;
                 _temp_4 = unit;
+                require_uninit _temp_4;
                 _temp_0 = unit;
+                require_uninit x;
+                require_uninit _temp_0;
+                require_uninit res;
                 return
             }
             ",
@@ -2026,6 +2246,9 @@ mod tests {
                 $return.* = copy x.*;
                 x.* = 100;
                 _temp_0 = unit;
+                require_uninit _temp_0;
+                require_uninit $return;
+                require_uninit x;
                 return
             }
             ",
@@ -2060,14 +2283,22 @@ mod tests {
                 x = 1;
                 res.* = copy x;
                 _temp_1 = unit;
+                require_uninit _temp_1;
                 _temp_0 = unit;
                 x = 10;
                 _temp_3 = unit;
+                require_uninit _temp_3;
                 x = 30;
                 _temp_4 = unit;
+                require_uninit _temp_4;
                 _temp_2 = unit;
                 x = 20;
                 _temp_5 = unit;
+                require_uninit _temp_5;
+                require_uninit _temp_2;
+                require_uninit x;
+                require_uninit _temp_0;
+                require_uninit res;
                 return
             }
             ",
@@ -2110,10 +2341,15 @@ mod tests {
               loop_start_0:
                 branch(true) [true: if_true_2, false: if_false_3]
               if_true_2:
+                require_uninit _temp_3;
+                require_uninit _temp_2;
                 _temp_6 = &out _temp_5;
                 call $i64_add(copy x, 1, move _temp_6);
                 x = move _temp_5;
                 _temp_4 = unit;
+                require_uninit _temp_6;
+                require_uninit _temp_5;
+                require_uninit _temp_4;
                 goto loop_end_1
               if_false_3:
                 _temp_2 = unit;
@@ -2123,11 +2359,20 @@ mod tests {
                 call $i64_add(copy x, 1, move _temp_9);
                 x = move _temp_8;
                 _temp_7 = unit;
+                require_uninit _temp_9;
+                require_uninit _temp_8;
+                require_uninit _temp_7;
+                require_uninit _temp_2;
                 goto loop_start_0
               loop_end_1:
+                require_uninit _temp_1;
                 res.* = copy x;
                 _temp_10 = unit;
+                require_uninit _temp_10;
                 _temp_0 = unit;
+                require_uninit x;
+                require_uninit _temp_0;
+                require_uninit res;
                 return
             }
             ",

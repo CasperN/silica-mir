@@ -142,6 +142,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
             }
         }
     }
+
 }
 
 fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
@@ -156,6 +157,11 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
     let entry_states = block_entry_states(env, func);
     let locals = func.locals_map();
     let scope = func.meta.param_scope();
+    // The cross-edge fallback below needs the state of the program it will
+    // actually emit, including the drops planned before ghost requirements.
+    // Looking only at the original fixpoint state would schedule a second
+    // drop after a predecessor has already satisfied `require_uninit`.
+    let mut elaborated_exit_states = IndexMap::new();
 
     // Unified walk: for each block, walk forward from its entry state
     // and plan drops at each program point where a Drop-typed slot
@@ -213,6 +219,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
                     .insert((block.label.clone(), insert_pos), drops);
             }
         }
+        elaborated_exit_states.insert(block.label.clone(), state);
     }
 
     // Cross-edge: at every join with Diverged-at-entry paths, split the
@@ -224,9 +231,9 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
     // way through — at the eventual return the direct preds already
     // have Diverged exit states, so the pred-Init check finds nothing
     // to drop. Handling every join catches the transition at its
-    // first occurrence. Uses fixpoint entry states directly — the
-    // pre-stmt drops above are intra-block, so predecessor exit states
-    // are unaffected.
+    // first occurrence. Its predecessor states include the intra-block
+    // drops planned above, so an explicit requirement cannot be followed
+    // by a redundant edge drop.
     for block in &body.blocks {
         let Some(block_entry) = entry_states.get(&block.label) else {
             continue;
@@ -242,15 +249,11 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
             {
                 continue;
             }
-            let Some(pred_entry) = entry_states.get(&pred_block.label) else {
+            let Some(pred_exit) = elaborated_exit_states.get(&pred_block.label) else {
                 continue;
             };
-            let mut pred_exit = pred_entry.clone();
-            for stmt in &pred_block.statements {
-                transfer_stmt_silent(env, func, stmt, &mut pred_exit);
-            }
             for (path_place, ty) in &diverged_paths {
-                if state_at(&pred_exit, path_place) == Some(InitState::Init)
+                if state_at(pred_exit, path_place) == Some(InitState::Init)
                     && class_of(ty, env, &scope).implies(Marker::Drop)
                 {
                     plan.cross_edge

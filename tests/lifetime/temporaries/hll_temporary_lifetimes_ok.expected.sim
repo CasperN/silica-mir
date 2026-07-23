@@ -1,0 +1,101 @@
+fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
+  entry:
+    $return.* = copy r.*;
+    unborrow $return;
+    unborrow r;
+    require_uninit $return;
+    require_uninit r;
+    return
+}
+
+fn<'s0> named_value_borrow($return: &out 's0 i64) {
+  value: i64;
+  _temp_0: & i64;
+  _temp_1: &out i64;
+  entry:
+    value = 41;
+    _temp_0 = & value;
+    _temp_1 = &out $return.*;
+    call read(move _temp_0, move _temp_1);
+    unborrow $return;
+    require_uninit _temp_1;
+    require_uninit _temp_0;
+    drop value;
+    require_uninit value;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
+  i: i64;
+  _temp_0: unit;
+  value: i64;
+  _temp_1: unit;
+  _temp_2: bool;
+  _temp_3: &out bool;
+  _temp_4: unit;
+  _temp_5: unit;
+  _temp_6: i64;
+  _temp_7: &out i64;
+  _temp_8: unit;
+  _temp_9: unit;
+  _temp_10: i64;
+  _temp_11: &out i64;
+  _temp_12: unit;
+  _temp_13: i64;
+  _temp_14: &out i64;
+  entry:
+    i = 0;
+    goto loop_start_0
+  loop_start_0:
+    value = copy i;
+    _temp_3 = &out _temp_2;
+    call $i64_lt(copy i, 1, move _temp_3);
+    branch(move _temp_2) [true: if_true_2, false: if_false_3]
+  if_true_2:
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    require_uninit _temp_1;
+    _temp_7 = &out _temp_6;
+    call $i64_add(copy i, 1, move _temp_7);
+    drop i;
+    i = move _temp_6;
+    _temp_5 = unit;
+    require_uninit _temp_7;
+    require_uninit _temp_6;
+    drop _temp_5;
+    require_uninit _temp_5;
+    drop value;
+    require_uninit value;
+    goto loop_start_0
+  if_false_3:
+    _temp_1 = unit;
+    goto if_merge_4
+  if_merge_4:
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    drop _temp_1;
+    require_uninit _temp_1;
+    $return.* = copy value;
+    unborrow $return;
+    require_uninit _temp_8;
+    require_uninit _temp_0;
+    _temp_11 = &out _temp_10;
+    call $i64_add(copy i, 1, move _temp_11);
+    drop i;
+    i = move _temp_10;
+    _temp_9 = unit;
+    require_uninit _temp_11;
+    require_uninit _temp_10;
+    drop _temp_9;
+    require_uninit _temp_9;
+    drop value;
+    require_uninit value;
+    goto loop_end_1
+  loop_end_1:
+    drop i;
+    require_uninit i;
+    require_uninit $return;
+    return
+}
