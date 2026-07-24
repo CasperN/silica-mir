@@ -1,0 +1,42 @@
+struct Token: Copy + Drop {
+  value: i64
+}
+
+struct Pair: Move {
+  left: i64
+  right: i64
+}
+
+extern fn take_num(x: i64);
+
+extern fn take_token(x: Token);
+
+extern fn observe(r: & 's0 i64);
+
+fn repeated_scalar(x: i64) {
+  entry:
+    call take_num(copy x);
+    call take_num(move x);
+    return
+}
+
+fn repeated_custom(x: Token) {
+  entry:
+    call take_token(copy x);
+    call take_token(move x);
+    return
+}
+
+fn<'s0> repeated_shared_ref(r: & 's0 i64) {
+  entry:
+    call observe(copy r);
+    call observe(move r);
+    return
+}
+
+fn sibling_fields(p: Pair) {
+  entry:
+    call take_num(move p.left);
+    call take_num(move p.right);
+    return
+}

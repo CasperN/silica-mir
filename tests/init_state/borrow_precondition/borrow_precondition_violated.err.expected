@@ -1,150 +1,150 @@
-error: at 25:5: [INIT-BorrowStateMismatch] In function 'shared_of_never_init', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
+error: at 27:5: [INIT-BorrowStateMismatch] In function 'shared_of_never_init', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
     |
- 24 |   entry:
- 25 |     r = &x;
+ 26 |   entry:
+ 27 |     r = &x;
     |     ^^^^^^
- 26 |     return
+ 28 |     return
     |
-error: at 33:5: [INIT-BorrowStateMismatch] In function 'shared_of_moved', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is moved-from
+error: at 35:5: [INIT-BorrowStateMismatch] In function 'shared_of_moved', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is moved-from
     |
- 32 |     call sink(move x);
- 33 |     r = &x;
+ 34 |     call sink(move x);
+ 35 |     r = &x;
     |     ^^^^^^
- 34 |     return
+ 36 |     return
     |
-error: at 42:5: [INIT-BorrowStateMismatch] In function 'shared_of_partial', block 'entry': cannot create & of 'p': place must be initialized at borrow, but is partially initialized
+error: at 44:5: [INIT-BorrowStateMismatch] In function 'shared_of_partial', block 'entry': cannot create & of 'p': place must be initialized at borrow, but is partially initialized
     |
- 41 |     p.x = 1;
- 42 |     r = &p;
+ 43 |     p.x = 1;
+ 44 |     r = &p;
     |     ^^^^^^
- 43 |     return
+ 45 |     return
     |
-error: at 52:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init', block 'entry': cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized
+error: at 54:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init', block 'entry': cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized
     |
- 51 |   entry:
- 52 |     r = &mut x;
+ 53 |   entry:
+ 54 |     r = &mut x;
     |     ^^^^^^^^^^
- 53 |     return
+ 55 |     return
     |
-error: at 63:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init_field', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
+error: at 65:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init_field', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
     |
- 62 |     p.x = 1;
- 63 |     r = &mut p.y;
+ 64 |     p.x = 1;
+ 65 |     r = &mut p.y;
     |     ^^^^^^^^^^^^
- 64 |     return
+ 66 |     return
     |
-error: at 73:5: [INIT-BorrowStateMismatch] In function 'drop_of_never_init', block 'entry': cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized
+error: at 75:5: [INIT-BorrowStateMismatch] In function 'drop_of_never_init', block 'entry': cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized
     |
- 72 |   entry:
- 73 |     r = &drop x;
+ 74 |   entry:
+ 75 |     r = &drop x;
     |     ^^^^^^^^^^^
- 74 |     return
+ 76 |     return
     |
-error: at 74:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_never_init', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 76:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_never_init', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
- 70 |   x: i64;
- 71 |   r: &drop i64;
+ 72 |   x: i64;
+ 73 |   r: &drop i64;
     |   ------------- reference declared here
- 72 |   entry:
- 73 |     r = &drop x;
- 74 |     return
+ 74 |   entry:
+ 75 |     r = &drop x;
+ 76 |     return
     |     ^^^^^^
- 75 | }
+ 77 | }
     |
-error: at 82:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
+error: at 84:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
     |
- 81 |     p.x = 1;
- 82 |     r = &drop p;
+ 83 |     p.x = 1;
+ 84 |     r = &drop p;
     |     ^^^^^^^^^^^
- 83 |     return
+ 85 |     return
     |
-error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 85:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
- 78 |   p: P;
- 79 |   r: &drop P;
+ 80 |   p: P;
+ 81 |   r: &drop P;
     |   ----------- reference declared here
- 80 |   entry:
+ 82 |   entry:
     |
     | ...
     |
- 82 |     r = &drop p;
- 83 |     return
+ 84 |     r = &drop p;
+ 85 |     return
     |     ^^^^^^
- 84 | }
+ 86 | }
     |
-error: at 93:5: [INIT-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
+error: at 95:5: [INIT-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
     |
- 92 |     p.x = 1;
- 93 |     r = &out p;
+ 94 |     p.x = 1;
+ 95 |     r = &out p;
     |     ^^^^^^^^^^
- 94 |     return
+ 96 |     return
     |
-error: at 94:5: [INIT-RefObligationUnfulfilled] In function 'out_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 96:5: [INIT-RefObligationUnfulfilled] In function 'out_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 89 |   p: P;
- 90 |   r: &out P;
+ 91 |   p: P;
+ 92 |   r: &out P;
     |   ---------- reference declared here
- 91 |   entry:
+ 93 |   entry:
     |
     | ...
     |
- 93 |     r = &out p;
- 94 |     return
+ 95 |     r = &out p;
+ 96 |     return
     |     ^^^^^^
- 95 | }
+ 97 | }
     |
-error: at 102:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
+error: at 104:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
      |
- 101 |   entry:
- 102 |     rr = &out x;
+ 103 |   entry:
+ 104 |     rr = &out x;
      |     ^^^^^^^^^^^
- 103 |     return
+ 105 |     return
      |
   hint: move 'x' out first — linear values cannot be forgotten in place
-error: at 103:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'rr' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 105:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'rr' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
-  99 | fn out_of_init_non_drop(x: Linear) {
- 100 |   rr: &out Linear;
+ 101 | fn out_of_init_non_drop(x: Linear) {
+ 102 |   rr: &out Linear;
      |   ---------------- reference declared here
- 101 |   entry:
- 102 |     rr = &out x;
- 103 |     return
+ 103 |   entry:
+ 104 |     rr = &out x;
+ 105 |     return
      |     ^^^^^^
- 104 | }
+ 106 | }
      |
-error: at 103:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 105:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
-  98 | # failure carries the "move out first" hint.
-  99 | fn out_of_init_non_drop(x: Linear) {
+ 100 | # failure carries the "move out first" hint.
+ 101 | fn out_of_init_non_drop(x: Linear) {
      |                         --------- reference declared here
- 100 |   rr: &out Linear;
+ 102 |   rr: &out Linear;
      |
      | ...
      |
- 102 |     rr = &out x;
- 103 |     return
+ 104 |     rr = &out x;
+ 105 |     return
      |     ^^^^^^
- 104 | }
+ 106 | }
      |
-error: at 111:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
+error: at 112:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
      |
- 110 |   entry:
- 111 |     rr = &uninit x;
+ 111 |   entry:
+ 112 |     rr = &uninit x;
      |     ^^^^^^^^^^^^^^
- 112 |     return
+ 113 |     return
      |
   hint: move 'x' out first — linear values cannot be forgotten in place
-error: at 112:5: [INIT-RefObligationUnfulfilled] In function 'uninit_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 113:5: [INIT-RefObligationUnfulfilled] In function 'uninit_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
- 107 | 
- 108 | fn uninit_of_init_non_drop(x: Linear) {
+ 108 | # ---------- &uninit: pointee Init non-Drop ----------
+ 109 | fn uninit_of_init_non_drop(x: Linear) {
      |                            --------- reference declared here
- 109 |   rr: &uninit Linear;
+ 110 |   rr: &uninit Linear;
      |
      | ...
      |
- 111 |     rr = &uninit x;
- 112 |     return
+ 112 |     rr = &uninit x;
+ 113 |     return
      |     ^^^^^^
- 113 | }
+ 114 | }
      |

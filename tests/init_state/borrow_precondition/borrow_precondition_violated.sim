@@ -16,6 +16,8 @@ struct P: Copy + Drop { x: i64  y: i64 }
 # no drop for elaboration to insert.
 struct Linear { r: &out i64 }
 
+struct M: Move { value: i64 }
+
 # ---------- & shared: pointee NeverInit / Moved / Partial ----------
 
 fn shared_of_never_init() {
@@ -26,8 +28,8 @@ fn shared_of_never_init() {
     return
 }
 
-fn shared_of_moved(x: i64) {
-  r: &i64;
+fn shared_of_moved(x: M) {
+  r: &M;
   entry:
     call sink(move x);
     r = &x;
@@ -104,7 +106,6 @@ fn out_of_init_non_drop(x: Linear) {
 }
 
 # ---------- &uninit: pointee Init non-Drop ----------
-
 fn uninit_of_init_non_drop(x: Linear) {
   rr: &uninit Linear;
   entry:
@@ -112,4 +113,4 @@ fn uninit_of_init_non_drop(x: Linear) {
     return
 }
 
-extern fn sink(y: i64);
+extern fn sink(y: M);

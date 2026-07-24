@@ -2,6 +2,7 @@ pub mod ast;
 pub mod block_reachability;
 pub mod cfg_edit;
 pub mod codegen;
+pub mod copy_relaxation;
 pub mod dataflow;
 pub mod elision;
 pub mod helpers;

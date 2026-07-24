@@ -683,7 +683,7 @@ Canonical: `tests/generics/`.
 
 ## Compiler Structure
 Where possible the compiler splits subsystems into independent passes.
-`src/dataflow.rs` contains common forwards/backwards CFG traversal utilities
+`src/mir/dataflow.rs` contains common forwards/backwards CFG traversal utilities
 that are shared across multiple passes. The compiler splits elaboration and
 checker passes. Elaboration passes add statements, such as `drop` and
 `unborrow`, which make ownership/linearity transitions explicit. Checker passes
@@ -701,22 +701,22 @@ Pre-elaboration checks:
 4. **Substructural statement check** — `copy`/`move` require Copy/Move types.
 5. **Variant flow** — `switchEnum` exhaustiveness + enum-variant refinement.
 6. **Block reachability** — dead-block warnings.
-7. **Init state + reference obligations** — the `(cur, post)` state machine
-   over locals; also validates deref preconditions and enforces
-   `&out`/`&drop` obligations.
-
 Elaboration:
 
+7. **Copy relaxation** — rewrite an earlier `move place` to `copy place`
+   when a later reachable use needs the same Copy-owned path. This runs before
+   NLL because copies do not close borrower loans.
 8. **NLL lifetime elaboration** — insert `unborrow` at ASAP last-use points.
-9. **Substructural drop elaboration** — insert `drop` before returns for
+9. **Place-state cleanup elaboration** — insert `drop` before returns for
    Init-at-return values whose types are Drop.
 
 Post-elaboration checks:
 
-10. **Init state (re-run)** — surface obligation errors at
-    NLL-inserted `unborrow` sites.
-11. **Substructural leak check** — strict "no Init at return."
-12. **Lifetime loan check** — every access respects the active loan set.
+10. **Init state + reference obligations** — validate the `(cur, post)` state
+    machine over locals, deref preconditions, `require_uninit`, and
+    `&out`/`&drop` obligations, including NLL-inserted `unborrow` sites and
+    the strict no-Init-at-return rule.
+11. **Lifetime loan check** — every access respects the active loan set.
 
 Codegen (`src/codegen/`) emits textual LLVM IR from the elaborated MIR.
 It's a separate stage that assumes the MIR is well-checked.

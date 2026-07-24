@@ -1,16 +1,16 @@
-error: at 37:5: [INIT-UseBeforeInit] In function 'branch_join_disagreement', block 'merge': variable 'x' is used before initialization
+error: at 38:5: [INIT-UseBeforeInit] In function 'branch_join_disagreement', block 'merge': variable 'x' is used before initialization
     |
- 36 |   merge:
- 37 |     y = copy x;
+ 37 |   merge:
+ 38 |     y = copy x;
     |     ^^^^^^^^^^
- 38 |     return
+ 39 |     return
     |
-error: at 54:5: [INIT-UseAfterMove] In function 'move_one_branch_read_at_merge', block 'merge': variable 'x' is used after move
+error: at 55:5: [INIT-UseAfterMove] In function 'move_one_branch_read_at_merge', block 'merge': variable 'x' is used after move
     |
- 53 |   merge:
- 54 |     call use_num(copy x);
+ 54 |   merge:
+ 55 |     call use_num(move x);
     |     ^^^^^^^^^^^^^^^^^^^^
- 55 |     return
+ 56 |     return
     |
 error: at 69:5: [INIT-UseBeforeInit] In function 'loop_body_reads_before_writing', block 'body': variable 'x' is used before initialization
     |

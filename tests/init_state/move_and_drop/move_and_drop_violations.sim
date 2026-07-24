@@ -12,13 +12,15 @@
 # [B] drop_of_uninit           — explicit drop of NeverInit local     → UseBeforeInit
 # [C] call_arg_uninit          — NeverInit value passed as call arg   → UseBeforeInit
 # [D] call_target_uninit       — NeverInit fn-ptr used as call target → UseBeforeInit
-# [E] read_after_move          — copy of a Moved local                → UseAfterMove
+# [E] read_after_move          — move of a Moved local                → UseAfterMove
 # [F] move_then_move           — second move of already-Moved local    → UseAfterMove
 # [G] drop_consumes_like_move  — drop then copy sees Moved state       → UseAfterMove
-# [H] call_arg_move_then_copy  — move then copy in same call arg list  → UseAfterMove
+# [H] call_arg_move_then_move  — move then move in same call arg list  → UseAfterMove
+
+struct M: Drop + Move { value: i64 }
 
 extern fn takes_num(a: i64);
-extern fn take_two(a: i64, b: i64);
+extern fn take_two(a: M, b: M);
 
 # ---------- [A] NeverInit local: copy fires UseBeforeInit ----------
 
@@ -65,17 +67,17 @@ fn call_target_uninit() {
     return
 }
 
-# ---------- [F] Moved local: copy fires UseAfterMove ----------
+# ---------- [F] Moved local: second move fires UseAfterMove ----------
 
-# Moving x into y leaves x in the Moved state. A subsequent copy of x
+# Moving x into y leaves x in the Moved state. A subsequent move of x
 # fires UseAfterMove rather than UseBeforeInit because x passed through
-# Init before the move.
-fn read_after_move(x: i64) {
-  y: i64;
-  z: i64;
+# Init before the first move.
+fn read_after_move(x: M) {
+  y: M;
+  z: M;
   entry:
     y = move x;
-    z = copy x;
+    z = move x;
     return
 }
 
@@ -83,9 +85,9 @@ fn read_after_move(x: i64) {
 
 # The first move consumes x. The second move of the same already-Moved
 # local fires UseAfterMove.
-fn move_then_move(x: i64) {
-  y: i64;
-  z: i64;
+fn move_then_move(x: M) {
+  y: M;
+  z: M;
   entry:
     y = move x;
     z = move x;
@@ -108,10 +110,10 @@ fn drop_consumes_like_move(x: i64) {
 # ---------- [I] Call args: move then copy fires UseAfterMove ----------
 
 # Arguments are evaluated left-to-right. Moving x in the first slot
-# leaves x Moved; copying x in the second slot then fires UseAfterMove
+# leaves x Moved; moving x in the second slot then fires UseAfterMove
 # at the call statement span.
-fn call_arg_move_then_copy(x: i64) {
+fn call_arg_move_then_move(x: M) {
   entry:
-    call take_two(move x, copy x);
+    call take_two(move x, move x);
     return
 }

@@ -1,79 +1,79 @@
-error: at 29:5: [SUB-CopyOfNonCopy] In function 'copy_whole_while_partial', block 'entry': cannot copy non-Copy type P
+error: at 33:5: [SUB-CopyOfNonCopy] In function 'copy_whole_while_partial', block 'entry': cannot copy non-Copy type P
     |
- 28 |     p.x = 1;
- 29 |     q = copy p;
+ 32 |     p.x = 1;
+ 33 |     q = copy p;
     |     ^^^^^^^^^^
- 30 |     return
+ 34 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 29:5: [INIT-UsePartiallyInit] In function 'copy_whole_while_partial', block 'entry': variable 'p' is not fully initialized here
+error: at 33:5: [INIT-UsePartiallyInit] In function 'copy_whole_while_partial', block 'entry': variable 'p' is not fully initialized here
     |
- 28 |     p.x = 1;
- 29 |     q = copy p;
+ 32 |     p.x = 1;
+ 33 |     q = copy p;
     |     ^^^^^^^^^^
- 30 |     return
+ 34 |     return
     |
-error: at 43:5: [INIT-UseBeforeInit] In function 'read_never_init_field', block 'entry': variable 'p' is used before initialization
+error: at 47:5: [INIT-UseBeforeInit] In function 'read_never_init_field', block 'entry': variable 'p' is used before initialization
     |
- 42 |     p.x = 1;
- 43 |     a = copy p.y;
+ 46 |     p.x = 1;
+ 47 |     a = copy p.y;
     |     ^^^^^^^^^^^^
- 44 |     return
+ 48 |     return
     |
-error: at 56:5: [INIT-UseAfterMove] In function 'read_moved_field', block 'entry': variable 'p' is used after move
+error: at 60:5: [INIT-UseAfterMove] In function 'read_moved_field', block 'entry': variable 'p' is used after move
     |
- 55 |     a = move p.x;
- 56 |     b = copy p.x;
+ 59 |     a = move p.x;
+ 60 |     b = move p.x;
     |     ^^^^^^^^^^^^
- 57 |     return
+ 61 |     return
     |
-error: at 70:5: [INIT-UseBeforeInit] In function 'nested_read_uninit_leaf', block 'entry': variable 'o' is used before initialization
+error: at 74:5: [INIT-UseBeforeInit] In function 'nested_read_uninit_leaf', block 'entry': variable 'o' is used before initialization
     |
- 69 |     o.c = 3;
- 70 |     n = copy o.i.b;
+ 73 |     o.c = 3;
+ 74 |     n = copy o.i.b;
     |     ^^^^^^^^^^^^^^
- 71 |     return
+ 75 |     return
     |
-error: at 81:5: [INIT-UseBeforeInit] In function 'array_read_uninit_slot', block 'entry': variable 'a' is used before initialization
+error: at 85:5: [INIT-UseBeforeInit] In function 'array_read_uninit_slot', block 'entry': variable 'a' is used before initialization
     |
- 80 |     a[0] = 1;
- 81 |     b = copy a[1];
+ 84 |     a[0] = 1;
+ 85 |     b = copy a[1];
     |     ^^^^^^^^^^^^^
- 82 |     return
+ 86 |     return
     |
-error: at 92:5: [INIT-UsePartiallyInit] In function 'array_read_whole_while_partial', block 'entry': variable 'a' is not fully initialized here
+error: at 96:5: [INIT-UsePartiallyInit] In function 'array_read_whole_while_partial', block 'entry': variable 'a' is not fully initialized here
     |
- 91 |     a[0] = 1;
- 92 |     b = copy a;
+ 95 |     a[0] = 1;
+ 96 |     b = copy a;
     |     ^^^^^^^^^^
- 93 |     return
+ 97 |     return
     |
-error: at 114:5: [INIT-UsePartiallyInit] In function 'loop_carried_partial', block 'exit': variable 'p' is not fully initialized here
+error: at 118:5: [INIT-UsePartiallyInit] In function 'loop_carried_partial', block 'exit': variable 'p' is not fully initialized here
      |
- 113 |   exit:
- 114 |     a = copy p;
+ 117 |   exit:
+ 118 |     a = copy p;
      |     ^^^^^^^^^^
- 115 |     return
+ 119 |     return
      |
-error: at 127:5: [INIT-UseBeforeInit] In function 'pair_read_uninit_param_field', block 'entry': variable 'p' is used before initialization
+error: at 131:5: [INIT-UseBeforeInit] In function 'pair_read_uninit_param_field', block 'entry': variable 'p' is used before initialization
      |
- 126 |     p.a = move a;
- 127 |     x = copy p.b;
+ 130 |     p.a = move a;
+ 131 |     x = copy p.b;
      |     ^^^^^^^^^^^^
- 128 |     return
+ 132 |     return
      |
-error: at 30:5: [INIT-ReturnValueLeak] In function 'copy_whole_while_partial', block 'entry': value 'q' of type P is not consumed at return
+error: at 34:5: [INIT-ReturnValueLeak] In function 'copy_whole_while_partial', block 'entry': value 'q' of type P is not consumed at return
     |
- 25 |   p: P;
- 26 |   q: P;
+ 29 |   p: P;
+ 30 |   q: P;
     |   ----- variable declared here
- 27 |   entry:
+ 31 |   entry:
     |
     | ...
     |
- 29 |     q = copy p;
- 30 |     return
+ 33 |     q = copy p;
+ 34 |     return
     |     ^^^^^^
- 31 | }
+ 35 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

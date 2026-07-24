@@ -1,14 +1,13 @@
 # Init-state join failures across CFG shapes.
 #
 # When predecessors of a join disagree on a local's state — one Init,
-# one NeverInit or Moved — the join produces `Diverged` and any
-# subsequent use fires `INIT-UseInconsistent`. The same rule catches
-# a loop body that reads a local before writing it: the header join
-# sees NeverInit from entry and Init from the backedge, so the read
-# at the top of the body is inconsistent.
+# one NeverInit or Moved — a subsequent access must not be accepted.
+# The exact diagnostic reflects the access and state the init-state
+# checker derives at that program point. The same rule catches a loop
+# body that reads a local before writing it.
 #
 # Every function exercises one cell of the (CFG shape x disagreement
-# cause) matrix. A regression pins the wrong shape or lets a Diverged
+# cause) matrix. A regression pins the wrong shape or lets an invalid
 # read through.
 #
 #   fn                                shape           disagreement cause
@@ -16,13 +15,15 @@
 #   move_one_branch_read_at_merge     branch/merge    one arm moves out, the other leaves Init
 #   loop_body_reads_before_writing    natural loop    first-iter NeverInit vs backedge Init
 
-extern fn take(y: i64);
-extern fn use_num(n: i64);
+struct M: Drop + Move { value: i64 }
+
+extern fn take(y: M);
+extern fn use_num(n: M);
 
 # ---------- branch/merge: only one arm inits x ----------
 
-# The true arm writes `x`; the false arm doesn't. The join produces
-# `Diverged` and the read at `merge` fires UseInconsistent.
+# The true arm writes `x`; the false arm doesn't. The read at `merge`
+# must not be accepted.
 fn branch_join_disagreement(b: bool) {
   x: i64;
   y: i64;
@@ -40,9 +41,9 @@ fn branch_join_disagreement(b: bool) {
 
 # ---------- branch/merge: move-out on one arm, read on the merge ----------
 
-# The true arm moves `x` out; the false arm leaves it Init. The join
-# produces `Diverged` and the read at `merge` fires UseInconsistent.
-fn move_one_branch_read_at_merge(x: i64, b: bool) {
+# The true arm moves `x` out; the false arm leaves it Init. The consuming
+# move at `merge` must still fail with UseAfterMove.
+fn move_one_branch_read_at_merge(x: M, b: bool) {
   entry:
     branch(copy b) [true: t, false: fbr]
   t:
@@ -51,15 +52,14 @@ fn move_one_branch_read_at_merge(x: i64, b: bool) {
   fbr:
     goto merge
   merge:
-    call use_num(copy x);
+    call use_num(move x);
     return
 }
 
 # ---------- natural loop: body reads x before writing on the first iteration ----------
 
-# On entry to `body`, `x` is NeverInit; the read at `y = copy x`
-# fires UseInconsistent (the header join sees NeverInit from entry
-# and Init from the backedge).
+# On the first entry to `body`, `x` is NeverInit; the read at
+# `y = copy x` fails before the later backedge can establish a value.
 fn loop_body_reads_before_writing(b: bool) {
   x: i64;
   y: i64;

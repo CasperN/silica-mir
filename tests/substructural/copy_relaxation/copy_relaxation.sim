@@ -1,0 +1,45 @@
+# Copy relaxation is a pre-NLL, CFG-aware MIR elaboration pass. It converts
+# an earlier move to copy exactly when a later reachable use needs the same
+# Copy-owned path. This fixture covers the pipeline-level contract; the pass's
+# unit tests cover branch, loop, projection, and `&out` transfer edges.
+
+struct Token: Copy + Drop { value: i64 }
+struct Pair: Move { left: i64 right: i64 }
+
+extern fn take_num(x: i64);
+extern fn take_token(x: Token);
+extern fn observe(r: &i64);
+
+# The first move preserves x for the second use; the last use stays a move.
+fn repeated_scalar(x: i64) {
+  entry:
+    call take_num(move x);
+    call take_num(move x);
+    return
+}
+
+# Classification comes from the declared MIR class, not a lowering heuristic.
+fn repeated_custom(x: Token) {
+  entry:
+    call take_token(move x);
+    call take_token(move x);
+    return
+}
+
+# Copying a shared borrower lets NLL retain its loan through the first call
+# and close it after the final consuming move.
+fn repeated_shared_ref(r: &i64) {
+  entry:
+    call observe(move r);
+    call observe(move r);
+    return
+}
+
+# Sibling projections are independent move paths. The use of p.right does not
+# justify copying the earlier move of p.left.
+fn sibling_fields(p: Pair) {
+  entry:
+    call take_num(move p.left);
+    call take_num(move p.right);
+    return
+}

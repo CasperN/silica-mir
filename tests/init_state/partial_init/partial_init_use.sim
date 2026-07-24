@@ -10,6 +10,10 @@ struct P { x: i64  y: i64 }
 
 struct Q: Copy + Drop { x: i64  y: i64 }
 
+struct M: Drop + Move { value: i64 }
+
+struct QMoved: Drop + Move { x: M  y: i64 }
+
 struct Inner { a: i64  b: i64 }
 
 struct Outer { i: Inner  c: i64 }
@@ -48,12 +52,12 @@ fn read_never_init_field() {
 
 # `p.x` moves out; the re-read fires UseAfterMove (distinct from
 # UseBeforeInit — the subfield transitioned through Init).
-fn read_moved_field(p: Q) {
-  a: i64;
-  b: i64;
+fn read_moved_field(p: QMoved) {
+  a: M;
+  b: M;
   entry:
     a = move p.x;
-    b = copy p.x;
+    b = move p.x;
     return
 }
 

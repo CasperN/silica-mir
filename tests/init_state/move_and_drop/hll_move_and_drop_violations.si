@@ -3,9 +3,8 @@ struct CopyBox: Copy + Drop { val: i64 }
 
 # ---------- INIT-UseAfterMove: plain re-use after `let`-move ----------
 
-# Every HLL `let y = x` lowers to a move of `x` regardless of whether
-# the type is Copy at the surface — reading `x` again is caught.
-fn use_after_move(b: CopyBox) {
+# A non-Copy value remains consumed by the first HLL `let y = x` move.
+fn use_after_move(b: Box) {
     let y = b;
     let z = b;
 }
@@ -23,7 +22,7 @@ fn defer_double_drop(b: Box) {
 
 # The defer body writes `b` through an `&out` pointer; the subsequent
 # `let c = b` is another move of the same value.
-fn defer_use_after_move(b: CopyBox, out: &out CopyBox) {
+fn defer_use_after_move(b: Box, out: &out Box) {
     defer out.* = b;
     let c = b;
 }
