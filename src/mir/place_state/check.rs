@@ -410,6 +410,9 @@ impl<'a> InitStateContext<'a> {
     ) {
         let place = match op {
             Operand::Copy(p) | Operand::Move(p) => p,
+            Operand::Take(_) => unreachable!(
+                "place-state check saw unresolved `take` operand; copy relaxation should have resolved it"
+            ),
             Operand::Const(_) => return,
         };
         self.check_place_read(func, block, place, span, state, d);

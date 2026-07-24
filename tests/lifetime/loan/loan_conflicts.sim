@@ -34,7 +34,7 @@
 extern fn sink(r: &mut i64);
 extern fn use_mut(r: &mut i64);
 extern fn use_num(y: i64);
-extern fn take(y: i64);
+extern fn consume(y: i64);
 extern fn read_ref(r: &i64);
 extern fn take_out(r: &out i64);
 extern fn take_drop(r: &drop i64);
@@ -115,7 +115,7 @@ fn shared_blocks_move(x: i64) {
   r: &i64;
   entry:
     r = &x;
-    call take(move x);
+    call consume(move x);
     call read_ref(move r);
     return
 }

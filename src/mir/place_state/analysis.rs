@@ -901,6 +901,9 @@ impl<'a> InitStateContext<'a> {
                     self.apply_move(place, state);
                 }
             }
+            Operand::Take(_) => unreachable!(
+                "place-state analysis saw unresolved `take` operand; copy relaxation should have resolved it"
+            ),
             Operand::Const(_) => {}
         }
     }

@@ -357,7 +357,9 @@ fn transfer_stmt(stmt: &Statement, state: &mut PointState) {
                     state.insert(t.clone(), set);
                 }
                 RValue::Use(op) => match op {
-                    Operand::Copy(Place::Var(src)) | Operand::Move(Place::Var(src)) => {
+                    Operand::Copy(Place::Var(src))
+                    | Operand::Move(Place::Var(src))
+                    | Operand::Take(Place::Var(src)) => {
                         if let Some(set) = state.get(src).cloned() {
                             state.insert(t.clone(), set);
                         } else {

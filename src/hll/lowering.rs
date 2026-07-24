@@ -621,14 +621,19 @@ fn lower_expr_to_place(
             // turn it into an imprecise dynamic projection.
             let index_op = match index_op {
                 mir::Operand::Const(_) | mir::Operand::Copy(_) => index_op,
-                mir::Operand::Move(_) => {
+                mir::Operand::Move(_) | mir::Operand::Take(_) => {
                     let index_value = ctx.fresh_temp(int_ty(*index_kind), index.span);
                     ctx.emit_statement(assign_stmt(
                         index_value.clone(),
                         use_rv(index_op),
                         index.span,
                     ));
-                    move_op(index_value)
+                    // Index operands are non-consuming reads: place-state,
+                    // NLL, and lifetime analyses only walk the outer
+                    // operand. Emit `copy` so a stray `move` inside `Index`
+                    // never appears; downstream passes then don't need a
+                    // separate recursive operand visitor.
+                    copy_op(index_value)
                 }
             };
 
@@ -738,15 +743,16 @@ fn lower_expr_to_operand(
         | hll::ExprKind::FieldAccess(_, _)
         | hll::ExprKind::ArrayIndex(_, _)
         | hll::ExprKind::Deref(_) => {
-            // Emit `move` uniformly; copy relaxation downgrades where a later
-            // reachable use demands the value. Shared-ref reads stay as `copy`
-            // because moving through `&T` is always illegal, and relaxation
-            // won't rewrite the operand for us in that direction.
+            // Emit `take` uniformly; copy relaxation specializes each to
+            // `move` (last use) or `copy` (later reachable use demands the
+            // value). Shared-ref reads stay as explicit `copy` because
+            // moving through `&T` is always illegal, and `take` should not
+            // be introduced where only `copy` is valid.
             let place = lower_expr_to_place(ctx, expr, types)?;
             if matches!(projected_ref_kind(expr, types), Some(RefKind::Shared)) {
                 return Ok(copy_op(place));
             }
-            Ok(move_op(place))
+            Ok(mir::Operand::Take(place))
         }
         _ => {
             // Evaluate into a temporary first, then move the temporary
@@ -1647,11 +1653,11 @@ mod tests {
               sum: i64;
               _temp_0: unit;
               entry:
-                sum = move a;
-                sum = move b;
+                sum = take a;
+                sum = take b;
                 _temp_0 = unit;
                 require_uninit _temp_0;
-                $return.* = move sum;
+                $return.* = take sum;
                 require_uninit sum;
                 require_uninit $return;
                 require_uninit b;
@@ -1682,8 +1688,8 @@ mod tests {
             fn get_x(p: Point, $return: &out i64) {
               x: i64;
               entry:
-                x = move p.x;
-                $return.* = move x;
+                x = take p.x;
+                $return.* = take x;
                 require_uninit x;
                 require_uninit $return;
                 require_uninit p;
@@ -1718,7 +1724,7 @@ mod tests {
                 switchEnum(v) [Some: switch_Some_0, None: switch_None_1]
               switch_Some_0:
                 val = copy v as Some;
-                $return.* = move val;
+                $return.* = take val;
                 require_uninit val;
                 goto switch_merge_2
               switch_None_1:
@@ -1759,7 +1765,7 @@ mod tests {
                 x = 42;
                 _temp_1 = unit;
                 require_uninit _temp_1;
-                $return.* = move x;
+                $return.* = take x;
                 require_uninit _temp_2;
                 require_uninit _temp_0;
                 goto loop_end_1
@@ -1788,7 +1794,7 @@ mod tests {
               _temp_0: unit;
               a: i64;
               entry:
-                branch(move cond) [true: if_true_0, false: if_false_1]
+                branch(take cond) [true: if_true_0, false: if_false_1]
               if_true_0:
                 a = 1;
                 _temp_0 = unit;
@@ -1842,8 +1848,8 @@ mod tests {
                 p.y = 2;
                 o = Option::Some(42);
                 a = [1, 2, 3];
-                val = move arr[0];
-                $return.* = move val;
+                val = take arr[0];
+                $return.* = take val;
                 require_uninit val;
                 require_uninit a;
                 require_uninit o;
@@ -1870,7 +1876,7 @@ mod tests {
             "index expression must be evaluated exactly once:\n{lowered}"
         );
         assert!(
-            lowered.contains("call $i64_lt(move _temp_"),
+            lowered.contains("call $i64_lt(copy _temp_"),
             "lowered index must compare its saved value against the array length:\n{lowered}"
         );
         assert!(
@@ -1975,25 +1981,25 @@ mod tests {
                 goto switch_merge_2
               switch_Node_1:
                 n = copy tree as Node;
-                val = move n.*.value;
+                val = take n.*.value;
                 _temp_1 = &out _temp_0;
-                call is_equal(move val, move target, move _temp_1);
+                call is_equal(take val, take target, move _temp_1);
                 branch(move _temp_0) [true: if_true_3, false: if_false_4]
               if_true_3:
                 $return.* = true;
                 goto if_merge_5
               if_false_4:
                 _temp_3 = &out _temp_2;
-                call is_greater(move val, move target, move _temp_3);
+                call is_greater(take val, take target, move _temp_3);
                 branch(move _temp_2) [true: if_true_6, false: if_false_7]
               if_true_6:
                 _temp_4 = &out $return.*;
-                call search_tree(move n.*.left, move target, move _temp_4);
+                call search_tree(take n.*.left, take target, move _temp_4);
                 require_uninit _temp_4;
                 goto if_merge_8
               if_false_7:
                 _temp_5 = &out $return.*;
-                call search_tree(move n.*.right, move target, move _temp_5);
+                call search_tree(take n.*.right, take target, move _temp_5);
                 require_uninit _temp_5;
                 goto if_merge_8
               if_merge_8:
@@ -2053,14 +2059,14 @@ mod tests {
               _temp_3: &out bool;
               entry:
                 _temp_1 = &out _temp_0;
-                call $i64_mul(move b, 2, move _temp_1);
+                call $i64_mul(take b, 2, move _temp_1);
                 _temp_2 = &out x;
-                call $i64_add(move a, move _temp_0, move _temp_2);
+                call $i64_add(take a, move _temp_0, move _temp_2);
                 require_uninit _temp_2;
                 require_uninit _temp_1;
                 require_uninit _temp_0;
                 _temp_3 = &out $return.*;
-                call $i64_lt(move x, 10, move _temp_3);
+                call $i64_lt(take x, 10, move _temp_3);
                 require_uninit _temp_3;
                 require_uninit x;
                 require_uninit $return;
@@ -2086,7 +2092,7 @@ mod tests {
               _temp_0: &out u32;
               entry:
                 _temp_0 = &out $return.*;
-                call $u32_add(move a, 1u32, move _temp_0);
+                call $u32_add(take a, 1u32, move _temp_0);
                 require_uninit _temp_0;
                 require_uninit $return;
                 require_uninit a;
@@ -2214,7 +2220,7 @@ mod tests {
                 _temp_3 = unit;
                 require_uninit _temp_3;
                 require_uninit _temp_1;
-                res.* = move x;
+                res.* = take x;
                 _temp_4 = unit;
                 require_uninit _temp_4;
                 _temp_0 = unit;
@@ -2241,7 +2247,7 @@ mod tests {
             fn f(x: &mut i64, $return: &out i64) {
               _temp_0: unit;
               entry:
-                $return.* = move x.*;
+                $return.* = take x.*;
                 x.* = 100;
                 _temp_0 = unit;
                 require_uninit _temp_0;
@@ -2279,7 +2285,7 @@ mod tests {
               _temp_5: unit;
               entry:
                 x = 1;
-                res.* = move x;
+                res.* = take x;
                 _temp_1 = unit;
                 require_uninit _temp_1;
                 _temp_0 = unit;
@@ -2342,7 +2348,7 @@ mod tests {
                 require_uninit _temp_3;
                 require_uninit _temp_2;
                 _temp_6 = &out _temp_5;
-                call $i64_add(move x, 1, move _temp_6);
+                call $i64_add(take x, 1, move _temp_6);
                 x = move _temp_5;
                 _temp_4 = unit;
                 require_uninit _temp_6;
@@ -2354,7 +2360,7 @@ mod tests {
                 goto if_merge_4
               if_merge_4:
                 _temp_9 = &out _temp_8;
-                call $i64_add(move x, 1, move _temp_9);
+                call $i64_add(take x, 1, move _temp_9);
                 x = move _temp_8;
                 _temp_7 = unit;
                 require_uninit _temp_9;
@@ -2364,7 +2370,7 @@ mod tests {
                 goto loop_start_0
               loop_end_1:
                 require_uninit _temp_1;
-                res.* = move x;
+                res.* = take x;
                 _temp_10 = unit;
                 require_uninit _temp_10;
                 _temp_0 = unit;

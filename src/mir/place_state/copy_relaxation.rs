@@ -1,29 +1,39 @@
-//! Copy relaxation for MIR operands.
+//! Copy relaxation: specialize `take` operands to `move` or `copy`.
 //!
-//! The HLL may initially lower ordinary value uses as `move`. This pass
-//! preserves an earlier use as `copy` when a later reachable use still needs
-//! the same owned move path and that path's type implements `Copy`.
+//! HLL lowers ordinary value reads as `Operand::Take`. This pass rewrites
+//! each `take place` to either `move place` (last-use consumption) or
+//! `copy place` (a later reachable use / ref post-Init obligation demands
+//! the value, or the path structurally forbids consumption). Explicit
+//! `move` and `copy` in the input are authoritative and never rewritten,
+//! so hand-written `.sim` fixtures can pin exact operand kinds.
 //!
-//! It deliberately runs before NLL elaboration. Changing `move r` to
-//! `copy r` changes whether moving `r` closes a loan, so NLL must compute
-//! borrower liveness from the rewritten program rather than from a stale
-//! move graph.
+//! It deliberately runs before NLL elaboration. Specializing `take` to
+//! `move` versus `copy` changes whether the read closes a borrower loan,
+//! so NLL must compute liveness from the resolved program.
 //!
 //! The analysis is backward, with separate may-demand sets for values and
-//! the owned bases needed to access them. At a CFG join the sets union: an
-//! operand must be preserved if either successor can still use it.
+//! the owned bases needed to access them. At a CFG join the sets union:
+//! an operand must be preserved if either successor can still use it.
 //!
-//! Rewrite candidates are statically tracked paths through any number of
-//! exclusive-reference dereferences. Fields, downcasts, and constant indexes
-//! may appear anywhere in the path. Every dereference boundary must be
-//! exclusive: `move r.*` through `&T` is illegal even if a later use could
-//! otherwise justify preserving the pointee.
-//!
-//! Dynamic indexes and raw-pointer dereferences are not stable identities:
-//! another write may retarget them without changing the syntactic path. They
-//! still contribute conservative access demand, but are not rewrite
-//! candidates.
+//! Path classification (all `Field` / `Downcast` / const-`Index` steps
+//! are transparent):
+//! - **Mandatory-copy** — the path crosses a shared reference (`&T`) or
+//!   contains a dynamic index. Moving through `&T` is illegal; a dynamic
+//!   index has no stable identity, so consuming it would silently lose
+//!   the storage. `take` on such a path is always specialized to `copy`;
+//!   a non-Copy type here is `RELAX-MandatoryCopyNonCopy`.
+//! - **Stable candidates** — owned paths, chains of exclusive-ref
+//!   dereferences, and paths crossing raw pointers. Raw pointers already
+//!   sit inside `unsafe`, so the pass demand-relaxes them like ordinary
+//!   candidates rather than mandating copy. Resolution: `copy` when
+//!   demand is live and the type is Copy, otherwise `move` (falling back
+//!   to `copy` for Copy-only types).
+//! - **`Index` operand position** — a non-consuming read. `take` there
+//!   is forced to `copy`; `move` is `RELAX-IndexOperandNotReading`. This
+//!   keeps downstream analyses (place-state, NLL, lifetime) from having
+//!   to recurse into `Index` projections.
 
+use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::helpers::*;
@@ -33,18 +43,164 @@ use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
-/// Relax preserving moves in every function body. Idempotent: after a move
-/// becomes a copy it is no longer a candidate on later runs.
-pub fn elaborate(program: &mut Program, env: &Env) {
-    for func in program.functions_mut() {
-        elaborate_function(func, env);
+/// User-facing errors emitted by the `take` resolver. Distinct from
+/// the pre-elaboration substructural check (which flags places whose
+/// type supports neither `Copy` nor `Move`): these fire when the
+/// resolution decision itself has no valid target — for example, a
+/// `take` on a Move-only value through a shared-reference boundary,
+/// where the boundary demands `copy` but the type isn't `Copy`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CopyRelaxationCode {
+    /// The path crosses a shared reference or dynamic-index projection
+    /// (both mandate a `copy` resolution), but the place's type isn't
+    /// `Copy`. Only `move` would be type-valid, but `move` is
+    /// semantically illegal on this path.
+    MandatoryCopyNonCopy,
+    /// A `move` or `take` appears inside an `Index` projection. Array
+    /// indexing reads its operand non-consumingly; place-state, NLL,
+    /// and lifetime analyses only walk the outer operand, so a
+    /// consuming index would silently escape ownership tracking.
+    /// Index operands must be `copy` or a constant.
+    IndexOperandNotReading,
+}
+
+impl From<CopyRelaxationCode> for DiagCode {
+    fn from(code: CopyRelaxationCode) -> DiagCode {
+        DiagCode::CopyRelaxation(code)
     }
 }
 
-fn elaborate_function(func: &mut Function, env: &Env) {
+/// Specialize each `take` operand into `move` or `copy` based on
+/// backward may-demand and static path shape. Explicit `move`/`copy` are
+/// authoritative and never rewritten. Idempotent: after resolution no
+/// `take` remains, so a second run is a no-op.
+///
+/// Diagnostics are user-facing errors emitted when a `take` cannot be
+/// resolved to any valid operand (e.g. a non-Copy pointee through a
+/// shared-reference or dynamic-index boundary, where `copy` would be
+/// required but the type isn't `Copy`).
+pub fn elaborate(program: &mut Program, env: &Env, d: &mut Diagnostics) {
+    for func in program.functions_mut() {
+        elaborate_function(func, env, d);
+    }
+}
+
+/// Post-elaboration invariant: no `Take` operand survives. If any do,
+/// push a single internal-error diagnostic naming the first offender
+/// (with a count so a broken pass doesn't spam per-operand). Downstream
+/// passes assume this invariant and `unreachable!` on `Take`, so callers
+/// must skip elaboration/checking when this returns anything.
+pub fn verify_no_take(program: &Program, d: &mut crate::diagnostics::Diagnostics) {
+    let mut first: Option<Span> = None;
+    let mut count = 0usize;
+    for func in program.functions() {
+        let Some(body) = &func.body else { continue };
+        for block in &body.blocks {
+            for stmt in &block.statements {
+                scan_statement_for_take(stmt, &mut first, &mut count);
+            }
+            scan_terminator_for_take(&block.terminator, &mut first, &mut count);
+        }
+    }
+    if count == 0 {
+        return;
+    }
+    let span = first.unwrap_or_default();
+    d.push_internal_error(crate::diagnostics::Diagnostic::new(
+        crate::diagnostics::DiagCode::Parser(crate::mir::parser::ParserCode::MalformedCst),
+        span,
+        format!(
+            "copy relaxation left {count} unresolved `take` operand(s); every `take` must be specialized to `move` or `copy` before downstream passes run"
+        ),
+    ));
+}
+
+fn scan_statement_for_take(stmt: &Statement, first: &mut Option<Span>, count: &mut usize) {
+    match &stmt.kind {
+        StatementKind::Assign(target, rvalue) => {
+            scan_place_for_take(target, stmt.span, first, count);
+            scan_rvalue_for_take(rvalue, stmt.span, first, count);
+        }
+        StatementKind::Call(target, args) => {
+            scan_operand_for_take(target, stmt.span, first, count);
+            for op in args {
+                scan_operand_for_take(op, stmt.span, first, count);
+            }
+        }
+        StatementKind::Drop(place)
+        | StatementKind::Unborrow(place)
+        | StatementKind::RequireUninit(place) => {
+            scan_place_for_take(place, stmt.span, first, count);
+        }
+    }
+}
+
+fn scan_terminator_for_take(term: &Terminator, first: &mut Option<Span>, count: &mut usize) {
+    match &term.kind {
+        TerminatorKind::Branch { cond, .. } => scan_operand_for_take(cond, term.span, first, count),
+        TerminatorKind::SwitchEnum { place, .. } => {
+            scan_place_for_take(place, term.span, first, count)
+        }
+        TerminatorKind::Goto(_)
+        | TerminatorKind::Return
+        | TerminatorKind::Abort
+        | TerminatorKind::Unreachable => {}
+    }
+}
+
+fn scan_rvalue_for_take(rv: &RValue, span: Span, first: &mut Option<Span>, count: &mut usize) {
+    match rv {
+        RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
+            scan_operand_for_take(op, span, first, count);
+        }
+        RValue::Ref(_, place) | RValue::RawRef(place) => {
+            scan_place_for_take(place, span, first, count);
+        }
+        RValue::ArrayLit(ops) => {
+            for op in ops {
+                scan_operand_for_take(op, span, first, count);
+            }
+        }
+    }
+}
+
+fn scan_operand_for_take(op: &Operand, span: Span, first: &mut Option<Span>, count: &mut usize) {
+    match op {
+        Operand::Take(place) => {
+            *count += 1;
+            if first.is_none() {
+                *first = Some(span);
+            }
+            scan_place_for_take(place, span, first, count);
+        }
+        Operand::Copy(place) | Operand::Move(place) => {
+            scan_place_for_take(place, span, first, count);
+        }
+        Operand::Const(_) => {}
+    }
+}
+
+/// Recurse into a place, visiting any operand that appears inside an
+/// `Index` projection. Without this, a `Take` nested inside a dynamic
+/// index would slip past both `verify_no_take` and the resolver.
+fn scan_place_for_take(place: &Place, span: Span, first: &mut Option<Span>, count: &mut usize) {
+    match place {
+        Place::Var(_) => {}
+        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
+            scan_place_for_take(inner, span, first, count);
+        }
+        Place::Index(inner, op) => {
+            scan_place_for_take(inner, span, first, count);
+            scan_operand_for_take(op, span, first, count);
+        }
+    }
+}
+
+fn elaborate_function(func: &mut Function, env: &Env, d: &mut Diagnostics) {
     let locals = func.locals_map();
     let scope = func.meta.param_scope();
     let return_obligations = collect_return_obligations(func);
+    let func_name = func.meta.name.clone();
     let Some(body) = &mut func.body else {
         return;
     };
@@ -62,11 +218,32 @@ fn elaborate_function(func: &mut Function, env: &Env) {
         };
         let mut demand = exit_demand.clone();
         analysis.transfer_terminator(&mut demand, &block.terminator);
-        relax_terminator(&mut block.terminator, &mut demand, env, &locals, &scope);
+        let mut ctx = RelaxCtx {
+            env,
+            locals: &locals,
+            scope: &scope,
+            d,
+            func_name: &func_name,
+            block_label: &block.label,
+        };
+        relax_terminator(&mut block.terminator, &mut demand, &mut ctx);
         for stmt in block.statements.iter_mut().rev() {
-            relax_statement(stmt, &mut demand, env, &locals, &scope);
+            relax_statement(stmt, &mut demand, &mut ctx);
         }
     }
+}
+
+/// Per-block relaxation context. Bundles the env/locals/scope needed for
+/// type queries with the diagnostics sink and the function/block context
+/// used when emitting a user-facing error (e.g. `take` of a place that
+/// resolves to neither `move` nor `copy`).
+struct RelaxCtx<'a> {
+    env: &'a Env,
+    locals: &'a IndexMap<String, Type>,
+    scope: &'a IndexMap<String, Markers>,
+    d: &'a mut Diagnostics,
+    func_name: &'a str,
+    block_label: &'a str,
 }
 
 /// Ref-typed places whose obligation requires an Init pointee at expiry.
@@ -151,6 +328,7 @@ impl<'a> Analysis for MovePathDemand<'a> {
 fn transfer_statement_demand(stmt: &Statement, demand: &mut Demand) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
+            transfer_place_index_operands(target, demand);
             kill_future_demand(demand, target);
             transfer_rvalue_demand(rvalue, demand);
             if as_owned_path(target).is_none() {
@@ -164,18 +342,24 @@ fn transfer_statement_demand(stmt: &Statement, demand: &mut Demand) {
             transfer_operand_demand(target, demand);
         }
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
+            transfer_place_index_operands(place, demand);
             add_value_demand(demand, place);
         }
         // This is a postcondition, not a value use. A preceding move should
         // remain a move when this is the only later statement mentioning it.
-        StatementKind::RequireUninit(_) => {}
+        StatementKind::RequireUninit(place) => {
+            transfer_place_index_operands(place, demand);
+        }
     }
 }
 
 fn transfer_terminator_demand(term: &Terminator, demand: &mut Demand) {
     match &term.kind {
         TerminatorKind::Branch { cond, .. } => transfer_operand_demand(cond, demand),
-        TerminatorKind::SwitchEnum { place, .. } => add_value_demand(demand, place),
+        TerminatorKind::SwitchEnum { place, .. } => {
+            transfer_place_index_operands(place, demand);
+            add_value_demand(demand, place);
+        }
         TerminatorKind::Goto(_)
         | TerminatorKind::Return
         | TerminatorKind::Abort
@@ -188,8 +372,13 @@ fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut Demand) {
         RValue::Use(operand)
         | RValue::EnumConstr(_, _, _, operand)
         | RValue::PtrCast(operand, _) => transfer_operand_demand(operand, demand),
-        RValue::Ref(kind, place) => transfer_ref_demand(kind, place, demand),
-        RValue::RawRef(_) => {}
+        RValue::Ref(kind, place) => {
+            transfer_place_index_operands(place, demand);
+            transfer_ref_demand(kind, place, demand);
+        }
+        RValue::RawRef(place) => {
+            transfer_place_index_operands(place, demand);
+        }
         RValue::ArrayLit(operands) => {
             for operand in operands.iter().rev() {
                 transfer_operand_demand(operand, demand);
@@ -200,8 +389,12 @@ fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut Demand) {
 
 fn transfer_operand_demand(operand: &Operand, demand: &mut Demand) {
     match operand {
-        Operand::Copy(place) => add_value_demand(demand, place),
+        Operand::Copy(place) => {
+            transfer_place_index_operands(place, demand);
+            add_value_demand(demand, place);
+        }
         Operand::Move(place) => {
+            transfer_place_index_operands(place, demand);
             // Move consumes `place`'s subtree — downstream demand for its
             // descendants is void after the move, so drop it as we cross
             // this operand backward. The read itself is still a demand for
@@ -209,7 +402,31 @@ fn transfer_operand_demand(operand: &Operand, demand: &mut Demand) {
             kill_future_demand(demand, place);
             add_value_demand(demand, place);
         }
+        // Take is unresolved: over-approximate as a non-consuming read so
+        // the fixpoint carries the largest safe demand set. The mutation
+        // walk performs the actual resolution and applies the correct
+        // move/copy transfer semantics.
+        Operand::Take(place) => {
+            transfer_place_index_operands(place, demand);
+            add_value_demand(demand, place);
+        }
         Operand::Const(_) => {}
+    }
+}
+
+/// Contribute demand from any operand nested inside an `Index` projection.
+/// The outer place demands the index value at the same point it demands
+/// its own value.
+fn transfer_place_index_operands(place: &Place, demand: &mut Demand) {
+    match place {
+        Place::Var(_) => {}
+        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
+            transfer_place_index_operands(inner, demand);
+        }
+        Place::Index(inner, op) => {
+            transfer_place_index_operands(inner, demand);
+            transfer_operand_demand(op, demand);
+        }
     }
 }
 
@@ -358,44 +575,45 @@ fn nearest_owned_path(place: &Place) -> Option<Place> {
     }
 }
 
-fn relax_statement(
-    stmt: &mut Statement,
-    demand: &mut Demand,
-    env: &Env,
-    locals: &IndexMap<String, Type>,
-    scope: &IndexMap<String, Markers>,
-) {
+fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx) {
+    let span = stmt.span;
     match &mut stmt.kind {
         StatementKind::Assign(target, rvalue) => {
+            // Nested index operands inside the target place are reads
+            // evaluated to project into the target; visit them so any
+            // `take` inside gets resolved even if the target itself is
+            // just an assignment sink.
+            relax_place_index_operands(target, demand, ctx, span);
             kill_future_demand(demand, target);
-            relax_rvalue(rvalue, demand, env, locals, scope);
+            relax_rvalue(rvalue, demand, ctx, span);
             if as_owned_path(target).is_none() {
                 add_access_demand(demand, target);
             }
         }
         StatementKind::Call(target, args) => {
             for operand in args.iter_mut().rev() {
-                relax_operand(operand, demand, env, locals, scope);
+                relax_operand(operand, demand, ctx, span);
             }
-            relax_operand(target, demand, env, locals, scope);
+            relax_operand(target, demand, ctx, span);
         }
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
+            relax_place_index_operands(place, demand, ctx, span);
             add_value_demand(demand, place);
         }
-        StatementKind::RequireUninit(_) => {}
+        StatementKind::RequireUninit(place) => {
+            relax_place_index_operands(place, demand, ctx, span);
+        }
     }
 }
 
-fn relax_terminator(
-    term: &mut Terminator,
-    demand: &mut Demand,
-    env: &Env,
-    locals: &IndexMap<String, Type>,
-    scope: &IndexMap<String, Markers>,
-) {
+fn relax_terminator(term: &mut Terminator, demand: &mut Demand, ctx: &mut RelaxCtx) {
+    let span = term.span;
     match &mut term.kind {
-        TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, env, locals, scope),
-        TerminatorKind::SwitchEnum { place, .. } => add_value_demand(demand, place),
+        TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, ctx, span),
+        TerminatorKind::SwitchEnum { place, .. } => {
+            relax_place_index_operands(place, demand, ctx, span);
+            add_value_demand(demand, place);
+        }
         TerminatorKind::Goto(_)
         | TerminatorKind::Return
         | TerminatorKind::Abort
@@ -403,105 +621,249 @@ fn relax_terminator(
     }
 }
 
-fn relax_rvalue(
-    rvalue: &mut RValue,
-    demand: &mut Demand,
-    env: &Env,
-    locals: &IndexMap<String, Type>,
-    scope: &IndexMap<String, Markers>,
-) {
+fn relax_rvalue(rvalue: &mut RValue, demand: &mut Demand, ctx: &mut RelaxCtx, span: Span) {
     match rvalue {
         RValue::Use(operand)
         | RValue::EnumConstr(_, _, _, operand)
-        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, env, locals, scope),
-        RValue::Ref(kind, place) => transfer_ref_demand(kind, place, demand),
-        RValue::RawRef(_) => {}
+        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, ctx, span),
+        RValue::Ref(kind, place) => {
+            relax_place_index_operands(place, demand, ctx, span);
+            transfer_ref_demand(kind, place, demand);
+        }
+        RValue::RawRef(place) => {
+            relax_place_index_operands(place, demand, ctx, span);
+        }
         RValue::ArrayLit(operands) => {
             for operand in operands.iter_mut().rev() {
-                relax_operand(operand, demand, env, locals, scope);
+                relax_operand(operand, demand, ctx, span);
             }
         }
     }
 }
 
-fn relax_operand(
+/// Recurse into a place, resolving any `take` operand that appears
+/// inside an `Index` projection. Called before every place-level use so
+/// nested `take`s don't slip past resolution.
+///
+/// Index operands must be **non-consuming reads**: place-state, NLL,
+/// and lifetime analyses only walk the outer operand, so a `move` or
+/// `take → move` inside `Index` would silently escape ownership
+/// tracking. A `take` inside `Index` is forced to `Copy`; a `Move` is
+/// a hand-written invariant violation and gets a user diagnostic.
+fn relax_place_index_operands(
+    place: &mut Place,
+    demand: &mut Demand,
+    ctx: &mut RelaxCtx,
+    span: Span,
+) {
+    match place {
+        Place::Var(_) => {}
+        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
+            relax_place_index_operands(inner, demand, ctx, span);
+        }
+        Place::Index(inner, op) => {
+            relax_place_index_operands(inner, demand, ctx, span);
+            resolve_index_operand(op, demand, ctx, span);
+        }
+    }
+}
+
+fn resolve_index_operand(
     operand: &mut Operand,
     demand: &mut Demand,
-    env: &Env,
-    locals: &IndexMap<String, Type>,
-    scope: &IndexMap<String, Markers>,
+    ctx: &mut RelaxCtx,
+    span: Span,
 ) {
-    let Operand::Move(place) = operand else {
-        if let Operand::Copy(place) = operand {
-            add_value_demand(demand, place);
+    match operand {
+        Operand::Const(_) => {}
+        Operand::Copy(p) => {
+            relax_place_index_operands(p, demand, ctx, span);
+            add_value_demand(demand, p);
+        }
+        Operand::Move(p) => {
+            relax_place_index_operands(p, demand, ctx, span);
+            ctx.d.push_error(
+                Diagnostic::new(
+                    CopyRelaxationCode::IndexOperandNotReading,
+                    span,
+                    format!(
+                        "`move` of '{}' inside `Index` projection: array indexing is a \
+                         non-consuming read, so its operand must be `copy` or a constant",
+                        format_place(p)
+                    ),
+                )
+                .in_function(ctx.func_name)
+                .in_block(ctx.block_label),
+            );
+        }
+        Operand::Take(p) => {
+            relax_place_index_operands(p, demand, ctx, span);
+            let place = p.clone();
+            let ty = ctx
+                .env
+                .type_of_place(&place, Span::default(), ctx.locals)
+                .ok();
+            let is_copy = ty
+                .as_ref()
+                .map(|t| class_of(t, ctx.env, ctx.scope).implies(Marker::Copy))
+                .unwrap_or(false);
+            if !is_copy {
+                ctx.d.push_error(
+                    Diagnostic::new(
+                        CopyRelaxationCode::IndexOperandNotReading,
+                        span,
+                        format!(
+                            "`take` of non-Copy place '{}' inside `Index` projection: \
+                             array indexing must resolve to a non-consuming read",
+                            format_place(&place)
+                        ),
+                    )
+                    .in_function(ctx.func_name)
+                    .in_block(ctx.block_label),
+                );
+            }
+            *operand = Operand::Copy(place.clone());
+            add_value_demand(demand, &place);
+        }
+    }
+}
+
+fn relax_operand(operand: &mut Operand, demand: &mut Demand, ctx: &mut RelaxCtx, span: Span) {
+    // First, recurse into any `take` nested inside the operand's own
+    // place (dynamic-index case: `move a[take i]`).
+    match operand {
+        Operand::Copy(p) | Operand::Move(p) | Operand::Take(p) => {
+            relax_place_index_operands(p, demand, ctx, span);
+        }
+        Operand::Const(_) => {}
+    }
+
+    // Explicit `move` / `copy` are authoritative — never rewritten.
+    if !matches!(operand, Operand::Take(_)) {
+        match operand {
+            Operand::Copy(p) => add_value_demand(demand, p),
+            Operand::Move(p) => {
+                kill_future_demand(demand, p);
+                add_value_demand(demand, p);
+            }
+            Operand::Take(_) | Operand::Const(_) => {}
         }
         return;
+    }
+
+    // Now resolve `Take`. Extract place, classify, decide.
+    let place = match operand {
+        Operand::Take(p) => p.clone(),
+        _ => unreachable!(),
     };
 
-    let owned = as_owned_path(place);
-    let is_exclusive_deref = static_deref_depth(place)
-        .is_some_and(|depth| depth > 0 && all_dereferences_are_exclusive(place, env, locals));
-    let is_candidate = owned.is_some() || is_exclusive_deref;
-    let needs_preserving = is_candidate
-        && (demand
+    let mandatory_copy = requires_copy_semantics(&place, ctx.env, ctx.locals);
+    let ty = ctx
+        .env
+        .type_of_place(&place, Span::default(), ctx.locals)
+        .ok();
+    let class = ty
+        .as_ref()
+        .map(|t| class_of(t, ctx.env, ctx.scope))
+        .unwrap_or_default();
+    let is_copy = class.implies(Marker::Copy);
+    let is_move = class.implies(Marker::Move);
+
+    let resolved = if mandatory_copy {
+        // Move is semantically invalid here (shared-ref crossing or
+        // dynamic index). Copy is the only legal resolution — emit a
+        // user error if the type isn't Copy.
+        if !is_copy {
+            push_relax_error(
+                ctx,
+                span,
+                CopyRelaxationCode::MandatoryCopyNonCopy,
+                format!(
+                    "cannot resolve `take` of '{}' to `copy`: path crosses a shared \
+                     reference or dynamic-index projection and the type is not Copy",
+                    format_place(&place)
+                ),
+            );
+        }
+        Operand::Copy(place.clone())
+    } else {
+        // Stable owned or all-exclusive-deref path. Prefer `copy` when a
+        // later use demands the value and the type supports it; otherwise
+        // fall through to `move` (or `copy` when only Copy is available).
+        let has_demand = demand
             .values
             .iter()
-            .any(|needed| demand_preserves(place, needed))
+            .any(|needed| demand_preserves(&place, needed))
             || demand
                 .accesses
                 .iter()
-                .any(|needed| demand_preserves(place, needed)));
-    let is_copy = is_candidate
-        && env
-            .type_of_place(place, Span::default(), locals)
-            .is_ok_and(|ty| class_of(&ty, env, scope).implies(Marker::Copy));
-    let place = place.clone();
-    if needs_preserving && is_copy {
-        *operand = Operand::Copy(place.clone());
-    }
-    // If we kept the operand as a `move`, it consumes `place`'s subtree —
-    // mirror the fixpoint's kill so descendants demanded post-move don't
-    // bleed backward past this operand and preserve unrelated earlier
-    // moves.
-    if matches!(operand, Operand::Move(_)) {
+                .any(|needed| demand_preserves(&place, needed));
+        if has_demand && is_copy {
+            Operand::Copy(place.clone())
+        } else if is_move {
+            Operand::Move(place.clone())
+        } else if is_copy {
+            Operand::Copy(place.clone())
+        } else {
+            // Silent recovery. The pre-elaboration substructural check
+            // owns the "neither Copy nor Move" diagnostic (its
+            // `ClassMarker::CopyOrMove` case fires on the same
+            // condition), so emitting again here would just duplicate.
+            // Type-query failures also land here and are already
+            // reported by earlier passes.
+            Operand::Copy(place.clone())
+        }
+    };
+
+    let is_now_move = matches!(resolved, Operand::Move(_));
+    *operand = resolved;
+    if is_now_move {
         kill_future_demand(demand, &place);
     }
     add_value_demand(demand, &place);
 }
 
-/// A move through a shared reference is illegal, and a raw pointer does not
-/// provide the stable identity needed by this liveness-based rewrite. Require
-/// every dereference receiver in the path to be an exclusive reference.
-fn all_dereferences_are_exclusive(
-    place: &Place,
-    env: &Env,
-    locals: &IndexMap<String, Type>,
-) -> bool {
-    fn walk(place: &Place, env: &Env, locals: &IndexMap<String, Type>) -> bool {
-        match place {
-            Place::Var(_) => true,
-            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
-                walk(inner, env, locals)
+/// True when the path can only be read (not consumed) at this point:
+/// - crosses a shared reference (`&T`) anywhere, or
+/// - contains a dynamic index (identity not stable across program
+///   points, so a `move` here would silently lose track of which slot
+///   was consumed).
+///
+/// In either case `move` is either semantically illegal (shared-ref)
+/// or would silently lose track of the storage (dynamic index).
+/// Resolution must emit `copy`.
+///
+/// Raw-pointer dereferences are deliberately NOT mandatory-copy: they
+/// carry no ownership tracking and the author is already in `unsafe`
+/// territory, so `take *p` resolves via the ordinary flexible rule
+/// (prefer `move` when the type supports it).
+fn requires_copy_semantics(place: &Place, env: &Env, locals: &IndexMap<String, Type>) -> bool {
+    match place {
+        Place::Var(_) => false,
+        Place::Field(inner, _) | Place::Downcast(inner, _) => {
+            requires_copy_semantics(inner, env, locals)
+        }
+        Place::Index(inner, op) => {
+            if !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. })) {
+                return true;
             }
-            Place::Deref(inner) => {
-                let exclusive = env
-                    .type_of_place(inner, Span::default(), locals)
-                    .is_ok_and(|ty| {
-                        matches!(
-                            ty.kind,
-                            TypeKind::Ref(
-                                RefKind::Mut | RefKind::Out | RefKind::Drop | RefKind::Uninit,
-                                _,
-                                _
-                            )
-                        )
-                    });
-                exclusive && walk(inner, env, locals)
-            }
+            requires_copy_semantics(inner, env, locals)
+        }
+        Place::Deref(inner) => {
+            let boundary_requires_copy = env
+                .type_of_place(inner, Span::default(), locals)
+                .is_ok_and(|ty| matches!(&ty.kind, TypeKind::Ref(RefKind::Shared, _, _)));
+            boundary_requires_copy || requires_copy_semantics(inner, env, locals)
         }
     }
+}
 
-    walk(place, env, locals)
+fn push_relax_error(ctx: &mut RelaxCtx, span: Span, code: CopyRelaxationCode, msg: String) {
+    ctx.d.push_error(
+        Diagnostic::new(code, span, msg)
+            .in_function(ctx.func_name)
+            .in_block(ctx.block_label),
+    );
 }
 
 #[cfg(test)]
@@ -513,7 +875,13 @@ mod tests {
         let mut program = Parser::new(source.to_owned()).parse().unwrap();
         let (env, errors) = Env::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
-        elaborate(&mut program, &env);
+        let mut d = Diagnostics::default();
+        elaborate(&mut program, &env, &mut d);
+        assert!(
+            !d.has_errors(),
+            "unexpected relaxation diagnostics: {:?}",
+            d.errors_str(),
+        );
         program
     }
 
@@ -560,8 +928,8 @@ mod tests {
             extern fn consume(x: i64);
             fn f(x: i64) {
               entry:
-                call consume(move x);
-                call consume(move x);
+                call consume(take x);
+                call consume(take x);
                 return
             }
             ",
@@ -577,8 +945,8 @@ mod tests {
             extern fn consume(x: i64);
             fn f(r: &mut i64) {
               entry:
-                call consume(move r.*);
-                call consume(move r.*);
+                call consume(take r.*);
+                call consume(take r.*);
                 r.* = 0;
                 return
             }
@@ -593,20 +961,24 @@ mod tests {
     }
 
     #[test]
-    fn never_relaxes_a_move_through_a_shared_reference() {
+    fn resolves_take_through_a_shared_reference_to_copy() {
+        // Shared-reference crossings are mandatory-copy: `move r.*`
+        // through `&T` is illegal, so a `take` on that path must
+        // specialize to `copy`. For a Copy pointee this succeeds
+        // silently; a non-Copy pointee would produce a user error.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
             fn f(r: &i64) {
               entry:
-                call consume(move r.*);
+                call consume(take r.*);
                 call consume(copy r.*);
                 return
             }
             ",
         );
         assert!(
-            matches!(call_arg(&program, "f", 0), Operand::Move(place) if format_place(place) == "r.*")
+            matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*")
         );
     }
 
@@ -617,8 +989,8 @@ mod tests {
             extern fn consume(x: i64);
             fn f(r: &mut &mut &mut i64) {
               entry:
-                call consume(move r.*.*.*);
-                call consume(move r.*.*.*);
+                call consume(take r.*.*.*);
+                call consume(take r.*.*.*);
                 r.*.*.* = 0;
                 return
             }
@@ -633,19 +1005,22 @@ mod tests {
     }
 
     #[test]
-    fn shared_reference_anywhere_in_a_nested_path_blocks_relaxation() {
+    fn shared_reference_anywhere_in_a_nested_path_forces_copy() {
+        // Any shared-reference crossing in the deref chain makes the
+        // whole path mandatory-copy: `move` through it would be
+        // illegal regardless of which end the `&T` sits on.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
             fn shared_inner(r: &mut &i64) {
               entry:
-                call consume(move r.*.*);
+                call consume(take r.*.*);
                 call consume(copy r.*.*);
                 return
             }
             fn shared_outer(r: &&mut i64) {
               entry:
-                call consume(move r.*.*);
+                call consume(take r.*.*);
                 call consume(copy r.*.*);
                 return
             }
@@ -653,11 +1028,11 @@ mod tests {
         );
         assert!(matches!(
             call_arg(&program, "shared_inner", 0),
-            Operand::Move(_)
+            Operand::Copy(_)
         ));
         assert!(matches!(
             call_arg(&program, "shared_outer", 0),
-            Operand::Move(_)
+            Operand::Copy(_)
         ));
     }
 
@@ -668,9 +1043,9 @@ mod tests {
             extern fn consume(x: i64);
             fn f(r: &mut &mut i64, replacement: &mut i64) {
               entry:
-                call consume(move r.*.*);
-                r.* = move replacement;
-                call consume(move r.*.*);
+                call consume(take r.*.*);
+                r.* = take replacement;
+                call consume(take r.*.*);
                 return
             }
             ",
@@ -688,22 +1063,22 @@ mod tests {
             extern fn consume(x: i64);
             fn field(r: &mut Link) {
               entry:
-                call consume(move r.*.next.*.left);
-                call consume(move r.*.next.*.left);
+                call consume(take r.*.next.*.left);
+                call consume(take r.*.next.*.left);
                 r.*.next.*.left = 0;
                 return
             }
             fn index(r: &mut [&mut i64; 2]) {
               entry:
-                call consume(move r.*[0].*);
-                call consume(move r.*[0].*);
+                call consume(take r.*[0].*);
+                call consume(take r.*[0].*);
                 r.*[0].* = 0;
                 return
             }
             fn downcast(r: &mut Choice) {
               entry:
-                call consume(move r.* as A.*);
-                call consume(move r.* as A.*);
+                call consume(take r.* as A.*);
+                call consume(take r.* as A.*);
                 r.* as A.* = 0;
                 return
             }
@@ -728,8 +1103,8 @@ mod tests {
             extern fn consume_ref(r: &mut i64);
             fn f(r: &mut &mut i64) {
               entry:
-                call consume(move r.*.*);
-                call consume_ref(move r.*);
+                call consume(take r.*.*);
+                call consume_ref(take r.*);
                 return
             }
             ",
@@ -738,19 +1113,27 @@ mod tests {
     }
 
     #[test]
-    fn raw_pointer_dereferences_are_not_relaxation_candidates() {
+    fn raw_pointer_dereferences_resolve_to_move_or_copy_by_type() {
+        // Raw pointers are unsafe and carry no ownership tracking. The
+        // pass does not treat a raw-pointer boundary as mandatory-copy
+        // (unlike shared references and dynamic indices) — the author
+        // is already inside `unsafe`. `take` on such a path resolves via
+        // the ordinary flexible rule: `move` when the type supports it,
+        // downgraded to `copy` if a later use demands the value.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
             fn f(p: **i64) {
               entry:
-                call consume(move p.*.*);
+                call consume(take p.*.*);
                 call consume(copy p.*.*);
                 return
             }
             ",
         );
-        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(_)));
+        // Later `copy p.*.*` demands the pointee, so the earlier `take`
+        // downgrades to `copy` to preserve it.
+        assert!(matches!(call_arg(&program, "f", 0), Operand::Copy(_)));
     }
 
     #[test]
@@ -761,8 +1144,8 @@ mod tests {
             fn f(r: &drop i64) {
               s: &drop i64;
               entry:
-                call consume(move r.*);
-                s = move r;
+                call consume(take r.*);
+                s = take r;
                 return
             }
             ",
@@ -776,8 +1159,8 @@ mod tests {
     fn dereference_write_kills_old_pointee_demand() {
         // The write at index 1 kills demand for `r.*` backward from the
         // second call and from `r`'s post-Init obligation at Return, so
-        // the earlier `move r.*` at index 0 sees no demand and stays as
-        // move. The final `move r.*` at index 2 still relaxes to `copy`
+        // the earlier `take r.*` at index 0 sees no demand and stays as
+        // move. The final `take r.*` at index 2 still relaxes to `copy`
         // — otherwise `r.*` would be Uninit at Return, violating the
         // &mut obligation.
         let program = elaborate_source(
@@ -785,9 +1168,9 @@ mod tests {
             extern fn consume(x: i64);
             fn f(r: &mut i64) {
               entry:
-                call consume(move r.*);
+                call consume(take r.*);
                 r.* = 1;
-                call consume(move r.*);
+                call consume(take r.*);
                 return
             }
             ",
@@ -808,15 +1191,15 @@ mod tests {
             extern fn consume(x: i64);
             fn same(r: &mut Pair) {
               entry:
-                call consume(move r.*.left);
-                call consume(move r.*.left);
+                call consume(take r.*.left);
+                call consume(take r.*.left);
                 r.*.left = 0;
                 return
             }
             fn sibling(r: &mut Pair) {
               entry:
-                call consume(move r.*.left);
-                call consume(move r.*.right);
+                call consume(take r.*.left);
+                call consume(take r.*.right);
                 r.*.left = 0;
                 r.*.right = 0;
                 return
@@ -832,21 +1215,27 @@ mod tests {
     }
 
     #[test]
-    fn relaxes_a_constant_pointee_index_but_not_a_dynamic_index() {
+    fn relaxes_a_constant_pointee_index_and_forces_copy_on_dynamic_index() {
+        // Constant-index paths participate in the ordinary relaxation
+        // decision — the demand from the second use downgrades the first
+        // to `copy`. Dynamic-index paths lack stable identity across
+        // program points, so they're mandatory-copy: resolving to `move`
+        // would let repeated `move a[i]` slip through as if operating on
+        // distinct slots.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
             fn constant(r: &mut [i64; 2]) {
               entry:
-                call consume(move r.*[0]);
-                call consume(move r.*[0]);
+                call consume(take r.*[0]);
+                call consume(take r.*[0]);
                 r.*[0] = 0;
                 return
             }
             fn dynamic(r: &mut [i64; 2], i: i64) {
               entry:
-                call consume(move r.*[copy i]);
-                call consume(move r.*[copy i]);
+                call consume(take r.*[copy i]);
+                call consume(take r.*[copy i]);
                 return
             }
             ",
@@ -854,9 +1243,7 @@ mod tests {
         assert!(
             matches!(call_arg(&program, "constant", 0), Operand::Copy(place) if format_place(place) == "r.*[0]")
         );
-        assert!(
-            matches!(call_arg(&program, "dynamic", 0), Operand::Move(place) if format_place(place) == "r.*[?]")
-        );
+        assert!(matches!(call_arg(&program, "dynamic", 0), Operand::Copy(_)));
     }
 
     #[test]
@@ -867,8 +1254,8 @@ mod tests {
             extern fn consume(x: i64);
             fn f(r: &mut Choice) {
               entry:
-                call consume(move r.* as A);
-                call consume(move r.* as A);
+                call consume(take r.* as A);
+                call consume(take r.* as A);
                 return
             }
             ",
@@ -886,10 +1273,10 @@ mod tests {
             extern fn consume(x: i64);
             fn f(r: &mut Pair, b: bool) {
               entry:
-                call consume(move r.*.left);
+                call consume(take r.*.left);
                 branch(copy b) [true: use_left, false: done]
               use_left:
-                call consume(move r.*.left);
+                call consume(take r.*.left);
                 r.*.left = 0;
                 goto done
               done:
@@ -910,8 +1297,8 @@ mod tests {
             extern fn consume(x: i64);
             fn f(p: Pair) {
               entry:
-                call consume(move p.left);
-                call consume(move p.right);
+                call consume(take p.left);
+                call consume(take p.right);
                 return
             }
             ",
@@ -926,10 +1313,10 @@ mod tests {
             extern fn consume(x: i64);
             fn f(b: bool, x: i64) {
               entry:
-                call consume(move x);
+                call consume(take x);
                 branch(copy b) [true: use_x, false: done]
               use_x:
-                call consume(move x);
+                call consume(take x);
                 goto done
               done:
                 return
@@ -948,7 +1335,7 @@ mod tests {
               entry:
                 goto loop
               loop:
-                call consume(move x);
+                call consume(take x);
                 branch(copy b) [true: loop, false: done]
               done:
                 return
@@ -962,6 +1349,31 @@ mod tests {
     }
 
     #[test]
+    fn resolves_take_inside_a_non_exiting_loop() {
+        // Backward dataflow must process every block, not just those
+        // reachable from an exit terminator. `entry` here loops forever;
+        // under a naive seed-terminals-only worklist it never gets
+        // processed and the `take x` stays unresolved. With every block
+        // seeded at bottom, the fixpoint reaches `entry` and — because
+        // the back-edge itself demands `x` on the next iteration — the
+        // read resolves to `copy`.
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(x: i64) {
+              entry:
+                call consume(take x);
+                goto entry
+            }
+            ",
+        );
+        assert!(matches!(
+            call_arg_in_block(&program, "f", "entry", 0),
+            Operand::Copy(Place::Var(x)) if x == "x"
+        ));
+    }
+
+    #[test]
     fn uses_declared_copy_class_for_custom_types() {
         let program = elaborate_source(
             "
@@ -969,8 +1381,8 @@ mod tests {
             extern fn consume(x: Token);
             fn f(x: Token) {
               entry:
-                call consume(move x);
-                call consume(move x);
+                call consume(take x);
+                call consume(take x);
                 return
             }
             ",
@@ -985,8 +1397,8 @@ mod tests {
             extern fn consume(r: &mut i64);
             fn f(r: &mut i64) {
               entry:
-                call consume(move r);
-                call consume(move r);
+                call consume(take r);
+                call consume(take r);
                 return
             }
             ",
@@ -1003,10 +1415,10 @@ mod tests {
             fn f(x: i64) {
               r: &out i64;
               entry:
-                call consume(move x);
+                call consume(take x);
                 r = &out x;
                 r.* = 1;
-                call finish(move r);
+                call finish(take r);
                 return
             }
             ",
@@ -1026,8 +1438,8 @@ mod tests {
                 goto loop
               loop:
                 r = &out x;
-                call fill(move r);
-                call consume(move x);
+                call fill(take r);
+                call consume(take x);
                 branch(copy again) [true: loop, false: done]
               done:
                 return
@@ -1049,10 +1461,10 @@ mod tests {
             fn f(p: Pair) {
               r: &out i64;
               entry:
-                call take_pair(move p);
+                call take_pair(take p);
                 r = &out p.left;
                 r.* = 1;
-                call take_pair(move p);
+                call take_pair(take p);
                 return
             }
             ",
@@ -1067,8 +1479,8 @@ mod tests {
             extern fn consume(x: i64);
             fn f(x: i64) {
               entry:
-                call consume(move x);
-                call consume(move x);
+                call consume(take x);
+                call consume(take x);
                 return
             }
             "
@@ -1079,9 +1491,10 @@ mod tests {
         let (env, errors) = Env::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
 
-        elaborate(&mut program, &env);
+        let mut d = Diagnostics::default();
+        elaborate(&mut program, &env, &mut d);
         let once = program.clone();
-        elaborate(&mut program, &env);
+        elaborate(&mut program, &env, &mut d);
         assert_eq!(program, once);
     }
 }

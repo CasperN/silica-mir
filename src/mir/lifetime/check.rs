@@ -16,13 +16,13 @@ use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
-use super::LifetimeCode;
 use super::constraints;
 use super::loans::{
-    self, AccessKind, LoanMap, consume_operand, is_compatible, is_elab_inserted_drop,
-    paths_conflict, transfer_stmt,
+    self, consume_operand, is_compatible, is_elab_inserted_drop, paths_conflict, transfer_stmt,
+    AccessKind, LoanMap,
 };
 use super::region::{self, Region};
+use super::LifetimeCode;
 
 pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
     for f in program.functions() {
@@ -253,6 +253,9 @@ fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &Env) 
 fn operand_place(op: &Operand) -> Option<&Place> {
     match op {
         Operand::Copy(p) | Operand::Move(p) => Some(p),
+        Operand::Take(_) => {
+            unreachable!("lifetime check saw unresolved `take` operand; copy relaxation should have resolved it")
+        }
         Operand::Const(_) => None,
     }
 }
@@ -476,6 +479,9 @@ impl<'a> Checker<'a> {
         let (place, access) = match op {
             Operand::Copy(p) => (p, AccessKind::Read),
             Operand::Move(p) => (p, AccessKind::Move),
+            Operand::Take(_) => {
+                unreachable!("lifetime check saw unresolved `take` operand; copy relaxation should have resolved it")
+            }
             Operand::Const(_) => return,
         };
         self.check_loan_conflict(block, place, access, span, loans);

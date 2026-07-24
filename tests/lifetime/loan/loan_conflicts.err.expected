@@ -105,8 +105,8 @@ error: at 118:5: [LT-LoanConflict] In function 'shared_blocks_move', block 'entr
  116 |   entry:
  117 |     r = &x;
      |     ------ borrow of 'x' occurs here
- 118 |     call take(move x);
-     |     ^^^^^^^^^^^^^^^^^
+ 118 |     call consume(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^
  119 |     call read_ref(move r);
      |
   hint: the borrow of 'r' is active until its last use or explicit unborrow.

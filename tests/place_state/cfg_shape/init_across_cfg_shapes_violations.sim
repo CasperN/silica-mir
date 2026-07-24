@@ -17,7 +17,7 @@
 
 struct M: Drop + Move { value: i64 }
 
-extern fn take(y: M);
+extern fn consume(y: M);
 extern fn use_num(n: M);
 
 # ---------- branch/merge: only one arm inits x ----------
@@ -47,7 +47,7 @@ fn move_one_branch_read_at_merge(x: M, b: bool) {
   entry:
     branch(copy b) [true: t, false: fbr]
   t:
-    call take(move x);
+    call consume(move x);
     goto merge
   fbr:
     goto merge

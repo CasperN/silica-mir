@@ -193,6 +193,10 @@ fn write_operand(out: &mut String, op: &Operand) {
             out.push_str("move ");
             write_place(out, p);
         }
+        Operand::Take(p) => {
+            out.push_str("take ");
+            write_place(out, p);
+        }
         Operand::Const(c) => write_const(out, c),
     }
 }
@@ -498,7 +502,7 @@ mod tests {
 
     #[test]
     fn roundtrip_extern_fn() {
-        assert_roundtrip("extern fn take(x: i64, y: &mut i64);");
+        assert_roundtrip("extern fn consume(x: i64, y: &mut i64);");
     }
 
     #[test]

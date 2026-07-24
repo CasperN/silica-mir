@@ -1,0 +1,44 @@
+# Copy relaxation error cases. Each fn exercises one `take` resolution
+# failure mode; the pass emits a dedicated `RELAX-*` diagnostic.
+
+struct Owned: Drop + Move { value: i64 }
+
+extern fn consume(x: Owned);
+
+# ---------- RELAX-MandatoryCopyNonCopy: shared-ref crossing ----------
+
+# `take r.*` through `&Owned` must resolve to `copy` (moving through a
+# shared reference is illegal), but `Owned` is not Copy — no valid
+# resolution exists.
+fn take_of_non_copy_through_shared_ref(r: &Owned) {
+  x: Owned;
+  entry:
+    x = take r.*;
+    call consume(move x);
+    return
+}
+
+# ---------- RELAX-MandatoryCopyNonCopy: dynamic-index projection ----------
+
+# Dynamic index makes the path mandatory-copy, but the slot type isn't
+# Copy so `copy` can't be emitted either.
+fn take_of_non_copy_at_dynamic_index(a: [Owned; 2], i: i64) {
+  x: Owned;
+  entry:
+    x = take a[copy i];
+    call consume(move x);
+    return
+}
+
+# ---------- RELAX-IndexOperandNotReading: `move` inside `Index` ----------
+
+# Array indexing is a non-consuming read of its operand. A `move` here
+# would silently escape place-state / NLL / lifetime tracking of the
+# indexed temporary.
+fn move_index_operand(a: [i64; 4], i: i64) {
+  x: i64;
+  entry:
+    x = copy a[move i];
+    drop x;
+    return
+}

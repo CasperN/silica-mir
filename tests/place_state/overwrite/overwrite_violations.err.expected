@@ -7,7 +7,7 @@ error: at 38:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_line
  37 |     y = move x1;
  38 |     y = move x2;
     |     ^^^^^^^^^^^
- 39 |     call take(move y);
+ 39 |     call consume(move y);
     |
 error: at 51:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_field', block 'entry': cannot overwrite 'c.w1': type Wrap is not Drop and the value is still live (consume it via `drop c.w1` first)
     |

@@ -4,7 +4,7 @@ struct Buf: Copy + Drop {
 
 extern fn set_i64(r: &out 's0 i64, v: i64);
 
-extern fn take(a: [&mut 's0 i64; 2]);
+extern fn consume(a: [&mut 's0 i64; 2]);
 
 fn lit_basic() {
   a: [i64; 3];
@@ -42,7 +42,7 @@ fn lit_of_mut_refs(x: i64, y: i64) {
     rx = &mut x;
     ry = &mut y;
     a = [move rx, move ry];
-    call take(move a);
+    call consume(move a);
     drop y;
     drop x;
     return

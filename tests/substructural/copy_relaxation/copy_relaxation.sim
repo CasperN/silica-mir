@@ -1,7 +1,10 @@
-# Copy relaxation is a pre-NLL, CFG-aware MIR elaboration pass. It converts
-# an earlier move to copy exactly when a later reachable use needs the same
-# Copy-owned path. This fixture covers the pipeline-level contract; the pass's
-# unit tests cover branch, loop, projection, and `&out` transfer edges.
+# Copy relaxation is a pre-NLL, CFG-aware MIR elaboration pass. It
+# specializes each `take` operand to `move` (last use, no further demand)
+# or `copy` (later reachable use / ref post-Init obligation demands the
+# value). Hand-written `move` and `copy` are authoritative and never
+# rewritten. This fixture uses `take` throughout to exercise the pass's
+# specialization; unit tests cover branch, loop, projection, and `&out`
+# transfer edges.
 
 struct Token: Copy + Drop { value: i64 }
 struct Pair: Move { left: i64 right: i64 }
@@ -15,19 +18,19 @@ extern fn take_num(x: i64);
 extern fn take_token(x: Token);
 extern fn observe(r: &i64);
 
-# The first move preserves x for the second use; the last use stays a move.
+# The first take preserves x for the second use; the last use stays a move.
 fn repeated_scalar(x: i64) {
   entry:
-    call take_num(move x);
-    call take_num(move x);
+    call take_num(take x);
+    call take_num(take x);
     return
 }
 
 # Classification comes from the declared MIR class, not a lowering heuristic.
 fn repeated_custom(x: Token) {
   entry:
-    call take_token(move x);
-    call take_token(move x);
+    call take_token(take x);
+    call take_token(take x);
     return
 }
 
@@ -35,27 +38,27 @@ fn repeated_custom(x: Token) {
 # and close it after the final consuming move.
 fn repeated_shared_ref(r: &i64) {
   entry:
-    call observe(move r);
-    call observe(move r);
+    call observe(take r);
+    call observe(take r);
     return
 }
 
-# Sibling projections are independent move paths. The use of p.right does not
-# justify copying the earlier move of p.left.
+# Sibling projections are independent take paths. The use of p.right does not
+# justify copying the earlier take of p.left.
 fn sibling_fields(p: Pair) {
   entry:
-    call take_num(move p.left);
-    call take_num(move p.right);
+    call take_num(take p.left);
+    call take_num(take p.right);
     return
 }
 
 # Dereference demand is tracked separately from demand for the borrower.
-# The first pointee move is relaxed, the last remains a move, and the write
+# The first pointee take is relaxed, the last remains a move, and the write
 # restores the &mut reference's Init-at-expiry obligation.
 fn repeated_mut_pointee(r: &mut i64) {
   entry:
-    call take_num(move r.*);
-    call take_num(move r.*);
+    call take_num(take r.*);
+    call take_num(take r.*);
     r.* = 0;
     return
 }
@@ -64,27 +67,27 @@ fn repeated_mut_pointee(r: &mut i64) {
 # move-path identity.
 fn repeated_mut_field(r: &mut CopyPair) {
   entry:
-    call take_num(move r.*.left);
-    call take_num(move r.*.left);
+    call take_num(take r.*.left);
+    call take_num(take r.*.left);
     r.*.left = 0;
     return
 }
 
 fn repeated_mut_const_index(r: &mut [i64; 2]) {
   entry:
-    call take_num(move r.*[0]);
-    call take_num(move r.*[0]);
+    call take_num(take r.*[0]);
+    call take_num(take r.*[0]);
     r.*[0] = 0;
     return
 }
 
 # Arbitrary-depth static access paths use the same rule. Every reference
-# boundary is exclusive, the first leaf move is relaxed, and the final write
+# boundary is exclusive, the first leaf take is relaxed, and the final write
 # restores the innermost obligation.
 fn repeated_nested_mut_pointee(r: &mut &mut &mut CopyPair) {
   entry:
-    call take_num(move r.*.*.*.left);
-    call take_num(move r.*.*.*.left);
+    call take_num(take r.*.*.*.left);
+    call take_num(take r.*.*.*.left);
     r.*.*.*.left = 0;
     return
 }
@@ -92,16 +95,16 @@ fn repeated_nested_mut_pointee(r: &mut &mut &mut CopyPair) {
 # Projections may occur before, between, and after dereferences.
 fn repeated_field_between_derefs(link: Link) {
   entry:
-    call take_num(move link.next.*.*.right);
-    call take_num(move link.next.*.*.right);
+    call take_num(take link.next.*.*.right);
+    call take_num(take link.next.*.*.right);
     link.next.*.*.right = 0;
     return
 }
 
 fn repeated_downcast_between_derefs(r: &mut RefChoice) {
   entry:
-    call take_num(move r.* as HasRef.*.left);
-    call take_num(move r.* as HasRef.*.left);
+    call take_num(take r.* as HasRef.*.left);
+    call take_num(take r.* as HasRef.*.left);
     r.* as HasRef.*.left = 0;
     return
 }
@@ -111,8 +114,8 @@ fn repeated_downcast_between_derefs(r: &mut RefChoice) {
 # obligation after the last payload move.
 fn repeated_complex_projection(foo: ProjectionRoot) {
   entry:
-    call take_num(move foo.field.*[2].* as Variant);
-    call take_num(move foo.field.*[2].* as Variant);
+    call take_num(take foo.field.*[2].* as Variant);
+    call take_num(take foo.field.*[2].* as Variant);
     foo.field.*[2].* = DeepChoice::Variant(0);
     return
 }
@@ -120,34 +123,34 @@ fn repeated_complex_projection(foo: ProjectionRoot) {
 # Mixed exclusive kinds retain their own postconditions at nested depth.
 fn repeated_nested_drop(r: &mut &drop i64) {
   entry:
-    call take_num(move r.*.*);
-    call take_num(move r.*.*);
+    call take_num(take r.*.*);
+    call take_num(take r.*.*);
     return
 }
 
 fn repeated_nested_out(r: &mut &out i64) {
   entry:
     r.*.* = 1;
-    call take_num(move r.*.*);
-    call take_num(move r.*.*);
+    call take_num(take r.*.*);
+    call take_num(take r.*.*);
     r.*.* = 0;
     return
 }
 
 # Every exclusive reference kind can participate when its pointee is in the
-# state required by the move and its eventual obligation is fulfilled.
+# state required by the take and its eventual obligation is fulfilled.
 fn repeated_drop_pointee(r: &drop i64) {
   entry:
-    call take_num(move r.*);
-    call take_num(move r.*);
+    call take_num(take r.*);
+    call take_num(take r.*);
     return
 }
 
 fn repeated_out_pointee(r: &out i64) {
   entry:
     r.* = 1;
-    call take_num(move r.*);
-    call take_num(move r.*);
+    call take_num(take r.*);
+    call take_num(take r.*);
     r.* = 0;
     return
 }
@@ -155,7 +158,7 @@ fn repeated_out_pointee(r: &out i64) {
 fn repeated_uninit_pointee(r: &uninit i64) {
   entry:
     r.* = 1;
-    call take_num(move r.*);
-    call take_num(move r.*);
+    call take_num(take r.*);
+    call take_num(take r.*);
     return
 }

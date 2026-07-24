@@ -548,12 +548,18 @@ fn run_backward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::St
     let mut states: Results<A::State> = IndexMap::new();
     let mut worklist: VecDeque<String> = VecDeque::new();
 
-    // Seed exit states of terminal blocks (no successors).
+    // Seed every block's exit state with the lattice bottom
+    // (`initial_state`), not just terminal blocks. Backward analyses
+    // are monotone and joins are commutative, so priming a block
+    // that's part of a non-exiting cycle (e.g. an infinite loop with
+    // no `return`/`abort`) doesn't perturb the result at blocks that
+    // do reach an exit — it just guarantees the cycle members get
+    // processed at all. Without this, a `take x; goto self` loop
+    // never enters the worklist and copy relaxation leaves `take`
+    // unresolved.
     for block in &body.blocks {
-        if terminator_successors(&block.terminator).is_empty() {
-            states.insert(block.label.clone(), analysis.initial_state());
-            worklist.push_back(block.label.clone());
-        }
+        states.insert(block.label.clone(), analysis.initial_state());
+        worklist.push_back(block.label.clone());
     }
 
     while let Some(label) = worklist.pop_front() {

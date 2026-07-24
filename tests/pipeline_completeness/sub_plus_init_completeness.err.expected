@@ -3,14 +3,14 @@ error: at 21:5: [SUB-CopyOfNonCopy] In function 'sub_copy_of_non_copy', block 'e
  20 |   entry:
  21 |     b = copy a;
     |     ^^^^^^^^^^
- 22 |     call take(move b);
+ 22 |     call consume(move b);
     |
   hint: since the type is not Copy, try moving it instead using 'move'
 error: at 36:5: [INIT-UseAfterMove] In function 'init_use_after_move', block 'entry': variable 'a' is used after move
     |
  35 |     b = move a;
- 36 |     call take(move a);
-    |     ^^^^^^^^^^^^^^^^^
+ 36 |     call consume(move a);
+    |     ^^^^^^^^^^^^^^^^^^^^
  37 |     return
     |
 error: at 23:5: [INIT-ReturnValueLeak] In function 'sub_copy_of_non_copy', block 'entry': value 'a' of type Linear is not consumed at return
@@ -22,7 +22,7 @@ error: at 23:5: [INIT-ReturnValueLeak] In function 'sub_copy_of_non_copy', block
     |
     | ...
     |
- 22 |     call take(move b);
+ 22 |     call consume(move b);
  23 |     return
     |     ^^^^^^
  24 | }
@@ -37,7 +37,7 @@ error: at 37:5: [INIT-ReturnValueLeak] In function 'init_use_after_move', block 
     |
     | ...
     |
- 36 |     call take(move a);
+ 36 |     call consume(move a);
  37 |     return
     |     ^^^^^^
  38 | }

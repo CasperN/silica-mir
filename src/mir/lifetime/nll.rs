@@ -600,6 +600,11 @@ fn operand_uses(op: &Operand, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>)
         Operand::Copy(place) | Operand::Move(place) => {
             place_borrower_uses(place, borrowers, out);
         }
+        Operand::Take(_) => {
+            unreachable!(
+                "NLL saw unresolved `take` operand; copy relaxation should have resolved it"
+            )
+        }
         Operand::Const(_) => {}
     }
 }

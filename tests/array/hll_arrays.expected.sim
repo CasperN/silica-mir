@@ -110,16 +110,17 @@ fn<'s0> dynamic_read(a: [i64; 3], i: i64, $return: &out 's0 i64) {
   entry:
     _temp_0 = move i;
     _temp_2 = &out _temp_1;
-    call $i64_lt(move _temp_0, 3, move _temp_2);
+    call $i64_lt(copy _temp_0, 3, move _temp_2);
     branch(copy _temp_1) [true: index_in_bounds_0, false: index_out_of_bounds_1]
   index_out_of_bounds_1:
     abort
   index_in_bounds_0:
-    $return.* = move a[move _temp_0];
+    $return.* = copy a[copy _temp_0];
     unborrow $return;
     require_uninit _temp_2;
     drop _temp_1;
     require_uninit _temp_1;
+    drop _temp_0;
     require_uninit _temp_0;
     require_uninit $return;
     require_uninit i;
@@ -138,15 +139,16 @@ fn<'s0> dynamic_mut_borrow(i: i64, $return: &out 's0 i64) {
     a = [10, 20, 30];
     _temp_0 = move i;
     _temp_2 = &out _temp_1;
-    call $i64_lt(move _temp_0, 3, move _temp_2);
+    call $i64_lt(copy _temp_0, 3, move _temp_2);
     branch(copy _temp_1) [true: index_in_bounds_0, false: index_out_of_bounds_1]
   index_out_of_bounds_1:
     abort
   index_in_bounds_0:
-    r = &mut a[move _temp_0];
+    r = &mut a[copy _temp_0];
     require_uninit _temp_2;
     drop _temp_1;
     require_uninit _temp_1;
+    drop _temp_0;
     require_uninit _temp_0;
     $return.* = copy r.*;
     unborrow $return;

@@ -26,11 +26,11 @@ error: at 73:28: [TC-InvalidDeclaredType] In struct 'DeepBadBox', field 'field':
     |                            ^^^^^^^^^^^^^^^^^^^
  74 | 
     |
-error: at 58:12: [TC-InvalidDeclaredType] In function 'take', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+error: at 58:15: [TC-InvalidDeclaredType] In function 'consume', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
     |
  57 | # Same bound failure via a function parameter.
- 58 | fn take(b: Box<Linear>) {
-    |            ^^^^^^^^^^^
+ 58 | fn consume(b: Box<Linear>) {
+    |               ^^^^^^^^^^^
  59 |   entry:
     |
 error: at 66:30: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out 's0 U for 'Option::T' does not satisfy required bound 'Copy'

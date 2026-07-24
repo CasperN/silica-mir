@@ -487,6 +487,7 @@ const =
 operand =
     | copy place        # bitwise copy; place must be Copy; place stays initialized
     | move place        # bitwise move; place becomes uninitialized
+    | take place        # deferred read; copy relaxation resolves to move or copy
     | const
 
 rvalue =
@@ -542,7 +543,16 @@ program = (declaration ;)*
 ```
 
 Notes:
-- `move`/`copy` is explicit on every operand so the linearity check is local and syntax-directed.
+- `move`/`copy` is explicit on every operand so the linearity check is
+  local and syntax-directed. `take` is the HLL-emitted "resolve me"
+  operand: the copy relaxation pass specializes each `take place` to
+  either `move place` or `copy place` based on backward may-demand and
+  the place's static Copy-ness. After that pass, no `take` operand
+  survives — the check pipeline sees only explicit `move` and `copy`,
+  and any `take` reaching a post-relaxation pass is an internal
+  compiler error. Hand-written `.sim` files that want to pin a
+  specific consumption strategy write `move` or `copy` directly and
+  the pass leaves them alone.
 - Struct construction has **no aggregate rvalue**. Structs are initialized one field at a time via `x.field = ...`; the struct as a whole is initialized exactly when all fields are.
 - Enum construction *is* whole-value (`Name::Variant(operand)`): a variant's payload and discriminant must become valid atomically.
 - **Array construction may be whole-value** (`[e0, e1, ..., eN-1]`) or
@@ -730,13 +740,31 @@ Pre-elaboration checks:
 6. **Block reachability** — dead-block warnings.
 Elaboration:
 
-7. **Copy relaxation** — rewrite an earlier `move place` to `copy place`
-   when a later reachable use needs the same Copy-owned path or arbitrary-depth
-   static pointee path through exclusive references. Fields, downcasts, and
-   constant indices may occur anywhere in the path. Shared-reference moves
-   remain illegal; raw-pointer dereferences and dynamic indices are excluded
-   because their identity is not stable without points-to/value analysis. This
-   runs before NLL because copies do not close borrower loans.
+7. **Copy relaxation** — specialize each `take place` operand into
+   `move place` or `copy place`, based on backward may-demand and
+   static path shape. Paths fall into three classes:
+   - **Mandatory-copy** — shared-reference crossings and dynamic
+     indices. `move` is either illegal (shared) or would lose track
+     of the consumed slot (dynamic index), so `take` here always
+     specializes to `copy`; a non-Copy type at this position is a
+     `RELAX-MandatoryCopyNonCopy` user error.
+   - **Stable candidates** — owned paths, chains of exclusive-ref
+     dereferences, and paths crossing raw pointers (the author is
+     already in `unsafe`, so raw-ptr boundaries don't gate the
+     decision). Resolution is demand-driven: `copy` when a later
+     reachable use demands the same static path or a ref's post-Init
+     obligation demands the pointee at expiry; otherwise `move`
+     (with a `copy` fallback for Copy-only types).
+   - **`Index` operand position** — a non-consuming read. `take`
+     here is forced to `copy`; a `move` operand is
+     `RELAX-IndexOperandNotReading`. This keeps place-state, NLL,
+     and lifetime analyses from needing to recurse into `Index`
+     projections.
+
+   Fields, downcasts, and constant indices may appear anywhere in a
+   static path. Runs before NLL because copies do not close borrower
+   loans. Post-pass, every operand is `move` or `copy`; any
+   surviving `take` is an internal compiler error.
 8. **NLL lifetime elaboration** — insert `unborrow` at ASAP last-use points.
 9. **Place-state cleanup elaboration** — insert `drop` before returns for
    Init-at-return values whose types are Drop.
@@ -953,17 +981,11 @@ To load it locally:
 # Punch list
 
 ## Copy Relaxation
-- **`take` operand (short for `move_or_copy`).** Today copy relaxation edits
-  any `move` on a Copy path into `copy` when analysis permits. That loses
-  provenance: a hand-written `move r.*` on a Copy pointee is indistinguishable
-  from an HLL-emitted `move r.*`, and negative-test fixtures that write the
-  former must retype to non-Copy to preserve coverage. A dedicated `take`
-  operand (emitted by HLL, specialized by the pass to `move` or `copy`) would
-  restore that distinction — hand-written `move`/`copy` stay authoritative;
-  `take` is the "resolve me" input.
-- **Enforce the dynamic-place no-consumption rule.** Copy relaxation already
-  excludes dynamic indices, but init-state checking must reject dynamic
-  `move`/`drop` and state-changing borrows while retaining the uniform-state
+- **Enforce the dynamic-place no-consumption rule at init-state.** The
+  resolver already forces `take` on a dynamic-index path to `copy`, but
+  hand-written MIR could still express `move a[i]` or `drop a[i]`.
+  Init-state checking must reject dynamic `move`/`drop` and
+  state-changing borrows while retaining the uniform-state
   read/mutation cases described in the semantics above.
 
 ## Language features

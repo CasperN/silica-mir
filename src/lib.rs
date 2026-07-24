@@ -105,7 +105,18 @@ pub fn elaborate_and_check_mir(
     // only signatures (see `Env.functions`), so no resync is needed
     // between passes — subsequent passes read bodies straight from the
     // mutated `Program`.
-    mir::place_state::copy_relaxation::elaborate(&mut elaborated, &env);
+    mir::place_state::copy_relaxation::elaborate(&mut elaborated, &env, d);
+
+    // Downstream passes assume every operand is `move` or `copy`; a
+    // surviving `take` means copy relaxation missed a case. Emit an
+    // internal-error diagnostic (aggregated, not per-operand) and bail
+    // before NLL and later passes, which would `unreachable!` on the
+    // first `take` they saw.
+    mir::place_state::copy_relaxation::verify_no_take(&elaborated, d);
+    if d.internal_error_count() > 0 {
+        return (elaborated, env);
+    }
+
     mir::lifetime::nll::elaborate(&mut elaborated, &env);
     mir::place_state::drop_elaboration::elaborate(&mut elaborated, &env);
 

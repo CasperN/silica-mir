@@ -611,6 +611,12 @@ impl Parser {
                     })?;
                     Ok(move_op(self.map_place(place_node)?))
                 }
+                "take" => {
+                    let place_node = node.child(1).ok_or_else(|| {
+                        self.diag(node, ParserCode::MalformedCst, "take missing place")
+                    })?;
+                    Ok(Operand::Take(self.map_place(place_node)?))
+                }
                 _ => Ok(Operand::Const(self.map_const(first_child)?)),
             }
         } else {

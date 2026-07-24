@@ -135,19 +135,19 @@ fn f(x: Linear) {
 fn does_not_drop_moved_vars() {
     assert_elaborated_eq(
         "
-            extern fn take(a: i64);
+            extern fn consume(a: i64);
             fn f(x: i64) {
               entry:
-                call take(move x);
+                call consume(move x);
                 return
             }
             ",
         "\
-extern fn take(a: i64);
+extern fn consume(a: i64);
 
 fn f(x: i64) {
   entry:
-    call take(move x);
+    call consume(move x);
     return
 }",
     );

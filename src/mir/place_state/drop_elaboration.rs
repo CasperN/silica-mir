@@ -142,7 +142,6 @@ pub fn elaborate(program: &mut Program, env: &Env) {
             }
         }
     }
-
 }
 
 fn plan_for_function(env: &Env, func: &Function) -> FnPlan {

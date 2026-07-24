@@ -430,11 +430,11 @@ pub fn deref_inner(place: &Place) -> Option<Place> {
     as_owned_path(inner)
 }
 
-/// The `Place` referenced by an operand's `copy`/`move`, or `None` for
-/// constants.
+/// The `Place` referenced by an operand's `copy`/`move`/`take`, or
+/// `None` for constants.
 pub fn operand_place(op: &Operand) -> Option<&Place> {
     match op {
-        Operand::Copy(p) | Operand::Move(p) => Some(p),
+        Operand::Copy(p) | Operand::Move(p) | Operand::Take(p) => Some(p),
         Operand::Const(_) => None,
     }
 }
@@ -492,6 +492,13 @@ pub enum ConstVal {
 pub enum Operand {
     Copy(Place),
     Move(Place),
+    /// Deferred read of `place`: copy relaxation specializes each
+    /// `Take` operand to either `Copy` or `Move` before subsequent
+    /// passes run. Emitted by HLL lowering for reads whose optimal
+    /// specialization depends on flow-sensitive demand. No `Take`
+    /// operand survives past `place_state::copy_relaxation::elaborate`
+    /// — later passes hitting one is an internal compiler error.
+    Take(Place),
     Const(ConstVal),
 }
 

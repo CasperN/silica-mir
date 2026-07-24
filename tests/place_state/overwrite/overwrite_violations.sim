@@ -22,7 +22,7 @@ struct Container: Move { w1: Wrap  w2: Wrap }
 
 struct RefBox: Move { p: &mut i64 }
 
-extern fn take(l: Linear);
+extern fn consume(l: Linear);
 extern fn take_wrap(w: Wrap);
 extern fn take_container(c: Container);
 
@@ -36,7 +36,7 @@ fn overwrite_init_linear_whole(x1: Linear, x2: Linear) {
   entry:
     y = move x1;
     y = move x2;
-    call take(move y);
+    call consume(move y);
     return
 }
 

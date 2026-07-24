@@ -200,6 +200,7 @@ module.exports = grammar({
     operand: $ => choice(
       seq('copy', $.place),
       seq('move', $.place),
+      seq('take', $.place),
       $.const,
     ),
 

@@ -345,7 +345,9 @@ impl Env {
         locals: &IndexMap<String, Type>,
     ) -> Result<Type, Diagnostic> {
         match op {
-            Operand::Copy(place) | Operand::Move(place) => self.type_of_place(place, span, locals),
+            Operand::Copy(place) | Operand::Move(place) | Operand::Take(place) => {
+                self.type_of_place(place, span, locals)
+            }
             Operand::Const(c) => match c {
                 ConstVal::Int { ty, .. } => Ok(int_ty(*ty)),
                 ConstVal::Float { ty, .. } => Ok(float_ty(*ty)),

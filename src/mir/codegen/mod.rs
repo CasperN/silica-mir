@@ -846,6 +846,11 @@ fn emit_rvalue(cx: &mut CodeGenContext, rv: &RValue) -> (String, Type) {
 fn emit_operand(cx: &mut CodeGenContext, op: &Operand) -> (String, Type) {
     match op {
         Operand::Copy(p) | Operand::Move(p) => read_place(cx, p),
+        Operand::Take(_) => {
+            unreachable!(
+                "codegen saw unresolved `take` operand; copy relaxation should have resolved it"
+            )
+        }
         Operand::Const(c) => emit_const(cx, c),
     }
 }

@@ -55,7 +55,7 @@ struct WrongArity2 { field: Box }
 struct UsesBadBox { field: Box<Linear> }
 
 # Same bound failure via a function parameter.
-fn take(b: Box<Linear>) {
+fn consume(b: Box<Linear>) {
   entry:
     return
 }

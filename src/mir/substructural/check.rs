@@ -147,6 +147,11 @@ fn check_operand(
     let (place, kind_name, needed) = match op {
         Operand::Copy(place) => (place, "copy", ClassMarker::Copy),
         Operand::Move(place) => (place, "move", ClassMarker::Move),
+        // `take` will specialize to `move` or `copy`; require at least one
+        // of the two markers so a valid resolution exists. Copy is not a
+        // subset of Move in Silica (the blanket impl is `Copy + Drop →
+        // Move`, not `Copy → Move`), so both must be checked.
+        Operand::Take(place) => (place, "take", ClassMarker::CopyOrMove),
         Operand::Const(_) => return,
     };
     let Ok(ty) = env.type_of_place(place, span, locals) else {
@@ -157,6 +162,7 @@ fn check_operand(
     let ok = match needed {
         ClassMarker::Copy => c.implies(Marker::Copy),
         ClassMarker::Move => c.implies(Marker::Move),
+        ClassMarker::CopyOrMove => c.implies(Marker::Copy) || c.implies(Marker::Move),
     };
     if !ok {
         let (code, marker_name, hint) = match needed {
@@ -169,6 +175,11 @@ fn check_operand(
                 MoveOfNonMove,
                 "Move",
                 "linear types cannot be moved out of non-Move contexts",
+            ),
+            ClassMarker::CopyOrMove => (
+                MoveOfNonMove,
+                "Copy or Move",
+                "`take` specializes to `copy` or `move`, so the type must support at least one",
             ),
         };
         d.push_error(
@@ -187,6 +198,7 @@ fn check_operand(
 enum ClassMarker {
     Copy,
     Move,
+    CopyOrMove,
 }
 
 fn check_terminator(

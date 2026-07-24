@@ -1,0 +1,21 @@
+error: at 16:5: [RELAX-MandatoryCopyNonCopy] In function 'take_of_non_copy_through_shared_ref', block 'entry': cannot resolve `take` of 'r.*' to `copy`: path crosses a shared reference or dynamic-index projection and the type is not Copy
+    |
+ 15 |   entry:
+ 16 |     x = take r.*;
+    |     ^^^^^^^^^^^^
+ 17 |     call consume(move x);
+    |
+error: at 28:5: [RELAX-MandatoryCopyNonCopy] In function 'take_of_non_copy_at_dynamic_index', block 'entry': cannot resolve `take` of 'a[?]' to `copy`: path crosses a shared reference or dynamic-index projection and the type is not Copy
+    |
+ 27 |   entry:
+ 28 |     x = take a[copy i];
+    |     ^^^^^^^^^^^^^^^^^^
+ 29 |     call consume(move x);
+    |
+error: at 41:5: [RELAX-IndexOperandNotReading] In function 'move_index_operand', block 'entry': `move` of 'i' inside `Index` projection: array indexing is a non-consuming read, so its operand must be `copy` or a constant
+    |
+ 40 |   entry:
+ 41 |     x = copy a[move i];
+    |     ^^^^^^^^^^^^^^^^^^
+ 42 |     drop x;
+    |

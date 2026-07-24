@@ -19,11 +19,11 @@ fn sub_copy_of_non_copy(a: Linear) {
   b: Linear;
   entry:
     b = copy a;
-    call take(move b);
+    call consume(move b);
     return
 }
 
-extern fn take(v: Linear);
+extern fn consume(v: Linear);
 
 # ---------- INIT-UseAfterMove ----------
 
@@ -33,6 +33,6 @@ fn init_use_after_move(a: Linear) {
   b: Linear;
   entry:
     b = move a;
-    call take(move a);
+    call consume(move a);
     return
 }

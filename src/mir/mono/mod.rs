@@ -163,6 +163,9 @@ impl MonoCtx {
         match op {
             Operand::Copy(p) => Operand::Copy(p.clone()),
             Operand::Move(p) => Operand::Move(p.clone()),
+            Operand::Take(_) => unreachable!(
+                "monomorphization saw unresolved `take` operand; copy relaxation should have resolved it"
+            ),
             Operand::Const(c) => Operand::Const(self.walk_const(c)),
         }
     }

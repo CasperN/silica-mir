@@ -60,6 +60,9 @@ pub enum DiagCode {
     HllMutCheck(crate::hll::mut_check::HllMutCheckCode),
     /// Errors from HLL → MIR lowering (`hll::lowering::HllLoweringCode`).
     HllLowering(crate::hll::lowering::HllLoweringCode),
+    /// Errors from copy relaxation's `take` resolver
+    /// (see `place_state::copy_relaxation::CopyRelaxationCode`).
+    CopyRelaxation(crate::mir::place_state::copy_relaxation::CopyRelaxationCode),
 }
 
 impl DiagCode {
@@ -77,6 +80,7 @@ impl DiagCode {
             DiagCode::HllTypeCheck(c) => format!("HTC-{:?}", c),
             DiagCode::HllMutCheck(c) => format!("HMC-{:?}", c),
             DiagCode::HllLowering(c) => format!("HLO-{:?}", c),
+            DiagCode::CopyRelaxation(c) => format!("RELAX-{:?}", c),
         }
     }
 }
