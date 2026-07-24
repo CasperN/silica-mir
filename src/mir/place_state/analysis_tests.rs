@@ -1,7 +1,7 @@
 mod parameter_ref_tests {
     use crate::mir::helpers::*;
     use crate::mir::parser::Parser;
-    use crate::mir::place_state::analysis::{initial_state, InitState, RefState};
+    use crate::mir::place_state::analysis::{boundary_state, InitState, RefState};
     use crate::mir::type_check::Env;
 
     #[test]
@@ -19,7 +19,7 @@ mod parameter_ref_tests {
         let func = program.find_fn("f").expect("fn f");
         let body = func.body.as_ref().expect("body");
 
-        let state = initial_state(func, body, &env);
+        let state = boundary_state(func, body, &env);
         let field = field_place(field_place(var_place("p"), "inner"), "r");
         assert_eq!(
             state.refs.get(&field),

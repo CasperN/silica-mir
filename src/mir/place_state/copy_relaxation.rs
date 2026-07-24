@@ -304,6 +304,10 @@ impl<'a> Analysis for MovePathDemand<'a> {
         Demand::default()
     }
 
+    fn boundary_state(&self) -> Self::State {
+        Demand::default()
+    }
+
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         Demand {
             values: a.values.union(&b.values).cloned().collect(),

@@ -78,7 +78,7 @@ impl Analysis for VariantFlow {
     fn direction(&self) -> Direction {
         Direction::Forward
     }
-    fn initial_state(&self) -> Self::State {
+    fn boundary_state(&self) -> Self::State {
         PointState::new()
     }
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {

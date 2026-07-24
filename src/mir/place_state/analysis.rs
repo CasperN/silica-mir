@@ -639,7 +639,7 @@ pub fn states_before_returns<'a>(
     out
 }
 
-pub(super) fn initial_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState {
+pub(super) fn boundary_state(func: &Function, body: &FunctionBody, env: &Env) -> PointState {
     let mut s = PointState::default();
     for p in &func.params {
         s.locals.insert(p.name.clone(), InitState::Init);
@@ -728,7 +728,7 @@ pub(super) fn is_trivially_init(ty: &Type, env: &Env) -> bool {
 /// dataflow framework. Instantiated per-function.
 struct InitAnalysis<'a> {
     ctx: &'a InitStateContext<'a>,
-    initial: PointState,
+    boundary: PointState,
 }
 
 impl<'a> dataflow::Analysis for InitAnalysis<'a> {
@@ -736,8 +736,8 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     fn direction(&self) -> dataflow::Direction {
         dataflow::Direction::Forward
     }
-    fn initial_state(&self) -> Self::State {
-        self.initial.clone()
+    fn boundary_state(&self) -> Self::State {
+        self.boundary.clone()
     }
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join_point(self.ctx, a, b)
@@ -757,7 +757,7 @@ pub(super) fn run_fixpoint(
 ) -> IndexMap<String, PointState> {
     let analysis = InitAnalysis {
         ctx,
-        initial: initial_state(func, body, ctx.env),
+        boundary: boundary_state(func, body, ctx.env),
     };
     dataflow::run(&analysis, body)
 }

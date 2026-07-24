@@ -32,10 +32,21 @@ pub trait Analysis {
 
     fn direction(&self) -> Direction;
 
-    /// Seed state at the analysis start wrt direction:
+    /// State used to seed blocks that have no control-flow boundary.
+    /// Analyses whose solver direction processes every CFG component
+    /// must provide this. It must be a lower bound of every valid result
+    /// in the analysis's effective domain.
+    ///
+    /// The forward solver is sparse: absence from its result map is an
+    /// implicit lifted bottom, so forward analyses do not use this method.
+    fn initial_state(&self) -> Self::State {
+        panic!("total analyses must provide an initial block state")
+    }
+
+    /// State supplied at the control-flow boundary:
     ///   * Forward: entry block's entry state.
     ///   * Backward: exit blocks' (Return/Abort/Unreachable) exit state.
-    fn initial_state(&self) -> Self::State;
+    fn boundary_state(&self) -> Self::State;
 
     /// Lattice join. Must be commutative, associative, and monotonic.
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State;
@@ -148,7 +159,7 @@ fn run_forward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::Sta
     let mut worklist: VecDeque<String> = VecDeque::new();
 
     let entry_label = body.blocks[0].label.clone();
-    states.insert(entry_label.clone(), analysis.initial_state());
+    states.insert(entry_label.clone(), analysis.boundary_state());
     worklist.push_back(entry_label);
 
     let blocks_by_label = body.blocks_by_label();
@@ -215,7 +226,7 @@ mod tests {
         fn direction(&self) -> Direction {
             Direction::Forward
         }
-        fn initial_state(&self) -> Self::State {
+        fn boundary_state(&self) -> Self::State {
             BTreeSet::new()
         }
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
@@ -311,7 +322,7 @@ mod tests {
         fn direction(&self) -> Direction {
             Direction::Forward
         }
-        fn initial_state(&self) -> Self::State {
+        fn boundary_state(&self) -> Self::State {
             BTreeSet::new()
         }
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
@@ -367,6 +378,9 @@ mod tests {
             Direction::Backward
         }
         fn initial_state(&self) -> Self::State {
+            BTreeSet::new()
+        }
+        fn boundary_state(&self) -> Self::State {
             BTreeSet::new()
         }
         fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
@@ -435,6 +449,50 @@ mod tests {
         assert_eq!(r["body"], expect_x);
         assert_eq!(r["head"], expect_x);
         assert_eq!(r["entry"], expect_x);
+    }
+
+    /// Backward initial and boundary states are deliberately distinct and
+    /// both non-empty. Terminal-boundary facts must propagate through
+    /// exit-reaching code, but must not be invented inside a non-exiting
+    /// component; the universal initial fact must appear in both.
+    struct ExitBoundary;
+    impl Analysis for ExitBoundary {
+        type State = BTreeSet<String>;
+        fn direction(&self) -> Direction {
+            Direction::Backward
+        }
+        fn initial_state(&self) -> Self::State {
+            ["global".to_string()].into_iter().collect()
+        }
+        fn boundary_state(&self) -> Self::State {
+            ["exit".to_string()].into_iter().collect()
+        }
+        fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
+            a.union(b).cloned().collect()
+        }
+        fn transfer_stmt(&self, _: &mut Self::State, _: &Statement, _: Span) {}
+        fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
+    }
+
+    #[test]
+    fn backward_keeps_exit_boundary_out_of_non_exiting_components() {
+        let body = body_of(
+            "
+            fn f() {
+              entry: goto done
+              done: return
+              forever: goto forever
+            }
+            ",
+        );
+        let r = run(&ExitBoundary, &body);
+        let exiting: BTreeSet<String> = ["exit".to_string(), "global".to_string()]
+            .into_iter()
+            .collect();
+        let non_exiting: BTreeSet<String> = ["global".to_string()].into_iter().collect();
+        assert_eq!(r["entry"], exiting);
+        assert_eq!(r["done"], exiting);
+        assert_eq!(r["forever"], non_exiting);
     }
 
     // ---------- Corner cases ----------
@@ -548,17 +606,21 @@ fn run_backward<A: Analysis>(analysis: &A, body: &FunctionBody) -> Results<A::St
     let mut states: Results<A::State> = IndexMap::new();
     let mut worklist: VecDeque<String> = VecDeque::new();
 
-    // Seed every block's exit state with the lattice bottom
-    // (`initial_state`), not just terminal blocks. Backward analyses
-    // are monotone and joins are commutative, so priming a block
-    // that's part of a non-exiting cycle (e.g. an infinite loop with
-    // no `return`/`abort`) doesn't perturb the result at blocks that
-    // do reach an exit — it just guarantees the cycle members get
-    // processed at all. Without this, a `take x; goto self` loop
-    // never enters the worklist and copy relaxation leaves `take`
-    // unresolved.
+    // Put every block on the worklist so non-exiting components are
+    // analyzed too. Every block starts from the analysis's initial
+    // state; terminal blocks additionally receive the boundary state.
+    // Applying the boundary everywhere would inject exit-only facts
+    // into non-exiting cycles.
+    let initial = analysis.initial_state();
+    let boundary = analysis.boundary_state();
+    let boundary_seed = analysis.join(&initial, &boundary);
     for block in &body.blocks {
-        states.insert(block.label.clone(), analysis.initial_state());
+        let state = if terminator_successors(&block.terminator).is_empty() {
+            boundary_seed.clone()
+        } else {
+            initial.clone()
+        };
+        states.insert(block.label.clone(), state);
         worklist.push_back(block.label.clone());
     }
 

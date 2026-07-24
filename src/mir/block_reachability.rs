@@ -31,7 +31,7 @@ impl Analysis for Reachability {
     fn direction(&self) -> Direction {
         Direction::Forward
     }
-    fn initial_state(&self) -> Self::State {}
+    fn boundary_state(&self) -> Self::State {}
     fn join(&self, _: &Self::State, _: &Self::State) -> Self::State {}
     fn transfer_stmt(&self, _: &mut Self::State, _: &Statement, _: Span) {}
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}

@@ -352,6 +352,9 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
     fn initial_state(&self) -> Self::State {
         BTreeSet::new()
     }
+    fn boundary_state(&self) -> Self::State {
+        BTreeSet::new()
+    }
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         a.union(b).cloned().collect()
     }

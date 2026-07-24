@@ -260,7 +260,7 @@ impl<'a> Analysis for LoanAnalysis<'a> {
     fn direction(&self) -> Direction {
         Direction::Forward
     }
-    fn initial_state(&self) -> Self::State {
+    fn boundary_state(&self) -> Self::State {
         LoanMap::new()
     }
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
