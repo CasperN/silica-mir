@@ -4,8 +4,16 @@
 #   - the index is a constant that exceeds the declared length (TC-ArrayIndexOutOfBounds)
 #   - the base is not an array type (TC-IndexOfNonArray)
 #   - the index expression is not an integer (TC-ArrayIndexNotInteger)
-#   - a dynamic &mut or &out borrow requires uniform init state but the
-#     array is not uniformly initialized (INIT-BorrowDynamicIndexNonUniform)
+#   - a dynamic &mut / &uninit / shared borrow requires uniform init
+#     state but the array is not uniform (INIT-BorrowDynamicIndexNonUniform)
+#   - a dynamic-index borrow is state-changing (&out, &drop) — no
+#     uniformity would save the analysis, so the borrow is rejected
+#     categorically (INIT-BorrowDynamicIndexStateChanging)
+#   - a dynamic-index consumption (`move a[i]`, `drop a[i]`) or
+#     assignment (`a[i] = ...`, `a[i].f = ...`) would transition one
+#     runtime slot the tracker cannot name
+#     (INIT-DynamicIndexConsumption). Slot replacement at a dynamic
+#     index goes through the `&mut a[i]` reborrow escape hatch instead.
 #   - a read touches a slot not yet initialized (INIT-UseBeforeInit)
 #
 # Dynamic-index loan conflicts (LT-LoanConflict) are in the sibling
@@ -16,17 +24,25 @@
 # pins the wrong DiagCode, the wrong span, or lets a bad access slip
 # through.
 #
-#   fn                              error                              trigger
-#   const_index_oob                 TC-ArrayIndexOutOfBounds           k >= N (non-zero)
-#   zero_len_array_index_oob        TC-ArrayIndexOutOfBounds           k=0, N=0
-#   index_non_array                 TC-IndexOfNonArray                 base type is i64
-#   non_int_index                   TC-ArrayIndexNotInteger             index type is bool
-#   mut_borrow_dynamic_uninit_fails INIT-BorrowDynamicIndexNonUniform  &mut a[i], a Uninit
-#   out_borrow_dynamic_init_fails   INIT-BorrowDynamicIndexNonUniform  &out a[i], a Init
-#   read_partially_init_array       INIT-UseBeforeInit                 a[1] when only a[0] Init
+#   fn                                error                                        trigger
+#   const_index_oob                   TC-ArrayIndexOutOfBounds                     k >= N (non-zero)
+#   zero_len_array_index_oob          TC-ArrayIndexOutOfBounds                     k=0, N=0
+#   index_non_array                   TC-IndexOfNonArray                           base type is i64
+#   non_int_index                     TC-ArrayIndexNotInteger                      index type is bool
+#   mut_borrow_dynamic_uninit_fails   INIT-BorrowDynamicIndexNonUniform            &mut a[i], a Uninit
+#   out_borrow_dynamic_fails          INIT-BorrowDynamicIndexStateChanging         &out a[i] (any state)
+#   drop_borrow_dynamic_fails         INIT-BorrowDynamicIndexStateChanging         &drop a[i] (any state)
+#   move_dynamic_index_fails          INIT-DynamicIndexConsumption                 move a[i]
+#   drop_dynamic_index_fails          INIT-DynamicIndexConsumption                 drop a[i]
+#   assign_dynamic_slot_fails         INIT-DynamicIndexConsumption                 a[i] = v
+#   assign_dynamic_slot_field_fails   INIT-DynamicIndexConsumption                 a[i].f = v
+#   read_partially_init_array         INIT-UseBeforeInit                           a[1] when only a[0] Init
+#   read_uninit_array_dynamic         INIT-UseBeforeInit                           a[i] when a Uninit
 
 extern fn use_mut(r: &mut i64);
 extern fn set_i64(r: &out i64, v: i64);
+extern fn destroy_i64(r: &drop i64);
+extern fn consume_i64(v: i64);
 
 # ---------- const-index out of bounds (non-zero array) ----------
 
@@ -94,19 +110,89 @@ fn mut_borrow_dynamic_uninit_fails(i: i64) {
     return
 }
 
-# ---------- dynamic &out borrow requires uniform Uninit, but array is Init ----------
+# ---------- dynamic &out borrow is categorically forbidden ----------
 
-# `&out a[copy i]` is the piecewise write entry point and requires the
-# array to be uniformly Uninit. After a whole-value assignment the
-# array is uniformly Init, so the borrow fires
-# INIT-BorrowDynamicIndexNonUniform.
-fn out_borrow_dynamic_init_fails(i: i64) {
+# An `&out a[copy i]` borrow would change the init state of exactly one
+# runtime-chosen slot, leaving the containing array with a per-slot
+# init state we can't name. No pre-condition on the containing array
+# recovers the missing identity, so the borrow is rejected outright.
+# INIT-BorrowDynamicIndexStateChanging fires whether the array is Init
+# or Uninit going in.
+fn out_borrow_dynamic_fails(i: i64) {
   a: [i64; 3];
   r: &out i64;
   entry:
-    a = [1i64, 2i64, 3i64];
     r = &out a[copy i];
     call set_i64(move r, 1i64);
+    return
+}
+
+# ---------- dynamic &drop borrow is categorically forbidden ----------
+
+# Mirror of the &out case, on the consuming side: `&drop a[copy i]`
+# would deinitialize one unnamed slot. INIT-BorrowDynamicIndexStateChanging
+# fires; the uniform-Init precondition on the array is irrelevant.
+fn drop_borrow_dynamic_fails(i: i64) {
+  a: [i64; 3];
+  r: &drop i64;
+  entry:
+    a = [1i64, 2i64, 3i64];
+    r = &drop a[copy i];
+    call destroy_i64(move r);
+    return
+}
+
+# ---------- dynamic-index move consumption is forbidden ----------
+
+# `move a[copy i]` would transition exactly one runtime-chosen slot to
+# Moved. INIT-DynamicIndexConsumption fires; a copy (below) or a
+# whole-array move would both be acceptable substitutes.
+fn move_dynamic_index_fails(i: i64) {
+  a: [i64; 3];
+  entry:
+    a = [1i64, 2i64, 3i64];
+    call consume_i64(move a[copy i]);
+    return
+}
+
+# ---------- dynamic-index drop consumption is forbidden ----------
+
+# `drop a[copy i]` has the same untrackability as `move a[copy i]`;
+# INIT-DynamicIndexConsumption fires.
+fn drop_dynamic_index_fails(i: i64) {
+  a: [i64; 3];
+  entry:
+    a = [1i64, 2i64, 3i64];
+    drop a[copy i];
+    return
+}
+
+# ---------- dynamic-index whole-slot assignment is forbidden ----------
+
+# `a[copy i] = v` would put the array in an untrackable per-slot
+# state — one slot Init at runtime while the lattice can't say which.
+# INIT-DynamicIndexConsumption fires. Slot replacement goes through
+# a `&mut a[i]` reborrow instead.
+fn assign_dynamic_slot_fails(i: i64) {
+  a: [i64; 3];
+  entry:
+    a = [1i64, 2i64, 3i64];
+    a[copy i] = 99i64;
+    return
+}
+
+# ---------- dynamic-index field write is forbidden ----------
+
+# `a[copy i].f = v` has the same problem at finer granularity: it
+# transitions one runtime slot's field state without a name for the
+# slot. INIT-DynamicIndexConsumption fires.
+fn assign_dynamic_slot_field_fails(i: i64) {
+  a: [Pair; 3];
+  entry:
+    a[0i64].x = 0i64; a[0i64].y = 0i64;
+    a[1i64].x = 0i64; a[1i64].y = 0i64;
+    a[2i64].x = 0i64; a[2i64].y = 0i64;
+    a[copy i].x = 99i64;
     return
 }
 

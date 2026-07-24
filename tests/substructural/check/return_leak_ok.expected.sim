@@ -12,6 +12,10 @@ struct<'s0> L: Move {
   r: &out 's0 i64
 }
 
+struct S: Move {
+  v: i64
+}
+
 extern fn take_num(a: i64);
 
 extern fn take_move_p(p: MoveP);
@@ -19,6 +23,10 @@ extern fn take_move_p(p: MoveP);
 extern fn take_linear(x: L);
 
 extern fn take_out(r: &out 's0 i64);
+
+extern fn init_s(r: &out 's0 S);
+
+extern fn take_s(s: S);
 
 fn scalar_param_untouched(x: i64) {
   entry:
@@ -73,5 +81,15 @@ fn linear_struct_one_field_init_drop() {
   entry:
     p.x = 1;
     drop p.x;
+    return
+}
+
+fn partial_array_slot_consumed() {
+  a: [S; 3];
+  r: &out S;
+  entry:
+    r = &out a[1];
+    call init_s(move r);
+    call take_s(move a[1]);
     return
 }

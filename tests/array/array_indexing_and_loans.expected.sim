@@ -23,16 +23,6 @@ fn read_dynamic_index(i: i64) {
     return
 }
 
-fn out_borrow_dynamic_uninit(i: i64) {
-  a: [i64; 3];
-  r: &out i64;
-  entry:
-    r = &out a[copy i];
-    call set_i64(move r, 1);
-    drop i;
-    return
-}
-
 fn const_slot_isolation() {
   a: [i64; 3];
   r: &mut i64;

@@ -1,63 +1,154 @@
-error: at 40:5: [TC-ArrayIndexOutOfBounds] In function 'const_index_oob', block 'entry': Array index 3 out of bounds for [_; 3]
+error: at 56:5: [TC-ArrayIndexOutOfBounds] In function 'const_index_oob', block 'entry': Array index 3 out of bounds for [_; 3]
     |
- 39 |     a = [1i64, 2i64, 3i64];
- 40 |     r = &mut a[3i64];
+ 55 |     a = [1i64, 2i64, 3i64];
+ 56 |     r = &mut a[3i64];
     |     ^^^^^^^^^^^^^^^^
- 41 |     return
+ 57 |     return
     |
-error: at 53:5: [TC-ArrayIndexOutOfBounds] In function 'zero_len_array_index_oob', block 'entry': Array index 0 out of bounds for [_; 0]
+error: at 69:5: [TC-ArrayIndexOutOfBounds] In function 'zero_len_array_index_oob', block 'entry': Array index 0 out of bounds for [_; 0]
     |
- 52 |   entry:
- 53 |     r = &mut a[0i64];
+ 68 |   entry:
+ 69 |     r = &mut a[0i64];
     |     ^^^^^^^^^^^^^^^^
- 54 |     return
+ 70 |     return
     |
-error: at 64:5: [TC-IndexOfNonArray] In function 'index_non_array', block 'entry': Cannot index non-array type i64
+error: at 80:5: [TC-IndexOfNonArray] In function 'index_non_array', block 'entry': Cannot index non-array type i64
     |
- 63 |   entry:
- 64 |     y = copy x[0i64];
+ 79 |   entry:
+ 80 |     y = copy x[0i64];
     |     ^^^^^^^^^^^^^^^^
- 65 |     return
+ 81 |     return
     |
-error: at 79:5: [TC-ArrayIndexNotInteger] In function 'non_int_index', block 'entry': Array index must be an integer, got bool
+error: at 95:5: [TC-ArrayIndexNotInteger] In function 'non_int_index', block 'entry': Array index must be an integer, got bool
     |
- 78 |     b = true;
- 79 |     x = copy a[copy b];
+ 94 |     b = true;
+ 95 |     x = copy a[copy b];
     |     ^^^^^^^^^^^^^^^^^^
- 80 |     return
+ 96 |     return
     |
-error: at 53:5: [INIT-BorrowStateMismatch] In function 'zero_len_array_index_oob', block 'entry': cannot create &mut of 'a[0]': place must be initialized at borrow, but is not yet initialized
-    |
- 52 |   entry:
- 53 |     r = &mut a[0i64];
-    |     ^^^^^^^^^^^^^^^^
- 54 |     return
-    |
-error: at 92:5: [INIT-BorrowDynamicIndexNonUniform] In function 'mut_borrow_dynamic_uninit_fails', block 'entry': cannot create &mut of 'a[?]': dynamic index requires the containing array to be uniformly initialized, but it is not yet initialized
-    |
- 91 |   entry:
- 92 |     r = &mut a[copy i];
-    |     ^^^^^^^^^^^^^^^^^^
- 93 |     call use_mut(move r);
-    |
-error: at 108:5: [INIT-BorrowDynamicIndexNonUniform] In function 'out_borrow_dynamic_init_fails', block 'entry': cannot create &out of 'a[?]': dynamic index requires the containing array to be uniformly uninitialized, but it is initialized
+error: at 190:6: [TC-InvalidDeclaredType] In function 'assign_dynamic_slot_field_fails', local 'a': Use of undeclared type 'Pair'
      |
- 107 |     a = [1i64, 2i64, 3i64];
- 108 |     r = &out a[copy i];
-     |     ^^^^^^^^^^^^^^^^^^
- 109 |     call set_i64(move r, 1i64);
+ 189 | fn assign_dynamic_slot_field_fails(i: i64) {
+ 190 |   a: [Pair; 3];
+     |      ^^^^^^^^^
+ 191 |   entry:
      |
-error: at 125:5: [INIT-UseBeforeInit] In function 'read_partially_init_array', block 'entry': variable 'a' is used before initialization
+error: at 192:5: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
      |
- 124 |     call set_i64(move r0, 10i64);
- 125 |     x = copy a[1i64];
+ 191 |   entry:
+ 192 |     a[0i64].x = 0i64; a[0i64].y = 0i64;
      |     ^^^^^^^^^^^^^^^^
- 126 |     return
+ 193 |     a[1i64].x = 0i64; a[1i64].y = 0i64;
      |
-error: at 137:5: [INIT-UseBeforeInit] In function 'read_uninit_array_dynamic', block 'entry': variable 'a' is used before initialization
+error: at 192:23: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
      |
- 136 |   entry:
- 137 |     x = copy a[copy i];
+ 191 |   entry:
+ 192 |     a[0i64].x = 0i64; a[0i64].y = 0i64;
+     |                       ^^^^^^^^^^^^^^^^
+ 193 |     a[1i64].x = 0i64; a[1i64].y = 0i64;
+     |
+error: at 193:5: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
+     |
+ 192 |     a[0i64].x = 0i64; a[0i64].y = 0i64;
+ 193 |     a[1i64].x = 0i64; a[1i64].y = 0i64;
+     |     ^^^^^^^^^^^^^^^^
+ 194 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
+     |
+error: at 193:23: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
+     |
+ 192 |     a[0i64].x = 0i64; a[0i64].y = 0i64;
+ 193 |     a[1i64].x = 0i64; a[1i64].y = 0i64;
+     |                       ^^^^^^^^^^^^^^^^
+ 194 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
+     |
+error: at 194:5: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
+     |
+ 193 |     a[1i64].x = 0i64; a[1i64].y = 0i64;
+ 194 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
+     |     ^^^^^^^^^^^^^^^^
+ 195 |     a[copy i].x = 99i64;
+     |
+error: at 194:23: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
+     |
+ 193 |     a[1i64].x = 0i64; a[1i64].y = 0i64;
+ 194 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
+     |                       ^^^^^^^^^^^^^^^^
+ 195 |     a[copy i].x = 99i64;
+     |
+error: at 195:5: [TC-UndeclaredType] In function 'assign_dynamic_slot_field_fails', block 'entry': Use of undeclared type 'Pair'
+     |
+ 194 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
+ 195 |     a[copy i].x = 99i64;
+     |     ^^^^^^^^^^^^^^^^^^^
+ 196 |     return
+     |
+error: at 69:5: [INIT-BorrowStateMismatch] In function 'zero_len_array_index_oob', block 'entry': cannot create &mut of 'a[0]': place must be initialized at borrow, but is not yet initialized
+    |
+ 68 |   entry:
+ 69 |     r = &mut a[0i64];
+    |     ^^^^^^^^^^^^^^^^
+ 70 |     return
+    |
+error: at 108:5: [INIT-BorrowDynamicIndexNonUniform] In function 'mut_borrow_dynamic_uninit_fails', block 'entry': cannot create &mut of 'a[?]': dynamic index requires the containing array to be uniformly initialized, but it is not yet initialized
+     |
+ 107 |   entry:
+ 108 |     r = &mut a[copy i];
      |     ^^^^^^^^^^^^^^^^^^
- 138 |     return
+ 109 |     call use_mut(move r);
+     |
+error: at 125:5: [INIT-BorrowDynamicIndexStateChanging] In function 'out_borrow_dynamic_fails', block 'entry': cannot create &out of 'a[?]': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.
+     |
+ 124 |   entry:
+ 125 |     r = &out a[copy i];
+     |     ^^^^^^^^^^^^^^^^^^
+ 126 |     call set_i64(move r, 1i64);
+     |
+error: at 140:5: [INIT-BorrowDynamicIndexStateChanging] In function 'drop_borrow_dynamic_fails', block 'entry': cannot create &drop of 'a[?]': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.
+     |
+ 139 |     a = [1i64, 2i64, 3i64];
+ 140 |     r = &drop a[copy i];
+     |     ^^^^^^^^^^^^^^^^^^^
+ 141 |     call destroy_i64(move r);
+     |
+error: at 154:5: [INIT-DynamicIndexConsumption] In function 'move_dynamic_index_fails', block 'entry': cannot `move a[?]`: this consumes one slot, but the index isn't known at compile time. Move by a constant index, or move the whole array.
+     |
+ 153 |     a = [1i64, 2i64, 3i64];
+ 154 |     call consume_i64(move a[copy i]);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 155 |     return
+     |
+error: at 166:5: [INIT-DynamicIndexConsumption] In function 'drop_dynamic_index_fails', block 'entry': cannot `drop a[?]`: this consumes one slot, but the index isn't known at compile time. Drop by a constant index.
+     |
+ 165 |     a = [1i64, 2i64, 3i64];
+ 166 |     drop a[copy i];
+     |     ^^^^^^^^^^^^^^
+ 167 |     return
+     |
+error: at 180:5: [INIT-DynamicIndexConsumption] In function 'assign_dynamic_slot_fails', block 'entry': cannot assign to 'a[?]': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
+     |
+ 179 |     a = [1i64, 2i64, 3i64];
+ 180 |     a[copy i] = 99i64;
+     |     ^^^^^^^^^^^^^^^^^
+ 181 |     return
+     |
+error: at 195:5: [INIT-DynamicIndexConsumption] In function 'assign_dynamic_slot_field_fails', block 'entry': cannot assign to 'a[?].x': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
+     |
+ 194 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
+ 195 |     a[copy i].x = 99i64;
+     |     ^^^^^^^^^^^^^^^^^^^
+ 196 |     return
+     |
+error: at 211:5: [INIT-UseBeforeInit] In function 'read_partially_init_array', block 'entry': variable 'a' is used before initialization
+     |
+ 210 |     call set_i64(move r0, 10i64);
+ 211 |     x = copy a[1i64];
+     |     ^^^^^^^^^^^^^^^^
+ 212 |     return
+     |
+error: at 223:5: [INIT-UseBeforeInit] In function 'read_uninit_array_dynamic', block 'entry': variable 'a' is used before initialization
+     |
+ 222 |   entry:
+ 223 |     x = copy a[copy i];
+     |     ^^^^^^^^^^^^^^^^^^
+ 224 |     return
      |

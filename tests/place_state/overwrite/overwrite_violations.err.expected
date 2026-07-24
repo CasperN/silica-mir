@@ -55,6 +55,13 @@ error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_field
     |     ^^^^^^^^^^^^^
  69 |     return
     |
+error: at 80:5: [INIT-DynamicIndexConsumption] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot assign to 'a[?]': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
+    |
+ 79 |   entry:
+ 80 |     a[copy i] = move new_linear;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 81 |     call consume_array(move a);
+    |
 error: at 80:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot overwrite 'a[?]': type Linear is not Drop and the value is still live (consume it via `drop a[?]` first)
     |
  79 |   entry:

@@ -47,7 +47,7 @@ fn check_return_state(
         if state.refs.contains_key(&var_place(var.clone())) {
             continue;
         }
-        let mut path = vec![var.clone()];
+        let mut path = var.clone();
         let mut leaks = Vec::new();
         find_return_leaks(env, place_state, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
@@ -62,9 +62,10 @@ fn check_return_state(
                 ),
             )
             .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.");
-            if let Some(span) =
-                find_decl_span(func, leaked_path.split('.').next().unwrap_or(&leaked_path))
-            {
+            let root_end = leaked_path
+                .find(|c: char| c == '.' || c == '[')
+                .unwrap_or(leaked_path.len());
+            if let Some(span) = find_decl_span(func, &leaked_path[..root_end]) {
                 diagnostic = diagnostic.with_secondary(span, "variable declared here");
             }
             d.push_error(diagnostic);
@@ -97,20 +98,31 @@ fn find_return_leaks(
     env: &Env,
     state: &InitState,
     ty: &Type,
-    path: &mut Vec<String>,
+    path: &mut String,
     out: &mut Vec<(String, Type)>,
 ) {
     match state {
         InitState::NeverInit | InitState::Moved => {}
-        InitState::Init | InitState::Diverged => out.push((path.join("."), ty.clone())),
+        InitState::Init | InitState::Diverged => out.push((path.clone(), ty.clone())),
         InitState::Partial(fields) => {
-            for (field_name, field_state) in fields {
-                let Some(field_ty) = env.field_type(ty, field_name) else {
-                    continue;
+            for (name, sub_state) in fields {
+                // Struct fields use `.field`; array slots (numeric keys)
+                // use `[k]`. Skipping arrays here — the previous shape of
+                // this walk — is what let piecewise-init linear arrays
+                // silently leak past return.
+                let (sub_ty, segment) = match &ty.kind {
+                    TypeKind::Array(elem, _) => ((**elem).clone(), format!("[{}]", name)),
+                    _ => {
+                        let Some(ft) = env.field_type(ty, name) else {
+                            continue;
+                        };
+                        (ft, format!(".{}", name))
+                    }
                 };
-                path.push(field_name.clone());
-                find_return_leaks(env, field_state, &field_ty, path, out);
-                path.pop();
+                let saved_len = path.len();
+                path.push_str(&segment);
+                find_return_leaks(env, sub_state, &sub_ty, path, out);
+                path.truncate(saved_len);
             }
         }
     }
@@ -163,29 +175,53 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 }
 
 /// Walk (init state × type) tree together, invoking `report` on every
-/// leaf whose state is Init or Diverged. `Partial` recurses per-field;
-/// `NeverInit`/`Moved` short-circuit (nothing to overwrite).
+/// leaf whose state is Init or Diverged. `Partial` recurses per-field
+/// for struct types and per-slot for array types; `NeverInit`/`Moved`
+/// short-circuit (nothing to overwrite). Each recursion pushes a
+/// formatted projection segment (`.field` or `[k]`) so the caller can
+/// concatenate directly onto a place name to get a legal Silica path.
 pub(super) fn walk_overwrite_leaves(
     state: &InitState,
     ty: &Type,
     env: &Env,
-    path: &mut Vec<String>,
-    report: &mut dyn FnMut(&[String], &Type),
+    path: &mut String,
+    report: &mut dyn FnMut(&str, &Type),
 ) {
     match state {
         InitState::NeverInit | InitState::Moved => {}
         InitState::Init | InitState::Diverged => report(path, ty),
         InitState::Partial(fields) => {
-            for (field_name, field_state) in fields {
-                let Some(field_ty) = env.field_type(ty, field_name) else {
-                    continue;
+            for (name, sub_state) in fields {
+                // Struct fields resolve through `env.field_type`; array
+                // slots are numeric keys and the element type comes from
+                // the containing `[T; N]`. Skipping arrays here previously
+                // let piecewise-init linear-array slots be silently
+                // clobbered by a whole-array overwrite.
+                let (sub_ty, segment) = match &ty.kind {
+                    TypeKind::Array(elem, _) => ((**elem).clone(), format!("[{}]", name)),
+                    _ => {
+                        let Some(ft) = env.field_type(ty, name) else {
+                            continue;
+                        };
+                        (ft, format!(".{}", name))
+                    }
                 };
-                path.push(field_name.clone());
-                walk_overwrite_leaves(field_state, &field_ty, env, path, report);
-                path.pop();
+                let saved_len = path.len();
+                path.push_str(&segment);
+                walk_overwrite_leaves(sub_state, &sub_ty, env, path, report);
+                path.truncate(saved_len);
             }
         }
     }
+}
+
+/// True if `place`'s projection path contains any dynamic-index step
+/// (`Index(None)`). Deref steps are included in the walk, so this
+/// catches both direct places (`a[i]`) and reborrow shapes
+/// (`r.*[i]`, `s.arr[i]`, ...).
+pub(super) fn place_has_dynamic_index(place: &Place) -> bool {
+    let (_, path) = extract_path_with_deref(place);
+    path.iter().any(|s| matches!(s, PathStep::Index(None)))
 }
 
 /// Locate the declaration span for the root Var of `ref_place`. Used
@@ -246,6 +282,26 @@ impl<'a> InitStateContext<'a> {
                 // BEFORE eval_rvalue runs. Cascade re-keys src.f → dst.f.
                 let carried_refs = capture_carried_refs(target, rvalue, state);
 
+                // A write to a dynamic-index target would transition one
+                // runtime-chosen slot's state, and the lattice can't name
+                // that slot. Reject direct assignment; users route slot
+                // replacement through a reborrow, which puts the transition
+                // on the reference's own per-ref pointee state and leaves
+                // the array's per-slot lattice untouched:
+                //     p = &mut a[i];  drop p.*;  p.* = new;
+                if place_has_dynamic_index(target) {
+                    d.push_error(diag(
+                        DynamicIndexConsumption,
+                        span,
+                        func,
+                        block,
+                        format!(
+                            "cannot assign to '{}': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`",
+                            format_place(target),
+                        ),
+                    ));
+                }
+
                 // Overwrite check runs BEFORE we mutate state: it looks
                 // at the target's current state before the rvalue's
                 // moves take effect, so that e.g. `y = move y.f` isn't
@@ -284,6 +340,21 @@ impl<'a> InitStateContext<'a> {
                 }
             }
             StatementKind::Drop(place) => {
+                // `drop a[i]` with dynamic i has the same untrackability
+                // as `move a[i]`: exactly one runtime slot transitions,
+                // and the per-slot lattice can't name it.
+                if place_has_dynamic_index(place) {
+                    d.push_error(diag(
+                        DynamicIndexConsumption,
+                        span,
+                        func,
+                        block,
+                        format!(
+                            "cannot `drop {}`: this consumes one slot, but the index isn't known at compile time. Drop by a constant index.",
+                            format_place(place),
+                        ),
+                    ));
+                }
                 // Read the place, then consume it. Same effect on state as
                 // `move`. The substructural checker (separate pass) is the
                 // one that will require the type to be Drop. For a ref-typed
@@ -415,6 +486,21 @@ impl<'a> InitStateContext<'a> {
             ),
             Operand::Const(_) => return,
         };
+        // `move a[i]` with dynamic i would consume one unidentified
+        // slot; the per-slot lattice can't name it. (`copy` and shared
+        // reads are fine — they don't change state.)
+        if matches!(op, Operand::Move(_)) && place_has_dynamic_index(place) {
+            d.push_error(diag(
+                DynamicIndexConsumption,
+                span,
+                func,
+                block,
+                format!(
+                    "cannot `move {}`: this consumes one slot, but the index isn't known at compile time. Move by a constant index, or move the whole array.",
+                    format_place(place),
+                ),
+            ));
+        }
         self.check_place_read(func, block, place, span, state, d);
     }
 
@@ -456,15 +542,11 @@ impl<'a> InitStateContext<'a> {
             &target_state,
             &target_ty,
             self.env,
-            &mut Vec::new(),
+            &mut String::new(),
             &mut |leaf_path, leaf_ty| {
                 let c = class_of(leaf_ty, self.env, &scope);
                 if !c.implies(Marker::Drop) {
-                    let path_str = if leaf_path.is_empty() {
-                        format_place(target)
-                    } else {
-                        format!("{}.{}", format_place(target), leaf_path.join("."))
-                    };
+                    let path_str = format!("{}{}", format_place(target), leaf_path);
                     d.push_error(diag(
                         OverwriteWithoutDrop,
                         span,
@@ -748,6 +830,26 @@ impl<'a> InitStateContext<'a> {
             RefKind::Out => (false, "&out"),
             RefKind::Uninit => (false, "&uninit"),
         };
+
+        // A state-changing borrow (`&out`, `&drop`) on a dynamic-index
+        // place would leave exactly one unidentified slot transitioned to
+        // the post state while the rest stay uniform. No widening can
+        // recover which slot changed, so we reject outright — even under
+        // a uniform pre-state.
+        if matches!(kind, RefKind::Out | RefKind::Drop) && place_has_dynamic_index(place) {
+            d.push_error(diag(
+                BorrowDynamicIndexStateChanging,
+                span,
+                func,
+                block,
+                format!(
+                    "cannot create {} of '{}': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.",
+                    kind_str,
+                    format_place(place),
+                ),
+            ));
+            return;
+        }
 
         // Reborrow through an exclusive reference: the pointee's init state
         // lives in the parent RefState, including statically projected fields,

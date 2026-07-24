@@ -3,19 +3,18 @@
 # Reading an element (const or dynamic index) and borrowing a slot
 # (&mut or &out) are legal when the surrounding init and loan state
 # permit the operation. Const-index borrows track per-slot; a loan on
-# slot k does not block access to slot j (k ≠ j). Dynamic-index &out
-# is permitted only when the array is uniformly Uninit; it treats the
-# whole array as a single unknown slot.
+# slot k does not block access to slot j (k ≠ j). Dynamic-index
+# state-changing borrows (`&out`, `&drop`) and consumptions (`move`,
+# `drop`) are always rejected — see array_indexing_and_loans_errors.sim
+# — because per-slot init tracking cannot name the runtime-chosen slot.
 #
 # Invariant: every function returns clean (no diagnostics). A
 # regression here means const-index read/borrow tracking, dynamic-read
-# elaboration, slot-isolation, or dynamic-&out precondition logic is
-# broken.
+# elaboration, or slot-isolation logic is broken.
 #
 #   fn                                operation                          index kind
 #   read_const_index                  copy a[k]                          const
 #   read_dynamic_index                copy a[copy i]                     dynamic
-#   out_borrow_dynamic_uninit         &out a[copy i] on uninit array     dynamic
 #   const_slot_isolation              &mut a[0], then read a[1]          const (two slots)
 
 extern fn set_i64(r: &out i64, v: i64);
@@ -44,20 +43,6 @@ fn read_dynamic_index(i: i64) {
   entry:
     a = [10i64, 20i64, 30i64];
     x = copy a[copy i];
-    return
-}
-
-# ---------- dynamic-index &out on a uniformly uninit array ----------
-
-# `&out a[copy i]` is the piecewise-init entry point for dynamic
-# indices. It is legal only when the array is uniformly Uninit,
-# because the checker cannot track which slot will receive the write.
-fn out_borrow_dynamic_uninit(i: i64) {
-  a: [i64; 3];
-  r: &out i64;
-  entry:
-    r = &out a[copy i];
-    call set_i64(move r, 1i64);
     return
 }
 

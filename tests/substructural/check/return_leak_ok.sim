@@ -20,6 +20,7 @@
 #   linear_struct_partial_init_dropped  Linear struct        one field init, then dropped
 #   linear_struct_all_fields_dropped    Linear struct        every field init, every field dropped
 #   linear_struct_one_field_init_drop   Linear struct        one field init, drop-elab handles it
+#   partial_array_slot_consumed         [S; 3] slot init     const-index move out at return
 
 struct P { x: i64  y: i64 }
 
@@ -27,10 +28,14 @@ struct MoveP: Move { x: i64  y: i64 }
 
 struct L: Move { r: &out i64 }
 
+struct S: Move { v: i64 }
+
 extern fn take_num(a: i64);
 extern fn take_move_p(p: MoveP);
 extern fn take_linear(x: L);
 extern fn take_out(r: &out i64);
+extern fn init_s(r: &out S);
+extern fn take_s(s: S);
 
 # ---------- Drop scalar: untouched param — drop-elab handles it ----------
 
@@ -106,5 +111,21 @@ fn linear_struct_one_field_init_drop() {
   p: P;
   entry:
     p.x = 1;
+    return
+}
+
+# ---------- Partial-init linear array: Init slot moved out at return ----------
+
+# The negative counterpart in return_leak_violations.sim leaves slot 1
+# Init; here the same shape is consumed via a const-index move, so no
+# leak fires. The array's other slots stay NeverInit and don't
+# contribute.
+fn partial_array_slot_consumed() {
+  a: [S; 3];
+  r: &out S;
+  entry:
+    r = &out a[1i64];
+    call init_s(move r);
+    call take_s(move a[1i64]);
     return
 }

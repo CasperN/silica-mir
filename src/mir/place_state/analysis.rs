@@ -73,6 +73,20 @@ pub enum InitStateCode {
     /// array isn't in a uniform state — some slots satisfy the
     /// precondition and some don't, so no single-slot borrow is safe.
     BorrowDynamicIndexNonUniform,
+    /// State-changing borrow (`&out`, `&drop`) on a dynamic-index
+    /// place. The borrow would move exactly one unidentified slot
+    /// into a different init state than the rest, and no widening can
+    /// recover which slot changed — so per-slot tracking would be
+    /// lost. `&mut` and `&uninit` remain permitted on dynamic indices
+    /// under uniform pre-state because they preserve it.
+    BorrowDynamicIndexStateChanging,
+    /// `move a[i]` or `drop a[i]` on a dynamic-index place. Same
+    /// untrackability as `BorrowDynamicIndexStateChanging` on the
+    /// consuming side: exactly one slot would become `Moved` while
+    /// the rest stay `Init`, but we can't name it. `copy a[i]` and
+    /// shared reads remain permitted under the uniform-Init
+    /// precondition.
+    DynamicIndexConsumption,
 
     // ---- LHS projections ----
     /// Assignment through a downcast (`x as V . …`) where the enum

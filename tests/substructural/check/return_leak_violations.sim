@@ -19,6 +19,8 @@
 #   multiple_returns_each_checked      Linear struct         each return block checked          INIT-ReturnValueLeak x2
 #   out_ref_param_untouched            &out i64              untouched — obligation unfulfilled INIT-RefObligationUnfulfilled
 #   ref_field_leak_via_nll_unborrow    struct with &drop     ref-obligation reports once        INIT-RefObligationUnfulfilled
+#   partial_array_leaks_slot           [S; 3] slot init      one slot Init, others NeverInit    INIT-ReturnValueLeak
+#   partial_array_in_struct_leaks      struct with [S; 3]    field-of-array slot init at return INIT-ReturnValueLeak
 
 struct P { x: i64  y: i64 }
 
@@ -27,6 +29,12 @@ struct L: Move { r: &out i64 }
 struct Pair: Move { a: L  b: L }
 
 struct RefField { r: &drop i64 }
+
+struct S: Move { v: i64 }
+
+struct ArrOwner { arr: [S; 3] }
+
+extern fn init_s(r: &out S);
 
 # ---------- Linear struct: untouched param leaks ----------
 
@@ -81,6 +89,35 @@ fn multiple_returns_each_checked(b: bool, x: L) {
 # the pointee, so the ref-obligation fires at return.
 fn out_ref_param_untouched(r: &out i64) {
   entry:
+    return
+}
+
+# ---------- Partial-init linear array: one slot Init leaks that slot ----------
+
+# `&out a[1i64]` initializes slot 1 of `[S; 3]` where `S` is non-Drop.
+# Slots 0 and 2 stay NeverInit. The leak walk must recurse into the
+# array's per-slot state and report `a[1]`. Prior to the arrays fix
+# this stayed silent because `find_return_leaks` didn't recognize
+# array Partial keys.
+fn partial_array_leaks_slot() {
+  a: [S; 3];
+  r: &out S;
+  entry:
+    r = &out a[1i64];
+    call init_s(move r);
+    return
+}
+
+# ---------- Partial array nested inside a struct also leaks ----------
+
+# The Partial walk descends struct-then-array. `owner.arr[2]` becomes
+# the leak path.
+fn partial_array_in_struct_leaks() {
+  owner: ArrOwner;
+  r: &out S;
+  entry:
+    r = &out owner.arr[2i64];
+    call init_s(move r);
     return
 }
 

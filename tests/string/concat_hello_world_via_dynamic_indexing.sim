@@ -1,4 +1,19 @@
 
+        # Dynamic-index concat via the `&mut a[i]` reborrow escape hatch.
+        #
+        # Direct writes to a dynamic-index target (`a[copy i] = ...`) are
+        # rejected — the containing array's per-slot lattice can't name
+        # the runtime-chosen slot. To replace a slot at a dynamic index
+        # you reborrow it as `&mut` and write through the reference; the
+        # transition then lives on the per-reference pointee state and
+        # the array stays uniformly Init.
+        #
+        # `&mut a[copy i]` requires the array to already be uniformly
+        # Init, so `hello_world` is pre-filled with spaces before the
+        # loop. Each iteration deinitializes the reborrowed slot
+        # (`drop slot.*`, a no-op for u8) before writing the new byte
+        # through the reference — `slot.* = ...` requires the pointee to
+        # be uninitialized at write.
         fn f() {
           hello: [u8; 5];
           world: [u8; 5];
@@ -6,6 +21,7 @@
           i: u64;
           cond: bool;
           is_five: bool;
+          slot: &mut u8;
           add_out: &out u64;
           sub_out: &out u64;
           lt_out: &out bool;
@@ -15,6 +31,7 @@
           entry:
             hello = b"hello";
             world = b"world";
+            hello_world = b"           ";
             i = 0u64;
             goto head
           head:
@@ -28,7 +45,9 @@
             branch(copy cond) [true: from_hello, false: at_or_after_five]
           from_hello:
             drop cond;
-            hello_world[copy i] = copy hello[copy i];
+            slot = &mut hello_world[copy i];
+            drop slot.*;
+            slot.* = copy hello[copy i];
             goto step
           at_or_after_five:
             drop cond;
@@ -37,13 +56,17 @@
             branch(copy is_five) [true: space, false: from_world]
           space:
             drop is_five;
-            hello_world[copy i] = b' ';
+            slot = &mut hello_world[copy i];
+            drop slot.*;
+            slot.* = b' ';
             goto step
           from_world:
             drop is_five;
             sub_out = &out src_idx;
             call $u64_sub(copy i, 6u64, move sub_out);
-            hello_world[copy i] = copy world[copy src_idx];
+            slot = &mut hello_world[copy i];
+            drop slot.*;
+            slot.* = copy world[copy src_idx];
             drop src_idx;
             goto step
           step:
@@ -57,4 +80,3 @@
             drop cond;
             return
         }
-        

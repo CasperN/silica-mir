@@ -5,6 +5,7 @@ fn f() {
   i: u64;
   cond: bool;
   is_five: bool;
+  slot: &mut u8;
   add_out: &out u64;
   sub_out: &out u64;
   lt_out: &out bool;
@@ -14,6 +15,7 @@ fn f() {
   entry:
     hello = b"hello";
     world = b"world";
+    hello_world = b"           ";
     i = 0u64;
     goto head
   head:
@@ -27,7 +29,10 @@ fn f() {
     branch(copy cond) [true: from_hello, false: at_or_after_five]
   from_hello:
     drop cond;
-    hello_world[copy i] = copy hello[copy i];
+    slot = &mut hello_world[copy i];
+    drop slot.*;
+    slot.* = copy hello[copy i];
+    unborrow slot;
     goto step
   at_or_after_five:
     drop cond;
@@ -36,13 +41,19 @@ fn f() {
     branch(copy is_five) [true: space, false: from_world]
   space:
     drop is_five;
-    hello_world[copy i] = 32u8;
+    slot = &mut hello_world[copy i];
+    drop slot.*;
+    slot.* = 32u8;
+    unborrow slot;
     goto step
   from_world:
     drop is_five;
     sub_out = &out src_idx;
     call $u64_sub(copy i, 6u64, move sub_out);
-    hello_world[copy i] = copy world[copy src_idx];
+    slot = &mut hello_world[copy i];
+    drop slot.*;
+    slot.* = copy world[copy src_idx];
+    unborrow slot;
     drop src_idx;
     goto step
   step:
@@ -55,6 +66,7 @@ fn f() {
   done:
     drop cond;
     drop i;
+    drop hello_world;
     drop world;
     drop hello;
     return
