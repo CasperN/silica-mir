@@ -7,14 +7,19 @@
 # The return-time counterpart lives in
 # `pointee_obligation_unfulfilled.sim`.
 
+# Non-Copy pointee so copy relaxation can't silently downgrade the
+# `move r.*` to `copy r.*` and mask the obligation violation.
+struct L: Drop + Move { value: i64 }
+
 # ---------- explicit `drop r` on a ref var with unmet obligation ----------
 
 # Move out through `&mut` leaves cur=Uninit; `drop r` then forgets
 # the outstanding re-init obligation.
-fn drop_mut_ref_after_move_out(r: &mut i64) {
-  x: i64;
+fn drop_mut_ref_after_move_out(r: &mut L) {
+  x: L;
   entry:
     x = move r.*;
+    drop x;
     drop r;
     return
 }

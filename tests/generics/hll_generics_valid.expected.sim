@@ -276,7 +276,7 @@ fn<'s0> call_generic_fn_via_ret($return: &out 's0 i64) {
 
 fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
   entry:
-    $return.* = copy ptr.*;
+    $return.* = move ptr.*;
     unborrow $return;
     require_uninit $return;
     drop ptr;

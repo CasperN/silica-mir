@@ -19,9 +19,10 @@ fn<'s0> sum_to_n(n: i64, $return: &out 's0 i64) {
   loop_start_0:
     _temp_4 = &out _temp_3;
     call $i64_gt(copy i, copy n, move _temp_4);
-    branch(move _temp_3) [true: if_true_2, false: if_false_3]
+    branch(copy _temp_3) [true: if_true_2, false: if_false_3]
   if_true_2:
     require_uninit _temp_4;
+    drop _temp_3;
     require_uninit _temp_3;
     require_uninit _temp_2;
     require_uninit _temp_1;
@@ -31,6 +32,7 @@ fn<'s0> sum_to_n(n: i64, $return: &out 's0 i64) {
     goto if_merge_4
   if_merge_4:
     require_uninit _temp_4;
+    drop _temp_3;
     require_uninit _temp_3;
     drop _temp_2;
     require_uninit _temp_2;
@@ -97,9 +99,10 @@ fn<'s0> fib(n: i64, $return: &out 's0 i64) {
   loop_start_0:
     _temp_4 = &out _temp_3;
     call $i64_ge(copy i, copy n, move _temp_4);
-    branch(move _temp_3) [true: if_true_2, false: if_false_3]
+    branch(copy _temp_3) [true: if_true_2, false: if_false_3]
   if_true_2:
     require_uninit _temp_4;
+    drop _temp_3;
     require_uninit _temp_3;
     require_uninit _temp_2;
     require_uninit _temp_1;
@@ -109,6 +112,7 @@ fn<'s0> fib(n: i64, $return: &out 's0 i64) {
     goto if_merge_4
   if_merge_4:
     require_uninit _temp_4;
+    drop _temp_3;
     require_uninit _temp_3;
     drop _temp_2;
     require_uninit _temp_2;

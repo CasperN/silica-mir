@@ -12,3 +12,61 @@ fn<'s0, 's1> read_shared_field(r: & 's0 Pair, $return: &out 's1 i64) {
     require_uninit r;
     return
 }
+
+fn<'s0> consume_and_replace(r: &mut 's0 i64) {
+  _temp_0: unit;
+  x: i64;
+  _temp_1: unit;
+  entry:
+    x = move r.*;
+    r.* = 42;
+    unborrow r;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
+    _temp_0 = unit;
+    drop x;
+    require_uninit x;
+    drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
+    return
+}
+
+fn<'s0> repeated_pointee_reads_then_reinit(r: &mut 's0 i64) {
+  _temp_0: unit;
+  a: i64;
+  b: i64;
+  _temp_1: unit;
+  _temp_2: i64;
+  _temp_3: &out i64;
+  entry:
+    a = copy r.*;
+    b = move r.*;
+    _temp_3 = &out _temp_2;
+    call $i64_add(move a, move b, move _temp_3);
+    r.* = move _temp_2;
+    unborrow r;
+    _temp_1 = unit;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    drop _temp_1;
+    require_uninit _temp_1;
+    _temp_0 = unit;
+    require_uninit b;
+    require_uninit a;
+    drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit r;
+    return
+}
+
+fn<'s0, 's1> single_read_preserves_obligation(r: &mut 's0 i64, $return: &out 's1 i64) {
+  entry:
+    $return.* = copy r.*;
+    unborrow $return;
+    unborrow r;
+    require_uninit $return;
+    require_uninit r;
+    return
+}

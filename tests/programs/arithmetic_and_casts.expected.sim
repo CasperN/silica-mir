@@ -45,7 +45,7 @@ fn<'s0> fact(n: i64, $return: &out 's0 i64) {
   entry:
     _temp_1 = &out _temp_0;
     call $i64_le(copy n, 1, move _temp_1);
-    branch(move _temp_0) [true: if_true_0, false: if_false_1]
+    branch(copy _temp_0) [true: if_true_0, false: if_false_1]
   if_true_0:
     $return.* = 1;
     unborrow $return;
@@ -69,6 +69,7 @@ fn<'s0> fact(n: i64, $return: &out 's0 i64) {
     goto if_merge_2
   if_merge_2:
     require_uninit _temp_1;
+    drop _temp_0;
     require_uninit _temp_0;
     require_uninit $return;
     require_uninit n;

@@ -58,14 +58,16 @@ fn overwrite_without_drop_at_stmt_span(a1: A, a2: A) {
 
 # ---------- [D] RefObligationUnfulfilled: caret on the drop/expiry site ----------
 
-# r is a &mut reference; moving through r* leaves the pointee uninitialized.
-# Dropping r before restoring the pointee fires RefObligationUnfulfilled; the
-# caret must point at the drop statement, with a secondary note back to the
-# parameter declaration.
-fn ref_obligation_unfulfilled_at_drop_span(r: &mut i64) {
-  x: i64;
+# r is a &mut reference over a non-Copy pointee; moving through r* leaves
+# the pointee uninitialized (copy relaxation cannot silently downgrade the
+# move because M is not Copy). Dropping r before restoring the pointee
+# fires RefObligationUnfulfilled; the caret must point at the drop
+# statement, with a secondary note back to the parameter declaration.
+fn ref_obligation_unfulfilled_at_drop_span(r: &mut M) {
+  x: M;
   entry:
     x = move r.*;
+    drop x;
     drop r;
     return
 }

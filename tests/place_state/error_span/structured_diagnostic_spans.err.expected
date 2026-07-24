@@ -23,17 +23,17 @@ error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_without_d
     |     ^^^^^^^^^^^
  55 |     call take_a(move y);
     |
-error: at 69:5: [INIT-RefObligationUnfulfilled] In function 'ref_obligation_unfulfilled_at_drop_span', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 71:5: [INIT-RefObligationUnfulfilled] In function 'ref_obligation_unfulfilled_at_drop_span', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 64 | # parameter declaration.
- 65 | fn ref_obligation_unfulfilled_at_drop_span(r: &mut i64) {
-    |                                            ----------- reference declared here
- 66 |   x: i64;
+ 65 | # statement, with a secondary note back to the parameter declaration.
+ 66 | fn ref_obligation_unfulfilled_at_drop_span(r: &mut M) {
+    |                                            --------- reference declared here
+ 67 |   x: M;
     |
     | ...
     |
- 68 |     x = move r.*;
- 69 |     drop r;
+ 70 |     drop x;
+ 71 |     drop r;
     |     ^^^^^^
- 70 |     return
+ 72 |     return
     |

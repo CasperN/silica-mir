@@ -953,20 +953,18 @@ To load it locally:
 # Punch list
 
 ## Copy Relaxation
-- **`move_or_copy` MIR operand**: Instead of relaxing any `move` into a `copy`
-  if it helps, use a dedicated `move_or_copy` operand (emitted by the HLL) that
-  copy relaxation specializes to `move` or `copy`. This preserves source
-  intent/provenance.
+- **`take` operand (short for `move_or_copy`).** Today copy relaxation edits
+  any `move` on a Copy path into `copy` when analysis permits. That loses
+  provenance: a hand-written `move r.*` on a Copy pointee is indistinguishable
+  from an HLL-emitted `move r.*`, and negative-test fixtures that write the
+  former must retype to non-Copy to preserve coverage. A dedicated `take`
+  operand (emitted by HLL, specialized by the pass to `move` or `copy`) would
+  restore that distinction — hand-written `move`/`copy` stay authoritative;
+  `take` is the "resolve me" input.
 - **Enforce the dynamic-place no-consumption rule.** Copy relaxation already
   excludes dynamic indices, but init-state checking must reject dynamic
   `move`/`drop` and state-changing borrows while retaining the uniform-state
   read/mutation cases described in the semantics above.
-- **HLL through-reference reads still emit `copy` for Copy pointees.** The MIR
-  pass now relaxes `move r.*` (and arbitrarily nested exclusive-ref paths)
-  correctly, but `lower_expr_to_operand` still emits `copy` when a projection
-  crosses a reference dereference. Flipping HLL to emit `move r.*` uniformly
-  would let relaxation handle it — and unlock the `let x = r.*; r.* = v`
-  consume-and-replace pattern on Copy pointees behind `&mut`.
 
 ## Language features
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).

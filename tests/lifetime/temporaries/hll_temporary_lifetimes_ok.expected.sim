@@ -51,10 +51,11 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
     value = copy i;
     _temp_3 = &out _temp_2;
     call $i64_lt(copy i, 1, move _temp_3);
-    branch(move _temp_2) [true: if_true_2, false: if_false_3]
+    branch(copy _temp_2) [true: if_true_2, false: if_false_3]
   if_true_2:
     require_uninit _temp_4;
     require_uninit _temp_3;
+    drop _temp_2;
     require_uninit _temp_2;
     require_uninit _temp_1;
     _temp_7 = &out _temp_6;
@@ -73,6 +74,7 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
     goto if_merge_4
   if_merge_4:
     require_uninit _temp_3;
+    drop _temp_2;
     require_uninit _temp_2;
     drop _temp_1;
     require_uninit _temp_1;

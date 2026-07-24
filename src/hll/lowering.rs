@@ -551,20 +551,6 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
     }
 }
 
-fn is_copy_type(ty: &mir::Type) -> bool {
-    match &ty.kind {
-        mir::TypeKind::Int(_)
-        | mir::TypeKind::Float(_)
-        | mir::TypeKind::Bool
-        | mir::TypeKind::Unit
-        | mir::TypeKind::Never
-        | mir::TypeKind::Ref(_, _, _)
-        | mir::TypeKind::RawPtr(_) => true,
-        mir::TypeKind::Array(inner, _) => is_copy_type(inner),
-        _ => false,
-    }
-}
-
 /// If `expr` is a place projection that crosses a reference dereference,
 /// return that reference's kind. Fields and indexes preserve the access mode
 /// of their base. Raw-pointer dereferences return `None`.
@@ -750,50 +736,17 @@ fn lower_expr_to_operand(
         }
         hll::ExprKind::Variable(_)
         | hll::ExprKind::FieldAccess(_, _)
-        | hll::ExprKind::ArrayIndex(_, _) => {
+        | hll::ExprKind::ArrayIndex(_, _)
+        | hll::ExprKind::Deref(_) => {
+            // Emit `move` uniformly; copy relaxation downgrades where a later
+            // reachable use demands the value. Shared-ref reads stay as `copy`
+            // because moving through `&T` is always illegal, and relaxation
+            // won't rewrite the operand for us in that direction.
             let place = lower_expr_to_place(ctx, expr, types)?;
-            if let Some(kind) = projected_ref_kind(expr, types) {
-                let hll_ty = lookup_type(expr, types).ok_or_else(|| {
-                    diag(
-                        HllLoweringCode::MissingType,
-                        expr.span,
-                        "missing type annotation for reference projection",
-                    )
-                })?;
-                if matches!(kind, RefKind::Shared) || is_copy_type(&lower_type(hll_ty)) {
-                    // HLL has no explicit move surface. Ordinary shared-ref
-                    // reads are always copies; Copy-valued exclusive-ref
-                    // reads remain copies unless a future lowering analysis
-                    // proves a consume-and-replace transition.
-                    return Ok(copy_op(place));
-                }
+            if matches!(projected_ref_kind(expr, types), Some(RefKind::Shared)) {
+                return Ok(copy_op(place));
             }
             Ok(move_op(place))
-        }
-        hll::ExprKind::Deref(_) => {
-            let place = lower_expr_to_place(ctx, expr, types)?;
-            match projected_ref_kind(expr, types) {
-                Some(RefKind::Shared) => return Ok(copy_op(place)),
-                Some(RefKind::Mut | RefKind::Out | RefKind::Drop | RefKind::Uninit) => {}
-                None => {}
-            }
-
-            // Copy-valued exclusive-ref and raw-pointer dereferences preserve
-            // the existing HLL read policy. Explicit MIR `move r.*` is where
-            // dereference-aware copy relaxation applies.
-            let hll_ty = lookup_type(expr, types).ok_or_else(|| {
-                diag(
-                    HllLoweringCode::MissingType,
-                    expr.span,
-                    "missing type annotation for variable/projection",
-                )
-            })?;
-            let mir_ty = lower_type(hll_ty);
-            if is_copy_type(&mir_ty) {
-                Ok(copy_op(place))
-            } else {
-                Ok(move_op(place))
-            }
         }
         _ => {
             // Evaluate into a temporary first, then move the temporary
@@ -2288,7 +2241,7 @@ mod tests {
             fn f(x: &mut i64, $return: &out i64) {
               _temp_0: unit;
               entry:
-                $return.* = copy x.*;
+                $return.* = move x.*;
                 x.* = 100;
                 _temp_0 = unit;
                 require_uninit _temp_0;

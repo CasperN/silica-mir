@@ -96,7 +96,7 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
   _temp_3: unit;
   _temp_4: unit;
   entry:
-    branch(move c) [true: if_true_0, false: if_false_1]
+    branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     p.x = 1;
     _temp_1 = unit;
@@ -132,6 +132,7 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
     unborrow $return;
     require_uninit p;
     require_uninit $return;
+    drop c;
     require_uninit c;
     return
 }

@@ -26,6 +26,8 @@
 
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
+use crate::mir::helpers::*;
+use crate::mir::place_state::analysis::RefState;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
 use indexmap::IndexMap;
@@ -42,6 +44,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
 fn elaborate_function(func: &mut Function, env: &Env) {
     let locals = func.locals_map();
     let scope = func.meta.param_scope();
+    let return_obligations = collect_return_obligations(func);
     let Some(body) = &mut func.body else {
         return;
     };
@@ -49,15 +52,51 @@ fn elaborate_function(func: &mut Function, env: &Env) {
         return;
     }
 
-    let exits = dataflow::run(&MovePathDemand, body);
+    let analysis = MovePathDemand {
+        return_obligations: &return_obligations,
+    };
+    let exits = dataflow::run(&analysis, body);
     for block in &mut body.blocks {
         let Some(exit_demand) = exits.get(&block.label) else {
             continue;
         };
         let mut demand = exit_demand.clone();
+        analysis.transfer_terminator(&mut demand, &block.terminator);
         relax_terminator(&mut block.terminator, &mut demand, env, &locals, &scope);
         for stmt in block.statements.iter_mut().rev() {
             relax_statement(stmt, &mut demand, env, &locals, &scope);
+        }
+    }
+}
+
+/// Ref-typed places whose obligation requires an Init pointee at expiry.
+/// Injected as backward demand at `Return`: keeping the pointee Init through
+/// the tail of the function is what those references contracted for, so any
+/// `move place.*` reaching `Return` unmodified must relax to `copy` when the
+/// pointee type permits.
+///
+/// Local refs may not actually live to `Return` — a move to a callee ends
+/// them earlier — but the write that transfers the ref also kills demand on
+/// its pointee, so the injection is safe over-approximation.
+fn collect_return_obligations(func: &Function) -> BTreeSet<Place> {
+    let mut out = BTreeSet::new();
+    for param in &func.params {
+        collect_post_init_pointees(&var_place(param.name.clone()), &param.ty, &mut out);
+    }
+    if let Some(body) = &func.body {
+        for local in &body.locals {
+            collect_post_init_pointees(&var_place(local.name.clone()), &local.ty, &mut out);
+        }
+    }
+    out
+}
+
+fn collect_post_init_pointees(place: &Place, ty: &Type, out: &mut BTreeSet<Place>) {
+    if let TypeKind::Ref(kind, _, inner) = &ty.kind {
+        if RefState::from_kind(kind).is_some_and(|state| state.ends_init) {
+            let pointee = deref_place(place.clone());
+            out.insert(pointee.clone());
+            collect_post_init_pointees(&pointee, inner, out);
         }
     }
 }
@@ -73,9 +112,11 @@ struct Demand {
 }
 
 /// Backward may-demand for move paths.
-struct MovePathDemand;
+struct MovePathDemand<'a> {
+    return_obligations: &'a BTreeSet<Place>,
+}
 
-impl Analysis for MovePathDemand {
+impl<'a> Analysis for MovePathDemand<'a> {
     type State = Demand;
 
     fn direction(&self) -> Direction {
@@ -98,6 +139,11 @@ impl Analysis for MovePathDemand {
     }
 
     fn transfer_terminator(&self, demand: &mut Self::State, term: &Terminator) {
+        if matches!(term.kind, TerminatorKind::Return) {
+            for place in self.return_obligations {
+                demand.values.insert(place.clone());
+            }
+        }
         transfer_terminator_demand(term, demand);
     }
 }
@@ -153,8 +199,17 @@ fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut Demand) {
 }
 
 fn transfer_operand_demand(operand: &Operand, demand: &mut Demand) {
-    if let Operand::Copy(place) | Operand::Move(place) = operand {
-        add_value_demand(demand, place);
+    match operand {
+        Operand::Copy(place) => add_value_demand(demand, place),
+        Operand::Move(place) => {
+            // Move consumes `place`'s subtree — downstream demand for its
+            // descendants is void after the move, so drop it as we cross
+            // this operand backward. The read itself is still a demand for
+            // `place` pre-move.
+            kill_future_demand(demand, place);
+            add_value_demand(demand, place);
+        }
+        Operand::Const(_) => {}
     }
 }
 
@@ -403,6 +458,13 @@ fn relax_operand(
     let place = place.clone();
     if needs_preserving && is_copy {
         *operand = Operand::Copy(place.clone());
+    }
+    // If we kept the operand as a `move`, it consumes `place`'s subtree —
+    // mirror the fixpoint's kill so descendants demanded post-move don't
+    // bleed backward past this operand and preserve unrelated earlier
+    // moves.
+    if matches!(operand, Operand::Move(_)) {
+        kill_future_demand(demand, &place);
     }
     add_value_demand(demand, &place);
 }
@@ -712,6 +774,12 @@ mod tests {
 
     #[test]
     fn dereference_write_kills_old_pointee_demand() {
+        // The write at index 1 kills demand for `r.*` backward from the
+        // second call and from `r`'s post-Init obligation at Return, so
+        // the earlier `move r.*` at index 0 sees no demand and stays as
+        // move. The final `move r.*` at index 2 still relaxes to `copy`
+        // — otherwise `r.*` would be Uninit at Return, violating the
+        // &mut obligation.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
@@ -728,7 +796,7 @@ mod tests {
             matches!(call_arg(&program, "f", 0), Operand::Move(place) if format_place(place) == "r.*")
         );
         assert!(
-            matches!(call_arg(&program, "f", 2), Operand::Move(place) if format_place(place) == "r.*")
+            matches!(call_arg(&program, "f", 2), Operand::Copy(place) if format_place(place) == "r.*")
         );
     }
 

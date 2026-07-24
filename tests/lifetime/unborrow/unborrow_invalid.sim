@@ -8,6 +8,11 @@
 # | place is not a reference  | TC-UnborrowNonReference            |
 # | obligation still open     | INIT-RefObligationUnfulfilled      |
 
+# Non-Copy pointee so copy relaxation can't silently downgrade the
+# `move r.*` in `unborrow_with_unfulfilled_obligation` to `copy r.*`
+# and mask the obligation violation.
+struct L: Drop + Move { value: i64 }
+
 extern fn sink(r: &mut i64);
 
 # ---------- ref moved before unborrow ----------
@@ -49,10 +54,11 @@ fn unborrow_of_non_ref_type(x: i64) {
 # A `&mut` ref carries an obligation that the pointee must be Init at
 # expiry.  Moving the pointee out without writing it back leaves the
 # obligation unfulfilled; unborrow is rejected.
-fn unborrow_with_unfulfilled_obligation(r: &mut i64) {
-  x: i64;
+fn unborrow_with_unfulfilled_obligation(r: &mut L) {
+  x: L;
   entry:
     x = move r.*;
+    drop x;
     unborrow r;
     return
 }

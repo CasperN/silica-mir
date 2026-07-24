@@ -9,6 +9,14 @@
 
 struct P: Copy + Drop { x: i64  y: i64 }
 
+# Non-Copy scalar and struct types. Copy relaxation cannot downgrade a
+# `move` on these to `copy`, so `move r.*` on a `&mut L` pointee leaves
+# the pointee Moved at ref expiry and the (Init, Init) obligation
+# genuinely fires.
+struct L: Drop + Move { value: i64 }
+
+struct Q: Drop + Move { x: L  y: i64 }
+
 enum E: Copy + Drop { A: i64  B: unit }
 
 struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
@@ -101,27 +109,27 @@ fn<T: Copy + Drop> drop_generic_struct_untouched(r: &drop Box<T>) {
 
 # ---------- &mut: pointee moved out with no writeback ----------
 
-fn mut_scalar_moved_no_writeback(r: &mut i64) {
-  x: i64;
+fn mut_scalar_moved_no_writeback(r: &mut L) {
+  x: L;
   entry:
     x = move r.*;
     drop x;
     return
 }
 
-fn mut_struct_moved_no_writeback(r: &mut P) {
-  p: P;
+fn mut_struct_moved_no_writeback(r: &mut Q) {
+  q: Q;
   entry:
-    p = move r.*;
-    drop p;
+    q = move r.*;
+    drop q;
     return
 }
 
-# Moves one field of P out; leaves the pointee
+# Moves one field of Q out; leaves the pointee
 # `Partial{x: Moved, y: Init}` at ref expiry, which doesn't discharge
 # the `&mut` (Init, Init) obligation.
-fn mut_struct_field_moved(r: &mut P) {
-  x: i64;
+fn mut_struct_field_moved(r: &mut Q) {
+  x: L;
   entry:
     x = move r.*.x;
     drop x;

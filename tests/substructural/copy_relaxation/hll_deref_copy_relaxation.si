@@ -1,4 +1,6 @@
-# Shared-reference projections lower as reads all the way through HLL.
+# HLL uniform-move + copy relaxation on Deref reads. HLL lowers reads
+# through references as `move`; copy relaxation then decides `move` vs
+# `copy` per program point.
 
 struct Pair: Copy + Drop { left: i64, right: i64 }
 
@@ -6,4 +8,31 @@ struct Pair: Copy + Drop { left: i64, right: i64 }
 # relaxation must never legalize an explicit shared-reference move.
 fn read_shared_field(r: &Pair) -> i64 {
   r.*.left
+}
+
+# The consume-and-replace pattern on a Copy pointee behind `&mut`: `let x
+# = r.*` moves the pointee out, invalidating it briefly, then `r.* = v`
+# reinitializes before the ref expires. Relaxation keeps the move (there
+# is no later read to preserve for, and the write kills the Return-time
+# obligation demand).
+fn consume_and_replace(r: &mut i64) {
+  let x = r.*;
+  r.* = 42;
+}
+
+# Repeated reads through an exclusive reference: relaxation downgrades
+# the earlier read to a `copy` so the value survives to the second read,
+# then keeps the last read as `move` because the subsequent write
+# restores the pointee's Init state at ref expiry.
+fn repeated_pointee_reads_then_reinit(r: &mut i64) {
+  let a = r.*;
+  let b = r.*;
+  r.* = a + b;
+}
+
+# Single read through `&mut` with no reinit. The pointee's post-Init
+# obligation at ref expiry propagates backward as demand, forcing
+# relaxation to downgrade the read to a `copy`.
+fn single_read_preserves_obligation(r: &mut i64) -> i64 {
+  r.*
 }
