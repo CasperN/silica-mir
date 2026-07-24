@@ -1,7 +1,7 @@
 mod parameter_ref_tests {
     use crate::mir::ast::*;
     use crate::mir::helpers::*;
-    use crate::mir::init_state::analysis::{InitState, RefState, initial_state};
+    use crate::mir::place_state::analysis::{InitState, RefState, initial_state};
     use crate::mir::parser::Parser;
     use crate::mir::type_check::Env;
 

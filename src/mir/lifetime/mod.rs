@@ -20,6 +20,7 @@ use crate::diagnostics::DiagCode;
 
 pub mod check;
 pub mod constraints;
+pub mod desugaring;
 pub mod loans;
 pub mod nll;
 pub mod region;

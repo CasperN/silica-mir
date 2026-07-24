@@ -155,7 +155,7 @@ mod tests {
 
     #[test]
     fn ref_to_ref_assignment_emits_outlives() {
-        use crate::mir::elision;
+        use crate::mir::lifetime::desugaring;
         use crate::mir::parser::Parser;
         use crate::mir::type_check::Env;
         // `r = copy x` where both are `&i64`: source region must
@@ -171,7 +171,7 @@ mod tests {
             }
         ";
         let mut program = Parser::new(src.to_string()).parse().expect("parse");
-        elision::elide_program(&mut program);
+        desugaring::elide_program(&mut program);
         let (env, _errs) = Env::build(&program);
         let func = program.find_fn("f").expect("fn f");
         let cs = crate::mir::lifetime::check::constraints_for(&env, func);

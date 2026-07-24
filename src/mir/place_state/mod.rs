@@ -31,6 +31,7 @@
 
 pub mod analysis;
 pub mod check;
+pub mod copy_relaxation;
 pub mod drop_elaboration;
 
 #[cfg(test)]

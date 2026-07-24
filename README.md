@@ -778,15 +778,15 @@ src/
     ├── ast.rs              # MIR nodes (Places, Operands, Statements, Types)
     ├── parser.rs           # MIR Tree-Sitter parser
     ├── intrinsics.rs       # Built-in $i64_* ops and LLVM declarations
-    ├── init_state/         # Initialization and reference obligations
-    ├── lifetime/           # Lifetime loan checker & NLL elaborator
-    ├── substructural/      # Drop elaborator & return leak checker
+    ├── place_state/        # Init state, ref obligations, copy relaxation, drop elaboration
+    ├── lifetime/           # Lifetime loan checker, NLL elaborator, signature elision desugar
+    ├── substructural/      # Type-level substructural checks (marker composition, statement class)
     └── codegen/            # Textual LLVM IR generation
 ```
 Key files
 - `main.rs` for how all the compiler passes are wired up.
-- `src/hll/lowering.rs` for examples of HLL syntax and how it lowers to MIR. 
-- `src/mir/init_state/mod.rs` for the substructural references model.
+- `src/hll/lowering.rs` for examples of HLL syntax and how it lowers to MIR.
+- `src/mir/place_state/analysis.rs` for the substructural references model.
 
 # Testing discipline
 

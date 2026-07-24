@@ -80,7 +80,7 @@ fn maybe_write_fixture_impl(src: &str, forced_subdir: Option<&str>, has_errors: 
 }
 
 /// Derive `(dir_rel, stem)` from a fully-qualified test path such as
-/// `silica_mir::mir::init_state::foo_tests::bar_ok`. Rules:
+/// `silica_mir::mir::place_state::foo_tests::bar_ok`. Rules:
 /// * Drop crate prefix (`silica_mir`).
 /// * Drop leading `mir::` — fixtures live directly under `tests/`.
 /// * When `forced_subdir` is `"codegen-raw"`, also drop leading

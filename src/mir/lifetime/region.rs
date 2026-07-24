@@ -235,7 +235,7 @@ mod tests {
             }
         ";
         let mut program = Parser::new(src.to_string()).parse().expect("parse");
-        crate::mir::elision::elide_program(&mut program);
+        crate::mir::lifetime::desugaring::elide_program(&mut program);
         let (env, _errs) = Env::build(&program);
         let func = program.find_fn("f").expect("fn f");
         let ctx = build_region_ctx(func, &env);

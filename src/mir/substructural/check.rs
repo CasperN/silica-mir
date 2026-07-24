@@ -206,7 +206,7 @@ fn check_terminator(
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::DiagCode;
-    use crate::mir::init_state::analysis::InitStateCode;
+    use crate::mir::place_state::analysis::InitStateCode;
     use crate::mir::test_util::*;
 
     /// Pins the interaction between NLL elaboration and the return-time
