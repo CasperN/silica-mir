@@ -481,6 +481,14 @@ fn walk_diverged(
             // recursion the caller sees a whole-aggregate `Partial`
             // whose `state_at` at any pred exit reads back as `Partial`
             // rather than `Init`, and no per-field drop is planned.
+            //
+            // Precision gap (not soundness): `TypeKind::Array` and enum
+            // Custom variants fall through the `_ => {}` below and don't
+            // get per-slot / per-variant edge-drop planning. The final
+            // `check_return_leaks` catches whatever this misses (its
+            // `find_return_leaks` walk does descend arrays), so the
+            // program is still rejected — just without the automatic
+            // per-arm cleanup that drop-elab would have inserted.
             let TypeKind::Custom(name, _, args) = &ty.kind else {
                 return;
             };
@@ -495,7 +503,13 @@ fn walk_diverged(
                         walk_diverged(env, sub_place, &field_ty, field_state, out);
                     }
                 }
-                _ => {}
+                // Enum Custom types skipped: a Partial on an enum arises
+                // only through variant-payload initialization, and
+                // per-variant edge-drop planning would need to know the
+                // active variant at each pred — see the outer comment.
+                // `None` means the type isn't registered (type-check
+                // error already reported).
+                Some(TypeDecl::Enum(_)) | None => {}
             }
         }
     }
@@ -601,6 +615,13 @@ fn plan_drops_for_place(
             match &ty.kind {
                 // Reverse declared field order = LIFO for that container.
                 TypeKind::Custom(struct_name, _, args) => {
+                    // `None` on `env.types.get`: type not registered —
+                    // type-check already reported. Non-Struct decl: this
+                    // is an enum. A Partial on an enum shouldn't be
+                    // reachable (enums are whole-value constructed),
+                    // but if we get here, there's no per-variant plan
+                    // to emit — the outer `check_return_leaks` remains
+                    // authoritative.
                     let TypeDecl::Struct(s) = (match env.types.get(struct_name) {
                         Some(d) => d,
                         None => return,
@@ -647,7 +668,24 @@ fn plan_drops_for_place(
                         plan_drops_for_place(ip, elem, element_state, env, scope, out);
                     }
                 }
-                _ => {}
+                // A Partial state only arises on struct or array types
+                // (write_at / move_at only promote to Partial for those
+                // shapes). Enum-Custom variants use whole-value
+                // construction (`Name::V(...)`), so Partial on an enum
+                // is not reachable through the checker — the enum-Custom
+                // fallthrough here is what makes Partial-on-enum a no-op
+                // for drop planning. Scalar / ref / raw-ptr / fn / Param
+                // types can't be Partial by construction. Any Partial
+                // reaching here with those kinds is a bug upstream.
+                TypeKind::Unit
+                | TypeKind::Int(_)
+                | TypeKind::Float(_)
+                | TypeKind::Bool
+                | TypeKind::Never
+                | TypeKind::Param(_)
+                | TypeKind::Ref(_, _, _)
+                | TypeKind::RawPtr(_)
+                | TypeKind::Fn(_) => {}
             }
         }
     }

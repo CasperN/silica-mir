@@ -55,7 +55,15 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
                 walk_lifetimes(a, scope, out);
             }
         }
-        _ => {}
+        // Scalars (Unit, Int, Float, Bool, Never) and Param carry no
+        // lifetimes to collect. New TypeKind variants that CAN carry
+        // lifetimes must add a case above.
+        TypeKind::Unit
+        | TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
     }
 }
 

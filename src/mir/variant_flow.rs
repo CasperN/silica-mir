@@ -223,7 +223,14 @@ fn check_places_in_terminator(
         TerminatorKind::SwitchEnum { place, .. } => {
             check_downcast_refinement(env, func, locals, block, place, ts, state, d);
         }
-        _ => {}
+        // Goto/Return/Abort/Unreachable read no operand or place;
+        // there is nothing to variant-flow-check on those terminators.
+        // A new terminator kind that inspects an operand or place must
+        // add a case above.
+        TerminatorKind::Goto { .. }
+        | TerminatorKind::Return
+        | TerminatorKind::Abort
+        | TerminatorKind::Unreachable => {}
     }
 }
 
@@ -525,7 +532,10 @@ fn check_switch(
                     variant
                 ),
             )),
-            _ => {}
+            // (true, false) reachable and not-marked-unreachable: correct.
+            // (false, true) unreachable and marked-unreachable: correct.
+            // Both are the intended cases; no diagnostic to emit.
+            (true, false) | (false, true) => {}
         }
     }
 }

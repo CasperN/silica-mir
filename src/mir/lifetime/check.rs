@@ -133,7 +133,9 @@ fn collect_named_regions(
                         collect_named_regions(&sub, env, visited, out);
                     }
                 }
-                _ => {}
+                // `None`: type not registered — a type-check error is
+                // already reported. Nothing more to walk.
+                None => {}
             }
             visited.remove(name);
         }
@@ -142,7 +144,15 @@ fn collect_named_regions(
                 collect_named_regions(a, env, visited, out);
             }
         }
-        _ => {}
+        // Scalars carry no lifetimes. `TypeKind::Param` is an in-scope
+        // parameter binder; its lifetime dependency (if any) is
+        // introduced at the instantiation site, not this walk.
+        TypeKind::Unit
+        | TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
     }
 }
 
@@ -151,6 +161,8 @@ fn collect_named_regions(
 #[cfg(test)]
 pub fn constraints_for(env: &Env, func: &Function) -> constraints::ConstraintSet {
     let mut cs = constraints::ConstraintSet::new();
+    // `None` here means an extern fn: no body, no statements, no
+    // constraints to emit. Return the empty set.
     let Some(body) = &func.body else { return cs };
     if body.blocks.is_empty() {
         return cs;
@@ -318,7 +330,21 @@ impl<'a> Checker<'a> {
                 // region, dst is a body-local. Always satisfiable — a
                 // named region outlives any local temp.
                 (Region::Named(_), Region::Free(_)) => {}
-                _ => {}
+                // Remaining pairs are satisfiable at this phase:
+                //   - (Named=Named): identical regions, trivially met.
+                //   - (Free, Named-not-escape): flow into an internal
+                //     Named region without caller visibility — OK; if
+                //     the region ever becomes caller-visible the
+                //     escape_visible branch above fires instead.
+                //   - (Free, Free): two body-local regions unify.
+                //   - Anything paired with Region::Static: Static
+                //     outlives everything and is outlived by nothing
+                //     stricter, so pairings resolve trivially.
+                (Region::Named(_), Region::Named(_))
+                | (Region::Free(_), Region::Named(_))
+                | (Region::Free(_), Region::Free(_))
+                | (Region::Static, _)
+                | (_, Region::Static) => {}
             }
         }
     }
@@ -326,6 +352,18 @@ impl<'a> Checker<'a> {
     /// Emit outlives constraints for one statement. Currently covers
     /// assignment `dst = src` where both sides are ref-typed: the
     /// source's region must outlive the destination's.
+    ///
+    /// Silent-early-return convention throughout this fn: the `Some(...)
+    /// else { return }` guards skip statements or operands that carry
+    /// no lifetime obligation. In particular:
+    ///   - Non-Assign statements have no ref-flow to constrain here
+    ///     (call-site region flow is handled by `walk_call_regions`).
+    ///   - `Operand::Const` has no source place → no source region.
+    ///   - Ref rvalues on projected places (non-owned) resolve to
+    ///     `Region::Free(u32::MAX)` (sentinel) rather than bailing —
+    ///     the sentinel keeps the constraint emission live.
+    ///   - `region_of_place` returning `None` means the place isn't
+    ///     ref-typed → no constraint needed.
     fn emit_stmt_constraints(&mut self, stmt: &Statement) {
         let StatementKind::Assign(target, rvalue) = &stmt.kind else {
             return;
@@ -716,7 +754,32 @@ impl<'a> Checker<'a> {
                     span,
                 );
             }
-            _ => {}
+            // Scalars and `Param` carry no lifetime — no walk needed.
+            //
+            // `TypeKind::Fn` is a KNOWN gap tracked in the punchlist
+            // ("Call-site handling ignores fn pointers"): descending
+            // into a fn-pointer type's arg/return slots would emit the
+            // standard covariant-return / contravariant-arg constraints,
+            // but Type::Fn today carries no lifetime metadata to walk.
+            // Adding that walk requires first extending Type::Fn to
+            // carry per-slot lifetimes. Until then, taking a &fn-pointer
+            // to a ref-returning fn silently bypasses lifetime tracking
+            // on that call path — the escape check and the standard
+            // ref-flow constraints still fire on direct call sites.
+            // `Ref` with `None` lifetime: elision assigns Free regions
+            // for these before check runs, but a hand-written or
+            // partially-elided signature can still reach here. No
+            // named lifetime to constrain; the caller-side ref still
+            // participates in the standard `region_of_place` path
+            // driven from the direct-call handler above.
+            TypeKind::Ref(_, None, _) => {}
+            TypeKind::Unit
+            | TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Never
+            | TypeKind::Param(_)
+            | TypeKind::Fn(_) => {}
         }
     }
 
@@ -813,7 +876,16 @@ impl<'a> Checker<'a> {
                 // Discriminant read.
                 self.check_loan_conflict(block, place, AccessKind::Read, terminator_span, loans);
             }
-            _ => {}
+            // Goto/Return/Abort/Unreachable read no operand or place;
+            // there is no runtime access here. Any outstanding loan
+            // that must be closed at `return` is surfaced by the
+            // place-state ref-obligation check on the elaborated MIR
+            // (NLL inserts `unborrow` at last-use; whatever remains
+            // active at return fires from that pass).
+            TerminatorKind::Goto { .. }
+            | TerminatorKind::Return
+            | TerminatorKind::Abort
+            | TerminatorKind::Unreachable => {}
         }
     }
 }

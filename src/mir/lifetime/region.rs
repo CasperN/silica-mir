@@ -175,11 +175,36 @@ fn walk_regions(
                         walk_regions(&sub, &vty, env, visited, ctx);
                     }
                 }
-                _ => {}
+                // `None` here means the Custom type isn't in the env —
+                // a type-check error already reported. Nothing to walk.
+                None => {}
             }
             visited.remove(name);
         }
-        _ => {}
+        // Scalars carry no refs. `TypeKind::Fn` erases its ref-carrying
+        // parameter types at the type level (fn signatures aren't walked
+        // here — they're the callee's problem). `TypeKind::Param` is
+        // opaque without substitution. `TypeKind::RawPtr` deliberately
+        // has no lifetime bound.
+        //
+        // `TypeKind::Array(elem, _)` is a known precision gap: an owned
+        // `[&mut T; N]` local has N ref-typed slots that this walk skips,
+        // so per-slot regions are never assigned. Loan tracking still
+        // catches conflicts on the slots, and place-state materializes
+        // ref-state lazily on access, so the omission is precision, not
+        // soundness — but a &mut slot in an array won't participate in
+        // inter-fn lifetime constraints or NLL last-use insertion. Fix
+        // when `[T; N]` needs to appear in fn signatures with lifetime
+        // arguments.
+        TypeKind::Unit
+        | TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Never
+        | TypeKind::Param(_)
+        | TypeKind::Fn(_)
+        | TypeKind::RawPtr(_)
+        | TypeKind::Array(_, _) => {}
     }
 }
 

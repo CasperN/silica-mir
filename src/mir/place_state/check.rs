@@ -404,7 +404,13 @@ impl<'a> InitStateContext<'a> {
                     );
                 }
             }
-            _ => {}
+            // Goto/Return/Abort/Unreachable inspect no operand or place,
+            // so no place-state check applies. `return` leaks are handled
+            // separately by `check_return_leaks` after the per-block walk.
+            TerminatorKind::Goto { .. }
+            | TerminatorKind::Return
+            | TerminatorKind::Abort
+            | TerminatorKind::Unreachable => {}
         }
     }
 

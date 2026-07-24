@@ -820,6 +820,8 @@ into `*$return`. Today the codegen path is still void-only in practice
 (non-void C returns get dropped); wiring up `$return`-carrying externs
 is a codegen change, not a design change.
 
+# Compiler Engineering
+
 # Exploration map
 This may be out of date but the directory structure is roughly as follows. 
 ```
@@ -847,7 +849,7 @@ Key files
 - `src/hll/lowering.rs` for examples of HLL syntax and how it lowers to MIR.
 - `src/mir/place_state/analysis.rs` for the substructural references model.
 
-# Testing discipline
+## Testing discipline
 
 Compiler testing lives on a spectrum from "here's a program, here's what
 should happen" (which most compiler bugs are actually about) to "does
@@ -907,7 +909,7 @@ project skews toward the second today; the target is the first.
    primitives. `#[cfg(test)] mod tests` inline is fine here — the
    tests belong next to the API they exercise.
 
-## When separate file vs inline
+### When separate file vs inline
 
 Not file size — **test count and kind**:
 - **Sibling `*_tests.rs`**: >10 tests, or tests group naturally by
@@ -916,7 +918,7 @@ Not file size — **test count and kind**:
   API, module <500 lines.
 - **`tests/` fixture dir**: anything "program in, artifact out." Never inline.
 
-## Fixture granularity
+### Fixture granularity
 
 Prefer fewer, denser fixtures per concept over many one-shot files.
 For a language rule that spans a matrix of interactions (e.g. ref
@@ -935,7 +937,7 @@ filenames and hide the matrix. Consolidate opportunistically —
 whenever you touch a topic, sweep the sibling fixtures for
 subsumed cases and delete them.
 
-## HLL over MIR when both work
+### HLL over MIR when both work
 
 When a test can be written in either surface, prefer `.si` (HLL): the
 lowering path plus the checker path plus codegen is the more
@@ -945,7 +947,7 @@ behavior under test can't be produced from HLL — hand-crafted CFG
 shapes, specific dataflow join scenarios, or MIR features the HLL
 doesn't lower to yet.
 
-## Anti-patterns to avoid
+### Anti-patterns to avoid
 
 - **Per-pass duplication of the same program.** If init_state and
   lifetime both hand-craft the same `&mut` conflict, one fixture test
@@ -959,14 +961,42 @@ doesn't lower to yet.
 - **Testing at the wrong tier.** Reaching into a pass's private state
   to test something a fixture test would catch is a smell.
 
-## Adding a new feature
+### Adding a new feature
 
 Order of operations:
 1. Add a fixture for the golden path. Watch it fail.
 2. Add a fixture per error case, one per new `DiagCode` variant.
 3. Only add unit tests if there's an invariant the fixture can't observe.
 
-# VS Code Syntax Highlighting
+## Silent-fallthrough discipline
+
+Every `match` arm on a compiler-internal enum in a checker or
+elaboration pass (`src/mir/place_state/`, `src/mir/lifetime/`,
+`src/mir/substructural/`, `src/mir/type_check/`, `src/mir/variant_flow.rs`)
+must either enumerate every meaningful arm explicitly or attach a
+comment to the `_ => {}` fallthrough explaining why the covered arms
+are the complete set of relevant cases. The same rule applies to
+`let ... else { return; }` (or `else { continue; }`) — the `else`
+needs a comment stating what the `None` case represents and why
+skipping is safe.
+
+Silent fallthroughs are how the three array holes closed in the
+"array soundness holes" commit slipped in: `find_return_leaks`,
+`walk_overwrite_leaves`, and `apply_pointee_write` each dispatched
+on a shape that had a struct-field arm and no array arm, and the
+default silently no-op'd on arrays. The comment discipline forces
+the author to articulate the safety argument when writing the
+fallthrough; adding a new `TypeKind` / `PathStep` / `RefKind` /
+`InitState` / `Operand` variant then means re-reading every such
+comment and re-checking that its argument still holds.
+
+Where the variant set is small and stable, prefer an explicit
+exhaustive match over `_ => {}` — Rust's exhaustiveness check then
+enforces the audit structurally on any new variant. Reserve
+wildcard-plus-comment for arms whose "every other variant" argument
+is stable across additions.
+
+## VS Code Syntax Highlighting
 
 This repository includes a lightweight VS Code extension for Silica and Silica-MIR files (`.si` and `.sim`) located under [syntax_highlighting/vscode/](./syntax_highlighting/vscode).
 
@@ -1004,12 +1034,19 @@ To load it locally:
 ## Lifetime checker gaps (semantic)
 - **`where 'a: 'b` outlives clauses.** No syntax today; `signature_outlives: Vec<(Lifetime, Lifetime)>` is the right shape to build on. Any real generic library needs this.
 - **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
+- **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
 - **No fixture for nested-ref case (`&&i64`, `&Wrap<i64>`), shared-ref returns read multiple times, or `Wrap<'a>` in fn signatures.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands.
 
 ## Elaboration + drop
 - **Drop insertion order in return blocks.** Belongs to the HLL
   (scope-nesting determines LIFO). If the frontend emits its own
   drops per scope-exit, the drop elaborator becomes reference-only.
+- **`walk_diverged` skips arrays and enum Custom types.** Cross-edge
+  drop planning doesn't insert per-slot / per-variant drops for
+  Diverged elements — the final `check_return_leaks` still fires
+  (its walk descends arrays), so sound but forces the user to
+  manually drop on the initializing arm rather than relying on the
+  elaborator.
 
 ## Init-state: split analysis from checking
 

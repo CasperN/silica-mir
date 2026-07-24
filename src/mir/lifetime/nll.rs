@@ -410,6 +410,12 @@ fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
                         }
                     }
                 }
+                // Only reborrow-producing rvalues (`&kind *r` and refs
+                // that pass through PtrCast) create the `s → r` relation.
+                // Other Assign shapes — value copies/moves, RawRef,
+                // EnumConstr, ArrayLit, non-Ref PtrCast — don't establish
+                // a reborrow parent. Non-Assign statements (Call, Drop,
+                // Unborrow, RequireUninit) can't produce a reborrower.
                 _ => {}
             }
         }
@@ -496,10 +502,19 @@ fn walk_ref_paths(
                 walk_ref_paths(&sub, &vty, env, visited, out);
             }
         }
-        _ => {}
+        // `None` means the Custom name isn't registered — a type-check
+        // error already reported elsewhere. Nothing to walk.
+        None => {}
     }
     visited.remove(name);
 }
+// Note: the outer `let ... else return` at the top of this fn bails on
+// non-Custom, non-Ref types (scalars, RawPtr, Fn, Param, Array). For
+// `[&mut T; N]` this is a known precision gap: the array's slots are
+// never added to the borrower set, so NLL won't insert `unborrow a[k]`
+// on last-use — the loan simply stays active until scope end. Sound but
+// forces users to write explicit `unborrow` for early release. Twin of
+// the region.rs::walk_regions gap; fix them together.
 
 /// Enumerate borrower places used by referencing `place`. Yields any
 /// borrower that shares storage with `place`:
@@ -619,7 +634,14 @@ fn terminator_uses(term: &Terminator, borrowers: &BTreeSet<Place>) -> Vec<Place>
         TerminatorKind::SwitchEnum { place, .. } => {
             place_borrower_uses(place, borrowers, &mut out);
         }
-        _ => {}
+        // Goto/Return/Abort/Unreachable inspect no operand or place —
+        // no borrower use is emitted for them. Whatever borrowers are
+        // live at these terminators are handled by NLL's cross-edge
+        // pass and the ref-obligation check at return.
+        TerminatorKind::Goto { .. }
+        | TerminatorKind::Return
+        | TerminatorKind::Abort
+        | TerminatorKind::Unreachable => {}
     }
     out
 }
