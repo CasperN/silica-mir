@@ -48,8 +48,8 @@ fn prepare_mir_for_analysis(
 
 /// Validate initialization state and lifetime loans.
 fn check_place_and_loan_state(program: &Program, env: &mir::type_check::Env, d: &mut Diagnostics) {
-    mir::init_state::check_program(program, env, d);
-    mir::lifetime::check_program(program, env, d);
+    mir::init_state::check::check_program(program, env, d);
+    mir::lifetime::check::check_program(program, env, d);
 }
 
 /// Type-check and validate MIR without running NLL or place-state
@@ -106,8 +106,8 @@ pub fn elaborate_and_check_mir(
     // between passes — subsequent passes read bodies straight from the
     // mutated `Program`.
     mir::copy_relaxation::elaborate(&mut elaborated, &env);
-    mir::lifetime::elaborate(&mut elaborated, &env);
-    mir::init_state::elaborate(&mut elaborated, &env);
+    mir::lifetime::nll::elaborate(&mut elaborated, &env);
+    mir::init_state::drop_elaboration::elaborate(&mut elaborated, &env);
 
     // Final dynamic validation runs once, over the canonical elaborated MIR.
     // This surfaces invalid source transitions that no elaborator repaired,

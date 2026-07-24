@@ -31,7 +31,7 @@ pub enum DiagCode {
     TypeCheck(crate::mir::type_check::TypeCheckCode),
     /// Errors from initialization-state dataflow
     /// (see `init_state::InitStateCode`).
-    InitState(crate::mir::init_state::InitStateCode),
+    InitState(crate::mir::init_state::analysis::InitStateCode),
     /// Diagnostics from the variant-flow / `switchEnum` analysis
     /// (see `variant_flow::VariantFlowCode`).
     VariantFlow(crate::mir::variant_flow::VariantFlowCode),

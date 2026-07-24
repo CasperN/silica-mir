@@ -1,4 +1,4 @@
-use super::{check_program, check_return_leaks};
+use super::check::{check_program, check_return_leaks};
 use super::drop_elaboration::*;
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::Program;
