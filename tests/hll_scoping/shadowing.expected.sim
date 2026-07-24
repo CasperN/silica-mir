@@ -9,7 +9,7 @@ fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
   _temp_2: unit;
   entry:
     x = 1;
-    call use_i64(copy x);
+    call use_i64(move x);
     _temp_0 = unit;
     drop _temp_0;
     require_uninit _temp_0;
@@ -18,11 +18,9 @@ fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
     _temp_2 = unit;
     drop _temp_2;
     require_uninit _temp_2;
-    $return.* = copy $x_1;
+    $return.* = move $x_1;
     unborrow $return;
-    drop $x_1;
     require_uninit $x_1;
-    drop x;
     require_uninit x;
     require_uninit $return;
     return
@@ -33,12 +31,10 @@ fn<'s0> let_shadow_reads_outer($return: &out 's0 i64) {
   $x_0: i64;
   entry:
     x = 1;
-    $x_0 = copy x;
-    $return.* = copy $x_0;
+    $x_0 = move x;
+    $return.* = move $x_0;
     unborrow $return;
-    drop $x_0;
     require_uninit $x_0;
-    drop x;
     require_uninit x;
     require_uninit $return;
     return
@@ -52,18 +48,16 @@ fn<'s0> let_shadow_inner_block($return: &out 's0 i64) {
   entry:
     x = 1;
     $x_1 = 2;
-    call use_i64(copy $x_1);
+    call use_i64(move $x_1);
     _temp_2 = unit;
     drop _temp_2;
     require_uninit _temp_2;
     _temp_0 = unit;
-    drop $x_1;
     require_uninit $x_1;
     drop _temp_0;
     require_uninit _temp_0;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     require_uninit $return;
     return
@@ -73,17 +67,15 @@ fn<'s0> let_shadows_param(x: i64, $return: &out 's0 i64) {
   _temp_0: unit;
   $x_1: i64;
   entry:
-    call use_i64(copy x);
+    call use_i64(move x);
     _temp_0 = unit;
     drop _temp_0;
     require_uninit _temp_0;
     $x_1 = 99;
-    $return.* = copy $x_1;
+    $return.* = move $x_1;
     unborrow $return;
-    drop $x_1;
     require_uninit $x_1;
     require_uninit $return;
-    drop x;
     require_uninit x;
     return
 }
@@ -100,16 +92,14 @@ fn<'s0> match_arm_bindings_reused(e: E, $return: &out 's0 i64) {
     switchEnum(e) [A: switch_A_0, B: switch_B_1]
   switch_A_0:
     x = copy e as A;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     goto switch_merge_2
   switch_B_1:
     $x_0 = copy e as B;
-    $return.* = copy $x_0;
+    $return.* = move $x_0;
     unborrow $return;
-    drop $x_0;
     require_uninit $x_0;
     goto switch_merge_2
   switch_merge_2:
@@ -123,9 +113,8 @@ fn<'s0> fn_name_shadowed_by_let($return: &out 's0 i64) {
   f: i64;
   entry:
     f = 7;
-    $return.* = copy f;
+    $return.* = move f;
     unborrow $return;
-    drop f;
     require_uninit f;
     require_uninit $return;
     return

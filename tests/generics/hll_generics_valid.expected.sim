@@ -17,10 +17,9 @@ fn<'s0> make_box($return: &out 's0 Box<i64>) {
 
 fn<'s0> box_extract(b: Box<i64>, $return: &out 's0 i64) {
   entry:
-    $return.* = copy b.inner;
+    $return.* = move b.inner;
     unborrow $return;
     require_uninit $return;
-    drop b;
     require_uninit b;
     return
 }
@@ -47,9 +46,8 @@ fn<'s0> option_extract_match(o: Option<i64>, $return: &out 's0 i64) {
     goto switch_merge_2
   switch_Some_1:
     x = copy o as Some;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     goto switch_merge_2
   switch_merge_2:
@@ -73,17 +71,15 @@ fn<'s0> move_only_owned_match(ml: MoveList, $return: &out 's0 i64) {
   switch_EmptyM_0:
     u = move ml as EmptyM;
     _temp_0 = &out $return.*;
-    call u_to_zero(copy u, move _temp_0);
+    call u_to_zero(move u, move _temp_0);
     unborrow $return;
     require_uninit _temp_0;
-    drop u;
     require_uninit u;
     goto switch_merge_2
   switch_ConsM_1:
     x = move ml as ConsM;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     goto switch_merge_2
   switch_merge_2:
@@ -118,9 +114,8 @@ fn<'s0, 's1> move_only_borrowed_match(ml: & 's0 MoveList, $return: &out 's1 i64)
   switch_ConsM_1:
     x = copy ml.* as ConsM;
     unborrow ml;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     goto switch_merge_2
   switch_merge_2:
@@ -145,9 +140,8 @@ fn<'s0> nested_container(b: Box<Option<i64>>, $return: &out 's0 i64) {
     goto switch_merge_2
   switch_Some_1:
     x = copy inner as Some;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     goto switch_merge_2
   switch_merge_2:
@@ -160,20 +154,18 @@ fn<'s0> nested_container(b: Box<Option<i64>>, $return: &out 's0 i64) {
 
 fn<'s0> make_box_of_box(x: i64, $return: &out 's0 Box<Box<i64>>) {
   entry:
-    $return.*.inner.inner = copy x;
+    $return.*.inner.inner = move x;
     unborrow $return;
     require_uninit $return;
-    drop x;
     require_uninit x;
     return
 }
 
 fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
   entry:
-    $return.*.inner = Option<i64>::Some(copy x);
+    $return.*.inner = Option<i64>::Some(move x);
     unborrow $return;
     require_uninit $return;
-    drop x;
     require_uninit x;
     return
 }
@@ -181,22 +173,20 @@ fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
 fn<'s0> make_option_of_box(x: i64, $return: &out 's0 Option<Box<i64>>) {
   _temp_0: Box<i64>;
   entry:
-    _temp_0.inner = copy x;
+    _temp_0.inner = move x;
     $return.* = Option<Box<i64>>::Some(move _temp_0);
     unborrow $return;
     require_uninit _temp_0;
     require_uninit $return;
-    drop x;
     require_uninit x;
     return
 }
 
 fn<'s0> read_nested_field(b: Box<Box<i64>>, $return: &out 's0 i64) {
   entry:
-    $return.* = copy b.inner.inner;
+    $return.* = move b.inner.inner;
     unborrow $return;
     require_uninit $return;
-    drop b;
     require_uninit b;
     return
 }
@@ -205,7 +195,7 @@ fn<'s0> write_nested_pointee(r: &out 's0 Box<Box<i64>>, x: i64) {
   _temp_0: unit;
   _temp_1: unit;
   entry:
-    r.*.inner.inner = copy x;
+    r.*.inner.inner = move x;
     unborrow r;
     _temp_1 = unit;
     drop _temp_1;
@@ -213,7 +203,6 @@ fn<'s0> write_nested_pointee(r: &out 's0 Box<Box<i64>>, x: i64) {
     _temp_0 = unit;
     drop _temp_0;
     require_uninit _temp_0;
-    drop x;
     require_uninit x;
     require_uninit r;
     return

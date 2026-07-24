@@ -58,8 +58,7 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
     require_uninit _temp_2;
     require_uninit _temp_1;
     _temp_7 = &out _temp_6;
-    call $i64_add(copy i, 1, move _temp_7);
-    drop i;
+    call $i64_add(move i, 1, move _temp_7);
     i = move _temp_6;
     _temp_5 = unit;
     require_uninit _temp_7;
@@ -77,20 +76,18 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
     require_uninit _temp_2;
     drop _temp_1;
     require_uninit _temp_1;
-    $return.* = copy value;
+    $return.* = move value;
     unborrow $return;
     require_uninit _temp_8;
     require_uninit _temp_0;
     _temp_11 = &out _temp_10;
-    call $i64_add(copy i, 1, move _temp_11);
-    drop i;
+    call $i64_add(move i, 1, move _temp_11);
     i = move _temp_10;
     _temp_9 = unit;
     require_uninit _temp_11;
     require_uninit _temp_10;
     drop _temp_9;
     require_uninit _temp_9;
-    drop value;
     require_uninit value;
     goto loop_end_1
   loop_end_1:

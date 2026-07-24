@@ -6,17 +6,15 @@ fn<'s0> assign_rhs_binop($return: &out 's0 i64) {
   entry:
     x = 0;
     _temp_2 = &out _temp_1;
-    call $i64_add(copy x, 1, move _temp_2);
-    drop x;
+    call $i64_add(move x, 1, move _temp_2);
     x = move _temp_1;
     _temp_0 = unit;
     require_uninit _temp_2;
     require_uninit _temp_1;
     drop _temp_0;
     require_uninit _temp_0;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     require_uninit $return;
     return
@@ -28,19 +26,16 @@ fn<'s0> additive_left_assoc(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
   _temp_2: &out i64;
   entry:
     _temp_1 = &out _temp_0;
-    call $i64_sub(copy a, copy b, move _temp_1);
+    call $i64_sub(move a, move b, move _temp_1);
     _temp_2 = &out $return.*;
-    call $i64_sub(move _temp_0, copy c, move _temp_2);
+    call $i64_sub(move _temp_0, move c, move _temp_2);
     unborrow $return;
     require_uninit _temp_2;
     require_uninit _temp_1;
     require_uninit _temp_0;
     require_uninit $return;
-    drop c;
     require_uninit c;
-    drop b;
     require_uninit b;
-    drop a;
     require_uninit a;
     return
 }
@@ -51,19 +46,16 @@ fn<'s0> mul_over_add(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
   _temp_2: &out i64;
   entry:
     _temp_1 = &out _temp_0;
-    call $i64_mul(copy b, copy c, move _temp_1);
+    call $i64_mul(move b, move c, move _temp_1);
     _temp_2 = &out $return.*;
-    call $i64_add(copy a, move _temp_0, move _temp_2);
+    call $i64_add(move a, move _temp_0, move _temp_2);
     unborrow $return;
     require_uninit _temp_2;
     require_uninit _temp_1;
     require_uninit _temp_0;
     require_uninit $return;
-    drop c;
     require_uninit c;
-    drop b;
     require_uninit b;
-    drop a;
     require_uninit a;
     return
 }
@@ -76,9 +68,9 @@ fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
   _temp_4: &out bool;
   entry:
     _temp_1 = &out _temp_0;
-    call $i64_add(copy a, copy b, move _temp_1);
+    call $i64_add(move a, move b, move _temp_1);
     _temp_3 = &out _temp_2;
-    call $i64_add(copy c, copy d, move _temp_3);
+    call $i64_add(move c, move d, move _temp_3);
     _temp_4 = &out $return.*;
     call $i64_lt(move _temp_0, move _temp_2, move _temp_4);
     unborrow $return;
@@ -88,13 +80,9 @@ fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
     require_uninit _temp_1;
     require_uninit _temp_0;
     require_uninit $return;
-    drop d;
     require_uninit d;
-    drop c;
     require_uninit c;
-    drop b;
     require_uninit b;
-    drop a;
     require_uninit a;
     return
 }
@@ -119,14 +107,13 @@ fn<'s0> borrow_tighter_than_add(x: i64, y: i64, $return: &out 's0 i64) {
     _temp_2 = &out _temp_0;
     call read(move _temp_1, move _temp_2);
     _temp_3 = &out $return.*;
-    call $i64_add(move _temp_0, copy y, move _temp_3);
+    call $i64_add(move _temp_0, move y, move _temp_3);
     unborrow $return;
     require_uninit _temp_3;
     require_uninit _temp_2;
     require_uninit _temp_1;
     require_uninit _temp_0;
     require_uninit $return;
-    drop y;
     require_uninit y;
     drop x;
     require_uninit x;
@@ -139,7 +126,7 @@ fn<'s0> if_as_stmt(a: i64, r: &out 's0 i64) {
   _temp_2: &out bool;
   entry:
     _temp_2 = &out _temp_1;
-    call $i64_gt(copy a, 0, move _temp_2);
+    call $i64_gt(move a, 0, move _temp_2);
     branch(move _temp_1) [true: if_true_0, false: if_false_1]
   if_true_0:
     r.* = 1;
@@ -157,7 +144,6 @@ fn<'s0> if_as_stmt(a: i64, r: &out 's0 i64) {
     drop _temp_0;
     require_uninit _temp_0;
     require_uninit r;
-    drop a;
     require_uninit a;
     return
 }
@@ -169,23 +155,24 @@ fn<'s0> if_as_tail(a: i64, $return: &out 's0 i64) {
   entry:
     base = 10;
     _temp_1 = &out _temp_0;
-    call $i64_gt(copy a, 0, move _temp_1);
+    call $i64_gt(move a, 0, move _temp_1);
     branch(move _temp_0) [true: if_true_0, false: if_false_1]
   if_true_0:
-    $return.* = copy base;
+    $return.* = move base;
     unborrow $return;
     goto if_merge_2
   if_false_1:
     $return.* = 0;
     unborrow $return;
+    goto if_false_1__to__if_merge_2
+  if_false_1__to__if_merge_2:
+    drop base;
     goto if_merge_2
   if_merge_2:
     require_uninit _temp_1;
     require_uninit _temp_0;
-    drop base;
     require_uninit base;
     require_uninit $return;
-    drop a;
     require_uninit a;
     return
 }
@@ -220,18 +207,16 @@ fn<'s0> match_as_stmt(t: Tag, r: &out 's0 i64) {
     switchEnum(t) [A: switch_A_0, B: switch_B_1]
   switch_A_0:
     x = copy t as A;
-    r.* = copy x;
+    r.* = move x;
     unborrow r;
     _temp_0 = unit;
-    drop x;
     require_uninit x;
     goto switch_merge_2
   switch_B_1:
     y = copy t as B;
-    r.* = copy y;
+    r.* = move y;
     unborrow r;
     _temp_0 = unit;
-    drop y;
     require_uninit y;
     goto switch_merge_2
   switch_merge_2:
@@ -255,20 +240,17 @@ fn<'s0> postfix_chain_on_match(t: Tag, $return: &out 's0 i64) {
     switchEnum(t) [A: switch_A_0, B: switch_B_1]
   switch_A_0:
     x = copy t as A;
-    w.inner = copy x;
-    drop x;
+    w.inner = move x;
     require_uninit x;
     goto switch_merge_2
   switch_B_1:
     y = copy t as B;
-    w.inner = copy y;
-    drop y;
+    w.inner = move y;
     require_uninit y;
     goto switch_merge_2
   switch_merge_2:
-    $return.* = copy w.inner;
+    $return.* = move w.inner;
     unborrow $return;
-    drop w;
     require_uninit w;
     require_uninit $return;
     drop t;

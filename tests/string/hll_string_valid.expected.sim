@@ -86,11 +86,14 @@ fn const_index_in_bounds() {
   b: u8;
   entry:
     s = b"hello";
-    b = copy s[0u64];
+    b = move s[0u64];
     _temp_0 = unit;
     drop b;
     require_uninit b;
-    drop s;
+    drop s[4];
+    drop s[3];
+    drop s[2];
+    drop s[1];
     require_uninit s;
     drop _temp_0;
     require_uninit _temp_0;
@@ -104,14 +107,16 @@ fn const_index_multiple() {
   o: u8;
   entry:
     s = b"hello";
-    h = copy s[0u64];
-    o = copy s[4u64];
+    h = move s[0u64];
+    o = move s[4u64];
     _temp_0 = unit;
     drop o;
     require_uninit o;
     drop h;
     require_uninit h;
-    drop s;
+    drop s[3];
+    drop s[2];
+    drop s[1];
     require_uninit s;
     drop _temp_0;
     require_uninit _temp_0;

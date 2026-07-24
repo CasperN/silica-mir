@@ -174,8 +174,7 @@ fn loop_out_write_and_consume(n: i64) {
     drop _temp_7;
     require_uninit _temp_7;
     _temp_10 = &out _temp_9;
-    call $i64_add(copy i, 1, move _temp_10);
-    drop i;
+    call $i64_add(move i, 1, move _temp_10);
     i = move _temp_9;
     _temp_8 = unit;
     require_uninit _temp_10;

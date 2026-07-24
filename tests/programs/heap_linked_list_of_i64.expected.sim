@@ -30,7 +30,7 @@ fn<'s0> list_cons(value: i64, tail: List, $return: &out 's0 List) {
     _temp_0 = &out p;
     call malloc_node(24, move _temp_0);
     require_uninit _temp_0;
-    p.*.value = copy value;
+    p.*.value = move value;
     _temp_2 = unit;
     drop _temp_2;
     require_uninit _temp_2;
@@ -41,13 +41,11 @@ fn<'s0> list_cons(value: i64, tail: List, $return: &out 's0 List) {
     _temp_1 = unit;
     drop _temp_1;
     require_uninit _temp_1;
-    $return.* = List::Cons(copy p);
+    $return.* = List::Cons(move p);
     unborrow $return;
-    drop p;
     require_uninit p;
     require_uninit $return;
     require_uninit tail;
-    drop value;
     require_uninit value;
     return
 }
@@ -62,21 +60,19 @@ fn list_free(list: List) {
     switchEnum(list) [Empty: switch_Empty_0, Cons: switch_Cons_1]
   switch_Empty_0:
     u = move list as Empty;
-    _temp_0 = copy u;
-    drop u;
+    _temp_0 = move u;
     require_uninit u;
     goto switch_merge_2
   switch_Cons_1:
     p = move list as Cons;
     tail = move p.*.next;
-    call free_node(copy p);
+    call free_node(move p);
     _temp_1 = unit;
     drop _temp_1;
     require_uninit _temp_1;
     call list_free(move tail);
     _temp_0 = unit;
     require_uninit tail;
-    drop p;
     require_uninit p;
     goto switch_merge_2
   switch_merge_2:
@@ -110,7 +106,7 @@ fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
     _temp_2 = &out _temp_0;
     call list_sum(move _temp_1, move _temp_2);
     _temp_3 = &out $return.*;
-    call $i64_add(copy p.*.value, move _temp_0, move _temp_3);
+    call $i64_add(move p.*.value, move _temp_0, move _temp_3);
     unborrow $return;
     require_uninit _temp_3;
     require_uninit _temp_2;
@@ -165,7 +161,7 @@ fn<'s0> main(exit: &out 's0 i32) {
     drop _temp_7;
     require_uninit _temp_7;
     _temp_10 = &out _temp_9;
-    call $i64_to_i32(copy s, move _temp_10);
+    call $i64_to_i32(move s, move _temp_10);
     exit.* = move _temp_9;
     unborrow exit;
     _temp_8 = unit;
@@ -174,7 +170,6 @@ fn<'s0> main(exit: &out 's0 i32) {
     drop _temp_8;
     require_uninit _temp_8;
     _temp_0 = unit;
-    drop s;
     require_uninit s;
     require_uninit l3;
     require_uninit l2;

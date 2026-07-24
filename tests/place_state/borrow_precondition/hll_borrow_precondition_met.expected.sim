@@ -29,10 +29,9 @@ fn<'s0, 's1> use_mut(r: &mut 's0 i64, $return: &out 's1 i64) {
 
 fn<'s0> take_scalar(y: i64, $return: &out 's0 i64) {
   entry:
-    $return.* = copy y;
+    $return.* = move y;
     unborrow $return;
     require_uninit $return;
-    drop y;
     require_uninit y;
     return
 }
@@ -58,7 +57,7 @@ fn<'s0> mut_of_init(x: i64, $return: &out 's0 i64) {
   _temp_0: &mut i64;
   _temp_1: &out i64;
   entry:
-    y = copy x;
+    y = move x;
     _temp_0 = &mut y;
     _temp_1 = &out $return.*;
     call use_mut(move _temp_0, move _temp_1);
@@ -68,7 +67,6 @@ fn<'s0> mut_of_init(x: i64, $return: &out 's0 i64) {
     drop y;
     require_uninit y;
     require_uninit $return;
-    drop x;
     require_uninit x;
     return
 }
@@ -91,9 +89,8 @@ fn<'s0> mut_of_init_field_of_partial($return: &out 's0 i64) {
     _temp_1 = unit;
     drop _temp_1;
     require_uninit _temp_1;
-    $return.* = copy v;
+    $return.* = move v;
     unborrow $return;
-    drop v;
     require_uninit v;
     require_uninit r;
     drop p;
@@ -113,10 +110,9 @@ fn<'s0> out_of_never_init($return: &out 's0 i64) {
     _temp_0 = unit;
     drop _temp_0;
     require_uninit _temp_0;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
     require_uninit r;
-    drop x;
     require_uninit x;
     require_uninit $return;
     return
@@ -127,7 +123,7 @@ fn<'s0> out_of_init_drop_type(x: i64, $return: &out 's0 i64) {
   r: &out i64;
   _temp_0: unit;
   entry:
-    y = copy x;
+    y = move x;
     drop y;
     r = &out y;
     r.* = 2;
@@ -135,13 +131,11 @@ fn<'s0> out_of_init_drop_type(x: i64, $return: &out 's0 i64) {
     _temp_0 = unit;
     drop _temp_0;
     require_uninit _temp_0;
-    $return.* = copy y;
+    $return.* = move y;
     unborrow $return;
     require_uninit r;
-    drop y;
     require_uninit y;
     require_uninit $return;
-    drop x;
     require_uninit x;
     return
 }

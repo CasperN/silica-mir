@@ -20,16 +20,14 @@ fn<'s0> nested_downcast(o: Outer, $return: &out 's0 i64) {
     switchEnum(inner) [X: switch_X_3, Y: switch_Y_4]
   switch_X_3:
     x = copy inner as X;
-    $return.* = copy x;
+    $return.* = move x;
     unborrow $return;
-    drop x;
     require_uninit x;
     goto switch_merge_5
   switch_Y_4:
     y = copy inner as Y;
-    $return.* = copy y;
+    $return.* = move y;
     unborrow $return;
-    drop y;
     require_uninit y;
     goto switch_merge_5
   switch_merge_5:
@@ -38,9 +36,8 @@ fn<'s0> nested_downcast(o: Outer, $return: &out 's0 i64) {
     goto switch_merge_2
   switch_B_1:
     b = copy o as B;
-    $return.* = copy b;
+    $return.* = move b;
     unborrow $return;
-    drop b;
     require_uninit b;
     goto switch_merge_2
   switch_merge_2:
@@ -72,18 +69,16 @@ fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
     goto switch_merge_3
   switch_Pos_1:
     p = copy t as Pos;
-    $return.* = copy p;
+    $return.* = move p;
     unborrow $return;
-    drop p;
     require_uninit p;
     goto switch_merge_3
   switch_Neg_2:
     n = copy t as Neg;
     _temp_0 = &out $return.*;
-    call $i64_neg(copy n, move _temp_0);
+    call $i64_neg(move n, move _temp_0);
     unborrow $return;
     require_uninit _temp_0;
-    drop n;
     require_uninit n;
     goto switch_merge_3
   switch_merge_3:

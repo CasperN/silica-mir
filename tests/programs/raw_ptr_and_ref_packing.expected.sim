@@ -7,7 +7,7 @@ fn<'s0> read_field_via_raw_ptr(pt: Point, $return: &out 's0 i64) {
   p: *Point;
   entry:
     p = &raw pt;
-    $return.* = copy p.*.x;
+    $return.* = move p.*.x;
     unborrow $return;
     drop p;
     require_uninit p;
@@ -31,8 +31,8 @@ fn pack_and_pass(x: i64, y: i64) {
   p: Pair;
   _temp_1: unit;
   entry:
-    xm = copy x;
-    ym = copy y;
+    xm = move x;
+    ym = move y;
     p.a = &mut xm;
     p.b = &mut ym;
     call use_pair(move p);
@@ -47,9 +47,7 @@ fn pack_and_pass(x: i64, y: i64) {
     require_uninit xm;
     drop _temp_0;
     require_uninit _temp_0;
-    drop y;
     require_uninit y;
-    drop x;
     require_uninit x;
     return
 }

@@ -18,30 +18,26 @@ fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
     switchEnum(s) [On: switch_On_0, Off: switch_Off_1]
   switch_On_0:
     a = copy s as On;
-    _temp_0 = Level::High(copy a);
-    drop a;
+    _temp_0 = Level::High(move a);
     require_uninit a;
     goto switch_merge_2
   switch_Off_1:
     b = copy s as Off;
-    _temp_0 = Level::Low(copy b);
-    drop b;
+    _temp_0 = Level::Low(move b);
     require_uninit b;
     goto switch_merge_2
   switch_merge_2:
     switchEnum(_temp_0) [High: switch_High_3, Low: switch_Low_4]
   switch_High_3:
     h = copy _temp_0 as High;
-    $return.* = copy h;
+    $return.* = move h;
     unborrow $return;
-    drop h;
     require_uninit h;
     goto switch_merge_5
   switch_Low_4:
     l = copy _temp_0 as Low;
-    $return.* = copy l;
+    $return.* = move l;
     unborrow $return;
-    drop l;
     require_uninit l;
     goto switch_merge_5
   switch_merge_5:
@@ -100,7 +96,7 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
   _temp_3: unit;
   _temp_4: unit;
   entry:
-    branch(copy c) [true: if_true_0, false: if_false_1]
+    branch(move c) [true: if_true_0, false: if_false_1]
   if_true_0:
     p.x = 1;
     _temp_1 = unit;
@@ -132,12 +128,10 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
   if_merge_2:
     drop _temp_0;
     require_uninit _temp_0;
-    $return.* = copy p.x;
+    $return.* = move p.x;
     unborrow $return;
-    drop p.x;
     require_uninit p;
     require_uninit $return;
-    drop c;
     require_uninit c;
     return
 }
