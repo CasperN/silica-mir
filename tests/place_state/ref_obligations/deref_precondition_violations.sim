@@ -13,6 +13,9 @@
 #   INIT-WriteThroughSharedRef       any mutation through `&T`
 
 struct Owned: Drop + Move { val: i64 }
+enum NestedChoice: Copy + Drop { Variant: i64 Other: i64 }
+struct SharedMiddleRoot: Move { field: &mut [&NestedChoice; 3] }
+struct SharedOuterRoot: Move { field: &[&mut NestedChoice; 3] }
 
 # ---------- INIT-DerefPointeeStateMismatch ----------
 
@@ -48,6 +51,62 @@ fn move_out_through_shared_ref(r: &Owned) {
   x: Owned;
   entry:
     x = move r.*;
+    drop x;
+    return
+}
+
+# Copy relaxation must not legalize a shared-reference move, even when a later
+# pointee read would otherwise demand preservation.
+fn move_copy_pointee_through_shared_ref(r: &i64) {
+  x: i64;
+  y: i64;
+  entry:
+    x = move r.*;
+    y = copy r.*;
+    drop x;
+    drop y;
+    return
+}
+
+# Permission and pointee-state checks also apply through static projections.
+fn move_field_through_shared_ref(r: &Owned) {
+  x: i64;
+  entry:
+    x = move r.*.val;
+    drop x;
+    return
+}
+
+fn read_out_ref_field_before_write(r: &out Owned) {
+  x: i64;
+  entry:
+    x = copy r.*.val;
+    r.*.val = 42;
+    return
+}
+
+fn move_through_nested_shared_ref(r: &&i64) {
+  x: i64;
+  entry:
+    x = move r.*.*;
+    drop x;
+    return
+}
+
+# Shared permission is checked at every boundary in a complex path, including
+# when the shared reference occurs between otherwise-exclusive projections.
+fn move_complex_through_shared_middle(foo: SharedMiddleRoot) {
+  x: i64;
+  entry:
+    x = move foo.field.*[2].* as Variant;
+    drop x;
+    return
+}
+
+fn move_complex_through_shared_outer(foo: SharedOuterRoot) {
+  x: i64;
+  entry:
+    x = move foo.field.*[2].* as Variant;
     drop x;
     return
 }

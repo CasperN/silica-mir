@@ -13,9 +13,10 @@
 //!   permitted so `p.q.r = ...` refines the state of `p.q.r` specifically.
 //!   Canonicalization collapses a Partial whose fields are all in the
 //!   same simple state.
-//! - `refs`: per ref-typed owned path, the (is_init, ends_init) obligation
-//!   for the pointee. Any owned path (Var, struct field, enum-variant
-//!   downcast) can hold a reference; the map is keyed by `Place`.
+//! - `refs`: per statically addressable ref-typed path, the
+//!   (is_init, ends_init) obligation for the pointee. Keys may be owned paths
+//!   or pass through other references; nested entries are materialized lazily
+//!   and transfer with the reference value.
 //!
 //! Freeze/thaw is not modeled here — the lifetime pass owns loan tracking
 //! and blocks access to any borrowed place independently. This pass
@@ -23,11 +24,11 @@
 //! creation (e.g. `y = &out x` marks `x` `Init` immediately), which is
 //! safe because lifetime prevents direct access until the loan ends.
 //!
-//! Paths through `Deref` are not walked in the `locals` tree — we never
-//! project into a reference's pointee — but `refs` supplies the pointee
-//! init state for `*r` operations via `apply_deref_op`. Downcast-in-move
-//! sets the whole enum to `Moved` (enum atomicity, per README); downcast-
-//! in-write does not change enum state.
+//! Paths through `Deref` are not walked in the `locals` tree. Instead, `refs`
+//! recursively supplies pointee init state for arbitrary-depth static
+//! dereference operations via `apply_deref_op`. Downcast-in-move sets the
+//! whole enum to `Moved` (enum atomicity, per README); downcast-in-write does
+//! not change enum state.
 
 pub mod analysis;
 pub mod check;
@@ -40,4 +41,3 @@ mod analysis_tests;
 mod check_tests;
 #[cfg(test)]
 mod drop_elaboration_tests;
-

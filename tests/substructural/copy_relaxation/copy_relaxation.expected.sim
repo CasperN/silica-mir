@@ -7,6 +7,29 @@ struct Pair: Move {
   right: i64
 }
 
+struct CopyPair: Copy + Drop {
+  left: i64
+  right: i64
+}
+
+enum DeepChoice: Copy + Drop {
+  Variant: i64
+  Other: i64
+}
+
+enum<'s0> RefChoice: Move {
+  HasRef: &mut 's0 CopyPair
+  Empty: unit
+}
+
+struct<'s0, 's1> ProjectionRoot: Move {
+  field: &mut 's0 [&mut 's1 DeepChoice; 3]
+}
+
+struct<'s0, 's1> Link: Move {
+  next: &mut 's0 &mut 's1 CopyPair
+}
+
 extern fn take_num(x: i64);
 
 extern fn take_token(x: Token);
@@ -38,5 +61,113 @@ fn sibling_fields(p: Pair) {
   entry:
     call take_num(move p.left);
     call take_num(move p.right);
+    return
+}
+
+fn<'s0> repeated_mut_pointee(r: &mut 's0 i64) {
+  entry:
+    call take_num(copy r.*);
+    call take_num(move r.*);
+    r.* = 0;
+    unborrow r;
+    return
+}
+
+fn<'s0> repeated_mut_field(r: &mut 's0 CopyPair) {
+  entry:
+    call take_num(copy r.*.left);
+    call take_num(move r.*.left);
+    r.*.left = 0;
+    unborrow r;
+    return
+}
+
+fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
+  entry:
+    call take_num(copy r.*[0]);
+    call take_num(move r.*[0]);
+    r.*[0] = 0;
+    unborrow r;
+    return
+}
+
+fn<'s0, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &mut 's2 CopyPair) {
+  entry:
+    call take_num(copy r.*.*.*.left);
+    call take_num(move r.*.*.*.left);
+    r.*.*.*.left = 0;
+    unborrow r;
+    return
+}
+
+fn repeated_field_between_derefs(link: Link) {
+  entry:
+    call take_num(copy link.next.*.*.right);
+    call take_num(move link.next.*.*.right);
+    link.next.*.*.right = 0;
+    unborrow link.next;
+    return
+}
+
+fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice) {
+  entry:
+    call take_num(copy r.* as HasRef.*.left);
+    call take_num(move r.* as HasRef.*.left);
+    r.* as HasRef.*.left = 0;
+    unborrow r;
+    return
+}
+
+fn repeated_complex_projection(foo: ProjectionRoot) {
+  entry:
+    call take_num(copy foo.field.*[2].* as Variant);
+    call take_num(move foo.field.*[2].* as Variant);
+    foo.field.*[2].* = DeepChoice::Variant(0);
+    unborrow foo.field;
+    return
+}
+
+fn<'s0, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
+  entry:
+    call take_num(copy r.*.*);
+    call take_num(move r.*.*);
+    unborrow r;
+    return
+}
+
+fn<'s0, 's1> repeated_nested_out(r: &mut 's0 &out 's1 i64) {
+  entry:
+    r.*.* = 1;
+    call take_num(copy r.*.*);
+    call take_num(move r.*.*);
+    r.*.* = 0;
+    unborrow r;
+    return
+}
+
+fn<'s0> repeated_drop_pointee(r: &drop 's0 i64) {
+  entry:
+    call take_num(copy r.*);
+    call take_num(move r.*);
+    unborrow r;
+    return
+}
+
+fn<'s0> repeated_out_pointee(r: &out 's0 i64) {
+  entry:
+    r.* = 1;
+    call take_num(copy r.*);
+    call take_num(move r.*);
+    r.* = 0;
+    unborrow r;
+    return
+}
+
+fn<'s0> repeated_uninit_pointee(r: &uninit 's0 i64) {
+  entry:
+    r.* = 1;
+    call take_num(copy r.*);
+    call take_num(move r.*);
+    unborrow r;
     return
 }

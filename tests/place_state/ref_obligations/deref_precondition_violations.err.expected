@@ -1,28 +1,70 @@
-error: at 23:5: [INIT-DerefPointeeStateMismatch] In function 'read_out_ref_before_write', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
+error: at 26:5: [INIT-DerefPointeeStateMismatch] In function 'read_out_ref_before_write', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
     |
- 22 |   entry:
- 23 |     x = copy r.*;
+ 25 |   entry:
+ 26 |     x = copy r.*;
     |     ^^^^^^^^^^^^
- 24 |     r.* = 42;
+ 27 |     r.* = 42;
     |
-error: at 32:5: [INIT-DerefPointeeStateMismatch] In function 'write_mut_ref_without_move', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
+error: at 35:5: [INIT-DerefPointeeStateMismatch] In function 'write_mut_ref_without_move', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
     |
- 31 |   entry:
- 32 |     r.* = 42;
+ 34 |   entry:
+ 35 |     r.* = 42;
     |     ^^^^^^^^
- 33 |     return
+ 36 |     return
     |
-error: at 41:5: [INIT-WriteThroughSharedRef] In function 'write_through_shared_ref', block 'entry': cannot write through shared reference 'r'
+error: at 44:5: [INIT-WriteThroughSharedRef] In function 'write_through_shared_ref', block 'entry': cannot write through shared reference 'r'
     |
- 40 |   entry:
- 41 |     r.* = 1;
+ 43 |   entry:
+ 44 |     r.* = 1;
     |     ^^^^^^^
- 42 |     return
+ 45 |     return
     |
-error: at 50:5: [INIT-WriteThroughSharedRef] In function 'move_out_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+error: at 53:5: [INIT-WriteThroughSharedRef] In function 'move_out_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
     |
- 49 |   entry:
- 50 |     x = move r.*;
+ 52 |   entry:
+ 53 |     x = move r.*;
     |     ^^^^^^^^^^^^
- 51 |     drop x;
+ 54 |     drop x;
     |
+error: at 64:5: [INIT-WriteThroughSharedRef] In function 'move_copy_pointee_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+    |
+ 63 |   entry:
+ 64 |     x = move r.*;
+    |     ^^^^^^^^^^^^
+ 65 |     y = copy r.*;
+    |
+error: at 75:5: [INIT-WriteThroughSharedRef] In function 'move_field_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+    |
+ 74 |   entry:
+ 75 |     x = move r.*.val;
+    |     ^^^^^^^^^^^^^^^^
+ 76 |     drop x;
+    |
+error: at 83:5: [INIT-DerefPointeeStateMismatch] In function 'read_out_ref_field_before_write', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
+    |
+ 82 |   entry:
+ 83 |     x = copy r.*.val;
+    |     ^^^^^^^^^^^^^^^^
+ 84 |     r.*.val = 42;
+    |
+error: at 91:5: [INIT-WriteThroughSharedRef] In function 'move_through_nested_shared_ref', block 'entry': cannot move out through shared reference 'r.*'
+    |
+ 90 |   entry:
+ 91 |     x = move r.*.*;
+    |     ^^^^^^^^^^^^^^
+ 92 |     drop x;
+    |
+error: at 101:5: [INIT-WriteThroughSharedRef] In function 'move_complex_through_shared_middle', block 'entry': cannot move out through shared reference 'foo.field.*[2]'
+     |
+ 100 |   entry:
+ 101 |     x = move foo.field.*[2].* as Variant;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 102 |     drop x;
+     |
+error: at 109:5: [INIT-WriteThroughSharedRef] In function 'move_complex_through_shared_outer', block 'entry': cannot move out through shared reference 'foo.field'
+     |
+ 108 |   entry:
+ 109 |     x = move foo.field.*[2].* as Variant;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 110 |     drop x;
+     |

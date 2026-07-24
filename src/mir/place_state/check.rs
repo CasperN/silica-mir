@@ -6,9 +6,10 @@ use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
 use super::analysis::{
-    InitStateCode::*, InitState, InitStateContext, PointState, RefState, capture_carried_refs,
-    describe_obligation_mismatch, describe_pointee_state, describe_state,
-    extract_init_path, format_path, partial_is_uninit, read_at, run_fixpoint, states_before_returns,
+    capture_carried_refs, describe_obligation_mismatch, describe_pointee_state, describe_state,
+    extract_init_path, format_path, partial_is_uninit, read_at, run_fixpoint,
+    split_at_outermost_deref, states_before_returns, InitState, InitStateCode::*, InitStateContext,
+    PointState, RefState,
 };
 
 pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
@@ -240,6 +241,7 @@ impl<'a> InitStateContext<'a> {
         let span = stmt.span;
         match &stmt.kind {
             StatementKind::Assign(target, rvalue) => {
+                self.materialize_moved_ref(rvalue, state);
                 // Capture ref-state entries to transfer via `move src`
                 // BEFORE eval_rvalue runs. Cascade re-keys src.f → dst.f.
                 let carried_refs = capture_carried_refs(target, rvalue, state);
@@ -322,6 +324,14 @@ impl<'a> InitStateContext<'a> {
             TerminatorKind::SwitchEnum { place, .. } => {
                 // Discriminant read: no move, no consumption.
                 self.check_place_read(func, block, place, ts, state, d);
+                if split_at_outermost_deref(place).is_some() {
+                    self.apply_deref_op(
+                        place,
+                        super::analysis::DerefOp::Read,
+                        state,
+                        Some((func, block, ts, d)),
+                    );
+                }
             }
             _ => {}
         }
@@ -366,21 +376,27 @@ impl<'a> InitStateContext<'a> {
         d: &mut Diagnostics,
     ) {
         self.check_operand_read(func, block, op, span, state, d);
-        // Deref-op transitions for *r in operand position.
+        // Projected dereference operands carry their own pointee-state
+        // transition. Owned operands use the ordinary locals-state transfer.
         match op {
-            Operand::Copy(place) => {
-                self.apply_deref_op(place, super::analysis::DerefOp::Read, state, Some((func, block, span, d)));
+            Operand::Copy(place) if split_at_outermost_deref(place).is_some() => {
+                self.apply_deref_op(
+                    place,
+                    super::analysis::DerefOp::Read,
+                    state,
+                    Some((func, block, span, d)),
+                );
             }
-            Operand::Move(place) => {
-                self.apply_deref_op(place, super::analysis::DerefOp::Move, state, Some((func, block, span, d)));
-                // Moving a reference or an aggregate that contains one
-                // transfers every nested obligation to the callee. The
-                // caller must stop tracking those paths, but need not
-                // discharge them before the transfer.
+            Operand::Move(place) if split_at_outermost_deref(place).is_some() => {
+                self.apply_deref_op(
+                    place,
+                    super::analysis::DerefOp::Move,
+                    state,
+                    Some((func, block, span, d)),
+                );
             }
-            Operand::Const(_) => {}
+            _ => self.apply_operand_move(op, state),
         }
-        self.apply_operand_move(op, state);
     }
 
     fn check_operand_read(
@@ -474,15 +490,18 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let Some(owned) = as_owned_path(place) else {
+        if !super::analysis::is_static_place(place) {
             return;
-        };
+        }
+        if split_at_outermost_deref(place).is_some() {
+            let _ = self.ensure_ref_state(place, state);
+        }
         // Cascade: closing/overwriting an ancestor implicitly forgets
         // every descendant ref. Each victim's obligation is checked.
         let victims: Vec<Place> = state
             .refs
             .keys()
-            .filter(|k| is_ancestor_or_self(&owned, k))
+            .filter(|k| is_ancestor_or_self(place, k))
             .cloned()
             .collect();
         for v in victims {
@@ -534,16 +553,19 @@ impl<'a> InitStateContext<'a> {
         block: &BasicBlock,
         moved: &Place,
         span: Span,
-        state: &PointState,
+        state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let Some(owned) = as_owned_path(moved) else {
+        if !super::analysis::is_static_place(moved) {
             return;
-        };
+        }
+        if split_at_outermost_deref(moved).is_some() {
+            let _ = self.ensure_ref_state(moved, state);
+        }
         let victims: Vec<Place> = state
             .refs
             .keys()
-            .filter(|k| is_ancestor_or_self(&owned, k))
+            .filter(|k| is_ancestor_or_self(moved, k))
             .cloned()
             .collect();
         for v in victims {
@@ -591,7 +613,7 @@ impl<'a> InitStateContext<'a> {
         block: &BasicBlock,
         place: &Place,
         span: Span,
-        state: &PointState,
+        state: &mut PointState,
         d: &mut Diagnostics,
     ) {
         let Some((root, path)) = extract_path(place) else {
@@ -713,7 +735,7 @@ impl<'a> InitStateContext<'a> {
         kind: &RefKind,
         place: &Place,
         span: Span,
-        state: &PointState,
+        state: &mut PointState,
         d: &mut Diagnostics,
     ) {
         let (requires_init, kind_str) = match kind {
@@ -724,12 +746,25 @@ impl<'a> InitStateContext<'a> {
             RefKind::Uninit => (false, "&uninit"),
         };
 
-        // Reborrow `&kind *inner`: the pointee's init state lives in
-        // inner's RefState, not the locals tree. Any owned path can be
-        // reborrowed through — bare `r`, `b.p`, `e as V`, etc.
-        if let Some(parent) = deref_inner(place) {
+        // Reborrow through an exclusive reference: the pointee's init state
+        // lives in the parent RefState, including statically projected fields,
+        // downcasts, and constant indexes.
+        if let Some((parent, sub_path)) = split_at_outermost_deref(place) {
             let parent_str = format_place(&parent);
-            let Some(parent_rs) = state.refs.get(&parent) else {
+            let borrowed_str = if sub_path.is_empty() {
+                format!("*{parent_str}")
+            } else {
+                format_place(place)
+            };
+            let Some(parent_ty) = self.infer_ref_place_type(&parent) else {
+                return;
+            };
+            let TypeKind::Ref(_, _, pointee_ty) = parent_ty.kind else {
+                // Raw-pointer dereferences carry no tracked initialization
+                // state; unsafe source is responsible for their validity.
+                return;
+            };
+            let Some(parent_rs) = self.ensure_ref_state(&parent, state) else {
                 d.push_error(diag(
                     ReferenceStateUnknown,
                     span,
@@ -742,21 +777,33 @@ impl<'a> InitStateContext<'a> {
                 ));
                 return;
             };
-            if parent_rs.is_init() != requires_init {
+            if sub_path
+                .iter()
+                .any(|step| matches!(step, PathStep::Deref | PathStep::Index(None)))
+            {
+                return;
+            }
+            let current = read_at(&parent_rs.pointee, &pointee_ty, &sub_path, self.env);
+            let precondition_met = if requires_init {
+                matches!(current, InitState::Init)
+            } else {
+                matches!(current, InitState::NeverInit | InitState::Moved)
+            };
+            if !precondition_met {
                 let expected = if requires_init {
                     "initialized"
                 } else {
                     "uninitialized"
                 };
-                let actual = describe_pointee_state(&parent_rs.pointee);
+                let actual = describe_pointee_state(&current);
                 d.push_error(diag(
                     BorrowStateMismatch,
                     span,
                     func,
                     block,
                     format!(
-                        "cannot create {} of '*{}': pointee must be {} at borrow, but is {}",
-                        kind_str, parent_str, expected, actual
+                        "cannot create {} of '{}': pointee must be {} at borrow, but is {}",
+                        kind_str, borrowed_str, expected, actual
                     ),
                 ));
             }

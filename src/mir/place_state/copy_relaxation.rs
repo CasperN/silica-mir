@@ -9,12 +9,20 @@
 //! borrower liveness from the rewritten program rather than from a stale
 //! move graph.
 //!
-//! The analysis is backward, with a may-demand set of owned paths. At a CFG
-//! join the sets union: an operand must be preserved if either successor can
-//! still use it. The first implementation only rewrites statically tracked
-//! owned paths (locals, fields, downcasts, and constant indexes). Dynamic
-//! indexes and dereferences still contribute conservative demand for their
-//! owned base, but are not themselves rewrite candidates.
+//! The analysis is backward, with separate may-demand sets for values and
+//! the owned bases needed to access them. At a CFG join the sets union: an
+//! operand must be preserved if either successor can still use it.
+//!
+//! Rewrite candidates are statically tracked paths through any number of
+//! exclusive-reference dereferences. Fields, downcasts, and constant indexes
+//! may appear anywhere in the path. Every dereference boundary must be
+//! exclusive: `move r.*` through `&T` is illegal even if a later use could
+//! otherwise justify preserving the pointee.
+//!
+//! Dynamic indexes and raw-pointer dereferences are not stable identities:
+//! another write may retarget them without changing the syntactic path. They
+//! still contribute conservative access demand, but are not rewrite
+//! candidates.
 
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
@@ -54,23 +62,35 @@ fn elaborate_function(func: &mut Function, env: &Env) {
     }
 }
 
-/// Backward may-demand for owned move paths. A member says that some
-/// successor path needs this place initialized before a later overwrite.
+/// Backward may-demand. `values` names storage whose current value is needed
+/// by a successor. `accesses` names owned reference/index bases that must stay
+/// available merely to reach some projected place. Keeping these separate is
+/// what prevents a later use of borrower `r` from preserving pointee `r.*`.
+#[derive(Clone, Default, PartialEq, Eq)]
+struct Demand {
+    values: BTreeSet<Place>,
+    accesses: BTreeSet<Place>,
+}
+
+/// Backward may-demand for move paths.
 struct MovePathDemand;
 
 impl Analysis for MovePathDemand {
-    type State = BTreeSet<Place>;
+    type State = Demand;
 
     fn direction(&self) -> Direction {
         Direction::Backward
     }
 
     fn initial_state(&self) -> Self::State {
-        BTreeSet::new()
+        Demand::default()
     }
 
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
-        a.union(b).cloned().collect()
+        Demand {
+            values: a.values.union(&b.values).cloned().collect(),
+            accesses: a.accesses.union(&b.accesses).cloned().collect(),
+        }
     }
 
     fn transfer_stmt(&self, demand: &mut Self::State, stmt: &Statement, _span: Span) {
@@ -82,13 +102,13 @@ impl Analysis for MovePathDemand {
     }
 }
 
-fn transfer_statement_demand(stmt: &Statement, demand: &mut BTreeSet<Place>) {
+fn transfer_statement_demand(stmt: &Statement, demand: &mut Demand) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
             kill_future_demand(demand, target);
             transfer_rvalue_demand(rvalue, demand);
             if as_owned_path(target).is_none() {
-                add_place_demand(demand, target);
+                add_access_demand(demand, target);
             }
         }
         StatementKind::Call(target, args) => {
@@ -98,7 +118,7 @@ fn transfer_statement_demand(stmt: &Statement, demand: &mut BTreeSet<Place>) {
             transfer_operand_demand(target, demand);
         }
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
-            add_place_demand(demand, place);
+            add_value_demand(demand, place);
         }
         // This is a postcondition, not a value use. A preceding move should
         // remain a move when this is the only later statement mentioning it.
@@ -106,19 +126,22 @@ fn transfer_statement_demand(stmt: &Statement, demand: &mut BTreeSet<Place>) {
     }
 }
 
-fn transfer_terminator_demand(term: &Terminator, demand: &mut BTreeSet<Place>) {
+fn transfer_terminator_demand(term: &Terminator, demand: &mut Demand) {
     match &term.kind {
         TerminatorKind::Branch { cond, .. } => transfer_operand_demand(cond, demand),
-        TerminatorKind::SwitchEnum { place, .. } => add_place_demand(demand, place),
-        TerminatorKind::Goto(_) | TerminatorKind::Return | TerminatorKind::Abort | TerminatorKind::Unreachable => {}
+        TerminatorKind::SwitchEnum { place, .. } => add_value_demand(demand, place),
+        TerminatorKind::Goto(_)
+        | TerminatorKind::Return
+        | TerminatorKind::Abort
+        | TerminatorKind::Unreachable => {}
     }
 }
 
-fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut BTreeSet<Place>) {
+fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut Demand) {
     match rvalue {
-        RValue::Use(operand) | RValue::EnumConstr(_, _, _, operand) | RValue::PtrCast(operand, _) => {
-            transfer_operand_demand(operand, demand)
-        }
+        RValue::Use(operand)
+        | RValue::EnumConstr(_, _, _, operand)
+        | RValue::PtrCast(operand, _) => transfer_operand_demand(operand, demand),
         RValue::Ref(kind, place) => transfer_ref_demand(kind, place, demand),
         RValue::RawRef(_) => {}
         RValue::ArrayLit(operands) => {
@@ -129,19 +152,69 @@ fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut BTreeSet<Place>) {
     }
 }
 
-fn transfer_operand_demand(operand: &Operand, demand: &mut BTreeSet<Place>) {
+fn transfer_operand_demand(operand: &Operand, demand: &mut Demand) {
     if let Operand::Copy(place) | Operand::Move(place) = operand {
-        add_place_demand(demand, place);
+        add_value_demand(demand, place);
     }
 }
 
 /// An operation that establishes a new state for `place` makes any future
 /// demand for that old state irrelevant on its input side.
-fn kill_future_demand(demand: &mut BTreeSet<Place>, target: &Place) {
-    let Some(owned) = as_owned_path(target) else {
+fn kill_future_demand(demand: &mut Demand, target: &Place) {
+    let Some(target_depth) = static_deref_depth(target) else {
         return;
     };
-    demand.retain(|needed| !is_ancestor_or_self(&owned, needed));
+
+    // A write establishes a new value for the target. Any overlapping future
+    // value at the same dereference depth (or deeper) is therefore not the old
+    // value. Killing ancestors too is deliberately conservative: representing
+    // "the old aggregate except this newly-written field" would require a
+    // complement path set.
+    demand
+        .values
+        .retain(|needed| !write_invalidates_demand(target, target_depth, needed));
+    demand
+        .accesses
+        .retain(|needed| !write_invalidates_demand(target, target_depth, needed));
+}
+
+fn write_invalidates_demand(target: &Place, target_depth: usize, needed: &Place) -> bool {
+    static_deref_depth(needed).is_some_and(|needed_depth| {
+        needed_depth >= target_depth
+            && (is_ancestor_or_self(target, needed) || is_ancestor_or_self(needed, target))
+    })
+}
+
+fn paths_overlap(a: &Place, b: &Place) -> bool {
+    is_ancestor_or_self(a, b) || is_ancestor_or_self(b, a)
+}
+
+fn demand_preserves(candidate: &Place, needed: &Place) -> bool {
+    let Some(candidate_depth) = static_deref_depth(candidate) else {
+        return false;
+    };
+    static_deref_depth(needed).is_some_and(|needed_depth| {
+        needed_depth >= candidate_depth && paths_overlap(candidate, needed)
+    })
+}
+
+fn is_static_access_path(place: &Place) -> bool {
+    static_deref_depth(place).is_some()
+}
+
+/// Count dereference boundaries in a statically comparable place. Dynamic
+/// indices return `None`: equality of `a[i]` at two program points is not
+/// enough to prove that `i` still denotes the same slot.
+fn static_deref_depth(place: &Place) -> Option<usize> {
+    match place {
+        Place::Var(_) => Some(0),
+        Place::Field(inner, _) | Place::Downcast(inner, _) => static_deref_depth(inner),
+        Place::Index(inner, operand) if const_int_operand(operand).is_some() => {
+            static_deref_depth(inner)
+        }
+        Place::Index(_, _) => None,
+        Place::Deref(inner) => static_deref_depth(inner).map(|depth| depth + 1),
+    }
 }
 
 /// Backward transfer for a borrow's pointee transition. This mirrors
@@ -149,14 +222,19 @@ fn kill_future_demand(demand: &mut BTreeSet<Place>, target: &Place) {
 /// paths: `&out` establishes Init, `&drop` establishes Uninit, and
 /// `&uninit` requires/retains Uninit. Only ordinary and mutable borrows
 /// merely read an existing value.
-fn transfer_ref_demand(kind: &RefKind, place: &Place, demand: &mut BTreeSet<Place>) {
+fn transfer_ref_demand(kind: &RefKind, place: &Place, demand: &mut Demand) {
     match kind {
-        RefKind::Shared | RefKind::Mut => add_place_demand(demand, place),
+        RefKind::Shared | RefKind::Mut => add_value_demand(demand, place),
         RefKind::Drop => {
             kill_ref_transition_demand(demand, place);
-            add_place_demand(demand, place);
+            add_value_demand(demand, place);
         }
-        RefKind::Out | RefKind::Uninit => kill_ref_transition_demand(demand, place),
+        RefKind::Out | RefKind::Uninit => {
+            kill_ref_transition_demand(demand, place);
+            if as_owned_path(place).is_none() {
+                add_access_demand(demand, place);
+            }
+        }
     }
 }
 
@@ -165,21 +243,50 @@ fn transfer_ref_demand(kind: &RefKind, place: &Place, demand: &mut BTreeSet<Plac
 /// `p` cannot justify preserving an earlier `move p`: the borrow itself
 /// requires `p.field` to have been uninitialized. Ordinary assignment differs
 /// here — overwriting a field of an already-preserved Copy aggregate is fine.
-fn kill_ref_transition_demand(demand: &mut BTreeSet<Place>, place: &Place) {
-    let Some(owned) = as_owned_path(place) else {
+fn kill_ref_transition_demand(demand: &mut Demand, place: &Place) {
+    let Some(depth) = static_deref_depth(place) else {
         return;
     };
-    demand.retain(|needed| {
-        !is_ancestor_or_self(&owned, needed) && !is_ancestor_or_self(needed, &owned)
+    demand.values.retain(|needed| {
+        !static_deref_depth(needed)
+            .is_some_and(|needed_depth| needed_depth >= depth && paths_overlap(place, needed))
+    });
+    demand.accesses.retain(|needed| {
+        !static_deref_depth(needed)
+            .is_some_and(|needed_depth| needed_depth >= depth && paths_overlap(place, needed))
     });
 }
 
-/// Add the nearest statically-owned base of `place` to the demand set.
-/// A dynamic index therefore conservatively demands its array root; a
-/// dereference demands the borrower that contains it.
-fn add_place_demand(demand: &mut BTreeSet<Place>, place: &Place) {
+/// Record that the current value of `place` is needed. Full logical places
+/// are retained only when they are statically comparable.
+fn add_value_demand(demand: &mut Demand, place: &Place) {
+    if is_static_access_path(place) {
+        demand.values.insert(place.clone());
+    }
+    add_access_demand(demand, place);
+}
+
+/// Record every reference value needed to evaluate or write `place`, without
+/// claiming that the final pointee value is needed. For `r.*.next.*`, both
+/// `r` and `r.*.next` are access carriers.
+fn add_access_demand(demand: &mut Demand, place: &Place) {
+    let mut cur = place;
+    loop {
+        match cur {
+            Place::Var(_) => break,
+            Place::Deref(inner) => {
+                if is_static_access_path(inner) {
+                    demand.accesses.insert((**inner).clone());
+                }
+                cur = inner;
+            }
+            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
+                cur = inner
+            }
+        }
+    }
     if let Some(owned) = nearest_owned_path(place) {
-        demand.insert(owned);
+        demand.accesses.insert(owned);
     }
 }
 
@@ -198,7 +305,7 @@ fn nearest_owned_path(place: &Place) -> Option<Place> {
 
 fn relax_statement(
     stmt: &mut Statement,
-    demand: &mut BTreeSet<Place>,
+    demand: &mut Demand,
     env: &Env,
     locals: &IndexMap<String, Type>,
     scope: &IndexMap<String, Markers>,
@@ -208,7 +315,7 @@ fn relax_statement(
             kill_future_demand(demand, target);
             relax_rvalue(rvalue, demand, env, locals, scope);
             if as_owned_path(target).is_none() {
-                add_place_demand(demand, target);
+                add_access_demand(demand, target);
             }
         }
         StatementKind::Call(target, args) => {
@@ -218,7 +325,7 @@ fn relax_statement(
             relax_operand(target, demand, env, locals, scope);
         }
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
-            add_place_demand(demand, place);
+            add_value_demand(demand, place);
         }
         StatementKind::RequireUninit(_) => {}
     }
@@ -226,29 +333,32 @@ fn relax_statement(
 
 fn relax_terminator(
     term: &mut Terminator,
-    demand: &mut BTreeSet<Place>,
+    demand: &mut Demand,
     env: &Env,
     locals: &IndexMap<String, Type>,
     scope: &IndexMap<String, Markers>,
 ) {
     match &mut term.kind {
         TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, env, locals, scope),
-        TerminatorKind::SwitchEnum { place, .. } => add_place_demand(demand, place),
-        TerminatorKind::Goto(_) | TerminatorKind::Return | TerminatorKind::Abort | TerminatorKind::Unreachable => {}
+        TerminatorKind::SwitchEnum { place, .. } => add_value_demand(demand, place),
+        TerminatorKind::Goto(_)
+        | TerminatorKind::Return
+        | TerminatorKind::Abort
+        | TerminatorKind::Unreachable => {}
     }
 }
 
 fn relax_rvalue(
     rvalue: &mut RValue,
-    demand: &mut BTreeSet<Place>,
+    demand: &mut Demand,
     env: &Env,
     locals: &IndexMap<String, Type>,
     scope: &IndexMap<String, Markers>,
 ) {
     match rvalue {
-        RValue::Use(operand) | RValue::EnumConstr(_, _, _, operand) | RValue::PtrCast(operand, _) => {
-            relax_operand(operand, demand, env, locals, scope)
-        }
+        RValue::Use(operand)
+        | RValue::EnumConstr(_, _, _, operand)
+        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, env, locals, scope),
         RValue::Ref(kind, place) => transfer_ref_demand(kind, place, demand),
         RValue::RawRef(_) => {}
         RValue::ArrayLit(operands) => {
@@ -261,33 +371,75 @@ fn relax_rvalue(
 
 fn relax_operand(
     operand: &mut Operand,
-    demand: &mut BTreeSet<Place>,
+    demand: &mut Demand,
     env: &Env,
     locals: &IndexMap<String, Type>,
     scope: &IndexMap<String, Markers>,
 ) {
     let Operand::Move(place) = operand else {
         if let Operand::Copy(place) = operand {
-            add_place_demand(demand, place);
+            add_value_demand(demand, place);
         }
         return;
     };
 
     let owned = as_owned_path(place);
-    let needs_preserving = owned.as_ref().is_some_and(|moved| {
-        demand
+    let is_exclusive_deref = static_deref_depth(place)
+        .is_some_and(|depth| depth > 0 && all_dereferences_are_exclusive(place, env, locals));
+    let is_candidate = owned.is_some() || is_exclusive_deref;
+    let needs_preserving = is_candidate
+        && (demand
+            .values
             .iter()
-            .any(|needed| is_ancestor_or_self(moved, needed) || is_ancestor_or_self(needed, moved))
-    });
-    let is_copy = owned.as_ref().is_some_and(|moved| {
-        env.type_of_place(moved, Span::default(), locals)
-            .is_ok_and(|ty| class_of(&ty, env, scope).implies(Marker::Copy))
-    });
+            .any(|needed| demand_preserves(place, needed))
+            || demand
+                .accesses
+                .iter()
+                .any(|needed| demand_preserves(place, needed)));
+    let is_copy = is_candidate
+        && env
+            .type_of_place(place, Span::default(), locals)
+            .is_ok_and(|ty| class_of(&ty, env, scope).implies(Marker::Copy));
     let place = place.clone();
     if needs_preserving && is_copy {
         *operand = Operand::Copy(place.clone());
     }
-    add_place_demand(demand, &place);
+    add_value_demand(demand, &place);
+}
+
+/// A move through a shared reference is illegal, and a raw pointer does not
+/// provide the stable identity needed by this liveness-based rewrite. Require
+/// every dereference receiver in the path to be an exclusive reference.
+fn all_dereferences_are_exclusive(
+    place: &Place,
+    env: &Env,
+    locals: &IndexMap<String, Type>,
+) -> bool {
+    fn walk(place: &Place, env: &Env, locals: &IndexMap<String, Type>) -> bool {
+        match place {
+            Place::Var(_) => true,
+            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
+                walk(inner, env, locals)
+            }
+            Place::Deref(inner) => {
+                let exclusive = env
+                    .type_of_place(inner, Span::default(), locals)
+                    .is_ok_and(|ty| {
+                        matches!(
+                            ty.kind,
+                            TypeKind::Ref(
+                                RefKind::Mut | RefKind::Out | RefKind::Drop | RefKind::Uninit,
+                                _,
+                                _
+                            )
+                        )
+                    });
+                exclusive && walk(inner, env, locals)
+            }
+        }
+    }
+
+    walk(place, env, locals)
 }
 
 #[cfg(test)]
@@ -354,6 +506,332 @@ mod tests {
         );
         assert!(matches!(call_arg(&program, "f", 0), Operand::Copy(Place::Var(x)) if x == "x"));
         assert!(matches!(call_arg(&program, "f", 1), Operand::Move(Place::Var(x)) if x == "x"));
+    }
+
+    #[test]
+    fn relaxes_an_earlier_move_through_an_exclusive_reference() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(r: &mut i64) {
+              entry:
+                call consume(move r.*);
+                call consume(move r.*);
+                r.* = 0;
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*")
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 1), Operand::Move(place) if format_place(place) == "r.*")
+        );
+    }
+
+    #[test]
+    fn never_relaxes_a_move_through_a_shared_reference() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(r: &i64) {
+              entry:
+                call consume(move r.*);
+                call consume(copy r.*);
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Move(place) if format_place(place) == "r.*")
+        );
+    }
+
+    #[test]
+    fn relaxes_through_arbitrarily_nested_exclusive_references() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(r: &mut &mut &mut i64) {
+              entry:
+                call consume(move r.*.*.*);
+                call consume(move r.*.*.*);
+                r.*.*.* = 0;
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*.*.*")
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 1), Operand::Move(place) if format_place(place) == "r.*.*.*")
+        );
+    }
+
+    #[test]
+    fn shared_reference_anywhere_in_a_nested_path_blocks_relaxation() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn shared_inner(r: &mut &i64) {
+              entry:
+                call consume(move r.*.*);
+                call consume(copy r.*.*);
+                return
+            }
+            fn shared_outer(r: &&mut i64) {
+              entry:
+                call consume(move r.*.*);
+                call consume(copy r.*.*);
+                return
+            }
+            ",
+        );
+        assert!(matches!(
+            call_arg(&program, "shared_inner", 0),
+            Operand::Move(_)
+        ));
+        assert!(matches!(
+            call_arg(&program, "shared_outer", 0),
+            Operand::Move(_)
+        ));
+    }
+
+    #[test]
+    fn replacing_an_intermediate_reference_kills_nested_demand() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(r: &mut &mut i64, replacement: &mut i64) {
+              entry:
+                call consume(move r.*.*);
+                r.* = move replacement;
+                call consume(move r.*.*);
+                return
+            }
+            ",
+        );
+        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(_)));
+    }
+
+    #[test]
+    fn relaxes_nested_paths_with_projections_between_dereferences() {
+        let program = elaborate_source(
+            "
+            struct Pair: Copy + Drop { left: i64 right: i64 }
+            struct Link: Move { next: &mut Pair }
+            enum Choice: Move { A: &mut i64 B: unit }
+            extern fn consume(x: i64);
+            fn field(r: &mut Link) {
+              entry:
+                call consume(move r.*.next.*.left);
+                call consume(move r.*.next.*.left);
+                r.*.next.*.left = 0;
+                return
+            }
+            fn index(r: &mut [&mut i64; 2]) {
+              entry:
+                call consume(move r.*[0].*);
+                call consume(move r.*[0].*);
+                r.*[0].* = 0;
+                return
+            }
+            fn downcast(r: &mut Choice) {
+              entry:
+                call consume(move r.* as A.*);
+                call consume(move r.* as A.*);
+                r.* as A.* = 0;
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "field", 0), Operand::Copy(place) if format_place(place) == "r.*.next.*.left")
+        );
+        assert!(
+            matches!(call_arg(&program, "index", 0), Operand::Copy(place) if format_place(place) == "r.*[0].*")
+        );
+        assert!(
+            matches!(call_arg(&program, "downcast", 0), Operand::Copy(place) if format_place(place) == "r.* as A.*")
+        );
+    }
+
+    #[test]
+    fn shallower_borrower_use_does_not_preserve_a_deeper_pointee() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            extern fn consume_ref(r: &mut i64);
+            fn f(r: &mut &mut i64) {
+              entry:
+                call consume(move r.*.*);
+                call consume_ref(move r.*);
+                return
+            }
+            ",
+        );
+        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(_)));
+    }
+
+    #[test]
+    fn raw_pointer_dereferences_are_not_relaxation_candidates() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(p: **i64) {
+              entry:
+                call consume(move p.*.*);
+                call consume(copy p.*.*);
+                return
+            }
+            ",
+        );
+        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(_)));
+    }
+
+    #[test]
+    fn borrower_use_alone_does_not_preserve_its_pointee() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(r: &drop i64) {
+              s: &drop i64;
+              entry:
+                call consume(move r.*);
+                s = move r;
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Move(place) if format_place(place) == "r.*")
+        );
+    }
+
+    #[test]
+    fn dereference_write_kills_old_pointee_demand() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn f(r: &mut i64) {
+              entry:
+                call consume(move r.*);
+                r.* = 1;
+                call consume(move r.*);
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Move(place) if format_place(place) == "r.*")
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 2), Operand::Move(place) if format_place(place) == "r.*")
+        );
+    }
+
+    #[test]
+    fn relaxes_the_same_projected_pointee_but_not_a_sibling() {
+        let program = elaborate_source(
+            "
+            struct Pair: Copy + Drop { left: i64 right: i64 }
+            extern fn consume(x: i64);
+            fn same(r: &mut Pair) {
+              entry:
+                call consume(move r.*.left);
+                call consume(move r.*.left);
+                r.*.left = 0;
+                return
+            }
+            fn sibling(r: &mut Pair) {
+              entry:
+                call consume(move r.*.left);
+                call consume(move r.*.right);
+                r.*.left = 0;
+                r.*.right = 0;
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "same", 0), Operand::Copy(place) if format_place(place) == "r.*.left")
+        );
+        assert!(
+            matches!(call_arg(&program, "sibling", 0), Operand::Move(place) if format_place(place) == "r.*.left")
+        );
+    }
+
+    #[test]
+    fn relaxes_a_constant_pointee_index_but_not_a_dynamic_index() {
+        let program = elaborate_source(
+            "
+            extern fn consume(x: i64);
+            fn constant(r: &mut [i64; 2]) {
+              entry:
+                call consume(move r.*[0]);
+                call consume(move r.*[0]);
+                r.*[0] = 0;
+                return
+            }
+            fn dynamic(r: &mut [i64; 2], i: i64) {
+              entry:
+                call consume(move r.*[copy i]);
+                call consume(move r.*[copy i]);
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "constant", 0), Operand::Copy(place) if format_place(place) == "r.*[0]")
+        );
+        assert!(
+            matches!(call_arg(&program, "dynamic", 0), Operand::Move(place) if format_place(place) == "r.*[?]")
+        );
+    }
+
+    #[test]
+    fn relaxes_a_downcast_pointee_projection() {
+        let program = elaborate_source(
+            "
+            enum Choice: Copy + Drop { A: i64 B: i64 }
+            extern fn consume(x: i64);
+            fn f(r: &mut Choice) {
+              entry:
+                call consume(move r.* as A);
+                call consume(move r.* as A);
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.* as A")
+        );
+    }
+
+    #[test]
+    fn relaxes_a_projected_pointee_on_a_successor_path() {
+        let program = elaborate_source(
+            "
+            struct Pair: Copy + Drop { left: i64 right: i64 }
+            extern fn consume(x: i64);
+            fn f(r: &mut Pair, b: bool) {
+              entry:
+                call consume(move r.*.left);
+                branch(copy b) [true: use_left, false: done]
+              use_left:
+                call consume(move r.*.left);
+                r.*.left = 0;
+                goto done
+              done:
+                return
+            }
+            ",
+        );
+        assert!(
+            matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*.left")
+        );
     }
 
     #[test]

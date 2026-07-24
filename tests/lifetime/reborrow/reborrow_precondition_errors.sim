@@ -43,13 +43,27 @@ fn out_reborrow_of_mut_parent(r: &mut i64) {
 
 # `&mut e as V .*` parses as `&mut (e as V) .*`, which tries to
 # downcast the reference `e: &mut E` (not its pointee). The checker
-# fires TC-DowncastOfNonEnum because `&mut E` is not an enum, then
-# INIT-ReferenceStateUnknown because `e as V` has no bound state.
+# fires TC-DowncastOfNonEnum; the follow-on place-state check
+# short-circuits because the type has been poisoned.
 fn downcast_before_deref_parse_error(e: &mut E) {
   r: &mut i64;
   entry:
     switchEnum(e.*) [V: v_arm]
   v_arm:
     r = &mut e as V .*;
+    return
+}
+
+# ---------- INIT-ReferenceStateUnknown: reborrow through unbound ref ----------
+
+# `r: &mut i64` is declared but never assigned, so its ref-state entry
+# is not bound at the reborrow point. The check emits
+# ReferenceStateUnknown to distinguish "parent ref never populated"
+# from "parent's pointee is in a specific state we can't satisfy."
+fn reborrow_through_unbound_ref() {
+  r: &mut i64;
+  s: &mut i64;
+  entry:
+    s = &mut r.*;
     return
 }

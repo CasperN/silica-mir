@@ -5,6 +5,11 @@
 
 struct Token: Copy + Drop { value: i64 }
 struct Pair: Move { left: i64 right: i64 }
+struct CopyPair: Copy + Drop { left: i64 right: i64 }
+enum DeepChoice: Copy + Drop { Variant: i64 Other: i64 }
+enum RefChoice: Move { HasRef: &mut CopyPair Empty: unit }
+struct ProjectionRoot: Move { field: &mut [&mut DeepChoice; 3] }
+struct Link: Move { next: &mut &mut CopyPair }
 
 extern fn take_num(x: i64);
 extern fn take_token(x: Token);
@@ -41,5 +46,116 @@ fn sibling_fields(p: Pair) {
   entry:
     call take_num(move p.left);
     call take_num(move p.right);
+    return
+}
+
+# Dereference demand is tracked separately from demand for the borrower.
+# The first pointee move is relaxed, the last remains a move, and the write
+# restores the &mut reference's Init-at-expiry obligation.
+fn repeated_mut_pointee(r: &mut i64) {
+  entry:
+    call take_num(move r.*);
+    call take_num(move r.*);
+    r.* = 0;
+    return
+}
+
+# Static fields and constant indexes above a dereference retain their precise
+# move-path identity.
+fn repeated_mut_field(r: &mut CopyPair) {
+  entry:
+    call take_num(move r.*.left);
+    call take_num(move r.*.left);
+    r.*.left = 0;
+    return
+}
+
+fn repeated_mut_const_index(r: &mut [i64; 2]) {
+  entry:
+    call take_num(move r.*[0]);
+    call take_num(move r.*[0]);
+    r.*[0] = 0;
+    return
+}
+
+# Arbitrary-depth static access paths use the same rule. Every reference
+# boundary is exclusive, the first leaf move is relaxed, and the final write
+# restores the innermost obligation.
+fn repeated_nested_mut_pointee(r: &mut &mut &mut CopyPair) {
+  entry:
+    call take_num(move r.*.*.*.left);
+    call take_num(move r.*.*.*.left);
+    r.*.*.*.left = 0;
+    return
+}
+
+# Projections may occur before, between, and after dereferences.
+fn repeated_field_between_derefs(link: Link) {
+  entry:
+    call take_num(move link.next.*.*.right);
+    call take_num(move link.next.*.*.right);
+    link.next.*.*.right = 0;
+    return
+}
+
+fn repeated_downcast_between_derefs(r: &mut RefChoice) {
+  entry:
+    call take_num(move r.* as HasRef.*.left);
+    call take_num(move r.* as HasRef.*.left);
+    r.* as HasRef.*.left = 0;
+    return
+}
+
+# Complex static path: owned field, dereference, constant index, dereference,
+# then enum downcast. The final whole-enum write restores the inner &mut
+# obligation after the last payload move.
+fn repeated_complex_projection(foo: ProjectionRoot) {
+  entry:
+    call take_num(move foo.field.*[2].* as Variant);
+    call take_num(move foo.field.*[2].* as Variant);
+    foo.field.*[2].* = DeepChoice::Variant(0);
+    return
+}
+
+# Mixed exclusive kinds retain their own postconditions at nested depth.
+fn repeated_nested_drop(r: &mut &drop i64) {
+  entry:
+    call take_num(move r.*.*);
+    call take_num(move r.*.*);
+    return
+}
+
+fn repeated_nested_out(r: &mut &out i64) {
+  entry:
+    r.*.* = 1;
+    call take_num(move r.*.*);
+    call take_num(move r.*.*);
+    r.*.* = 0;
+    return
+}
+
+# Every exclusive reference kind can participate when its pointee is in the
+# state required by the move and its eventual obligation is fulfilled.
+fn repeated_drop_pointee(r: &drop i64) {
+  entry:
+    call take_num(move r.*);
+    call take_num(move r.*);
+    return
+}
+
+fn repeated_out_pointee(r: &out i64) {
+  entry:
+    r.* = 1;
+    call take_num(move r.*);
+    call take_num(move r.*);
+    r.* = 0;
+    return
+}
+
+fn repeated_uninit_pointee(r: &uninit i64) {
+  entry:
+    r.* = 1;
+    call take_num(move r.*);
+    call take_num(move r.*);
     return
 }

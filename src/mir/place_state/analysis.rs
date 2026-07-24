@@ -169,11 +169,12 @@ impl RefState {
 ///
 /// - `locals`: init state per root Var, potentially projecting through
 ///   struct fields and enum downcasts.
-/// - `refs`: the (is_init, ends_init) obligation for each ref-typed
-///   *owned path* that is currently `Init`. A place can be a Var
-///   (`r`), a struct field (`b.p`), or a downcast (`e as V`) — anything
-///   we can name in the local frame. Absent when the ref place is not
-///   Init, is shared, or has been consumed.
+/// - `refs`: the (is_init, ends_init) obligation for each statically
+///   addressable ref-typed path that is currently `Init`. Besides owned
+///   paths (`r`, `b.p`), keys may pass through references (`r.*.next`).
+///   Nested entries are materialized lazily when first accessed and move
+///   with the reference value. Absent when the ref place is not Init, is
+///   shared, or has been consumed.
 ///
 /// Loans are tracked entirely by `lifetime::check_program`, an
 /// independent pass. This pass never looks at the loan set — it trusts
@@ -184,6 +185,16 @@ impl RefState {
 pub struct PointState {
     pub locals: IndexMap<String, InitState>,
     pub refs: IndexMap<Place, RefState>,
+}
+
+/// Whether a place has a stable syntactic identity for init/ref-state
+/// tracking. Dynamic indices may select different slots at different program
+/// points and therefore cannot be map keys for this purpose.
+pub(super) fn is_static_place(place: &Place) -> bool {
+    extract_path_with_deref(place)
+        .1
+        .iter()
+        .all(|step| !matches!(step, PathStep::Index(None)))
 }
 
 pub(super) struct InitStateContext<'a> {
@@ -256,7 +267,10 @@ pub(super) fn canonicalize(state: InitState) -> InitState {
 /// Convert a uniform state to a Partial map with each of `fields` set to a
 /// clone of the original state. Used when a field-refining transition needs
 /// to see per-field granularity.
-pub(super) fn expand_uniform(state: &InitState, fields: &[StructField]) -> BTreeMap<String, InitState> {
+pub(super) fn expand_uniform(
+    state: &InitState,
+    fields: &[StructField],
+) -> BTreeMap<String, InitState> {
     fields
         .iter()
         .map(|f| (f.name.clone(), state.clone()))
@@ -305,7 +319,10 @@ pub(super) fn expand_from_partial_keys(
         .collect()
 }
 
-pub(super) fn join_partials(ma: &BTreeMap<String, InitState>, mb: &BTreeMap<String, InitState>) -> InitState {
+pub(super) fn join_partials(
+    ma: &BTreeMap<String, InitState>,
+    mb: &BTreeMap<String, InitState>,
+) -> InitState {
     let mut out = BTreeMap::new();
     for (k, va) in ma {
         let vb = mb.get(k).cloned().unwrap_or(InitState::NeverInit);
@@ -319,7 +336,7 @@ pub(super) fn join_partials(ma: &BTreeMap<String, InitState>, mb: &BTreeMap<Stri
     canonicalize(InitState::Partial(out))
 }
 
-pub(super) fn join_point(a: &PointState, b: &PointState) -> PointState {
+pub(super) fn join_point(ctx: &InitStateContext<'_>, a: &PointState, b: &PointState) -> PointState {
     let locals: IndexMap<String, InitState> = a
         .locals
         .iter()
@@ -328,14 +345,42 @@ pub(super) fn join_point(a: &PointState, b: &PointState) -> PointState {
             (name.clone(), join_state(sa, &sb))
         })
         .collect();
-    // Refs: keep only entries that agree exactly on both sides. Disagreement
-    // is treated as "not currently bound" for the joined point — subsequent
-    // uses will see no ref state and behave conservatively.
+    // Ref entries behind other references are materialized lazily. Before
+    // joining, give each predecessor a chance to materialize keys observed on
+    // the other side. This distinguishes "the branch never touched this
+    // nested reference" from "the reference storage was consumed here".
+    let mut left = a.clone();
+    let mut right = b.clone();
+    loop {
+        let keys: BTreeSet<Place> = left.refs.keys().chain(right.refs.keys()).cloned().collect();
+        let before = left.refs.len() + right.refs.len();
+        for key in &keys {
+            if !left.refs.contains_key(key) {
+                let _ = ctx.ensure_ref_state(key, &mut left);
+            }
+            if !right.refs.contains_key(key) {
+                let _ = ctx.ensure_ref_state(key, &mut right);
+            }
+        }
+        if left.refs.len() + right.refs.len() == before {
+            break;
+        }
+    }
+
+    // Join pointee state rather than dropping a ref entry when branches
+    // disagree. A later dereference then reports an inconsistent pointee
+    // instead of accidentally re-materializing the declared entry state.
     let mut refs: IndexMap<Place, RefState> = IndexMap::new();
-    for (place, ra) in &a.refs {
-        if let Some(rb) = b.refs.get(place) {
-            if ra == rb {
-                refs.insert(place.clone(), ra.clone());
+    for (place, ra) in &left.refs {
+        if let Some(rb) = right.refs.get(place) {
+            if ra.ends_init == rb.ends_init {
+                refs.insert(
+                    place.clone(),
+                    RefState {
+                        pointee: join_state(&ra.pointee, &rb.pointee),
+                        ends_init: ra.ends_init,
+                    },
+                );
             }
         }
     }
@@ -347,7 +392,13 @@ pub(super) fn join_point(a: &PointState, b: &PointState) -> PointState {
 /// Apply a write of `leaf_state` at the given path from `state` (which is
 /// the current state of the root Var). Promotes intermediate states to
 /// Partial as needed. Downcast steps in a write path do not update state.
-pub(super) fn write_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env, leaf_state: InitState) {
+pub(super) fn write_at(
+    state: &mut InitState,
+    ty: &Type,
+    path: &[PathStep],
+    env: &Env,
+    leaf_state: InitState,
+) {
     if path.is_empty() {
         *state = leaf_state;
         return;
@@ -689,7 +740,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
         self.initial.clone()
     }
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
-        join_point(a, b)
+        join_point(self.ctx, a, b)
     }
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
         self.ctx.transfer_stmt(stmt, state)
@@ -717,6 +768,7 @@ impl<'a> InitStateContext<'a> {
     pub(super) fn transfer_stmt(&self, stmt: &Statement, state: &mut PointState) {
         match &stmt.kind {
             StatementKind::Assign(target, rvalue) => {
+                self.materialize_moved_ref(rvalue, state);
                 // Capture ref-state entries to transfer via `move src`
                 // BEFORE apply_rvalue_moves removes them. If src has
                 // ref-typed descendants (e.g. moving a whole struct),
@@ -725,8 +777,8 @@ impl<'a> InitStateContext<'a> {
                 let carried_refs = capture_carried_refs(target, rvalue, state);
 
                 self.apply_rvalue_moves(rvalue, state);
-                if let Some(t) = as_owned_path(target) {
-                    close_refs_under(state, &t);
+                if is_static_place(target) {
+                    close_refs_under(state, target);
                 }
                 self.apply_target_write_state(target, rvalue, carried_refs, state, None);
             }
@@ -782,21 +834,21 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
     ) {
-        if matches!(target, Place::Deref(_)) {
+        if split_at_outermost_deref(target).is_some() {
             self.apply_deref_op(target, DerefOp::Write, state, report);
         } else {
             self.apply_write(target, state, InitState::Init);
-            if let Some(t) = as_owned_path(target) {
-                if let RValue::Ref(kind, place) = rvalue {
+        }
+        if is_static_place(target) {
+            if let RValue::Ref(kind, place) = rvalue {
+                if let Some(rs) = RefState::from_kind(kind) {
+                    state.refs.insert(target.clone(), rs);
+                }
+                self.apply_eager_borrow_transition(kind, place, state);
+            } else if let RValue::PtrCast(_, to_ty) = rvalue {
+                if let TypeKind::Ref(kind, _, _) = &to_ty.kind {
                     if let Some(rs) = RefState::from_kind(kind) {
-                        state.refs.insert(t.clone(), rs);
-                    }
-                    self.apply_eager_borrow_transition(kind, place, state);
-                } else if let RValue::PtrCast(_, to_ty) = rvalue {
-                    if let TypeKind::Ref(kind, _, _) = &to_ty.kind {
-                        if let Some(rs) = RefState::from_kind(kind) {
-                            state.refs.insert(t.clone(), rs);
-                        }
+                        state.refs.insert(target.clone(), rs);
                     }
                 }
             }
@@ -816,8 +868,11 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
     ) {
-        self.apply_deref_op(place, DerefOp::Move, state, report);
-        self.apply_move(place, state);
+        if split_at_outermost_deref(place).is_some() {
+            self.apply_deref_op(place, DerefOp::Move, state, report);
+        } else {
+            self.apply_move(place, state);
+        }
     }
 
     pub(super) fn apply_rvalue_moves(&self, rv: &RValue, state: &mut PointState) {
@@ -840,11 +895,27 @@ impl<'a> InitStateContext<'a> {
         match op {
             Operand::Copy(place) => self.apply_deref_op(place, DerefOp::Read, state, None),
             Operand::Move(place) => {
-                self.apply_deref_op(place, DerefOp::Move, state, None);
-                self.apply_move(place, state);
+                if split_at_outermost_deref(place).is_some() {
+                    self.apply_deref_op(place, DerefOp::Move, state, None);
+                } else {
+                    self.apply_move(place, state);
+                }
             }
             Operand::Const(_) => {}
         }
+    }
+
+    /// Ensure a directly moved reference value has a RefState before
+    /// `capture_carried_refs` snapshots it. Nested reference states are
+    /// otherwise created lazily on first dereference.
+    pub(super) fn materialize_moved_ref(&self, rv: &RValue, state: &mut PointState) {
+        let moved = match rv {
+            RValue::Use(Operand::Move(place))
+            | RValue::EnumConstr(_, _, _, Operand::Move(place))
+            | RValue::PtrCast(Operand::Move(place), _) => place,
+            _ => return,
+        };
+        let _ = self.ensure_ref_state(moved, state);
     }
 
     pub(super) fn apply_write(&self, place: &Place, state: &mut PointState, leaf: InitState) {
@@ -911,11 +982,22 @@ impl<'a> InitStateContext<'a> {
     /// `Deref` node in its projection chain; the projections above the
     /// outermost Deref address the pointee, the Place below the Deref
     /// locates the ref.
-    pub(super) fn apply_pointee_write(&self, place: &Place, leaf: InitState, state: &mut PointState) {
+    pub(super) fn apply_pointee_write(
+        &self,
+        place: &Place,
+        leaf: InitState,
+        state: &mut PointState,
+    ) {
         let Some((ref_place, sub_path, pointee_ty)) = self.resolve_pointee_target(place, state)
         else {
             return;
         };
+        if sub_path
+            .iter()
+            .any(|step| matches!(step, PathStep::Deref | PathStep::Index(None)))
+        {
+            return;
+        }
         let Some(rs) = state.refs.get_mut(&ref_place) else {
             return;
         };
@@ -930,6 +1012,12 @@ impl<'a> InitStateContext<'a> {
         else {
             return;
         };
+        if sub_path
+            .iter()
+            .any(|step| matches!(step, PathStep::Deref | PathStep::Index(None)))
+        {
+            return;
+        }
         let Some(rs) = state.refs.get_mut(&ref_place) else {
             return;
         };
@@ -944,13 +1032,10 @@ impl<'a> InitStateContext<'a> {
     pub(super) fn resolve_pointee_target(
         &self,
         place: &Place,
-        state: &PointState,
+        state: &mut PointState,
     ) -> Option<(Place, Vec<PathStep>, Type)> {
         let (ref_place, sub_path) = split_at_outermost_deref(place)?;
-        // The ref must be bound at this point; otherwise there is no
-        // pointee state to update. Silent no-op mirrors the extract_path
-        // early-return elsewhere.
-        state.refs.get(&ref_place)?;
+        self.ensure_ref_state(&ref_place, state)?;
         let ref_ty = self.infer_ref_place_type(&ref_place)?;
         let TypeKind::Ref(_, _, pointee_ty) = ref_ty.kind else {
             return None;
@@ -988,9 +1073,29 @@ pub(super) fn split_at_outermost_deref(place: &Place) -> Option<(Place, Vec<Path
     }
 }
 
-/// Remove all ref-state entries at `consumed` or any owned descendant.
+/// Return dereference receiver places from root-nearest to leaf-nearest.
+/// `r.*.next.*` yields `[r, r.*.next]`.
+pub(super) fn deref_receivers(place: &Place) -> Vec<Place> {
+    fn visit(place: &Place, out: &mut Vec<Place>) {
+        match place {
+            Place::Var(_) => {}
+            Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
+                visit(inner, out)
+            }
+            Place::Deref(inner) => {
+                visit(inner, out);
+                out.push((**inner).clone());
+            }
+        }
+    }
+    let mut out = Vec::new();
+    visit(place, &mut out);
+    out
+}
+
+/// Remove all ref-state entries at `consumed` or any static descendant.
 /// Called at every consumption/overwrite site so an ancestor consume
-/// cascades to all ref-typed fields it holds.
+/// cascades to all ref-typed values it holds, including behind references.
 pub(super) fn close_refs_under(state: &mut PointState, consumed: &Place) {
     let victims: Vec<Place> = state
         .refs
@@ -1017,61 +1122,90 @@ pub(super) enum DerefOp {
 }
 
 impl<'a> InitStateContext<'a> {
-    /// Apply the state effect of an operation through `*r`. If `place` isn't
-    /// a shallow deref of a Var, returns without effect.
+    /// Apply the state effect of an operation through an exclusive reference.
+    /// Fields, downcasts, and constant indexes above the dereference are
+    /// tracked within the pointee's `InitState` tree.
     ///
     /// When `report` is `Some`, precondition failures emit errors; when `None`
     /// the check is silent (used from the fixpoint transfer).
     ///
-    /// Nested paths like `(*r).field` aren't handled here — pinned as a
-    /// deferred limitation. Only the shape `*r` where `r: exclusive-ref` is
-    /// tracked; shared refs generate a diagnostic on write/move but not read.
+    /// Nested dereferences are resolved recursively through lazily materialized
+    /// RefState entries. Dynamic indices remain outside the tracked subset.
+    /// A write/move is rejected if *any* reference boundary in the access path
+    /// is shared; exercising an exclusive capability through a shared outer
+    /// reference would otherwise permit mutation through an alias.
     pub(super) fn apply_deref_op(
         &self,
         place: &Place,
         op: DerefOp,
         state: &mut PointState,
-        report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+        mut report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
     ) {
-        let Place::Deref(inner) = place else {
+        let Some((inner_place, sub_path)) = split_at_outermost_deref(place) else {
             return;
         };
-        // The reference lives at `*inner`. We look up its RefState by
-        // `inner` treated as an owned path.
-        let Some(inner_place) = as_owned_path(inner) else {
-            return;
-        };
-        let Some(inner_ty) = self.infer_ref_place_type(&inner_place) else {
-            return;
-        };
-        let TypeKind::Ref(kind, _, _) = inner_ty.kind else {
-            return;
-        };
-
-        let name_str = format_place(&inner_place);
-
-        if matches!(kind, RefKind::Shared) {
-            if !matches!(op, DerefOp::Read) {
-                if let Some((func, block, span, d)) = report {
-                    let action = match op {
-                        DerefOp::Move => "move out through",
-                        DerefOp::Write => "write through",
-                        DerefOp::Read => unreachable!(),
-                    };
-                    d.push_error(diag(
-                        WriteThroughSharedRef,
-                        span,
-                        func,
-                        block,
-                        format!("cannot {} shared reference '{}'", action, name_str),
-                    ));
-                }
-            }
+        if !is_static_place(place) {
             return;
         }
 
-        let Some(rs) = state.refs.get(&inner_place).cloned() else {
-            if let Some((func, block, span, d)) = report {
+        // Check every dereference boundary, not only the final one. For
+        // `r.*.*`, mutating through the inner &mut is still forbidden when
+        // the path reaches that capability through an outer shared ref.
+        if !matches!(op, DerefOp::Read) {
+            for receiver in deref_receivers(place).into_iter().rev() {
+                let Ok(receiver_ty) =
+                    self.env
+                        .type_of_place(&receiver, Span::default(), self.locals)
+                else {
+                    return;
+                };
+                if matches!(receiver_ty.kind, TypeKind::Ref(RefKind::Shared, _, _)) {
+                    if let Some((func, block, span, d)) = report.take() {
+                        let action = match op {
+                            DerefOp::Move => "move out through",
+                            DerefOp::Write => "write through",
+                            DerefOp::Read => unreachable!(),
+                        };
+                        d.push_error(diag(
+                            WriteThroughSharedRef,
+                            span,
+                            func,
+                            block,
+                            format!(
+                                "cannot {} shared reference '{}'",
+                                action,
+                                format_place(&receiver)
+                            ),
+                        ));
+                    }
+                    return;
+                }
+                if matches!(receiver_ty.kind, TypeKind::RawPtr(_)) {
+                    // Raw-pointer accesses are intentionally outside safe
+                    // initialization tracking.
+                    return;
+                }
+            }
+        }
+
+        let Ok(inner_ty) = self
+            .env
+            .type_of_place(&inner_place, Span::default(), self.locals)
+        else {
+            return;
+        };
+        let TypeKind::Ref(kind, _, pointee_ty) = inner_ty.kind else {
+            // Raw-pointer accesses are unchecked.
+            return;
+        };
+
+        if matches!(kind, RefKind::Shared) {
+            // A read through a shared reference has no mutable pointee state.
+            return;
+        }
+
+        let Some(rs) = self.ensure_ref_state(&inner_place, state) else {
+            if let Some((func, block, span, d)) = report.take() {
                 d.push_error(diag(
                     ReferenceStateUnknown,
                     span,
@@ -1079,7 +1213,7 @@ impl<'a> InitStateContext<'a> {
                     block,
                     format!(
                         "cannot dereference '{}': reference state is unknown here",
-                        name_str
+                        format_place(&inner_place)
                     ),
                 ));
             }
@@ -1090,9 +1224,14 @@ impl<'a> InitStateContext<'a> {
             DerefOp::Read | DerefOp::Move => true,
             DerefOp::Write => false,
         };
-        let currently_init = rs.is_init();
-        if currently_init != required_init {
-            if let Some((func, block, span, d)) = report {
+        let current = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env);
+        let precondition_met = if required_init {
+            matches!(current, InitState::Init)
+        } else {
+            matches!(current, InitState::NeverInit | InitState::Moved)
+        };
+        if !precondition_met {
+            if let Some((func, block, span, d)) = report.take() {
                 let action = match op {
                     DerefOp::Read => "read from",
                     DerefOp::Move => "move out of",
@@ -1103,7 +1242,7 @@ impl<'a> InitStateContext<'a> {
                 } else {
                     "uninitialized"
                 };
-                let actual = describe_pointee_state(&rs.pointee);
+                let actual = describe_pointee_state(&current);
                 d.push_error(diag(
                     DerefPointeeStateMismatch,
                     span,
@@ -1111,7 +1250,10 @@ impl<'a> InitStateContext<'a> {
                     block,
                     format!(
                         "cannot {} pointee of '{}': pointee must be {} here, but is {}",
-                        action, name_str, expected, actual
+                        action,
+                        format_place(&inner_place),
+                        expected,
+                        actual
                     ),
                 ));
             }
@@ -1119,45 +1261,101 @@ impl<'a> InitStateContext<'a> {
 
         // Apply the transition. Do this even on precondition failure so
         // downstream analysis sees consistent state.
-        let new_pointee = match op {
-            DerefOp::Read => rs.pointee,
-            DerefOp::Move => InitState::Moved,
-            DerefOp::Write => InitState::Init,
-        };
+        let mut new_pointee = rs.pointee;
+        match op {
+            DerefOp::Read => {}
+            DerefOp::Move => move_at(&mut new_pointee, &pointee_ty, &sub_path, self.env),
+            DerefOp::Write => write_at(
+                &mut new_pointee,
+                &pointee_ty,
+                &sub_path,
+                self.env,
+                InitState::Init,
+            ),
+        }
+        new_pointee = canonicalize(new_pointee);
         state.refs.insert(
-            inner_place,
+            inner_place.clone(),
             RefState {
                 pointee: new_pointee,
                 ends_init: rs.ends_init,
             },
         );
+        if matches!(op, DerefOp::Move) {
+            close_refs_under(state, place);
+        }
     }
 
-    /// Infer the type of an owned-path place by walking the ctx's
-    /// locals map for the root and projecting through fields/downcasts.
-    /// Returns `None` if the place isn't a valid owned path or the
-    /// projection doesn't resolve.
-    pub(super) fn infer_ref_place_type(&self, place: &Place) -> Option<Type> {
-        let (root, path) = extract_path_with_deref(place);
-        let mut ty = self.locals.get(&root)?.clone();
-        for step in &path {
-            match step {
-                PathStep::Field(f) => {
-                    let fields = struct_fields_of(&ty, self.env)?;
-                    ty = fields.into_iter().find(|fd| fd.name == *f)?.ty;
-                }
-                PathStep::Downcast(v) => {
-                    ty = enum_variant_payload_ty(&ty, v, self.env)?;
-                }
-                PathStep::Index(_) => {
-                    // Any index step (const or dyn) yields the element type.
-                    let (elem, _) = array_info(&ty)?;
-                    ty = elem;
-                }
-                PathStep::Deref => return None,
-            }
+    /// Materialize the state of an exclusive reference value at a static
+    /// access path. The containing storage's InitState decides whether the
+    /// value exists; its declared kind supplies the initial pointee contract.
+    /// Once materialized, subsequent operations update the stored state.
+    pub(super) fn ensure_ref_state(
+        &self,
+        place: &Place,
+        state: &mut PointState,
+    ) -> Option<RefState> {
+        if let Some(rs) = state.refs.get(place) {
+            return Some(rs.clone());
         }
-        Some(ty)
+        if !is_static_place(place) {
+            return None;
+        }
+        let ty = self
+            .env
+            .type_of_place(place, Span::default(), self.locals)
+            .ok()?;
+        let TypeKind::Ref(kind, _, _) = &ty.kind else {
+            return None;
+        };
+        let fresh = RefState::from_kind(kind)?;
+        if !matches!(
+            self.read_static_place_state(place, state),
+            Some(InitState::Init)
+        ) {
+            return None;
+        }
+        state.refs.insert(place.clone(), fresh.clone());
+        Some(fresh)
+    }
+
+    /// Read the initialization state of an arbitrary static place. Each
+    /// dereference recursively consults the receiver's RefState; shared
+    /// references contribute an always-initialized pointee.
+    pub(super) fn read_static_place_state(
+        &self,
+        place: &Place,
+        state: &mut PointState,
+    ) -> Option<InitState> {
+        if let Some((root, path)) = extract_path(place) {
+            let root_ty = self.locals.get(&root)?;
+            let root_state = state.locals.get(&root)?;
+            return Some(read_at(root_state, root_ty, &path, self.env));
+        }
+        if !is_static_place(place) {
+            return None;
+        }
+        let (receiver, sub_path) = split_at_outermost_deref(place)?;
+        let receiver_ty = self
+            .env
+            .type_of_place(&receiver, Span::default(), self.locals)
+            .ok()?;
+        let TypeKind::Ref(kind, _, pointee_ty) = receiver_ty.kind else {
+            return None;
+        };
+        let pointee_state = if matches!(kind, RefKind::Shared) {
+            InitState::Init
+        } else {
+            self.ensure_ref_state(&receiver, state)?.pointee
+        };
+        Some(read_at(&pointee_state, &pointee_ty, &sub_path, self.env))
+    }
+
+    /// Infer the type of a place, including arbitrary dereference depth.
+    pub(super) fn infer_ref_place_type(&self, place: &Place) -> Option<Type> {
+        self.env
+            .type_of_place(place, Span::default(), self.locals)
+            .ok()
     }
 
     /// Apply the eager init transition on the loaned place. Called at
@@ -1170,18 +1368,17 @@ impl<'a> InitStateContext<'a> {
     ///   Instead update `r`'s `RefState.is_init` to reflect the kind's
     ///   post, so when `s` expires `r` naturally resumes at the right
     ///   pointee-init state.
-    pub(super) fn apply_eager_borrow_transition(&self, kind: &RefKind, place: &Place, state: &mut PointState) {
+    pub(super) fn apply_eager_borrow_transition(
+        &self,
+        kind: &RefKind,
+        place: &Place,
+        state: &mut PointState,
+    ) {
         let Some(leaf) = loan_post_leaf(kind) else {
             return;
         };
-        if let Some(parent) = deref_inner(place) {
-            if let Some(rs) = state.refs.get_mut(&parent) {
-                rs.pointee = if matches!(leaf, InitState::Init) {
-                    InitState::Init
-                } else {
-                    InitState::NeverInit
-                };
-            }
+        if split_at_outermost_deref(place).is_some() {
+            self.apply_pointee_write(place, leaf, state);
             return;
         }
         self.apply_write(place, state, leaf);
@@ -1216,33 +1413,34 @@ pub(super) fn loan_post_leaf(kind: &RefKind) -> Option<InitState> {
 ///   `x` into `Wrap::V(...)` moves `x.r` → `(target as V).r`).
 ///
 /// Returns an empty vec for rvalues that don't transfer a borrower, or
-/// for non-owned-path targets.
+/// for paths containing a dynamic index.
 pub(super) fn capture_carried_refs(
     target: &Place,
     rvalue: &RValue,
     state: &PointState,
 ) -> Vec<(Place, RefState)> {
-    let Some(dst) = as_owned_path(target) else {
+    if !is_static_place(target) {
         return Vec::new();
-    };
+    }
+    let dst = target.clone();
     let (src, dst_effective) = match rvalue {
         RValue::Use(Operand::Move(src_place)) => {
-            let Some(src) = as_owned_path(src_place) else {
+            if !is_static_place(src_place) {
                 return Vec::new();
-            };
-            (src, dst)
+            }
+            (src_place.clone(), dst)
         }
         RValue::EnumConstr(_, _, variant, Operand::Move(src_place)) => {
-            let Some(src) = as_owned_path(src_place) else {
+            if !is_static_place(src_place) {
                 return Vec::new();
-            };
-            (src, downcast_place(dst, variant.clone()))
+            }
+            (src_place.clone(), downcast_place(dst, variant.clone()))
         }
         RValue::PtrCast(Operand::Move(src_place), _) => {
-            let Some(src) = as_owned_path(src_place) else {
+            if !is_static_place(src_place) {
                 return Vec::new();
-            };
-            (src, dst)
+            }
+            (src_place.clone(), dst)
         }
         _ => return Vec::new(),
     };
@@ -1250,10 +1448,42 @@ pub(super) fn capture_carried_refs(
         .refs
         .iter()
         .filter_map(|(k, rs)| {
-            let new_key = rekey_owned_path(&src, &dst_effective, k)?;
+            let new_key = rekey_static_path(&src, &dst_effective, k)?;
             Some((new_key, rs.clone()))
         })
         .collect()
+}
+
+/// Re-key a static descendant from `src` to the parallel path under `dst`.
+fn rekey_static_path(src: &Place, dst: &Place, key: &Place) -> Option<Place> {
+    if !is_static_place(src) || !is_static_place(dst) || !is_static_place(key) {
+        return None;
+    }
+    let (src_root, src_path) = extract_path_with_deref(src);
+    let (key_root, key_path) = extract_path_with_deref(key);
+    if src_root != key_root || src_path.len() > key_path.len() {
+        return None;
+    }
+    if !src_path.iter().zip(&key_path).all(|(a, b)| a == b) {
+        return None;
+    }
+    let mut out = dst.clone();
+    for step in &key_path[src_path.len()..] {
+        out = match step {
+            PathStep::Field(field) => field_place(out, field.clone()),
+            PathStep::Downcast(variant) => downcast_place(out, variant.clone()),
+            PathStep::Deref => deref_place(out),
+            PathStep::Index(Some(index)) => index_place(
+                out,
+                Operand::Const(ConstVal::Int {
+                    bits: *index,
+                    ty: IntTy::I64,
+                }),
+            ),
+            PathStep::Index(None) => return None,
+        };
+    }
+    Some(out)
 }
 
 /// Human-readable rendering of a `(cur, post)` obligation mismatch.

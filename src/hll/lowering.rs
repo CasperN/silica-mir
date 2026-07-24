@@ -1,3 +1,4 @@
+use crate::common::RefKind;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
 use crate::mir::ast::{self as mir, DeclMeta};
@@ -564,6 +565,22 @@ fn is_copy_type(ty: &mir::Type) -> bool {
     }
 }
 
+/// If `expr` is a place projection that crosses a reference dereference,
+/// return that reference's kind. Fields and indexes preserve the access mode
+/// of their base. Raw-pointer dereferences return `None`.
+fn projected_ref_kind(expr: &hll::Expr, types: &IndexMap<mir::Span, hll::Type>) -> Option<RefKind> {
+    match &expr.kind {
+        hll::ExprKind::Deref(target) => match lookup_type(target, types) {
+            Some(hll::Type::Ref(kind, _, _)) => Some(*kind),
+            _ => None,
+        },
+        hll::ExprKind::FieldAccess(target, _) | hll::ExprKind::ArrayIndex(target, _) => {
+            projected_ref_kind(target, types)
+        }
+        _ => None,
+    }
+}
+
 fn lower_expr_to_place(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
@@ -735,16 +752,35 @@ fn lower_expr_to_operand(
         | hll::ExprKind::FieldAccess(_, _)
         | hll::ExprKind::ArrayIndex(_, _) => {
             let place = lower_expr_to_place(ctx, expr, types)?;
+            if let Some(kind) = projected_ref_kind(expr, types) {
+                let hll_ty = lookup_type(expr, types).ok_or_else(|| {
+                    diag(
+                        HllLoweringCode::MissingType,
+                        expr.span,
+                        "missing type annotation for reference projection",
+                    )
+                })?;
+                if matches!(kind, RefKind::Shared) || is_copy_type(&lower_type(hll_ty)) {
+                    // HLL has no explicit move surface. Ordinary shared-ref
+                    // reads are always copies; Copy-valued exclusive-ref
+                    // reads remain copies unless a future lowering analysis
+                    // proves a consume-and-replace transition.
+                    return Ok(copy_op(place));
+                }
+            }
             Ok(move_op(place))
         }
         hll::ExprKind::Deref(_) => {
-            // Reads through a reference stay as `copy` for Copy pointees:
-            // moving through `&mut` would transition the pointee to Uninit
-            // and break the (Init, Init) obligation at ref expiry, and
-            // moving through `&T` is `INIT-WriteThroughSharedRef`. Copy
-            // relaxation currently doesn't look through Deref, so this
-            // decision is kept in HLL.
             let place = lower_expr_to_place(ctx, expr, types)?;
+            match projected_ref_kind(expr, types) {
+                Some(RefKind::Shared) => return Ok(copy_op(place)),
+                Some(RefKind::Mut | RefKind::Out | RefKind::Drop | RefKind::Uninit) => {}
+                None => {}
+            }
+
+            // Copy-valued exclusive-ref and raw-pointer dereferences preserve
+            // the existing HLL read policy. Explicit MIR `move r.*` is where
+            // dereference-aware copy relaxation applies.
             let hll_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,

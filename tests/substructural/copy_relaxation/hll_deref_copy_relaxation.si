@@ -1,0 +1,9 @@
+# Shared-reference projections lower as reads all the way through HLL.
+
+struct Pair: Copy + Drop { left: i64, right: i64 }
+
+# Ordinary HLL reads through a shared reference lower directly to copy;
+# relaxation must never legalize an explicit shared-reference move.
+fn read_shared_field(r: &Pair) -> i64 {
+  r.*.left
+}

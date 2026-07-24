@@ -632,6 +632,33 @@ Canonical tests:
 - `tests/init_state/partial_init/`,
 - `tests/init_state/move_and_drop/`.
 
+#### Dynamic-index places
+
+A place containing a non-constant array index does not have a stable
+move-path identity: two occurrences of `a[i]` need not select the same slot.
+The compiler therefore must not use a dynamic-index place for an operation
+that deinitializes or initializes one unidentified element.
+
+- `move a[i]` and `drop a[i]` are forbidden.
+- `copy a[i]` (and eventually `clone a[i]`) is permitted when the element
+  supports the operation and the containing state proves the selected element
+  initialized.
+- Shared reads and borrows are permitted under the same initialization
+  precondition.
+- State-preserving exclusive access is permitted when the containing array is
+  uniform: `&mut` preserves `Init → Init`, and `&uninit` preserves
+  `Uninit → Uninit`.
+- State-changing borrows (`&out`, `&drop`) are forbidden because they would
+  leave one unknown slot in a different initialization state.
+- In-place mutation or replacement is permitted only when it preserves the
+  containing array's known uniform state and disposing of any replaced value
+  is otherwise legal. Writing one unidentified slot of a uniformly
+  uninitialized array is not permitted.
+
+Copy relaxation never treats dynamic-index places as candidates. A future
+value/range analysis may promote an index to a stable symbolic path when it
+can prove that the selected slot is unchanged.
+
 ### Reference obligations
 
 Each mutable reference kind has a `(current, post)` obligation on its
@@ -704,8 +731,12 @@ Pre-elaboration checks:
 Elaboration:
 
 7. **Copy relaxation** — rewrite an earlier `move place` to `copy place`
-   when a later reachable use needs the same Copy-owned path. This runs before
-   NLL because copies do not close borrower loans.
+   when a later reachable use needs the same Copy-owned path or arbitrary-depth
+   static pointee path through exclusive references. Fields, downcasts, and
+   constant indices may occur anywhere in the path. Shared-reference moves
+   remain illegal; raw-pointer dereferences and dynamic indices are excluded
+   because their identity is not stable without points-to/value analysis. This
+   runs before NLL because copies do not close borrower loans.
 8. **NLL lifetime elaboration** — insert `unborrow` at ASAP last-use points.
 9. **Place-state cleanup elaboration** — insert `drop` before returns for
    Init-at-return values whose types are Drop.
@@ -921,9 +952,24 @@ To load it locally:
 
 # Punch list
 
+## Copy Relaxation
+- **`move_or_copy` MIR operand**: Instead of relaxing any `move` into a `copy`
+  if it helps, use a dedicated `move_or_copy` operand (emitted by the HLL) that
+  copy relaxation specializes to `move` or `copy`. This preserves source
+  intent/provenance.
+- **Enforce the dynamic-place no-consumption rule.** Copy relaxation already
+  excludes dynamic indices, but init-state checking must reject dynamic
+  `move`/`drop` and state-changing borrows while retaining the uniform-state
+  read/mutation cases described in the semantics above.
+- **HLL through-reference reads still emit `copy` for Copy pointees.** The MIR
+  pass now relaxes `move r.*` (and arbitrarily nested exclusive-ref paths)
+  correctly, but `lower_expr_to_operand` still emits `copy` when a projection
+  crosses a reference dereference. Flipping HLL to emit `move r.*` uniformly
+  would let relaxation handle it — and unlock the `let x = r.*; r.* = v`
+  consume-and-replace pattern on Copy pointees behind `&mut`.
+
 ## Language features
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
-- **HLL move-then-write through `&mut` for Copy types.** Direct-var reads now emit `move` (relaxed to `copy` where a later use demands it), so `let y = x; x = z` on a Copy `x` works. Reads through `Deref` still emit `copy` for Copy pointees, because copy relaxation doesn't look through `Deref` yet. Extending it to deref places would unlock the `let x = r.*; r.* = v` pattern on a Copy pointee behind `&mut`.
 - **HLL match on projection places.** `a[i] match { ... }` and `foo.field match { ... }` fire `VF-DowncastOnProjection` because variant flow tracks root Vars only. Users must extract to a local first (`let t = a[i]; t match { ... }`) or wrap the decode in a helper fn that takes the value by parameter. Fixable by either (a) copying/moving the projection into a fresh local during HLL lowering or (b) extending variant flow to track projections.
 - **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
 - **HLL generics gaps**
