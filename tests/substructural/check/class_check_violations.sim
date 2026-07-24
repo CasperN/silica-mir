@@ -35,8 +35,20 @@ struct Linear { r: &out i64 }
 
 enum Wrap { W: Linear }
 
+# ---------- Matrix shells (scalar field avoids ref-obligation noise) ----------
+struct MatL { v: i64 }
+struct MatC: Copy { v: i64 }
+struct MatM: Move { v: i64 }
+struct MatCM: Copy + Move { v: i64 }
+struct MatDM: Drop + Move { v: i64 }
+
 extern fn take_linear(x: Linear);
 extern fn take_copy_only(c: C);
+extern fn take_mat_l(x: MatL);
+extern fn take_mat_d(x: D);
+extern fn take_mat_m(x: MatM);
+extern fn take_mat_c(x: C);
+extern fn take_mat_cm(x: MatCM);
 
 # ---------- copy: non-Copy rvalues ----------
 
@@ -129,5 +141,139 @@ fn drop_drop_ref(r: &drop i64) {
 fn drop_out_ref(r: &out i64) {
   entry:
     drop r;
+    return
+}
+
+# ============================================================
+# Matrix: copy_op violations — rejected when type is not Copy
+# ============================================================
+
+# MatL (no markers): not Copy — fires SUB-CopyOfNonCopy.
+fn copy_op_MatL(x: MatL) {
+  y: MatL;
+  entry:
+    y = copy x;
+    return
+}
+
+# D (Drop only): not Copy — fires SUB-CopyOfNonCopy.
+fn copy_op_D(a: D) {
+  b: D;
+  entry:
+    b = copy a;
+    return
+}
+
+# MatM (Move only): not Copy — fires SUB-CopyOfNonCopy.
+fn copy_op_MatM(x: MatM) {
+  y: MatM;
+  entry:
+    y = copy x;
+    return
+}
+
+# MatDM (Drop + Move): not Copy — fires SUB-CopyOfNonCopy.
+fn copy_op_MatDM(x: MatDM) {
+  y: MatDM;
+  entry:
+    y = copy x;
+    return
+}
+
+# MatC (Copy only, no Drop, no Move): copy is accepted (no SUB-CopyOfNonCopy)
+# but x cannot be consumed — fires INIT-ReturnValueLeak because MatC is not
+# Drop and the param can only be duplicated, never discharged.
+fn copy_op_MatC_leaks(x: MatC) {
+  entry:
+    return
+}
+
+# ============================================================
+# Matrix: move_op violations — rejected when type is not Move
+# (Copy alone does not imply Move; only Copy + Drop → Move)
+# ============================================================
+
+# MatL (no markers): not Move — fires SUB-MoveOfNonMove.
+fn move_op_MatL(x: MatL) {
+  y: MatL;
+  entry:
+    y = move x;
+    return
+}
+
+# C (Copy only, no Drop): no blanket Move — fires SUB-MoveOfNonMove.
+fn move_op_C(c: C) {
+  entry:
+    call take_mat_c(move c);
+    return
+}
+
+# D (Drop only, no Copy, no explicit Move): not Move — fires SUB-MoveOfNonMove.
+fn move_op_D(d: D) {
+  e: D;
+  entry:
+    e = move d;
+    return
+}
+
+# ============================================================
+# Matrix: drop_op violations — rejected when type is not Drop
+# ============================================================
+
+# MatL (no markers): not Drop — fires SUB-DropOfNonDrop.
+fn drop_op_MatL(x: MatL) {
+  entry:
+    drop x;
+    return
+}
+
+# C (Copy only): not Drop — fires SUB-DropOfNonDrop.
+fn drop_op_C(x: C) {
+  entry:
+    drop x;
+    return
+}
+
+# MatM (Move only): not Drop — fires SUB-DropOfNonDrop.
+fn drop_op_MatM(x: MatM) {
+  entry:
+    drop x;
+    return
+}
+
+# MatCM (Copy + Move): not Drop — fires SUB-DropOfNonDrop.
+fn drop_op_MatCM(x: MatCM) {
+  entry:
+    drop x;
+    return
+}
+
+# ============================================================
+# Matrix: untouched_param violations — non-Drop params leak
+# at return because drop-elab cannot insert a drop.
+# Each fires INIT-ReturnValueLeak.
+# ============================================================
+
+# MatL (no markers): not Drop — leaks at return.
+fn untouched_param_MatL(x: MatL) {
+  entry:
+    return
+}
+
+# C (Copy only): not Drop — leaks at return.
+fn untouched_param_C(x: C) {
+  entry:
+    return
+}
+
+# MatM (Move only): not Drop — leaks at return.
+fn untouched_param_MatM(x: MatM) {
+  entry:
+    return
+}
+
+# MatCM (Copy + Move): not Drop — leaks at return.
+fn untouched_param_MatCM(x: MatCM) {
+  entry:
     return
 }

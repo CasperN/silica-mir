@@ -1,187 +1,396 @@
-error: at 46:5: [SUB-CopyOfNonCopy] In function 'copy_drop_only_struct', block 'entry': cannot copy non-Copy type D
+error: at 58:5: [SUB-CopyOfNonCopy] In function 'copy_drop_only_struct', block 'entry': cannot copy non-Copy type D
     |
- 45 |   entry:
- 46 |     b = copy a;
+ 57 |   entry:
+ 58 |     b = copy a;
     |     ^^^^^^^^^^
- 47 |     return
+ 59 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 53:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', block 'entry': cannot copy non-Copy type Linear
+error: at 65:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', block 'entry': cannot copy non-Copy type Linear
     |
- 52 |   entry:
- 53 |     y = copy x;
+ 64 |   entry:
+ 65 |     y = copy x;
     |     ^^^^^^^^^^
- 54 |     return
+ 66 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 60:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut 's0 i64
+error: at 72:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut 's0 i64
     |
- 59 |   entry:
- 60 |     s = copy r;
+ 71 |   entry:
+ 72 |     s = copy r;
     |     ^^^^^^^^^^
- 61 |     return
+ 73 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 67:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out 's0 i64
+error: at 79:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out 's0 i64
     |
- 66 |   entry:
- 67 |     s = copy r;
+ 78 |   entry:
+ 79 |     s = copy r;
     |     ^^^^^^^^^^
- 68 |     return
+ 80 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 74:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit 's0 i64
+error: at 86:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit 's0 i64
     |
- 73 |   entry:
- 74 |     s = copy r;
+ 85 |   entry:
+ 86 |     s = copy r;
     |     ^^^^^^^^^^
- 75 |     return
+ 87 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 82:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_call_arg', block 'entry': cannot copy non-Copy type Linear
+error: at 94:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_call_arg', block 'entry': cannot copy non-Copy type Linear
     |
- 81 |   entry:
- 82 |     call take_linear(copy x);
+ 93 |   entry:
+ 94 |     call take_linear(copy x);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^
- 83 |     return
+ 95 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 91:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_enum_payload', block 'entry': cannot copy non-Copy type Linear
-    |
- 90 |   entry:
- 91 |     w = Wrap::W(copy x);
-    |     ^^^^^^^^^^^^^^^^^^^
- 92 |     return
-    |
-  hint: since the type is not Copy, try moving it instead using 'move'
-error: at 101:5: [SUB-MoveOfNonMove] In function 'move_copy_only_struct', block 'entry': cannot move non-Move type C
+error: at 103:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_enum_payload', block 'entry': cannot copy non-Copy type Linear
      |
- 100 |   entry:
- 101 |     call take_copy_only(move c);
+ 102 |   entry:
+ 103 |     w = Wrap::W(copy x);
+     |     ^^^^^^^^^^^^^^^^^^^
+ 104 |     return
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 113:5: [SUB-MoveOfNonMove] In function 'move_copy_only_struct', block 'entry': cannot move non-Move type C
+     |
+ 112 |   entry:
+ 113 |     call take_copy_only(move c);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 102 |     return
+ 114 |     return
      |
   hint: linear types cannot be moved out of non-Move contexts
-error: at 110:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
+error: at 122:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
      |
- 109 |   entry:
- 110 |     y = move x;
+ 121 |   entry:
+ 122 |     y = move x;
      |     ^^^^^^^^^^
- 111 |     call take_linear(move y);
+ 123 |     call take_linear(move y);
      |
   hint: linear types cannot be moved out of non-Move contexts
-error: at 111:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
+error: at 123:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
      |
- 110 |     y = move x;
- 111 |     call take_linear(move y);
+ 122 |     y = move x;
+ 123 |     call take_linear(move y);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^
- 112 |     return
+ 124 |     return
      |
   hint: linear types cannot be moved out of non-Move contexts
-error: at 119:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'entry': cannot drop non-Drop type Linear
-     |
- 118 |   entry:
- 119 |     drop x;
-     |     ^^^^^^
- 120 |     return
-     |
-  hint: only types implementing the Drop class can be explicitly dropped
-error: at 125:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop 's0 i64
-     |
- 124 |   entry:
- 125 |     drop r;
-     |     ^^^^^^
- 126 |     return
-     |
-  hint: only types implementing the Drop class can be explicitly dropped
-error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out 's0 i64
+error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'entry': cannot drop non-Drop type Linear
      |
  130 |   entry:
- 131 |     drop r;
+ 131 |     drop x;
      |     ^^^^^^
  132 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 137:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop 's0 i64
+     |
+ 136 |   entry:
+ 137 |     drop r;
+     |     ^^^^^^
+ 138 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 143:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out 's0 i64
+     |
+ 142 |   entry:
+ 143 |     drop r;
+     |     ^^^^^^
+ 144 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 155:5: [SUB-CopyOfNonCopy] In function 'copy_op_MatL', block 'entry': cannot copy non-Copy type MatL
+     |
+ 154 |   entry:
+ 155 |     y = copy x;
+     |     ^^^^^^^^^^
+ 156 |     return
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 163:5: [SUB-CopyOfNonCopy] In function 'copy_op_D', block 'entry': cannot copy non-Copy type D
+     |
+ 162 |   entry:
+ 163 |     b = copy a;
+     |     ^^^^^^^^^^
+ 164 |     return
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 171:5: [SUB-CopyOfNonCopy] In function 'copy_op_MatM', block 'entry': cannot copy non-Copy type MatM
+     |
+ 170 |   entry:
+ 171 |     y = copy x;
+     |     ^^^^^^^^^^
+ 172 |     return
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 179:5: [SUB-CopyOfNonCopy] In function 'copy_op_MatDM', block 'entry': cannot copy non-Copy type MatDM
+     |
+ 178 |   entry:
+ 179 |     y = copy x;
+     |     ^^^^^^^^^^
+ 180 |     return
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'
+error: at 200:5: [SUB-MoveOfNonMove] In function 'move_op_MatL', block 'entry': cannot move non-Move type MatL
+     |
+ 199 |   entry:
+ 200 |     y = move x;
+     |     ^^^^^^^^^^
+ 201 |     return
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 207:5: [SUB-MoveOfNonMove] In function 'move_op_C', block 'entry': cannot move non-Move type C
+     |
+ 206 |   entry:
+ 207 |     call take_mat_c(move c);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 208 |     return
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 215:5: [SUB-MoveOfNonMove] In function 'move_op_D', block 'entry': cannot move non-Move type D
+     |
+ 214 |   entry:
+ 215 |     e = move d;
+     |     ^^^^^^^^^^
+ 216 |     return
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 226:5: [SUB-DropOfNonDrop] In function 'drop_op_MatL', block 'entry': cannot drop non-Drop type MatL
+     |
+ 225 |   entry:
+ 226 |     drop x;
+     |     ^^^^^^
+ 227 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 233:5: [SUB-DropOfNonDrop] In function 'drop_op_C', block 'entry': cannot drop non-Drop type C
+     |
+ 232 |   entry:
+ 233 |     drop x;
+     |     ^^^^^^
+ 234 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 240:5: [SUB-DropOfNonDrop] In function 'drop_op_MatM', block 'entry': cannot drop non-Drop type MatM
+     |
+ 239 |   entry:
+ 240 |     drop x;
+     |     ^^^^^^
+ 241 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 247:5: [SUB-DropOfNonDrop] In function 'drop_op_MatCM', block 'entry': cannot drop non-Drop type MatCM
+     |
+ 246 |   entry:
+ 247 |     drop x;
+     |     ^^^^^^
+ 248 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 66:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 49 | 
- 50 | fn copy_linear_struct_as_rvalue(x: Linear) {
+ 61 | 
+ 62 | fn copy_linear_struct_as_rvalue(x: Linear) {
     |                                 --------- reference declared here
- 51 |   y: Linear;
+ 63 |   y: Linear;
     |
     | ...
     |
- 53 |     y = copy x;
- 54 |     return
+ 65 |     y = copy x;
+ 66 |     return
     |     ^^^^^^
- 55 | }
+ 67 | }
     |
-error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'copy_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 80:5: [INIT-RefObligationUnfulfilled] In function 'copy_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 63 | 
- 64 | fn copy_out_ref(r: &out i64) {
+ 75 | 
+ 76 | fn copy_out_ref(r: &out i64) {
     |                 ----------- reference declared here
- 65 |   s: &out i64;
+ 77 |   s: &out i64;
     |
     | ...
     |
- 67 |     s = copy r;
- 68 |     return
+ 79 |     s = copy r;
+ 80 |     return
     |     ^^^^^^
- 69 | }
+ 81 | }
     |
-error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_call_arg', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 95:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_call_arg', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
- 79 | 
- 80 | fn copy_linear_struct_as_call_arg(x: Linear) {
+ 91 | 
+ 92 | fn copy_linear_struct_as_call_arg(x: Linear) {
     |                                   --------- reference declared here
- 81 |   entry:
- 82 |     call take_linear(copy x);
- 83 |     return
+ 93 |   entry:
+ 94 |     call take_linear(copy x);
+ 95 |     return
     |     ^^^^^^
- 84 | }
+ 96 | }
     |
-error: at 92:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_enum_payload', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
-    |
- 87 | 
- 88 | fn copy_linear_struct_as_enum_payload(x: Linear) {
-    |                                       --------- reference declared here
- 89 |   w: Wrap;
-    |
-    | ...
-    |
- 91 |     w = Wrap::W(copy x);
- 92 |     return
-    |     ^^^^^^
- 93 | }
-    |
-error: at 119:5: [INIT-RefObligationUnfulfilled] In function 'drop_linear_struct', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 104:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_enum_payload', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
- 116 | 
- 117 | fn drop_linear_struct(x: Linear) {
-     |                       --------- reference declared here
- 118 |   entry:
- 119 |     drop x;
+  99 | 
+ 100 | fn copy_linear_struct_as_enum_payload(x: Linear) {
+     |                                       --------- reference declared here
+ 101 |   w: Wrap;
+     |
+     | ...
+     |
+ 103 |     w = Wrap::W(copy x);
+ 104 |     return
      |     ^^^^^^
- 120 |     return
+ 105 | }
      |
-error: at 125:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
-     |
- 122 | 
- 123 | fn drop_drop_ref(r: &drop i64) {
-     |                  ------------ reference declared here
- 124 |   entry:
- 125 |     drop r;
-     |     ^^^^^^
- 126 |     return
-     |
-error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_linear_struct', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  128 | 
- 129 | fn drop_out_ref(r: &out i64) {
-     |                 ----------- reference declared here
+ 129 | fn drop_linear_struct(x: Linear) {
+     |                       --------- reference declared here
  130 |   entry:
- 131 |     drop r;
+ 131 |     drop x;
      |     ^^^^^^
  132 |     return
      |
+error: at 137:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+     |
+ 134 | 
+ 135 | fn drop_drop_ref(r: &drop i64) {
+     |                  ------------ reference declared here
+ 136 |   entry:
+ 137 |     drop r;
+     |     ^^^^^^
+ 138 |     return
+     |
+error: at 143:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+     |
+ 140 | 
+ 141 | fn drop_out_ref(r: &out i64) {
+     |                 ----------- reference declared here
+ 142 |   entry:
+ 143 |     drop r;
+     |     ^^^^^^
+ 144 |     return
+     |
+error: at 156:5: [INIT-ReturnValueLeak] In function 'copy_op_MatL', block 'entry': value 'x' of type MatL is not consumed at return
+     |
+ 151 | # MatL (no markers): not Copy — fires SUB-CopyOfNonCopy.
+ 152 | fn copy_op_MatL(x: MatL) {
+     |                 ------- variable declared here
+ 153 |   y: MatL;
+     |
+     | ...
+     |
+ 155 |     y = copy x;
+ 156 |     return
+     |     ^^^^^^
+ 157 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 156:5: [INIT-ReturnValueLeak] In function 'copy_op_MatL', block 'entry': value 'y' of type MatL is not consumed at return
+     |
+ 152 | fn copy_op_MatL(x: MatL) {
+ 153 |   y: MatL;
+     |   -------- variable declared here
+ 154 |   entry:
+ 155 |     y = copy x;
+ 156 |     return
+     |     ^^^^^^
+ 157 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 172:5: [INIT-ReturnValueLeak] In function 'copy_op_MatM', block 'entry': value 'x' of type MatM is not consumed at return
+     |
+ 167 | # MatM (Move only): not Copy — fires SUB-CopyOfNonCopy.
+ 168 | fn copy_op_MatM(x: MatM) {
+     |                 ------- variable declared here
+ 169 |   y: MatM;
+     |
+     | ...
+     |
+ 171 |     y = copy x;
+ 172 |     return
+     |     ^^^^^^
+ 173 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 172:5: [INIT-ReturnValueLeak] In function 'copy_op_MatM', block 'entry': value 'y' of type MatM is not consumed at return
+     |
+ 168 | fn copy_op_MatM(x: MatM) {
+ 169 |   y: MatM;
+     |   -------- variable declared here
+ 170 |   entry:
+ 171 |     y = copy x;
+ 172 |     return
+     |     ^^^^^^
+ 173 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 188:5: [INIT-ReturnValueLeak] In function 'copy_op_MatC_leaks', block 'entry': value 'x' of type MatC is not consumed at return
+     |
+ 185 | # Drop and the param can only be duplicated, never discharged.
+ 186 | fn copy_op_MatC_leaks(x: MatC) {
+     |                       ------- variable declared here
+ 187 |   entry:
+ 188 |     return
+     |     ^^^^^^
+ 189 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 201:5: [INIT-ReturnValueLeak] In function 'move_op_MatL', block 'entry': value 'y' of type MatL is not consumed at return
+     |
+ 197 | fn move_op_MatL(x: MatL) {
+ 198 |   y: MatL;
+     |   -------- variable declared here
+ 199 |   entry:
+ 200 |     y = move x;
+ 201 |     return
+     |     ^^^^^^
+ 202 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 260:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatL', block 'entry': value 'x' of type MatL is not consumed at return
+     |
+ 257 | # MatL (no markers): not Drop — leaks at return.
+ 258 | fn untouched_param_MatL(x: MatL) {
+     |                         ------- variable declared here
+ 259 |   entry:
+ 260 |     return
+     |     ^^^^^^
+ 261 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 266:5: [INIT-ReturnValueLeak] In function 'untouched_param_C', block 'entry': value 'x' of type C is not consumed at return
+     |
+ 263 | # C (Copy only): not Drop — leaks at return.
+ 264 | fn untouched_param_C(x: C) {
+     |                      ---- variable declared here
+ 265 |   entry:
+ 266 |     return
+     |     ^^^^^^
+ 267 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 272:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatM', block 'entry': value 'x' of type MatM is not consumed at return
+     |
+ 269 | # MatM (Move only): not Drop — leaks at return.
+ 270 | fn untouched_param_MatM(x: MatM) {
+     |                         ------- variable declared here
+ 271 |   entry:
+ 272 |     return
+     |     ^^^^^^
+ 273 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 278:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatCM', block 'entry': value 'x' of type MatCM is not consumed at return
+     |
+ 275 | # MatCM (Copy + Move): not Drop — leaks at return.
+ 276 | fn untouched_param_MatCM(x: MatCM) {
+     |                          -------- variable declared here
+ 277 |   entry:
+ 278 |     return
+     |     ^^^^^^
+ 279 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

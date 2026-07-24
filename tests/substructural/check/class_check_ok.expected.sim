@@ -15,6 +15,38 @@ enum Wrap: Copy + Drop {
   W: i64
 }
 
+struct MatL {
+  v: i64
+}
+
+struct MatC: Copy {
+  v: i64
+}
+
+struct MatD: Drop {
+  v: i64
+}
+
+struct MatM: Move {
+  v: i64
+}
+
+struct MatCD: Copy + Drop {
+  v: i64
+}
+
+struct MatCM: Copy + Move {
+  v: i64
+}
+
+struct MatDM: Drop + Move {
+  v: i64
+}
+
+struct MatCDM: Copy + Drop {
+  v: i64
+}
+
 extern fn take_num(x: i64);
 
 extern fn take_point(p: P);
@@ -22,6 +54,20 @@ extern fn take_point(p: P);
 extern fn take_mut(r: &mut 's0 i64);
 
 extern fn take_out(r: &out 's0 i64);
+
+extern fn take_mat_c(x: MatC);
+
+extern fn take_mat_d(x: MatD);
+
+extern fn take_mat_m(x: MatM);
+
+extern fn take_mat_cd(x: MatCD);
+
+extern fn take_mat_cm(x: MatCM);
+
+extern fn take_mat_dm(x: MatDM);
+
+extern fn take_mat_cdm(x: MatCDM);
 
 fn copy_number_as_rvalue(x: i64) {
   y: i64;
@@ -107,5 +153,112 @@ fn<'s0> drop_mut_ref(r: &mut 's0 i64) {
 fn<'s0> drop_shared_ref(r: & 's0 i64) {
   entry:
     drop r;
+    return
+}
+
+fn copy_op_MatCD(x: MatCD) {
+  y: MatCD;
+  entry:
+    y = copy x;
+    drop y;
+    drop x;
+    return
+}
+
+fn copy_op_MatCM(x: MatCM) {
+  y: MatCM;
+  entry:
+    y = copy x;
+    call take_mat_cm(move x);
+    call take_mat_cm(move y);
+    return
+}
+
+fn copy_op_MatCDM(x: MatCDM) {
+  y: MatCDM;
+  entry:
+    y = copy x;
+    drop y;
+    drop x;
+    return
+}
+
+fn move_op_MatM(x: MatM) {
+  entry:
+    call take_mat_m(move x);
+    return
+}
+
+fn move_op_MatCD(x: MatCD) {
+  entry:
+    call take_mat_cd(move x);
+    return
+}
+
+fn move_op_MatCM(x: MatCM) {
+  entry:
+    call take_mat_cm(move x);
+    return
+}
+
+fn move_op_MatDM(x: MatDM) {
+  y: MatDM;
+  entry:
+    y = move x;
+    drop y;
+    return
+}
+
+fn move_op_MatCDM(x: MatCDM) {
+  entry:
+    call take_mat_cdm(move x);
+    return
+}
+
+fn drop_op_MatD(x: MatD) {
+  entry:
+    drop x;
+    return
+}
+
+fn drop_op_MatCD(x: MatCD) {
+  entry:
+    drop x;
+    return
+}
+
+fn drop_op_MatDM(x: MatDM) {
+  entry:
+    drop x;
+    return
+}
+
+fn drop_op_MatCDM(x: MatCDM) {
+  entry:
+    drop x;
+    return
+}
+
+fn untouched_param_MatD(x: MatD) {
+  entry:
+    drop x;
+    return
+}
+
+fn untouched_param_MatCD(x: MatCD) {
+  entry:
+    drop x;
+    return
+}
+
+fn untouched_param_MatDM(x: MatDM) {
+  entry:
+    drop x;
+    return
+}
+
+fn untouched_param_MatCDM(x: MatCDM) {
+  entry:
+    drop x;
     return
 }

@@ -34,10 +34,35 @@ struct D: Drop { x: i64 }
 
 enum Wrap: Copy + Drop { W: i64 }
 
+# ---------- Matrix shells: 8 single-field structs covering all marker combos ----------
+# MatL: linear (no markers)
+struct MatL { v: i64 }
+# MatC: Copy only
+struct MatC: Copy { v: i64 }
+# MatD: Drop only (alias for D above; kept separate for naming clarity)
+struct MatD: Drop { v: i64 }
+# MatM: Move only
+struct MatM: Move { v: i64 }
+# MatCD: Copy + Drop (blanket impl synthesises Move)
+struct MatCD: Copy + Drop { v: i64 }
+# MatCM: Copy + Move
+struct MatCM: Copy + Move { v: i64 }
+# MatDM: Drop + Move
+struct MatDM: Drop + Move { v: i64 }
+# MatCDM: Copy + Drop + Move (Move redundant, but legal)
+struct MatCDM: Copy + Drop + Move { v: i64 }
+
 extern fn take_num(x: i64);
 extern fn take_point(p: P);
 extern fn take_mut(r: &mut i64);
 extern fn take_out(r: &out i64);
+extern fn take_mat_c(x: MatC);
+extern fn take_mat_d(x: MatD);
+extern fn take_mat_m(x: MatM);
+extern fn take_mat_cd(x: MatCD);
+extern fn take_mat_cm(x: MatCM);
+extern fn take_mat_dm(x: MatDM);
+extern fn take_mat_cdm(x: MatCDM);
 
 # ---------- copy: Copy operand in rvalue position ----------
 
@@ -127,5 +152,139 @@ fn drop_mut_ref(r: &mut i64) {
 fn drop_shared_ref(r: &i64) {
   entry:
     drop r;
+    return
+}
+
+# ============================================================
+# Matrix: copy_op — accepted when type is Copy
+# ============================================================
+
+# MatCD: Copy + Drop — copy succeeds; drop-elab inserts drops for both.
+fn copy_op_MatCD(x: MatCD) {
+  y: MatCD;
+  entry:
+    y = copy x;
+    return
+}
+
+# MatCM: Copy + Move — copy succeeds; original and copy are moved to calls.
+fn copy_op_MatCM(x: MatCM) {
+  y: MatCM;
+  entry:
+    y = copy x;
+    call take_mat_cm(move x);
+    call take_mat_cm(move y);
+    return
+}
+
+# MatCDM: Copy + Drop + Move — copy succeeds; drop-elab handles leftovers.
+fn copy_op_MatCDM(x: MatCDM) {
+  y: MatCDM;
+  entry:
+    y = copy x;
+    return
+}
+
+# ============================================================
+# Matrix: move_op — accepted when type is Move (explicitly or
+# via the Copy + Drop → Move blanket implication)
+# ============================================================
+
+# MatM: explicit Move marker — move succeeds.  MatM is not Drop, so y
+# is consumed via a call rather than relying on drop-elab.
+fn move_op_MatM(x: MatM) {
+  entry:
+    call take_mat_m(move x);
+    return
+}
+
+# MatCD: Copy + Drop implies Move — move succeeds even without
+# an explicit Move marker.  This is the blanket-implication cell.
+fn move_op_MatCD(x: MatCD) {
+  entry:
+    call take_mat_cd(move x);
+    return
+}
+
+# MatCM: Copy + Move — move succeeds.  MatCM is not Drop, so consume via call.
+fn move_op_MatCM(x: MatCM) {
+  entry:
+    call take_mat_cm(move x);
+    return
+}
+
+# MatDM: Drop + Move — move succeeds.
+fn move_op_MatDM(x: MatDM) {
+  y: MatDM;
+  entry:
+    y = move x;
+    return
+}
+
+# MatCDM: Copy + Drop + Move — move succeeds.
+fn move_op_MatCDM(x: MatCDM) {
+  entry:
+    call take_mat_cdm(move x);
+    return
+}
+
+# ============================================================
+# Matrix: drop_op — accepted when type is Drop
+# ============================================================
+
+# MatD: Drop only — drop succeeds.
+fn drop_op_MatD(x: MatD) {
+  entry:
+    drop x;
+    return
+}
+
+# MatCD: Copy + Drop — drop succeeds.
+fn drop_op_MatCD(x: MatCD) {
+  entry:
+    drop x;
+    return
+}
+
+# MatDM: Drop + Move — drop succeeds.
+fn drop_op_MatDM(x: MatDM) {
+  entry:
+    drop x;
+    return
+}
+
+# MatCDM: Copy + Drop + Move — drop succeeds.
+fn drop_op_MatCDM(x: MatCDM) {
+  entry:
+    drop x;
+    return
+}
+
+# ============================================================
+# Matrix: untouched_param — accepted when type is Drop
+# (drop-elaboration inserts drop at return)
+# ============================================================
+
+# MatD: Drop only — drop-elab inserts drop; no leak.
+fn untouched_param_MatD(x: MatD) {
+  entry:
+    return
+}
+
+# MatCD: Copy + Drop — drop-elab inserts drop; no leak.
+fn untouched_param_MatCD(x: MatCD) {
+  entry:
+    return
+}
+
+# MatDM: Drop + Move — drop-elab inserts drop; no leak.
+fn untouched_param_MatDM(x: MatDM) {
+  entry:
+    return
+}
+
+# MatCDM: Copy + Drop + Move — drop-elab inserts drop; no leak.
+fn untouched_param_MatCDM(x: MatCDM) {
+  entry:
     return
 }
