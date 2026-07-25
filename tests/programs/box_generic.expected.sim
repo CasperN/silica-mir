@@ -1,0 +1,134 @@
+extern fn malloc_bytes(size: i64, $return: &out 's0 *u8);
+
+extern fn free_bytes(p: *u8);
+
+struct<T> Box: Move {
+  p: *T
+}
+
+fn<'s0, T: Move> box_new(size: i64, value: T, $return: &out 's0 Box<T>) {
+  bytes: *u8;
+  _temp_0: &out *u8;
+  typed: *T;
+  _temp_1: unit;
+  _temp_2: unit;
+  entry:
+    _temp_0 = &out bytes;
+    call malloc_bytes(move size, move _temp_0);
+    require_uninit _temp_0;
+    typed = ptr_cast(move bytes, *T);
+    typed.* = move value;
+    _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
+    $return.*.p = move typed;
+    unborrow $return;
+    require_uninit typed;
+    require_uninit bytes;
+    require_uninit $return;
+    require_uninit value;
+    require_uninit size;
+    return
+}
+
+fn<'s0, T: Move> box_into_inner(b: Box<T>, $return: &out 's0 T) {
+  inner: T;
+  bytes: *u8;
+  _temp_0: unit;
+  entry:
+    inner = move b.p.*;
+    bytes = ptr_cast(move b.p, *u8);
+    call free_bytes(move bytes);
+    _temp_0 = unit;
+    drop _temp_0;
+    require_uninit _temp_0;
+    $return.* = move inner;
+    unborrow $return;
+    require_uninit bytes;
+    require_uninit inner;
+    require_uninit $return;
+    require_uninit b;
+    return
+}
+
+fn<'s0: 's2, 's1: 's2, 's2, T> box_borrow(b: & 's0 Box<T>, $return: &out 's1 & 's2 T) {
+  entry:
+    $return.* = ptr_cast(copy b.*.p, & T);
+    unborrow $return;
+    unborrow b;
+    require_uninit $return;
+    require_uninit b;
+    return
+}
+
+fn<'s0: 's2, 's1: 's2, 's2, T> box_borrow_mut(b: &mut 's0 Box<T>, $return: &out 's1 &mut 's2 T) {
+  entry:
+    $return.* = ptr_cast(copy b.*.p, &mut T);
+    unborrow $return;
+    unborrow b;
+    require_uninit $return;
+    require_uninit b;
+    return
+}
+
+fn<'s0> main(exit: &out 's0 i32) {
+  _temp_0: unit;
+  b: Box<i64>;
+  _temp_1: &out Box<i64>;
+  peek: i64;
+  _temp_2: & i64;
+  _temp_3: & Box<i64>;
+  _temp_4: &out & i64;
+  owned: i64;
+  _temp_5: &out i64;
+  _temp_6: unit;
+  _temp_7: i32;
+  _temp_8: i64;
+  _temp_9: i64;
+  _temp_10: &out i64;
+  _temp_11: &out i64;
+  _temp_12: &out i32;
+  entry:
+    _temp_1 = &out b;
+    call box_new<i64>(8, 42, move _temp_1);
+    require_uninit _temp_1;
+    _temp_3 = & b;
+    _temp_4 = &out _temp_2;
+    call box_borrow<i64>(move _temp_3, move _temp_4);
+    peek = copy _temp_2.*;
+    unborrow _temp_2;
+    require_uninit _temp_4;
+    require_uninit _temp_3;
+    require_uninit _temp_2;
+    _temp_5 = &out owned;
+    call box_into_inner<i64>(move b, move _temp_5);
+    require_uninit _temp_5;
+    _temp_10 = &out _temp_9;
+    call $i64_add(copy peek, move owned, move _temp_10);
+    _temp_11 = &out _temp_8;
+    call $i64_sub(move _temp_9, move peek, move _temp_11);
+    _temp_12 = &out _temp_7;
+    call $i64_to_i32(move _temp_8, move _temp_12);
+    exit.* = move _temp_7;
+    unborrow exit;
+    _temp_6 = unit;
+    require_uninit _temp_12;
+    require_uninit _temp_11;
+    require_uninit _temp_10;
+    require_uninit _temp_9;
+    require_uninit _temp_8;
+    require_uninit _temp_7;
+    drop _temp_6;
+    require_uninit _temp_6;
+    _temp_0 = unit;
+    require_uninit owned;
+    require_uninit peek;
+    require_uninit b;
+    drop _temp_0;
+    require_uninit _temp_0;
+    require_uninit exit;
+    return
+}
