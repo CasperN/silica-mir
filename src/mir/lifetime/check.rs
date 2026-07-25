@@ -25,7 +25,9 @@ use super::region::{self, Region};
 use super::LifetimeCode;
 
 pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
+    check_decl_wf(env, d);
     for f in program.functions() {
+        check_fn_signature_wf(f, env, d);
         check_function(env, f, d);
     }
 }
@@ -63,6 +65,228 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     }
     let escape_visible = signature_visible_regions(func, env);
     checker.check_constraints(&escape_visible);
+}
+
+/// Enforce well-formedness of every type mention in a fn's signature
+/// (params, `$return`) and local decls. Runs independently of body
+/// existence, so extern fn declarations with ill-formed signatures are
+/// still rejected. The emitted constraints are checked against the
+/// fn's own declared outlives axioms.
+fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
+    let mut cs = constraints::ConstraintSet::new();
+    for p in &func.params {
+        emit_type_wf_constraints(&p.ty, env, &mut cs, p.ty.span);
+    }
+    if let Some(body) = &func.body {
+        for l in &body.locals {
+            emit_type_wf_constraints(&l.ty, env, &mut cs, l.ty.span);
+        }
+        for block in &body.blocks {
+            for stmt in &block.statements {
+                emit_stmt_wf_constraints(stmt, env, &mut cs);
+            }
+        }
+    }
+    if cs.is_empty() {
+        return;
+    }
+    let axioms: Vec<(Region, Region)> = func
+        .meta
+        .outlives
+        .iter()
+        .map(|(a, b)| (name_to_region(a), name_to_region(b)))
+        .collect();
+    let closure = constraints::transitive_closure(&axioms);
+    for c in cs.iter() {
+        if let (Region::Named(_), Region::Named(_) | Region::Static) = (&c.outlives, &c.sub) {
+            if c.outlives == c.sub
+                || closure.contains(&(c.outlives.clone(), c.sub.clone()))
+            {
+                continue;
+            }
+            let msg = format!(
+                "lifetime mismatch: expected value with region {}, found value with region {}",
+                c.sub, c.outlives,
+            );
+            d.push_error(
+                Diagnostic::new(LifetimeCode::LifetimeMismatch, c.origin, msg)
+                    .in_function(&func.meta.name),
+            );
+        }
+    }
+}
+
+/// Enforce well-formedness of every declared struct/enum: field or
+/// variant types that mention a generic `Custom<'x, 'y>` require the
+/// containing decl's declared outlives axioms to justify the mentioned
+/// type's declared outlives obligations. E.g. a field of type
+/// `Wrap<'a, 'b>` where `Wrap` requires `'b: 'a` forces the outer decl
+/// to declare `'b: 'a` on its own params.
+fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
+    for decl in env.types.values() {
+        let meta = decl.meta();
+        let mut cs = constraints::ConstraintSet::new();
+        match decl {
+            TypeDecl::Struct(s) => {
+                for f in &s.fields {
+                    emit_type_wf_constraints(&f.ty, env, &mut cs, f.ty.span);
+                }
+            }
+            TypeDecl::Enum(e) => {
+                for v in &e.variants {
+                    emit_type_wf_constraints(&v.ty, env, &mut cs, v.ty.span);
+                }
+            }
+        }
+        if cs.is_empty() {
+            continue;
+        }
+        let container_kind = match decl {
+            TypeDecl::Struct(_) => "struct",
+            TypeDecl::Enum(_) => "enum",
+        };
+        let axioms: Vec<(Region, Region)> = meta
+            .outlives
+            .iter()
+            .map(|(a, b)| (name_to_region(a), name_to_region(b)))
+            .collect();
+        let closure = constraints::transitive_closure(&axioms);
+        for c in cs.iter() {
+            if let (Region::Named(_), Region::Named(_) | Region::Static) = (&c.outlives, &c.sub) {
+                if c.outlives == c.sub {
+                    continue;
+                }
+                if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
+                    continue;
+                }
+                let msg = format!(
+                    "In {} '{}': field type requires bound {}: {} but no such bound is declared",
+                    container_kind, meta.name, c.outlives, c.sub,
+                );
+                d.push_error(Diagnostic::new(LifetimeCode::LifetimeMismatch, c.origin, msg));
+            }
+        }
+    }
+}
+
+/// Map a lifetime to its region form. The reserved name `'static`
+/// becomes `Region::Static`; every other name becomes `Region::Named`.
+fn name_to_region(lt: &Lifetime) -> Region {
+    if lt.0 == "static" {
+        Region::Static
+    } else {
+        Region::Named(lt.clone())
+    }
+}
+
+/// Walk statement-level type mentions and emit well-formedness
+/// constraints for their Custom subtrees. Covers rvalues that carry
+/// explicit types: `PtrCast(_, ty)` and `EnumConstr(_, type_args, ..)`.
+/// Places and operands don't carry standalone type mentions — their
+/// types derive from local/param decls, already walked upstream.
+fn emit_stmt_wf_constraints(
+    stmt: &Statement,
+    env: &Env,
+    cs: &mut constraints::ConstraintSet,
+) {
+    match &stmt.kind {
+        StatementKind::Assign(_, rvalue) => match rvalue {
+            RValue::PtrCast(op, ty) => {
+                emit_operand_wf_constraints(op, env, cs);
+                emit_type_wf_constraints(ty, env, cs, ty.span);
+            }
+            RValue::EnumConstr(_, type_args, _, op) => {
+                for ty in type_args {
+                    emit_type_wf_constraints(ty, env, cs, ty.span);
+                }
+                emit_operand_wf_constraints(op, env, cs);
+            }
+            RValue::Use(op) => emit_operand_wf_constraints(op, env, cs),
+            RValue::ArrayLit(ops) => {
+                for op in ops {
+                    emit_operand_wf_constraints(op, env, cs);
+                }
+            }
+            RValue::Ref(_, _) | RValue::RawRef(_) => {}
+        },
+        StatementKind::Call(target, args) => {
+            emit_operand_wf_constraints(target, env, cs);
+            for op in args {
+                emit_operand_wf_constraints(op, env, cs);
+            }
+        }
+        StatementKind::Drop(_) | StatementKind::Unborrow(_) | StatementKind::RequireUninit(_) => {}
+    }
+}
+
+/// If `op` is a fn-name const with type arguments, discharge each
+/// type_arg's Custom outlives obligations. FnName can appear in call
+/// targets, call args, and any rvalue that consumes an operand
+/// (`Use`, `PtrCast`, `EnumConstr`, `ArrayLit`).
+fn emit_operand_wf_constraints(
+    op: &Operand,
+    env: &Env,
+    cs: &mut constraints::ConstraintSet,
+) {
+    if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
+        for ty in type_args {
+            emit_type_wf_constraints(ty, env, cs, ty.span);
+        }
+    }
+}
+
+/// Walk `ty` and, for every `TypeKind::Custom(name, lts, args)` mention,
+/// substitute the decl's declared outlives bounds with the mention's
+/// actual lifetime args and emit them into `cs`. Recurses through
+/// `Ref`, `Array`, `RawPtr`, `Fn`, and nested `Custom` type args.
+///
+/// This is the type-level well-formedness sweep: every mention of a
+/// generic type at any type-appearance position (fn param, local decl,
+/// struct field, nested type arg) discharges the mentioned type's
+/// declared outlives obligations against the containing scope's axioms.
+/// Mirrors the fn-call instantiation pattern in `check_call_regions`
+/// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
+fn emit_type_wf_constraints(
+    ty: &Type,
+    env: &Env,
+    cs: &mut constraints::ConstraintSet,
+    span: Span,
+) {
+    match &ty.kind {
+        TypeKind::Custom(name, lts, args) => {
+            if let Some(decl) = env.types.get(name) {
+                let meta = decl.meta();
+                if lts.len() == meta.lifetime_params.len() {
+                    let sub: IndexMap<&Lifetime, &Lifetime> =
+                        meta.lifetime_params.iter().zip(lts.iter()).collect();
+                    for (a, b) in &meta.outlives {
+                        let a_lt = sub.get(a).copied().unwrap_or(a);
+                        let b_lt = sub.get(b).copied().unwrap_or(b);
+                        cs.emit(name_to_region(a_lt), name_to_region(b_lt), span);
+                    }
+                }
+            }
+            for a in args {
+                emit_type_wf_constraints(a, env, cs, span);
+            }
+        }
+        TypeKind::Ref(_, _, inner)
+        | TypeKind::RawPtr(inner)
+        | TypeKind::Array(inner, _) => {
+            emit_type_wf_constraints(inner, env, cs, span);
+        }
+        TypeKind::Fn(inners) => {
+            for i in inners {
+                emit_type_wf_constraints(i, env, cs, span);
+            }
+        }
+        TypeKind::Unit
+        | TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
+    }
 }
 
 /// Return the set of Named regions that are reachable from a
@@ -243,11 +467,11 @@ fn emit_variance(
 fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Region> {
     match &ty.kind {
         TypeKind::Ref(_, Some(lt), _) => {
-            Some(inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone())))
+            Some(inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt)))
         }
         TypeKind::Custom(_, lts, _) => {
             let lt = lts.first()?;
-            Some(inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone())))
+            Some(inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt)))
         }
         TypeKind::Array(elem, _) | TypeKind::RawPtr(elem) => first_named_region(elem, inst),
         _ => None,
@@ -286,24 +510,13 @@ impl<'a> Checker<'a> {
         Diagnostic::new(code, span, msg).in_function(&self.func.meta.name)
     }
 
-    /// Enforce accumulated outlives constraints. Without `where`-clause
-    /// bounds in scope, the only satisfiable inter-named-region relation
-    /// is equality (or `Static outlives anything`, already pruned at
-    /// emit). Any constraint pairing two distinct Named regions fires
-    /// `LT-LifetimeMismatch`. Free ↔ Named or Free ↔ Free are treated as
-    /// unifiable at this phase (escape checking handles the interesting
-    /// Free ↔ signature-visible case in phase 5).
+    /// Enforce accumulated outlives constraints. The only satisfiable
+    /// inter-region relations are equality, entries in the transitive
+    /// closure of declared axioms, or `Static outlives X` (Static is
+    /// the top of the order). Unsatisfiable relations between two
+    /// declared regions fire `LT-LifetimeMismatch`; a body-local region
+    /// escaping through a caller-visible slot fires `LT-LifetimeEscape`.
     fn check_constraints(&mut self, escape_visible: &BTreeSet<Lifetime>) {
-        // Reserved lifetime `'static` maps to `Region::Static` in the
-        // axiom set so that `<'a: 'static>` (a demanding-'static bound)
-        // enters the transitive closure with Static on the RHS.
-        let name_to_region = |lt: &Lifetime| {
-            if lt.0 == "static" {
-                Region::Static
-            } else {
-                Region::Named(lt.clone())
-            }
-        };
         let axioms: Vec<(Region, Region)> = self
             .func
             .meta
@@ -314,7 +527,9 @@ impl<'a> Checker<'a> {
         let closure = constraints::transitive_closure(&axioms);
         for c in self.constraints.iter() {
             match (&c.outlives, &c.sub) {
-                (Region::Named(_), Region::Named(_)) if c.outlives != c.sub => {
+                (Region::Named(_), Region::Named(_) | Region::Static)
+                    if c.outlives != c.sub =>
+                {
                     if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                         continue;
                     }
@@ -326,8 +541,9 @@ impl<'a> Checker<'a> {
                         .push_error(self.error(LifetimeCode::LifetimeMismatch, c.origin, msg));
                 }
                 // Escape: a Free-region loan (body-local storage) flowing
-                // into a Named region that's actually reachable through a
-                // caller-visible output ($return or &out/&mut param).
+                // into a caller-visible signature slot — either a Named
+                // region on `$return`/`&mut`/`&out` params, or `'static`
+                // (always visible; Static is the top of the order).
                 (Region::Free(_), Region::Named(dst)) if escape_visible.contains(dst) => {
                     let msg = format!(
                         "borrow escapes function: value with local (unnamed) region cannot be stored into region {}",
@@ -336,25 +552,32 @@ impl<'a> Checker<'a> {
                     self.d
                         .push_error(self.error(LifetimeCode::LifetimeEscape, c.origin, msg));
                 }
-                // Named outlives Free: source is a real (signature)
-                // region, dst is a body-local. Always satisfiable — a
-                // named region outlives any local temp.
-                (Region::Named(_), Region::Free(_)) => {}
+                (Region::Free(_), Region::Static) => {
+                    let msg = format!(
+                        "borrow escapes function: value with local (unnamed) region cannot be stored into region {}",
+                        c.sub,
+                    );
+                    self.d
+                        .push_error(self.error(LifetimeCode::LifetimeEscape, c.origin, msg));
+                }
                 // Remaining pairs are satisfiable at this phase:
-                //   - (Named=Named): identical regions, trivially met.
+                //   - (Named=Named) or (Static=Static): identical
+                //     regions, trivially met.
+                //   - (Named, Free): a real region flowing into a
+                //     body-local temp — always OK.
                 //   - (Free, Named-not-escape): flow into an internal
                 //     Named region without caller visibility — OK; if
                 //     the region ever becomes caller-visible the
-                //     escape_visible branch above fires instead.
+                //     escape branch above fires instead.
                 //   - (Free, Free): two body-local regions unify.
-                //   - Anything paired with Region::Static: Static
-                //     outlives everything and is outlived by nothing
-                //     stricter, so pairings resolve trivially.
+                //   - (Static, _): Static outlives everything, always;
+                //     also pruned at emit but kept for exhaustiveness.
                 (Region::Named(_), Region::Named(_))
+                | (Region::Named(_), Region::Free(_))
+                | (Region::Named(_), Region::Static)
                 | (Region::Free(_), Region::Named(_))
                 | (Region::Free(_), Region::Free(_))
-                | (Region::Static, _)
-                | (_, Region::Static) => {}
+                | (Region::Static, _) => {}
             }
         }
     }
@@ -607,8 +830,8 @@ impl<'a> Checker<'a> {
         }
 
         for (a, b) in &callee.meta.outlives {
-            let a_r = inst.get(a).cloned().unwrap_or(Region::Named(a.clone()));
-            let b_r = inst.get(b).cloned().unwrap_or(Region::Named(b.clone()));
+            let a_r = inst.get(a).cloned().unwrap_or_else(|| name_to_region(a));
+            let b_r = inst.get(b).cloned().unwrap_or_else(|| name_to_region(b));
             self.constraints.emit(a_r, b_r, span);
         }
 
@@ -684,7 +907,7 @@ impl<'a> Checker<'a> {
     ) {
         match &callee_ty.kind {
             TypeKind::Ref(kind, Some(lt), inner) => {
-                let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
+                let inst_region = inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt));
                 if let Some(caller_r) =
                     self.region_ctx
                         .region_of_place(caller_place, &self.locals, self.env)
@@ -719,24 +942,27 @@ impl<'a> Checker<'a> {
                 );
             }
             TypeKind::Custom(_, lts, args) => {
-                // A generic type's lifetime args behave like a container
-                // reference: default to invariance (conservative, safe).
-                for lt in lts {
-                    let inst_region = inst.get(lt).cloned().unwrap_or(Region::Named(lt.clone()));
-                    let caller_ty =
-                        crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
-                    if let Some(caller_ty) = caller_ty {
-                        if let TypeKind::Custom(_, caller_lts, _) = &caller_ty.kind {
-                            if let Some(caller_lt) = caller_lts.first() {
-                                let caller_r = Region::Named(caller_lt.clone());
-                                emit_variance(
-                                    &caller_r,
-                                    &inst_region,
-                                    variance.combine(Variance::Invariant),
-                                    self.constraints,
-                                    span,
-                                );
-                            }
+                // Match callee and caller lifetime args positionally, not
+                // all-to-first. A generic type's lifetime slots behave
+                // like container references: default to invariance
+                // (conservative, safe).
+                let caller_ty =
+                    crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
+                if let Some(caller_ty) = caller_ty {
+                    if let TypeKind::Custom(_, caller_lts, _) = &caller_ty.kind {
+                        for (callee_lt, caller_lt) in lts.iter().zip(caller_lts.iter()) {
+                            let inst_region = inst
+                                .get(callee_lt)
+                                .cloned()
+                                .unwrap_or_else(|| name_to_region(callee_lt));
+                            let caller_r = name_to_region(caller_lt);
+                            emit_variance(
+                                &caller_r,
+                                &inst_region,
+                                variance.combine(Variance::Invariant),
+                                self.constraints,
+                                span,
+                            );
                         }
                     }
                 }

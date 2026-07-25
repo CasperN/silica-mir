@@ -5,13 +5,11 @@
 //! decl-position ref carries `Some(Lifetime)` and downstream analyses
 //! can assume signature-visible refs are region-named.
 //!
-//! Elision rule for fns (generalized rule 2): every synthesized
-//! output-position lifetime is constrained by `every_input outlives
-//! it` — the returned ref lives no longer than the intersection of
-//! all input refs. These constraints are recorded as signature
-//! axioms on `Function::signature_outlives`. Single-input case
-//! collapses to Rust's rule 2 (output = input); multi-input case
-//! gives output = intersection of inputs.
+//! Elision rule for fns: every synthesized output-position lifetime
+//! is constrained by `every_input outlives it` — the returned ref
+//! lives no longer than the intersection of all input refs. These
+//! constraints are recorded as signature axioms on
+//! `Function::signature_outlives`.
 //!
 //! Position classification for a fn param `p: T`:
 //!   - Regular ref-kind (`&T`, `&drop T`, `&uninit T`) — inner
@@ -46,9 +44,9 @@ fn elide_function(f: &mut Function) {
         elide_type_pos(&mut p.ty, Pos::Input, &mut ctx);
     }
     f.meta.lifetime_params.extend(ctx.synthesized);
-    // Rule 2 (generalized): every synthesized output lifetime is
-    // outlived by every input lifetime. Explicit output lifetimes
-    // are not axiomatized — the user annotated them intentionally.
+    // Every synthesized output lifetime is outlived by every input
+    // lifetime. Explicit output lifetimes are not axiomatized — the
+    // user annotated them intentionally.
     for out_lt in &ctx.synth_output {
         for in_lt in &ctx.input {
             f.meta.outlives.push((in_lt.clone(), out_lt.clone()));

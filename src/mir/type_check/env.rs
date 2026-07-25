@@ -101,11 +101,27 @@ impl Env {
             | TypeKind::Bool
             | TypeKind::Unit
             | TypeKind::Never => Ok(()),
-            TypeKind::Custom(name, _, args) => {
+            TypeKind::Custom(name, lifetime_args, args) => {
                 let Some(decl) = self.types.get(name) else {
                     return Err(format!("Use of undeclared type '{}'", name));
                 };
-                let decl_params: &[TypeParam] = &decl.meta().type_params;
+                let decl_meta = decl.meta();
+                // Reject explicit-but-wrong-count lifetime args. Zero is
+                // still tolerated to preserve compatibility with bare
+                // mentions that rely on elision defaults — closing that
+                // loophole needs the elision-backfill work tracked in
+                // the punchlist.
+                if !lifetime_args.is_empty()
+                    && lifetime_args.len() != decl_meta.lifetime_params.len()
+                {
+                    return Err(format!(
+                        "Type '{}' expects {} lifetime argument(s), got {}",
+                        name,
+                        decl_meta.lifetime_params.len(),
+                        lifetime_args.len(),
+                    ));
+                }
+                let decl_params: &[TypeParam] = &decl_meta.type_params;
                 if args.len() != decl_params.len() {
                     return Err(format!(
                         "Type '{}' expects {} type argument(s), got {}",

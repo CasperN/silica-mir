@@ -1,8 +1,7 @@
-# Generalized elision rule 2: every synthesized output-position
-# lifetime is outlived by every input-position lifetime. Single-
-# input case = Rust's rule 2 (output = input); multi-input case =
-# output ≤ intersection of inputs. Axioms live on
-# Function::signature_outlives.
+# Fn elision axiom: every synthesized output-position lifetime is
+# outlived by every input-position lifetime. Effect: a returned ref
+# lives no longer than the intersection of all input refs. Axioms
+# live on Function::signature_outlives.
 
 # ---------- single-input ref, single output ref ----------
 

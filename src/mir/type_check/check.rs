@@ -328,12 +328,90 @@ impl Env {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
+        let scope = func.meta.param_scope();
+        let lt_scope = lifetime_scope(&func.meta.lifetime_params);
         for stmt in &block.statements {
+            self.validate_stmt_embedded_types(func, block, stmt, &scope, &lt_scope, d);
             if let Err(e) = self.typecheck_statement(func, block, stmt, stmt.span, locals) {
                 d.push_error(e);
             }
         }
         self.typecheck_terminator(func, block, locals, block_labels, d);
+    }
+
+    /// Validate every `Type` mentioned inside a statement's rvalues and
+    /// operands — cast targets, enum-constr type args, fn-name type args
+    /// — against the enclosing function's parameter scope. Decl-position
+    /// types (params, locals) are already validated in `typecheck_function`;
+    /// this closes the analogous gap for expression-embedded types.
+    fn validate_stmt_embedded_types(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        stmt: &Statement,
+        scope: crate::mir::substructural::composition::ParamScope,
+        lt_scope: &BTreeSet<Lifetime>,
+        d: &mut Diagnostics,
+    ) {
+        let record = |ty: &Type, d: &mut Diagnostics| {
+            if let Err(e) = self.validate_type(ty, scope) {
+                d.push_error(
+                    Diagnostic::new(
+                        InvalidDeclaredType,
+                        ty.span,
+                        format!("In function '{}': {}", func.meta.name, e),
+                    )
+                    .in_block(&block.label),
+                );
+            }
+            for lt in undeclared_lifetimes(ty, lt_scope) {
+                d.push_error(
+                    Diagnostic::new(
+                        UndeclaredLifetime,
+                        ty.span,
+                        format!("In function '{}': undeclared lifetime {}", func.meta.name, lt),
+                    )
+                    .in_block(&block.label),
+                );
+            }
+        };
+        let record_op = |op: &Operand, d: &mut Diagnostics| {
+            if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
+                for ty in type_args {
+                    record(ty, d);
+                }
+            }
+        };
+        match &stmt.kind {
+            StatementKind::Assign(_, rvalue) => match rvalue {
+                RValue::PtrCast(op, ty) => {
+                    record_op(op, d);
+                    record(ty, d);
+                }
+                RValue::EnumConstr(_, type_args, _, op) => {
+                    for ty in type_args {
+                        record(ty, d);
+                    }
+                    record_op(op, d);
+                }
+                RValue::Use(op) => record_op(op, d),
+                RValue::ArrayLit(ops) => {
+                    for op in ops {
+                        record_op(op, d);
+                    }
+                }
+                RValue::Ref(_, _) | RValue::RawRef(_) => {}
+            },
+            StatementKind::Call(target, args) => {
+                record_op(target, d);
+                for op in args {
+                    record_op(op, d);
+                }
+            }
+            StatementKind::Drop(_)
+            | StatementKind::Unborrow(_)
+            | StatementKind::RequireUninit(_) => {}
+        }
     }
 
     fn typecheck_statement(

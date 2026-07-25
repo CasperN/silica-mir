@@ -141,6 +141,231 @@ fn<'a> make_bad(_r: &'a i64) {
     return
 }
 
+# ---------- Wrap2 mention in fn signature missing containing bound ----------
+
+# covers: type_kind=struct lifetime_bound=fn_mention_missing_axiom
+# `Wrap2<'a, 'b>` requires `'b: 'a`. Containing fn declares no such
+# axiom. Signature well-formedness sweep emits `'b: 'a` into the fn's
+# constraint set; check_constraints fires LT-LifetimeMismatch.
+struct<'a, 'b: 'a> W2: Move { p: &'a i64, q: &'b i64 }
+
+fn<'a, 'b> wrap2_missing_axiom(x: &'a i64, y: &'b i64, $return: &out W2<'a, 'b>) {
+  entry:
+    $return.*.p = copy x;
+    $return.*.q = copy y;
+    return
+}
+
+# ---------- Wrap2 mention on a local decl missing containing bound ----------
+
+# covers: type_kind=struct lifetime_bound=local_mention_missing_axiom
+# The type only appears in a local decl (not the signature) — still an
+# in-scope mention, still emits the substituted bound.
+fn<'a, 'b> wrap2_local_missing_axiom(x: &'a i64, y: &'b i64) {
+  w: W2<'a, 'b>;
+  entry:
+    w.p = copy x;
+    w.q = copy y;
+    drop w.p;
+    drop w.q;
+    return
+}
+
+# ---------- Reversed lifetime args: Wrap2<'b, 'a> ----------
+
+# covers: type_kind=struct lifetime_bound=reversed_args
+# Fn declares 'b: 'a. Mentioning W2<'b, 'a> substitutes into the bound
+# subject/target and demands 'a: 'b — the opposite direction, not in
+# the closure. LT-LifetimeMismatch fires.
+fn<'a, 'b: 'a> wrap2_reversed(x: &'b i64, y: &'a i64, $return: &out W2<'b, 'a>) {
+  entry:
+    $return.*.p = copy x;
+    $return.*.q = copy y;
+    return
+}
+
+# ---------- struct field mentions Wrap2, outer lacks bound ----------
+
+# covers: type_kind=struct lifetime_bound=decl_field_missing_axiom
+# Field type `W2<'a, 'b>` demands `'b: 'a` on the outer decl. `Outer`
+# declares no such bound; decl well-formedness fires LT-LifetimeMismatch
+# at the field type span.
+struct<'a, 'b> OuterBad: Move { inner: W2<'a, 'b> }
+
+fn<'a, 'b> use_outer_bad(_x: &'a i64, _y: &'b i64) {
+  entry:
+    return
+}
+
+# ---------- enum variant payload violating a bound ----------
+
+# covers: type_kind=enum lifetime_bound=decl_variant_missing_axiom
+# Same shape, but the mention is on an enum variant payload.
+enum<'a, 'b> EitherBad: Move { L: W2<'a, 'b>, R: &'a i64 }
+
+fn<'a, 'b> use_either_bad(_x: &'a i64, _y: &'b i64) {
+  entry:
+    return
+}
+
+# ---------- Custom nested in Ref, missing bound ----------
+
+# covers: type_kind=shared_ref lifetime_bound=ref_nested_missing_axiom
+# Wf recurses through `&'r W2<'a, 'b>` and emits the substituted bound.
+# Fn declares no 'b:'a; LT-LifetimeMismatch fires.
+fn<'a, 'b, 'r> ref_wrap2_missing(w: &'r W2<'a, 'b>, $return: &out &'a i64) {
+  entry:
+    $return.* = copy w.*.p;
+    return
+}
+
+# ---------- Custom nested in Array, missing bound ----------
+
+# covers: type_kind=array lifetime_bound=array_nested_missing_axiom
+# Same via `[W2<'a, 'b>; N]`.
+fn<'a, 'b> array_wrap2_missing(x: &'a i64, y: &'b i64, $return: &out [W2<'a, 'b>; 1]) {
+  entry:
+    $return.*[0].p = copy x;
+    $return.*[0].q = copy y;
+    return
+}
+
+# ---------- Extern fn signature mentions Wrap2 without bound ----------
+
+# covers: type_kind=fn boundary=extern lifetime_bound=extern_signature_missing_axiom
+# An extern fn declaration is a signature-only object, but its type
+# mentions still need to be well-formed against the fn's declared
+# outlives axioms. Missing 'b:'a fires LT-LifetimeMismatch at the
+# param type span even though the fn has no body.
+extern fn<'a, 'b> extern_wrap2_missing(w: W2<'a, 'b>);
+
+# ---------- 'static substituted as bound target, no axiom ----------
+
+# covers: type_kind=struct lifetime_bound=static_target_missing_axiom
+# W2<'static, 'a>: substituted bound is 'a: 'static, which needs 'a to
+# be at least 'static. The fn declares no such axiom, so the well-
+# formedness sweep emits (Named('a), Static) and check_constraints
+# fires LT-LifetimeMismatch via the closure lookup.
+fn<'a> wrap2_static_target_missing(s: &'static i64, x: &'a i64, $return: &out W2<'static, 'a>) {
+  entry:
+    $return.*.p = copy s;
+    $return.*.q = copy x;
+    return
+}
+
+# ---------- decl-scope 'static target without axiom ----------
+
+# covers: type_kind=struct lifetime_bound=decl_static_target_missing
+# Field type W2<'static, 'a> in an outer struct that declares neither
+# 'a: 'static nor 'a as static-bounded. Decl wf fires.
+struct<'a> BadStaticContainer: Move { inner: W2<'static, 'a> }
+
+fn<'a> use_bad_static_container(_x: &'a i64) {
+  entry:
+    return
+}
+
+# ---------- caller lacks 'static bound the callee needs ----------
+
+# covers: type_kind=fn lifetime_bound=call_site_needs_static
+# Callee axiom is `'a: 'static`. The caller instantiates callee's 'a
+# with a fresh region and passes a Named 'p ref. The instantiated
+# axiom becomes `Fresh outlives 'static`; check_constraints fires
+# LT-LifetimeEscape because the body-local Fresh region can't
+# discharge into 'static.
+extern fn<'a: 'static> callee_needs_static(x: &'a i64);
+
+fn<'p> caller_no_static_axiom(y: &'p i64) {
+  entry:
+    call callee_needs_static(copy y);
+    return
+}
+
+# ---------- explicit wrong-arity lifetime args ----------
+
+# covers: type_kind=struct lifetime_bound=wrong_lifetime_arity
+# W2 declares 2 lifetime params. Writing `W2<'p>` supplies only one.
+# TC-InvalidDeclaredType fires from the arity check. Zero-arg bare
+# mentions like `W2` are still tolerated (pending elision backfill).
+struct<'p> WrongArity: Move { w: W2<'p> }
+
+fn<'p> use_wrong_arity(_x: &'p i64) {
+  entry:
+    return
+}
+
+# ---------- ptr_cast target carrying an unchecked bound ----------
+
+# covers: type_kind=raw_ptr lifetime_bound=ptr_cast_target
+# The cast target `*W2<'a, 'b>` mentions W2 without the enclosing fn
+# declaring `'b: 'a`. Signature/local walks catch the mention at
+# param positions; the statement-level walk provides defense in
+# depth for expression-only mentions.
+fn<'a, 'b> ptr_cast_missing_axiom(x: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
+  entry:
+    $return.* = ptr_cast(copy x, *W2<'a, 'b>);
+    return
+}
+
+# ---------- wrong-arity lifetime args in a ptr_cast target ----------
+
+# covers: type_kind=raw_ptr lifetime_bound=ptr_cast_wrong_arity
+# The cast target `*W2<'a>` gives one lifetime arg where W2 needs two.
+# TC-InvalidDeclaredType fires from the rvalue-embedded type validation.
+fn<'a, 'b: 'a> ptr_cast_wrong_arity(src: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
+  entry:
+    $return.* = ptr_cast(copy src, *W2<'a>);
+    return
+}
+
+# ---------- Pair positional match: callee 'static vs caller 'q ----------
+
+# covers: type_kind=struct lifetime_bound=call_positional_match
+# Callee needs Pair<'static, 'static>; caller has Pair<'static, 'q>.
+# Both lifetime slots must be matched positionally; the second callee
+# slot ('static) is compared against the caller's second slot ('q),
+# and 'q outliving 'static requires an axiom the caller lacks.
+struct<'a, 'b> Pair: Move { first: &'a i64, second: &'b i64 }
+
+extern fn needs_static(p: Pair<'static, 'static>);
+
+fn<'q> pair_positional_missing(p: Pair<'static, 'q>) {
+  entry:
+    call needs_static(move p);
+    return
+}
+
+# ---------- FnName type_args in a Use-operand carry unchecked bounds ----------
+
+# covers: type_kind=fn lifetime_bound=fn_value_type_args
+# `sink<W2<'a, 'b>>` mentions W2<'a, 'b> in the FnName const's type args.
+# The enclosing fn doesn't declare 'b: 'a; the well-formedness sweep
+# now discharges FnName type_args at every operand position, so
+# LT-LifetimeMismatch fires.
+extern fn<T: Move> sink(x: T);
+
+fn<'a, 'b> fn_value_missing_axiom() {
+  g: fn(W2<'a, 'a>);
+  entry:
+    g = sink<W2<'a, 'b>>;
+    abort
+}
+
+# ---------- Container mention transitively requires bound ----------
+
+# covers: type_kind=nested_aggregate lifetime_bound=outer_bound_transitive
+# Container is `struct<'a, 'b: 'a>`. A caller mentioning `Container<'a, 'b>`
+# in a fn that itself doesn't declare 'b:'a picks up Container's own
+# outlives axiom and fails.
+struct<'a, 'b: 'a> Container2: Move { inner: W2<'a, 'b> }
+
+fn<'a, 'b> use_container_missing_axiom(x: &'a i64, y: &'b i64, $return: &out Container2<'a, 'b>) {
+  entry:
+    $return.*.inner.p = copy x;
+    $return.*.inner.q = copy y;
+    return
+}
+
 # ---------- 'static declared as a lifetime parameter ----------
 
 # covers: type_kind=fn lifetime_bound=static_as_param

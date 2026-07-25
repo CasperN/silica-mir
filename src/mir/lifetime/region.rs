@@ -104,7 +104,11 @@ impl RegionCtx {
         }
         let ty = crate::mir::type_util::place_type(locals, env, place)?;
         if let TypeKind::Ref(_, Some(lt), _) = ty.kind {
-            Some(Region::Named(lt))
+            Some(if lt.0 == "static" {
+                Region::Static
+            } else {
+                Region::Named(lt)
+            })
         } else {
             None
         }

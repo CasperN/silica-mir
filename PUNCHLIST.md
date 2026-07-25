@@ -35,12 +35,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   a `&'a T` in a param/field is dropped by `lower_type` and the MIR
   elides it. Fix: extend `lower_type` to preserve `Option<Lifetime>`
   on Ref/Custom.
-- **Struct/enum outlives bounds not enforced at construction.**
-  `struct<'a, 'b: 'a> Wrap { ... }` accepts and scope-validates the
-  bound, but building a `Wrap<'x, 'y>` at a call/construction site
-  doesn't check that `'y: 'x` holds in the caller's axiom set.
-  Fix: emit instantiation constraints from Custom type args similar
-  to fn-call instantiation.
 - **Bound-RHS lifetimes must be declared params.** `<'a: 'b>` requires
   `'b` in the same `<>` list; Rust auto-introduces bound-only names.
   Silica keeps this explicit — arguably fine, but worth documenting.
@@ -49,14 +43,35 @@ the compiler evolves; treat entries as snapshots, not commitments.
   (Free escaping into Named via the ret-out slot) rather than
   `LT-LifetimeMismatch`. Program is rejected but the code is
   misleading.
+- **Invariant unification not recognized in escape check.** When
+  `walk_call_regions` walks an exclusive-kind ref (e.g. `&out &'a T`
+  as a callee param passed a caller `&out &'p T`), it emits both
+  `(caller, inst)` and `(inst, caller)` — the inst region is
+  effectively equal to the caller region. Today `check_constraints`
+  treats each direction independently, so the `(Free, Named)` half
+  fires `LT-LifetimeEscape` on valid forwarding calls like
+  `identity(x, &out $return.*)`. Fix: precompute the set of
+  bidirectional constraints (or a proper union-find on regions) and
+  suppress escape when the pair is mutual — the Free is unified with
+  the Named, not escaping into it.
+- **Elision doesn't backfill Custom lifetime args.** Elision auto-adds
+  `'sN` params to structs/enums/fns based on unannotated `&T` refs in
+  their signatures, but never fills those synthesized lifetimes into
+  Custom self-mentions or bare local decls. So `struct StructRefSelf
+  { next: &mut StructRefSelf }` becomes `struct<'s0> StructRefSelf
+  { next: &'s0 mut StructRefSelf }` — the inner mention still has
+  zero lifetime args while the decl now has one param. Also blocks
+  a lifetime-args arity check in `Env::validate_type`: adding one
+  today rejects every bare Custom mention that relied on elision.
+  Fix: two-pass elision — first collect each decl's post-elision
+  param count, then backfill Custom mentions with fresh lifetimes
+  (also added to the containing scope's params) — then add the
+  arity checfk.
 - **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
 - **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
 - **No fixture for nested-ref case (`&&i64`, `&Wrap<i64>`), shared-ref returns read multiple times, or `Wrap<'a>` in fn signatures.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands.
 
 ## Elaboration + drop
-- **Drop insertion order in return blocks.** Belongs to the HLL
-  (scope-nesting determines LIFO). If the frontend emits its own
-  drops per scope-exit, the drop elaborator becomes reference-only.
 - **`walk_diverged` skips arrays and enum Custom types.** Cross-edge
   drop planning doesn't insert per-slot / per-variant drops for
   Diverged elements — the final `check_return_leaks` still fires

@@ -166,9 +166,11 @@ fn<'a: 'a> reflexive_bound(x: &'a i64, $return: &out &'a i64) {
 # ---------- struct-decl outlives bounds ----------
 
 # covers: type_kind=struct lifetime_bound=single_outlives
-# 'b: 'a on the struct decl. Struct outlives bounds are validated for
-# declared-lifetime scope but are not currently consulted during
-# construction or field-access. The decl and field reads compile clean.
+# 'b: 'a on the struct decl. Every mention of Wrap2<'x, 'y> at any
+# position (fn param, local, nested type arg, or struct/enum field)
+# emits the substituted 'y: 'x obligation into the containing scope's
+# constraint set. The containing scope must justify it via its own
+# declared axioms; a match fires no diagnostic.
 struct<'a, 'b: 'a> Wrap2: Move { outer: &'a i64, inner: &'b i64 }
 
 fn<'a, 'b: 'a> make_wrap2(x: &'a i64, y: &'b i64, $return: &out Wrap2<'a, 'b>) {
@@ -185,10 +187,115 @@ fn<'a, 'b: 'a> read_wrap2(w: Wrap2<'a, 'b>, $return: &out &'a i64) {
     return
 }
 
+# ---------- reflexive substitution: Wrap2<'a, 'a> ----------
+
+# covers: type_kind=struct lifetime_bound=single_outlives_reflexive
+# Substituting 'a for both params reduces the bound to 'a: 'a, which
+# is reflexive and pruned by `emit`. Well-formed under any axiom set,
+# including the empty one — the containing fn declares no bound.
+fn<'a> wrap2_reflexive(x: &'a i64, $return: &out Wrap2<'a, 'a>) {
+  entry:
+    $return.*.outer = copy x;
+    $return.*.inner = copy x;
+    return
+}
+
+# ---------- transitive chain propagation at a mention ----------
+
+# covers: type_kind=struct lifetime_bound=chain_propagation
+# Wrap2<'a, 'c> substitutes 'c into the bound RHS. The container fn
+# has 'b: 'a and 'c: 'b, whose transitive closure contains 'c: 'a — so
+# the substituted 'c: 'a is discharged.
+fn<'a, 'b: 'a, 'c: 'b> wrap2_chain(x: &'a i64, y: &'c i64, $return: &out Wrap2<'a, 'c>) {
+  entry:
+    $return.*.outer = copy x;
+    $return.*.inner = copy y;
+    return
+}
+
+# ---------- 'static substituted as bound subject ----------
+
+# covers: type_kind=struct lifetime_bound=static_subject
+# Wrap2<'a, 'static>: substituted bound is 'static: 'a. `emit` prunes
+# outlives==Static — no constraint enters the check, clean under any
+# axiom set.
+fn<'a> wrap2_static_subject(x: &'a i64, s: &'static i64, $return: &out Wrap2<'a, 'static>) {
+  entry:
+    $return.*.outer = copy x;
+    $return.*.inner = copy s;
+    return
+}
+
+# ---------- 'static substituted as bound target, axiom in scope ----------
+
+# covers: type_kind=struct lifetime_bound=static_target_with_axiom
+# Wrap2<'static, 'a>: substituted bound is 'a: 'static. The fn declares
+# the axiom so the constraint is discharged via the transitive closure.
+fn<'a: 'static> wrap2_static_target(s: &'static i64, x: &'a i64, $return: &out Wrap2<'static, 'a>) {
+  entry:
+    $return.*.outer = copy s;
+    $return.*.inner = copy x;
+    return
+}
+
+# ---------- nested Custom-in-Custom well-formedness ----------
+
+# covers: type_kind=nested_aggregate lifetime_bound=nested_custom
+# A struct whose field is itself a Wrap2 mention. Container declares
+# 'b: 'a on itself so the field's substituted 'b: 'a is dischargeable
+# at Container's decl wf. Container's mentions in fn signatures then
+# emit its own 'b: 'a to the fn scope.
+struct<'a, 'b: 'a> Container: Move { inner: Wrap2<'a, 'b> }
+
+fn<'a, 'b: 'a> make_container(x: &'a i64, y: &'b i64, $return: &out Container<'a, 'b>) {
+  entry:
+    $return.*.inner.outer = copy x;
+    $return.*.inner.inner = copy y;
+    return
+}
+
+# ---------- Custom nested in Ref ----------
+
+# covers: type_kind=shared_ref lifetime_bound=nested_in_ref
+# The Custom mention hides inside `&Wrap2<...>`. Wf recurses through
+# Ref to find and discharge Wrap2's bound against the fn's axioms.
+fn<'a, 'b: 'a, 'r> ref_to_wrap2(w: &'r Wrap2<'a, 'b>, $return: &out &'a i64) {
+  entry:
+    $return.* = copy w.*.outer;
+    return
+}
+
+# ---------- Custom nested in Array ----------
+
+# covers: type_kind=array lifetime_bound=nested_in_array
+# Same idea, hidden inside `[Wrap2<...>; N]`.
+fn<'a, 'b: 'a> array_of_wrap2(x: &'a i64, y: &'b i64, $return: &out [Wrap2<'a, 'b>; 2]) {
+  entry:
+    $return.*[0].outer = copy x;
+    $return.*[0].inner = copy y;
+    $return.*[1].outer = copy x;
+    $return.*[1].inner = copy y;
+    return
+}
+
+# ---------- Custom-of-Custom: bound in outer decl only ----------
+
+# covers: type_kind=nested_aggregate lifetime_bound=outer_carries_bound
+# Container declares 'b: 'a so its own field `Wrap2<'a, 'b>` is
+# well-formed at Container's decl. A fn mentioning Container<'a, 'b>
+# picks up Container's OWN declared 'b: 'a and requires the fn to
+# match — not the inner Wrap2's bound, which is already discharged.
+fn<'a, 'b: 'a> use_container(x: &'a i64, y: &'b i64, $return: &out Container<'a, 'b>) {
+  entry:
+    $return.*.inner.outer = copy x;
+    $return.*.inner.inner = copy y;
+    return
+}
+
 # ---------- enum-decl outlives bounds ----------
 
 # covers: type_kind=enum lifetime_bound=single_outlives
-# 'b: 'a on the enum decl. Same scope-check applies; construction clean.
+# 'b: 'a on the enum decl; well-formedness discharges at every mention.
 enum<'a, 'b: 'a> Either2: Move { L: &'a i64, R: &'b i64 }
 
 fn<'a, 'b: 'a> make_either2_l(x: &'a i64, $return: &out Either2<'a, 'b>) {

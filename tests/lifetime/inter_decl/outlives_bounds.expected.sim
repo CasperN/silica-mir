@@ -129,6 +129,89 @@ fn<'a, 'b: 'a, 's0> read_wrap2(w: Wrap2<'a, 'b>, $return: &out 's0 & 'a i64) {
     return
 }
 
+fn<'a, 's0> wrap2_reflexive(x: & 'a i64, $return: &out 's0 Wrap2<'a, 'a>) {
+  entry:
+    $return.*.outer = copy x;
+    $return.*.inner = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a, 'b: 'a, 'c: 'b, 's0> wrap2_chain(x: & 'a i64, y: & 'c i64, $return: &out 's0 Wrap2<'a, 'c>) {
+  entry:
+    $return.*.outer = copy x;
+    unborrow x;
+    $return.*.inner = copy y;
+    unborrow $return;
+    unborrow y;
+    return
+}
+
+fn<'a, 's0> wrap2_static_subject(x: & 'a i64, s: & 'static i64, $return: &out 's0 Wrap2<'a, 'static>) {
+  entry:
+    $return.*.outer = copy x;
+    unborrow x;
+    $return.*.inner = copy s;
+    unborrow $return;
+    unborrow s;
+    return
+}
+
+fn<'a: 'static, 's0> wrap2_static_target(s: & 'static i64, x: & 'a i64, $return: &out 's0 Wrap2<'static, 'a>) {
+  entry:
+    $return.*.outer = copy s;
+    unborrow s;
+    $return.*.inner = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+struct<'a, 'b: 'a> Container: Move {
+  inner: Wrap2<'a, 'b>
+}
+
+fn<'a, 'b: 'a, 's0> make_container(x: & 'a i64, y: & 'b i64, $return: &out 's0 Container<'a, 'b>) {
+  entry:
+    $return.*.inner.outer = copy x;
+    unborrow x;
+    $return.*.inner.inner = copy y;
+    unborrow $return;
+    unborrow y;
+    return
+}
+
+fn<'a, 'b: 'a, 'r, 's0> ref_to_wrap2(w: & 'r Wrap2<'a, 'b>, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy w.*.outer;
+    unborrow $return;
+    unborrow w;
+    return
+}
+
+fn<'a, 'b: 'a, 's0> array_of_wrap2(x: & 'a i64, y: & 'b i64, $return: &out 's0 [Wrap2<'a, 'b>; 2]) {
+  entry:
+    $return.*[0].outer = copy x;
+    $return.*[0].inner = copy y;
+    $return.*[1].outer = copy x;
+    unborrow x;
+    $return.*[1].inner = copy y;
+    unborrow $return;
+    unborrow y;
+    return
+}
+
+fn<'a, 'b: 'a, 's0> use_container(x: & 'a i64, y: & 'b i64, $return: &out 's0 Container<'a, 'b>) {
+  entry:
+    $return.*.inner.outer = copy x;
+    unborrow x;
+    $return.*.inner.inner = copy y;
+    unborrow $return;
+    unborrow y;
+    return
+}
+
 enum<'a, 'b: 'a> Either2: Move {
   L: & 'a i64
   R: & 'b i64
