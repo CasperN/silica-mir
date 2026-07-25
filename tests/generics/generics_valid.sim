@@ -56,6 +56,95 @@ struct<T: Move, U: Move> MovePair: Move { first: T  second: U }
 
 struct<T: Copy + Drop, U: Copy + Drop> CopyPair: Copy + Drop { first: T  second: U }
 
+# ── Generic shells for marker × param coverage ───────────────────────
+# covers: type_kind=struct class=Copy op=composition bound=T:Copy
+struct<T: Copy> BoxC: Copy { inner: T }
+# covers: type_kind=struct class=Drop op=composition bound=T:Drop
+struct<T: Drop> BoxD: Drop { inner: T }
+# covers: type_kind=struct class=Move op=composition bound=T:Move
+struct<T: Move> BoxM: Move { inner: T }
+# covers: type_kind=struct class=Copy+Drop op=composition bound=T:Copy+Drop
+struct<T: Copy + Drop> BoxCD: Copy + Drop { inner: T }
+# covers: type_kind=struct class=Move op=blanket_move bound=T:Copy+Drop
+struct<T: Copy + Drop> BoxCD_Move: Move { inner: T }
+
+# ── Material types for the use-site matrix ───────────────────────────
+# covers: type_kind=struct class=Copy op=use_site_bound
+struct MatC: Copy { x: i64 }
+# covers: type_kind=struct class=Drop op=use_site_bound
+struct MatD: Drop { x: i64 }
+# covers: type_kind=struct class=Move op=use_site_bound
+struct MatM: Move { x: i64 }
+# covers: type_kind=struct class=Copy+Drop op=use_site_bound
+struct MatCD: Copy + Drop { x: i64 }
+# covers: type_kind=struct class=Copy+Move op=use_site_bound
+struct MatCM: Copy + Move { x: i64 }
+# covers: type_kind=struct class=Drop+Move op=use_site_bound
+struct MatDM: Drop + Move { x: i64 }
+
+# ── Use-site: BoxC<X> — X must be Copy ──────────────────────────────
+# covers: type_kind=struct class=Copy op=use_site_bound bound=MatC:Copy
+struct UseBoxC_MatC { b: BoxC<MatC> }
+struct UseBoxC_MatCD { b: BoxC<MatCD> }
+struct UseBoxC_MatCM { b: BoxC<MatCM> }
+
+# ── Use-site: BoxD<X> — X must be Drop ──────────────────────────────
+# covers: type_kind=struct class=Drop op=use_site_bound bound=MatD:Drop
+struct UseBoxD_MatD { b: BoxD<MatD> }
+struct UseBoxD_MatCD { b: BoxD<MatCD> }
+struct UseBoxD_MatDM { b: BoxD<MatDM> }
+
+# ── Use-site: BoxM<X> — X must be Move ──────────────────────────────
+# covers: type_kind=struct class=Move op=use_site_bound bound=MatM:Move
+struct UseBoxM_MatM { b: BoxM<MatM> }
+struct UseBoxM_MatCM { b: BoxM<MatCM> }
+struct UseBoxM_MatDM { b: BoxM<MatDM> }
+# covers: blanket Copy+Drop->Move at use-site
+struct UseBoxM_MatCD { b: BoxM<MatCD> }
+# covers: Custom(BoxCD<i64>) is Copy+Drop therefore Move at use-site
+struct UseBoxM_BoxCD_i64 { b: BoxM<BoxCD<i64>> }
+
+# ── Nested Param substitution ────────────────────────────────────────
+# covers: type_kind=struct op=nested_param_subst class=Copy+Drop
+struct<T: Copy + Drop> OuterBox: Copy + Drop { inner: BoxCD<T> }
+struct TripleBox: Copy + Drop { inner: OuterBox<BoxCD<i64>> }
+struct UseOuter_i64 { b: OuterBox<i64> }
+
+# ── Ops on generic structs ───────────────────────────────────────────
+# covers: type_kind=struct op=copy class=Copy+Drop
+fn copy_boxcd(src: BoxCD<i64>, dest: &out BoxCD<i64>) {
+  entry:
+    dest.* = copy src;
+    drop src;
+    return
+}
+
+# covers: type_kind=struct op=field_copy class=Copy+Drop
+fn copy_field_boxcd(b: BoxCD<i64>, dest: &out i64) {
+  entry:
+    dest.* = copy b.inner;
+    drop b;
+    return
+}
+
+# covers: type_kind=struct op=move class=Move (blanket Copy+Drop->Move)
+fn move_boxcd_move(src: BoxCD_Move<i64>, dest: &out BoxCD_Move<i64>) {
+  entry:
+    dest.* = move src;
+    return
+}
+
+# covers: type_kind=struct op=move class=Move bound=T:Move
+fn move_boxm_i64(src: BoxM<i64>, dest: &out BoxM<i64>) {
+  entry:
+    dest.* = move src;
+    return
+}
+
+# ── Nested Custom in field (two-level class_of through Custom) ────────
+# covers: type_kind=struct op=nested_custom class=Copy+Drop
+struct NestedBoxCD: Copy + Drop { inner: BoxCD<BoxCD<i64>> }
+
 # ── Generic function declarations ────────────────────────────────────
 
 # Generic fn that accepts a shared ref; exercises Param in ref position.

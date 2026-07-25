@@ -3,6 +3,17 @@ struct Node: Copy + Drop {
   v: i64
 }
 
+struct PtrStruct: Copy + Drop {
+  p: *i64
+}
+
+enum PtrEnum: Copy + Drop {
+  PtrV: *i64
+  NullV: unit
+}
+
+extern fn consume_raw_ptr(p: *i64);
+
 fn creation_scalar(x: i64) {
   p: *i64;
   entry:
@@ -63,6 +74,208 @@ fn deref_bypasses_loan_check(x: i64) {
     drop z;
     drop y;
     drop p;
+    drop x;
+    return
+}
+
+fn deref_read_copy(x: i64) {
+  p: *i64;
+  y: i64;
+  entry:
+    p = &raw x;
+    y = copy p.*;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn deref_write(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    p.* = 42;
+    drop p;
+    drop x;
+    return
+}
+
+fn deref_move(x: i64) {
+  p: *i64;
+  y: i64;
+  entry:
+    p = &raw x;
+    y = move p.*;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn deref_drop(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    drop p.*;
+    drop p;
+    drop x;
+    return
+}
+
+fn ptr_dup(x: i64) {
+  p: *i64;
+  p1: *i64;
+  p2: *i64;
+  entry:
+    p = &raw x;
+    p1 = copy p;
+    p2 = copy p;
+    drop p2;
+    drop p1;
+    drop p;
+    drop x;
+    return
+}
+
+fn alias_raw_and_shared(x: i64) {
+  r: & i64;
+  p: *i64;
+  y: i64;
+  z: i64;
+  entry:
+    r = & x;
+    p = &raw x;
+    y = copy p.*;
+    z = copy r.*;
+    unborrow r;
+    drop z;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn alias_raw_and_mut(x: i64) {
+  r: &mut i64;
+  p: *i64;
+  y: i64;
+  z: i64;
+  entry:
+    r = &mut x;
+    p = &raw x;
+    y = copy p.*;
+    z = copy r.*;
+    unborrow r;
+    drop z;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn ptr_cast_raw_to_ref(x: i64) {
+  p: *i64;
+  r: & i64;
+  y: i64;
+  entry:
+    p = &raw x;
+    r = ptr_cast(copy p, & i64);
+    y = copy r.*;
+    unborrow r;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn ptr_cast_ref_to_raw(x: i64) {
+  r: & i64;
+  p: *i64;
+  y: i64;
+  entry:
+    r = & x;
+    p = ptr_cast(copy r, *i64);
+    unborrow r;
+    y = copy p.*;
+    drop y;
+    drop p;
+    drop x;
+    return
+}
+
+fn raw_ref_uninit(x: i64) {
+  uninit_val: i64;
+  p: *i64;
+  entry:
+    p = &raw uninit_val;
+    drop p;
+    drop x;
+    return
+}
+
+fn raw_ref_moved(x: i64) {
+  moved_val: i64;
+  p: *i64;
+  q: i64;
+  entry:
+    moved_val = copy x;
+    q = move moved_val;
+    p = &raw moved_val;
+    drop q;
+    drop p;
+    drop x;
+    return
+}
+
+fn struct_raw_ptr_field(x: i64) {
+  s: PtrStruct;
+  s2: PtrStruct;
+  entry:
+    s.p = &raw x;
+    s2 = copy s;
+    drop s2;
+    drop s;
+    drop x;
+    return
+}
+
+fn array_of_raw_ptrs(x: i64) {
+  arr: [*i64; 3];
+  entry:
+    arr[0] = &raw x;
+    arr[1] = &raw x;
+    arr[2] = &raw x;
+    drop arr;
+    drop x;
+    return
+}
+
+fn enum_with_raw_ptr_payload(x: i64) {
+  e: PtrEnum;
+  p: *i64;
+  entry:
+    p = &raw x;
+    e = PtrEnum::PtrV(move p);
+    drop e;
+    drop x;
+    return
+}
+
+fn pass_raw_ptr_to_call(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    call consume_raw_ptr(move p);
+    drop x;
+    return
+}
+
+fn<'s0> return_raw_ptr(x: i64, $return: &out 's0 *i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    $return.* = move p;
+    unborrow $return;
     drop x;
     return
 }

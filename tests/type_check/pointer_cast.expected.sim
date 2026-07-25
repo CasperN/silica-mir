@@ -16,7 +16,7 @@ fn<'s0, 's1> ref_to_ptr(r: & 's0 i64, $return: &out 's1 *u8) {
     return
 }
 
-fn<'s0, 's1> ptr_to_ref(p: *i64, $return: &out 's0 & 's1 i64) {
+fn<'s0: 's1, 's1> ptr_to_ref(p: *i64, $return: &out 's0 & 's1 i64) {
   entry:
     $return.* = ptr_cast(move p, & i64);
     unborrow $return;
@@ -25,7 +25,7 @@ fn<'s0, 's1> ptr_to_ref(p: *i64, $return: &out 's0 & 's1 i64) {
     return
 }
 
-fn<'s0, 's1, 's2> ref_to_ref(r: & 's0 i64, $return: &out 's1 & 's2 u8) {
+fn<'s0: 's2, 's1: 's2, 's2> ref_to_ref(r: & 's0 i64, $return: &out 's1 & 's2 u8) {
   entry:
     $return.* = ptr_cast(move r, & u8);
     unborrow $return;
@@ -47,7 +47,7 @@ fn<'s0, 's1> mut_ref_to_mut_ptr(r: &mut 's0 i64, $return: &out 's1 *u8) {
     return
 }
 
-fn<'s0, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
+fn<'s0: 's1, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
   entry:
     $return.* = ptr_cast(move p, &mut i64);
     unborrow $return;
@@ -56,7 +56,7 @@ fn<'s0, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
     return
 }
 
-fn<'s0, 's1, 's2> mut_ref_to_mut_ref(r: &mut 's0 i64, $return: &out 's1 &mut 's2 u8) {
+fn<'s0: 's2, 's1: 's2, 's2> mut_ref_to_mut_ref(r: &mut 's0 i64, $return: &out 's1 &mut 's2 u8) {
   _temp_0: *u8;
   _temp_1: *i64;
   entry:

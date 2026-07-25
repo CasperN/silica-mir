@@ -277,3 +277,163 @@ fn untouched_param_MatCM(x: MatCM) {
   entry:
     return
 }
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 1 violations (both arms move x)
+# covers: class=L|C|D op=move cfg=if_both_move type_kind=struct
+# Non-Move classes: SUB-MoveOfNonMove on each arm.
+# ============================================================
+
+fn if_both_move_MatL(x: MatL, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_l(move x);
+    goto done
+  f:
+    call take_mat_l(move x);
+    goto done
+  done:
+    return
+}
+
+fn if_both_move_C(x: C, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_c(move x);
+    goto done
+  f:
+    call take_mat_c(move x);
+    goto done
+  done:
+    return
+}
+
+fn if_both_move_D(x: D, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_d(move x);
+    goto done
+  f:
+    call take_mat_d(move x);
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 2 violations (one arm moves, other Init)
+# covers: class=L|M|C|CM op=move cfg=if_one_arm_move type_kind=struct
+# Non-Drop classes: drop-elab cannot insert on not-moved arm → INIT-ReturnValueLeak.
+# MatL/MatC also fire SUB-MoveOfNonMove on the moving arm.
+# ============================================================
+fn if_one_arm_move_MatM(x: MatM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_m(move x);
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+fn if_one_arm_move_MatCM(x: MatCM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cm(move x);
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 3 violations (one arm drops, non-Drop class)
+# covers: class=L|M op=drop cfg=if_one_arm_drop type_kind=struct
+# SUB-DropOfNonDrop on the drop arm; INIT-ReturnValueLeak at done.
+# ============================================================
+fn if_one_arm_drop_MatL(x: MatL, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+fn if_one_arm_drop_MatM(x: MatM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 4 violations (both arms drop, non-Drop class)
+# covers: class=L|M|C|CM op=drop cfg=if_both_drop type_kind=struct
+# SUB-DropOfNonDrop on each arm.
+# ============================================================
+
+fn if_both_drop_MatL(x: MatL, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+fn if_both_drop_MatM(x: MatM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+fn if_both_drop_MatC(x: MatC, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+fn if_both_drop_MatCM(x: MatCM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}

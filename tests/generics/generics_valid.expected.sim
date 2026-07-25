@@ -43,6 +43,140 @@ struct<T: Copy + Drop, U: Copy + Drop> CopyPair: Copy + Drop {
   second: U
 }
 
+struct<T: Copy> BoxC: Copy {
+  inner: T
+}
+
+struct<T: Drop> BoxD: Drop {
+  inner: T
+}
+
+struct<T: Move> BoxM: Move {
+  inner: T
+}
+
+struct<T: Copy + Drop> BoxCD: Copy + Drop {
+  inner: T
+}
+
+struct<T: Copy + Drop> BoxCD_Move: Move {
+  inner: T
+}
+
+struct MatC: Copy {
+  x: i64
+}
+
+struct MatD: Drop {
+  x: i64
+}
+
+struct MatM: Move {
+  x: i64
+}
+
+struct MatCD: Copy + Drop {
+  x: i64
+}
+
+struct MatCM: Copy + Move {
+  x: i64
+}
+
+struct MatDM: Drop + Move {
+  x: i64
+}
+
+struct UseBoxC_MatC {
+  b: BoxC<MatC>
+}
+
+struct UseBoxC_MatCD {
+  b: BoxC<MatCD>
+}
+
+struct UseBoxC_MatCM {
+  b: BoxC<MatCM>
+}
+
+struct UseBoxD_MatD {
+  b: BoxD<MatD>
+}
+
+struct UseBoxD_MatCD {
+  b: BoxD<MatCD>
+}
+
+struct UseBoxD_MatDM {
+  b: BoxD<MatDM>
+}
+
+struct UseBoxM_MatM {
+  b: BoxM<MatM>
+}
+
+struct UseBoxM_MatCM {
+  b: BoxM<MatCM>
+}
+
+struct UseBoxM_MatDM {
+  b: BoxM<MatDM>
+}
+
+struct UseBoxM_MatCD {
+  b: BoxM<MatCD>
+}
+
+struct UseBoxM_BoxCD_i64 {
+  b: BoxM<BoxCD<i64>>
+}
+
+struct<T: Copy + Drop> OuterBox: Copy + Drop {
+  inner: BoxCD<T>
+}
+
+struct TripleBox: Copy + Drop {
+  inner: OuterBox<BoxCD<i64>>
+}
+
+struct UseOuter_i64 {
+  b: OuterBox<i64>
+}
+
+fn<'s0> copy_boxcd(src: BoxCD<i64>, dest: &out 's0 BoxCD<i64>) {
+  entry:
+    dest.* = copy src;
+    unborrow dest;
+    drop src;
+    return
+}
+
+fn<'s0> copy_field_boxcd(b: BoxCD<i64>, dest: &out 's0 i64) {
+  entry:
+    dest.* = copy b.inner;
+    unborrow dest;
+    drop b;
+    return
+}
+
+fn<'s0> move_boxcd_move(src: BoxCD_Move<i64>, dest: &out 's0 BoxCD_Move<i64>) {
+  entry:
+    dest.* = move src;
+    unborrow dest;
+    return
+}
+
+fn<'s0> move_boxm_i64(src: BoxM<i64>, dest: &out 's0 BoxM<i64>) {
+  entry:
+    dest.* = move src;
+    unborrow dest;
+    return
+}
+
+struct NestedBoxCD: Copy + Drop {
+  inner: BoxCD<BoxCD<i64>>
+}
+
 fn<'s0, T> take_ref(r: & 's0 T) {
   entry:
     unborrow r;
@@ -137,7 +271,7 @@ fn<'s0, 's1, T: Move> ref_to_bag_of_mut_ref(b: & 's0 Bag<&mut 's1 T>) {
     return
 }
 
-fn<'s0, 's1, 's2, T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut 's0 MovePair<&drop 's1 T, &out 's2 U>) {
+fn<'s0: 's1 + 's2, 's1, 's2, T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut 's0 MovePair<&drop 's1 T, &out 's2 U>) {
   entry:
     unborrow p;
     return

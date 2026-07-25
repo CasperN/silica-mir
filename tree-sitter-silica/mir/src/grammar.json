@@ -130,12 +130,70 @@
         }
       ]
     },
+    "lifetime_param": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "name",
+          "content": {
+            "type": "SYMBOL",
+            "name": "lifetime"
+          }
+        },
+        {
+          "type": "CHOICE",
+          "members": [
+            {
+              "type": "SEQ",
+              "members": [
+                {
+                  "type": "STRING",
+                  "value": ":"
+                },
+                {
+                  "type": "FIELD",
+                  "name": "bound",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "lifetime"
+                  }
+                },
+                {
+                  "type": "REPEAT",
+                  "content": {
+                    "type": "SEQ",
+                    "members": [
+                      {
+                        "type": "STRING",
+                        "value": "+"
+                      },
+                      {
+                        "type": "FIELD",
+                        "name": "bound",
+                        "content": {
+                          "type": "SYMBOL",
+                          "name": "lifetime"
+                        }
+                      }
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "type": "BLANK"
+            }
+          ]
+        }
+      ]
+    },
     "_generic_param": {
       "type": "CHOICE",
       "members": [
         {
           "type": "SYMBOL",
-          "name": "lifetime"
+          "name": "lifetime_param"
         },
         {
           "type": "SYMBOL",

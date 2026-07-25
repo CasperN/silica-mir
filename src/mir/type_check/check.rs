@@ -16,9 +16,62 @@ use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashSet};
 
-/// Build the set of lifetime names in scope for a decl.
+/// Build the set of lifetime names in scope for a decl. `'static` is
+/// always in scope — it's the reserved top-of-outlives-order region,
+/// available to every decl without being declared as a parameter.
 fn lifetime_scope(params: &[Lifetime]) -> BTreeSet<Lifetime> {
-    params.iter().cloned().collect()
+    let mut s: BTreeSet<Lifetime> = params.iter().cloned().collect();
+    s.insert(Lifetime("static".to_string()));
+    s
+}
+
+/// Reject shape errors on a decl's declared lifetime params:
+/// - `'static` is reserved and cannot be a user param.
+/// - Duplicates are rejected (any subsequent occurrence).
+/// - Outlives clauses must reference in-scope lifetimes on both sides.
+fn validate_lifetime_decls(
+    meta: &crate::mir::ast::DeclMeta,
+    container_kind: &str,
+    d: &mut Diagnostics,
+) {
+    let mut seen: BTreeSet<&Lifetime> = BTreeSet::new();
+    for lt in &meta.lifetime_params {
+        if lt.0 == "static" {
+            d.push_error(Diagnostic::new(
+                ReservedLifetimeName,
+                meta.name_span,
+                format!(
+                    "In {} '{}': 'static is a reserved lifetime and cannot be declared as a parameter",
+                    container_kind, meta.name,
+                ),
+            ));
+        }
+        if !seen.insert(lt) {
+            d.push_error(Diagnostic::new(
+                DuplicateLifetimeParam,
+                meta.name_span,
+                format!(
+                    "In {} '{}': lifetime parameter {} is declared more than once",
+                    container_kind, meta.name, lt,
+                ),
+            ));
+        }
+    }
+    let lt_scope = lifetime_scope(&meta.lifetime_params);
+    for (subject, bound) in &meta.outlives {
+        for lt in [subject, bound] {
+            if !lt_scope.contains(lt) {
+                d.push_error(Diagnostic::new(
+                    UndeclaredLifetime,
+                    meta.name_span,
+                    format!(
+                        "In {} '{}': outlives clause references undeclared lifetime {}",
+                        container_kind, meta.name, lt,
+                    ),
+                ));
+            }
+        }
+    }
 }
 
 /// Collect all Named lifetimes referenced in `ty` that aren't in
@@ -127,6 +180,7 @@ impl Env {
                     ));
                 }
             }
+            validate_lifetime_decls(meta, container_kind, d);
         }
 
         // Validate all functions
@@ -138,6 +192,7 @@ impl Env {
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
         let scope = f.meta.param_scope();
         let lt_scope = lifetime_scope(&f.meta.lifetime_params);
+        validate_lifetime_decls(&f.meta, "function", d);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {
                 if i != f.params.len() - 1 {

@@ -115,6 +115,11 @@ pub struct FnDecl {
     /// an unknown ABI rather than at the whole `extern fn` declaration.
     pub abi_span: Option<Span>,
     pub lifetime_params: Vec<Lifetime>,
+    /// Inline outlives axioms declared on the fn's lifetime params
+    /// (`fn<'a, 'b: 'a>`). Each `(subject, must_outlive)` pair is
+    /// copied through to `DeclMeta::outlives` at lowering; the
+    /// lifetime checker consumes it as a signature axiom.
+    pub outlives: Vec<(Lifetime, Lifetime)>,
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,
@@ -142,6 +147,10 @@ pub struct StructField {
 pub struct StructDecl {
     pub name: String,
     pub lifetime_params: Vec<Lifetime>,
+    /// Inline outlives axioms on the struct's lifetime params
+    /// (`struct<'a, 'b: 'a> Wrap { ... }`). Copied through to the
+    /// MIR side at lowering.
+    pub outlives: Vec<(Lifetime, Lifetime)>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub fields: Vec<StructField>,
@@ -159,6 +168,10 @@ pub struct EnumVariant {
 pub struct EnumDecl {
     pub name: String,
     pub lifetime_params: Vec<Lifetime>,
+    /// Inline outlives axioms on the enum's lifetime params
+    /// (`enum<'a, 'b: 'a> E { ... }`). Copied through to the MIR
+    /// side at lowering.
+    pub outlives: Vec<(Lifetime, Lifetime)>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
     pub variants: Vec<EnumVariant>,

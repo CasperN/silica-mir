@@ -1,0 +1,77 @@
+error: at 137:16: [TC-UndeclaredLifetime] In struct 'BadStruct': outlives clause references undeclared lifetime 'z
+     |
+ 136 | # 'z is not declared as a lifetime param; TC-UndeclaredLifetime fires.
+ 137 | struct<'a: 'z> BadStruct: Move { r: &'a i64 }
+     |                ^^^^^^^^^
+ 138 | 
+     |
+error: at 48:12: [TC-UndeclaredLifetime] In function 'undeclared_bound_lt': outlives clause references undeclared lifetime 'z
+    |
+ 47 | # TC-UndeclaredLifetime fires with the fn's name-span.
+ 48 | fn<'a: 'z> undeclared_bound_lt(x: &'a i64, $return: &out &'a i64) {
+    |            ^^^^^^^^^^^^^^^^^^^
+ 49 |   entry:
+    |
+error: at 151:21: [TC-ReservedLifetimeName] In function 'static_declared_as_param_fails': 'static is a reserved lifetime and cannot be declared as a parameter
+     |
+ 150 | # re-bound.
+ 151 | fn<'static: 'a, 'a> static_declared_as_param_fails(x: &'a i64, $return: &out &'a i64) {
+     |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 152 |   entry:
+     |
+error: at 162:24: [TC-DuplicateLifetimeParam] In function 'duplicate_lifetime_param_fails': lifetime parameter 'a is declared more than once
+     |
+ 161 | # TC-DuplicateLifetimeParam. The bounds don't matter for the check.
+ 162 | fn<'a: 'b, 'a: 'b, 'b> duplicate_lifetime_param_fails(
+     |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 163 |   x: &'a i64,
+     |
+error: at 20:5: [LT-LifetimeMismatch] In function 'no_bound_flow_fails': lifetime mismatch: expected value with region 'b, found value with region 'a
+    |
+ 19 |   entry:
+ 20 |     $return.* = copy x;
+    |     ^^^^^^^^^^^^^^^^^^
+ 21 |     drop y;
+    |
+error: at 38:5: [LT-LifetimeMismatch] In function 'reversed_chain_fails': lifetime mismatch: expected value with region 'c, found value with region 'a
+    |
+ 37 |   entry:
+ 38 |     $return.* = copy x;
+    |     ^^^^^^^^^^^^^^^^^^
+ 39 |     drop y;
+    |
+error: at 61:5: [LT-LifetimeMismatch] In function 'named_into_static': lifetime mismatch: expected value with region 'static, found value with region 'a
+    |
+ 60 |   entry:
+ 61 |     $return.* = copy x;
+    |     ^^^^^^^^^^^^^^^^^^
+ 62 |     return
+    |
+error: at 75:5: [LT-LifetimeMismatch] In function 'deep_chain_reversed': lifetime mismatch: expected value with region 'e, found value with region 'a
+    |
+ 74 |   entry:
+ 75 |     $return.* = copy x;
+    |     ^^^^^^^^^^^^^^^^^^
+ 76 |     return
+    |
+error: at 89:5: [LT-LifetimeMismatch] In function 'diamond_d_into_a': lifetime mismatch: expected value with region 'a, found value with region 'd
+    |
+ 88 |   entry:
+ 89 |     $return.* = copy x;
+    |     ^^^^^^^^^^^^^^^^^^
+ 90 |     return
+    |
+error: at 111:5: [LT-LifetimeEscape] In function 'caller_missing_bound': borrow escapes function: value with local (unnamed) region cannot be stored into region 'p
+     |
+ 110 |     ret_out = &out $return.*;
+ 111 |     call callee_needs_bound(copy x, copy y, move ret_out);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 112 |     return
+     |
+error: at 129:5: [LT-LifetimeEscape] In function 'free_into_static': borrow escapes function: value with local (unnamed) region cannot be stored into region 'static
+     |
+ 128 |     r = &x;
+ 129 |     $return.* = copy r;
+     |     ^^^^^^^^^^^^^^^^^^
+ 130 |     return
+     |

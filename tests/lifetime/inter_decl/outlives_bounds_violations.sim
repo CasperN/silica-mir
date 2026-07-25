@@ -1,0 +1,169 @@
+# Outlives-bound diagnostics fire when the axiom set doesn't justify
+# a required region relation.
+#
+# Cells covered:
+#   fn                                    issue                             diag
+#   no_bound_flow_fails                   missing 'a: 'b axiom              LT-LifetimeMismatch
+#   reversed_chain_fails                  'a: 'b, 'b: 'c but return 'a→'c   LT-LifetimeMismatch
+#   undeclared_bound_lt                   bound references 'z               TC-UndeclaredLifetime
+#   named_into_static                     Named region into 'static slot    LT-LifetimeMismatch
+#   static_declared_as_param_fails        'static as a user param           TC-ReservedLifetimeName
+#   duplicate_lifetime_param_fails        'a declared twice                 TC-DuplicateLifetimeParam
+
+# ---------- missing bound: 'a into 'b slot with no 'a: 'b axiom ----------
+
+# covers: type_kind=fn lifetime_bound=none op=deref_write
+# The direct counterpart of `single_bound_flow` in the ok fixture,
+# but without the `'b: 'a` bound. LT-LifetimeMismatch fires.
+fn<'a, 'b> no_bound_flow_fails(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
+  entry:
+    $return.* = copy x;
+    drop y;
+    return
+}
+
+# ---------- chain in wrong direction ----------
+
+# covers: type_kind=fn lifetime_bound=chain_reversed op=deref_write
+# `'b: 'a, 'c: 'b` gives 'c outlives 'b outlives 'a — so 'a is the
+# SHORTEST. Returning 'a into a slot expecting 'c would require
+# 'a: 'c, which isn't in the closure. LT-LifetimeMismatch.
+fn<'a, 'b: 'a, 'c: 'b> reversed_chain_fails(
+  x: &'a i64,
+  y: &'b i64,
+  z: &'c i64,
+  $return: &out &'c i64
+) {
+  entry:
+    $return.* = copy x;
+    drop y;
+    drop z;
+    return
+}
+
+# ---------- undeclared bound-side lifetime ----------
+
+# covers: type_kind=fn lifetime_bound=undeclared_bound
+# TC-UndeclaredLifetime fires with the fn's name-span.
+fn<'a: 'z> undeclared_bound_lt(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- Named region into 'static slot ----------
+
+# covers: type_kind=fn lifetime_bound=named_into_static op=deref_write
+# The return slot demands 'static; the input is 'a with no bound.
+# LT-LifetimeMismatch fires because no 'a: 'static axiom is declared.
+fn<'a> named_into_static(x: &'a i64, $return: &out &'static i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- deep chain in wrong direction ----------
+
+# covers: type_kind=fn lifetime_bound=deep_chain_reversed
+# 'e: 'd: 'c: 'b: 'a means 'a is shortest. Flowing 'a into 'e slot
+# requires 'a: 'e which isn't in the closure. LT-LifetimeMismatch.
+fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd> deep_chain_reversed(
+  x: &'a i64,
+  $return: &out &'e i64
+) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- diamond: 'd into 'a slot ----------
+
+# covers: type_kind=fn lifetime_bound=diamond_reversed
+# 'a: 'b, 'a: 'c, 'b: 'd, 'c: 'd — 'a is the longest, 'd is shortest.
+# Flowing 'd into 'a slot requires 'd: 'a; that's not in the closure.
+fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_d_into_a(
+  x: &'d i64,
+  $return: &out &'a i64
+) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- missing bound at call site ----------
+
+# covers: type_kind=fn lifetime_bound=call_site_no_axiom
+# Callee requires 'a: 'b axiom; caller has two refs with unrelated
+# Named regions and no declared bound between them. The instantiation
+# emits constraint Fresh0 outlives Fresh1; the caller's axiom set
+# doesn't justify it. LT-LifetimeMismatch fires.
+fn<'a, 'b: 'a> callee_needs_bound(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    drop y;
+    return
+}
+
+fn<'p, 'q> caller_missing_bound(x: &'p i64, y: &'q i64, $return: &out &'p i64) {
+  ret_out: &out &'p i64;
+  entry:
+    ret_out = &out $return.*;
+    call callee_needs_bound(copy x, copy y, move ret_out);
+    return
+}
+
+# ---------- free region into 'static output slot ----------
+
+# covers: type_kind=fn lifetime_bound=free_into_static
+# Body-local ref (Free region) flowing into a $return slot typed
+# &'static i64. The escape check sees Free→Named(static) where
+# Named(static) maps to Region::Static. The (_, Region::Static)
+# arm in check_constraints silently accepts it. Flag whether the
+# checker catches or misses this.
+fn free_into_static($return: &out &'static i64) {
+  x: i64;
+  r: &i64;
+  entry:
+    x = 42;
+    r = &x;
+    $return.* = copy r;
+    return
+}
+
+# ---------- undeclared bound on struct ----------
+
+# covers: type_kind=struct lifetime_bound=undeclared_bound
+# 'z is not declared as a lifetime param; TC-UndeclaredLifetime fires.
+struct<'a: 'z> BadStruct: Move { r: &'a i64 }
+
+fn<'a> make_bad(_r: &'a i64) {
+  entry:
+    return
+}
+
+# ---------- 'static declared as a lifetime parameter ----------
+
+# covers: type_kind=fn lifetime_bound=static_as_param
+# `'static` is a reserved name — the top of the outlives order and
+# always in scope. Declaring it as a user parameter is rejected with
+# TC-ReservedLifetimeName so the reserved name isn't accidentally
+# re-bound.
+fn<'static: 'a, 'a> static_declared_as_param_fails(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- duplicate lifetime parameter ----------
+
+# covers: type_kind=fn lifetime_bound=duplicate_param
+# Two `'a` declarations in the same parameter list — the second fires
+# TC-DuplicateLifetimeParam. The bounds don't matter for the check.
+fn<'a: 'b, 'a: 'b, 'b> duplicate_lifetime_param_fails(
+  x: &'a i64,
+  $return: &out &'b i64
+) {
+  entry:
+    $return.* = copy x;
+    return
+}

@@ -961,18 +961,44 @@ impl Parser {
         Ok((lifetimes, types))
     }
 
-    /// Parse a `type_params` node (`<'a, T, U: Copy + Drop>`) into
-    /// (lifetime_params, type_params). Side-effects: pushes each
-    /// type-param name into `type_scope` for subsequent map_type calls.
-    fn map_type_params(&self, node: Node) -> Result<(Vec<Lifetime>, Vec<TypeParam>), Diagnostic> {
+    /// Parse a `type_params` node (`<'a, 'b: 'a, T, U: Copy + Drop>`)
+    /// into (lifetime_params, type_params, outlives). Side-effects:
+    /// pushes each type-param name into `type_scope` for subsequent
+    /// map_type calls. Outlives pairs `(subject, must_outlive)` are
+    /// collected from the `'a: 'b + 'c` inline bounds; the tuple
+    /// convention matches `DeclMeta::outlives`.
+    fn map_type_params(
+        &self,
+        node: Node,
+    ) -> Result<(Vec<Lifetime>, Vec<TypeParam>, Vec<(Lifetime, Lifetime)>), Diagnostic> {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
+        let mut outlives = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "lifetime" => {
-                    let name = self.get_text(child).trim_start_matches('\'').to_string();
-                    lifetimes.push(Lifetime(name));
+                "lifetime_param" => {
+                    // `field('name', $.lifetime)` on the param; every
+                    // `field('bound', $.lifetime)` after `:` is an
+                    // outlives axiom `subject outlives bound`.
+                    let name_node = child.child_by_field_name("name").ok_or_else(|| {
+                        self.diag(child, ParserCode::MalformedCst, "lifetime param missing name")
+                    })?;
+                    let subject = Lifetime(
+                        self.get_text(name_node)
+                            .trim_start_matches('\'')
+                            .to_string(),
+                    );
+                    lifetimes.push(subject.clone());
+                    let mut bcursor = child.walk();
+                    for bound_node in child.children_by_field_name("bound", &mut bcursor) {
+                        let bound = Lifetime(
+                            self.get_text(bound_node)
+                                .trim_start_matches('\'')
+                                .to_string(),
+                        );
+                        outlives.push((subject.clone(), bound));
+                    }
                 }
                 "type_param" => {
                     let name_node = child.child_by_field_name("name").ok_or_else(|| {
@@ -1001,10 +1027,12 @@ impl Parser {
                         span: span_of(child),
                     });
                 }
+                // Other CST children (`<`, `>`, `,`) are literal
+                // punctuation — nothing to map.
                 _ => {}
             }
         }
-        Ok((lifetimes, types))
+        Ok((lifetimes, types, outlives))
     }
 
     /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
@@ -1051,13 +1079,13 @@ impl Parser {
         let mut cursor = node.walk();
         // Populate scope BEFORE walking fields so `t: T` resolves to
         // `Param`. Cleared on return so scopes don't leak across decls.
-        let (lifetime_params, type_params) = if let Some(tp_node) = node
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node)?
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
@@ -1092,7 +1120,7 @@ impl Parser {
                 name,
                 name_span,
                 lifetime_params,
-                outlives: vec![], // TODO
+                outlives,
                 type_params,
                 markers,
             },
@@ -1108,13 +1136,13 @@ impl Parser {
         let name_span = span_of(name_node);
 
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) = node
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node)?
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
@@ -1149,7 +1177,7 @@ impl Parser {
                 name,
                 name_span,
                 lifetime_params,
-                outlives: vec![], // TODO
+                outlives,
                 type_params,
                 markers,
             },
@@ -1175,13 +1203,13 @@ impl Parser {
         // params, locals, or body — same as struct/enum. Both extern and
         // defined functions can have type parameters.
         let mut tp_cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) = node
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut tp_cursor)
             .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node)?
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         // Attach `in_function(name)` to any error bubbling from below —
@@ -1268,7 +1296,7 @@ impl Parser {
                 name,
                 name_span,
                 lifetime_params,
-                outlives: vec![],
+                outlives,
                 type_params,
                 markers: trivial_markers(),
             },

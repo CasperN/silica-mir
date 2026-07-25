@@ -1,0 +1,159 @@
+fn<'a, 's0> plain_input_no_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a, 'b: 'a, 's0> single_bound_flow(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    drop y;
+    return
+}
+
+fn<'a, 'b: 'a, 'c: 'b, 's0> chain_bound_flow(x: & 'a i64, y: & 'b i64, z: & 'c i64, $return: &out 's0 & 'c i64) {
+  entry:
+    $return.* = copy z;
+    unborrow $return;
+    unborrow z;
+    drop x;
+    drop y;
+    return
+}
+
+fn<'a, 's0> static_source(s: & 'static i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy s;
+    unborrow $return;
+    unborrow s;
+    return
+}
+
+fn<'a: 'static, 's0> requires_static(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd, 's0> deep_chain_forward(x: & 'e i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'b, 'b: 'a, 's0> cycle_a_into_b(x: & 'a i64, $return: &out 's0 & 'b i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'b, 'b: 'a, 's0> cycle_b_into_a(x: & 'b i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd, 's0> diamond_a_into_d(x: & 'a i64, $return: &out 's0 & 'd i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_b(x: & 'a i64, $return: &out 's0 & 'b i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_c(x: & 'a i64, $return: &out 's0 & 'c i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'static, 's0> static_only_rhs(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a: 'a, 's0> reflexive_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+struct<'a, 'b: 'a> Wrap2: Move {
+  outer: & 'a i64
+  inner: & 'b i64
+}
+
+fn<'a, 'b: 'a, 's0> make_wrap2(x: & 'a i64, y: & 'b i64, $return: &out 's0 Wrap2<'a, 'b>) {
+  entry:
+    $return.*.outer = copy x;
+    unborrow x;
+    $return.*.inner = copy y;
+    unborrow $return;
+    unborrow y;
+    return
+}
+
+fn<'a, 'b: 'a, 's0> read_wrap2(w: Wrap2<'a, 'b>, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy w.outer;
+    unborrow $return;
+    unborrow w.outer;
+    drop w.inner;
+    return
+}
+
+enum<'a, 'b: 'a> Either2: Move {
+  L: & 'a i64
+  R: & 'b i64
+}
+
+fn<'a, 'b: 'a, 's0> make_either2_l(x: & 'a i64, $return: &out 's0 Either2<'a, 'b>) {
+  entry:
+    $return.* = Either2::L(copy x);
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'a, 'b: 'a, 's0> make_either2_r(y: & 'b i64, $return: &out 's0 Either2<'a, 'b>) {
+  entry:
+    $return.* = Either2::R(copy y);
+    unborrow $return;
+    unborrow y;
+    return
+}
+
+fn<'a: 'static, 's0> static_arg_required(x: & 'static i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}

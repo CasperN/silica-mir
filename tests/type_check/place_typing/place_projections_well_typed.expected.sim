@@ -67,7 +67,7 @@ fn<'s0> deref_of_ref(r: & 's0 i64) {
     return
 }
 
-fn<'s0, 's1> deref_of_nested_ref(r: &mut 's0 &mut 's1 i64) {
+fn<'s0: 's1, 's1> deref_of_nested_ref(r: &mut 's0 &mut 's1 i64) {
   a: i64;
   entry:
     a = copy r.*.*;

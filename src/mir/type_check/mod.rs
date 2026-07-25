@@ -54,6 +54,12 @@ pub enum TypeCheckCode {
     /// list. Fires on struct field, enum variant, fn param, local,
     /// or type-argument positions.
     UndeclaredLifetime,
+    /// A decl declares `'static` as a lifetime parameter — `'static`
+    /// is a reserved name that's always in scope and cannot be
+    /// re-bound.
+    ReservedLifetimeName,
+    /// A decl's lifetime parameter list contains the same name twice.
+    DuplicateLifetimeParam,
 
     // ---- Statement typing ----
     /// LHS and RHS of an assignment have incompatible types.

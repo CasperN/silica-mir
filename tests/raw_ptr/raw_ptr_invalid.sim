@@ -1,21 +1,20 @@
 # Raw pointer operations rejected by the type-checker.
 #
-# Three distinct violation kinds are covered: a pointee type mismatch
-# when creating a raw pointer, a non-Copy deref used in a copy operand,
-# and a deref applied to a non-pointer type.
-#
 # Cells under test:
 #
-#   fn                          DiagCode                    trigger
-#   ────────────────────────    ──────────────────────────  ──────────────────────────────────
-#   pointee_type_mismatch       TC-AssignmentTypeMismatch   &raw i32 assigned to *i64 local
-#   copy_of_non_copy_pointee    SUB-CopyOfNonCopy           copy deref of *Linear (non-Copy)
-#   deref_of_non_pointer        TC-DerefOfNonPointer        deref applied to plain i64 local
+#   fn                              DiagCode                       trigger
+#   ────────────────────────────    ─────────────────────────────  ──────────────────────────────────
+#   pointee_type_mismatch           TC-AssignmentTypeMismatch      &raw i32 assigned to *i64 local
+#   copy_of_non_copy_pointee        SUB-CopyOfNonCopy              copy deref of *Linear (non-Copy)
+#   deref_of_non_pointer            TC-DerefOfNonPointer           deref applied to plain i64 local
+#   ptr_cast_source_not_pointer     TC-PtrCastSourceNotPointer     ptr_cast from non-pointer (i64)
+#   ptr_cast_target_not_pointer     TC-PtrCastTargetNotPointer     ptr_cast to non-pointer (i64)
 
 struct Linear { r: &out i64 }
 
 # ---------- pointee_type_mismatch ----------
 
+# covers: type_kind=raw_ptr op=borrow class=CDM
 # The local `p` has type *i64 but `x` has type i32; `&raw x` produces
 # *i32, which does not match. TC-AssignmentTypeMismatch is fired.
 fn pointee_type_mismatch(x: i32) {
@@ -27,6 +26,7 @@ fn pointee_type_mismatch(x: i32) {
 
 # ---------- copy_of_non_copy_pointee ----------
 
+# covers: type_kind=raw_ptr op=deref_read class=L
 # Linear is not Copy, so `copy p.*` on a *Linear pointer is rejected by
 # the substructural checker. The user must use `move` instead.
 fn copy_of_non_copy_pointee(l: Linear) {
@@ -40,11 +40,38 @@ fn copy_of_non_copy_pointee(l: Linear) {
 
 # ---------- deref_of_non_pointer ----------
 
+# covers: type_kind=scalar op=deref_read class=CDM
 # Applying `.*` to `x: i64` is rejected because i64 is not a pointer
 # type. TC-DerefOfNonPointer names the offending type.
 fn deref_of_non_pointer(x: i64) {
   y: i64;
   entry:
     y = copy x.*;
+    return
+}
+
+# ---------- ptr_cast_source_not_pointer ----------
+
+# covers: type_kind=raw_ptr op=borrow class=CDM
+# ptr_cast requires the source operand to be a reference or raw pointer;
+# using a plain i64 value fires TC-PtrCastSourceNotPointer.
+fn ptr_cast_source_not_pointer(x: i64) {
+  p: *i64;
+  entry:
+    p = ptr_cast(copy x, *i64);
+    return
+}
+
+# ---------- ptr_cast_target_not_pointer ----------
+
+# covers: type_kind=raw_ptr op=borrow class=CDM
+# ptr_cast requires the target type to be a reference or raw pointer;
+# casting to a plain i64 fires TC-PtrCastTargetNotPointer.
+fn ptr_cast_target_not_pointer(x: i64) {
+  r: &i64;
+  y: i64;
+  entry:
+    r = & x;
+    y = ptr_cast(copy r, i64);
     return
 }

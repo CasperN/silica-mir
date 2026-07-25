@@ -14,8 +14,28 @@
 #   copy_semantics                              raw ptr is Copy: copy to second local
 #   no_loan_alongside_mut_borrow                &raw does not conflict with live &mut loan
 #   deref_bypasses_loan_check                   deref *p alongside live &mut to same place
+#   deref_read_copy                             copy deref read through raw ptr (cell 2)
+#   deref_write                                 write through raw ptr deref (cell 3)
+#   deref_move                                  move through raw ptr deref (cell 4)
+#   deref_drop                                  drop through raw ptr deref (cell 5)
+#   ptr_dup                                     raw ptr duplicated via copy (cell 6)
+#   alias_raw_and_shared                        &raw alongside &T — no conflict (cell 7)
+#   alias_raw_and_mut                           &raw alongside &mut — no conflict (cell 7b)
+#   ptr_cast_raw_to_ref                         ptr_cast *T → &T (cell 8)
+#   ptr_cast_ref_to_raw                         ptr_cast &T → *T (cell 9)
+#   raw_ref_uninit                              &raw of uninit place — no init precond (cell 10)
+#   raw_ref_moved                               &raw of moved place — no init precond (cell 11)
+#   struct_raw_ptr_field                        struct Copy+Drop with *i64 field (cell 12)
+#   array_of_raw_ptrs                           [*i64; 3] construction (cell 13)
+#   enum_with_raw_ptr_payload                   Copy+Drop enum with *T payload (cell 14)
+#   pass_raw_ptr_to_call                        *T passed by move to extern call (cell 15)
+#   return_raw_ptr                              *T returned via &out $return (cell 16)
 
 struct Node: Copy + Drop { p: *i64  v: i64 }
+struct PtrStruct: Copy + Drop { p: *i64 }
+enum PtrEnum: Copy + Drop { PtrV: *i64  NullV: unit }
+
+extern fn consume_raw_ptr(p: *i64);
 
 # ---------- creation_scalar ----------
 
@@ -86,5 +106,237 @@ fn deref_bypasses_loan_check(x: i64) {
     p = &raw x;
     y = copy p.*;
     z = copy r.*;
+    return
+}
+
+# ---------- deref_read_copy ----------
+
+# covers: type_kind=raw_ptr op=deref_read class=CDM
+# copy through a raw pointer deref is legal; no init or loan check applies.
+fn deref_read_copy(x: i64) {
+  p: *i64;
+  y: i64;
+  entry:
+    p = &raw x;
+    y = copy p.*;
+    return
+}
+
+# ---------- deref_write ----------
+
+# covers: type_kind=raw_ptr op=deref_write class=CDM
+# Writing through a raw pointer deref is legal in MIR; no loan check.
+fn deref_write(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    p.* = 42i64;
+    return
+}
+
+# ---------- deref_move ----------
+
+# covers: type_kind=raw_ptr op=move class=CDM
+# move through a raw pointer deref is accepted; raw ptrs cross as stable
+# candidates in copy relaxation so move is permitted when unchallenged.
+fn deref_move(x: i64) {
+  p: *i64;
+  y: i64;
+  entry:
+    p = &raw x;
+    y = move p.*;
+    return
+}
+
+# ---------- deref_drop ----------
+
+# covers: type_kind=raw_ptr op=drop class=CDM
+# drop through a raw pointer deref is accepted; the checker does not track
+# init state through raw dereferences, so no obligation is violated.
+fn deref_drop(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    drop p.*;
+    return
+}
+
+# ---------- ptr_dup ----------
+
+# covers: type_kind=raw_ptr op=copy class=CDM
+# Raw pointers are Copy, so the same pointer may be copied into two locals
+# without any substructural violation.
+fn ptr_dup(x: i64) {
+  p: *i64;
+  p1: *i64;
+  p2: *i64;
+  entry:
+    p = &raw x;
+    p1 = copy p;
+    p2 = copy p;
+    return
+}
+
+# ---------- alias_raw_and_shared ----------
+
+# covers: type_kind=raw_ptr op=borrow class=CDM
+# &raw does not create a loan; a simultaneous shared &T borrow and a raw
+# pointer to the same place do not conflict. Reading through both is clean.
+fn alias_raw_and_shared(x: i64) {
+  r: &i64;
+  p: *i64;
+  y: i64;
+  z: i64;
+  entry:
+    r = & x;
+    p = &raw x;
+    y = copy p.*;
+    z = copy r.*;
+    return
+}
+
+# ---------- alias_raw_and_mut ----------
+
+# covers: type_kind=raw_ptr op=borrow class=CDM
+# &raw alongside a live &mut loan is accepted — &raw adds no loan of its
+# own. Reading through both the raw deref and the mut ref is clean.
+fn alias_raw_and_mut(x: i64) {
+  r: &mut i64;
+  p: *i64;
+  y: i64;
+  z: i64;
+  entry:
+    r = &mut x;
+    p = &raw x;
+    y = copy p.*;
+    z = copy r.*;
+    return
+}
+
+# ---------- ptr_cast_raw_to_ref ----------
+
+# covers: type_kind=raw_ptr op=borrow class=CDM
+# ptr_cast from *T to &T is accepted; the resulting shared reference
+# participates in normal loan tracking from that point on.
+fn ptr_cast_raw_to_ref(x: i64) {
+  p: *i64;
+  r: &i64;
+  y: i64;
+  entry:
+    p = &raw x;
+    r = ptr_cast(copy p, &i64);
+    y = copy r.*;
+    return
+}
+
+# ---------- ptr_cast_ref_to_raw ----------
+
+# covers: type_kind=raw_ptr op=borrow class=CDM
+# ptr_cast from &T to *T is accepted; the raw pointer carries no loan.
+fn ptr_cast_ref_to_raw(x: i64) {
+  r: &i64;
+  p: *i64;
+  y: i64;
+  entry:
+    r = & x;
+    p = ptr_cast(copy r, *i64);
+    y = copy p.*;
+    return
+}
+
+# ---------- raw_ref_uninit ----------
+
+# covers: type_kind=raw_ptr op=borrow init=NeverInit class=CDM
+# &raw imposes no initialization precondition on the source place;
+# taking a raw pointer to an uninit local is accepted.
+fn raw_ref_uninit(x: i64) {
+  uninit_val: i64;
+  p: *i64;
+  entry:
+    p = &raw uninit_val;
+    return
+}
+
+# ---------- raw_ref_moved ----------
+
+# covers: type_kind=raw_ptr op=borrow init=Moved class=CDM
+# &raw imposes no initialization precondition; taking a raw pointer to a
+# moved place is accepted even though the pointee is logically invalid.
+fn raw_ref_moved(x: i64) {
+  moved_val: i64;
+  p: *i64;
+  q: i64;
+  entry:
+    moved_val = copy x;
+    q = move moved_val;
+    p = &raw moved_val;
+    return
+}
+
+# ---------- struct_raw_ptr_field ----------
+
+# covers: type_kind=raw_ptr class=CDM type_kind=struct
+# A struct declared Copy+Drop whose only field is *i64 is accepted;
+# the substructural composition check passes because *i64 is Copy+Drop.
+fn struct_raw_ptr_field(x: i64) {
+  s: PtrStruct;
+  s2: PtrStruct;
+  entry:
+    s.p = &raw x;
+    s2 = copy s;
+    return
+}
+
+# ---------- array_of_raw_ptrs ----------
+
+# covers: type_kind=raw_ptr class=CDM type_kind=array
+# [*i64; 3] construction slot-by-slot is accepted; each element is *i64.
+fn array_of_raw_ptrs(x: i64) {
+  arr: [*i64; 3];
+  entry:
+    arr[0] = &raw x;
+    arr[1] = &raw x;
+    arr[2] = &raw x;
+    return
+}
+
+# ---------- enum_with_raw_ptr_payload ----------
+
+# covers: type_kind=raw_ptr class=CDM type_kind=enum
+# A Copy+Drop enum with a *T payload variant is accepted; moving a *i64
+# into the variant is legal since *i64 is Move.
+fn enum_with_raw_ptr_payload(x: i64) {
+  e: PtrEnum;
+  p: *i64;
+  entry:
+    p = &raw x;
+    e = PtrEnum::PtrV(move p);
+    return
+}
+
+# ---------- pass_raw_ptr_to_call ----------
+
+# covers: type_kind=raw_ptr op=call_arg class=CDM boundary=call
+# Passing a *T by move to an extern call is clean; no special unsafe
+# annotation is required at the MIR level.
+fn pass_raw_ptr_to_call(x: i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    call consume_raw_ptr(move p);
+    return
+}
+
+# ---------- return_raw_ptr ----------
+
+# covers: type_kind=raw_ptr op=return_out class=CDM boundary=return_out
+# Returning a *T via an &out $return parameter is clean.
+fn<'s0> return_raw_ptr(x: i64, $return: &out 's0 *i64) {
+  p: *i64;
+  entry:
+    p = &raw x;
+    $return.* = move p;
+    unborrow $return;
+    drop x;
     return
 }

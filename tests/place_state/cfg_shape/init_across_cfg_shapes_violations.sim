@@ -10,15 +10,34 @@
 # cause) matrix. A regression pins the wrong shape or lets an invalid
 # read through.
 #
-#   fn                                shape           disagreement cause
-#   branch_join_disagreement          branch/merge    one arm inits, the other doesn't
-#   move_one_branch_read_at_merge     branch/merge    one arm moves out, the other leaves Init
-#   loop_body_reads_before_writing    natural loop    first-iter NeverInit vs backedge Init
+#   fn                                     shape               disagreement cause
+#   branch_join_disagreement               branch/merge        one arm inits, the other doesn't
+#   move_one_branch_read_at_merge          branch/merge        one arm moves out, the other leaves Init
+#   loop_body_reads_before_writing         natural loop        first-iter NeverInit vs backedge Init
+#   if_one_arm_init_read_MatL              branch/merge        struct field Init on one arm (non-Drop)
+#   if_one_arm_init_read_MatM              branch/merge        struct field Init on one arm (Move)
+#   nested_diamond_diverged_MatM           nested diamond      inner move creates Diverged; outer read fires
+#   switch3_scalar_two_of_three            switchEnum 3-arm    scalar inited on 2 arms, skipped on 1
+#   switch3_struct_field_two_of_three      switchEnum 3-arm    non-Drop struct field Diverged at merge
+#   switch3_array_two_of_three             switchEnum 3-arm    array slots Diverged at merge
+#   loop_move_struct_diverged_backedge     natural loop        Move struct moved in body, Diverged at head
+#   array_slot_one_arm_init                branch/merge        array slot Init on one arm
+#   array_slot_move_one_arm                branch/merge        array slot Moved on one arm, Init on other
+#   struct_with_ref_field_one_arm          branch/merge        struct with &mut field init on one arm
+#   nested_if_scalar_diverged_propagates   nested diamond      scalar Diverged inner path propagates out
 
 struct M: Drop + Move { value: i64 }
+struct MatL { v: i64 }
+struct MatM: Move { v: i64 }
+struct WithMut: Move { r: &mut i64  n: i64 }
+enum Tri: Copy + Drop { A: unit  B: unit  C: unit }
 
 extern fn consume(y: M);
 extern fn use_num(n: M);
+extern fn take_mat_l_field(n: i64);
+extern fn take_mat_m(x: MatM);
+extern fn use_i64(n: i64);
+extern fn sink(r: &mut i64);
 
 # ---------- branch/merge: only one arm inits x ----------
 
@@ -70,5 +89,265 @@ fn loop_body_reads_before_writing(b: bool) {
     x = 1;
     branch(copy b) [true: body, false: done]
   done:
+    return
+}
+
+# ---------- branch/merge: one arm inits a struct field, other doesn't touch ----------
+
+# covers: class=L op=init cfg=if_one_arm_init type_kind=struct
+# The true arm writes `x.v`; the false arm doesn't. At `merge` the state
+# is Diverged (x.v is Init on one path, NeverInit on the other). The
+# subsequent use fires INIT-UseInconsistent.
+fn if_one_arm_init_read_MatL(b: bool) {
+  x: MatL;
+  n: i64;
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    goto merge
+  merge:
+    n = move x.v;
+    call take_mat_l_field(move n);
+    return
+}
+
+# covers: class=M op=init cfg=if_one_arm_init type_kind=struct
+fn if_one_arm_init_read_MatM(b: bool) {
+  x: MatM;
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    goto merge
+  merge:
+    call take_mat_m(move x);
+    return
+}
+
+# ---------- nested diamond: inner move → outer path Diverged → use fires ----------
+
+# covers: class=M op=move cfg=nested_if type_kind=struct
+# Inner diamond moves `x` on one sub-arm. The outer merge sees Diverged
+# (x moved on one path, Init on the other). Unconditional use at
+# outer_merge fires INIT-UseInconsistent.
+fn nested_diamond_diverged_MatM(x: MatM, a: bool, b: bool) {
+  entry:
+    branch(copy a) [true: outer_t, false: outer_f]
+  outer_t:
+    branch(copy b) [true: inner_t, false: inner_f]
+  inner_t:
+    call take_mat_m(move x);
+    goto inner_merge
+  inner_f:
+    goto inner_merge
+  inner_merge:
+    goto outer_merge
+  outer_f:
+    goto outer_merge
+  outer_merge:
+    call take_mat_m(move x);
+    return
+}
+
+# ---------- switchEnum 3-arm: scalar inited on 2 of 3, read at merge ----------
+
+# covers: init=Diverged cfg=match3 type_kind=scalar-Drop-i64 class=two_of_three_arms
+# Drop-elab drops x on the two Init arms before merge; x is NeverInit on all
+# three paths at merge. UseBeforeInit fires (not UseInconsistent) because
+# drop-elab has already normalized the Init⊔NeverInit disagreement.
+fn switch3_scalar_two_of_three(t: Tri) {
+  x: i64;
+  y: i64;
+  entry:
+    switchEnum(t) [A: a_arm, B: b_arm, C: c_arm]
+  a_arm:
+    x = 1;
+    goto merge
+  b_arm:
+    x = 2;
+    goto merge
+  c_arm:
+    goto merge
+  merge:
+    y = copy x;
+    return
+}
+
+# ---------- switchEnum 3-arm: non-Drop struct field Diverged at merge ----------
+
+# covers: init=Diverged cfg=match3 type_kind=non_drop_struct class=two_of_three_arms field_diverged
+# No drop-elab for non-Drop fields; Diverged stays at merge; UseInconsistent fires.
+fn switch3_struct_field_two_of_three(t: Tri) {
+  p: MatL;
+  n: i64;
+  entry:
+    switchEnum(t) [A: a_arm, B: b_arm, C: c_arm]
+  a_arm:
+    p.v = 1;
+    goto merge
+  b_arm:
+    p.v = 2;
+    goto merge
+  c_arm:
+    goto merge
+  merge:
+    n = move p.v;
+    call take_mat_l_field(move n);
+    return
+}
+
+# ---------- switchEnum 3-arm: array slots Diverged when C arm skips ----------
+
+# covers: init=Diverged cfg=match3 type_kind=array class=two_of_three_arms field_diverged=all_slots
+# A and B arms both init the full array. C arm skips. Drop-elab drops the whole
+# array on A and B edges. At merge all slots are NeverInit → UseBeforeInit on each read.
+fn switch3_array_two_of_three(t: Tri) {
+  a: [i64; 2];
+  n: i64;
+  entry:
+    switchEnum(t) [A: a_arm, B: b_arm, C: c_arm]
+  a_arm:
+    a[0] = 1;
+    a[1] = 10;
+    goto merge
+  b_arm:
+    a[0] = 2;
+    a[1] = 20;
+    goto merge
+  c_arm:
+    goto merge
+  merge:
+    n = copy a[0];
+    call use_i64(move n);
+    n = move a[1];
+    call use_i64(move n);
+    return
+}
+
+# ---------- natural loop: Move struct moved in body, Diverged at head ----------
+
+# covers: init=Diverged cfg=loop type_kind=Move-struct class=loop_move_backedge
+# x is Init at entry. Body consumes x. At head join: Init(entry) ⊔ Moved(backedge).
+# MatM is Move but not Drop, so drop-elab inserts nothing on the Init arm.
+# Diverged persists at head; body reads x → UseInconsistent.
+# At done: x is Diverged → ReturnValueLeak (could be Init on the zero-iteration path).
+fn loop_move_struct_diverged_backedge(b: bool) {
+  x: MatM;
+  entry:
+    x.v = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call take_mat_m(move x);
+    goto head
+  done:
+    return
+}
+
+# ---------- branch/merge: array slot Init on one arm, NeverInit on other ----------
+
+# covers: init=Diverged cfg=if type_kind=array class=one_arm_init field_diverged=slot0
+# Both slots Init on t arm. Drop-elab drops the whole array on the t→merge edge.
+# At merge array is fully NeverInit → UseBeforeInit.
+fn array_slot_one_arm_init(b: bool) {
+  a: [i64; 2];
+  n: i64;
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    a[0] = 1;
+    a[1] = 2;
+    goto merge
+  f:
+    goto merge
+  merge:
+    n = copy a[0];
+    call use_i64(move n);
+    return
+}
+
+# ---------- branch/merge: array slot Moved on one arm, Init on other ----------
+
+# covers: init=Diverged cfg=if type_kind=array class=move_one_arm field_diverged=slot1
+# Both arms init a[0] and a[1]. t arm then moves a[1] out. At merge a[1] is
+# Moved ⊔ Init = Diverged. No drop-elab for Moved⊔Init (the Init side would
+# need a drop, but the elab walks the Init-predecessor edge). UseInconsistent
+# fires. ReturnValueLeak also fires because a[1] is Diverged and not consumed.
+fn array_slot_move_one_arm(b: bool) {
+  a: [i64; 2];
+  n: i64;
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    a[0] = 1;
+    a[1] = 10;
+    n = move a[1];
+    call use_i64(move n);
+    goto merge
+  f:
+    a[0] = 2;
+    a[1] = 20;
+    goto merge
+  merge:
+    n = copy a[1];
+    call use_i64(move n);
+    return
+}
+
+# ---------- branch/merge: struct with &mut field init on one arm ----------
+
+# covers: init=Diverged cfg=if type_kind=struct_with_ref class=one_arm_field_init
+# t arm binds s.r to &mut x and sets s.n. f arm skips. At merge s.n is
+# Diverged (Init ⊔ NeverInit for non-Drop-per-se integer field inside Move struct).
+# Drop-elab splits the t→merge edge to handle s.r obligation; the split-edge
+# check also fires UseBeforeInit because s is NeverInit on f's path at that edge.
+fn struct_with_ref_field_one_arm(b: bool, x: i64) {
+  s: WithMut;
+  n: i64;
+  entry:
+    branch(copy b) [true: t, false: f]
+  t:
+    s.r = &mut x;
+    s.n = 1;
+    goto merge
+  f:
+    goto merge
+  merge:
+    n = copy s.n;
+    call use_i64(move n);
+    return
+}
+
+# ---------- nested diamond: scalar Diverged inner path propagates to outer read ----------
+
+# covers: init=Diverged cfg=nested_if type_kind=scalar-Drop-i64 class=nested_diverged_single_report
+# inner_t inits x; inner_f skips. outer_t covers the inner diamond; outer_f inits x.
+# At outer_merge: Diverged(via outer_t) ⊔ Init(outer_f). Drop-elab normalizes
+# both paths to NeverInit. A single UseBeforeInit fires at the outer_merge read.
+fn nested_if_scalar_diverged_propagates(a: bool, b: bool) {
+  x: i64;
+  y: i64;
+  entry:
+    branch(copy a) [true: outer_t, false: outer_f]
+  outer_t:
+    branch(copy b) [true: inner_t, false: inner_f]
+  inner_t:
+    x = 10;
+    goto inner_merge
+  inner_f:
+    goto inner_merge
+  inner_merge:
+    goto outer_merge
+  outer_f:
+    x = 20;
+    goto outer_merge
+  outer_merge:
+    y = copy x;
     return
 }

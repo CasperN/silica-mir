@@ -66,9 +66,13 @@ impl RegionCtx {
 
     /// Region for a specific `TypeKind::Ref(_, lt_opt, _)`. `Some(lt)` →
     /// Named; `None` → Free. Callers usually only see `Some` after
-    /// elision has run on signature-position types.
+    /// elision has run on signature-position types. The reserved name
+    /// `'static` maps to `Region::Static` — the top of the outlives
+    /// order — so `&'static T` participates in constraint solving as
+    /// the longest-lived region.
     pub fn region_for_ref(&self, lt_opt: &Option<Lifetime>) -> Region {
         match lt_opt {
+            Some(lt) if lt.0 == "static" => Region::Static,
             Some(lt) => Region::Named(lt.clone()),
             None => self.fresh(),
         }

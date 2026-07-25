@@ -190,6 +190,134 @@ error: at 247:5: [SUB-DropOfNonDrop] In function 'drop_op_MatCM', block 'entry':
  248 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
+error: at 291:5: [SUB-MoveOfNonMove] In function 'if_both_move_MatL', block 't': cannot move non-Move type MatL
+     |
+ 290 |   t:
+ 291 |     call take_mat_l(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 292 |     goto done
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 294:5: [SUB-MoveOfNonMove] In function 'if_both_move_MatL', block 'f': cannot move non-Move type MatL
+     |
+ 293 |   f:
+ 294 |     call take_mat_l(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 295 |     goto done
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 304:5: [SUB-MoveOfNonMove] In function 'if_both_move_C', block 't': cannot move non-Move type C
+     |
+ 303 |   t:
+ 304 |     call take_mat_c(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 305 |     goto done
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 307:5: [SUB-MoveOfNonMove] In function 'if_both_move_C', block 'f': cannot move non-Move type C
+     |
+ 306 |   f:
+ 307 |     call take_mat_c(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 308 |     goto done
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 317:5: [SUB-MoveOfNonMove] In function 'if_both_move_D', block 't': cannot move non-Move type D
+     |
+ 316 |   t:
+ 317 |     call take_mat_d(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 318 |     goto done
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 320:5: [SUB-MoveOfNonMove] In function 'if_both_move_D', block 'f': cannot move non-Move type D
+     |
+ 319 |   f:
+ 320 |     call take_mat_d(move x);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 321 |     goto done
+     |
+  hint: linear types cannot be moved out of non-Move contexts
+error: at 364:5: [SUB-DropOfNonDrop] In function 'if_one_arm_drop_MatL', block 't': cannot drop non-Drop type MatL
+     |
+ 363 |   t:
+ 364 |     drop x;
+     |     ^^^^^^
+ 365 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 375:5: [SUB-DropOfNonDrop] In function 'if_one_arm_drop_MatM', block 't': cannot drop non-Drop type MatM
+     |
+ 374 |   t:
+ 375 |     drop x;
+     |     ^^^^^^
+ 376 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 393:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatL', block 't': cannot drop non-Drop type MatL
+     |
+ 392 |   t:
+ 393 |     drop x;
+     |     ^^^^^^
+ 394 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 396:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatL', block 'f': cannot drop non-Drop type MatL
+     |
+ 395 |   f:
+ 396 |     drop x;
+     |     ^^^^^^
+ 397 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 406:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatM', block 't': cannot drop non-Drop type MatM
+     |
+ 405 |   t:
+ 406 |     drop x;
+     |     ^^^^^^
+ 407 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 409:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatM', block 'f': cannot drop non-Drop type MatM
+     |
+ 408 |   f:
+ 409 |     drop x;
+     |     ^^^^^^
+ 410 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 419:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatC', block 't': cannot drop non-Drop type MatC
+     |
+ 418 |   t:
+ 419 |     drop x;
+     |     ^^^^^^
+ 420 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 422:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatC', block 'f': cannot drop non-Drop type MatC
+     |
+ 421 |   f:
+ 422 |     drop x;
+     |     ^^^^^^
+ 423 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 432:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatCM', block 't': cannot drop non-Drop type MatCM
+     |
+ 431 |   t:
+ 432 |     drop x;
+     |     ^^^^^^
+ 433 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
+error: at 435:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatCM', block 'f': cannot drop non-Drop type MatCM
+     |
+ 434 |   f:
+ 435 |     drop x;
+     |     ^^^^^^
+ 436 |     goto done
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
 error: at 66:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  61 | 
@@ -392,5 +520,65 @@ error: at 278:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatCM', blo
  278 |     return
      |     ^^^^^^
  279 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 341:5: [INIT-ReturnValueLeak] In function 'if_one_arm_move_MatM', block 'done': value 'x' of type MatM is not consumed at return
+     |
+ 331 | # ============================================================
+ 332 | fn if_one_arm_move_MatM(x: MatM, cond: bool) {
+     |                         ------- variable declared here
+ 333 |   entry:
+     |
+     | ...
+     |
+ 340 |   done:
+ 341 |     return
+     |     ^^^^^^
+ 342 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 352:5: [INIT-ReturnValueLeak] In function 'if_one_arm_move_MatCM', block 'done': value 'x' of type MatCM is not consumed at return
+     |
+ 342 | }
+ 343 | fn if_one_arm_move_MatCM(x: MatCM, cond: bool) {
+     |                          -------- variable declared here
+ 344 |   entry:
+     |
+     | ...
+     |
+ 351 |   done:
+ 352 |     return
+     |     ^^^^^^
+ 353 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 369:5: [INIT-ReturnValueLeak] In function 'if_one_arm_drop_MatL', block 'done': value 'x' of type MatL is not consumed at return
+     |
+ 359 | # ============================================================
+ 360 | fn if_one_arm_drop_MatL(x: MatL, cond: bool) {
+     |                         ------- variable declared here
+ 361 |   entry:
+     |
+     | ...
+     |
+ 368 |   done:
+ 369 |     return
+     |     ^^^^^^
+ 370 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 380:5: [INIT-ReturnValueLeak] In function 'if_one_arm_drop_MatM', block 'done': value 'x' of type MatM is not consumed at return
+     |
+ 370 | }
+ 371 | fn if_one_arm_drop_MatM(x: MatM, cond: bool) {
+     |                         ------- variable declared here
+ 372 |   entry:
+     |
+     | ...
+     |
+ 379 |   done:
+ 380 |     return
+     |     ^^^^^^
+ 381 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

@@ -252,13 +252,13 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) = node
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope)?
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         let markers = if let Some(markers_node) =
@@ -289,6 +289,7 @@ impl Parser {
         Ok(StructDecl {
             name,
             lifetime_params,
+            outlives,
             type_params,
             markers,
             fields,
@@ -305,13 +306,13 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) = node
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope)?
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         let markers = if let Some(markers_node) =
@@ -342,6 +343,7 @@ impl Parser {
         Ok(EnumDecl {
             name,
             lifetime_params,
+            outlives,
             type_params,
             markers,
             variants,
@@ -376,13 +378,13 @@ impl Parser {
 
         let mut scope: TypeScope = BTreeSet::new();
         let mut cursor = node.walk();
-        let (lifetime_params, type_params) = if let Some(tp_node) = node
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
             self.map_type_params(tp_node, &mut scope).map_err(with_fn)?
         } else {
-            (Vec::new(), Vec::new())
+            (Vec::new(), Vec::new(), Vec::new())
         };
 
         let mut params = Vec::new();
@@ -426,6 +428,7 @@ impl Parser {
             abi,
             abi_span,
             lifetime_params,
+            outlives,
             type_params,
             params,
             ret_ty,
@@ -585,23 +588,43 @@ impl Parser {
         }
     }
 
-    /// Parse a `type_params` node (`<'a, T, U: Copy + Drop>`) into
-    /// (lifetime_params, type_params). Populates `scope` with each
-    /// type-param name so subsequent `map_type` calls see them as
-    /// `Param`s.
+    /// Parse a `type_params` node (`<'a, 'b: 'a, T, U: Copy + Drop>`)
+    /// into (lifetime_params, type_params, outlives). Populates
+    /// `scope` with each type-param name so subsequent `map_type`
+    /// calls see them as `Param`s. Outlives pairs
+    /// `(subject, must_outlive)` are collected from the `'a: 'b + 'c`
+    /// inline bounds; the tuple convention matches
+    /// `DeclMeta::outlives` at the MIR side.
     fn map_type_params(
         &self,
         node: Node,
         scope: &mut TypeScope,
-    ) -> Result<(Vec<Lifetime>, Vec<TypeParam>), Diagnostic> {
+    ) -> Result<(Vec<Lifetime>, Vec<TypeParam>, Vec<(Lifetime, Lifetime)>), Diagnostic> {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
+        let mut outlives = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
-                "lifetime" => {
-                    let name = self.get_text(child).trim_start_matches('\'').to_string();
-                    lifetimes.push(Lifetime(name));
+                "lifetime_param" => {
+                    let name_node = child.child_by_field_name("name").ok_or_else(|| {
+                        self.diag(child, ParserCode::MalformedCst, "lifetime param missing name")
+                    })?;
+                    let subject = Lifetime(
+                        self.get_text(name_node)
+                            .trim_start_matches('\'')
+                            .to_string(),
+                    );
+                    lifetimes.push(subject.clone());
+                    let mut bcursor = child.walk();
+                    for bound_node in child.children_by_field_name("bound", &mut bcursor) {
+                        let bound = Lifetime(
+                            self.get_text(bound_node)
+                                .trim_start_matches('\'')
+                                .to_string(),
+                        );
+                        outlives.push((subject.clone(), bound));
+                    }
                 }
                 "type_param" => {
                     let name_node = child.child_by_field_name("name").ok_or_else(|| {
@@ -630,10 +653,12 @@ impl Parser {
                         span: span_of(child),
                     });
                 }
+                // Other CST children (`<`, `>`, `,`) are literal
+                // punctuation — nothing to map.
                 _ => {}
             }
         }
-        Ok((lifetimes, types))
+        Ok((lifetimes, types, outlives))
     }
 
     /// Parse a `type_args` node (`<'a, T, U>`) into (lifetime_args, type_args).

@@ -30,6 +30,19 @@ enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
 # Any instantiation of Box<Linear> or Option<Linear> fails the bound check.
 struct Linear { x: i64 }
 
+# ── Generic shells for marker × param coverage (invalid side) ────────
+struct<T: Copy> BoxC: Copy { inner: T }
+struct<T: Drop> BoxD: Drop { inner: T }
+struct<T: Move> BoxM: Move { inner: T }
+struct<T: Copy + Drop> BoxCD: Copy + Drop { inner: T }
+struct<T: Copy + Drop> OuterBox: Copy + Drop { inner: BoxCD<T> }
+
+# ── Material types for use-site violations ───────────────────────────
+struct MatL { x: i64 }
+struct MatC: Copy { x: i64 }
+struct MatD: Drop { x: i64 }
+struct MatM: Move { x: i64 }
+
 # ── Decl-side composition violations (COMP-*) ────────────────────────
 
 # T has no bounds, so class_of(T) is empty. Claiming Copy fails.
@@ -44,6 +57,36 @@ struct<T: Move> ClaimsCopyFromMove: Copy { inner: T }
 # Generic enum: same rule as struct fields. T has no bounds, so the
 # Copy claim on the enum is unsatisfied by variant A's payload type T.
 enum<T> ClaimsCopyEnum: Copy { A: T  B: unit }
+
+# covers: type_kind=struct class=Drop op=composition bound=T:Drop (missing Copy)
+# T:Drop only; claiming Copy+Drop — COMP-CopyMarkerNotSatisfied.
+struct<T: Drop> BoxBad_DropClaimsCopy: Copy + Drop { inner: T }
+
+# covers: type_kind=struct class=Copy op=composition bound=T:Copy (missing Drop)
+# T:Copy only; claiming Copy+Drop — COMP-DropMarkerNotSatisfied.
+struct<T: Copy> BoxBad_CopyClaimsDrop: Copy + Drop { inner: T }
+
+# covers: type_kind=struct class=Move op=composition bound=T:Move (missing Copy)
+# T:Move; claiming Copy — COMP-CopyMarkerNotSatisfied.
+struct<T: Move> BoxBad_MoveClaimsCopy: Copy { inner: T }
+
+# covers: type_kind=struct class=Move op=composition bound=T:Move (missing Drop)
+# T:Move; claiming Drop — COMP-DropMarkerNotSatisfied.
+struct<T: Move> BoxBad_MoveClaimsDrop: Drop { inner: T }
+
+# covers: type_kind=struct class=Copy op=composition bound=none
+# No bound; claiming Copy — COMP-CopyMarkerNotSatisfied.
+struct<T> UnboundedBox_ClaimsCopy: Copy { inner: T }
+
+# covers: type_kind=struct class=Drop op=composition bound=none
+struct<T> UnboundedBox_ClaimsDrop: Drop { inner: T }
+
+# covers: type_kind=struct class=Move op=composition bound=none
+struct<T> UnboundedBox_ClaimsMove: Move { inner: T }
+
+# covers: type_kind=struct class=Copy op=composition bound=T:Copy (no Move)
+# Copy alone does not imply Move — COMP-MoveMarkerNotSatisfied.
+struct<T: Copy> BoxBad_CopyClaimsMove: Move { inner: T }
 
 # ── Use-site bound violations (TC-InvalidDeclaredType) ───────────────
 
@@ -71,6 +114,35 @@ fn<U: Move> option_of_out(x: Option<&out U>) {
 # Nested violation at inner layer: Option<Linear> fails Option's T:
 # Copy+Drop bound before the outer Box is even evaluated.
 struct DeepBadBox { field: Box<Option<Linear>> }
+
+# ── Use-site: BoxC<X> violations — X must be Copy ────────────────────
+# covers: type_kind=struct class=Copy op=use_site_bound bound=MatL:none
+struct UseBoxC_MatL { b: BoxC<MatL> }
+# covers: type_kind=struct class=Copy op=use_site_bound bound=MatD:Drop (not Copy)
+struct UseBoxC_MatD { b: BoxC<MatD> }
+# covers: type_kind=struct class=Copy op=use_site_bound bound=MatM:Move (not Copy)
+struct UseBoxC_MatM { b: BoxC<MatM> }
+
+# ── Use-site: BoxD<X> violations — X must be Drop ────────────────────
+# covers: type_kind=struct class=Drop op=use_site_bound bound=MatL:none
+struct UseBoxD_MatL { b: BoxD<MatL> }
+# covers: type_kind=struct class=Drop op=use_site_bound bound=MatC:Copy (not Drop)
+struct UseBoxD_MatC { b: BoxD<MatC> }
+# covers: type_kind=struct class=Drop op=use_site_bound bound=MatM:Move (not Drop)
+struct UseBoxD_MatM { b: BoxD<MatM> }
+
+# ── Use-site: BoxM<X> violations — X must be Move ────────────────────
+# covers: type_kind=struct class=Move op=use_site_bound bound=MatL:none
+struct UseBoxM_MatL { b: BoxM<MatL> }
+# covers: type_kind=struct class=Move op=use_site_bound bound=MatC:Copy (not Move)
+# Copy alone does not imply Move — silent hole risk.
+struct UseBoxM_MatC { b: BoxM<MatC> }
+# covers: type_kind=struct class=Move op=use_site_bound bound=MatD:Drop (not Move)
+struct UseBoxM_MatD { b: BoxM<MatD> }
+
+# ── Use-site: nested Param substitution violation ─────────────────────
+# covers: type_kind=struct op=nested_param_subst class=Copy+Drop bound=MutRef:Drop+Move
+struct UseOuter_MutRef { b: OuterBox<&mut i64> }
 
 fn main() {
   entry:

@@ -22,9 +22,14 @@
 #   move_reinit_move_cycle               straight-line               Init -> Moved -> Init -> Moved cycle on a local
 #   mut_ref_writeback_cycle              straight-line via *r        (cur, post) cycle through a pointee
 
+struct MatL { v: i64 }
+struct MatM: Move { v: i64 }
+struct MatD: Drop { v: i64 }
+
 extern fn noop();
 extern fn sink(r: &mut i64);
 extern fn use_num(n: i64);
+extern fn take_mat_m(x: MatM);
 
 # ---------- branch/merge: both predecessors init the local ----------
 
@@ -190,5 +195,99 @@ fn mut_ref_writeback_cycle(x: i64) {
     r.* = 42;
     call use_num(move y);
     call sink(move r);
+    return
+}
+
+# ---------- branch/merge: both arms init a struct local, then consume after merge ----------
+
+# covers: class=L op=init cfg=if_both_init type_kind=struct
+# Both arms write x.v. The join sees Init on both predecessors so the
+# state at `merge` is Init, and the subsequent field move is legal.
+fn if_both_init_read_MatL(cond: bool) {
+  x: MatL;
+  n: i64;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    n = move x.v;
+    drop n;
+    return
+}
+
+# covers: class=M op=init cfg=if_both_init type_kind=struct
+fn if_both_init_read_MatM(cond: bool) {
+  x: MatM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    call take_mat_m(move x);
+    return
+}
+
+# covers: class=D op=init cfg=if_both_init type_kind=struct
+fn if_both_init_read_MatD(cond: bool) {
+  x: MatD;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    return
+}
+
+# ---------- natural loop: reinit x on every iteration — join converges Init at head ----------
+
+# covers: init=Diverged cfg=loop type_kind=scalar-Drop-i64 class=loop_reinit_clean
+# x is Init before the head. Body consumes x then writes a fresh value. The
+# backedge carries Init back to head; the join sees Init ⊔ Init = Init. Clean.
+fn loop_reinit_scalar(b: bool) {
+  x: i64;
+  entry:
+    x = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    drop x;
+    x = 1;
+    goto head
+  done:
+    call use_num(copy x);
+    return
+}
+
+# covers: init=Diverged cfg=loop type_kind=Move-struct class=loop_reinit_clean
+# Same pattern for a Move-only struct. Move struct is non-Drop so body uses
+# call-consume then reinitializes field-by-field. Head always sees Init; clean.
+fn loop_reinit_struct(b: bool) {
+  x: MatM;
+  entry:
+    x.v = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call take_mat_m(move x);
+    x.v = 1;
+    goto head
+  done:
+    call take_mat_m(move x);
     return
 }

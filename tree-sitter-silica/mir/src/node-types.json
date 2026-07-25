@@ -331,6 +331,32 @@
     }
   },
   {
+    "type": "lifetime_param",
+    "named": true,
+    "fields": {
+      "bound": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "lifetime",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "lifetime",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "local_decl",
     "named": true,
     "fields": {
@@ -857,7 +883,7 @@
       "required": true,
       "types": [
         {
-          "type": "lifetime",
+          "type": "lifetime_param",
           "named": true
         },
         {

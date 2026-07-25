@@ -1,16 +1,30 @@
-error: at 24:5: [TC-AssignmentTypeMismatch] In function 'pointee_type_mismatch', block 'entry': Type mismatch in assignment. LHS is *i64, RHS is *i32
+error: at 23:5: [TC-AssignmentTypeMismatch] In function 'pointee_type_mismatch', block 'entry': Type mismatch in assignment. LHS is *i64, RHS is *i32
     |
- 23 |   entry:
- 24 |     p = &raw x;
+ 22 |   entry:
+ 23 |     p = &raw x;
     |     ^^^^^^^^^^
- 25 |     return
+ 24 |     return
     |
-error: at 48:5: [TC-DerefOfNonPointer] In function 'deref_of_non_pointer', block 'entry': Cannot dereference non-pointer type i64
+error: at 49:5: [TC-DerefOfNonPointer] In function 'deref_of_non_pointer', block 'entry': Cannot dereference non-pointer type i64
     |
- 47 |   entry:
- 48 |     y = copy x.*;
+ 48 |   entry:
+ 49 |     y = copy x.*;
     |     ^^^^^^^^^^^^
- 49 |     return
+ 50 |     return
+    |
+error: at 61:5: [TC-PtrCastSourceNotPointer] In function 'ptr_cast_source_not_pointer', block 'entry': Pointer cast source must be a raw pointer or reference type, found i64
+    |
+ 60 |   entry:
+ 61 |     p = ptr_cast(copy x, *i64);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 62 |     return
+    |
+error: at 75:5: [TC-PtrCastTargetNotPointer] In function 'ptr_cast_target_not_pointer', block 'entry': Pointer cast target must be a raw pointer or reference type, found i64
+    |
+ 74 |     r = & x;
+ 75 |     y = ptr_cast(copy r, i64);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 76 |     return
     |
 error: at 37:5: [SUB-CopyOfNonCopy] In function 'copy_of_non_copy_pointee', block 'entry': cannot copy non-Copy type Linear
     |

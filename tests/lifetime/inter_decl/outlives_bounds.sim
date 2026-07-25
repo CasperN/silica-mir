@@ -1,0 +1,214 @@
+# Signature outlives bounds: `fn<'a, 'b: 'a>` (subject outlives bound).
+#
+# The bound enters the checker as a signature axiom used by the
+# transitive-closure step in check_constraints. A caller-facing ref
+# with region 'a can flow into a slot expecting region 'b if the
+# bound `'a: 'b` (or a chain concluding it) is in scope.
+#
+# `'static` is a reserved lifetime always in scope; `'a: 'static`
+# means "any 'a" (`'static` outlives every 'a — the bound is
+# vacuous but legal), and `'static: 'a` is trivially satisfiable.
+#
+# Cells covered:
+#   fn                        bound shape             expected
+#   plain_input_no_bound      no bound                clean (baseline)
+#   single_bound_flow         'a: 'b, return 'a       clean via axiom
+#   chain_bound_flow          'a: 'b, 'b: 'c, ret 'a  clean via transitive closure
+#   static_source             'static input           clean
+#   static_bound_reflexive    'a: 'static             clean; bound vacuous
+
+# ---------- baseline: no outlives bound, single-input elision ----------
+
+# covers: type_kind=fn lifetime_bound=unbounded
+fn<'a> plain_input_no_bound(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- single outlives bound: 'a: 'b lets 'a flow into 'b slot ----------
+
+# covers: type_kind=fn lifetime_bound=single_outlives op=deref_write
+# Without the bound this fires LT-LifetimeMismatch — see the mirror
+# fixture in outlives_bounds_violations.sim.
+fn<'a, 'b: 'a> single_bound_flow(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    drop y;
+    return
+}
+
+# ---------- chain: 'a: 'b, 'b: 'c ⇒ transitive 'a: 'c ----------
+
+# covers: type_kind=fn lifetime_bound=chain
+# Assign the 'c-region input into the 'c-region return slot — always
+# clean. The transitive closure of the axiom set contains 'a: 'c even
+# though the bound isn't written directly.
+fn<'a, 'b: 'a, 'c: 'b> chain_bound_flow(
+  x: &'a i64,
+  y: &'b i64,
+  z: &'c i64,
+  $return: &out &'c i64
+) {
+  entry:
+    $return.* = copy z;
+    drop x;
+    drop y;
+    return
+}
+
+# ---------- 'static source flows into any Named slot ----------
+
+# covers: type_kind=fn lifetime_bound=static_source op=deref_write
+# 'static is the top of the outlives order; the closure trivially
+# gives 'static outlives 'a for every named 'a. `copy s` (where
+# `s: &'static i64`) into a `&'a i64` slot flows clean.
+fn<'a> static_source(s: &'static i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy s;
+    return
+}
+
+# ---------- 'a: 'static bound (vacuous, but legal) ----------
+
+# covers: type_kind=fn lifetime_bound=static_reflexive
+# `'a: 'static` demands 'a IS 'static (nothing else outlives 'static).
+# A caller with an actual 'static input satisfies this; a Named-region
+# input would fail at the call site (checked in the caller). The decl
+# itself parses and type-checks clean.
+fn<'a: 'static> requires_static(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- deep transitive chain: 'a: 'b: 'c: 'd: 'e ----------
+
+# covers: type_kind=fn lifetime_bound=deep_chain
+# 'e outlives 'a via the chain, so flowing 'e into 'a slot is clean.
+fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd> deep_chain_forward(
+  x: &'e i64,
+  $return: &out &'a i64
+) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- cyclic bounds: 'a ~ 'b ----------
+
+# covers: type_kind=fn lifetime_bound=cyclic
+# 'a: 'b and 'b: 'a — both directions should be clean and the closure
+# must terminate (no infinite loop). Return 'a into 'b slot and vice versa.
+fn<'a: 'b, 'b: 'a> cycle_a_into_b(x: &'a i64, $return: &out &'b i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn<'a: 'b, 'b: 'a> cycle_b_into_a(x: &'b i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- diamond: 'a: 'b, 'a: 'c, 'b: 'd, 'c: 'd ----------
+
+# covers: type_kind=fn lifetime_bound=diamond
+# 'a outlives 'd via either path ('a→'b→'d or 'a→'c→'d).
+fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_a_into_d(
+  x: &'a i64,
+  $return: &out &'d i64
+) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- multiple bounds via '+': 'a: 'b + 'c + 'static ----------
+
+# covers: type_kind=fn lifetime_bound=multi_plus
+# All three axioms enter the closure: 'a:'b, 'a:'c, 'a:'static.
+fn<'a: 'b + 'c + 'static, 'b, 'c> multi_plus_b(x: &'a i64, $return: &out &'b i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn<'a: 'b + 'c + 'static, 'b, 'c> multi_plus_c(x: &'a i64, $return: &out &'c i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- 'static on LHS via 'a: 'static + reciprocal bound in bound-only form ----------
+
+# covers: type_kind=fn lifetime_bound=static_only_rhs
+# The `'static` region is reserved — it can appear as a bound target
+# but cannot be declared as a lifetime parameter (see
+# `static_declared_as_param_fails` in the violations file).
+fn<'a: 'static> static_only_rhs(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- reflexive bound: 'a: 'a ----------
+
+# covers: type_kind=fn lifetime_bound=reflexive
+# 'a outlives itself is trivial. Closure must not loop; result is clean.
+fn<'a: 'a> reflexive_bound(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# ---------- struct-decl outlives bounds ----------
+
+# covers: type_kind=struct lifetime_bound=single_outlives
+# 'b: 'a on the struct decl. Struct outlives bounds are validated for
+# declared-lifetime scope but are not currently consulted during
+# construction or field-access. The decl and field reads compile clean.
+struct<'a, 'b: 'a> Wrap2: Move { outer: &'a i64, inner: &'b i64 }
+
+fn<'a, 'b: 'a> make_wrap2(x: &'a i64, y: &'b i64, $return: &out Wrap2<'a, 'b>) {
+  entry:
+    $return.*.outer = copy x;
+    $return.*.inner = copy y;
+    return
+}
+
+fn<'a, 'b: 'a> read_wrap2(w: Wrap2<'a, 'b>, $return: &out &'a i64) {
+  entry:
+    $return.* = copy w.outer;
+    drop w.inner;
+    return
+}
+
+# ---------- enum-decl outlives bounds ----------
+
+# covers: type_kind=enum lifetime_bound=single_outlives
+# 'b: 'a on the enum decl. Same scope-check applies; construction clean.
+enum<'a, 'b: 'a> Either2: Move { L: &'a i64, R: &'b i64 }
+
+fn<'a, 'b: 'a> make_either2_l(x: &'a i64, $return: &out Either2<'a, 'b>) {
+  entry:
+    $return.* = Either2::L(copy x);
+    return
+}
+
+fn<'a, 'b: 'a> make_either2_r(y: &'b i64, $return: &out Either2<'a, 'b>) {
+  entry:
+    $return.* = Either2::R(copy y);
+    return
+}
+
+# ---------- 'static input into Named return with bound ----------
+
+# covers: type_kind=fn lifetime_bound=static_source_with_bound
+# 'static source flows into 'a slot; 'a: 'static in scope is consistent.
+fn<'a: 'static> static_arg_required(x: &'static i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}

@@ -262,3 +262,373 @@ fn untouched_param_MatCDM(x: MatCDM) {
     drop x;
     return
 }
+
+fn if_both_move_MatM(x: MatM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_m(move x);
+    goto done
+  f:
+    call take_mat_m(move x);
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_move_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cd(move x);
+    goto done
+  f:
+    call take_mat_cd(move x);
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_move_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_dm(move x);
+    goto done
+  f:
+    call take_mat_dm(move x);
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_move_MatCM(x: MatCM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cm(move x);
+    goto done
+  f:
+    call take_mat_cm(move x);
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_move_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cdm(move x);
+    goto done
+  f:
+    call take_mat_cdm(move x);
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_move_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cd(move x);
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_move_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_dm(move x);
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_move_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cdm(move x);
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_drop_MatD(x: MatD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_drop_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_drop_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_one_arm_drop_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto f__to__done
+  f__to__done:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_drop_MatD(x: MatD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_drop_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_drop_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_drop_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatL(cond: bool) {
+  x: MatL;
+  n: i64;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    n = move x.v;
+    drop n;
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatC(cond: bool) {
+  x: MatC;
+  n: i64;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    n = move x.v;
+    drop n;
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatD(cond: bool) {
+  x: MatD;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatM(cond: bool) {
+  x: MatM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    call take_mat_m(move x);
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatCD(cond: bool) {
+  x: MatCD;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatCM(cond: bool) {
+  x: MatCM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    call take_mat_cm(move x);
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatDM(cond: bool) {
+  x: MatDM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatCDM(cond: bool) {
+  x: MatCDM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    drop cond;
+    return
+}

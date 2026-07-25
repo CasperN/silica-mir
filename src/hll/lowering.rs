@@ -1431,8 +1431,8 @@ pub fn lower_program(
                     meta: DeclMeta {
                         name: s.name.clone(),
                         name_span: s.span,
-                        lifetime_params: Vec::new(),
-                        outlives: Vec::new(),
+                        lifetime_params: s.lifetime_params.clone(),
+                        outlives: s.outlives.clone(),
                         type_params: lower_type_params(&s.type_params),
                         markers: s.markers.clone(),
                     },
@@ -1453,8 +1453,8 @@ pub fn lower_program(
                     meta: DeclMeta {
                         name: e.name.clone(),
                         name_span: e.span,
-                        lifetime_params: Vec::new(),
-                        outlives: Vec::new(),
+                        lifetime_params: e.lifetime_params.clone(),
+                        outlives: e.outlives.clone(),
                         type_params: lower_type_params(&e.type_params),
                         markers: e.markers.clone(),
                     },
@@ -1493,8 +1493,8 @@ pub fn lower_program(
                         meta: DeclMeta {
                             name: f.name.clone(),
                             name_span: f.span,
-                            lifetime_params: Vec::new(),
-                            outlives: Vec::new(),
+                            lifetime_params: f.lifetime_params.clone(),
+                            outlives: f.outlives.clone(),
                             type_params: lower_type_params(&f.type_params),
                             markers: trivial_markers(),
                         },
@@ -1555,8 +1555,8 @@ pub fn lower_program(
                     meta: DeclMeta {
                         name: f.name.clone(),
                         name_span: f.span,
-                        lifetime_params: Vec::new(),
-                        outlives: Vec::new(),
+                        lifetime_params: f.lifetime_params.clone(),
+                        outlives: f.outlives.clone(),
                         type_params: lower_type_params(&f.type_params),
                         markers: trivial_markers(),
                     },

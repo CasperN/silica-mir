@@ -294,12 +294,22 @@ impl<'a> Checker<'a> {
     /// unifiable at this phase (escape checking handles the interesting
     /// Free ↔ signature-visible case in phase 5).
     fn check_constraints(&mut self, escape_visible: &BTreeSet<Lifetime>) {
+        // Reserved lifetime `'static` maps to `Region::Static` in the
+        // axiom set so that `<'a: 'static>` (a demanding-'static bound)
+        // enters the transitive closure with Static on the RHS.
+        let name_to_region = |lt: &Lifetime| {
+            if lt.0 == "static" {
+                Region::Static
+            } else {
+                Region::Named(lt.clone())
+            }
+        };
         let axioms: Vec<(Region, Region)> = self
             .func
             .meta
             .outlives
             .iter()
-            .map(|(a, b)| (Region::Named(a.clone()), Region::Named(b.clone())))
+            .map(|(a, b)| (name_to_region(a), name_to_region(b)))
             .collect();
         let closure = constraints::transitive_closure(&axioms);
         for c in self.constraints.iter() {

@@ -441,8 +441,12 @@ pattern = identifier [ ( identifier ) ]                  # Variant [ (bind) ]
   like `field: value` fields (or the braces are empty). Otherwise
   it's an identifier followed by a block, so `if cond { let x = 1; }`
   works. Tree-sitter's dynamic conflict resolution handles both.
-- **No lifetime annotations at the surface.** All reference lifetimes
-  are inferred at the MIR level (NLL-style).
+- **Lifetime annotations at the surface: signature-only.** Reference
+  lifetimes on types (`&'a T` in a field/param) are elided and
+  inferred at the MIR level (NLL-style). Signature-level `<'a, 'b: 'a>`
+  outlives bounds *are* accepted and flow through to the MIR
+  outlives axiom set. HLL doesn't yet propagate a user-written `'a`
+  on a Ref type back through lowering.
 - **Cleanup order.** Unnamed temporaries end with their expression; at a
   scope exit, `defer`s run LIFO, then bindings are cleaned in reverse
   declaration order.
@@ -562,8 +566,13 @@ Notes:
   already be Init.
 - **`switchEnum` takes a place, not an operand.** It performs a *discriminant read* — a shared-read access for conflict purposes, consuming nothing. It must be a place because each out-edge refines the type of *that specific place*, which is what justifies the downcast projection in the target block. Switching on a copied temporary would sever the connection between the discriminant tested and the place downcast. (`branch` stays operand-based: `bool` is `Copy Drop` and no refinement occurs.)
 - **`abort` / `unreachable`** are terminators with no successors — runtime escape hatches. They **waive linear obligations** for code that only reaches them: elaboration passes (drop, NLL) don't insert cleanup on paths that never reach `return`, because the program dies before the caller could observe. Mixed CFGs are handled precisely — if a branch has one arm reaching `return` and one reaching `abort`, obligations are still checked on the return arm.
-- **Lifetimes are inferred (NLL-style).** No lifetime annotations anywhere.
-Regions are internal to the checker, derived from reference liveness.
+- **Lifetimes are inferred body-locally (NLL-style)** but signatures
+  may name lifetimes and declare outlives bounds: `fn<'a, 'b: 'a>`,
+  `struct<'a, 'b: 'a> Wrap { ... }`. Bounds accept `'static` on
+  either side. The inferred body regions unify with signature lifetimes
+  at loans and calls; signature outlives axioms enter the checker's
+  transitive closure. Elision synthesizes fresh names for unannotated
+  signature slots and adds input-outlives-output axioms.
 - **Return values are modeled with `&out` parameters.** Functions have no return
 type; `call` is a statement, not an rvalue. This is sret/RVO. Full Silica
 has return types but lowers to this to simplify the MIR.
@@ -937,6 +946,31 @@ filenames and hide the matrix. Consolidate opportunistically —
 whenever you touch a topic, sweep the sibling fixtures for
 subsumed cases and delete them.
 
+### Feature list
+
+The language's testable surface factors into a small number of
+orthogonal axes. Every fixture fn should tag its header with a
+`# covers:` line naming the axis values it exercises. A missing-pair
+audit is a grep over those tags.
+
+- **type_kind**: scalar, shared_ref, exclusive_ref, raw_ptr, struct, enum, array, nested_aggregate, param
+- **ref_kind**: shared, mut, out, drop, uninit
+- **class**: L, C, D, M, CD, CM, DM, CDM (subsets of {Copy, Drop, Move})
+- **op**: copy, move, drop, borrow, unborrow, deref_read, deref_write, call_arg, assign_target, return
+- **init**: NeverInit, Init, Moved, Partial, Diverged
+- **cfg**: straight, if, match, loop
+- **boundary**: intra_fn, call, return_out, extern
+
+Tag example:
+
+    # covers: type_kind=array class=L op=return init=Partial
+    fn partial_array_leaks_slot() { ... }
+
+Aim for pairwise coverage — every meaningful (axis_i=value ×
+axis_j=value) pair appears in ≥1 fixture. Not every pair is meaningful
+(e.g. `type_kind=scalar × ref_kind=out` is nonsense); the DiagCode set
+is the practical bound on which pairs matter.
+
 ### HLL over MIR when both work
 
 When a test can be written in either surface, prefer `.si` (HLL): the
@@ -1032,7 +1066,25 @@ To load it locally:
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
 ## Lifetime checker gaps (semantic)
-- **`where 'a: 'b` outlives clauses.** No syntax today; `signature_outlives: Vec<(Lifetime, Lifetime)>` is the right shape to build on. Any real generic library needs this.
+- **HLL Ref-type lifetime passthrough.** Signature-level outlives
+  bounds (`fn<'a, 'b: 'a>`) flow through, but a user-written `'a` on
+  a `&'a T` in a param/field is dropped by `lower_type` and the MIR
+  elides it. Fix: extend `lower_type` to preserve `Option<Lifetime>`
+  on Ref/Custom.
+- **Struct/enum outlives bounds not enforced at construction.**
+  `struct<'a, 'b: 'a> Wrap { ... }` accepts and scope-validates the
+  bound, but building a `Wrap<'x, 'y>` at a call/construction site
+  doesn't check that `'y: 'x` holds in the caller's axiom set.
+  Fix: emit instantiation constraints from Custom type args similar
+  to fn-call instantiation.
+- **Bound-RHS lifetimes must be declared params.** `<'a: 'b>` requires
+  `'b` in the same `<>` list; Rust auto-introduces bound-only names.
+  Silica keeps this explicit — arguably fine, but worth documenting.
+- **Call-site missing-bound fires wrong diag.** When a caller lacks
+  the axiom a callee requires, the checker fires `LT-LifetimeEscape`
+  (Free escaping into Named via the ret-out slot) rather than
+  `LT-LifetimeMismatch`. Program is rejected but the code is
+  misleading.
 - **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
 - **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
 - **No fixture for nested-ref case (`&&i64`, `&Wrap<i64>`), shared-ref returns read multiple times, or `Wrap<'a>` in fn signatures.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands.

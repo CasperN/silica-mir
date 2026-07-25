@@ -1,8 +1,22 @@
+struct MatL {
+  v: i64
+}
+
+struct MatM: Move {
+  v: i64
+}
+
+struct MatD: Drop {
+  v: i64
+}
+
 extern fn noop();
 
 extern fn sink(r: &mut 's0 i64);
 
 extern fn use_num(n: i64);
+
+extern fn take_mat_m(x: MatM);
 
 fn branch_both_init(b: bool) {
   x: i64;
@@ -149,5 +163,90 @@ fn mut_ref_writeback_cycle(x: i64) {
     call use_num(move y);
     call sink(move r);
     drop x;
+    return
+}
+
+fn if_both_init_read_MatL(cond: bool) {
+  x: MatL;
+  n: i64;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    n = move x.v;
+    drop n;
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatM(cond: bool) {
+  x: MatM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    call take_mat_m(move x);
+    drop cond;
+    return
+}
+
+fn if_both_init_read_MatD(cond: bool) {
+  x: MatD;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    drop cond;
+    return
+}
+
+fn loop_reinit_scalar(b: bool) {
+  x: i64;
+  entry:
+    x = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    drop x;
+    x = 1;
+    goto head
+  done:
+    call use_num(copy x);
+    drop x;
+    drop b;
+    return
+}
+
+fn loop_reinit_struct(b: bool) {
+  x: MatM;
+  entry:
+    x.v = 0;
+    goto head
+  head:
+    branch(copy b) [true: body, false: done]
+  body:
+    call take_mat_m(move x);
+    x.v = 1;
+    goto head
+  done:
+    call take_mat_m(move x);
+    drop b;
     return
 }

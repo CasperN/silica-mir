@@ -288,3 +288,360 @@ fn untouched_param_MatCDM(x: MatCDM) {
   entry:
     return
 }
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 1 (both arms move x)
+# covers: class=M|CD|DM|CM|CDM op=move cfg=if_both_move type_kind=struct
+# All Move-capable classes: clean because both arms consume x.
+# ============================================================
+
+fn if_both_move_MatM(x: MatM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_m(move x);
+    goto done
+  f:
+    call take_mat_m(move x);
+    goto done
+  done:
+    return
+}
+
+fn if_both_move_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cd(move x);
+    goto done
+  f:
+    call take_mat_cd(move x);
+    goto done
+  done:
+    return
+}
+
+fn if_both_move_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_dm(move x);
+    goto done
+  f:
+    call take_mat_dm(move x);
+    goto done
+  done:
+    return
+}
+
+fn if_both_move_MatCM(x: MatCM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cm(move x);
+    goto done
+  f:
+    call take_mat_cm(move x);
+    goto done
+  done:
+    return
+}
+
+fn if_both_move_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cdm(move x);
+    goto done
+  f:
+    call take_mat_cdm(move x);
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 2 (one arm moves, other leaves Init)
+# covers: class=CD|DM|CDM op=move cfg=if_one_arm_move type_kind=struct
+# Drop classes: drop-elab inserts drop on the non-moving arm → clean.
+# Non-Drop classes fire INIT-ReturnValueLeak (see violations file).
+# ============================================================
+
+fn if_one_arm_move_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cd(move x);
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+fn if_one_arm_move_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_dm(move x);
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+fn if_one_arm_move_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    call take_mat_cdm(move x);
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 3 (one arm drops, other doesn't touch)
+# covers: class=D|CD|DM|CDM op=drop cfg=if_one_arm_drop type_kind=struct
+# Drop classes: drop-elab handles the untouched arm → clean.
+# Non-Drop classes fire SUB-DropOfNonDrop (see violations file).
+# ============================================================
+
+fn if_one_arm_drop_MatD(x: MatD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+fn if_one_arm_drop_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+fn if_one_arm_drop_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+fn if_one_arm_drop_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 4 (both arms drop x)
+# covers: class=D|CD|DM|CDM op=drop cfg=if_both_drop type_kind=struct
+# Drop classes: clean. Non-Drop fires SUB-DropOfNonDrop (see violations file).
+# ============================================================
+
+fn if_both_drop_MatD(x: MatD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+fn if_both_drop_MatCD(x: MatCD, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+fn if_both_drop_MatDM(x: MatDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+fn if_both_drop_MatCDM(x: MatCDM, cond: bool) {
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    drop x;
+    goto done
+  f:
+    drop x;
+    goto done
+  done:
+    return
+}
+
+# ============================================================
+# Matrix: if-diamond x class — Shape 5 (both arms init x, consume after merge)
+# covers: class=all op=init cfg=if_both_init type_kind=struct
+# Both arms Init → Init at join; clean regardless of class.
+# ============================================================
+
+fn if_both_init_read_MatL(cond: bool) {
+  x: MatL;
+  n: i64;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    n = move x.v;
+    drop n;
+    return
+}
+
+fn if_both_init_read_MatC(cond: bool) {
+  x: MatC;
+  n: i64;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    n = move x.v;
+    drop n;
+    return
+}
+
+fn if_both_init_read_MatD(cond: bool) {
+  x: MatD;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    return
+}
+
+fn if_both_init_read_MatM(cond: bool) {
+  x: MatM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    call take_mat_m(move x);
+    return
+}
+
+fn if_both_init_read_MatCD(cond: bool) {
+  x: MatCD;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    return
+}
+
+fn if_both_init_read_MatCM(cond: bool) {
+  x: MatCM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    call take_mat_cm(move x);
+    return
+}
+
+fn if_both_init_read_MatDM(cond: bool) {
+  x: MatDM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    return
+}
+
+fn if_both_init_read_MatCDM(cond: bool) {
+  x: MatCDM;
+  entry:
+    branch(copy cond) [true: t, false: f]
+  t:
+    x.v = 1;
+    goto merge
+  f:
+    x.v = 2;
+    goto merge
+  merge:
+    drop x;
+    return
+}

@@ -129,6 +129,18 @@ pub fn elaborate(program: &mut Program, env: &Env) {
         }
 
         // Cross-edge drops: split each edge (idempotent), then append.
+        //
+        // TODO(diagnostic quality): the checker walks these synthesized
+        // split-edge blocks with the block's entry state, which reflects
+        // the predecessor's — not the successor's — divergence. When the
+        // pred side has a place NeverInit and cleanup would read it,
+        // the checker re-fires a UseBeforeInit-class diagnostic at the
+        // synthesized block, in addition to the real user-visible fire
+        // at the merge. See fixture `struct_with_ref_field_one_arm` in
+        // tests/place_state/cfg_shape/init_across_cfg_shapes_violations.sim.
+        // Fix candidate: filter drops here to only those whose place is
+        // Init at the pred's exit state, so no cleanup is emitted for
+        // a place the pred never initialised.
         for ((pred, succ), places) in &plan.cross_edge {
             let split_label = cfg_edit::split_edge(body, pred, succ);
             let split_block = body

@@ -48,20 +48,37 @@ fn write_markers(out: &mut String, m: &Markers) {
     out.push_str(&names.join(" + "));
 }
 
-fn write_type_params(out: &mut String, lifetimes: &[Lifetime], params: &[TypeParam]) {
-    if lifetimes.is_empty() && params.is_empty() {
+fn write_type_params(out: &mut String, meta: &DeclMeta) {
+    if meta.lifetime_params.is_empty() && meta.type_params.is_empty() {
         return;
     }
     out.push('<');
     let mut first = true;
-    for lt in lifetimes {
+    for lt in &meta.lifetime_params {
         if !first {
             out.push_str(", ");
         }
         first = false;
         write!(out, "{}", lt).unwrap();
+        // Emit any outlives bounds inline after each subject lifetime,
+        // matching the source shape `'a: 'b + 'c`. Bounds keyed to
+        // other subjects fall through this iteration and land next to
+        // their subject.
+        let mut bounds = meta.outlives.iter().filter(|(s, _)| s == lt).peekable();
+        if bounds.peek().is_some() {
+            let mut first_bound = true;
+            for (_, bound) in bounds {
+                if first_bound {
+                    out.push_str(": ");
+                    first_bound = false;
+                } else {
+                    out.push_str(" + ");
+                }
+                write!(out, "{}", bound).unwrap();
+            }
+        }
     }
-    for p in params {
+    for p in &meta.type_params {
         if !first {
             out.push_str(", ");
         }
@@ -74,7 +91,7 @@ fn write_type_params(out: &mut String, lifetimes: &[Lifetime], params: &[TypePar
 
 fn write_struct(out: &mut String, s: &StructDecl) {
     out.push_str("struct");
-    write_type_params(out, &s.meta.lifetime_params, &s.meta.type_params);
+    write_type_params(out, &s.meta);
     out.push(' ');
     out.push_str(&s.meta.name);
     write_markers(out, &s.meta.markers);
@@ -89,7 +106,7 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
     out.push_str("enum");
-    write_type_params(out, &e.meta.lifetime_params, &e.meta.type_params);
+    write_type_params(out, &e.meta);
     out.push(' ');
     out.push_str(&e.meta.name);
     write_markers(out, &e.meta.markers);
@@ -107,7 +124,7 @@ fn write_function(out: &mut String, f: &Function) {
         out.push_str("extern fn ");
     } else {
         out.push_str("fn");
-        write_type_params(out, &f.meta.lifetime_params, &f.meta.type_params);
+        write_type_params(out, &f.meta);
         out.push(' ');
     }
     out.push_str(&f.meta.name);

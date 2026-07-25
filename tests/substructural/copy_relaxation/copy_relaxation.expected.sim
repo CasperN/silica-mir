@@ -91,7 +91,7 @@ fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
     return
 }
 
-fn<'s0, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &mut 's2 CopyPair) {
+fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &mut 's2 CopyPair) {
   entry:
     call take_num(copy r.*.*.*.left);
     call take_num(move r.*.*.*.left);
@@ -127,7 +127,7 @@ fn repeated_complex_projection(foo: ProjectionRoot) {
     return
 }
 
-fn<'s0, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
+fn<'s0: 's1, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
   entry:
     call take_num(copy r.*.*);
     call take_num(move r.*.*);
@@ -135,7 +135,7 @@ fn<'s0, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
     return
 }
 
-fn<'s0, 's1> repeated_nested_out(r: &mut 's0 &out 's1 i64) {
+fn<'s0: 's1, 's1> repeated_nested_out(r: &mut 's0 &out 's1 i64) {
   entry:
     r.*.* = 1;
     call take_num(copy r.*.*);
