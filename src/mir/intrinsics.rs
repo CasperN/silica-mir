@@ -462,6 +462,7 @@ pub fn lookup(name: &str) -> Option<IntrinsicSpec> {
 pub fn prelude_fns() -> Vec<Function> {
     let mut out: Vec<Function> = all().into_iter().map(spec_to_function).collect();
     out.push(sizeof_fn());
+    out.push(ptr_offset_fn());
     out
 }
 
@@ -478,7 +479,7 @@ fn sizeof_fn() -> Function {
         span: SPAN,
     });
     let params = vec![Param {
-        name: "$return".to_string(),
+        name: "out".to_string(),
         ty: out_ref_ty(int_ty(IntTy::U64)),
         span: SPAN,
     }];
@@ -493,6 +494,48 @@ fn sizeof_fn() -> Function {
 
 /// Reserved name for the byte-size intrinsic.
 pub const SIZEOF_NAME: &str = "$sizeof";
+
+/// `fn<T> $ptr_offset(p: *T, i: u64, $return: &out *T)` — pointer
+/// arithmetic: return `p` advanced by `i` elements of `T`. Generic
+/// over `T`; codegen intercepts the call and emits a
+/// `getelementptr T, ptr p, i64 i` sequence, then stores the result
+/// through `$return`. Index is unsigned — sizes/offsets are
+/// non-negative in the current model.
+fn ptr_offset_fn() -> Function {
+    let mut meta = basic_meta(PTR_OFFSET_NAME);
+    meta.type_params.push(TypeParam {
+        name: "T".to_string(),
+        bounds: Markers::empty(),
+        span: SPAN,
+    });
+    let params = vec![
+        Param {
+            name: "p".to_string(),
+            ty: raw_ptr_ty(param_ty("T")),
+            span: SPAN,
+        },
+        Param {
+            name: "i".to_string(),
+            ty: int_ty(IntTy::U64),
+            span: SPAN,
+        },
+        Param {
+            name: "out".to_string(),
+            ty: out_ref_ty(raw_ptr_ty(param_ty("T"))),
+            span: SPAN,
+        },
+    ];
+    Function {
+        meta,
+        is_extern: true,
+        abi: None,
+        params,
+        body: None,
+    }
+}
+
+/// Reserved name for the pointer-offset intrinsic.
+pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 
 fn spec_to_function(spec: IntrinsicSpec) -> Function {
     let mut params = Vec::with_capacity(spec.inputs.len() + 1);
@@ -871,7 +914,10 @@ mod tests {
     #[test]
     fn prelude_produces_one_extern_fn_per_spec() {
         let fns = prelude_fns();
-        assert_eq!(fns.len(), all().len());
+        // Every spec in `all()` produces one prelude fn; plus the
+        // generic intrinsics that live outside the flat spec shape
+        // (currently `$sizeof<T>` and `$ptr_offset<T>`).
+        assert_eq!(fns.len(), all().len() + 2);
         for f in &fns {
             assert!(f.is_extern, "intrinsic {} should be extern", f.meta.name);
             assert!(

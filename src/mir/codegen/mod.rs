@@ -694,6 +694,10 @@ fn emit_intrinsic_call(
         emit_sizeof_call(cx, type_args, args);
         return;
     }
+    if name == crate::mir::intrinsics::PTR_OFFSET_NAME {
+        emit_ptr_offset_call(cx, type_args, args);
+        return;
+    }
     let spec = crate::mir::intrinsics::lookup(name)
         .unwrap_or_else(|| panic!("unknown intrinsic '{}'", name));
     assert_eq!(
@@ -737,6 +741,39 @@ fn emit_intrinsic_call(
         result_llvm, result_ssa, out_val
     )
     .unwrap();
+}
+
+/// `call $ptr_offset<T>(p, i, $return)` — emit `getelementptr T,
+/// ptr p, i64 i` and store the result through `$return`. LLVM's
+/// GEP takes an i64 offset; the Silica-level `i: u64` maps to that
+/// slot without conversion (same width, LLVM treats the offset as
+/// signed for stride computation but the caller supplies a
+/// non-negative value under Silica's u64 typing).
+fn emit_ptr_offset_call(cx: &mut CodeGenContext, type_args: &[Type], args: &[Operand]) {
+    let [t] = type_args else {
+        panic!(
+            "$ptr_offset expects exactly one type argument, got {}",
+            type_args.len()
+        );
+    };
+    let [p_op, i_op, out_op] = args else {
+        panic!(
+            "$ptr_offset expects (p, i, $return), got {} args",
+            args.len()
+        );
+    };
+    let (p_val, _) = emit_operand(cx, p_op);
+    let (i_val, _) = emit_operand(cx, i_op);
+    let elem_llvm = cx.lower_type(t);
+    let result = cx.fresh();
+    writeln!(
+        cx.out,
+        "  {} = getelementptr {}, ptr {}, i64 {}",
+        result, elem_llvm, p_val, i_val
+    )
+    .unwrap();
+    let (out_val, _) = emit_operand(cx, out_op);
+    writeln!(cx.out, "  store ptr {}, ptr {}", result, out_val).unwrap();
 }
 
 /// `call $sizeof<T>($return)` — store `layout::size_of(T, env)`

@@ -1,0 +1,34 @@
+# $ptr_offset<T> — advance a raw pointer by N elements of T. Codegen
+# emits `getelementptr T, ptr p, i64 N` and stores the result through
+# the &out slot.
+#
+# Test shape: build an array [10, 20, 30], take a raw pointer to
+# element 0, offset by 2 to reach element 2, read through the
+# pointer. Exit code is 30.
+
+extern fn deref_i64(p: *i64, $return: &out i64);
+
+fn main($return: &out i32) {
+  arr: [i64; 3];
+  base: *i64;
+  off: *i64;
+  idx: u64;
+  val: i64;
+  _tmp: &i64;
+  out_off: &out *i64;
+  out_val: &out i64;
+  out_cast: &out i32;
+  entry:
+    arr = [10i64, 20i64, 30i64];
+    _tmp = &arr[0i64];
+    base = ptr_cast(copy _tmp, *i64);
+    unborrow _tmp;
+    idx = 2u64;
+    out_off = &out off;
+    call $ptr_offset<i64>(copy base, copy idx, move out_off);
+    out_val = &out val;
+    call deref_i64(copy off, move out_val);
+    out_cast = &out $return.*;
+    call $i64_to_i32(copy val, move out_cast);
+    return
+}
