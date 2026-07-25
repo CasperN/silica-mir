@@ -1,0 +1,25 @@
+struct<'a, 'b: 'a> Wrap {
+  x: & 'a i64
+  y: & 'b i64
+}
+
+fn<'a, 'b: 'a, 's0> mk_ok(x: & 'a i64, y: & 'b i64, $return: &out 's0 Wrap<'a, 'b>) {
+  entry:
+    $return.*.x = move x;
+    $return.*.y = move y;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit y;
+    require_uninit x;
+    return
+}
+
+fn<'a, 's0> mk_same(x: & 'a i64, $return: &out 's0 Wrap<'a, 'a>) {
+  entry:
+    $return.*.x = copy x;
+    $return.*.y = move x;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit x;
+    return
+}

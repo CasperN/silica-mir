@@ -529,12 +529,15 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::Type::Bool => bool_ty(),
         hll::Type::Unit => unit_ty(),
         hll::Type::Never => never_ty(),
-        hll::Type::Custom(name, _, args) => {
+        hll::Type::Custom(name, lifetimes, args) => {
             let lowered_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
-            custom_ty_with_args(name.clone(), lowered_args)
+            custom_ty_generic(name.clone(), lifetimes.clone(), lowered_args)
         }
         hll::Type::Param(name) => param_ty(name.clone()),
-        hll::Type::Ref(kind, _, inner) => ref_ty(*kind, lower_type(inner)),
+        hll::Type::Ref(kind, lt, inner) => match lt {
+            Some(lt) => named_ref_ty(*kind, lt.clone(), lower_type(inner)),
+            None => ref_ty(*kind, lower_type(inner)),
+        },
         hll::Type::RawPtr(inner) => raw_ptr_ty(lower_type(inner)),
         hll::Type::Fn(params, ret) => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();

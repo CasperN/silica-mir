@@ -1,0 +1,30 @@
+# $sizeof<T> — codegen resolves the type argument to a byte count via
+# `layout::size_of` and stores the u64 constant through the &out slot.
+# Two calls verify the constant differs by type: Point is 16 bytes
+# (two i64 fields), i64 is 8. Exit code is 24 = sizeof(Point) + sizeof(i64).
+
+struct Point: Copy + Drop { x: i64, y: i64 }
+
+fn main($return: &out i32) {
+  s_point: u64;
+  s_int: u64;
+  sum: u64;
+  sum_i: i64;
+  out_point: &out u64;
+  out_int: &out u64;
+  out_sum: &out u64;
+  out_i: &out i64;
+  out_cast: &out i32;
+  entry:
+    out_point = &out s_point;
+    call $sizeof<Point>(move out_point);
+    out_int = &out s_int;
+    call $sizeof<i64>(move out_int);
+    out_sum = &out sum;
+    call $u64_add(copy s_point, copy s_int, move out_sum);
+    out_i = &out sum_i;
+    call $u64_to_i64(copy sum, move out_i);
+    out_cast = &out $return.*;
+    call $i64_to_i32(copy sum_i, move out_cast);
+    return
+}

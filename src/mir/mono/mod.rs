@@ -174,6 +174,13 @@ impl MonoCtx {
         match c {
             ConstVal::FnName(name, args) => {
                 let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
+                // Intrinsics keep their `$name` and type_args intact —
+                // codegen inspects the concrete args to lower generic
+                // intrinsics like `$sizeof<T>`. Non-intrinsic calls get
+                // mangled per-instantiation.
+                if crate::mir::intrinsics::is_intrinsic(name) {
+                    return ConstVal::FnName(name.clone(), new_args);
+                }
                 let mangled = self.need(name, &new_args);
                 ConstVal::FnName(mangled, Vec::new())
             }

@@ -550,9 +550,9 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             // Intercept intrinsic calls (`call $name(...)`): emit the LLVM
             // instruction sequence inline. The intrinsic symbol never
             // appears in the emitted `.ll`.
-            if let Operand::Const(ConstVal::FnName(name, _)) = target {
+            if let Operand::Const(ConstVal::FnName(name, type_args)) = target {
                 if crate::mir::intrinsics::is_intrinsic(name) {
-                    emit_intrinsic_call(cx, name, args);
+                    emit_intrinsic_call(cx, name, type_args, args);
                     return;
                 }
             }
@@ -684,7 +684,16 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
 /// the spec's `emit` closure, writes the returned lines, and stores
 /// the returned SSA value through the `&out` pointer. Adding a new
 /// intrinsic never touches this function.
-fn emit_intrinsic_call(cx: &mut CodeGenContext, name: &str, args: &[Operand]) {
+fn emit_intrinsic_call(
+    cx: &mut CodeGenContext,
+    name: &str,
+    type_args: &[Type],
+    args: &[Operand],
+) {
+    if name == crate::mir::intrinsics::SIZEOF_NAME {
+        emit_sizeof_call(cx, type_args, args);
+        return;
+    }
     let spec = crate::mir::intrinsics::lookup(name)
         .unwrap_or_else(|| panic!("unknown intrinsic '{}'", name));
     assert_eq!(
@@ -728,6 +737,27 @@ fn emit_intrinsic_call(cx: &mut CodeGenContext, name: &str, args: &[Operand]) {
         result_llvm, result_ssa, out_val
     )
     .unwrap();
+}
+
+/// `call $sizeof<T>($return)` — store `layout::size_of(T, env)`
+/// through the `&out u64` slot. Type argument is read from the mono'd
+/// `FnName` const; layout comes from the shared layout module used
+/// by the layout-finiteness checker. LLVM has no signedness on
+/// integer types, so the emitted `store i64` matches the Silica
+/// `u64` target.
+fn emit_sizeof_call(cx: &mut CodeGenContext, type_args: &[Type], args: &[Operand]) {
+    let [t] = type_args else {
+        panic!(
+            "$sizeof expects exactly one type argument, got {}",
+            type_args.len()
+        );
+    };
+    let [out_operand] = args else {
+        panic!("$sizeof expects exactly one arg ($return), got {}", args.len());
+    };
+    let size = crate::mir::layout::size_of(t, cx.env);
+    let (out_val, _) = emit_operand(cx, out_operand);
+    writeln!(cx.out, "  store i64 {}, ptr {}", size, out_val).unwrap();
 }
 
 /// Lower `p = [e0, e1, ..., eN-1]`. Materializes each operand, then

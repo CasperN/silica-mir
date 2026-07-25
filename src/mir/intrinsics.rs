@@ -456,10 +456,43 @@ pub fn lookup(name: &str) -> Option<IntrinsicSpec> {
 }
 
 /// Return prebuilt `Function` signatures for every intrinsic in [`all`],
-/// ready to insert into `Env::functions`.
+/// ready to insert into `Env::functions`. Also includes the generic
+/// intrinsics that don't fit the flat `IntrinsicSpec` shape (they take
+/// a type parameter and are lowered specially by codegen).
 pub fn prelude_fns() -> Vec<Function> {
-    all().into_iter().map(spec_to_function).collect()
+    let mut out: Vec<Function> = all().into_iter().map(spec_to_function).collect();
+    out.push(sizeof_fn());
+    out
 }
+
+/// `fn<T> $sizeof($return: &out u64)` — returns the byte size of `T`.
+/// Generic over `T`; codegen intercepts the call, reads the mono'd
+/// type argument off the `FnName` const, and stores the layout size
+/// as a constant into the `$return` slot. Result is unsigned: sizes
+/// are inherently non-negative.
+fn sizeof_fn() -> Function {
+    let mut meta = basic_meta(SIZEOF_NAME);
+    meta.type_params.push(TypeParam {
+        name: "T".to_string(),
+        bounds: Markers::empty(),
+        span: SPAN,
+    });
+    let params = vec![Param {
+        name: "$return".to_string(),
+        ty: out_ref_ty(int_ty(IntTy::U64)),
+        span: SPAN,
+    }];
+    Function {
+        meta,
+        is_extern: true,
+        abi: None,
+        params,
+        body: None,
+    }
+}
+
+/// Reserved name for the byte-size intrinsic.
+pub const SIZEOF_NAME: &str = "$sizeof";
 
 fn spec_to_function(spec: IntrinsicSpec) -> Function {
     let mut params = Vec::with_capacity(spec.inputs.len() + 1);

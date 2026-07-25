@@ -1,0 +1,16 @@
+# HLL companion to `outlives_bounds.sim` / `outlives_bounds_violations.sim`.
+# `lower_type` now preserves user-written lifetime args on both `Ref`
+# (`&'a T`) and `Custom` (`Wrap<'a, 'b>`), so the well-formedness sweep
+# fires end-to-end on HLL sources.
+
+struct<'a, 'b: 'a> Wrap { x: &'a i64, y: &'b i64 }
+
+# Well-formed: fn declares the same bound the struct requires.
+fn<'a, 'b: 'a> mk_ok(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
+  Wrap { x: x, y: y }
+}
+
+# Reflexive substitution collapses the bound to 'a: 'a — always OK.
+fn<'a> mk_same(x: &'a i64) -> Wrap<'a, 'a> {
+  Wrap { x: x, y: x }
+}

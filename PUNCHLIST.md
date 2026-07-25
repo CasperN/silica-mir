@@ -27,14 +27,16 @@ the compiler evolves; treat entries as snapshots, not commitments.
     against the freshened signature.
   - **Struct field, enum variant, fn param, and `let` type-annotation spans point at the whole `name: Type`.** Same fix shape as the ret_ty span already landed — add a `ty_span: Span` alongside each `ty: Type` and thread through the `validate_type` calls.
   - Conditional marker bounds (`impl<T: Copy> Copy for Foo<T> {}`).
+- **Array index and array length should be `u64`.** Today `place[operand]`
+  and `[T; N]` both use `i64` in the parser and checker, mirroring MIR
+  integers. Sizes and offsets are inherently non-negative — matches
+  `$sizeof<T>` returning `u64`. Switch `Type::Array(inner, size: u64)`
+  and the index operand's expected type to `u64`. Ripples through the
+  array-lit codegen (`getelementptr ..., i64 0, i64 i`) and every
+  fixture that indexes an array with an `i64` literal.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
 ## Lifetime checker gaps (semantic)
-- **HLL Ref-type lifetime passthrough.** Signature-level outlives
-  bounds (`fn<'a, 'b: 'a>`) flow through, but a user-written `'a` on
-  a `&'a T` in a param/field is dropped by `lower_type` and the MIR
-  elides it. Fix: extend `lower_type` to preserve `Option<Lifetime>`
-  on Ref/Custom.
 - **Bound-RHS lifetimes must be declared params.** `<'a: 'b>` requires
   `'b` in the same `<>` list; Rust auto-introduces bound-only names.
   Silica keeps this explicit — arguably fine, but worth documenting.

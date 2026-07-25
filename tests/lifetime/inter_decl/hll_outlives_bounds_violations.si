@@ -1,0 +1,10 @@
+# HLL negatives for the outlives-bounds well-formedness sweep. Each fn
+# mentions a Custom or ref-typed value whose declared bound isn't
+# satisfied by the enclosing fn's axioms.
+
+struct<'a, 'b: 'a> Wrap { x: &'a i64, y: &'b i64 }
+
+# Fn declares no bound; Wrap<'a, 'b> requires 'b: 'a.
+fn<'a, 'b> mk_missing(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
+  Wrap { x: x, y: y }
+}
