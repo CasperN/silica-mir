@@ -34,6 +34,14 @@ fn prepare_mir_for_analysis(
     mut program: Program,
     d: &mut Diagnostics,
 ) -> (Program, mir::type_check::Env) {
+    // Inject compiler-provided prelude wrappers (non-`$` names like
+    // `size_of<T>`, `ptr_offset<T>` that forward to the reserved
+    // `$sizeof<T>` / `$ptr_offset<T>` intrinsics) before any pass
+    // observes the program. Elision, type-check, mono, and codegen
+    // then handle them as ordinary generic fns.
+    program
+        .declarations
+        .extend(mir::intrinsics::prelude_body_decls());
     mir::lifetime::desugaring::elide_program(&mut program);
     let (env, env_errs) = mir::type_check::Env::build(&program);
     d.extend_errors(env_errs);

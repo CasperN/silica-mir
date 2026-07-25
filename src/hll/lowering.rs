@@ -157,6 +157,12 @@ impl LowerCtx {
     fn new(program: &hll::Program) -> Self {
         let mut functions = HashMap::new();
         let mut enums = HashMap::new();
+        // Preload prelude wrappers so `size_of<T>` / `ptr_offset<T>`
+        // in user code lower as fn-name calls rather than variable
+        // lookups. Their MIR bodies come from `intrinsics::prelude_body_decls`.
+        for f in crate::hll::prelude::prelude_fn_decls() {
+            functions.insert(f.name.clone(), f);
+        }
         for decl in &program.declarations {
             match decl {
                 hll::Declaration::Fn(f) => {

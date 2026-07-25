@@ -537,6 +537,47 @@ fn ptr_offset_fn() -> Function {
 /// Reserved name for the pointer-offset intrinsic.
 pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 
+/// User-facing wrappers around the `$`-prefixed intrinsics. `$` is a
+/// reserved namespace unspellable in HLL, so user code needs non-`$`
+/// entry points; these wrappers provide them as ordinary generic fns
+/// that forward directly to the intrinsic. Parsed once from a static
+/// MIR string at program-prep time and injected into every program's
+/// declarations before checks run.
+///
+/// Contract: these wrappers must parse cleanly and produce Function
+/// values with bodies (so mono can specialize them per-instantiation).
+/// The bodies use `$`-prefixed names because they are compiler-provided,
+/// not user-authored.
+pub const PRELUDE_MIR: &str = r#"
+fn<T> size_of(out: &out u64) {
+  entry:
+    call $sizeof<T>(move out);
+    return
+}
+
+fn<T> ptr_offset(p: *T, i: u64, out: &out *T) {
+  entry:
+    call $ptr_offset<T>(move p, move i, move out);
+    return
+}
+"#;
+
+/// Parse `PRELUDE_MIR` into the wrapper `Function` declarations. Called
+/// by the pipeline entry to inject wrappers into every user program.
+/// Panics on parse failure — the constant is compiler-authored, so any
+/// failure is an internal bug rather than user error.
+pub fn prelude_body_decls() -> Vec<Declaration> {
+    let program = crate::mir::parser::Parser::new(PRELUDE_MIR.to_string())
+        .parse()
+        .unwrap_or_else(|diags| {
+            panic!(
+                "internal error: compiler-provided PRELUDE_MIR failed to parse: {:?}",
+                diags.errors().collect::<Vec<_>>()
+            )
+        });
+    program.declarations
+}
+
 fn spec_to_function(spec: IntrinsicSpec) -> Function {
     let mut params = Vec::with_capacity(spec.inputs.len() + 1);
     for (i, ty) in spec.inputs.iter().enumerate() {

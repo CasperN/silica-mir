@@ -20,6 +20,9 @@ pub fn pretty_print(program: &Program) -> String {
     let mut out = String::new();
     let mut first = true;
     for decl in &program.declarations {
+        if is_prelude_decl(decl) {
+            continue;
+        }
         if !first {
             out.push('\n');
         }
@@ -27,6 +30,17 @@ pub fn pretty_print(program: &Program) -> String {
         write_declaration(&mut out, decl);
     }
     out
+}
+
+/// Prelude wrappers (`size_of`, `ptr_offset`) are compiler-injected
+/// into every program to expose the `$`-prefixed intrinsics under
+/// non-`$` names. They're not user-authored and shouldn't appear in
+/// fixture-pinned pretty-printed output.
+fn is_prelude_decl(decl: &Declaration) -> bool {
+    matches!(
+        decl.meta().name.as_str(),
+        "size_of" | "ptr_offset"
+    )
 }
 
 fn write_declaration(out: &mut String, decl: &Declaration) {

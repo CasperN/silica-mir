@@ -564,6 +564,19 @@ pub(super) fn typecheck_program_collect(
     let mut subst = Subst::new();
     let mut types = IndexMap::new();
 
+    // Preload prelude wrappers (`size_of<T>`, `ptr_offset<T>`) so user
+    // code can spell them by name. Bodies live at the MIR level; here
+    // we only need the surface signatures.
+    for f in crate::hll::prelude::prelude_fn_decls() {
+        let params_tys: Vec<Type> = f.params.iter().map(|p| p.ty.clone()).collect();
+        env.functions
+            .insert(f.name.clone(), (params_tys, f.ret_ty.clone(), f.is_unsafe));
+        env.fn_type_params.insert(
+            f.name.clone(),
+            f.type_params.iter().map(|tp| tp.name.clone()).collect(),
+        );
+    }
+
     // Populate top-level declarations
     for decl in &program.declarations {
         match decl {

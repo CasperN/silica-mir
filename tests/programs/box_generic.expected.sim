@@ -1,4 +1,4 @@
-extern fn malloc_bytes(size: i64, $return: &out 's0 *u8);
+extern fn malloc_bytes(size: u64, $return: &out 's0 *u8);
 
 extern fn free_bytes(p: *u8);
 
@@ -6,31 +6,36 @@ struct<T> Box: Move {
   p: *T
 }
 
-fn<'s0, T: Move> box_new(size: i64, value: T, $return: &out 's0 Box<T>) {
+fn<'s0, T: Move> box_new(value: T, $return: &out 's0 Box<T>) {
   bytes: *u8;
-  _temp_0: &out *u8;
+  _temp_0: u64;
+  _temp_1: &out u64;
+  _temp_2: &out *u8;
   typed: *T;
-  _temp_1: unit;
-  _temp_2: unit;
+  _temp_3: unit;
+  _temp_4: unit;
   entry:
-    _temp_0 = &out bytes;
-    call malloc_bytes(move size, move _temp_0);
+    _temp_1 = &out _temp_0;
+    call size_of<T>(move _temp_1);
+    _temp_2 = &out bytes;
+    call malloc_bytes(move _temp_0, move _temp_2);
+    require_uninit _temp_2;
+    require_uninit _temp_1;
     require_uninit _temp_0;
     typed = ptr_cast(move bytes, *T);
     typed.* = move value;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    _temp_4 = unit;
+    drop _temp_4;
+    require_uninit _temp_4;
+    _temp_3 = unit;
+    drop _temp_3;
+    require_uninit _temp_3;
     $return.*.p = move typed;
     unborrow $return;
     require_uninit typed;
     require_uninit bytes;
     require_uninit $return;
     require_uninit value;
-    require_uninit size;
     return
 }
 
@@ -93,7 +98,7 @@ fn<'s0> main(exit: &out 's0 i32) {
   _temp_12: &out i32;
   entry:
     _temp_1 = &out b;
-    call box_new<i64>(8, 42, move _temp_1);
+    call box_new<i64>(42, move _temp_1);
     require_uninit _temp_1;
     _temp_3 = & b;
     _temp_4 = &out _temp_2;

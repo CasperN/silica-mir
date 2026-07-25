@@ -14,18 +14,17 @@
 # work for `!Move` types too — that's how you box an immovable value
 # — but requires lambdas, which are deferred.
 #
-# The size argument threaded through `box_new` is a placeholder for a
-# future `sizeof<T>()` intrinsic — until then, callers supply the
-# byte count.
+# `box_new` uses the compiler-provided `size_of<T>()` prelude wrapper
+# to compute the byte count; no explicit size parameter needed.
 
-extern fn malloc_bytes(size: i64) -> *u8;
+extern fn malloc_bytes(size: u64) -> *u8;
 extern fn free_bytes(p: *u8);
 
 struct<T> Box: Move { p: *T }
 
 # Allocate a fresh box holding `value`. Takes ownership of `value`.
-fn<T: Move> box_new(size: i64, value: T) -> Box<T> {
-  let bytes: *u8 = malloc_bytes(size);
+fn<T: Move> box_new(value: T) -> Box<T> {
+  let bytes: *u8 = malloc_bytes(size_of<T>());
   let typed: *T = bytes as *T;
   unsafe { typed.* = value; }
   Box { p: typed }
@@ -49,7 +48,7 @@ fn<T> box_borrow_mut(b: &mut Box<T>) -> &mut T {
 
 # Exit code is 42: borrow-read the value once, then consume the box.
 fn main(exit: &out i32) {
-  let b: Box<i64> = box_new(8i64, 42i64);
+  let b: Box<i64> = box_new(42i64);
   let peek: i64 = box_borrow(&b).*;
   let owned: i64 = box_into_inner(b);
   exit.* = (peek + owned - peek) as i32;
