@@ -990,7 +990,7 @@ fn infer_inner(
             let inner_ty = infer_inner(env, subst, target, types, d);
             raw_ptr_ty(inner_ty)
         }
-        ExprKind::Call(fn_expr, args) => {
+        ExprKind::Call(fn_expr, _generics, args) => {
             if let ExprKind::Variable(ref name) = fn_expr.kind {
                 if let Some((_, _, is_unsafe)) = env.functions.get(name) {
                     if *is_unsafe && !env.in_unsafe {
@@ -1605,7 +1605,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::RawBorrow(base) => {
             check_no_control_flow(base, loop_depth, d);
         }
-        ExprKind::Call(callee, args) => {
+        ExprKind::Call(callee, _generics, args) => {
             check_no_control_flow(callee, loop_depth, d);
             for arg in args {
                 check_no_control_flow(arg, loop_depth, d);

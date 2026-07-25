@@ -37,6 +37,12 @@ module.exports = grammar({
     // or the comparison operator (`(expr as Foo) < rhs`). Tree-sitter
     // needs to explore both.
     [$.type],
+    // At `identifier <`, tree-sitter must choose between shifting
+    // `<` into `instantiation_expr`'s type_args and reducing the
+    // identifier through `_expr_prefix` toward `binary_expr`
+    // comparison. Declaring the conflict against `_expr_prefix`
+    // (the reduce step) forces GLR to try both.
+    [$.instantiation_expr, $._expr_prefix],
   ],
 
   rules: {
@@ -225,6 +231,7 @@ module.exports = grammar({
       $.deref_expr,
       $.cast_expr,
       $.call_expr,
+      $.instantiation_expr,
       $.index_expr,
       $.match_expr,
     ),
@@ -251,12 +258,39 @@ module.exports = grammar({
       field('ty', $.type),
     )),
 
+    // Explicit generic call `foo<T, U>(x)`, `foo<'a, T>(x)`. Shares
+    // its opening `<` with binary comparison (`a < b`). Disambiguation
+    // is via a declared conflict (see `conflicts:`) plus `prec.dynamic`
+    // — tree-sitter's GLR forks at `identifier <`, and if the generic
+    // form parses to `>(...)` successfully it wins over the binary
+    // interpretation via the positive dynamic score; otherwise the
+    // generic parse fails at some inner token and the binary parse
+    // wins by default.
+    // Call — optional type args between callee and `(`. The type_args
+    // branch shares its opening `<` with `binary_expr` comparisons and
+    // with the `instantiation_expr` shape (`foo<T>` without call). The
+    // ambiguity is resolved by tree-sitter's GLR under the declared
+    // conflict + named-precedence ladder at the top of the grammar.
+    // Plain call. Explicit type args ride on `instantiation_expr`
+    // below and enter the call via the function-position slot —
+    // `foo<T>(x)` parses as `call_expr(instantiation_expr(foo, <T>), x)`.
     call_expr: $ => prec.left(20, seq(
       field('function', $._expr_postfix),
       '(',
       common.commaSep($.expr),
       ')',
     )),
+    // `foo<T>` — carries explicit type arguments. In Silica it's not
+    // useful as a standalone expression, but its presence is what
+    // makes tree-sitter's LR generator see a genuine ambiguity at
+    // `identifier <` (between shifting into type_args and reducing
+    // to `_expr_prefix` for `binary_expr` comparison). The declared
+    // conflict with `_expr_prefix` (below) forces GLR to fork.
+    // Pattern lifted from tree-sitter-typescript.
+    instantiation_expr: $ => seq(
+      field('function', $._expr_postfix),
+      field('type_args', $.type_args),
+    ),
 
     index_expr: $ => prec.left(20, seq(
       field('target', $._expr_postfix),

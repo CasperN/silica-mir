@@ -212,7 +212,7 @@ pub enum ExprKind {
     Deref(Box<Expr>),
     Borrow(RefKind, Box<Expr>),
     RawBorrow(Box<Expr>),
-    Call(Box<Expr>, Vec<Expr>),
+    Call(Box<Expr>, GenericArgs, Vec<Expr>),
     Block(Vec<Stmt>, Option<Box<Expr>>, bool), // true if it is an `unsafe { ... }` block
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),
@@ -258,6 +258,25 @@ pub enum Pattern {
 pub struct Expr {
     pub kind: ExprKind,
     pub span: Span,
+}
+
+/// Explicit lifetime and type arguments at a call site: `foo<'a, T>(x)`.
+/// Empty when the caller relies on inference (`foo(x)`); non-empty when
+/// the caller writes them out to disambiguate or override inference.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct GenericArgs {
+    pub lifetimes: Vec<Lifetime>,
+    pub types: Vec<Type>,
+}
+
+impl GenericArgs {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lifetimes.is_empty() && self.types.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -16,6 +16,7 @@
 #   nested_bound_violation      HTC-BoundNotSatisfied          `Box<Box<Linear>>` inner fails
 #   return_type_bad_arity       HTC-TypeArgArityMismatch       return type has wrong arity
 #   let_annotation_bad_arity    HTC-TypeArgArityMismatch       `let x: Box<i64, i64> = ...`
+#   bare_instantiation          PARSE-UnexpectedToken          `foo<T>` as a value (not a call)
 
 struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
 
@@ -76,4 +77,16 @@ fn return_type_bad_arity() -> Box<i64, i64> {
 
 fn let_annotation_bad_arity() {
   let x: Box<i64, i64> = Box { inner: 0 };
+}
+
+# ---------- Bare `foo<T>` without a call is not a valid expression ----------
+
+# The `instantiation_expr` grammar rule exists only to make
+# tree-sitter's LR generator disambiguate `foo<T>(x)` from
+# `a < b > c`. It parses successfully but has no value semantics in
+# Silica — the HLL parser rejects it when it appears standalone.
+fn<T: Copy + Drop> identity_stub(x: T) -> T { x }
+
+fn bare_instantiation_not_a_value() -> i64 {
+  identity_stub<i64>
 }

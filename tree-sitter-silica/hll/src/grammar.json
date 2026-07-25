@@ -1623,6 +1623,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "instantiation_expr"
+        },
+        {
+          "type": "SYMBOL",
           "name": "index_expr"
         },
         {
@@ -1783,6 +1787,27 @@
           }
         ]
       }
+    },
+    "instantiation_expr": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "FIELD",
+          "name": "function",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_expr_postfix"
+          }
+        },
+        {
+          "type": "FIELD",
+          "name": "type_args",
+          "content": {
+            "type": "SYMBOL",
+            "name": "type_args"
+          }
+        }
+      ]
     },
     "index_expr": {
       "type": "PREC_LEFT",
@@ -2468,6 +2493,10 @@
     ],
     [
       "type"
+    ],
+    [
+      "instantiation_expr",
+      "_expr_prefix"
     ]
   ],
   "precedences": [],

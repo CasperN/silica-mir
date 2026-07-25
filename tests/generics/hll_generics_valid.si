@@ -161,6 +161,30 @@ fn call_generic_fn_via_ret() -> i64 {
   identity(identity(7))
 }
 
+# ---------- Explicit generic-fn call syntax `foo<T>(x)` ----------
+
+# The user supplies the type argument directly instead of relying on
+# HM inference. Parses via tree-sitter's LR/GLR machinery — sibling
+# rules `call_expr`, `instantiation_expr`, and the reduce path into
+# `_expr_prefix` overlap on the `<` after an identifier, and the
+# tree-sitter-typescript-style conflict declaration forces the parser
+# to try all three and pick the one that fully consumes the input.
+fn call_generic_explicit() -> i64 {
+  identity<i64>(42)
+}
+
+# Nested explicit generic calls — each `<i64>` disambiguates cleanly
+# without ambiguity against a comparison chain.
+fn call_generic_explicit_nested() -> i64 {
+  identity<i64>(identity<i64>(7))
+}
+
+# Explicit args and inference coexist in the same body — mixing does
+# not confuse the parser.
+fn call_generic_explicit_mixed() -> i64 {
+  identity(identity<i64>(3))
+}
+
 # ---------- Unsafe block and raw pointer dereference ----------
 fn test_unsafe_deref(ptr: *i64) -> i64 {
   unsafe { ptr.* }

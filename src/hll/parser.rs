@@ -1015,6 +1015,21 @@ impl Parser {
                 let func = node.child_by_field_name("function").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "call missing function")
                 })?;
+                // Generic calls parse as `call_expr(instantiation_expr(f, <T>), args)`
+                // — unwrap the inner instantiation_expr to lift the type args
+                // onto the call's generics slot.
+                let (func_expr, generics) = if func.kind() == "instantiation_expr" {
+                    let inner_fn = func.child_by_field_name("function").ok_or_else(|| {
+                        self.diag(func, ParserCode::MalformedCst, "instantiation missing function")
+                    })?;
+                    let type_args_node = func.child_by_field_name("type_args").ok_or_else(|| {
+                        self.diag(func, ParserCode::MalformedCst, "instantiation missing type_args")
+                    })?;
+                    let (lifetimes, types) = self.map_type_args(type_args_node, scope)?;
+                    (self.map_expr(inner_fn, scope)?, GenericArgs { lifetimes, types })
+                } else {
+                    (self.map_expr(func, scope)?, GenericArgs::empty())
+                };
                 let mut cursor = node.walk();
                 let mut args = Vec::new();
                 for c in node.children(&mut cursor) {
@@ -1023,10 +1038,19 @@ impl Parser {
                     }
                 }
                 Ok(Expr {
-                    kind: ExprKind::Call(Box::new(self.map_expr(func, scope)?), args),
+                    kind: ExprKind::Call(Box::new(func_expr), generics, args),
                     span,
                 })
             }
+            // Bare `foo<T>` without a call. Silica doesn't use this shape
+            // as a value; it exists only to make tree-sitter's LR
+            // generator disambiguate `foo<T>(x)` from `a < b > c`. Reject
+            // as ill-formed at parse time.
+            "instantiation_expr" => Err(self.diag(
+                node,
+                ParserCode::UnexpectedToken,
+                "type arguments without a call are not a valid expression",
+            )),
             "index_expr" => {
                 let target = node.child_by_field_name("target").ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "index missing target")
@@ -1631,7 +1655,7 @@ mod tests {
             panic!("expected FieldAccess");
         };
         assert_eq!(x, "x");
-        assert!(matches!(target.kind, ExprKind::Call(_, _)));
+        assert!(matches!(target.kind, ExprKind::Call(_, _, _)));
     }
 
     #[test]
@@ -1973,7 +1997,7 @@ mod tests {
     #[test]
     fn block_tail_call_expr() {
         let e = block_tail("fn f() -> i64 { g() }");
-        assert!(matches!(e.kind, ExprKind::Call(_, _)), "got {:?}", e.kind);
+        assert!(matches!(e.kind, ExprKind::Call(_, _, _)), "got {:?}", e.kind);
     }
 
     #[test]

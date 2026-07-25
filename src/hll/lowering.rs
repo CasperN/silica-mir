@@ -963,23 +963,26 @@ fn lower_expr_into(
             ));
             Ok(())
         }
-        hll::ExprKind::Call(fn_expr, args) => {
+        hll::ExprKind::Call(fn_expr, generics, args) => {
             let mut arg_ops = Vec::new();
             for arg in args {
                 arg_ops.push(lower_expr_to_operand(ctx, arg, types)?);
             }
 
             // Lower fn_expr to operand. Direct function names lower to
-            // a FnName const; for a generic fn, extract the inferred
-            // type args by comparing the callee's typed signature
-            // (`types[fn_expr.span]`, freshened by HLL type_check) to
-            // the fn's declared signature.
+            // a FnName const; for a generic fn, prefer explicit
+            // caller-written type args, otherwise fall back to type
+            // args inferred by HLL type_check (via `infer_fn_type_args`).
             let fn_op = if let hll::ExprKind::Variable(ref name) = fn_expr.kind {
                 if let Some(f_decl) = ctx.functions.get(name).cloned() {
                     if ctx.is_scoped_binding(name) {
                         lower_expr_to_operand(ctx, fn_expr, types)?
                     } else {
-                        let mir_type_args = infer_fn_type_args(&f_decl, fn_expr.span, types);
+                        let mir_type_args = if generics.types.is_empty() {
+                            infer_fn_type_args(&f_decl, fn_expr.span, types)
+                        } else {
+                            generics.types.iter().map(lower_type).collect()
+                        };
                         const_op(fn_name_const_with_args(name.clone(), mir_type_args))
                     }
                 } else {
