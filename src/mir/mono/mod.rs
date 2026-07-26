@@ -139,24 +139,27 @@ impl MonoCtx {
     /// type-param mapping, then rewrite every Custom's args to
     /// concrete via `need`.
     fn walk_type(&mut self, ty: &Type) -> Type {
-        match &ty.kind {
+        let kind = match &ty.kind {
             TypeKind::Custom(name, _, args) => {
                 let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
                 let mangled = self.need(name, &new_args);
-                Type::no_span(TypeKind::Custom(mangled, Vec::new(), Vec::new()))
+                TypeKind::Custom(mangled, Vec::new(), Vec::new())
             }
-            TypeKind::Ref(kind, lt, inner) => Type::no_span(TypeKind::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner)))),
-            TypeKind::RawPtr(inner) => Type::no_span(TypeKind::RawPtr(Box::new(self.walk_type(inner)))),
-            TypeKind::Array(inner, n) => Type::no_span(TypeKind::Array(Box::new(self.walk_type(inner)), *n)),
+            TypeKind::Ref(kind, lt, inner) => {
+                TypeKind::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner)))
+            }
+            TypeKind::RawPtr(inner) => TypeKind::RawPtr(Box::new(self.walk_type(inner))),
+            TypeKind::Array(inner, n) => TypeKind::Array(Box::new(self.walk_type(inner)), *n),
             TypeKind::Fn(params) => {
-                Type::no_span(TypeKind::Fn(params.iter().map(|p| self.walk_type(p)).collect()))
+                TypeKind::Fn(params.iter().map(|p| self.walk_type(p)).collect())
             }
             TypeKind::Param(name) => panic!(
                 "mono: unsubstituted TypeKind::Param '{}' — caller should have subst'd it before walk_type",
                 name
             ),
-            _ => ty.clone(),
-        }
+            _ => return ty.clone(),
+        };
+        Type::new(kind, ty.source)
     }
 
     fn walk_operand(&mut self, op: &Operand) -> Operand {
@@ -211,18 +214,17 @@ impl MonoCtx {
     }
 
     fn walk_stmt(&mut self, s: &Statement) -> Statement {
-        let statement = match &s.kind {
-            StatementKind::Assign(p, r) => assign_stmt(p.clone(), self.walk_rvalue(r), s.span()),
+        match &s.kind {
+            StatementKind::Assign(p, r) => assign_stmt(p.clone(), self.walk_rvalue(r), s.source),
             StatementKind::Call(callee, args) => call_stmt(
                 self.walk_operand(callee),
                 args.iter().map(|a| self.walk_operand(a)).collect(),
-                s.span(),
+                s.source,
             ),
-            StatementKind::Drop(p) => drop_stmt(p.clone(), s.span()),
-            StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span()),
-            StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span()),
-        };
-        statement.with_source(s.source)
+            StatementKind::Drop(p) => drop_stmt(p.clone(), s.source),
+            StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.source),
+            StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.source),
+        }
     }
 
     fn walk_terminator(&mut self, t: &Terminator) -> Terminator {
@@ -235,9 +237,8 @@ impl MonoCtx {
                 self.walk_operand(cond),
                 true_label.clone(),
                 false_label.clone(),
-                t.span(),
-            )
-            .with_source(t.source),
+                t.source,
+            ),
             _ => t.clone(),
         }
     }
@@ -374,11 +375,11 @@ fn mangle(name: &str, args: &[Type]) -> String {
 
 /// Substitute Params in every Type-carrying position inside a statement.
 fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]) -> Statement {
-    let statement = match &s.kind {
+    match &s.kind {
         StatementKind::Assign(p, r) => assign_stmt(
             p.clone(),
             substitute_rvalue_types(r, type_params, args),
-            s.span(),
+            s.source,
         ),
         StatementKind::Call(callee, cargs) => call_stmt(
             substitute_operand_types(callee, type_params, args),
@@ -386,13 +387,12 @@ fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]
                 .iter()
                 .map(|a| substitute_operand_types(a, type_params, args))
                 .collect(),
-            s.span(),
+            s.source,
         ),
-        StatementKind::Drop(p) => drop_stmt(p.clone(), s.span()),
-        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span()),
-        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span()),
-    };
-    statement.with_source(s.source)
+        StatementKind::Drop(p) => drop_stmt(p.clone(), s.source),
+        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.source),
+        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.source),
+    }
 }
 
 fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Type]) -> RValue {
@@ -443,4 +443,51 @@ fn substitute_terminator_types(
     // isn't parameterizable, so no substitution needed. Other terminators
     // don't carry types.
     t.clone()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn type_rewrite_preserves_outer_and_nested_provenance() {
+        let outer_source = SourceInfo::written(Span {
+            line: 3,
+            col: 5,
+            end_line: 3,
+            end_col: 17,
+        });
+        let inner_source = SourceInfo::generated(
+            GeneratedKind::LifetimeElision,
+            Span {
+                line: 3,
+                col: 6,
+                end_line: 3,
+                end_col: 16,
+            },
+        );
+        let ty = Type::new(
+            TypeKind::Array(
+                Box::new(Type::new(
+                    TypeKind::Custom("Box".into(), Vec::new(), vec![i64_ty()]),
+                    inner_source,
+                )),
+                1,
+            ),
+            outer_source,
+        );
+        let mut ctx = MonoCtx {
+            originals: BTreeMap::new(),
+            needed: BTreeMap::new(),
+            pending: VecDeque::new(),
+        };
+
+        let rewritten = ctx.walk_type(&ty);
+
+        assert_eq!(rewritten.source, outer_source);
+        let TypeKind::Array(inner, 1) = rewritten.kind else {
+            panic!("expected rewritten array type");
+        };
+        assert_eq!(inner.source, inner_source);
+    }
 }

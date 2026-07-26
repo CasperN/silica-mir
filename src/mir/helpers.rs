@@ -35,68 +35,68 @@ pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
 
 // ---------- Scalars ----------
 //
-// The `_ty` helpers return `Type` marked as `TypeSynthesis` with no source
-// attribution. Parsers stamp written spans via `TypeKind::X.at(span)`; callers
-// transforming a source type can replace the metadata with `with_source`.
+// The `_ty` helpers return `Type` marked as `TypeSynthesis` with no meaningful
+// source attribution. Parsers stamp written spans via `TypeKind::X.at(span)`;
+// callers transforming a source type should pass its metadata to `Type::new`.
 
 pub fn i8_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::I8))
+    Type::synthesized(TypeKind::Int(IntTy::I8))
 }
 pub fn i16_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::I16))
+    Type::synthesized(TypeKind::Int(IntTy::I16))
 }
 pub fn i32_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::I32))
+    Type::synthesized(TypeKind::Int(IntTy::I32))
 }
 pub fn i64_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::I64))
+    Type::synthesized(TypeKind::Int(IntTy::I64))
 }
 pub fn u8_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::U8))
+    Type::synthesized(TypeKind::Int(IntTy::U8))
 }
 pub fn u16_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::U16))
+    Type::synthesized(TypeKind::Int(IntTy::U16))
 }
 pub fn u32_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::U32))
+    Type::synthesized(TypeKind::Int(IntTy::U32))
 }
 pub fn u64_ty() -> Type {
-    Type::no_span(TypeKind::Int(IntTy::U64))
+    Type::synthesized(TypeKind::Int(IntTy::U64))
 }
 pub fn f32_ty() -> Type {
-    Type::no_span(TypeKind::Float(FloatTy::F32))
+    Type::synthesized(TypeKind::Float(FloatTy::F32))
 }
 pub fn f64_ty() -> Type {
-    Type::no_span(TypeKind::Float(FloatTy::F64))
+    Type::synthesized(TypeKind::Float(FloatTy::F64))
 }
 pub fn bool_ty() -> Type {
-    Type::no_span(TypeKind::Bool)
+    Type::synthesized(TypeKind::Bool)
 }
 pub fn unit_ty() -> Type {
-    Type::no_span(TypeKind::Unit)
+    Type::synthesized(TypeKind::Unit)
 }
 pub fn never_ty() -> Type {
-    Type::no_span(TypeKind::Never)
+    Type::synthesized(TypeKind::Never)
 }
 
 pub fn int_ty(kind: IntTy) -> Type {
-    Type::no_span(TypeKind::Int(kind))
+    Type::synthesized(TypeKind::Int(kind))
 }
 
 pub fn float_ty(kind: FloatTy) -> Type {
-    Type::no_span(TypeKind::Float(kind))
+    Type::synthesized(TypeKind::Float(kind))
 }
 
 // ---------- Custom / Param ----------
 
 /// A non-generic struct/enum reference: `Foo`.
 pub fn custom_ty(name: impl Into<String>) -> Type {
-    Type::no_span(TypeKind::Custom(name.into(), Vec::new(), Vec::new()))
+    Type::synthesized(TypeKind::Custom(name.into(), Vec::new(), Vec::new()))
 }
 
 /// A generic struct/enum instantiation: `Foo<T, U>`.
 pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
-    Type::no_span(TypeKind::Custom(name.into(), Vec::new(), args))
+    Type::synthesized(TypeKind::Custom(name.into(), Vec::new(), args))
 }
 
 /// A generic struct/enum instantiation with both lifetime and type
@@ -106,24 +106,24 @@ pub fn custom_ty_generic(
     lifetimes: Vec<Lifetime>,
     args: Vec<Type>,
 ) -> Type {
-    Type::no_span(TypeKind::Custom(name.into(), lifetimes, args))
+    Type::synthesized(TypeKind::Custom(name.into(), lifetimes, args))
 }
 
 /// A reference to an in-scope type parameter.
 pub fn param_ty(name: impl Into<String>) -> Type {
-    Type::no_span(TypeKind::Param(name.into()))
+    Type::synthesized(TypeKind::Param(name.into()))
 }
 
 // ---------- References ----------
 
 pub fn ref_ty(kind: RefKind, pointee: Type) -> Type {
-    Type::no_span(TypeKind::Ref(kind, None, Box::new(pointee)))
+    Type::synthesized(TypeKind::Ref(kind, None, Box::new(pointee)))
 }
 
 /// Reference with an explicit lifetime annotation: `&'a T`, `&'a mut T`,
 /// etc. For refs without a source-visible lifetime, use [`ref_ty`].
 pub fn named_ref_ty(kind: RefKind, lt: Lifetime, pointee: Type) -> Type {
-    Type::no_span(TypeKind::Ref(kind, Some(lt), Box::new(pointee)))
+    Type::synthesized(TypeKind::Ref(kind, Some(lt), Box::new(pointee)))
 }
 pub fn shared_ref_ty(pointee: Type) -> Type {
     ref_ty(RefKind::Shared, pointee)
@@ -143,19 +143,19 @@ pub fn uninit_ref_ty(pointee: Type) -> Type {
 
 /// Raw pointer `*T` — unsafe, no loan tracking.
 pub fn raw_ptr_ty(pointee: Type) -> Type {
-    Type::no_span(TypeKind::RawPtr(Box::new(pointee)))
+    Type::synthesized(TypeKind::RawPtr(Box::new(pointee)))
 }
 
 // ---------- Aggregates ----------
 
 pub fn array_ty(elem: Type, n: u64) -> Type {
-    Type::no_span(TypeKind::Array(Box::new(elem), n))
+    Type::synthesized(TypeKind::Array(Box::new(elem), n))
 }
 
 /// Function-pointer type. MIR has no return type — results go through
 /// `&out $return`.
 pub fn fn_ty(params: Vec<Type>) -> Type {
-    Type::no_span(TypeKind::Fn(params))
+    Type::synthesized(TypeKind::Fn(params))
 }
 
 // ---------- Places ----------
@@ -246,35 +246,35 @@ pub fn array_lit_rv(elems: Vec<Operand>) -> RValue {
 
 // ---------- Statements ----------
 
-pub fn assign_stmt(dst: Place, src: RValue, span: Span) -> Statement {
-    Statement::new(StatementKind::Assign(dst, src), span)
+pub fn assign_stmt(dst: Place, src: RValue, source: impl Into<SourceInfo>) -> Statement {
+    Statement::new(StatementKind::Assign(dst, src), source)
 }
-pub fn call_stmt(callee: Operand, args: Vec<Operand>, span: Span) -> Statement {
-    Statement::new(StatementKind::Call(callee, args), span)
+pub fn call_stmt(callee: Operand, args: Vec<Operand>, source: impl Into<SourceInfo>) -> Statement {
+    Statement::new(StatementKind::Call(callee, args), source)
 }
-pub fn drop_stmt(place: Place, span: Span) -> Statement {
-    Statement::new(StatementKind::Drop(place), span)
+pub fn drop_stmt(place: Place, source: impl Into<SourceInfo>) -> Statement {
+    Statement::new(StatementKind::Drop(place), source)
 }
-pub fn unborrow_stmt(place: Place, span: Span) -> Statement {
-    Statement::new(StatementKind::Unborrow(place), span)
+pub fn unborrow_stmt(place: Place, source: impl Into<SourceInfo>) -> Statement {
+    Statement::new(StatementKind::Unborrow(place), source)
 }
-pub fn require_uninit_stmt(place: Place, span: Span) -> Statement {
-    Statement::new(StatementKind::RequireUninit(place), span)
+pub fn require_uninit_stmt(place: Place, source: impl Into<SourceInfo>) -> Statement {
+    Statement::new(StatementKind::RequireUninit(place), source)
 }
 
 // ---------- Terminators ----------
 
-pub fn goto_term(label: impl Into<String>, span: Span) -> Terminator {
-    Terminator::new(TerminatorKind::Goto(label.into()), span)
+pub fn goto_term(label: impl Into<String>, source: impl Into<SourceInfo>) -> Terminator {
+    Terminator::new(TerminatorKind::Goto(label.into()), source)
 }
-pub fn return_term(span: Span) -> Terminator {
-    Terminator::new(TerminatorKind::Return, span)
+pub fn return_term(source: impl Into<SourceInfo>) -> Terminator {
+    Terminator::new(TerminatorKind::Return, source)
 }
 pub fn branch_term(
     cond: Operand,
     true_label: impl Into<String>,
     false_label: impl Into<String>,
-    span: Span,
+    source: impl Into<SourceInfo>,
 ) -> Terminator {
     Terminator::new(
         TerminatorKind::Branch {
@@ -282,17 +282,21 @@ pub fn branch_term(
             true_label: true_label.into(),
             false_label: false_label.into(),
         },
-        span,
+        source,
     )
 }
-pub fn switch_enum_term(place: Place, cases: Vec<(String, String)>, span: Span) -> Terminator {
-    Terminator::new(TerminatorKind::SwitchEnum { place, cases }, span)
+pub fn switch_enum_term(
+    place: Place,
+    cases: Vec<(String, String)>,
+    source: impl Into<SourceInfo>,
+) -> Terminator {
+    Terminator::new(TerminatorKind::SwitchEnum { place, cases }, source)
 }
-pub fn abort_term(span: Span) -> Terminator {
-    Terminator::new(TerminatorKind::Abort, span)
+pub fn abort_term(source: impl Into<SourceInfo>) -> Terminator {
+    Terminator::new(TerminatorKind::Abort, source)
 }
-pub fn unreachable_term(span: Span) -> Terminator {
-    Terminator::new(TerminatorKind::Unreachable, span)
+pub fn unreachable_term(source: impl Into<SourceInfo>) -> Terminator {
+    Terminator::new(TerminatorKind::Unreachable, source)
 }
 
 // ---------- Diagnostics ----------

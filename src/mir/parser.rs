@@ -394,10 +394,9 @@ impl Parser {
         Ok(self.map_type_inner(node)?.with_span(span))
     }
 
-    /// Same as `map_type` but leaves the outermost span at
-    /// `Span::default()`; the caller (`map_type`) stamps the node's
-    /// span. Inner types built recursively via `map_type` already
-    /// carry their own child-node spans.
+    /// Same as `map_type` but leaves the outermost type marked as synthesized;
+    /// the caller (`map_type`) stamps the node's written span. Inner types built
+    /// recursively via `map_type` already carry their own child-node spans.
     fn map_type_inner(&self, node: Node) -> Result<Type, Diagnostic> {
         if let Some(ty) = scalar_kind_to_type(node.kind()) {
             return Ok(ty);

@@ -64,10 +64,10 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
         label: split_label.clone(),
         label_source: SourceInfo::generated(GeneratedKind::ControlFlowElaboration, pred_span),
         statements: Vec::new(),
-        terminator: goto_term(succ_label, pred_span).with_source(SourceInfo::generated(
-            GeneratedKind::ControlFlowElaboration,
-            pred_span,
-        )),
+        terminator: goto_term(
+            succ_label,
+            SourceInfo::generated(GeneratedKind::ControlFlowElaboration, pred_span),
+        ),
     };
     // Insert right after pred so the block ordering stays roughly
     // control-flow adjacent. Not load-bearing for correctness.

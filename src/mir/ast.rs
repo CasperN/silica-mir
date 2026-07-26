@@ -15,17 +15,18 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn new(kind: TypeKind, span: Span) -> Self {
+    pub fn new(kind: TypeKind, source: impl Into<SourceInfo>) -> Self {
         Self {
             kind,
-            source: SourceInfo::written(span),
+            source: source.into(),
         }
     }
 
-    /// Construct a compiler-synthesized type with no source attribution.
+    /// Construct a compiler-synthesized type with no meaningful source
+    /// attribution.
     /// Parsed types and transformations with a meaningful attribution should
-    /// use [`Type::new`] or [`Type::with_source`] instead.
-    pub fn no_span(kind: TypeKind) -> Self {
+    /// use [`Type::new`] instead.
+    pub fn synthesized(kind: TypeKind) -> Self {
         Self {
             kind,
             source: SourceInfo::generated(GeneratedKind::TypeSynthesis, Span::default()),
@@ -34,11 +35,6 @@ impl Type {
 
     pub fn with_span(mut self, span: Span) -> Self {
         self.source = SourceInfo::written(span);
-        self
-    }
-
-    pub fn with_source(mut self, source: SourceInfo) -> Self {
-        self.source = source;
         self
     }
 
@@ -544,20 +540,15 @@ pub struct Statement {
 }
 
 impl Statement {
-    pub fn new(kind: StatementKind, span: Span) -> Self {
+    pub fn new(kind: StatementKind, source: impl Into<SourceInfo>) -> Self {
         Self {
             kind,
-            source: SourceInfo::written(span),
+            source: source.into(),
         }
     }
 
     pub fn span(&self) -> Span {
         self.source.span()
-    }
-
-    pub fn with_source(mut self, source: SourceInfo) -> Self {
-        self.source = source;
-        self
     }
 }
 
@@ -590,20 +581,15 @@ pub struct Terminator {
 }
 
 impl Terminator {
-    pub fn new(kind: TerminatorKind, span: Span) -> Self {
+    pub fn new(kind: TerminatorKind, source: impl Into<SourceInfo>) -> Self {
         Self {
             kind,
-            source: SourceInfo::written(span),
+            source: source.into(),
         }
     }
 
     pub fn span(&self) -> Span {
         self.source.span()
-    }
-
-    pub fn with_source(mut self, source: SourceInfo) -> Self {
-        self.source = source;
-        self
     }
 }
 

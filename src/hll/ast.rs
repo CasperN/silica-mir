@@ -124,7 +124,8 @@ pub struct FnDecl {
     /// may be added later (`"system"`, `"fastcall"`, ...); the type
     /// checker rejects unknown strings so lowering can trust it.
     pub abi: Option<String>,
-    /// Span of the ABI string literal (including the quotes), if present.
+    /// Source attribution of the ABI string literal (including the quotes),
+    /// if present.
     /// Used by the type checker to point diagnostics at just `"..."` on
     /// an unknown ABI rather than at the whole `extern fn` declaration.
     pub abi_source: Option<SourceInfo>,

@@ -24,10 +24,10 @@ fn goto(label: &str) -> Terminator {
 }
 
 fn generated_goto(label: &str) -> Terminator {
-    goto(label).with_source(SourceInfo::generated(
-        GeneratedKind::ControlFlowElaboration,
-        span(),
-    ))
+    goto_term(
+        label,
+        SourceInfo::generated(GeneratedKind::ControlFlowElaboration, span()),
+    )
 }
 
 fn branch(t: &str, f: &str) -> Terminator {

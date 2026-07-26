@@ -125,10 +125,10 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 let items: Vec<Statement> = places
                     .iter()
                     .map(|p| {
-                        drop_stmt(p.clone(), span).with_source(SourceInfo::generated(
-                            GeneratedKind::DropElaboration,
-                            span,
-                        ))
+                        drop_stmt(
+                            p.clone(),
+                            SourceInfo::generated(GeneratedKind::DropElaboration, span),
+                        )
                     })
                     .collect();
                 block.statements.splice(pos..pos, items);
@@ -157,10 +157,10 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 .expect("split_edge just guaranteed this block exists");
             let span = split_block.terminator.span();
             for p in places {
-                split_block.statements.push(
-                    drop_stmt(p.clone(), span)
-                        .with_source(SourceInfo::generated(GeneratedKind::DropElaboration, span)),
-                );
+                split_block.statements.push(drop_stmt(
+                    p.clone(),
+                    SourceInfo::generated(GeneratedKind::DropElaboration, span),
+                ));
             }
         }
     }

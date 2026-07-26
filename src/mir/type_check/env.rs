@@ -461,11 +461,10 @@ impl Env {
                     ));
                 }
 
-                Ok(Type::no_span(TypeKind::Custom(
-                    enum_name.clone(),
-                    Vec::new(),
-                    type_args.clone(),
-                )))
+                Ok(Type::new(
+                    TypeKind::Custom(enum_name.clone(), Vec::new(), type_args.clone()),
+                    SourceInfo::generated(GeneratedKind::TypeSynthesis, span),
+                ))
             }
             RValue::ArrayLit(ops) => {
                 // Empty array literal: `[]` has type `[Unit; 0]` as a

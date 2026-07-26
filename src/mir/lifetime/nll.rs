@@ -283,8 +283,10 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             let items: Vec<Statement> = places
                 .iter()
                 .map(|p| {
-                    unborrow_stmt(p.clone(), span)
-                        .with_source(SourceInfo::generated(GeneratedKind::NllElaboration, span))
+                    unborrow_stmt(
+                        p.clone(),
+                        SourceInfo::generated(GeneratedKind::NllElaboration, span),
+                    )
                 })
                 .collect();
             block.statements.splice(pos..pos, items);
@@ -307,14 +309,10 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             .find(|b| b.label == split_label)
             .expect("split_edge just guaranteed this block exists");
         for p in places {
-            split_block
-                .statements
-                .push(
-                    unborrow_stmt(p.clone(), succ_span).with_source(SourceInfo::generated(
-                        GeneratedKind::NllElaboration,
-                        succ_span,
-                    )),
-                );
+            split_block.statements.push(unborrow_stmt(
+                p.clone(),
+                SourceInfo::generated(GeneratedKind::NllElaboration, succ_span),
+            ));
         }
     }
 }

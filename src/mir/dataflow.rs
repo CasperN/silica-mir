@@ -52,8 +52,8 @@ pub trait Analysis {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State;
 
     /// Apply the statement's forward semantics. Framework iterates
-    /// backward internally for backward direction. `span` is the
-    /// source span attached to `stmt`; analyses can carry it into
+    /// backward internally for backward direction. `source` is the
+    /// source attribution attached to `stmt`; analyses can carry it into
     /// state for later cross-block diagnostics.
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, source: SourceInfo);
 
