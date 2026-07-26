@@ -34,7 +34,7 @@
 //! dropped variable transitions to `Moved` in the init dataflow, so a
 //! second run finds nothing to insert.
 
-use super::analysis::{block_entry_states, transfer_stmt_silent, InitState, PointState};
+use super::analysis::{block_entry_states, transfer_stmt_silent, InitSlot, InitState, PointState};
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
@@ -506,20 +506,26 @@ fn walk_diverged(
             // whose `state_at` at any pred exit reads back as `Partial`
             // rather than `Init`, and no per-field drop is planned.
             //
-            // Precision gap (not soundness): `TypeKind::Array` and enum
-            // Custom variants fall through the `_ => {}` below and don't
-            // get per-slot / per-variant edge-drop planning. The final
-            // `check_return_leaks` catches whatever this misses (its
-            // `find_return_leaks` walk does descend arrays), so the
-            // program is still rejected — just without the automatic
-            // per-arm cleanup that drop-elab would have inserted.
+            // Precision gap (not soundness): `TypeKind::Array` falls through
+            // the `_ => {}` below and doesn't get per-slot edge-drop
+            // planning. The final `check_return_leaks` catches whatever
+            // this misses (its `find_return_leaks` walk does descend
+            // arrays), so the program is still rejected — just without
+            // the automatic per-arm cleanup drop-elab would have inserted.
+            //
+            // Enums are atomic in the init-state model (whole-value
+            // construction via `Name::V(...)`, whole-value move), so
+            // `Partial` cannot arise on an enum-typed place; the enum
+            // Custom arm below is unreachable through the checker and is
+            // kept as a defensive no-op.
             let TypeKind::Custom(name, _, args) = &ty.kind else {
                 return;
             };
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
-                        let Some(field_state) = fields.get(&f.name) else {
+                        let Some(field_state) = fields.get(&InitSlot::Field(f.name.clone()))
+                        else {
                             continue;
                         };
                         let field_ty = s.meta.substitute_types(&f.ty, args);
@@ -527,12 +533,8 @@ fn walk_diverged(
                         walk_diverged(env, sub_place, &field_ty, field_state, out);
                     }
                 }
-                // Enum Custom types skipped: a Partial on an enum arises
-                // only through variant-payload initialization, and
-                // per-variant edge-drop planning would need to know the
-                // active variant at each pred — see the outer comment.
-                // `None` means the type isn't registered (type-check
-                // error already reported).
+                // Enum: unreachable-Partial by construction (see above).
+                // `None`: type-check error already reported.
                 Some(TypeDecl::Enum(_)) | None => {}
             }
         }
@@ -554,7 +556,10 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
     match &path[0] {
         PathStep::Field(f) => match state {
             InitState::Partial(map) => {
-                let sub = map.get(f).cloned().unwrap_or(InitState::NeverInit);
+                let sub = map
+                    .get(&InitSlot::Field(f.clone()))
+                    .cloned()
+                    .unwrap_or(InitState::NeverInit);
                 read_state_at_path(&sub, &path[1..])
             }
             other => other.clone(),
@@ -562,7 +567,7 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
         PathStep::Index(Some(k)) => match state {
             InitState::Partial(map) => {
                 let sub = map
-                    .get(&k.to_string())
+                    .get(&InitSlot::Index(*k))
                     .cloned()
                     .unwrap_or(InitState::NeverInit);
                 read_state_at_path(&sub, &path[1..])
@@ -662,7 +667,7 @@ fn plan_drops_for_place(
                         .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
                         .collect();
                     for (name, field_ty) in field_decls.iter().rev() {
-                        let Some(field_state) = fields.get(name) else {
+                        let Some(field_state) = fields.get(&InitSlot::Field(name.clone())) else {
                             continue;
                         };
                         let fp = field_place(place.clone(), name.clone());
@@ -675,8 +680,7 @@ fn plan_drops_for_place(
                 // `require_uninit`.
                 TypeKind::Array(elem, n) => {
                     for index in (0..*n).rev() {
-                        let key = index.to_string();
-                        let Some(element_state) = fields.get(&key) else {
+                        let Some(element_state) = fields.get(&InitSlot::Index(index)) else {
                             continue;
                         };
                         let ip = index_place(

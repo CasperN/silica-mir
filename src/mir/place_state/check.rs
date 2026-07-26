@@ -9,8 +9,8 @@ use indexmap::IndexMap;
 use super::analysis::{
     capture_carried_refs, describe_obligation_mismatch, describe_pointee_state, describe_state,
     extract_init_path, format_path, partial_is_uninit, read_at, run_fixpoint,
-    split_at_outermost_deref, states_before_returns, InitState, InitStateCode::*, InitStateContext,
-    PointState, RefState,
+    split_at_outermost_deref, states_before_returns, InitSlot, InitState, InitStateCode::*,
+    InitStateContext, PointState, RefState,
 };
 
 pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
@@ -108,22 +108,20 @@ fn find_return_leaks(
         InitState::NeverInit | InitState::Moved => {}
         InitState::Init | InitState::Diverged => out.push((path.clone(), ty.clone())),
         InitState::Partial(fields) => {
-            for (name, sub_state) in fields {
-                // Struct fields use `.field`; array slots (numeric keys)
-                // use `[k]`. Skipping arrays here — the previous shape of
-                // this walk — is what let piecewise-init linear arrays
-                // silently leak past return.
-                let (sub_ty, segment) = match &ty.kind {
-                    TypeKind::Array(elem, _) => ((**elem).clone(), format!("[{}]", name)),
-                    _ => {
-                        let Some(ft) = env.field_type(ty, name) else {
-                            continue;
-                        };
-                        (ft, format!(".{}", name))
-                    }
+            for (slot, sub_state) in fields {
+                let sub_ty = match (&ty.kind, slot) {
+                    (TypeKind::Array(elem, _), InitSlot::Index(_)) => (**elem).clone(),
+                    (_, InitSlot::Field(f)) => match env.field_type(ty, f) {
+                        Some(ft) => ft,
+                        None => continue,
+                    },
+                    // Slot/type mismatch — expand_uniform/expand_uniform_array
+                    // only emit matching shapes, so this only fires if the
+                    // types have drifted since expansion (skip defensively).
+                    _ => continue,
                 };
                 let saved_len = path.len();
-                path.push_str(&segment);
+                path.push_str(&slot.to_string());
                 find_return_leaks(env, sub_state, &sub_ty, path, out);
                 path.truncate(saved_len);
             }
@@ -194,23 +192,17 @@ pub(super) fn walk_overwrite_leaves(
         InitState::NeverInit | InitState::Moved => {}
         InitState::Init | InitState::Diverged => report(path, ty),
         InitState::Partial(fields) => {
-            for (name, sub_state) in fields {
-                // Struct fields resolve through `env.field_type`; array
-                // slots are numeric keys and the element type comes from
-                // the containing `[T; N]`. Skipping arrays here previously
-                // let piecewise-init linear-array slots be silently
-                // clobbered by a whole-array overwrite.
-                let (sub_ty, segment) = match &ty.kind {
-                    TypeKind::Array(elem, _) => ((**elem).clone(), format!("[{}]", name)),
-                    _ => {
-                        let Some(ft) = env.field_type(ty, name) else {
-                            continue;
-                        };
-                        (ft, format!(".{}", name))
-                    }
+            for (slot, sub_state) in fields {
+                let sub_ty = match (&ty.kind, slot) {
+                    (TypeKind::Array(elem, _), InitSlot::Index(_)) => (**elem).clone(),
+                    (_, InitSlot::Field(f)) => match env.field_type(ty, f) {
+                        Some(ft) => ft,
+                        None => continue,
+                    },
+                    _ => continue,
                 };
                 let saved_len = path.len();
-                path.push_str(&segment);
+                path.push_str(&slot.to_string());
                 walk_overwrite_leaves(sub_state, &sub_ty, env, path, report);
                 path.truncate(saved_len);
             }

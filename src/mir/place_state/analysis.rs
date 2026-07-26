@@ -102,14 +102,35 @@ impl From<InitStateCode> for DiagCode {
 }
 use InitStateCode::*;
 
+/// Sub-slot of an `InitState::Partial` state. Struct fields carry a name, array slots
+/// carry the constant index; the enum keeps the two shapes distinct in the
+/// data model and pushes rendering (`.foo`, `[0]`) to the diagnostic
+/// boundary via [`std::fmt::Display`] instead of stringifying indices at
+/// the map-key layer.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub enum InitSlot {
+    Field(String),
+    Index(u64),
+}
+
+impl std::fmt::Display for InitSlot {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InitSlot::Field(name) => write!(f, ".{}", name),
+            InitSlot::Index(i) => write!(f, "[{}]", i),
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InitState {
     NeverInit,
     Moved,
     Init,
-    /// Per-field state for a struct. Field list is complete when this
-    /// variant is constructed. Nested Partials permitted for struct fields.
-    Partial(BTreeMap<String, InitState>),
+    /// Per-slot state for a struct or array. Every slot the container defines
+    /// has an entry when this variant is constructed. Nested Partials are
+    /// permitted for struct fields and array elements.
+    Partial(BTreeMap<InitSlot, InitState>),
     /// Predecessors disagreed on the state at some CFG join.
     Diverged,
 }
@@ -284,10 +305,10 @@ pub(super) fn canonicalize(state: InitState) -> InitState {
 pub(super) fn expand_uniform(
     state: &InitState,
     fields: &[StructField],
-) -> BTreeMap<String, InitState> {
+) -> BTreeMap<InitSlot, InitState> {
     fields
         .iter()
-        .map(|f| (f.name.clone(), state.clone()))
+        .map(|f| (InitSlot::Field(f.name.clone()), state.clone()))
         .collect()
 }
 
@@ -325,8 +346,8 @@ pub(super) fn is_empty(s: &InitState) -> bool {
 
 pub(super) fn expand_from_partial_keys(
     state: &InitState,
-    template: &BTreeMap<String, InitState>,
-) -> BTreeMap<String, InitState> {
+    template: &BTreeMap<InitSlot, InitState>,
+) -> BTreeMap<InitSlot, InitState> {
     template
         .keys()
         .map(|k| (k.clone(), state.clone()))
@@ -334,8 +355,8 @@ pub(super) fn expand_from_partial_keys(
 }
 
 pub(super) fn join_partials(
-    ma: &BTreeMap<String, InitState>,
-    mb: &BTreeMap<String, InitState>,
+    ma: &BTreeMap<InitSlot, InitState>,
+    mb: &BTreeMap<InitSlot, InitState>,
 ) -> InitState {
     let mut out = BTreeMap::new();
     for (k, va) in ma {
@@ -427,7 +448,7 @@ pub(super) fn write_at(
             }
             let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
-                if let Some(field_state) = map.get_mut(f) {
+                if let Some(field_state) = map.get_mut(&InitSlot::Field(f.clone())) {
                     write_at(field_state, &field_ty, &path[1..], env, leaf_state);
                 }
             }
@@ -440,8 +461,7 @@ pub(super) fn write_at(
                 *state = InitState::Partial(expand_uniform_array(state, n));
             }
             if let InitState::Partial(map) = &mut *state {
-                let key = k.to_string();
-                if let Some(slot_state) = map.get_mut(&key) {
+                if let Some(slot_state) = map.get_mut(&InitSlot::Index(*k)) {
                     write_at(slot_state, &elem_ty, &path[1..], env, leaf_state);
                 }
             }
@@ -469,10 +489,12 @@ pub(super) fn array_info(ty: &Type) -> Option<(Type, u64)> {
     }
 }
 
-/// Expand a uniform state into an array `Partial` with N slots keyed
-/// by `"0"`, `"1"`, ..., `"N-1"`.
-pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<String, InitState> {
-    (0..n).map(|i| (i.to_string(), state.clone())).collect()
+/// Expand a uniform state into an array `Partial` with N slots keyed by
+/// `InitSlot::Index(0..N)`.
+pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<InitSlot, InitState> {
+    (0..n)
+        .map(|i| (InitSlot::Index(i), state.clone()))
+        .collect()
 }
 
 /// Apply a move at the given path. Downcast steps set the whole enum to
@@ -492,7 +514,7 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: 
             }
             let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
-                if let Some(field_state) = map.get_mut(f) {
+                if let Some(field_state) = map.get_mut(&InitSlot::Field(f.clone())) {
                     move_at(field_state, &field_ty, &path[1..], env);
                 }
             }
@@ -505,8 +527,7 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: 
                 *state = InitState::Partial(expand_uniform_array(state, n));
             }
             if let InitState::Partial(map) = &mut *state {
-                let key = k.to_string();
-                if let Some(slot_state) = map.get_mut(&key) {
+                if let Some(slot_state) = map.get_mut(&InitSlot::Index(*k)) {
                     move_at(slot_state, &elem_ty, &path[1..], env);
                 }
             }
@@ -537,7 +558,10 @@ pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env
                 let field_ty = struct_fields_of(ty, env)
                     .and_then(|fs| fs.into_iter().find(|fd| fd.name == *f))
                     .map(|fd| fd.ty);
-                let field_state = map.get(f).cloned().unwrap_or(InitState::NeverInit);
+                let field_state = map
+                    .get(&InitSlot::Field(f.clone()))
+                    .cloned()
+                    .unwrap_or(InitState::NeverInit);
                 match field_ty {
                     Some(ft) => read_at(&field_state, &ft, &path[1..], env),
                     None => field_state,
@@ -563,7 +587,7 @@ pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env
             InitState::Partial(map) => {
                 let elem_ty = array_info(ty).map(|(e, _)| e);
                 let slot_state = map
-                    .get(&k.to_string())
+                    .get(&InitSlot::Index(*k))
                     .cloned()
                     .unwrap_or(InitState::NeverInit);
                 match elem_ty {
@@ -1561,7 +1585,7 @@ pub(super) fn format_path(root: &str, path: &[PathStep]) -> String {
 /// than collapsing to a single simple state. `require_uninit` is concerned
 /// with ownership, not that history: it succeeds exactly when every tracked
 /// descendant is already absent.
-pub(super) fn partial_is_uninit(fields: &BTreeMap<String, InitState>) -> bool {
+pub(super) fn partial_is_uninit(fields: &BTreeMap<InitSlot, InitState>) -> bool {
     fields.values().all(|state| match state {
         InitState::NeverInit | InitState::Moved => true,
         InitState::Partial(fields) => partial_is_uninit(fields),

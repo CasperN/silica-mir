@@ -118,13 +118,9 @@ Implement the repairs in this order:
      `build_region_ctx` and `collect_borrowers`; must descend
      `TypeKind::Array` so owned `[&mut T; N]` slots are added to the NLL
      borrower set and inter-fn lifetime constraints flow through array
-     slots. Adding Array descent interacts with Consistency 4's
-     per-slot-region strategy.
-   - `walk_diverged` — must descend arrays and enum `Custom` payloads so
-     cross-edge drop planning inserts per-slot and per-variant drops
-     instead of leaving them for the final `check_return_leaks` sweep.
-     Depends on Consistency 3 (typed init slots) for the array descent to
-     have a coherent target state.
+     slots. Adding Array descent interacts with Consistency 5's
+     per-slot-region strategy. Drop-elab's `walk_diverged` array/enum
+     Custom descent is tracked separately under Consistency 4.
 
 2. **Backfill elided Custom lifetimes, then make instantiation validated data.**
    Elision currently adds lifetime parameters for unannotated refs but leaves
@@ -163,11 +159,13 @@ Implement the repairs in this order:
    `Place` variant to update the central projection library before
    downstream passes compile.
 
-4. **Use typed initialization slots.** Replace string-keyed
-   `InitState::Partial` entries with distinct field and constant-index keys;
-   array indices must remain integers throughout analysis and only be rendered
-   as text at the diagnostic or pretty-print boundary. Rebuild init-state,
-   overwrite, leak, and drop-elaboration walks on those typed slots.
+4. **Extend `walk_diverged` to array slots.** `InitState::Partial` is now
+   keyed by `InitSlot::{Field, Index}`, but `walk_diverged` still returns
+   without emitting drops for `TypeKind::Array` — partially-initialized
+   arrays fall through to the final `check_return_leaks` sweep instead of
+   getting per-slot edge drops. Enums stay atomic (whole-value
+   construction / whole-value move), so no variant-level descent is
+   needed; only the array arm is a real gap.
 
 5. **Finish lifetime traversal without sentinels or eager array expansion.**
    Replace the `Region::Free(u32::MAX)` unresolved-region sentinel with an
