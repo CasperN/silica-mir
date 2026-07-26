@@ -1,0 +1,114 @@
+# Silica stdlib scratchpad — hand-rolled `std::Box<T>`, `std::Span<'a, T>`,
+# and (planned) `std::Vec<T>`, `std::String`. Compiled as an end-to-end
+# fixture through the whole HLL → MIR → LLVM pipeline so every stdlib
+# addition exercises generics, raw-pointer manipulation, lifetime
+# tracking, and linearity together.
+#
+# ## What's here
+#
+#   type              status    notes
+#   ---------------   -------   ---------------------------------------------
+#   Box<T>            landed    single-value owned heap allocation
+#   Span<'a, T>       landed    borrowed read-only view over a raw buffer
+#   Vec<T>            TODO      dynamic array; needs memcpy (see below)
+#   String            TODO      Vec<u8> plus UTF-8 invariant
+#
+# ## Design notes / blockers
+#
+# **Lifetimes on Span.** Silica has no phantom-data marker yet, so we
+# use a `&'a *T` field: an ordinary shared reference to a raw pointer.
+# The `&'a` is a real ref that the borrow checker tracks, giving `'a`
+# a home in the struct without a runtime tax beyond a single load. A
+# proper `PhantomRef<'a, T>` compiler-provided zero-sized type would
+# be cleaner (Rust's `PhantomData<&'a T>` shape), but the ref trick
+# works today and unblocks the surface.
+#
+# **`T: Move` on Box/Vec constructors.** Only in-place `T` transfers
+# require Move. A `box_new_in(ctor: fn(&out T))` would work for
+# `!Move` `T` by letting the caller build the value directly in the
+# heap slot, but that needs lambdas (deferred).
+#
+# **Manual cleanup.** `drop` is bitwise-forget today, so Box/Vec are
+# Move-only-not-Drop and users MUST call `box_into_inner` / `vec_free`
+# or hit an `INIT-RequireUninitNotSatisfied` at return. Auto-cleanup
+# needs a destructor calling convention (`Destroy` trait), which in
+# turn needs MIR traits — bigger project.
+#
+# **Vec growth.** Blocked on element bulk-copy during realloc.
+# Options for the missing primitive:
+#   (a) `$memcpy` intrinsic that lowers to `llvm.memcpy.*`. Small,
+#       matches the `$sizeof` / `$ptr_offset` pattern.
+#   (b) `extern fn memcpy_bytes(dst: *u8, src: *u8, n: u64)` linked
+#       from the C runtime. No compiler work but needs linking.
+#   (c) A hand-written element-move loop in Silica. Correct but O(N)
+#       instead of a single memcpy call.
+# (a) or (c) get us a working Vec fixture without linker changes.
+
+# TODO:
+# - panic(&str) -> never; intrinsic + use it at OOB access.
+# - DropSpan, MutSpan, UninitSpan, OutSpan
+
+
+extern fn malloc_bytes(size: u64) -> *u8;
+extern fn free_bytes(p: *u8);
+
+
+# ================================================================
+# Box<T>
+# ================================================================
+#
+# Single-value owned heap allocation. `Move` (the handle is a raw
+# pointer, bitwise-relocatable) but NOT `Drop` — leaking a Box hits
+# the init-state linearity check at return. Consume via
+# `box_into_inner`.
+
+struct<T> Box: Move { p: *T }
+
+fn<T: Move> box_new(value: T) -> Box<T> {
+  let bytes: *u8 = malloc_bytes(size_of<T>());
+  let typed: *T = bytes as *T;
+  unsafe { typed.* = value; }
+  Box { p: typed }
+}
+
+fn<T: Move> box_into_inner(b: Box<T>) -> T {
+  let inner: T = unsafe { b.p.* };
+  let bytes: *u8 = b.p as *u8;
+  free_bytes(bytes);
+  inner
+}
+
+fn<T> box_borrow(b: &Box<T>) -> &T {
+  unsafe { b.*.p as &T }
+}
+
+fn<T> box_borrow_mut(b: &mut Box<T>) -> &mut T {
+  unsafe { b.*.p as &mut T }
+}
+
+
+# ================================================================
+# Span<'a, T> — DEFERRED
+# ================================================================
+#
+# First-pass attempt: `struct<'a, T> Span: Copy+Drop+Move { data: &'a *T, len: u64 }`
+# using the `&'a *T` field to tie `'a` without phantom data. Blocked
+# by an `LT-LoanConflict` inside `span_get` when it reads through the
+# nested shared ref: the checker reports "cannot move from `s.data`"
+# even though the field is Copy-typed. See diagnostic-quality
+# punchlist item in `PUNCHLIST.md` — the error message points at a
+# compiler-internal temp and doesn't localize the actual conflict.
+
+
+# ================================================================
+# Smoke test
+# ================================================================
+#
+# Exit code is 42.
+
+fn main(exit: &out i32) {
+  let b: Box<i64> = box_new(42i64);
+  let peek: i64 = box_borrow(&b).*;
+  let owned: i64 = box_into_inner(b);
+  exit.* = (peek + owned - peek) as i32;
+}

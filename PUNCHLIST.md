@@ -88,6 +88,51 @@ prerequisite blocker are documented on `elaborate_and_check_mir`
 in `src/lib.rs`, next to the code they describe.
 
 
+## Diagnostic quality
+
+Bad-error samples collected across recent sessions. All fire on
+plausible user code and either point at the wrong place, leak
+compiler internals, or omit the actionable next step.
+
+- **`LT-LoanConflict` names lowering-generated temps.** E.g.
+  `cannot move from 's.data': already borrowed by '_temp_9'` on
+  code that reads through a nested shared-ref field. The user
+  sees `_temp_9` (an HLL-lowering-generated temporary) instead of
+  the source-level expression that produced the borrow. Diagnostic
+  should either: (a) point at the source expression the temp came
+  from, or (b) elide the temp name and describe the conflict in
+  source terms ("the shared borrow of `s` conflicts with a move
+  from its `data` field"). Also see: the "cannot move from X" error
+  fires when there's no explicit move in the source — HLL lowering
+  emitted a move on the surface — so the error message
+  misidentifies the operation being rejected.
+- **`LT-LifetimeMismatch` reports `expected/found` regions without
+  naming the bound.** `expected value with region 'a, found value
+  with region 'b` doesn't say WHICH declared bound was violated
+  (`'b: 'a`, `'a: 'static`, an inherited struct bound, etc.). Users
+  have to squint at the closure to work out which axiom is missing.
+  Fix: extend the diagnostic to include the specific bound that
+  fails to discharge, and (when relevant) whether it came from the
+  fn's own axioms or a Custom mention's declared outlives.
+- **Parser errors on ambiguous `<`.** When HLL grammar didn't yet
+  disambiguate `foo<T>(x)` vs `a < b`, the failure surfaced as
+  `unexpected: < 1` in `if i < 1 { ... }` — no hint that the parser
+  had committed to a generic-call interpretation and failed on `1`
+  not being a type. General shape: parser-error messages on GLR-
+  disambiguated rules should mention *which alternative* was being
+  attempted, not just "unexpected token."
+- **HLL-level `undeclared variable 'i64'`** when the parser
+  interpreted `foo<i64>(x)` as `(foo < i64) > (x)` (comparison
+  chain). Symptom of grammar ambiguity leaking as a type-check
+  error at a later pass. Now fixed by the generic-call syntax
+  landing, but the general pattern (grammar ambiguity → confused
+  later-pass diagnostic) is worth watching for.
+- **Compiler internals in user-facing spans.** `_temp_N` names in
+  errors, unnamed synthesized lifetimes (`'s0`, `'s1`) in mismatch
+  messages, etc. These leak from lowering/elision into diagnostics.
+  Should be filtered or aliased to something source-shaped where
+  possible.
+
 ## FFI
 - **`Type::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
 
