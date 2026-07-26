@@ -246,7 +246,7 @@ impl Parser {
             let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
-                Span::default(),
+                SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 format!("failed to load tree-sitter grammar: {}", e),
             ));
             return Err(d);
@@ -256,7 +256,7 @@ impl Parser {
             let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
-                Span::default(),
+                SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 "tree-sitter failed to produce a parse tree",
             ));
             return Err(d);
@@ -937,7 +937,7 @@ impl Parser {
 
         Ok(BasicBlock {
             label,
-            label_span,
+            label_source: SourceInfo::written(label_span),
             statements,
             terminator,
         })
@@ -970,7 +970,7 @@ impl Parser {
     fn map_type_params(
         &self,
         node: Node,
-    ) -> Result<(Vec<Lifetime>, Vec<TypeParam>, Vec<(Lifetime, Lifetime)>), Diagnostic> {
+    ) -> Result<(Vec<LifetimeParam>, Vec<TypeParam>, Vec<OutlivesBound>), Diagnostic> {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut outlives = Vec::new();
@@ -993,7 +993,7 @@ impl Parser {
                             .trim_start_matches('\'')
                             .to_string(),
                     );
-                    lifetimes.push(subject.clone());
+                    lifetimes.push(LifetimeParam::written(subject.clone(), span_of(child)));
                     let mut bcursor = child.walk();
                     for bound_node in child.children_by_field_name("bound", &mut bcursor) {
                         let bound = Lifetime(
@@ -1001,7 +1001,11 @@ impl Parser {
                                 .trim_start_matches('\'')
                                 .to_string(),
                         );
-                        outlives.push((subject.clone(), bound));
+                        outlives.push(OutlivesBound::written(
+                            subject.clone(),
+                            bound,
+                            span_of(bound_node),
+                        ));
                     }
                 }
                 "type_param" => {
@@ -1028,7 +1032,7 @@ impl Parser {
                     types.push(TypeParam {
                         name: pname,
                         bounds,
-                        span: span_of(child),
+                        source: SourceInfo::written(span_of(child)),
                     });
                 }
                 // Other CST children (`<`, `>`, `,`) are literal
@@ -1113,7 +1117,7 @@ impl Parser {
                 fields.push(StructField {
                     name: f_name,
                     ty: f_type,
-                    span: span_of(child),
+                    source: SourceInfo::written(span_of(child)),
                 });
             }
         }
@@ -1122,7 +1126,7 @@ impl Parser {
         Ok(StructDecl {
             meta: DeclMeta {
                 name,
-                name_span,
+                name_source: SourceInfo::written(name_span),
                 lifetime_params,
                 outlives,
                 type_params,
@@ -1170,7 +1174,7 @@ impl Parser {
                 variants.push(EnumVariant {
                     name: v_name,
                     ty: v_type,
-                    span: span_of(child),
+                    source: SourceInfo::written(span_of(child)),
                 });
             }
         }
@@ -1179,7 +1183,7 @@ impl Parser {
         Ok(EnumDecl {
             meta: DeclMeta {
                 name,
-                name_span,
+                name_source: SourceInfo::written(name_span),
                 lifetime_params,
                 outlives,
                 type_params,
@@ -1250,7 +1254,7 @@ impl Parser {
                     params.push(Param {
                         name: p_name,
                         ty: p_type,
-                        span: span_of(child),
+                        source: SourceInfo::written(span_of(child)),
                     });
                 }
                 "local_decl" => {
@@ -1274,7 +1278,7 @@ impl Parser {
                     locals.push(Local {
                         name: l_name,
                         ty: l_type,
-                        span: span_of(child),
+                        source: SourceInfo::written(span_of(child)),
                     });
                 }
                 "basic_block" => {
@@ -1298,7 +1302,7 @@ impl Parser {
         Ok(Function {
             meta: DeclMeta {
                 name,
-                name_span,
+                name_source: SourceInfo::written(name_span),
                 lifetime_params,
                 outlives,
                 type_params,

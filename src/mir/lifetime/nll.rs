@@ -130,7 +130,7 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         let mut state = live_out.clone();
         analysis.transfer_terminator(&mut state, &block.terminator);
         for stmt in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut state, stmt, stmt.span);
+            analysis.transfer_stmt(&mut state, stmt, stmt.source);
         }
         live_in_per_block.insert(block.label.clone(), state);
     }
@@ -150,7 +150,7 @@ fn plan_for_function(func: &Function, env: &Env) -> Option<ElaborationPlan> {
         analysis.transfer_terminator(&mut cur, &block.terminator);
         live_states.push(cur.clone());
         for stmt in block.statements.iter().rev() {
-            analysis.transfer_stmt(&mut cur, stmt, stmt.span);
+            analysis.transfer_stmt(&mut cur, stmt, stmt.source);
             live_states.push(cur.clone());
         }
         live_states.reverse();
@@ -278,11 +278,14 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             let span = block
                 .statements
                 .get(pos)
-                .map(|s| s.span)
-                .unwrap_or(block.terminator.span);
+                .map(|s| s.span())
+                .unwrap_or(block.terminator.span());
             let items: Vec<Statement> = places
                 .iter()
-                .map(|p| unborrow_stmt(p.clone(), span))
+                .map(|p| {
+                    unborrow_stmt(p.clone(), span)
+                        .with_source(SourceInfo::generated(GeneratedKind::NllElaboration, span))
+                })
                 .collect();
             block.statements.splice(pos..pos, items);
         }
@@ -295,7 +298,7 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
             .blocks
             .iter()
             .find(|b| b.label == *succ)
-            .map(|b| b.terminator.span)
+            .map(|b| b.terminator.span())
             .unwrap_or_default();
         let split_label = cfg_edit::split_edge(body, pred, succ);
         let split_block = body
@@ -306,7 +309,12 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
         for p in places {
             split_block
                 .statements
-                .push(unborrow_stmt(p.clone(), succ_span));
+                .push(
+                    unborrow_stmt(p.clone(), succ_span).with_source(SourceInfo::generated(
+                        GeneratedKind::NllElaboration,
+                        succ_span,
+                    )),
+                );
         }
     }
 }
@@ -358,7 +366,7 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         a.union(b).cloned().collect()
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _source: SourceInfo) {
         // Backward transfer: pre = (post - defs) ∪ uses.
         for def in stmt_defs(stmt) {
             // A def at `def` kills the borrower entry at `def` AND any

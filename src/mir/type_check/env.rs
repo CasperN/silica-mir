@@ -64,7 +64,7 @@ impl Env {
             if existing {
                 errors.push(Diagnostic::new(
                     DuplicateDeclaration,
-                    m.name_span,
+                    m.name_span(),
                     format!("Duplicate declaration of {} '{}'", kind_word, m.name),
                 ));
                 continue;

@@ -84,7 +84,7 @@ impl Analysis for VariantFlow {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join(a, b)
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _source: SourceInfo) {
         transfer_stmt(stmt, state);
     }
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
@@ -213,7 +213,7 @@ fn check_places_in_terminator(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let ts = block.terminator.span;
+    let ts = block.terminator.span();
     match &block.terminator.kind {
         TerminatorKind::Branch { cond, .. } => {
             if let Some(p) = operand_place(cond) {
@@ -425,7 +425,7 @@ fn check_switch(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let terminator_span = block.terminator.span;
+    let terminator_span = block.terminator.span();
     if cases.is_empty() {
         d.push_error(diag(
             SwitchNoArms,

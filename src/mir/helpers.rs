@@ -25,7 +25,7 @@ pub fn trivial_markers() -> Markers {
 pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
     DeclMeta {
         name: name.into(),
-        name_span: Span::default(),
+        name_source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
         markers: trivial_markers(),
         lifetime_params: vec![],
         outlives: vec![],
@@ -35,10 +35,9 @@ pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
 
 // ---------- Scalars ----------
 //
-// The `_ty` helpers return `Type` with `Span::default()`. Intended for
-// synthetic construction (tests, checker-manufactured types, pretty-
-// print round-trips) where no source position is meaningful. Parsers
-// plumb real spans via `TypeKind::X.at(span)` directly.
+// The `_ty` helpers return `Type` marked as `TypeSynthesis` with no source
+// attribution. Parsers stamp written spans via `TypeKind::X.at(span)`; callers
+// transforming a source type can replace the metadata with `with_source`.
 
 pub fn i8_ty() -> Type {
     Type::no_span(TypeKind::Int(IntTy::I8))

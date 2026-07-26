@@ -12,7 +12,7 @@ use std::collections::HashMap;
 /// formed shape of the AST is a type_check post-condition, so anything
 /// that lowering rejects is a bug in an earlier pass or in lowering
 /// itself, not in user code. Diagnostics still carry the originating
-/// `expr.span` so ICE reports point at the source that surfaced the
+/// `expr.span()` so ICE reports point at the source that surfaced the
 /// invariant violation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum HllLoweringCode {
@@ -52,8 +52,12 @@ impl From<HllLoweringCode> for DiagCode {
     }
 }
 
-fn diag(code: HllLoweringCode, span: mir::Span, msg: impl Into<String>) -> Diagnostic {
-    Diagnostic::new(code, span, msg)
+fn diag(
+    code: HllLoweringCode,
+    source: impl Into<mir::SourceInfo>,
+    msg: impl Into<String>,
+) -> Diagnostic {
+    Diagnostic::new(code, source, msg)
 }
 
 /// Point a generated HLL scope-exit assertion at the closing delimiter of
@@ -71,7 +75,7 @@ fn lookup_type<'a>(
     expr: &hll::Expr,
     types: &'a IndexMap<mir::Span, hll::Type>,
 ) -> Option<&'a hll::Type> {
-    types.get(&expr.span)
+    types.get(&expr.span())
 }
 
 /// Run HLL → MIR lowering. Any error is treated as an internal compiler
@@ -228,7 +232,7 @@ impl LowerCtx {
     /// user code. Does NOT yet install the scope mapping — call
     /// `bind_in_scope` after the RHS of the introducing `let` has been
     /// lowered (so `let x = x` reads the outer `x`).
-    fn alloc_binding(&mut self, hll_name: &str, ty: mir::Type, span: mir::Span) -> String {
+    fn alloc_binding(&mut self, hll_name: &str, ty: mir::Type, source: mir::SourceInfo) -> String {
         let mir_name = if self.taken_names.contains(hll_name) {
             let name = format!("${}_{}", hll_name, self.temp_counter);
             self.temp_counter += 1;
@@ -240,7 +244,7 @@ impl LowerCtx {
         self.locals.push(mir::Local {
             name: mir_name.clone(),
             ty,
-            span,
+            source,
         });
         mir_name
     }
@@ -314,7 +318,7 @@ impl LowerCtx {
     ) -> Result<(), Diagnostic> {
         let live = std::mem::replace(&mut self.binding_scopes, work.binding_snapshot);
         self.begin_temp_region();
-        let unit_temp = self.fresh_temp(unit_ty(), work.body.span);
+        let unit_temp = self.fresh_temp(unit_ty(), work.body.span());
         let result = lower_expr_into(self, &work.body, &unit_temp, types);
         self.end_temp_region();
         self.binding_scopes = live;
@@ -333,7 +337,7 @@ impl LowerCtx {
         let scope = self.scopes.get(index).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
-                mir::Span::default(),
+                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, mir::Span::default()),
                 "scope exit requested with empty scope stack",
             )
         })?;
@@ -376,7 +380,7 @@ impl LowerCtx {
         let index = self.scopes.len().checked_sub(1).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
-                mir::Span::default(),
+                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, mir::Span::default()),
                 "normal scope exit requested with empty scope stack",
             )
         })?;
@@ -393,7 +397,7 @@ impl LowerCtx {
         self.locals.push(mir::Local {
             name: name.clone(),
             ty,
-            span,
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllTemporary, span),
         });
         let target = CleanupTarget {
             place: place.clone(),
@@ -425,18 +429,23 @@ impl LowerCtx {
         self.current_statements.clear();
     }
 
-    fn terminate_block(&mut self, term: mir::Terminator) {
+    fn terminate_block(&mut self, mut term: mir::Terminator) {
+        term.source = mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, term.span());
         if let Some(label) = self.current_block_label.take() {
             self.blocks.push(mir::BasicBlock {
                 label,
-                label_span: term.span,
+                label_source: mir::SourceInfo::generated(
+                    mir::GeneratedKind::HllDesugaring,
+                    term.span(),
+                ),
                 statements: std::mem::take(&mut self.current_statements),
                 terminator: term,
             });
         }
     }
 
-    fn emit_statement(&mut self, stmt: mir::Statement) {
+    fn emit_statement(&mut self, mut stmt: mir::Statement) {
+        stmt.source = mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, stmt.span());
         if self.current_block_label.is_some() {
             self.current_statements.push(stmt);
         }
@@ -451,7 +460,7 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
         .map(|p| mir::TypeParam {
             name: p.name.clone(),
             bounds: p.bounds.clone(),
-            span: p.span,
+            source: p.source,
         })
         .collect()
 }
@@ -596,28 +605,28 @@ fn lower_expr_to_place(
             let index_ty = lookup_type(index, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    index.span,
+                    index.span(),
                     "missing type annotation for array index",
                 )
             })?;
             let hll::Type::Int(index_kind) = index_ty else {
                 return Err(diag(
                     HllLoweringCode::ArrayIndexNotInteger,
-                    index.span,
+                    index.span(),
                     "array index was not inferred as an integer",
                 ));
             };
             let target_ty = lookup_type(target, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    target.span,
+                    target.span(),
                     "missing type annotation for indexed array",
                 )
             })?;
             let hll::Type::Array(_, len) = target_ty else {
                 return Err(diag(
                     HllLoweringCode::ArrayIndexTargetNotArray,
-                    target.span,
+                    target.span(),
                     "array-index target was not inferred as an array",
                 ));
             };
@@ -631,11 +640,11 @@ fn lower_expr_to_place(
             let index_op = match index_op {
                 mir::Operand::Const(_) | mir::Operand::Copy(_) => index_op,
                 mir::Operand::Move(_) | mir::Operand::Take(_) => {
-                    let index_value = ctx.fresh_temp(int_ty(*index_kind), index.span);
+                    let index_value = ctx.fresh_temp(int_ty(*index_kind), index.span());
                     ctx.emit_statement(assign_stmt(
                         index_value.clone(),
                         use_rv(index_op),
-                        index.span,
+                        index.span(),
                     ));
                     // Index operands are non-consuming reads: place-state,
                     // NLL, and lifetime analyses only walk the outer
@@ -653,12 +662,12 @@ fn lower_expr_to_place(
             // index, emit `index < array_len` and abort before forming the
             // projection when the check fails.
             if !matches!(&index_op, mir::Operand::Const(_)) {
-                let in_bounds = ctx.fresh_temp(bool_ty(), index.span);
-                let out_ref = ctx.fresh_temp(out_ref_ty(bool_ty()), index.span);
+                let in_bounds = ctx.fresh_temp(bool_ty(), index.span());
+                let out_ref = ctx.fresh_temp(out_ref_ty(bool_ty()), index.span());
                 ctx.emit_statement(assign_stmt(
                     out_ref.clone(),
                     ref_rv(crate::common::RefKind::Out, in_bounds.clone()),
-                    index.span,
+                    index.span(),
                 ));
                 ctx.emit_statement(call_stmt(
                     const_op(fn_name_const(format!("${}_lt", index_kind.name()))),
@@ -667,7 +676,7 @@ fn lower_expr_to_place(
                         const_op(int_const(*len as u64, *index_kind)),
                         move_op(out_ref),
                     ],
-                    index.span,
+                    index.span(),
                 ));
 
                 let in_bounds_label = ctx.fresh_label("index_in_bounds");
@@ -676,10 +685,10 @@ fn lower_expr_to_place(
                     copy_op(in_bounds),
                     in_bounds_label.clone(),
                     out_of_bounds_label.clone(),
-                    index.span,
+                    index.span(),
                 ));
                 ctx.start_block(out_of_bounds_label);
-                ctx.terminate_block(abort_term(index.span));
+                ctx.terminate_block(abort_term(index.span()));
                 ctx.start_block(in_bounds_label);
             }
 
@@ -690,12 +699,12 @@ fn lower_expr_to_place(
             let hll_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    expr.span,
+                    expr.span(),
                     "missing type annotation for expression",
                 )
             })?;
             let mir_ty = lower_type(hll_ty);
-            let temp = ctx.fresh_temp(mir_ty, expr.span);
+            let temp = ctx.fresh_temp(mir_ty, expr.span());
             lower_expr_into(ctx, expr, &temp, types)?;
             Ok(temp)
         }
@@ -742,7 +751,7 @@ fn lower_expr_to_operand(
             if ctx.functions.contains_key(name) && !ctx.is_scoped_binding(name) =>
         {
             let f_decl = ctx.functions.get(name).cloned().unwrap();
-            let mir_type_args = infer_fn_type_args(&f_decl, expr.span, types);
+            let mir_type_args = infer_fn_type_args(&f_decl, expr.span(), types);
             Ok(const_op(fn_name_const_with_args(
                 name.clone(),
                 mir_type_args,
@@ -784,7 +793,7 @@ fn lower_expr_into(
         | hll::ExprKind::Deref(_)
         | hll::ExprKind::ArrayIndex(_, _) => {
             let op = lower_expr_to_operand(ctx, expr, types)?;
-            ctx.emit_statement(assign_stmt(dest.clone(), use_rv(op), expr.span));
+            ctx.emit_statement(assign_stmt(dest.clone(), use_rv(op), expr.span()));
             Ok(())
         }
         hll::ExprKind::Borrow(kind, target) => {
@@ -792,7 +801,7 @@ fn lower_expr_into(
             ctx.emit_statement(assign_stmt(
                 dest.clone(),
                 ref_rv(*kind, target_place),
-                expr.span,
+                expr.span(),
             ));
             Ok(())
         }
@@ -801,7 +810,7 @@ fn lower_expr_into(
             ctx.emit_statement(assign_stmt(
                 dest.clone(),
                 raw_ref_rv(target_place),
-                expr.span,
+                expr.span(),
             ));
             Ok(())
         }
@@ -809,12 +818,12 @@ fn lower_expr_into(
         hll::ExprKind::Assign(lhs, rhs) => {
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
-            ctx.emit_statement(assign_stmt(lhs_place, use_rv(rhs_op), expr.span));
+            ctx.emit_statement(assign_stmt(lhs_place, use_rv(rhs_op), expr.span()));
             // Assignment expression itself evaluates to Unit
             ctx.emit_statement(assign_stmt(
                 dest.clone(),
                 use_rv(const_op(unit_const())),
-                expr.span,
+                expr.span(),
             ));
             Ok(())
         }
@@ -822,7 +831,7 @@ fn lower_expr_into(
             let operand_hll_ty = lookup_type(operand, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    operand.span,
+                    operand.span(),
                     "missing type annotation for unary operand",
                 )
             })?;
@@ -837,7 +846,7 @@ fn lower_expr_into(
                 _ => {
                     return Err(diag(
                         HllLoweringCode::UnaryOpNonNumeric,
-                        expr.span,
+                        expr.span(),
                         format!("unary op on non-numeric type {:?}", mir_ty),
                     ))
                 }
@@ -848,16 +857,16 @@ fn lower_expr_into(
             let operand_op = lower_expr_to_operand(ctx, operand, types)?;
 
             let out_ref = out_ref_ty(mir_ty);
-            let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
+            let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
             ctx.emit_statement(assign_stmt(
                 out_ref_place.clone(),
                 ref_rv(mir::RefKind::Out, dest.clone()),
-                expr.span,
+                expr.span(),
             ));
             ctx.emit_statement(call_stmt(
                 fn_op,
                 vec![operand_op, move_op(out_ref_place)],
-                expr.span,
+                expr.span(),
             ));
             Ok(())
         }
@@ -865,7 +874,7 @@ fn lower_expr_into(
             let lhs_hll_ty = lookup_type(lhs, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    lhs.span,
+                    lhs.span(),
                     "missing type annotation for binary lhs",
                 )
             })?;
@@ -892,7 +901,7 @@ fn lower_expr_into(
                 _ => {
                     return Err(diag(
                         HllLoweringCode::BinaryOpNonNumeric,
-                        expr.span,
+                        expr.span(),
                         format!("binary op on non-numeric type {:?}", mir_ty),
                     ))
                 }
@@ -908,20 +917,20 @@ fn lower_expr_into(
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    expr.span,
+                    expr.span(),
                     "missing type annotation for binary expression",
                 )
             })?;
 
             let out_ref = out_ref_ty(lower_type(hll_ret_ty));
-            let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
+            let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
             ctx.emit_statement(assign_stmt(
                 out_ref_place.clone(),
                 ref_rv(mir::RefKind::Out, dest.clone()),
-                expr.span,
+                expr.span(),
             ));
             arg_ops.push(move_op(out_ref_place));
-            ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
+            ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
             Ok(())
         }
         hll::ExprKind::Cast(inner, to_ty) => {
@@ -932,7 +941,7 @@ fn lower_expr_into(
             let from_hll_ty = lookup_type(inner, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    inner.span,
+                    inner.span(),
                     "missing type annotation for cast target",
                 )
             })?;
@@ -944,7 +953,7 @@ fn lower_expr_into(
                 ctx.emit_statement(assign_stmt(
                     dest.clone(),
                     mir::RValue::PtrCast(inner_op, to_mir_ty),
-                    expr.span,
+                    expr.span(),
                 ));
                 return Ok(());
             }
@@ -956,16 +965,16 @@ fn lower_expr_into(
             let fn_op = const_op(fn_name_const(intrinsic));
             let inner_op = lower_expr_to_operand(ctx, inner, types)?;
             let out_ref = out_ref_ty(lower_type(to_ty));
-            let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
+            let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
             ctx.emit_statement(assign_stmt(
                 out_ref_place.clone(),
                 ref_rv(mir::RefKind::Out, dest.clone()),
-                expr.span,
+                expr.span(),
             ));
             ctx.emit_statement(call_stmt(
                 fn_op,
                 vec![inner_op, move_op(out_ref_place)],
-                expr.span,
+                expr.span(),
             ));
             Ok(())
         }
@@ -985,7 +994,7 @@ fn lower_expr_into(
                         lower_expr_to_operand(ctx, fn_expr, types)?
                     } else {
                         let mir_type_args = if generics.types.is_empty() {
-                            infer_fn_type_args(&f_decl, fn_expr.span, types)
+                            infer_fn_type_args(&f_decl, fn_expr.span(), types)
                         } else {
                             generics.types.iter().map(lower_type).collect()
                         };
@@ -1002,7 +1011,7 @@ fn lower_expr_into(
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
-                    expr.span,
+                    expr.span(),
                     "missing type annotation for call",
                 )
             })?;
@@ -1026,27 +1035,27 @@ fn lower_expr_into(
                 // and pass `Operand::Move(_temp_out_ref)` as the final argument in Statement::Call!
                 // Yes! That is absolutely correct and matches MIR semantics perfectly!
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
-                let out_ref_place = ctx.fresh_temp(out_ref, expr.span);
+                let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
                 ctx.emit_statement(assign_stmt(
                     out_ref_place.clone(),
                     ref_rv(mir::RefKind::Out, dest.clone()),
-                    expr.span,
+                    expr.span(),
                 ));
                 arg_ops.push(move_op(out_ref_place));
-                ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
+                ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
             } else {
-                ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span));
+                ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
                 // Function returns unit, assign Unit to dest
                 ctx.emit_statement(assign_stmt(
                     dest.clone(),
                     use_rv(const_op(unit_const())),
-                    expr.span,
+                    expr.span(),
                 ));
             }
             Ok(())
         }
         hll::ExprKind::Block(stmts, last_expr, _) => {
-            ctx.push_scope(false, scope_exit_span(expr.span));
+            ctx.push_scope(false, scope_exit_span(expr.span()));
             ctx.push_binding_scope();
             for stmt in stmts {
                 match stmt {
@@ -1055,8 +1064,9 @@ fn lower_expr_into(
                         name,
                         ty: annot_ty,
                         init,
-                        span,
+                        source,
                     } => {
+                        let span = source.span();
                         // Type source: initializer's typed-slot when present,
                         // else the required annotation. type-check has already
                         // rejected the "no init and no annotation" case.
@@ -1068,7 +1078,7 @@ fn lower_expr_into(
                         .ok_or_else(|| {
                             diag(
                                 HllLoweringCode::MissingType,
-                                *span,
+                                span,
                                 "missing type for let binding",
                             )
                         })?;
@@ -1076,7 +1086,7 @@ fn lower_expr_into(
                         // Allocate first, lower init against the *outer*
                         // scope, then install the mapping — so `let x = x`
                         // reads the previous binding of `x`.
-                        let mir_name = ctx.alloc_binding(name, mir_ty, *span);
+                        let mir_name = ctx.alloc_binding(name, mir_ty, *source);
                         if let Some(init) = init {
                             let dest = var_place(mir_name.clone());
                             ctx.begin_temp_region();
@@ -1084,11 +1094,11 @@ fn lower_expr_into(
                             ctx.end_temp_region();
                         }
                         ctx.bind_in_scope(name, mir_name);
-                        ctx.register_scope_cleanup(var_place(ctx.resolve_binding(name)), *span);
+                        ctx.register_scope_cleanup(var_place(ctx.resolve_binding(name)), span);
                         // No init: the local exists as NeverInit — the caller
                         // must initialize it before use (init-state enforces).
                     }
-                    hll::Stmt::Defer { body, span } => {
+                    hll::Stmt::Defer { body, source } => {
                         // Capture the binding scope at registration time so
                         // the body resolves identifiers lexically — a later
                         // `let x = ...` in the same block does not affect
@@ -1097,7 +1107,7 @@ fn lower_expr_into(
                         let scope = ctx.scopes.last_mut().ok_or_else(|| {
                             diag(
                                 HllLoweringCode::ScopeStackUnderflow,
-                                *span,
+                                source.span(),
                                 "defer registered with empty scope stack",
                             )
                         })?;
@@ -1115,7 +1125,7 @@ fn lower_expr_into(
                             lower_type(&hll_ty)
                         };
                         ctx.begin_temp_region();
-                        let dummy = ctx.fresh_temp(mir_ty, e.span);
+                        let dummy = ctx.fresh_temp(mir_ty, e.span());
                         lower_expr_into(ctx, e, &dummy, types)?;
                         ctx.end_temp_region();
                     }
@@ -1129,7 +1139,7 @@ fn lower_expr_into(
                 ctx.emit_statement(assign_stmt(
                     dest.clone(),
                     use_rv(const_op(unit_const())),
-                    expr.span,
+                    expr.span(),
                 ));
             }
             ctx.pop_and_emit_scope_exit(types)?;
@@ -1146,18 +1156,18 @@ fn lower_expr_into(
                 cond_op,
                 true_label.clone(),
                 false_label.clone(),
-                cond.span,
+                cond.span(),
             ));
 
             // True branch
             ctx.start_block(true_label);
             lower_expr_into(ctx, true_block, dest, types)?;
-            ctx.terminate_block(goto_term(merge_label.clone(), true_block.span));
+            ctx.terminate_block(goto_term(merge_label.clone(), true_block.span()));
 
             // False branch
             ctx.start_block(false_label);
             lower_expr_into(ctx, false_block, dest, types)?;
-            ctx.terminate_block(goto_term(merge_label.clone(), false_block.span));
+            ctx.terminate_block(goto_term(merge_label.clone(), false_block.span()));
 
             // Merge block
             ctx.start_block(merge_label);
@@ -1167,20 +1177,20 @@ fn lower_expr_into(
             let start_label = ctx.fresh_label("loop_start");
             let end_label = ctx.fresh_label("loop_end");
 
-            ctx.terminate_block(goto_term(start_label.clone(), expr.span));
+            ctx.terminate_block(goto_term(start_label.clone(), expr.span()));
 
             ctx.loop_stack
                 .push((start_label.clone(), end_label.clone(), dest.clone()));
-            ctx.push_scope(true, scope_exit_span(body.span));
+            ctx.push_scope(true, scope_exit_span(body.span()));
             ctx.start_block(start_label.clone());
 
             // Loop body value is discarded
             ctx.begin_temp_region();
-            let dummy = ctx.fresh_temp(unit_ty(), body.span);
+            let dummy = ctx.fresh_temp(unit_ty(), body.span());
             lower_expr_into(ctx, body, &dummy, types)?;
             ctx.end_temp_region();
             ctx.scopes.pop();
-            ctx.terminate_block(goto_term(start_label, body.span));
+            ctx.terminate_block(goto_term(start_label, body.span()));
 
             ctx.loop_stack.pop();
 
@@ -1191,7 +1201,7 @@ fn lower_expr_into(
             let break_err = || {
                 diag(
                     HllLoweringCode::BreakOutsideLoop,
-                    expr.span,
+                    expr.span(),
                     "break outside of loop",
                 )
             };
@@ -1211,14 +1221,14 @@ fn lower_expr_into(
             ctx.emit_temp_requirements_for_exits(loop_depth);
             ctx.emit_scope_exits_to_depth(loop_depth, types)?;
 
-            ctx.terminate_block(goto_term(end_label, expr.span));
+            ctx.terminate_block(goto_term(end_label, expr.span()));
             Ok(())
         }
         hll::ExprKind::Continue => {
             let continue_err = || {
                 diag(
                     HllLoweringCode::ContinueOutsideLoop,
-                    expr.span,
+                    expr.span(),
                     "continue outside of loop",
                 )
             };
@@ -1232,7 +1242,7 @@ fn lower_expr_into(
             ctx.emit_temp_requirements_for_exits(loop_depth + 1);
             ctx.emit_scope_exits_to_depth(loop_depth + 1, types)?;
 
-            ctx.terminate_block(goto_term(start_label, expr.span));
+            ctx.terminate_block(goto_term(start_label, expr.span()));
             Ok(())
         }
         hll::ExprKind::Return(val_expr) => {
@@ -1245,7 +1255,7 @@ fn lower_expr_into(
             }
             ctx.emit_temp_requirements_for_exits(0);
             ctx.emit_scope_exits_to_depth(0, types)?;
-            ctx.terminate_block(return_term(expr.span));
+            ctx.terminate_block(return_term(expr.span()));
             Ok(())
         }
         hll::ExprKind::Match(target, arms) => {
@@ -1262,20 +1272,20 @@ fn lower_expr_into(
 
             let merge_label = ctx.fresh_label("switch_merge");
 
-            ctx.terminate_block(switch_enum_term(target_place.clone(), cases, target.span));
+            ctx.terminate_block(switch_enum_term(target_place.clone(), cases, target.span()));
 
             // Lower each arm block
             for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
                 let hll::Pattern::Variant(variant, bound_var) = pattern;
                 ctx.start_block(label.clone());
-                ctx.push_scope(false, scope_exit_span(body.span));
+                ctx.push_scope(false, scope_exit_span(body.span()));
                 ctx.push_binding_scope();
 
                 if let Some(var_name) = bound_var {
                     let target_hll_ty = lookup_type(target, types).ok_or_else(|| {
                         diag(
                             HllLoweringCode::MissingType,
-                            target.span,
+                            target.span(),
                             "missing type annotation for match target",
                         )
                     })?;
@@ -1284,7 +1294,7 @@ fn lower_expr_into(
                             let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
                                 diag(
                                     HllLoweringCode::EnumDeclMissing,
-                                    target.span,
+                                    target.span(),
                                     format!("undeclared enum '{}' in lowering", enum_name),
                                 )
                             })?;
@@ -1295,7 +1305,7 @@ fn lower_expr_into(
                                 .ok_or_else(|| {
                                     diag(
                                         HllLoweringCode::EnumVariantMissing,
-                                        body.span,
+                                        body.span(),
                                         format!(
                                             "enum '{}' has no variant '{}' in lowering",
                                             enum_name, variant
@@ -1317,7 +1327,7 @@ fn lower_expr_into(
                         } else {
                             return Err(diag(
                                 HllLoweringCode::MatchTargetNotEnum,
-                                target.span,
+                                target.span(),
                                 format!(
                                     "expected enum type for match target, found {:?}",
                                     target_hll_ty
@@ -1325,10 +1335,13 @@ fn lower_expr_into(
                             ));
                         };
 
-                    let bound_mir_name =
-                        ctx.alloc_binding(var_name, bound_var_mir_ty.clone(), body.span);
+                    let bound_mir_name = ctx.alloc_binding(
+                        var_name,
+                        bound_var_mir_ty.clone(),
+                        mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, body.span()),
+                    );
                     ctx.bind_in_scope(var_name, bound_mir_name.clone());
-                    ctx.register_scope_cleanup(var_place(bound_mir_name.clone()), body.span);
+                    ctx.register_scope_cleanup(var_place(bound_mir_name.clone()), body.span());
 
                     // Match arm payload extraction. Dispatch table (today):
                     //
@@ -1367,7 +1380,7 @@ fn lower_expr_into(
                     ctx.emit_statement(assign_stmt(
                         var_place(bound_mir_name),
                         use_rv(op),
-                        body.span,
+                        body.span(),
                     ));
                 }
 
@@ -1376,7 +1389,7 @@ fn lower_expr_into(
                 ctx.end_temp_region();
                 ctx.pop_and_emit_scope_exit(types)?;
                 ctx.pop_binding_scope();
-                ctx.terminate_block(goto_term(merge_label.clone(), body.span));
+                ctx.terminate_block(goto_term(merge_label.clone(), body.span()));
             }
 
             ctx.start_block(merge_label);
@@ -1394,7 +1407,7 @@ fn lower_expr_into(
             // Extract inferred type args from the constructor's own
             // typed slot — HM already pinned them from the payload /
             // context. For a non-generic enum this is empty.
-            let type_args = match types.get(&expr.span) {
+            let type_args = match types.get(&expr.span()) {
                 Some(hll::Type::Custom(_, _, args)) => args.iter().map(lower_type).collect(),
                 _ => Vec::new(),
             };
@@ -1406,7 +1419,7 @@ fn lower_expr_into(
                     variant_name.clone(),
                     payload_op,
                 ),
-                expr.span,
+                expr.span(),
             ));
             Ok(())
         }
@@ -1415,7 +1428,7 @@ fn lower_expr_into(
             for el in elements {
                 ops.push(lower_expr_to_operand(ctx, el, types)?);
             }
-            ctx.emit_statement(assign_stmt(dest.clone(), array_lit_rv(ops), expr.span));
+            ctx.emit_statement(assign_stmt(dest.clone(), array_lit_rv(ops), expr.span()));
             Ok(())
         }
     }
@@ -1436,13 +1449,13 @@ pub fn lower_program(
                     .map(|f| mir::StructField {
                         name: f.name.clone(),
                         ty: lower_type(&f.ty),
-                        span: f.span,
+                        source: f.source,
                     })
                     .collect();
                 declarations.push(mir::Declaration::Struct(mir::StructDecl {
                     meta: DeclMeta {
                         name: s.name.clone(),
-                        name_span: s.span,
+                        name_source: s.source,
                         lifetime_params: s.lifetime_params.clone(),
                         outlives: s.outlives.clone(),
                         type_params: lower_type_params(&s.type_params),
@@ -1458,13 +1471,13 @@ pub fn lower_program(
                     .map(|v| mir::EnumVariant {
                         name: v.name.clone(),
                         ty: lower_type(&v.ty),
-                        span: v.span,
+                        source: v.source,
                     })
                     .collect();
                 declarations.push(mir::Declaration::Enum(mir::EnumDecl {
                     meta: DeclMeta {
                         name: e.name.clone(),
-                        name_span: e.span,
+                        name_source: e.source,
                         lifetime_params: e.lifetime_params.clone(),
                         outlives: e.outlives.clone(),
                         type_params: lower_type_params(&e.type_params),
@@ -1480,7 +1493,7 @@ pub fn lower_program(
                     .map(|p| mir::Param {
                         name: p.name.clone(),
                         ty: lower_type(&p.ty),
-                        span: p.span,
+                        source: p.source,
                     })
                     .collect();
 
@@ -1489,7 +1502,10 @@ pub fn lower_program(
                     params.push(mir::Param {
                         name: "$return".to_string(),
                         ty: out_ref_ty(lower_type(&f.ret_ty)),
-                        span: f.span,
+                        source: mir::SourceInfo::generated(
+                            mir::GeneratedKind::HllDesugaring,
+                            f.span(),
+                        ),
                     });
                 }
 
@@ -1504,7 +1520,7 @@ pub fn lower_program(
                     declarations.push(mir::Declaration::Fn(mir::Function {
                         meta: DeclMeta {
                             name: f.name.clone(),
-                            name_span: f.span,
+                            name_source: f.source,
                             lifetime_params: f.lifetime_params.clone(),
                             outlives: f.outlives.clone(),
                             type_params: lower_type_params(&f.type_params),
@@ -1524,7 +1540,7 @@ pub fn lower_program(
                 // Parameters are bindings in it, so a normal return (or an
                 // explicit return from a nested block) demands that each has
                 // been consumed after its last use.
-                ctx.push_scope(false, scope_exit_span(body_expr.span));
+                ctx.push_scope(false, scope_exit_span(body_expr.span()));
 
                 // Seed the matching base binding scope with fn params so
                 // body-level references resolve to them and later `let`
@@ -1534,7 +1550,7 @@ pub fn lower_program(
                 for p in &params {
                     ctx.taken_names.insert(p.name.clone());
                     ctx.bind_in_scope(&p.name, p.name.clone());
-                    ctx.register_scope_cleanup(var_place(p.name.clone()), p.span);
+                    ctx.register_scope_cleanup(var_place(p.name.clone()), p.span());
                 }
 
                 let start_label = "entry".to_string();
@@ -1548,7 +1564,7 @@ pub fn lower_program(
                     let ret_place = deref_place(var_place("$return"));
                     lower_expr_into(&mut ctx, body_expr, &ret_place, types)?;
                 } else {
-                    let dummy = ctx.fresh_temp(unit_ty(), body_expr.span);
+                    let dummy = ctx.fresh_temp(unit_ty(), body_expr.span());
                     lower_expr_into(&mut ctx, body_expr, &dummy, types)?;
                 }
 
@@ -1560,13 +1576,13 @@ pub fn lower_program(
                 if ctx.current_block_label.is_some() {
                     ctx.pop_and_emit_scope_exit(types)?;
                     ctx.pop_binding_scope();
-                    ctx.terminate_block(return_term(body_expr.span));
+                    ctx.terminate_block(return_term(body_expr.span()));
                 }
 
                 declarations.push(mir::Declaration::Fn(mir::Function {
                     meta: DeclMeta {
                         name: f.name.clone(),
-                        name_span: f.span,
+                        name_source: f.source,
                         lifetime_params: f.lifetime_params.clone(),
                         outlives: f.outlives.clone(),
                         type_params: lower_type_params(&f.type_params),

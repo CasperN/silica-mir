@@ -13,7 +13,7 @@ fn span() -> Span {
 fn block(label: &str, term: Terminator) -> BasicBlock {
     BasicBlock {
         label: label.to_string(),
-        label_span: span(),
+        label_source: SourceInfo::generated(GeneratedKind::TestHelper, span()),
         statements: Vec::new(),
         terminator: term,
     }
@@ -21,6 +21,13 @@ fn block(label: &str, term: Terminator) -> BasicBlock {
 
 fn goto(label: &str) -> Terminator {
     goto_term(label, span())
+}
+
+fn generated_goto(label: &str) -> Terminator {
+    goto(label).with_source(SourceInfo::generated(
+        GeneratedKind::ControlFlowElaboration,
+        span(),
+    ))
 }
 
 fn branch(t: &str, f: &str) -> Terminator {
@@ -82,7 +89,7 @@ fn split_branch_true_arm() {
     // Split block falls through to t.
     let sb = find(&body, "entry__to__t");
     assert!(sb.statements.is_empty());
-    assert_eq!(sb.terminator, goto("t"));
+    assert_eq!(sb.terminator, generated_goto("t"));
 }
 
 #[test]
@@ -131,7 +138,7 @@ fn split_branch_both_arms_same_succ_rewrites_both() {
         }
         _ => panic!("expected Branch"),
     }
-    assert_eq!(find(&body, &split).terminator, goto("j"));
+    assert_eq!(find(&body, &split).terminator, generated_goto("j"));
 }
 
 #[test]
@@ -185,7 +192,7 @@ fn split_goto_edge() {
 
     let split = split_edge(&mut body, "entry", "next");
     assert_eq!(find(&body, "entry").terminator, goto(&split));
-    assert_eq!(find(&body, &split).terminator, goto("next"));
+    assert_eq!(find(&body, &split).terminator, generated_goto("next"));
 }
 
 // ---------- Idempotence ----------

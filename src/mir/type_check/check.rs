@@ -9,7 +9,7 @@ use super::Env;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;
 use super::TypeDecl;
-use crate::common::Lifetime;
+use crate::common::{Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
@@ -19,8 +19,8 @@ use std::collections::{BTreeSet, HashSet};
 /// Build the set of lifetime names in scope for a decl. `'static` is
 /// always in scope — it's the reserved top-of-outlives-order region,
 /// available to every decl without being declared as a parameter.
-fn lifetime_scope(params: &[Lifetime]) -> BTreeSet<Lifetime> {
-    let mut s: BTreeSet<Lifetime> = params.iter().cloned().collect();
+fn lifetime_scope(params: &[LifetimeParam]) -> BTreeSet<Lifetime> {
+    let mut s: BTreeSet<Lifetime> = params.iter().map(|p| p.lifetime.clone()).collect();
     s.insert(Lifetime("static".to_string()));
     s
 }
@@ -36,20 +36,20 @@ fn validate_lifetime_decls(
 ) {
     let mut seen: BTreeSet<&Lifetime> = BTreeSet::new();
     for lt in &meta.lifetime_params {
-        if lt.0 == "static" {
+        if lt.lifetime.0 == "static" {
             d.push_error(Diagnostic::new(
                 ReservedLifetimeName,
-                meta.name_span,
+                meta.name_span(),
                 format!(
                     "In {} '{}': 'static is a reserved lifetime and cannot be declared as a parameter",
                     container_kind, meta.name,
                 ),
             ));
         }
-        if !seen.insert(lt) {
+        if !seen.insert(&lt.lifetime) {
             d.push_error(Diagnostic::new(
                 DuplicateLifetimeParam,
-                meta.name_span,
+                meta.name_span(),
                 format!(
                     "In {} '{}': lifetime parameter {} is declared more than once",
                     container_kind, meta.name, lt,
@@ -58,12 +58,12 @@ fn validate_lifetime_decls(
         }
     }
     let lt_scope = lifetime_scope(&meta.lifetime_params);
-    for (subject, bound) in &meta.outlives {
-        for lt in [subject, bound] {
+    for bound in &meta.outlives {
+        for lt in [&bound.longer, &bound.shorter] {
             if !lt_scope.contains(lt) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    meta.name_span,
+                    meta.name_span(),
                     format!(
                         "In {} '{}': outlives clause references undeclared lifetime {}",
                         container_kind, meta.name, lt,
@@ -131,7 +131,7 @@ impl Env {
                     DuplicateStructField,
                     s.fields
                         .iter()
-                        .map(|f| (f.name.as_str(), &f.ty, f.span))
+                        .map(|f| (f.name.as_str(), &f.ty, f.span()))
                         .collect::<Vec<_>>(),
                 ),
                 TypeDecl::Enum(e) => (
@@ -140,7 +140,7 @@ impl Env {
                     DuplicateEnumVariant,
                     e.variants
                         .iter()
-                        .map(|v| (v.name.as_str(), &v.ty, v.span))
+                        .map(|v| (v.name.as_str(), &v.ty, v.span()))
                         .collect::<Vec<_>>(),
                 ),
             };
@@ -162,7 +162,7 @@ impl Env {
                 if let Err(e) = self.validate_type(ty, &scope) {
                     d.push_error(Diagnostic::new(
                         InvalidDeclaredType,
-                        ty.span,
+                        ty.span(),
                         format!(
                             "In {} '{}', {} '{}': {}",
                             container_kind, meta.name, item_kind, name, e
@@ -172,7 +172,7 @@ impl Env {
                 for lt in undeclared_lifetimes(ty, &lt_scope) {
                     d.push_error(Diagnostic::new(
                         UndeclaredLifetime,
-                        ty.span,
+                        ty.span(),
                         format!(
                             "In {} '{}', {} '{}': undeclared lifetime {}",
                             container_kind, meta.name, item_kind, name, lt,
@@ -198,7 +198,7 @@ impl Env {
                 if i != f.params.len() - 1 {
                     d.push_error(Diagnostic::new(
                         InvalidDeclaredType,
-                        p.span,
+                        p.span(),
                         format!(
                             "In function '{}', parameter '$return' must be in the final position",
                             f.meta.name
@@ -209,7 +209,7 @@ impl Env {
                     TypeKind::Ref(RefKind::Out, _, _) => {}
                     _ => {
                         d.push_error(
-                            Diagnostic::new(InvalidDeclaredType, p.ty.span,
+                            Diagnostic::new(InvalidDeclaredType, p.ty.span(),
                                 format!(
                                     "In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", 
                                     f.meta.name,
@@ -221,7 +221,7 @@ impl Env {
             if let Err(e) = self.validate_type(&p.ty, &scope) {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
-                    p.ty.span,
+                    p.ty.span(),
                     format!(
                         "In function '{}', parameter '{}': {}",
                         f.meta.name, p.name, e
@@ -231,7 +231,7 @@ impl Env {
             for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    p.ty.span,
+                    p.ty.span(),
                     format!(
                         "In function '{}', parameter '{}': undeclared lifetime {}",
                         f.meta.name, p.name, lt,
@@ -255,7 +255,7 @@ impl Env {
         if body.blocks.is_empty() {
             d.push_error(Diagnostic::new(
                 NoEntryBlock,
-                f.meta.name_span,
+                f.meta.name_span(),
                 format!(
                     "Function '{}' has no entry block: body must contain at least one basic block",
                     f.meta.name
@@ -271,7 +271,7 @@ impl Env {
             if locals_map.contains_key(&p.name) {
                 d.push_error(Diagnostic::new(
                     DuplicateLocalName,
-                    p.span,
+                    p.span(),
                     format!(
                         "Duplicate variable name '{}' in parameters of function '{}'",
                         p.name, f.meta.name
@@ -285,14 +285,14 @@ impl Env {
             if let Err(e) = self.validate_type(&l.ty, &scope) {
                 d.push_error(Diagnostic::new(
                     InvalidDeclaredType,
-                    l.ty.span,
+                    l.ty.span(),
                     format!("In function '{}', local '{}': {}", f.meta.name, l.name, e),
                 ));
             }
             for lt in undeclared_lifetimes(&l.ty, &lt_scope) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    l.ty.span,
+                    l.ty.span(),
                     format!(
                         "In function '{}', local '{}': undeclared lifetime {}",
                         f.meta.name, l.name, lt,
@@ -302,7 +302,7 @@ impl Env {
             if locals_map.contains_key(&l.name) {
                 d.push_error(Diagnostic::new(
                     DuplicateLocalName,
-                    l.span,
+                    l.span(),
                     format!(
                         "Duplicate variable name '{}' in locals/parameters of function '{}'",
                         l.name, f.meta.name
@@ -332,7 +332,7 @@ impl Env {
         let lt_scope = lifetime_scope(&func.meta.lifetime_params);
         for stmt in &block.statements {
             self.validate_stmt_embedded_types(func, block, stmt, &scope, &lt_scope, d);
-            if let Err(e) = self.typecheck_statement(func, block, stmt, stmt.span, locals) {
+            if let Err(e) = self.typecheck_statement(func, block, stmt, stmt.span(), locals) {
                 d.push_error(e);
             }
         }
@@ -358,7 +358,7 @@ impl Env {
                 d.push_error(
                     Diagnostic::new(
                         InvalidDeclaredType,
-                        ty.span,
+                        ty.span(),
                         format!("In function '{}': {}", func.meta.name, e),
                     )
                     .in_block(&block.label),
@@ -368,7 +368,7 @@ impl Env {
                 d.push_error(
                     Diagnostic::new(
                         UndeclaredLifetime,
-                        ty.span,
+                        ty.span(),
                         format!(
                             "In function '{}': undeclared lifetime {}",
                             func.meta.name, lt
@@ -529,7 +529,7 @@ impl Env {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        let ts = block.terminator.span;
+        let ts = block.terminator.span();
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, ts, msg)
@@ -673,7 +673,7 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         [p] => {
             d.push_error(Diagnostic::new(
                 MainBadSignature,
-                p.span,
+                p.span(),
                 format!(
                     "In function 'main': single parameter must be '&out i32', found {}",
                     p.ty
@@ -683,7 +683,7 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         _ => {
             d.push_error(Diagnostic::new(
                 MainBadSignature,
-                f.meta.name_span,
+                f.meta.name_span(),
                 format!(
                     "In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
                     f.params.len()

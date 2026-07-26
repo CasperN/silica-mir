@@ -39,18 +39,23 @@ pub struct Loan {
     /// `Region::Named`.
     pub region: Region,
     pub loaned: BTreeSet<Place>,
-    pub create_span: Span,
+    pub create_source: SourceInfo,
 }
 
 impl Loan {
-    pub fn single(kind: RefKind, region: Region, loaned: Place, create_span: Span) -> Self {
+    pub fn single(
+        kind: RefKind,
+        region: Region,
+        loaned: Place,
+        create_source: impl Into<SourceInfo>,
+    ) -> Self {
         let mut set = BTreeSet::new();
         set.insert(loaned);
         Loan {
             kind,
             region,
             loaned: set,
-            create_span,
+            create_source: create_source.into(),
         }
     }
 }
@@ -137,7 +142,7 @@ pub(super) fn is_elab_inserted_drop(
     let Some(next_stmt) = next else {
         return false;
     };
-    if next_stmt.span != drop_span {
+    if next_stmt.span() != drop_span {
         return false;
     }
     let StatementKind::Assign(target, _) = &next_stmt.kind else {
@@ -266,8 +271,8 @@ impl<'a> Analysis for LoanAnalysis<'a> {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join_loans(a, b)
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, span: Span) {
-        transfer_stmt(state, stmt, span, self.region_ctx);
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, source: SourceInfo) {
+        transfer_stmt(state, stmt, source, self.region_ctx);
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         if let TerminatorKind::Branch { cond, .. } = &term.kind {
@@ -282,7 +287,7 @@ impl<'a> Analysis for LoanAnalysis<'a> {
 pub(super) fn transfer_stmt(
     loans: &mut LoanMap,
     stmt: &Statement,
-    span: Span,
+    source: SourceInfo,
     region_ctx: &region::RegionCtx,
 ) {
     match &stmt.kind {
@@ -299,7 +304,7 @@ pub(super) fn transfer_stmt(
             }
             if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
                 let region = region_ctx.get(&t).cloned().unwrap_or(Region::Static);
-                loans.insert(t, Loan::single(kind.clone(), region, place.clone(), span));
+                loans.insert(t, Loan::single(kind.clone(), region, place.clone(), source));
             }
             for (new_key, loan) in carried {
                 loans.insert(new_key, loan);

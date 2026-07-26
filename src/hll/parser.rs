@@ -6,7 +6,10 @@
 //! for syntax errors (multi-error output) and CST-to-AST invariant
 //! failures — same error-code shape as the MIR parser.
 
-use crate::common::{FloatTy, IntTy, Lifetime, Marker, Markers, RefKind, Span};
+use crate::common::{
+    FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam, Marker, Markers, OutlivesBound,
+    RefKind, SourceInfo, Span,
+};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
@@ -124,7 +127,7 @@ impl Parser {
             let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
-                Span::default(),
+                SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 format!("failed to load tree-sitter grammar: {}", e),
             ));
             return Err(d);
@@ -134,7 +137,7 @@ impl Parser {
             let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
-                Span::default(),
+                SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 "tree-sitter failed to produce a parse tree",
             ));
             return Err(d);
@@ -281,7 +284,7 @@ impl Parser {
                 fields.push(StructField {
                     name: self.get_text(f_name_node).to_string(),
                     ty: self.map_type(f_type_node, &scope)?,
-                    span: span_of(child),
+                    source: SourceInfo::written(span_of(child)),
                 });
             }
         }
@@ -293,7 +296,7 @@ impl Parser {
             type_params,
             markers,
             fields,
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -335,7 +338,7 @@ impl Parser {
                 variants.push(EnumVariant {
                     name: self.get_text(v_name_node).to_string(),
                     ty: self.map_type(v_type_node, &scope)?,
-                    span: span_of(child),
+                    source: SourceInfo::written(span_of(child)),
                 });
             }
         }
@@ -347,7 +350,7 @@ impl Parser {
             type_params,
             markers,
             variants,
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -363,12 +366,12 @@ impl Parser {
             .children(&mut temp_cursor)
             .any(|c| c.kind() == "unsafe");
 
-        let (abi, abi_span) = if let Some(abi_node) = node.child_by_field_name("abi") {
+        let (abi, abi_source) = if let Some(abi_node) = node.child_by_field_name("abi") {
             // Strip surrounding quotes; the string_lit rule matches `"..."`.
             let raw = self.get_text(abi_node);
             (
                 Some(raw.trim_matches('"').to_string()),
-                Some(span_of(abi_node)),
+                Some(SourceInfo::written(span_of(abi_node))),
             )
         } else {
             (None, None)
@@ -399,21 +402,25 @@ impl Parser {
                 params.push(Param {
                     name: self.get_text(p_name_node).to_string(),
                     ty: self.map_type(p_type_node, &scope).map_err(with_fn)?,
-                    span: span_of(child),
+                    source: SourceInfo::written(span_of(child)),
                 });
             }
         }
 
-        let (ret_ty, ret_ty_span) = if let Some(rt_node) = node.child_by_field_name("return_type") {
+        let (ret_ty, ret_ty_source) = if let Some(rt_node) = node.child_by_field_name("return_type")
+        {
             (
                 self.map_type(rt_node, &scope).map_err(with_fn)?,
-                span_of(rt_node),
+                SourceInfo::written(span_of(rt_node)),
             )
         } else {
             // No `-> R` in source: fall back to the whole-fn span so
             // diagnostics still land somewhere sensible even though
             // there's no explicit annotation.
-            (unit_ty(), span)
+            (
+                unit_ty(),
+                SourceInfo::generated(GeneratedKind::HllDesugaring, span),
+            )
         };
 
         let body = if let Some(body_node) = node.child_by_field_name("body") {
@@ -426,15 +433,15 @@ impl Parser {
             name,
             is_unsafe,
             abi,
-            abi_span,
+            abi_source,
             lifetime_params,
             outlives,
             type_params,
             params,
             ret_ty,
-            ret_ty_span,
+            ret_ty_source,
             body,
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -599,7 +606,7 @@ impl Parser {
         &self,
         node: Node,
         scope: &mut TypeScope,
-    ) -> Result<(Vec<Lifetime>, Vec<TypeParam>, Vec<(Lifetime, Lifetime)>), Diagnostic> {
+    ) -> Result<(Vec<LifetimeParam>, Vec<TypeParam>, Vec<OutlivesBound>), Diagnostic> {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut outlives = Vec::new();
@@ -619,7 +626,7 @@ impl Parser {
                             .trim_start_matches('\'')
                             .to_string(),
                     );
-                    lifetimes.push(subject.clone());
+                    lifetimes.push(LifetimeParam::written(subject.clone(), span_of(child)));
                     let mut bcursor = child.walk();
                     for bound_node in child.children_by_field_name("bound", &mut bcursor) {
                         let bound = Lifetime(
@@ -627,7 +634,11 @@ impl Parser {
                                 .trim_start_matches('\'')
                                 .to_string(),
                         );
-                        outlives.push((subject.clone(), bound));
+                        outlives.push(OutlivesBound::written(
+                            subject.clone(),
+                            bound,
+                            span_of(bound_node),
+                        ));
                     }
                 }
                 "type_param" => {
@@ -654,7 +665,7 @@ impl Parser {
                     types.push(TypeParam {
                         name: pname,
                         bounds,
-                        span: span_of(child),
+                        source: SourceInfo::written(span_of(child)),
                     });
                 }
                 // Other CST children (`<`, `>`, `,`) are literal
@@ -706,23 +717,23 @@ impl Parser {
                 let (val, ty) = self.lit_diag(parse_int_literal(self.get_text(node)), node)?;
                 Ok(Expr {
                     kind: ExprKind::Literal(Literal::Int(val, ty)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "float_lit" => {
                 let (val, ty) = self.lit_diag(parse_float_literal(self.get_text(node)), node)?;
                 Ok(Expr {
                     kind: ExprKind::Literal(Literal::Float(val, ty)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "bool_lit" => Ok(Expr {
                 kind: ExprKind::Literal(Literal::Bool(self.get_text(node) == "true")),
-                span,
+                source: SourceInfo::written(span),
             }),
             "unit_lit" => Ok(Expr {
                 kind: ExprKind::Literal(Literal::Unit),
-                span,
+                source: SourceInfo::written(span),
             }),
             "byte_str_lit" => {
                 let raw = self.get_text(node);
@@ -739,7 +750,7 @@ impl Parser {
                 let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node)?;
                 Ok(Expr {
                     kind: ExprKind::Literal(Literal::ByteStr(bytes)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "byte_char_lit" => {
@@ -764,12 +775,12 @@ impl Parser {
                 }
                 Ok(Expr {
                     kind: ExprKind::Literal(Literal::Int(bytes[0] as i64, Some(IntTy::U8))),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "identifier" => Ok(Expr {
                 kind: ExprKind::Variable(self.get_text(node).to_string()),
-                span,
+                source: SourceInfo::written(span),
             }),
 
             // ---- Compound primaries ----
@@ -781,7 +792,7 @@ impl Parser {
                 } else {
                     Ok(Expr {
                         kind: ExprKind::Literal(Literal::Unit),
-                        span,
+                        source: SourceInfo::written(span),
                     })
                 }
             }
@@ -793,7 +804,7 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::Loop(Box::new(self.map_expr(body, scope)?)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "break_expr" => {
@@ -805,12 +816,12 @@ impl Parser {
                     .map(Box::new);
                 Ok(Expr {
                     kind: ExprKind::Break(val),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "continue_expr" => Ok(Expr {
                 kind: ExprKind::Continue,
-                span,
+                source: SourceInfo::written(span),
             }),
             "return_expr" => {
                 let mut cursor = node.walk();
@@ -821,7 +832,7 @@ impl Parser {
                     .map(Box::new);
                 Ok(Expr {
                     kind: ExprKind::Return(val),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "struct_constr" => self.map_struct_constr(node, scope),
@@ -836,7 +847,7 @@ impl Parser {
                 }
                 Ok(Expr {
                     kind: ExprKind::Array(elems),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
 
@@ -853,7 +864,7 @@ impl Parser {
                         Box::new(self.map_expr(lhs, scope)?),
                         Box::new(self.map_expr(rhs, scope)?),
                     ),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "borrow_expr" => {
@@ -879,7 +890,7 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::Borrow(ref_kind, Box::new(self.map_expr(target, scope)?)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "raw_borrow_expr" => {
@@ -888,7 +899,7 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::RawBorrow(Box::new(self.map_expr(target, scope)?)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "unary_expr" => {
@@ -918,7 +929,7 @@ impl Parser {
                 };
                 Ok(Expr {
                     kind: ExprKind::Unary(op, Box::new(self.map_expr(operand, scope)?)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "binary_expr" => {
@@ -969,7 +980,7 @@ impl Parser {
                         op,
                         Box::new(self.map_expr(rhs, scope)?),
                     ),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "field_access" => {
@@ -988,7 +999,7 @@ impl Parser {
                         Box::new(self.map_expr(target, scope)?),
                         self.get_text(field).to_string(),
                     ),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "deref_expr" => {
@@ -997,7 +1008,7 @@ impl Parser {
                 })?;
                 Ok(Expr {
                     kind: ExprKind::Deref(Box::new(self.map_expr(target, scope)?)),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "cast_expr" => {
@@ -1012,7 +1023,7 @@ impl Parser {
                         Box::new(self.map_expr(target, scope)?),
                         self.map_type(ty_node, scope)?,
                     ),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "call_expr" => {
@@ -1055,7 +1066,7 @@ impl Parser {
                 }
                 Ok(Expr {
                     kind: ExprKind::Call(Box::new(func_expr), generics, args),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             // Bare `foo<T>` without a call. Silica doesn't use this shape
@@ -1079,7 +1090,7 @@ impl Parser {
                         Box::new(self.map_expr(target, scope)?),
                         Box::new(self.map_expr(idx, scope)?),
                     ),
-                    span,
+                    source: SourceInfo::written(span),
                 })
             }
             "match_expr" => {
@@ -1113,7 +1124,7 @@ impl Parser {
         }
         Ok(Expr {
             kind: ExprKind::Block(stmts, tail, is_unsafe),
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -1131,7 +1142,7 @@ impl Parser {
                 let body = self.map_expr(body_node, scope)?;
                 Ok(Stmt::Defer {
                     body,
-                    span: span_of(node),
+                    source: SourceInfo::written(span_of(node)),
                 })
             }
             _ => {
@@ -1170,7 +1181,7 @@ impl Parser {
             name,
             ty,
             init,
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -1193,12 +1204,15 @@ impl Parser {
             let col = (then_end.column as u32).saturating_add(1);
             Expr {
                 kind: ExprKind::Block(Vec::new(), None, false),
-                span: Span {
-                    line,
-                    col,
-                    end_line: line,
-                    end_col: col,
-                },
+                source: SourceInfo::generated(
+                    GeneratedKind::HllDesugaring,
+                    Span {
+                        line,
+                        col,
+                        end_line: line,
+                        end_col: col,
+                    },
+                ),
             }
         };
         Ok(Expr {
@@ -1207,7 +1221,7 @@ impl Parser {
                 Box::new(self.map_expr(then_node, scope)?),
                 Box::new(else_expr),
             ),
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -1236,7 +1250,7 @@ impl Parser {
         }
         Ok(Expr {
             kind: ExprKind::Match(Box::new(self.map_expr(scrutinee_node, scope)?), arms),
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -1275,7 +1289,7 @@ impl Parser {
         }
         Ok(Expr {
             kind: ExprKind::StructConstr(name, fields),
-            span,
+            source: SourceInfo::written(span),
         })
     }
 
@@ -1304,7 +1318,7 @@ impl Parser {
                 self.get_text(variant_node).to_string(),
                 Box::new(self.map_expr(payload_node, scope)?),
             ),
-            span,
+            source: SourceInfo::written(span),
         })
     }
 

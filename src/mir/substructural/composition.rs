@@ -189,7 +189,7 @@ fn check_redundant_move(decl_meta: &DeclMeta, d: &mut Diagnostics) {
     if decl_meta.markers.is_redundant_move() {
         d.push_info(diag(
             RedundantMoveMarker,
-            decl_meta.name_span,
+            decl_meta.name_span(),
             format!(
                 "Move marker is redundant on '{}' because both Copy and Drop are present",
                 decl_meta.name
@@ -206,7 +206,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         check_markers_against(
             &s.meta,
             c,
-            f.ty.span,
+            f.ty.span(),
             |m| {
                 format!(
                     "In struct '{}' (marked {}), field '{}' has type {} which is not {}",
@@ -230,7 +230,7 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         check_markers_against(
             &e.meta,
             c,
-            v.ty.span,
+            v.ty.span(),
             |m| {
                 format!(
                     "In enum '{}' (marked {}), variant '{}' payload type {} is not {}",

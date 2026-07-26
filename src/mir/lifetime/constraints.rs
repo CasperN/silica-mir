@@ -13,6 +13,8 @@
 //!    callee param regions; the returned ref's region matches the
 //!    instantiated callee return region.
 
+use crate::mir::ast::SourceInfo;
+#[cfg(test)]
 use crate::mir::ast::Span;
 use crate::mir::lifetime::region::Region;
 use std::collections::BTreeSet;
@@ -24,15 +26,15 @@ pub struct Constraint {
     pub outlives: Region,
     pub sub: Region,
     /// Span at which the constraint was emitted, for diagnostics.
-    pub origin: Span,
+    pub origin: SourceInfo,
 }
 
 impl Constraint {
-    pub fn new(outlives: Region, sub: Region, origin: Span) -> Self {
+    pub fn new(outlives: Region, sub: Region, origin: impl Into<SourceInfo>) -> Self {
         Self {
             outlives,
             sub,
-            origin,
+            origin: origin.into(),
         }
     }
 }
@@ -51,7 +53,7 @@ impl ConstraintSet {
         Self::default()
     }
 
-    pub fn emit(&mut self, outlives: Region, sub: Region, origin: Span) {
+    pub fn emit(&mut self, outlives: Region, sub: Region, origin: impl Into<SourceInfo>) {
         if outlives == sub || matches!(outlives, Region::Static) {
             return;
         }

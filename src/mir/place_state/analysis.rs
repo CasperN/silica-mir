@@ -235,7 +235,7 @@ pub(super) fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>>
             .map(|f| StructField {
                 name: f.name.clone(),
                 ty: s.meta.substitute_types(&f.ty, args),
-                span: f.span,
+                source: f.source,
             })
             .collect(),
     )
@@ -756,7 +756,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     fn join(&self, a: &Self::State, b: &Self::State) -> Self::State {
         join_point(self.ctx, a, b)
     }
-    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _span: Span) {
+    fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, _source: SourceInfo) {
         self.ctx.transfer_stmt(stmt, state)
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {

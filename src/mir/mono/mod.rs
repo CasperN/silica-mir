@@ -211,17 +211,18 @@ impl MonoCtx {
     }
 
     fn walk_stmt(&mut self, s: &Statement) -> Statement {
-        match &s.kind {
-            StatementKind::Assign(p, r) => assign_stmt(p.clone(), self.walk_rvalue(r), s.span),
+        let statement = match &s.kind {
+            StatementKind::Assign(p, r) => assign_stmt(p.clone(), self.walk_rvalue(r), s.span()),
             StatementKind::Call(callee, args) => call_stmt(
                 self.walk_operand(callee),
                 args.iter().map(|a| self.walk_operand(a)).collect(),
-                s.span,
+                s.span(),
             ),
-            StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
-            StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
-            StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span),
-        }
+            StatementKind::Drop(p) => drop_stmt(p.clone(), s.span()),
+            StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span()),
+            StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span()),
+        };
+        statement.with_source(s.source)
     }
 
     fn walk_terminator(&mut self, t: &Terminator) -> Terminator {
@@ -234,8 +235,9 @@ impl MonoCtx {
                 self.walk_operand(cond),
                 true_label.clone(),
                 false_label.clone(),
-                t.span,
-            ),
+                t.span(),
+            )
+            .with_source(t.source),
             _ => t.clone(),
         }
     }
@@ -251,13 +253,13 @@ impl MonoCtx {
                     .map(|f| StructField {
                         name: f.name.clone(),
                         ty: self.walk_type(&subst(&f.ty)),
-                        span: f.span,
+                        source: f.source,
                     })
                     .collect();
                 Declaration::Struct(StructDecl {
                     meta: DeclMeta {
                         name: mangled,
-                        name_span: s.meta.name_span,
+                        name_source: s.meta.name_source,
                         lifetime_params: Vec::new(),
                         type_params: Vec::new(),
                         markers: s.meta.markers,
@@ -275,13 +277,13 @@ impl MonoCtx {
                     .map(|v| EnumVariant {
                         name: v.name.clone(),
                         ty: self.walk_type(&subst(&v.ty)),
-                        span: v.span,
+                        source: v.source,
                     })
                     .collect();
                 Declaration::Enum(EnumDecl {
                     meta: DeclMeta {
                         name: mangled,
-                        name_span: e.meta.name_span,
+                        name_source: e.meta.name_source,
                         lifetime_params: Vec::new(),
                         type_params: Vec::new(),
                         outlives: Vec::new(),
@@ -299,7 +301,7 @@ impl MonoCtx {
                     .map(|p| Param {
                         name: p.name.clone(),
                         ty: self.walk_type(&subst(&p.ty)),
-                        span: p.span,
+                        source: p.source,
                     })
                     .collect();
                 let body = f.body.map(|b| FunctionBody {
@@ -309,7 +311,7 @@ impl MonoCtx {
                         .map(|l| Local {
                             name: l.name.clone(),
                             ty: self.walk_type(&subst(&l.ty)),
-                            span: l.span,
+                            source: l.source,
                         })
                         .collect(),
                     blocks: b
@@ -317,7 +319,7 @@ impl MonoCtx {
                         .iter()
                         .map(|blk| BasicBlock {
                             label: blk.label.clone(),
-                            label_span: blk.label_span,
+                            label_source: blk.label_source,
                             statements: blk
                                 .statements
                                 .iter()
@@ -342,7 +344,7 @@ impl MonoCtx {
                 Declaration::Fn(Function {
                     meta: DeclMeta {
                         name: mangled,
-                        name_span: f.meta.name_span,
+                        name_source: f.meta.name_source,
                         lifetime_params: Vec::new(),
                         outlives: Vec::new(),
                         type_params: Vec::new(),
@@ -372,11 +374,11 @@ fn mangle(name: &str, args: &[Type]) -> String {
 
 /// Substitute Params in every Type-carrying position inside a statement.
 fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]) -> Statement {
-    match &s.kind {
+    let statement = match &s.kind {
         StatementKind::Assign(p, r) => assign_stmt(
             p.clone(),
             substitute_rvalue_types(r, type_params, args),
-            s.span,
+            s.span(),
         ),
         StatementKind::Call(callee, cargs) => call_stmt(
             substitute_operand_types(callee, type_params, args),
@@ -384,12 +386,13 @@ fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]
                 .iter()
                 .map(|a| substitute_operand_types(a, type_params, args))
                 .collect(),
-            s.span,
+            s.span(),
         ),
-        StatementKind::Drop(p) => drop_stmt(p.clone(), s.span),
-        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span),
-        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span),
-    }
+        StatementKind::Drop(p) => drop_stmt(p.clone(), s.span()),
+        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.span()),
+        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.span()),
+    };
+    statement.with_source(s.source)
 }
 
 fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Type]) -> RValue {

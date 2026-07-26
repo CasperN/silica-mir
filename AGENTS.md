@@ -412,3 +412,16 @@ irrelevant. Adding an enum variant requires re-reading those arguments.
 Diagnostic codes live in per-pass enums. Adding a code to an existing pass
 normally changes that pass and its fixtures; the central `DiagCode` changes
 only when introducing a new diagnostic family.
+
+## Version control
+This repository uses Jujutsu (jj) for working-copy operations. Do not use
+Git commands to rewrite or discard work.
+Common commands:
+jj status
+jj diff
+jj log
+jj describe -m "description"
+jj new
+jj split PATHS...
+Preserve unrelated working-copy changes. Do not regenerate all golden files
+while another agent is modifying fixtures.

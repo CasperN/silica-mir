@@ -120,10 +120,17 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 let span = block
                     .statements
                     .get(pos)
-                    .map(|s| s.span)
-                    .unwrap_or(block.terminator.span);
-                let items: Vec<Statement> =
-                    places.iter().map(|p| drop_stmt(p.clone(), span)).collect();
+                    .map(|s| s.span())
+                    .unwrap_or(block.terminator.span());
+                let items: Vec<Statement> = places
+                    .iter()
+                    .map(|p| {
+                        drop_stmt(p.clone(), span).with_source(SourceInfo::generated(
+                            GeneratedKind::DropElaboration,
+                            span,
+                        ))
+                    })
+                    .collect();
                 block.statements.splice(pos..pos, items);
             }
         }
@@ -148,9 +155,12 @@ pub fn elaborate(program: &mut Program, env: &Env) {
                 .iter_mut()
                 .find(|b| b.label == split_label)
                 .expect("split_edge just guaranteed this block exists");
-            let span = split_block.terminator.span;
+            let span = split_block.terminator.span();
             for p in places {
-                split_block.statements.push(drop_stmt(p.clone(), span));
+                split_block.statements.push(
+                    drop_stmt(p.clone(), span)
+                        .with_source(SourceInfo::generated(GeneratedKind::DropElaboration, span)),
+                );
             }
         }
     }
@@ -202,7 +212,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
                     transfer_stmt_silent(
                         env,
                         func,
-                        &drop_stmt(place.clone(), stmt.span),
+                        &drop_stmt(place.clone(), stmt.span()),
                         &mut state,
                     );
                 }
@@ -340,7 +350,7 @@ fn pre_stmt_transitions(
                         let rewrite = assign_stmt(
                             inner_owned,
                             enum_constr_rv(enum_name.clone(), variant.clone(), operand.clone()),
-                            stmt.span, // TODO: Is this the right span?
+                            stmt.span(), // TODO: Is this the right span?
                         );
                         return (drops, Some(rewrite));
                     }

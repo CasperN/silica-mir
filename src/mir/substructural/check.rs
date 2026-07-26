@@ -60,7 +60,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let locals = func.locals_map();
     for block in &body.blocks {
         for stmt in &block.statements {
-            check_stmt(env, func, block, &locals, stmt, stmt.span, d);
+            check_stmt(env, func, block, &locals, stmt, stmt.span(), d);
         }
         check_terminator(env, func, block, &locals, d);
     }
@@ -211,7 +211,7 @@ fn check_terminator(
     // `branch` uses an operand; `switchEnum` reads a place but does not
     // consume it, so no class check applies.
     if let TerminatorKind::Branch { cond, .. } = &block.terminator.kind {
-        check_operand(env, func, block, locals, cond, block.terminator.span, d);
+        check_operand(env, func, block, locals, cond, block.terminator.span(), d);
     }
 }
 

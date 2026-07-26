@@ -53,7 +53,7 @@ fn check_return_state(
         for (leaked_path, leaked_ty) in leaks {
             let mut diagnostic = diag(
                 ReturnValueLeak,
-                block.terminator.span,
+                block.terminator.span(),
                 func,
                 block,
                 format!(
@@ -79,7 +79,7 @@ fn check_return_state(
         let (cur, expected) = describe_obligation_mismatch(rs);
         let mut diagnostic = diag(
             RefObligationUnfulfilled,
-            block.terminator.span,
+            block.terminator.span(),
             func,
             block,
             format!(
@@ -140,14 +140,14 @@ pub(super) fn place_root_var_name(place: &Place) -> &str {
 
 pub(super) fn find_decl_span(func: &Function, name: &str) -> Option<Span> {
     if let Some(param) = func.params.iter().find(|param| param.name == name) {
-        return Some(param.span);
+        return Some(param.span());
     }
     func.body
         .as_ref()?
         .locals
         .iter()
         .find(|local| local.name == name)
-        .map(|local| local.span)
+        .map(|local| local.span())
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
@@ -233,13 +233,13 @@ pub(super) fn ref_root_decl_span(func: &Function, ref_place: &Place) -> Option<S
     let (root, _) = extract_path_with_deref(ref_place);
     for p in &func.params {
         if p.name == root {
-            return Some(p.span);
+            return Some(p.span());
         }
     }
     if let Some(body) = &func.body {
         for l in &body.locals {
             if l.name == root {
-                return Some(l.span);
+                return Some(l.span());
             }
         }
     }
@@ -274,7 +274,7 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let span = stmt.span;
+        let span = stmt.span();
         match &stmt.kind {
             StatementKind::Assign(target, rvalue) => {
                 self.materialize_moved_ref(rvalue, state);
@@ -387,7 +387,7 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let ts = block.terminator.span;
+        let ts = block.terminator.span();
         match &block.terminator.kind {
             TerminatorKind::Branch { cond, .. } => {
                 self.eval_operand(func, block, cond, ts, state, d)
@@ -791,8 +791,10 @@ impl<'a> InitStateContext<'a> {
                         for stmt in &b.statements {
                             if let StatementKind::Assign(target, _) = &stmt.kind {
                                 if target == place {
-                                    err = err
-                                        .with_secondary(stmt.span, "initialized here on some path");
+                                    err = err.with_secondary(
+                                        stmt.span(),
+                                        "initialized here on some path",
+                                    );
                                 }
                             }
                         }

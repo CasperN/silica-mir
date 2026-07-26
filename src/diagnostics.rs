@@ -21,7 +21,7 @@
 //! errors_str()` produces `Vec<String>` for tests that still assert
 //! on substring content.
 
-use crate::mir::ast::Span;
+use crate::common::{SourceInfo, Span};
 
 /// Machine-readable error kind. One variant per analysis pass; the
 /// pass owns its own sub-enum of specific codes.
@@ -102,7 +102,7 @@ impl DiagCode {
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     code: DiagCode,
-    span: Span,
+    source: SourceInfo,
     function: String,
     block: String,
     message: String,
@@ -111,24 +111,27 @@ pub struct Diagnostic {
     /// block after the primary snippet in [`Diagnostics::render_diagnostic`],
     /// prefixed by the label (rustc-style "borrow of x occurs here" et al).
     /// Empty for existing emission sites — infra is opt-in per site.
-    secondary: Vec<(Span, String)>,
+    secondary: Vec<(SourceInfo, String)>,
 }
 
 impl Diagnostic {
-    /// Build a diagnostic with the three required fields: code, span,
+    /// Build a diagnostic with the three required fields: code, source,
     /// and message. Add optional context via [`in_function`] and
     /// [`in_block`]. `code` accepts anything that converts into a
     /// `DiagCode`, so per-pass code enums can be passed directly
     /// (e.g., `Diagnostic::new(TypeCheckCode::NoEntryBlock, span, msg)`).
     ///
-    /// A span is required because every diagnostic needs a source
-    /// location — that's what makes it addressable in editors, LSP,
-    /// and error output. Callers that don't have a span at
-    /// construction time should build closer to the error site.
-    pub fn new(code: impl Into<DiagCode>, span: Span, message: impl Into<String>) -> Self {
+    /// A raw [`Span`] converts to [`SourceInfo::Written`] for compatibility;
+    /// callers creating diagnostics from synthesized nodes should pass their
+    /// existing `SourceInfo` so provenance is not discarded.
+    pub fn new(
+        code: impl Into<DiagCode>,
+        source: impl Into<SourceInfo>,
+        message: impl Into<String>,
+    ) -> Self {
         Diagnostic {
             code: code.into(),
-            span,
+            source: source.into(),
             function: String::new(),
             block: String::new(),
             message: message.into(),
@@ -158,8 +161,12 @@ impl Diagnostic {
     /// Attach a related labeled span (e.g., "borrow occurs here",
     /// "expected because of this signature"). Rendered after the
     /// primary snippet in emission order.
-    pub fn with_secondary(mut self, span: Span, label: impl Into<String>) -> Self {
-        self.secondary.push((span, label.into()));
+    pub fn with_secondary(
+        mut self,
+        source: impl Into<SourceInfo>,
+        label: impl Into<String>,
+    ) -> Self {
+        self.secondary.push((source.into(), label.into()));
         self
     }
 
@@ -171,7 +178,11 @@ impl Diagnostic {
     }
 
     pub fn span(&self) -> Span {
-        self.span
+        self.source.span()
+    }
+
+    pub fn source(&self) -> SourceInfo {
+        self.source
     }
 
     pub fn message(&self) -> &str {
@@ -366,9 +377,10 @@ impl Diagnostics {
 
     fn render_diagnostic(&self, d: &Diagnostic) -> String {
         let mut out = String::new();
-        let has_pos = d.span.line != 0 || d.span.col != 0;
+        let primary_span = d.span();
+        let has_pos = primary_span.line != 0 || primary_span.col != 0;
         if has_pos {
-            out.push_str(&format!("at {}: ", d.span));
+            out.push_str(&format!("at {}: ", primary_span));
         }
         out.push_str(&format!("[{}] ", d.code.tag()));
         let show_block = self.source_kind == SourceKind::Mir;
@@ -394,15 +406,16 @@ impl Diagnostics {
         let mut grouped_spans = Vec::new();
         if has_pos {
             grouped_spans.push(GroupedSpan {
-                span: d.span,
+                span: primary_span,
                 label: None,
                 is_primary: true,
             });
         }
-        for (span, label) in &d.secondary {
+        for (source, label) in &d.secondary {
+            let span = source.span();
             if span.line != 0 || span.col != 0 {
                 grouped_spans.push(GroupedSpan {
-                    span: *span,
+                    span,
                     label: Some(label.clone()),
                     is_primary: false,
                 });
@@ -434,8 +447,8 @@ impl Diagnostics {
 
             // Gutter width = digits in the largest line number across
             // primary + secondaries.
-            let max_line = std::iter::once(d.span.line)
-                .chain(d.secondary.iter().map(|(s, _)| s.line))
+            let max_line = std::iter::once(primary_span.line)
+                .chain(d.secondary.iter().map(|(s, _)| s.span().line))
                 .max()
                 .unwrap_or(0);
             let gutter_width = max_line.to_string().len();
@@ -599,6 +612,7 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::GeneratedKind;
     use crate::mir::type_check::TypeCheckCode;
 
     fn span(line: u32, col: u32, end_col: u32) -> Span {
@@ -635,6 +649,19 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
    |       ---- another related thing
    |";
         assert_eq!(ds.errors_str()[0], expected);
+    }
+
+    #[test]
+    fn diagnostic_preserves_generated_source_provenance() {
+        let source = SourceInfo::generated(GeneratedKind::HllTemporary, span(2, 3, 4));
+        let diagnostic = Diagnostic::new(
+            DiagCode::Parser(crate::mir::parser::ParserCode::MalformedCst),
+            source,
+            "generated node failed",
+        );
+
+        assert_eq!(diagnostic.source(), source);
+        assert_eq!(diagnostic.span(), span(2, 3, 4));
     }
 
     #[test]

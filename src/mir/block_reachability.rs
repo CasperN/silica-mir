@@ -33,7 +33,7 @@ impl Analysis for Reachability {
     }
     fn boundary_state(&self) -> Self::State {}
     fn join(&self, _: &Self::State, _: &Self::State) -> Self::State {}
-    fn transfer_stmt(&self, _: &mut Self::State, _: &Statement, _: Span) {}
+    fn transfer_stmt(&self, _: &mut Self::State, _: &Statement, _: SourceInfo) {}
     fn transfer_terminator(&self, _: &mut Self::State, _: &Terminator) {}
 }
 
@@ -57,7 +57,7 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
             d.push_warning(
                 Diagnostic::new(
                     BlockReachabilityCode::BlockUnreachable,
-                    block.label_span,
+                    block.label_span(),
                     format!("block '{}' is unreachable from entry", block.label),
                 )
                 .in_function(&func.meta.name),

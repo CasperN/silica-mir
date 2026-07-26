@@ -47,9 +47,14 @@ fn elide_function(f: &mut Function) {
     // Every synthesized output lifetime is outlived by every input
     // lifetime. Explicit output lifetimes are not axiomatized — the
     // user annotated them intentionally.
-    for out_lt in &ctx.synth_output {
+    for (out_lt, out_span) in &ctx.synth_output {
         for in_lt in &ctx.input {
-            f.meta.outlives.push((in_lt.clone(), out_lt.clone()));
+            f.meta.outlives.push(OutlivesBound::generated(
+                in_lt.clone(),
+                out_lt.clone(),
+                GeneratedKind::LifetimeElision,
+                *out_span,
+            ));
         }
     }
 }
@@ -79,33 +84,37 @@ enum Pos {
 struct ElideCtx {
     counter: u32,
     used: Vec<String>,
-    synthesized: Vec<Lifetime>,
+    synthesized: Vec<LifetimeParam>,
     /// All lifetimes seen at input position, real or synthesized.
     input: Vec<Lifetime>,
     /// Synthesized lifetimes seen at output position. These get
     /// axioms `in outlives out` for every `in` in `input`.
-    synth_output: Vec<Lifetime>,
+    synth_output: Vec<(Lifetime, Span)>,
 }
 
 impl ElideCtx {
-    fn new(existing: &[Lifetime]) -> Self {
+    fn new(existing: &[LifetimeParam]) -> Self {
         Self {
             counter: 0,
-            used: existing.iter().map(|l| l.0.clone()).collect(),
+            used: existing.iter().map(|l| l.lifetime.0.clone()).collect(),
             synthesized: Vec::new(),
             input: Vec::new(),
             synth_output: Vec::new(),
         }
     }
 
-    fn fresh(&mut self) -> Lifetime {
+    fn fresh(&mut self, attributed_to: Span) -> Lifetime {
         loop {
             let name = format!("s{}", self.counter);
             self.counter += 1;
             if !self.used.iter().any(|u| u == &name) {
                 self.used.push(name.clone());
                 let lt = Lifetime(name);
-                self.synthesized.push(lt.clone());
+                self.synthesized.push(LifetimeParam::generated(
+                    lt.clone(),
+                    GeneratedKind::LifetimeElision,
+                    attributed_to,
+                ));
                 return lt;
             }
         }
@@ -113,17 +122,18 @@ impl ElideCtx {
 }
 
 fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
+    let ty_span = ty.span();
     match &mut ty.kind {
         TypeKind::Ref(kind, slot, inner) => {
             let (lt, is_synth) = match slot.take() {
                 Some(existing) => (existing, false),
-                None => (ctx.fresh(), true),
+                None => (ctx.fresh(ty_span), true),
             };
             match pos {
                 Pos::Input => ctx.input.push(lt.clone()),
                 Pos::Output => {
                     if is_synth {
-                        ctx.synth_output.push(lt.clone());
+                        ctx.synth_output.push((lt.clone(), ty_span));
                     }
                 }
             }
@@ -161,6 +171,16 @@ mod tests {
     use super::*;
     use crate::mir::helpers::*;
 
+    fn explicit_lifetime(name: &str) -> LifetimeParam {
+        LifetimeParam::written(Lifetime(name.into()), Span::default())
+    }
+
+    fn has_bound(bounds: &[OutlivesBound], longer: &str, shorter: &str) -> bool {
+        bounds
+            .iter()
+            .any(|b| b.longer.0 == longer && b.shorter.0 == shorter)
+    }
+
     #[test]
     fn each_unannotated_ref_gets_fresh_lifetime() {
         let mut ty1 = mut_ref_ty(i64_ty());
@@ -169,7 +189,10 @@ mod tests {
         elide_type_pos(&mut ty1, Pos::Input, &mut ctx);
         elide_type_pos(&mut ty2, Pos::Input, &mut ctx);
         assert_eq!(
-            ctx.synthesized,
+            ctx.synthesized
+                .iter()
+                .map(|p| p.lifetime.clone())
+                .collect::<Vec<_>>(),
             vec![Lifetime("s0".into()), Lifetime("s1".into())]
         );
         assert!(matches!(ty1.kind, TypeKind::Ref(_, Some(_), _)));
@@ -179,7 +202,7 @@ mod tests {
     #[test]
     fn already_annotated_ref_is_untouched() {
         let mut ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty());
-        let mut ctx = ElideCtx::new(&[Lifetime("a".into())]);
+        let mut ctx = ElideCtx::new(&[explicit_lifetime("a")]);
         elide_type_pos(&mut ty, Pos::Input, &mut ctx);
         assert!(ctx.synthesized.is_empty());
         if let TypeKind::Ref(_, Some(lt), _) = &ty.kind {
@@ -191,9 +214,9 @@ mod tests {
 
     #[test]
     fn fresh_skips_existing_names() {
-        let mut ctx = ElideCtx::new(&[Lifetime("s0".into()), Lifetime("s2".into())]);
-        let a = ctx.fresh();
-        let b = ctx.fresh();
+        let mut ctx = ElideCtx::new(&[explicit_lifetime("s0"), explicit_lifetime("s2")]);
+        let a = ctx.fresh(Span::default());
+        let b = ctx.fresh(Span::default());
         assert_eq!(a.0, "s1");
         assert_eq!(b.0, "s3");
     }
@@ -203,8 +226,8 @@ mod tests {
         let mut f = Function {
             meta: DeclMeta {
                 name: "f".into(),
-                name_span: Span::default(),
-                lifetime_params: vec![Lifetime("a".into())],
+                name_source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
+                lifetime_params: vec![explicit_lifetime("a")],
                 outlives: vec![],
                 type_params: vec![],
                 markers: trivial_markers(),
@@ -215,20 +238,28 @@ mod tests {
                 Param {
                     name: "x".into(),
                     ty: mut_ref_ty(i64_ty()),
-                    span: Span::default(),
+                    source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
                 },
                 Param {
                     name: "y".into(),
                     ty: named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty()),
-                    span: Span::default(),
+                    source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
                 },
             ],
             body: None,
         };
         elide_function(&mut f);
         assert_eq!(
-            f.meta.lifetime_params,
+            f.meta
+                .lifetime_params
+                .iter()
+                .map(|p| p.lifetime.clone())
+                .collect::<Vec<_>>(),
             vec![Lifetime("a".into()), Lifetime("s0".into())]
+        );
+        assert_eq!(
+            f.meta.lifetime_params[1].source.generated_kind(),
+            Some(GeneratedKind::LifetimeElision)
         );
     }
 
@@ -241,7 +272,7 @@ mod tests {
             params: vec![Param {
                 name: "x".into(),
                 ty: mut_ref_ty(i64_ty()),
-                span: Span::default(),
+                source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
             }],
             body: None,
         };
@@ -279,14 +310,11 @@ mod tests {
             }
         ",
         );
-        assert!(f
-            .meta
-            .outlives
-            .contains(&(Lifetime("s0".into()), Lifetime("s2".into()))));
-        assert!(f
-            .meta
-            .outlives
-            .contains(&(Lifetime("s1".into()), Lifetime("s2".into()))));
+        assert!(has_bound(&f.meta.outlives, "s0", "s2"));
+        assert!(has_bound(&f.meta.outlives, "s1", "s2"));
+        assert!(f.meta.outlives.iter().all(|bound| {
+            bound.source.generated_kind() == Some(GeneratedKind::LifetimeElision)
+        }));
     }
 
     #[test]
@@ -304,9 +332,7 @@ mod tests {
         // Output: 's3 (inner of $return). Inputs: 's0, 's1, 's2.
         for input in ["s0", "s1", "s2"] {
             assert!(
-                f.meta
-                    .outlives
-                    .contains(&(Lifetime(input.into()), Lifetime("s3".into()))),
+                has_bound(&f.meta.outlives, input, "s3"),
                 "expected {} outlives s3",
                 input,
             );

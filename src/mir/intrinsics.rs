@@ -466,22 +466,28 @@ pub fn prelude_fns() -> Vec<Function> {
     out
 }
 
+fn intrinsic_meta(name: impl Into<String>) -> DeclMeta {
+    let mut meta = basic_meta(name);
+    meta.name_source = SourceInfo::generated(GeneratedKind::Intrinsic, SPAN);
+    meta
+}
+
 /// `fn<T> $sizeof($return: &out u64)` — returns the byte size of `T`.
 /// Generic over `T`; codegen intercepts the call, reads the mono'd
 /// type argument off the `FnName` const, and stores the layout size
 /// as a constant into the `$return` slot. Result is unsigned: sizes
 /// are inherently non-negative.
 fn sizeof_fn() -> Function {
-    let mut meta = basic_meta(SIZEOF_NAME);
+    let mut meta = intrinsic_meta(SIZEOF_NAME);
     meta.type_params.push(TypeParam {
         name: "T".to_string(),
         bounds: Markers::empty(),
-        span: SPAN,
+        source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     });
     let params = vec![Param {
         name: "out".to_string(),
         ty: out_ref_ty(int_ty(IntTy::U64)),
-        span: SPAN,
+        source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     }];
     Function {
         meta,
@@ -502,27 +508,27 @@ pub const SIZEOF_NAME: &str = "$sizeof";
 /// through `$return`. Index is unsigned — sizes/offsets are
 /// non-negative in the current model.
 fn ptr_offset_fn() -> Function {
-    let mut meta = basic_meta(PTR_OFFSET_NAME);
+    let mut meta = intrinsic_meta(PTR_OFFSET_NAME);
     meta.type_params.push(TypeParam {
         name: "T".to_string(),
         bounds: Markers::empty(),
-        span: SPAN,
+        source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     });
     let params = vec![
         Param {
             name: "p".to_string(),
             ty: raw_ptr_ty(param_ty("T")),
-            span: SPAN,
+            source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
         },
         Param {
             name: "i".to_string(),
             ty: int_ty(IntTy::U64),
-            span: SPAN,
+            source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
         },
         Param {
             name: "out".to_string(),
             ty: out_ref_ty(raw_ptr_ty(param_ty("T"))),
-            span: SPAN,
+            source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
         },
     ];
     Function {
@@ -584,16 +590,16 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
         params.push(Param {
             name: format!("in{}", i),
             ty: ty.clone(),
-            span: SPAN,
+            source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
         });
     }
     params.push(Param {
         name: "out".to_string(),
         ty: out_ref_ty(spec.result),
-        span: SPAN,
+        source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     });
     Function {
-        meta: basic_meta(spec.name),
+        meta: intrinsic_meta(spec.name),
         is_extern: true,
         abi: None,
         params,

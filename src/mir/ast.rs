@@ -1,35 +1,49 @@
-pub use crate::common::{FloatTy, IntTy, Lifetime, Marker, Markers, RefKind, Span};
+pub use crate::common::{
+    FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam, Marker, Markers, OutlivesBound,
+    RefKind, SourceInfo, Span,
+};
 
 use indexmap::IndexMap;
 
-/// A MIR type value with source position. See [`TypeKind`] for the
-/// shape variants. Two types with the same kind but different spans
-/// compare equal — span is metadata for diagnostics, not identity.
+/// A MIR type value with source attribution. See [`TypeKind`] for the
+/// shape variants. Two types with the same kind but different source metadata
+/// compare equal — provenance is for diagnostics, not type identity.
 #[derive(Debug, Clone)]
 pub struct Type {
     pub kind: TypeKind,
-    pub span: Span,
+    pub source: SourceInfo,
 }
 
 impl Type {
     pub fn new(kind: TypeKind, span: Span) -> Self {
-        Self { kind, span }
+        Self {
+            kind,
+            source: SourceInfo::written(span),
+        }
     }
 
-    /// Construct a type with `Span::default()` (rendered as "no
-    /// position" by diagnostics). Use at synthetic sites where no
-    /// source range is meaningful (test helpers, substitution
-    /// results, checker-manufactured types).
+    /// Construct a compiler-synthesized type with no source attribution.
+    /// Parsed types and transformations with a meaningful attribution should
+    /// use [`Type::new`] or [`Type::with_source`] instead.
     pub fn no_span(kind: TypeKind) -> Self {
         Self {
             kind,
-            span: Span::default(),
+            source: SourceInfo::generated(GeneratedKind::TypeSynthesis, Span::default()),
         }
     }
 
     pub fn with_span(mut self, span: Span) -> Self {
-        self.span = span;
+        self.source = SourceInfo::written(span);
         self
+    }
+
+    pub fn with_source(mut self, source: SourceInfo) -> Self {
+        self.source = source;
+        self
+    }
+
+    pub fn span(&self) -> Span {
+        self.source.span()
     }
 }
 
@@ -95,7 +109,7 @@ impl TypeKind {
     /// Wrap a `TypeKind` with a span. Convenient for construction
     /// sites where the kind is built up piecewise.
     pub fn at(self, span: Span) -> Type {
-        Type { kind: self, span }
+        Type::new(self, span)
     }
 }
 
@@ -526,12 +540,24 @@ pub enum RValue {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Statement {
     pub kind: StatementKind,
-    pub span: Span,
+    pub source: SourceInfo,
 }
 
 impl Statement {
     pub fn new(kind: StatementKind, span: Span) -> Self {
-        Self { kind, span }
+        Self {
+            kind,
+            source: SourceInfo::written(span),
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
+
+    pub fn with_source(mut self, source: SourceInfo) -> Self {
+        self.source = source;
+        self
     }
 }
 
@@ -560,12 +586,24 @@ pub enum StatementKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Terminator {
     pub kind: TerminatorKind,
-    pub span: Span,
+    pub source: SourceInfo,
 }
 
 impl Terminator {
     pub fn new(kind: TerminatorKind, span: Span) -> Self {
-        Self { kind, span }
+        Self {
+            kind,
+            source: SourceInfo::written(span),
+        }
+    }
+
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
+
+    pub fn with_source(mut self, source: SourceInfo) -> Self {
+        self.source = source;
+        self
     }
 }
 
@@ -589,37 +627,67 @@ pub enum TerminatorKind {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BasicBlock {
     pub label: String,
-    pub label_span: Span,
+    pub label_source: SourceInfo,
     pub statements: Vec<Statement>,
     pub terminator: Terminator,
+}
+
+impl BasicBlock {
+    pub fn label_span(&self) -> Span {
+        self.label_source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StructField {
     pub name: String,
     pub ty: Type,
-    pub span: Span,
+    pub source: SourceInfo,
+}
+
+impl StructField {
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EnumVariant {
     pub name: String,
     pub ty: Type,
-    pub span: Span,
+    pub source: SourceInfo,
+}
+
+impl EnumVariant {
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Param {
     pub name: String,
     pub ty: Type,
-    pub span: Span,
+    pub source: SourceInfo,
+}
+
+impl Param {
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Local {
     pub name: String,
     pub ty: Type,
-    pub span: Span,
+    pub source: SourceInfo,
+}
+
+impl Local {
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -679,7 +747,13 @@ impl FunctionBody {
 pub struct TypeParam {
     pub name: String,
     pub bounds: Markers,
-    pub span: Span,
+    pub source: SourceInfo,
+}
+
+impl TypeParam {
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -736,14 +810,20 @@ impl Function {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclMeta {
     pub name: String,
-    pub name_span: Span,
-    pub lifetime_params: Vec<Lifetime>,
+    pub name_source: SourceInfo,
+    pub lifetime_params: Vec<LifetimeParam>,
     /// Elision-derived outlives axioms on the function's signature.
     /// Each `(a, b)` means "region `a` outlives region `b`" is a
     /// known fact holding for any invocation.
-    pub outlives: Vec<(Lifetime, Lifetime)>,
+    pub outlives: Vec<OutlivesBound>,
     pub type_params: Vec<TypeParam>,
     pub markers: Markers,
+}
+
+impl DeclMeta {
+    pub fn name_span(&self) -> Span {
+        self.name_source.span()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

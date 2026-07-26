@@ -1,4 +1,4 @@
-use crate::common::{RefKind, Span};
+use crate::common::{GeneratedKind, RefKind, SourceInfo, Span};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 /// HLL mutability check.
 ///
@@ -32,7 +32,7 @@ impl From<HllMutCheckCode> for DiagCode {
 
 struct VarInfo {
     is_mut: bool,
-    decl_span: Span,
+    decl_source: SourceInfo,
 }
 
 struct Scope {
@@ -55,11 +55,17 @@ impl Scope {
         self.frames.pop();
     }
 
-    fn declare(&mut self, name: &str, is_mut: bool, decl_span: Span) {
+    fn declare(&mut self, name: &str, is_mut: bool, decl_source: SourceInfo) {
         self.frames
             .last_mut()
             .expect("scope stack must be non-empty")
-            .insert(name.to_string(), VarInfo { is_mut, decl_span });
+            .insert(
+                name.to_string(),
+                VarInfo {
+                    is_mut,
+                    decl_source,
+                },
+            );
     }
 
     fn get_info(&self, name: &str) -> Option<&VarInfo> {
@@ -89,7 +95,7 @@ fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
     let mut scope = Scope::new();
     // Parameters are immutable (Param has no is_mut field).
     for p in &f.params {
-        scope.declare(&p.name, false, p.span);
+        scope.declare(&p.name, false, p.source);
     }
     check_expr(body, &mut scope, &f.name, d);
 }
@@ -112,7 +118,7 @@ enum PlaceRoot<'a> {
 /// not the binding).
 fn place_root(expr: &Expr) -> PlaceRoot<'_> {
     match &expr.kind {
-        ExprKind::Variable(name) => PlaceRoot::Var(name, expr.span),
+        ExprKind::Variable(name) => PlaceRoot::Var(name, expr.span()),
         ExprKind::FieldAccess(inner, _) => place_root(inner),
         ExprKind::ArrayIndex(inner, _) => place_root(inner),
         // Cast produces a fresh value, not a projection onto the input.
@@ -147,7 +153,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
                                     ),
                                 )
                                 .with_secondary(
-                                    info.decl_span,
+                                    info.decl_source,
                                     "variable declared as immutable here",
                                 )
                                 .in_function(func),
@@ -190,7 +196,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
                                 span,
                                 format!("cannot assign to immutable binding '{}'", name),
                             )
-                            .with_secondary(info.decl_span, "variable declared as immutable here")
+                            .with_secondary(info.decl_source, "variable declared as immutable here")
                             .in_function(func),
                         );
                     }
@@ -241,7 +247,11 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
                 scope.push();
                 // Pattern bindings are immutable.
                 if let Pattern::Variant(_, Some(bound)) = pattern {
-                    scope.declare(bound, false, body.span);
+                    scope.declare(
+                        bound,
+                        false,
+                        SourceInfo::generated(GeneratedKind::HllDesugaring, body.span()),
+                    );
                 }
                 check_expr(body, scope, func, d);
                 scope.pop();
@@ -294,14 +304,14 @@ fn check_stmt(stmt: &Stmt, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             name,
             ty: _,
             init,
-            span,
+            source,
         } => {
             if let Some(init) = init {
                 check_expr(init, scope, func, d);
             }
-            scope.declare(name, *is_mut, *span);
+            scope.declare(name, *is_mut, *source);
         }
-        Stmt::Defer { body, span: _ } => {
+        Stmt::Defer { body, source: _ } => {
             check_expr(body, scope, func, d);
         }
         Stmt::Expr(e) => check_expr(e, scope, func, d),

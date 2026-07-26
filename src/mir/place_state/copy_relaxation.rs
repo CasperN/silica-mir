@@ -91,7 +91,7 @@ pub fn elaborate(program: &mut Program, env: &Env, d: &mut Diagnostics) {
 /// passes assume this invariant and `unreachable!` on `Take`, so callers
 /// must skip elaboration/checking when this returns anything.
 pub fn verify_no_take(program: &Program, d: &mut crate::diagnostics::Diagnostics) {
-    let mut first: Option<Span> = None;
+    let mut first: Option<SourceInfo> = None;
     let mut count = 0usize;
     for func in program.functions() {
         let Some(body) = &func.body else { continue };
@@ -105,41 +105,44 @@ pub fn verify_no_take(program: &Program, d: &mut crate::diagnostics::Diagnostics
     if count == 0 {
         return;
     }
-    let span = first.unwrap_or_default();
+    let source = first
+        .unwrap_or_else(|| SourceInfo::generated(GeneratedKind::CopyRelaxation, Span::default()));
     d.push_internal_error(crate::diagnostics::Diagnostic::new(
         crate::diagnostics::DiagCode::Parser(crate::mir::parser::ParserCode::MalformedCst),
-        span,
+        source,
         format!(
             "copy relaxation left {count} unresolved `take` operand(s); every `take` must be specialized to `move` or `copy` before downstream passes run"
         ),
     ));
 }
 
-fn scan_statement_for_take(stmt: &Statement, first: &mut Option<Span>, count: &mut usize) {
+fn scan_statement_for_take(stmt: &Statement, first: &mut Option<SourceInfo>, count: &mut usize) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
-            scan_place_for_take(target, stmt.span, first, count);
-            scan_rvalue_for_take(rvalue, stmt.span, first, count);
+            scan_place_for_take(target, stmt.source, first, count);
+            scan_rvalue_for_take(rvalue, stmt.source, first, count);
         }
         StatementKind::Call(target, args) => {
-            scan_operand_for_take(target, stmt.span, first, count);
+            scan_operand_for_take(target, stmt.source, first, count);
             for op in args {
-                scan_operand_for_take(op, stmt.span, first, count);
+                scan_operand_for_take(op, stmt.source, first, count);
             }
         }
         StatementKind::Drop(place)
         | StatementKind::Unborrow(place)
         | StatementKind::RequireUninit(place) => {
-            scan_place_for_take(place, stmt.span, first, count);
+            scan_place_for_take(place, stmt.source, first, count);
         }
     }
 }
 
-fn scan_terminator_for_take(term: &Terminator, first: &mut Option<Span>, count: &mut usize) {
+fn scan_terminator_for_take(term: &Terminator, first: &mut Option<SourceInfo>, count: &mut usize) {
     match &term.kind {
-        TerminatorKind::Branch { cond, .. } => scan_operand_for_take(cond, term.span, first, count),
+        TerminatorKind::Branch { cond, .. } => {
+            scan_operand_for_take(cond, term.source, first, count)
+        }
         TerminatorKind::SwitchEnum { place, .. } => {
-            scan_place_for_take(place, term.span, first, count)
+            scan_place_for_take(place, term.source, first, count)
         }
         TerminatorKind::Goto(_)
         | TerminatorKind::Return
@@ -148,33 +151,43 @@ fn scan_terminator_for_take(term: &Terminator, first: &mut Option<Span>, count: 
     }
 }
 
-fn scan_rvalue_for_take(rv: &RValue, span: Span, first: &mut Option<Span>, count: &mut usize) {
+fn scan_rvalue_for_take(
+    rv: &RValue,
+    source: SourceInfo,
+    first: &mut Option<SourceInfo>,
+    count: &mut usize,
+) {
     match rv {
         RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
-            scan_operand_for_take(op, span, first, count);
+            scan_operand_for_take(op, source, first, count);
         }
         RValue::Ref(_, place) | RValue::RawRef(place) => {
-            scan_place_for_take(place, span, first, count);
+            scan_place_for_take(place, source, first, count);
         }
         RValue::ArrayLit(ops) => {
             for op in ops {
-                scan_operand_for_take(op, span, first, count);
+                scan_operand_for_take(op, source, first, count);
             }
         }
     }
 }
 
-fn scan_operand_for_take(op: &Operand, span: Span, first: &mut Option<Span>, count: &mut usize) {
+fn scan_operand_for_take(
+    op: &Operand,
+    source: SourceInfo,
+    first: &mut Option<SourceInfo>,
+    count: &mut usize,
+) {
     match op {
         Operand::Take(place) => {
             *count += 1;
             if first.is_none() {
-                *first = Some(span);
+                *first = Some(source);
             }
-            scan_place_for_take(place, span, first, count);
+            scan_place_for_take(place, source, first, count);
         }
         Operand::Copy(place) | Operand::Move(place) => {
-            scan_place_for_take(place, span, first, count);
+            scan_place_for_take(place, source, first, count);
         }
         Operand::Const(_) => {}
     }
@@ -183,15 +196,20 @@ fn scan_operand_for_take(op: &Operand, span: Span, first: &mut Option<Span>, cou
 /// Recurse into a place, visiting any operand that appears inside an
 /// `Index` projection. Without this, a `Take` nested inside a dynamic
 /// index would slip past both `verify_no_take` and the resolver.
-fn scan_place_for_take(place: &Place, span: Span, first: &mut Option<Span>, count: &mut usize) {
+fn scan_place_for_take(
+    place: &Place,
+    source: SourceInfo,
+    first: &mut Option<SourceInfo>,
+    count: &mut usize,
+) {
     match place {
         Place::Var(_) => {}
         Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
-            scan_place_for_take(inner, span, first, count);
+            scan_place_for_take(inner, source, first, count);
         }
         Place::Index(inner, op) => {
-            scan_place_for_take(inner, span, first, count);
-            scan_operand_for_take(op, span, first, count);
+            scan_place_for_take(inner, source, first, count);
+            scan_operand_for_take(op, source, first, count);
         }
     }
 }
@@ -315,7 +333,7 @@ impl<'a> Analysis for MovePathDemand<'a> {
         }
     }
 
-    fn transfer_stmt(&self, demand: &mut Self::State, stmt: &Statement, _span: Span) {
+    fn transfer_stmt(&self, demand: &mut Self::State, stmt: &Statement, _source: SourceInfo) {
         transfer_statement_demand(stmt, demand);
     }
 
@@ -580,7 +598,7 @@ fn nearest_owned_path(place: &Place) -> Option<Place> {
 }
 
 fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx) {
-    let span = stmt.span;
+    let span = stmt.span();
     match &mut stmt.kind {
         StatementKind::Assign(target, rvalue) => {
             // Nested index operands inside the target place are reads
@@ -611,7 +629,7 @@ fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx
 }
 
 fn relax_terminator(term: &mut Terminator, demand: &mut Demand, ctx: &mut RelaxCtx) {
-    let span = term.span;
+    let span = term.span();
     match &mut term.kind {
         TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, ctx, span),
         TerminatorKind::SwitchEnum { place, .. } => {

@@ -75,11 +75,11 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
     let mut cs = constraints::ConstraintSet::new();
     for p in &func.params {
-        emit_type_wf_constraints(&p.ty, env, &mut cs, p.ty.span);
+        emit_type_wf_constraints(&p.ty, env, &mut cs, p.ty.span());
     }
     if let Some(body) = &func.body {
         for l in &body.locals {
-            emit_type_wf_constraints(&l.ty, env, &mut cs, l.ty.span);
+            emit_type_wf_constraints(&l.ty, env, &mut cs, l.ty.span());
         }
         for block in &body.blocks {
             for stmt in &block.statements {
@@ -94,7 +94,12 @@ fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
         .meta
         .outlives
         .iter()
-        .map(|(a, b)| (name_to_region(a), name_to_region(b)))
+        .map(|bound| {
+            (
+                name_to_region(&bound.longer),
+                name_to_region(&bound.shorter),
+            )
+        })
         .collect();
     let closure = constraints::transitive_closure(&axioms);
     for c in cs.iter() {
@@ -127,12 +132,12 @@ fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
         match decl {
             TypeDecl::Struct(s) => {
                 for f in &s.fields {
-                    emit_type_wf_constraints(&f.ty, env, &mut cs, f.ty.span);
+                    emit_type_wf_constraints(&f.ty, env, &mut cs, f.ty.span());
                 }
             }
             TypeDecl::Enum(e) => {
                 for v in &e.variants {
-                    emit_type_wf_constraints(&v.ty, env, &mut cs, v.ty.span);
+                    emit_type_wf_constraints(&v.ty, env, &mut cs, v.ty.span());
                 }
             }
         }
@@ -146,7 +151,12 @@ fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
         let axioms: Vec<(Region, Region)> = meta
             .outlives
             .iter()
-            .map(|(a, b)| (name_to_region(a), name_to_region(b)))
+            .map(|bound| {
+                (
+                    name_to_region(&bound.longer),
+                    name_to_region(&bound.shorter),
+                )
+            })
             .collect();
         let closure = constraints::transitive_closure(&axioms);
         for c in cs.iter() {
@@ -191,11 +201,11 @@ fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::C
         StatementKind::Assign(_, rvalue) => match rvalue {
             RValue::PtrCast(op, ty) => {
                 emit_operand_wf_constraints(op, env, cs);
-                emit_type_wf_constraints(ty, env, cs, ty.span);
+                emit_type_wf_constraints(ty, env, cs, ty.span());
             }
             RValue::EnumConstr(_, type_args, _, op) => {
                 for ty in type_args {
-                    emit_type_wf_constraints(ty, env, cs, ty.span);
+                    emit_type_wf_constraints(ty, env, cs, ty.span());
                 }
                 emit_operand_wf_constraints(op, env, cs);
             }
@@ -224,7 +234,7 @@ fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::C
 fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::ConstraintSet) {
     if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
         for ty in type_args {
-            emit_type_wf_constraints(ty, env, cs, ty.span);
+            emit_type_wf_constraints(ty, env, cs, ty.span());
         }
     }
 }
@@ -246,11 +256,15 @@ fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::Constrai
             if let Some(decl) = env.types.get(name) {
                 let meta = decl.meta();
                 if lts.len() == meta.lifetime_params.len() {
-                    let sub: IndexMap<&Lifetime, &Lifetime> =
-                        meta.lifetime_params.iter().zip(lts.iter()).collect();
-                    for (a, b) in &meta.outlives {
-                        let a_lt = sub.get(a).copied().unwrap_or(a);
-                        let b_lt = sub.get(b).copied().unwrap_or(b);
+                    let sub: IndexMap<&Lifetime, &Lifetime> = meta
+                        .lifetime_params
+                        .iter()
+                        .map(|p| &p.lifetime)
+                        .zip(lts.iter())
+                        .collect();
+                    for bound in &meta.outlives {
+                        let a_lt = sub.get(&bound.longer).copied().unwrap_or(&bound.longer);
+                        let b_lt = sub.get(&bound.shorter).copied().unwrap_or(&bound.shorter);
                         cs.emit(name_to_region(a_lt), name_to_region(b_lt), span);
                     }
                 }
@@ -493,8 +507,8 @@ struct Checker<'a> {
 }
 
 impl<'a> Checker<'a> {
-    fn error(&self, code: LifetimeCode, span: Span, msg: String) -> Diagnostic {
-        Diagnostic::new(code, span, msg).in_function(&self.func.meta.name)
+    fn error(&self, code: LifetimeCode, source: impl Into<SourceInfo>, msg: String) -> Diagnostic {
+        Diagnostic::new(code, source, msg).in_function(&self.func.meta.name)
     }
 
     /// Enforce accumulated outlives constraints. The only satisfiable
@@ -509,7 +523,12 @@ impl<'a> Checker<'a> {
             .meta
             .outlives
             .iter()
-            .map(|(a, b)| (name_to_region(a), name_to_region(b)))
+            .map(|bound| {
+                (
+                    name_to_region(&bound.longer),
+                    name_to_region(&bound.shorter),
+                )
+            })
             .collect();
         let closure = constraints::transitive_closure(&axioms);
         for c in self.constraints.iter() {
@@ -645,9 +664,9 @@ impl<'a> Checker<'a> {
         // invariant (source outlives dst AND dst outlives source).
         let target_kind = ref_kind_of_place(&target_place, &self.locals, self.env);
         self.constraints
-            .emit(src_region.clone(), t_r.clone(), stmt.span);
+            .emit(src_region.clone(), t_r.clone(), stmt.source);
         if !matches!(target_kind, Some(RefKind::Shared)) {
-            self.constraints.emit(t_r, src_region, stmt.span);
+            self.constraints.emit(t_r, src_region, stmt.source);
         }
     }
 
@@ -713,9 +732,10 @@ impl<'a> Checker<'a> {
                 // captured one (within-block loans have real spans;
                 // cross-block dataflow-propagated loans have Span::default,
                 // which renders as no snippet).
-                if loan.create_span.line != 0 || loan.create_span.col != 0 {
+                let create_span = loan.create_source.span();
+                if create_span.line != 0 || create_span.col != 0 {
                     diag = diag.with_secondary(
-                        loan.create_span,
+                        loan.create_source,
                         format!("borrow of '{}' occurs here", format_place(place)),
                     );
                 }
@@ -794,7 +814,7 @@ impl<'a> Checker<'a> {
             .meta
             .lifetime_params
             .iter()
-            .map(|lt| (lt.clone(), self.region_ctx.fresh()))
+            .map(|lt| (lt.lifetime.clone(), self.region_ctx.fresh()))
             .collect();
 
         let mut per_output_inputs: IndexMap<Region, BTreeSet<Place>> = IndexMap::new();
@@ -814,9 +834,15 @@ impl<'a> Checker<'a> {
             );
         }
 
-        for (a, b) in &callee.meta.outlives {
-            let a_r = inst.get(a).cloned().unwrap_or_else(|| name_to_region(a));
-            let b_r = inst.get(b).cloned().unwrap_or_else(|| name_to_region(b));
+        for bound in &callee.meta.outlives {
+            let a_r = inst
+                .get(&bound.longer)
+                .cloned()
+                .unwrap_or_else(|| name_to_region(&bound.longer));
+            let b_r = inst
+                .get(&bound.shorter)
+                .cloned()
+                .unwrap_or_else(|| name_to_region(&bound.shorter));
             self.constraints.emit(a_r, b_r, span);
         }
 
@@ -869,7 +895,7 @@ impl<'a> Checker<'a> {
                             kind: synth_kind.clone(),
                             region: out_region.clone(),
                             loaned: merged.clone(),
-                            create_span: span,
+                            create_source: SourceInfo::written(span),
                         },
                     );
                 }
@@ -1023,14 +1049,14 @@ impl<'a> Checker<'a> {
             StatementKind::Assign(target, rvalue) => {
                 match rvalue {
                     RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
-                        self.check_operand_access(block, op, stmt.span, loans);
+                        self.check_operand_access(block, op, stmt.span(), loans);
                     }
                     RValue::Ref(kind, place) => {
                         self.check_loan_conflict(
                             block,
                             place,
                             AccessKind::Borrow(kind.clone()),
-                            stmt.span,
+                            stmt.span(),
                             loans,
                         );
                     }
@@ -1041,19 +1067,19 @@ impl<'a> Checker<'a> {
                     }
                     RValue::ArrayLit(ops) => {
                         for op in ops {
-                            self.check_operand_access(block, op, stmt.span, loans);
+                            self.check_operand_access(block, op, stmt.span(), loans);
                         }
                     }
                 }
-                self.check_loan_conflict(block, target, AccessKind::Write, stmt.span, loans);
-                transfer_stmt(loans, stmt, stmt.span, self.region_ctx);
+                self.check_loan_conflict(block, target, AccessKind::Write, stmt.span(), loans);
+                transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
             }
             StatementKind::Call(target, args) => {
-                self.check_operand_access(block, target, stmt.span, loans);
-                self.check_call_regions(target, args, stmt.span, loans);
+                self.check_operand_access(block, target, stmt.span(), loans);
+                self.check_call_regions(target, args, stmt.span(), loans);
                 consume_operand(loans, target);
                 for a in args {
-                    self.check_operand_access(block, a, stmt.span, loans);
+                    self.check_operand_access(block, a, stmt.span(), loans);
                     consume_operand(loans, a);
                 }
             }
@@ -1066,18 +1092,18 @@ impl<'a> Checker<'a> {
                 // reporting a single user event twice. The assign
                 // carries the authoritative diagnostic; the auto-drop is
                 // silent but still advances the loan map.
-                if !is_elab_inserted_drop(place, stmt.span, next) {
-                    self.check_loan_conflict(block, place, AccessKind::Move, stmt.span, loans);
+                if !is_elab_inserted_drop(place, stmt.span(), next) {
+                    self.check_loan_conflict(block, place, AccessKind::Move, stmt.span(), loans);
                 }
-                transfer_stmt(loans, stmt, stmt.span, self.region_ctx);
+                transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
             }
             StatementKind::Unborrow(place) => {
                 // Consumes the borrower Var. Its own loan is skipped in
                 // check_loan_conflict (the "borrower == access_root with
                 // empty path" case), but a *reborrow* of this borrower —
                 // loan borrowed by s on `*r` — still needs to block `unborrow r`.
-                self.check_loan_conflict(block, place, AccessKind::Move, stmt.span, loans);
-                transfer_stmt(loans, stmt, stmt.span, self.region_ctx);
+                self.check_loan_conflict(block, place, AccessKind::Move, stmt.span(), loans);
+                transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
             }
             StatementKind::RequireUninit(_) => {
                 // Place-state validates the assertion. It is not a runtime
@@ -1087,7 +1113,7 @@ impl<'a> Checker<'a> {
     }
 
     fn check_and_transfer_terminator(&mut self, block: &BasicBlock, loans: &mut LoanMap) {
-        let terminator_span = block.terminator.span;
+        let terminator_span = block.terminator.span();
         match &block.terminator.kind {
             TerminatorKind::Branch { cond, .. } => {
                 self.check_operand_access(block, cond, terminator_span, loans);

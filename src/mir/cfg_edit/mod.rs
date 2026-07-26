@@ -53,7 +53,7 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
         );
     }
 
-    let pred_span = body.blocks[pred_idx].terminator.span;
+    let pred_span = body.blocks[pred_idx].terminator.span();
     replace_target_label(
         &mut body.blocks[pred_idx].terminator,
         succ_label,
@@ -62,9 +62,12 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
 
     let split_block = BasicBlock {
         label: split_label.clone(),
-        label_span: pred_span,
+        label_source: SourceInfo::generated(GeneratedKind::ControlFlowElaboration, pred_span),
         statements: Vec::new(),
-        terminator: goto_term(succ_label, pred_span),
+        terminator: goto_term(succ_label, pred_span).with_source(SourceInfo::generated(
+            GeneratedKind::ControlFlowElaboration,
+            pred_span,
+        )),
     };
     // Insert right after pred so the block ordering stays roughly
     // control-flow adjacent. Not load-bearing for correctness.

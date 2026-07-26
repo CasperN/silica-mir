@@ -75,17 +75,21 @@ fn write_type_params(out: &mut String, meta: &DeclMeta) {
         // matching the source shape `'a: 'b + 'c`. Bounds keyed to
         // other subjects fall through this iteration and land next to
         // their subject.
-        let mut bounds = meta.outlives.iter().filter(|(s, _)| s == lt).peekable();
+        let mut bounds = meta
+            .outlives
+            .iter()
+            .filter(|bound| bound.longer == lt.lifetime)
+            .peekable();
         if bounds.peek().is_some() {
             let mut first_bound = true;
-            for (_, bound) in bounds {
+            for bound in bounds {
                 if first_bound {
                     out.push_str(": ");
                     first_bound = false;
                 } else {
                     out.push_str(" + ");
                 }
-                write!(out, "{}", bound).unwrap();
+                write!(out, "{}", bound.shorter).unwrap();
             }
         }
     }
@@ -449,42 +453,53 @@ mod tests {
         p.source = std::sync::Arc::new(String::new());
         let zero = Span::default();
         for decl in &mut p.declarations {
+            let meta = match decl {
+                Declaration::Struct(s) => &mut s.meta,
+                Declaration::Enum(e) => &mut e.meta,
+                Declaration::Fn(f) => &mut f.meta,
+            };
+            for lifetime in &mut meta.lifetime_params {
+                lifetime.source = SourceInfo::written(zero);
+            }
+            for bound in &mut meta.outlives {
+                bound.source = SourceInfo::written(zero);
+            }
             match decl {
                 Declaration::Struct(s) => {
-                    s.meta.name_span = zero;
+                    s.meta.name_source = SourceInfo::written(zero);
                     for tp in &mut s.meta.type_params {
-                        tp.span = zero;
+                        tp.source = SourceInfo::written(zero);
                     }
                     for f in &mut s.fields {
-                        f.span = zero;
+                        f.source = SourceInfo::written(zero);
                     }
                 }
                 Declaration::Enum(e) => {
-                    e.meta.name_span = zero;
+                    e.meta.name_source = SourceInfo::written(zero);
                     for tp in &mut e.meta.type_params {
-                        tp.span = zero;
+                        tp.source = SourceInfo::written(zero);
                     }
                     for v in &mut e.variants {
-                        v.span = zero;
+                        v.source = SourceInfo::written(zero);
                     }
                 }
                 Declaration::Fn(f) => {
-                    f.meta.name_span = zero;
+                    f.meta.name_source = SourceInfo::written(zero);
                     for tp in &mut f.meta.type_params {
-                        tp.span = zero;
+                        tp.source = SourceInfo::written(zero);
                     }
                     for p in &mut f.params {
-                        p.span = zero;
+                        p.source = SourceInfo::written(zero);
                     }
                     if let Some(body) = &mut f.body {
                         for l in &mut body.locals {
-                            l.span = zero;
+                            l.source = SourceInfo::written(zero);
                         }
                         for b in &mut body.blocks {
-                            b.label_span = zero;
-                            b.terminator.span = zero;
+                            b.label_source = SourceInfo::written(zero);
+                            b.terminator.source = SourceInfo::written(zero);
                             for statement in b.statements.iter_mut() {
-                                statement.span = zero;
+                                statement.source = SourceInfo::written(zero);
                             }
                         }
                     }

@@ -1,4 +1,4 @@
-use crate::common::{IntTy, Marker, Markers, RefKind, Span};
+use crate::common::{IntTy, Marker, Markers, RefKind, SourceInfo, Span};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
@@ -607,22 +607,22 @@ pub(super) fn typecheck_program_collect(
             Declaration::Struct(s) => {
                 let scope = type_params_scope(&s.type_params);
                 for f in &s.fields {
-                    env.validate_type(&f.ty, &scope, f.span, d);
+                    env.validate_type(&f.ty, &scope, f.span(), d);
                 }
             }
             Declaration::Enum(e) => {
                 let scope = type_params_scope(&e.type_params);
                 for v in &e.variants {
-                    env.validate_type(&v.ty, &scope, v.span, d);
+                    env.validate_type(&v.ty, &scope, v.span(), d);
                 }
             }
             Declaration::Fn(f) => {
                 let scope = type_params_scope(&f.type_params);
                 let errors_before = d.error_count();
                 for p in &f.params {
-                    env.validate_type(&p.ty, &scope, p.span, d);
+                    env.validate_type(&p.ty, &scope, p.span(), d);
                 }
-                env.validate_type(&f.ret_ty, &scope, f.ret_ty_span, d);
+                env.validate_type(&f.ret_ty, &scope, f.ret_ty_span(), d);
                 d.annotate_errors_in_function(errors_before, &f.name);
             }
         }
@@ -641,7 +641,10 @@ pub(super) fn typecheck_program_collect(
                         // Prefer the ABI string's span; fall back to
                         // the whole decl if it isn't populated (safety
                         // net — parser always fills it when abi is Some).
-                        let span = f.abi_span.unwrap_or(f.span);
+                        let span = f
+                            .abi_source
+                            .map(SourceInfo::span)
+                            .unwrap_or_else(|| f.span());
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnknownAbi,
                             span,
@@ -802,7 +805,7 @@ fn infer_inner(
             let lhs_ty = infer_inner(env, subst, lhs, types, d);
             let rhs_ty = infer_inner(env, subst, rhs, types, d);
             if let Err(e) = subst.unify(&lhs_ty, &rhs_ty) {
-                d.push_error(e.to_diag(expr.span));
+                d.push_error(e.to_diag(expr.span()));
             }
 
             let resolved = subst.resolve(&lhs_ty);
@@ -817,7 +820,7 @@ fn infer_inner(
                 _ => {
                     d.push_error(Diagnostic::new(
                         BinaryOpNonNumeric,
-                        lhs.span,
+                        lhs.span(),
                         format!(
                             "binary operations only supported on numeric types, found {}",
                             resolved
@@ -853,7 +856,7 @@ fn infer_inner(
                         _ => {
                             d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnaryOpInvalidOperand,
-                            operand.span,
+                            operand.span(),
                             format!("unary '-' requires a signed integer or float operand, found {}", resolved),
                         ));
                             return error_ty();
@@ -884,7 +887,7 @@ fn infer_inner(
             } else {
                 d.push_error(Diagnostic::new(
                     UndeclaredVariable,
-                    expr.span,
+                    expr.span(),
                     format!("undeclared variable '{}'", name),
                 ));
                 return error_ty();
@@ -911,7 +914,7 @@ fn infer_inner(
                             &struct_name,
                             &s_decl.type_params,
                             &args,
-                            expr.span,
+                            expr.span(),
                             d,
                         ) {
                             Some(mapping) => substitute(&f.ty, &mapping),
@@ -920,7 +923,7 @@ fn infer_inner(
                     } else {
                         d.push_error(Diagnostic::new(
                             NoSuchField,
-                            target.span,
+                            target.span(),
                             format!("struct '{}' has no field '{}'", struct_name, field),
                         ));
                         return error_ty();
@@ -928,7 +931,7 @@ fn infer_inner(
                 } else {
                     d.push_error(Diagnostic::new(
                         UndeclaredStruct,
-                        target.span,
+                        target.span(),
                         format!("undeclared struct '{}'", struct_name),
                     ));
                     return error_ty();
@@ -936,7 +939,7 @@ fn infer_inner(
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedStruct,
-                    target.span,
+                    target.span(),
                     format!("expected struct type, found {}", resolved),
                 ));
                 return error_ty();
@@ -949,11 +952,11 @@ fn infer_inner(
                 return error_ty();
             }
             let scope = env.current_type_params.clone();
-            env.validate_type(to_ty, &scope, expr.span, d);
+            env.validate_type(to_ty, &scope, expr.span(), d);
             if !is_cast_supported(&from_resolved, to_ty) {
                 d.push_error(Diagnostic::new(
                     HllTypeCheckCode::InvalidCast,
-                    expr.span,
+                    expr.span(),
                     format!("cast from {} to {} is not supported", from_resolved, to_ty),
                 ));
                 return error_ty();
@@ -961,7 +964,7 @@ fn infer_inner(
             if matches!(to_ty, Type::Ref(_, _, _)) && !env.in_unsafe {
                 d.push_error(Diagnostic::new(
                     HllTypeCheckCode::UnsafeRequired,
-                    expr.span,
+                    expr.span(),
                     "cast to reference type requires unsafe block".to_string(),
                 ));
             }
@@ -979,7 +982,7 @@ fn infer_inner(
                     if !env.in_unsafe {
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnsafeRequired,
-                            expr.span,
+                            expr.span(),
                             "dereference of raw pointer requires unsafe block".to_string(),
                         ));
                     }
@@ -988,7 +991,7 @@ fn infer_inner(
                 other => {
                     d.push_error(Diagnostic::new(
                         ExpectedPointer,
-                        target.span,
+                        target.span(),
                         format!("cannot dereference non-pointer type {}", other),
                     ));
                     return error_ty();
@@ -1009,7 +1012,7 @@ fn infer_inner(
                     if *is_unsafe && !env.in_unsafe {
                         d.push_error(Diagnostic::new(
                             HllTypeCheckCode::UnsafeRequired,
-                            fn_expr.span,
+                            fn_expr.span(),
                             format!("call to unsafe function '{}' requires unsafe block", name),
                         ));
                     }
@@ -1024,7 +1027,7 @@ fn infer_inner(
                 if param_tys.len() != args.len() {
                     d.push_error(Diagnostic::new(
                         ArityMismatch,
-                        expr.span,
+                        expr.span(),
                         format!(
                             "function expected {} arguments, found {}",
                             param_tys.len(),
@@ -1040,7 +1043,7 @@ fn infer_inner(
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedFunction,
-                    expr.span,
+                    expr.span(),
                     format!("expected function type, found {}", resolved),
                 ));
                 return error_ty();
@@ -1059,25 +1062,26 @@ fn infer_inner(
                         name,
                         ty,
                         init,
-                        span,
+                        source,
                     } => {
+                        let span = source.span();
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 let scope = env.current_type_params.clone();
-                                env.validate_type(annotated_ty, &scope, *span, d);
+                                env.validate_type(annotated_ty, &scope, span, d);
                                 check_inner(env, subst, init, annotated_ty, types, d);
                                 annotated_ty.clone()
                             }
                             (Some(annotated_ty), None) => {
                                 let scope = env.current_type_params.clone();
-                                env.validate_type(annotated_ty, &scope, *span, d);
+                                env.validate_type(annotated_ty, &scope, span, d);
                                 annotated_ty.clone()
                             }
                             (None, Some(init)) => infer_inner(env, subst, init, types, d),
                             (None, None) => {
                                 d.push_error(Diagnostic::new(
                                     HllTypeCheckCode::AmbiguousType,
-                                    *span,
+                                    span,
                                     "let binding without initializer requires an explicit type annotation",
                                 ));
                                 error_ty()
@@ -1085,10 +1089,10 @@ fn infer_inner(
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
-                    Stmt::Defer { body, span: _ } => {
+                    Stmt::Defer { body, source: _ } => {
                         let body_ty = infer_inner(env, subst, body, types, d);
                         if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
-                            d.push_error(e.to_diag(body.span));
+                            d.push_error(e.to_diag(body.span()));
                         }
                     }
                     Stmt::Expr(e) => {
@@ -1110,7 +1114,7 @@ fn infer_inner(
             let t1 = infer_inner(env, subst, true_block, types, d);
             let t2 = infer_inner(env, subst, false_block, types, d);
             if let Err(e) = subst.unify(&t1, &t2) {
-                d.push_error(e.to_diag(expr.span));
+                d.push_error(e.to_diag(expr.span()));
             }
             subst.resolve(&t1)
         }
@@ -1131,7 +1135,7 @@ fn infer_inner(
                 check_inner(env, subst, val, &ret_ty, types, d);
             } else {
                 if let Err(e) = subst.unify(&ret_ty, &unit_ty()) {
-                    d.push_error(e.to_diag(expr.span));
+                    d.push_error(e.to_diag(expr.span()));
                 }
             }
             never_ty()
@@ -1153,14 +1157,14 @@ fn infer_inner(
                     None => {
                         d.push_error(Diagnostic::new(
                             UndeclaredEnum,
-                            expr.span,
+                            expr.span(),
                             format!("undeclared enum '{}'", enum_name),
                         ));
                         return error_ty();
                     }
                 };
                 let mapping =
-                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span(), d) {
                         Some(m) => m,
                         None => return error_ty(),
                     };
@@ -1182,7 +1186,7 @@ fn infer_inner(
                     } else {
                         d.push_error(Diagnostic::new(
                             NoSuchVariant,
-                            expr.span,
+                            expr.span(),
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
                         ));
                         // Continue checking remaining arms
@@ -1192,7 +1196,7 @@ fn infer_inner(
                 if arm_tys.is_empty() {
                     d.push_error(Diagnostic::new(
                         EmptySwitch,
-                        expr.span,
+                        expr.span(),
                         "empty switch expression",
                     ));
                     return error_ty();
@@ -1200,14 +1204,14 @@ fn infer_inner(
                 let first_ty = arm_tys[0].clone();
                 for ty in &arm_tys[1..] {
                     if let Err(e) = subst.unify(&first_ty, ty) {
-                        d.push_error(e.to_diag(expr.span));
+                        d.push_error(e.to_diag(expr.span()));
                     }
                 }
                 subst.resolve(&first_ty)
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedEnum,
-                    expr.span,
+                    expr.span(),
                     format!("expected enum type for switch target, found {}", resolved),
                 ));
                 return error_ty();
@@ -1219,7 +1223,7 @@ fn infer_inner(
                 None => {
                     d.push_error(Diagnostic::new(
                         UndeclaredStruct,
-                        expr.span,
+                        expr.span(),
                         format!("undeclared struct '{}'", name),
                     ));
                     return error_ty();
@@ -1229,7 +1233,7 @@ fn infer_inner(
             if fields.len() != s_decl.fields.len() {
                 d.push_error(Diagnostic::new(
                     StructFieldCountMismatch,
-                    expr.span,
+                    expr.span(),
                     format!(
                         "struct '{}' has {} fields, but {} were initialized",
                         name,
@@ -1257,7 +1261,7 @@ fn infer_inner(
                 let Some((_, val_expr)) = matches.next() else {
                     d.push_error(Diagnostic::new(
                         MissingField,
-                        expr.span,
+                        expr.span(),
                         format!(
                             "missing field '{}' in constructor for '{}'",
                             f_decl.name, name
@@ -1268,7 +1272,7 @@ fn infer_inner(
                 if matches.next().is_some() {
                     d.push_error(Diagnostic::new(
                         DuplicateField,
-                        expr.span,
+                        expr.span(),
                         format!(
                             "duplicate field '{}' in constructor for '{}'",
                             f_decl.name, name
@@ -1288,7 +1292,7 @@ fn infer_inner(
                 None => {
                     d.push_error(Diagnostic::new(
                         UndeclaredEnum,
-                        expr.span,
+                        expr.span(),
                         format!("undeclared enum '{}'", enum_name),
                     ));
                     return error_ty();
@@ -1300,7 +1304,7 @@ fn infer_inner(
                 None => {
                     d.push_error(Diagnostic::new(
                         NoSuchVariant,
-                        expr.span,
+                        expr.span(),
                         format!("enum '{}' has no variant '{}'", enum_name, variant_name),
                     ));
                     return error_ty();
@@ -1349,14 +1353,14 @@ fn infer_inner(
                         if let Err(e) =
                             subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64))
                         {
-                            d.push_error(e.to_diag(expr.span));
+                            d.push_error(e.to_diag(expr.span()));
                         }
                     }
                     Type::Error => {}
                     other => {
                         d.push_error(Diagnostic::new(
                             ArrayIndexNotInt,
-                            idx.span,
+                            idx.span(),
                             format!("array index must be an integer, found {}", other),
                         ));
                         return error_ty();
@@ -1366,7 +1370,7 @@ fn infer_inner(
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedArray,
-                    arr.span,
+                    arr.span(),
                     format!("expected array type, found {}", resolved),
                 ));
                 return error_ty();
@@ -1374,7 +1378,7 @@ fn infer_inner(
         }
     };
 
-    types.insert(expr.span, ty.clone());
+    types.insert(expr.span(), ty.clone());
     ty
 }
 
@@ -1401,8 +1405,9 @@ fn check_inner(
                         name,
                         ty,
                         init,
-                        span,
+                        source,
                     } => {
+                        let span = source.span();
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 check_inner(env, subst, init, annotated_ty, types, d);
@@ -1413,7 +1418,7 @@ fn check_inner(
                             (None, None) => {
                                 d.push_error(Diagnostic::new(
                                     HllTypeCheckCode::AmbiguousType,
-                                    *span,
+                                    span,
                                     "let binding without initializer requires an explicit type annotation",
                                 ));
                                 error_ty()
@@ -1421,11 +1426,11 @@ fn check_inner(
                         };
                         env.insert_var(name.clone(), var_ty);
                     }
-                    Stmt::Defer { body, span: _ } => {
+                    Stmt::Defer { body, source: _ } => {
                         check_no_control_flow(body, 0, d);
                         let body_ty = infer_inner(env, subst, body, types, d);
                         if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
-                            d.push_error(e.to_diag(body.span));
+                            d.push_error(e.to_diag(body.span()));
                         }
                     }
                     Stmt::Expr(e) => {
@@ -1438,20 +1443,20 @@ fn check_inner(
                 check_inner(env, subst, last, expected_ty, types, d);
             } else {
                 if let Err(e) = subst.unify(expected_ty, &unit_ty()) {
-                    d.push_error(e.to_diag(expr.span));
+                    d.push_error(e.to_diag(expr.span()));
                 }
             }
             env.pop_scope();
             env.in_unsafe = old_unsafe;
             if d.error_count() == errors_before {
-                types.insert(expr.span, resolved_expected.clone());
+                types.insert(expr.span(), resolved_expected.clone());
             }
         }
         (ExprKind::If(cond, true_block, false_block), expected_ty) => {
             check_inner(env, subst, cond, &bool_ty(), types, d);
             check_inner(env, subst, true_block, expected_ty, types, d);
             check_inner(env, subst, false_block, expected_ty, types, d);
-            types.insert(expr.span, resolved_expected.clone());
+            types.insert(expr.span(), resolved_expected.clone());
         }
         (ExprKind::Match(target, arms), expected_ty) => {
             let target_ty = infer_inner(env, subst, target, types, d);
@@ -1462,14 +1467,14 @@ fn check_inner(
                     None => {
                         d.push_error(Diagnostic::new(
                             UndeclaredEnum,
-                            expr.span,
+                            expr.span(),
                             format!("undeclared enum '{}'", enum_name),
                         ));
                         return;
                     }
                 };
                 let mapping =
-                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span, d) {
+                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span(), d) {
                         Some(m) => m,
                         None => return,
                     };
@@ -1489,31 +1494,31 @@ fn check_inner(
                     } else {
                         d.push_error(Diagnostic::new(
                             NoSuchVariant,
-                            expr.span,
+                            expr.span(),
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
                         ));
                     }
                 }
-                types.insert(expr.span, resolved_expected.clone());
+                types.insert(expr.span(), resolved_expected.clone());
             } else {
                 d.push_error(Diagnostic::new(
                     ExpectedEnum,
-                    expr.span,
+                    expr.span(),
                     format!("expected enum type for switch target, found {}", resolved),
                 ));
             }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), Type::Int(_ty)) => {
-            types.insert(expr.span, resolved_expected.clone());
+            types.insert(expr.span(), resolved_expected.clone());
         }
         (ExprKind::Literal(Literal::Float(_val, None)), Type::Float(_ty)) => {
-            types.insert(expr.span, resolved_expected.clone());
+            types.insert(expr.span(), resolved_expected.clone());
         }
         (ExprKind::Array(elements), Type::Array(expected_elem, expected_size)) => {
             if elements.len() != *expected_size {
                 d.push_error(Diagnostic::new(
                     ArrayLengthMismatch,
-                    expr.span,
+                    expr.span(),
                     format!(
                         "expected array of length {}, found length {}",
                         expected_size,
@@ -1525,15 +1530,15 @@ fn check_inner(
             for el in elements {
                 check_inner(env, subst, el, expected_elem, types, d);
             }
-            types.insert(expr.span, resolved_expected.clone());
+            types.insert(expr.span(), resolved_expected.clone());
         }
 
         _ => {
             let inferred = infer_inner(env, subst, expr, types, d);
             if let Err(e) = subst.unify(&inferred, &resolved_expected) {
-                d.push_error(e.to_diag(expr.span));
+                d.push_error(e.to_diag(expr.span()));
             }
-            types.insert(expr.span, resolved_expected.clone());
+            types.insert(expr.span(), resolved_expected.clone());
         }
     }
 }
@@ -1544,7 +1549,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
             if loop_depth == 0 {
                 d.push_error(Diagnostic::new(
                     HllTypeCheckCode::ControlFlowInDefer,
-                    expr.span,
+                    expr.span(),
                     "break is not allowed inside defer".to_string(),
                 ));
             }
@@ -1553,7 +1558,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
             if loop_depth == 0 {
                 d.push_error(Diagnostic::new(
                     HllTypeCheckCode::ControlFlowInDefer,
-                    expr.span,
+                    expr.span(),
                     "continue is not allowed inside defer".to_string(),
                 ));
             }
@@ -1561,7 +1566,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::Return(_) => {
             d.push_error(Diagnostic::new(
                 HllTypeCheckCode::ControlFlowInDefer,
-                expr.span,
+                expr.span(),
                 "return is not allowed inside defer".to_string(),
             ));
         }

@@ -235,6 +235,68 @@ pub struct Span {
     pub end_col: u32,
 }
 
+/// Why an AST or analysis node exists, independently of the source range to
+/// which diagnostics should attribute it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum GeneratedKind {
+    HllTemporary,
+    HllDesugaring,
+    TypeSynthesis,
+    LifetimeElision,
+    ControlFlowElaboration,
+    NllElaboration,
+    DropElaboration,
+    CopyRelaxation,
+    ParserInfrastructure,
+    Intrinsic,
+    TestHelper,
+}
+
+/// Source attribution shared by surface AST, MIR, and diagnostic analysis
+/// records. A generated node may carry a real span when it should be blamed on
+/// source syntax, or `Span::default()` when it has no useful source location.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum SourceInfo {
+    Written(Span),
+    Generated {
+        kind: GeneratedKind,
+        attributed_to: Span,
+    },
+}
+
+impl SourceInfo {
+    pub fn written(span: Span) -> Self {
+        Self::Written(span)
+    }
+
+    pub fn generated(kind: GeneratedKind, attributed_to: Span) -> Self {
+        Self::Generated {
+            kind,
+            attributed_to,
+        }
+    }
+
+    pub fn span(self) -> Span {
+        match self {
+            Self::Written(span) => span,
+            Self::Generated { attributed_to, .. } => attributed_to,
+        }
+    }
+
+    pub fn generated_kind(self) -> Option<GeneratedKind> {
+        match self {
+            Self::Written(_) => None,
+            Self::Generated { kind, .. } => Some(kind),
+        }
+    }
+}
+
+impl From<Span> for SourceInfo {
+    fn from(span: Span) -> Self {
+        Self::written(span)
+    }
+}
+
 impl std::fmt::Display for Span {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}:{}", self.line, self.col)
@@ -247,6 +309,72 @@ pub struct Lifetime(pub String);
 impl std::fmt::Display for Lifetime {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "'{}", self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct LifetimeParam {
+    pub lifetime: Lifetime,
+    pub source: SourceInfo,
+}
+
+impl LifetimeParam {
+    pub fn written(lifetime: Lifetime, span: Span) -> Self {
+        Self {
+            lifetime,
+            source: SourceInfo::written(span),
+        }
+    }
+
+    pub fn generated(lifetime: Lifetime, kind: GeneratedKind, attributed_to: Span) -> Self {
+        Self {
+            lifetime,
+            source: SourceInfo::generated(kind, attributed_to),
+        }
+    }
+}
+
+impl std::ops::Deref for LifetimeParam {
+    type Target = Lifetime;
+
+    fn deref(&self) -> &Self::Target {
+        &self.lifetime
+    }
+}
+
+impl std::fmt::Display for LifetimeParam {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.lifetime.fmt(f)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct OutlivesBound {
+    pub longer: Lifetime,
+    pub shorter: Lifetime,
+    pub source: SourceInfo,
+}
+
+impl OutlivesBound {
+    pub fn written(longer: Lifetime, shorter: Lifetime, span: Span) -> Self {
+        Self {
+            longer,
+            shorter,
+            source: SourceInfo::written(span),
+        }
+    }
+
+    pub fn generated(
+        longer: Lifetime,
+        shorter: Lifetime,
+        kind: GeneratedKind,
+        attributed_to: Span,
+    ) -> Self {
+        Self {
+            longer,
+            shorter,
+            source: SourceInfo::generated(kind, attributed_to),
+        }
     }
 }
 

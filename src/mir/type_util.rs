@@ -14,9 +14,14 @@ impl DeclMeta {
     /// [`substitute_all`] so callers don't have to spell the four
     /// slices in the right order every time.
     pub fn substitute(&self, ty: &Type, lifetime_args: &[Lifetime], type_args: &[Type]) -> Type {
+        let lifetime_params: Vec<_> = self
+            .lifetime_params
+            .iter()
+            .map(|param| param.lifetime.clone())
+            .collect();
         substitute_all(
             ty,
-            &self.lifetime_params,
+            &lifetime_params,
             lifetime_args,
             &self.type_params,
             type_args,
@@ -68,7 +73,7 @@ fn substitute(
     type_params: &[TypeParam],
     type_args: &[Type],
 ) -> Type {
-    let span = ty.span;
+    let span = ty.span();
     match &ty.kind {
         TypeKind::Param(name) => {
             for (tp, arg) in type_params.iter().zip(type_args.iter()) {
@@ -165,7 +170,12 @@ pub fn place_type(
                     return None;
                 };
                 let field = s.fields.iter().find(|fd| fd.name == f)?;
-                let decl_lts: Vec<Lifetime> = s.meta.lifetime_params.clone();
+                let decl_lts: Vec<Lifetime> = s
+                    .meta
+                    .lifetime_params
+                    .iter()
+                    .map(|param| param.lifetime.clone())
+                    .collect();
                 substitute_all(&field.ty, &decl_lts, &lts, &s.meta.type_params, &args)
             }
             (PathStep::Downcast(v), TypeKind::Custom(name, lts, args)) => {
@@ -173,7 +183,12 @@ pub fn place_type(
                     return None;
                 };
                 let variant = e.variants.iter().find(|vd| vd.name == v)?;
-                let decl_lts: Vec<Lifetime> = e.meta.lifetime_params.clone();
+                let decl_lts: Vec<Lifetime> = e
+                    .meta
+                    .lifetime_params
+                    .iter()
+                    .map(|param| param.lifetime.clone())
+                    .collect();
                 substitute_all(&variant.ty, &decl_lts, &lts, &e.meta.type_params, &args)
             }
             (PathStep::Deref, TypeKind::Ref(_, _, inner)) => *inner,
@@ -341,12 +356,12 @@ mod tests {
 
     #[test]
     fn substitute_params_still_substitutes_nested_type_params() {
-        use crate::common::{Lifetime, Markers, Span};
+        use crate::common::{GeneratedKind, Lifetime, Markers, SourceInfo, Span};
         use crate::mir::ast::{RefKind, TypeParam};
         let tp = TypeParam {
             name: "T".into(),
             bounds: Markers::empty(),
-            span: Span::default(),
+            source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
         };
         let ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), param_ty("T"));
         let out = substitute_params(&ty, &[tp], &[i64_ty()]);
