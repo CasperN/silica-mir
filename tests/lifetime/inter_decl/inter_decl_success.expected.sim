@@ -33,6 +33,14 @@ fn<'a, 'b, 's0> second(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'b i64) {
     return
 }
 
+fn<'outer, 'inner, 's0> nested_identity(r: & 'outer & 'inner i64, $return: &out 's0 & 'outer & 'inner i64) {
+  entry:
+    $return.* = copy r;
+    unborrow $return;
+    unborrow r;
+    return
+}
+
 struct<'a> Wrap: Move {
   r: & 'a i64
 }
@@ -78,15 +86,18 @@ fn use_identity() {
   r: & i64;
   ret_slot: & i64;
   ret_out: &out & i64;
-  read: i64;
+  first_read: i64;
+  second_read: i64;
   entry:
     x = 42;
     r = & x;
     ret_out = &out ret_slot;
     call identity(move r, move ret_out);
-    read = copy ret_slot.*;
+    first_read = copy ret_slot.*;
+    second_read = copy ret_slot.*;
     unborrow ret_slot;
-    drop read;
+    drop second_read;
+    drop first_read;
     drop x;
     return
 }

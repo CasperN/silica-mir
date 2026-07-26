@@ -28,7 +28,14 @@ the compiler evolves; treat entries as snapshots, not commitments.
   Silica keeps this explicit — arguably fine, but worth documenting.
 - **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`TypeKind::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
 - **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
-- **No fixture for the nested-ref `&&i64` case or shared-ref returns read multiple times.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands. A lifetime-bearing generic wrapper in a fn signature is covered by `View<'a, T>` in `hll_temporary_lifetimes_ok.si`.
+- **Assignment lifetime constraints stop at the outer reference.** Assigning
+  `&'outer &'source i64` to `&'outer &'target i64` currently compares only
+  `'outer` and silently omits the required `'source: 'target` constraint.
+  Replace the outer-region special case in `emit_stmt_constraints` with an
+  exhaustive, variance-aware parallel walk over the source and destination
+  types. Positive nested-reference propagation and repeated reads of a
+  returned shared reference are covered in `inter_decl_success.sim`; add the
+  negative nested mismatch when the recursive constraint walk lands.
 
 ## Elaboration + drop
 - **`walk_diverged` skips arrays and enum Custom types.** Cross-edge
