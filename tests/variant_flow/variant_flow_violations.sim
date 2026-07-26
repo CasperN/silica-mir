@@ -159,16 +159,35 @@ fn downcast_in_switch_place_without_refinement(o: Option) {
 
 # ---------- downcast_on_field_of_struct_errors: downcast on a field projection ----------
 
-# `w.inner as Some` is a downcast applied to a field projection, not
-# a root Var. Variant flow cannot track refinement for sub-place paths,
-# so this shape is always rejected with DowncastOnProjection regardless
-# of any preceding switch.
+# `w.inner as Some` is a downcast applied to a field projection with no
+# preceding `switchEnum(w.inner)` to refine it. The refinement check
+# fires DowncastVariantNotRefined; the positive case (with a preceding
+# switch on the projection) lives in
+# `place_state/projection/projection_init_valid.sim`.
 fn downcast_on_field_of_struct_errors(w: Wrap) {
   x: i64;
   entry:
     x = copy w.inner as Some;
     drop x;
     drop w;
+    return
+}
+
+# ---------- downcast_on_array_slot_errors: downcast on a constant-index projection ----------
+
+# `a[0] as Some` is a downcast applied to an array-slot projection with
+# no preceding `switchEnum(a[0])` to refine it. Same rule as struct
+# fields: the refinement is scoped to the projection place.
+fn downcast_on_array_slot_errors() {
+  a: [Option; 2];
+  x: i64;
+  entry:
+    a[0] = Option::None(unit);
+    a[1] = Option::None(unit);
+    x = copy a[0] as Some;
+    drop x;
+    drop a[0];
+    drop a[1];
     return
 }
 

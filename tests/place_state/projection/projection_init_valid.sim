@@ -4,17 +4,21 @@
 # legal when the underlying variable is in a compatible init state.
 # This file covers the success half of that matrix:
 #
-#   fn                               projection kind   init state   operation
-#   deref_read_of_ref_param          .* (deref read)   Init (param) copy through ref
-#   downcast_write_after_switch      as Variant (write) Init        write in refined arm
-#   deref_write_through_out_ref      .* (deref write)  Uninit       write through &out
-#   array_slot_read_after_write      [k] (index read)  Init (slot)  copy from init slot
+#   fn                                     projection kind    init state    operation
+#   deref_read_of_ref_param                .* (deref read)    Init (param)  copy through ref
+#   downcast_write_after_switch            as Variant (write) Init          write in refined arm
+#   deref_write_through_out_ref            .* (deref write)   Uninit        write through &out
+#   array_slot_read_after_write            [k] (index read)   Init (slot)   copy from init slot
+#   downcast_read_on_struct_field_arm      s.f as V (read)    Init          switch on struct field
+#   downcast_read_on_array_slot_arm        a[k] as V (read)   Init          switch on array element
 #
 # Projections do not manufacture their own init requirement — they
 # delegate to the init state of the leaf or root that backs them.
 # A regression here means a valid projection is being rejected.
 
 enum Option: Copy + Drop { None: unit  Some: i64 }
+
+struct Wrap: Copy + Drop { inner: Option }
 
 extern fn use_shared(r: &i64);
 
@@ -65,5 +69,49 @@ fn array_slot_read_after_write() {
     a[0] = 1;
     b = copy a[0];
     drop a[0];
+    return
+}
+
+# ---------- Match on struct field: switchEnum refines the projection in place ----------
+
+# `switchEnum(w.inner)` refines the state at `w.inner` to a single-variant
+# map on each arm. Reading `w.inner as Some` inside the Some arm is legal
+# because the switch established the refinement — no need to extract the
+# field into a temporary first.
+fn downcast_read_on_struct_field_arm(w: Wrap) {
+  x: i64;
+  entry:
+    switchEnum(w.inner) [None: n, Some: s]
+  s:
+    x = copy w.inner as Some;
+    drop x;
+    drop w;
+    return
+  n:
+    drop w;
+    return
+}
+
+# ---------- Match on array slot: switchEnum on a[k] refines the specific slot ----------
+
+# `switchEnum(a[0])` refines the state at slot 0 to a single variant on
+# each arm. Reading `a[0] as Some` in the Some arm works; other slots
+# are untouched and remain uninitialized until written.
+fn downcast_read_on_array_slot_arm() {
+  a: [Option; 2];
+  x: i64;
+  entry:
+    a[0] = Option::Some(7);
+    a[1] = Option::None(unit);
+    switchEnum(a[0]) [None: n, Some: s]
+  s:
+    x = copy a[0] as Some;
+    drop x;
+    drop a[0];
+    drop a[1];
+    return
+  n:
+    drop a[0];
+    drop a[1];
     return
 }

@@ -3,6 +3,10 @@ enum Option: Copy + Drop {
   Some: i64
 }
 
+struct Wrap: Copy + Drop {
+  inner: Option
+}
+
 extern fn use_shared(r: & 's0 i64);
 
 fn<'s0> deref_read_of_ref_param(r: & 's0 i64) {
@@ -42,5 +46,38 @@ fn array_slot_read_after_write() {
     b = copy a[0];
     drop a[0];
     drop b;
+    return
+}
+
+fn downcast_read_on_struct_field_arm(w: Wrap) {
+  x: i64;
+  entry:
+    switchEnum(w.inner) [None: n, Some: s]
+  s:
+    x = copy w.inner as Some;
+    drop x;
+    drop w;
+    return
+  n:
+    drop w;
+    return
+}
+
+fn downcast_read_on_array_slot_arm() {
+  a: [Option; 2];
+  x: i64;
+  entry:
+    a[0] = Option::Some(7);
+    a[1] = Option::None(unit);
+    switchEnum(a[0]) [None: n, Some: s]
+  s:
+    x = copy a[0] as Some;
+    drop x;
+    drop a[0];
+    drop a[1];
+    return
+  n:
+    drop a[0];
+    drop a[1];
     return
 }

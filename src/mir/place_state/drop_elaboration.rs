@@ -34,7 +34,9 @@
 //! dropped variable transitions to `Moved` in the init dataflow, so a
 //! second run finds nothing to insert.
 
-use super::analysis::{block_entry_states, transfer_stmt_silent, InitSlot, InitState, PointState};
+use super::analysis::{
+    block_entry_states, is_state_fully_init, transfer_stmt_silent, InitSlot, InitState, PointState,
+};
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
@@ -449,7 +451,7 @@ fn is_init_and_drop(
         return false;
     };
     let leaf_state = read_state_at_path(root_state, &path);
-    if !matches!(leaf_state, InitState::Init) {
+    if !is_state_fully_init(&leaf_state) {
         return false;
     }
     let Ok(leaf_ty) = env.type_of_place(place, locals) else {
@@ -512,12 +514,6 @@ fn walk_diverged(
             // this misses (its `find_return_leaks` walk does descend
             // arrays), so the program is still rejected — just without
             // the automatic per-arm cleanup drop-elab would have inserted.
-            //
-            // Enums are atomic in the init-state model (whole-value
-            // construction via `Name::V(...)`, whole-value move), so
-            // `Partial` cannot arise on an enum-typed place; the enum
-            // Custom arm below is unreachable through the checker and is
-            // kept as a defensive no-op.
             let TypeKind::Custom(name, _, args) = &ty.kind else {
                 return;
             };
@@ -533,9 +529,18 @@ fn walk_diverged(
                         walk_diverged(env, sub_place, &field_ty, field_state, out);
                     }
                 }
-                // Enum: unreachable-Partial by construction (see above).
-                // `None`: type-check error already reported.
-                Some(TypeDecl::Enum(_)) | None => {}
+                Some(TypeDecl::Enum(e)) => {
+                    for v in &e.variants {
+                        let Some(variant_state) = fields.get(&InitSlot::Variant(v.name.clone()))
+                        else {
+                            continue;
+                        };
+                        let variant_ty = e.meta.substitute_types(&v.ty, args);
+                        let sub_place = downcast_place(place.clone(), v.name.clone());
+                        walk_diverged(env, sub_place, &variant_ty, variant_state, out);
+                    }
+                }
+                None => {}
             }
         }
     }
@@ -574,9 +579,16 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
             }
             other => other.clone(),
         },
-        PathStep::Downcast(_) => match state {
+        PathStep::Downcast(v) => match state {
             InitState::NeverInit | InitState::Moved | InitState::Diverged => state.clone(),
-            _ => InitState::Init,
+            InitState::Partial(map) => {
+                let sub = map
+                    .get(&InitSlot::Variant(v.clone()))
+                    .cloned()
+                    .unwrap_or(InitState::Init);
+                read_state_at_path(&sub, &path[1..])
+            }
+            InitState::Init => read_state_at_path(&InitState::Init, &path[1..]),
         },
         PathStep::Deref | PathStep::Index(None) => state.clone(),
     }
@@ -633,6 +645,16 @@ fn plan_drops_for_place(
     scope: ParamScope,
     out: &mut Vec<Place>,
 ) {
+    // A fully-init Partial (an enum refined to variants each with an
+    // Init payload) drops atomically like plain Init — the runtime Drop
+    // dispatch selects the right variant. Handle this before the
+    // structural Partial arm so we don't try to walk per-slot below.
+    if is_state_fully_init(state) {
+        if class_of(ty, env, scope).implies(Marker::Drop) {
+            out.push(place);
+        }
+        return;
+    }
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Diverged => {}
         InitState::Init => {
@@ -645,12 +667,13 @@ fn plan_drops_for_place(
                 // Reverse declared field order = LIFO for that container.
                 TypeKind::Custom(struct_name, _, args) => {
                     // `None` on `env.types.get`: type not registered —
-                    // type-check already reported. Non-Struct decl: this
-                    // is an enum. A Partial on an enum shouldn't be
-                    // reachable (enums are whole-value constructed),
-                    // but if we get here, there's no per-variant plan
-                    // to emit — the outer `check_return_leaks` remains
-                    // authoritative.
+                    // type-check already reported. Non-Struct decl: an
+                    // enum-typed Partial with variant-refinement is
+                    // handled by the `is_state_fully_init` shortcut
+                    // above; a Partial that reaches here on an enum
+                    // has diverged or moved payload state and can't be
+                    // safely per-variant dropped — the outer leak
+                    // check remains authoritative.
                     let TypeDecl::Struct(s) = (match env.types.get(struct_name) {
                         Some(d) => d,
                         None => return,

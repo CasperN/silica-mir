@@ -7,11 +7,13 @@ use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
 use super::analysis::{
-    capture_carried_refs, describe_obligation_mismatch, describe_pointee_state, describe_state,
-    extract_init_path, format_path, partial_is_uninit, read_at, run_fixpoint,
-    split_at_outermost_deref, states_before_returns, InitSlot, InitState, InitStateCode::*,
-    InitStateContext, PointState, RefState,
+    advance_ty, capture_carried_refs, describe_obligation_mismatch, describe_pointee_state,
+    describe_state, enum_variant_payload_ty, extract_init_path, format_path, is_state_fully_init,
+    partial_is_uninit, read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
+    states_before_returns, InitSlot, InitState, InitStateCode::*, InitStateContext, PointState,
+    RefState,
 };
+use crate::mir::variant_flow::VariantFlowCode;
 
 pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
     for f in program.functions() {
@@ -115,6 +117,10 @@ fn find_return_leaks(
                         Some(ft) => ft,
                         None => continue,
                     },
+                    (_, InitSlot::Variant(v)) => match enum_variant_payload_ty(ty, v, env) {
+                        Some(pt) => pt,
+                        None => continue,
+                    },
                     // Slot/type mismatch — expand_uniform/expand_uniform_array
                     // only emit matching shapes, so this only fires if the
                     // types have drifted since expansion (skip defensively).
@@ -199,6 +205,10 @@ pub(super) fn walk_overwrite_leaves(
                         Some(ft) => ft,
                         None => continue,
                     },
+                    (_, InitSlot::Variant(v)) => match enum_variant_payload_ty(ty, v, env) {
+                        Some(pt) => pt,
+                        None => continue,
+                    },
                     _ => continue,
                 };
                 let saved_len = path.len();
@@ -252,9 +262,139 @@ impl<'a> InitStateContext<'a> {
         d: &mut Diagnostics,
     ) {
         for stmt in &block.statements {
+            self.check_downcast_refinements_in_stmt(func, block, stmt, state, d);
             self.check_and_transfer_stmt(func, block, stmt, state, d);
         }
+        self.check_downcast_refinements_in_terminator(func, block, state, d);
         self.check_and_transfer_terminator(func, block, state, d);
+    }
+
+    /// Emit DowncastVariantNotRefined for each Downcast step in any
+    /// place mentioned by this statement whose enclosing state doesn't
+    /// refine to a singleton `{Variant(V): _}`. Runs before the transfer
+    /// so the state reflects the pre-statement view — no operand's own
+    /// moves have kicked in yet, so the check sees the same state a
+    /// human reading the source would.
+    fn check_downcast_refinements_in_stmt(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        stmt: &Statement,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let source = stmt.source;
+        match &stmt.kind {
+            StatementKind::Assign(target, rvalue) => {
+                self.check_place_downcasts(func, block, target, source, state, d);
+                match rvalue {
+                    RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
+                        if let Some(p) = operand_place(op) {
+                            self.check_place_downcasts(func, block, p, source, state, d);
+                        }
+                    }
+                    RValue::Ref(_, p) | RValue::RawRef(p) => {
+                        self.check_place_downcasts(func, block, p, source, state, d);
+                    }
+                    RValue::ArrayLit(ops) => {
+                        for op in ops {
+                            if let Some(p) = operand_place(op) {
+                                self.check_place_downcasts(func, block, p, source, state, d);
+                            }
+                        }
+                    }
+                }
+            }
+            StatementKind::Call(target, args) => {
+                if let Some(p) = operand_place(target) {
+                    self.check_place_downcasts(func, block, p, source, state, d);
+                }
+                for a in args {
+                    if let Some(p) = operand_place(a) {
+                        self.check_place_downcasts(func, block, p, source, state, d);
+                    }
+                }
+            }
+            StatementKind::Drop(place)
+            | StatementKind::Unborrow(place)
+            | StatementKind::RequireUninit(place) => {
+                self.check_place_downcasts(func, block, place, source, state, d);
+            }
+        }
+    }
+
+    fn check_downcast_refinements_in_terminator(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let source = block.terminator.source;
+        match &block.terminator.kind {
+            TerminatorKind::Branch { cond, .. } => {
+                if let Some(p) = operand_place(cond) {
+                    self.check_place_downcasts(func, block, p, source, state, d);
+                }
+            }
+            TerminatorKind::SwitchEnum { place, .. } => {
+                self.check_place_downcasts(func, block, place, source, state, d);
+            }
+            TerminatorKind::Goto { .. }
+            | TerminatorKind::Return
+            | TerminatorKind::Abort
+            | TerminatorKind::Unreachable => {}
+        }
+    }
+
+    fn check_place_downcasts(
+        &self,
+        func: &Function,
+        block: &BasicBlock,
+        place: &Place,
+        source: SourceInfo,
+        state: &PointState,
+        d: &mut Diagnostics,
+    ) {
+        let Some((root, path)) = extract_init_path(place) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root) else {
+            return;
+        };
+        let mut prefix_ty = root_ty.clone();
+        for (i, step) in path.iter().enumerate() {
+            if let PathStep::Downcast(v) = step {
+                // Downcast on a non-enum type is a type error already
+                // reported by type_check; skip the refinement check
+                // rather than pile on a misleading "not refined" message.
+                if enum_variant_payload_ty(&prefix_ty, v, self.env).is_none() {
+                    return;
+                }
+                let prefix_state = read_at(root_state, &root_ty, &path[..i], self.env);
+                if !state_refines_to_variant(&prefix_state, v) {
+                    let prefix = format_path(&root, &path[..i]);
+                    d.push_error(diag(
+                        VariantFlowCode::DowncastVariantNotRefined,
+                        source,
+                        func,
+                        block,
+                        format!(
+                            "cannot downcast '{} as {}' here: '{}' is not refined to variant '{}'",
+                            prefix, v, prefix, v
+                        ),
+                    ));
+                    return;
+                }
+            }
+            match advance_ty(&prefix_ty, step, self.env) {
+                Some(next) => prefix_ty = next,
+                None => return,
+            }
+        }
     }
 
     /// Combined check + transfer. Operands are consumed left-to-right so that a
@@ -717,7 +857,7 @@ impl<'a> InitStateContext<'a> {
             return;
         };
         let prefix_state = read_at(root_state, &root_ty, &path[..idx], self.env);
-        if !matches!(prefix_state, InitState::Init) {
+        if !is_state_fully_init(&prefix_state) {
             d.push_error(diag(
                 WriteThroughUninitEnumProjection,
                 source,
@@ -750,6 +890,9 @@ impl<'a> InitStateContext<'a> {
             return;
         };
         let leaf = read_at(root_state, &root_ty, &path, self.env);
+        if is_state_fully_init(&leaf) {
+            return;
+        }
         match leaf {
             InitState::Init => {}
             InitState::NeverInit => d.push_error(diag(
@@ -895,7 +1038,7 @@ impl<'a> InitStateContext<'a> {
             }
             let current = read_at(&parent_rs.pointee, &pointee_ty, &sub_path, self.env);
             let precondition_met = if requires_init {
-                matches!(current, InitState::Init)
+                is_state_fully_init(&current)
             } else {
                 matches!(current, InitState::NeverInit | InitState::Moved)
             };
@@ -947,7 +1090,7 @@ impl<'a> InitStateContext<'a> {
             };
             let leaf = read_at(root_state, &root_ty, &path_widen[..dyn_pos], self.env);
             let ok = if requires_init {
-                matches!(leaf, InitState::Init)
+                is_state_fully_init(&leaf)
             } else {
                 matches!(leaf, InitState::NeverInit | InitState::Moved)
             };
@@ -985,7 +1128,7 @@ impl<'a> InitStateContext<'a> {
         let leaf = read_at(root_state, &root_ty, &path, self.env);
 
         let ok = if requires_init {
-            matches!(leaf, InitState::Init)
+            is_state_fully_init(&leaf)
         } else {
             matches!(leaf, InitState::NeverInit | InitState::Moved)
         };
@@ -999,7 +1142,7 @@ impl<'a> InitStateContext<'a> {
         // Moved so the Uninit precondition is satisfied. Skip the
         // error here; post-elab init_state re-runs against the
         // elaborated MIR and will surface anything drop-elab missed.
-        if !requires_init && matches!(leaf, InitState::Init) {
+        if !requires_init && is_state_fully_init(&leaf) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, self.locals) {
                 let scope = func.meta.param_scope();
                 if class_of(&leaf_ty, self.env, &scope).implies(Marker::Drop) {
@@ -1029,7 +1172,7 @@ impl<'a> InitStateContext<'a> {
         // can't `drop X;` (type isn't Drop) so they must move the
         // value out first. Reachable only for non-Drop types — the
         // Drop-eligible case is silently drop-elaborated above.
-        if !requires_init && matches!(leaf, InitState::Init) {
+        if !requires_init && is_state_fully_init(&leaf) {
             diagnostic = diagnostic.with_hint(format!(
                 "move '{}' out first — linear values cannot be forgotten in place",
                 path_str

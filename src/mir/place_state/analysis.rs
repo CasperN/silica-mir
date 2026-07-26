@@ -111,6 +111,13 @@ use InitStateCode::*;
 pub enum InitSlot {
     Field(String),
     Index(u64),
+    /// Downcast to a named enum variant. When a `Partial` is keyed by
+    /// `Variant`, the map describes an enum's per-variant payload state:
+    /// each present key is a variant the enum might currently hold, and
+    /// its value is the payload's state under that variant. No producer
+    /// emits `Variant` keys yet — the type is in place ahead of the
+    /// variant-flow unification.
+    Variant(String),
 }
 
 impl std::fmt::Display for InitSlot {
@@ -118,6 +125,7 @@ impl std::fmt::Display for InitSlot {
         match self {
             InitSlot::Field(name) => write!(f, ".{}", name),
             InitSlot::Index(i) => write!(f, "[{}]", i),
+            InitSlot::Variant(name) => write!(f, " as {}", name),
         }
     }
 }
@@ -277,6 +285,13 @@ pub(super) fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Op
 
 /// If a `Partial` has all fields at the same simple (non-Partial) state,
 /// collapse to that state. Applied recursively to nested Partials.
+///
+/// Enum-typed Partials — those keyed by `InitSlot::Variant` — are never
+/// collapsed to a simple leaf: their key set carries variant-refinement
+/// information (which variants the enum might currently hold) that must
+/// survive canonicalization. Downstream readers use `is_state_fully_init`
+/// to recognize a fully-initialized Partial without discarding the
+/// refinement.
 pub(super) fn canonicalize(state: InitState) -> InitState {
     if let InitState::Partial(mut m) = state {
         for v in m.values_mut() {
@@ -286,6 +301,10 @@ pub(super) fn canonicalize(state: InitState) -> InitState {
         if m.is_empty() {
             return InitState::Init;
         }
+        let has_variant_key = m.keys().any(|k| matches!(k, InitSlot::Variant(_)));
+        if has_variant_key {
+            return InitState::Partial(m);
+        }
         let first = m.values().next().unwrap().clone();
         let uniform = m.values().all(|v| *v == first);
         if uniform && !matches!(first, InitState::Partial(_)) {
@@ -294,6 +313,20 @@ pub(super) fn canonicalize(state: InitState) -> InitState {
         InitState::Partial(m)
     } else {
         state
+    }
+}
+
+/// True when the state represents a fully-initialized value: `Init`, or a
+/// `Partial` whose leaves are all `Init` (all fields written, or an enum
+/// refined to one or more variants each with a fully-initialized payload).
+/// Diverged, NeverInit, and Moved never qualify. Used at read sites that
+/// gate on "the value is safe to consume" without caring about
+/// variant-refinement bookkeeping.
+pub(super) fn is_state_fully_init(state: &InitState) -> bool {
+    match state {
+        InitState::Init => true,
+        InitState::Partial(m) => m.values().all(is_state_fully_init),
+        InitState::NeverInit | InitState::Moved | InitState::Diverged => false,
     }
 }
 
@@ -310,6 +343,20 @@ pub(super) fn expand_uniform(
         .iter()
         .map(|f| (InitSlot::Field(f.name.clone()), state.clone()))
         .collect()
+}
+
+/// The initialization state produced at the assignment target for an
+/// rvalue. An enum construction refines the target to the specific
+/// variant it constructs; all other rvalues yield an opaque `Init` leaf.
+pub(super) fn rvalue_leaf_state(rvalue: &RValue) -> InitState {
+    match rvalue {
+        RValue::EnumConstr(_, _, variant, _) => {
+            let mut m = BTreeMap::new();
+            m.insert(InitSlot::Variant(variant.clone()), InitState::Init);
+            InitState::Partial(m)
+        }
+        _ => InitState::Init,
+    }
 }
 
 // ---------- Joins ----------
@@ -358,6 +405,10 @@ pub(super) fn join_partials(
     ma: &BTreeMap<InitSlot, InitState>,
     mb: &BTreeMap<InitSlot, InitState>,
 ) -> InitState {
+    let variant_keyed = ma.keys().chain(mb.keys()).any(|k| matches!(k, InitSlot::Variant(_)));
+    if variant_keyed {
+        return join_variant_partials(ma, mb);
+    }
     let mut out = BTreeMap::new();
     for (k, va) in ma {
         let vb = mb.get(k).cloned().unwrap_or(InitState::NeverInit);
@@ -366,6 +417,38 @@ pub(super) fn join_partials(
     for (k, vb) in mb {
         if !ma.contains_key(k) {
             out.insert(k.clone(), vb.clone());
+        }
+    }
+    canonicalize(InitState::Partial(out))
+}
+
+/// Join of two enum-typed Partial maps. A variant key present on both
+/// sides joins its payloads recursively. A variant key present on only
+/// one side widens the union when its payload is fully initialized —
+/// the other branch didn't reach this variant, but a subsequent switch
+/// can still discriminate. If the one-sided payload isn't fully init,
+/// the branches disagree on both the active variant and how much of
+/// the payload is live; the whole enum widens to Diverged rather than
+/// admitting a state that no subsequent operation can safely use.
+fn join_variant_partials(
+    ma: &BTreeMap<InitSlot, InitState>,
+    mb: &BTreeMap<InitSlot, InitState>,
+) -> InitState {
+    let mut out: BTreeMap<InitSlot, InitState> = BTreeMap::new();
+    let all_keys: BTreeSet<&InitSlot> = ma.keys().chain(mb.keys()).collect();
+    for key in all_keys {
+        match (ma.get(key), mb.get(key)) {
+            (Some(va), Some(vb)) => {
+                out.insert(key.clone(), join_state(va, vb));
+            }
+            (Some(v), None) | (None, Some(v)) => {
+                if is_state_fully_init(v) {
+                    out.insert(key.clone(), v.clone());
+                } else {
+                    return InitState::Diverged;
+                }
+            }
+            (None, None) => unreachable!(),
         }
     }
     canonicalize(InitState::Partial(out))
@@ -426,7 +509,10 @@ pub(super) fn join_point(ctx: &InitStateContext<'_>, a: &PointState, b: &PointSt
 
 /// Apply a write of `leaf_state` at the given path from `state` (which is
 /// the current state of the root Var). Promotes intermediate states to
-/// Partial as needed. Downcast steps in a write path do not update state.
+/// Partial as needed. A Downcast step descends into the matching
+/// `InitSlot::Variant` slot when the state tracks per-variant payload;
+/// on an opaque enum state it is a no-op, matching the original model
+/// where enum construction goes via `Name::V(...)`.
 pub(super) fn write_at(
     state: &mut InitState,
     ty: &Type,
@@ -466,9 +552,13 @@ pub(super) fn write_at(
                 }
             }
         }
-        PathStep::Downcast(_) => {
-            // Direct write into a variant payload does not initialize the
-            // enum in our model (enum construction goes via `Name::V(...)`).
+        PathStep::Downcast(v) => {
+            let payload_ty = enum_variant_payload_ty(ty, v, env);
+            if let (Some(payload_ty), InitState::Partial(map)) = (payload_ty, &mut *state) {
+                if let Some(slot_state) = map.get_mut(&InitSlot::Variant(v.clone())) {
+                    write_at(slot_state, &payload_ty, &path[1..], env, leaf_state);
+                }
+            }
         }
         PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
         PathStep::Index(None) => {
@@ -489,6 +579,22 @@ pub(super) fn array_info(ty: &Type) -> Option<(Type, u64)> {
     }
 }
 
+/// Follow a single projection step through a type. Returns `None` when
+/// the step is ill-typed against `ty` (type_check surfaces those errors
+/// separately) or when the step is a raw dereference outside the tracked
+/// projection model.
+pub(super) fn advance_ty(ty: &Type, step: &PathStep, env: &Env) -> Option<Type> {
+    match step {
+        PathStep::Field(f) => {
+            let fields = struct_fields_of(ty, env)?;
+            fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty)
+        }
+        PathStep::Index(_) => array_info(ty).map(|(elem, _)| elem),
+        PathStep::Downcast(v) => enum_variant_payload_ty(ty, v, env),
+        PathStep::Deref => None,
+    }
+}
+
 /// Expand a uniform state into an array `Partial` with N slots keyed by
 /// `InitSlot::Index(0..N)`.
 pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<InitSlot, InitState> {
@@ -497,8 +603,11 @@ pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<InitSl
         .collect()
 }
 
-/// Apply a move at the given path. Downcast steps set the whole enum to
-/// `Moved` (enum atomicity).
+/// Apply a move at the given path. Enum-typed places move atomically:
+/// any Downcast step in the path collapses the whole enum to `Moved`
+/// regardless of which variant the state currently tracks. Per-variant
+/// partial moves would otherwise strand the enum in a disjunctive
+/// `Partial` state that no subsequent CFG join can resolve.
 pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &Env) {
     if path.is_empty() {
         *state = InitState::Moved;
@@ -570,13 +679,28 @@ pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env
         },
         PathStep::Downcast(v) => match state {
             InitState::NeverInit | InitState::Moved | InitState::Diverged => state.clone(),
-            InitState::Init | InitState::Partial(_) => {
-                // Enum atomicity: if the enum is Init, the payload is Init.
-                // (Partial on an enum is not expected but we treat it like Init.)
+            InitState::Init => {
+                // Opaque enum: assume the payload is Init.
                 let payload_ty = enum_variant_payload_ty(ty, v, env);
                 match payload_ty {
                     Some(pt) => read_at(&InitState::Init, &pt, &path[1..], env),
                     None => InitState::Init,
+                }
+            }
+            InitState::Partial(map) => {
+                let payload_ty = enum_variant_payload_ty(ty, v, env);
+                let slot_state = map.get(&InitSlot::Variant(v.clone()));
+                // When the map tracks per-variant payload, descend into
+                // the requested variant's slot. Otherwise fall back to
+                // the opaque-Init behavior — variant refinement is
+                // checked separately by variant_flow.
+                let payload_state = match slot_state {
+                    Some(s) => s.clone(),
+                    None => InitState::Init,
+                };
+                match payload_ty {
+                    Some(pt) => read_at(&payload_state, &pt, &path[1..], env),
+                    None => payload_state,
                 }
             }
         },
@@ -786,6 +910,73 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         self.ctx.transfer_terminator(term, state)
     }
+    fn refine_edge(&self, state: &mut Self::State, block: &BasicBlock, succ_label: &str) {
+        let TerminatorKind::SwitchEnum { place, cases } = &block.terminator.kind else {
+            return;
+        };
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(variant) = cases
+            .iter()
+            .find_map(|(v, label)| (label == succ_label).then(|| v.clone()))
+        else {
+            return;
+        };
+        let Some(root_ty) = self.ctx.locals.get(&root).cloned() else {
+            return;
+        };
+        let Some(root_state) = state.locals.get(&root).cloned() else {
+            return;
+        };
+        let leaf_state = read_at(&root_state, &root_ty, &path, self.ctx.env);
+        // Leave the state untouched when the arm's variant isn't in the
+        // pre-switch tracked set — that arm is dead code and refining
+        // would strand the place in a NeverInit variant slot that fires
+        // spurious diagnostics.
+        let prior_payload = match variant_admissible_payload(&leaf_state, &variant) {
+            Some(p) => p,
+            None => return,
+        };
+        let mut refined = BTreeMap::new();
+        refined.insert(InitSlot::Variant(variant), prior_payload);
+        let mut updated = root_state;
+        write_at(
+            &mut updated,
+            &root_ty,
+            &path,
+            self.ctx.env,
+            InitState::Partial(refined),
+        );
+        state.locals.insert(root, updated);
+    }
+}
+
+/// The payload state to use for a switch arm's variant, or `None` if
+/// that variant isn't admissible at the switch (the arm is dead code).
+/// Opaque `Init` admits any variant with `Init` payload. A refined
+/// `Partial` admits only the variants present in its map. Empty and
+/// diverged states don't refine — the caller keeps the pre-switch shape.
+fn variant_admissible_payload(state: &InitState, variant: &str) -> Option<InitState> {
+    match state {
+        InitState::Init => Some(InitState::Init),
+        InitState::Partial(map) => map.get(&InitSlot::Variant(variant.to_string())).cloned(),
+        InitState::NeverInit | InitState::Moved | InitState::Diverged => None,
+    }
+}
+
+/// True when `state` proves the enum is exactly `variant`. A `Partial`
+/// with a single `Variant(v)` key qualifies; an opaque `Init` (any
+/// declared variant possible) does not, nor do multi-variant maps.
+/// Matches the pre-unification variant_flow rule
+/// `set.len() == 1 && set.contains(v)`.
+pub(super) fn state_refines_to_variant(state: &InitState, variant: &str) -> bool {
+    match state {
+        InitState::Partial(map) => {
+            map.len() == 1 && map.contains_key(&InitSlot::Variant(variant.to_string()))
+        }
+        _ => false,
+    }
 }
 
 pub(super) fn run_fixpoint(
@@ -872,10 +1063,11 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         report: Option<(&Function, &BasicBlock, SourceInfo, &mut Diagnostics)>,
     ) {
+        let leaf = rvalue_leaf_state(rvalue);
         if split_at_outermost_deref(target).is_some() {
             self.apply_deref_op(target, DerefOp::Write, state, report);
         } else {
-            self.apply_write(target, state, InitState::Init);
+            self.apply_write(target, state, leaf);
         }
         if is_static_place(target) {
             if let RValue::Ref(kind, place) = rvalue {
@@ -1395,12 +1587,60 @@ impl<'a> InitStateContext<'a> {
     ///   Instead update `r`'s `RefState.is_init` to reflect the kind's
     ///   post, so when `s` expires `r` naturally resumes at the right
     ///   pointee-init state.
+    /// Walk `place` down `state.locals` and clear variant refinement at
+    /// the leaf without altering init/uninit structure. Handles direct
+    /// and reborrow shapes uniformly via read/write on the appropriate
+    /// state tree; a no-op for non-enum states.
+    fn clear_variant_refinement_at(&self, place: &Place, state: &mut PointState) {
+        // Reborrow through a reference: the refinement lives in the
+        // ref's pointee state. Materialize the RefState if needed and
+        // clear at that path.
+        if let Some((inner, sub_path)) = split_at_outermost_deref(place) {
+            let Some(mut rs) = self.ensure_ref_state(&inner, state) else {
+                return;
+            };
+            let Ok(inner_ty) = self.env.type_of_place(&inner, self.locals) else {
+                return;
+            };
+            let TypeKind::Ref(_, _, pointee_ty) = inner_ty.kind else {
+                return;
+            };
+            let mut leaf = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env);
+            clear_variant_refinement(&mut leaf);
+            write_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env, leaf);
+            state.refs.insert(inner, rs);
+            return;
+        }
+        let Some((root, path)) = extract_path(place) else {
+            return;
+        };
+        let Some(root_ty) = self.locals.get(&root).cloned() else {
+            return;
+        };
+        let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
+        let mut leaf = read_at(root_state, &root_ty, &path, self.env);
+        clear_variant_refinement(&mut leaf);
+        write_at(root_state, &root_ty, &path, self.env, leaf);
+    }
+
     pub(super) fn apply_eager_borrow_transition(
         &self,
         kind: &RefKind,
         place: &Place,
         state: &mut PointState,
     ) {
+        // Exclusive borrows can reassign the pointee to a different
+        // variant. Any per-variant refinement at the loaned place must
+        // be cleared so post-loan reads see opaque `Init` rather than
+        // the pre-borrow refinement. This is independent of the
+        // init/uninit transition below — for `&mut` there is no init
+        // transition, but the variant refinement still needs clearing.
+        if matches!(
+            kind,
+            RefKind::Mut | RefKind::Out | RefKind::Drop | RefKind::Uninit
+        ) {
+            self.clear_variant_refinement_at(place, state);
+        }
         let Some(leaf) = loan_post_leaf(kind) else {
             return;
         };
@@ -1426,6 +1666,20 @@ pub(super) fn loan_post_leaf(kind: &RefKind) -> Option<InitState> {
         RefKind::Out => Some(InitState::Init),
         // Init → Uninit: eagerly consume.
         RefKind::Drop => Some(InitState::Moved),
+    }
+}
+
+/// Drop any variant-refinement info at `state`, leaving init/uninit
+/// structure alone. Applied on exclusive borrow creation: the borrower
+/// can freely reassign the pointee to a different variant, so a
+/// `Partial({Variant(V): ...})` at the loaned place must reset to opaque
+/// `Init` when the loan expires. `NeverInit`, `Moved`, and struct/array
+/// Partials are untouched — only enum refinement is invalidated.
+pub(super) fn clear_variant_refinement(state: &mut InitState) {
+    if let InitState::Partial(map) = state {
+        if map.keys().all(|k| matches!(k, InitSlot::Variant(_))) {
+            *state = InitState::Init;
+        }
     }
 }
 

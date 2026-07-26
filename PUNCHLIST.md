@@ -10,7 +10,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   to remember the mapping. Pick one across both surfaces (or make one
   a strict alias) and delete the other.
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
-- **HLL match on projection places.** `a[i] match { ... }` and `foo.field match { ... }` fire `VF-DowncastOnProjection` because variant flow tracks root Vars only. Users must extract to a local first (`let t = a[i]; t match { ... }`) or wrap the decode in a helper fn that takes the value by parameter. Fixable by either (a) copying/moving the projection into a fresh local during HLL lowering or (b) extending variant flow to track projections.
 - **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
 - **Conditional HLL marker bounds.** (`impl<T: Copy> Copy for Foo<T> {}`).
 - **Array indices should be `u64`.** Array lengths are represented as
@@ -18,7 +17,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
   type. Sizes and offsets are inherently non-negative, matching
   `$sizeof<T>` returning `u64`. Require the index operand to be `u64` and
   update fixtures that still index arrays with `i64` values.
-- **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
+- **New reachability module.** All of `variant_flow`'s remaining diagnostics — `SwitchNoArms`, `SwitchNotExhaustive`, `SwitchDuplicateArm`, `SwitchArmFalselyUnreachable`, `SwitchArmDeadCode` — need to run against a reachability filter so dead blocks stay silent. Combine into a dedicated pass that (a) filters blocks by `block_reachability`, (b) folds `branch(Const::Bool(true|false))` so trivially-dead arms stop counting as reachable, and (c) consumes place_state's per-variant refinement to decide arm reachability. Const-folding on `bool` is preferred over reifying `bool` as an enum since `bool` is already a first-class scalar. Retiring `variant_flow.rs` entirely blocks on this pass landing.
 
 ## Lifetime checker gaps (semantic)
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
