@@ -71,7 +71,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
   arity checfk.
 - **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
 - **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
-- **No fixture for nested-ref case (`&&i64`, `&Wrap<i64>`), shared-ref returns read multiple times, or `Wrap<'a>` in fn signatures.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands.
+- **No fixture for the nested-ref `&&i64` case or shared-ref returns read multiple times.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands. A lifetime-bearing generic wrapper in a fn signature is covered by `View<'a, T>` in `hll_temporary_lifetimes_ok.si`.
 
 ## Elaboration + drop
 - **`walk_diverged` skips arrays and enum Custom types.** Cross-edge
@@ -94,18 +94,6 @@ Bad-error samples collected across recent sessions. All fire on
 plausible user code and either point at the wrong place, leak
 compiler internals, or omit the actionable next step.
 
-- **`LT-LoanConflict` names lowering-generated temps.** E.g.
-  `cannot move from 's.data': already borrowed by '_temp_9'` on
-  code that reads through a nested shared-ref field. The user
-  sees `_temp_9` (an HLL-lowering-generated temporary) instead of
-  the source-level expression that produced the borrow. Diagnostic
-  should either: (a) point at the source expression the temp came
-  from, or (b) elide the temp name and describe the conflict in
-  source terms ("the shared borrow of `s` conflicts with a move
-  from its `data` field"). Also see: the "cannot move from X" error
-  fires when there's no explicit move in the source — HLL lowering
-  emitted a move on the surface — so the error message
-  misidentifies the operation being rejected.
 - **`LT-LifetimeMismatch` reports `expected/found` regions without
   naming the bound.** `expected value with region 'a, found value
   with region 'b` doesn't say WHICH declared bound was violated

@@ -684,7 +684,7 @@ impl<'a> Checker<'a> {
         block: &BasicBlock,
         place: &Place,
         access: AccessKind,
-        span: Span,
+        source: SourceInfo,
         loans: &LoanMap,
     ) {
         let (access_root, access_path) = extract_path_with_deref(place);
@@ -714,18 +714,52 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 let borrower_name = format_place(borrower_place);
-                let hint = format!(
-                    "the borrow of '{}' is active until its last use or explicit unborrow.",
-                    borrower_name,
-                );
-                let msg = format!(
-                    "cannot {} '{}': already borrowed by '{}'",
-                    access,
-                    format_place(place),
-                    borrower_name,
-                );
+                let access_name = format_place(place);
+                let access_is_hll_temp = self.is_hll_temporary(place);
+                let borrower_is_hll_temp = self.is_hll_temporary(borrower_place);
+                let source_access =
+                    if matches!(access, AccessKind::Move) && source.generated_kind().is_some() {
+                        "use".to_string()
+                    } else {
+                        access.to_string()
+                    };
+                let (msg, hint, secondary) = if access_is_hll_temp {
+                    (
+                        "borrow of a temporary value escapes the expression that created it"
+                            .to_string(),
+                        "bind the temporary value to a local before borrowing it.".to_string(),
+                        "temporary value is borrowed here".to_string(),
+                    )
+                } else if borrower_is_hll_temp {
+                    let loaned_name = format_place(loaned);
+                    let borrow_kind = match loan.kind {
+                        RefKind::Shared => "shared borrow",
+                        _ => "exclusive borrow",
+                    };
+                    (
+                        format!(
+                            "cannot {} '{}': conflicts with an active {} of '{}'",
+                            source_access, access_name, borrow_kind, loaned_name,
+                        ),
+                        "the borrow remains active until the surrounding expression finishes."
+                            .to_string(),
+                        format!("{} of '{}' occurs here", borrow_kind, loaned_name),
+                    )
+                } else {
+                    (
+                        format!(
+                            "cannot {} '{}': already borrowed by '{}'",
+                            source_access, access_name, borrower_name,
+                        ),
+                        format!(
+                            "the borrow of '{}' is active until its last use or explicit unborrow.",
+                            borrower_name,
+                        ),
+                        format!("borrow of '{}' occurs here", access_name),
+                    )
+                };
                 let mut diag = self
-                    .error(LifetimeCode::LoanConflict, span, msg)
+                    .error(LifetimeCode::LoanConflict, source, msg)
                     .in_block(&block.label)
                     .with_hint(hint);
                 // Attach the borrow's origin as a secondary span if we
@@ -734,10 +768,7 @@ impl<'a> Checker<'a> {
                 // which renders as no snippet).
                 let create_span = loan.create_source.span();
                 if create_span.line != 0 || create_span.col != 0 {
-                    diag = diag.with_secondary(
-                        loan.create_source,
-                        format!("borrow of '{}' occurs here", format_place(place)),
-                    );
+                    diag = diag.with_secondary(loan.create_source, secondary);
                 }
                 self.d.push_error(diag);
                 break;
@@ -749,7 +780,7 @@ impl<'a> Checker<'a> {
         &mut self,
         block: &BasicBlock,
         op: &Operand,
-        span: Span,
+        source: SourceInfo,
         loans: &LoanMap,
     ) {
         let (place, access) = match op {
@@ -760,7 +791,21 @@ impl<'a> Checker<'a> {
             }
             Operand::Const(_) => return,
         };
-        self.check_loan_conflict(block, place, access, span, loans);
+        self.check_loan_conflict(block, place, access, source, loans);
+    }
+
+    fn is_hll_temporary(&self, place: &Place) -> bool {
+        let (root, _) = extract_path_with_deref(place);
+        self.func
+            .body
+            .as_ref()
+            .and_then(|body| body.locals.iter().find(|local| local.name == root))
+            .is_some_and(|local| {
+                matches!(
+                    local.source.generated_kind(),
+                    Some(GeneratedKind::HllTemporary)
+                )
+            })
     }
 
     /// Emit outlives constraints for a `call callee(args)` statement,
@@ -796,9 +841,10 @@ impl<'a> Checker<'a> {
         &mut self,
         target: &Operand,
         args: &[Operand],
-        span: Span,
+        source: SourceInfo,
         loans: &mut LoanMap,
     ) {
+        let span = source.span();
         let Operand::Const(ConstVal::FnName(callee_name, _)) = target else {
             return;
         };
@@ -895,7 +941,7 @@ impl<'a> Checker<'a> {
                             kind: synth_kind.clone(),
                             region: out_region.clone(),
                             loaned: merged.clone(),
-                            create_source: SourceInfo::written(span),
+                            create_source: source,
                         },
                     );
                 }
@@ -1049,14 +1095,14 @@ impl<'a> Checker<'a> {
             StatementKind::Assign(target, rvalue) => {
                 match rvalue {
                     RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
-                        self.check_operand_access(block, op, stmt.span(), loans);
+                        self.check_operand_access(block, op, stmt.source, loans);
                     }
                     RValue::Ref(kind, place) => {
                         self.check_loan_conflict(
                             block,
                             place,
                             AccessKind::Borrow(kind.clone()),
-                            stmt.span(),
+                            stmt.source,
                             loans,
                         );
                     }
@@ -1067,19 +1113,19 @@ impl<'a> Checker<'a> {
                     }
                     RValue::ArrayLit(ops) => {
                         for op in ops {
-                            self.check_operand_access(block, op, stmt.span(), loans);
+                            self.check_operand_access(block, op, stmt.source, loans);
                         }
                     }
                 }
-                self.check_loan_conflict(block, target, AccessKind::Write, stmt.span(), loans);
+                self.check_loan_conflict(block, target, AccessKind::Write, stmt.source, loans);
                 transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
             }
             StatementKind::Call(target, args) => {
-                self.check_operand_access(block, target, stmt.span(), loans);
-                self.check_call_regions(target, args, stmt.span(), loans);
+                self.check_operand_access(block, target, stmt.source, loans);
+                self.check_call_regions(target, args, stmt.source, loans);
                 consume_operand(loans, target);
                 for a in args {
-                    self.check_operand_access(block, a, stmt.span(), loans);
+                    self.check_operand_access(block, a, stmt.source, loans);
                     consume_operand(loans, a);
                 }
             }
@@ -1093,7 +1139,7 @@ impl<'a> Checker<'a> {
                 // carries the authoritative diagnostic; the auto-drop is
                 // silent but still advances the loan map.
                 if !is_elab_inserted_drop(place, stmt.span(), next) {
-                    self.check_loan_conflict(block, place, AccessKind::Move, stmt.span(), loans);
+                    self.check_loan_conflict(block, place, AccessKind::Move, stmt.source, loans);
                 }
                 transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
             }
@@ -1102,7 +1148,7 @@ impl<'a> Checker<'a> {
                 // check_loan_conflict (the "borrower == access_root with
                 // empty path" case), but a *reborrow* of this borrower —
                 // loan borrowed by s on `*r` — still needs to block `unborrow r`.
-                self.check_loan_conflict(block, place, AccessKind::Move, stmt.span(), loans);
+                self.check_loan_conflict(block, place, AccessKind::Move, stmt.source, loans);
                 transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
             }
             StatementKind::RequireUninit(_) => {
@@ -1113,15 +1159,15 @@ impl<'a> Checker<'a> {
     }
 
     fn check_and_transfer_terminator(&mut self, block: &BasicBlock, loans: &mut LoanMap) {
-        let terminator_span = block.terminator.span();
+        let terminator_source = block.terminator.source;
         match &block.terminator.kind {
             TerminatorKind::Branch { cond, .. } => {
-                self.check_operand_access(block, cond, terminator_span, loans);
+                self.check_operand_access(block, cond, terminator_source, loans);
                 consume_operand(loans, cond);
             }
             TerminatorKind::SwitchEnum { place, .. } => {
                 // Discriminant read.
-                self.check_loan_conflict(block, place, AccessKind::Read, terminator_span, loans);
+                self.check_loan_conflict(block, place, AccessKind::Read, terminator_source, loans);
             }
             // Goto/Return/Abort/Unreachable read no operand or place;
             // there is no runtime access here. Any outstanding loan
@@ -1134,5 +1180,55 @@ impl<'a> Checker<'a> {
             | TerminatorKind::Abort
             | TerminatorKind::Unreachable => {}
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::mir::parser::Parser;
+
+    #[test]
+    fn loan_conflict_hides_hll_temporary_borrower_name() {
+        let mut program = Parser::new(
+            r#"
+            fn f(x: i64) {
+              _temp_0: & i64;
+              entry:
+                _temp_0 = & x;
+                x = 1;
+                unborrow _temp_0;
+                drop x;
+                return
+            }
+            "#
+            .to_string(),
+        )
+        .parse()
+        .expect("test MIR should parse");
+        let Declaration::Fn(func) = &mut program.declarations[0] else {
+            panic!("expected function declaration");
+        };
+        let body = func.body.as_mut().expect("expected function body");
+        body.locals[0].source =
+            SourceInfo::generated(GeneratedKind::HllTemporary, body.locals[0].span());
+        for stmt in &mut body.blocks[0].statements {
+            stmt.source = SourceInfo::generated(GeneratedKind::HllDesugaring, stmt.span());
+        }
+
+        let (env, env_errors) = Env::build(&program);
+        assert!(env_errors.is_empty());
+        let mut diagnostics = Diagnostics::default();
+        check_program(&program, &env, &mut diagnostics);
+
+        let conflict = diagnostics
+            .errors()
+            .find(|diag| diag.message().contains("active shared borrow"))
+            .expect("expected loan conflict");
+        assert_eq!(
+            conflict.message(),
+            "cannot write to 'x': conflicts with an active shared borrow of 'x'"
+        );
+        assert!(!conflict.message().contains("_temp_0"));
     }
 }

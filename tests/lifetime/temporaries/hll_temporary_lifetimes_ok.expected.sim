@@ -96,3 +96,18 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
     require_uninit $return;
     return
 }
+
+struct<'a, T> View: Copy + Drop {
+  data: & 'a *T
+  len: u64
+}
+
+fn<'a, 's0, T> view_get(s: & 'a View<'a, T>, $return: &out 's0 & 'a T) {
+  entry:
+    $return.* = ptr_cast(copy s.*.data.*, & T);
+    unborrow $return;
+    unborrow s;
+    require_uninit $return;
+    require_uninit s;
+    return
+}

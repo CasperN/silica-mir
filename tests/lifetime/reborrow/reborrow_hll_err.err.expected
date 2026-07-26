@@ -1,4 +1,4 @@
-error: at 11:7: [LT-LoanConflict] In function 'reborrow_invalid': cannot move from 'r': already borrowed by 'y'
+error: at 11:7: [LT-LoanConflict] In function 'reborrow_invalid': cannot use 'r': already borrowed by 'y'
     |
   7 |   let mut r = &mut x;
   8 |   let y = &mut r.*;

@@ -20,3 +20,14 @@ fn continue_cleans_loop_body() -> i64 {
     break value;
   }
 }
+
+# covers: a nested shared-reference field can be read without leaking the
+# lowering temporary that holds its intermediate borrow.
+struct<'a, T> View: Copy + Drop {
+  data: &'a *T,
+  len: u64,
+}
+
+fn<'a, T> view_get(s: &'a View<'a, T>) -> &'a T {
+  unsafe { s.*.data.* as &T }
+}

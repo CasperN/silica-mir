@@ -1,8 +1,8 @@
-error: at 8:12: [LT-LoanConflict] In function 'escaped_temporary_borrow': cannot move from '_temp_0': already borrowed by 'r'
+error: at 8:12: [LT-LoanConflict] In function 'escaped_temporary_borrow': borrow of a temporary value escapes the expression that created it
    |
  7 | fn escaped_temporary_borrow() -> i64 {
  8 |   let r = &make();
-   |           -^^^^^^ borrow of '_temp_0' occurs here
+   |           -^^^^^^ temporary value is borrowed here
  9 |   read(r)
    |
-  hint: the borrow of 'r' is active until its last use or explicit unborrow.
+  hint: bind the temporary value to a local before borrowing it.
