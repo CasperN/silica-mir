@@ -277,7 +277,7 @@ pub struct Program {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Literal {
-    Int(i64, Option<IntTy>),
+    Int(u64, Option<IntTy>),
     Float(f64, Option<FloatTy>),
     Bool(bool),
     Unit,

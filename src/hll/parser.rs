@@ -76,7 +76,7 @@ fn split_int_suffix(text: &str) -> (&str, Option<IntTy>) {
     (text, None)
 }
 
-fn parse_int_magnitude(text: &str) -> Result<(u64, Option<IntTy>), String> {
+fn parse_int_literal(text: &str) -> Result<(u64, Option<IntTy>), String> {
     let (digits_and_prefix, ty) = split_int_suffix(text);
     let (radix, digits) = if let Some(rest) = digits_and_prefix.strip_prefix("0x") {
         (16u32, rest)
@@ -92,13 +92,6 @@ fn parse_int_magnitude(text: &str) -> Result<(u64, Option<IntTy>), String> {
     let val = u64::from_str_radix(&cleaned, radix)
         .map_err(|e| format!("invalid integer literal {:?}: {}", text, e))?;
     Ok((val, ty))
-}
-
-fn parse_int_literal(text: &str) -> Result<(i64, Option<IntTy>), String> {
-    let (magnitude, ty) = parse_int_magnitude(text)?;
-    let value = i64::try_from(magnitude)
-        .map_err(|_| format!("integer literal {:?} does not fit in i64", text))?;
-    Ok((value, ty))
 }
 
 fn parse_float_literal(text: &str) -> Result<(f64, Option<FloatTy>), String> {
@@ -559,7 +552,7 @@ impl Parser {
             let len_node = node.child_by_field_name("length").ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, "array type missing length")
             })?;
-            let (len, _) = self.lit_diag(parse_int_magnitude(self.get_text(len_node)), len_node)?;
+            let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?;
             return Ok(TypeKind::Array(Box::new(self.map_type(elem, scope)?), len));
         }
         if text == "fn" {
@@ -791,7 +784,7 @@ impl Parser {
                     ));
                 }
                 Ok(Expr {
-                    kind: ExprKind::Literal(Literal::Int(bytes[0] as i64, Some(IntTy::U8))),
+                    kind: ExprKind::Literal(Literal::Int(u64::from(bytes[0]), Some(IntTy::U8))),
                     source: SourceInfo::written(span),
                 })
             }

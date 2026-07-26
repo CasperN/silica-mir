@@ -799,7 +799,7 @@ fn lower_expr_to_operand(
                             _ => mir::IntTy::I64,
                         }
                     };
-                    int_const(*val as u64, ty)
+                    int_const(*val, ty)
                 }
                 hll::Literal::Float(val, suffix) => {
                     let ty = if let Some(s) = suffix {
@@ -2271,6 +2271,21 @@ mod tests {
                 require_uninit _temp_0;
                 require_uninit $return;
                 require_uninit a;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn test_lower_u64_max_literal_preserves_all_bits() {
+        assert_lower_eq(
+            "fn max() -> u64 { 18446744073709551615u64 }",
+            "
+            fn max($return: &out u64) {
+              entry:
+                $return.* = 18446744073709551615u64;
+                require_uninit $return;
                 return
             }
             ",
