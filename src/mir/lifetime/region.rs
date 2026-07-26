@@ -143,25 +143,48 @@ pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::Env) -> R
     let locals = func.locals_map();
     for (name, ty) in &locals {
         let mut visited = std::collections::BTreeSet::new();
-        walk_regions(&var_place(name.clone()), ty, env, &mut visited, &mut ctx);
+        walk_ref_places(
+            &var_place(name.clone()),
+            ty,
+            env,
+            &mut visited,
+            &mut |place, lt_opt| {
+                let region = ctx.region_for_ref(lt_opt);
+                ctx.assign(place.clone(), region);
+            },
+        );
     }
     ctx
 }
 
-fn walk_regions(
+/// Walk `ty`'s place structure starting at `place`, invoking `on_ref` for
+/// every owned-path descendant of ref type. Recurses through struct fields
+/// and enum variants (substituting the parent's generic arguments), and
+/// stops at Ref boundaries — we don't traverse a reference's pointee.
+///
+/// `visited` is a defensive cycle guard for self-referential Custom types;
+/// by-value type recursion is banned upstream by `layout::check_program`,
+/// so this can only fire if someone bypasses the standard pipeline.
+///
+/// `TypeKind::Array(elem, _)` is a known precision gap: an owned
+/// `[&mut T; N]` local has N ref-typed slots that this walk skips, so
+/// callers never see them. Loan tracking still catches conflicts on the
+/// slots, and place-state materializes ref-state lazily on access, so the
+/// omission is precision, not soundness — but a `&mut` slot in an array
+/// won't participate in inter-fn lifetime constraints or NLL last-use
+/// insertion. Fix when `[T; N]` needs to appear in fn signatures with
+/// lifetime arguments (see Consistency 4 in the punchlist).
+pub(super) fn walk_ref_places(
     place: &Place,
     ty: &Type,
     env: &crate::mir::type_check::Env,
     visited: &mut std::collections::BTreeSet<String>,
-    ctx: &mut RegionCtx,
+    on_ref: &mut dyn FnMut(&Place, &Option<Lifetime>),
 ) {
     use crate::mir::helpers::{downcast_place, field_place};
     use crate::mir::type_check::TypeDecl;
     match &ty.kind {
-        TypeKind::Ref(_, lt_opt, _) => {
-            let region = ctx.region_for_ref(lt_opt);
-            ctx.assign(place.clone(), region);
-        }
+        TypeKind::Ref(_, lt_opt, _) => on_ref(place, lt_opt),
         TypeKind::Custom(name, lifetime_args, args) => {
             if !visited.insert(name.clone()) {
                 return;
@@ -180,7 +203,7 @@ fn walk_regions(
                         .collect();
                     for (fname, fty) in fields {
                         let sub = field_place(place.clone(), fname);
-                        walk_regions(&sub, &fty, env, visited, ctx);
+                        walk_ref_places(&sub, &fty, env, visited, on_ref);
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
@@ -196,7 +219,7 @@ fn walk_regions(
                         .collect();
                     for (vname, vty) in variants {
                         let sub = downcast_place(place.clone(), vname);
-                        walk_regions(&sub, &vty, env, visited, ctx);
+                        walk_ref_places(&sub, &vty, env, visited, on_ref);
                     }
                 }
                 // `None` here means the Custom type isn't in the env —
@@ -209,17 +232,8 @@ fn walk_regions(
         // parameter types at the type level (fn signatures aren't walked
         // here — they're the callee's problem). `TypeKind::Param` is
         // opaque without substitution. `TypeKind::RawPtr` deliberately
-        // has no lifetime bound.
-        //
-        // `TypeKind::Array(elem, _)` is a known precision gap: an owned
-        // `[&mut T; N]` local has N ref-typed slots that this walk skips,
-        // so per-slot regions are never assigned. Loan tracking still
-        // catches conflicts on the slots, and place-state materializes
-        // ref-state lazily on access, so the omission is precision, not
-        // soundness — but a &mut slot in an array won't participate in
-        // inter-fn lifetime constraints or NLL last-use insertion. Fix
-        // when `[T; N]` needs to appear in fn signatures with lifetime
-        // arguments.
+        // has no lifetime bound. `TypeKind::Array` is the known precision
+        // gap documented on this function.
         TypeKind::Unit
         | TypeKind::Int(_)
         | TypeKind::Float(_)

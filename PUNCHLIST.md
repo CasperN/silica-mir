@@ -114,12 +114,12 @@ Implement the repairs in this order:
    type walks skip specific variants and diverge in ways the type checker
    can't catch. Fix each in a separate commit; extract shared recursion
    only when two or more walkers demonstrably duplicate it.
-   - `walk_ref_paths` / `walk_regions` — must descend `TypeKind::Array` so
-     owned `[&mut T; N]` slots are added to the NLL borrower set and
-     inter-fn lifetime constraints flow through array slots. Two walkers
-     with the same shape (place-tracked, custom-substituting): extract the
-     shared recursion once the descent semantics for arrays land, since
-     this interacts with Consistency 4's per-slot-region strategy.
+   - `region::walk_ref_places` — the shared traversal now consumed by
+     `build_region_ctx` and `collect_borrowers`; must descend
+     `TypeKind::Array` so owned `[&mut T; N]` slots are added to the NLL
+     borrower set and inter-fn lifetime constraints flow through array
+     slots. Adding Array descent interacts with Consistency 4's
+     per-slot-region strategy.
    - `walk_diverged` — must descend arrays and enum `Custom` payloads so
      cross-edge drop planning inserts per-slot and per-variant drops
      instead of leaving them for the final `check_return_leaks` sweep.

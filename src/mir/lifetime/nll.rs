@@ -56,7 +56,7 @@ use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::helpers::*;
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -449,78 +449,25 @@ fn deref_ancestor(place: &Place) -> Option<Place> {
 /// Enumerate every ref-typed owned path in `func`. A path is included
 /// if its inferred type is a `TypeKind::Ref(...)`. Recursion through
 /// self-referential type declarations is bounded by tracking visited
-/// type names on each root walk.
+/// type names on each root walk. The Array precision gap is documented
+/// on `region::walk_ref_places`.
 fn collect_borrowers(func: &Function, env: &Env) -> BTreeSet<Place> {
     let mut out = BTreeSet::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
         let mut visited = BTreeSet::new();
-        walk_ref_paths(&var_place(name.clone()), ty, env, &mut visited, &mut out);
+        super::region::walk_ref_places(
+            &var_place(name.clone()),
+            ty,
+            env,
+            &mut visited,
+            &mut |place, _lt_opt| {
+                out.insert(place.clone());
+            },
+        );
     }
     out
 }
-
-/// Walk a place's type, adding owned-path descendants of ref type.
-/// Stops at Ref boundaries (we don't traverse a reference's pointee).
-/// The visited-set is a defensive cycle guard; by-value type recursion
-/// is banned upstream by `layout::check_program`, so this can only fire
-/// if someone bypasses the standard pipeline.
-fn walk_ref_paths(
-    place: &Place,
-    ty: &Type,
-    env: &Env,
-    visited: &mut BTreeSet<String>,
-    out: &mut BTreeSet<Place>,
-) {
-    if matches!(ty.kind, TypeKind::Ref(_, _, _)) {
-        out.insert(place.clone());
-        return;
-    }
-    let TypeKind::Custom(name, _, args) = &ty.kind else {
-        return;
-    };
-    if !visited.insert(name.clone()) {
-        return;
-    }
-    // Substitute the outer args through each field / variant type — a
-    // `Bag<&mut i64>.r` recursion with the raw `Param(T)` would miss the
-    // ref and drop the borrower from NLL's tracked set.
-    match env.types.get(name) {
-        Some(TypeDecl::Struct(s)) => {
-            let fields: Vec<_> = s
-                .fields
-                .iter()
-                .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
-                .collect();
-            for (fname, fty) in fields {
-                let sub = field_place(place.clone(), fname);
-                walk_ref_paths(&sub, &fty, env, visited, out);
-            }
-        }
-        Some(TypeDecl::Enum(e)) => {
-            let variants: Vec<_> = e
-                .variants
-                .iter()
-                .map(|v| (v.name.clone(), e.meta.substitute_types(&v.ty, args)))
-                .collect();
-            for (vname, vty) in variants {
-                let sub = downcast_place(place.clone(), vname);
-                walk_ref_paths(&sub, &vty, env, visited, out);
-            }
-        }
-        // `None` means the Custom name isn't registered — a type-check
-        // error already reported elsewhere. Nothing to walk.
-        None => {}
-    }
-    visited.remove(name);
-}
-// Note: the outer `let ... else return` at the top of this fn bails on
-// non-Custom, non-Ref types (scalars, RawPtr, Fn, Param, Array). For
-// `[&mut T; N]` this is a known precision gap: the array's slots are
-// never added to the borrower set, so NLL won't insert `unborrow a[k]`
-// on last-use — the loan simply stays active until scope end. Sound but
-// forces users to write explicit `unborrow` for early release. Twin of
-// the region.rs::walk_regions gap; fix them together.
 
 /// Enumerate borrower places used by referencing `place`. Yields any
 /// borrower that shares storage with `place`:
