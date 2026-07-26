@@ -1,9 +1,9 @@
 use crate::common::RefKind;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
+use crate::hll::type_check::ExpressionTypes;
 use crate::mir::ast::{self as mir, DeclMeta};
 use crate::mir::helpers::*;
-use indexmap::IndexMap;
 use std::collections::HashMap;
 
 /// Machine-readable code for each HLL → MIR lowering error kind.
@@ -120,11 +120,8 @@ fn scope_exit_span(span: mir::Span) -> mir::Span {
     }
 }
 
-fn lookup_type<'a>(
-    expr: &hll::Expr,
-    types: &'a IndexMap<mir::Span, hll::Type>,
-) -> Option<&'a hll::Type> {
-    types.get(&expr.span())
+fn lookup_type<'a>(expr: &hll::Expr, types: &'a ExpressionTypes) -> Option<&'a hll::Type> {
+    types.get(&expr.source)
 }
 
 /// Run HLL → MIR lowering. Any error is treated as an internal compiler
@@ -132,7 +129,7 @@ fn lookup_type<'a>(
 /// whether to continue.
 pub fn run_lowering(
     program: &hll::Program,
-    types: &IndexMap<mir::Span, hll::Type>,
+    types: &ExpressionTypes,
     d: &mut Diagnostics,
 ) -> Option<mir::Program> {
     match lower_program(program, types) {
@@ -363,7 +360,7 @@ impl LowerCtx {
     fn lower_deferred(
         &mut self,
         work: DeferredWork,
-        types: &IndexMap<mir::Span, hll::Type>,
+        types: &ExpressionTypes,
     ) -> Result<(), Diagnostic> {
         let live = std::mem::replace(&mut self.binding_scopes, work.binding_snapshot);
         self.begin_temp_region();
@@ -378,11 +375,7 @@ impl LowerCtx {
     /// popping it. This form is used by nonlocal exits (`return`, `break`,
     /// `continue`), which leave the lowerer's bookkeeping intact even though
     /// they terminate the current MIR block.
-    fn emit_scope_exit(
-        &mut self,
-        index: usize,
-        types: &IndexMap<mir::Span, hll::Type>,
-    ) -> Result<(), Diagnostic> {
+    fn emit_scope_exit(&mut self, index: usize, types: &ExpressionTypes) -> Result<(), Diagnostic> {
         let scope = self.scopes.get(index).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
@@ -414,7 +407,7 @@ impl LowerCtx {
     fn emit_scope_exits_to_depth(
         &mut self,
         depth: usize,
-        types: &IndexMap<mir::Span, hll::Type>,
+        types: &ExpressionTypes,
     ) -> Result<(), Diagnostic> {
         for i in (depth..self.scopes.len()).rev() {
             self.emit_scope_exit(i, types)?;
@@ -422,10 +415,7 @@ impl LowerCtx {
         Ok(())
     }
 
-    fn pop_and_emit_scope_exit(
-        &mut self,
-        types: &IndexMap<mir::Span, hll::Type>,
-    ) -> Result<(), Diagnostic> {
+    fn pop_and_emit_scope_exit(&mut self, types: &ExpressionTypes) -> Result<(), Diagnostic> {
         let index = self.scopes.len().checked_sub(1).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
@@ -539,7 +529,7 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
 
 /// Recover the inferred type arguments at a generic-fn call site by
 /// diffing the callee's freshened signature (recorded in `types` at
-/// `fn_expr_span` by HLL type_check) against the fn's declared
+/// `fn_expr_source` by HLL type_check) against the fn's declared
 /// signature.
 ///
 /// For each declared type parameter T, find the first position where
@@ -548,8 +538,8 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
 /// fns yield an empty vec.
 fn infer_fn_type_args(
     f_decl: &hll::FnDecl,
-    fn_expr_span: mir::Span,
-    types: &IndexMap<mir::Span, hll::Type>,
+    fn_expr_source: mir::SourceInfo,
+    types: &ExpressionTypes,
 ) -> Vec<mir::Type> {
     if f_decl.type_params.is_empty() {
         return Vec::new();
@@ -557,7 +547,7 @@ fn infer_fn_type_args(
     let Some(hll::Type {
         kind: hll::TypeKind::Fn(fresh_params, fresh_ret),
         ..
-    }) = types.get(&fn_expr_span)
+    }) = types.get(&fn_expr_source)
     else {
         return Vec::new();
     };
@@ -653,7 +643,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
 /// If `expr` is a place projection that crosses a reference dereference,
 /// return that reference's kind. Fields and indexes preserve the access mode
 /// of their base. Raw-pointer dereferences return `None`.
-fn projected_ref_kind(expr: &hll::Expr, types: &IndexMap<mir::Span, hll::Type>) -> Option<RefKind> {
+fn projected_ref_kind(expr: &hll::Expr, types: &ExpressionTypes) -> Option<RefKind> {
     match &expr.kind {
         hll::ExprKind::Deref(target) => match lookup_type(target, types).map(|ty| &ty.kind) {
             Some(hll::TypeKind::Ref(kind, _, _)) => Some(*kind),
@@ -669,7 +659,7 @@ fn projected_ref_kind(expr: &hll::Expr, types: &IndexMap<mir::Span, hll::Type>) 
 fn lower_expr_to_place(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
-    types: &IndexMap<mir::Span, hll::Type>,
+    types: &ExpressionTypes,
 ) -> Result<mir::Place, Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Variable(name) => Ok(mir::Place::Var(ctx.resolve_binding(name))),
@@ -795,7 +785,7 @@ fn lower_expr_to_place(
 fn lower_expr_to_operand(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
-    types: &IndexMap<mir::Span, hll::Type>,
+    types: &ExpressionTypes,
 ) -> Result<mir::Operand, Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Literal(lit) => {
@@ -832,7 +822,7 @@ fn lower_expr_to_operand(
             if ctx.functions.contains_key(name) && !ctx.is_scoped_binding(name) =>
         {
             let f_decl = ctx.functions.get(name).cloned().unwrap();
-            let mir_type_args = infer_fn_type_args(&f_decl, expr.span(), types);
+            let mir_type_args = infer_fn_type_args(&f_decl, expr.source, types);
             Ok(const_op(fn_name_const_with_args(
                 name.clone(),
                 mir_type_args,
@@ -865,7 +855,7 @@ fn lower_expr_into(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
     dest: &mir::Place,
-    types: &IndexMap<mir::Span, hll::Type>,
+    types: &ExpressionTypes,
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Literal(_)
@@ -1079,7 +1069,7 @@ fn lower_expr_into(
                         lower_expr_to_operand(ctx, fn_expr, types)?
                     } else {
                         let mir_type_args = if generics.types.is_empty() {
-                            infer_fn_type_args(&f_decl, fn_expr.span(), types)
+                            infer_fn_type_args(&f_decl, fn_expr.source, types)
                         } else {
                             generics.types.iter().map(lower_type).collect()
                         };
@@ -1498,7 +1488,7 @@ fn lower_expr_into(
             // Extract inferred type args from the constructor's own
             // typed slot — HM already pinned them from the payload /
             // context. For a non-generic enum this is empty.
-            let type_args = match types.get(&expr.span()) {
+            let type_args = match types.get(&expr.source) {
                 Some(hll::Type {
                     kind: hll::TypeKind::Custom(_, _, args),
                     ..
@@ -1530,7 +1520,7 @@ fn lower_expr_into(
 
 pub fn lower_program(
     program: &hll::Program,
-    types: &IndexMap<mir::Span, hll::Type>,
+    types: &ExpressionTypes,
 ) -> Result<mir::Program, Diagnostic> {
     let mut declarations = Vec::new();
 
@@ -1709,6 +1699,7 @@ pub fn lower_program(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::GeneratedKind;
     use crate::diagnostics::Diagnostics;
     use crate::hll::parser::Parser;
     use crate::hll::type_check::typecheck_program_collect;
@@ -1959,6 +1950,41 @@ mod tests {
             }
             ",
         );
+    }
+
+    #[test]
+    fn generated_expression_types_remain_available_to_lowering() {
+        let hll_program = Parser::new("fn check(cond: bool) { if cond {} }")
+            .parse()
+            .expect("parse HLL");
+        let [hll::Declaration::Fn(function)] = hll_program.declarations.as_slice() else {
+            panic!("expected one function declaration");
+        };
+        let Some(body) = &function.body else {
+            panic!("expected a function body");
+        };
+        let hll::ExprKind::Block(statements, last_expression, _) = &body.kind else {
+            panic!("expected a block body");
+        };
+        assert!(statements.is_empty());
+        let Some(if_expression) = last_expression else {
+            panic!("expected a trailing if expression");
+        };
+        let hll::ExprKind::If(_, _, implicit_else) = &if_expression.kind else {
+            panic!("expected an if expression");
+        };
+        assert_eq!(
+            implicit_else.source.generated_kind(),
+            Some(GeneratedKind::HllDesugaring)
+        );
+
+        let mut diagnostics = Diagnostics::default();
+        let types = typecheck_program_collect(&hll_program, &mut diagnostics);
+        assert!(!diagnostics.has_errors());
+        assert!(types.contains_key(&implicit_else.source));
+
+        lower_program(&hll_program, &types)
+            .expect("lowering must find types for generated expressions by SourceInfo");
     }
 
     #[test]

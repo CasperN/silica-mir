@@ -1,4 +1,4 @@
-use crate::common::{IntTy, Marker, Markers, RefKind, SourceInfo, Span};
+use crate::common::{IntTy, Marker, Markers, RefKind, SourceInfo};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
@@ -586,9 +586,14 @@ impl TypeEnv {
     }
 }
 
+/// Fully resolved types inferred for HLL expressions, keyed by their complete
+/// source provenance so written and generated nodes attributed to the same
+/// span do not alias.
+pub type ExpressionTypes = IndexMap<SourceInfo, Type>;
+
 /// Run HLL type-checking, pushing errors into `d`. Returns the
 /// per-expression type map; errors accumulate in `d`.
-pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<IndexMap<Span, Type>> {
+pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<ExpressionTypes> {
     let types = typecheck_program_collect(program, d);
     if d.has_errors() {
         None
@@ -610,10 +615,7 @@ pub(super) fn typecheck_program(program: &Program) -> Diagnostics {
 /// Run HLL type-checking, pushing all errors into `d` and returning the
 /// per-expression type map unconditionally. Production callers should use
 /// `run_type_check`.
-pub(super) fn typecheck_program_collect(
-    program: &Program,
-    d: &mut Diagnostics,
-) -> IndexMap<Span, Type> {
+pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) -> ExpressionTypes {
     let mut env = TypeEnv::new();
     let mut subst = Subst::new();
     let mut types = IndexMap::new();
@@ -723,7 +725,7 @@ pub(super) fn typecheck_program_collect(
 
     // Check for unresolved type variables
     let mut reported_vars = HashSet::new();
-    for (span, ty) in &types {
+    for (source, ty) in &types {
         let resolved = subst.resolve(ty);
         let mut unresolved = HashSet::new();
         collect_unresolved_vars(&resolved, &subst, &mut unresolved);
@@ -733,7 +735,7 @@ pub(super) fn typecheck_program_collect(
                 reported_vars.extend(unresolved);
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::AmbiguousType,
-                    SourceInfo::written(*span),
+                    *source,
                     format!("type annotations needed: type of expression is ambiguous (could not resolve type variable in {})", resolved),
                 ));
             }
@@ -742,8 +744,8 @@ pub(super) fn typecheck_program_collect(
 
     // Resolve all captured expression types in the final map
     let mut resolved_types = IndexMap::new();
-    for (span, ty) in types {
-        resolved_types.insert(span, subst.resolve_default(&ty));
+    for (source, ty) in types {
+        resolved_types.insert(source, subst.resolve_default(&ty));
     }
 
     resolved_types
@@ -839,7 +841,7 @@ fn infer_inner(
     env: &mut TypeEnv,
     subst: &mut Subst,
     expr: &Expr,
-    types: &mut IndexMap<Span, Type>,
+    types: &mut ExpressionTypes,
     d: &mut Diagnostics,
 ) -> Type {
     let ty = match &expr.kind {
@@ -1429,7 +1431,7 @@ fn infer_inner(
         }
     };
 
-    types.insert(expr.span(), ty.clone());
+    types.insert(expr.source, ty.clone());
     ty
 }
 
@@ -1438,7 +1440,7 @@ fn check_inner(
     subst: &mut Subst,
     expr: &Expr,
     expected: &Type,
-    types: &mut IndexMap<Span, Type>,
+    types: &mut ExpressionTypes,
     d: &mut Diagnostics,
 ) {
     let resolved_expected = subst.resolve(expected);
@@ -1499,14 +1501,14 @@ fn check_inner(
             env.pop_scope();
             env.in_unsafe = old_unsafe;
             if d.error_count() == errors_before {
-                types.insert(expr.span(), resolved_expected.clone());
+                types.insert(expr.source, resolved_expected.clone());
             }
         }
         (ExprKind::If(cond, true_block, false_block), _) => {
             check_inner(env, subst, cond, &bool_ty(), types, d);
             check_inner(env, subst, true_block, &resolved_expected, types, d);
             check_inner(env, subst, false_block, &resolved_expected, types, d);
-            types.insert(expr.span(), resolved_expected.clone());
+            types.insert(expr.source, resolved_expected.clone());
         }
         (ExprKind::Match(target, arms), _) => {
             let target_ty = infer_inner(env, subst, target, types, d);
@@ -1549,7 +1551,7 @@ fn check_inner(
                         ));
                     }
                 }
-                types.insert(expr.span(), resolved_expected.clone());
+                types.insert(expr.source, resolved_expected.clone());
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedEnum,
@@ -1559,10 +1561,10 @@ fn check_inner(
             }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), TypeKind::Int(_ty)) => {
-            types.insert(expr.span(), resolved_expected.clone());
+            types.insert(expr.source, resolved_expected.clone());
         }
         (ExprKind::Literal(Literal::Float(_val, None)), TypeKind::Float(_ty)) => {
-            types.insert(expr.span(), resolved_expected.clone());
+            types.insert(expr.source, resolved_expected.clone());
         }
         (ExprKind::Array(elements), TypeKind::Array(expected_elem, expected_size)) => {
             if elements.len() != *expected_size {
@@ -1580,7 +1582,7 @@ fn check_inner(
             for el in elements {
                 check_inner(env, subst, el, expected_elem, types, d);
             }
-            types.insert(expr.span(), resolved_expected.clone());
+            types.insert(expr.source, resolved_expected.clone());
         }
 
         _ => {
@@ -1588,7 +1590,7 @@ fn check_inner(
             if let Err(e) = subst.unify(&inferred, &resolved_expected) {
                 d.push_error(e.to_diag(expr.source));
             }
-            types.insert(expr.span(), resolved_expected.clone());
+            types.insert(expr.source, resolved_expected.clone());
         }
     }
 }
@@ -1705,7 +1707,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{GeneratedKind, Lifetime};
+    use crate::common::{GeneratedKind, Lifetime, Span};
     use crate::hll::parser::Parser;
 
     fn test_source(line: u32) -> SourceInfo {
@@ -1899,6 +1901,41 @@ mod tests {
             errors[0].source().generated_kind(),
             Some(GeneratedKind::HllDesugaring)
         );
+    }
+
+    #[test]
+    fn ambiguous_generated_expression_preserves_its_source() {
+        let mut program = Parser::new("fn f() { let x = []; }")
+            .parse()
+            .expect("parse HLL");
+        let [Declaration::Fn(function)] = program.declarations.as_mut_slice() else {
+            panic!("expected one function declaration");
+        };
+        let Some(body) = &mut function.body else {
+            panic!("expected a function body");
+        };
+        let ExprKind::Block(statements, _, _) = &mut body.kind else {
+            panic!("expected a block body");
+        };
+        let [Stmt::Let {
+            init: Some(initializer),
+            ..
+        }] = statements.as_mut_slice()
+        else {
+            panic!("expected one initialized let statement");
+        };
+        let generated_source =
+            SourceInfo::generated(GeneratedKind::HllDesugaring, initializer.source.span());
+        initializer.source = generated_source;
+
+        let diagnostics = typecheck_program(&program);
+        let errors: Vec<_> = diagnostics.errors().collect();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0].code(),
+            DiagCode::HllTypeCheck(HllTypeCheckCode::AmbiguousType)
+        );
+        assert_eq!(errors[0].source(), generated_source);
     }
 
     fn check_program(source: &str) -> Result<(), String> {
