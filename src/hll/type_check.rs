@@ -2,6 +2,7 @@ use crate::common::{IntTy, Marker, Markers, RefKind, SourceInfo, Span};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
+use crate::hll::type_fold::TypeFolder;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
@@ -25,20 +26,21 @@ fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Markers> {
 /// caller sees `i64`. `mapping` binds each declared type-parameter
 /// name to the concrete argument at the use site.
 fn substitute(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
-    match ty {
-        Type::Param(name) => mapping.get(name).cloned().unwrap_or_else(|| ty.clone()),
-        Type::Custom(name, _, args) => {
-            let new_args = args.iter().map(|a| substitute(a, mapping)).collect();
-            custom_ty_with_args(name.clone(), new_args)
+    SubstituteFolder { mapping }.fold_type(ty)
+}
+
+struct SubstituteFolder<'a> {
+    mapping: &'a HashMap<String, Type>,
+}
+
+impl TypeFolder for SubstituteFolder<'_> {
+    fn try_fold_type(&mut self, ty: &Type) -> Option<Type> {
+        match &ty.kind {
+            TypeKind::Param(name) => self.mapping.get(name).cloned(),
+            // Only named type parameters are substitution sites. Every other
+            // variant uses the shared structural recursion.
+            _ => None,
         }
-        Type::Ref(kind, _, inner) => ref_ty(*kind, substitute(inner, mapping)),
-        Type::RawPtr(inner) => raw_ptr_ty(substitute(inner, mapping)),
-        Type::Array(inner, size) => array_ty(substitute(inner, mapping), *size),
-        Type::Fn(params, ret) => {
-            let new_params = params.iter().map(|p| substitute(p, mapping)).collect();
-            fn_ty(new_params, substitute(ret, mapping))
-        }
-        _ => ty.clone(),
     }
 }
 
@@ -181,6 +183,59 @@ pub struct Subst {
     next_id: usize,
 }
 
+#[derive(Clone, Copy)]
+enum ResolveMode {
+    PreserveUnresolved,
+    DefaultUnresolved,
+}
+
+#[derive(Clone, Copy)]
+enum SolverVariable {
+    General(usize),
+    Integer(usize),
+    Float(usize),
+}
+
+impl SolverVariable {
+    fn id(self) -> usize {
+        match self {
+            Self::General(id) | Self::Integer(id) | Self::Float(id) => id,
+        }
+    }
+}
+
+struct ResolveFolder<'a> {
+    subst: &'a Subst,
+    mode: ResolveMode,
+}
+
+impl TypeFolder for ResolveFolder<'_> {
+    fn try_fold_type(&mut self, ty: &Type) -> Option<Type> {
+        let variable = match &ty.kind {
+            TypeKind::Var(id) => SolverVariable::General(*id),
+            TypeKind::IntVar(id) => SolverVariable::Integer(*id),
+            TypeKind::FloatVar(id) => SolverVariable::Float(*id),
+            // Only solver variables are resolution sites. Every structural
+            // variant uses the shared recursion and metadata preservation.
+            _ => return None,
+        };
+
+        if let Some(resolved) = self.subst.map.get(&variable.id()).cloned() {
+            return Some(self.fold_type(&resolved));
+        }
+
+        match (self.mode, variable) {
+            (
+                ResolveMode::PreserveUnresolved,
+                SolverVariable::General(_) | SolverVariable::Integer(_) | SolverVariable::Float(_),
+            ) => None,
+            (ResolveMode::DefaultUnresolved, SolverVariable::General(_)) => Some(error_ty()),
+            (ResolveMode::DefaultUnresolved, SolverVariable::Integer(_)) => Some(i64_ty()),
+            (ResolveMode::DefaultUnresolved, SolverVariable::Float(_)) => Some(f64_ty()),
+        }
+    }
+}
+
 impl Subst {
     pub fn new() -> Self {
         Self {
@@ -208,109 +263,93 @@ impl Subst {
     }
 
     pub fn resolve(&self, ty: &Type) -> Type {
-        match ty {
-            Type::Var(id) | Type::IntVar(id) | Type::FloatVar(id) => {
-                if let Some(resolved) = self.map.get(id) {
-                    self.resolve(resolved)
-                } else {
-                    ty.clone()
-                }
-            }
-            Type::Ref(kind, _, inner) => ref_ty(*kind, self.resolve(inner)),
-            Type::RawPtr(inner) => raw_ptr_ty(self.resolve(inner)),
-            Type::Fn(params, ret) => {
-                let resolved_params = params.iter().map(|p| self.resolve(p)).collect();
-                fn_ty(resolved_params, self.resolve(ret))
-            }
-            Type::Array(inner, size) => array_ty(self.resolve(inner), *size),
-            Type::Custom(name, _, args) => {
-                let resolved_args = args.iter().map(|a| self.resolve(a)).collect();
-                custom_ty_with_args(name.clone(), resolved_args)
-            }
-            other => other.clone(),
+        ResolveFolder {
+            subst: self,
+            mode: ResolveMode::PreserveUnresolved,
         }
+        .fold_type(ty)
     }
+
     pub fn resolve_default(&self, ty: &Type) -> Type {
-        match ty {
-            Type::Var(id) => {
-                if let Some(resolved) = self.map.get(id) {
-                    self.resolve_default(resolved)
-                } else {
-                    Type::Error
-                }
-            }
-            Type::IntVar(id) => {
-                if let Some(resolved) = self.map.get(id) {
-                    self.resolve_default(resolved)
-                } else {
-                    i64_ty()
-                }
-            }
-            Type::FloatVar(id) => {
-                if let Some(resolved) = self.map.get(id) {
-                    self.resolve_default(resolved)
-                } else {
-                    f64_ty()
-                }
-            }
-            Type::Ref(kind, _, inner) => ref_ty(*kind, self.resolve_default(inner)),
-            Type::RawPtr(inner) => raw_ptr_ty(self.resolve_default(inner)),
-            Type::Array(inner, size) => array_ty(self.resolve_default(inner), *size),
-            Type::Fn(params, ret) => {
-                let resolved_params = params.iter().map(|p| self.resolve_default(p)).collect();
-                fn_ty(resolved_params, self.resolve_default(ret))
-            }
-            Type::Custom(name, _, args) => {
-                let resolved_args = args.iter().map(|a| self.resolve_default(a)).collect();
-                custom_ty_with_args(name.clone(), resolved_args)
-            }
-            other => other.clone(),
+        ResolveFolder {
+            subst: self,
+            mode: ResolveMode::DefaultUnresolved,
         }
+        .fold_type(ty)
     }
 
     pub fn unify(&mut self, t1: &Type, t2: &Type) -> Result<(), UnifyError> {
         let r1 = self.resolve(t1);
         let r2 = self.resolve(t2);
-        match (&r1, &r2) {
-            (Type::Error, _) | (_, Type::Error) => Ok(()),
-            (Type::Var(id1), Type::Var(id2)) if id1 == id2 => Ok(()),
-            (Type::IntVar(id1), Type::IntVar(id2)) if id1 == id2 => Ok(()),
-            (Type::FloatVar(id1), Type::FloatVar(id2)) if id1 == id2 => Ok(()),
-            (Type::Var(id), other) | (other, Type::Var(id)) => {
-                if self.occurs_in(*id, other) {
+        match (&r1.kind, &r2.kind) {
+            (TypeKind::Error, _) | (_, TypeKind::Error) => Ok(()),
+            (TypeKind::Var(id1), TypeKind::Var(id2)) if id1 == id2 => Ok(()),
+            (TypeKind::IntVar(id1), TypeKind::IntVar(id2)) if id1 == id2 => Ok(()),
+            (TypeKind::FloatVar(id1), TypeKind::FloatVar(id2)) if id1 == id2 => Ok(()),
+            (TypeKind::Var(id), _) => {
+                if self.occurs_in(*id, &r2) {
                     return Err(UnifyError::Infinite);
                 }
-                self.map.insert(*id, other.clone());
+                self.map.insert(*id, r2);
                 Ok(())
             }
-            (Type::Never, _) | (_, Type::Never) => Ok(()),
-            (Type::IntVar(id), other) | (other, Type::IntVar(id)) => match other {
-                Type::IntVar(_) | Type::Int(_) => {
-                    self.map.insert(*id, other.clone());
+            (_, TypeKind::Var(id)) => {
+                if self.occurs_in(*id, &r1) {
+                    return Err(UnifyError::Infinite);
+                }
+                self.map.insert(*id, r1);
+                Ok(())
+            }
+            (TypeKind::Never, _) | (_, TypeKind::Never) => Ok(()),
+            (TypeKind::IntVar(id), other) => match other {
+                TypeKind::IntVar(_) | TypeKind::Int(_) => {
+                    self.map.insert(*id, r2);
                     Ok(())
                 }
-                Type::Error => Ok(()),
+                TypeKind::Error => Ok(()),
                 _ => Err(UnifyError::Mismatch(format!(
                     "type mismatch: expected integer type, found {}",
                     other
                 ))),
             },
-            (Type::FloatVar(id), other) | (other, Type::FloatVar(id)) => match other {
-                Type::FloatVar(_) | Type::Float(_) => {
-                    self.map.insert(*id, other.clone());
+            (other, TypeKind::IntVar(id)) => match other {
+                TypeKind::IntVar(_) | TypeKind::Int(_) => {
+                    self.map.insert(*id, r1);
                     Ok(())
                 }
-                Type::Error => Ok(()),
+                TypeKind::Error => Ok(()),
+                _ => Err(UnifyError::Mismatch(format!(
+                    "type mismatch: expected integer type, found {}",
+                    other
+                ))),
+            },
+            (TypeKind::FloatVar(id), other) => match other {
+                TypeKind::FloatVar(_) | TypeKind::Float(_) => {
+                    self.map.insert(*id, r2);
+                    Ok(())
+                }
+                TypeKind::Error => Ok(()),
                 _ => Err(UnifyError::Mismatch(format!(
                     "type mismatch: expected float type, found {}",
                     other
                 ))),
             },
-            (Type::Int(i1), Type::Int(i2)) if i1 == i2 => Ok(()),
-            (Type::Float(f1), Type::Float(f2)) if f1 == f2 => Ok(()),
-            (Type::Bool, Type::Bool) => Ok(()),
-            (Type::Unit, Type::Unit) => Ok(()),
-            (Type::Custom(n1, _, a1), Type::Custom(n2, _, a2))
+            (other, TypeKind::FloatVar(id)) => match other {
+                TypeKind::FloatVar(_) | TypeKind::Float(_) => {
+                    self.map.insert(*id, r1);
+                    Ok(())
+                }
+                TypeKind::Error => Ok(()),
+                _ => Err(UnifyError::Mismatch(format!(
+                    "type mismatch: expected float type, found {}",
+                    other
+                ))),
+            },
+            (TypeKind::Int(i1), TypeKind::Int(i2)) if i1 == i2 => Ok(()),
+            (TypeKind::Float(f1), TypeKind::Float(f2)) if f1 == f2 => Ok(()),
+            (TypeKind::Bool, TypeKind::Bool) => Ok(()),
+            (TypeKind::Unit, TypeKind::Unit) => Ok(()),
+            (TypeKind::Custom(n1, _, a1), TypeKind::Custom(n2, _, a2))
                 if n1 == n2 && a1.len() == a2.len() =>
             {
                 let a1 = a1.clone();
@@ -1663,7 +1702,142 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::common::Lifetime;
     use crate::hll::parser::Parser;
+
+    fn test_source(line: u32) -> SourceInfo {
+        SourceInfo::written(Span {
+            line,
+            col: 1,
+            end_line: line,
+            end_col: 2,
+        })
+    }
+
+    fn metadata_bearing_type(leaf: Type, outer_source: SourceInfo, ref_source: SourceInfo) -> Type {
+        Type::new(
+            TypeKind::Custom(
+                "Wrap".into(),
+                vec![Lifetime("outer".into())],
+                vec![Type::new(
+                    TypeKind::Ref(
+                        RefKind::Shared,
+                        Some(Lifetime("inner".into())),
+                        Box::new(leaf),
+                    ),
+                    ref_source,
+                )],
+            ),
+            outer_source,
+        )
+    }
+
+    fn assert_metadata_preserved(
+        ty: &Type,
+        outer_source: SourceInfo,
+        ref_source: SourceInfo,
+        leaf_source: SourceInfo,
+    ) {
+        assert_eq!(ty.source, outer_source);
+        let TypeKind::Custom(name, lifetimes, args) = &ty.kind else {
+            panic!("expected custom type");
+        };
+        assert_eq!(name, "Wrap");
+        assert_eq!(lifetimes, &[Lifetime("outer".into())]);
+        let [arg] = args.as_slice() else {
+            panic!("expected one custom type argument");
+        };
+        assert_eq!(arg.source, ref_source);
+        let TypeKind::Ref(RefKind::Shared, lifetime, pointee) = &arg.kind else {
+            panic!("expected shared reference argument");
+        };
+        assert_eq!(lifetime, &Some(Lifetime("inner".into())));
+        assert_eq!(pointee.source, leaf_source);
+        assert_eq!(pointee.kind, TypeKind::Int(IntTy::I64));
+    }
+
+    #[test]
+    fn substitution_preserves_lifetimes_and_sources() {
+        let outer_source = test_source(1);
+        let ref_source = test_source(2);
+        let parameter_source = test_source(3);
+        let argument_source = test_source(4);
+        let declared = metadata_bearing_type(
+            Type::new(TypeKind::Param("T".into()), parameter_source),
+            outer_source,
+            ref_source,
+        );
+        let argument = Type::new(TypeKind::Int(IntTy::I64), argument_source);
+        let mapping = HashMap::from([("T".to_string(), argument)]);
+
+        let substituted = substitute(&declared, &mapping);
+        assert_metadata_preserved(&substituted, outer_source, ref_source, argument_source);
+    }
+
+    #[test]
+    fn resolution_preserves_lifetimes_and_sources() {
+        let outer_source = test_source(1);
+        let ref_source = test_source(2);
+        let variable_source = test_source(3);
+        let resolved_source = test_source(4);
+        let unresolved = metadata_bearing_type(
+            Type::new(TypeKind::Var(0), variable_source),
+            outer_source,
+            ref_source,
+        );
+        let mut subst = Subst::new();
+        subst
+            .map
+            .insert(0, Type::new(TypeKind::Int(IntTy::I64), resolved_source));
+
+        let resolved = subst.resolve(&unresolved);
+        assert_metadata_preserved(&resolved, outer_source, ref_source, resolved_source);
+    }
+
+    #[test]
+    fn default_resolution_defaults_variables_without_dropping_container_metadata() {
+        let outer_source = test_source(1);
+        let ref_source = test_source(2);
+        let variable_source = test_source(3);
+        let intermediate_source = test_source(4);
+        let defaulted_variable_source = test_source(5);
+        let unresolved = metadata_bearing_type(
+            Type::new(TypeKind::Var(0), variable_source),
+            outer_source,
+            ref_source,
+        );
+        let mut subst = Subst::new();
+        subst.map.insert(
+            0,
+            Type::new(
+                TypeKind::Ref(
+                    RefKind::Shared,
+                    None,
+                    Box::new(Type::new(TypeKind::IntVar(1), defaulted_variable_source)),
+                ),
+                // This replacement intentionally adds another structural layer so
+                // `resolve_default` must recurse through a resolved variable.
+                intermediate_source,
+            ),
+        );
+
+        let resolved = subst.resolve_default(&unresolved);
+        assert_eq!(resolved.source, outer_source);
+        let TypeKind::Custom(_, outer_lifetimes, outer_args) = &resolved.kind else {
+            panic!("expected custom type");
+        };
+        assert_eq!(outer_lifetimes, &[Lifetime("outer".into())]);
+        let TypeKind::Ref(_, inner_lifetime, first_pointee) = &outer_args[0].kind else {
+            panic!("expected original reference layer");
+        };
+        assert_eq!(outer_args[0].source, ref_source);
+        assert_eq!(inner_lifetime, &Some(Lifetime("inner".into())));
+        let TypeKind::Ref(_, None, second_pointee) = &first_pointee.kind else {
+            panic!("expected resolved reference layer");
+        };
+        assert_eq!(first_pointee.source, intermediate_source);
+        assert_eq!(second_pointee.kind, TypeKind::Int(IntTy::I64));
+    }
 
     fn check_program(source: &str) -> Result<(), String> {
         let program = Parser::new(source)

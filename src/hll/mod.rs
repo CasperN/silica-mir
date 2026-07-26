@@ -5,3 +5,4 @@ pub mod mut_check;
 pub mod parser;
 pub mod prelude;
 pub mod type_check;
+pub(crate) mod type_fold;
