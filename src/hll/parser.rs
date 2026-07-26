@@ -608,7 +608,11 @@ impl Parser {
             match child.kind() {
                 "lifetime_param" => {
                     let name_node = child.child_by_field_name("name").ok_or_else(|| {
-                        self.diag(child, ParserCode::MalformedCst, "lifetime param missing name")
+                        self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "lifetime param missing name",
+                        )
                     })?;
                     let subject = Lifetime(
                         self.get_text(name_node)
@@ -1020,13 +1024,25 @@ impl Parser {
                 // onto the call's generics slot.
                 let (func_expr, generics) = if func.kind() == "instantiation_expr" {
                     let inner_fn = func.child_by_field_name("function").ok_or_else(|| {
-                        self.diag(func, ParserCode::MalformedCst, "instantiation missing function")
+                        self.diag(
+                            func,
+                            ParserCode::MalformedCst,
+                            "instantiation missing function",
+                        )
                     })?;
-                    let type_args_node = func.child_by_field_name("type_args").ok_or_else(|| {
-                        self.diag(func, ParserCode::MalformedCst, "instantiation missing type_args")
-                    })?;
+                    let type_args_node =
+                        func.child_by_field_name("type_args").ok_or_else(|| {
+                            self.diag(
+                                func,
+                                ParserCode::MalformedCst,
+                                "instantiation missing type_args",
+                            )
+                        })?;
                     let (lifetimes, types) = self.map_type_args(type_args_node, scope)?;
-                    (self.map_expr(inner_fn, scope)?, GenericArgs { lifetimes, types })
+                    (
+                        self.map_expr(inner_fn, scope)?,
+                        GenericArgs { lifetimes, types },
+                    )
                 } else {
                     (self.map_expr(func, scope)?, GenericArgs::empty())
                 };
@@ -1997,7 +2013,11 @@ mod tests {
     #[test]
     fn block_tail_call_expr() {
         let e = block_tail("fn f() -> i64 { g() }");
-        assert!(matches!(e.kind, ExprKind::Call(_, _, _)), "got {:?}", e.kind);
+        assert!(
+            matches!(e.kind, ExprKind::Call(_, _, _)),
+            "got {:?}",
+            e.kind
+        );
     }
 
     #[test]

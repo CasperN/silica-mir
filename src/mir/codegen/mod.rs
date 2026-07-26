@@ -684,12 +684,7 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
 /// the spec's `emit` closure, writes the returned lines, and stores
 /// the returned SSA value through the `&out` pointer. Adding a new
 /// intrinsic never touches this function.
-fn emit_intrinsic_call(
-    cx: &mut CodeGenContext,
-    name: &str,
-    type_args: &[Type],
-    args: &[Operand],
-) {
+fn emit_intrinsic_call(cx: &mut CodeGenContext, name: &str, type_args: &[Type], args: &[Operand]) {
     if name == crate::mir::intrinsics::SIZEOF_NAME {
         emit_sizeof_call(cx, type_args, args);
         return;
@@ -790,7 +785,10 @@ fn emit_sizeof_call(cx: &mut CodeGenContext, type_args: &[Type], args: &[Operand
         );
     };
     let [out_operand] = args else {
-        panic!("$sizeof expects exactly one arg ($return), got {}", args.len());
+        panic!(
+            "$sizeof expects exactly one arg ($return), got {}",
+            args.len()
+        );
     };
     let size = crate::mir::layout::size_of(t, cx.env);
     let (out_val, _) = emit_operand(cx, out_operand);

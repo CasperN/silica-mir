@@ -99,9 +99,7 @@ fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
     let closure = constraints::transitive_closure(&axioms);
     for c in cs.iter() {
         if let (Region::Named(_), Region::Named(_) | Region::Static) = (&c.outlives, &c.sub) {
-            if c.outlives == c.sub
-                || closure.contains(&(c.outlives.clone(), c.sub.clone()))
-            {
+            if c.outlives == c.sub || closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                 continue;
             }
             let msg = format!(
@@ -163,7 +161,11 @@ fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
                     "In {} '{}': field type requires bound {}: {} but no such bound is declared",
                     container_kind, meta.name, c.outlives, c.sub,
                 );
-                d.push_error(Diagnostic::new(LifetimeCode::LifetimeMismatch, c.origin, msg));
+                d.push_error(Diagnostic::new(
+                    LifetimeCode::LifetimeMismatch,
+                    c.origin,
+                    msg,
+                ));
             }
         }
     }
@@ -184,11 +186,7 @@ fn name_to_region(lt: &Lifetime) -> Region {
 /// explicit types: `PtrCast(_, ty)` and `EnumConstr(_, type_args, ..)`.
 /// Places and operands don't carry standalone type mentions — their
 /// types derive from local/param decls, already walked upstream.
-fn emit_stmt_wf_constraints(
-    stmt: &Statement,
-    env: &Env,
-    cs: &mut constraints::ConstraintSet,
-) {
+fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::ConstraintSet) {
     match &stmt.kind {
         StatementKind::Assign(_, rvalue) => match rvalue {
             RValue::PtrCast(op, ty) => {
@@ -223,11 +221,7 @@ fn emit_stmt_wf_constraints(
 /// type_arg's Custom outlives obligations. FnName can appear in call
 /// targets, call args, and any rvalue that consumes an operand
 /// (`Use`, `PtrCast`, `EnumConstr`, `ArrayLit`).
-fn emit_operand_wf_constraints(
-    op: &Operand,
-    env: &Env,
-    cs: &mut constraints::ConstraintSet,
-) {
+fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::ConstraintSet) {
     if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
         for ty in type_args {
             emit_type_wf_constraints(ty, env, cs, ty.span);
@@ -246,12 +240,7 @@ fn emit_operand_wf_constraints(
 /// declared outlives obligations against the containing scope's axioms.
 /// Mirrors the fn-call instantiation pattern in `check_call_regions`
 /// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
-fn emit_type_wf_constraints(
-    ty: &Type,
-    env: &Env,
-    cs: &mut constraints::ConstraintSet,
-    span: Span,
-) {
+fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::ConstraintSet, span: Span) {
     match &ty.kind {
         TypeKind::Custom(name, lts, args) => {
             if let Some(decl) = env.types.get(name) {
@@ -270,9 +259,7 @@ fn emit_type_wf_constraints(
                 emit_type_wf_constraints(a, env, cs, span);
             }
         }
-        TypeKind::Ref(_, _, inner)
-        | TypeKind::RawPtr(inner)
-        | TypeKind::Array(inner, _) => {
+        TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             emit_type_wf_constraints(inner, env, cs, span);
         }
         TypeKind::Fn(inners) => {
@@ -527,9 +514,7 @@ impl<'a> Checker<'a> {
         let closure = constraints::transitive_closure(&axioms);
         for c in self.constraints.iter() {
             match (&c.outlives, &c.sub) {
-                (Region::Named(_), Region::Named(_) | Region::Static)
-                    if c.outlives != c.sub =>
-                {
+                (Region::Named(_), Region::Named(_) | Region::Static) if c.outlives != c.sub => {
                     if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                         continue;
                     }

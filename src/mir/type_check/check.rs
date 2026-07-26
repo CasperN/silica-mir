@@ -369,7 +369,10 @@ impl Env {
                     Diagnostic::new(
                         UndeclaredLifetime,
                         ty.span,
-                        format!("In function '{}': undeclared lifetime {}", func.meta.name, lt),
+                        format!(
+                            "In function '{}': undeclared lifetime {}",
+                            func.meta.name, lt
+                        ),
                     )
                     .in_block(&block.label),
                 );

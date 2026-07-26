@@ -982,7 +982,11 @@ impl Parser {
                     // `field('bound', $.lifetime)` after `:` is an
                     // outlives axiom `subject outlives bound`.
                     let name_node = child.child_by_field_name("name").ok_or_else(|| {
-                        self.diag(child, ParserCode::MalformedCst, "lifetime param missing name")
+                        self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "lifetime param missing name",
+                        )
                     })?;
                     let subject = Lifetime(
                         self.get_text(name_node)
