@@ -1,0 +1,12 @@
+# covers: a reserved-namespace function that is not in the intrinsic registry
+# remains an ordinary callable MIR function through monomorphization and codegen.
+fn $runtime_hook() {
+  entry:
+    return
+}
+
+fn invoke_runtime_hook() {
+  entry:
+    call $runtime_hook();
+    return
+}

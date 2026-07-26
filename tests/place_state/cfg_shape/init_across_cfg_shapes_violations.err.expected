@@ -118,7 +118,7 @@ error: at 298:5: [INIT-UseInconsistent] In function 'array_slot_move_one_arm', b
      |     ^^^^^^^^^^^^^
  299 |     call use_i64(move n);
      |
-error: at 320:5: [INIT-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block 'entry__to__f': variable 's' is used before initialization
+error: at 320:5: [INIT-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block '$edge0': variable 's' is used before initialization
      |
  319 |   f:
  320 |     goto merge

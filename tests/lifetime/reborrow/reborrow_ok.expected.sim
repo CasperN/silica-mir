@@ -82,8 +82,8 @@ fn mut_from_mut_in_loop(x: i64, b: bool) {
     r = &mut x;
     goto head
   head:
-    branch(copy b) [true: body, false: head__to__done]
-  head__to__done:
+    branch(copy b) [true: body, false: $edge0]
+  $edge0:
     unborrow r;
     goto done
   body:
@@ -100,8 +100,8 @@ fn<'s0> mut_from_mut_conditional(r: &mut 's0 i64, cond: bool) {
   s: &mut i64;
   entry:
     s = &mut r.*;
-    branch(copy cond) [true: left, false: entry__to__right]
-  entry__to__right:
+    branch(copy cond) [true: left, false: $edge0]
+  $edge0:
     unborrow s;
     goto right
   left:

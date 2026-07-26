@@ -1,4 +1,4 @@
-error: at 32:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_unfulfilled_on_return_arm', block 'entry__to__b_arm': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 32:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_unfulfilled_on_return_arm', block '$edge0': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  24 | # edge.
  25 | fn out_ref_unfulfilled_on_return_arm(r: &out i64, e: E) {

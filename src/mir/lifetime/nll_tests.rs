@@ -337,8 +337,8 @@ fn f(x: i64, b: bool) {
   r: &mut i64;
   entry:
     r = &mut x;
-    branch(copy b) [true: t, false: entry__to__fbr]
-  entry__to__fbr:
+    branch(copy b) [true: t, false: $edge0]
+  $edge0:
     unborrow r;
     goto fbr
   t:

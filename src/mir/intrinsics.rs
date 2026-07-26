@@ -622,9 +622,16 @@ const SPAN: Span = Span {
     end_col: 0,
 };
 
-/// True if `name` is an intrinsic name (starts with the reserved `$`).
-pub fn is_intrinsic(name: &str) -> bool {
+/// True if `name` is in the compiler's reserved identifier namespace.
+/// Reservation and intrinsic recognition are deliberately separate: an
+/// unknown `$name` is reserved-shaped, but it is not an intrinsic.
+pub fn is_reserved_name(name: &str) -> bool {
     name.starts_with('$')
+}
+
+/// True if `name` identifies a recognized flat or generic intrinsic.
+pub fn is_intrinsic(name: &str) -> bool {
+    matches!(name, SIZEOF_NAME | PTR_OFFSET_NAME) || lookup(name).is_some()
 }
 
 // ---------- Spec-builder helpers ----------
@@ -859,17 +866,26 @@ mod tests {
     // ---------- is_intrinsic ----------
 
     #[test]
-    fn is_intrinsic_matches_dollar_prefix() {
+    fn is_intrinsic_accepts_exact_registry_members() {
         assert!(is_intrinsic("$i64_add"));
-        assert!(is_intrinsic("$foo"));
-        assert!(is_intrinsic("$"));
+        assert!(is_intrinsic(SIZEOF_NAME));
+        assert!(is_intrinsic(PTR_OFFSET_NAME));
     }
 
     #[test]
-    fn is_intrinsic_rejects_plain_names() {
+    fn is_intrinsic_rejects_unknown_reserved_and_plain_names() {
+        assert!(!is_intrinsic("$foo"));
+        assert!(!is_intrinsic("$"));
         assert!(!is_intrinsic("i64_add"));
         assert!(!is_intrinsic("silica_print"));
         assert!(!is_intrinsic(""));
+    }
+
+    #[test]
+    fn reserved_namespace_is_independent_of_membership() {
+        assert!(is_reserved_name("$i64_add"));
+        assert!(is_reserved_name("$not_an_intrinsic"));
+        assert!(!is_reserved_name("i64_add"));
     }
 
     // ---------- lookup ----------

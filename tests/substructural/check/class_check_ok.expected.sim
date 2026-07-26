@@ -340,8 +340,8 @@ fn if_one_arm_move_MatCD(x: MatCD, cond: bool) {
     call take_mat_cd(move x);
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:
@@ -356,8 +356,8 @@ fn if_one_arm_move_MatDM(x: MatDM, cond: bool) {
     call take_mat_dm(move x);
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:
@@ -372,8 +372,8 @@ fn if_one_arm_move_MatCDM(x: MatCDM, cond: bool) {
     call take_mat_cdm(move x);
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:
@@ -388,8 +388,8 @@ fn if_one_arm_drop_MatD(x: MatD, cond: bool) {
     drop x;
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:
@@ -404,8 +404,8 @@ fn if_one_arm_drop_MatCD(x: MatCD, cond: bool) {
     drop x;
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:
@@ -420,8 +420,8 @@ fn if_one_arm_drop_MatDM(x: MatDM, cond: bool) {
     drop x;
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:
@@ -436,8 +436,8 @@ fn if_one_arm_drop_MatCDM(x: MatCDM, cond: bool) {
     drop x;
     goto done
   f:
-    goto f__to__done
-  f__to__done:
+    goto $edge0
+  $edge0:
     drop x;
     goto done
   done:

@@ -47,8 +47,8 @@ fn branch_cleanup(b: bool) {
     branch(copy b) [true: initialized, false: empty]
   initialized:
     x = 1;
-    goto initialized__to__join
-  initialized__to__join:
+    goto $edge0
+  $edge0:
     drop x;
     goto join
   empty:

@@ -164,8 +164,8 @@ fn<'s0> if_as_tail(a: i64, $return: &out 's0 i64) {
   if_false_1:
     $return.* = 0;
     unborrow $return;
-    goto if_false_1__to__if_merge_2
-  if_false_1__to__if_merge_2:
+    goto $edge0
+  $edge0:
     drop base;
     goto if_merge_2
   if_merge_2:

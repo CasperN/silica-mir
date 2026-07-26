@@ -90,8 +90,8 @@ fn<'s0> fib(n: i64, $return: &out 's0 i64) {
     b = 1;
     i = 0;
     next = 0;
-    goto entry__to__loop_start_0
-  entry__to__loop_start_0:
+    goto $edge0
+  $edge0:
     drop next;
     goto loop_start_0
   loop_start_0:

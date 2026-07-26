@@ -123,8 +123,8 @@ fn<'s0> asymmetric_ref_use(r: &mut 's0 i64, w: Which) {
   observed: i64;
   b: unit;
   entry:
-    switchEnum(w) [A: switch_A_0, B: entry__to__switch_B_1]
-  entry__to__switch_B_1:
+    switchEnum(w) [A: switch_A_0, B: $edge0]
+  $edge0:
     unborrow r;
     goto switch_B_1
   switch_A_0:

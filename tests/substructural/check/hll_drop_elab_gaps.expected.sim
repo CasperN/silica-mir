@@ -107,8 +107,8 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
     drop _temp_2;
     require_uninit _temp_2;
     _temp_0 = unit;
-    goto if_true_0__to__if_merge_2
-  if_true_0__to__if_merge_2:
+    goto $edge0
+  $edge0:
     drop p.z;
     goto if_merge_2
   if_false_1:
@@ -121,8 +121,8 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
     drop _temp_4;
     require_uninit _temp_4;
     _temp_0 = unit;
-    goto if_false_1__to__if_merge_2
-  if_false_1__to__if_merge_2:
+    goto $edge1
+  $edge1:
     drop p.y;
     goto if_merge_2
   if_merge_2:

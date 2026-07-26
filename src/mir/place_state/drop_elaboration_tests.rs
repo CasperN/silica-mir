@@ -416,8 +416,8 @@ fn f(b: bool) {
     branch(copy b) [true: initialized, false: empty]
   initialized:
     x = 1;
-    goto initialized__to__join
-  initialized__to__join:
+    goto $edge0
+  $edge0:
     drop x;
     goto join
   empty:
@@ -568,8 +568,8 @@ fn f(b: bool) {
     branch(copy b) [true: t, false: fbr]
   t:
     x = 1;
-    goto t__to__merge
-  t__to__merge:
+    goto $edge0
+  $edge0:
     drop x;
     goto merge
   fbr:
@@ -618,8 +618,8 @@ fn f(s: Sel) {
     switchEnum(s) [A: a_lbl, B: b_lbl]
   a_lbl:
     y = 1;
-    goto a_lbl__to__end
-  a_lbl__to__end:
+    goto $edge0
+  $edge0:
     drop y;
     goto end
   b_lbl:

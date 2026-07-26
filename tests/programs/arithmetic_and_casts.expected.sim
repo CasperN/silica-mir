@@ -49,8 +49,8 @@ fn<'s0> fact(n: i64, $return: &out 's0 i64) {
   if_true_0:
     $return.* = 1;
     unborrow $return;
-    goto if_true_0__to__if_merge_2
-  if_true_0__to__if_merge_2:
+    goto $edge0
+  $edge0:
     drop n;
     goto if_merge_2
   if_false_1:

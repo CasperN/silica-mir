@@ -20,15 +20,15 @@ use crate::mir::helpers::*;
 /// A non-critical edge gets a trivial extra block — negligible cost and a
 /// simpler contract for callers than "if critical do X else Y".
 ///
-/// Idempotent: repeated calls with the same `(pred, succ)` return the
-/// same split block without further mutation, so multiple elaboration
-/// passes can independently split the same edge and share the slot.
+/// Idempotent: repeated calls with the same `(pred, succ)` recognize an
+/// existing compiler-generated target block that falls through to `succ`, so
+/// multiple elaboration passes can independently split the same edge and share
+/// the slot. Generated labels are allocated fresh against the whole function;
+/// their spelling is never used as proof that an edge was already split.
 ///
 /// Panics if `pred_label` isn't in `body`, or if `pred`'s terminator
 /// doesn't currently target `succ_label` (nor a prior split for it).
 pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -> String {
-    let split_label = format!("{}__to__{}", pred_label, succ_label);
-
     let pred_idx = body
         .blocks
         .iter()
@@ -40,9 +40,7 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
         .map(|s| s.to_string())
         .collect();
 
-    // Idempotence: if pred already targets the split block, we've split
-    // this edge before — reuse it.
-    if targets.iter().any(|s| s == &split_label) {
+    if let Some(split_label) = existing_split_label(body, &targets, succ_label) {
         return split_label;
     }
 
@@ -52,6 +50,8 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
             pred_label, succ_label, targets
         );
     }
+
+    let split_label = fresh_split_label(body);
 
     let pred_span = body.blocks[pred_idx].terminator.span();
     replace_target_label(
@@ -74,6 +74,40 @@ pub fn split_edge(body: &mut FunctionBody, pred_label: &str, succ_label: &str) -
     body.blocks.insert(pred_idx + 1, split_block);
 
     split_label
+}
+
+/// Find a prior split of this edge from structure and provenance, not from a
+/// guessed label. Statements may already have been appended by an elaboration
+/// pass; only the generated block identity and fallthrough target are
+/// invariant.
+fn existing_split_label(
+    body: &FunctionBody,
+    pred_targets: &[String],
+    succ_label: &str,
+) -> Option<String> {
+    pred_targets.iter().find_map(|target| {
+        let block = body.blocks.iter().find(|block| block.label == *target)?;
+        if block.label_source.generated_kind() != Some(GeneratedKind::ControlFlowElaboration) {
+            return None;
+        }
+        match &block.terminator.kind {
+            TerminatorKind::Goto(next) if next == succ_label => Some(block.label.clone()),
+            _ => None,
+        }
+    })
+}
+
+/// Allocate a valid MIR identifier that cannot collide with any existing block
+/// in this function. Among `block_count + 1` candidates, at least one must be
+/// absent, so this search is bounded without a global counter or overflow path.
+fn fresh_split_label(body: &FunctionBody) -> String {
+    for index in 0..=body.blocks.len() {
+        let candidate = format!("$edge{}", index);
+        if body.blocks.iter().all(|block| block.label != candidate) {
+            return candidate;
+        }
+    }
+    unreachable!("block_count + 1 generated label candidates cannot all be occupied")
 }
 
 fn replace_target_label(term: &mut Terminator, old: &str, new: &str) {

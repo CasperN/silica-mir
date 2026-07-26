@@ -23,6 +23,15 @@ fn block(label: &str, term: Terminator) -> BasicBlock {
     }
 }
 
+fn control_flow_block(label: &str, term: Terminator) -> BasicBlock {
+    BasicBlock {
+        label: label.to_string(),
+        label_source: SourceInfo::generated(GeneratedKind::ControlFlowElaboration, span()),
+        statements: Vec::new(),
+        terminator: term,
+    }
+}
+
 fn goto(label: &str) -> Terminator {
     goto_term(label, source())
 }
@@ -75,7 +84,7 @@ fn split_branch_true_arm() {
     };
 
     let split = split_edge(&mut body, "entry", "t");
-    assert_eq!(split, "entry__to__t");
+    assert_eq!(split, "$edge0");
 
     // entry.true_label now points at the split.
     match &find(&body, "entry").terminator.kind {
@@ -84,14 +93,14 @@ fn split_branch_true_arm() {
             false_label,
             ..
         } => {
-            assert_eq!(true_label, "entry__to__t");
+            assert_eq!(true_label, "$edge0");
             assert_eq!(false_label, "f");
         }
         _ => panic!("expected Branch"),
     }
 
     // Split block falls through to t.
-    let sb = find(&body, "entry__to__t");
+    let sb = find(&body, "$edge0");
     assert!(sb.statements.is_empty());
     assert_eq!(sb.terminator, generated_goto("t"));
 }
@@ -239,6 +248,42 @@ fn split_edge_idempotent_on_switchenum() {
     assert_eq!(body.blocks.len(), n);
 }
 
+#[test]
+fn split_edge_recognizes_prior_split_from_provenance_and_shape() {
+    let mut body = FunctionBody {
+        locals: Vec::new(),
+        blocks: vec![
+            block("entry", goto("$prior_split")),
+            control_flow_block("$prior_split", generated_goto("target")),
+            block("target", return_()),
+        ],
+    };
+
+    let block_count = body.blocks.len();
+    let split = split_edge(&mut body, "entry", "target");
+
+    assert_eq!(split, "$prior_split");
+    assert_eq!(body.blocks.len(), block_count);
+}
+
+#[test]
+fn split_edge_skips_existing_generated_label_candidate() {
+    let mut body = FunctionBody {
+        locals: Vec::new(),
+        blocks: vec![
+            block("entry", goto("target")),
+            block("$edge0", return_()),
+            block("target", return_()),
+        ],
+    };
+
+    let split = split_edge(&mut body, "entry", "target");
+
+    assert_eq!(split, "$edge1");
+    assert_eq!(find(&body, "$edge0").terminator, return_());
+    assert_eq!(find(&body, "$edge1").terminator, generated_goto("target"));
+}
+
 // ---------- Block ordering ----------
 
 #[test]
@@ -256,7 +301,7 @@ fn split_block_inserted_after_pred() {
     let labels: Vec<&str> = body.blocks.iter().map(|b| b.label.as_str()).collect();
     // "entry" at 0, split at 1, then the rest.
     assert_eq!(labels[0], "entry");
-    assert_eq!(labels[1], "entry__to__t");
+    assert_eq!(labels[1], "$edge0");
 }
 
 // ---------- Panic paths ----------
@@ -284,6 +329,58 @@ fn split_edge_panics_when_pred_missing() {
         blocks: vec![block("entry", return_())],
     };
     split_edge(&mut body, "ghost", "entry");
+}
+
+#[test]
+#[should_panic(expected = "does not target succ")]
+fn split_edge_does_not_claim_user_authored_lookalike() {
+    let mut body = FunctionBody {
+        locals: Vec::new(),
+        blocks: vec![
+            block("entry", goto("$edge0")),
+            block("$edge0", goto("target")),
+            block("target", return_()),
+        ],
+    };
+
+    split_edge(&mut body, "entry", "target");
+}
+
+#[test]
+fn generated_split_label_round_trips_through_mir_syntax() {
+    use crate::mir::ast::Declaration;
+    use crate::mir::parser::Parser;
+    use crate::mir::pretty_print::pretty_print;
+
+    let src = "
+        fn f() {
+          entry:
+            goto target
+          target:
+            return
+        }
+        ";
+    let mut program = Parser::new(src.to_string()).parse().unwrap();
+
+    let function = program
+        .declarations
+        .iter_mut()
+        .find_map(|decl| match decl {
+            Declaration::Fn(function) => Some(function),
+            _ => None,
+        })
+        .expect("fixture contains a function");
+    split_edge(
+        function.body.as_mut().expect("function has a body"),
+        "entry",
+        "target",
+    );
+
+    let printed = pretty_print(&program);
+    assert!(printed.contains("$edge0:"));
+    Parser::new(printed)
+        .parse()
+        .expect("pretty-printed generated label must be valid MIR syntax");
 }
 
 // ---------- End-to-end: elaborated program still passes ----------
