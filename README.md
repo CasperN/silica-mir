@@ -575,10 +575,11 @@ Notes:
 - **Lifetimes are inferred body-locally (NLL-style)** but signatures
   may name lifetimes and declare outlives bounds: `fn<'a, 'b: 'a>`,
   `struct<'a, 'b: 'a> Wrap { ... }`. Bounds accept `'static` on
-  either side. The inferred body regions unify with signature lifetimes
-  at loans and calls; signature outlives axioms enter the checker's
-  transitive closure. Elision synthesizes fresh names for unannotated
-  signature slots and adds input-outlives-output axioms.
+  either side; every other lifetime named on either side must be declared
+  in the same parameter list. The inferred body regions unify with
+  signature lifetimes at loans and calls; signature outlives axioms enter
+  the checker's transitive closure. Elision synthesizes fresh names for
+  unannotated signature slots and adds input-outlives-output axioms.
 - **Return values are modeled with `&out` parameters.** Functions have no return
 type; `call` is a statement, not an rvalue. This is sret/RVO. Full Silica
 has return types but lowers to this to simplify the MIR.
