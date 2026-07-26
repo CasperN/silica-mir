@@ -2,13 +2,17 @@
 //! over. Each ref-typed place is assigned exactly one region during
 //! preliminary walk.
 //!
-//! Three flavors:
+//! Four flavors:
 //! - `Named` — a source-visible name from a fn signature or decl
 //!   (e.g., `'a`, `'sN` synthesized by elision). Two refs with the
 //!   same named region are constrained to share liveness.
 //! - `Free` — an inference variable introduced for a body-local ref
-//!   without a signature-declared name. Unifies with whatever
-//!   constraints demand.
+//!   without a signature-declared name. A `Free` region flowing into a
+//!   caller-visible slot represents a possible escaping local borrow.
+//! - `Inference` — an existential variable introduced while instantiating a
+//!   callee lifetime parameter at one call site. These are eliminated from
+//!   the call constraint graph before failures are classified; unlike
+//!   `Free`, they never represent storage owned by the caller body.
 //! - `Static` — outlives every other region. Reserved for future
 //!   `&'static T` support.
 //!
@@ -24,6 +28,7 @@ use indexmap::IndexMap;
 pub enum Region {
     Named(Lifetime),
     Free(u32),
+    Inference(u32),
     Static,
 }
 
@@ -32,13 +37,15 @@ impl std::fmt::Display for Region {
         match self {
             Region::Named(lt) => write!(f, "{}", lt),
             Region::Free(n) => write!(f, "'?{}", n),
+            Region::Inference(n) => write!(f, "'?call{}", n),
             Region::Static => write!(f, "'static"),
         }
     }
 }
 
-/// Per-function region context. Owns the fresh counter for `Free`
-/// regions and the map from every ref-typed owned path to its region.
+/// Per-function region context. Owns the counter shared by fresh body-local
+/// and call-instantiation regions, plus the map from every ref-typed owned path
+/// to its region.
 ///
 /// Signature refs (params) get `Named(lt)` from their declared type.
 /// Body-local refs (fn locals) get `Free(N)` — they have no source
@@ -54,14 +61,23 @@ impl RegionCtx {
         Self::default()
     }
 
-    /// Allocate a fresh Free region. Uses interior mutability so the
-    /// per-fn `RegionCtx` can hand out fresh regions to call-site
-    /// instantiation without requiring `&mut` cascade through every
-    /// caller of the check walk.
+    /// Allocate a fresh body-local region. Interior mutability lets later
+    /// call-site checking allocate separate `Inference` regions from the same
+    /// per-function namespace without an `&mut` cascade through the check walk.
     pub fn fresh(&self) -> Region {
         let n = self.fresh.get();
         self.fresh.set(n + 1);
         Region::Free(n)
+    }
+
+    /// Allocate an existential region for a callee lifetime parameter at one
+    /// call site. It shares the counter with body-local `Free` regions only to
+    /// keep internal debug names distinct; the enum variant carries the
+    /// semantic distinction used by constraint normalization.
+    pub fn fresh_inference(&self) -> Region {
+        let n = self.fresh.get();
+        self.fresh.set(n + 1);
+        Region::Inference(n)
     }
 
     /// Region for a specific `TypeKind::Ref(_, lt_opt, _)`. `Some(lt)` →
@@ -225,9 +241,11 @@ mod tests {
     fn named_and_free_regions_display() {
         let n = Region::Named(Lifetime("a".into()));
         let f = Region::Free(3);
+        let i = Region::Inference(4);
         let s = Region::Static;
         assert_eq!(format!("{}", n), "'a");
         assert_eq!(format!("{}", f), "'?3");
+        assert_eq!(format!("{}", i), "'?call4");
         assert_eq!(format!("{}", s), "'static");
     }
 
@@ -235,7 +253,8 @@ mod tests {
     fn fresh_advances_counter() {
         let ctx = RegionCtx::new();
         assert_eq!(ctx.fresh(), Region::Free(0));
-        assert_eq!(ctx.fresh(), Region::Free(1));
+        assert_eq!(ctx.fresh_inference(), Region::Inference(1));
+        assert_eq!(ctx.fresh(), Region::Free(2));
     }
 
     #[test]

@@ -26,6 +26,28 @@ fn<'a> plain_input_no_bound(x: &'a i64, $return: &out &'a i64) {
     return
 }
 
+# ---------- invariant call output unifies with the caller region ----------
+
+# covers: type_kind=fn lifetime_bound=call_invariant_equality
+# The exclusive output parameter makes its pointee lifetime invariant. The
+# call therefore emits both directions between the instantiated callee region
+# and caller region 'p. Normalize that equality before escape classification:
+# the fresh callee variable is not a body-local borrow and must not fire
+# LT-LifetimeEscape.
+fn<'a> invariant_identity(x: &'a i64, $return: &out &'a i64) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn<'p> invariant_forwarding(x: &'p i64, $return: &out &'p i64) {
+  ret_out: &out &'p i64;
+  entry:
+    ret_out = &out $return.*;
+    call invariant_identity(copy x, move ret_out);
+    return
+}
+
 # ---------- single outlives bound: 'a: 'b lets 'a flow into 'b slot ----------
 
 # covers: type_kind=fn lifetime_bound=single_outlives op=deref_write

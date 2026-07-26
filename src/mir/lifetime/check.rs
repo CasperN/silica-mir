@@ -556,7 +556,8 @@ impl<'a> Checker<'a> {
             })
             .collect();
         let closure = constraints::transitive_closure(&axioms);
-        for c in self.constraints.iter() {
+        let projected = self.constraints.project_inference();
+        for c in projected.iter() {
             match (&c.outlives, &c.sub) {
                 (Region::Named(_), Region::Named(_) | Region::Static) if c.outlives != c.sub => {
                     if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
@@ -607,6 +608,9 @@ impl<'a> Checker<'a> {
                 | (Region::Free(_), Region::Named(_))
                 | (Region::Free(_), Region::Free(_))
                 | (Region::Static, _) => {}
+                (Region::Inference(_), _) | (_, Region::Inference(_)) => {
+                    unreachable!("call inference region survived constraint projection")
+                }
             }
         }
     }
@@ -902,7 +906,7 @@ impl<'a> Checker<'a> {
             .meta
             .lifetime_params
             .iter()
-            .map(|lt| (lt.lifetime.clone(), self.region_ctx.fresh()))
+            .map(|lt| (lt.lifetime.clone(), self.region_ctx.fresh_inference()))
             .collect();
 
         let mut per_output_inputs: IndexMap<Region, BTreeSet<Place>> = IndexMap::new();

@@ -6,6 +6,24 @@ fn<'a, 's0> plain_input_no_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
+fn<'a, 's0> invariant_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    unborrow x;
+    return
+}
+
+fn<'p, 's0> invariant_forwarding(x: & 'p i64, $return: &out 's0 & 'p i64) {
+  ret_out: &out & 'p i64;
+  entry:
+    ret_out = &out $return.*;
+    call invariant_identity(copy x, move ret_out);
+    unborrow $return;
+    unborrow x;
+    return
+}
+
 fn<'a, 'b: 'a, 's0> single_bound_flow(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
   entry:
     $return.* = copy x;

@@ -95,8 +95,10 @@ fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_d_into_a(
 # covers: type_kind=fn lifetime_bound=call_site_no_axiom
 # Callee requires 'a: 'b axiom; caller has two refs with unrelated
 # Named regions and no declared bound between them. The instantiation
-# emits constraint Fresh0 outlives Fresh1; the caller's axiom set
-# doesn't justify it. LT-LifetimeMismatch fires.
+# variables are eliminated from the call constraint graph, exposing the
+# caller requirement 'q: 'p. The caller's axiom set does not justify it, so
+# LT-LifetimeMismatch fires rather than misclassifying the callee variable as
+# an escaping body-local borrow.
 fn<'a, 'b: 'a> callee_needs_bound(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
@@ -269,10 +271,10 @@ fn<'a> use_bad_static_container(_x: &'a i64) {
 
 # covers: type_kind=fn lifetime_bound=call_site_needs_static
 # Callee axiom is `'a: 'static`. The caller instantiates callee's 'a
-# with a fresh region and passes a Named 'p ref. The instantiated
-# axiom becomes `Fresh outlives 'static`; check_constraints fires
-# LT-LifetimeEscape because the body-local Fresh region can't
-# discharge into 'static.
+# with an inference region and passes a Named 'p ref. Eliminating the
+# call-instantiation variable exposes the caller requirement 'p: 'static;
+# check_constraints reports the missing bound rather than treating the
+# inference variable as an escaping body-local region.
 extern fn<'a: 'static> callee_needs_static(x: &'a i64);
 
 fn<'p> caller_no_static_axiom(y: &'p i64) {

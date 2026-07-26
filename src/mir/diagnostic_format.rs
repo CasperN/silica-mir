@@ -85,6 +85,7 @@ impl DiagnosticFormat {
         match region {
             Region::Named(lifetime) => self.lifetime(scope, lifetime),
             Region::Free(index) => format!("'?{}", index),
+            Region::Inference(index) => format!("'?call{}", index),
             Region::Static => "'static".to_string(),
         }
     }

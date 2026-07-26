@@ -104,6 +104,74 @@ impl ConstraintSet {
     pub fn is_empty(&self) -> bool {
         self.constraints.is_empty()
     }
+
+    /// Eliminate existential call-instantiation regions from the constraint
+    /// graph, retaining only requirements between regions meaningful in the
+    /// caller body.
+    ///
+    /// A path such as `'q -> ?callee_b -> ?callee_a -> 'p` becomes the caller
+    /// requirement `'q -> 'p`. A mutual invariant path `'p -> ?callee_a -> 'p`
+    /// becomes reflexive and is pruned by `emit`. Paths beginning at an
+    /// `Inference` region have no caller-side lower bound and impose no
+    /// requirement: the existential can be chosen to satisfy them.
+    ///
+    /// Traversal stops on the first non-`Inference` region. In particular, it
+    /// never invents transitive requirements through body-local `Free` regions
+    /// or source-visible `Named` regions; those have their own semantics in the
+    /// failure classifier.
+    pub fn project_inference(&self) -> ConstraintSet {
+        let mut outgoing: std::collections::BTreeMap<Region, Vec<&Constraint>> =
+            std::collections::BTreeMap::new();
+        for constraint in &self.constraints {
+            outgoing
+                .entry(constraint.outlives.clone())
+                .or_default()
+                .push(constraint);
+        }
+
+        let mut projected = ConstraintSet::new();
+        for root in &self.constraints {
+            if matches!(root.outlives, Region::Inference(_)) {
+                continue;
+            }
+            project_from(
+                &root.outlives,
+                root,
+                &outgoing,
+                &mut BTreeSet::new(),
+                &mut projected,
+            );
+        }
+        projected
+    }
+}
+
+fn project_from(
+    root: &Region,
+    edge: &Constraint,
+    outgoing: &std::collections::BTreeMap<Region, Vec<&Constraint>>,
+    visiting: &mut BTreeSet<Region>,
+    projected: &mut ConstraintSet,
+) {
+    let Region::Inference(_) = &edge.sub else {
+        projected.emit(
+            root.clone(),
+            edge.sub.clone(),
+            edge.cause.clone(),
+            edge.origin,
+        );
+        return;
+    };
+
+    if !visiting.insert(edge.sub.clone()) {
+        return;
+    }
+    if let Some(next_edges) = outgoing.get(&edge.sub) {
+        for next in next_edges {
+            project_from(root, next, outgoing, visiting, projected);
+        }
+    }
+    visiting.remove(&edge.sub);
 }
 
 /// Compute the transitive closure of a set of outlives axioms. Given
@@ -193,6 +261,98 @@ mod tests {
         assert!(closure.contains(&(a.clone(), c.clone())));
         assert!(closure.contains(&(a.clone(), a.clone())));
         assert!(closure.contains(&(Region::Static, a)));
+    }
+
+    #[test]
+    fn inference_projection_derives_caller_requirement() {
+        let p = Region::Named(Lifetime("p".into()));
+        let q = Region::Named(Lifetime("q".into()));
+        let callee_a = Region::Inference(0);
+        let callee_b = Region::Inference(1);
+        let mut cs = ConstraintSet::new();
+        cs.emit(
+            q.clone(),
+            callee_b.clone(),
+            ConstraintCause::Call {
+                callee: "needs_bound".into(),
+            },
+            source(),
+        );
+        cs.emit(
+            callee_b,
+            callee_a.clone(),
+            ConstraintCause::Call {
+                callee: "needs_bound".into(),
+            },
+            source(),
+        );
+        cs.emit(
+            p.clone(),
+            callee_a.clone(),
+            ConstraintCause::Call {
+                callee: "needs_bound".into(),
+            },
+            source(),
+        );
+        cs.emit(
+            callee_a,
+            p.clone(),
+            ConstraintCause::Call {
+                callee: "needs_bound".into(),
+            },
+            source(),
+        );
+
+        let projected = cs.project_inference();
+        assert_eq!(projected.len(), 1);
+        assert_eq!(projected.constraints[0].outlives, q);
+        assert_eq!(projected.constraints[0].sub, p);
+    }
+
+    #[test]
+    fn inference_projection_preserves_body_local_escape() {
+        let local = Region::Free(0);
+        let caller = Region::Named(Lifetime("p".into()));
+        let inst = Region::Inference(1);
+        let mut cs = ConstraintSet::new();
+        cs.emit(
+            local.clone(),
+            inst.clone(),
+            ConstraintCause::Call {
+                callee: "returns_ref".into(),
+            },
+            source(),
+        );
+        cs.emit(
+            inst,
+            caller.clone(),
+            ConstraintCause::Call {
+                callee: "returns_ref".into(),
+            },
+            source(),
+        );
+
+        let projected = cs.project_inference();
+        assert_eq!(projected.len(), 1);
+        assert_eq!(projected.constraints[0].outlives, local);
+        assert_eq!(projected.constraints[0].sub, caller);
+    }
+
+    #[test]
+    fn unconstrained_inference_imposes_no_caller_requirement() {
+        let inst = Region::Inference(0);
+        let caller = Region::Named(Lifetime("p".into()));
+        let mut cs = ConstraintSet::new();
+        cs.emit(
+            inst,
+            caller,
+            ConstraintCause::Call {
+                callee: "output_only".into(),
+            },
+            source(),
+        );
+
+        assert!(cs.project_inference().is_empty());
     }
 
     #[test]
