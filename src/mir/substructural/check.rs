@@ -49,7 +49,9 @@ use SubstructuralCheckCode::*;
 /// `check_return_leaks`, which callers run separately after elaboration).
 pub fn check_statements(program: &Program, env: &Env, d: &mut Diagnostics) {
     for f in program.functions() {
+        let errors_before = d.error_count();
         check_function(env, f, d);
+        d.rewrite_errors_from(errors_before, |text| f.meta.diagnostic_text(text));
     }
 }
 

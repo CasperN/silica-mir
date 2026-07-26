@@ -1,6 +1,6 @@
 pub use crate::common::{
-    FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam, Marker, Markers, OutlivesBound,
-    RefKind, SourceInfo, Span,
+    render_lifetimes_for_diagnostics, FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam,
+    Marker, Markers, OutlivesBound, RefKind, SourceInfo, Span,
 };
 
 use indexmap::IndexMap;
@@ -807,6 +807,13 @@ pub struct DeclMeta {
 }
 
 impl DeclMeta {
+    /// Render already-formatted diagnostic text without exposing names created
+    /// by lifetime elision. Canonical MIR formatting deliberately does not use
+    /// this projection.
+    pub fn diagnostic_text(&self, text: impl AsRef<str>) -> String {
+        render_lifetimes_for_diagnostics(text.as_ref(), &self.lifetime_params)
+    }
+
     pub fn name_span(&self) -> Span {
         self.name_source.span()
     }

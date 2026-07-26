@@ -277,6 +277,23 @@ impl Diagnostics {
         self.errors.retain(f);
     }
 
+    /// Rewrite newly-added user-facing diagnostic text for an enclosing
+    /// source scope. Passes use this after checking one declaration to apply
+    /// scope-dependent rendering such as hiding its elided lifetime names.
+    pub(crate) fn rewrite_errors_from(
+        &mut self,
+        from: usize,
+        mut rewrite: impl FnMut(&str) -> String,
+    ) {
+        for diagnostic in &mut self.errors[from..] {
+            diagnostic.message = rewrite(&diagnostic.message);
+            diagnostic.hint = rewrite(&diagnostic.hint);
+            for (_, label) in &mut diagnostic.secondary {
+                *label = rewrite(label);
+            }
+        }
+    }
+
     /// Annotate all errors added at or after index `from` with the given
     /// function name. Used by callers that push errors into a shared
     /// `Diagnostics` container and then want to label the batch with the

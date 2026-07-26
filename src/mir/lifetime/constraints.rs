@@ -19,29 +19,56 @@ use crate::mir::ast::Span;
 use crate::mir::lifetime::region::Region;
 use std::collections::BTreeSet;
 
+/// Why an outlives relation is required. Retained through solving so a
+/// diagnostic can explain the source-language operation that introduced the
+/// missing bound rather than only printing the two regions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConstraintCause {
+    Assignment,
+    Call { callee: String },
+    TypeRequirement { type_name: String },
+}
+
+impl ConstraintCause {
+    pub fn description(&self) -> String {
+        match self {
+            Self::Assignment => "this assignment".to_string(),
+            Self::Call { callee } => format!("the call to '{}'", callee),
+            Self::TypeRequirement { type_name } => format!("type '{}'", type_name),
+        }
+    }
+}
+
 /// One outlives relation: `outlives` outlives `sub` (i.e. `outlives`
 /// is at least as long-lived as `sub`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Constraint {
     pub outlives: Region,
     pub sub: Region,
-    /// Span at which the constraint was emitted, for diagnostics.
+    pub cause: ConstraintCause,
+    /// Source attribution at which the constraint was emitted, for diagnostics.
     pub origin: SourceInfo,
 }
 
 impl Constraint {
-    pub fn new(outlives: Region, sub: Region, origin: impl Into<SourceInfo>) -> Self {
+    pub fn new(
+        outlives: Region,
+        sub: Region,
+        cause: ConstraintCause,
+        origin: impl Into<SourceInfo>,
+    ) -> Self {
         Self {
             outlives,
             sub,
+            cause,
             origin: origin.into(),
         }
     }
 }
 
 /// Accumulated outlives constraints for one function. Deduped by
-/// `(outlives, sub)` — a repeat of the same pair keeps the earliest
-/// origin span for diagnostics. Consumed by the constraint solver.
+/// `(outlives, sub)` — a repeat of the same pair keeps the earliest cause and
+/// source attribution for diagnostics. Consumed by the constraint solver.
 #[derive(Debug, Clone, Default)]
 pub struct ConstraintSet {
     pub constraints: Vec<Constraint>,
@@ -53,13 +80,19 @@ impl ConstraintSet {
         Self::default()
     }
 
-    pub fn emit(&mut self, outlives: Region, sub: Region, origin: impl Into<SourceInfo>) {
+    pub fn emit(
+        &mut self,
+        outlives: Region,
+        sub: Region,
+        cause: ConstraintCause,
+        origin: impl Into<SourceInfo>,
+    ) {
         if outlives == sub || matches!(outlives, Region::Static) {
             return;
         }
         if self.seen.insert((outlives.clone(), sub.clone())) {
             self.constraints
-                .push(Constraint::new(outlives, sub, origin));
+                .push(Constraint::new(outlives, sub, cause, origin));
         }
     }
 
@@ -123,6 +156,7 @@ mod tests {
         cs.emit(
             Region::Named(Lifetime("a".into())),
             Region::Named(Lifetime("b".into())),
+            ConstraintCause::Assignment,
             Span::default(),
         );
         assert_eq!(cs.len(), 1);
@@ -132,14 +166,19 @@ mod tests {
     fn reflexive_constraint_is_pruned() {
         let mut cs = ConstraintSet::new();
         let a = Region::Named(Lifetime("a".into()));
-        cs.emit(a.clone(), a, Span::default());
+        cs.emit(a.clone(), a, ConstraintCause::Assignment, Span::default());
         assert!(cs.is_empty());
     }
 
     #[test]
     fn static_outliving_anything_is_pruned() {
         let mut cs = ConstraintSet::new();
-        cs.emit(Region::Static, Region::Free(0), Span::default());
+        cs.emit(
+            Region::Static,
+            Region::Free(0),
+            ConstraintCause::Assignment,
+            Span::default(),
+        );
         assert!(cs.is_empty());
     }
 

@@ -312,10 +312,81 @@ impl std::fmt::Display for Lifetime {
     }
 }
 
+/// Replace compiler-elided lifetime names with the source-facing placeholder
+/// `'_` in diagnostic text. Explicitly written parameters are never hidden,
+/// even when the user chose a name such as `'s0` that resembles the compiler's
+/// generated naming convention.
+pub fn render_lifetimes_for_diagnostics(text: &str, params: &[LifetimeParam]) -> String {
+    let hidden: std::collections::HashSet<&str> = params
+        .iter()
+        .filter(|param| {
+            matches!(
+                param.source.generated_kind(),
+                Some(GeneratedKind::LifetimeElision)
+            )
+        })
+        .map(|param| param.lifetime.0.as_str())
+        .collect();
+    if hidden.is_empty() {
+        return text.to_string();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(ch) = chars.next() {
+        if ch != '\'' {
+            out.push(ch);
+            continue;
+        }
+
+        let mut name = String::new();
+        while let Some(next) = chars.peek() {
+            if next.is_ascii_alphanumeric() || *next == '_' {
+                name.push(*next);
+                chars.next();
+            } else {
+                break;
+            }
+        }
+        if hidden.contains(name.as_str()) {
+            out.push_str("'_");
+        } else {
+            out.push('\'');
+            out.push_str(&name);
+        }
+    }
+    out
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LifetimeParam {
     pub lifetime: Lifetime,
     pub source: SourceInfo,
+}
+
+#[cfg(test)]
+mod source_lifetime_tests {
+    use super::*;
+
+    #[test]
+    fn diagnostic_rendering_hides_only_generated_elided_names() {
+        let params = vec![
+            LifetimeParam::generated(
+                Lifetime("s0".into()),
+                GeneratedKind::LifetimeElision,
+                Span::default(),
+            ),
+            LifetimeParam::written(Lifetime("s01".into()), Span::default()),
+        ];
+
+        assert_eq!(
+            render_lifetimes_for_diagnostics(
+                "found &mut 's0 i64; function's explicit lifetime is 's01",
+                &params,
+            ),
+            "found &mut '_ i64; function's explicit lifetime is 's01",
+        );
+    }
 }
 
 impl LifetimeParam {

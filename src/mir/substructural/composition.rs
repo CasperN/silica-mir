@@ -153,10 +153,13 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for type_decl in env.types.values() {
+        let errors_before = d.error_count();
         match type_decl {
             TypeDecl::Struct(s) => check_struct(s, env, d),
             TypeDecl::Enum(e) => check_enum(e, env, d),
         }
+        let meta = type_decl.meta();
+        d.rewrite_errors_from(errors_before, |text| meta.diagnostic_text(text));
     }
 }
 

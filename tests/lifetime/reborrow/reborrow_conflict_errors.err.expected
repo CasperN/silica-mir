@@ -36,17 +36,19 @@ error: at 60:5: [LT-LoanConflict] In function 'move_parent_while_child_live', bl
  61 |     call sink(move s);
     |
   hint: the borrow of 's' is active until its last use or explicit unborrow.
-error: at 73:5: [LT-LifetimeMismatch] In function 'returned_reborrow_lifetime_mismatch': lifetime mismatch: expected value with region 'b, found value with region 'a
+error: at 73:5: [LT-LifetimeMismatch] In function 'returned_reborrow_lifetime_mismatch': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'returned_reborrow_lifetime_mismatch'
     |
  72 |   entry:
  73 |     $return.* = &mut r.*;
     |     ^^^^^^^^^^^^^^^^^^^^
  74 |     unborrow $return;
     |
-error: at 73:5: [LT-LifetimeMismatch] In function 'returned_reborrow_lifetime_mismatch': lifetime mismatch: expected value with region 'a, found value with region 'b
+  hint: declare bound 'a: 'b on function 'returned_reborrow_lifetime_mismatch' or change the value flow so it is not required
+error: at 73:5: [LT-LifetimeMismatch] In function 'returned_reborrow_lifetime_mismatch': this assignment requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'returned_reborrow_lifetime_mismatch'
     |
  72 |   entry:
  73 |     $return.* = &mut r.*;
     |     ^^^^^^^^^^^^^^^^^^^^
  74 |     unborrow $return;
     |
+  hint: declare bound 'b: 'a on function 'returned_reborrow_lifetime_mismatch' or change the value flow so it is not required

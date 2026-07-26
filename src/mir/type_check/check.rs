@@ -124,6 +124,7 @@ impl Env {
     pub fn typecheck(&self, program: &Program, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
+            let errors_before = d.error_count();
             let (container_kind, item_kind, duplicate_code, items) = match type_decl {
                 TypeDecl::Struct(s) => (
                     "struct",
@@ -181,11 +182,14 @@ impl Env {
                 }
             }
             validate_lifetime_decls(meta, container_kind, d);
+            d.rewrite_errors_from(errors_before, |text| meta.diagnostic_text(text));
         }
 
         // Validate all functions
         for f in program.functions() {
+            let errors_before = d.error_count();
             self.typecheck_function(f, d);
+            d.rewrite_errors_from(errors_before, |text| f.meta.diagnostic_text(text));
         }
     }
 
@@ -483,11 +487,20 @@ impl Env {
                         .type_of_operand(arg, stmt_span, locals)
                         .map_err(with_context)?;
                     if !self.types_match(param_ty, &arg_ty) {
+                        let expected = match target {
+                            Operand::Const(ConstVal::FnName(name, _)) => self
+                                .functions
+                                .get(name)
+                                .map(|callee| callee.meta.diagnostic_text(param_ty.to_string()))
+                                .unwrap_or_else(|| func.meta.diagnostic_text(param_ty.to_string())),
+                            _ => func.meta.diagnostic_text(param_ty.to_string()),
+                        };
+                        let found = func.meta.diagnostic_text(arg_ty.to_string());
                         return Err(stmt_diag(
                             CallArgTypeMismatch,
                             format!(
                                 "Call argument {} type mismatch. Expected {}, found {}",
-                                i, param_ty, arg_ty
+                                i, expected, found
                             ),
                         ));
                     }

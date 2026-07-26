@@ -17,6 +17,7 @@ use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
 use super::constraints;
+use super::constraints::ConstraintCause;
 use super::loans::{
     self, consume_operand, is_compatible, is_elab_inserted_drop, paths_conflict, transfer_stmt,
     AccessKind, LoanMap,
@@ -107,13 +108,8 @@ fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
             if c.outlives == c.sub || closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                 continue;
             }
-            let msg = format!(
-                "lifetime mismatch: expected value with region {}, found value with region {}",
-                c.sub, c.outlives,
-            );
             d.push_error(
-                Diagnostic::new(LifetimeCode::LifetimeMismatch, c.origin, msg)
-                    .in_function(&func.meta.name),
+                missing_bound_diagnostic(c, "function", &func.meta).in_function(&func.meta.name),
             );
         }
     }
@@ -167,18 +163,30 @@ fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
                 if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                     continue;
                 }
-                let msg = format!(
-                    "In {} '{}': field type requires bound {}: {} but no such bound is declared",
-                    container_kind, meta.name, c.outlives, c.sub,
-                );
-                d.push_error(Diagnostic::new(
-                    LifetimeCode::LifetimeMismatch,
-                    c.origin,
-                    msg,
-                ));
+                d.push_error(missing_bound_diagnostic(c, container_kind, meta));
             }
         }
     }
+}
+
+fn missing_bound_diagnostic(
+    constraint: &constraints::Constraint,
+    owner_kind: &str,
+    owner: &DeclMeta,
+) -> Diagnostic {
+    let bound = format!("{}: {}", constraint.outlives, constraint.sub);
+    let message = owner.diagnostic_text(format!(
+        "{} requires lifetime bound {}, but it is not implied by the declared bounds on {} '{}'",
+        constraint.cause.description(),
+        bound,
+        owner_kind,
+        owner.name,
+    ));
+    let hint = owner.diagnostic_text(format!(
+        "declare bound {} on {} '{}' or change the value flow so it is not required",
+        bound, owner_kind, owner.name,
+    ));
+    Diagnostic::new(LifetimeCode::LifetimeMismatch, constraint.origin, message).with_hint(hint)
 }
 
 /// Map a lifetime to its region form. The reserved name `'static`
@@ -265,7 +273,14 @@ fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::Constrai
                     for bound in &meta.outlives {
                         let a_lt = sub.get(&bound.longer).copied().unwrap_or(&bound.longer);
                         let b_lt = sub.get(&bound.shorter).copied().unwrap_or(&bound.shorter);
-                        cs.emit(name_to_region(a_lt), name_to_region(b_lt), span);
+                        cs.emit(
+                            name_to_region(a_lt),
+                            name_to_region(b_lt),
+                            ConstraintCause::TypeRequirement {
+                                type_name: name.clone(),
+                            },
+                            span,
+                        );
                     }
                 }
             }
@@ -446,18 +461,19 @@ fn emit_variance(
     inst: &Region,
     v: Variance,
     constraints: &mut constraints::ConstraintSet,
+    cause: ConstraintCause,
     span: Span,
 ) {
     match v {
         Variance::Contravariant => {
-            constraints.emit(caller.clone(), inst.clone(), span);
+            constraints.emit(caller.clone(), inst.clone(), cause, span);
         }
         Variance::Covariant => {
-            constraints.emit(inst.clone(), caller.clone(), span);
+            constraints.emit(inst.clone(), caller.clone(), cause, span);
         }
         Variance::Invariant => {
-            constraints.emit(caller.clone(), inst.clone(), span);
-            constraints.emit(inst.clone(), caller.clone(), span);
+            constraints.emit(caller.clone(), inst.clone(), cause.clone(), span);
+            constraints.emit(inst.clone(), caller.clone(), cause, span);
         }
     }
 }
@@ -508,7 +524,8 @@ struct Checker<'a> {
 
 impl<'a> Checker<'a> {
     fn error(&self, code: LifetimeCode, source: impl Into<SourceInfo>, msg: String) -> Diagnostic {
-        Diagnostic::new(code, source, msg).in_function(&self.func.meta.name)
+        Diagnostic::new(code, source, self.func.meta.diagnostic_text(msg))
+            .in_function(&self.func.meta.name)
     }
 
     /// Enforce accumulated outlives constraints. The only satisfiable
@@ -537,12 +554,10 @@ impl<'a> Checker<'a> {
                     if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                         continue;
                     }
-                    let msg = format!(
-                        "lifetime mismatch: expected value with region {}, found value with region {}",
-                        c.sub, c.outlives,
+                    self.d.push_error(
+                        missing_bound_diagnostic(c, "function", &self.func.meta)
+                            .in_function(&self.func.meta.name),
                     );
-                    self.d
-                        .push_error(self.error(LifetimeCode::LifetimeMismatch, c.origin, msg));
                 }
                 // Escape: a Free-region loan (body-local storage) flowing
                 // into a caller-visible signature slot — either a Named
@@ -663,10 +678,15 @@ impl<'a> Checker<'a> {
         // (source outlives dst is enough). Exclusive-write kinds are
         // invariant (source outlives dst AND dst outlives source).
         let target_kind = ref_kind_of_place(&target_place, &self.locals, self.env);
-        self.constraints
-            .emit(src_region.clone(), t_r.clone(), stmt.source);
+        self.constraints.emit(
+            src_region.clone(),
+            t_r.clone(),
+            ConstraintCause::Assignment,
+            stmt.source,
+        );
         if !matches!(target_kind, Some(RefKind::Shared)) {
-            self.constraints.emit(t_r, src_region, stmt.source);
+            self.constraints
+                .emit(t_r, src_region, ConstraintCause::Assignment, stmt.source);
         }
     }
 
@@ -876,6 +896,7 @@ impl<'a> Checker<'a> {
                 Variance::Contravariant,
                 loans,
                 &mut per_output_inputs,
+                callee_name,
                 span,
             );
         }
@@ -889,7 +910,14 @@ impl<'a> Checker<'a> {
                 .get(&bound.shorter)
                 .cloned()
                 .unwrap_or_else(|| name_to_region(&bound.shorter));
-            self.constraints.emit(a_r, b_r, span);
+            self.constraints.emit(
+                a_r,
+                b_r,
+                ConstraintCause::Call {
+                    callee: callee_name.clone(),
+                },
+                span,
+            );
         }
 
         for (arg, param) in args.iter().zip(callee.params.iter()) {
@@ -960,6 +988,7 @@ impl<'a> Checker<'a> {
         variance: Variance,
         loans: &LoanMap,
         per_output_inputs: &mut IndexMap<Region, BTreeSet<Place>>,
+        callee_name: &str,
         span: Span,
     ) {
         match &callee_ty.kind {
@@ -969,7 +998,16 @@ impl<'a> Checker<'a> {
                     self.region_ctx
                         .region_of_place(caller_place, &self.locals, self.env)
                 {
-                    emit_variance(&caller_r, &inst_region, variance, self.constraints, span);
+                    emit_variance(
+                        &caller_r,
+                        &inst_region,
+                        variance,
+                        self.constraints,
+                        ConstraintCause::Call {
+                            callee: callee_name.to_string(),
+                        },
+                        span,
+                    );
                     if matches!(variance, Variance::Contravariant | Variance::Invariant) {
                         if let Some(owned) = as_owned_path(caller_place) {
                             if loans.contains_key(&owned) {
@@ -995,6 +1033,7 @@ impl<'a> Checker<'a> {
                     inner_variance,
                     loans,
                     per_output_inputs,
+                    callee_name,
                     span,
                 );
             }
@@ -1018,6 +1057,9 @@ impl<'a> Checker<'a> {
                                 &inst_region,
                                 variance.combine(Variance::Invariant),
                                 self.constraints,
+                                ConstraintCause::Call {
+                                    callee: callee_name.to_string(),
+                                },
                                 span,
                             );
                         }
@@ -1032,6 +1074,7 @@ impl<'a> Checker<'a> {
                         variance.combine(Variance::Invariant),
                         loans,
                         per_output_inputs,
+                        callee_name,
                         span,
                     );
                 }
@@ -1044,6 +1087,7 @@ impl<'a> Checker<'a> {
                     variance,
                     loans,
                     per_output_inputs,
+                    callee_name,
                     span,
                 );
             }

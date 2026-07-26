@@ -1,1 +1,2 @@
-error: [LT-LifetimeMismatch] In function 'mk_missing': lifetime mismatch: expected value with region 'a, found value with region 'b
+error: [LT-LifetimeMismatch] In function 'mk_missing': type 'Wrap' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'mk_missing'
+  hint: declare bound 'b: 'a on function 'mk_missing' or change the value flow so it is not required

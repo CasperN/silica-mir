@@ -5,13 +5,14 @@ error: at 26:5: [LT-LifetimeEscape] In function 'dangling_return': borrow escape
     |     ^^^^^^^^^^^^^^
  27 |     return
     |
-error: at 40:5: [LT-LifetimeMismatch] In function 'wrong_lifetime_side': lifetime mismatch: expected value with region 'a, found value with region 'b
+error: at 40:5: [LT-LifetimeMismatch] In function 'wrong_lifetime_side': this assignment requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'wrong_lifetime_side'
     |
  39 |     unborrow x;
  40 |     $return.* = copy y;
     |     ^^^^^^^^^^^^^^^^^^
  41 |     return
     |
+  hint: declare bound 'b: 'a on function 'wrong_lifetime_side' or change the value flow so it is not required
 error: at 53:5: [LT-LifetimeEscape] In function 'escape_struct_lifetime': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
     |
  52 |     local = 1;
