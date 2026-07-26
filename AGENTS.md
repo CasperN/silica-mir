@@ -1,373 +1,414 @@
 # AGENTS.md
 
-Agent-facing reference for the Silica-MIR compiler. Read this first
-if you're an agent editing or auditing the repo — the file is the
-cross-tool convention (Codex, Cursor, Antigravity, Claude Code).
-Human tutorial and semantic prose live in [README.md](./README.md);
-deferred work in [PUNCHLIST.md](./PUNCHLIST.md).
+Agent-facing conventions for the Silica compiler.
+
+Current compiler behavior is defined by code and tests. This file records
+stable semantics, engineering invariants, and workflow conventions that are
+expensive to rediscover. It deliberately does not duplicate fast-changing
+implementation details such as the exact pass order or a complete source-file
+map.
+
+Human-oriented rationale and examples live in [README.md](./README.md).
+Deferred work and known gaps live in [PUNCHLIST.md](./PUNCHLIST.md).
+
 
 ## What Silica is
 
-Heavily Rust inspired, but with three deliberate departures:
-(1) **substructural types beyond affine** — linear, affine, relevant,
-and unrestricted are all first-class, selected via `Copy`/`Drop`
-marker combinations;
-(2) **immovable-by-default values** that opt into bitwise moves via
-a `Move` marker (coroutines can hold self-references without pinning);
-(3) **algebraic effects via first-class coroutines** — iterators,
-async, exceptions, generators become library features on one
-`Co<T ! E>` primitive.
+Silica is Rust-inspired, with three central differences:
 
-This crate is the checker + MIR + LLVM codegen. It parses either the
-surface HLL (`.si`) or the MIR (`.sim`) directly, runs a shared
-pipeline (type-check, substructural, init-state, NLL, drop-elab,
-lifetime), and emits textual LLVM IR. Coroutines and effects are
-deferred behind current work; substructural + immovable + regions +
-generics are landed.
+1. Substructural types are first-class: linear, affine, relevant, and
+   unrestricted usage are selected through `Copy` and `Drop`.
+2. Values are immovable by default. Bitwise relocation requires `Move`.
+3. Effects are intended to build on first-class coroutines rather than
+   compiler-specific iterator, async, exception, and generator machinery.
 
-## Compiler map
+The compiler accepts the surface HLL (`.si`) and MIR (`.sim`). HLL is parsed,
+checked, and lowered to MIR; both inputs then use the MIR pipeline. The backend
+emits textual LLVM IR.
 
-```
-src/lib.rs                  Pipeline entry: `elaborate_and_check_mir`
-src/main.rs                 CLI + diagnostic rendering
-src/common.rs               Lifetime, Marker, Markers, RefKind, Span
-src/diagnostics.rs          Diagnostic + DiagCode aggregator
-src/hll/parser.rs, ast.rs   HLL frontend (tree-sitter CST → HLL AST)
-src/hll/type_check.rs       HM-style inference on HLL AST
-src/hll/mut_check.rs        `let mut` enforcement
-src/hll/lowering.rs         HLL AST → MIR CFG (materializes $return, if/match to CFG)
-src/mir/parser.rs           MIR frontend (tree-sitter CST → MIR AST)
-src/mir/ast.rs              MIR types, places, operands, statements, terminators
-src/mir/pretty_print.rs     Elaborated-MIR renderer used by fixture tests
-src/mir/type_check/         Declarations, stmt/rvalue/place typing, generic bounds
-src/mir/substructural/      Marker composition (`class_of`) + stmt-level Copy/Move
-src/mir/place_state/        Init lattice, ref obligations, copy-relax, drop-elab
-src/mir/lifetime/           Regions, loans, NLL, elision, outlives constraint solver
-src/mir/variant_flow.rs     Enum refinement + switchEnum exhaustiveness
-src/mir/block_reachability.rs   Dead-block warnings
-src/mir/codegen/            LLVM IR emission (assumes MIR is well-checked)
-src/mir/dataflow.rs         Shared fwd/bwd CFG framework
-src/mir/cfg_edit/           split_edge and other CFG rewrites
-src/mir/mono/               Monomorphization (post-check, pre-codegen)
+The exact implemented feature set changes frequently. Consult code, fixtures,
+and `PUNCHLIST.md` rather than maintaining a second status list here.
 
-tests/<pass_or_feature>/    Fixture dirs. See "Fixture writing" below.
-tests/fixtures.rs           Fixture runner (single `all_fixtures` test).
-tree-sitter-silica/         Grammar. Common rules in common/grammar.js.
-                            Regenerate: `cd tree-sitter-silica/{hll,mir}
-                            && tree-sitter generate`
-```
+## Stable compiler contracts
 
-## Pipeline order (from `elaborate_and_check_mir`)
+- HLL is expression-oriented; MIR is an explicit CFG of basic blocks.
+- MIR makes value use explicit through `copy`, `move`, and pre-elaboration
+  `take` operands.
+- Elaboration makes implicit ownership transitions explicit, notably with
+  `unborrow` and `drop`.
+- Checkers validate MIR without silently repairing the property they check.
+- The elaborated MIR is the canonical artifact pinned by ordinary success
+  fixtures.
+- MIR functions return through `&out` parameters; MIR function types have no
+  result position.
+- Lifetime loans and pointee initialization obligations are separate analyses:
+  lifetime checking decides whether access conflicts with an active loan;
+  place-state checking decides whether the pointee is in the required state.
+- Function and type signatures live in the type environment; bodies remain in
+  the program being analyzed and elaborated.
+- Monomorphization occurs after semantic checking, at the codegen boundary.
+- Raw pointers opt out of safe-reference guarantees: they create no loan and
+  dereference does not prove initialization, lifetime, or alias safety.
 
-Pre-elab checks → elaboration → post-elab checks:
+For the exact current ordering and error-recovery behavior, read
+`src/lib.rs`; do not reproduce its pass list here.
 
-1. `type_check` — declarations, stmt/rvalue/place typing, generic bounds.
-2. `substructural::composition` — decl-side marker consistency.
-3. `layout::check_sizes_finite` — reject by-value recursion.
-4. `substructural::check` — stmt-level Copy/Move enforcement.
-5. `variant_flow` — switchEnum exhaustiveness + variant refinement.
-6. `block_reachability` — dead-block warnings.
-7. **`copy_relaxation`** — `take` → `move`/`copy` based on demand.
-8. **`nll`** — insert `unborrow` at last-use.
-9. **`drop_elaboration`** — insert `drop` before returns for Init-at-return Drop values.
-10. `place_state::check` — init lattice + ref obligations on elaborated MIR.
-11. `lifetime::check` — loans + outlives constraints on elaborated MIR.
 
-Elaboration passes (7–9) run only if pre-elab is error-free. Post-elab
-checks (10–11) validate the canonical elaborated form.
+## Sources of truth
 
-## Load-bearing invariants when editing
+When documentation and implementation disagree, use these authorities:
 
-1. **Silent-fallthrough discipline.** Every `_ => {}`, `let ... else { return; }`,
-   or `else { continue; }` in `src/mir/{place_state,lifetime,substructural,type_check,variant_flow}`
-   must exhaustive-match or carry a comment justifying the fallthrough.
-   Adding a new `TypeKind` / `PathStep` / `RefKind` / `InitState` /
-   `Operand` variant is a trigger to re-audit these sites.
+- Pipeline order and pass interaction:
+  [`src/lib.rs`](./src/lib.rs), especially `lower_hll_to_mir`,
+  `check_mir_without_elaboration`, and `elaborate_and_check_mir`.
+- Accepted syntax:
+  [`tree-sitter-silica/common/grammar.js`](./tree-sitter-silica/common/grammar.js),
+  [`tree-sitter-silica/hll/grammar.js`](./tree-sitter-silica/hll/grammar.js),
+  and [`tree-sitter-silica/mir/grammar.js`](./tree-sitter-silica/mir/grammar.js).
+- HLL and MIR data models:
+  [`src/hll/ast.rs`](./src/hll/ast.rs),
+  [`src/mir/ast.rs`](./src/mir/ast.rs), and
+  [`src/common.rs`](./src/common.rs).
+- Fixture selection, output rendering, and golden-file updates:
+  [`tests/fixtures.rs`](./tests/fixtures.rs).
+- Current user-visible behavior: fixture inputs and their expected siblings.
+- Intended semantics and rationale: [README.md](./README.md).
+- Deferred or incomplete behavior: [PUNCHLIST.md](./PUNCHLIST.md).
 
-2. **`env.field_type` only handles struct fields.** For arrays, dispatch
-   on `TypeKind::Array` separately and use the element type. Three
-   soundness bugs lived in walks that missed this.
+Do not infer current behavior from stale prose when the relevant code or
+fixture can answer directly.
 
-3. **`class_of(Custom(_, args))` is decl-side + use-site duality.** The
-   decl body was verified assuming declared bounds; use sites verify
-   the args satisfy those bounds. No substitution required for class-of.
+## Substructural semantics
 
-4. **Blanket implications**: `Copy + Drop → Move`, `Clone + Destroy → Transfer`,
-   etc. Implemented in `Markers::implies` in `src/common.rs`. Overridable
-   by explicit declaration.
+`Copy`, `Drop`, and `Move` are independent capabilities:
 
-5. **`Region::Static` corresponds to `Lifetime("static")`.** The special
-   name check is `lt.0 == "static"` (Lifetime is a tuple struct around
-   String). `'static` is reserved and cannot be declared as a user
-   lifetime param.
+| Markers | Repeated use | May forget | Bitwise move |
+|---|---:|---:|---:|
+| none | no | no | no |
+| `Copy` | yes | no | no |
+| `Drop` | no | yes | no |
+| `Move` | no | no | yes |
+| `Copy + Drop` | yes | yes | yes, implied |
+| `Copy + Move` | yes | no | yes |
+| `Drop + Move` | no | yes | yes |
+| `Copy + Drop + Move` | yes | yes | yes; explicit `Move` is redundant |
 
-## Fixture writing
+The only implemented blanket implication is:
 
-### Layout
-- `tests/<topic>/<name>.sim` + `<name>.expected.sim` — success case;
-  compares pretty-printed **elaborated** MIR.
-- `<name>.sim` + `<name>.err.expected` — expects diagnostics; compares
-  rendered output with source-snippet caret.
-- `<name>.preelaborated.sim` + `<name>.preelaborated.expected.sim`|`.err.expected`
-  — validates already-elaborated MIR without re-running NLL/place-state
-  elaboration.
-- `tests/codegen/foo.expected.ll` — full pipeline + codegen → LLVM IR.
-
-### Rules
-- **Prefer extending existing fixture files** to creating new ones.
-  Density > file count. Consolidate opportunistically.
-- **HLL (.si) over MIR (.sim)** when both work — exercises lowering
-  too.
-- **Every DiagCode has a negative fixture** pinning its rendered output.
-- **Every positive fixture pairs with a negative fixture** for the rule's
-  other side.
-- **`# covers:` tag on each fn**: `# covers: type_kind=X ref_kind=Y op=Z class=W ...`
-  per the feature-list axes in README §Testing discipline.
-
-### Running as a subagent
-- Write .sim files with `Write`.
-- Capture actual compiler output per case with
-  `cargo run --quiet --bin silica-mir -- <file>`. Report a table
-  (cell | expected | actual | ✅ / ❌) back to the parent.
-- **DO NOT run `UPDATE_EXPECT=1 cargo test`.** The parent will
-  regenerate all expected files at a known-quiescent state. If you
-  run it mid-fanout, you may bless another concurrent agent's
-  incomplete fixture state.
-
-### Feature-list axes for `# covers:`
-- `type_kind`: scalar, shared_ref, exclusive_ref, raw_ptr, struct, enum, array, nested_aggregate, param
-- `ref_kind`: shared, mut, out, drop, uninit
-- `class`: L, C, D, M, CD, CM, DM, CDM (subsets of {Copy, Drop, Move})
-- `op`: copy, move, drop, borrow, unborrow, deref_read, deref_write, call_arg, assign_target, return
-- `init`: NeverInit, Init, Moved, Partial, Diverged
-- `cfg`: straight, if, match, loop
-- `boundary`: intra_fn, call, return_out, extern
-- `lifetime_bound`: unbounded, single_outlives, chain, cyclic, diamond, static_lhs, static_rhs, etc.
-
-## Common pitfalls
-
-- **MIR fns have no return arrow.** Returns go through `&out $return`
-  parameters. `fn foo() -> R` is HLL syntax only; MIR is
-  `fn foo($return: &out R)`.
-- **HLL doesn't propagate user-written `'a` on `Ref` types** through
-  `lower_type` today. Test outlives bounds via `.sim` files, not `.si`.
-  See punchlist "HLL Ref-type lifetime passthrough."
-- **`$return` isn't visible in HLL bodies.** In HLL you return by making
-  the block's trailing expression the return value; the lowering
-  materializes `$return.* = <expr>`.
-- **MIR grammar quirks**: struct/enum field separators are
-  whitespace-or-comma (not required); HLL is comma-required. Function
-  bodies use blocks with `label:` headers and terminators like `return`,
-  `goto label`, `branch(op) [true: l1, false: l2]`, `switchEnum(place)
-  [V1: l1, V2: l2]`, `abort`, `unreachable`.
-- **`drop`/`move`/`copy`/`&out`/`&drop` on a dynamic-index target**
-  (`a[copy i]`) are rejected. Slot replacement at a dynamic index goes
-  through `p = &mut a[i]; drop p.*; p.* = new;`.
-- **Version control uses `jj`, not `git`.** Common commands: `jj log`,
-  `jj status`, `jj diff`, `jj describe -m "..."`, `jj new`, `jj split
-  PATHS...`.
-
-## When to audit which files
-
-When adding this feature | Grep + review these dispatches
---- | ---
-New `TypeKind` variant | `src/mir/{place_state,lifetime,substructural,type_check,variant_flow,drop_elaboration}.rs` — search `match .*ty.kind\|match &ty\.kind` and update every exhaustive/wildcard match.
-New `PathStep` variant | Same set; search `match.*step\|PathStep::`.
-New `RefKind` | Same + `src/mir/lifetime/*` for loan-conflict matrix.
-New `Operand` variant | `apply_operand_move`, `check_operand_read`, `operand_place`, copy_relaxation dispatch sites.
-New `InitState` variant | `place_state/analysis.rs` `join_state`, `canonicalize`, `read_at`, `write_at`, `move_at`, `find_return_leaks`, `walk_overwrite_leaves`.
-New DiagCode | Add positive + negative fixture; extend the corresponding module's enum with a doc-comment.
-
-## Grammar (denormalized for grep)
-
-### MIR (`tree-sitter-silica/mir/grammar.js`)
-
-```
-place =
-    | var
-    | place.field
-    | place as Variant
-    | place.*
-    | place[operand]
-
-operand =
-    | copy place | move place | take place
-    | const
-
-rvalue =
-    | operand
-    | & place | &mut place | &out place | &drop place | &uninit place
-    | &raw place
-    | Name::Variant(operand)
-    | [operand, ...]
-
-statement =
-    | place = rvalue
-    | call operand ( operand, ... )
-    | drop place
-    | unborrow place
-
-terminator =
-    | goto label
-    | return
-    | branch(operand) [ true: label, false: label ]
-    | switchEnum(place) [ Variant: label, ... ]
-    | abort
-    | unreachable
-
-markers     = : marker (+ marker)*     # marker ∈ {Copy, Drop, Move}
-type_params = < param (, param)* [,] >
-param       = type_param | lifetime_param
-type_param  = identifier [markers]
-lifetime_param = 'ident [: 'ident (+ 'ident)*]     # outlives bounds inline
-type_args   = < type (, type)* [,] >
-
-function =
-    | extern fn name ( var: type, ... ) ;
-    | fn [type_params] name ( var: type, ... ) { (var: type ;)* basic_block* }
-
-struct_decl = struct [type_params] identifier [markers] { (field: type)* }
-enum_decl   = enum   [type_params] identifier [markers] { (Variant: type)* }
+```text
+Copy + Drop → Move
 ```
 
-### HLL (`tree-sitter-silica/hll/grammar.js`)
+Higher-tier traits such as `Clone`, `Destroy`, or `Transfer` may appear in
+design prose but are not part of the current marker representation.
 
-Same top-level structure. Key differences:
-- Expression-oriented: `if`, `match`, `loop`, blocks all evaluate to
-  values.
-- Postfix `match`: `expr match { arm, ... }`.
-- Postfix deref: `expr.*` (borrowed from Zig).
-- `&deinit T` (surface spelling for MIR's `&drop T`).
-- Function types have return arrows: `fn(T,...) -> R`.
-- No `$return` — trailing expr of the body is the return value.
+For aggregates, a declared marker must be satisfied compositionally by every
+field or variant payload. Arrays inherit the element class.
 
-See README §HLL Grammar for the full HLL grammar and §HLL Notes for
-lowering rules.
+Generic marker bounds have two sides:
 
-## Semantics (denormalized)
+- Declaration side: a generic body is checked assuming each parameter’s
+  declared bounds.
+- Use side: concrete arguments must satisfy those bounds at every
+  instantiation.
 
-Full prose and worked examples live in README §Semantics. Below is the
-tight reference agents grep repeatedly.
+Together these allow the class of a valid custom-type instantiation to be read
+from the declaration without substituting its arguments during `class_of`.
 
-### Init-state lattice
+`Drop` currently means that a value may be explicitly consumed or forgotten.
+It should not be confused with a fully implemented runtime destructor system.
 
-Every place carries one of:
+## Reference obligations
 
-| state       | meaning                                                       |
-|-------------|---------------------------------------------------------------|
-| `NeverInit` | Declared, never written.                                       |
-| `Init`      | Fully written; readable.                                       |
-| `Moved`     | Written, then consumed by `move` or `drop`.                    |
-| `Partial`   | Per-field/per-slot state for structs and arrays.               |
-| `Diverged`  | CFG join found predecessors that disagreed. Fails every check. |
+A reference kind specifies both a pointee-state obligation and the markers of
+the reference value itself:
 
-- Reads (`copy`, `switchEnum`, most borrows) require `Init`.
-- Writing every field folds `Partial` → `Init`; consuming every field folds it to `Moved`.
-- `Uninit` shorthand = `NeverInit ∨ Moved`.
-- Dynamic-index places (`a[i]` where `i` isn't a constant) have no stable identity: `move`/`drop`/state-changing borrows are rejected; only reads and state-preserving borrows on uniformly-Init arrays are allowed.
+| Kind | Required at creation | Required at expiry | Reference markers |
+|---|---|---|---|
+| `&T` | initialized | initialized | `Copy + Drop + Move` |
+| `&mut T` | initialized | initialized | `Drop + Move` |
+| `&out T` | uninitialized | initialized | `Move` |
+| `&drop T` | initialized | uninitialized | `Move` |
+| `&uninit T` | uninitialized | uninitialized | `Drop + Move` |
 
-### Reference (cur, post) obligations
+`&mut` and `&uninit` preserve pointee state. `&out` and `&drop` change it and
+therefore carry an obligation that cannot be forgotten. The obligation moves
+with the reference value.
 
-| kind      | current   | post      | class (substructural)   |
-|-----------|-----------|-----------|-------------------------|
-| `&`       | `Init`    | `Init`    | Copy + Drop (unrestricted) |
-| `&mut`    | `Init`    | `Init`    | Drop, not Copy (affine)   |
-| `&out`    | Uninit    | `Init`    | linear (neither)          |
-| `&drop`   | `Init`    | Uninit    | linear (neither)          |
-| `&uninit` | Uninit    | Uninit    | Drop, not Copy (affine)   |
+HLL borrow expressions spell the `&drop` operation as `&deinit expr`; MIR uses
+`&drop place`. The reference type remains `&drop T`.
 
-- `&mut` / `&uninit` are state-**preserving** — the pointee's init state
-  is unchanged from creation to expiry, so the ref itself is `Drop`.
-- `&out` / `&drop` are state-**changing** — the outstanding obligation
-  can't be forgotten, so the ref is linear.
-- `&T` shared carries no obligation.
-- HLL surface spells `&drop` as `&deinit`; both map to `RefKind::Drop`.
+## Initialization state
 
-### Substructural markers
+Every tracked owned place has one of these states:
 
-Two axes: how many times a value may be used (class) and how it moves
-(the twelve traits table in README §Substructural traits).
+| State | Meaning |
+|---|---|
+| `NeverInit` | Declared but never written |
+| `Init` | Fully initialized and readable |
+| `Moved` | Previously initialized, then consumed |
+| `Partial` | Aggregate descendants have different states |
+| `Diverged` | CFG predecessors disagree about the state |
 
-Declared markers → class:
+Important consequences:
 
-| markers                | class        | may use ≥2 | may forget |
-|------------------------|--------------|------------|------------|
-| (none)                 | linear       | no         | no         |
-| `Drop`                 | affine       | no         | yes        |
-| `Copy`                 | relevant     | yes        | no         |
-| `Copy + Drop`          | unrestricted | yes        | yes        |
+- Reads require `Init`.
+- Writing every aggregate leaf folds `Partial` to `Init`.
+- Consuming every aggregate leaf leaves the aggregate uninitialized.
+- `NeverInit` and `Moved` both satisfy an “uninitialized” precondition.
+- `Diverged` is not silently accepted by later checks.
+- Returning normally requires every owned value to have been consumed.
+- `abort` and `unreachable` have no returning continuation and therefore do
+  not require caller-observable cleanup.
 
-Blanket implications (in `Markers::implies` at `src/common.rs`):
+A dynamic array index has no stable move-path identity. Consequently:
 
-- `Copy + Drop → Move` (bitwise move = bitwise copy + no-op forget).
-- `Copy → CoClone`, `Drop → CoDestroy`, `Move → CoTransfer`, and so on
-  down the "twelve traits" table.
-- Chains apply repeatedly, so `Copy + Destroy → CoTransfer`.
+- `copy`, shared borrow, and `&mut` are permitted only when the containing
+  state proves the selected element initialized.
+- `&uninit` is permitted only when the containing state proves the selected
+  element uninitialized.
+- `move`, `drop`, assignment, `&out`, and `&drop` through a dynamic index are
+  forbidden.
+- Replacement at a runtime index goes through a state-preserving mutable
+  reference.
 
-Composition (`class_of` in `src/mir/substructural/composition.rs`):
+## Syntax orientation
 
-- A struct's declared marker `M` requires every field's type to satisfy
-  `M`. Same for enum variants.
-- `class_of(Array(elem, _)) = class_of(elem)`.
-- `class_of(Ref(kind, _, _))` is determined by the ref kind's obligation
-  table above.
-- `class_of(RawPtr(_))` = `Copy + Drop + Move` (unrestricted, unsafe).
+The following BNF is a compact reading guide, not the parser specification.
+The Tree-sitter grammars named under “Sources of truth” are authoritative.
 
-### Generic bound duality
+### Shared declarations and types
 
-- **Decl side.** `struct<T: Copy> Box: Copy { inner: T }` is verified
-  assuming `T: Copy`. Fields of type `Param(T)` are accepted under the
-  declared bound.
-- **Use side.** Every `Box<X>` requires `X` to satisfy the declared
-  bound at the use site.
+```text
+program       = declaration*
 
-Together these justify `class_of(Custom(_, args))` without substitution.
+declaration   = struct_decl | enum_decl | function_decl
 
-### Lifetime bounds
+markers       = ":" marker ("+" marker)*
+marker        = "Copy" | "Drop" | "Move"
 
-- Inline on decl type_params: `fn<'a, 'b: 'a + 'static> foo(...)`.
-- Stored on `DeclMeta.outlives: Vec<(subject, must_outlive)>`.
-- Consumed by `check_constraints` in `src/mir/lifetime/check.rs` via
-  `transitive_closure`.
-- `'static` is reserved (`Region::Static`, top of order); can appear as
-  a bound target but not as a declared param name.
-- Struct/enum bounds parse and scope-check but aren't yet enforced at
-  construction (punchlist).
+type_params   = "<" generic_param ("," generic_param)* [","] ">"
+generic_param = identifier [markers]
+              | lifetime [":" lifetime ("+" lifetime)*]
 
-### Pipeline: what gets checked where
+type_args     = "<" (type | lifetime) ("," (type | lifetime))* [","] ">"
 
-- **Type validity** (`type_check`) — declarations are well-formed;
-  place/operand/rvalue types line up.
-- **Substructural composition** (`substructural::composition`) — decl
-  marker consistency.
-- **Substructural stmt check** (`substructural::check`) — `copy`
-  requires Copy, `move` requires Move, `drop` requires Drop.
-- **Variant flow** (`variant_flow`) — switchEnum exhaustiveness +
-  downcast-refinement soundness.
-- **Init state + ref obligations** (`place_state::check`) — dynamic
-  init tracking, ref (cur, post) enforcement, return-leak check.
-- **Lifetime loans + outlives** (`lifetime::check`) — loan conflicts,
-  region constraint solver.
+type          = integer_type | float_type | "bool" | "unit" | "never"
+              | identifier [type_args]
+              | "&" [lifetime] type
+              | "&mut" [lifetime] type
+              | "&out" [lifetime] type
+              | "&drop" [lifetime] type
+              | "&uninit" [lifetime] type
+              | "*" type
+              | "[" type ";" integer_literal "]"
+```
 
-## Testing discipline (summary)
+### MIR
 
-Full spec: README §Testing discipline.
+```text
+struct_decl   = "struct" [type_params] identifier [markers]
+                "{" (field [","])* "}"
 
-- **Fixture-first.** Program in, artifact out. Every rule has a positive
-  and a negative fixture.
-- **Per-pass unit tests** only for private APIs / invariants a fixture
-  can't observe.
-- **Utility unit tests** inline `#[cfg(test)] mod tests` for small
-  helpers.
-- **`# covers:` tags** on every fn; enables pairwise coverage audit.
-- **`UPDATE_EXPECT=1 cargo test --test fixtures`** to rewrite all
-  expected files. Do this from the parent, not from concurrent
-  subagents.
+enum_decl     = "enum" [type_params] identifier [markers]
+                "{" (variant [","])* "}"
 
-## When editing feels risky
+function_decl = ["extern" [abi_string]] "fn" [type_params] identifier
+                "(" params ")"
+                (";" | "{" local* basic_block* "}")
 
-- Grep for existing fixture patterns first (`grep -rn "^fn foo_\|struct Foo" tests/`).
-- If a rule's positive/negative fixtures don't exist, that's a smell —
-  the rule may not be covered.
-- Silent fallthroughs in state-transition passes are the highest-risk
-  code shape. Audit them first when you're new to a subsystem.
+local         = identifier ":" type ";"
+basic_block   = identifier ":" (statement ";")* terminator [";"]
+
+place         = identifier
+              | place "." identifier
+              | place "as" identifier
+              | place ".*"
+              | place "[" operand "]"
+
+operand       = "copy" place
+              | "move" place
+              | "take" place
+              | constant
+
+rvalue        = operand
+              | "&" place | "&mut" place | "&out" place
+              | "&drop" place | "&uninit" place | "&raw" place
+              | identifier [type_args] "::" identifier "(" operand ")"
+              | "[" operands "]"
+              | "ptr_cast" "(" operand "," type ")"
+
+statement     = place "=" rvalue
+              | "call" operand "(" operands ")"
+              | "drop" place
+              | "unborrow" place
+              | "require_uninit" place
+
+terminator    = "goto" identifier
+              | "return"
+              | "branch" "(" operand ")"
+                "[" "true:" identifier "," "false:" identifier "]"
+              | "switchEnum" "(" place ")" "[" switch_cases "]"
+              | "abort"
+              | "unreachable"
+```
+
+MIR syntax traps:
+
+- The first basic block is the entry block.
+- Local declarations precede all basic blocks.
+- MIR functions and function types have no return arrow.
+- Return values use an `&out` parameter, conventionally `$return`.
+- `call` is a statement, not an rvalue.
+- `switchEnum` takes a place because each outgoing edge refines that place.
+- `take` is resolved during elaboration; downstream MIR must contain only
+  explicit `copy` and `move`.
+- `require_uninit` is a checked ghost assertion, not a consume operation.
+- `$`-prefixed identifiers are reserved for compiler and intrinsic names.
+
+### HLL
+
+```text
+function_decl = ["extern" [abi_string]] ["unsafe"] "fn" [type_params]
+                identifier "(" params ")" ["->" type]
+                (";" | block)
+
+statement     = "let" ["mut"] identifier [":" type] ["=" expression] ";"
+              | "defer" expression ";"
+              | expression ";"
+              | block_like_expression
+
+expression    = assignment
+              | binary_expression
+              | unary_expression
+              | borrow_expression
+              | postfix_expression
+              | literal
+              | identifier
+              | block | "if" | "loop"
+              | "break" [expression]
+              | "continue"
+              | "return" [expression]
+              | struct_constructor
+              | enum_constructor
+              | array_literal
+
+postfix       = expression "." identifier
+              | expression ".*"
+              | expression "as" type
+              | expression "(" arguments ")"
+              | expression "[" expression "]"
+              | expression "match" "{" arms "}"
+```
+
+HLL syntax traps:
+
+- Blocks evaluate to their trailing expression; no trailing expression means
+  `unit`.
+- `if`, `loop`, `match`, and blocks are expressions.
+- `match` is postfix: `value match { ... }`.
+- Dereference is postfix: `value.*`.
+- Arithmetic and comparison expressions lower through compiler intrinsics.
+- Assignment requires a mutable binding, except that writing through a
+  reference does not reassign the reference binding itself.
+- An uninitialized `let` requires enough type information to determine its
+  type.
+- `$`-prefixed identifiers are forbidden in HLL.
+- If a surface feature cannot preserve the MIR shape needed by a test, write
+  that test directly in `.sim` and document why.
+
+## Canonical language examples
+
+Prefer executable, fixture-backed examples over programs copied into prose.
+
+Useful starting points include:
+
+- [`tests/programs/heap_linked_list_of_i64.si`](./tests/programs/heap_linked_list_of_i64.si)
+  for aggregates, raw pointers, mutation, loops, calls, and ownership.
+- [`tests/programs/enum_matches.si`](./tests/programs/enum_matches.si)
+  for enum construction and postfix matching.
+- [`tests/programs/arithmetic_and_casts.si`](./tests/programs/arithmetic_and_casts.si)
+  for operators, scalar types, inference, and casts.
+
+When adding a canonical example, make it a normal fixture first and link to it
+from documentation. Do not maintain a second untested copy.
+
+## Testing discipline
+
+Fixture tests are the primary test surface for “program in, artifact out.”
+Prefer a fixture over a pass-internal unit test whenever the behavior is
+observable end to end.
+
+Fixture selection is convention-based:
+
+| Input and location | Pipeline | Expected artifact |
+|---|---|---|
+| `foo.si` or `foo.sim` | Full lowering/check/elaboration | `foo.expected.sim` or `foo.err.expected` |
+| `foo.preelaborated.sim` | Check without ownership elaboration | `foo.preelaborated.expected.sim` or `.err.expected` |
+| `tests/codegen/foo.sim` | Full pipeline plus codegen | `foo.expected.ll` |
+| `tests/codegen-raw/foo.sim` | Parse plus codegen, without checking | `foo.expected.ll` |
+
+Rules:
+
+- Prefer `.si` when the behavior can be expressed faithfully in HLL.
+- Use `.sim` for exact CFG shapes, explicit ownership operations, lifetime
+  forms lost by HLL lowering, or MIR-only features.
+- Prefer extending a dense success/failure fixture pair over creating many
+  one-case files.
+- Every new diagnostic code needs a negative fixture that pins its complete
+  rendered output.
+- Pair positive behavior with the corresponding negative boundary.
+- Add `# covers:` comments to fixture functions to identify the semantic cell
+  being exercised. This is a review convention, not runner-enforced metadata.
+- Use unit tests for private pass invariants, fixed-point behavior, parser
+  internals, or intermediate forms that the full pipeline intentionally
+  rewrites.
+
+`cargo run` is useful for inspecting one program, but its CLI rendering is not
+the fixture renderer. Golden comparison is owned by `tests/fixtures.rs`.
+
+`UPDATE_EXPECT=1 cargo test --test fixtures` rewrites every fixture expectation
+and removes a stale success/error sibling when a fixture changes category.
+Run it only in a known-quiescent working copy. Never run it concurrently with
+other agents editing fixtures.
+
+## Grammar changes
+
+Edit `grammar.js`, not generated parser artifacts. Regenerate both grammars:
+
+```bash
+for lang in hll mir; do
+    (cd "tree-sitter-silica/$lang" && tree-sitter generate)
+done
+```
+
+Generated artifacts include `src/parser.c`, `src/grammar.json`, and
+`src/node-types.json`. Include their changes with the grammar edit.
+
+## Change audits
+
+When extending a compiler-internal enum, find every dispatch rather than
+trusting a maintained file list:
+
+```bash
+rg -l 'TypeKind::' src
+rg -l 'PathStep::' src
+rg -l 'RefKind::' src
+rg -l 'Operand::' src
+rg -l 'InitState::' src
+```
+
+Audit parser, pretty-printer, helpers, type checking, dataflow passes,
+elaborators, monomorphization, layout, and codegen as applicable.
+
+In checker and elaboration code, every wildcard arm, early-returning
+`let ... else`, or `else { continue; }` over compiler state must either be
+exhaustive or carry a comment explaining exactly why skipped variants are
+irrelevant. Adding an enum variant requires re-reading those arguments.
+
+`Env::field_type` resolves struct fields only. Array indexing must dispatch on
+`TypeKind::Array` and use the element type explicitly.
+
+Diagnostic codes live in per-pass enums. Adding a code to an existing pass
+normally changes that pass and its fixtures; the central `DiagCode` changes
+only when introducing a new diagnostic family.
