@@ -19,6 +19,7 @@
 
 use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
@@ -49,9 +50,7 @@ use SubstructuralCheckCode::*;
 /// `check_return_leaks`, which callers run separately after elaboration).
 pub fn check_statements(program: &Program, env: &Env, d: &mut Diagnostics) {
     for f in program.functions() {
-        let errors_before = d.error_count();
         check_function(env, f, d);
-        d.rewrite_errors_from(errors_before, |text| f.meta.diagnostic_text(text));
     }
 }
 
@@ -62,7 +61,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let locals = func.locals_map();
     for block in &body.blocks {
         for stmt in &block.statements {
-            check_stmt(env, func, block, &locals, stmt, stmt.span(), d);
+            check_stmt(env, func, block, &locals, stmt, stmt.source, d);
         }
         check_terminator(env, func, block, &locals, d);
     }
@@ -74,34 +73,36 @@ fn check_stmt(
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
     stmt: &Statement,
-    span: Span,
+    source: SourceInfo,
     d: &mut Diagnostics,
 ) {
     match &stmt.kind {
-        StatementKind::Assign(_, rvalue) => check_rvalue(env, func, block, locals, rvalue, span, d),
+        StatementKind::Assign(_, rvalue) => {
+            check_rvalue(env, func, block, locals, rvalue, source, d)
+        }
         StatementKind::Call(target, args) => {
-            check_operand(env, func, block, locals, target, span, d);
+            check_operand(env, func, block, locals, target, source, d);
             for a in args {
-                check_operand(env, func, block, locals, a, span, d);
+                check_operand(env, func, block, locals, a, source, d);
             }
         }
         StatementKind::Drop(place) => {
-            let Ok(ty) = env.type_of_place(place, span, locals) else {
+            let Ok(ty) = env.type_of_place(place, locals) else {
                 return;
             };
             let scope = func.meta.param_scope();
             let c = class_of(&ty, env, &scope);
             if !c.implies(Marker::Drop) {
-                d.push_error(
+                d.push_error(format_type_diagnostic(&func.meta, &ty, |ty| {
                     diag(
                         DropOfNonDrop,
-                        span,
+                        source,
                         func,
                         block,
                         format!("cannot drop non-Drop type {}", ty),
                     )
-                    .with_hint("only types implementing the Drop class can be explicitly dropped"),
-                );
+                    .with_hint("only types implementing the Drop class can be explicitly dropped")
+                }));
             }
         }
         StatementKind::Unborrow(_) => {
@@ -121,17 +122,17 @@ fn check_rvalue(
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
     rv: &RValue,
-    span: Span,
+    source: SourceInfo,
     d: &mut Diagnostics,
 ) {
     match rv {
         RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
-            check_operand(env, func, block, locals, op, span, d)
+            check_operand(env, func, block, locals, op, source, d)
         }
         RValue::Ref(_, _) | RValue::RawRef(_) => {}
         RValue::ArrayLit(ops) => {
             for op in ops {
-                check_operand(env, func, block, locals, op, span, d);
+                check_operand(env, func, block, locals, op, source, d);
             }
         }
     }
@@ -143,7 +144,7 @@ fn check_operand(
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
     op: &Operand,
-    span: Span,
+    source: SourceInfo,
     d: &mut Diagnostics,
 ) {
     let (place, kind_name, needed) = match op {
@@ -156,7 +157,7 @@ fn check_operand(
         Operand::Take(place) => (place, "take", ClassMarker::CopyOrMove),
         Operand::Const(_) => return,
     };
-    let Ok(ty) = env.type_of_place(place, span, locals) else {
+    let Ok(ty) = env.type_of_place(place, locals) else {
         return;
     };
     let scope = func.meta.param_scope();
@@ -184,16 +185,16 @@ fn check_operand(
                 "`take` specializes to `copy` or `move`, so the type must support at least one",
             ),
         };
-        d.push_error(
+        d.push_error(format_type_diagnostic(&func.meta, &ty, |ty| {
             diag(
                 code,
-                span,
+                source,
                 func,
                 block,
                 format!("cannot {} non-{} type {}", kind_name, marker_name, ty),
             )
-            .with_hint(hint),
-        );
+            .with_hint(hint)
+        }));
     }
 }
 
@@ -213,7 +214,7 @@ fn check_terminator(
     // `branch` uses an operand; `switchEnum` reads a place but does not
     // consume it, so no class check applies.
     if let TerminatorKind::Branch { cond, .. } = &block.terminator.kind {
-        check_operand(env, func, block, locals, cond, block.terminator.span(), d);
+        check_operand(env, func, block, locals, cond, block.terminator.source, d);
     }
 }
 

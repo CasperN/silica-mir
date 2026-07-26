@@ -1,22 +1,22 @@
-error: at 32:30: [COMP-CopyMarkerNotSatisfied] In struct 'CopyOutRef' (marked Copy), field 'r' has type &out '_ i64 which is not Copy
+error: at 32:30: [COMP-CopyMarkerNotSatisfied] In struct 'CopyOutRef' (marked Copy), field 'r' has type &out '1 i64 which is not Copy
     |
  31 | # Copy constraint on that field.
  32 | struct CopyOutRef: Copy { r: &out i64 }
-    |                              ^^^^^^^^
+    |                              ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  33 | 
     |
-error: at 37:30: [COMP-CopyMarkerNotSatisfied] In struct 'CopyMutRef' (marked Copy), field 'r' has type &mut '_ i64 which is not Copy
+error: at 37:30: [COMP-CopyMarkerNotSatisfied] In struct 'CopyMutRef' (marked Copy), field 'r' has type &mut '1 i64 which is not Copy
     |
  36 | # &mut T is exclusive and may not be duplicated; it is not Copy.
  37 | struct CopyMutRef: Copy { r: &mut i64 }
-    |                              ^^^^^^^^
+    |                              ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  38 | 
     |
-error: at 42:30: [COMP-DropMarkerNotSatisfied] In struct 'DropOutRef' (marked Drop), field 'r' has type &out '_ i64 which is not Drop
+error: at 42:30: [COMP-DropMarkerNotSatisfied] In struct 'DropOutRef' (marked Drop), field 'r' has type &out '1 i64 which is not Drop
     |
  41 | # &out T is linear (non-Drop). A Drop struct may not contain it.
  42 | struct DropOutRef: Drop { r: &out i64 }
-    |                              ^^^^^^^^
+    |                              ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  43 | 
     |
 error: at 48:39: [COMP-DropMarkerNotSatisfied] In struct 'DropLinearField' (marked Drop), field 'inner' has type Linear which is not Drop
@@ -40,32 +40,32 @@ error: at 59:40: [COMP-CopyMarkerNotSatisfied] In struct 'CopyNestedLinear' (mar
     |                                        ^^^^^^
  60 | 
     |
-error: at 65:41: [COMP-CopyMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Copy), field 'r' has type &out '_ i64 which is not Copy
+error: at 65:41: [COMP-CopyMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Copy), field 'r' has type &out '1 i64 which is not Copy
     |
  64 | # a field violates each marker independently, producing two diagnostics.
  65 | struct CopyDropOutRef: Copy + Drop { r: &out i64 }
-    |                                         ^^^^^^^^
+    |                                         ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  66 | 
     |
-error: at 65:41: [COMP-DropMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Drop), field 'r' has type &out '_ i64 which is not Drop
+error: at 65:41: [COMP-DropMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Drop), field 'r' has type &out '1 i64 which is not Drop
     |
  64 | # a field violates each marker independently, producing two diagnostics.
  65 | struct CopyDropOutRef: Copy + Drop { r: &out i64 }
-    |                                         ^^^^^^^^
+    |                                         ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  66 | 
     |
-error: at 70:35: [COMP-CopyMarkerNotSatisfied] In enum 'CopyMutRefVariant' (marked Copy), variant 'A' payload type &mut '_ i64 is not Copy
+error: at 70:35: [COMP-CopyMarkerNotSatisfied] In enum 'CopyMutRefVariant' (marked Copy), variant 'A' payload type &mut '1 i64 is not Copy
     |
  69 | # A variant whose payload is &mut i64 prevents the enum from being Copy.
  70 | enum CopyMutRefVariant: Copy { A: &mut i64 }
-    |                                   ^^^^^^^^
+    |                                   ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  71 | 
     |
-error: at 75:35: [COMP-DropMarkerNotSatisfied] In enum 'DropOutRefVariant' (marked Drop), variant 'A' payload type &out '_ i64 is not Drop
+error: at 75:35: [COMP-DropMarkerNotSatisfied] In enum 'DropOutRefVariant' (marked Drop), variant 'A' payload type &out '1 i64 is not Drop
     |
  74 | # A variant whose payload is &out i64 prevents the enum from being Drop.
  75 | enum DropOutRefVariant: Drop { A: &out i64 }
-    |                                   ^^^^^^^^
+    |                                   ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  76 | 
     |
 error: at 81:35: [COMP-MoveMarkerNotSatisfied] In enum 'MoveLinearVariant' (marked Move), variant 'W' payload type Linear is not Move

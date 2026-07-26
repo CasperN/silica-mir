@@ -129,12 +129,9 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     // a separate pass alongside the per-point downcast refinement.
     dataflow::walk_forward(&VariantFlow, body, &entry_states, |pt| match pt {
         WalkPoint::Stmt {
-            state,
-            block,
-            stmt,
-            span,
+            state, block, stmt, ..
         } => {
-            check_places_in_stmt(env, func, &locals, block, stmt, span, state, d);
+            check_places_in_stmt(env, func, &locals, block, stmt, stmt.source, state, d);
         }
         WalkPoint::Terminator { state, block, .. } => {
             check_places_in_terminator(env, func, &locals, block, state, d);
@@ -162,26 +159,28 @@ fn check_places_in_stmt(
     locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     stmt: &Statement,
-    span: Span,
+    source: SourceInfo,
     state: &PointState,
     d: &mut Diagnostics,
 ) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
-            check_downcast_refinement(env, func, locals, block, target, span, state, d);
+            check_downcast_refinement(env, func, locals, block, target, source, state, d);
             match rvalue {
                 RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
                     if let Some(p) = operand_place(op) {
-                        check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                        check_downcast_refinement(env, func, locals, block, p, source, state, d);
                     }
                 }
                 RValue::Ref(_, p) | RValue::RawRef(p) => {
-                    check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                    check_downcast_refinement(env, func, locals, block, p, source, state, d);
                 }
                 RValue::ArrayLit(ops) => {
                     for op in ops {
                         if let Some(p) = operand_place(op) {
-                            check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                            check_downcast_refinement(
+                                env, func, locals, block, p, source, state, d,
+                            );
                         }
                     }
                 }
@@ -189,18 +188,18 @@ fn check_places_in_stmt(
         }
         StatementKind::Call(target, args) => {
             if let Some(p) = operand_place(target) {
-                check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                check_downcast_refinement(env, func, locals, block, p, source, state, d);
             }
             for a in args {
                 if let Some(p) = operand_place(a) {
-                    check_downcast_refinement(env, func, locals, block, p, span, state, d);
+                    check_downcast_refinement(env, func, locals, block, p, source, state, d);
                 }
             }
         }
         StatementKind::Drop(place)
         | StatementKind::Unborrow(place)
         | StatementKind::RequireUninit(place) => {
-            check_downcast_refinement(env, func, locals, block, place, span, state, d);
+            check_downcast_refinement(env, func, locals, block, place, source, state, d);
         }
     }
 }
@@ -213,15 +212,15 @@ fn check_places_in_terminator(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let ts = block.terminator.span();
+    let source = block.terminator.source;
     match &block.terminator.kind {
         TerminatorKind::Branch { cond, .. } => {
             if let Some(p) = operand_place(cond) {
-                check_downcast_refinement(env, func, locals, block, p, ts, state, d);
+                check_downcast_refinement(env, func, locals, block, p, source, state, d);
             }
         }
         TerminatorKind::SwitchEnum { place, .. } => {
-            check_downcast_refinement(env, func, locals, block, place, ts, state, d);
+            check_downcast_refinement(env, func, locals, block, place, source, state, d);
         }
         // Goto/Return/Abort/Unreachable read no operand or place;
         // there is nothing to variant-flow-check on those terminators.
@@ -249,7 +248,7 @@ fn check_downcast_refinement(
     locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     place: &Place,
-    span: Span,
+    source: SourceInfo,
     state: &PointState,
     d: &mut Diagnostics,
 ) {
@@ -277,7 +276,7 @@ fn check_downcast_refinement(
             if !refined {
                 d.push_error(diag(
                     DowncastVariantNotRefined,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -290,7 +289,7 @@ fn check_downcast_refinement(
             let prefix = format_place(&build_place(&root, &path[..i]));
             d.push_error(diag(
                 DowncastOnProjection,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -425,11 +424,11 @@ fn check_switch(
     state: &PointState,
     d: &mut Diagnostics,
 ) {
-    let terminator_span = block.terminator.span();
+    let terminator_source = block.terminator.source;
     if cases.is_empty() {
         d.push_error(diag(
             SwitchNoArms,
-            terminator_span,
+            terminator_source,
             func,
             block,
             "switchEnum requires at least one arm".to_string(),
@@ -449,7 +448,7 @@ fn check_switch(
         if !handled.contains(variant) {
             d.push_error(diag(
                 SwitchNotExhaustive,
-                terminator_span,
+                terminator_source,
                 func,
                 block,
                 format!(
@@ -466,7 +465,7 @@ fn check_switch(
         if !seen.insert(variant.as_str()) {
             d.push_error(diag(
                 SwitchDuplicateArm,
-                terminator_span,
+                terminator_source,
                 func,
                 block,
                 format!("switchEnum has duplicate arm for variant '{}'", variant),
@@ -514,7 +513,7 @@ fn check_switch(
         match (target_unreachable, variant_reachable) {
             (true, true) => d.push_error(diag(
                 SwitchArmFalselyUnreachable,
-                terminator_span,
+                terminator_source,
                 func,
                 block,
                 format!(
@@ -524,7 +523,7 @@ fn check_switch(
             )),
             (false, false) => d.push_warning(diag(
                 SwitchArmDeadCode,
-                terminator_span,
+                terminator_source,
                 func,
                 block,
                 format!(
@@ -547,9 +546,7 @@ fn resolve_enum_of_place<'a>(
 ) -> Option<&'a EnumDecl> {
     // We only need the successful branch; span doesn't matter since
     // any error is discarded.
-    let ty = env
-        .type_of_place(place, crate::mir::ast::Span::default(), locals)
-        .ok()?;
+    let ty = env.type_of_place(place, locals).ok()?;
     let TypeKind::Custom(name, _, _) = ty.kind else {
         return None;
     };

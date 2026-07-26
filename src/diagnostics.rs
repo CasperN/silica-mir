@@ -1,10 +1,10 @@
 //! Structured diagnostic type shared by all analysis passes.
 //!
-//! A `Diagnostic` carries the source position, function/block context,
+//! A `Diagnostic` carries source attribution, function/block context,
 //! and message for a single error or warning. `Diagnostics` collects
 //! them into two lists (errors and warnings).
 //!
-//! **Construction**: `Diagnostic::new(code, span, message)` for the
+//! **Construction**: `Diagnostic::new(code, source, message)` for the
 //! required fields, then chain `.in_function(...)` and/or
 //! `.in_block(...)` for optional context. Adding a new optional
 //! field is a non-breaking change — add a setter, existing sites
@@ -91,7 +91,7 @@ impl DiagCode {
 /// **Construct with [`Diagnostic::new`]** and chain optional setters:
 ///
 /// ```ignore
-/// Diagnostic::new(TypeCheckCode::NoEntryBlock, span, "no entry block")
+/// Diagnostic::new(TypeCheckCode::NoEntryBlock, source, "no entry block")
 ///     .in_function(&func.name)
 ///     .in_block(&block.label)
 /// ```
@@ -107,7 +107,7 @@ pub struct Diagnostic {
     block: String,
     message: String,
     hint: String,
-    /// Related spans with human labels. Each entry becomes a snippet
+    /// Related source locations with human labels. Each entry becomes a snippet
     /// block after the primary snippet in [`Diagnostics::render_diagnostic`],
     /// prefixed by the label (rustc-style "borrow of x occurs here" et al).
     /// Empty for existing emission sites — infra is opt-in per site.
@@ -119,19 +119,12 @@ impl Diagnostic {
     /// and message. Add optional context via [`in_function`] and
     /// [`in_block`]. `code` accepts anything that converts into a
     /// `DiagCode`, so per-pass code enums can be passed directly
-    /// (e.g., `Diagnostic::new(TypeCheckCode::NoEntryBlock, span, msg)`).
+    /// (e.g., `Diagnostic::new(TypeCheckCode::NoEntryBlock, source, msg)`).
     ///
-    /// A raw [`Span`] converts to [`SourceInfo::Written`] for compatibility;
-    /// callers creating diagnostics from synthesized nodes should pass their
-    /// existing `SourceInfo` so provenance is not discarded.
-    pub fn new(
-        code: impl Into<DiagCode>,
-        source: impl Into<SourceInfo>,
-        message: impl Into<String>,
-    ) -> Self {
+    pub fn new(code: impl Into<DiagCode>, source: SourceInfo, message: impl Into<String>) -> Self {
         Diagnostic {
             code: code.into(),
-            source: source.into(),
+            source,
             function: String::new(),
             block: String::new(),
             message: message.into(),
@@ -161,12 +154,8 @@ impl Diagnostic {
     /// Attach a related labeled span (e.g., "borrow occurs here",
     /// "expected because of this signature"). Rendered after the
     /// primary snippet in emission order.
-    pub fn with_secondary(
-        mut self,
-        source: impl Into<SourceInfo>,
-        label: impl Into<String>,
-    ) -> Self {
-        self.secondary.push((source.into(), label.into()));
+    pub fn with_secondary(mut self, source: SourceInfo, label: impl Into<String>) -> Self {
+        self.secondary.push((source, label.into()));
         self
     }
 
@@ -275,23 +264,6 @@ impl Diagnostics {
     /// drop-elab-inserted Move conflict at the same span).
     pub fn retain_errors(&mut self, f: impl FnMut(&Diagnostic) -> bool) {
         self.errors.retain(f);
-    }
-
-    /// Rewrite newly-added user-facing diagnostic text for an enclosing
-    /// source scope. Passes use this after checking one declaration to apply
-    /// scope-dependent rendering such as hiding its elided lifetime names.
-    pub(crate) fn rewrite_errors_from(
-        &mut self,
-        from: usize,
-        mut rewrite: impl FnMut(&str) -> String,
-    ) {
-        for diagnostic in &mut self.errors[from..] {
-            diagnostic.message = rewrite(&diagnostic.message);
-            diagnostic.hint = rewrite(&diagnostic.hint);
-            for (_, label) in &mut diagnostic.secondary {
-                *label = rewrite(label);
-            }
-        }
     }
 
     /// Annotate all errors added at or after index `from` with the given
@@ -629,7 +601,7 @@ impl Diagnostics {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::GeneratedKind;
+    use crate::common::{GeneratedKind, HllTemporaryKind};
     use crate::mir::type_check::TypeCheckCode;
 
     fn span(line: u32, col: u32, end_col: u32) -> Span {
@@ -647,11 +619,14 @@ mod tests {
             std::sync::Arc::new("line one\nsecond line here\nthird line goes here\n".to_string());
         let d = Diagnostic::new(
             TypeCheckCode::AssignmentTypeMismatch,
-            span(2, 8, 12),
+            SourceInfo::written(span(2, 8, 12)),
             "primary problem",
         )
-        .with_secondary(span(1, 6, 9), "related thing over here")
-        .with_secondary(span(3, 7, 11), "another related thing");
+        .with_secondary(
+            SourceInfo::written(span(1, 6, 9)),
+            "related thing over here",
+        )
+        .with_secondary(SourceInfo::written(span(3, 7, 11)), "another related thing");
         let mut ds = Diagnostics::default().with_source(source);
         ds.push_error(d);
 
@@ -670,7 +645,10 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
 
     #[test]
     fn diagnostic_preserves_generated_source_provenance() {
-        let source = SourceInfo::generated(GeneratedKind::HllTemporary, span(2, 3, 4));
+        let source = SourceInfo::generated(
+            GeneratedKind::HllTemporary(HllTemporaryKind::Lowering),
+            span(2, 3, 4),
+        );
         let diagnostic = Diagnostic::new(
             DiagCode::Parser(crate::mir::parser::ParserCode::MalformedCst),
             source,
@@ -686,12 +664,12 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
         let mut ds = Diagnostics::default();
         ds.push_error(Diagnostic::new(
             TypeCheckCode::AssignmentTypeMismatch,
-            Span::default(),
+            SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
             "user error",
         ));
         ds.push_internal_error(Diagnostic::new(
             crate::hll::lowering::HllLoweringCode::MissingType,
-            Span::default(),
+            SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
             "internal boom",
         ));
 
@@ -718,7 +696,7 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
         let mut ds = Diagnostics::default();
         ds.push_info(Diagnostic::new(
             TypeCheckCode::AssignmentTypeMismatch,
-            Span::default(),
+            SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
             "info note",
         ));
 
@@ -735,7 +713,7 @@ at 2:8: [TC-AssignmentTypeMismatch] primary problem
     fn hll_source_kind_suppresses_block_context() {
         let d = Diagnostic::new(
             TypeCheckCode::AssignmentTypeMismatch,
-            Span::default(),
+            SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
             "msg",
         )
         .in_function("f")

@@ -43,19 +43,14 @@ pub struct Loan {
 }
 
 impl Loan {
-    pub fn single(
-        kind: RefKind,
-        region: Region,
-        loaned: Place,
-        create_source: impl Into<SourceInfo>,
-    ) -> Self {
+    pub fn single(kind: RefKind, region: Region, loaned: Place, create_source: SourceInfo) -> Self {
         let mut set = BTreeSet::new();
         set.insert(loaned);
         Loan {
             kind,
             region,
             loaned: set,
-            create_source: create_source.into(),
+            create_source,
         }
     }
 }
@@ -132,17 +127,20 @@ pub(super) fn is_compatible(loan_kind: &RefKind, access: &AccessKind) -> bool {
 /// True if `stmt` is a `drop <place>` that drop-elaboration inserted
 /// immediately before an assign to the same owned path. Drop-elab
 /// preserves the assign's span on the inserted drop, so both share
-/// `drop_span`; the checker uses this to suppress a duplicate
+/// `drop_source`; the checker uses this to suppress a duplicate
 /// LoanConflict — the assign carries the authoritative diagnostic.
 pub(super) fn is_elab_inserted_drop(
     place: &Place,
-    drop_span: Span,
+    drop_source: SourceInfo,
     next: Option<&Statement>,
 ) -> bool {
+    if drop_source.generated_kind() != Some(GeneratedKind::DropElaboration) {
+        return false;
+    }
     let Some(next_stmt) = next else {
         return false;
     };
-    if next_stmt.span() != drop_span {
+    if next_stmt.span() != drop_source.span() {
         return false;
     }
     let StatementKind::Assign(target, _) = &next_stmt.kind else {

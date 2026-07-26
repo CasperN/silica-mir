@@ -10,6 +10,10 @@ fn span() -> Span {
     Span::default()
 }
 
+fn source() -> SourceInfo {
+    SourceInfo::generated(GeneratedKind::TestHelper, span())
+}
+
 fn block(label: &str, term: Terminator) -> BasicBlock {
     BasicBlock {
         label: label.to_string(),
@@ -20,7 +24,7 @@ fn block(label: &str, term: Terminator) -> BasicBlock {
 }
 
 fn goto(label: &str) -> Terminator {
-    goto_term(label, span())
+    goto_term(label, source())
 }
 
 fn generated_goto(label: &str) -> Terminator {
@@ -31,11 +35,11 @@ fn generated_goto(label: &str) -> Terminator {
 }
 
 fn branch(t: &str, f: &str) -> Terminator {
-    branch_term(const_op(bool_const(true)), t, f, span())
+    branch_term(const_op(bool_const(true)), t, f, source())
 }
 
 fn return_() -> Terminator {
-    return_term(span())
+    return_term(source())
 }
 
 fn switch(cases: &[(&str, &str)]) -> Terminator {
@@ -45,7 +49,7 @@ fn switch(cases: &[(&str, &str)]) -> Terminator {
             .iter()
             .map(|(v, l)| (v.to_string(), l.to_string()))
             .collect(),
-        span(),
+        source(),
     )
 }
 
@@ -98,8 +102,8 @@ fn split_branch_false_arm() {
         locals: Vec::new(),
         blocks: vec![
             block("entry", branch("t", "f")),
-            block("t", return_term(span())),
-            block("f", return_term(span())),
+            block("t", return_term(source())),
+            block("f", return_term(source())),
         ],
     };
 

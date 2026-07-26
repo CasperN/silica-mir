@@ -57,7 +57,7 @@ fn check_function(func: &Function, d: &mut Diagnostics) {
             d.push_warning(
                 Diagnostic::new(
                     BlockReachabilityCode::BlockUnreachable,
-                    block.label_span(),
+                    block.label_source,
                     format!("block '{}' is unreachable from entry", block.label),
                 )
                 .in_function(&func.meta.name),

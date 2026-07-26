@@ -57,6 +57,62 @@ fn span_of(node: Node) -> Span {
     }
 }
 
+fn written_source(span: Span) -> SourceInfo {
+    SourceInfo::written(span)
+}
+
+// CST conversion is the boundary at which written MIR syntax acquires source
+// provenance. These wrappers keep that classification explicit while allowing
+// the parser below to continue passing the spans it extracts from tree-sitter.
+fn assign_stmt(dst: Place, src: RValue, span: Span) -> Statement {
+    crate::mir::helpers::assign_stmt(dst, src, written_source(span))
+}
+
+fn call_stmt(callee: Operand, args: Vec<Operand>, span: Span) -> Statement {
+    crate::mir::helpers::call_stmt(callee, args, written_source(span))
+}
+
+fn drop_stmt(place: Place, span: Span) -> Statement {
+    crate::mir::helpers::drop_stmt(place, written_source(span))
+}
+
+fn unborrow_stmt(place: Place, span: Span) -> Statement {
+    crate::mir::helpers::unborrow_stmt(place, written_source(span))
+}
+
+fn require_uninit_stmt(place: Place, span: Span) -> Statement {
+    crate::mir::helpers::require_uninit_stmt(place, written_source(span))
+}
+
+fn goto_term(label: impl Into<String>, span: Span) -> Terminator {
+    crate::mir::helpers::goto_term(label, written_source(span))
+}
+
+fn return_term(span: Span) -> Terminator {
+    crate::mir::helpers::return_term(written_source(span))
+}
+
+fn branch_term(
+    cond: Operand,
+    true_label: impl Into<String>,
+    false_label: impl Into<String>,
+    span: Span,
+) -> Terminator {
+    crate::mir::helpers::branch_term(cond, true_label, false_label, written_source(span))
+}
+
+fn switch_enum_term(place: Place, cases: Vec<(String, String)>, span: Span) -> Terminator {
+    crate::mir::helpers::switch_enum_term(place, cases, written_source(span))
+}
+
+fn abort_term(span: Span) -> Terminator {
+    crate::mir::helpers::abort_term(written_source(span))
+}
+
+fn unreachable_term(span: Span) -> Terminator {
+    crate::mir::helpers::unreachable_term(written_source(span))
+}
+
 /// Map a scalar type keyword's tree-sitter node kind to `Type`.
 /// Returns `None` if the kind isn't one of the ten scalar keywords.
 fn scalar_kind_to_type(kind: &str) -> Option<Type> {
@@ -286,7 +342,7 @@ impl Parser {
 
     /// Build a `Diagnostic` at `node`'s start position.
     fn diag(&self, node: Node, code: ParserCode, message: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(code, span_of(node), message)
+        Diagnostic::new(code, SourceInfo::written(span_of(node)), message)
     }
 
     /// Wrap a `Result<T, String>` produced by a literal decoder into a
@@ -326,7 +382,7 @@ impl Parser {
         if node.is_missing() {
             let mut d = Diagnostic::new(
                 ParserCode::MissingToken,
-                span_of(node),
+                SourceInfo::written(span_of(node)),
                 format!("missing '{}'", node.kind()),
             );
             if let Some(f) = ctx_fn {
@@ -343,7 +399,11 @@ impl Parser {
             } else {
                 format!("unexpected: {}", text)
             };
-            let mut d = Diagnostic::new(ParserCode::UnexpectedToken, span_of(node), msg);
+            let mut d = Diagnostic::new(
+                ParserCode::UnexpectedToken,
+                SourceInfo::written(span_of(node)),
+                msg,
+            );
             if let Some(f) = ctx_fn {
                 d = d.in_function(f);
             }
@@ -391,7 +451,7 @@ impl Parser {
 
     fn map_type(&self, node: Node) -> Result<Type, Diagnostic> {
         let span = span_of(node);
-        Ok(self.map_type_inner(node)?.with_span(span))
+        Ok(self.map_type_inner(node)?.with_written_span(span))
     }
 
     /// Same as `map_type` but leaves the outermost type marked as synthesized;

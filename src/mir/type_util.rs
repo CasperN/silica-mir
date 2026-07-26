@@ -73,7 +73,6 @@ fn substitute(
     type_params: &[TypeParam],
     type_args: &[Type],
 ) -> Type {
-    let span = ty.span();
     match &ty.kind {
         TypeKind::Param(name) => {
             for (tp, arg) in type_params.iter().zip(type_args.iter()) {
@@ -92,15 +91,39 @@ fn substitute(
                 .iter()
                 .map(|a| substitute(a, lifetime_params, lifetime_args, type_params, type_args))
                 .collect();
-            TypeKind::Custom(name.clone(), new_lts, new_args).at(span)
+            Type::new(TypeKind::Custom(name.clone(), new_lts, new_args), ty.source)
         }
         TypeKind::Ref(kind, lt, inner) => {
             let new_lt = lt
                 .as_ref()
                 .map(|l| subst_lifetime(l, lifetime_params, lifetime_args));
-            TypeKind::Ref(
-                kind.clone(),
-                new_lt,
+            Type::new(
+                TypeKind::Ref(
+                    *kind,
+                    new_lt,
+                    Box::new(substitute(
+                        inner,
+                        lifetime_params,
+                        lifetime_args,
+                        type_params,
+                        type_args,
+                    )),
+                ),
+                ty.source,
+            )
+        }
+        TypeKind::RawPtr(inner) => Type::new(
+            TypeKind::RawPtr(Box::new(substitute(
+                inner,
+                lifetime_params,
+                lifetime_args,
+                type_params,
+                type_args,
+            ))),
+            ty.source,
+        ),
+        TypeKind::Array(inner, size) => Type::new(
+            TypeKind::Array(
                 Box::new(substitute(
                     inner,
                     lifetime_params,
@@ -108,34 +131,16 @@ fn substitute(
                     type_params,
                     type_args,
                 )),
-            )
-            .at(span)
-        }
-        TypeKind::RawPtr(inner) => TypeKind::RawPtr(Box::new(substitute(
-            inner,
-            lifetime_params,
-            lifetime_args,
-            type_params,
-            type_args,
-        )))
-        .at(span),
-        TypeKind::Array(inner, size) => TypeKind::Array(
-            Box::new(substitute(
-                inner,
-                lifetime_params,
-                lifetime_args,
-                type_params,
-                type_args,
-            )),
-            *size,
-        )
-        .at(span),
+                *size,
+            ),
+            ty.source,
+        ),
         TypeKind::Fn(params) => {
             let new_params = params
                 .iter()
                 .map(|p| substitute(p, lifetime_params, lifetime_args, type_params, type_args))
                 .collect();
-            TypeKind::Fn(new_params).at(span)
+            Type::new(TypeKind::Fn(new_params), ty.source)
         }
         _ => ty.clone(),
     }
@@ -369,6 +374,44 @@ mod tests {
             out,
             named_ref_ty(RefKind::Shared, Lifetime("a".into()), i64_ty()),
         );
+    }
+
+    #[test]
+    fn substitution_preserves_container_and_argument_provenance() {
+        use crate::common::{GeneratedKind, Markers, SourceInfo, Span};
+
+        let container_source = SourceInfo::generated(
+            GeneratedKind::TypeSynthesis,
+            Span {
+                line: 3,
+                col: 5,
+                end_line: 3,
+                end_col: 10,
+            },
+        );
+        let argument_source = SourceInfo::written(Span {
+            line: 8,
+            col: 12,
+            end_line: 8,
+            end_col: 16,
+        });
+        let ty = Type::new(
+            TypeKind::Array(Box::new(param_ty("T")), 1),
+            container_source,
+        );
+        let param = TypeParam {
+            name: "T".into(),
+            bounds: Markers::empty(),
+            source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
+        };
+        let argument = Type::new(TypeKind::Int(crate::common::IntTy::I64), argument_source);
+
+        let substituted = substitute_params(&ty, &[param], &[argument]);
+        let TypeKind::Array(element, _) = &substituted.kind else {
+            panic!("expected array type");
+        };
+        assert_eq!(substituted.source, container_source);
+        assert_eq!(element.source, argument_source);
     }
 
     #[test]

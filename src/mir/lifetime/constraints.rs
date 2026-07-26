@@ -13,6 +13,8 @@
 //!    callee param regions; the returned ref's region matches the
 //!    instantiated callee return region.
 
+#[cfg(test)]
+use crate::common::GeneratedKind;
 use crate::mir::ast::SourceInfo;
 #[cfg(test)]
 use crate::mir::ast::Span;
@@ -51,17 +53,12 @@ pub struct Constraint {
 }
 
 impl Constraint {
-    pub fn new(
-        outlives: Region,
-        sub: Region,
-        cause: ConstraintCause,
-        origin: impl Into<SourceInfo>,
-    ) -> Self {
+    pub fn new(outlives: Region, sub: Region, cause: ConstraintCause, origin: SourceInfo) -> Self {
         Self {
             outlives,
             sub,
             cause,
-            origin: origin.into(),
+            origin,
         }
     }
 }
@@ -85,7 +82,7 @@ impl ConstraintSet {
         outlives: Region,
         sub: Region,
         cause: ConstraintCause,
-        origin: impl Into<SourceInfo>,
+        origin: SourceInfo,
     ) {
         if outlives == sub || matches!(outlives, Region::Static) {
             return;
@@ -150,6 +147,10 @@ mod tests {
     use super::*;
     use crate::common::Lifetime;
 
+    fn source() -> SourceInfo {
+        SourceInfo::generated(GeneratedKind::TestHelper, Span::default())
+    }
+
     #[test]
     fn emit_stores_constraint() {
         let mut cs = ConstraintSet::new();
@@ -157,7 +158,7 @@ mod tests {
             Region::Named(Lifetime("a".into())),
             Region::Named(Lifetime("b".into())),
             ConstraintCause::Assignment,
-            Span::default(),
+            source(),
         );
         assert_eq!(cs.len(), 1);
     }
@@ -166,7 +167,7 @@ mod tests {
     fn reflexive_constraint_is_pruned() {
         let mut cs = ConstraintSet::new();
         let a = Region::Named(Lifetime("a".into()));
-        cs.emit(a.clone(), a, ConstraintCause::Assignment, Span::default());
+        cs.emit(a.clone(), a, ConstraintCause::Assignment, source());
         assert!(cs.is_empty());
     }
 
@@ -177,7 +178,7 @@ mod tests {
             Region::Static,
             Region::Free(0),
             ConstraintCause::Assignment,
-            Span::default(),
+            source(),
         );
         assert!(cs.is_empty());
     }

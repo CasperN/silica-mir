@@ -163,11 +163,11 @@ pub fn check_sizes_finite(env: &Env, d: &mut Diagnostics) {
 
 fn report_cycle(scc: &[String], env: &Env, d: &mut Diagnostics) {
     let head = &scc[0];
-    let span = decl_span(head, env);
+    let source = decl_source(head, env);
     let members = scc.join(", ");
     d.push_error(Diagnostic::new(
         LayoutCode::RecursiveTypeByValue,
-        span,
+        source,
         format!(
             "type '{}' is recursive by value (cycle: {}). Break the cycle by wrapping a field/variant payload in a reference.",
             head, members
@@ -175,16 +175,11 @@ fn report_cycle(scc: &[String], env: &Env, d: &mut Diagnostics) {
     ));
 }
 
-fn decl_span(name: &str, env: &Env) -> Span {
+fn decl_source(name: &str, env: &Env) -> SourceInfo {
     match env.types.get(name) {
-        Some(TypeDecl::Struct(s)) => s.meta.name_span(),
-        Some(TypeDecl::Enum(e)) => e.meta.name_span(),
-        None => Span {
-            line: 0,
-            col: 0,
-            end_line: 0,
-            end_col: 0,
-        },
+        Some(TypeDecl::Struct(s)) => s.meta.name_source,
+        Some(TypeDecl::Enum(e)) => e.meta.name_source,
+        None => unreachable!("layout SCC member must name a declared type"),
     }
 }
 

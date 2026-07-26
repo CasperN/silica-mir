@@ -5,6 +5,13 @@ use crate::hll::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
+/// HLL type checking operates on source-written AST nodes. Converting their
+/// spans at this boundary keeps provenance explicit without permitting a
+/// general `Span`-to-`SourceInfo` conversion elsewhere in the compiler.
+fn source_diagnostic(code: HllTypeCheckCode, span: Span, message: impl Into<String>) -> Diagnostic {
+    Diagnostic::new(code, SourceInfo::written(span), message)
+}
+
 /// Build a `name → bounds` map from a decl's type parameters. Used
 /// when computing a type's substructural class or validating uses
 /// against bounds — both need per-name marker info.
@@ -46,7 +53,7 @@ fn build_subst_map(
     d: &mut Diagnostics,
 ) -> Option<HashMap<String, Type>> {
     if args.len() != type_params.len() {
-        d.push_error(Diagnostic::new(
+        d.push_error(source_diagnostic(
             ArityMismatch,
             span,
             format!(
@@ -79,14 +86,14 @@ pub enum UnifyError {
 impl UnifyError {
     fn to_diag(self, span: Span) -> Diagnostic {
         match self {
-            UnifyError::Mismatch(msg) => Diagnostic::new(TypeMismatch, span, msg),
-            UnifyError::Infinite => Diagnostic::new(
+            UnifyError::Mismatch(msg) => source_diagnostic(TypeMismatch, span, msg),
+            UnifyError::Infinite => source_diagnostic(
                 InfiniteType,
                 span,
                 "infinite type detected during unification",
             ),
             UnifyError::ArityMismatch => {
-                Diagnostic::new(ArityMismatch, span, "function arity mismatch")
+                source_diagnostic(ArityMismatch, span, "function arity mismatch")
             }
         }
     }
@@ -467,7 +474,7 @@ impl TypeEnv {
             | Type::Error => {}
             Type::Param(name) => {
                 if !scope.contains_key(name) {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         UndeclaredType,
                         span,
                         format!("undeclared type '{}'", name),
@@ -492,7 +499,7 @@ impl TypeEnv {
                 } else if let Some(e) = self.enums.get(name) {
                     &e.type_params
                 } else {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         UndeclaredType,
                         span,
                         format!("undeclared type '{}'", name),
@@ -500,7 +507,7 @@ impl TypeEnv {
                     return;
                 };
                 if args.len() != type_params.len() {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         TypeArgArityMismatch,
                         span,
                         format!(
@@ -516,7 +523,7 @@ impl TypeEnv {
                     let arg_class = self.class_of(arg, scope);
                     for m in [Marker::Copy, Marker::Drop, Marker::Move] {
                         if tp.bounds.declared(m) && !arg_class.implies(m) {
-                            d.push_error(Diagnostic::new(
+                            d.push_error(source_diagnostic(
                                 BoundNotSatisfied,
                                 span,
                                 format!(
@@ -645,7 +652,7 @@ pub(super) fn typecheck_program_collect(
                             .abi_source
                             .map(SourceInfo::span)
                             .unwrap_or_else(|| f.span());
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnknownAbi,
                             span,
                             format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
@@ -680,7 +687,7 @@ pub(super) fn typecheck_program_collect(
             let has_unreported = unresolved.iter().any(|id| !reported_vars.contains(id));
             if has_unreported {
                 reported_vars.extend(unresolved);
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     HllTypeCheckCode::AmbiguousType,
                     *span,
                     format!("type annotations needed: type of expression is ambiguous (could not resolve type variable in {})", resolved),
@@ -818,7 +825,7 @@ fn infer_inner(
                 | Type::Never
                 | Type::Error => {}
                 _ => {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         BinaryOpNonNumeric,
                         lhs.span(),
                         format!(
@@ -854,7 +861,7 @@ fn infer_inner(
                         | Type::Never
                         | Type::Error => {}
                         _ => {
-                            d.push_error(Diagnostic::new(
+                            d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnaryOpInvalidOperand,
                             operand.span(),
                             format!("unary '-' requires a signed integer or float operand, found {}", resolved),
@@ -885,7 +892,7 @@ fn infer_inner(
                 let fresh_ret = substitute(&ret, &mapping);
                 fn_ty(fresh_params, fresh_ret)
             } else {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     UndeclaredVariable,
                     expr.span(),
                     format!("undeclared variable '{}'", name),
@@ -921,7 +928,7 @@ fn infer_inner(
                             None => return error_ty(),
                         }
                     } else {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             NoSuchField,
                             target.span(),
                             format!("struct '{}' has no field '{}'", struct_name, field),
@@ -929,7 +936,7 @@ fn infer_inner(
                         return error_ty();
                     }
                 } else {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         UndeclaredStruct,
                         target.span(),
                         format!("undeclared struct '{}'", struct_name),
@@ -937,7 +944,7 @@ fn infer_inner(
                     return error_ty();
                 }
             } else {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     ExpectedStruct,
                     target.span(),
                     format!("expected struct type, found {}", resolved),
@@ -954,7 +961,7 @@ fn infer_inner(
             let scope = env.current_type_params.clone();
             env.validate_type(to_ty, &scope, expr.span(), d);
             if !is_cast_supported(&from_resolved, to_ty) {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     HllTypeCheckCode::InvalidCast,
                     expr.span(),
                     format!("cast from {} to {} is not supported", from_resolved, to_ty),
@@ -962,7 +969,7 @@ fn infer_inner(
                 return error_ty();
             }
             if matches!(to_ty, Type::Ref(_, _, _)) && !env.in_unsafe {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     HllTypeCheckCode::UnsafeRequired,
                     expr.span(),
                     "cast to reference type requires unsafe block".to_string(),
@@ -980,7 +987,7 @@ fn infer_inner(
                 Type::Ref(_, _, inner) => *inner,
                 Type::RawPtr(inner) => {
                     if !env.in_unsafe {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnsafeRequired,
                             expr.span(),
                             "dereference of raw pointer requires unsafe block".to_string(),
@@ -989,7 +996,7 @@ fn infer_inner(
                     *inner
                 }
                 other => {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         ExpectedPointer,
                         target.span(),
                         format!("cannot dereference non-pointer type {}", other),
@@ -1010,7 +1017,7 @@ fn infer_inner(
             if let ExprKind::Variable(ref name) = fn_expr.kind {
                 if let Some((_, _, is_unsafe)) = env.functions.get(name) {
                     if *is_unsafe && !env.in_unsafe {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnsafeRequired,
                             fn_expr.span(),
                             format!("call to unsafe function '{}' requires unsafe block", name),
@@ -1025,7 +1032,7 @@ fn infer_inner(
             }
             if let Type::Fn(param_tys, ret_ty) = resolved {
                 if param_tys.len() != args.len() {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         ArityMismatch,
                         expr.span(),
                         format!(
@@ -1041,7 +1048,7 @@ fn infer_inner(
                 }
                 *ret_ty
             } else {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     ExpectedFunction,
                     expr.span(),
                     format!("expected function type, found {}", resolved),
@@ -1079,7 +1086,7 @@ fn infer_inner(
                             }
                             (None, Some(init)) => infer_inner(env, subst, init, types, d),
                             (None, None) => {
-                                d.push_error(Diagnostic::new(
+                                d.push_error(source_diagnostic(
                                     HllTypeCheckCode::AmbiguousType,
                                     span,
                                     "let binding without initializer requires an explicit type annotation",
@@ -1155,7 +1162,7 @@ fn infer_inner(
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             UndeclaredEnum,
                             expr.span(),
                             format!("undeclared enum '{}'", enum_name),
@@ -1184,7 +1191,7 @@ fn infer_inner(
                         env.pop_scope();
                         arm_tys.push(body_ty);
                     } else {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             NoSuchVariant,
                             expr.span(),
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
@@ -1194,7 +1201,7 @@ fn infer_inner(
                     }
                 }
                 if arm_tys.is_empty() {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         EmptySwitch,
                         expr.span(),
                         "empty switch expression",
@@ -1209,7 +1216,7 @@ fn infer_inner(
                 }
                 subst.resolve(&first_ty)
             } else {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     ExpectedEnum,
                     expr.span(),
                     format!("expected enum type for switch target, found {}", resolved),
@@ -1221,7 +1228,7 @@ fn infer_inner(
             let s_decl = match env.structs.get(name).cloned() {
                 Some(decl) => decl,
                 None => {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         UndeclaredStruct,
                         expr.span(),
                         format!("undeclared struct '{}'", name),
@@ -1231,7 +1238,7 @@ fn infer_inner(
             };
 
             if fields.len() != s_decl.fields.len() {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     StructFieldCountMismatch,
                     expr.span(),
                     format!(
@@ -1259,7 +1266,7 @@ fn infer_inner(
             for f_decl in &s_decl.fields {
                 let mut matches = fields.iter().filter(|(fname, _)| fname == &f_decl.name);
                 let Some((_, val_expr)) = matches.next() else {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         MissingField,
                         expr.span(),
                         format!(
@@ -1270,7 +1277,7 @@ fn infer_inner(
                     return error_ty();
                 };
                 if matches.next().is_some() {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         DuplicateField,
                         expr.span(),
                         format!(
@@ -1290,7 +1297,7 @@ fn infer_inner(
             let e_decl = match env.enums.get(enum_name).cloned() {
                 Some(decl) => decl,
                 None => {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         UndeclaredEnum,
                         expr.span(),
                         format!("undeclared enum '{}'", enum_name),
@@ -1302,7 +1309,7 @@ fn infer_inner(
             let variant_decl = match e_decl.variants.iter().find(|v| v.name == *variant_name) {
                 Some(v) => v.clone(),
                 None => {
-                    d.push_error(Diagnostic::new(
+                    d.push_error(source_diagnostic(
                         NoSuchVariant,
                         expr.span(),
                         format!("enum '{}' has no variant '{}'", enum_name, variant_name),
@@ -1358,7 +1365,7 @@ fn infer_inner(
                     }
                     Type::Error => {}
                     other => {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             ArrayIndexNotInt,
                             idx.span(),
                             format!("array index must be an integer, found {}", other),
@@ -1368,7 +1375,7 @@ fn infer_inner(
                 }
                 *inner
             } else {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     ExpectedArray,
                     arr.span(),
                     format!("expected array type, found {}", resolved),
@@ -1416,7 +1423,7 @@ fn check_inner(
                             (Some(annotated_ty), None) => annotated_ty.clone(),
                             (None, Some(init)) => infer_inner(env, subst, init, types, d),
                             (None, None) => {
-                                d.push_error(Diagnostic::new(
+                                d.push_error(source_diagnostic(
                                     HllTypeCheckCode::AmbiguousType,
                                     span,
                                     "let binding without initializer requires an explicit type annotation",
@@ -1465,7 +1472,7 @@ fn check_inner(
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             UndeclaredEnum,
                             expr.span(),
                             format!("undeclared enum '{}'", enum_name),
@@ -1492,7 +1499,7 @@ fn check_inner(
                         check_inner(env, subst, body, expected_ty, types, d);
                         env.pop_scope();
                     } else {
-                        d.push_error(Diagnostic::new(
+                        d.push_error(source_diagnostic(
                             NoSuchVariant,
                             expr.span(),
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
@@ -1501,7 +1508,7 @@ fn check_inner(
                 }
                 types.insert(expr.span(), resolved_expected.clone());
             } else {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     ExpectedEnum,
                     expr.span(),
                     format!("expected enum type for switch target, found {}", resolved),
@@ -1516,7 +1523,7 @@ fn check_inner(
         }
         (ExprKind::Array(elements), Type::Array(expected_elem, expected_size)) => {
             if elements.len() != *expected_size {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     ArrayLengthMismatch,
                     expr.span(),
                     format!(
@@ -1547,7 +1554,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
     match &expr.kind {
         ExprKind::Break(_) => {
             if loop_depth == 0 {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     HllTypeCheckCode::ControlFlowInDefer,
                     expr.span(),
                     "break is not allowed inside defer".to_string(),
@@ -1556,7 +1563,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         }
         ExprKind::Continue => {
             if loop_depth == 0 {
-                d.push_error(Diagnostic::new(
+                d.push_error(source_diagnostic(
                     HllTypeCheckCode::ControlFlowInDefer,
                     expr.span(),
                     "continue is not allowed inside defer".to_string(),
@@ -1564,7 +1571,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
             }
         }
         ExprKind::Return(_) => {
-            d.push_error(Diagnostic::new(
+            d.push_error(source_diagnostic(
                 HllTypeCheckCode::ControlFlowInDefer,
                 expr.span(),
                 "return is not allowed inside defer".to_string(),

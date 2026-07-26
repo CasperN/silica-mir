@@ -14,24 +14,36 @@ error: at 65:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', 
  66 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 72:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut '_ i64
+error: at 72:5: [SUB-CopyOfNonCopy] In function 'copy_mut_ref', block 'entry': cannot copy non-Copy type &mut '1 i64
     |
+ 68 | 
+ 69 | fn copy_mut_ref(r: &mut i64) {
+    |                    -------- the lifetime of this reference is called '1 in this diagnostic
+ 70 |   s: &mut i64;
  71 |   entry:
  72 |     s = copy r;
     |     ^^^^^^^^^^
  73 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 79:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out '_ i64
+error: at 79:5: [SUB-CopyOfNonCopy] In function 'copy_out_ref', block 'entry': cannot copy non-Copy type &out '1 i64
     |
+ 75 | 
+ 76 | fn copy_out_ref(r: &out i64) {
+    |                    -------- the lifetime of this reference is called '1 in this diagnostic
+ 77 |   s: &out i64;
  78 |   entry:
  79 |     s = copy r;
     |     ^^^^^^^^^^
  80 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 86:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit '_ i64
+error: at 86:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry': cannot copy non-Copy type &uninit '1 i64
     |
+ 82 | 
+ 83 | fn copy_uninit_ref(r: &uninit i64) {
+    |                       ----------- the lifetime of this reference is called '1 in this diagnostic
+ 84 |   s: &uninit i64;
  85 |   entry:
  86 |     s = copy r;
     |     ^^^^^^^^^^
@@ -86,16 +98,22 @@ error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'en
  132 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 137:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop '_ i64
+error: at 137:5: [SUB-DropOfNonDrop] In function 'drop_drop_ref', block 'entry': cannot drop non-Drop type &drop '1 i64
      |
+ 134 | 
+ 135 | fn drop_drop_ref(r: &drop i64) {
+     |                     --------- the lifetime of this reference is called '1 in this diagnostic
  136 |   entry:
  137 |     drop r;
      |     ^^^^^^
  138 |     return
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 143:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out '_ i64
+error: at 143:5: [SUB-DropOfNonDrop] In function 'drop_out_ref', block 'entry': cannot drop non-Drop type &out '1 i64
      |
+ 140 | 
+ 141 | fn drop_out_ref(r: &out i64) {
+     |                    -------- the lifetime of this reference is called '1 in this diagnostic
  142 |   entry:
  143 |     drop r;
      |     ^^^^^^

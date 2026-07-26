@@ -89,11 +89,11 @@ error: at 141:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatD', field 'b': 
      |                          ^^^^^^^^^^
  142 | 
      |
-error: at 145:29: [TC-InvalidDeclaredType] In struct 'UseOuter_MutRef', field 'b': Type argument &mut '_ i64 for 'OuterBox::T' does not satisfy required bound 'Copy'
+error: at 145:29: [TC-InvalidDeclaredType] In struct 'UseOuter_MutRef', field 'b': Type argument &mut '1 i64 for 'OuterBox::T' does not satisfy required bound 'Copy'
      |
  144 | # covers: type_kind=struct op=nested_param_subst class=Copy+Drop bound=MutRef:Drop+Move
  145 | struct UseOuter_MutRef { b: OuterBox<&mut i64> }
-     |                             ^^^^^^^^^^^^^^^^^^
+     |                             ^^^^^^^^^^^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  146 | 
      |
 error: at 101:15: [TC-InvalidDeclaredType] In function 'consume', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
@@ -103,11 +103,11 @@ error: at 101:15: [TC-InvalidDeclaredType] In function 'consume', parameter 'b':
      |               ^^^^^^^^^^^
  102 |   entry:
      |
-error: at 109:30: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out '_ U for 'Option::T' does not satisfy required bound 'Copy'
+error: at 109:30: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out '1 U for 'Option::T' does not satisfy required bound 'Copy'
      |
  108 | # and still does not grant Copy or Drop.
  109 | fn<U: Move> option_of_out(x: Option<&out U>) {
-     |                              ^^^^^^^^^^^^^^
+     |                              ^^^^^^^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  110 |   entry:
      |
 error: at 49:37: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy

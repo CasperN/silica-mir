@@ -11,6 +11,7 @@
 
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::diagnostic_format::DiagnosticFormat;
 use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
@@ -76,11 +77,11 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
     let mut cs = constraints::ConstraintSet::new();
     for p in &func.params {
-        emit_type_wf_constraints(&p.ty, env, &mut cs, p.ty.span());
+        emit_type_wf_constraints(&p.ty, env, &mut cs);
     }
     if let Some(body) = &func.body {
         for l in &body.locals {
-            emit_type_wf_constraints(&l.ty, env, &mut cs, l.ty.span());
+            emit_type_wf_constraints(&l.ty, env, &mut cs);
         }
         for block in &body.blocks {
             for stmt in &block.statements {
@@ -128,12 +129,12 @@ fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
         match decl {
             TypeDecl::Struct(s) => {
                 for f in &s.fields {
-                    emit_type_wf_constraints(&f.ty, env, &mut cs, f.ty.span());
+                    emit_type_wf_constraints(&f.ty, env, &mut cs);
                 }
             }
             TypeDecl::Enum(e) => {
                 for v in &e.variants {
-                    emit_type_wf_constraints(&v.ty, env, &mut cs, v.ty.span());
+                    emit_type_wf_constraints(&v.ty, env, &mut cs);
                 }
             }
         }
@@ -174,19 +175,27 @@ fn missing_bound_diagnostic(
     owner_kind: &str,
     owner: &DeclMeta,
 ) -> Diagnostic {
-    let bound = format!("{}: {}", constraint.outlives, constraint.sub);
-    let message = owner.diagnostic_text(format!(
+    let mut format = DiagnosticFormat::new();
+    let scope = format.scope(owner);
+    let bound = format!(
+        "{}: {}",
+        format.region(&scope, &constraint.outlives),
+        format.region(&scope, &constraint.sub),
+    );
+    let message = format!(
         "{} requires lifetime bound {}, but it is not implied by the declared bounds on {} '{}'",
         constraint.cause.description(),
         bound,
         owner_kind,
         owner.name,
-    ));
-    let hint = owner.diagnostic_text(format!(
+    );
+    let hint = format!(
         "declare bound {} on {} '{}' or change the value flow so it is not required",
         bound, owner_kind, owner.name,
-    ));
-    Diagnostic::new(LifetimeCode::LifetimeMismatch, constraint.origin, message).with_hint(hint)
+    );
+    format.finish(
+        Diagnostic::new(LifetimeCode::LifetimeMismatch, constraint.origin, message).with_hint(hint),
+    )
 }
 
 /// Map a lifetime to its region form. The reserved name `'static`
@@ -209,11 +218,11 @@ fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::C
         StatementKind::Assign(_, rvalue) => match rvalue {
             RValue::PtrCast(op, ty) => {
                 emit_operand_wf_constraints(op, env, cs);
-                emit_type_wf_constraints(ty, env, cs, ty.span());
+                emit_type_wf_constraints(ty, env, cs);
             }
             RValue::EnumConstr(_, type_args, _, op) => {
                 for ty in type_args {
-                    emit_type_wf_constraints(ty, env, cs, ty.span());
+                    emit_type_wf_constraints(ty, env, cs);
                 }
                 emit_operand_wf_constraints(op, env, cs);
             }
@@ -242,7 +251,7 @@ fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::C
 fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::ConstraintSet) {
     if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
         for ty in type_args {
-            emit_type_wf_constraints(ty, env, cs, ty.span());
+            emit_type_wf_constraints(ty, env, cs);
         }
     }
 }
@@ -258,7 +267,7 @@ fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::Co
 /// declared outlives obligations against the containing scope's axioms.
 /// Mirrors the fn-call instantiation pattern in `check_call_regions`
 /// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
-fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::ConstraintSet, span: Span) {
+fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::ConstraintSet) {
     match &ty.kind {
         TypeKind::Custom(name, lts, args) => {
             if let Some(decl) = env.types.get(name) {
@@ -279,21 +288,21 @@ fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::Constrai
                             ConstraintCause::TypeRequirement {
                                 type_name: name.clone(),
                             },
-                            span,
+                            ty.source,
                         );
                     }
                 }
             }
             for a in args {
-                emit_type_wf_constraints(a, env, cs, span);
+                emit_type_wf_constraints(a, env, cs);
             }
         }
         TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
-            emit_type_wf_constraints(inner, env, cs, span);
+            emit_type_wf_constraints(inner, env, cs);
         }
         TypeKind::Fn(inners) => {
             for i in inners {
-                emit_type_wf_constraints(i, env, cs, span);
+                emit_type_wf_constraints(i, env, cs);
             }
         }
         TypeKind::Unit
@@ -462,18 +471,18 @@ fn emit_variance(
     v: Variance,
     constraints: &mut constraints::ConstraintSet,
     cause: ConstraintCause,
-    span: Span,
+    source: SourceInfo,
 ) {
     match v {
         Variance::Contravariant => {
-            constraints.emit(caller.clone(), inst.clone(), cause, span);
+            constraints.emit(caller.clone(), inst.clone(), cause, source);
         }
         Variance::Covariant => {
-            constraints.emit(inst.clone(), caller.clone(), cause, span);
+            constraints.emit(inst.clone(), caller.clone(), cause, source);
         }
         Variance::Invariant => {
-            constraints.emit(caller.clone(), inst.clone(), cause.clone(), span);
-            constraints.emit(inst.clone(), caller.clone(), cause, span);
+            constraints.emit(caller.clone(), inst.clone(), cause.clone(), source);
+            constraints.emit(inst.clone(), caller.clone(), cause, source);
         }
     }
 }
@@ -523,9 +532,8 @@ struct Checker<'a> {
 }
 
 impl<'a> Checker<'a> {
-    fn error(&self, code: LifetimeCode, source: impl Into<SourceInfo>, msg: String) -> Diagnostic {
-        Diagnostic::new(code, source, self.func.meta.diagnostic_text(msg))
-            .in_function(&self.func.meta.name)
+    fn error(&self, code: LifetimeCode, source: SourceInfo, msg: String) -> Diagnostic {
+        Diagnostic::new(code, source, msg).in_function(&self.func.meta.name)
     }
 
     /// Enforce accumulated outlives constraints. The only satisfiable
@@ -564,12 +572,14 @@ impl<'a> Checker<'a> {
                 // region on `$return`/`&mut`/`&out` params, or `'static`
                 // (always visible; Static is the top of the order).
                 (Region::Free(_), Region::Named(dst)) if escape_visible.contains(dst) => {
+                    let mut format = DiagnosticFormat::new();
+                    let scope = format.scope(&self.func.meta);
                     let msg = format!(
                         "borrow escapes function: value with local (unnamed) region cannot be stored into region {}",
-                        dst,
+                        format.lifetime(&scope, dst),
                     );
-                    self.d
-                        .push_error(self.error(LifetimeCode::LifetimeEscape, c.origin, msg));
+                    let diagnostic = self.error(LifetimeCode::LifetimeEscape, c.origin, msg);
+                    self.d.push_error(format.finish(diagnostic));
                 }
                 (Region::Free(_), Region::Static) => {
                     let msg = format!(
@@ -734,35 +744,50 @@ impl<'a> Checker<'a> {
                     continue;
                 }
                 let borrower_name = format_place(borrower_place);
-                let access_name = format_place(place);
-                let access_is_hll_temp = self.is_hll_temporary(place);
-                let borrower_is_hll_temp = self.is_hll_temporary(borrower_place);
-                let source_access =
-                    if matches!(access, AccessKind::Move) && source.generated_kind().is_some() {
-                        "use".to_string()
-                    } else {
-                        access.to_string()
-                    };
-                let (msg, hint, secondary) = if access_is_hll_temp {
+                let access_temp = self.hll_temporary_kind(place);
+                let borrower_temp = self.hll_temporary_kind(borrower_place);
+                let access_name = match access_temp {
+                    Some(HllTemporaryKind::Expression) => "temporary value".to_string(),
+                    Some(HllTemporaryKind::Lowering) => "intermediate value".to_string(),
+                    None => format_place(place),
+                };
+                let source_access = if matches!(access, AccessKind::Move)
+                    && source.generated_kind() == Some(GeneratedKind::HllDesugaring)
+                {
+                    "use".to_string()
+                } else {
+                    access.to_string()
+                };
+                let is_expression_cleanup = access_temp == Some(HllTemporaryKind::Expression)
+                    && matches!(access, AccessKind::Move)
+                    && source.generated_kind() == Some(GeneratedKind::DropElaboration);
+                let (msg, hint, secondary) = if is_expression_cleanup {
                     (
                         "borrow of a temporary value escapes the expression that created it"
                             .to_string(),
                         "bind the temporary value to a local before borrowing it.".to_string(),
                         "temporary value is borrowed here".to_string(),
                     )
-                } else if borrower_is_hll_temp {
+                } else if let Some(borrower_temp) = borrower_temp {
                     let loaned_name = format_place(loaned);
                     let borrow_kind = match loan.kind {
                         RefKind::Shared => "shared borrow",
                         _ => "exclusive borrow",
+                    };
+                    let hint = match borrower_temp {
+                        HllTemporaryKind::Expression => {
+                            "the borrow remains active until the surrounding expression finishes."
+                        }
+                        HllTemporaryKind::Lowering => {
+                            "the borrow remains active until the current operation finishes."
+                        }
                     };
                     (
                         format!(
                             "cannot {} '{}': conflicts with an active {} of '{}'",
                             source_access, access_name, borrow_kind, loaned_name,
                         ),
-                        "the borrow remains active until the surrounding expression finishes."
-                            .to_string(),
+                        hint.to_string(),
                         format!("{} of '{}' occurs here", borrow_kind, loaned_name),
                     )
                 } else {
@@ -814,17 +839,15 @@ impl<'a> Checker<'a> {
         self.check_loan_conflict(block, place, access, source, loans);
     }
 
-    fn is_hll_temporary(&self, place: &Place) -> bool {
+    fn hll_temporary_kind(&self, place: &Place) -> Option<HllTemporaryKind> {
         let (root, _) = extract_path_with_deref(place);
         self.func
             .body
             .as_ref()
             .and_then(|body| body.locals.iter().find(|local| local.name == root))
-            .is_some_and(|local| {
-                matches!(
-                    local.source.generated_kind(),
-                    Some(GeneratedKind::HllTemporary)
-                )
+            .and_then(|local| match local.source.generated_kind() {
+                Some(GeneratedKind::HllTemporary(kind)) => Some(kind),
+                _ => None,
             })
     }
 
@@ -864,7 +887,6 @@ impl<'a> Checker<'a> {
         source: SourceInfo,
         loans: &mut LoanMap,
     ) {
-        let span = source.span();
         let Operand::Const(ConstVal::FnName(callee_name, _)) = target else {
             return;
         };
@@ -897,7 +919,7 @@ impl<'a> Checker<'a> {
                 loans,
                 &mut per_output_inputs,
                 callee_name,
-                span,
+                source,
             );
         }
 
@@ -916,7 +938,7 @@ impl<'a> Checker<'a> {
                 ConstraintCause::Call {
                     callee: callee_name.clone(),
                 },
-                span,
+                source,
             );
         }
 
@@ -989,7 +1011,7 @@ impl<'a> Checker<'a> {
         loans: &LoanMap,
         per_output_inputs: &mut IndexMap<Region, BTreeSet<Place>>,
         callee_name: &str,
-        span: Span,
+        source: SourceInfo,
     ) {
         match &callee_ty.kind {
             TypeKind::Ref(kind, Some(lt), inner) => {
@@ -1006,7 +1028,7 @@ impl<'a> Checker<'a> {
                         ConstraintCause::Call {
                             callee: callee_name.to_string(),
                         },
-                        span,
+                        source,
                     );
                     if matches!(variance, Variance::Contravariant | Variance::Invariant) {
                         if let Some(owned) = as_owned_path(caller_place) {
@@ -1034,7 +1056,7 @@ impl<'a> Checker<'a> {
                     loans,
                     per_output_inputs,
                     callee_name,
-                    span,
+                    source,
                 );
             }
             TypeKind::Custom(_, lts, args) => {
@@ -1060,7 +1082,7 @@ impl<'a> Checker<'a> {
                                 ConstraintCause::Call {
                                     callee: callee_name.to_string(),
                                 },
-                                span,
+                                source,
                             );
                         }
                     }
@@ -1075,7 +1097,7 @@ impl<'a> Checker<'a> {
                         loans,
                         per_output_inputs,
                         callee_name,
-                        span,
+                        source,
                     );
                 }
             }
@@ -1088,7 +1110,7 @@ impl<'a> Checker<'a> {
                     loans,
                     per_output_inputs,
                     callee_name,
-                    span,
+                    source,
                 );
             }
             // Scalars and `Param` carry no lifetime — no walk needed.
@@ -1182,7 +1204,7 @@ impl<'a> Checker<'a> {
                 // reporting a single user event twice. The assign
                 // carries the authoritative diagnostic; the auto-drop is
                 // silent but still advances the loan map.
-                if !is_elab_inserted_drop(place, stmt.span(), next) {
+                if !is_elab_inserted_drop(place, stmt.source, next) {
                     self.check_loan_conflict(block, place, AccessKind::Move, stmt.source, loans);
                 }
                 transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
@@ -1254,8 +1276,10 @@ mod tests {
             panic!("expected function declaration");
         };
         let body = func.body.as_mut().expect("expected function body");
-        body.locals[0].source =
-            SourceInfo::generated(GeneratedKind::HllTemporary, body.locals[0].span());
+        body.locals[0].source = SourceInfo::generated(
+            GeneratedKind::HllTemporary(HllTemporaryKind::Expression),
+            body.locals[0].span(),
+        );
         for stmt in &mut body.blocks[0].statements {
             stmt.source = SourceInfo::generated(GeneratedKind::HllDesugaring, stmt.span());
         }
@@ -1273,6 +1297,55 @@ mod tests {
             conflict.message(),
             "cannot write to 'x': conflicts with an active shared borrow of 'x'"
         );
+        assert!(!conflict.message().contains("_temp_0"));
+    }
+
+    #[test]
+    fn ordinary_access_to_expression_temp_is_not_misreported_as_escape() {
+        let mut program = Parser::new(
+            r#"
+            fn f() {
+              _temp_0: i64;
+              r: & i64;
+              entry:
+                _temp_0 = 1;
+                r = & _temp_0;
+                _temp_0 = 2;
+                unborrow r;
+                drop _temp_0;
+                return
+            }
+            "#
+            .to_string(),
+        )
+        .parse()
+        .expect("test MIR should parse");
+        let Declaration::Fn(func) = &mut program.declarations[0] else {
+            panic!("expected function declaration");
+        };
+        let body = func.body.as_mut().expect("expected function body");
+        body.locals[0].source = SourceInfo::generated(
+            GeneratedKind::HllTemporary(HllTemporaryKind::Expression),
+            body.locals[0].span(),
+        );
+        for stmt in &mut body.blocks[0].statements {
+            stmt.source = SourceInfo::generated(GeneratedKind::HllDesugaring, stmt.span());
+        }
+
+        let (env, env_errors) = Env::build(&program);
+        assert!(env_errors.is_empty());
+        let mut diagnostics = Diagnostics::default();
+        check_program(&program, &env, &mut diagnostics);
+
+        let conflict = diagnostics
+            .errors()
+            .find(|diagnostic| diagnostic.message().contains("cannot write"))
+            .expect("expected loan conflict");
+        assert_eq!(
+            conflict.message(),
+            "cannot write to 'temporary value': already borrowed by 'r'"
+        );
+        assert!(!conflict.message().contains("escapes"));
         assert!(!conflict.message().contains("_temp_0"));
     }
 }

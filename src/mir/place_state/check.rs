@@ -1,5 +1,6 @@
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
+use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
 use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
@@ -51,22 +52,24 @@ fn check_return_state(
         let mut leaks = Vec::new();
         find_return_leaks(env, place_state, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
-            let mut diagnostic = diag(
-                ReturnValueLeak,
-                block.terminator.span(),
-                func,
-                block,
-                format!(
-                    "value '{}' of type {} is not consumed at return",
-                    leaked_path, leaked_ty
-                ),
-            )
-            .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.");
+            let mut diagnostic = format_type_diagnostic(&func.meta, &leaked_ty, |ty| {
+                diag(
+                    ReturnValueLeak,
+                    block.terminator.source,
+                    func,
+                    block,
+                    format!(
+                        "value '{}' of type {} is not consumed at return",
+                        leaked_path, ty,
+                    ),
+                )
+                .with_hint("linear values must be consumed or returned before function exit. Try moving or dropping it.")
+            });
             let root_end = leaked_path
                 .find(|c: char| c == '.' || c == '[')
                 .unwrap_or(leaked_path.len());
-            if let Some(span) = find_decl_span(func, &leaked_path[..root_end]) {
-                diagnostic = diagnostic.with_secondary(span, "variable declared here");
+            if let Some(source) = find_decl_source(func, &leaked_path[..root_end]) {
+                diagnostic = diagnostic.with_secondary(source, "variable declared here");
             }
             d.push_error(diagnostic);
         }
@@ -79,7 +82,7 @@ fn check_return_state(
         let (cur, expected) = describe_obligation_mismatch(rs);
         let mut diagnostic = diag(
             RefObligationUnfulfilled,
-            block.terminator.span(),
+            block.terminator.source,
             func,
             block,
             format!(
@@ -87,8 +90,8 @@ fn check_return_state(
                 format_place(place), cur, expected,
             ),
         );
-        if let Some(span) = find_decl_span(func, place_root_var_name(place)) {
-            diagnostic = diagnostic.with_secondary(span, "reference declared here");
+        if let Some(source) = find_decl_source(func, place_root_var_name(place)) {
+            diagnostic = diagnostic.with_secondary(source, "reference declared here");
         }
         d.push_error(diagnostic);
     }
@@ -138,16 +141,16 @@ pub(super) fn place_root_var_name(place: &Place) -> &str {
     }
 }
 
-pub(super) fn find_decl_span(func: &Function, name: &str) -> Option<Span> {
+pub(super) fn find_decl_source(func: &Function, name: &str) -> Option<SourceInfo> {
     if let Some(param) = func.params.iter().find(|param| param.name == name) {
-        return Some(param.span());
+        return Some(param.source);
     }
     func.body
         .as_ref()?
         .locals
         .iter()
         .find(|local| local.name == name)
-        .map(|local| local.span())
+        .map(|local| local.source)
 }
 
 fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
@@ -224,22 +227,22 @@ pub(super) fn place_has_dynamic_index(place: &Place) -> bool {
     path.iter().any(|s| matches!(s, PathStep::Index(None)))
 }
 
-/// Locate the declaration span for the root Var of `ref_place`. Used
+/// Locate the declaration source for the root Var of `ref_place`. Used
 /// to attach a secondary "reference declared here" span to obligation
 /// diagnostics — the primary span sits at the point of failure (the
 /// return, drop, or overwrite), which repeats across every case in a
 /// fixture and doesn't distinguish which reference was involved.
-pub(super) fn ref_root_decl_span(func: &Function, ref_place: &Place) -> Option<Span> {
+pub(super) fn ref_root_decl_source(func: &Function, ref_place: &Place) -> Option<SourceInfo> {
     let (root, _) = extract_path_with_deref(ref_place);
     for p in &func.params {
         if p.name == root {
-            return Some(p.span());
+            return Some(p.source);
         }
     }
     if let Some(body) = &func.body {
         for l in &body.locals {
             if l.name == root {
-                return Some(l.span());
+                return Some(l.source);
             }
         }
     }
@@ -274,7 +277,7 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let span = stmt.span();
+        let source = stmt.source;
         match &stmt.kind {
             StatementKind::Assign(target, rvalue) => {
                 self.materialize_moved_ref(rvalue, state);
@@ -292,7 +295,7 @@ impl<'a> InitStateContext<'a> {
                 if place_has_dynamic_index(target) {
                     d.push_error(diag(
                         DynamicIndexConsumption,
-                        span,
+                        source,
                         func,
                         block,
                         format!(
@@ -306,21 +309,21 @@ impl<'a> InitStateContext<'a> {
                 // at the target's current state before the rvalue's
                 // moves take effect, so that e.g. `y = move y.f` isn't
                 // conflated (although that shape is not really valid).
-                self.check_overwrite(func, block, target, span, state, d);
+                self.check_overwrite(func, block, target, source, state, d);
 
-                self.eval_rvalue(func, block, rvalue, span, state, d);
-                self.check_lhs_downcast(func, block, target, span, state, d);
+                self.eval_rvalue(func, block, rvalue, source, state, d);
+                self.check_lhs_downcast(func, block, target, source, state, d);
 
                 // Overwriting a bound ref var is a silent-forget of the
                 // pointee obligation; error unless already fulfilled.
-                self.close_ref_if_present(func, block, target, span, state, d);
+                self.close_ref_if_present(func, block, target, source, state, d);
 
                 self.apply_target_write_state(
                     target,
                     rvalue,
                     carried_refs,
                     state,
-                    Some((func, block, span, d)),
+                    Some((func, block, source, d)),
                 );
             }
             StatementKind::Call(target, args) => {
@@ -329,14 +332,14 @@ impl<'a> InitStateContext<'a> {
                 // that carries a ref (or an aggregate containing one)
                 // must be in its declared kind's entry state.
                 if let Operand::Move(place) = target {
-                    self.check_call_transfer(func, block, place, span, state, d);
+                    self.check_call_transfer(func, block, place, source, state, d);
                 }
-                self.eval_operand(func, block, target, span, state, d);
+                self.eval_operand(func, block, target, source, state, d);
                 for a in args {
                     if let Operand::Move(place) = a {
-                        self.check_call_transfer(func, block, place, span, state, d);
+                        self.check_call_transfer(func, block, place, source, state, d);
                     }
-                    self.eval_operand(func, block, a, span, state, d);
+                    self.eval_operand(func, block, a, source, state, d);
                 }
             }
             StatementKind::Drop(place) => {
@@ -346,7 +349,7 @@ impl<'a> InitStateContext<'a> {
                 if place_has_dynamic_index(place) {
                     d.push_error(diag(
                         DynamicIndexConsumption,
-                        span,
+                        source,
                         func,
                         block,
                         format!(
@@ -359,20 +362,20 @@ impl<'a> InitStateContext<'a> {
                 // `move`. The substructural checker (separate pass) is the
                 // one that will require the type to be Drop. For a ref-typed
                 // Var, also verify the pointee obligation before forgetting.
-                self.check_place_read(func, block, place, span, state, d);
-                self.close_ref_if_present(func, block, place, span, state, d);
-                self.apply_consume_state(place, state, Some((func, block, span, d)));
+                self.check_place_read(func, block, place, source, state, d);
+                self.close_ref_if_present(func, block, place, source, state, d);
+                self.apply_consume_state(place, state, Some((func, block, source, d)));
             }
             StatementKind::Unborrow(place) => {
                 // Explicit end-of-loan. Requires the borrower to be Init
                 // and its (is_init, ends_init) obligation fulfilled — both
                 // checked by close_ref_if_present. Then consume the borrower.
-                self.check_place_read(func, block, place, span, state, d);
-                self.close_ref_if_present(func, block, place, span, state, d);
+                self.check_place_read(func, block, place, source, state, d);
+                self.close_ref_if_present(func, block, place, source, state, d);
                 self.apply_move(place, state);
             }
             StatementKind::RequireUninit(place) => {
-                self.check_require_uninit(func, block, place, span, state, d);
+                self.check_require_uninit(func, block, place, source, state, d);
                 // This prevents a later scope exit or return from repeating
                 // the same leak diagnostic.
                 self.apply_require_uninit_postcondition(place, state);
@@ -387,20 +390,20 @@ impl<'a> InitStateContext<'a> {
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        let ts = block.terminator.span();
+        let source = block.terminator.source;
         match &block.terminator.kind {
             TerminatorKind::Branch { cond, .. } => {
-                self.eval_operand(func, block, cond, ts, state, d)
+                self.eval_operand(func, block, cond, source, state, d)
             }
             TerminatorKind::SwitchEnum { place, .. } => {
                 // Discriminant read: no move, no consumption.
-                self.check_place_read(func, block, place, ts, state, d);
+                self.check_place_read(func, block, place, source, state, d);
                 if split_at_outermost_deref(place).is_some() {
                     self.apply_deref_op(
                         place,
                         super::analysis::DerefOp::Read,
                         state,
-                        Some((func, block, ts, d)),
+                        Some((func, block, source, d)),
                     );
                 }
             }
@@ -419,16 +422,16 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         rv: &RValue,
-        span: Span,
+        source: SourceInfo,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
         match rv {
             RValue::Use(op) | RValue::EnumConstr(_, _, _, op) | RValue::PtrCast(op, _) => {
-                self.eval_operand(func, block, op, span, state, d);
+                self.eval_operand(func, block, op, source, state, d);
             }
             RValue::Ref(kind, place) => {
-                self.check_borrow_precondition(func, block, kind, place, span, state, d);
+                self.check_borrow_precondition(func, block, kind, place, source, state, d);
             }
             RValue::RawRef(_) => {
                 // No precondition — raw pointers can point at any
@@ -437,7 +440,7 @@ impl<'a> InitStateContext<'a> {
             }
             RValue::ArrayLit(ops) => {
                 for op in ops {
-                    self.eval_operand(func, block, op, span, state, d);
+                    self.eval_operand(func, block, op, source, state, d);
                 }
             }
         }
@@ -448,11 +451,11 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         op: &Operand,
-        span: Span,
+        source: SourceInfo,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
-        self.check_operand_read(func, block, op, span, state, d);
+        self.check_operand_read(func, block, op, source, state, d);
         // Projected dereference operands carry their own pointee-state
         // transition. Owned operands use the ordinary locals-state transfer.
         match op {
@@ -461,7 +464,7 @@ impl<'a> InitStateContext<'a> {
                     place,
                     super::analysis::DerefOp::Read,
                     state,
-                    Some((func, block, span, d)),
+                    Some((func, block, source, d)),
                 );
             }
             Operand::Move(place) if split_at_outermost_deref(place).is_some() => {
@@ -469,7 +472,7 @@ impl<'a> InitStateContext<'a> {
                     place,
                     super::analysis::DerefOp::Move,
                     state,
-                    Some((func, block, span, d)),
+                    Some((func, block, source, d)),
                 );
             }
             _ => self.apply_operand_move(op, state),
@@ -481,7 +484,7 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         op: &Operand,
-        span: Span,
+        source: SourceInfo,
         state: &PointState,
         d: &mut Diagnostics,
     ) {
@@ -498,7 +501,7 @@ impl<'a> InitStateContext<'a> {
         if matches!(op, Operand::Move(_)) && place_has_dynamic_index(place) {
             d.push_error(diag(
                 DynamicIndexConsumption,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -507,7 +510,7 @@ impl<'a> InitStateContext<'a> {
                 ),
             ));
         }
-        self.check_place_read(func, block, place, span, state, d);
+        self.check_place_read(func, block, place, source, state, d);
     }
 
     /// Overwrite check: at `target = ...`, the storage covered by
@@ -526,7 +529,7 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         target: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &PointState,
         d: &mut Diagnostics,
     ) {
@@ -553,16 +556,18 @@ impl<'a> InitStateContext<'a> {
                 let c = class_of(leaf_ty, self.env, &scope);
                 if !c.implies(Marker::Drop) {
                     let path_str = format!("{}{}", format_place(target), leaf_path);
-                    d.push_error(diag(
-                        OverwriteWithoutDrop,
-                        span,
-                        func,
-                        block,
-                        format!(
-                            "cannot overwrite '{}': type {} is not Drop and the value is still live (consume it via `drop {}` first)",
-                            path_str, leaf_ty, path_str
-                        ),
-                    ));
+                    d.push_error(format_type_diagnostic(&func.meta, leaf_ty, |ty| {
+                        diag(
+                            OverwriteWithoutDrop,
+                            source,
+                            func,
+                            block,
+                            format!(
+                                "cannot overwrite '{}': type {} is not Drop and the value is still live (consume it via `drop {}` first)",
+                                path_str, ty, path_str,
+                            ),
+                        )
+                    }));
                 }
             },
         );
@@ -577,7 +582,7 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         place: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
@@ -601,7 +606,7 @@ impl<'a> InitStateContext<'a> {
                 let (cur, expected) = describe_obligation_mismatch(&rs);
                 let mut diagnostic = diag(
                     RefObligationUnfulfilled,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -611,8 +616,8 @@ impl<'a> InitStateContext<'a> {
                         expected,
                     ),
                 );
-                if let Some(decl_span) = ref_root_decl_span(func, &v) {
-                    diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+                if let Some(decl_source) = ref_root_decl_source(func, &v) {
+                    diagnostic = diagnostic.with_secondary(decl_source, "reference declared here");
                 }
                 d.push_error(diagnostic);
             }
@@ -643,7 +648,7 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         moved: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
@@ -686,9 +691,9 @@ impl<'a> InitStateContext<'a> {
                     expected,
                     current,
                 );
-                let mut diagnostic = diag(RefCallEntryMismatch, span, func, block, msg);
-                if let Some(decl_span) = ref_root_decl_span(func, &v) {
-                    diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+                let mut diagnostic = diag(RefCallEntryMismatch, source, func, block, msg);
+                if let Some(decl_source) = ref_root_decl_source(func, &v) {
+                    diagnostic = diagnostic.with_secondary(decl_source, "reference declared here");
                 }
                 d.push_error(diagnostic);
             }
@@ -703,7 +708,7 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         place: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
@@ -723,7 +728,7 @@ impl<'a> InitStateContext<'a> {
         if !matches!(prefix_state, InitState::Init) {
             d.push_error(diag(
                 WriteThroughUninitEnumProjection,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -739,7 +744,7 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         place: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &PointState,
         d: &mut Diagnostics,
     ) {
@@ -757,14 +762,14 @@ impl<'a> InitStateContext<'a> {
             InitState::Init => {}
             InitState::NeverInit => d.push_error(diag(
                 UseBeforeInit,
-                span,
+                source,
                 func,
                 block,
                 format!("variable '{}' is used before initialization", root),
             )),
             InitState::Moved => d.push_error(diag(
                 UseAfterMove,
-                span,
+                source,
                 func,
                 block,
                 format!("variable '{}' is used after move", root),
@@ -778,7 +783,7 @@ impl<'a> InitStateContext<'a> {
                 // path skipped them all.
                 let mut err = diag(
                     UseInconsistent,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -792,7 +797,7 @@ impl<'a> InitStateContext<'a> {
                             if let StatementKind::Assign(target, _) = &stmt.kind {
                                 if target == place {
                                     err = err.with_secondary(
-                                        stmt.span(),
+                                        stmt.source,
                                         "initialized here on some path",
                                     );
                                 }
@@ -804,7 +809,7 @@ impl<'a> InitStateContext<'a> {
             }
             InitState::Partial(_) => d.push_error(diag(
                 UsePartiallyInit,
-                span,
+                source,
                 func,
                 block,
                 format!("variable '{}' is not fully initialized here", root),
@@ -827,7 +832,7 @@ impl<'a> InitStateContext<'a> {
         block: &BasicBlock,
         kind: &RefKind,
         place: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &mut PointState,
         d: &mut Diagnostics,
     ) {
@@ -847,7 +852,7 @@ impl<'a> InitStateContext<'a> {
         if matches!(kind, RefKind::Out | RefKind::Drop) && place_has_dynamic_index(place) {
             d.push_error(diag(
                 BorrowDynamicIndexStateChanging,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -880,7 +885,7 @@ impl<'a> InitStateContext<'a> {
             let Some(parent_rs) = self.ensure_ref_state(&parent, state) else {
                 d.push_error(diag(
                     ReferenceStateUnknown,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -911,7 +916,7 @@ impl<'a> InitStateContext<'a> {
                 let actual = describe_pointee_state(&current);
                 d.push_error(diag(
                     BorrowStateMismatch,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -965,7 +970,7 @@ impl<'a> InitStateContext<'a> {
             let actual = describe_state(&leaf);
             d.push_error(diag(
                 BorrowDynamicIndexNonUniform,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -1003,7 +1008,7 @@ impl<'a> InitStateContext<'a> {
         // error here; post-elab init_state re-runs against the
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && matches!(leaf, InitState::Init) {
-            if let Ok(leaf_ty) = self.env.type_of_place(place, span, self.locals) {
+            if let Ok(leaf_ty) = self.env.type_of_place(place, self.locals) {
                 let scope = func.meta.param_scope();
                 if class_of(&leaf_ty, self.env, &scope).implies(Marker::Drop) {
                     return;
@@ -1020,7 +1025,7 @@ impl<'a> InitStateContext<'a> {
         let actual = describe_state(&leaf);
         let mut diagnostic = diag(
             BorrowStateMismatch,
-            span,
+            source,
             func,
             block,
             format!(
@@ -1057,14 +1062,14 @@ impl<'a> InitStateContext<'a> {
         func: &Function,
         block: &BasicBlock,
         place: &Place,
-        span: Span,
+        source: SourceInfo,
         state: &PointState,
         d: &mut Diagnostics,
     ) {
         let Some(owned) = as_owned_path(place) else {
             d.push_error(diag(
                 RequireUninitNotSatisfied,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -1097,7 +1102,7 @@ impl<'a> InitStateContext<'a> {
         if let Some(reason) = reason {
             d.push_error(diag(
                 RequireUninitNotSatisfied,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -1122,7 +1127,7 @@ impl<'a> InitStateContext<'a> {
             let (cur, expected) = describe_obligation_mismatch(rs);
             let mut diagnostic = diag(
                 RefObligationUnfulfilled,
-                span,
+                source,
                 func,
                 block,
                 format!(
@@ -1132,8 +1137,8 @@ impl<'a> InitStateContext<'a> {
                     expected,
                 ),
             );
-            if let Some(decl_span) = ref_root_decl_span(func, ref_place) {
-                diagnostic = diagnostic.with_secondary(decl_span, "reference declared here");
+            if let Some(decl_source) = ref_root_decl_source(func, ref_place) {
+                diagnostic = diagnostic.with_secondary(decl_source, "reference declared here");
             }
             d.push_error(diagnostic);
         }

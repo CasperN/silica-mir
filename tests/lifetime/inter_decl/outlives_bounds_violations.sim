@@ -44,7 +44,7 @@ fn<'a, 'b: 'a, 'c: 'b> reversed_chain_fails(
 # ---------- undeclared bound-side lifetime ----------
 
 # covers: type_kind=fn lifetime_bound=undeclared_bound
-# TC-UndeclaredLifetime fires with the fn's name-span.
+# TC-UndeclaredLifetime points at the invalid bound itself.
 fn<'a: 'z> undeclared_bound_lt(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
@@ -390,5 +390,19 @@ fn<'a: 'b, 'a: 'b, 'b> duplicate_lifetime_param_fails(
 ) {
   entry:
     $return.* = copy x;
+    return
+}
+
+# ---------- generated lifetime names are diagnostic-local and distinct ----------
+
+# covers: type_kind=fn lifetime_bound=elided_distinct op=assignment
+# Each elided input lifetime is a separate region. The diagnostic assigns
+# source-facing names to both regions and must not collapse the requirement
+# into the meaningless `'_ : '_`.
+fn elided_bound_names_are_distinct(x: &i64, y: &i64) {
+  entry:
+    y = copy x;
+    drop x;
+    drop y;
     return
 }

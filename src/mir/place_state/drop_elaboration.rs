@@ -212,7 +212,10 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
                     transfer_stmt_silent(
                         env,
                         func,
-                        &drop_stmt(place.clone(), stmt.span()),
+                        &drop_stmt(
+                            place.clone(),
+                            SourceInfo::generated(GeneratedKind::DropElaboration, stmt.span()),
+                        ),
                         &mut state,
                     );
                 }
@@ -341,8 +344,7 @@ fn pre_stmt_transitions(
     // because Case A skips Downcast paths.
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
-            if let Ok(inner_ty) = env.type_of_place(inner, crate::mir::ast::Span::default(), locals)
-            {
+            if let Ok(inner_ty) = env.type_of_place(inner, locals) {
                 if let TypeKind::Custom(enum_name, _, _) = &inner_ty.kind {
                     let payload_place = downcast_place(inner_owned.clone(), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals, scope) {
@@ -350,7 +352,7 @@ fn pre_stmt_transitions(
                         let rewrite = assign_stmt(
                             inner_owned,
                             enum_constr_rv(enum_name.clone(), variant.clone(), operand.clone()),
-                            stmt.span(), // TODO: Is this the right span?
+                            SourceInfo::generated(GeneratedKind::DropElaboration, stmt.span()),
                         );
                         return (drops, Some(rewrite));
                     }
@@ -407,7 +409,7 @@ fn plan_drops_for_requirement(
     let Some(root_state) = state.locals.get(&root) else {
         return Vec::new();
     };
-    let Ok(ty) = env.type_of_place(&owned, Span::default(), locals) else {
+    let Ok(ty) = env.type_of_place(&owned, locals) else {
         return Vec::new();
     };
 
@@ -450,7 +452,7 @@ fn is_init_and_drop(
     if !matches!(leaf_state, InitState::Init) {
         return false;
     }
-    let Ok(leaf_ty) = env.type_of_place(place, crate::mir::ast::Span::default(), locals) else {
+    let Ok(leaf_ty) = env.type_of_place(place, locals) else {
         return false;
     };
     class_of(&leaf_ty, env, scope).implies(Marker::Drop)

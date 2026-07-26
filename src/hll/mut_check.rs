@@ -1,4 +1,4 @@
-use crate::common::{GeneratedKind, RefKind, SourceInfo, Span};
+use crate::common::{GeneratedKind, RefKind, SourceInfo};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 /// HLL mutability check.
 ///
@@ -105,7 +105,7 @@ fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
 /// The root of a place expression, if it's a variable not behind a deref.
 enum PlaceRoot<'a> {
     /// Direct variable (possibly through field / index projections).
-    Var(&'a str, Span),
+    Var(&'a str, SourceInfo),
     /// Behind a deref — mutation goes through the reference, so
     /// we don't need to check the variable's mutability.
     ThroughDeref,
@@ -118,7 +118,7 @@ enum PlaceRoot<'a> {
 /// not the binding).
 fn place_root(expr: &Expr) -> PlaceRoot<'_> {
     match &expr.kind {
-        ExprKind::Variable(name) => PlaceRoot::Var(name, expr.span()),
+        ExprKind::Variable(name) => PlaceRoot::Var(name, expr.source),
         ExprKind::FieldAccess(inner, _) => place_root(inner),
         ExprKind::ArrayIndex(inner, _) => place_root(inner),
         // Cast produces a fresh value, not a projection onto the input.
@@ -140,13 +140,13 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
         ExprKind::Borrow(kind, inner) => {
             check_expr(inner, scope, func, d);
             if *kind != RefKind::Shared {
-                if let PlaceRoot::Var(name, span) = place_root(inner) {
+                if let PlaceRoot::Var(name, source) = place_root(inner) {
                     if let Some(info) = scope.get_info(name) {
                         if !info.is_mut {
                             d.push_error(
                                 Diagnostic::new(
                                     HllMutCheckCode::BorrowImmutableAsMut,
-                                    span,
+                                    source,
                                     format!(
                                         "cannot borrow immutable binding '{}' as mutable",
                                         name
@@ -187,13 +187,13 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
             check_expr(rhs, scope, func, d);
             // Walk the lhs for nested sub-expressions (index exprs etc.)
             check_assign_subexprs(lhs, scope, func, d);
-            if let PlaceRoot::Var(name, span) = place_root(lhs) {
+            if let PlaceRoot::Var(name, source) = place_root(lhs) {
                 if let Some(info) = scope.get_info(name) {
                     if !info.is_mut {
                         d.push_error(
                             Diagnostic::new(
                                 HllMutCheckCode::AssignToImmutable,
-                                span,
+                                source,
                                 format!("cannot assign to immutable binding '{}'", name),
                             )
                             .with_secondary(info.decl_source, "variable declared as immutable here")

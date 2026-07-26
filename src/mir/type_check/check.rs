@@ -5,6 +5,7 @@
 //! from the environment (parameters, locals) and from the structural
 //! `type_of_*` queries; this pass only checks that they line up.
 
+use super::env::{TypeResolutionError, TypeValidationError};
 use super::Env;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;
@@ -12,9 +13,38 @@ use super::TypeDecl;
 use crate::common::{Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashSet};
+
+fn resolution_diagnostic(
+    error: TypeResolutionError,
+    source: SourceInfo,
+    meta: &DeclMeta,
+    env: &Env,
+) -> Diagnostic {
+    let mut format = DiagnosticFormat::new();
+    let scope = format.scope(meta);
+    let message = error.message(&mut format, &scope, env);
+    format.finish(Diagnostic::new(error.code(), source, message))
+}
+
+fn validation_diagnostic(
+    error: TypeValidationError,
+    source: SourceInfo,
+    meta: &DeclMeta,
+    context: String,
+) -> Diagnostic {
+    let mut format = DiagnosticFormat::new();
+    let scope = format.scope(meta);
+    let reason = error.message(&mut format, &scope);
+    format.finish(Diagnostic::new(
+        InvalidDeclaredType,
+        source,
+        format!("{}: {}", context, reason),
+    ))
+}
 
 /// Build the set of lifetime names in scope for a decl. `'static` is
 /// always in scope — it's the reserved top-of-outlives-order region,
@@ -39,7 +69,7 @@ fn validate_lifetime_decls(
         if lt.lifetime.0 == "static" {
             d.push_error(Diagnostic::new(
                 ReservedLifetimeName,
-                meta.name_span(),
+                lt.source,
                 format!(
                     "In {} '{}': 'static is a reserved lifetime and cannot be declared as a parameter",
                     container_kind, meta.name,
@@ -49,7 +79,7 @@ fn validate_lifetime_decls(
         if !seen.insert(&lt.lifetime) {
             d.push_error(Diagnostic::new(
                 DuplicateLifetimeParam,
-                meta.name_span(),
+                lt.source,
                 format!(
                     "In {} '{}': lifetime parameter {} is declared more than once",
                     container_kind, meta.name, lt,
@@ -63,7 +93,7 @@ fn validate_lifetime_decls(
             if !lt_scope.contains(lt) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    meta.name_span(),
+                    bound.source,
                     format!(
                         "In {} '{}': outlives clause references undeclared lifetime {}",
                         container_kind, meta.name, lt,
@@ -124,7 +154,6 @@ impl Env {
     pub fn typecheck(&self, program: &Program, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
-            let errors_before = d.error_count();
             let (container_kind, item_kind, duplicate_code, items) = match type_decl {
                 TypeDecl::Struct(s) => (
                     "struct",
@@ -132,7 +161,7 @@ impl Env {
                     DuplicateStructField,
                     s.fields
                         .iter()
-                        .map(|f| (f.name.as_str(), &f.ty, f.span()))
+                        .map(|f| (f.name.as_str(), &f.ty, f.source))
                         .collect::<Vec<_>>(),
                 ),
                 TypeDecl::Enum(e) => (
@@ -141,7 +170,7 @@ impl Env {
                     DuplicateEnumVariant,
                     e.variants
                         .iter()
-                        .map(|v| (v.name.as_str(), &v.ty, v.span()))
+                        .map(|v| (v.name.as_str(), &v.ty, v.source))
                         .collect::<Vec<_>>(),
                 ),
             };
@@ -149,11 +178,11 @@ impl Env {
             let scope = meta.param_scope();
             let lt_scope = lifetime_scope(&meta.lifetime_params);
             let mut seen: HashSet<&str> = HashSet::new();
-            for (name, ty, span) in items {
+            for (name, ty, source) in items {
                 if !seen.insert(name) {
                     d.push_error(Diagnostic::new(
                         duplicate_code,
-                        span,
+                        source,
                         format!(
                             "In {} '{}', {} '{}' is declared more than once",
                             container_kind, meta.name, item_kind, name
@@ -161,19 +190,20 @@ impl Env {
                     ));
                 }
                 if let Err(e) = self.validate_type(ty, &scope) {
-                    d.push_error(Diagnostic::new(
-                        InvalidDeclaredType,
-                        ty.span(),
+                    d.push_error(validation_diagnostic(
+                        e,
+                        ty.source,
+                        meta,
                         format!(
-                            "In {} '{}', {} '{}': {}",
-                            container_kind, meta.name, item_kind, name, e
+                            "In {} '{}', {} '{}'",
+                            container_kind, meta.name, item_kind, name,
                         ),
                     ));
                 }
                 for lt in undeclared_lifetimes(ty, &lt_scope) {
                     d.push_error(Diagnostic::new(
                         UndeclaredLifetime,
-                        ty.span(),
+                        ty.source,
                         format!(
                             "In {} '{}', {} '{}': undeclared lifetime {}",
                             container_kind, meta.name, item_kind, name, lt,
@@ -182,14 +212,11 @@ impl Env {
                 }
             }
             validate_lifetime_decls(meta, container_kind, d);
-            d.rewrite_errors_from(errors_before, |text| meta.diagnostic_text(text));
         }
 
         // Validate all functions
         for f in program.functions() {
-            let errors_before = d.error_count();
             self.typecheck_function(f, d);
-            d.rewrite_errors_from(errors_before, |text| f.meta.diagnostic_text(text));
         }
     }
 
@@ -202,7 +229,7 @@ impl Env {
                 if i != f.params.len() - 1 {
                     d.push_error(Diagnostic::new(
                         InvalidDeclaredType,
-                        p.span(),
+                        p.source,
                         format!(
                             "In function '{}', parameter '$return' must be in the final position",
                             f.meta.name
@@ -212,30 +239,31 @@ impl Env {
                 match &p.ty.kind {
                     TypeKind::Ref(RefKind::Out, _, _) => {}
                     _ => {
-                        d.push_error(
-                            Diagnostic::new(InvalidDeclaredType, p.ty.span(),
+                        d.push_error(format_type_diagnostic(&f.meta, &p.ty, |ty| {
+                            Diagnostic::new(
+                                InvalidDeclaredType,
+                                p.ty.source,
                                 format!(
-                                    "In function '{}', parameter '$return' must be of type '&out ReturnType', found {}", 
-                                    f.meta.name,
-                                    p.ty)),
-                        );
+                                    "In function '{}', parameter '$return' must be of type '&out ReturnType', found {}",
+                                    f.meta.name, ty,
+                                ),
+                            )
+                        }));
                     }
                 }
             }
             if let Err(e) = self.validate_type(&p.ty, &scope) {
-                d.push_error(Diagnostic::new(
-                    InvalidDeclaredType,
-                    p.ty.span(),
-                    format!(
-                        "In function '{}', parameter '{}': {}",
-                        f.meta.name, p.name, e
-                    ),
+                d.push_error(validation_diagnostic(
+                    e,
+                    p.ty.source,
+                    &f.meta,
+                    format!("In function '{}', parameter '{}'", f.meta.name, p.name),
                 ));
             }
             for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    p.ty.span(),
+                    p.ty.source,
                     format!(
                         "In function '{}', parameter '{}': undeclared lifetime {}",
                         f.meta.name, p.name, lt,
@@ -259,7 +287,7 @@ impl Env {
         if body.blocks.is_empty() {
             d.push_error(Diagnostic::new(
                 NoEntryBlock,
-                f.meta.name_span(),
+                f.meta.name_source,
                 format!(
                     "Function '{}' has no entry block: body must contain at least one basic block",
                     f.meta.name
@@ -275,7 +303,7 @@ impl Env {
             if locals_map.contains_key(&p.name) {
                 d.push_error(Diagnostic::new(
                     DuplicateLocalName,
-                    p.span(),
+                    p.source,
                     format!(
                         "Duplicate variable name '{}' in parameters of function '{}'",
                         p.name, f.meta.name
@@ -287,16 +315,17 @@ impl Env {
         }
         for l in &body.locals {
             if let Err(e) = self.validate_type(&l.ty, &scope) {
-                d.push_error(Diagnostic::new(
-                    InvalidDeclaredType,
-                    l.ty.span(),
-                    format!("In function '{}', local '{}': {}", f.meta.name, l.name, e),
+                d.push_error(validation_diagnostic(
+                    e,
+                    l.ty.source,
+                    &f.meta,
+                    format!("In function '{}', local '{}'", f.meta.name, l.name),
                 ));
             }
             for lt in undeclared_lifetimes(&l.ty, &lt_scope) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    l.ty.span(),
+                    l.ty.source,
                     format!(
                         "In function '{}', local '{}': undeclared lifetime {}",
                         f.meta.name, l.name, lt,
@@ -306,7 +335,7 @@ impl Env {
             if locals_map.contains_key(&l.name) {
                 d.push_error(Diagnostic::new(
                     DuplicateLocalName,
-                    l.span(),
+                    l.source,
                     format!(
                         "Duplicate variable name '{}' in locals/parameters of function '{}'",
                         l.name, f.meta.name
@@ -336,7 +365,7 @@ impl Env {
         let lt_scope = lifetime_scope(&func.meta.lifetime_params);
         for stmt in &block.statements {
             self.validate_stmt_embedded_types(func, block, stmt, &scope, &lt_scope, d);
-            if let Err(e) = self.typecheck_statement(func, block, stmt, stmt.span(), locals) {
+            if let Err(e) = self.typecheck_statement(func, block, stmt, locals) {
                 d.push_error(e);
             }
         }
@@ -360,10 +389,11 @@ impl Env {
         let record = |ty: &Type, d: &mut Diagnostics| {
             if let Err(e) = self.validate_type(ty, scope) {
                 d.push_error(
-                    Diagnostic::new(
-                        InvalidDeclaredType,
-                        ty.span(),
-                        format!("In function '{}': {}", func.meta.name, e),
+                    validation_diagnostic(
+                        e,
+                        ty.source,
+                        &func.meta,
+                        format!("In function '{}'", func.meta.name),
                     )
                     .in_block(&block.label),
                 );
@@ -372,7 +402,7 @@ impl Env {
                 d.push_error(
                     Diagnostic::new(
                         UndeclaredLifetime,
-                        ty.span(),
+                        ty.source,
                         format!(
                             "In function '{}': undeclared lifetime {}",
                             func.meta.name, lt
@@ -426,83 +456,92 @@ impl Env {
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
-        stmt_span: Span,
         locals: &IndexMap<String, Type>,
     ) -> Result<(), Diagnostic> {
         // Local helper: build a Diagnostic with statement context.
         let stmt_diag = |code, msg: String| -> Diagnostic {
-            Diagnostic::new(code, stmt_span, msg)
+            Diagnostic::new(code, stmt.source, msg)
                 .in_function(&func.meta.name)
                 .in_block(&block.label)
         };
         // Attach the current function/block to a Diagnostic produced
         // by an inner helper (which knows its code + span but not the
         // enclosing context).
-        let with_context =
-            |d: Diagnostic| -> Diagnostic { d.in_function(&func.meta.name).in_block(&block.label) };
+        let with_context = |error: TypeResolutionError| -> Diagnostic {
+            resolution_diagnostic(error, stmt.source, &func.meta, self)
+                .in_function(&func.meta.name)
+                .in_block(&block.label)
+        };
         match &stmt.kind {
             StatementKind::Assign(place, rvalue) => {
-                let lhs_ty = self
-                    .type_of_place(place, stmt_span, locals)
-                    .map_err(with_context)?;
+                let lhs_ty = self.type_of_place(place, locals).map_err(with_context)?;
                 let rhs_ty = self
-                    .type_of_rvalue(rvalue, stmt_span, locals)
+                    .type_of_rvalue(rvalue, stmt.source, locals)
                     .map_err(with_context)?;
                 if !self.types_match(&lhs_ty, &rhs_ty) {
-                    return Err(stmt_diag(
+                    let mut format = DiagnosticFormat::new();
+                    let scope = format.scope(&func.meta);
+                    let lhs = format.ty(&scope, &lhs_ty);
+                    let rhs = format.ty(&scope, &rhs_ty);
+                    return Err(format.finish(stmt_diag(
                         AssignmentTypeMismatch,
                         format!(
                             "Type mismatch in assignment. LHS is {}, RHS is {}",
-                            lhs_ty, rhs_ty
+                            lhs, rhs
                         ),
-                    ));
+                    )));
                 }
                 Ok(())
             }
             StatementKind::Call(target, args) => {
-                let target_ty = self
-                    .type_of_operand(target, stmt_span, locals)
-                    .map_err(with_context)?;
+                let target_ty = self.type_of_operand(target, locals).map_err(with_context)?;
 
-                let target_ty_str = format!("{}", target_ty);
+                if !matches!(&target_ty.kind, TypeKind::Fn(_)) {
+                    return Err(format_type_diagnostic(&func.meta, &target_ty, |ty| {
+                        stmt_diag(
+                            CallTargetNotFunction,
+                            format!("Call target is not a function type: {}", ty),
+                        )
+                    }));
+                }
                 let TypeKind::Fn(param_tys) = target_ty.kind else {
-                    return Err(stmt_diag(
-                        CallTargetNotFunction,
-                        format!("Call target is not a function type: {}", target_ty_str),
-                    ));
+                    unreachable!("function type checked above")
                 };
 
                 if args.len() != param_tys.len() {
                     return Err(stmt_diag(
                         CallWrongArity,
                         format!(
-                            "Wrong i64 of arguments for call. Expected {}, found {}",
+                            "Wrong number of arguments for call. Expected {}, found {}",
                             param_tys.len(),
                             args.len()
                         ),
                     ));
                 }
                 for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                    let arg_ty = self
-                        .type_of_operand(arg, stmt_span, locals)
-                        .map_err(with_context)?;
+                    let arg_ty = self.type_of_operand(arg, locals).map_err(with_context)?;
                     if !self.types_match(param_ty, &arg_ty) {
+                        let mut format = DiagnosticFormat::new();
+                        let caller_scope = format.scope(&func.meta);
                         let expected = match target {
-                            Operand::Const(ConstVal::FnName(name, _)) => self
-                                .functions
-                                .get(name)
-                                .map(|callee| callee.meta.diagnostic_text(param_ty.to_string()))
-                                .unwrap_or_else(|| func.meta.diagnostic_text(param_ty.to_string())),
-                            _ => func.meta.diagnostic_text(param_ty.to_string()),
+                            Operand::Const(ConstVal::FnName(name, _)) => {
+                                if let Some(callee) = self.functions.get(name) {
+                                    let callee_scope = format.scope(&callee.meta);
+                                    format.ty(&callee_scope, param_ty)
+                                } else {
+                                    format.ty(&caller_scope, param_ty)
+                                }
+                            }
+                            _ => format.ty(&caller_scope, param_ty),
                         };
-                        let found = func.meta.diagnostic_text(arg_ty.to_string());
-                        return Err(stmt_diag(
+                        let found = format.ty(&caller_scope, &arg_ty);
+                        return Err(format.finish(stmt_diag(
                             CallArgTypeMismatch,
                             format!(
                                 "Call argument {} type mismatch. Expected {}, found {}",
                                 i, expected, found
                             ),
-                        ));
+                        )));
                     }
                 }
                 Ok(())
@@ -510,25 +549,23 @@ impl Env {
             StatementKind::Drop(place) => {
                 // Just resolve the place — any legality (Drop,
                 // currently init) is enforced by the substructural checker.
-                self.type_of_place(place, stmt_span, locals)
-                    .map_err(with_context)?;
+                self.type_of_place(place, locals).map_err(with_context)?;
                 Ok(())
             }
             StatementKind::Unborrow(place) => {
-                let ty = self
-                    .type_of_place(place, stmt_span, locals)
-                    .map_err(with_context)?;
+                let ty = self.type_of_place(place, locals).map_err(with_context)?;
                 if !matches!(&ty.kind, TypeKind::Ref(_, _, _)) {
-                    return Err(stmt_diag(
-                        UnborrowNonReference,
-                        format!("unborrow requires a reference-typed place, found {}", ty),
-                    ));
+                    return Err(format_type_diagnostic(&func.meta, &ty, |ty| {
+                        stmt_diag(
+                            UnborrowNonReference,
+                            format!("unborrow requires a reference-typed place, found {}", ty),
+                        )
+                    }));
                 }
                 Ok(())
             }
             StatementKind::RequireUninit(place) => {
-                self.type_of_place(place, stmt_span, locals)
-                    .map_err(with_context)?;
+                self.type_of_place(place, locals).map_err(with_context)?;
                 Ok(())
             }
         }
@@ -542,10 +579,9 @@ impl Env {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        let ts = block.terminator.span();
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
-            Diagnostic::new(code, ts, msg)
+            Diagnostic::new(code, block.terminator.source, msg)
                 .in_function(&func.meta.name)
                 .in_block(&block.label)
         };
@@ -564,14 +600,18 @@ impl Env {
                 true_label,
                 false_label,
             } => {
-                match self.type_of_operand(cond, ts, locals) {
-                    Ok(cond_ty) if cond_ty.kind != TypeKind::Bool => d.push_error(terminator_diag(
-                        TypeCheckCode::BranchConditionNotBool,
-                        format!("branch condition must be bool, found {}", cond_ty),
-                    )),
+                match self.type_of_operand(cond, locals) {
+                    Ok(cond_ty) if cond_ty.kind != TypeKind::Bool => {
+                        d.push_error(format_type_diagnostic(&func.meta, &cond_ty, |ty| {
+                            terminator_diag(
+                                TypeCheckCode::BranchConditionNotBool,
+                                format!("branch condition must be bool, found {}", ty),
+                            )
+                        }))
+                    }
                     Ok(_) => {}
-                    Err(inner_diag) => d.push_error(
-                        inner_diag
+                    Err(error) => d.push_error(
+                        resolution_diagnostic(error, block.terminator.source, &func.meta, self)
                             .in_function(&func.meta.name)
                             .in_block(&block.label),
                     ),
@@ -593,7 +633,7 @@ impl Env {
                 // Resolve the place to (enum_name, decl) or record an error.
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
-                let enum_decl: Option<&EnumDecl> = match self.type_of_place(place, ts, locals) {
+                let enum_decl: Option<&EnumDecl> = match self.type_of_place(place, locals) {
                     Ok(ty) => match ty.kind {
                         TypeKind::Custom(name, _, _) => match self.types.get(&name) {
                             Some(TypeDecl::Enum(e)) => Some(e),
@@ -616,16 +656,18 @@ impl Env {
                             }
                         },
                         _ => {
-                            d.push_error(terminator_diag(
-                                TypeCheckCode::SwitchOnNonEnum,
-                                format!("switchEnum place must be an enum type, found {}", ty),
-                            ));
+                            d.push_error(format_type_diagnostic(&func.meta, &ty, |ty| {
+                                terminator_diag(
+                                    TypeCheckCode::SwitchOnNonEnum,
+                                    format!("switchEnum place must be an enum type, found {}", ty,),
+                                )
+                            }));
                             None
                         }
                     },
-                    Err(inner_diag) => {
+                    Err(error) => {
                         d.push_error(
-                            inner_diag
+                            resolution_diagnostic(error, block.terminator.source, &func.meta, self)
                                 .in_function(&func.meta.name)
                                 .in_block(&block.label),
                         );
@@ -684,19 +726,21 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
         [] => {}
         [p] if is_out_i32(&p.ty) => {}
         [p] => {
-            d.push_error(Diagnostic::new(
-                MainBadSignature,
-                p.span(),
-                format!(
-                    "In function 'main': single parameter must be '&out i32', found {}",
-                    p.ty
-                ),
-            ));
+            d.push_error(format_type_diagnostic(&f.meta, &p.ty, |ty| {
+                Diagnostic::new(
+                    MainBadSignature,
+                    p.source,
+                    format!(
+                        "In function 'main': single parameter must be '&out i32', found {}",
+                        ty,
+                    ),
+                )
+            }));
         }
         _ => {
             d.push_error(Diagnostic::new(
                 MainBadSignature,
-                f.meta.name_span(),
+                f.meta.name_source,
                 format!(
                     "In function 'main': takes at most one parameter (an optional '&out i32'), found {} parameters",
                     f.params.len()

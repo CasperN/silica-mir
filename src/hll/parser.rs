@@ -162,7 +162,7 @@ impl Parser {
     }
 
     fn diag(&self, node: Node, code: ParserCode, msg: impl Into<String>) -> Diagnostic {
-        Diagnostic::new(code, span_of(node), msg)
+        Diagnostic::new(code, SourceInfo::written(span_of(node)), msg)
     }
 
     fn lit_diag<T>(&self, res: Result<T, String>, node: Node) -> Result<T, Diagnostic> {
@@ -189,7 +189,7 @@ impl Parser {
         if node.is_missing() {
             let mut d = Diagnostic::new(
                 ParserCode::MissingToken,
-                span_of(node),
+                SourceInfo::written(span_of(node)),
                 format!("missing '{}'", node.kind()),
             );
             if let Some(f) = ctx_fn {
@@ -203,7 +203,11 @@ impl Parser {
             } else {
                 format!("unexpected: {}", text)
             };
-            let mut d = Diagnostic::new(ParserCode::UnexpectedToken, span_of(node), msg);
+            let mut d = Diagnostic::new(
+                ParserCode::UnexpectedToken,
+                SourceInfo::written(span_of(node)),
+                msg,
+            );
             if let Some(f) = ctx_fn {
                 d = d.in_function(f);
             }

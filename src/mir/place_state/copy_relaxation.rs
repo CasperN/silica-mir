@@ -598,42 +598,42 @@ fn nearest_owned_path(place: &Place) -> Option<Place> {
 }
 
 fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx) {
-    let span = stmt.span();
+    let source = stmt.source;
     match &mut stmt.kind {
         StatementKind::Assign(target, rvalue) => {
             // Nested index operands inside the target place are reads
             // evaluated to project into the target; visit them so any
             // `take` inside gets resolved even if the target itself is
             // just an assignment sink.
-            relax_place_index_operands(target, demand, ctx, span);
+            relax_place_index_operands(target, demand, ctx, source);
             kill_future_demand(demand, target);
-            relax_rvalue(rvalue, demand, ctx, span);
+            relax_rvalue(rvalue, demand, ctx, source);
             if as_owned_path(target).is_none() {
                 add_access_demand(demand, target);
             }
         }
         StatementKind::Call(target, args) => {
             for operand in args.iter_mut().rev() {
-                relax_operand(operand, demand, ctx, span);
+                relax_operand(operand, demand, ctx, source);
             }
-            relax_operand(target, demand, ctx, span);
+            relax_operand(target, demand, ctx, source);
         }
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
-            relax_place_index_operands(place, demand, ctx, span);
+            relax_place_index_operands(place, demand, ctx, source);
             add_value_demand(demand, place);
         }
         StatementKind::RequireUninit(place) => {
-            relax_place_index_operands(place, demand, ctx, span);
+            relax_place_index_operands(place, demand, ctx, source);
         }
     }
 }
 
 fn relax_terminator(term: &mut Terminator, demand: &mut Demand, ctx: &mut RelaxCtx) {
-    let span = term.span();
+    let source = term.source;
     match &mut term.kind {
-        TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, ctx, span),
+        TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, ctx, source),
         TerminatorKind::SwitchEnum { place, .. } => {
-            relax_place_index_operands(place, demand, ctx, span);
+            relax_place_index_operands(place, demand, ctx, source);
             add_value_demand(demand, place);
         }
         TerminatorKind::Goto(_)
@@ -643,21 +643,21 @@ fn relax_terminator(term: &mut Terminator, demand: &mut Demand, ctx: &mut RelaxC
     }
 }
 
-fn relax_rvalue(rvalue: &mut RValue, demand: &mut Demand, ctx: &mut RelaxCtx, span: Span) {
+fn relax_rvalue(rvalue: &mut RValue, demand: &mut Demand, ctx: &mut RelaxCtx, source: SourceInfo) {
     match rvalue {
         RValue::Use(operand)
         | RValue::EnumConstr(_, _, _, operand)
-        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, ctx, span),
+        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, ctx, source),
         RValue::Ref(kind, place) => {
-            relax_place_index_operands(place, demand, ctx, span);
+            relax_place_index_operands(place, demand, ctx, source);
             transfer_ref_demand(kind, place, demand);
         }
         RValue::RawRef(place) => {
-            relax_place_index_operands(place, demand, ctx, span);
+            relax_place_index_operands(place, demand, ctx, source);
         }
         RValue::ArrayLit(operands) => {
             for operand in operands.iter_mut().rev() {
-                relax_operand(operand, demand, ctx, span);
+                relax_operand(operand, demand, ctx, source);
             }
         }
     }
@@ -676,16 +676,16 @@ fn relax_place_index_operands(
     place: &mut Place,
     demand: &mut Demand,
     ctx: &mut RelaxCtx,
-    span: Span,
+    source: SourceInfo,
 ) {
     match place {
         Place::Var(_) => {}
         Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
-            relax_place_index_operands(inner, demand, ctx, span);
+            relax_place_index_operands(inner, demand, ctx, source);
         }
         Place::Index(inner, op) => {
-            relax_place_index_operands(inner, demand, ctx, span);
-            resolve_index_operand(op, demand, ctx, span);
+            relax_place_index_operands(inner, demand, ctx, source);
+            resolve_index_operand(op, demand, ctx, source);
         }
     }
 }
@@ -694,20 +694,20 @@ fn resolve_index_operand(
     operand: &mut Operand,
     demand: &mut Demand,
     ctx: &mut RelaxCtx,
-    span: Span,
+    source: SourceInfo,
 ) {
     match operand {
         Operand::Const(_) => {}
         Operand::Copy(p) => {
-            relax_place_index_operands(p, demand, ctx, span);
+            relax_place_index_operands(p, demand, ctx, source);
             add_value_demand(demand, p);
         }
         Operand::Move(p) => {
-            relax_place_index_operands(p, demand, ctx, span);
+            relax_place_index_operands(p, demand, ctx, source);
             ctx.d.push_error(
                 Diagnostic::new(
                     CopyRelaxationCode::IndexOperandNotReading,
-                    span,
+                    source,
                     format!(
                         "`move` of '{}' inside `Index` projection: array indexing is a \
                          non-consuming read, so its operand must be `copy` or a constant",
@@ -719,12 +719,9 @@ fn resolve_index_operand(
             );
         }
         Operand::Take(p) => {
-            relax_place_index_operands(p, demand, ctx, span);
+            relax_place_index_operands(p, demand, ctx, source);
             let place = p.clone();
-            let ty = ctx
-                .env
-                .type_of_place(&place, Span::default(), ctx.locals)
-                .ok();
+            let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
             let is_copy = ty
                 .as_ref()
                 .map(|t| class_of(t, ctx.env, ctx.scope).implies(Marker::Copy))
@@ -733,7 +730,7 @@ fn resolve_index_operand(
                 ctx.d.push_error(
                     Diagnostic::new(
                         CopyRelaxationCode::IndexOperandNotReading,
-                        span,
+                        source,
                         format!(
                             "`take` of non-Copy place '{}' inside `Index` projection: \
                              array indexing must resolve to a non-consuming read",
@@ -750,12 +747,17 @@ fn resolve_index_operand(
     }
 }
 
-fn relax_operand(operand: &mut Operand, demand: &mut Demand, ctx: &mut RelaxCtx, span: Span) {
+fn relax_operand(
+    operand: &mut Operand,
+    demand: &mut Demand,
+    ctx: &mut RelaxCtx,
+    source: SourceInfo,
+) {
     // First, recurse into any `take` nested inside the operand's own
     // place (dynamic-index case: `move a[take i]`).
     match operand {
         Operand::Copy(p) | Operand::Move(p) | Operand::Take(p) => {
-            relax_place_index_operands(p, demand, ctx, span);
+            relax_place_index_operands(p, demand, ctx, source);
         }
         Operand::Const(_) => {}
     }
@@ -780,10 +782,7 @@ fn relax_operand(operand: &mut Operand, demand: &mut Demand, ctx: &mut RelaxCtx,
     };
 
     let mandatory_copy = requires_copy_semantics(&place, ctx.env, ctx.locals);
-    let ty = ctx
-        .env
-        .type_of_place(&place, Span::default(), ctx.locals)
-        .ok();
+    let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
     let class = ty
         .as_ref()
         .map(|t| class_of(t, ctx.env, ctx.scope))
@@ -798,7 +797,7 @@ fn relax_operand(operand: &mut Operand, demand: &mut Demand, ctx: &mut RelaxCtx,
         if !is_copy {
             push_relax_error(
                 ctx,
-                span,
+                source,
                 CopyRelaxationCode::MandatoryCopyNonCopy,
                 format!(
                     "cannot resolve `take` of '{}' to `copy`: path crosses a shared \
@@ -873,16 +872,16 @@ fn requires_copy_semantics(place: &Place, env: &Env, locals: &IndexMap<String, T
         }
         Place::Deref(inner) => {
             let boundary_requires_copy = env
-                .type_of_place(inner, Span::default(), locals)
+                .type_of_place(inner, locals)
                 .is_ok_and(|ty| matches!(&ty.kind, TypeKind::Ref(RefKind::Shared, _, _)));
             boundary_requires_copy || requires_copy_semantics(inner, env, locals)
         }
     }
 }
 
-fn push_relax_error(ctx: &mut RelaxCtx, span: Span, code: CopyRelaxationCode, msg: String) {
+fn push_relax_error(ctx: &mut RelaxCtx, source: SourceInfo, code: CopyRelaxationCode, msg: String) {
     ctx.d.push_error(
-        Diagnostic::new(code, span, msg)
+        Diagnostic::new(code, source, msg)
             .in_function(ctx.func_name)
             .in_block(ctx.block_label),
     );

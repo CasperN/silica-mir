@@ -32,6 +32,7 @@
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 
@@ -82,8 +83,8 @@ use SubstructuralCompositionCode::*;
 /// Declaration-scope diagnostic builder: no function or block context
 /// exists at this point in the pipeline (composition runs on type
 /// declarations before any function body is checked).
-fn diag(code: impl Into<DiagCode>, span: Span, msg: String) -> Diagnostic {
-    Diagnostic::new(code, span, msg)
+fn diag(code: impl Into<DiagCode>, source: SourceInfo, msg: String) -> Diagnostic {
+    Diagnostic::new(code, source, msg)
 }
 
 /// Return the substructural class of `ty` as a `Markers` value under
@@ -153,13 +154,10 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
     for type_decl in env.types.values() {
-        let errors_before = d.error_count();
         match type_decl {
             TypeDecl::Struct(s) => check_struct(s, env, d),
             TypeDecl::Enum(e) => check_enum(e, env, d),
         }
-        let meta = type_decl.meta();
-        d.rewrite_errors_from(errors_before, |text| meta.diagnostic_text(text));
     }
 }
 
@@ -172,8 +170,9 @@ pub fn check_program(env: &Env, d: &mut Diagnostics) {
 fn check_markers_against(
     decl_meta: &DeclMeta,
     class: Markers,
-    span: Span,
-    make_msg: impl Fn(Marker) -> String,
+    source: SourceInfo,
+    diagnostic_ty: &Type,
+    make_msg: impl Fn(Marker, String) -> String,
     d: &mut Diagnostics,
 ) {
     const CHECKS: [(Marker, SubstructuralCompositionCode); 3] = [
@@ -183,7 +182,9 @@ fn check_markers_against(
     ];
     for (marker, code) in CHECKS {
         if decl_meta.markers.declared(marker) && !class.implies(marker) {
-            d.push_error(diag(code, span, make_msg(marker)));
+            d.push_error(format_type_diagnostic(decl_meta, diagnostic_ty, |ty| {
+                diag(code, source, make_msg(marker, ty))
+            }));
         }
     }
 }
@@ -192,7 +193,7 @@ fn check_redundant_move(decl_meta: &DeclMeta, d: &mut Diagnostics) {
     if decl_meta.markers.is_redundant_move() {
         d.push_info(diag(
             RedundantMoveMarker,
-            decl_meta.name_span(),
+            decl_meta.name_source,
             format!(
                 "Move marker is redundant on '{}' because both Copy and Drop are present",
                 decl_meta.name
@@ -209,14 +210,15 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
         check_markers_against(
             &s.meta,
             c,
-            f.ty.span(),
-            |m| {
+            f.ty.source,
+            &f.ty,
+            |m, ty| {
                 format!(
                     "In struct '{}' (marked {}), field '{}' has type {} which is not {}",
                     s.meta.name,
                     m.name(),
                     f.name,
-                    f.ty,
+                    ty,
                     m.name(),
                 )
             },
@@ -233,14 +235,15 @@ fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
         check_markers_against(
             &e.meta,
             c,
-            v.ty.span(),
-            |m| {
+            v.ty.source,
+            &v.ty,
+            |m, ty| {
                 format!(
                     "In enum '{}' (marked {}), variant '{}' payload type {} is not {}",
                     e.meta.name,
                     m.name(),
                     v.name,
-                    v.ty,
+                    ty,
                     m.name(),
                 )
             },

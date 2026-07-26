@@ -52,12 +52,61 @@ impl From<HllLoweringCode> for DiagCode {
     }
 }
 
-fn diag(
-    code: HllLoweringCode,
-    source: impl Into<mir::SourceInfo>,
-    msg: impl Into<String>,
-) -> Diagnostic {
-    Diagnostic::new(code, source, msg)
+fn diag(code: HllLoweringCode, span: mir::Span, msg: impl Into<String>) -> Diagnostic {
+    Diagnostic::new(
+        code,
+        mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, span),
+        msg,
+    )
+}
+
+fn generated_source(span: mir::Span) -> mir::SourceInfo {
+    mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, span)
+}
+
+// HLL lowering creates MIR statements and terminators; their spans attribute
+// diagnostics to HLL syntax, but their provenance is always generated. Keeping
+// these wrappers local makes that classification unavoidable at every lowering
+// call site while the shared MIR helpers continue to require `SourceInfo`.
+fn assign_stmt(dst: mir::Place, src: mir::RValue, span: mir::Span) -> mir::Statement {
+    crate::mir::helpers::assign_stmt(dst, src, generated_source(span))
+}
+
+fn call_stmt(callee: mir::Operand, args: Vec<mir::Operand>, span: mir::Span) -> mir::Statement {
+    crate::mir::helpers::call_stmt(callee, args, generated_source(span))
+}
+
+fn require_uninit_stmt(place: mir::Place, span: mir::Span) -> mir::Statement {
+    crate::mir::helpers::require_uninit_stmt(place, generated_source(span))
+}
+
+fn goto_term(label: impl Into<String>, span: mir::Span) -> mir::Terminator {
+    crate::mir::helpers::goto_term(label, generated_source(span))
+}
+
+fn return_term(span: mir::Span) -> mir::Terminator {
+    crate::mir::helpers::return_term(generated_source(span))
+}
+
+fn branch_term(
+    cond: mir::Operand,
+    true_label: impl Into<String>,
+    false_label: impl Into<String>,
+    span: mir::Span,
+) -> mir::Terminator {
+    crate::mir::helpers::branch_term(cond, true_label, false_label, generated_source(span))
+}
+
+fn switch_enum_term(
+    place: mir::Place,
+    cases: Vec<(String, String)>,
+    span: mir::Span,
+) -> mir::Terminator {
+    crate::mir::helpers::switch_enum_term(place, cases, generated_source(span))
+}
+
+fn abort_term(span: mir::Span) -> mir::Terminator {
+    crate::mir::helpers::abort_term(generated_source(span))
 }
 
 /// Point a generated HLL scope-exit assertion at the closing delimiter of
@@ -318,7 +367,7 @@ impl LowerCtx {
     ) -> Result<(), Diagnostic> {
         let live = std::mem::replace(&mut self.binding_scopes, work.binding_snapshot);
         self.begin_temp_region();
-        let unit_temp = self.fresh_temp(unit_ty(), work.body.span());
+        let unit_temp = self.fresh_lowering_temp(unit_ty(), work.body.span());
         let result = lower_expr_into(self, &work.body, &unit_temp, types);
         self.end_temp_region();
         self.binding_scopes = live;
@@ -337,7 +386,7 @@ impl LowerCtx {
         let scope = self.scopes.get(index).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
-                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, mir::Span::default()),
+                mir::Span::default(),
                 "scope exit requested with empty scope stack",
             )
         })?;
@@ -380,7 +429,7 @@ impl LowerCtx {
         let index = self.scopes.len().checked_sub(1).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
-                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, mir::Span::default()),
+                mir::Span::default(),
                 "normal scope exit requested with empty scope stack",
             )
         })?;
@@ -389,7 +438,12 @@ impl LowerCtx {
         Ok(())
     }
 
-    fn fresh_temp(&mut self, ty: mir::Type, span: mir::Span) -> mir::Place {
+    fn fresh_temp_local(
+        &mut self,
+        ty: mir::Type,
+        span: mir::Span,
+        kind: mir::HllTemporaryKind,
+    ) -> mir::Place {
         let name = format!("_temp_{}", self.temp_counter);
         self.temp_counter += 1;
         self.taken_names.insert(name.clone());
@@ -397,23 +451,41 @@ impl LowerCtx {
         self.locals.push(mir::Local {
             name: name.clone(),
             ty,
-            source: mir::SourceInfo::generated(mir::GeneratedKind::HllTemporary, span),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllTemporary(kind), span),
         });
+        place
+    }
+
+    fn fresh_region_temp(
+        &mut self,
+        ty: mir::Type,
+        span: mir::Span,
+        kind: mir::HllTemporaryKind,
+    ) -> mir::Place {
+        let place = self.fresh_temp_local(ty, span, kind);
         let target = CleanupTarget {
             place: place.clone(),
             span,
         };
-        if let Some(region) = self.temp_regions.last_mut() {
-            region.targets.push(target);
-        } else {
-            // Every HLL expression boundary opens a temporary region. Keep a
-            // lexical fallback for compiler-owned setup values so lowering
-            // remains total while those boundaries evolve.
-            // TODO: Split temporary allocation by lifetime owner and remove
-            // this fallback once every compiler-generated local has an
-            // explicit owning region or scope.
-            self.register_scope_cleanup(place.clone(), span);
-        }
+        self.temp_regions
+            .last_mut()
+            .expect("region-owned temporary created outside a temporary region")
+            .targets
+            .push(target);
+        place
+    }
+
+    fn fresh_expression_temp(&mut self, ty: mir::Type, span: mir::Span) -> mir::Place {
+        self.fresh_region_temp(ty, span, mir::HllTemporaryKind::Expression)
+    }
+
+    fn fresh_lowering_temp(&mut self, ty: mir::Type, span: mir::Span) -> mir::Place {
+        self.fresh_region_temp(ty, span, mir::HllTemporaryKind::Lowering)
+    }
+
+    fn fresh_scope_temp(&mut self, ty: mir::Type, span: mir::Span) -> mir::Place {
+        let place = self.fresh_temp_local(ty, span, mir::HllTemporaryKind::Lowering);
+        self.register_scope_cleanup(place.clone(), span);
         place
     }
 
@@ -640,7 +712,7 @@ fn lower_expr_to_place(
             let index_op = match index_op {
                 mir::Operand::Const(_) | mir::Operand::Copy(_) => index_op,
                 mir::Operand::Move(_) | mir::Operand::Take(_) => {
-                    let index_value = ctx.fresh_temp(int_ty(*index_kind), index.span());
+                    let index_value = ctx.fresh_lowering_temp(int_ty(*index_kind), index.span());
                     ctx.emit_statement(assign_stmt(
                         index_value.clone(),
                         use_rv(index_op),
@@ -662,8 +734,8 @@ fn lower_expr_to_place(
             // index, emit `index < array_len` and abort before forming the
             // projection when the check fails.
             if !matches!(&index_op, mir::Operand::Const(_)) {
-                let in_bounds = ctx.fresh_temp(bool_ty(), index.span());
-                let out_ref = ctx.fresh_temp(out_ref_ty(bool_ty()), index.span());
+                let in_bounds = ctx.fresh_lowering_temp(bool_ty(), index.span());
+                let out_ref = ctx.fresh_lowering_temp(out_ref_ty(bool_ty()), index.span());
                 ctx.emit_statement(assign_stmt(
                     out_ref.clone(),
                     ref_rv(crate::common::RefKind::Out, in_bounds.clone()),
@@ -704,7 +776,7 @@ fn lower_expr_to_place(
                 )
             })?;
             let mir_ty = lower_type(hll_ty);
-            let temp = ctx.fresh_temp(mir_ty, expr.span());
+            let temp = ctx.fresh_expression_temp(mir_ty, expr.span());
             lower_expr_into(ctx, expr, &temp, types)?;
             Ok(temp)
         }
@@ -857,7 +929,7 @@ fn lower_expr_into(
             let operand_op = lower_expr_to_operand(ctx, operand, types)?;
 
             let out_ref = out_ref_ty(mir_ty);
-            let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
+            let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
             ctx.emit_statement(assign_stmt(
                 out_ref_place.clone(),
                 ref_rv(mir::RefKind::Out, dest.clone()),
@@ -923,7 +995,7 @@ fn lower_expr_into(
             })?;
 
             let out_ref = out_ref_ty(lower_type(hll_ret_ty));
-            let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
+            let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
             ctx.emit_statement(assign_stmt(
                 out_ref_place.clone(),
                 ref_rv(mir::RefKind::Out, dest.clone()),
@@ -965,7 +1037,7 @@ fn lower_expr_into(
             let fn_op = const_op(fn_name_const(intrinsic));
             let inner_op = lower_expr_to_operand(ctx, inner, types)?;
             let out_ref = out_ref_ty(lower_type(to_ty));
-            let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
+            let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
             ctx.emit_statement(assign_stmt(
                 out_ref_place.clone(),
                 ref_rv(mir::RefKind::Out, dest.clone()),
@@ -1035,7 +1107,7 @@ fn lower_expr_into(
                 // and pass `Operand::Move(_temp_out_ref)` as the final argument in Statement::Call!
                 // Yes! That is absolutely correct and matches MIR semantics perfectly!
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
-                let out_ref_place = ctx.fresh_temp(out_ref, expr.span());
+                let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
                 ctx.emit_statement(assign_stmt(
                     out_ref_place.clone(),
                     ref_rv(mir::RefKind::Out, dest.clone()),
@@ -1125,7 +1197,7 @@ fn lower_expr_into(
                             lower_type(&hll_ty)
                         };
                         ctx.begin_temp_region();
-                        let dummy = ctx.fresh_temp(mir_ty, e.span());
+                        let dummy = ctx.fresh_expression_temp(mir_ty, e.span());
                         lower_expr_into(ctx, e, &dummy, types)?;
                         ctx.end_temp_region();
                     }
@@ -1186,7 +1258,7 @@ fn lower_expr_into(
 
             // Loop body value is discarded
             ctx.begin_temp_region();
-            let dummy = ctx.fresh_temp(unit_ty(), body.span());
+            let dummy = ctx.fresh_lowering_temp(unit_ty(), body.span());
             lower_expr_into(ctx, body, &dummy, types)?;
             ctx.end_temp_region();
             ctx.scopes.pop();
@@ -1564,7 +1636,7 @@ pub fn lower_program(
                     let ret_place = deref_place(var_place("$return"));
                     lower_expr_into(&mut ctx, body_expr, &ret_place, types)?;
                 } else {
-                    let dummy = ctx.fresh_temp(unit_ty(), body_expr.span());
+                    let dummy = ctx.fresh_scope_temp(unit_ty(), body_expr.span());
                     lower_expr_into(&mut ctx, body_expr, &dummy, types)?;
                 }
 

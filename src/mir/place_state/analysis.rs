@@ -846,7 +846,7 @@ impl<'a> InitStateContext<'a> {
         rvalue: &RValue,
         carried_refs: Vec<(Place, RefState)>,
         state: &mut PointState,
-        report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+        report: Option<(&Function, &BasicBlock, SourceInfo, &mut Diagnostics)>,
     ) {
         if split_at_outermost_deref(target).is_some() {
             self.apply_deref_op(target, DerefOp::Write, state, report);
@@ -880,7 +880,7 @@ impl<'a> InitStateContext<'a> {
         &self,
         place: &Place,
         state: &mut PointState,
-        report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+        report: Option<(&Function, &BasicBlock, SourceInfo, &mut Diagnostics)>,
     ) {
         if split_at_outermost_deref(place).is_some() {
             self.apply_deref_op(place, DerefOp::Move, state, report);
@@ -1156,7 +1156,7 @@ impl<'a> InitStateContext<'a> {
         place: &Place,
         op: DerefOp,
         state: &mut PointState,
-        mut report: Option<(&Function, &BasicBlock, Span, &mut Diagnostics)>,
+        mut report: Option<(&Function, &BasicBlock, SourceInfo, &mut Diagnostics)>,
     ) {
         let Some((inner_place, sub_path)) = split_at_outermost_deref(place) else {
             return;
@@ -1170,14 +1170,11 @@ impl<'a> InitStateContext<'a> {
         // the path reaches that capability through an outer shared ref.
         if !matches!(op, DerefOp::Read) {
             for receiver in deref_receivers(place).into_iter().rev() {
-                let Ok(receiver_ty) =
-                    self.env
-                        .type_of_place(&receiver, Span::default(), self.locals)
-                else {
+                let Ok(receiver_ty) = self.env.type_of_place(&receiver, self.locals) else {
                     return;
                 };
                 if matches!(receiver_ty.kind, TypeKind::Ref(RefKind::Shared, _, _)) {
-                    if let Some((func, block, span, d)) = report.take() {
+                    if let Some((func, block, source, d)) = report.take() {
                         let action = match op {
                             DerefOp::Move => "move out through",
                             DerefOp::Write => "write through",
@@ -1185,7 +1182,7 @@ impl<'a> InitStateContext<'a> {
                         };
                         d.push_error(diag(
                             WriteThroughSharedRef,
-                            span,
+                            source,
                             func,
                             block,
                             format!(
@@ -1205,10 +1202,7 @@ impl<'a> InitStateContext<'a> {
             }
         }
 
-        let Ok(inner_ty) = self
-            .env
-            .type_of_place(&inner_place, Span::default(), self.locals)
-        else {
+        let Ok(inner_ty) = self.env.type_of_place(&inner_place, self.locals) else {
             return;
         };
         let TypeKind::Ref(kind, _, pointee_ty) = inner_ty.kind else {
@@ -1222,10 +1216,10 @@ impl<'a> InitStateContext<'a> {
         }
 
         let Some(rs) = self.ensure_ref_state(&inner_place, state) else {
-            if let Some((func, block, span, d)) = report.take() {
+            if let Some((func, block, source, d)) = report.take() {
                 d.push_error(diag(
                     ReferenceStateUnknown,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -1248,7 +1242,7 @@ impl<'a> InitStateContext<'a> {
             matches!(current, InitState::NeverInit | InitState::Moved)
         };
         if !precondition_met {
-            if let Some((func, block, span, d)) = report.take() {
+            if let Some((func, block, source, d)) = report.take() {
                 let action = match op {
                     DerefOp::Read => "read from",
                     DerefOp::Move => "move out of",
@@ -1262,7 +1256,7 @@ impl<'a> InitStateContext<'a> {
                 let actual = describe_pointee_state(&current);
                 d.push_error(diag(
                     DerefPointeeStateMismatch,
-                    span,
+                    source,
                     func,
                     block,
                     format!(
@@ -1318,10 +1312,7 @@ impl<'a> InitStateContext<'a> {
         if !is_static_place(place) {
             return None;
         }
-        let ty = self
-            .env
-            .type_of_place(place, Span::default(), self.locals)
-            .ok()?;
+        let ty = self.env.type_of_place(place, self.locals).ok()?;
         let TypeKind::Ref(kind, _, _) = &ty.kind else {
             return None;
         };
@@ -1353,10 +1344,7 @@ impl<'a> InitStateContext<'a> {
             return None;
         }
         let (receiver, sub_path) = split_at_outermost_deref(place)?;
-        let receiver_ty = self
-            .env
-            .type_of_place(&receiver, Span::default(), self.locals)
-            .ok()?;
+        let receiver_ty = self.env.type_of_place(&receiver, self.locals).ok()?;
         let TypeKind::Ref(kind, _, pointee_ty) = receiver_ty.kind else {
             return None;
         };
@@ -1370,9 +1358,7 @@ impl<'a> InitStateContext<'a> {
 
     /// Infer the type of a place, including arbitrary dereference depth.
     pub(super) fn infer_ref_place_type(&self, place: &Place) -> Option<Type> {
-        self.env
-            .type_of_place(place, Span::default(), self.locals)
-            .ok()
+        self.env.type_of_place(place, self.locals).ok()
     }
 
     /// Apply the eager init transition on the loaned place. Called at

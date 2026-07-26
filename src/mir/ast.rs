@@ -1,6 +1,6 @@
 pub use crate::common::{
-    render_lifetimes_for_diagnostics, FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam,
-    Marker, Markers, OutlivesBound, RefKind, SourceInfo, Span,
+    FloatTy, GeneratedKind, HllTemporaryKind, IntTy, Lifetime, LifetimeParam, Marker, Markers,
+    OutlivesBound, RefKind, SourceInfo, Span,
 };
 
 use indexmap::IndexMap;
@@ -15,11 +15,8 @@ pub struct Type {
 }
 
 impl Type {
-    pub fn new(kind: TypeKind, source: impl Into<SourceInfo>) -> Self {
-        Self {
-            kind,
-            source: source.into(),
-        }
+    pub fn new(kind: TypeKind, source: SourceInfo) -> Self {
+        Self { kind, source }
     }
 
     /// Construct a compiler-synthesized type with no meaningful source
@@ -33,7 +30,7 @@ impl Type {
         }
     }
 
-    pub fn with_span(mut self, span: Span) -> Self {
+    pub(crate) fn with_written_span(mut self, span: Span) -> Self {
         self.source = SourceInfo::written(span);
         self
     }
@@ -99,14 +96,6 @@ pub enum TypeKind {
     /// numbers as `Partial` keys); dynamic indices widen to the
     /// whole array.
     Array(Box<Type>, u64),
-}
-
-impl TypeKind {
-    /// Wrap a `TypeKind` with a span. Convenient for construction
-    /// sites where the kind is built up piecewise.
-    pub fn at(self, span: Span) -> Type {
-        Type::new(self, span)
-    }
 }
 
 impl std::fmt::Display for Type {
@@ -540,11 +529,8 @@ pub struct Statement {
 }
 
 impl Statement {
-    pub fn new(kind: StatementKind, source: impl Into<SourceInfo>) -> Self {
-        Self {
-            kind,
-            source: source.into(),
-        }
+    pub fn new(kind: StatementKind, source: SourceInfo) -> Self {
+        Self { kind, source }
     }
 
     pub fn span(&self) -> Span {
@@ -581,11 +567,8 @@ pub struct Terminator {
 }
 
 impl Terminator {
-    pub fn new(kind: TerminatorKind, source: impl Into<SourceInfo>) -> Self {
-        Self {
-            kind,
-            source: source.into(),
-        }
+    pub fn new(kind: TerminatorKind, source: SourceInfo) -> Self {
+        Self { kind, source }
     }
 
     pub fn span(&self) -> Span {
@@ -807,13 +790,6 @@ pub struct DeclMeta {
 }
 
 impl DeclMeta {
-    /// Render already-formatted diagnostic text without exposing names created
-    /// by lifetime elision. Canonical MIR formatting deliberately does not use
-    /// this projection.
-    pub fn diagnostic_text(&self, text: impl AsRef<str>) -> String {
-        render_lifetimes_for_diagnostics(text.as_ref(), &self.lifetime_params)
-    }
-
     pub fn name_span(&self) -> Span {
         self.name_source.span()
     }

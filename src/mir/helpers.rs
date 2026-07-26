@@ -36,7 +36,7 @@ pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
 // ---------- Scalars ----------
 //
 // The `_ty` helpers return `Type` marked as `TypeSynthesis` with no meaningful
-// source attribution. Parsers stamp written spans via `TypeKind::X.at(span)`;
+// source attribution. Parsers stamp written spans at their CST boundary;
 // callers transforming a source type should pass its metadata to `Type::new`.
 
 pub fn i8_ty() -> Type {
@@ -246,35 +246,35 @@ pub fn array_lit_rv(elems: Vec<Operand>) -> RValue {
 
 // ---------- Statements ----------
 
-pub fn assign_stmt(dst: Place, src: RValue, source: impl Into<SourceInfo>) -> Statement {
+pub fn assign_stmt(dst: Place, src: RValue, source: SourceInfo) -> Statement {
     Statement::new(StatementKind::Assign(dst, src), source)
 }
-pub fn call_stmt(callee: Operand, args: Vec<Operand>, source: impl Into<SourceInfo>) -> Statement {
+pub fn call_stmt(callee: Operand, args: Vec<Operand>, source: SourceInfo) -> Statement {
     Statement::new(StatementKind::Call(callee, args), source)
 }
-pub fn drop_stmt(place: Place, source: impl Into<SourceInfo>) -> Statement {
+pub fn drop_stmt(place: Place, source: SourceInfo) -> Statement {
     Statement::new(StatementKind::Drop(place), source)
 }
-pub fn unborrow_stmt(place: Place, source: impl Into<SourceInfo>) -> Statement {
+pub fn unborrow_stmt(place: Place, source: SourceInfo) -> Statement {
     Statement::new(StatementKind::Unborrow(place), source)
 }
-pub fn require_uninit_stmt(place: Place, source: impl Into<SourceInfo>) -> Statement {
+pub fn require_uninit_stmt(place: Place, source: SourceInfo) -> Statement {
     Statement::new(StatementKind::RequireUninit(place), source)
 }
 
 // ---------- Terminators ----------
 
-pub fn goto_term(label: impl Into<String>, source: impl Into<SourceInfo>) -> Terminator {
+pub fn goto_term(label: impl Into<String>, source: SourceInfo) -> Terminator {
     Terminator::new(TerminatorKind::Goto(label.into()), source)
 }
-pub fn return_term(source: impl Into<SourceInfo>) -> Terminator {
+pub fn return_term(source: SourceInfo) -> Terminator {
     Terminator::new(TerminatorKind::Return, source)
 }
 pub fn branch_term(
     cond: Operand,
     true_label: impl Into<String>,
     false_label: impl Into<String>,
-    source: impl Into<SourceInfo>,
+    source: SourceInfo,
 ) -> Terminator {
     Terminator::new(
         TerminatorKind::Branch {
@@ -288,14 +288,14 @@ pub fn branch_term(
 pub fn switch_enum_term(
     place: Place,
     cases: Vec<(String, String)>,
-    source: impl Into<SourceInfo>,
+    source: SourceInfo,
 ) -> Terminator {
     Terminator::new(TerminatorKind::SwitchEnum { place, cases }, source)
 }
-pub fn abort_term(source: impl Into<SourceInfo>) -> Terminator {
+pub fn abort_term(source: SourceInfo) -> Terminator {
     Terminator::new(TerminatorKind::Abort, source)
 }
-pub fn unreachable_term(source: impl Into<SourceInfo>) -> Terminator {
+pub fn unreachable_term(source: SourceInfo) -> Terminator {
     Terminator::new(TerminatorKind::Unreachable, source)
 }
 
@@ -309,12 +309,12 @@ pub fn unreachable_term(source: impl Into<SourceInfo>) -> Terminator {
 /// `Diagnostic::new(...)` directly.
 pub fn diag(
     code: impl Into<DiagCode>,
-    span: Span,
+    source: SourceInfo,
     func: &Function,
     block: &BasicBlock,
     msg: String,
 ) -> Diagnostic {
-    Diagnostic::new(code, span, msg)
+    Diagnostic::new(code, source, msg)
         .in_function(&func.meta.name)
         .in_block(&block.label)
 }

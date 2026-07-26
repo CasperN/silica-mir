@@ -3,6 +3,7 @@ pub mod block_reachability;
 pub mod cfg_edit;
 pub mod codegen;
 pub mod dataflow;
+pub(crate) mod diagnostic_format;
 pub mod helpers;
 pub mod intrinsics;
 pub mod layout;

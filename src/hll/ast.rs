@@ -2,6 +2,7 @@ use crate::common::{
     FloatTy, IntTy, Lifetime, LifetimeParam, Markers, OutlivesBound, RefKind, SourceInfo, Span,
 };
 
+// TODO: Upgrade to TypeKind enum + Type struct to carry SourceInfo to improve diagnostics.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Type {
     Int(IntTy),
