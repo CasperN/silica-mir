@@ -1,0 +1,6 @@
+error: at 9:38: [HTC-BoundNotSatisfied] In function 'nested_bound_invalid': type argument 'Linear' for 'Sink::T' does not satisfy bound 'Drop'
+   |
+ 8 | # covers: recursive HLL bound validation attributes failure to the nested arg
+ 9 | fn nested_bound_invalid(x: Sink<Sink<Linear>>) {}
+   |                                      ^^^^^^
+   |

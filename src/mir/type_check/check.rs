@@ -729,7 +729,7 @@ fn check_main_signature(f: &Function, d: &mut Diagnostics) {
             d.push_error(format_type_diagnostic(&f.meta, &p.ty, |ty| {
                 Diagnostic::new(
                     MainBadSignature,
-                    p.source,
+                    p.ty.source,
                     format!(
                         "In function 'main': single parameter must be '&out i32', found {}",
                         ty,

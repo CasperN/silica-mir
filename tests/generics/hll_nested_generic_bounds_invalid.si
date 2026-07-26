@@ -1,0 +1,9 @@
+# HLL nested generic bounds: the outer `Sink` is valid because `Sink<Linear>`
+# has the declared Drop marker, but the inner instantiation is invalid because
+# `Linear` does not satisfy its own `T: Drop` requirement.
+
+struct<T: Drop> Sink: Drop { inner: T }
+struct Linear { value: i64 }
+
+# covers: recursive HLL bound validation attributes failure to the nested arg
+fn nested_bound_invalid(x: Sink<Sink<Linear>>) {}

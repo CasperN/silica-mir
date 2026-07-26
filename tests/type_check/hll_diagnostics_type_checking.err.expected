@@ -1,6 +1,6 @@
 error: at 8:11: [HTC-UndeclaredVariable] In function 'test_silenced_error': undeclared variable 'undeclared_var'
    |
- 7 |   # This infers 'x' as Type::Error to poison the local variable.
+ 7 |   # This infers 'x' as TypeKind::Error to poison the local variable.
  8 |   let x = undeclared_var;
    |           ^^^^^^^^^^^^^^
  9 | 

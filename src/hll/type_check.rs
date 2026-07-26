@@ -192,19 +192,19 @@ impl Subst {
     pub fn fresh_var(&mut self) -> Type {
         let id = self.next_id;
         self.next_id += 1;
-        Type::Var(id)
+        var_ty(id)
     }
 
     pub fn fresh_int_var(&mut self) -> Type {
         let id = self.next_id;
         self.next_id += 1;
-        Type::IntVar(id)
+        int_var_ty(id)
     }
 
     pub fn fresh_float_var(&mut self) -> Type {
         let id = self.next_id;
         self.next_id += 1;
-        Type::FloatVar(id)
+        float_var_ty(id)
     }
 
     pub fn resolve(&self, ty: &Type) -> Type {
@@ -320,15 +320,15 @@ impl Subst {
                 }
                 Ok(())
             }
-            (Type::Param(p1), Type::Param(p2)) if p1 == p2 => Ok(()),
-            (Type::Ref(k1, _, inner1), Type::Ref(k2, _, inner2)) if k1 == k2 => {
+            (TypeKind::Param(p1), TypeKind::Param(p2)) if p1 == p2 => Ok(()),
+            (TypeKind::Ref(k1, _, inner1), TypeKind::Ref(k2, _, inner2)) if k1 == k2 => {
                 self.unify(inner1, inner2)
             }
-            (Type::RawPtr(inner1), Type::RawPtr(inner2)) => self.unify(inner1, inner2),
-            (Type::Array(inner1, size1), Type::Array(inner2, size2)) if size1 == size2 => {
+            (TypeKind::RawPtr(inner1), TypeKind::RawPtr(inner2)) => self.unify(inner1, inner2),
+            (TypeKind::Array(inner1, size1), TypeKind::Array(inner2, size2)) if size1 == size2 => {
                 self.unify(inner1, inner2)
             }
-            (Type::Fn(p1, r1), Type::Fn(p2, r2)) => {
+            (TypeKind::Fn(p1, r1), TypeKind::Fn(p2, r2)) => {
                 if p1.len() != p2.len() {
                     return Err(UnifyError::ArityMismatch);
                 }
@@ -345,8 +345,8 @@ impl Subst {
     }
 
     fn occurs_in(&self, id: usize, ty: &Type) -> bool {
-        match ty {
-            Type::Var(v) | Type::IntVar(v) | Type::FloatVar(v) => {
+        match &ty.kind {
+            TypeKind::Var(v) | TypeKind::IntVar(v) | TypeKind::FloatVar(v) => {
                 if *v == id {
                     true
                 } else if let Some(resolved) = self.map.get(v) {
@@ -355,13 +355,13 @@ impl Subst {
                     false
                 }
             }
-            Type::Ref(_, _, inner) => self.occurs_in(id, inner),
-            Type::RawPtr(inner) => self.occurs_in(id, inner),
-            Type::Array(inner, _) => self.occurs_in(id, inner),
-            Type::Fn(params, ret) => {
+            TypeKind::Ref(_, _, inner) => self.occurs_in(id, inner),
+            TypeKind::RawPtr(inner) => self.occurs_in(id, inner),
+            TypeKind::Array(inner, _) => self.occurs_in(id, inner),
+            TypeKind::Fn(params, ret) => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
-            Type::Custom(_, _, args) => args.iter().any(|a| self.occurs_in(id, a)),
+            TypeKind::Custom(_, _, args) => args.iter().any(|a| self.occurs_in(id, a)),
             _ => false,
         }
     }
@@ -427,15 +427,19 @@ impl TypeEnv {
     /// `scope`. See MIR's `class_of` for the same rules.
     fn class_of(&self, ty: &Type, scope: &HashMap<String, Markers>) -> Markers {
         let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
-        match ty {
-            Type::Int(_) | Type::Float(_) | Type::Bool | Type::Unit | Type::Never => all(),
-            Type::Fn(_, _) | Type::RawPtr(_) => all(),
-            Type::Ref(kind, _, _) => match kind {
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Never => all(),
+            TypeKind::Fn(_, _) | TypeKind::RawPtr(_) => all(),
+            TypeKind::Ref(kind, _, _) => match kind {
                 RefKind::Shared => all(),
                 RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
                 RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
             },
-            Type::Custom(name, _, _args) => {
+            TypeKind::Custom(name, _, _args) => {
                 if let Some(s) = self.structs.get(name) {
                     s.markers
                 } else if let Some(e) = self.enums.get(name) {
@@ -444,72 +448,69 @@ impl TypeEnv {
                     Markers::empty()
                 }
             }
-            Type::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
-            Type::Array(elem, _) => self.class_of(elem, scope),
-            Type::Var(_) | Type::IntVar(_) | Type::FloatVar(_) | Type::Error => all(),
+            TypeKind::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
+            TypeKind::Array(elem, _) => self.class_of(elem, scope),
+            TypeKind::Var(_) | TypeKind::IntVar(_) | TypeKind::FloatVar(_) | TypeKind::Error => {
+                all()
+            }
         }
     }
 
     /// Walk `ty` and push a diagnostic per problem: an undeclared
     /// `Custom` name, a `Param` not in scope, wrong type-arg arity,
     /// or an arg that fails the declared bound. Each is reported at
-    /// `span`. Continues past errors so a single top-level `Type`
-    /// with multiple defects surfaces them all.
-    pub fn validate_type(
-        &self,
-        ty: &Type,
-        scope: &HashMap<String, Markers>,
-        span: Span,
-        d: &mut Diagnostics,
-    ) {
-        match ty {
-            Type::Int(_)
-            | Type::Float(_)
-            | Type::Bool
-            | Type::Unit
-            | Type::Never
-            | Type::Var(_)
-            | Type::IntVar(_)
-            | Type::FloatVar(_)
-            | Type::Error => {}
-            Type::Param(name) => {
+    /// the source of the precise type node that is invalid. Continues past
+    /// errors so a single top-level `Type` with multiple defects surfaces
+    /// them all.
+    pub fn validate_type(&self, ty: &Type, scope: &HashMap<String, Markers>, d: &mut Diagnostics) {
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Never
+            | TypeKind::Var(_)
+            | TypeKind::IntVar(_)
+            | TypeKind::FloatVar(_)
+            | TypeKind::Error => {}
+            TypeKind::Param(name) => {
                 if !scope.contains_key(name) {
-                    d.push_error(source_diagnostic(
+                    d.push_error(Diagnostic::new(
                         UndeclaredType,
-                        span,
+                        ty.source,
                         format!("undeclared type '{}'", name),
                     ));
                 }
             }
-            Type::Ref(_, _, inner) | Type::RawPtr(inner) | Type::Array(inner, _) => {
-                self.validate_type(inner, scope, span, d);
+            TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
+                self.validate_type(inner, scope, d);
             }
-            Type::Fn(params, ret) => {
+            TypeKind::Fn(params, ret) => {
                 for p in params {
-                    self.validate_type(p, scope, span, d);
+                    self.validate_type(p, scope, d);
                 }
-                self.validate_type(ret, scope, span, d);
+                self.validate_type(ret, scope, d);
             }
-            Type::Custom(name, _, args) => {
+            TypeKind::Custom(name, _, args) => {
                 for a in args {
-                    self.validate_type(a, scope, span, d);
+                    self.validate_type(a, scope, d);
                 }
                 let type_params: &[TypeParam] = if let Some(s) = self.structs.get(name) {
                     &s.type_params
                 } else if let Some(e) = self.enums.get(name) {
                     &e.type_params
                 } else {
-                    d.push_error(source_diagnostic(
+                    d.push_error(Diagnostic::new(
                         UndeclaredType,
-                        span,
+                        ty.source,
                         format!("undeclared type '{}'", name),
                     ));
                     return;
                 };
                 if args.len() != type_params.len() {
-                    d.push_error(source_diagnostic(
+                    d.push_error(Diagnostic::new(
                         TypeArgArityMismatch,
-                        span,
+                        ty.source,
                         format!(
                             "'{}' takes {} type argument(s), found {}",
                             name,
@@ -523,9 +524,9 @@ impl TypeEnv {
                     let arg_class = self.class_of(arg, scope);
                     for m in [Marker::Copy, Marker::Drop, Marker::Move] {
                         if tp.bounds.declared(m) && !arg_class.implies(m) {
-                            d.push_error(source_diagnostic(
+                            d.push_error(Diagnostic::new(
                                 BoundNotSatisfied,
-                                span,
+                                arg.source,
                                 format!(
                                     "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
                                     arg, name, tp.name, m
@@ -614,22 +615,22 @@ pub(super) fn typecheck_program_collect(
             Declaration::Struct(s) => {
                 let scope = type_params_scope(&s.type_params);
                 for f in &s.fields {
-                    env.validate_type(&f.ty, &scope, f.span(), d);
+                    env.validate_type(&f.ty, &scope, d);
                 }
             }
             Declaration::Enum(e) => {
                 let scope = type_params_scope(&e.type_params);
                 for v in &e.variants {
-                    env.validate_type(&v.ty, &scope, v.span(), d);
+                    env.validate_type(&v.ty, &scope, d);
                 }
             }
             Declaration::Fn(f) => {
                 let scope = type_params_scope(&f.type_params);
                 let errors_before = d.error_count();
                 for p in &f.params {
-                    env.validate_type(&p.ty, &scope, p.span(), d);
+                    env.validate_type(&p.ty, &scope, d);
                 }
-                env.validate_type(&f.ret_ty, &scope, f.ret_ty_span(), d);
+                env.validate_type(&f.ret_ty, &scope, d);
                 d.annotate_errors_in_function(errors_before, &f.name);
             }
         }
@@ -706,29 +707,29 @@ pub(super) fn typecheck_program_collect(
 }
 
 fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) {
-    match ty {
-        Type::Var(id) => {
+    match &ty.kind {
+        TypeKind::Var(id) => {
             if let Some(resolved) = subst.map.get(id) {
                 collect_unresolved_vars(resolved, subst, vars);
             } else {
                 vars.insert(*id);
             }
         }
-        Type::IntVar(id) | Type::FloatVar(id) => {
+        TypeKind::IntVar(id) | TypeKind::FloatVar(id) => {
             if let Some(resolved) = subst.map.get(id) {
                 collect_unresolved_vars(resolved, subst, vars);
             }
         }
-        Type::Ref(_, _, inner) => collect_unresolved_vars(inner, subst, vars),
-        Type::RawPtr(inner) => collect_unresolved_vars(inner, subst, vars),
-        Type::Array(inner, _) => collect_unresolved_vars(inner, subst, vars),
-        Type::Fn(params, ret) => {
+        TypeKind::Ref(_, _, inner) => collect_unresolved_vars(inner, subst, vars),
+        TypeKind::RawPtr(inner) => collect_unresolved_vars(inner, subst, vars),
+        TypeKind::Array(inner, _) => collect_unresolved_vars(inner, subst, vars),
+        TypeKind::Fn(params, ret) => {
             for p in params {
                 collect_unresolved_vars(p, subst, vars);
             }
             collect_unresolved_vars(ret, subst, vars);
         }
-        Type::Custom(_, _, args) => {
+        TypeKind::Custom(_, _, args) => {
             for a in args {
                 collect_unresolved_vars(a, subst, vars);
             }
@@ -755,19 +756,19 @@ pub fn is_cast_supported(from: &Type, to: &Type) -> bool {
     if from == to {
         return true;
     }
-    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_))
-        && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_))
+    if matches!(&from.kind, TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_))
+        && matches!(&to.kind, TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_))
     {
         return true;
     }
-    match (from, to) {
-        (Type::Int(_), Type::Int(_)) => true,
-        (Type::Float(_), Type::Float(_)) => true,
-        (Type::Int(_), Type::Float(_)) => true,
-        (Type::Float(_), Type::Int(_)) => true,
-        (Type::Bool, Type::Int(_)) => true,
-        _ => false,
-    }
+    matches!(
+        (&from.kind, &to.kind),
+        (TypeKind::Int(_), TypeKind::Int(_))
+            | (TypeKind::Float(_), TypeKind::Float(_))
+            | (TypeKind::Int(_), TypeKind::Float(_))
+            | (TypeKind::Float(_), TypeKind::Int(_))
+            | (TypeKind::Bool, TypeKind::Int(_))
+    )
 }
 
 /// Return the intrinsic name that implements `expr as to`, or `None`
@@ -777,15 +778,15 @@ pub fn cast_intrinsic_name(from: &Type, to: &Type) -> Option<String> {
     if from == to {
         return None;
     }
-    if matches!(from, Type::Ref(_, _, _) | Type::RawPtr(_))
-        && matches!(to, Type::Ref(_, _, _) | Type::RawPtr(_))
+    if matches!(&from.kind, TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_))
+        && matches!(&to.kind, TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_))
     {
         return None;
     }
-    let ty_name = |ty: &Type| match ty {
-        Type::Int(k) => k.name().to_string(),
-        Type::Float(k) => k.name().to_string(),
-        Type::Bool => "bool".to_string(),
+    let ty_name = |ty: &Type| match &ty.kind {
+        TypeKind::Int(k) => k.name().to_string(),
+        TypeKind::Float(k) => k.name().to_string(),
+        TypeKind::Bool => "bool".to_string(),
         _ => panic!("cast_intrinsic_name: unsupported type {:?}", ty),
     };
     Some(format!("${}_to_{}", ty_name(from), ty_name(to)))
@@ -800,13 +801,13 @@ fn infer_inner(
 ) -> Type {
     let ty = match &expr.kind {
         ExprKind::Literal(lit) => match lit {
-            Literal::Int(_, Some(ty)) => Type::Int(*ty),
+            Literal::Int(_, Some(ty)) => int_ty(*ty),
             Literal::Int(_, None) => subst.fresh_int_var(),
-            Literal::Float(_, Some(ty)) => Type::Float(*ty),
+            Literal::Float(_, Some(ty)) => float_ty(*ty),
             Literal::Float(_, None) => subst.fresh_float_var(),
             Literal::Bool(_) => bool_ty(),
             Literal::Unit => unit_ty(),
-            Literal::ByteStr(bytes) => Type::Array(Box::new(Type::Int(IntTy::U8)), bytes.len()),
+            Literal::ByteStr(bytes) => array_ty(int_ty(IntTy::U8), bytes.len()),
         },
         ExprKind::Binary(lhs, op, rhs) => {
             let lhs_ty = infer_inner(env, subst, lhs, types, d);
@@ -816,14 +817,14 @@ fn infer_inner(
             }
 
             let resolved = subst.resolve(&lhs_ty);
-            match &resolved {
-                Type::Int(_)
-                | Type::Float(_)
-                | Type::Var(_)
-                | Type::IntVar(_)
-                | Type::FloatVar(_)
-                | Type::Never
-                | Type::Error => {}
+            match &resolved.kind {
+                TypeKind::Int(_)
+                | TypeKind::Float(_)
+                | TypeKind::Var(_)
+                | TypeKind::IntVar(_)
+                | TypeKind::FloatVar(_)
+                | TypeKind::Never
+                | TypeKind::Error => {}
                 _ => {
                     d.push_error(source_diagnostic(
                         BinaryOpNonNumeric,
@@ -852,14 +853,14 @@ fn infer_inner(
             let resolved = subst.resolve(&operand_ty);
             match op {
                 UnOp::Neg => {
-                    match &resolved {
-                        Type::Int(int_ty) if int_ty.is_signed() => {}
-                        Type::Float(_) => {}
-                        Type::IntVar(_)
-                        | Type::FloatVar(_)
-                        | Type::Var(_)
-                        | Type::Never
-                        | Type::Error => {}
+                    match &resolved.kind {
+                        TypeKind::Int(int_ty) if int_ty.is_signed() => {}
+                        TypeKind::Float(_) => {}
+                        TypeKind::IntVar(_)
+                        | TypeKind::FloatVar(_)
+                        | TypeKind::Var(_)
+                        | TypeKind::Never
+                        | TypeKind::Error => {}
                         _ => {
                             d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnaryOpInvalidOperand,
@@ -903,24 +904,24 @@ fn infer_inner(
         ExprKind::FieldAccess(target, field) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
-            if resolved == Type::Error {
+            if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            let struct_ty = match &resolved {
-                Type::Ref(_, _, inner) => subst.resolve(inner),
-                other => other.clone(),
+            let struct_ty = match &resolved.kind {
+                TypeKind::Ref(_, _, inner) => subst.resolve(inner),
+                _ => resolved.clone(),
             };
-            if let Type::Custom(struct_name, _, args) = struct_ty {
-                if let Some(s_decl) = env.structs.get(&struct_name).cloned() {
+            if let TypeKind::Custom(struct_name, _, args) = &struct_ty.kind {
+                if let Some(s_decl) = env.structs.get(struct_name).cloned() {
                     if let Some(f) = s_decl
                         .fields
                         .iter()
                         .find(|field_decl| field_decl.name == *field)
                     {
                         match build_subst_map(
-                            &struct_name,
+                            struct_name,
                             &s_decl.type_params,
-                            &args,
+                            args,
                             expr.span(),
                             d,
                         ) {
@@ -955,11 +956,11 @@ fn infer_inner(
         ExprKind::Cast(target, to_ty) => {
             let from_ty = infer_inner(env, subst, target, types, d);
             let from_resolved = subst.resolve(&from_ty);
-            if from_resolved == Type::Error {
+            if from_resolved.kind == TypeKind::Error {
                 return error_ty();
             }
             let scope = env.current_type_params.clone();
-            env.validate_type(to_ty, &scope, expr.span(), d);
+            env.validate_type(to_ty, &scope, d);
             if !is_cast_supported(&from_resolved, to_ty) {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::InvalidCast,
@@ -968,7 +969,7 @@ fn infer_inner(
                 ));
                 return error_ty();
             }
-            if matches!(to_ty, Type::Ref(_, _, _)) && !env.in_unsafe {
+            if matches!(&to_ty.kind, TypeKind::Ref(_, _, _)) && !env.in_unsafe {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::UnsafeRequired,
                     expr.span(),
@@ -980,12 +981,12 @@ fn infer_inner(
         ExprKind::Deref(target) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
-            if resolved == Type::Error {
+            if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            match resolved {
-                Type::Ref(_, _, inner) => *inner,
-                Type::RawPtr(inner) => {
+            match resolved.kind {
+                TypeKind::Ref(_, _, inner) => *inner,
+                TypeKind::RawPtr(inner) => {
                     if !env.in_unsafe {
                         d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnsafeRequired,
@@ -1027,10 +1028,10 @@ fn infer_inner(
             }
             let fn_ty = infer_inner(env, subst, fn_expr, types, d);
             let resolved = subst.resolve(&fn_ty);
-            if resolved == Type::Error {
+            if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            if let Type::Fn(param_tys, ret_ty) = resolved {
+            if let TypeKind::Fn(param_tys, ret_ty) = resolved.kind {
                 if param_tys.len() != args.len() {
                     d.push_error(source_diagnostic(
                         ArityMismatch,
@@ -1075,13 +1076,13 @@ fn infer_inner(
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 let scope = env.current_type_params.clone();
-                                env.validate_type(annotated_ty, &scope, span, d);
+                                env.validate_type(annotated_ty, &scope, d);
                                 check_inner(env, subst, init, annotated_ty, types, d);
                                 annotated_ty.clone()
                             }
                             (Some(annotated_ty), None) => {
                                 let scope = env.current_type_params.clone();
-                                env.validate_type(annotated_ty, &scope, span, d);
+                                env.validate_type(annotated_ty, &scope, d);
                                 annotated_ty.clone()
                             }
                             (None, Some(init)) => infer_inner(env, subst, init, types, d),
@@ -1135,7 +1136,7 @@ fn infer_inner(
             }
             never_ty()
         }
-        ExprKind::Continue => Type::Never,
+        ExprKind::Continue => never_ty(),
         ExprKind::Return(val_expr) => {
             let ret_ty = env.current_ret_ty.clone().unwrap_or_else(unit_ty);
             if let Some(val) = val_expr {
@@ -1155,10 +1156,10 @@ fn infer_inner(
         ExprKind::Match(target, arms) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
-            if resolved == Type::Error {
+            if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            if let Type::Custom(enum_name, _, args) = resolved {
+            if let TypeKind::Custom(enum_name, _, args) = resolved.kind {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
@@ -1348,22 +1349,22 @@ fn infer_inner(
         ExprKind::ArrayIndex(arr, idx) => {
             let arr_ty = infer_inner(env, subst, arr, types, d);
             let resolved = subst.resolve(&arr_ty);
-            if resolved == Type::Error {
+            if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            if let Type::Array(inner, _) = resolved {
+            if let TypeKind::Array(inner, _) = resolved.kind {
                 let idx_ty = infer_inner(env, subst, idx, types, d);
                 let idx_resolved = subst.resolve(&idx_ty);
-                match idx_resolved {
-                    Type::Int(_) => {}
-                    Type::Var(_) | Type::IntVar(_) => {
+                match &idx_resolved.kind {
+                    TypeKind::Int(_) => {}
+                    TypeKind::Var(_) | TypeKind::IntVar(_) => {
                         if let Err(e) =
-                            subst.unify(&idx_resolved, &Type::Int(crate::mir::ast::IntTy::I64))
+                            subst.unify(&idx_resolved, &int_ty(crate::mir::ast::IntTy::I64))
                         {
                             d.push_error(e.to_diag(expr.span()));
                         }
                     }
-                    Type::Error => {}
+                    TypeKind::Error => {}
                     other => {
                         d.push_error(source_diagnostic(
                             ArrayIndexNotInt,
@@ -1398,8 +1399,8 @@ fn check_inner(
     d: &mut Diagnostics,
 ) {
     let resolved_expected = subst.resolve(expected);
-    match (&expr.kind, &resolved_expected) {
-        (ExprKind::Block(stmts, last_expr, is_unsafe), expected_ty) => {
+    match (&expr.kind, &resolved_expected.kind) {
+        (ExprKind::Block(stmts, last_expr, is_unsafe), _) => {
             let old_unsafe = env.in_unsafe;
             if *is_unsafe {
                 env.in_unsafe = true;
@@ -1447,9 +1448,9 @@ fn check_inner(
             }
             let errors_before = d.error_count();
             if let Some(last) = last_expr {
-                check_inner(env, subst, last, expected_ty, types, d);
+                check_inner(env, subst, last, &resolved_expected, types, d);
             } else {
-                if let Err(e) = subst.unify(expected_ty, &unit_ty()) {
+                if let Err(e) = subst.unify(&resolved_expected, &unit_ty()) {
                     d.push_error(e.to_diag(expr.span()));
                 }
             }
@@ -1459,16 +1460,16 @@ fn check_inner(
                 types.insert(expr.span(), resolved_expected.clone());
             }
         }
-        (ExprKind::If(cond, true_block, false_block), expected_ty) => {
+        (ExprKind::If(cond, true_block, false_block), _) => {
             check_inner(env, subst, cond, &bool_ty(), types, d);
-            check_inner(env, subst, true_block, expected_ty, types, d);
-            check_inner(env, subst, false_block, expected_ty, types, d);
+            check_inner(env, subst, true_block, &resolved_expected, types, d);
+            check_inner(env, subst, false_block, &resolved_expected, types, d);
             types.insert(expr.span(), resolved_expected.clone());
         }
-        (ExprKind::Match(target, arms), expected_ty) => {
+        (ExprKind::Match(target, arms), _) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
-            if let Type::Custom(enum_name, _, args) = resolved {
+            if let TypeKind::Custom(enum_name, _, args) = resolved.kind {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
@@ -1496,7 +1497,7 @@ fn check_inner(
                         if let Some(var_name) = bound_var {
                             env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
                         }
-                        check_inner(env, subst, body, expected_ty, types, d);
+                        check_inner(env, subst, body, &resolved_expected, types, d);
                         env.pop_scope();
                     } else {
                         d.push_error(source_diagnostic(
@@ -1515,13 +1516,13 @@ fn check_inner(
                 ));
             }
         }
-        (ExprKind::Literal(Literal::Int(_val, None)), Type::Int(_ty)) => {
+        (ExprKind::Literal(Literal::Int(_val, None)), TypeKind::Int(_ty)) => {
             types.insert(expr.span(), resolved_expected.clone());
         }
-        (ExprKind::Literal(Literal::Float(_val, None)), Type::Float(_ty)) => {
+        (ExprKind::Literal(Literal::Float(_val, None)), TypeKind::Float(_ty)) => {
             types.insert(expr.span(), resolved_expected.clone());
         }
-        (ExprKind::Array(elements), Type::Array(expected_elem, expected_size)) => {
+        (ExprKind::Array(elements), TypeKind::Array(expected_elem, expected_size)) => {
             if elements.len() != *expected_size {
                 d.push_error(source_diagnostic(
                     ArrayLengthMismatch,
@@ -1714,6 +1715,24 @@ mod tests {
         let res = check_program(source);
         assert!(res.is_err());
         assert!(res.unwrap_err().contains("undeclared variable"));
+    }
+
+    #[test]
+    fn invalid_nested_declared_type_uses_its_own_source() {
+        let source = "fn f(x: &Nope) {}";
+        let program = Parser::new(source).parse().expect("parse HLL");
+        let diagnostics = typecheck_program(&program);
+        let errors: Vec<_> = diagnostics.errors().collect();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0].span(),
+            Span {
+                line: 1,
+                col: 10,
+                end_line: 1,
+                end_col: 14,
+            }
+        );
     }
 
     #[test]

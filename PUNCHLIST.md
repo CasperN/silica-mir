@@ -20,13 +20,11 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
 - **HLL match on projection places.** `a[i] match { ... }` and `foo.field match { ... }` fire `VF-DowncastOnProjection` because variant flow tracks root Vars only. Users must extract to a local first (`let t = a[i]; t match { ... }`) or wrap the decode in a helper fn that takes the value by parameter. Fixable by either (a) copying/moving the projection into a fresh local during HLL lowering or (b) extending variant flow to track projections.
 - **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
-- **HLL generics gaps**
-  - **Struct field, enum variant, fn param, and `let` type-annotation spans point at the whole `name: Type`.** HLL `Type` still lacks the `SourceInfo` carried by MIR `Type`; give it the same sourced wrapper shape and diagnose through the type itself rather than adding duplicate `ty_span` fields to every parent node.
-  - Conditional marker bounds (`impl<T: Copy> Copy for Foo<T> {}`).
+- **Conditional HLL marker bounds.** (`impl<T: Copy> Copy for Foo<T> {}`).
 - **Array index and array length should be `u64`.** Today `place[operand]`
   and `[T; N]` both use `i64` in the parser and checker, mirroring MIR
   integers. Sizes and offsets are inherently non-negative — matches
-  `$sizeof<T>` returning `u64`. Switch `Type::Array(inner, size: u64)`
+  `$sizeof<T>` returning `u64`. Switch `TypeKind::Array(inner, size: u64)`
   and the index operand's expected type to `u64`. Ripples through the
   array-lit codegen (`getelementptr ..., i64 0, i64 i`) and every
   fixture that indexes an array with an `i64` literal.
@@ -65,7 +63,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
   param count, then backfill Custom mentions with fresh lifetimes
   (also added to the containing scope's params) — then add the
   arity checfk.
-- **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`Type::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
+- **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`TypeKind::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
 - **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
 - **No fixture for the nested-ref `&&i64` case or shared-ref returns read multiple times.** Adversarial coverage gap; adversarial testing after-commit rule should catch these when the next lifetime feature lands. A lifetime-bearing generic wrapper in a fn signature is covered by `View<'a, T>` in `hll_temporary_lifetimes_ok.si`.
 
@@ -85,7 +83,7 @@ in `src/lib.rs`, next to the code they describe.
 
 
 ## FFI
-- **`Type::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
+- **`TypeKind::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
 
 ## Testing gaps
 - **End-to-end runtime fixtures.** `tests/programs/*` today pins elaborated MIR, but real behavior — `sum_to_n(10) → 55`, `hello_world` prints `hi!\n`, linked-list `exit=6` — is only verified manually. Automate: compile to `.ll`, link any sibling C shim, execute, pin exit code + stdout in a `.run.expected`. Needs a new fixture-runner stage + `clang` gating. Bazel migration (see Longer term) is one path to the cross-language build infra this requires.

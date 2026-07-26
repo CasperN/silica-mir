@@ -1,0 +1,7 @@
+# HLL nested generic bounds: the inner and outer instantiations both satisfy
+# `T: Drop`. This is the positive boundary for the paired invalid fixture.
+
+struct<T: Drop> Sink: Drop { inner: T }
+
+# covers: recursive HLL bound validation accepts a nested valid type argument
+fn nested_bound_valid(x: Sink<Sink<i64>>) {}

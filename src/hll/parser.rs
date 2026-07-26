@@ -12,14 +12,13 @@ use crate::common::{
 };
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
-use crate::hll::helpers::*;
 use crate::mir::parser::ParserCode;
 use std::collections::BTreeSet;
 use tree_sitter::{Node, Parser as TSParser};
 
 /// Names of type parameters in scope for the enclosing decl. Threaded
 /// explicitly through `map_type`; identifiers in scope resolve to
-/// `Type::Param`, otherwise to `Type::Custom`.
+/// `TypeKind::Param`, otherwise to `TypeKind::Custom`.
 type TypeScope = BTreeSet<String>;
 
 extern "C" {
@@ -41,20 +40,20 @@ fn span_of(node: Node) -> Span {
     }
 }
 
-/// Map a scalar type keyword to `Type`. Same table as MIR — the
+/// Map a scalar type keyword to `TypeKind`. Same table as MIR — the
 /// keywords are defined once in `common/grammar.js`.
-fn scalar_kind_to_type(kind: &str) -> Option<Type> {
+fn scalar_kind_to_type_kind(kind: &str) -> Option<TypeKind> {
     Some(match kind {
-        "i8" => i8_ty(),
-        "i16" => i16_ty(),
-        "i32" => i32_ty(),
-        "i64" => i64_ty(),
-        "u8" => u8_ty(),
-        "u16" => u16_ty(),
-        "u32" => u32_ty(),
-        "u64" => u64_ty(),
-        "f32" => f32_ty(),
-        "f64" => f64_ty(),
+        "i8" => TypeKind::Int(IntTy::I8),
+        "i16" => TypeKind::Int(IntTy::I16),
+        "i32" => TypeKind::Int(IntTy::I32),
+        "i64" => TypeKind::Int(IntTy::I64),
+        "u8" => TypeKind::Int(IntTy::U8),
+        "u16" => TypeKind::Int(IntTy::U16),
+        "u32" => TypeKind::Int(IntTy::U32),
+        "u64" => TypeKind::Int(IntTy::U64),
+        "f32" => TypeKind::Float(FloatTy::F32),
+        "f64" => TypeKind::Float(FloatTy::F64),
         _ => return None,
     })
 }
@@ -411,18 +410,11 @@ impl Parser {
             }
         }
 
-        let (ret_ty, ret_ty_source) = if let Some(rt_node) = node.child_by_field_name("return_type")
-        {
-            (
-                self.map_type(rt_node, &scope).map_err(with_fn)?,
-                SourceInfo::written(span_of(rt_node)),
-            )
+        let ret_ty = if let Some(rt_node) = node.child_by_field_name("return_type") {
+            self.map_type(rt_node, &scope).map_err(with_fn)?
         } else {
-            // No `-> R` in source: fall back to the whole-fn span so
-            // diagnostics still land somewhere sensible even though
-            // there's no explicit annotation.
-            (
-                unit_ty(),
+            Type::new(
+                TypeKind::Unit,
                 SourceInfo::generated(GeneratedKind::HllDesugaring, span),
             )
         };
@@ -443,7 +435,6 @@ impl Parser {
             type_params,
             params,
             ret_ty,
-            ret_ty_source,
             body,
             source: SourceInfo::written(span),
         })
@@ -452,18 +443,26 @@ impl Parser {
     /// Map a `type` (or scalar/keyword token) CST node to `Type`.
     /// `scope` is the set of in-scope type-parameter names for the
     /// enclosing decl; a bare identifier that matches becomes
-    /// `Type::Param`, otherwise `Type::Custom` (possibly with args).
+    /// `TypeKind::Param`, otherwise `TypeKind::Custom` (possibly with args).
     fn map_type(&self, node: Node, scope: &TypeScope) -> Result<Type, Diagnostic> {
+        let kind = self.map_type_kind(node, scope)?;
+        Ok(Type::new(kind, SourceInfo::written(span_of(node))))
+    }
+
+    /// Parse a type's structural kind. [`Self::map_type`] owns construction of
+    /// the source-bearing outer node; recursive calls construct source-bearing
+    /// child types from their own CST nodes.
+    fn map_type_kind(&self, node: Node, scope: &TypeScope) -> Result<TypeKind, Diagnostic> {
         // Shared type rule with MIR; the shape is identical.
-        if let Some(ty) = scalar_kind_to_type(node.kind()) {
+        if let Some(ty) = scalar_kind_to_type_kind(node.kind()) {
             return Ok(ty);
         }
         match node.kind() {
-            "bool" => return Ok(bool_ty()),
-            "unit" => return Ok(unit_ty()),
-            "never" => return Ok(never_ty()),
+            "bool" => return Ok(TypeKind::Bool),
+            "unit" => return Ok(TypeKind::Unit),
+            "never" => return Ok(TypeKind::Never),
             "identifier" => {
-                return Ok(self.identifier_to_type(
+                return Ok(self.identifier_to_type_kind(
                     self.get_text(node),
                     Vec::new(),
                     Vec::new(),
@@ -483,13 +482,13 @@ impl Parser {
         let first = node.child(0).ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "type node has no children")
         })?;
-        if let Some(ty) = scalar_kind_to_type(first.kind()) {
+        if let Some(ty) = scalar_kind_to_type_kind(first.kind()) {
             return Ok(ty);
         }
         match first.kind() {
-            "bool" => return Ok(bool_ty()),
-            "unit" => return Ok(unit_ty()),
-            "never" => return Ok(never_ty()),
+            "bool" => return Ok(TypeKind::Bool),
+            "unit" => return Ok(TypeKind::Unit),
+            "never" => return Ok(TypeKind::Never),
             "identifier" => {
                 // Identifier alt with optional `type_args` as sibling:
                 // `Foo`, `Foo<T, U>`, `Foo<'a, T>`.
@@ -503,7 +502,7 @@ impl Parser {
                 } else {
                     (Vec::new(), Vec::new())
                 };
-                return Ok(self.identifier_to_type(text, lifetimes, args, scope));
+                return Ok(self.identifier_to_type_kind(text, lifetimes, args, scope));
             }
             _ => {}
         }
@@ -530,7 +529,11 @@ impl Parser {
                     format!("missing inner type for {}", text),
                 )
             })?;
-            return Ok(Type::Ref(kind, lt, Box::new(self.map_type(inner, scope)?)));
+            return Ok(TypeKind::Ref(
+                kind,
+                lt,
+                Box::new(self.map_type(inner, scope)?),
+            ));
         }
         if text == "*" {
             let inner = node.child(1).ok_or_else(|| {
@@ -540,7 +543,7 @@ impl Parser {
                     "missing inner type for raw pointer",
                 )
             })?;
-            return Ok(raw_ptr_ty(self.map_type(inner, scope)?));
+            return Ok(TypeKind::RawPtr(Box::new(self.map_type(inner, scope)?)));
         }
         if text == "[" {
             let elem = node.child_by_field_name("element").ok_or_else(|| {
@@ -550,7 +553,10 @@ impl Parser {
                 self.diag(node, ParserCode::MalformedCst, "array type missing length")
             })?;
             let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?;
-            return Ok(array_ty(self.map_type(elem, scope)?, len as usize));
+            return Ok(TypeKind::Array(
+                Box::new(self.map_type(elem, scope)?),
+                len as usize,
+            ));
         }
         if text == "fn" {
             // `fn(T,...) [-> R]`. The optional `return_type` field
@@ -569,9 +575,12 @@ impl Parser {
             let ret = if let Some(rt) = ret_node {
                 self.map_type(rt, scope)?
             } else {
-                unit_ty()
+                Type::new(
+                    TypeKind::Unit,
+                    SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
+                )
             };
-            return Ok(fn_ty(params, ret));
+            return Ok(TypeKind::Fn(params, Box::new(ret)));
         }
         Err(self.diag(
             first,
@@ -581,21 +590,21 @@ impl Parser {
     }
 
     /// Resolve a bare identifier that appeared in type position. If
-    /// `name` is in the current scope, produce `Type::Param(name)` —
+    /// `name` is in the current scope, produce `TypeKind::Param(name)` —
     /// but only when there are no type arguments, since a type
     /// parameter can't be instantiated. Otherwise produce
-    /// `Type::Custom(name, args)`.
-    fn identifier_to_type(
+    /// `TypeKind::Custom(name, args)`.
+    fn identifier_to_type_kind(
         &self,
         name: &str,
         lifetimes: Vec<Lifetime>,
         args: Vec<Type>,
         scope: &TypeScope,
-    ) -> Type {
+    ) -> TypeKind {
         if lifetimes.is_empty() && args.is_empty() && scope.contains(name) {
-            param_ty(name)
+            TypeKind::Param(name.to_string())
         } else {
-            Type::Custom(name.to_string(), lifetimes, args)
+            TypeKind::Custom(name.to_string(), lifetimes, args)
         }
     }
 
@@ -693,7 +702,7 @@ impl Parser {
             if child.kind() == "lifetime" {
                 let name = self.get_text(child).trim_start_matches('\'').to_string();
                 lifetimes.push(Lifetime(name));
-            } else if child.kind() == "type" || scalar_kind_to_type(child.kind()).is_some() {
+            } else if child.kind() == "type" || scalar_kind_to_type_kind(child.kind()).is_some() {
                 types.push(self.map_type(child, scope)?);
             }
         }
@@ -1372,6 +1381,7 @@ impl Parser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::hll::helpers::*;
 
     #[test]
     fn parse_struct_decl_test() {
@@ -1819,10 +1829,46 @@ mod tests {
     }
 
     #[test]
+    fn parameter_and_nested_type_nodes_keep_distinct_source_spans() {
+        let params = first_fn_params("fn main(exit: &out i64) {}");
+        let param = &params[0];
+        assert_eq!(
+            param.span(),
+            Span {
+                line: 1,
+                col: 9,
+                end_line: 1,
+                end_col: 23,
+            }
+        );
+        assert_eq!(
+            param.ty.span(),
+            Span {
+                line: 1,
+                col: 15,
+                end_line: 1,
+                end_col: 23,
+            }
+        );
+        let TypeKind::Ref(_, _, pointee) = &param.ty.kind else {
+            panic!("expected reference type, got {:?}", param.ty);
+        };
+        assert_eq!(
+            pointee.span(),
+            Span {
+                line: 1,
+                col: 20,
+                end_line: 1,
+                end_col: 23,
+            }
+        );
+    }
+
+    #[test]
     fn fn_type_with_return_arrow() {
-        // `fn(i64) -> i64` → Type::Fn([i64], i64).
+        // `fn(i64) -> i64` → TypeKind::Fn([i64], i64).
         let params = first_fn_params("fn caller(f: fn(i64) -> i64) {}");
-        let Type::Fn(p, r) = &params[0].ty else {
+        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
             panic!("expected Fn type, got {:?}", params[0].ty);
         };
         assert_eq!(p.as_slice(), &[i64_ty()]);
@@ -1831,10 +1877,10 @@ mod tests {
 
     #[test]
     fn fn_type_without_arrow_defaults_to_unit() {
-        // `fn(i64)` → Type::Fn([i64], unit). The arrow is optional;
+        // `fn(i64)` → TypeKind::Fn([i64], unit). The arrow is optional;
         // absence means the callee returns `unit`.
         let params = first_fn_params("fn caller(f: fn(i64)) {}");
-        let Type::Fn(p, r) = &params[0].ty else {
+        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
             panic!("expected Fn type, got {:?}", params[0].ty);
         };
         assert_eq!(p.as_slice(), &[i64_ty()]);
@@ -1845,7 +1891,7 @@ mod tests {
     fn fn_type_zero_params_no_arrow() {
         // `fn()` — nullary, no arrow → Fn([], unit).
         let params = first_fn_params("fn caller(f: fn()) {}");
-        let Type::Fn(p, r) = &params[0].ty else {
+        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
             panic!()
         };
         assert!(p.is_empty(), "expected empty param list, got {:?}", p);
@@ -1856,7 +1902,7 @@ mod tests {
     fn fn_type_zero_params_with_arrow() {
         // `fn() -> i64` — nullary with arrow → Fn([], i64).
         let params = first_fn_params("fn caller(f: fn() -> i64) {}");
-        let Type::Fn(p, r) = &params[0].ty else {
+        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
             panic!()
         };
         assert!(p.is_empty());
@@ -1870,11 +1916,11 @@ mod tests {
         // isn't accidentally included in the param list (my earlier
         // walker bug would have added it as a param).
         let params = first_fn_params("fn caller(f: fn(i64, bool) -> bool) {}");
-        let Type::Fn(p, r) = &params[0].ty else {
+        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
             panic!()
         };
-        assert_eq!(p.as_slice(), &[i64_ty(), Type::Bool]);
-        assert_eq!(**r, Type::Bool);
+        assert_eq!(p.as_slice(), &[i64_ty(), bool_ty()]);
+        assert_eq!(**r, bool_ty());
     }
 
     #[test]
@@ -1882,16 +1928,16 @@ mod tests {
         // `fn(fn(i64)) -> bool` — the fn-typed param is itself a
         // fn type. Exercises the walker's recursion.
         let params = first_fn_params("fn caller(f: fn(fn(i64)) -> bool) {}");
-        let Type::Fn(outer_p, outer_r) = &params[0].ty else {
+        let TypeKind::Fn(outer_p, outer_r) = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(outer_p.len(), 1);
-        let Type::Fn(inner_p, inner_r) = &outer_p[0] else {
+        let TypeKind::Fn(inner_p, inner_r) = &outer_p[0].kind else {
             panic!("expected nested Fn type, got {:?}", outer_p[0]);
         };
         assert_eq!(inner_p.as_slice(), &[i64_ty()]);
         assert_eq!(**inner_r, unit_ty());
-        assert_eq!(**outer_r, Type::Bool);
+        assert_eq!(**outer_r, bool_ty());
     }
 
     #[test]
@@ -1900,11 +1946,11 @@ mod tests {
         // fn type. Verifies the walker doesn't confuse where the
         // return type ends.
         let params = first_fn_params("fn caller(f: fn(i64) -> fn()) {}");
-        let Type::Fn(p, r) = &params[0].ty else {
+        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(p.as_slice(), &[i64_ty()]);
-        let Type::Fn(ret_p, ret_r) = &**r else {
+        let TypeKind::Fn(ret_p, ret_r) = &r.kind else {
             panic!("expected Fn as return, got {:?}", r);
         };
         assert!(ret_p.is_empty());
@@ -1915,7 +1961,7 @@ mod tests {
     fn fn_type_trailing_comma_in_params() {
         // `fn(i64, bool,)` — trailing comma tolerated by commaSep.
         let params = first_fn_params("fn caller(f: fn(i64, bool,) -> bool) {}");
-        let Type::Fn(p, _) = &params[0].ty else {
+        let TypeKind::Fn(p, _) = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(p.len(), 2);

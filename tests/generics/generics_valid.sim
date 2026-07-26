@@ -1,7 +1,7 @@
 # Generic declarations and instantiations accepted by all pipeline passes.
 #
 # The composition checker, type checker, NLL, drop elaboration, and
-# pretty-printer all walk `Type::Param` nodes; a regression in any of
+# pretty-printer all walk `TypeKind::Param` nodes; a regression in any of
 # them would turn this fixture into an Errors fixture. Each cell below
 # isolates one aspect of generic handling so the failing cell identifies
 # the regression.

@@ -47,13 +47,13 @@ fn elide_function(f: &mut Function) {
     // Every synthesized output lifetime is outlived by every input
     // lifetime. Explicit output lifetimes are not axiomatized — the
     // user annotated them intentionally.
-    for (out_lt, out_span) in &ctx.synth_output {
+    for (out_lt, out_source) in &ctx.synth_output {
         for in_lt in &ctx.input {
             f.meta.outlives.push(OutlivesBound::generated(
                 in_lt.clone(),
                 out_lt.clone(),
                 GeneratedKind::LifetimeElision,
-                *out_span,
+                out_source.span(),
             ));
         }
     }
@@ -89,7 +89,7 @@ struct ElideCtx {
     input: Vec<Lifetime>,
     /// Synthesized lifetimes seen at output position. These get
     /// axioms `in outlives out` for every `in` in `input`.
-    synth_output: Vec<(Lifetime, Span)>,
+    synth_output: Vec<(Lifetime, SourceInfo)>,
 }
 
 impl ElideCtx {
@@ -103,7 +103,7 @@ impl ElideCtx {
         }
     }
 
-    fn fresh(&mut self, attributed_to: Span) -> Lifetime {
+    fn fresh_at(&mut self, source: SourceInfo) -> Lifetime {
         loop {
             let name = format!("s{}", self.counter);
             self.counter += 1;
@@ -113,7 +113,7 @@ impl ElideCtx {
                 self.synthesized.push(LifetimeParam::generated(
                     lt.clone(),
                     GeneratedKind::LifetimeElision,
-                    attributed_to,
+                    source.span(),
                 ));
                 return lt;
             }
@@ -122,18 +122,18 @@ impl ElideCtx {
 }
 
 fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
-    let ty_span = ty.span();
+    let ty_source = ty.source;
     match &mut ty.kind {
         TypeKind::Ref(kind, slot, inner) => {
             let (lt, is_synth) = match slot.take() {
                 Some(existing) => (existing, false),
-                None => (ctx.fresh(ty_span), true),
+                None => (ctx.fresh_at(ty_source), true),
             };
             match pos {
                 Pos::Input => ctx.input.push(lt.clone()),
                 Pos::Output => {
                     if is_synth {
-                        ctx.synth_output.push((lt.clone(), ty_span));
+                        ctx.synth_output.push((lt.clone(), ty_source));
                     }
                 }
             }
@@ -215,8 +215,9 @@ mod tests {
     #[test]
     fn fresh_skips_existing_names() {
         let mut ctx = ElideCtx::new(&[explicit_lifetime("s0"), explicit_lifetime("s2")]);
-        let a = ctx.fresh(Span::default());
-        let b = ctx.fresh(Span::default());
+        let source = SourceInfo::generated(GeneratedKind::TestHelper, Span::default());
+        let a = ctx.fresh_at(source);
+        let b = ctx.fresh_at(source);
         assert_eq!(a.0, "s1");
         assert_eq!(b.0, "s3");
     }

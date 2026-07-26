@@ -404,9 +404,9 @@ impl std::fmt::Display for RefKind {
     }
 }
 
-/// Integer scalar type. Grouped in `Type::Int(IntTy)` rather than a
+/// Integer scalar type. Grouped in `TypeKind::Int(IntTy)` rather than a
 /// separate `Type` variant per width — passes that treat all integers
-/// uniformly (Copy/Drop class, ref-ness, etc.) match on `Type::Int(_)`;
+/// uniformly (Copy/Drop class, ref-ness, etc.) match on `TypeKind::Int(_)`;
 /// passes that dispatch per-width (layout, codegen) match on the inner
 /// `IntTy`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]

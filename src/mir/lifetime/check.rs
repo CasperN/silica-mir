@@ -443,7 +443,7 @@ enum Variance {
     Contravariant,
     /// Return position: `inst_region outlives caller_region`. Reached
     /// only by walking through a contravariant position — currently
-    /// only fn-pointer arg positions produce that flip, and `Type::Fn`
+    /// only fn-pointer arg positions produce that flip, and `TypeKind::Fn`
     /// isn't walked yet (see the "Call-site handling ignores fn
     /// pointers" punchlist item). `combine`'s `(Contra, Co) →
     /// Invariant` rule and `emit_variance`'s `Covariant` branch are
@@ -1119,8 +1119,8 @@ impl<'a> Checker<'a> {
             // ("Call-site handling ignores fn pointers"): descending
             // into a fn-pointer type's arg/return slots would emit the
             // standard covariant-return / contravariant-arg constraints,
-            // but Type::Fn today carries no lifetime metadata to walk.
-            // Adding that walk requires first extending Type::Fn to
+            // but TypeKind::Fn today carries no lifetime metadata to walk.
+            // Adding that walk requires first extending TypeKind::Fn to
             // carry per-slot lifetimes. Until then, taking a &fn-pointer
             // to a ref-returning fn silently bypasses lifetime tracking
             // on that call path — the escape check and the standard

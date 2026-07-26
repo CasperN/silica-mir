@@ -15,73 +15,73 @@ use crate::hll::ast::*;
 // ---------- Scalars ----------
 
 pub fn i8_ty() -> Type {
-    Type::Int(IntTy::I8)
+    Type::synthesized(TypeKind::Int(IntTy::I8))
 }
 pub fn i16_ty() -> Type {
-    Type::Int(IntTy::I16)
+    Type::synthesized(TypeKind::Int(IntTy::I16))
 }
 pub fn i32_ty() -> Type {
-    Type::Int(IntTy::I32)
+    Type::synthesized(TypeKind::Int(IntTy::I32))
 }
 pub fn i64_ty() -> Type {
-    Type::Int(IntTy::I64)
+    Type::synthesized(TypeKind::Int(IntTy::I64))
 }
 pub fn u8_ty() -> Type {
-    Type::Int(IntTy::U8)
+    Type::synthesized(TypeKind::Int(IntTy::U8))
 }
 pub fn u16_ty() -> Type {
-    Type::Int(IntTy::U16)
+    Type::synthesized(TypeKind::Int(IntTy::U16))
 }
 pub fn u32_ty() -> Type {
-    Type::Int(IntTy::U32)
+    Type::synthesized(TypeKind::Int(IntTy::U32))
 }
 pub fn u64_ty() -> Type {
-    Type::Int(IntTy::U64)
+    Type::synthesized(TypeKind::Int(IntTy::U64))
 }
 pub fn f32_ty() -> Type {
-    Type::Float(FloatTy::F32)
+    Type::synthesized(TypeKind::Float(FloatTy::F32))
 }
 pub fn f64_ty() -> Type {
-    Type::Float(FloatTy::F64)
+    Type::synthesized(TypeKind::Float(FloatTy::F64))
 }
 pub fn bool_ty() -> Type {
-    Type::Bool
+    Type::synthesized(TypeKind::Bool)
 }
 pub fn unit_ty() -> Type {
-    Type::Unit
+    Type::synthesized(TypeKind::Unit)
 }
 pub fn never_ty() -> Type {
-    Type::Never
+    Type::synthesized(TypeKind::Never)
 }
 
 pub fn int_ty(kind: IntTy) -> Type {
-    Type::Int(kind)
+    Type::synthesized(TypeKind::Int(kind))
 }
 pub fn float_ty(kind: FloatTy) -> Type {
-    Type::Float(kind)
+    Type::synthesized(TypeKind::Float(kind))
 }
 
 // ---------- Custom / Param ----------
 
 /// A non-generic struct/enum reference: `Foo`.
 pub fn custom_ty(name: impl Into<String>) -> Type {
-    Type::Custom(name.into(), Vec::new(), Vec::new())
+    Type::synthesized(TypeKind::Custom(name.into(), Vec::new(), Vec::new()))
 }
 
 /// A generic struct/enum instantiation: `Foo<T, U>`.
 pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
-    Type::Custom(name.into(), Vec::new(), args)
+    Type::synthesized(TypeKind::Custom(name.into(), Vec::new(), args))
 }
 
 /// A reference to an in-scope type parameter.
 pub fn param_ty(name: impl Into<String>) -> Type {
-    Type::Param(name.into())
+    Type::synthesized(TypeKind::Param(name.into()))
 }
 
 // ---------- References ----------
 
 pub fn ref_ty(kind: RefKind, pointee: Type) -> Type {
-    Type::Ref(kind, None, Box::new(pointee))
+    Type::synthesized(TypeKind::Ref(kind, None, Box::new(pointee)))
 }
 pub fn shared_ref_ty(pointee: Type) -> Type {
     ref_ty(RefKind::Shared, pointee)
@@ -100,19 +100,19 @@ pub fn uninit_ref_ty(pointee: Type) -> Type {
 }
 
 pub fn raw_ptr_ty(pointee: Type) -> Type {
-    Type::RawPtr(Box::new(pointee))
+    Type::synthesized(TypeKind::RawPtr(Box::new(pointee)))
 }
 
 // ---------- Aggregates ----------
 
 pub fn array_ty(elem: Type, n: usize) -> Type {
-    Type::Array(Box::new(elem), n)
+    Type::synthesized(TypeKind::Array(Box::new(elem), n))
 }
 
 /// HLL function type has an explicit return type (unlike MIR, whose
 /// results go through `&out $return`).
 pub fn fn_ty(params: Vec<Type>, ret: Type) -> Type {
-    Type::Fn(params, Box::new(ret))
+    Type::synthesized(TypeKind::Fn(params, Box::new(ret)))
 }
 
 // ---------- Inference ----------
@@ -120,14 +120,14 @@ pub fn fn_ty(params: Vec<Type>, ret: Type) -> Type {
 /// Fresh type-variable for HM inference. Only builders in `type_check`
 /// should call this — general code shouldn't produce raw `Var`s.
 pub fn var_ty(id: usize) -> Type {
-    Type::Var(id)
+    Type::synthesized(TypeKind::Var(id))
 }
 pub fn int_var_ty(id: usize) -> Type {
-    Type::IntVar(id)
+    Type::synthesized(TypeKind::IntVar(id))
 }
 pub fn float_var_ty(id: usize) -> Type {
-    Type::FloatVar(id)
+    Type::synthesized(TypeKind::FloatVar(id))
 }
 pub fn error_ty() -> Type {
-    Type::Error
+    Type::synthesized(TypeKind::Error)
 }

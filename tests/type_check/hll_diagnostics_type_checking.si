@@ -4,10 +4,10 @@ fn test_ambiguous_type() {
 
 fn test_silenced_error() {
   # 1. First error: 'undeclared_var' is undeclared.
-  # This infers 'x' as Type::Error to poison the local variable.
+  # This infers 'x' as TypeKind::Error to poison the local variable.
   let x = undeclared_var;
 
-  # Unification succeeds silently, and binary typecheck accepts Type::Error
+  # Unification succeeds silently, and binary typecheck accepts TypeKind::Error
   # without pushing a secondary "non-numeric operand" error (silencing).
   let y = x + 1;
   let z = x + 42.0;

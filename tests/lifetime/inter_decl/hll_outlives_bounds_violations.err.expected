@@ -1,2 +1,8 @@
-error: [LT-LifetimeMismatch] In function 'mk_missing': type 'Wrap' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'mk_missing'
+error: at 8:50: [LT-LifetimeMismatch] In function 'mk_missing': type 'Wrap' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'mk_missing'
+   |
+ 7 | # Fn declares no bound; Wrap<'a, 'b> requires 'b: 'a.
+ 8 | fn<'a, 'b> mk_missing(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
+   |                                                  ^^^^^^^^^^^^
+ 9 |   Wrap { x: x, y: y }
+   |
   hint: declare bound 'b: 'a on function 'mk_missing' or change the value flow so it is not required

@@ -424,4 +424,25 @@ jj describe -m "description"
 jj new
 jj split PATHS...
 Preserve unrelated working-copy changes. Do not regenerate all golden files
-while another agent is modifying fixtures.
+while another agent is modifying fixtures. Prior to starting work, use
+`jj status` to confirm existing changes.
+
+## Rejecting work as not-yet-ready.
+Often a new feature requires a dependent feature or cleanup to be implemented
+cleanly and without hacks. Reject feature work if prerequisite maintainability
+passes are required to implement the new feature correctly and without
+compromises to long term quality. Reject the feature work even if the
+prerequisite was discovered in the middle of a change. Escalate for direction or
+use `jj` to land the maintainability pass upstream of the feature change.
+
+## Pre-commit check
+Review the current change for correctness, maintainability, and simplicity.
+Reject work as incomplete if they are hacky or contain shortcuts. Sacrifices to
+long term correctness and rigor has cost the project more time than any shortcut
+has saved. Be skeptical of incomplete matches `expect/unwrap` and other code
+smells of partial implementations.
+
+Review changes to test fixtures for totality of test coverage. Every new feature
+needs to be tested against every existing feature it may interact with. Every
+feature interaction requires a success case (that passes compilation) and at
+least one error case.

@@ -531,7 +531,7 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
         .iter()
         .map(|p| mir::TypeParam {
             name: p.name.clone(),
-            bounds: p.bounds.clone(),
+            bounds: p.bounds,
             source: p.source,
         })
         .collect()
@@ -554,7 +554,11 @@ fn infer_fn_type_args(
     if f_decl.type_params.is_empty() {
         return Vec::new();
     }
-    let Some(hll::Type::Fn(fresh_params, fresh_ret)) = types.get(&fn_expr_span) else {
+    let Some(hll::Type {
+        kind: hll::TypeKind::Fn(fresh_params, fresh_ret),
+        ..
+    }) = types.get(&fn_expr_span)
+    else {
         return Vec::new();
     };
     f_decl
@@ -580,16 +584,16 @@ fn infer_fn_type_args(
         .collect()
 }
 
-/// Walk `decl` and `fresh` in lockstep looking for `Type::Param(name)`
+/// Walk `decl` and `fresh` in lockstep looking for `TypeKind::Param(name)`
 /// in `decl`. Returns the corresponding `fresh` subtype at the first
 /// occurrence.
 fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll::Type> {
-    match (decl, fresh) {
-        (hll::Type::Param(n), _) if n == name => Some(fresh.clone()),
-        (hll::Type::Ref(_, _, a), hll::Type::Ref(_, _, b))
-        | (hll::Type::RawPtr(a), hll::Type::RawPtr(b))
-        | (hll::Type::Array(a, _), hll::Type::Array(b, _)) => find_param_at(name, a, b),
-        (hll::Type::Fn(a_ps, a_r), hll::Type::Fn(b_ps, b_r)) => {
+    match (&decl.kind, &fresh.kind) {
+        (hll::TypeKind::Param(n), _) if n == name => Some(fresh.clone()),
+        (hll::TypeKind::Ref(_, _, a), hll::TypeKind::Ref(_, _, b))
+        | (hll::TypeKind::RawPtr(a), hll::TypeKind::RawPtr(b))
+        | (hll::TypeKind::Array(a, _), hll::TypeKind::Array(b, _)) => find_param_at(name, a, b),
+        (hll::TypeKind::Fn(a_ps, a_r), hll::TypeKind::Fn(b_ps, b_r)) => {
             for (a, b) in a_ps.iter().zip(b_ps.iter()) {
                 if let Some(t) = find_param_at(name, a, b) {
                     return Some(t);
@@ -597,7 +601,7 @@ fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll:
             }
             find_param_at(name, a_r, b_r)
         }
-        (hll::Type::Custom(_, _, a_args), hll::Type::Custom(_, _, b_args)) => {
+        (hll::TypeKind::Custom(_, _, a_args), hll::TypeKind::Custom(_, _, b_args)) => {
             for (a, b) in a_args.iter().zip(b_args.iter()) {
                 if let Some(t) = find_param_at(name, a, b) {
                     return Some(t);
@@ -610,35 +614,40 @@ fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll:
 }
 
 fn lower_type(ty: &hll::Type) -> mir::Type {
-    match ty {
-        hll::Type::Int(t) => int_ty(*t),
-        hll::Type::Float(t) => float_ty(*t),
-        hll::Type::Bool => bool_ty(),
-        hll::Type::Unit => unit_ty(),
-        hll::Type::Never => never_ty(),
-        hll::Type::Custom(name, lifetimes, args) => {
+    let kind = match &ty.kind {
+        hll::TypeKind::Int(t) => mir::TypeKind::Int(*t),
+        hll::TypeKind::Float(t) => mir::TypeKind::Float(*t),
+        hll::TypeKind::Bool => mir::TypeKind::Bool,
+        hll::TypeKind::Unit => mir::TypeKind::Unit,
+        hll::TypeKind::Never => mir::TypeKind::Never,
+        hll::TypeKind::Custom(name, lifetimes, args) => {
             let lowered_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
-            custom_ty_generic(name.clone(), lifetimes.clone(), lowered_args)
+            mir::TypeKind::Custom(name.clone(), lifetimes.clone(), lowered_args)
         }
-        hll::Type::Param(name) => param_ty(name.clone()),
-        hll::Type::Ref(kind, lt, inner) => match lt {
-            Some(lt) => named_ref_ty(*kind, lt.clone(), lower_type(inner)),
-            None => ref_ty(*kind, lower_type(inner)),
-        },
-        hll::Type::RawPtr(inner) => raw_ptr_ty(lower_type(inner)),
-        hll::Type::Fn(params, ret) => {
+        hll::TypeKind::Param(name) => mir::TypeKind::Param(name.clone()),
+        hll::TypeKind::Ref(kind, lt, inner) => {
+            mir::TypeKind::Ref(*kind, lt.clone(), Box::new(lower_type(inner)))
+        }
+        hll::TypeKind::RawPtr(inner) => mir::TypeKind::RawPtr(Box::new(lower_type(inner))),
+        hll::TypeKind::Fn(params, ret) => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();
-            if **ret != hll::Type::Unit {
-                mir_params.push(out_ref_ty(lower_type(ret)));
+            if ret.kind != hll::TypeKind::Unit {
+                mir_params.push(mir::Type::new(
+                    mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(ret))),
+                    mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, ret.span()),
+                ));
             }
-            fn_ty(mir_params)
+            mir::TypeKind::Fn(mir_params)
         }
-        hll::Type::Array(inner, size) => array_ty(lower_type(inner), *size as u64),
-        hll::Type::Var(_) | hll::Type::IntVar(_) | hll::Type::FloatVar(_) => {
+        hll::TypeKind::Array(inner, size) => {
+            mir::TypeKind::Array(Box::new(lower_type(inner)), *size as u64)
+        }
+        hll::TypeKind::Var(_) | hll::TypeKind::IntVar(_) | hll::TypeKind::FloatVar(_) => {
             unreachable!("type variables must be resolved before lowering")
         }
-        hll::Type::Error => unreachable!("cannot lower program with type errors"),
-    }
+        hll::TypeKind::Error => unreachable!("cannot lower program with type errors"),
+    };
+    mir::Type::new(kind, ty.source)
 }
 
 /// If `expr` is a place projection that crosses a reference dereference,
@@ -646,8 +655,8 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
 /// of their base. Raw-pointer dereferences return `None`.
 fn projected_ref_kind(expr: &hll::Expr, types: &IndexMap<mir::Span, hll::Type>) -> Option<RefKind> {
     match &expr.kind {
-        hll::ExprKind::Deref(target) => match lookup_type(target, types) {
-            Some(hll::Type::Ref(kind, _, _)) => Some(*kind),
+        hll::ExprKind::Deref(target) => match lookup_type(target, types).map(|ty| &ty.kind) {
+            Some(hll::TypeKind::Ref(kind, _, _)) => Some(*kind),
             _ => None,
         },
         hll::ExprKind::FieldAccess(target, _) | hll::ExprKind::ArrayIndex(target, _) => {
@@ -681,7 +690,7 @@ fn lower_expr_to_place(
                     "missing type annotation for array index",
                 )
             })?;
-            let hll::Type::Int(index_kind) = index_ty else {
+            let hll::TypeKind::Int(index_kind) = &index_ty.kind else {
                 return Err(diag(
                     HllLoweringCode::ArrayIndexNotInteger,
                     index.span(),
@@ -695,7 +704,7 @@ fn lower_expr_to_place(
                     "missing type annotation for indexed array",
                 )
             })?;
-            let hll::Type::Array(_, len) = target_ty else {
+            let hll::TypeKind::Array(_, len) = &target_ty.kind else {
                 return Err(diag(
                     HllLoweringCode::ArrayIndexTargetNotArray,
                     target.span(),
@@ -795,8 +804,8 @@ fn lower_expr_to_operand(
                     let ty = if let Some(s) = suffix {
                         *s
                     } else {
-                        match lookup_type(expr, types) {
-                            Some(hll::Type::Int(int_ty)) => *int_ty,
+                        match lookup_type(expr, types).map(|ty| &ty.kind) {
+                            Some(hll::TypeKind::Int(int_ty)) => *int_ty,
                             _ => mir::IntTy::I64,
                         }
                     };
@@ -806,8 +815,8 @@ fn lower_expr_to_operand(
                     let ty = if let Some(s) = suffix {
                         *s
                     } else {
-                        match lookup_type(expr, types) {
-                            Some(hll::Type::Float(float_ty)) => *float_ty,
+                        match lookup_type(expr, types).map(|ty| &ty.kind) {
+                            Some(hll::TypeKind::Float(float_ty)) => *float_ty,
                             _ => mir::FloatTy::F64,
                         }
                     };
@@ -1017,9 +1026,13 @@ fn lower_expr_into(
                     "missing type annotation for cast target",
                 )
             })?;
-            if matches!(from_hll_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_))
-                && matches!(to_ty, hll::Type::Ref(_, _, _) | hll::Type::RawPtr(_))
-            {
+            if matches!(
+                &from_hll_ty.kind,
+                hll::TypeKind::Ref(_, _, _) | hll::TypeKind::RawPtr(_)
+            ) && matches!(
+                &to_ty.kind,
+                hll::TypeKind::Ref(_, _, _) | hll::TypeKind::RawPtr(_)
+            ) {
                 let inner_op = lower_expr_to_operand(ctx, inner, types)?;
                 let to_mir_ty = lower_type(to_ty);
                 ctx.emit_statement(assign_stmt(
@@ -1088,7 +1101,7 @@ fn lower_expr_into(
                 )
             })?;
 
-            if *hll_ret_ty != hll::Type::Unit {
+            if hll_ret_ty.kind != hll::TypeKind::Unit {
                 // Return value is written to dest. In MIR, we pass &out dest as final argument.
                 // The codegen expects Statement::Call(fn_op, args) where the last argument is evaluated.
                 // Wait, in checkpoint 1:
@@ -1190,11 +1203,17 @@ fn lower_expr_into(
                     }
                     hll::Stmt::Expr(e) => {
                         // Value is ignored, lower into a dummy temporary matching the expr type
-                        let hll_ty = lookup_type(e, types).cloned().unwrap_or(hll::Type::Unit);
-                        let mir_ty = if hll_ty == hll::Type::Never {
+                        let hll_ty = lookup_type(e, types).ok_or_else(|| {
+                            diag(
+                                HllLoweringCode::MissingType,
+                                e.span(),
+                                "missing type annotation for discarded expression",
+                            )
+                        })?;
+                        let mir_ty = if hll_ty.kind == hll::TypeKind::Never {
                             unit_ty()
                         } else {
-                            lower_type(&hll_ty)
+                            lower_type(hll_ty)
                         };
                         ctx.begin_temp_region();
                         let dummy = ctx.fresh_expression_temp(mir_ty, e.span());
@@ -1362,7 +1381,7 @@ fn lower_expr_into(
                         )
                     })?;
                     let (enum_is_copy, bound_var_mir_ty) =
-                        if let hll::Type::Custom(ref enum_name, _, ref args) = target_hll_ty {
+                        if let hll::TypeKind::Custom(enum_name, _, args) = &target_hll_ty.kind {
                             let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
                                 diag(
                                     HllLoweringCode::EnumDeclMissing,
@@ -1480,7 +1499,10 @@ fn lower_expr_into(
             // typed slot — HM already pinned them from the payload /
             // context. For a non-generic enum this is empty.
             let type_args = match types.get(&expr.span()) {
-                Some(hll::Type::Custom(_, _, args)) => args.iter().map(lower_type).collect(),
+                Some(hll::Type {
+                    kind: hll::TypeKind::Custom(_, _, args),
+                    ..
+                }) => args.iter().map(lower_type).collect(),
                 _ => Vec::new(),
             };
             ctx.emit_statement(assign_stmt(
@@ -1531,7 +1553,7 @@ pub fn lower_program(
                         lifetime_params: s.lifetime_params.clone(),
                         outlives: s.outlives.clone(),
                         type_params: lower_type_params(&s.type_params),
-                        markers: s.markers.clone(),
+                        markers: s.markers,
                     },
                     fields,
                 }));
@@ -1553,7 +1575,7 @@ pub fn lower_program(
                         lifetime_params: e.lifetime_params.clone(),
                         outlives: e.outlives.clone(),
                         type_params: lower_type_params(&e.type_params),
-                        markers: e.markers.clone(),
+                        markers: e.markers,
                     },
                     variants,
                 }));
@@ -1570,10 +1592,16 @@ pub fn lower_program(
                     .collect();
 
                 // If return type is not Unit, append $return parameter
-                if f.ret_ty != hll::Type::Unit {
+                if f.ret_ty.kind != hll::TypeKind::Unit {
                     params.push(mir::Param {
                         name: "$return".to_string(),
-                        ty: out_ref_ty(lower_type(&f.ret_ty)),
+                        ty: mir::Type::new(
+                            mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(&f.ret_ty))),
+                            mir::SourceInfo::generated(
+                                mir::GeneratedKind::HllDesugaring,
+                                f.ret_ty.span(),
+                            ),
+                        ),
                         source: mir::SourceInfo::generated(
                             mir::GeneratedKind::HllDesugaring,
                             f.span(),
@@ -1632,7 +1660,7 @@ pub fn lower_program(
                 // Since body is a block/expression, we lower it.
                 // If return type is not Unit, we write the result to $return.*.
                 // Otherwise we write it to a dummy Unit place.
-                if f.ret_ty != hll::Type::Unit {
+                if f.ret_ty.kind != hll::TypeKind::Unit {
                     let ret_place = deref_place(var_place("$return"));
                     lower_expr_into(&mut ctx, body_expr, &ret_place, types)?;
                 } else {
@@ -1735,6 +1763,27 @@ mod tests {
             .filter(|l| !l.is_empty())
             .collect();
         assert_eq!(actual_clean, expected_clean);
+    }
+
+    #[test]
+    fn lower_type_preserves_outer_and_nested_hll_sources() {
+        let hll_program = Parser::new("fn main(exit: &out i64) {}")
+            .parse()
+            .expect("parse HLL");
+        let hll::Declaration::Fn(function) = &hll_program.declarations[0] else {
+            panic!("expected function declaration");
+        };
+        let hll_ty = &function.params[0].ty;
+        let mir_ty = lower_type(hll_ty);
+
+        assert_eq!(mir_ty.source, hll_ty.source);
+        let hll::TypeKind::Ref(_, _, hll_pointee) = &hll_ty.kind else {
+            panic!("expected HLL reference type");
+        };
+        let mir::TypeKind::Ref(_, _, mir_pointee) = &mir_ty.kind else {
+            panic!("expected MIR reference type");
+        };
+        assert_eq!(mir_pointee.source, hll_pointee.source);
     }
 
     #[test]
