@@ -6,11 +6,14 @@ use crate::hll::type_fold::TypeFolder;
 use indexmap::IndexMap;
 use std::collections::{HashMap, HashSet};
 
-/// HLL type checking operates on source-written AST nodes. Converting their
-/// spans at this boundary keeps provenance explicit without permitting a
-/// general `Span`-to-`SourceInfo` conversion elsewhere in the compiler.
-fn source_diagnostic(code: HllTypeCheckCode, span: Span, message: impl Into<String>) -> Diagnostic {
-    Diagnostic::new(code, SourceInfo::written(span), message)
+/// Construct an HLL type-check diagnostic without discarding whether its
+/// source node was written or generated.
+fn source_diagnostic(
+    code: HllTypeCheckCode,
+    source: SourceInfo,
+    message: impl Into<String>,
+) -> Diagnostic {
+    Diagnostic::new(code, source, message)
 }
 
 /// Build a `name → bounds` map from a decl's type parameters. Used
@@ -51,13 +54,13 @@ fn build_subst_map(
     decl_name: &str,
     type_params: &[TypeParam],
     args: &[Type],
-    span: Span,
+    source: SourceInfo,
     d: &mut Diagnostics,
 ) -> Option<HashMap<String, Type>> {
     if args.len() != type_params.len() {
         d.push_error(source_diagnostic(
             ArityMismatch,
-            span,
+            source,
             format!(
                 "'{}' takes {} type argument(s), found {}",
                 decl_name,
@@ -76,26 +79,42 @@ fn build_subst_map(
 
 use HllTypeCheckCode::*;
 
-/// Distinguish unification failure modes returned by [`Subst::unify`] so
-/// call sites can attach the right span and diagnostic code.
+/// Distinguish unification failure modes returned by [`Subst::unify`] while
+/// retaining the types needed to render the final diagnostic.
 #[derive(Debug)]
 pub enum UnifyError {
-    Mismatch(String),
+    Mismatch { expected: Type, found: Type },
+    ExpectedInteger { found: Type },
+    ExpectedFloat { found: Type },
     Infinite,
     ArityMismatch,
 }
 
 impl UnifyError {
-    fn to_diag(self, span: Span) -> Diagnostic {
+    fn to_diag(self, source: SourceInfo) -> Diagnostic {
         match self {
-            UnifyError::Mismatch(msg) => source_diagnostic(TypeMismatch, span, msg),
+            UnifyError::Mismatch { expected, found } => source_diagnostic(
+                TypeMismatch,
+                source,
+                format!("type mismatch: expected {}, found {}", expected, found),
+            ),
+            UnifyError::ExpectedInteger { found } => source_diagnostic(
+                TypeMismatch,
+                source,
+                format!("type mismatch: expected integer type, found {}", found),
+            ),
+            UnifyError::ExpectedFloat { found } => source_diagnostic(
+                TypeMismatch,
+                source,
+                format!("type mismatch: expected float type, found {}", found),
+            ),
             UnifyError::Infinite => source_diagnostic(
                 InfiniteType,
-                span,
+                source,
                 "infinite type detected during unification",
             ),
             UnifyError::ArityMismatch => {
-                source_diagnostic(ArityMismatch, span, "function arity mismatch")
+                source_diagnostic(ArityMismatch, source, "function arity mismatch")
             }
         }
     }
@@ -307,10 +326,7 @@ impl Subst {
                     Ok(())
                 }
                 TypeKind::Error => Ok(()),
-                _ => Err(UnifyError::Mismatch(format!(
-                    "type mismatch: expected integer type, found {}",
-                    other
-                ))),
+                _ => Err(UnifyError::ExpectedInteger { found: r2.clone() }),
             },
             (other, TypeKind::IntVar(id)) => match other {
                 TypeKind::IntVar(_) | TypeKind::Int(_) => {
@@ -318,10 +334,7 @@ impl Subst {
                     Ok(())
                 }
                 TypeKind::Error => Ok(()),
-                _ => Err(UnifyError::Mismatch(format!(
-                    "type mismatch: expected integer type, found {}",
-                    other
-                ))),
+                _ => Err(UnifyError::ExpectedInteger { found: r1.clone() }),
             },
             (TypeKind::FloatVar(id), other) => match other {
                 TypeKind::FloatVar(_) | TypeKind::Float(_) => {
@@ -329,10 +342,7 @@ impl Subst {
                     Ok(())
                 }
                 TypeKind::Error => Ok(()),
-                _ => Err(UnifyError::Mismatch(format!(
-                    "type mismatch: expected float type, found {}",
-                    other
-                ))),
+                _ => Err(UnifyError::ExpectedFloat { found: r2.clone() }),
             },
             (other, TypeKind::FloatVar(id)) => match other {
                 TypeKind::FloatVar(_) | TypeKind::Float(_) => {
@@ -340,10 +350,7 @@ impl Subst {
                     Ok(())
                 }
                 TypeKind::Error => Ok(()),
-                _ => Err(UnifyError::Mismatch(format!(
-                    "type mismatch: expected float type, found {}",
-                    other
-                ))),
+                _ => Err(UnifyError::ExpectedFloat { found: r1.clone() }),
             },
             (TypeKind::Int(i1), TypeKind::Int(i2)) if i1 == i2 => Ok(()),
             (TypeKind::Float(f1), TypeKind::Float(f2)) if f1 == f2 => Ok(()),
@@ -376,10 +383,10 @@ impl Subst {
                 }
                 self.unify(r1, r2)
             }
-            (a, b) => Err(UnifyError::Mismatch(format!(
-                "type mismatch: expected {}, found {}",
-                a, b
-            ))),
+            (_, _) => Err(UnifyError::Mismatch {
+                expected: r1,
+                found: r2,
+            }),
         }
     }
 
@@ -688,13 +695,10 @@ pub(super) fn typecheck_program_collect(
                         // Prefer the ABI string's span; fall back to
                         // the whole decl if it isn't populated (safety
                         // net — parser always fills it when abi is Some).
-                        let span = f
-                            .abi_source
-                            .map(SourceInfo::span)
-                            .unwrap_or_else(|| f.span());
+                        let source = f.abi_source.unwrap_or(f.source);
                         d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnknownAbi,
-                            span,
+                            source,
                             format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
                         ));
                     }
@@ -729,7 +733,7 @@ pub(super) fn typecheck_program_collect(
                 reported_vars.extend(unresolved);
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::AmbiguousType,
-                    *span,
+                    SourceInfo::written(*span),
                     format!("type annotations needed: type of expression is ambiguous (could not resolve type variable in {})", resolved),
                 ));
             }
@@ -852,7 +856,7 @@ fn infer_inner(
             let lhs_ty = infer_inner(env, subst, lhs, types, d);
             let rhs_ty = infer_inner(env, subst, rhs, types, d);
             if let Err(e) = subst.unify(&lhs_ty, &rhs_ty) {
-                d.push_error(e.to_diag(expr.span()));
+                d.push_error(e.to_diag(expr.source));
             }
 
             let resolved = subst.resolve(&lhs_ty);
@@ -867,7 +871,7 @@ fn infer_inner(
                 _ => {
                     d.push_error(source_diagnostic(
                         BinaryOpNonNumeric,
-                        lhs.span(),
+                        lhs.source,
                         format!(
                             "binary operations only supported on numeric types, found {}",
                             resolved
@@ -891,25 +895,26 @@ fn infer_inner(
             let operand_ty = infer_inner(env, subst, operand, types, d);
             let resolved = subst.resolve(&operand_ty);
             match op {
-                UnOp::Neg => {
-                    match &resolved.kind {
-                        TypeKind::Int(int_ty) if int_ty.is_signed() => {}
-                        TypeKind::Float(_) => {}
-                        TypeKind::IntVar(_)
-                        | TypeKind::FloatVar(_)
-                        | TypeKind::Var(_)
-                        | TypeKind::Never
-                        | TypeKind::Error => {}
-                        _ => {
-                            d.push_error(source_diagnostic(
+                UnOp::Neg => match &resolved.kind {
+                    TypeKind::Int(int_ty) if int_ty.is_signed() => {}
+                    TypeKind::Float(_) => {}
+                    TypeKind::IntVar(_)
+                    | TypeKind::FloatVar(_)
+                    | TypeKind::Var(_)
+                    | TypeKind::Never
+                    | TypeKind::Error => {}
+                    _ => {
+                        d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnaryOpInvalidOperand,
-                            operand.span(),
-                            format!("unary '-' requires a signed integer or float operand, found {}", resolved),
+                            operand.source,
+                            format!(
+                                "unary '-' requires a signed integer or float operand, found {}",
+                                resolved
+                            ),
                         ));
-                            return error_ty();
-                        }
+                        return error_ty();
                     }
-                }
+                },
             }
             operand_ty
         }
@@ -934,7 +939,7 @@ fn infer_inner(
             } else {
                 d.push_error(source_diagnostic(
                     UndeclaredVariable,
-                    expr.span(),
+                    expr.source,
                     format!("undeclared variable '{}'", name),
                 ));
                 return error_ty();
@@ -961,7 +966,7 @@ fn infer_inner(
                             struct_name,
                             &s_decl.type_params,
                             args,
-                            expr.span(),
+                            expr.source,
                             d,
                         ) {
                             Some(mapping) => substitute(&f.ty, &mapping),
@@ -970,7 +975,7 @@ fn infer_inner(
                     } else {
                         d.push_error(source_diagnostic(
                             NoSuchField,
-                            target.span(),
+                            target.source,
                             format!("struct '{}' has no field '{}'", struct_name, field),
                         ));
                         return error_ty();
@@ -978,7 +983,7 @@ fn infer_inner(
                 } else {
                     d.push_error(source_diagnostic(
                         UndeclaredStruct,
-                        target.span(),
+                        target.source,
                         format!("undeclared struct '{}'", struct_name),
                     ));
                     return error_ty();
@@ -986,7 +991,7 @@ fn infer_inner(
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedStruct,
-                    target.span(),
+                    target.source,
                     format!("expected struct type, found {}", resolved),
                 ));
                 return error_ty();
@@ -1003,7 +1008,7 @@ fn infer_inner(
             if !is_cast_supported(&from_resolved, to_ty) {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::InvalidCast,
-                    expr.span(),
+                    expr.source,
                     format!("cast from {} to {} is not supported", from_resolved, to_ty),
                 ));
                 return error_ty();
@@ -1011,7 +1016,7 @@ fn infer_inner(
             if matches!(&to_ty.kind, TypeKind::Ref(_, _, _)) && !env.in_unsafe {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::UnsafeRequired,
-                    expr.span(),
+                    expr.source,
                     "cast to reference type requires unsafe block".to_string(),
                 ));
             }
@@ -1029,7 +1034,7 @@ fn infer_inner(
                     if !env.in_unsafe {
                         d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnsafeRequired,
-                            expr.span(),
+                            expr.source,
                             "dereference of raw pointer requires unsafe block".to_string(),
                         ));
                     }
@@ -1038,7 +1043,7 @@ fn infer_inner(
                 other => {
                     d.push_error(source_diagnostic(
                         ExpectedPointer,
-                        target.span(),
+                        target.source,
                         format!("cannot dereference non-pointer type {}", other),
                     ));
                     return error_ty();
@@ -1059,7 +1064,7 @@ fn infer_inner(
                     if *is_unsafe && !env.in_unsafe {
                         d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnsafeRequired,
-                            fn_expr.span(),
+                            fn_expr.source,
                             format!("call to unsafe function '{}' requires unsafe block", name),
                         ));
                     }
@@ -1074,7 +1079,7 @@ fn infer_inner(
                 if param_tys.len() != args.len() {
                     d.push_error(source_diagnostic(
                         ArityMismatch,
-                        expr.span(),
+                        expr.source,
                         format!(
                             "function expected {} arguments, found {}",
                             param_tys.len(),
@@ -1090,7 +1095,7 @@ fn infer_inner(
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedFunction,
-                    expr.span(),
+                    expr.source,
                     format!("expected function type, found {}", resolved),
                 ));
                 return error_ty();
@@ -1111,7 +1116,6 @@ fn infer_inner(
                         init,
                         source,
                     } => {
-                        let span = source.span();
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 let scope = env.current_type_params.clone();
@@ -1128,7 +1132,7 @@ fn infer_inner(
                             (None, None) => {
                                 d.push_error(source_diagnostic(
                                     HllTypeCheckCode::AmbiguousType,
-                                    span,
+                                    *source,
                                     "let binding without initializer requires an explicit type annotation",
                                 ));
                                 error_ty()
@@ -1139,7 +1143,7 @@ fn infer_inner(
                     Stmt::Defer { body, source: _ } => {
                         let body_ty = infer_inner(env, subst, body, types, d);
                         if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
-                            d.push_error(e.to_diag(body.span()));
+                            d.push_error(e.to_diag(body.source));
                         }
                     }
                     Stmt::Expr(e) => {
@@ -1161,7 +1165,7 @@ fn infer_inner(
             let t1 = infer_inner(env, subst, true_block, types, d);
             let t2 = infer_inner(env, subst, false_block, types, d);
             if let Err(e) = subst.unify(&t1, &t2) {
-                d.push_error(e.to_diag(expr.span()));
+                d.push_error(e.to_diag(expr.source));
             }
             subst.resolve(&t1)
         }
@@ -1182,7 +1186,7 @@ fn infer_inner(
                 check_inner(env, subst, val, &ret_ty, types, d);
             } else {
                 if let Err(e) = subst.unify(&ret_ty, &unit_ty()) {
-                    d.push_error(e.to_diag(expr.span()));
+                    d.push_error(e.to_diag(expr.source));
                 }
             }
             never_ty()
@@ -1204,14 +1208,14 @@ fn infer_inner(
                     None => {
                         d.push_error(source_diagnostic(
                             UndeclaredEnum,
-                            expr.span(),
+                            expr.source,
                             format!("undeclared enum '{}'", enum_name),
                         ));
                         return error_ty();
                     }
                 };
                 let mapping =
-                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span(), d) {
+                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.source, d) {
                         Some(m) => m,
                         None => return error_ty(),
                     };
@@ -1233,7 +1237,7 @@ fn infer_inner(
                     } else {
                         d.push_error(source_diagnostic(
                             NoSuchVariant,
-                            expr.span(),
+                            expr.source,
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
                         ));
                         // Continue checking remaining arms
@@ -1243,7 +1247,7 @@ fn infer_inner(
                 if arm_tys.is_empty() {
                     d.push_error(source_diagnostic(
                         EmptySwitch,
-                        expr.span(),
+                        expr.source,
                         "empty switch expression",
                     ));
                     return error_ty();
@@ -1251,14 +1255,14 @@ fn infer_inner(
                 let first_ty = arm_tys[0].clone();
                 for ty in &arm_tys[1..] {
                     if let Err(e) = subst.unify(&first_ty, ty) {
-                        d.push_error(e.to_diag(expr.span()));
+                        d.push_error(e.to_diag(expr.source));
                     }
                 }
                 subst.resolve(&first_ty)
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedEnum,
-                    expr.span(),
+                    expr.source,
                     format!("expected enum type for switch target, found {}", resolved),
                 ));
                 return error_ty();
@@ -1270,7 +1274,7 @@ fn infer_inner(
                 None => {
                     d.push_error(source_diagnostic(
                         UndeclaredStruct,
-                        expr.span(),
+                        expr.source,
                         format!("undeclared struct '{}'", name),
                     ));
                     return error_ty();
@@ -1280,7 +1284,7 @@ fn infer_inner(
             if fields.len() != s_decl.fields.len() {
                 d.push_error(source_diagnostic(
                     StructFieldCountMismatch,
-                    expr.span(),
+                    expr.source,
                     format!(
                         "struct '{}' has {} fields, but {} were initialized",
                         name,
@@ -1308,7 +1312,7 @@ fn infer_inner(
                 let Some((_, val_expr)) = matches.next() else {
                     d.push_error(source_diagnostic(
                         MissingField,
-                        expr.span(),
+                        expr.source,
                         format!(
                             "missing field '{}' in constructor for '{}'",
                             f_decl.name, name
@@ -1319,7 +1323,7 @@ fn infer_inner(
                 if matches.next().is_some() {
                     d.push_error(source_diagnostic(
                         DuplicateField,
-                        expr.span(),
+                        expr.source,
                         format!(
                             "duplicate field '{}' in constructor for '{}'",
                             f_decl.name, name
@@ -1339,7 +1343,7 @@ fn infer_inner(
                 None => {
                     d.push_error(source_diagnostic(
                         UndeclaredEnum,
-                        expr.span(),
+                        expr.source,
                         format!("undeclared enum '{}'", enum_name),
                     ));
                     return error_ty();
@@ -1351,7 +1355,7 @@ fn infer_inner(
                 None => {
                     d.push_error(source_diagnostic(
                         NoSuchVariant,
-                        expr.span(),
+                        expr.source,
                         format!("enum '{}' has no variant '{}'", enum_name, variant_name),
                     ));
                     return error_ty();
@@ -1400,14 +1404,14 @@ fn infer_inner(
                         if let Err(e) =
                             subst.unify(&idx_resolved, &int_ty(crate::mir::ast::IntTy::I64))
                         {
-                            d.push_error(e.to_diag(expr.span()));
+                            d.push_error(e.to_diag(expr.source));
                         }
                     }
                     TypeKind::Error => {}
                     other => {
                         d.push_error(source_diagnostic(
                             ArrayIndexNotInt,
-                            idx.span(),
+                            idx.source,
                             format!("array index must be an integer, found {}", other),
                         ));
                         return error_ty();
@@ -1417,7 +1421,7 @@ fn infer_inner(
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedArray,
-                    arr.span(),
+                    arr.source,
                     format!("expected array type, found {}", resolved),
                 ));
                 return error_ty();
@@ -1454,7 +1458,6 @@ fn check_inner(
                         init,
                         source,
                     } => {
-                        let span = source.span();
                         let var_ty = match (ty, init) {
                             (Some(annotated_ty), Some(init)) => {
                                 check_inner(env, subst, init, annotated_ty, types, d);
@@ -1465,7 +1468,7 @@ fn check_inner(
                             (None, None) => {
                                 d.push_error(source_diagnostic(
                                     HllTypeCheckCode::AmbiguousType,
-                                    span,
+                                    *source,
                                     "let binding without initializer requires an explicit type annotation",
                                 ));
                                 error_ty()
@@ -1477,7 +1480,7 @@ fn check_inner(
                         check_no_control_flow(body, 0, d);
                         let body_ty = infer_inner(env, subst, body, types, d);
                         if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
-                            d.push_error(e.to_diag(body.span()));
+                            d.push_error(e.to_diag(body.source));
                         }
                     }
                     Stmt::Expr(e) => {
@@ -1490,7 +1493,7 @@ fn check_inner(
                 check_inner(env, subst, last, &resolved_expected, types, d);
             } else {
                 if let Err(e) = subst.unify(&resolved_expected, &unit_ty()) {
-                    d.push_error(e.to_diag(expr.span()));
+                    d.push_error(e.to_diag(expr.source));
                 }
             }
             env.pop_scope();
@@ -1514,14 +1517,14 @@ fn check_inner(
                     None => {
                         d.push_error(source_diagnostic(
                             UndeclaredEnum,
-                            expr.span(),
+                            expr.source,
                             format!("undeclared enum '{}'", enum_name),
                         ));
                         return;
                     }
                 };
                 let mapping =
-                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.span(), d) {
+                    match build_subst_map(&enum_name, &e_decl.type_params, &args, expr.source, d) {
                         Some(m) => m,
                         None => return,
                     };
@@ -1541,7 +1544,7 @@ fn check_inner(
                     } else {
                         d.push_error(source_diagnostic(
                             NoSuchVariant,
-                            expr.span(),
+                            expr.source,
                             format!("enum '{}' has no variant '{}'", enum_name, variant),
                         ));
                     }
@@ -1550,7 +1553,7 @@ fn check_inner(
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedEnum,
-                    expr.span(),
+                    expr.source,
                     format!("expected enum type for switch target, found {}", resolved),
                 ));
             }
@@ -1565,7 +1568,7 @@ fn check_inner(
             if elements.len() != *expected_size {
                 d.push_error(source_diagnostic(
                     ArrayLengthMismatch,
-                    expr.span(),
+                    expr.source,
                     format!(
                         "expected array of length {}, found length {}",
                         expected_size,
@@ -1583,7 +1586,7 @@ fn check_inner(
         _ => {
             let inferred = infer_inner(env, subst, expr, types, d);
             if let Err(e) = subst.unify(&inferred, &resolved_expected) {
-                d.push_error(e.to_diag(expr.span()));
+                d.push_error(e.to_diag(expr.source));
             }
             types.insert(expr.span(), resolved_expected.clone());
         }
@@ -1596,7 +1599,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
             if loop_depth == 0 {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::ControlFlowInDefer,
-                    expr.span(),
+                    expr.source,
                     "break is not allowed inside defer".to_string(),
                 ));
             }
@@ -1605,7 +1608,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
             if loop_depth == 0 {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::ControlFlowInDefer,
-                    expr.span(),
+                    expr.source,
                     "continue is not allowed inside defer".to_string(),
                 ));
             }
@@ -1613,7 +1616,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::Return(_) => {
             d.push_error(source_diagnostic(
                 HllTypeCheckCode::ControlFlowInDefer,
-                expr.span(),
+                expr.source,
                 "return is not allowed inside defer".to_string(),
             ));
         }
@@ -1702,7 +1705,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::Lifetime;
+    use crate::common::{GeneratedKind, Lifetime};
     use crate::hll::parser::Parser;
 
     fn test_source(line: u32) -> SourceInfo {
@@ -1837,6 +1840,65 @@ mod tests {
         };
         assert_eq!(first_pointee.source, intermediate_source);
         assert_eq!(second_pointee.kind, TypeKind::Int(IntTy::I64));
+    }
+
+    #[test]
+    fn unify_mismatch_retains_structured_types_and_sources() {
+        let expected_source = test_source(1);
+        let found_source = test_source(2);
+        let expected = Type::new(TypeKind::Bool, expected_source);
+        let found = Type::new(TypeKind::Int(IntTy::I64), found_source);
+
+        let error = Subst::new()
+            .unify(&expected, &found)
+            .expect_err("bool and i64 must not unify");
+        let UnifyError::Mismatch {
+            expected: retained_expected,
+            found: retained_found,
+        } = error
+        else {
+            panic!("expected a structured mismatch");
+        };
+        assert_eq!(retained_expected.kind, TypeKind::Bool);
+        assert_eq!(retained_expected.source, expected_source);
+        assert_eq!(retained_found.kind, TypeKind::Int(IntTy::I64));
+        assert_eq!(retained_found.source, found_source);
+    }
+
+    #[test]
+    fn numeric_unify_mismatch_retains_the_found_type() {
+        let variable_source = test_source(1);
+        let found_source = test_source(2);
+        let integer_variable = Type::new(TypeKind::IntVar(0), variable_source);
+        let found = Type::new(TypeKind::Bool, found_source);
+
+        let error = Subst::new()
+            .unify(&integer_variable, &found)
+            .expect_err("an integer variable must not unify with bool");
+        let UnifyError::ExpectedInteger { found: retained } = error else {
+            panic!("expected an integer-category mismatch");
+        };
+        assert_eq!(retained.kind, TypeKind::Bool);
+        assert_eq!(retained.source, found_source);
+    }
+
+    #[test]
+    fn implicit_else_type_mismatch_preserves_generated_source() {
+        let program = Parser::new("fn f() -> i64 { if true { 1 } }")
+            .parse()
+            .expect("parse HLL");
+
+        let diagnostics = typecheck_program(&program);
+        let errors: Vec<_> = diagnostics.errors().collect();
+        assert_eq!(errors.len(), 1);
+        assert_eq!(
+            errors[0].code(),
+            DiagCode::HllTypeCheck(HllTypeCheckCode::TypeMismatch)
+        );
+        assert_eq!(
+            errors[0].source().generated_kind(),
+            Some(GeneratedKind::HllDesugaring)
+        );
     }
 
     fn check_program(source: &str) -> Result<(), String> {
