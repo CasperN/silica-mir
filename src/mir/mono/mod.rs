@@ -45,10 +45,10 @@
 //!
 //! ## What mono does not do
 //!
-//! - Lifetime handling. Lifetimes are checked pre-mono (via NLL and
-//!   the loan checker) and not carried into mono. If lifetime
-//!   annotations at the type level land later, mono will still see
-//!   erased-lifetime types.
+//! - Lifetime specialization. Lifetimes are checked before mono and have no
+//!   runtime representation, so they do not participate in instantiation keys
+//!   or mangled names. Their declarations, bounds, and type occurrences remain
+//!   intact in the transformed MIR.
 //! - Substructural checks. All markers and bounds were verified
 //!   pre-mono; the specialized decls inherit the generic decl's
 //!   markers unchanged.
@@ -58,6 +58,7 @@
 //!   the instantiation is already registered, so no infinite loop.
 
 use crate::mir::helpers::{call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt};
+use crate::mir::type_fold::TypeFolder;
 use crate::mir::type_util::substitute_params;
 use crate::mir::{ast::*, helpers::*};
 use std::collections::{BTreeMap, VecDeque};
@@ -135,33 +136,6 @@ impl MonoCtx {
         mangled
     }
 
-    /// Rewrite `ty` in-place: substitute Params via the outer decl's
-    /// type-param mapping, then rewrite every Custom's args to
-    /// concrete via `need`.
-    fn walk_type(&mut self, ty: &Type) -> Type {
-        let kind = match &ty.kind {
-            TypeKind::Custom(name, _, args) => {
-                let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
-                let mangled = self.need(name, &new_args);
-                TypeKind::Custom(mangled, Vec::new(), Vec::new())
-            }
-            TypeKind::Ref(kind, lt, inner) => {
-                TypeKind::Ref(*kind, lt.clone(), Box::new(self.walk_type(inner)))
-            }
-            TypeKind::RawPtr(inner) => TypeKind::RawPtr(Box::new(self.walk_type(inner))),
-            TypeKind::Array(inner, n) => TypeKind::Array(Box::new(self.walk_type(inner)), *n),
-            TypeKind::Fn(params) => {
-                TypeKind::Fn(params.iter().map(|p| self.walk_type(p)).collect())
-            }
-            TypeKind::Param(name) => panic!(
-                "mono: unsubstituted TypeKind::Param '{}' — caller should have subst'd it before walk_type",
-                name
-            ),
-            _ => return ty.clone(),
-        };
-        Type::new(kind, ty.source)
-    }
-
     fn walk_operand(&mut self, op: &Operand) -> Operand {
         match op {
             Operand::Copy(p) => Operand::Copy(p.clone()),
@@ -176,7 +150,7 @@ impl MonoCtx {
     fn walk_const(&mut self, c: &ConstVal) -> ConstVal {
         match c {
             ConstVal::FnName(name, args) => {
-                let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
+                let new_args: Vec<Type> = args.iter().map(|a| self.fold_type(a)).collect();
                 // Intrinsics keep their `$name` and type_args intact —
                 // codegen inspects the concrete args to lower generic
                 // intrinsics like `$sizeof<T>`. Non-intrinsic calls get
@@ -197,7 +171,7 @@ impl MonoCtx {
             RValue::Ref(k, p) => RValue::Ref(*k, p.clone()),
             RValue::RawRef(p) => RValue::RawRef(p.clone()),
             RValue::EnumConstr(name, args, variant, payload) => {
-                let new_args: Vec<Type> = args.iter().map(|a| self.walk_type(a)).collect();
+                let new_args: Vec<Type> = args.iter().map(|a| self.fold_type(a)).collect();
                 let mangled = self.need(name, &new_args);
                 RValue::EnumConstr(
                     mangled,
@@ -209,7 +183,7 @@ impl MonoCtx {
             RValue::ArrayLit(ops) => {
                 RValue::ArrayLit(ops.iter().map(|o| self.walk_operand(o)).collect())
             }
-            RValue::PtrCast(op, ty) => RValue::PtrCast(self.walk_operand(op), self.walk_type(ty)),
+            RValue::PtrCast(op, ty) => RValue::PtrCast(self.walk_operand(op), self.fold_type(ty)),
         }
     }
 
@@ -253,7 +227,7 @@ impl MonoCtx {
                     .iter()
                     .map(|f| StructField {
                         name: f.name.clone(),
-                        ty: self.walk_type(&subst(&f.ty)),
+                        ty: self.fold_type(&subst(&f.ty)),
                         source: f.source,
                     })
                     .collect();
@@ -261,10 +235,10 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: s.meta.name_source,
-                        lifetime_params: Vec::new(),
+                        lifetime_params: s.meta.lifetime_params,
                         type_params: Vec::new(),
                         markers: s.meta.markers,
-                        outlives: vec![], // TODO
+                        outlives: s.meta.outlives,
                     },
                     fields,
                 })
@@ -277,7 +251,7 @@ impl MonoCtx {
                     .iter()
                     .map(|v| EnumVariant {
                         name: v.name.clone(),
-                        ty: self.walk_type(&subst(&v.ty)),
+                        ty: self.fold_type(&subst(&v.ty)),
                         source: v.source,
                     })
                     .collect();
@@ -285,9 +259,9 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: e.meta.name_source,
-                        lifetime_params: Vec::new(),
+                        lifetime_params: e.meta.lifetime_params,
                         type_params: Vec::new(),
-                        outlives: Vec::new(),
+                        outlives: e.meta.outlives,
                         markers: e.meta.markers,
                     },
                     variants,
@@ -301,7 +275,7 @@ impl MonoCtx {
                     .iter()
                     .map(|p| Param {
                         name: p.name.clone(),
-                        ty: self.walk_type(&subst(&p.ty)),
+                        ty: self.fold_type(&subst(&p.ty)),
                         source: p.source,
                     })
                     .collect();
@@ -311,7 +285,7 @@ impl MonoCtx {
                         .iter()
                         .map(|l| Local {
                             name: l.name.clone(),
-                            ty: self.walk_type(&subst(&l.ty)),
+                            ty: self.fold_type(&subst(&l.ty)),
                             source: l.source,
                         })
                         .collect(),
@@ -346,8 +320,8 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: f.meta.name_source,
-                        lifetime_params: Vec::new(),
-                        outlives: Vec::new(),
+                        lifetime_params: f.meta.lifetime_params,
+                        outlives: f.meta.outlives,
                         type_params: Vec::new(),
                         markers: trivial_markers(),
                     },
@@ -357,6 +331,36 @@ impl MonoCtx {
                     body,
                 })
             }
+        }
+    }
+}
+
+impl TypeFolder for MonoCtx {
+    fn try_fold_type(&mut self, ty: &Type) -> Option<Type> {
+        match &ty.kind {
+            TypeKind::Custom(name, lifetimes, args) => {
+                let concrete_args: Vec<Type> =
+                    args.iter().map(|arg| self.fold_type(arg)).collect();
+                let mangled = self.need(name, &concrete_args);
+                Some(Type::new(
+                    TypeKind::Custom(
+                        mangled,
+                        lifetimes
+                            .iter()
+                            .map(|lifetime| self.fold_lifetime(lifetime))
+                            .collect(),
+                        Vec::new(),
+                    ),
+                    ty.source,
+                ))
+            }
+            TypeKind::Param(name) => panic!(
+                "mono: unsubstituted TypeKind::Param '{}' — caller should have substituted it before type folding",
+                name
+            ),
+            // The shared fold owns recursion and metadata preservation for
+            // every structural variant that monomorphization does not replace.
+            _ => None,
         }
     }
 }
@@ -448,6 +452,7 @@ fn substitute_terminator_types(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mir::parser::Parser;
 
     #[test]
     fn type_rewrite_preserves_outer_and_nested_provenance() {
@@ -469,7 +474,7 @@ mod tests {
         let ty = Type::new(
             TypeKind::Array(
                 Box::new(Type::new(
-                    TypeKind::Custom("Box".into(), Vec::new(), vec![i64_ty()]),
+                    TypeKind::Custom("Box".into(), vec![Lifetime("box".into())], vec![i64_ty()]),
                     inner_source,
                 )),
                 1,
@@ -482,12 +487,110 @@ mod tests {
             pending: VecDeque::new(),
         };
 
-        let rewritten = ctx.walk_type(&ty);
+        let rewritten = ctx.fold_type(&ty);
 
         assert_eq!(rewritten.source, outer_source);
         let TypeKind::Array(inner, 1) = rewritten.kind else {
             panic!("expected rewritten array type");
         };
         assert_eq!(inner.source, inner_source);
+        let TypeKind::Custom(name, lifetimes, args) = inner.kind else {
+            panic!("expected rewritten custom type");
+        };
+        assert_eq!(name, "Box<i64>");
+        assert_eq!(lifetimes, vec![Lifetime("box".into())]);
+        assert!(args.is_empty());
+    }
+
+    #[test]
+    fn monomorphization_preserves_declared_lifetime_metadata() {
+        let mut program = Parser::new(
+            "
+            struct<'a: 'static, T: Copy + Drop> Borrowed: Copy + Drop {
+              value: & 'a T
+            }
+
+            fn<'caller: 'static> use_borrowed(value: Borrowed<'caller, i64>) {
+              entry:
+                drop value;
+                return
+            }
+            "
+            .to_string(),
+        )
+        .parse()
+        .expect("test program must parse");
+
+        let original_struct = program
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                Declaration::Struct(decl) if decl.meta.name == "Borrowed" => Some(decl.clone()),
+                _ => None,
+            })
+            .expect("generic struct exists");
+        let original_function = program
+            .functions()
+            .find(|function| function.meta.name == "use_borrowed")
+            .cloned()
+            .expect("root function exists");
+
+        monomorphize(&mut program);
+
+        let specialized_struct = program
+            .declarations
+            .iter()
+            .find_map(|decl| match decl {
+                Declaration::Struct(decl) if decl.meta.name == "Borrowed<i64>" => Some(decl),
+                _ => None,
+            })
+            .expect("specialized struct exists");
+        assert_eq!(
+            specialized_struct.meta.lifetime_params,
+            original_struct.meta.lifetime_params
+        );
+        assert_eq!(
+            specialized_struct.meta.outlives,
+            original_struct.meta.outlives
+        );
+        assert_eq!(
+            specialized_struct.fields[0].ty.source,
+            original_struct.fields[0].ty.source
+        );
+        let TypeKind::Ref(_, Some(field_lifetime), field_inner) =
+            &specialized_struct.fields[0].ty.kind
+        else {
+            panic!("specialized field remains a named reference");
+        };
+        assert_eq!(field_lifetime, &Lifetime("a".into()));
+        let TypeKind::Custom(_, _, original_type_args) = &original_function.params[0].ty.kind
+        else {
+            panic!("original root parameter is a custom type");
+        };
+        assert_eq!(field_inner.source, original_type_args[0].source);
+
+        let specialized_function = program
+            .functions()
+            .find(|function| function.meta.name == "use_borrowed")
+            .expect("root function remains");
+        assert_eq!(
+            specialized_function.meta.lifetime_params,
+            original_function.meta.lifetime_params
+        );
+        assert_eq!(
+            specialized_function.meta.outlives,
+            original_function.meta.outlives
+        );
+        assert_eq!(
+            specialized_function.params[0].ty.source,
+            original_function.params[0].ty.source
+        );
+        let TypeKind::Custom(name, lifetimes, args) = &specialized_function.params[0].ty.kind
+        else {
+            panic!("root parameter remains a custom type");
+        };
+        assert_eq!(name, "Borrowed<i64>");
+        assert_eq!(lifetimes, &[Lifetime("caller".into())]);
+        assert!(args.is_empty());
     }
 }

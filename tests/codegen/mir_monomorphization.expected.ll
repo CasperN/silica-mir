@@ -1,11 +1,16 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%"Deep<i32>" = type { %"RefBox<i32>", [2 x ptr], %"Box<[i32; 2]>" }
 %"Box<i32>" = type { i32 }
 %"Box<Box<i32>>" = type { %"Box<i32>" }
 %"Pair<i32, f64>" = type { i32, double }
 %"Opt<i32>" = type { i16, [2 x i8], [1 x i32] }
 %"Node<i32>" = type { i32, ptr }
+%"RefBox<i32>" = type { ptr }
+%"Box<[i32; 2]>" = type { [2 x i32] }
+
+declare void @consume_deep(%"Deep<i32>")
 
 define void @make_box(i32 %arg.x, ptr %arg.$return) {
 .init:

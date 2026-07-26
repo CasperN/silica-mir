@@ -13,6 +13,9 @@
 #                       lookup hits `needed` and doesn't re-queue)
 #   Pair<i32, f64>      two type params
 #   identity<i32>       generic fn call
+#   Deep<i32>           nested arrays, refs, fn types, and Custom args
+#   RefBox<i32>         lifetime-bearing Custom arg inside Deep<i32>
+#   Box<[i32; 2]>       array nested inside a Custom type argument
 #
 # Negative cells (must NOT appear in the pinned LLVM):
 #   Unused<T>           declared but never instantiated → dropped
@@ -26,6 +29,12 @@ struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
 struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop { first: T, second: U }
 enum<T: Copy + Drop> Opt: Copy + Drop { None: unit, Some: T }
 struct<T: Copy + Drop> Node: Copy + Drop { value: T, next: *Node<T> }
+struct<'a, T: Copy + Drop> RefBox: Copy + Drop { value: & 'a T }
+struct<'a, T: Copy + Drop> Deep: Copy + Drop {
+  borrowed: RefBox<'a, T>,
+  handlers: [fn(& 'a T); 2],
+  storage: Box<[T; 2]>,
+}
 
 # Declared but never referenced from any non-generic fn body. Mono's
 # reachability walk never enters this decl; the pinned LLVM contains
@@ -37,6 +46,11 @@ fn<T: Copy + Drop> identity(x: T, $return: &out T) {
     $return.* = copy x;
     return
 }
+
+# The extern signature makes Deep<i32> reachable without adding irrelevant
+# value construction. Its fields force mono's type fold through every nested
+# structural form covered by this fixture.
+extern fn<'a> consume_deep(value: Deep<'a, i32>);
 
 fn make_box(x: i32, $return: &out Box<i32>) {
   entry:
