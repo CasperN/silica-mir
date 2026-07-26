@@ -21,24 +21,14 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
 ## Lifetime checker gaps (semantic)
-- **Call-site handling ignores fn pointers.** `Const::FnName` matches; `copy fn_ptr(args)` doesn't. Silent hole. Needs first-class fn-value lifetime tracking (`TypeKind::Fn` doesn't carry lifetime bounds today). The variance machinery is already pre-wired for this: `Variance::Covariant` and its `combine`/`emit_variance` branches encode the standard `fn(X) -> Y` composition rule (contravariant in X, covariant in Y), but nothing constructs `Covariant` because `walk_call_regions` doesn't descend into `TypeKind::Fn`.
-- **`walk_ref_paths` and `walk_regions` skip `TypeKind::Array`.** Owned `[&mut T; N]` slots aren't added to the NLL borrower set or assigned per-slot regions. Sound because loan tracking still catches conflicts and place-state materialises RefState lazily on access, but NLL won't insert `unborrow a[k]` on last-use and inter-fn lifetime constraints don't flow through array slots. Fix when arrays appear in signatures with lifetime arguments.
-- **Assignment lifetime constraints stop at the outer reference.** Assigning
-  `&'outer &'source i64` to `&'outer &'target i64` currently compares only
-  `'outer` and silently omits the required `'source: 'target` constraint.
-  Replace the outer-region special case in `emit_stmt_constraints` with an
-  exhaustive, variance-aware parallel walk over the source and destination
-  types. Positive nested-reference propagation and repeated reads of a
-  returned shared reference are covered in `inter_decl_success.sim`; add the
-  negative nested mismatch when the recursive constraint walk lands.
-
-## Elaboration + drop
-- **`walk_diverged` skips arrays and enum Custom types.** Cross-edge
-  drop planning doesn't insert per-slot / per-variant drops for
-  Diverged elements — the final `check_return_leaks` still fires
-  (its walk descends arrays), so sound but forces the user to
-  manually drop on the initializing arm rather than relying on the
-  elaborator.
+- **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
+  tracking; `copy fn_ptr(args)` doesn't. Silent hole. Prerequisite: extend
+  `TypeKind::Fn` with per-slot lifetime bounds — the variance machinery
+  (`Variance::Covariant`, `combine`, `emit_variance`) is already pre-wired
+  for the standard `fn(X) -> Y` composition (contravariant in X, covariant
+  in Y). Once `TypeKind::Fn` carries the metadata, `walk_call_regions`'
+  descent through Fn is a client of the shared `TypeVisitor`
+  (Consistency 1).
 
 ## Init-state: split analysis from checking
 
@@ -121,7 +111,32 @@ panics are intentional and sufficiently covered.
 
 Implement the repairs in this order:
 
-1. **Backfill elided Custom lifetimes, then make instantiation validated data.**
+1. **Add shared MIR type and place visitors.** Introduce a read-only
+   `TypeVisitor` mirroring `TypeFolder` (exhaustive `visit_children`,
+   override hooks, source and lifetime metadata preserved by construction)
+   and a `PlaceVisitor` counterpart for `Place` and its projection steps.
+   Rebuild the following walkers on them, using the migration to close the
+   known missing-descent cases:
+   - `walk_ref_paths`, `walk_regions` — must descend `TypeKind::Array` so
+     owned `[&mut T; N]` slots are added to the NLL borrower set and
+     inter-fn lifetime constraints flow through array slots.
+   - `walk_diverged` — must descend arrays and enum `Custom` payloads so
+     cross-edge drop planning inserts per-slot and per-variant drops
+     instead of leaving them for the final `check_return_leaks` sweep.
+   - `emit_stmt_constraints` — replace the outer-region special case with
+     a variance-aware recursive walk over source and destination, so
+     assignments like `&'outer &'source i64 = &'outer &'target i64` emit
+     the required `'source: 'target` constraint. Positive nested-reference
+     propagation is covered in `inter_decl_success.sim`; add the negative
+     nested mismatch when the recursive walk lands.
+
+   Every future pass with a type or place walk composes on these visitors
+   instead of hand-writing recursion; the exhaustive `visit_children`
+   match catches missing variants at compile time. The place-level query
+   library (owned paths, static paths, deref/loan/init paths) builds on
+   the `PlaceVisitor` in Consistency 3.
+
+2. **Backfill elided Custom lifetimes, then make instantiation validated data.**
    Elision currently adds lifetime parameters for unannotated refs but leaves
    bare Custom self-mentions and local types with zero lifetime arguments. First
    make elision two-pass: determine each declaration's final lifetime
@@ -149,21 +164,23 @@ Implement the repairs in this order:
    migration plus interaction fixtures. Do not combine the prerequisite with
    caller migration merely to keep the intermediate API private.
 
-2. **Centralize place projection semantics.** Build one lossless, exhaustive
+3. **Centralize place projection semantics.** Build one lossless, exhaustive
    decomposition/reconstruction library over `Place` and its projection
-   steps. Derive explicit queries for owned paths, statically trackable paths,
-   dereference-containing paths, loan paths, and initialization paths instead
-   of maintaining pass-local recursive interpretations. Preserve dynamic
-   index operands losslessly, and require every new `Place` variant to update
-   the central projection library before downstream passes compile.
+   steps, using the `PlaceVisitor` from Consistency 1 as the underlying
+   recursion. Derive explicit queries for owned paths, statically trackable
+   paths, dereference-containing paths, loan paths, and initialization
+   paths instead of maintaining pass-local recursive interpretations.
+   Preserve dynamic index operands losslessly, and require every new
+   `Place` variant to update the central projection library before
+   downstream passes compile.
 
-3. **Use typed initialization slots.** Replace string-keyed
+4. **Use typed initialization slots.** Replace string-keyed
    `InitState::Partial` entries with distinct field and constant-index keys;
    array indices must remain integers throughout analysis and only be rendered
    as text at the diagnostic or pretty-print boundary. Rebuild init-state,
    overwrite, leak, and drop-elaboration walks on those typed slots.
 
-4. **Finish lifetime traversal without sentinels or eager array expansion.**
+5. **Finish lifetime traversal without sentinels or eager array expansion.**
    Replace the `Region::Free(u32::MAX)` unresolved-region sentinel with an
    explicit resolution result or region category. Make all lifetime type walks
    descend arrays consistently, but do not allocate one region entry for every
@@ -182,14 +199,17 @@ Likewise, phase-specific `Program` wrappers are deliberately out of scope.
 When diagnostics and consistency work are interleaved, use this dependency
 order rather than completing either roadmap in isolation:
 
-1. Consistency 1 before Diagnostics 1: establish validated instantiation and
+1. Consistency 1 first: introduce the shared visitors before any migration
+   that would otherwise deepen pass-local recursion. Downstream items assume
+   walkers are exhaustive by construction.
+2. Consistency 2 before Diagnostics 1: establish validated instantiation and
    explicit recovery before type-check payloads depend on those failures.
-2. Consistency 2 before Diagnostics 3–4: centralize semantic place projections
+3. Consistency 3 before Diagnostics 3–4: centralize semantic place projections
    before adding occurrence provenance, so the large provenance refactor has
    one projection boundary to update rather than many pass-local walkers.
-3. Consistency 3–4: move init-state and lifetime analyses onto the new typed
+4. Consistency 4–5: move init-state and lifetime analyses onto the new typed
    projection/type foundations.
-4. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
+5. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
    and hygiene guards. Diagnostics 5 remains the stop point for abstraction
    that is not justified by a concrete inconsistency or lost semantic datum.
 
