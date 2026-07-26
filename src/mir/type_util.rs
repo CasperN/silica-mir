@@ -6,6 +6,7 @@
 use crate::common::Lifetime;
 use crate::mir::ast::{DeclMeta, Type, TypeKind, TypeParam};
 use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
 
 impl DeclMeta {
@@ -73,86 +74,41 @@ fn substitute(
     type_params: &[TypeParam],
     type_args: &[Type],
 ) -> Type {
-    match &ty.kind {
-        TypeKind::Param(name) => {
-            for (tp, arg) in type_params.iter().zip(type_args.iter()) {
-                if tp.name == *name {
-                    return arg.clone();
-                }
-            }
-            ty.clone()
-        }
-        TypeKind::Custom(name, lts, inner_args) => {
-            let new_lts = lts
-                .iter()
-                .map(|l| subst_lifetime(l, lifetime_params, lifetime_args))
-                .collect();
-            let new_args = inner_args
-                .iter()
-                .map(|a| substitute(a, lifetime_params, lifetime_args, type_params, type_args))
-                .collect();
-            Type::new(TypeKind::Custom(name.clone(), new_lts, new_args), ty.source)
-        }
-        TypeKind::Ref(kind, lt, inner) => {
-            let new_lt = lt
-                .as_ref()
-                .map(|l| subst_lifetime(l, lifetime_params, lifetime_args));
-            Type::new(
-                TypeKind::Ref(
-                    *kind,
-                    new_lt,
-                    Box::new(substitute(
-                        inner,
-                        lifetime_params,
-                        lifetime_args,
-                        type_params,
-                        type_args,
-                    )),
-                ),
-                ty.source,
-            )
-        }
-        TypeKind::RawPtr(inner) => Type::new(
-            TypeKind::RawPtr(Box::new(substitute(
-                inner,
-                lifetime_params,
-                lifetime_args,
-                type_params,
-                type_args,
-            ))),
-            ty.source,
-        ),
-        TypeKind::Array(inner, size) => Type::new(
-            TypeKind::Array(
-                Box::new(substitute(
-                    inner,
-                    lifetime_params,
-                    lifetime_args,
-                    type_params,
-                    type_args,
-                )),
-                *size,
-            ),
-            ty.source,
-        ),
-        TypeKind::Fn(params) => {
-            let new_params = params
-                .iter()
-                .map(|p| substitute(p, lifetime_params, lifetime_args, type_params, type_args))
-                .collect();
-            Type::new(TypeKind::Fn(new_params), ty.source)
-        }
-        _ => ty.clone(),
+    SubstituteFolder {
+        lifetime_params,
+        lifetime_args,
+        type_params,
+        type_args,
     }
+    .fold_type(ty)
 }
 
-fn subst_lifetime(lt: &Lifetime, params: &[Lifetime], args: &[Lifetime]) -> Lifetime {
-    for (p, a) in params.iter().zip(args.iter()) {
-        if p == lt {
-            return a.clone();
-        }
+struct SubstituteFolder<'a> {
+    lifetime_params: &'a [Lifetime],
+    lifetime_args: &'a [Lifetime],
+    type_params: &'a [TypeParam],
+    type_args: &'a [Type],
+}
+
+impl TypeFolder for SubstituteFolder<'_> {
+    fn try_fold_type(&mut self, ty: &Type) -> Option<Type> {
+        let TypeKind::Param(name) = &ty.kind else {
+            return None;
+        };
+        self.type_params
+            .iter()
+            .zip(self.type_args)
+            .find_map(|(param, argument)| (param.name == *name).then(|| argument.clone()))
     }
-    lt.clone()
+
+    fn fold_lifetime(&mut self, lifetime: &Lifetime) -> Lifetime {
+        for (param, argument) in self.lifetime_params.iter().zip(self.lifetime_args) {
+            if param == lifetime {
+                return argument.clone();
+            }
+        }
+        lifetime.clone()
+    }
 }
 
 /// Compute the type of `place` inside `func`. Walks the place's

@@ -14,6 +14,7 @@ pub mod place_state;
 pub mod pretty_print;
 pub mod substructural;
 pub mod type_check;
+pub(crate) mod type_fold;
 pub mod type_util;
 pub mod variant_flow;
 
