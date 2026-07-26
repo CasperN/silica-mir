@@ -44,6 +44,8 @@ extern fn set_i64(r: &out i64, v: i64);
 extern fn destroy_i64(r: &drop i64);
 extern fn consume_i64(v: i64);
 
+struct Pair: Copy + Drop { x: i64, y: i64 }
+
 # ---------- const-index out of bounds (non-zero array) ----------
 
 # The declared length is 3; index 3 is one past the end. The checker
@@ -223,5 +225,4 @@ fn read_uninit_array_dynamic(i: i64) {
     x = copy a[copy i];
     return
 }
-
 

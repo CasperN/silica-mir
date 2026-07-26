@@ -3,14 +3,6 @@
 Deferred work and known gaps. Items get added, refined, and closed as
 the compiler evolves; treat entries as snapshots, not commitments.
 
-## Copy Relaxation
-- **Enforce the dynamic-place no-consumption rule at init-state.** The
-  resolver already forces `take` on a dynamic-index path to `copy`, but
-  hand-written MIR could still express `move a[i]` or `drop a[i]`.
-  Init-state checking must reject dynamic `move`/`drop` and
-  state-changing borrows while retaining the uniform-state
-  read/mutation cases described in the semantics above.
-
 ## Language features
 - **Standardize `&drop` vs `&deinit`.** Same reference kind
   (`RefKind::Drop`) has two surface names — MIR uses `&drop`, HLL uses
