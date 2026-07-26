@@ -26,6 +26,7 @@
 
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
+use std::sync::OnceLock;
 
 /// One intrinsic. `inputs`/`result` build the extern signature; `emit`
 /// handles LLVM lowering.
@@ -39,7 +40,7 @@ pub struct IntrinsicSpec {
     /// `"declare i64 @llvm.ctpop.i64(i64)"`). Deduplicated across
     /// all specs; emitted once in the module preamble. Empty for
     /// intrinsics that lower to inline instructions only.
-    pub llvm_declares: &'static [&'static str],
+    pub llvm_declares: Vec<String>,
 }
 
 /// The emit closure's signature.
@@ -57,7 +58,8 @@ pub struct IntrinsicSpec {
 /// like [`bin_int`] can return closures that capture their op
 /// mnemonic. One heap allocation per intrinsic, built once by
 /// [`all`].
-pub type Emit = Box<dyn Fn(&[String], &mut dyn FnMut() -> String) -> (Vec<String>, String)>;
+pub type Emit =
+    Box<dyn Fn(&[String], &mut dyn FnMut() -> String) -> (Vec<String>, String) + Send + Sync>;
 
 const ALL_INT_TYS: &[IntTy] = &[
     IntTy::I8,
@@ -75,10 +77,16 @@ const FLOAT_TYS: &[FloatTy] = &[FloatTy::F32, FloatTy::F64];
 #[cfg(test)]
 const UNSIGNED_INT_TYS: &[IntTy] = &[IntTy::U8, IntTy::U16, IntTy::U32, IntTy::U64];
 
-/// Every intrinsic the compiler recognizes. Adding a new intrinsic =
-/// adding one row (or one loop iteration) here.
-// TODO: Should this be an IndexMap for fast lookup by name?
-pub fn all() -> Vec<IntrinsicSpec> {
+static ALL: OnceLock<Vec<IntrinsicSpec>> = OnceLock::new();
+
+/// Every flat intrinsic the compiler recognizes, built once on first use.
+/// Adding a new intrinsic means adding one row (or loop iteration) to
+/// [`build_all`].
+pub fn all() -> &'static [IntrinsicSpec] {
+    ALL.get_or_init(build_all)
+}
+
+fn build_all() -> Vec<IntrinsicSpec> {
     let mut out = Vec::new();
 
     // ---------- Integer arithmetic ----------
@@ -168,7 +176,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
             inputs: vec![value_ty.clone()],
             result: value_ty,
             emit: int_neg(bits),
-            llvm_declares: &[],
+            llvm_declares: Vec::new(),
         });
     }
 
@@ -258,7 +266,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
             inputs: vec![value_ty.clone()],
             result: value_ty,
             emit: float_neg(llvm_ty),
-            llvm_declares: &[],
+            llvm_declares: Vec::new(),
         });
     }
 
@@ -286,7 +294,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
                 inputs: vec![value_ty.clone(), value_ty.clone()],
                 result: bool_ty(),
                 emit: fcmp(pred, llvm_ty),
-                llvm_declares: &[],
+                llvm_declares: Vec::new(),
             });
         }
     }
@@ -314,7 +322,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
                     inputs: vec![int_ty(from)],
                     result: int_ty(to),
                     emit: nop_reinterpret_emit(),
-                    llvm_declares: &[],
+                    llvm_declares: Vec::new(),
                 });
                 continue;
             }
@@ -346,7 +354,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
                 inputs: vec![int_ty(int_kind)],
                 result: float_ty(float_kind),
                 emit: cast_emit(op, int_llvm_ty(int_kind), float_llvm_ty(float_kind)),
-                llvm_declares: &[],
+                llvm_declares: Vec::new(),
             });
             // float → int
             let op = if int_kind.is_signed() {
@@ -359,7 +367,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
                 inputs: vec![float_ty(float_kind)],
                 result: int_ty(int_kind),
                 emit: cast_emit(op, float_llvm_ty(float_kind), int_llvm_ty(int_kind)),
-                llvm_declares: &[],
+                llvm_declares: Vec::new(),
             });
         }
     }
@@ -370,14 +378,14 @@ pub fn all() -> Vec<IntrinsicSpec> {
         inputs: vec![f32_ty()],
         result: f64_ty(),
         emit: cast_emit("fpext", "float", "double"),
-        llvm_declares: &[],
+        llvm_declares: Vec::new(),
     });
     out.push(IntrinsicSpec {
         name: "$f64_to_f32".to_string(),
         inputs: vec![f64_ty()],
         result: f32_ty(),
         emit: cast_emit("fptrunc", "double", "float"),
-        llvm_declares: &[],
+        llvm_declares: Vec::new(),
     });
 
     // Bool ↔ Int. `bool_to_iN` = zext from i1. `iN_to_bool` =
@@ -388,7 +396,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
             inputs: vec![bool_ty()],
             result: int_ty(int_kind),
             emit: cast_emit("zext", "i1", int_llvm_ty(int_kind)),
-            llvm_declares: &[],
+            llvm_declares: Vec::new(),
         });
         // Truncation of an int wider than 1 bit to bool. For i8
         // (same width as i1 storage but different semantics), the
@@ -402,7 +410,7 @@ pub fn all() -> Vec<IntrinsicSpec> {
                 inputs: vec![int_ty(int_kind)],
                 result: bool_ty(),
                 emit: cast_emit("trunc", int_llvm_ty(int_kind), "i1"),
-                llvm_declares: &[],
+                llvm_declares: Vec::new(),
             });
         }
     }
@@ -450,9 +458,9 @@ pub fn all() -> Vec<IntrinsicSpec> {
     out
 }
 
-/// Look up an intrinsic by name.
-pub fn lookup(name: &str) -> Option<IntrinsicSpec> {
-    all().into_iter().find(|s| s.name == name)
+/// Look up a flat intrinsic by name in the process-wide registry.
+pub fn lookup(name: &str) -> Option<&'static IntrinsicSpec> {
+    all().iter().find(|spec| spec.name == name)
 }
 
 /// Return prebuilt `Function` signatures for every intrinsic in [`all`],
@@ -460,7 +468,7 @@ pub fn lookup(name: &str) -> Option<IntrinsicSpec> {
 /// intrinsics that don't fit the flat `IntrinsicSpec` shape (they take
 /// a type parameter and are lowered specially by codegen).
 pub fn prelude_fns() -> Vec<Function> {
-    let mut out: Vec<Function> = all().into_iter().map(spec_to_function).collect();
+    let mut out: Vec<Function> = all().iter().map(spec_to_function).collect();
     out.push(sizeof_fn());
     out.push(ptr_offset_fn());
     out
@@ -584,7 +592,7 @@ pub fn prelude_body_decls() -> Vec<Declaration> {
     program.declarations
 }
 
-fn spec_to_function(spec: IntrinsicSpec) -> Function {
+fn spec_to_function(spec: &IntrinsicSpec) -> Function {
     let mut params = Vec::with_capacity(spec.inputs.len() + 1);
     for (i, ty) in spec.inputs.iter().enumerate() {
         params.push(Param {
@@ -595,11 +603,11 @@ fn spec_to_function(spec: IntrinsicSpec) -> Function {
     }
     params.push(Param {
         name: "out".to_string(),
-        ty: out_ref_ty(spec.result),
+        ty: out_ref_ty(spec.result.clone()),
         source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     });
     Function {
-        meta: intrinsic_meta(spec.name),
+        meta: intrinsic_meta(spec.name.clone()),
         is_extern: true,
         abi: None,
         params,
@@ -632,7 +640,7 @@ fn int_binop(name: String, ty: Type, llvm_op: &'static str, bits: u32) -> Intrin
         inputs: vec![ty.clone(), ty.clone()],
         result: ty,
         emit: bin_int(llvm_op, bits),
-        llvm_declares: &[],
+        llvm_declares: Vec::new(),
     }
 }
 
@@ -643,7 +651,7 @@ fn int_cmp(name: String, ty: Type, pred: &'static str, bits: u32) -> IntrinsicSp
         inputs: vec![ty.clone(), ty],
         result: bool_ty(),
         emit: icmp(pred, bits),
-        llvm_declares: &[],
+        llvm_declares: Vec::new(),
     }
 }
 
@@ -659,7 +667,7 @@ fn float_binop_spec(
         inputs: vec![ty.clone(), ty.clone()],
         result: ty,
         emit: float_binop(llvm_op, llvm_ty),
-        llvm_declares: &[],
+        llvm_declares: Vec::new(),
     }
 }
 
@@ -672,7 +680,7 @@ fn int_cast_spec(name: String, from: Type, to: Type, op: &'static str) -> Intrin
         inputs: vec![from],
         result: to,
         emit: cast_emit(op, from_llvm, to_llvm),
-        llvm_declares: &[],
+        llvm_declares: Vec::new(),
     }
 }
 
@@ -796,12 +804,11 @@ pub fn nop_reinterpret_emit() -> Emit {
 fn llvm_unary_intrinsic(name: String, ty: Type, llvm_name: String, bits: u32) -> IntrinsicSpec {
     // The @llvm.ctlz/cttz intrinsics take an extra `i1` arg.
     let takes_zero_undef = llvm_name.contains(".ctlz.") || llvm_name.contains(".cttz.");
-    // Deduplicated declare line — leak once to the static pool.
+    // Deduplicated later when codegen builds the module preamble.
     let decl = format!(
         "declare i{bits} {llvm_name}(i{bits}{})",
         if takes_zero_undef { ", i1" } else { "" }
     );
-    let decl_static: &'static str = Box::leak(decl.into_boxed_str());
     let llvm_name_owned = llvm_name.clone();
     IntrinsicSpec {
         name,
@@ -816,7 +823,7 @@ fn llvm_unary_intrinsic(name: String, ty: Type, llvm_name: String, bits: u32) ->
             );
             (vec![line], result)
         }),
-        llvm_declares: Box::leak(vec![decl_static].into_boxed_slice()),
+        llvm_declares: vec![decl],
     }
 }
 
@@ -828,7 +835,6 @@ fn llvm_float_unary(
     llvm_ty: &'static str,
 ) -> IntrinsicSpec {
     let decl = format!("declare {llvm_ty} {llvm_name}({llvm_ty})");
-    let decl_static: &'static str = Box::leak(decl.into_boxed_str());
     let llvm_name_owned = llvm_name.clone();
     IntrinsicSpec {
         name,
@@ -842,7 +848,7 @@ fn llvm_float_unary(
             );
             (vec![line], result)
         }),
-        llvm_declares: Box::leak(vec![decl_static].into_boxed_slice()),
+        llvm_declares: vec![decl],
     }
 }
 
@@ -881,6 +887,13 @@ mod tests {
         assert!(lookup("$never_defined").is_none());
         assert!(lookup("i64_add").is_none()); // missing $
         assert!(lookup("").is_none());
+    }
+
+    #[test]
+    fn lookup_borrows_the_single_registry_instance() {
+        let first = lookup("$i64_add").unwrap();
+        let second = lookup("$i64_add").unwrap();
+        assert!(std::ptr::eq(first, second));
     }
 
     #[test]

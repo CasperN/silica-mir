@@ -668,9 +668,10 @@ fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
         if !called.contains(&spec.name) {
             continue;
         }
-        for d in spec.llvm_declares {
-            if seen.insert(*d) {
-                out.push(*d);
+        for declaration in &spec.llvm_declares {
+            let declaration = declaration.as_str();
+            if seen.insert(declaration) {
+                out.push(declaration);
             }
         }
     }
