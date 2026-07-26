@@ -60,7 +60,7 @@ pub enum TypeKind {
     IntVar(usize),
     FloatVar(usize),
     Error,
-    Array(Box<Type>, usize),
+    Array(Box<Type>, u64),
 }
 
 impl std::fmt::Display for Type {

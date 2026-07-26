@@ -79,6 +79,10 @@ fn build_subst_map(
 
 use HllTypeCheckCode::*;
 
+fn array_len(len: usize) -> u64 {
+    u64::try_from(len).expect("host collection length exceeds Silica's u64 array length")
+}
+
 /// Distinguish unification failure modes returned by [`Subst::unify`] while
 /// retaining the types needed to render the final diagnostic.
 #[derive(Debug)]
@@ -852,7 +856,7 @@ fn infer_inner(
             Literal::Float(_, None) => subst.fresh_float_var(),
             Literal::Bool(_) => bool_ty(),
             Literal::Unit => unit_ty(),
-            Literal::ByteStr(bytes) => array_ty(int_ty(IntTy::U8), bytes.len()),
+            Literal::ByteStr(bytes) => array_ty(int_ty(IntTy::U8), array_len(bytes.len())),
         },
         ExprKind::Binary(lhs, op, rhs) => {
             let lhs_ty = infer_inner(env, subst, lhs, types, d);
@@ -1388,7 +1392,7 @@ fn infer_inner(
                 for el in &elements[1..] {
                     check_inner(env, subst, el, &first_ty, types, d);
                 }
-                array_ty(first_ty, elements.len())
+                array_ty(first_ty, array_len(elements.len()))
             }
         }
         ExprKind::ArrayIndex(arr, idx) => {
@@ -1567,7 +1571,8 @@ fn check_inner(
             types.insert(expr.source, resolved_expected.clone());
         }
         (ExprKind::Array(elements), TypeKind::Array(expected_elem, expected_size)) => {
-            if elements.len() != *expected_size {
+            let actual_size = array_len(elements.len());
+            if actual_size != *expected_size {
                 d.push_error(source_diagnostic(
                     ArrayLengthMismatch,
                     expr.source,

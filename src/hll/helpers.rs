@@ -105,7 +105,7 @@ pub fn raw_ptr_ty(pointee: Type) -> Type {
 
 // ---------- Aggregates ----------
 
-pub fn array_ty(elem: Type, n: usize) -> Type {
+pub fn array_ty(elem: Type, n: u64) -> Type {
     Type::synthesized(TypeKind::Array(Box::new(elem), n))
 }
 

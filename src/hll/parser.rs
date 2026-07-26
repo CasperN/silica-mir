@@ -76,7 +76,7 @@ fn split_int_suffix(text: &str) -> (&str, Option<IntTy>) {
     (text, None)
 }
 
-fn parse_int_literal(text: &str) -> Result<(i64, Option<IntTy>), String> {
+fn parse_int_magnitude(text: &str) -> Result<(u64, Option<IntTy>), String> {
     let (digits_and_prefix, ty) = split_int_suffix(text);
     let (radix, digits) = if let Some(rest) = digits_and_prefix.strip_prefix("0x") {
         (16u32, rest)
@@ -89,9 +89,16 @@ fn parse_int_literal(text: &str) -> Result<(i64, Option<IntTy>), String> {
     if cleaned.is_empty() {
         return Err(format!("integer literal has no digits: {:?}", text));
     }
-    let val = i64::from_str_radix(&cleaned, radix)
+    let val = u64::from_str_radix(&cleaned, radix)
         .map_err(|e| format!("invalid integer literal {:?}: {}", text, e))?;
     Ok((val, ty))
+}
+
+fn parse_int_literal(text: &str) -> Result<(i64, Option<IntTy>), String> {
+    let (magnitude, ty) = parse_int_magnitude(text)?;
+    let value = i64::try_from(magnitude)
+        .map_err(|_| format!("integer literal {:?} does not fit in i64", text))?;
+    Ok((value, ty))
 }
 
 fn parse_float_literal(text: &str) -> Result<(f64, Option<FloatTy>), String> {
@@ -552,11 +559,8 @@ impl Parser {
             let len_node = node.child_by_field_name("length").ok_or_else(|| {
                 self.diag(node, ParserCode::MalformedCst, "array type missing length")
             })?;
-            let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node)?;
-            return Ok(TypeKind::Array(
-                Box::new(self.map_type(elem, scope)?),
-                len as usize,
-            ));
+            let (len, _) = self.lit_diag(parse_int_magnitude(self.get_text(len_node)), len_node)?;
+            return Ok(TypeKind::Array(Box::new(self.map_type(elem, scope)?), len));
         }
         if text == "fn" {
             // `fn(T,...) [-> R]`. The optional `return_type` field
@@ -1539,6 +1543,20 @@ mod tests {
         ";
         let program = Parser::new(source).parse().unwrap();
         assert_eq!(program.declarations.len(), 1);
+    }
+
+    #[test]
+    fn array_length_uses_full_u64_range() {
+        let source = "extern fn inspect(a: [u8; 9223372036854775808]);";
+        let program = Parser::new(source).parse().unwrap();
+        let Declaration::Fn(function) = &program.declarations[0] else {
+            panic!("expected function declaration");
+        };
+        let TypeKind::Array(element, length) = &function.params[0].ty.kind else {
+            panic!("expected array parameter");
+        };
+        assert_eq!(element.kind, TypeKind::Int(IntTy::U8));
+        assert_eq!(*length, 9_223_372_036_854_775_808);
     }
 
     #[test]

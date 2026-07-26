@@ -13,13 +13,11 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - **HLL match on projection places.** `a[i] match { ... }` and `foo.field match { ... }` fire `VF-DowncastOnProjection` because variant flow tracks root Vars only. Users must extract to a local first (`let t = a[i]; t match { ... }`) or wrap the decode in a helper fn that takes the value by parameter. Fixable by either (a) copying/moving the projection into a fresh local during HLL lowering or (b) extending variant flow to track projections.
 - **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
 - **Conditional HLL marker bounds.** (`impl<T: Copy> Copy for Foo<T> {}`).
-- **Array index and array length should be `u64`.** Today `place[operand]`
-  and `[T; N]` both use `i64` in the parser and checker, mirroring MIR
-  integers. Sizes and offsets are inherently non-negative — matches
-  `$sizeof<T>` returning `u64`. Switch `TypeKind::Array(inner, size: u64)`
-  and the index operand's expected type to `u64`. Ripples through the
-  array-lit codegen (`getelementptr ..., i64 0, i64 i`) and every
-  fixture that indexes an array with an `i64` literal.
+- **Array indices should be `u64`.** Array lengths are represented as
+  `u64` in both HLL and MIR, but `place[operand]` still accepts any integer
+  type. Sizes and offsets are inherently non-negative, matching
+  `$sizeof<T>` returning `u64`. Require the index operand to be `u64` and
+  update fixtures that still index arrays with `i64` values.
 - **Decide how `bool`-driven reachability is analyzed.** Today `branch(true)`/`branch(false)` don't get folded, so trivially-dead arms count as reachable. Either add a small constant-folding pass over `bool` operands, or reify `bool` as an enum so `variant_flow` handles it uniformly. Blocks tighter dead-arm warnings and short-circuit const evaluation. Decision + fixture.
 
 ## Lifetime checker gaps (semantic)

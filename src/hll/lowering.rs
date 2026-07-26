@@ -630,7 +630,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
             mir::TypeKind::Fn(mir_params)
         }
         hll::TypeKind::Array(inner, size) => {
-            mir::TypeKind::Array(Box::new(lower_type(inner)), *size as u64)
+            mir::TypeKind::Array(Box::new(lower_type(inner)), *size)
         }
         hll::TypeKind::Var(_) | hll::TypeKind::IntVar(_) | hll::TypeKind::FloatVar(_) => {
             unreachable!("type variables must be resolved before lowering")
@@ -744,7 +744,7 @@ fn lower_expr_to_place(
                     const_op(fn_name_const(format!("${}_lt", index_kind.name()))),
                     vec![
                         index_op.clone(),
-                        const_op(int_const(*len as u64, *index_kind)),
+                        const_op(int_const(*len, *index_kind)),
                         move_op(out_ref),
                     ],
                     index.span(),
