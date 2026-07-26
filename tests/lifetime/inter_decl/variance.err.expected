@@ -6,14 +6,6 @@ error: at 18:5: [LT-LifetimeMismatch] In function 'shorten_shared': this assignm
  19 |     return
     |
   hint: declare bound 'a: 'b on function 'shorten_shared' or change the value flow so it is not required
-error: at 26:5: [LT-LifetimeMismatch] In function 'narrow_mut': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'narrow_mut'
-    |
- 25 |   entry:
- 26 |     dst.* = move src;
-    |     ^^^^^^^^^^^^^^^^
- 27 |     return
-    |
-  hint: declare bound 'a: 'b on function 'narrow_mut' or change the value flow so it is not required
 error: at 26:5: [LT-LifetimeMismatch] In function 'narrow_mut': this assignment requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'narrow_mut'
     |
  25 |   entry:
@@ -22,3 +14,11 @@ error: at 26:5: [LT-LifetimeMismatch] In function 'narrow_mut': this assignment 
  27 |     return
     |
   hint: declare bound 'b: 'a on function 'narrow_mut' or change the value flow so it is not required
+error: at 26:5: [LT-LifetimeMismatch] In function 'narrow_mut': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'narrow_mut'
+    |
+ 25 |   entry:
+ 26 |     dst.* = move src;
+    |     ^^^^^^^^^^^^^^^^
+ 27 |     return
+    |
+  hint: declare bound 'a: 'b on function 'narrow_mut' or change the value flow so it is not required

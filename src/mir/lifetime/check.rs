@@ -512,6 +512,23 @@ fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &Env) 
     }
 }
 
+/// Resolve the region for a `Ref` layer during a variance walk. `Some(lt)` in
+/// the type wins; falling back to `place`'s outer region covers body-local
+/// refs whose lifetime slot is `None`. Inner Ref layers pass `place = None`
+/// because per-layer places aren't tracked.
+fn ref_region(
+    lt: &Option<Lifetime>,
+    place: Option<&Place>,
+    region_ctx: &region::RegionCtx,
+    locals: &IndexMap<String, Type>,
+    env: &Env,
+) -> Option<Region> {
+    if let Some(lt) = lt {
+        return Some(name_to_region(lt));
+    }
+    place.and_then(|p| region_ctx.region_of_place(p, locals, env))
+}
+
 fn operand_place(op: &Operand) -> Option<&Place> {
     match op {
         Operand::Copy(p) | Operand::Move(p) => Some(p),
@@ -634,14 +651,35 @@ impl<'a> Checker<'a> {
         let StatementKind::Assign(target, rvalue) = &stmt.kind else {
             return;
         };
+        // `Use` copies a source place into a target place: their types are
+        // structurally equal (enforced upstream by the MIR type checker), so
+        // a variance-aware walk over the pair emits a constraint at every
+        // Ref layer and Custom lifetime argument. Other rvalues keep the
+        // outer-only special case below: `Ref` synthesizes a fresh outer
+        // region with no matching source type, `EnumConstr` changes the
+        // target's shape, and `PtrCast` bridges types where a parallel walk
+        // isn't well-defined.
+        if let RValue::Use(op) = rvalue {
+            let Some(src_place) = operand_place(op) else { return };
+            let Some(src_ty) =
+                crate::mir::type_util::place_type(&self.locals, self.env, src_place)
+            else {
+                return;
+            };
+            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.env, target)
+            else {
+                return;
+            };
+            self.emit_use_type_constraints(
+                &src_ty,
+                &tgt_ty,
+                Some((src_place, target)),
+                Variance::Covariant,
+                stmt.source,
+            );
+            return;
+        }
         let (src_region, target_place) = match rvalue {
-            RValue::Use(op) => {
-                let Some(src) = operand_place(op) else { return };
-                let Some(r) = self.region_ctx.region_of_place(src, &self.locals, self.env) else {
-                    return;
-                };
-                (r, target.clone())
-            }
             RValue::Ref(_, place) => {
                 let r = if let Some(owned) = as_owned_path(place) {
                     self.region_ctx
@@ -701,6 +739,94 @@ impl<'a> Checker<'a> {
         if !matches!(target_kind, Some(RefKind::Shared)) {
             self.constraints
                 .emit(t_r, src_region, ConstraintCause::Assignment, stmt.source);
+        }
+    }
+
+    /// Recursively emit variance-aware outlives constraints between two
+    /// structurally equal types (source and target of a `Use` assignment).
+    /// The optional `outer_places` argument enables `region_ctx` lookup for a
+    /// body-local ref at the top of the walk; inner refs contribute a
+    /// constraint only when both source and target lifetimes are named, since
+    /// there is no per-inner-ref region tracking today.
+    fn emit_use_type_constraints(
+        &mut self,
+        src_ty: &Type,
+        tgt_ty: &Type,
+        outer_places: Option<(&Place, &Place)>,
+        variance: Variance,
+        source: SourceInfo,
+    ) {
+        match (&src_ty.kind, &tgt_ty.kind) {
+            (TypeKind::Ref(kind, s_lt, s_inner), TypeKind::Ref(_, t_lt, t_inner)) => {
+                let src_region = ref_region(
+                    s_lt,
+                    outer_places.map(|(s, _)| s),
+                    self.region_ctx,
+                    &self.locals,
+                    self.env,
+                );
+                let tgt_region = ref_region(
+                    t_lt,
+                    outer_places.map(|(_, t)| t),
+                    self.region_ctx,
+                    &self.locals,
+                    self.env,
+                );
+                let layer_variance = variance.combine(match kind {
+                    RefKind::Shared => Variance::Covariant,
+                    _ => Variance::Invariant,
+                });
+                if let (Some(sr), Some(tr)) = (src_region, tgt_region) {
+                    // emit_variance uses (caller, inst) where the caller is the
+                    // outer slot; the assignment target is the outer slot and
+                    // the source is the value being provided.
+                    emit_variance(
+                        &tr,
+                        &sr,
+                        layer_variance,
+                        self.constraints,
+                        ConstraintCause::Assignment,
+                        source,
+                    );
+                }
+                self.emit_use_type_constraints(s_inner, t_inner, None, layer_variance, source);
+            }
+            (TypeKind::Custom(_, s_lts, s_args), TypeKind::Custom(_, t_lts, t_args)) => {
+                let inv = variance.combine(Variance::Invariant);
+                for (s_lt, t_lt) in s_lts.iter().zip(t_lts) {
+                    let sr = name_to_region(s_lt);
+                    let tr = name_to_region(t_lt);
+                    emit_variance(
+                        &tr,
+                        &sr,
+                        inv,
+                        self.constraints,
+                        ConstraintCause::Assignment,
+                        source,
+                    );
+                }
+                for (s_arg, t_arg) in s_args.iter().zip(t_args) {
+                    self.emit_use_type_constraints(s_arg, t_arg, None, inv, source);
+                }
+            }
+            (TypeKind::Array(s_el, _), TypeKind::Array(t_el, _)) => {
+                self.emit_use_type_constraints(s_el, t_el, None, variance, source);
+            }
+            (TypeKind::RawPtr(s_inner), TypeKind::RawPtr(t_inner)) => {
+                self.emit_use_type_constraints(
+                    s_inner,
+                    t_inner,
+                    None,
+                    variance.combine(Variance::Invariant),
+                    source,
+                );
+            }
+            // Inner Ref layers with `None` lifetimes come from local declarations
+            // without lifetime annotations; there is no region representation for
+            // them today. Fn types don't carry lifetime metadata yet (see the
+            // Fn-pointer lifetime tracking punchlist item). Scalars and Param
+            // carry no lifetimes.
+            _ => {}
         }
     }
 

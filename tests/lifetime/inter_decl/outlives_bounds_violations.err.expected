@@ -228,3 +228,11 @@ error: at 406:5: [LT-LifetimeMismatch] In function 'elided_bound_names_are_disti
  407 |     drop x;
      |
   hint: declare bound '1: '2 on function 'elided_bound_names_are_distinct' or change the value flow so it is not required
+error: at 426:5: [LT-LifetimeMismatch] In function 'nested_ref_lifetime_mismatch': this assignment requires lifetime bound 'inner_src: 'inner_tgt, but it is not implied by the declared bounds on function 'nested_ref_lifetime_mismatch'
+     |
+ 425 |   entry:
+ 426 |     $return.* = copy x;
+     |     ^^^^^^^^^^^^^^^^^^
+ 427 |     return
+     |
+  hint: declare bound 'inner_src: 'inner_tgt on function 'nested_ref_lifetime_mismatch' or change the value flow so it is not required

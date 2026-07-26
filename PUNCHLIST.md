@@ -26,9 +26,8 @@ the compiler evolves; treat entries as snapshots, not commitments.
   `TypeKind::Fn` with per-slot lifetime bounds — the variance machinery
   (`Variance::Covariant`, `combine`, `emit_variance`) is already pre-wired
   for the standard `fn(X) -> Y` composition (contravariant in X, covariant
-  in Y). Once `TypeKind::Fn` carries the metadata, `walk_call_regions`'
-  descent through Fn is a client of the shared `TypeVisitor`
-  (Consistency 1).
+  in Y). Once `TypeKind::Fn` carries the metadata, `walk_call_regions`
+  needs a Fn-variant arm.
 
 ## Init-state: split analysis from checking
 
@@ -111,30 +110,21 @@ panics are intentional and sufficiently covered.
 
 Implement the repairs in this order:
 
-1. **Add shared MIR type and place visitors.** Introduce a read-only
-   `TypeVisitor` mirroring `TypeFolder` (exhaustive `visit_children`,
-   override hooks, source and lifetime metadata preserved by construction)
-   and a `PlaceVisitor` counterpart for `Place` and its projection steps.
-   Rebuild the following walkers on them, using the migration to close the
-   known missing-descent cases:
-   - `walk_ref_paths`, `walk_regions` — must descend `TypeKind::Array` so
+1. **Close missing-descent gaps in MIR walkers.** The remaining hand-rolled
+   type walks skip specific variants and diverge in ways the type checker
+   can't catch. Fix each in a separate commit; extract shared recursion
+   only when two or more walkers demonstrably duplicate it.
+   - `walk_ref_paths` / `walk_regions` — must descend `TypeKind::Array` so
      owned `[&mut T; N]` slots are added to the NLL borrower set and
-     inter-fn lifetime constraints flow through array slots.
+     inter-fn lifetime constraints flow through array slots. Two walkers
+     with the same shape (place-tracked, custom-substituting): extract the
+     shared recursion once the descent semantics for arrays land, since
+     this interacts with Consistency 4's per-slot-region strategy.
    - `walk_diverged` — must descend arrays and enum `Custom` payloads so
      cross-edge drop planning inserts per-slot and per-variant drops
      instead of leaving them for the final `check_return_leaks` sweep.
-   - `emit_stmt_constraints` — replace the outer-region special case with
-     a variance-aware recursive walk over source and destination, so
-     assignments like `&'outer &'source i64 = &'outer &'target i64` emit
-     the required `'source: 'target` constraint. Positive nested-reference
-     propagation is covered in `inter_decl_success.sim`; add the negative
-     nested mismatch when the recursive walk lands.
-
-   Every future pass with a type or place walk composes on these visitors
-   instead of hand-writing recursion; the exhaustive `visit_children`
-   match catches missing variants at compile time. The place-level query
-   library (owned paths, static paths, deref/loan/init paths) builds on
-   the `PlaceVisitor` in Consistency 3.
+     Depends on Consistency 3 (typed init slots) for the array descent to
+     have a coherent target state.
 
 2. **Backfill elided Custom lifetimes, then make instantiation validated data.**
    Elision currently adds lifetime parameters for unannotated refs but leaves
@@ -166,8 +156,7 @@ Implement the repairs in this order:
 
 3. **Centralize place projection semantics.** Build one lossless, exhaustive
    decomposition/reconstruction library over `Place` and its projection
-   steps, using the `PlaceVisitor` from Consistency 1 as the underlying
-   recursion. Derive explicit queries for owned paths, statically trackable
+   steps. Derive explicit queries for owned paths, statically trackable
    paths, dereference-containing paths, loan paths, and initialization
    paths instead of maintaining pass-local recursive interpretations.
    Preserve dynamic index operands losslessly, and require every new
@@ -199,9 +188,9 @@ Likewise, phase-specific `Program` wrappers are deliberately out of scope.
 When diagnostics and consistency work are interleaved, use this dependency
 order rather than completing either roadmap in isolation:
 
-1. Consistency 1 first: introduce the shared visitors before any migration
-   that would otherwise deepen pass-local recursion. Downstream items assume
-   walkers are exhaustive by construction.
+1. Consistency 1 first: close the missing-descent gaps and consolidate any
+   demonstrable walker duplication so downstream migrations aren't chasing
+   the same variant additions across pass-local walks.
 2. Consistency 2 before Diagnostics 1: establish validated instantiation and
    explicit recovery before type-check payloads depend on those failures.
 3. Consistency 3 before Diagnostics 3–4: centralize semantic place projections

@@ -408,3 +408,21 @@ fn elided_bound_names_are_distinct(x: &i64, y: &i64) {
     drop y;
     return
 }
+
+# ---------- nested reference lifetimes must satisfy inner outlives ----------
+
+# covers: type_kind=fn lifetime_bound=nested_ref op=assignment
+# The outer reference is shared (covariant), the inner reference is also
+# shared. Assignment requires both 'outer_src: 'outer_tgt (from the outer
+# layer) and 'inner_src: 'inner_tgt (from the pointee layer). The fn
+# declares no bound between 'inner_src and 'inner_tgt, so the inner
+# constraint fires LT-LifetimeMismatch. Regression pin for the
+# outer-only special case in emit_stmt_constraints.
+fn<'outer, 'inner_src, 'inner_tgt> nested_ref_lifetime_mismatch(
+  x: &'outer &'inner_src i64,
+  $return: &out &'outer &'inner_tgt i64,
+) {
+  entry:
+    $return.* = copy x;
+    return
+}
