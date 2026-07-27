@@ -17,7 +17,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   type. Sizes and offsets are inherently non-negative, matching
   `$sizeof<T>` returning `u64`. Require the index operand to be `u64` and
   update fixtures that still index arrays with `i64` values.
-- **Retire remaining `variant_flow.rs`.** `SwitchArmFalselyUnreachable` / `SwitchArmDeadCode` now live in `reachability` alongside bool-const branch folding; the remaining `SwitchNoArms` / `SwitchNotExhaustive` / `SwitchDuplicateArm` still live in `variant_flow.rs` because they need dead-block filtering. Move them into `reachability` (they can reuse its reachable-blocks set) and delete `variant_flow.rs` + `DiagCode::VariantFlow`. `DowncastVariantNotRefined` — the last `VariantFlowCode` — is emitted by `place_state` today; it can move to a place_state-owned code enum in the same pass.
 
 ## Lifetime checker gaps (semantic)
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
@@ -27,12 +26,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   for the standard `fn(X) -> Y` composition (contravariant in X, covariant
   in Y). Once `TypeKind::Fn` carries the metadata, `walk_call_regions`
   needs a Fn-variant arm.
-
-## Init-state: split analysis from checking
-
-Architecture invariant, current violation, target shape, and
-prerequisite blocker are documented on `elaborate_and_check_mir`
-in `src/lib.rs`, next to the code they describe.
 
 ## Diagnostics roadmap
 
@@ -159,12 +152,11 @@ Implement the repairs in this order:
    downstream passes compile.
 
 4. **Extend `walk_diverged` to array slots.** `InitState::Partial` is now
-   keyed by `InitSlot::{Field, Index}`, but `walk_diverged` still returns
-   without emitting drops for `TypeKind::Array` — partially-initialized
-   arrays fall through to the final `check_return_leaks` sweep instead of
-   getting per-slot edge drops. Enums stay atomic (whole-value
-   construction / whole-value move), so no variant-level descent is
-   needed; only the array arm is a real gap.
+   keyed by `InitSlot::{Field, Index, Variant}`, and `walk_diverged`
+   descends struct-Field and enum-Variant slots. `TypeKind::Array` still
+   falls through — partially-initialized arrays fall through to the
+   final `check_return_leaks` sweep instead of getting per-slot edge
+   drops. Adding array-slot descent is the remaining gap.
 
 5. **Finish lifetime traversal without sentinels or eager array expansion.**
    Replace the `Region::Free(u32::MAX)` unresolved-region sentinel with an
