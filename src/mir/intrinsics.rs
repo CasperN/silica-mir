@@ -581,12 +581,13 @@ fn<T> ptr_offset(p: *T, i: u64, out: &out *T) {
 /// Panics on parse failure — the constant is compiler-authored, so any
 /// failure is an internal bug rather than user error.
 pub fn prelude_body_decls() -> Vec<Declaration> {
+    let mut d = crate::diagnostics::Diagnostics::default();
     let program = crate::mir::parser::Parser::new(PRELUDE_MIR.to_string())
-        .parse()
-        .unwrap_or_else(|diags| {
+        .parse(&mut d)
+        .unwrap_or_else(|| {
             panic!(
                 "internal error: compiler-provided PRELUDE_MIR failed to parse: {:?}",
-                diags.errors().collect::<Vec<_>>()
+                d.errors().collect::<Vec<_>>()
             )
         });
     program.declarations

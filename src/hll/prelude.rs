@@ -8,6 +8,7 @@
 //! declaration list (which would produce duplicates at MIR level once
 //! the bodies land).
 
+use crate::diagnostics::Diagnostics;
 use crate::hll::ast::*;
 use crate::hll::parser::Parser;
 
@@ -23,10 +24,11 @@ extern fn<T> ptr_offset(p: *T, i: u64) -> *T;
 /// Panics on parse failure — the constant is compiler-authored, so
 /// any failure is an internal bug.
 pub fn prelude_fn_decls() -> Vec<FnDecl> {
-    let program = Parser::new(PRELUDE_HLL).parse().unwrap_or_else(|diags| {
+    let mut d = Diagnostics::default();
+    let program = Parser::new(PRELUDE_HLL).parse(&mut d).unwrap_or_else(|| {
         panic!(
             "internal error: compiler-provided PRELUDE_HLL failed to parse: {:?}",
-            diags.errors().collect::<Vec<_>>()
+            d.errors().collect::<Vec<_>>()
         )
     });
     program

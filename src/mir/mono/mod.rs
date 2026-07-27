@@ -504,7 +504,7 @@ mod tests {
 
     #[test]
     fn monomorphization_preserves_declared_lifetime_metadata() {
-        let mut program = Parser::new(
+        let mut program = Parser::parse_or_panic(
             "
             struct<'a: 'static, T: Copy + Drop> Borrowed: Copy + Drop {
               value: & 'a T
@@ -515,11 +515,8 @@ mod tests {
                 drop value;
                 return
             }
-            "
-            .to_string(),
-        )
-        .parse()
-        .expect("test program must parse");
+            ",
+        );
 
         let original_struct = program
             .declarations

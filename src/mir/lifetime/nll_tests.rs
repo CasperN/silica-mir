@@ -19,7 +19,7 @@ use crate::mir::type_check::Env;
 /// Parse `src`, run NLL elaboration only (no other passes), and return
 /// the pretty-printed result.
 fn elaborate_only(src: &str) -> String {
-    let mut program = Parser::new(src.to_string()).parse().expect("parse");
+    let mut program = Parser::parse_or_panic(src);
     let env = Env::build(&program).0;
     elaborate(&mut program, &env);
     pretty_print(&program)
@@ -528,7 +528,7 @@ fn idempotent_second_run_is_noop() {
             return
         }
         ";
-    let mut program = Parser::new(src.to_string()).parse().unwrap();
+    let mut program = Parser::parse_or_panic(src);
     let env = Env::build(&program).0;
     elaborate(&mut program, &env);
     let after_first = pretty_print(&program);

@@ -285,7 +285,7 @@ mod tests {
 
     fn parse_and_elide(src: &str) -> Function {
         use crate::mir::parser::Parser;
-        let mut program = Parser::new(src.to_string()).parse().expect("parse");
+        let mut program = Parser::parse_or_panic(src);
         elide_program(&mut program);
         program
             .declarations

@@ -217,6 +217,13 @@ impl Diagnostics {
         self
     }
 
+    /// Mutating counterpart of [`with_source`]. Use when the source
+    /// text isn't available at Diagnostics construction (e.g. it's
+    /// borrowed from a `Program` returned by the parser).
+    pub fn set_source(&mut self, source: std::sync::Arc<String>) {
+        self.source = Some(source);
+    }
+
     /// Set the surface language. Defaults to `Mir`; HLL compilations
     /// should set `Hll` so MIR-only context (block labels) is hidden.
     pub fn with_source_kind(mut self, kind: SourceKind) -> Self {

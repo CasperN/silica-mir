@@ -10,13 +10,7 @@ use mir::ast::Program;
 /// and return the resulting MIR program. Errors are pushed into `d` and
 /// `None` is returned; the caller decides whether to continue.
 pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
-    let hll_prog = match hll::parser::Parser::new(source).parse() {
-        Ok(prog) => prog,
-        Err(diags) => {
-            d.extend_errors(diags.errors().cloned());
-            return None;
-        }
-    };
+    let hll_prog = hll::parser::Parser::new(source).parse(d)?;
     let types = hll::type_check::run_type_check(&hll_prog, d)?;
     hll::mut_check::check_mutability(&hll_prog, d);
     if d.has_errors() {

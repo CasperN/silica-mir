@@ -329,7 +329,7 @@ mod tests {
     /// Parse + typecheck + mut-check. Returns the mut-check errors as
     /// strings (empty on success).
     fn check(source: &str) -> Vec<String> {
-        let program = Parser::new(source).parse().expect("parse ok");
+        let program = Parser::parse_or_panic(source);
         let tc_d = type_check::typecheck_program(&program);
         assert!(!tc_d.has_errors(), "typecheck ok: {:?}", tc_d.errors_str());
         let mut d = Diagnostics::default().with_source(program.source.clone());

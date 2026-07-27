@@ -210,7 +210,7 @@ mod tests {
 
     /// Build an Env from MIR source, discarding any diagnostics.
     fn env_of(src: &str) -> Env {
-        let program: Program = Parser::new(src.to_string()).parse().unwrap();
+        let program: Program = Parser::parse_or_panic(src);
         Env::build(&program).0
     }
 

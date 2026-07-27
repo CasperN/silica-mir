@@ -360,7 +360,7 @@ fn generated_split_label_round_trips_through_mir_syntax() {
             return
         }
         ";
-    let mut program = Parser::new(src.to_string()).parse().unwrap();
+    let mut program = Parser::parse_or_panic(src);
 
     let function = program
         .declarations
@@ -378,9 +378,7 @@ fn generated_split_label_round_trips_through_mir_syntax() {
 
     let printed = pretty_print(&program);
     assert!(printed.contains("$edge0:"));
-    Parser::new(printed)
-        .parse()
-        .expect("pretty-printed generated label must be valid MIR syntax");
+    Parser::parse_or_panic(printed);
 }
 
 // ---------- End-to-end: elaborated program still passes ----------
@@ -409,7 +407,7 @@ fn split_then_full_pipeline_still_clean() {
             return
         }
         ";
-    let mut program = Parser::new(src.to_string()).parse().unwrap();
+    let mut program = Parser::parse_or_panic(src);
 
     // Split the entry→t edge. `t` doesn't have multiple preds here, so
     // the edge isn't strictly critical, but the always-split contract

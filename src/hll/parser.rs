@@ -120,40 +120,50 @@ impl Parser {
         }
     }
 
-    pub fn parse(&self) -> Result<Program, Diagnostics> {
+    /// Test-only: parse `src` and panic on any parse-level failure.
+    /// Panics carry the collected error text so failures are diagnosable
+    /// without additional test boilerplate.
+    #[cfg(test)]
+    pub fn parse_or_panic(src: impl Into<String>) -> Program {
+        let mut d = Diagnostics::default();
+        Self::new(src).parse(&mut d).unwrap_or_else(|| {
+            panic!("HLL parse failed:\n{}", d.errors_str().join("\n"))
+        })
+    }
+
+    pub fn parse(&self, d: &mut Diagnostics) -> Option<Program> {
         let mut ts_parser = TSParser::new();
         if let Err(e) = ts_parser.set_language(&language()) {
-            let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
                 SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 format!("failed to load tree-sitter grammar: {}", e),
             ));
-            return Err(d);
+            return None;
         }
 
         let Some(tree) = ts_parser.parse(&*self.source, None) else {
-            let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
                 SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 "tree-sitter failed to produce a parse tree",
             ));
-            return Err(d);
+            return None;
         };
         let root = tree.root_node();
 
         if root.has_error() {
-            let mut diags = Diagnostics::default().with_source(self.source.clone());
-            self.walk_syntax_errors(root, None, &mut diags);
-            return Err(diags);
+            self.walk_syntax_errors(root, None, d);
+            return None;
         }
 
-        self.map_program(root).map_err(|d| {
-            let mut diags = Diagnostics::default().with_source(self.source.clone());
-            diags.push_error(d);
-            diags
-        })
+        match self.map_program(root) {
+            Ok(program) => Some(program),
+            Err(err) => {
+                d.push_error(err);
+                None
+            }
+        }
     }
 
     fn get_text(&self, node: Node) -> &str {
@@ -1383,7 +1393,7 @@ mod tests {
     #[test]
     fn parse_struct_decl_test() {
         let source = "struct Point { x: i64, y: i64 }";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Struct(ref s) = program.declarations[0] {
             assert_eq!(s.name, "Point");
@@ -1403,7 +1413,7 @@ mod tests {
     #[test]
     fn parse_enum_decl_test() {
         let source = "enum Option { None: unit, Some: i64 }";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(ref e) = program.declarations[0] {
             assert_eq!(e.name, "Option");
@@ -1423,7 +1433,7 @@ mod tests {
     #[test]
     fn parse_struct_decl_with_markers() {
         let source = "struct Point: Copy + Drop { x: i64, y: i64 }";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Struct(ref s) = program.declarations[0] {
             assert_eq!(s.name, "Point");
@@ -1438,7 +1448,7 @@ mod tests {
     #[test]
     fn parse_enum_decl_with_markers() {
         let source = "enum Option: Move + Drop { None: unit, Some: i64 }";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(ref e) = program.declarations[0] {
             assert_eq!(e.name, "Option");
@@ -1459,7 +1469,7 @@ mod tests {
                 return sum;
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
             assert_eq!(f.name, "add");
@@ -1487,7 +1497,7 @@ mod tests {
                 let e = &uninit a;
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
             assert_eq!(f.params[0].ty, raw_ptr_ty(i64_ty()));
@@ -1507,7 +1517,7 @@ mod tests {
                 }
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
     }
 
@@ -1520,7 +1530,7 @@ mod tests {
                 }
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
     }
 
@@ -1534,14 +1544,14 @@ mod tests {
                 let val = arr[0];
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
     }
 
     #[test]
     fn array_length_uses_full_u64_range() {
         let source = "extern fn inspect(a: [u8; 9223372036854775808]);";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         let Declaration::Fn(function) = &program.declarations[0] else {
             panic!("expected function declaration");
         };
@@ -1558,7 +1568,7 @@ mod tests {
             extern fn add_impl(a: i64, b: i64) -> i64;
             extern \"C\" fn c_fn(a: f64) -> f64;
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 2);
 
         let Declaration::Fn(f1) = &program.declarations[0] else {
@@ -1581,7 +1591,7 @@ mod tests {
         let source = "
             extern fn<'a, T: Move> add_impl(a: &mut i64, b: T);
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!()
@@ -1602,7 +1612,7 @@ mod tests {
                 let c = b'A';
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!()
@@ -1662,7 +1672,7 @@ mod tests {
         // walker walked the flat inlined children, this got the
         // deref/field ordering wrong.
         let source = "fn f(n: *Point) { let v = n.*.value; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::FieldAccess(inner, field) = init.kind else {
             panic!("expected FieldAccess, got {:?}", init.kind);
         };
@@ -1678,7 +1688,7 @@ mod tests {
     fn chained_field_access() {
         // `a.b.c` → FieldAccess(FieldAccess(a, b), c).
         let source = "fn f(a: Point) { let x = a.b.c; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::FieldAccess(outer, c) = init.kind else {
             panic!("expected FieldAccess outer");
         };
@@ -1693,7 +1703,7 @@ mod tests {
     fn chained_array_index() {
         // `a[0][1]` → Index(Index(a, 0), 1).
         let source = "fn f(a: [[i64; 2]; 2]) { let x = a[0][1]; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::ArrayIndex(outer, _) = init.kind else {
             panic!("expected ArrayIndex outer");
         };
@@ -1705,7 +1715,7 @@ mod tests {
         // `f().x` → FieldAccess(Call(f), "x"). Verifies postfix
         // chains work across mixed operator kinds.
         let source = "fn f() { let v = g().x; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::FieldAccess(target, x) = init.kind else {
             panic!("expected FieldAccess");
         };
@@ -1718,7 +1728,7 @@ mod tests {
         // `&x.y` must parse as `&(x.y)`, not `(&x).y` — prefix
         // borrows are prec 10, postfix operators are prec 20.
         let source = "fn f(x: Point) { let r = &x.y; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::Borrow(_, inner) = init.kind else {
             panic!("expected Borrow, got {:?}", init.kind);
         };
@@ -1735,7 +1745,7 @@ mod tests {
         // in the grammar uses `_expr_assignment` (not `_expr_prefix`)
         // to make the chain right-associative.
         let source = "fn f() { a = b = c; }";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
@@ -1759,8 +1769,8 @@ mod tests {
     fn trailing_comma_in_struct_decl() {
         // `commaSep` in the common grammar accepts an optional
         // trailing comma. Verify both with and without trailing.
-        let with = Parser::new("struct P { x: i64, y: i64, }").parse().unwrap();
-        let without = Parser::new("struct P { x: i64, y: i64 }").parse().unwrap();
+        let with = Parser::parse_or_panic("struct P { x: i64, y: i64, }");
+        let without = Parser::parse_or_panic("struct P { x: i64, y: i64 }");
         let Declaration::Struct(a) = &with.declarations[0] else {
             panic!()
         };
@@ -1774,7 +1784,7 @@ mod tests {
     #[test]
     fn trailing_comma_in_enum_decl() {
         let src = "enum E { A: unit, B: i64, }";
-        let program = Parser::new(src).parse().unwrap();
+        let program = Parser::parse_or_panic(src);
         let Declaration::Enum(e) = &program.declarations[0] else {
             panic!()
         };
@@ -1785,7 +1795,7 @@ mod tests {
     fn empty_function_body() {
         // `fn f() {}` — empty block, no trailing expression, unit
         // return.
-        let program = Parser::new("fn f() {}").parse().unwrap();
+        let program = Parser::parse_or_panic("fn f() {}");
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!()
         };
@@ -1799,16 +1809,14 @@ mod tests {
     #[test]
     fn return_and_break_without_value() {
         // `return` and `break` with no expression carry `None`.
-        let program = Parser::new(
+        let program = Parser::parse_or_panic(
             "fn f() {
                 loop {
                     break;
                 };
                 return;
             }",
-        )
-        .parse()
-        .unwrap();
+        );
         assert_eq!(program.declarations.len(), 1);
     }
 
@@ -1823,16 +1831,14 @@ mod tests {
               # inline comment\n\
               a\n\
             }\n";
-        let program = Parser::new(with).parse().unwrap();
+        let program = Parser::parse_or_panic(with);
         assert_eq!(program.declarations.len(), 1);
     }
 
     /// Helper: extract the parameter list of the first function in
     /// `source`. Used by the fn-type tests below.
     fn first_fn_params(source: &str) -> Vec<Param> {
-        let program = Parser::new(source)
-            .parse()
-            .unwrap_or_else(|d| panic!("parse error:\n{}", d.errors_str().join("\n")));
+        let program = Parser::parse_or_panic(source);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn declaration");
         };
@@ -1987,7 +1993,9 @@ mod tests {
         let src = "\
             fn a() { @@; }\n\
             fn b() { @@; }\n";
-        let diags = Parser::new(src).parse().expect_err("two broken functions");
+        let mut diags = Diagnostics::default();
+        let prog = Parser::new(src).parse(&mut diags);
+        assert!(prog.is_none(), "expected parse failure for two broken functions");
         assert!(
             diags.error_count() >= 2,
             "expected ≥2 errors, got {}: {:?}",
@@ -2001,7 +2009,7 @@ mod tests {
         // Test that binary expressions parse correctly with expected associativity/precedence.
         // e.g. `a + b * c` -> Add(a, Mul(b, c))
         let source = "fn f(a: i64, b: i64, c: i64) { let x = a + b * c; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::Binary(lhs, op, rhs) = init.kind else {
             panic!("expected Binary outer");
         };
@@ -2020,7 +2028,7 @@ mod tests {
         // Test that parentheses correctly override default precedence:
         // `(a + b) * c` -> Mul(Add(a, b), c)
         let source = "fn f(a: i64, b: i64, c: i64) { let x = (a + b) * c; }";
-        let init = first_let_init(&Parser::new(source).parse().unwrap());
+        let init = first_let_init(&Parser::parse_or_panic(source));
         let ExprKind::Binary(lhs, op, rhs) = init.kind else {
             panic!("expected Binary outer");
         };
@@ -2044,7 +2052,7 @@ mod tests {
                 };
             }
         ";
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(ref f) = program.declarations[0] {
             if let ExprKind::Block(ref stmts, _, _) = f.body.as_ref().unwrap().kind {
@@ -2062,7 +2070,7 @@ mod tests {
     // Helper: parse `fn f(...) { <stmts> <tail_source> }` and return the
     // block's trailing expression, panicking if the tail is absent.
     fn block_tail(source: &str) -> Expr {
-        let program = Parser::new(source).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };

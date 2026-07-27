@@ -13,7 +13,7 @@ mod direct_leak_check_tests {
     #[test]
     fn flags_pre_elaboration_drop_leak() {
         let src = "fn f(x: i64) { entry: return }";
-        let program = Parser::new(src.to_string()).parse().unwrap();
+        let program = Parser::parse_or_panic(src);
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program).0;
         check_return_leaks(&program, &env, &mut d);
@@ -29,7 +29,7 @@ mod direct_leak_check_tests {
     #[test]
     fn ok_when_explicitly_dropped() {
         let src = "fn f(x: i64) { entry: drop x; return }";
-        let program = Parser::new(src.to_string()).parse().unwrap();
+        let program = Parser::parse_or_panic(src);
         let mut d = Diagnostics::default();
         let env = type_check::Env::build(&program).0;
         check_return_leaks(&program, &env, &mut d);
@@ -49,7 +49,7 @@ mod nested_reference_state_tests {
     use crate::mir::type_check::Env;
 
     fn errors(source: &str) -> Vec<String> {
-        let program = Parser::new(source.to_owned()).parse().expect("parse");
+        let program = Parser::parse_or_panic(source);
         let env = Env::build(&program).0;
         let mut diagnostics = Diagnostics::default();
         check_program(&program, &env, &mut diagnostics);

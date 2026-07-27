@@ -1386,7 +1386,7 @@ mod tests {
 
     #[test]
     fn loan_conflict_hides_hll_temporary_borrower_name() {
-        let mut program = Parser::new(
+        let mut program = Parser::parse_or_panic(
             r#"
             fn f(x: i64) {
               _temp_0: & i64;
@@ -1397,11 +1397,8 @@ mod tests {
                 drop x;
                 return
             }
-            "#
-            .to_string(),
-        )
-        .parse()
-        .expect("test MIR should parse");
+            "#,
+        );
         let Declaration::Fn(func) = &mut program.declarations[0] else {
             panic!("expected function declaration");
         };
@@ -1432,7 +1429,7 @@ mod tests {
 
     #[test]
     fn ordinary_access_to_expression_temp_is_not_misreported_as_escape() {
-        let mut program = Parser::new(
+        let mut program = Parser::parse_or_panic(
             r#"
             fn f() {
               _temp_0: i64;
@@ -1445,11 +1442,8 @@ mod tests {
                 drop _temp_0;
                 return
             }
-            "#
-            .to_string(),
-        )
-        .parse()
-        .expect("test MIR should parse");
+            "#,
+        );
         let Declaration::Fn(func) = &mut program.declarations[0] else {
             panic!("expected function declaration");
         };

@@ -1891,9 +1891,7 @@ mod tests {
 
     #[test]
     fn implicit_else_type_mismatch_preserves_generated_source() {
-        let program = Parser::new("fn f() -> i64 { if true { 1 } }")
-            .parse()
-            .expect("parse HLL");
+        let program = Parser::parse_or_panic("fn f() -> i64 { if true { 1 } }");
 
         let diagnostics = typecheck_program(&program);
         let errors: Vec<_> = diagnostics.errors().collect();
@@ -1910,9 +1908,7 @@ mod tests {
 
     #[test]
     fn ambiguous_generated_expression_preserves_its_source() {
-        let mut program = Parser::new("fn f() { let x = []; }")
-            .parse()
-            .expect("parse HLL");
+        let mut program = Parser::parse_or_panic("fn f() { let x = []; }");
         let [Declaration::Fn(function)] = program.declarations.as_mut_slice() else {
             panic!("expected one function declaration");
         };
@@ -1944,9 +1940,10 @@ mod tests {
     }
 
     fn check_program(source: &str) -> Result<(), String> {
+        let mut parse_d = Diagnostics::default();
         let program = Parser::new(source)
-            .parse()
-            .map_err(|d| d.errors_str().join("\n"))?;
+            .parse(&mut parse_d)
+            .ok_or_else(|| parse_d.errors_str().join("\n"))?;
         // Render Diagnostic errors as strings for the existing
         // `.contains(...)` substring assertions.
         let d = typecheck_program(&program);
@@ -1998,7 +1995,7 @@ mod tests {
     #[test]
     fn invalid_nested_declared_type_uses_its_own_source() {
         let source = "fn f(x: &Nope) {}";
-        let program = Parser::new(source).parse().expect("parse HLL");
+        let program = Parser::parse_or_panic(source);
         let diagnostics = typecheck_program(&program);
         let errors: Vec<_> = diagnostics.errors().collect();
         assert_eq!(errors.len(), 1);

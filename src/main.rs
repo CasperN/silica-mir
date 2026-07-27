@@ -88,13 +88,7 @@ fn main() {
 
     let program = match source_kind {
         diagnostics::SourceKind::Hll => lower_hll_to_mir(&source_arc, &mut d),
-        diagnostics::SourceKind::Mir => match mir::parser::Parser::new(&**source_arc).parse() {
-            Ok(p) => Some(p),
-            Err(diags) => {
-                d.extend_errors(diags.errors().cloned());
-                None
-            }
-        },
+        diagnostics::SourceKind::Mir => mir::parser::Parser::new(&**source_arc).parse(&mut d),
     };
     let Some(program) = program else {
         report_and_exit(&d);

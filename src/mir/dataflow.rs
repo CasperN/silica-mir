@@ -204,7 +204,7 @@ mod tests {
 
     /// Parse `src` and return the body of the first function.
     fn body_of(src: &str) -> FunctionBody {
-        let program = Parser::new(src.to_string()).parse().expect("parse");
+        let program = Parser::parse_or_panic(src);
         for decl in program.declarations {
             if let Declaration::Fn(f) = decl {
                 if let Some(body) = f.body {

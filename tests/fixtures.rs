@@ -176,13 +176,7 @@ fn execute_fixture(path: &Path, stage: Stage) -> FixtureRun {
 
     let program = match source_kind {
         SourceKind::Hll => lower_hll_to_mir(&source_arc, &mut d),
-        SourceKind::Mir => match mir::parser::Parser::new(&**source_arc).parse() {
-            Ok(p) => Some(p),
-            Err(diags) => {
-                d.extend_errors(diags.errors().cloned());
-                None
-            }
-        },
+        SourceKind::Mir => mir::parser::Parser::new(&**source_arc).parse(&mut d),
     };
 
     let program = match stage {

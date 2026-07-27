@@ -372,7 +372,7 @@ mod tests {
                 return
             }
         ";
-        let mut program = Parser::new(src.to_string()).parse().expect("parse");
+        let mut program = Parser::parse_or_panic(src);
         desugaring::elide_program(&mut program);
         let (env, _errs) = Env::build(&program);
         let func = program.find_fn("f").expect("fn f");

@@ -288,34 +288,44 @@ impl Parser {
         }
     }
 
-    /// Parse `self.source` into a `Program`.
-    ///
-    /// On success returns `Ok(program)`. On failure returns
-    /// `Err(diagnostics)` with one diagnostic per problem — tree-sitter
-    /// ERROR regions become `UnexpectedToken` diagnostics and MISSING
-    /// nodes become `MissingToken` diagnostics (multi-error output);
-    /// CST-to-AST failures become `MalformedCst` or `InvalidLiteral`
-    /// diagnostics with the span of the offending node.
-    pub fn parse(&self) -> Result<Program, Diagnostics> {
+    /// Test-only: parse `src` and panic on any parse-level failure.
+    /// Panics carry the collected error text so failures are diagnosable
+    /// without additional test boilerplate.
+    #[cfg(test)]
+    pub fn parse_or_panic(src: impl Into<String>) -> Program {
+        let mut d = Diagnostics::default();
+        Self::new(src).parse(&mut d).unwrap_or_else(|| {
+            panic!("MIR parse failed:\n{}", d.errors_str().join("\n"))
+        })
+    }
+
+    /// Parse `self.source` into a `Program`, emitting all diagnostics
+    /// into `d`. Tree-sitter ERROR regions become `UnexpectedToken`
+    /// diagnostics and MISSING nodes become `MissingToken` diagnostics
+    /// (multi-error output); CST-to-AST failures become `MalformedCst`
+    /// or `InvalidLiteral` diagnostics with the span of the offending
+    /// node. Returns `None` if a program couldn't be assembled; the
+    /// caller checks `d.has_errors()` to gate on any parse-time
+    /// failure. Non-fatal (info/warning) diagnostics accompany a
+    /// successful `Some(program)` return.
+    pub fn parse(&self, d: &mut Diagnostics) -> Option<Program> {
         let mut ts_parser = TSParser::new();
         if let Err(e) = ts_parser.set_language(&language()) {
-            let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
                 SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 format!("failed to load tree-sitter grammar: {}", e),
             ));
-            return Err(d);
+            return None;
         }
 
         let Some(tree) = ts_parser.parse(&*self.source, None) else {
-            let mut d = Diagnostics::default().with_source(self.source.clone());
             d.push_error(Diagnostic::new(
                 ParserCode::MalformedCst,
                 SourceInfo::generated(GeneratedKind::ParserInfrastructure, Span::default()),
                 "tree-sitter failed to produce a parse tree",
             ));
-            return Err(d);
+            return None;
         };
         let root = tree.root_node();
 
@@ -324,16 +334,17 @@ impl Parser {
         // the tree is syntactically clean — a partial CST would
         // otherwise produce spurious downstream errors.
         if root.has_error() {
-            let mut diags = Diagnostics::default().with_source(self.source.clone());
-            self.walk_syntax_errors(root, None, None, &mut diags);
-            return Err(diags);
+            self.walk_syntax_errors(root, None, None, d);
+            return None;
         }
 
-        self.map_program(root).map_err(|d| {
-            let mut diags = Diagnostics::default().with_source(self.source.clone());
-            diags.push_error(d);
-            diags
-        })
+        match self.map_program(root) {
+            Ok(program) => Some(program),
+            Err(err) => {
+                d.push_error(err);
+                None
+            }
+        }
     }
 
     fn get_text(&self, node: Node) -> &str {
@@ -1387,8 +1398,7 @@ mod tests {
                 y: i64
             }
         ";
-        let parser = Parser::new(source.to_string());
-        let program = parser.parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Struct(s) = &program.declarations[0] {
             assert_eq!(s.meta.name, "Point");
@@ -1412,8 +1422,7 @@ mod tests {
                 Some: i64
             }
         ";
-        let parser = Parser::new(source.to_string());
-        let program = parser.parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(e) = &program.declarations[0] {
             assert_eq!(e.meta.name, "Option");
@@ -1441,8 +1450,7 @@ mod tests {
                     return
             }
         ";
-        let parser = Parser::new(source.to_string());
-        let program = parser.parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add");
@@ -1481,7 +1489,7 @@ mod tests {
                     return
             }
         ";
-        let program = Parser::new(source.to_string()).parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected function declaration");
         };
@@ -1500,8 +1508,7 @@ mod tests {
         let source = "
             extern fn add_impl(a: i64, b: i64);
         ";
-        let parser = Parser::new(source.to_string());
-        let program = parser.parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add_impl");
@@ -1520,8 +1527,7 @@ mod tests {
         let source = "
             extern fn<'a, T: Move> add_impl(a: &mut i64, b: T);
         ";
-        let parser = Parser::new(source.to_string());
-        let program = parser.parse().unwrap();
+        let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add_impl");
@@ -1540,7 +1546,7 @@ mod tests {
     // ---------- Scalar type parsing ----------
 
     fn ty_of_param(src: &str, idx: usize) -> Type {
-        let program = Parser::new(src.to_string()).parse().unwrap();
+        let program = Parser::parse_or_panic(src);
         match &program.declarations[0] {
             Declaration::Fn(f) => f.params[idx].ty.clone(),
             _ => panic!("expected fn decl"),
@@ -1571,7 +1577,7 @@ mod tests {
 
     /// Parse a fn body with `x = <literal>` and return the ConstVal.
     fn const_of_first_assign(src: &str) -> ConstVal {
-        let program = Parser::new(src.to_string()).parse().unwrap();
+        let program = Parser::parse_or_panic(src);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
@@ -1685,9 +1691,9 @@ mod tests {
     fn duplicate_marker_rejected() {
         // `map_markers` returns an error on duplicates.
         let src = "struct P: Copy + Copy { x: i64 }";
-        let diags = Parser::new(src.to_string())
-            .parse()
-            .expect_err("expected duplicate-marker error");
+        let mut diags = Diagnostics::default();
+        let prog = Parser::new(src.to_string()).parse(&mut diags);
+        assert!(prog.is_none(), "expected parse failure for duplicate marker");
         let errs = diags.errors_str();
         assert!(
             errs.iter().any(|e| e.contains("Duplicate marker")),
@@ -1701,7 +1707,7 @@ mod tests {
         // Any permutation of {Copy, Drop, Move} yields the same set
         // of flags — canonicalization is not by textual order.
         fn markers_of(src: &str) -> Markers {
-            let program = Parser::new(src.to_string()).parse().unwrap();
+            let program = Parser::parse_or_panic(src);
             let Declaration::Struct(s) = &program.declarations[0] else {
                 panic!("expected struct");
             };
@@ -1729,9 +1735,8 @@ mod tests {
         let src = "\
             fn a( { entry: return }\n\
             fn b( { entry: return }\n";
-        let diags = Parser::new(src.to_string())
-            .parse()
-            .expect_err("both functions have unbalanced parens");
+        let mut diags = Diagnostics::default();
+        let _ = Parser::new(src.to_string()).parse(&mut diags);
         assert!(
             diags.error_count() >= 2,
             "expected multi-error output, got {} error(s): {:?}",
@@ -1757,9 +1762,8 @@ mod tests {
         // "at L:C: In function 'f': ...". Uses `in_function` context
         // threading in the ERROR/MISSING walker.
         let src = "fn my_fn(x: i64) {\n  entry:\n    x = @@;\n    return\n}\n";
-        let diags = Parser::new(src.to_string())
-            .parse()
-            .expect_err("`@@` is not a valid rvalue");
+        let mut diags = Diagnostics::default();
+        let _ = Parser::new(src.to_string()).parse(&mut diags);
         let rendered = diags.errors_str().join("\n");
         assert!(
             rendered.contains("In function 'my_fn'"),
@@ -1774,9 +1778,8 @@ mod tests {
         // both the enclosing function AND the enclosing block label.
         // Uses `in_block` context threading in the walker.
         let src = "fn f() {\n  my_block:\n    @@;\n    return\n}\n";
-        let diags = Parser::new(src.to_string())
-            .parse()
-            .expect_err("`@@` is not a valid statement");
+        let mut diags = Diagnostics::default();
+        let _ = Parser::new(src.to_string()).parse(&mut diags);
         let rendered = diags.errors_str().join("\n");
         assert!(
             rendered.contains("block 'my_block'"),
@@ -1792,9 +1795,8 @@ mod tests {
         // `fn(i64) -> i64` in a .sim file, the arrow tokens shouldn't
         // parse (they belong to HLL's grammar variant, not MIR's).
         let src = "fn f(g: fn(i64) -> i64) { entry: return }";
-        let diags = Parser::new(src.to_string())
-            .parse()
-            .expect_err("`->` in MIR fn type should be a syntax error");
+        let mut diags = Diagnostics::default();
+        let _ = Parser::new(src.to_string()).parse(&mut diags);
         assert!(
             diags.error_count() >= 1,
             "expected at least one syntax error, got {}",
@@ -1812,9 +1814,7 @@ mod tests {
         let mixed = "struct P { x: i64, y: i64 }";
         let trailing = "struct P { x: i64, y: i64, }";
         for src in [ws, comma, mixed, trailing] {
-            let prog = Parser::new(src.to_string())
-                .parse()
-                .unwrap_or_else(|d| panic!("expected parse OK for {:?}: {:?}", src, d));
+            let prog = Parser::parse_or_panic(src);
             let Declaration::Struct(s) = &prog.declarations[0] else {
                 panic!()
             };
@@ -1832,9 +1832,7 @@ mod tests {
         // rejected as "undeclared type 'bool'". The pretty printer emits
         // `bool`, so round-tripping any bool-using program was broken.
         let src = "fn f(x: bool) { entry: return }";
-        let program = Parser::new(src.to_string())
-            .parse()
-            .expect("bool should parse as a type keyword");
+        let program = Parser::parse_or_panic(src);
         let Declaration::Fn(f) = &program.declarations[0] else {
             panic!("expected fn");
         };
@@ -1849,9 +1847,7 @@ mod tests {
         let without_semi = "fn f() { entry: return }";
         let multiple_with_semi = "fn f() { entry: goto loop; loop: return; }";
         for src in [with_semi, without_semi, multiple_with_semi] {
-            Parser::new(src.to_string())
-                .parse()
-                .unwrap_or_else(|d| panic!("expected parse OK for {:?}: {:?}", src, d));
+            Parser::parse_or_panic(src);
         }
     }
 }

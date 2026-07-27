@@ -6,15 +6,13 @@ mod parameter_ref_tests {
 
     #[test]
     fn seeds_nested_struct_parameter_reference_obligations() {
-        let program = Parser::new(
+        let program = Parser::parse_or_panic(
             "
             struct Inner: Move { r: &out i64 }
             struct Outer: Move { inner: Inner }
             fn f(p: Outer) { entry: return }
             ",
-        )
-        .parse()
-        .expect("parse");
+        );
         let env = Env::build(&program).0;
         let func = program.find_fn("f").expect("fn f");
         let body = func.body.as_ref().expect("body");
@@ -32,7 +30,7 @@ mod parameter_ref_tests {
 
     #[test]
     fn invalid_copy_does_not_clone_reference_obligations_in_dataflow() {
-        let program = Parser::new(
+        let program = Parser::parse_or_panic(
             "
             struct Linear: Move { r: &out i64 }
             fn f(x: Linear) {
@@ -42,9 +40,7 @@ mod parameter_ref_tests {
                 return
             }
             ",
-        )
-        .parse()
-        .expect("parse");
+        );
         let env = Env::build(&program).0;
         let func = program.find_fn("f").expect("fn f");
         let states = super::super::analysis::states_before_returns(&env, func);

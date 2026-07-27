@@ -9,7 +9,7 @@ use crate::mir::type_check;
 /// Run the full parse → typecheck → elaborate pipeline, returning the
 /// mutated program for inspection.
 fn elaborate_src(src: &str) -> Program {
-    let mut program = Parser::new(src.to_string()).parse().unwrap();
+    let mut program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
     env.typecheck(&program, &mut d);
@@ -356,7 +356,7 @@ fn f(x: Linear) {
 
 #[test]
 fn linear_require_uninit_remains_an_error_after_elaboration() {
-    let mut program = Parser::new(
+    let mut program = Parser::parse_or_panic(
         "
         struct Linear: Move { }
         fn f(x: Linear) {
@@ -364,11 +364,8 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
             require_uninit x;
             return
         }
-        "
-        .to_owned(),
-    )
-    .parse()
-    .unwrap();
+        ",
+    );
     let env = type_check::Env::build(&program).0;
     elaborate(&mut program, &env);
 
@@ -1153,7 +1150,7 @@ fn strict_check_still_fails_for_linear_leak() {
                 return
             }
         ";
-    let mut program = Parser::new(src.to_string()).parse().unwrap();
+    let mut program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
     let env = type_check::Env::build(&program).0;
     env.typecheck(&program, &mut d);

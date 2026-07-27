@@ -1706,13 +1706,7 @@ mod tests {
     use crate::mir::pretty_print::pretty_print;
 
     fn lower_source(source: &str) -> String {
-        let hll_prog = Parser::new(source).parse().unwrap_or_else(|d| {
-            panic!(
-                "parse error:\n{}\n--- source ---\n{}",
-                d.errors_str().join("\n"),
-                source
-            )
-        });
+        let hll_prog = Parser::parse_or_panic(source);
         let mut tc_d = Diagnostics::default();
         let types = typecheck_program_collect(&hll_prog, &mut tc_d);
         if tc_d.has_errors() {
@@ -1758,9 +1752,7 @@ mod tests {
 
     #[test]
     fn lower_type_preserves_outer_and_nested_hll_sources() {
-        let hll_program = Parser::new("fn main(exit: &out i64) {}")
-            .parse()
-            .expect("parse HLL");
+        let hll_program = Parser::parse_or_panic("fn main(exit: &out i64) {}");
         let hll::Declaration::Fn(function) = &hll_program.declarations[0] else {
             panic!("expected function declaration");
         };
@@ -1954,9 +1946,7 @@ mod tests {
 
     #[test]
     fn generated_expression_types_remain_available_to_lowering() {
-        let hll_program = Parser::new("fn check(cond: bool) { if cond {} }")
-            .parse()
-            .expect("parse HLL");
+        let hll_program = Parser::parse_or_panic("fn check(cond: bool) { if cond {} }");
         let [hll::Declaration::Fn(function)] = hll_program.declarations.as_slice() else {
             panic!("expected one function declaration");
         };

@@ -120,14 +120,15 @@ fn derive_fixture_path(
 /// Used by tests that need to assert on codes/spans, not just strings.
 #[track_caller]
 pub fn run_structured(src: &str) -> Diagnostics {
-    let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
+    let mut d = Diagnostics::default();
+    let program = Parser::new(src.to_string()).parse(&mut d).unwrap_or_else(|| {
         panic!(
             "parse error:\n{}\n--- source ---\n{}",
             d.errors_str().join("\n"),
             src
         )
     });
-    let mut d = Diagnostics::default().with_source(program.source.clone());
+    d.set_source(program.source.clone());
     elaborate_and_check_mir(program, &mut d);
     maybe_write_fixture(src, d.has_errors());
     d
@@ -198,14 +199,15 @@ fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> 
 /// `Diagnostics` container populated by `elaborate_and_check_mir` directly;
 /// use that when a test needs code/span rather than substring matching.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
-    let program = Parser::new(src.to_string()).parse().unwrap_or_else(|d| {
+    let mut d = Diagnostics::default();
+    let program = Parser::new(src.to_string()).parse(&mut d).unwrap_or_else(|| {
         panic!(
             "parse error:\n{}\n--- source ---\n{}",
             d.errors_str().join("\n"),
             src
         )
     });
-    let mut d = Diagnostics::default().with_source(program.source.clone());
+    d.set_source(program.source.clone());
     elaborate_and_check_mir(program, &mut d);
     maybe_write_fixture(src, d.has_errors());
     (d.errors_str(), d.warnings_str())

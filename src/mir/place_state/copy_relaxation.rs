@@ -893,7 +893,7 @@ mod tests {
     use crate::mir::parser::Parser;
 
     fn elaborate_source(source: &str) -> Program {
-        let mut program = Parser::new(source.to_owned()).parse().unwrap();
+        let mut program = Parser::parse_or_panic(source);
         let (env, errors) = Env::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
         let mut d = Diagnostics::default();
@@ -1495,7 +1495,7 @@ mod tests {
 
     #[test]
     fn elaboration_is_idempotent() {
-        let mut program = Parser::new(
+        let mut program = Parser::parse_or_panic(
             "
             extern fn consume(x: i64);
             fn f(x: i64) {
@@ -1504,11 +1504,8 @@ mod tests {
                 call consume(take x);
                 return
             }
-            "
-            .to_owned(),
-        )
-        .parse()
-        .unwrap();
+            ",
+        );
         let (env, errors) = Env::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
 
