@@ -1098,7 +1098,7 @@ impl Parser {
                             format!("Duplicate type parameter '{}'", pname),
                         ));
                     }
-                    let bounds = if let Some(m) = child
+                    let markers = if let Some(m) = child
                         .children(&mut child.walk())
                         .find(|c| c.kind() == "markers")
                     {
@@ -1109,7 +1109,7 @@ impl Parser {
                     self.type_scope.borrow_mut().insert(pname.clone());
                     types.push(TypeParam {
                         name: pname,
-                        bounds,
+                        bounds: Bounds::from_markers(markers),
                         source: SourceInfo::written(span_of(child)),
                     });
                 }

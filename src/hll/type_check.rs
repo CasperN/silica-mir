@@ -20,7 +20,10 @@ fn source_diagnostic(
 /// when computing a type's substructural class or validating uses
 /// against bounds — both need per-name marker info.
 fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Markers> {
-    params.iter().map(|p| (p.name.clone(), p.bounds)).collect()
+    params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds.markers))
+        .collect()
 }
 
 /// Substitute type-parameter references in `ty` using `mapping`. Used
@@ -573,7 +576,7 @@ impl TypeEnv {
                 for (tp, arg) in type_params.iter().zip(args.iter()) {
                     let arg_class = self.class_of(arg, scope);
                     for m in [Marker::Copy, Marker::Drop, Marker::Move] {
-                        if tp.bounds.declared(m) && !arg_class.implies(m) {
+                        if tp.bounds.markers.declared(m) && !arg_class.implies(m) {
                             d.push_error(Diagnostic::new(
                                 BoundNotSatisfied,
                                 arg.source,

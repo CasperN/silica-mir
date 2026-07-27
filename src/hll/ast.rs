@@ -173,13 +173,34 @@ impl Param {
     }
 }
 
+/// Everything a type-parameter binder promises about its parameter.
+/// `markers` carries the compiler-internal substructural vocabulary
+/// (Copy/Drop/Move); `traits` carries user-declared trait bounds as
+/// `Instance` values — trait references share the type-reference shape
+/// (name + lifetime args + type args), and until trait bounds grow
+/// bound-specific state a plain `Vec<Instance>` says everything.
+/// Empty today; populated once trait-decl syntax lands.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Bounds {
+    pub markers: Markers,
+    pub traits: Vec<Instance>,
+}
+
+impl Bounds {
+    pub fn from_markers(markers: Markers) -> Self {
+        Self {
+            markers,
+            traits: Vec::new(),
+        }
+    }
+}
+
 /// Generic type parameter declared on a struct/enum/fn. Bounds are
-/// unconditional markers (`T: Copy + Drop`); conditional bounds are
-/// deferred behind this form.
+/// unconditional markers plus (later) trait references (`T: Copy + Iter`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeParam {
     pub name: String,
-    pub bounds: Markers,
+    pub bounds: Bounds,
     pub source: SourceInfo,
 }
 

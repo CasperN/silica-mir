@@ -521,7 +521,9 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
         .iter()
         .map(|p| mir::TypeParam {
             name: p.name.clone(),
-            bounds: p.bounds,
+            // TODO: `p.bounds.traits` is always empty pre-trait-decl-syntax;
+            // when it lands, lower Instance from hll to mir here.
+            bounds: mir::Bounds::from_markers(p.bounds.markers),
             source: p.source,
         })
         .collect()

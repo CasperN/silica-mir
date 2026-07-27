@@ -99,7 +99,7 @@ fn write_type_params(out: &mut String, meta: &DeclMeta) {
         }
         first = false;
         out.push_str(&p.name);
-        write_markers(out, &p.bounds);
+        write_markers(out, &p.bounds.markers);
     }
     out.push('>');
 }

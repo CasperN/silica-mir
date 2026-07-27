@@ -11,6 +11,8 @@
 //! and return either the concrete type or a structured
 //! [`TypeResolutionError`] explaining why it couldn't be resolved.
 
+// TODO: Should this be moved to mir/ since its used widely?
+
 use super::TypeCheckCode::*;
 use super::TypeDecl;
 use crate::diagnostics::Diagnostic;
@@ -410,7 +412,7 @@ impl Env {
                 for (arg, param) in args.iter().zip(decl_params.iter()) {
                     self.validate_type(arg, scope)?;
                     let arg_class = class_of(arg, self, scope);
-                    for bound in param.bounds.iter_declared() {
+                    for bound in param.bounds.markers.iter_declared() {
                         if !arg_class.implies(bound) {
                             return Err(TypeValidationError::new(
                                 TypeValidationErrorKind::BoundNotSatisfied {

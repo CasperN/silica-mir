@@ -49,7 +49,7 @@ impl DeclMeta {
     pub fn param_scope(&self) -> IndexMap<String, Markers> {
         self.type_params
             .iter()
-            .map(|p| (p.name.clone(), p.bounds))
+            .map(|p| (p.name.clone(), p.bounds.markers))
             .collect()
     }
 }

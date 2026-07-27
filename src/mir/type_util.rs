@@ -321,7 +321,7 @@ mod tests {
         use crate::mir::ast::{RefKind, TypeParam};
         let tp = TypeParam {
             name: "T".into(),
-            bounds: Markers::empty(),
+            bounds: crate::mir::ast::Bounds::default(),
             source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
         };
         let ty = named_ref_ty(RefKind::Shared, Lifetime("a".into()), param_ty("T"));
@@ -357,7 +357,7 @@ mod tests {
         );
         let param = TypeParam {
             name: "T".into(),
-            bounds: Markers::empty(),
+            bounds: crate::mir::ast::Bounds::default(),
             source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
         };
         let argument = Type::new(TypeKind::Int(crate::common::IntTy::I64), argument_source);

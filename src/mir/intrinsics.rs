@@ -489,7 +489,7 @@ fn sizeof_fn() -> Function {
     let mut meta = intrinsic_meta(SIZEOF_NAME);
     meta.type_params.push(TypeParam {
         name: "T".to_string(),
-        bounds: Markers::empty(),
+        bounds: Bounds::default(),
         source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     });
     let params = vec![Param {
@@ -519,7 +519,7 @@ fn ptr_offset_fn() -> Function {
     let mut meta = intrinsic_meta(PTR_OFFSET_NAME);
     meta.type_params.push(TypeParam {
         name: "T".to_string(),
-        bounds: Markers::empty(),
+        bounds: Bounds::default(),
         source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
     });
     let params = vec![
