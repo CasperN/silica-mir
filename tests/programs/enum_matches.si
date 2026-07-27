@@ -1,7 +1,8 @@
 # Enum + match end-to-end shapes. Covers nested-enum downcast,
-# per-slot decode of an array of enums (via a helper to sidestep
-# VF-DowncastOnProjection), and asymmetric arm use of an &mut
-# borrow with a unit-payload enum.
+# per-slot decode of an array of enums (both via a helper AND
+# directly as `a[k] match { ... }`), match on a struct field
+# projection, and asymmetric arm use of an &mut borrow with a
+# unit-payload enum.
 
 # ---------- Nested enum: downcast, then downcast again ----------
 
@@ -24,11 +25,9 @@ fn nested_downcast(o: Outer) -> i64 {
 
 # ---------- Per-slot decode of an array of Copy+Drop enums ----------
 
-# Wrapping the per-slot decode in `to_i64` extracts each slot into
-# the callee's owned parameter; a direct `a[i] match { ... }` would
-# trip VF-DowncastOnProjection (variant flow tracks root Vars, not
-# projections). The `Neg` arm uses HLL unary `-`, lowered to
-# `$i64_neg`.
+# Two shapes are legal today. `sum_two_tags` extracts each slot into
+# `to_i64`'s owned parameter — the historical helper pattern. The
+# `Neg` arm in `to_i64` uses HLL unary `-`, lowered to `$i64_neg`.
 enum Tag: Copy + Drop { Zero: unit, Pos: i64, Neg: i64 }
 
 fn to_i64(t: Tag) -> i64 {
@@ -41,6 +40,39 @@ fn to_i64(t: Tag) -> i64 {
 
 fn sum_two_tags(a: [Tag; 2]) -> i64 {
   to_i64(a[0i64]) + to_i64(a[1i64])
+}
+
+# ---------- Direct match on array slot / struct field projections ----------
+
+# `a[k] match { ... }` and `s.field match { ... }` on constant
+# projections work directly — `switchEnum` refines the projection
+# path in place, and each arm's `a[k] as V` / `s.field as V` reads
+# through that refinement. Dynamic indices (`a[i]` with i not
+# constant) and deref chains (`r.* match { ... }`) still require
+# extract-to-local because the tracked state can't name the exact
+# slot / pointee.
+fn sum_two_tags_direct(a: [Tag; 2]) -> i64 {
+  let first = a[0i64] match {
+    Zero(_) => 0i64,
+    Pos(p) => p,
+    Neg(n) => -n,
+  };
+  let second = a[1i64] match {
+    Zero(_) => 0i64,
+    Pos(p) => p,
+    Neg(n) => -n,
+  };
+  first + second
+}
+
+struct Tagged: Copy + Drop { tag: Tag, extra: i64 }
+
+fn decode_field(t: Tagged) -> i64 {
+  t.tag match {
+    Zero(_) => t.extra,
+    Pos(p) => p + t.extra,
+    Neg(n) => t.extra - n,
+  }
 }
 
 # ---------- Asymmetric &mut use across arms ----------
