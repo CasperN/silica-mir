@@ -1,9 +1,9 @@
 # This fixture pins the span information — caret position — attached to
-# structured variant-flow diagnostics. A regression here means the renderer
+# enum-variant diagnostics. A regression here means the renderer
 # pointed the caret at the wrong statement or terminator.
 #
-# Every function exercises one (DiagCode x span-anchor) cell and fires exactly
-# one VF-* diagnostic.
+# Every function exercises one (DiagCode × span-anchor) cell and fires
+# exactly one PS- or REACH- diagnostic.
 #
 #   cell | fn
 #   DowncastVariantNotRefined, caret on the copy stmt  | [A] downcast_variant_not_refined_at_stmt_span

@@ -1,36 +1,37 @@
-# variant_flow pass rejects ill-formed switchEnum uses and unguarded downcasts.
+# Enum-variant checks reject ill-formed switchEnum uses and unguarded downcasts.
 #
-# Every function exercises one cell of the error matrix for the
-# variant_flow pass (VF-*) and the type-checker (TC-*). All diagnosed
-# errors are pre-elaboration, so every function in this file can
-# coexist in one fixture without pipeline-shortcut splitting.
+# Every function exercises one cell of the error matrix for reachability
+# switch checks (REACH-*), place_state variant refinement (PS-*), and
+# the type-checker (TC-*). All diagnosed errors surface without full
+# elaboration, so every function in this file can coexist in one fixture
+# without pipeline-shortcut splitting.
 #
 # Axes:
 #   check_kind  — which rule is violated
 #   trigger     — what program shape produces the violation
 #
 #   fn                                                     check_kind                                                trigger
-#   coverage_missing_variant                               VF-SwitchNotExhaustive                                    arm absent for one variant
-#   coverage_multiple_missing_reported                     VF-SwitchNotExhaustive (×2)                               two variants absent from three-variant enum
-#   coverage_duplicate_arm                                 VF-SwitchDuplicateArm                                     same variant listed twice
-#   coverage_unknown_variant_still_reported_and_missing_still_fires  TC-SwitchArmUnknownVariant + VF-SwitchNotExhaustive  bogus name used; real variant absent
-#   empty_enum_switch_with_no_arms_rejected                VF-SwitchNoArms                                           zero arms on empty enum (no variants to be missing)
-#   switch_with_no_arms                                    VF-SwitchNoArms + VF-SwitchNotExhaustive (×2)             zero arms on two-variant enum
+#   coverage_missing_variant                               REACH-SwitchNotExhaustive                                    arm absent for one variant
+#   coverage_multiple_missing_reported                     REACH-SwitchNotExhaustive (×2)                               two variants absent from three-variant enum
+#   coverage_duplicate_arm                                 REACH-SwitchDuplicateArm                                     same variant listed twice
+#   coverage_unknown_variant_still_reported_and_missing_still_fires  TC-SwitchArmUnknownVariant + REACH-SwitchNotExhaustive  bogus name used; real variant absent
+#   empty_enum_switch_with_no_arms_rejected                REACH-SwitchNoArms                                           zero arms on empty enum (no variants to be missing)
+#   switch_with_no_arms                                    REACH-SwitchNoArms + REACH-SwitchNotExhaustive (×2)             zero arms on two-variant enum
 #   empty_enum_switch_with_spurious_arm_errors             TC-SwitchArmUnknownVariant                                arm names a nonexistent variant of empty enum
-#   downcast_read_without_refinement                       VF-DowncastVariantNotRefined                              copy downcast in a statement before any narrowing switch
-#   downcast_in_switch_place_without_refinement            TC-SwitchOnNonEnum + VF-DowncastVariantNotRefined         downcast step inside the switchEnum place with no prior refinement
-#   downcast_on_field_of_struct_errors                     VF-DowncastOnProjection                                   downcast applied to a field projection, not a root Var
-#   flow_unreachable_arm_on_parameter                      VF-SwitchArmFalselyUnreachable                            parameter has Top state at function entry
-#   flow_unreachable_arm_after_reassign                    VF-SwitchArmFalselyUnreachable                            non-EnumConstr assignment clobbers prior refinement to Top
-#   flow_unreachable_arm_after_ambiguous_join              VF-SwitchArmFalselyUnreachable                            join of two different constructions widens to {None,Some}
-#   flow_exclusive_borrow_clobbers_refinement              VF-SwitchArmFalselyUnreachable                            &mut borrow of tracked Var clobbers its refinement
-#   flow_out_borrow_clobbers_refinement                    VF-SwitchArmFalselyUnreachable                            &out borrow of tracked Var clobbers its refinement
-#   flow_drop_borrow_clobbers_refinement                   VF-SwitchArmFalselyUnreachable + INIT-UseAfterMove        &drop eagerly moves Var; subsequent read fires UseAfterMove too
-#   flow_uninit_borrow_clobbers_refinement                 VF-SwitchArmFalselyUnreachable                            &uninit borrow of tracked Var clobbers its refinement
-#   flow_switch_in_loop_widens_variant_correctly           VF-SwitchArmFalselyUnreachable                            loop backedge join widens {None} to {None,Some}
-#   flow_deref_switch_place_treated_as_top                 VF-SwitchArmFalselyUnreachable                            switch on r.* (Deref place) is never tracked; state is Top
-#   flow_field_switch_place_treated_as_top                 VF-SwitchArmFalselyUnreachable                            switch on w.inner (field projection) is never tracked; state is Top
-#   variant_with_inhabited_struct_payload_still_reachable  VF-SwitchArmFalselyUnreachable                            struct payload with only inhabited fields makes the variant reachable
+#   downcast_read_without_refinement                       PS-DowncastVariantNotRefined                              copy downcast in a statement before any narrowing switch
+#   downcast_in_switch_place_without_refinement            TC-SwitchOnNonEnum + PS-DowncastVariantNotRefined         downcast step inside the switchEnum place with no prior refinement
+#   downcast_on_field_of_struct_errors                     PS-DowncastVariantNotRefined                              downcast applied to a struct-field projection with no refining switch
+#   downcast_on_array_slot_errors                          PS-DowncastVariantNotRefined                              downcast applied to a constant array-slot projection with no refining switch
+#   flow_unreachable_arm_on_parameter                      REACH-SwitchArmFalselyUnreachable                            parameter has Top state at function entry
+#   flow_unreachable_arm_after_reassign                    REACH-SwitchArmFalselyUnreachable                            non-EnumConstr assignment clobbers prior refinement to Top
+#   flow_unreachable_arm_after_ambiguous_join              REACH-SwitchArmFalselyUnreachable                            join of two different constructions widens to {None,Some}
+#   flow_exclusive_borrow_clobbers_refinement              REACH-SwitchArmFalselyUnreachable                            &mut borrow of tracked Var clobbers its refinement
+#   flow_out_borrow_clobbers_refinement                    REACH-SwitchArmFalselyUnreachable                            &out borrow of tracked Var clobbers its refinement
+#   flow_drop_borrow_clobbers_refinement                   REACH-SwitchArmFalselyUnreachable + PS-UseAfterMove        &drop eagerly moves Var; subsequent read fires UseAfterMove too
+#   flow_uninit_borrow_clobbers_refinement                 REACH-SwitchArmFalselyUnreachable                            &uninit borrow of tracked Var clobbers its refinement
+#   flow_switch_in_loop_widens_variant_correctly           REACH-SwitchArmFalselyUnreachable                            loop backedge join widens {None} to {None,Some}
+#   flow_deref_switch_place_treated_as_top                 REACH-SwitchArmFalselyUnreachable                            switch on r.* (Deref place) is never tracked; state is Top
+#   variant_with_inhabited_struct_payload_still_reachable  REACH-SwitchArmFalselyUnreachable                            struct payload with only inhabited fields makes the variant reachable
 
 enum Option: Copy + Drop { None: unit Some: i64 }
 enum Three:  Copy + Drop { A: unit B: unit C: unit }
@@ -87,7 +88,7 @@ fn coverage_duplicate_arm(o: Option) {
 
 # ---------- coverage_unknown_variant_still_reported_and_missing_still_fires ----------
 # TC-SwitchArmUnknownVariant fires for the name "Bogus" which does not
-# belong to Option. VF-SwitchNotExhaustive fires separately for the real
+# belong to Option. REACH-SwitchNotExhaustive fires separately for the real
 # variant "Some" which is absent from the arm list.
 fn coverage_unknown_variant_still_reported_and_missing_still_fires(o: Option) {
   entry:
@@ -132,8 +133,8 @@ fn empty_enum_switch_with_spurious_arm_errors(v: Void) {
 # ---------- downcast_read_without_refinement: unguarded copy downcast fires DowncastVariantNotRefined ----------
 
 # Reading `o as Some` in a block where `o` has not been narrowed by a
-# preceding switchEnum arm is unsound. The variant_flow state for `o`
-# is Top (any variant possible), so the downcast is rejected.
+# preceding switchEnum arm is unsound. The tracked state for `o` is
+# opaque `Init` (any variant possible), so the downcast is rejected.
 fn downcast_read_without_refinement(o: Option) {
   x: i64;
   entry:
@@ -298,11 +299,11 @@ fn flow_out_borrow_clobbers_refinement() {
 # ---------- flow_drop_borrow_clobbers_refinement: &drop clobbers tracked Var ----------
 
 # A `&drop` borrow is exclusive and the init-state pass eagerly marks the
-# borrowed Var as Moved at borrow creation. The variant-flow pass clobbers
+# borrowed Var as Moved at borrow creation. The enum-variant check clobbers
 # `o`'s refinement to Top at the same point. Both effects persist through
 # the borrow lifetime, so after unborrow a subsequent switchEnum sees Top
-# (VF-SwitchArmFalselyUnreachable) and also sees Moved state
-# (INIT-UseAfterMove). The `drop r.*` consumes the pointee through the
+# (REACH-SwitchArmFalselyUnreachable) and also sees Moved state
+# (PS-UseAfterMove). The `drop r.*` consumes the pointee through the
 # ref to fulfil the &drop obligation before unborrow.
 fn flow_drop_borrow_clobbers_refinement() {
   o: Option;

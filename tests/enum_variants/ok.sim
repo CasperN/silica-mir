@@ -1,11 +1,13 @@
-# variant_flow pass accepts well-formed switchEnum uses across all shapes.
+# Enum-variant checks accept well-formed switchEnum uses across all shapes.
 #
-# The pass validates switchEnum terminators: exhaustiveness, absence of
-# duplicate arms, and refinement of the switched place into its variant
-# type in each successor block. A clean run means every switch is
-# exhaustive, every arm target is reachable (or provably dead and
-# terminated with `unreachable`), and every downcast is performed in a
-# block where the place has already been refined.
+# Two passes collaborate: place_state refines the switched place per arm
+# and rejects unrefined downcasts (PS-DowncastVariantNotRefined);
+# reachability validates switch structure (exhaustiveness, no duplicates,
+# non-empty arm list) and arm reachability (unreachable-marked arm must
+# correspond to a variant proven not to occur). A clean run means every
+# switch is exhaustive, every arm target is reachable (or provably dead
+# and terminated with `unreachable`), and every downcast is performed in
+# a block where the place has already been refined.
 #
 # Axes:
 #   switch_shape  — enum cardinality and how the switch is written

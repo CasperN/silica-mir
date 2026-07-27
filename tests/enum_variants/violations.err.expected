@@ -1,0 +1,217 @@
+error: at 95:5: [TC-SwitchArmUnknownVariant] In function 'coverage_unknown_variant_still_reported_and_missing_still_fires', block 'entry': variant 'Bogus' is not part of enum 'Option'
+    |
+ 94 |   entry:
+ 95 |     switchEnum(o) [None: n, Bogus: b]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 96 |   n:
+    |
+error: at 128:5: [TC-SwitchArmUnknownVariant] In function 'empty_enum_switch_with_spurious_arm_errors', block 'entry': variant 'None' is not part of enum 'Void'
+     |
+ 127 |   entry:
+ 128 |     switchEnum(v) [None: arm]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 129 |   arm:
+     |
+error: at 155:5: [TC-SwitchOnNonEnum] In function 'downcast_in_switch_place_without_refinement', block 'entry': switchEnum place must be an enum type, found i64
+     |
+ 154 |   entry:
+ 155 |     switchEnum(o as Some) [None: n]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 156 |   n:
+     |
+error: at 141:5: [PS-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+     |
+ 140 |   entry:
+ 141 |     x = copy o as Some;
+     |     ^^^^^^^^^^^^^^^^^^
+ 142 |     drop x;
+     |
+error: at 155:5: [PS-DowncastVariantNotRefined] In function 'downcast_in_switch_place_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+     |
+ 154 |   entry:
+ 155 |     switchEnum(o as Some) [None: n]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 156 |   n:
+     |
+error: at 171:5: [PS-DowncastVariantNotRefined] In function 'downcast_on_field_of_struct_errors', block 'entry': cannot downcast 'w.inner as Some' here: 'w.inner' is not refined to variant 'Some'
+     |
+ 170 |   entry:
+ 171 |     x = copy w.inner as Some;
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^
+ 172 |     drop x;
+     |
+error: at 188:5: [PS-DowncastVariantNotRefined] In function 'downcast_on_array_slot_errors', block 'entry': cannot downcast 'a[0] as Some' here: 'a[0]' is not refined to variant 'Some'
+     |
+ 187 |     a[1] = Option::None(unit);
+ 188 |     x = copy a[0] as Some;
+     |     ^^^^^^^^^^^^^^^^^^^^^
+ 189 |     drop x;
+     |
+error: at 316:5: [PS-UseAfterMove] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
+     |
+ 315 |     unborrow r;
+ 316 |     switchEnum(o) [None: dead, Some: s]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 317 |   dead:
+     |
+error: at 337:5: [PS-UseAfterMove] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
+     |
+ 336 |     unborrow r;
+ 337 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 338 |   n:
+     |
+error: at 339:5: [PS-UseAfterMove] In function 'flow_uninit_borrow_clobbers_refinement', block 'n': variable 'o' is used after move
+     |
+ 338 |   n:
+ 339 |     drop o;
+     |     ^^^^^^
+ 340 |     drop b;
+     |
+error: at 433:5: [PS-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
+     |
+ 432 |     call set_a(move ab_ref);
+ 433 |     f = copy ab as B;  # Variant read not okay - it could have changed.
+     |     ^^^^^^^^^^^^^^^^
+ 434 |     goto ret;
+     |
+error: at 52:5: [REACH-SwitchNotExhaustive] In function 'coverage_missing_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+    |
+ 51 |   entry:
+ 52 |     switchEnum(o) [None: n]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 53 |   n:
+    |
+error: at 65:5: [REACH-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'B'
+    |
+ 64 |   entry:
+ 65 |     switchEnum(t) [A: a]
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 66 |   a:
+    |
+error: at 65:5: [REACH-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'C'
+    |
+ 64 |   entry:
+ 65 |     switchEnum(t) [A: a]
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 66 |   a:
+    |
+error: at 77:5: [REACH-SwitchDuplicateArm] In function 'coverage_duplicate_arm', block 'entry': switchEnum has duplicate arm for variant 'None'
+    |
+ 76 |   entry:
+ 77 |     switchEnum(o) [None: a, None: b, Some: s]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 78 |   a:
+    |
+error: at 95:5: [REACH-SwitchNotExhaustive] In function 'coverage_unknown_variant_still_reported_and_missing_still_fires', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+    |
+ 94 |   entry:
+ 95 |     switchEnum(o) [None: n, Bogus: b]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 96 |   n:
+    |
+error: at 110:5: [REACH-SwitchNoArms] In function 'empty_enum_switch_with_no_arms_rejected', block 'entry': switchEnum requires at least one arm
+     |
+ 109 |   entry:
+ 110 |     switchEnum(v) []
+     |     ^^^^^^^^^^^^^^^^
+ 111 | }
+     |
+error: at 119:5: [REACH-SwitchNoArms] In function 'switch_with_no_arms', block 'entry': switchEnum requires at least one arm
+     |
+ 118 |   entry:
+ 119 |     switchEnum(o) []
+     |     ^^^^^^^^^^^^^^^^
+ 120 | }
+     |
+error: at 119:5: [REACH-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'None'
+     |
+ 118 |   entry:
+ 119 |     switchEnum(o) []
+     |     ^^^^^^^^^^^^^^^^
+ 120 | }
+     |
+error: at 119:5: [REACH-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+     |
+ 118 |   entry:
+ 119 |     switchEnum(o) []
+     |     ^^^^^^^^^^^^^^^^
+ 120 | }
+     |
+error: at 203:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_on_parameter', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 202 |   entry:
+ 203 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 204 |   n:
+     |
+error: at 221:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_reassign', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 220 |     o = copy other;
+ 221 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 222 |   n:
+     |
+error: at 247:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_ambiguous_join', block 'join': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 246 |   join:
+ 247 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 248 |   n:
+     |
+error: at 269:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_exclusive_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 268 |     unborrow r;
+ 269 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 270 |   n:
+     |
+error: at 291:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_out_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
+     |
+ 290 |     unborrow r;
+ 291 |     switchEnum(o) [None: dead, Some: s]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 292 |   s:
+     |
+error: at 316:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
+     |
+ 315 |     unborrow r;
+ 316 |     switchEnum(o) [None: dead, Some: s]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 317 |   dead:
+     |
+error: at 337:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 336 |     unborrow r;
+ 337 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 338 |   n:
+     |
+error: at 360:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_switch_in_loop_widens_variant_correctly', block 'header': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 359 |   header:
+ 360 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 361 |   n:
+     |
+error: at 386:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_deref_switch_place_treated_as_top', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 385 |     r = &o;
+ 386 |     switchEnum(r.*) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 387 |   n:
+     |
+error: at 404:5: [REACH-SwitchArmFalselyUnreachable] In function 'variant_with_inhabited_struct_payload_still_reachable', block 'entry': switchEnum arm for variant 'Bad' claims unreachable but variant is reachable at this point
+     |
+ 403 |   entry:
+ 404 |     switchEnum(e) [Good: g, Bad: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 405 |   g:
+     |
+note: at 40:8: [COMP-MoveMarkerRedundant] Move marker is redundant on 'HasInhabited' because both Copy and Drop are present
+    |
+ 39 | struct Wrap: Copy + Drop { inner: Option }
+ 40 | struct HasInhabited: Copy + Drop + Move { x: i64 }
+    |        ^^^^^^^^^^^^
+ 41 | enum WithInhabited: Copy + Drop { Good: i64 Bad: HasInhabited }
+    |
