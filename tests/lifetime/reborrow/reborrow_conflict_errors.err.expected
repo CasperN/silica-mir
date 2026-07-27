@@ -1,4 +1,4 @@
-error: at 62:5: [INIT-UseAfterMove] In function 'move_parent_while_child_live', block 'entry': variable 'r' is used after move
+error: at 62:5: [PS-UseAfterMove] In function 'move_parent_while_child_live', block 'entry': variable 'r' is used after move
     |
  61 |     call sink(move s);
  62 |     return

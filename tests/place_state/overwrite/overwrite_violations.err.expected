@@ -1,4 +1,4 @@
-error: at 38:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_linear_whole', block 'entry': reference 'y.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 38:5: [PS-RefObligationUnfulfilled] In function 'overwrite_init_linear_whole', block 'entry': reference 'y.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  34 | fn overwrite_init_linear_whole(x1: Linear, x2: Linear) {
  35 |   y: Linear;
@@ -9,14 +9,14 @@ error: at 38:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_line
     |     ^^^^^^^^^^^
  39 |     call consume(move y);
     |
-error: at 51:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_field', block 'entry': cannot overwrite 'c.w1': type Wrap is not Drop and the value is still live (consume it via `drop c.w1` first)
+error: at 51:5: [PS-OverwriteWithoutDrop] In function 'overwrite_init_linear_field', block 'entry': cannot overwrite 'c.w1': type Wrap is not Drop and the value is still live (consume it via `drop c.w1` first)
     |
  50 |     c.w1 = move w0;
  51 |     c.w1 = move w1;
     |     ^^^^^^^^^^^^^^
  52 |     return
     |
-error: at 51:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_linear_field', block 'entry': reference 'c.w1.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 51:5: [PS-RefObligationUnfulfilled] In function 'overwrite_init_linear_field', block 'entry': reference 'c.w1.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  47 | fn overwrite_init_linear_field(w0: Wrap, w1: Wrap) {
  48 |   c: Container;
@@ -27,7 +27,7 @@ error: at 51:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_line
     |     ^^^^^^^^^^^^^^
  52 |     return
     |
-error: at 52:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_linear_field', block 'entry': reference 'c.w1.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 52:5: [PS-RefObligationUnfulfilled] In function 'overwrite_init_linear_field', block 'entry': reference 'c.w1.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  47 | fn overwrite_init_linear_field(w0: Wrap, w1: Wrap) {
  48 |   c: Container;
@@ -41,7 +41,7 @@ error: at 52:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_init_line
     |     ^^^^^^
  53 | }
     |
-error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_field_unfulfilled_oblg', block 'entry': reference 'b.p' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 68:5: [PS-RefObligationUnfulfilled] In function 'overwrite_ref_field_unfulfilled_oblg', block 'entry': reference 'b.p' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  62 | fn overwrite_ref_field_unfulfilled_oblg(x: i64, x2: i64) {
  63 |   b: RefBox;
@@ -55,14 +55,14 @@ error: at 68:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_ref_field
     |     ^^^^^^^^^^^^^
  69 |     return
     |
-error: at 80:5: [INIT-DynamicIndexConsumption] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot assign to 'a[?]': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
+error: at 80:5: [PS-DynamicIndexConsumption] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot assign to 'a[?]': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
     |
  79 |   entry:
  80 |     a[copy i] = move new_linear;
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
  81 |     call consume_array(move a);
     |
-error: at 80:5: [INIT-OverwriteWithoutDrop] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot overwrite 'a[?]': type Linear is not Drop and the value is still live (consume it via `drop a[?]` first)
+error: at 80:5: [PS-OverwriteWithoutDrop] In function 'overwrite_init_linear_dynamic_index', block 'entry': cannot overwrite 'a[?]': type Linear is not Drop and the value is still live (consume it via `drop a[?]` first)
     |
  79 |   entry:
  80 |     a[copy i] = move new_linear;

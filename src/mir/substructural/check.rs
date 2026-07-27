@@ -221,7 +221,7 @@ fn check_terminator(
 #[cfg(test)]
 mod tests {
     use crate::diagnostics::DiagCode;
-    use crate::mir::place_state::analysis::InitStateCode;
+    use crate::mir::place_state::analysis::PlaceStateCode;
     use crate::mir::test_util::*;
 
     /// Pins the interaction between NLL elaboration and the return-time
@@ -266,7 +266,7 @@ mod tests {
         );
         assert_eq!(
             s_r_errs[0].code(),
-            DiagCode::InitState(InitStateCode::RefObligationUnfulfilled),
+            DiagCode::PlaceState(PlaceStateCode::RefObligationUnfulfilled),
             "expected the obligation code (fired from init_state's \
              close_ref_if_present at the NLL-inserted unborrow), got {:?}",
             s_r_errs[0].code(),

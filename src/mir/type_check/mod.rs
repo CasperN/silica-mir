@@ -78,7 +78,7 @@ pub enum TypeCheckCode {
     /// block label that isn't defined in this function.
     TerminatorUndefinedTarget,
     /// `branch` condition operand doesn't have type `bool`.
-    BranchConditionNotBool,
+    BranchOnNonBool,
     /// `switchEnum(place)` where `place`'s type isn't a known enum.
     SwitchOnNonEnum,
     /// A `switchEnum` arm names a variant that isn't declared on

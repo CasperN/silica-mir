@@ -336,7 +336,7 @@ error: at 435:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatCM', block 'f'
  436 |     goto done
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 66:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 66:5: [PS-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  61 | 
  62 | fn copy_linear_struct_as_rvalue(x: Linear) {
@@ -350,7 +350,7 @@ error: at 66:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_
     |     ^^^^^^
  67 | }
     |
-error: at 80:5: [INIT-RefObligationUnfulfilled] In function 'copy_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 80:5: [PS-RefObligationUnfulfilled] In function 'copy_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  75 | 
  76 | fn copy_out_ref(r: &out i64) {
@@ -364,7 +364,7 @@ error: at 80:5: [INIT-RefObligationUnfulfilled] In function 'copy_out_ref', bloc
     |     ^^^^^^
  81 | }
     |
-error: at 95:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_call_arg', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 95:5: [PS-RefObligationUnfulfilled] In function 'copy_linear_struct_as_call_arg', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  91 | 
  92 | fn copy_linear_struct_as_call_arg(x: Linear) {
@@ -375,7 +375,7 @@ error: at 95:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_
     |     ^^^^^^
  96 | }
     |
-error: at 104:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct_as_enum_payload', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 104:5: [PS-RefObligationUnfulfilled] In function 'copy_linear_struct_as_enum_payload', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
   99 | 
  100 | fn copy_linear_struct_as_enum_payload(x: Linear) {
@@ -389,7 +389,7 @@ error: at 104:5: [INIT-RefObligationUnfulfilled] In function 'copy_linear_struct
      |     ^^^^^^
  105 | }
      |
-error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_linear_struct', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 131:5: [PS-RefObligationUnfulfilled] In function 'drop_linear_struct', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  128 | 
  129 | fn drop_linear_struct(x: Linear) {
@@ -399,7 +399,7 @@ error: at 131:5: [INIT-RefObligationUnfulfilled] In function 'drop_linear_struct
      |     ^^^^^^
  132 |     return
      |
-error: at 137:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 137:5: [PS-RefObligationUnfulfilled] In function 'drop_drop_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
      |
  134 | 
  135 | fn drop_drop_ref(r: &drop i64) {
@@ -409,7 +409,7 @@ error: at 137:5: [INIT-RefObligationUnfulfilled] In function 'drop_drop_ref', bl
      |     ^^^^^^
  138 |     return
      |
-error: at 143:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 143:5: [PS-RefObligationUnfulfilled] In function 'drop_out_ref', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  140 | 
  141 | fn drop_out_ref(r: &out i64) {
@@ -419,7 +419,7 @@ error: at 143:5: [INIT-RefObligationUnfulfilled] In function 'drop_out_ref', blo
      |     ^^^^^^
  144 |     return
      |
-error: at 156:5: [INIT-ReturnValueLeak] In function 'copy_op_MatL', block 'entry': value 'x' of type MatL is not consumed at return
+error: at 156:5: [PS-ReturnValueLeak] In function 'copy_op_MatL', block 'entry': value 'x' of type MatL is not consumed at return
      |
  151 | # MatL (no markers): not Copy — fires SUB-CopyOfNonCopy.
  152 | fn copy_op_MatL(x: MatL) {
@@ -434,7 +434,7 @@ error: at 156:5: [INIT-ReturnValueLeak] In function 'copy_op_MatL', block 'entry
  157 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 156:5: [INIT-ReturnValueLeak] In function 'copy_op_MatL', block 'entry': value 'y' of type MatL is not consumed at return
+error: at 156:5: [PS-ReturnValueLeak] In function 'copy_op_MatL', block 'entry': value 'y' of type MatL is not consumed at return
      |
  152 | fn copy_op_MatL(x: MatL) {
  153 |   y: MatL;
@@ -446,7 +446,7 @@ error: at 156:5: [INIT-ReturnValueLeak] In function 'copy_op_MatL', block 'entry
  157 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 172:5: [INIT-ReturnValueLeak] In function 'copy_op_MatM', block 'entry': value 'x' of type MatM is not consumed at return
+error: at 172:5: [PS-ReturnValueLeak] In function 'copy_op_MatM', block 'entry': value 'x' of type MatM is not consumed at return
      |
  167 | # MatM (Move only): not Copy — fires SUB-CopyOfNonCopy.
  168 | fn copy_op_MatM(x: MatM) {
@@ -461,7 +461,7 @@ error: at 172:5: [INIT-ReturnValueLeak] In function 'copy_op_MatM', block 'entry
  173 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 172:5: [INIT-ReturnValueLeak] In function 'copy_op_MatM', block 'entry': value 'y' of type MatM is not consumed at return
+error: at 172:5: [PS-ReturnValueLeak] In function 'copy_op_MatM', block 'entry': value 'y' of type MatM is not consumed at return
      |
  168 | fn copy_op_MatM(x: MatM) {
  169 |   y: MatM;
@@ -473,7 +473,7 @@ error: at 172:5: [INIT-ReturnValueLeak] In function 'copy_op_MatM', block 'entry
  173 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 188:5: [INIT-ReturnValueLeak] In function 'copy_op_MatC_leaks', block 'entry': value 'x' of type MatC is not consumed at return
+error: at 188:5: [PS-ReturnValueLeak] In function 'copy_op_MatC_leaks', block 'entry': value 'x' of type MatC is not consumed at return
      |
  185 | # Drop and the param can only be duplicated, never discharged.
  186 | fn copy_op_MatC_leaks(x: MatC) {
@@ -484,7 +484,7 @@ error: at 188:5: [INIT-ReturnValueLeak] In function 'copy_op_MatC_leaks', block 
  189 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 201:5: [INIT-ReturnValueLeak] In function 'move_op_MatL', block 'entry': value 'y' of type MatL is not consumed at return
+error: at 201:5: [PS-ReturnValueLeak] In function 'move_op_MatL', block 'entry': value 'y' of type MatL is not consumed at return
      |
  197 | fn move_op_MatL(x: MatL) {
  198 |   y: MatL;
@@ -496,7 +496,7 @@ error: at 201:5: [INIT-ReturnValueLeak] In function 'move_op_MatL', block 'entry
  202 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 260:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatL', block 'entry': value 'x' of type MatL is not consumed at return
+error: at 260:5: [PS-ReturnValueLeak] In function 'untouched_param_MatL', block 'entry': value 'x' of type MatL is not consumed at return
      |
  257 | # MatL (no markers): not Drop — leaks at return.
  258 | fn untouched_param_MatL(x: MatL) {
@@ -507,7 +507,7 @@ error: at 260:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatL', bloc
  261 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 266:5: [INIT-ReturnValueLeak] In function 'untouched_param_C', block 'entry': value 'x' of type C is not consumed at return
+error: at 266:5: [PS-ReturnValueLeak] In function 'untouched_param_C', block 'entry': value 'x' of type C is not consumed at return
      |
  263 | # C (Copy only): not Drop — leaks at return.
  264 | fn untouched_param_C(x: C) {
@@ -518,7 +518,7 @@ error: at 266:5: [INIT-ReturnValueLeak] In function 'untouched_param_C', block '
  267 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 272:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatM', block 'entry': value 'x' of type MatM is not consumed at return
+error: at 272:5: [PS-ReturnValueLeak] In function 'untouched_param_MatM', block 'entry': value 'x' of type MatM is not consumed at return
      |
  269 | # MatM (Move only): not Drop — leaks at return.
  270 | fn untouched_param_MatM(x: MatM) {
@@ -529,7 +529,7 @@ error: at 272:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatM', bloc
  273 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 278:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatCM', block 'entry': value 'x' of type MatCM is not consumed at return
+error: at 278:5: [PS-ReturnValueLeak] In function 'untouched_param_MatCM', block 'entry': value 'x' of type MatCM is not consumed at return
      |
  275 | # MatCM (Copy + Move): not Drop — leaks at return.
  276 | fn untouched_param_MatCM(x: MatCM) {
@@ -540,7 +540,7 @@ error: at 278:5: [INIT-ReturnValueLeak] In function 'untouched_param_MatCM', blo
  279 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 341:5: [INIT-ReturnValueLeak] In function 'if_one_arm_move_MatM', block 'done': value 'x' of type MatM is not consumed at return
+error: at 341:5: [PS-ReturnValueLeak] In function 'if_one_arm_move_MatM', block 'done': value 'x' of type MatM is not consumed at return
      |
  331 | # ============================================================
  332 | fn if_one_arm_move_MatM(x: MatM, cond: bool) {
@@ -555,7 +555,7 @@ error: at 341:5: [INIT-ReturnValueLeak] In function 'if_one_arm_move_MatM', bloc
  342 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 352:5: [INIT-ReturnValueLeak] In function 'if_one_arm_move_MatCM', block 'done': value 'x' of type MatCM is not consumed at return
+error: at 352:5: [PS-ReturnValueLeak] In function 'if_one_arm_move_MatCM', block 'done': value 'x' of type MatCM is not consumed at return
      |
  342 | }
  343 | fn if_one_arm_move_MatCM(x: MatCM, cond: bool) {
@@ -570,7 +570,7 @@ error: at 352:5: [INIT-ReturnValueLeak] In function 'if_one_arm_move_MatCM', blo
  353 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 369:5: [INIT-ReturnValueLeak] In function 'if_one_arm_drop_MatL', block 'done': value 'x' of type MatL is not consumed at return
+error: at 369:5: [PS-ReturnValueLeak] In function 'if_one_arm_drop_MatL', block 'done': value 'x' of type MatL is not consumed at return
      |
  359 | # ============================================================
  360 | fn if_one_arm_drop_MatL(x: MatL, cond: bool) {
@@ -585,7 +585,7 @@ error: at 369:5: [INIT-ReturnValueLeak] In function 'if_one_arm_drop_MatL', bloc
  370 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 380:5: [INIT-ReturnValueLeak] In function 'if_one_arm_drop_MatM', block 'done': value 'x' of type MatM is not consumed at return
+error: at 380:5: [PS-ReturnValueLeak] In function 'if_one_arm_drop_MatM', block 'done': value 'x' of type MatM is not consumed at return
      |
  370 | }
  371 | fn if_one_arm_drop_MatM(x: MatM, cond: bool) {

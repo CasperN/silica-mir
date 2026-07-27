@@ -70,7 +70,7 @@ pub enum SubstructuralCompositionCode {
     /// not `Move`.
     MoveMarkerNotSatisfied,
     /// Move marker is redundant because both Copy and Drop are present.
-    RedundantMoveMarker,
+    MoveMarkerRedundant,
 }
 
 impl From<SubstructuralCompositionCode> for DiagCode {
@@ -192,7 +192,7 @@ fn check_markers_against(
 fn check_redundant_move(decl_meta: &DeclMeta, d: &mut Diagnostics) {
     if decl_meta.markers.is_redundant_move() {
         d.push_info(diag(
-            RedundantMoveMarker,
+            MoveMarkerRedundant,
             decl_meta.name_source,
             format!(
                 "Move marker is redundant on '{}' because both Copy and Drop are present",

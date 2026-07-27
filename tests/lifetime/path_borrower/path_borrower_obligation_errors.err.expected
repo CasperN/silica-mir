@@ -1,4 +1,4 @@
-error: at 29:5: [INIT-RefCallEntryMismatch] In function 'move_with_unfulfilled_ref_obs', block 'entry': cannot transfer 'b.p' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
+error: at 29:5: [PS-RefCallEntryMismatch] In function 'move_with_unfulfilled_ref_obs', block 'entry': cannot transfer 'b.p' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
     |
  23 | fn move_with_unfulfilled_ref_obs(x: i64) {
  24 |   b: RefBox;

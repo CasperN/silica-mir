@@ -1,46 +1,46 @@
-error: at 27:5: [INIT-BorrowStateMismatch] In function 'shared_of_never_init', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
+error: at 27:5: [PS-BorrowStateMismatch] In function 'shared_of_never_init', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is not yet initialized
     |
  26 |   entry:
  27 |     r = &x;
     |     ^^^^^^
  28 |     return
     |
-error: at 35:5: [INIT-BorrowStateMismatch] In function 'shared_of_moved', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is moved-from
+error: at 35:5: [PS-BorrowStateMismatch] In function 'shared_of_moved', block 'entry': cannot create & of 'x': place must be initialized at borrow, but is moved-from
     |
  34 |     call sink(move x);
  35 |     r = &x;
     |     ^^^^^^
  36 |     return
     |
-error: at 44:5: [INIT-BorrowStateMismatch] In function 'shared_of_partial', block 'entry': cannot create & of 'p': place must be initialized at borrow, but is partially initialized
+error: at 44:5: [PS-BorrowStateMismatch] In function 'shared_of_partial', block 'entry': cannot create & of 'p': place must be initialized at borrow, but is partially initialized
     |
  43 |     p.x = 1;
  44 |     r = &p;
     |     ^^^^^^
  45 |     return
     |
-error: at 54:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init', block 'entry': cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized
+error: at 54:5: [PS-BorrowStateMismatch] In function 'mut_of_never_init', block 'entry': cannot create &mut of 'x': place must be initialized at borrow, but is not yet initialized
     |
  53 |   entry:
  54 |     r = &mut x;
     |     ^^^^^^^^^^
  55 |     return
     |
-error: at 65:5: [INIT-BorrowStateMismatch] In function 'mut_of_never_init_field', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
+error: at 65:5: [PS-BorrowStateMismatch] In function 'mut_of_never_init_field', block 'entry': cannot create &mut of 'p.y': place must be initialized at borrow, but is not yet initialized
     |
  64 |     p.x = 1;
  65 |     r = &mut p.y;
     |     ^^^^^^^^^^^^
  66 |     return
     |
-error: at 75:5: [INIT-BorrowStateMismatch] In function 'drop_of_never_init', block 'entry': cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized
+error: at 75:5: [PS-BorrowStateMismatch] In function 'drop_of_never_init', block 'entry': cannot create &drop of 'x': place must be initialized at borrow, but is not yet initialized
     |
  74 |   entry:
  75 |     r = &drop x;
     |     ^^^^^^^^^^^
  76 |     return
     |
-error: at 76:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_never_init', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 76:5: [PS-RefObligationUnfulfilled] In function 'drop_of_never_init', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
  72 |   x: i64;
  73 |   r: &drop i64;
@@ -51,14 +51,14 @@ error: at 76:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_never_init'
     |     ^^^^^^
  77 | }
     |
-error: at 84:5: [INIT-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
+error: at 84:5: [PS-BorrowStateMismatch] In function 'drop_of_partial', block 'entry': cannot create &drop of 'p': place must be initialized at borrow, but is partially initialized
     |
  83 |     p.x = 1;
  84 |     r = &drop p;
     |     ^^^^^^^^^^^
  85 |     return
     |
-error: at 85:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 85:5: [PS-RefObligationUnfulfilled] In function 'drop_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
  80 |   p: P;
  81 |   r: &drop P;
@@ -72,14 +72,14 @@ error: at 85:5: [INIT-RefObligationUnfulfilled] In function 'drop_of_partial', b
     |     ^^^^^^
  86 | }
     |
-error: at 95:5: [INIT-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
+error: at 95:5: [PS-BorrowStateMismatch] In function 'out_of_partial', block 'entry': cannot create &out of 'p': place must be uninitialized at borrow, but is partially initialized
     |
  94 |     p.x = 1;
  95 |     r = &out p;
     |     ^^^^^^^^^^
  96 |     return
     |
-error: at 96:5: [INIT-RefObligationUnfulfilled] In function 'out_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 96:5: [PS-RefObligationUnfulfilled] In function 'out_of_partial', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  91 |   p: P;
  92 |   r: &out P;
@@ -93,7 +93,7 @@ error: at 96:5: [INIT-RefObligationUnfulfilled] In function 'out_of_partial', bl
     |     ^^^^^^
  97 | }
     |
-error: at 104:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
+error: at 104:5: [PS-BorrowStateMismatch] In function 'out_of_init_non_drop', block 'entry': cannot create &out of 'x': place must be uninitialized at borrow, but is initialized
      |
  103 |   entry:
  104 |     rr = &out x;
@@ -101,7 +101,7 @@ error: at 104:5: [INIT-BorrowStateMismatch] In function 'out_of_init_non_drop', 
  105 |     return
      |
   hint: move 'x' out first — linear values cannot be forgotten in place
-error: at 105:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'rr' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 105:5: [PS-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'rr' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  101 | fn out_of_init_non_drop(x: Linear) {
  102 |   rr: &out Linear;
@@ -112,7 +112,7 @@ error: at 105:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_dr
      |     ^^^^^^
  106 | }
      |
-error: at 105:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 105:5: [PS-RefObligationUnfulfilled] In function 'out_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  100 | # failure carries the "move out first" hint.
  101 | fn out_of_init_non_drop(x: Linear) {
@@ -126,7 +126,7 @@ error: at 105:5: [INIT-RefObligationUnfulfilled] In function 'out_of_init_non_dr
      |     ^^^^^^
  106 | }
      |
-error: at 112:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
+error: at 112:5: [PS-BorrowStateMismatch] In function 'uninit_of_init_non_drop', block 'entry': cannot create &uninit of 'x': place must be uninitialized at borrow, but is initialized
      |
  111 |   entry:
  112 |     rr = &uninit x;
@@ -134,7 +134,7 @@ error: at 112:5: [INIT-BorrowStateMismatch] In function 'uninit_of_init_non_drop
  113 |     return
      |
   hint: move 'x' out first — linear values cannot be forgotten in place
-error: at 113:5: [INIT-RefObligationUnfulfilled] In function 'uninit_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 113:5: [PS-RefObligationUnfulfilled] In function 'uninit_of_init_non_drop', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  108 | # ---------- &uninit: pointee Init non-Drop ----------
  109 | fn uninit_of_init_non_drop(x: Linear) {

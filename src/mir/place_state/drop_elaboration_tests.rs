@@ -378,13 +378,13 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
     assert!(
         errors
             .iter()
-            .any(|error| error.contains("[INIT-RequireUninitNotSatisfied]")),
+            .any(|error| error.contains("[PS-RequireUninitNotSatisfied]")),
         "linear value was silently accepted after elaboration: {errors:?}",
     );
     assert!(
         !errors
             .iter()
-            .any(|error| error.contains("[INIT-ReturnValueLeak]")),
+            .any(|error| error.contains("[PS-ReturnValueLeak]")),
         "require_uninit should be the single authoritative leak diagnostic: {errors:?}",
     );
 }

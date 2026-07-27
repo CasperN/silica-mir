@@ -604,7 +604,7 @@ impl Env {
                     Ok(cond_ty) if cond_ty.kind != TypeKind::Bool => {
                         d.push_error(format_type_diagnostic(&func.meta, &cond_ty, |ty| {
                             terminator_diag(
-                                TypeCheckCode::BranchConditionNotBool,
+                                TypeCheckCode::BranchOnNonBool,
                                 format!("branch condition must be bool, found {}", ty),
                             )
                         }))

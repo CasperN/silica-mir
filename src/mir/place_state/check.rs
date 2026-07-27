@@ -10,7 +10,7 @@ use super::analysis::{
     advance_ty, capture_carried_refs, describe_obligation_mismatch, describe_pointee_state,
     describe_state, enum_variant_payload_ty, extract_init_path, format_path, is_state_fully_init,
     partial_is_uninit, read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
-    states_before_returns, InitSlot, InitState, InitStateCode, InitStateCode::*, InitStateContext,
+    states_before_returns, InitSlot, InitState, PlaceStateCode, PlaceStateCode::*, PlaceStateContext,
     PointState, RefState,
 };
 
@@ -165,7 +165,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     }
 
     let locals = func.locals_map();
-    let ctx = InitStateContext {
+    let ctx = PlaceStateContext {
         env,
         locals: &locals,
     };
@@ -252,7 +252,7 @@ pub(super) fn ref_root_decl_source(func: &Function, ref_place: &Place) -> Option
 
 // ---------- Diagnostic pass ----------
 
-impl<'a> InitStateContext<'a> {
+impl<'a> PlaceStateContext<'a> {
     pub(super) fn check_block(
         &self,
         func: &Function,
@@ -377,7 +377,7 @@ impl<'a> InitStateContext<'a> {
                 if !state_refines_to_variant(&prefix_state, v) {
                     let prefix = format_path(&root, &path[..i]);
                     d.push_error(diag(
-                        InitStateCode::DowncastVariantNotRefined,
+                        PlaceStateCode::DowncastVariantNotRefined,
                         source,
                         func,
                         block,

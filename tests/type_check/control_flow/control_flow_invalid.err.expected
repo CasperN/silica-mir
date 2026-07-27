@@ -12,7 +12,7 @@ error: at 38:5: [TC-TerminatorUndefinedTarget] In function 'label_seeker', block
     |     ^^^^^^^^^^
  39 | }
     |
-error: at 47:5: [TC-BranchConditionNotBool] In function 'branch_non_bool_condition', block 'entry': branch condition must be bool, found i64
+error: at 47:5: [TC-BranchOnNonBool] In function 'branch_non_bool_condition', block 'entry': branch condition must be bool, found i64
     |
  46 |   entry:
  47 |     branch(copy n) [true: yes, false: no]

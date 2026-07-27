@@ -1,4 +1,4 @@
-error: at 72:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct_partial_init', block 'entry': reference 'p.a.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 72:5: [PS-RefObligationUnfulfilled] In function 'fully_linear_struct_partial_init', block 'entry': reference 'p.a.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  68 | fn fully_linear_struct_partial_init(src: Pair) {
  69 |   p: Pair;
@@ -9,7 +9,7 @@ error: at 72:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct
     |     ^^^^^^
  73 | }
     |
-error: at 92:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 92:5: [PS-RefObligationUnfulfilled] In function 'out_ref_param_untouched', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  89 | # the pointee, so the ref-obligation fires at return.
  90 | fn out_ref_param_untouched(r: &out i64) {
@@ -19,7 +19,7 @@ error: at 92:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_untou
     |     ^^^^^^
  93 | }
     |
-error: at 134:5: [INIT-RefObligationUnfulfilled] In function 'ref_field_leak_via_nll_unborrow', block 'entry': reference 's.r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 134:5: [PS-RefObligationUnfulfilled] In function 'ref_field_leak_via_nll_unborrow', block 'entry': reference 's.r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
      |
  130 | fn ref_field_leak_via_nll_unborrow(x: i64) {
  131 |   s: RefField;
@@ -30,7 +30,7 @@ error: at 134:5: [INIT-RefObligationUnfulfilled] In function 'ref_field_leak_via
      |     ^^^^^^
  135 | }
      |
-error: at 43:5: [INIT-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
+error: at 43:5: [PS-ReturnValueLeak] In function 'linear_struct_untouched_param', block 'entry': value 'p' of type P is not consumed at return
     |
  40 | 
  41 | fn linear_struct_untouched_param(p: P) {
@@ -41,7 +41,7 @@ error: at 43:5: [INIT-ReturnValueLeak] In function 'linear_struct_untouched_para
  44 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 53:5: [INIT-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
+error: at 53:5: [PS-ReturnValueLeak] In function 'linear_struct_fully_constructed', block 'entry': value 'p' of type P is not consumed at return
     |
  48 | fn linear_struct_fully_constructed() {
  49 |   p: P;
@@ -56,7 +56,7 @@ error: at 53:5: [INIT-ReturnValueLeak] In function 'linear_struct_fully_construc
  54 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 61:5: [INIT-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
+error: at 61:5: [PS-ReturnValueLeak] In function 'fully_linear_struct_untouched', block 'entry': value 'x' of type L is not consumed at return
     |
  58 | # Every field is non-Drop, so drop-elab cannot help; the whole `x` leaks.
  59 | fn fully_linear_struct_untouched(x: L) {
@@ -67,7 +67,7 @@ error: at 61:5: [INIT-ReturnValueLeak] In function 'fully_linear_struct_untouche
  62 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 61:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct_untouched', block 'entry': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+error: at 61:5: [PS-RefObligationUnfulfilled] In function 'fully_linear_struct_untouched', block 'entry': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
     |
  58 | # Every field is non-Drop, so drop-elab cannot help; the whole `x` leaks.
  59 | fn fully_linear_struct_untouched(x: L) {
@@ -77,7 +77,7 @@ error: at 61:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct
     |     ^^^^^^
  62 | }
     |
-error: at 72:5: [INIT-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
+error: at 72:5: [PS-ReturnValueLeak] In function 'fully_linear_struct_partial_init', block 'entry': value 'src.b' of type L is not consumed at return
     |
  67 | # still Init. The leak is reported on the specific field.
  68 | fn fully_linear_struct_partial_init(src: Pair) {
@@ -92,7 +92,7 @@ error: at 72:5: [INIT-ReturnValueLeak] In function 'fully_linear_struct_partial_
  73 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 72:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct_partial_init', block 'entry': reference 'src.b.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+error: at 72:5: [PS-RefObligationUnfulfilled] In function 'fully_linear_struct_partial_init', block 'entry': reference 'src.b.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
     |
  67 | # still Init. The leak is reported on the specific field.
  68 | fn fully_linear_struct_partial_init(src: Pair) {
@@ -106,7 +106,7 @@ error: at 72:5: [INIT-RefObligationUnfulfilled] In function 'fully_linear_struct
     |     ^^^^^^
  73 | }
     |
-error: at 81:5: [INIT-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
+error: at 81:5: [PS-ReturnValueLeak] In function 'multiple_returns_each_checked', block 't': value 'x' of type L is not consumed at return
     |
  76 | 
  77 | fn multiple_returns_each_checked(b: bool, x: L) {
@@ -121,7 +121,7 @@ error: at 81:5: [INIT-ReturnValueLeak] In function 'multiple_returns_each_checke
  82 |   fbr:
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 81:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_each_checked', block 't': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+error: at 81:5: [PS-RefObligationUnfulfilled] In function 'multiple_returns_each_checked', block 't': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
     |
  76 | 
  77 | fn multiple_returns_each_checked(b: bool, x: L) {
@@ -135,7 +135,7 @@ error: at 81:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_ea
     |     ^^^^^^
  82 |   fbr:
     |
-error: at 83:5: [INIT-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
+error: at 83:5: [PS-ReturnValueLeak] In function 'multiple_returns_each_checked', block 'fbr': value 'x' of type L is not consumed at return
     |
  76 | 
  77 | fn multiple_returns_each_checked(b: bool, x: L) {
@@ -150,7 +150,7 @@ error: at 83:5: [INIT-ReturnValueLeak] In function 'multiple_returns_each_checke
  84 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_each_checked', block 'fbr': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+error: at 83:5: [PS-RefObligationUnfulfilled] In function 'multiple_returns_each_checked', block 'fbr': reference 'x.r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
     |
  76 | 
  77 | fn multiple_returns_each_checked(b: bool, x: L) {
@@ -164,7 +164,7 @@ error: at 83:5: [INIT-RefObligationUnfulfilled] In function 'multiple_returns_ea
     |     ^^^^^^
  84 | }
     |
-error: at 108:5: [INIT-ReturnValueLeak] In function 'partial_array_leaks_slot', block 'entry': value 'a[1]' of type S is not consumed at return
+error: at 108:5: [PS-ReturnValueLeak] In function 'partial_array_leaks_slot', block 'entry': value 'a[1]' of type S is not consumed at return
      |
  102 | fn partial_array_leaks_slot() {
  103 |   a: [S; 3];
@@ -179,7 +179,7 @@ error: at 108:5: [INIT-ReturnValueLeak] In function 'partial_array_leaks_slot', 
  109 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 121:5: [INIT-ReturnValueLeak] In function 'partial_array_in_struct_leaks', block 'entry': value 'owner.arr[2]' of type S is not consumed at return
+error: at 121:5: [PS-ReturnValueLeak] In function 'partial_array_in_struct_leaks', block 'entry': value 'owner.arr[2]' of type S is not consumed at return
      |
  115 | fn partial_array_in_struct_leaks() {
  116 |   owner: ArrOwner;

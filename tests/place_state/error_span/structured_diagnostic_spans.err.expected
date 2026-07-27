@@ -1,18 +1,18 @@
-error: at 29:5: [INIT-UseAfterMove] In function 'use_after_move_at_call_span', block 'entry': variable 'x' is used after move
+error: at 29:5: [PS-UseAfterMove] In function 'use_after_move_at_call_span', block 'entry': variable 'x' is used after move
     |
  28 |     call take_m(move x);
  29 |     call take_m(move x);
     |     ^^^^^^^^^^^^^^^^^^^
  30 |     return
     |
-error: at 41:5: [INIT-UseBeforeInit] In function 'use_before_init_at_stmt_span', block 'entry': variable 'z' is used before initialization
+error: at 41:5: [PS-UseBeforeInit] In function 'use_before_init_at_stmt_span', block 'entry': variable 'z' is used before initialization
     |
  40 |   entry:
  41 |     x = copy z;
     |     ^^^^^^^^^^
  42 |     return
     |
-error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_without_drop_at_stmt_span', block 'entry': reference 'y.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 54:5: [PS-RefObligationUnfulfilled] In function 'overwrite_without_drop_at_stmt_span', block 'entry': reference 'y.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  50 | fn overwrite_without_drop_at_stmt_span(a1: A, a2: A) {
  51 |   y: A;
@@ -23,7 +23,7 @@ error: at 54:5: [INIT-RefObligationUnfulfilled] In function 'overwrite_without_d
     |     ^^^^^^^^^^^
  55 |     call take_a(move y);
     |
-error: at 71:5: [INIT-RefObligationUnfulfilled] In function 'ref_obligation_unfulfilled_at_drop_span', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 71:5: [PS-RefObligationUnfulfilled] In function 'ref_obligation_unfulfilled_at_drop_span', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  65 | # statement, with a secondary note back to the parameter declaration.
  66 | fn ref_obligation_unfulfilled_at_drop_span(r: &mut M) {

@@ -1,53 +1,53 @@
-error: at 33:5: [INIT-UseBeforeInit] In function 'read_of_uninit_local', block 'entry': variable 'x' is used before initialization
+error: at 33:5: [PS-UseBeforeInit] In function 'read_of_uninit_local', block 'entry': variable 'x' is used before initialization
     |
  32 |   entry:
  33 |     y = copy x;
     |     ^^^^^^^^^^
  34 |     return
     |
-error: at 44:5: [INIT-UseBeforeInit] In function 'drop_of_uninit', block 'entry': variable 'x' is used before initialization
+error: at 44:5: [PS-UseBeforeInit] In function 'drop_of_uninit', block 'entry': variable 'x' is used before initialization
     |
  43 |   entry:
  44 |     drop x;
     |     ^^^^^^
  45 |     return
     |
-error: at 55:5: [INIT-UseBeforeInit] In function 'call_arg_uninit', block 'entry': variable 'x' is used before initialization
+error: at 55:5: [PS-UseBeforeInit] In function 'call_arg_uninit', block 'entry': variable 'x' is used before initialization
     |
  54 |   entry:
  55 |     call takes_num(copy x);
     |     ^^^^^^^^^^^^^^^^^^^^^^
  56 |     return
     |
-error: at 66:5: [INIT-UseBeforeInit] In function 'call_target_uninit', block 'entry': variable 'g' is used before initialization
+error: at 66:5: [PS-UseBeforeInit] In function 'call_target_uninit', block 'entry': variable 'g' is used before initialization
     |
  65 |   entry:
  66 |     call copy g(1);
     |     ^^^^^^^^^^^^^^
  67 |     return
     |
-error: at 80:5: [INIT-UseAfterMove] In function 'read_after_move', block 'entry': variable 'x' is used after move
+error: at 80:5: [PS-UseAfterMove] In function 'read_after_move', block 'entry': variable 'x' is used after move
     |
  79 |     y = move x;
  80 |     z = move x;
     |     ^^^^^^^^^^
  81 |     return
     |
-error: at 93:5: [INIT-UseAfterMove] In function 'move_then_move', block 'entry': variable 'x' is used after move
+error: at 93:5: [PS-UseAfterMove] In function 'move_then_move', block 'entry': variable 'x' is used after move
     |
  92 |     y = move x;
  93 |     z = move x;
     |     ^^^^^^^^^^
  94 |     return
     |
-error: at 106:5: [INIT-UseAfterMove] In function 'drop_consumes_like_move', block 'entry': variable 'x' is used after move
+error: at 106:5: [PS-UseAfterMove] In function 'drop_consumes_like_move', block 'entry': variable 'x' is used after move
      |
  105 |     drop x;
  106 |     y = copy x;
      |     ^^^^^^^^^^
  107 |     return
      |
-error: at 117:5: [INIT-UseAfterMove] In function 'call_arg_move_then_move', block 'entry': variable 'x' is used after move
+error: at 117:5: [PS-UseAfterMove] In function 'call_arg_move_then_move', block 'entry': variable 'x' is used after move
      |
  116 |   entry:
  117 |     call take_two(move x, move x);

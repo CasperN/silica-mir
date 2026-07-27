@@ -15,7 +15,7 @@ use std::collections::{BTreeMap, BTreeSet};
 /// reborrow vs. wrong place state at a direct borrow both fold into
 /// `BorrowStateMismatch`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum InitStateCode {
+pub enum PlaceStateCode {
     // ---- Reads (place-use checks) ----
     /// Read of a local (or projection thereof) whose root is `NeverInit`.
     UseBeforeInit,
@@ -101,12 +101,12 @@ pub enum InitStateCode {
     DowncastVariantNotRefined,
 }
 
-impl From<InitStateCode> for DiagCode {
-    fn from(code: InitStateCode) -> DiagCode {
-        DiagCode::InitState(code)
+impl From<PlaceStateCode> for DiagCode {
+    fn from(code: PlaceStateCode) -> DiagCode {
+        DiagCode::PlaceState(code)
     }
 }
-use InitStateCode::*;
+use PlaceStateCode::*;
 
 /// Sub-slot of an `InitState::Partial` state. Struct fields carry a name, array slots
 /// carry the constant index; the enum keeps the two shapes distinct in the
@@ -246,7 +246,7 @@ pub(super) fn is_static_place(place: &Place) -> bool {
         .all(|step| !matches!(step, PathStep::Index(None)))
 }
 
-pub(super) struct InitStateContext<'a> {
+pub(super) struct PlaceStateContext<'a> {
     pub(super) env: &'a Env,
     pub(super) locals: &'a IndexMap<String, Type>,
 }
@@ -460,7 +460,7 @@ fn join_variant_partials(
     canonicalize(InitState::Partial(out))
 }
 
-pub(super) fn join_point(ctx: &InitStateContext<'_>, a: &PointState, b: &PointState) -> PointState {
+pub(super) fn join_point(ctx: &PlaceStateContext<'_>, a: &PointState, b: &PointState) -> PointState {
     let locals: IndexMap<String, InitState> = a
         .locals
         .iter()
@@ -751,7 +751,7 @@ pub fn block_entry_states(env: &Env, func: &Function) -> IndexMap<String, PointS
         return IndexMap::new();
     }
     let locals = func.locals_map();
-    let ctx = InitStateContext {
+    let ctx = PlaceStateContext {
         env,
         locals: &locals,
     };
@@ -764,7 +764,7 @@ pub fn block_entry_states(env: &Env, func: &Function) -> IndexMap<String, PointS
 /// the block.
 pub fn transfer_stmt_silent(env: &Env, func: &Function, stmt: &Statement, state: &mut PointState) {
     let locals = func.locals_map();
-    let ctx = InitStateContext {
+    let ctx = PlaceStateContext {
         env,
         locals: &locals,
     };
@@ -784,7 +784,7 @@ pub fn states_before_returns<'a>(
     }
 
     let locals = func.locals_map();
-    let ctx = InitStateContext {
+    let ctx = PlaceStateContext {
         env,
         locals: &locals,
     };
@@ -895,7 +895,7 @@ pub(super) fn is_trivially_init(ty: &Type, env: &Env) -> bool {
 /// Bridge between init_state's per-function context and the generic
 /// dataflow framework. Instantiated per-function.
 struct InitAnalysis<'a> {
-    ctx: &'a InitStateContext<'a>,
+    ctx: &'a PlaceStateContext<'a>,
     boundary: PointState,
 }
 
@@ -984,7 +984,7 @@ pub(super) fn state_refines_to_variant(state: &InitState, variant: &str) -> bool
 }
 
 pub(super) fn run_fixpoint(
-    ctx: &InitStateContext,
+    ctx: &PlaceStateContext,
     func: &Function,
     body: &FunctionBody,
 ) -> IndexMap<String, PointState> {
@@ -997,7 +997,7 @@ pub(super) fn run_fixpoint(
 
 // ---------- Transfer (state updates) ----------
 
-impl<'a> InitStateContext<'a> {
+impl<'a> PlaceStateContext<'a> {
     pub(super) fn transfer_stmt(&self, stmt: &Statement, state: &mut PointState) {
         match &stmt.kind {
             StatementKind::Assign(target, rvalue) => {
@@ -1358,7 +1358,7 @@ pub(super) enum DerefOp {
     Write,
 }
 
-impl<'a> InitStateContext<'a> {
+impl<'a> PlaceStateContext<'a> {
     /// Apply the state effect of an operation through an exclusive reference.
     /// Fields, downcasts, and constant indexes above the dereference are
     /// tracked within the pointee's `InitState` tree.

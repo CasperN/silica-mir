@@ -68,7 +68,7 @@ error: at 88:17: [TC-AssignmentTypeMismatch] In function 'assignment_type_mismat
     |                 ^^^^^^^^
  89 |                 return
     |
-error: at 100:5: [TC-BranchConditionNotBool] In function 'branch_multi_errors_fn_f', block 'entry': branch condition must be bool, found i64
+error: at 100:5: [TC-BranchOnNonBool] In function 'branch_multi_errors_fn_f', block 'entry': branch condition must be bool, found i64
      |
   99 |   entry:
  100 |     branch(copy n) [true: nowhere1, false: nowhere2]
@@ -89,7 +89,7 @@ error: at 100:5: [TC-TerminatorUndefinedTarget] In function 'branch_multi_errors
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  101 | }
      |
-error: at 104:5: [TC-BranchConditionNotBool] In function 'branch_multi_errors_fn_g', block 'entry': branch condition must be bool, found i64
+error: at 104:5: [TC-BranchOnNonBool] In function 'branch_multi_errors_fn_g', block 'entry': branch condition must be bool, found i64
      |
  103 |   entry:
  104 |     branch(copy n) [true: nowhere1, false: nowhere2]

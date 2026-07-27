@@ -26,70 +26,70 @@ error: at 97:5: [TC-ArrayIndexNotInteger] In function 'non_int_index', block 'en
     |     ^^^^^^^^^^^^^^^^^^
  98 |     return
     |
-error: at 71:5: [INIT-BorrowStateMismatch] In function 'zero_len_array_index_oob', block 'entry': cannot create &mut of 'a[0]': place must be initialized at borrow, but is not yet initialized
+error: at 71:5: [PS-BorrowStateMismatch] In function 'zero_len_array_index_oob', block 'entry': cannot create &mut of 'a[0]': place must be initialized at borrow, but is not yet initialized
     |
  70 |   entry:
  71 |     r = &mut a[0i64];
     |     ^^^^^^^^^^^^^^^^
  72 |     return
     |
-error: at 110:5: [INIT-BorrowDynamicIndexNonUniform] In function 'mut_borrow_dynamic_uninit_fails', block 'entry': cannot create &mut of 'a[?]': dynamic index requires the containing array to be uniformly initialized, but it is not yet initialized
+error: at 110:5: [PS-BorrowDynamicIndexNonUniform] In function 'mut_borrow_dynamic_uninit_fails', block 'entry': cannot create &mut of 'a[?]': dynamic index requires the containing array to be uniformly initialized, but it is not yet initialized
      |
  109 |   entry:
  110 |     r = &mut a[copy i];
      |     ^^^^^^^^^^^^^^^^^^
  111 |     call use_mut(move r);
      |
-error: at 127:5: [INIT-BorrowDynamicIndexStateChanging] In function 'out_borrow_dynamic_fails', block 'entry': cannot create &out of 'a[?]': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.
+error: at 127:5: [PS-BorrowDynamicIndexStateChanging] In function 'out_borrow_dynamic_fails', block 'entry': cannot create &out of 'a[?]': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.
      |
  126 |   entry:
  127 |     r = &out a[copy i];
      |     ^^^^^^^^^^^^^^^^^^
  128 |     call set_i64(move r, 1i64);
      |
-error: at 142:5: [INIT-BorrowDynamicIndexStateChanging] In function 'drop_borrow_dynamic_fails', block 'entry': cannot create &drop of 'a[?]': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.
+error: at 142:5: [PS-BorrowDynamicIndexStateChanging] In function 'drop_borrow_dynamic_fails', block 'entry': cannot create &drop of 'a[?]': this borrow changes the slot's state, but the index isn't known at compile time. On a uniformly-initialized array, use `&mut a[i]` instead — it preserves the slot's state.
      |
  141 |     a = [1i64, 2i64, 3i64];
  142 |     r = &drop a[copy i];
      |     ^^^^^^^^^^^^^^^^^^^
  143 |     call destroy_i64(move r);
      |
-error: at 156:5: [INIT-DynamicIndexConsumption] In function 'move_dynamic_index_fails', block 'entry': cannot `move a[?]`: this consumes one slot, but the index isn't known at compile time. Move by a constant index, or move the whole array.
+error: at 156:5: [PS-DynamicIndexConsumption] In function 'move_dynamic_index_fails', block 'entry': cannot `move a[?]`: this consumes one slot, but the index isn't known at compile time. Move by a constant index, or move the whole array.
      |
  155 |     a = [1i64, 2i64, 3i64];
  156 |     call consume_i64(move a[copy i]);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  157 |     return
      |
-error: at 168:5: [INIT-DynamicIndexConsumption] In function 'drop_dynamic_index_fails', block 'entry': cannot `drop a[?]`: this consumes one slot, but the index isn't known at compile time. Drop by a constant index.
+error: at 168:5: [PS-DynamicIndexConsumption] In function 'drop_dynamic_index_fails', block 'entry': cannot `drop a[?]`: this consumes one slot, but the index isn't known at compile time. Drop by a constant index.
      |
  167 |     a = [1i64, 2i64, 3i64];
  168 |     drop a[copy i];
      |     ^^^^^^^^^^^^^^
  169 |     return
      |
-error: at 182:5: [INIT-DynamicIndexConsumption] In function 'assign_dynamic_slot_fails', block 'entry': cannot assign to 'a[?]': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
+error: at 182:5: [PS-DynamicIndexConsumption] In function 'assign_dynamic_slot_fails', block 'entry': cannot assign to 'a[?]': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
      |
  181 |     a = [1i64, 2i64, 3i64];
  182 |     a[copy i] = 99i64;
      |     ^^^^^^^^^^^^^^^^^
  183 |     return
      |
-error: at 197:5: [INIT-DynamicIndexConsumption] In function 'assign_dynamic_slot_field_fails', block 'entry': cannot assign to 'a[?].x': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
+error: at 197:5: [PS-DynamicIndexConsumption] In function 'assign_dynamic_slot_field_fails', block 'entry': cannot assign to 'a[?].x': this changes one slot, but the index isn't known at compile time. To replace a slot at runtime, borrow it as `&mut` and write through the reference: `p = &mut a[i]; drop p.*; p.* = new_value;`
      |
  196 |     a[2i64].x = 0i64; a[2i64].y = 0i64;
  197 |     a[copy i].x = 99i64;
      |     ^^^^^^^^^^^^^^^^^^^
  198 |     return
      |
-error: at 213:5: [INIT-UseBeforeInit] In function 'read_partially_init_array', block 'entry': variable 'a' is used before initialization
+error: at 213:5: [PS-UseBeforeInit] In function 'read_partially_init_array', block 'entry': variable 'a' is used before initialization
      |
  212 |     call set_i64(move r0, 10i64);
  213 |     x = copy a[1i64];
      |     ^^^^^^^^^^^^^^^^
  214 |     return
      |
-error: at 225:5: [INIT-UseBeforeInit] In function 'read_uninit_array_dynamic', block 'entry': variable 'a' is used before initialization
+error: at 225:5: [PS-UseBeforeInit] In function 'read_uninit_array_dynamic', block 'entry': variable 'a' is used before initialization
      |
  224 |   entry:
  225 |     x = copy a[copy i];

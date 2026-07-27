@@ -6,14 +6,14 @@ error: at 21:5: [SUB-CopyOfNonCopy] In function 'sub_copy_of_non_copy', block 'e
  22 |     call consume(move b);
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 36:5: [INIT-UseAfterMove] In function 'init_use_after_move', block 'entry': variable 'a' is used after move
+error: at 36:5: [PS-UseAfterMove] In function 'init_use_after_move', block 'entry': variable 'a' is used after move
     |
  35 |     b = move a;
  36 |     call consume(move a);
     |     ^^^^^^^^^^^^^^^^^^^^
  37 |     return
     |
-error: at 23:5: [INIT-ReturnValueLeak] In function 'sub_copy_of_non_copy', block 'entry': value 'a' of type Linear is not consumed at return
+error: at 23:5: [PS-ReturnValueLeak] In function 'sub_copy_of_non_copy', block 'entry': value 'a' of type Linear is not consumed at return
     |
  17 | # `copy` of a non-Copy type is a substructural-statement violation.
  18 | fn sub_copy_of_non_copy(a: Linear) {
@@ -28,7 +28,7 @@ error: at 23:5: [INIT-ReturnValueLeak] In function 'sub_copy_of_non_copy', block
  24 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 37:5: [INIT-ReturnValueLeak] In function 'init_use_after_move', block 'entry': value 'b' of type Linear is not consumed at return
+error: at 37:5: [PS-ReturnValueLeak] In function 'init_use_after_move', block 'entry': value 'b' of type Linear is not consumed at return
     |
  32 | fn init_use_after_move(a: Linear) {
  33 |   b: Linear;

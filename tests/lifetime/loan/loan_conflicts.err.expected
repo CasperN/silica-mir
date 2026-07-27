@@ -1,4 +1,4 @@
-error: at 274:5: [INIT-RefCallEntryMismatch] In function 'deref_drop_does_not_release', block 'entry': cannot transfer 'r' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
+error: at 274:5: [PS-RefCallEntryMismatch] In function 'deref_drop_does_not_release', block 'entry': cannot transfer 'r' across call boundary: &mut requires pointee initialized at handoff, but pointee is uninitialized
      |
  268 | fn deref_drop_does_not_release(x: i64) {
  269 |   r: &mut i64;
@@ -12,7 +12,7 @@ error: at 274:5: [INIT-RefCallEntryMismatch] In function 'deref_drop_does_not_re
      |     ^^^^^^^^^^^^^^^^^
  275 |     return
      |
-error: at 414:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block '$edge1': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 414:5: [PS-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block '$edge1': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  402 | # initializes through it, the obligation remains unfulfilled on the other branch.
  403 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {
@@ -26,7 +26,7 @@ error: at 414:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obli
      |     ^^^^^^^^
  415 |   end:
      |
-error: at 410:5: [INIT-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block '$edge0': reference 'y' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 410:5: [PS-RefObligationUnfulfilled] In function 'out_ref_param_obligation_unfulfilled', block '$edge0': reference 'y' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
      |
  402 | # initializes through it, the obligation remains unfulfilled on the other branch.
  403 | fn out_ref_param_obligation_unfulfilled(x: &out i64, y: &out i64, b: bool) {

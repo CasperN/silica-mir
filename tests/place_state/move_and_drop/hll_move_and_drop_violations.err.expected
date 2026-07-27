@@ -1,18 +1,18 @@
-error: at 9:13: [INIT-UseAfterMove] In function 'use_after_move': variable 'b' is used after move
+error: at 9:13: [PS-UseAfterMove] In function 'use_after_move': variable 'b' is used after move
    |
  8 |     let y = b;
  9 |     let z = b;
    |             ^
  10 | }
    |
-error: at 17:21: [INIT-UseAfterMove] In function 'defer_double_drop': variable 'b' is used after move
+error: at 17:21: [PS-UseAfterMove] In function 'defer_double_drop': variable 'b' is used after move
     |
  16 | fn defer_double_drop(b: Box) {
  17 |     defer { let x = b; };
     |                     ^
  18 |     let y = b;
     |
-error: at 26:11: [INIT-UseAfterMove] In function 'defer_use_after_move': variable 'b' is used after move
+error: at 26:11: [PS-UseAfterMove] In function 'defer_use_after_move': variable 'b' is used after move
     |
  25 | fn defer_use_after_move(b: Box, out: &out Box) {
  26 |     defer out.* = b;

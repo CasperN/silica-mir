@@ -1,11 +1,11 @@
-error: at 18:15: [INIT-RequireUninitNotSatisfied] In function 'leak_arm_payload': value 'n' must be fully uninitialized by this point, but it is still initialized
+error: at 18:15: [PS-RequireUninitNotSatisfied] In function 'leak_arm_payload': value 'n' must be fully uninitialized by this point, but it is still initialized
     |
  17 |     A(u) => u,
  18 |     B(n) => (),
     |               ^
  19 |   }
     |
-error: at 30:2: [INIT-RequireUninitNotSatisfied] In function 'linear_param_untouched': value 'n' must be fully uninitialized by this point, but it is still initialized
+error: at 30:2: [PS-RequireUninitNotSatisfied] In function 'linear_param_untouched': value 'n' must be fully uninitialized by this point, but it is still initialized
     |
  29 | fn linear_param_untouched(n: N) {
  30 | }

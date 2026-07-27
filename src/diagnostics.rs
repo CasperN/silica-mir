@@ -12,7 +12,7 @@
 //!
 //! **Extending `DiagCode`**: dedicated codes live in per-pass
 //! sub-enums (see `type_check::TypeCheckCode`, `init_state::
-//! InitStateCode`, etc.) and are dispatched by one variant here per
+//! PlaceStateCode`, etc.) and are dispatched by one variant here per
 //! pass. Adding a new code within a pass is a one-line change in
 //! that pass; `diagnostics.rs` only changes when a new pass is added.
 //!
@@ -30,8 +30,8 @@ pub enum DiagCode {
     /// Errors from the type checker (see `type_check::TypeCheckCode`).
     TypeCheck(crate::mir::type_check::TypeCheckCode),
     /// Errors from initialization-state dataflow
-    /// (see `init_state::InitStateCode`).
-    InitState(crate::mir::place_state::analysis::InitStateCode),
+    /// (see `place_state::analysis::PlaceStateCode`).
+    PlaceState(crate::mir::place_state::analysis::PlaceStateCode),
     /// Errors from the substructural per-statement checker
     /// (see `substructural::check::SubstructuralCheckCode`).
     SubstructuralCheck(crate::mir::substructural::check::SubstructuralCheckCode),
@@ -66,7 +66,7 @@ impl DiagCode {
     pub fn tag(&self) -> String {
         match self {
             DiagCode::TypeCheck(c) => format!("TC-{:?}", c),
-            DiagCode::InitState(c) => format!("INIT-{:?}", c),
+            DiagCode::PlaceState(c) => format!("PS-{:?}", c),
             DiagCode::SubstructuralCheck(c) => format!("SUB-{:?}", c),
             DiagCode::SubstructuralComposition(c) => format!("COMP-{:?}", c),
             DiagCode::Layout(c) => format!("LAY-{:?}", c),

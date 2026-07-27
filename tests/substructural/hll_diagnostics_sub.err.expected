@@ -1,4 +1,4 @@
-error: at 7:13: [INIT-UseAfterMove] In function 'copy_of_non_copy': variable 'r' is used after move
+error: at 7:13: [PS-UseAfterMove] In function 'copy_of_non_copy': variable 'r' is used after move
    |
  6 |     let y = r;
  7 |     let z = r;

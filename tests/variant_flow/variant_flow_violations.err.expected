@@ -19,56 +19,56 @@ error: at 154:5: [TC-SwitchOnNonEnum] In function 'downcast_in_switch_place_with
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  155 |   n:
      |
-error: at 140:5: [INIT-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+error: at 140:5: [PS-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
  139 |   entry:
  140 |     x = copy o as Some;
      |     ^^^^^^^^^^^^^^^^^^
  141 |     drop x;
      |
-error: at 154:5: [INIT-DowncastVariantNotRefined] In function 'downcast_in_switch_place_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+error: at 154:5: [PS-DowncastVariantNotRefined] In function 'downcast_in_switch_place_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
  153 |   entry:
  154 |     switchEnum(o as Some) [None: n]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  155 |   n:
      |
-error: at 170:5: [INIT-DowncastVariantNotRefined] In function 'downcast_on_field_of_struct_errors', block 'entry': cannot downcast 'w.inner as Some' here: 'w.inner' is not refined to variant 'Some'
+error: at 170:5: [PS-DowncastVariantNotRefined] In function 'downcast_on_field_of_struct_errors', block 'entry': cannot downcast 'w.inner as Some' here: 'w.inner' is not refined to variant 'Some'
      |
  169 |   entry:
  170 |     x = copy w.inner as Some;
      |     ^^^^^^^^^^^^^^^^^^^^^^^^
  171 |     drop x;
      |
-error: at 187:5: [INIT-DowncastVariantNotRefined] In function 'downcast_on_array_slot_errors', block 'entry': cannot downcast 'a[0] as Some' here: 'a[0]' is not refined to variant 'Some'
+error: at 187:5: [PS-DowncastVariantNotRefined] In function 'downcast_on_array_slot_errors', block 'entry': cannot downcast 'a[0] as Some' here: 'a[0]' is not refined to variant 'Some'
      |
  186 |     a[1] = Option::None(unit);
  187 |     x = copy a[0] as Some;
      |     ^^^^^^^^^^^^^^^^^^^^^
  188 |     drop x;
      |
-error: at 315:5: [INIT-UseAfterMove] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
+error: at 315:5: [PS-UseAfterMove] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
      |
  314 |     unborrow r;
  315 |     switchEnum(o) [None: dead, Some: s]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  316 |   dead:
      |
-error: at 336:5: [INIT-UseAfterMove] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
+error: at 336:5: [PS-UseAfterMove] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': variable 'o' is used after move
      |
  335 |     unborrow r;
  336 |     switchEnum(o) [None: n, Some: dead]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  337 |   n:
      |
-error: at 338:5: [INIT-UseAfterMove] In function 'flow_uninit_borrow_clobbers_refinement', block 'n': variable 'o' is used after move
+error: at 338:5: [PS-UseAfterMove] In function 'flow_uninit_borrow_clobbers_refinement', block 'n': variable 'o' is used after move
      |
  337 |   n:
  338 |     drop o;
      |     ^^^^^^
  339 |     drop b;
      |
-error: at 432:5: [INIT-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
+error: at 432:5: [PS-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
      |
  431 |     call set_a(move ab_ref);
  432 |     f = copy ab as B;  # Variant read not okay - it could have changed.
@@ -208,7 +208,7 @@ error: at 403:5: [REACH-SwitchArmFalselyUnreachable] In function 'variant_with_i
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  404 |   g:
      |
-note: at 39:8: [COMP-RedundantMoveMarker] Move marker is redundant on 'HasInhabited' because both Copy and Drop are present
+note: at 39:8: [COMP-MoveMarkerRedundant] Move marker is redundant on 'HasInhabited' because both Copy and Drop are present
     |
  38 | struct Wrap: Copy + Drop { inner: Option }
  39 | struct HasInhabited: Copy + Drop + Move { x: i64 }

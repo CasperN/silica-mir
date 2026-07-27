@@ -1,25 +1,25 @@
-error: at 57:5: [INIT-UseBeforeInit] In function 'branch_join_disagreement', block 'merge': variable 'x' is used before initialization
+error: at 57:5: [PS-UseBeforeInit] In function 'branch_join_disagreement', block 'merge': variable 'x' is used before initialization
     |
  56 |   merge:
  57 |     y = copy x;
     |     ^^^^^^^^^^
  58 |     return
     |
-error: at 74:5: [INIT-UseAfterMove] In function 'move_one_branch_read_at_merge', block 'merge': variable 'x' is used after move
+error: at 74:5: [PS-UseAfterMove] In function 'move_one_branch_read_at_merge', block 'merge': variable 'x' is used after move
     |
  73 |   merge:
  74 |     call use_num(move x);
     |     ^^^^^^^^^^^^^^^^^^^^
  75 |     return
     |
-error: at 88:5: [INIT-UseBeforeInit] In function 'loop_body_reads_before_writing', block 'body': variable 'x' is used before initialization
+error: at 88:5: [PS-UseBeforeInit] In function 'loop_body_reads_before_writing', block 'body': variable 'x' is used before initialization
     |
  87 |   body:
  88 |     y = copy x;
     |     ^^^^^^^^^^
  89 |     x = 1;
     |
-error: at 112:5: [INIT-UseInconsistent] In function 'if_one_arm_init_read_MatL', block 'merge': 'x.v' may be used before initialization or after move (state inconsistent across paths)
+error: at 112:5: [PS-UseInconsistent] In function 'if_one_arm_init_read_MatL', block 'merge': 'x.v' may be used before initialization or after move (state inconsistent across paths)
      |
  106 |   t:
  107 |     x.v = 1;
@@ -33,28 +33,28 @@ error: at 112:5: [INIT-UseInconsistent] In function 'if_one_arm_init_read_MatL',
      |     ^^^^^^^^^^^^
  113 |     call take_mat_l_field(move n);
      |
-error: at 128:5: [INIT-UseInconsistent] In function 'if_one_arm_init_read_MatM', block 'merge': 'x' may be used before initialization or after move (state inconsistent across paths)
+error: at 128:5: [PS-UseInconsistent] In function 'if_one_arm_init_read_MatM', block 'merge': 'x' may be used before initialization or after move (state inconsistent across paths)
      |
  127 |   merge:
  128 |     call take_mat_m(move x);
      |     ^^^^^^^^^^^^^^^^^^^^^^^
  129 |     return
      |
-error: at 153:5: [INIT-UseInconsistent] In function 'nested_diamond_diverged_MatM', block 'outer_merge': 'x' may be used before initialization or after move (state inconsistent across paths)
+error: at 153:5: [PS-UseInconsistent] In function 'nested_diamond_diverged_MatM', block 'outer_merge': 'x' may be used before initialization or after move (state inconsistent across paths)
      |
  152 |   outer_merge:
  153 |     call take_mat_m(move x);
      |     ^^^^^^^^^^^^^^^^^^^^^^^
  154 |     return
      |
-error: at 177:5: [INIT-UseBeforeInit] In function 'switch3_scalar_two_of_three', block 'merge': variable 'x' is used before initialization
+error: at 177:5: [PS-UseBeforeInit] In function 'switch3_scalar_two_of_three', block 'merge': variable 'x' is used before initialization
      |
  176 |   merge:
  177 |     y = copy x;
      |     ^^^^^^^^^^
  178 |     return
      |
-error: at 199:5: [INIT-UseInconsistent] In function 'switch3_struct_field_two_of_three', block 'merge': 'p.v' may be used before initialization or after move (state inconsistent across paths)
+error: at 199:5: [PS-UseInconsistent] In function 'switch3_struct_field_two_of_three', block 'merge': 'p.v' may be used before initialization or after move (state inconsistent across paths)
      |
  190 |   a_arm:
  191 |     p.v = 1;
@@ -72,35 +72,35 @@ error: at 199:5: [INIT-UseInconsistent] In function 'switch3_struct_field_two_of
      |     ^^^^^^^^^^^^
  200 |     call take_mat_l_field(move n);
      |
-error: at 225:5: [INIT-UseBeforeInit] In function 'switch3_array_two_of_three', block 'merge': variable 'a' is used before initialization
+error: at 225:5: [PS-UseBeforeInit] In function 'switch3_array_two_of_three', block 'merge': variable 'a' is used before initialization
      |
  224 |   merge:
  225 |     n = copy a[0];
      |     ^^^^^^^^^^^^^
  226 |     call use_i64(move n);
      |
-error: at 227:5: [INIT-UseBeforeInit] In function 'switch3_array_two_of_three', block 'merge': variable 'a' is used before initialization
+error: at 227:5: [PS-UseBeforeInit] In function 'switch3_array_two_of_three', block 'merge': variable 'a' is used before initialization
      |
  226 |     call use_i64(move n);
  227 |     n = move a[1];
      |     ^^^^^^^^^^^^^
  228 |     call use_i64(move n);
      |
-error: at 247:5: [INIT-UseInconsistent] In function 'loop_move_struct_diverged_backedge', block 'body': 'x' may be used before initialization or after move (state inconsistent across paths)
+error: at 247:5: [PS-UseInconsistent] In function 'loop_move_struct_diverged_backedge', block 'body': 'x' may be used before initialization or after move (state inconsistent across paths)
      |
  246 |   body:
  247 |     call take_mat_m(move x);
      |     ^^^^^^^^^^^^^^^^^^^^^^^
  248 |     goto head
      |
-error: at 270:5: [INIT-UseBeforeInit] In function 'array_slot_one_arm_init', block 'merge': variable 'a' is used before initialization
+error: at 270:5: [PS-UseBeforeInit] In function 'array_slot_one_arm_init', block 'merge': variable 'a' is used before initialization
      |
  269 |   merge:
  270 |     n = copy a[0];
      |     ^^^^^^^^^^^^^
  271 |     call use_i64(move n);
      |
-error: at 298:5: [INIT-UseInconsistent] In function 'array_slot_move_one_arm', block 'merge': 'a[1]' may be used before initialization or after move (state inconsistent across paths)
+error: at 298:5: [PS-UseInconsistent] In function 'array_slot_move_one_arm', block 'merge': 'a[1]' may be used before initialization or after move (state inconsistent across paths)
      |
  288 |     a[0] = 1;
  289 |     a[1] = 10;
@@ -118,28 +118,28 @@ error: at 298:5: [INIT-UseInconsistent] In function 'array_slot_move_one_arm', b
      |     ^^^^^^^^^^^^^
  299 |     call use_i64(move n);
      |
-error: at 320:5: [INIT-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block '$edge0': variable 's' is used before initialization
+error: at 320:5: [PS-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block '$edge0': variable 's' is used before initialization
      |
  319 |   f:
  320 |     goto merge
      |     ^^^^^^^^^^
  321 |   merge:
      |
-error: at 322:5: [INIT-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block 'merge': variable 's' is used before initialization
+error: at 322:5: [PS-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block 'merge': variable 's' is used before initialization
      |
  321 |   merge:
  322 |     n = copy s.n;
      |     ^^^^^^^^^^^^
  323 |     call use_i64(move n);
      |
-error: at 351:5: [INIT-UseBeforeInit] In function 'nested_if_scalar_diverged_propagates', block 'outer_merge': variable 'x' is used before initialization
+error: at 351:5: [PS-UseBeforeInit] In function 'nested_if_scalar_diverged_propagates', block 'outer_merge': variable 'x' is used before initialization
      |
  350 |   outer_merge:
  351 |     y = copy x;
      |     ^^^^^^^^^^
  352 |     return
      |
-error: at 250:5: [INIT-ReturnValueLeak] In function 'loop_move_struct_diverged_backedge', block 'done': value 'x' of type MatM is not consumed at return
+error: at 250:5: [PS-ReturnValueLeak] In function 'loop_move_struct_diverged_backedge', block 'done': value 'x' of type MatM is not consumed at return
      |
  239 | fn loop_move_struct_diverged_backedge(b: bool) {
  240 |   x: MatM;
@@ -154,7 +154,7 @@ error: at 250:5: [INIT-ReturnValueLeak] In function 'loop_move_struct_diverged_b
  251 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 300:5: [INIT-ReturnValueLeak] In function 'array_slot_move_one_arm', block 'merge': value 'a[1]' of type i64 is not consumed at return
+error: at 300:5: [PS-ReturnValueLeak] In function 'array_slot_move_one_arm', block 'merge': value 'a[1]' of type i64 is not consumed at return
      |
  282 | fn array_slot_move_one_arm(b: bool) {
  283 |   a: [i64; 2];

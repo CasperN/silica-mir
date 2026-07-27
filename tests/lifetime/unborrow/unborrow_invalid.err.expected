@@ -5,21 +5,21 @@ error: at 48:5: [TC-UnborrowNonReference] In function 'unborrow_of_non_ref_type'
     |     ^^^^^^^^^^
  49 |     return
     |
-error: at 27:5: [INIT-UseAfterMove] In function 'unborrow_after_move', block 'entry': variable 'r' is used after move
+error: at 27:5: [PS-UseAfterMove] In function 'unborrow_after_move', block 'entry': variable 'r' is used after move
     |
  26 |     call sink(move r);
  27 |     unborrow r;
     |     ^^^^^^^^^^
  28 |     return
     |
-error: at 38:5: [INIT-UseBeforeInit] In function 'unborrow_of_uninit', block 'entry': variable 'r' is used before initialization
+error: at 38:5: [PS-UseBeforeInit] In function 'unborrow_of_uninit', block 'entry': variable 'r' is used before initialization
     |
  37 |   entry:
  38 |     unborrow r;
     |     ^^^^^^^^^^
  39 |     return
     |
-error: at 62:5: [INIT-RefObligationUnfulfilled] In function 'unborrow_with_unfulfilled_obligation', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 62:5: [PS-RefObligationUnfulfilled] In function 'unborrow_with_unfulfilled_obligation', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  56 | # obligation unfulfilled; unborrow is rejected.
  57 | fn unborrow_with_unfulfilled_obligation(r: &mut L) {

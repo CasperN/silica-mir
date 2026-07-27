@@ -1,4 +1,4 @@
-error: at 24:5: [INIT-DowncastVariantNotRefined] In function 'downcast_variant_not_refined_at_stmt_span', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+error: at 24:5: [PS-DowncastVariantNotRefined] In function 'downcast_variant_not_refined_at_stmt_span', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
     |
  23 |   entry:
  24 |     x = copy o as Some;

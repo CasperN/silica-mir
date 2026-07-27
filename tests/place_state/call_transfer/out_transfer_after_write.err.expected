@@ -1,4 +1,4 @@
-error: at 18:5: [INIT-RefCallEntryMismatch] In function 'f', block 'entry': cannot transfer 'r' across call boundary: &out requires pointee uninitialized at handoff, but pointee is initialized
+error: at 18:5: [PS-RefCallEntryMismatch] In function 'f', block 'entry': cannot transfer 'r' across call boundary: &out requires pointee uninitialized at handoff, but pointee is initialized
     |
  13 |   x: i64;
  14 |   r: &out i64;
