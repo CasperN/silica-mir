@@ -338,19 +338,19 @@ impl MonoCtx {
 impl TypeFolder for MonoCtx {
     fn try_fold_type(&mut self, ty: &Type) -> Option<Type> {
         match &ty.kind {
-            TypeKind::Custom(name, lifetimes, args) => {
+            TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) => {
                 let concrete_args: Vec<Type> =
                     args.iter().map(|arg| self.fold_type(arg)).collect();
                 let mangled = self.need(name, &concrete_args);
                 Some(Type::new(
-                    TypeKind::Custom(
+                    TypeKind::Custom(Instance::new(
                         mangled,
                         lifetimes
                             .iter()
                             .map(|lifetime| self.fold_lifetime(lifetime))
                             .collect(),
                         Vec::new(),
-                    ),
+                    )),
                     ty.source,
                 ))
             }
@@ -474,7 +474,7 @@ mod tests {
         let ty = Type::new(
             TypeKind::Array(
                 Box::new(Type::new(
-                    TypeKind::Custom("Box".into(), vec![Lifetime("box".into())], vec![i64_ty()]),
+                    TypeKind::Custom(Instance::new("Box", vec![Lifetime("box".into())], vec![i64_ty()])),
                     inner_source,
                 )),
                 1,
@@ -494,7 +494,7 @@ mod tests {
             panic!("expected rewritten array type");
         };
         assert_eq!(inner.source, inner_source);
-        let TypeKind::Custom(name, lifetimes, args) = inner.kind else {
+        let TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) = inner.kind else {
             panic!("expected rewritten custom type");
         };
         assert_eq!(name, "Box<i64>");
@@ -563,7 +563,7 @@ mod tests {
             panic!("specialized field remains a named reference");
         };
         assert_eq!(field_lifetime, &Lifetime("a".into()));
-        let TypeKind::Custom(_, _, original_type_args) = &original_function.params[0].ty.kind
+        let TypeKind::Custom(Instance { type_args: original_type_args, .. }) = &original_function.params[0].ty.kind
         else {
             panic!("original root parameter is a custom type");
         };
@@ -585,7 +585,7 @@ mod tests {
             specialized_function.params[0].ty.source,
             original_function.params[0].ty.source
         );
-        let TypeKind::Custom(name, lifetimes, args) = &specialized_function.params[0].ty.kind
+        let TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) = &specialized_function.params[0].ty.kind
         else {
             panic!("root parameter remains a custom type");
         };

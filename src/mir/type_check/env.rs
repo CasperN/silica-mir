@@ -374,7 +374,7 @@ impl Env {
             | TypeKind::Bool
             | TypeKind::Unit
             | TypeKind::Never => Ok(()),
-            TypeKind::Custom(name, lifetime_args, args) => {
+            TypeKind::Custom(Instance { name, lifetime_args, type_args: args }) => {
                 let Some(decl) = self.types.get(name) else {
                     return Err(TypeValidationError::new(
                         TypeValidationErrorKind::UndeclaredType(name.clone()),
@@ -455,7 +455,7 @@ impl Env {
     /// with the concrete args on `ty`, so `Box<i64>::inner` yields `i64`,
     /// not the raw declared `T`.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let TypeKind::Custom(name, _, args) = &ty.kind else {
+        let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
             return None;
         };
         let TypeDecl::Struct(s) = self.types.get(name)? else {
@@ -472,7 +472,7 @@ impl Env {
             (TypeKind::Bool, TypeKind::Bool) => true,
             (TypeKind::Unit, TypeKind::Unit) => true,
             (TypeKind::Never, TypeKind::Never) => true,
-            (TypeKind::Custom(a_name, _, a_args), TypeKind::Custom(b_name, _, b_args)) => {
+            (TypeKind::Custom(Instance { name: a_name, type_args: a_args, .. }), TypeKind::Custom(Instance { name: b_name, type_args: b_args, .. })) => {
                 a_name == b_name
                     && a_args.len() == b_args.len()
                     && a_args
@@ -523,7 +523,7 @@ impl Env {
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, locals)?;
                 let (name, args) = match &inner_ty.kind {
-                    TypeKind::Custom(n, _, a) => (n, a),
+                    TypeKind::Custom(Instance { name: n, type_args: a, .. }) => (n, a),
                     _ => {
                         return Err(err(TypeResolutionErrorKind::FieldOfNonStruct {
                             field: field_name.clone(),
@@ -553,7 +553,7 @@ impl Env {
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, locals)?;
                 let (name, args) = match &inner_ty.kind {
-                    TypeKind::Custom(n, _, a) => (n, a),
+                    TypeKind::Custom(Instance { name: n, type_args: a, .. }) => (n, a),
                     _ => return Err(err(TypeResolutionErrorKind::DowncastOfNonEnum(inner_ty))),
                 };
                 match self.types.get(name) {
@@ -698,7 +698,7 @@ impl Env {
                 }
 
                 Ok(Type::new(
-                    TypeKind::Custom(enum_name.clone(), Vec::new(), type_args.clone()),
+                    TypeKind::Custom(Instance::new(enum_name.clone(), Vec::new(), type_args.clone())),
                     SourceInfo::generated(GeneratedKind::TypeSynthesis, source.span()),
                 ))
             }

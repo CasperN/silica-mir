@@ -129,7 +129,7 @@ pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
             // (obligation transfers with the ref).
             RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
         },
-        TypeKind::Custom(name, _, _args) => match env.types.get(name) {
+        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
             // For a generic instantiation, the declared markers on the
             // decl are the type's markers regardless of the args — the
             // decl-side check verified those markers under the params'

@@ -91,12 +91,12 @@ pub fn float_ty(kind: FloatTy) -> Type {
 
 /// A non-generic struct/enum reference: `Foo`.
 pub fn custom_ty(name: impl Into<String>) -> Type {
-    Type::synthesized(TypeKind::Custom(name.into(), Vec::new(), Vec::new()))
+    Type::synthesized(TypeKind::Custom(Instance::bare(name)))
 }
 
 /// A generic struct/enum instantiation: `Foo<T, U>`.
 pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
-    Type::synthesized(TypeKind::Custom(name.into(), Vec::new(), args))
+    Type::synthesized(TypeKind::Custom(Instance::new(name, Vec::new(), args)))
 }
 
 /// A generic struct/enum instantiation with both lifetime and type
@@ -106,7 +106,7 @@ pub fn custom_ty_generic(
     lifetimes: Vec<Lifetime>,
     args: Vec<Type>,
 ) -> Type {
-    Type::synthesized(TypeKind::Custom(name.into(), lifetimes, args))
+    Type::synthesized(TypeKind::Custom(Instance::new(name, lifetimes, args)))
 }
 
 /// A reference to an in-scope type parameter.

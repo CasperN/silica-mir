@@ -347,7 +347,7 @@ fn pre_stmt_transitions(
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
             if let Ok(inner_ty) = env.type_of_place(inner, locals) {
-                if let TypeKind::Custom(enum_name, _, _) = &inner_ty.kind {
+                if let TypeKind::Custom(Instance { name: enum_name, .. }) = &inner_ty.kind {
                     let payload_place = downcast_place(inner_owned.clone(), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals, scope) {
                         drops.push(payload_place);
@@ -514,7 +514,7 @@ fn walk_diverged(
             // this misses (its `find_return_leaks` walk does descend
             // arrays), so the program is still rejected — just without
             // the automatic per-arm cleanup drop-elab would have inserted.
-            let TypeKind::Custom(name, _, args) = &ty.kind else {
+            let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
                 return;
             };
             match env.types.get(name) {
@@ -665,7 +665,7 @@ fn plan_drops_for_place(
         InitState::Partial(fields) => {
             match &ty.kind {
                 // Reverse declared field order = LIFO for that container.
-                TypeKind::Custom(struct_name, _, args) => {
+                TypeKind::Custom(Instance { name: struct_name, type_args: args, .. }) => {
                     // `None` on `env.types.get`: type not registered —
                     // type-check already reported. Non-Struct decl: an
                     // enum-typed Partial with variant-refinement is

@@ -258,7 +258,7 @@ pub(super) struct PlaceStateContext<'a> {
 /// nested projections (`p.f.g` on `Outer<Inner<i64>>`) lose the type
 /// after the first step and downstream lookups fail.
 pub(super) fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
-    let TypeKind::Custom(name, _, args) = &ty.kind else {
+    let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
         return None;
     };
     let TypeDecl::Struct(s) = env.types.get(name)? else {
@@ -277,7 +277,7 @@ pub(super) fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>>
 }
 
 pub(super) fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
-    let TypeKind::Custom(name, _, args) = &ty.kind else {
+    let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
         return None;
     };
     let TypeDecl::Enum(e) = env.types.get(name)? else {
@@ -852,7 +852,7 @@ pub(super) fn seed_parameter_ref_states(
         return;
     }
 
-    let TypeKind::Custom(name, _, args) = &ty.kind else {
+    let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
         return;
     };
     if !visited.insert(name.clone()) {
@@ -884,7 +884,7 @@ pub(super) fn seed_parameter_ref_states(
 
 pub(super) fn is_trivially_init(ty: &Type, env: &Env) -> bool {
     match &ty.kind {
-        TypeKind::Custom(name, _, _) => match env.types.get(name) {
+        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
             _ => false,
         },

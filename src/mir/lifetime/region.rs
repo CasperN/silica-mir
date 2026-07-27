@@ -185,7 +185,7 @@ pub(super) fn walk_ref_places(
     use crate::mir::type_check::TypeDecl;
     match &ty.kind {
         TypeKind::Ref(_, lt_opt, _) => on_ref(place, lt_opt),
-        TypeKind::Custom(name, lifetime_args, args) => {
+        TypeKind::Custom(Instance { name, lifetime_args, type_args: args }) => {
             if !visited.insert(name.clone()) {
                 return;
             }

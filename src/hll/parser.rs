@@ -601,7 +601,7 @@ impl Parser {
         if lifetimes.is_empty() && args.is_empty() && scope.contains(name) {
             TypeKind::Param(name.to_string())
         } else {
-            TypeKind::Custom(name.to_string(), lifetimes, args)
+            TypeKind::Custom(Instance::new(name.to_string(), lifetimes, args))
         }
     }
 

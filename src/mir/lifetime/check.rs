@@ -256,7 +256,7 @@ fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::Co
     }
 }
 
-/// Walk `ty` and, for every `TypeKind::Custom(name, lts, args)` mention,
+/// Walk `ty` and, for every `TypeKind::Custom(Instance { name, .. })` mention,
 /// substitute the decl's declared outlives bounds with the mention's
 /// actual lifetime args and emit them into `cs`. Recurses through
 /// `Ref`, `Array`, `RawPtr`, `Fn`, and nested `Custom` type args.
@@ -269,7 +269,7 @@ fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::Co
 /// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
 fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::ConstraintSet) {
     match &ty.kind {
-        TypeKind::Custom(name, lts, args) => {
+        TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args }) => {
             if let Some(decl) = env.types.get(name) {
                 let meta = decl.meta();
                 if lts.len() == meta.lifetime_params.len() {
@@ -362,7 +362,7 @@ fn collect_named_regions(
         TypeKind::Ref(_, None, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             collect_named_regions(inner, env, visited, out);
         }
-        TypeKind::Custom(name, lifetime_args, type_args) => {
+        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
             for lt in lifetime_args {
                 out.insert(lt.clone());
             }
@@ -495,8 +495,8 @@ fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Re
         TypeKind::Ref(_, Some(lt), _) => {
             Some(inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt)))
         }
-        TypeKind::Custom(_, lts, _) => {
-            let lt = lts.first()?;
+        TypeKind::Custom(Instance { lifetime_args, .. }) => {
+            let lt = lifetime_args.first()?;
             Some(inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt)))
         }
         TypeKind::Array(elem, _) | TypeKind::RawPtr(elem) => first_named_region(elem, inst),
@@ -791,7 +791,7 @@ impl<'a> Checker<'a> {
                 }
                 self.emit_use_type_constraints(s_inner, t_inner, None, layer_variance, source);
             }
-            (TypeKind::Custom(_, s_lts, s_args), TypeKind::Custom(_, t_lts, t_args)) => {
+            (TypeKind::Custom(Instance { lifetime_args: s_lts, type_args: s_args, .. }), TypeKind::Custom(Instance { lifetime_args: t_lts, type_args: t_args, .. })) => {
                 let inv = variance.combine(Variance::Invariant);
                 for (s_lt, t_lt) in s_lts.iter().zip(t_lts) {
                     let sr = name_to_region(s_lt);
@@ -1189,7 +1189,7 @@ impl<'a> Checker<'a> {
                     source,
                 );
             }
-            TypeKind::Custom(_, lts, args) => {
+            TypeKind::Custom(Instance { lifetime_args: lts, type_args: args, .. }) => {
                 // Match callee and caller lifetime args positionally, not
                 // all-to-first. A generic type's lifetime slots behave
                 // like container references: default to invariance
@@ -1197,7 +1197,7 @@ impl<'a> Checker<'a> {
                 let caller_ty =
                     crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
                 if let Some(caller_ty) = caller_ty {
-                    if let TypeKind::Custom(_, caller_lts, _) = &caller_ty.kind {
+                    if let TypeKind::Custom(Instance { lifetime_args: caller_lts, .. }) = &caller_ty.kind {
                         for (callee_lt, caller_lt) in lts.iter().zip(caller_lts.iter()) {
                             let inst_region = inst
                                 .get(callee_lt)

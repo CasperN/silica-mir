@@ -39,6 +39,60 @@ impl PartialEq for Type {
 
 impl Eq for Type {}
 
+/// Named use-site instantiation of a generic decl: `Foo<'a, 'b, T, U>`.
+/// HLL-side twin of `mir::Instance`; distinct because it holds
+/// `hll::Type` (which can contain inference variables).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Instance {
+    pub name: String,
+    pub lifetime_args: Vec<Lifetime>,
+    pub type_args: Vec<Type>,
+}
+
+impl Instance {
+    pub fn new(
+        name: impl Into<String>,
+        lifetime_args: Vec<Lifetime>,
+        type_args: Vec<Type>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            lifetime_args,
+            type_args,
+        }
+    }
+
+    pub fn bare(name: impl Into<String>) -> Self {
+        Self::new(name, Vec::new(), Vec::new())
+    }
+}
+
+impl std::fmt::Display for Instance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.lifetime_args.is_empty() || !self.type_args.is_empty() {
+            write!(f, "<")?;
+            let mut first = true;
+            for lt in &self.lifetime_args {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                first = false;
+                write!(f, "{}", lt)?;
+            }
+            for a in &self.type_args {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                first = false;
+                write!(f, "{}", a)?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TypeKind {
     Int(IntTy),
@@ -46,9 +100,8 @@ pub enum TypeKind {
     Bool,
     Unit,
     Never,
-    /// Struct or enum reference. `lifetime_args` + `type_args` are the
-    /// two use-site parameter lists. Order is lifetimes-first.
-    Custom(String, Vec<Lifetime>, Vec<Type>),
+    /// Struct or enum reference. See [`Instance`] for the shape.
+    Custom(Instance),
     /// A reference to a generic type parameter declared on the
     /// enclosing decl. Named parameter, not a solver metavariable —
     /// unifies only with itself or with a `Var`, never substituted.
@@ -77,29 +130,7 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Bool => write!(f, "bool"),
             TypeKind::Unit => write!(f, "unit"),
             TypeKind::Never => write!(f, "never"),
-            TypeKind::Custom(name, lifetimes, args) => {
-                write!(f, "{}", name)?;
-                if !lifetimes.is_empty() || !args.is_empty() {
-                    write!(f, "<")?;
-                    let mut first = true;
-                    for lt in lifetimes {
-                        if !first {
-                            write!(f, ", ")?;
-                        }
-                        first = false;
-                        write!(f, "{}", lt)?;
-                    }
-                    for a in args {
-                        if !first {
-                            write!(f, ", ")?;
-                        }
-                        first = false;
-                        write!(f, "{}", a)?;
-                    }
-                    write!(f, ">")?;
-                }
-                Ok(())
-            }
+            TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
             TypeKind::Ref(kind, lt, inner) => match lt {
                 Some(lt) => write!(f, "{} {} {}", kind, lt, inner),

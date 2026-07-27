@@ -62,6 +62,64 @@ impl std::hash::Hash for Type {
     }
 }
 
+/// Named use-site instantiation of a generic decl: `Foo<'a, 'b, T, U>`.
+/// Holds the referenced decl's name plus the two argument lists in
+/// lifetimes-first order. Both empty for a non-generic reference.
+///
+/// Load-bearing across every site that names a decl at a use position —
+/// `TypeKind::Custom` today, extended to trait references and other
+/// generic-instantiation sites as the type system grows.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Instance {
+    pub name: String,
+    pub lifetime_args: Vec<Lifetime>,
+    pub type_args: Vec<Type>,
+}
+
+impl Instance {
+    pub fn new(
+        name: impl Into<String>,
+        lifetime_args: Vec<Lifetime>,
+        type_args: Vec<Type>,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            lifetime_args,
+            type_args,
+        }
+    }
+
+    pub fn bare(name: impl Into<String>) -> Self {
+        Self::new(name, Vec::new(), Vec::new())
+    }
+}
+
+impl std::fmt::Display for Instance {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.lifetime_args.is_empty() || !self.type_args.is_empty() {
+            write!(f, "<")?;
+            let mut first = true;
+            for lt in &self.lifetime_args {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                first = false;
+                write!(f, "{}", lt)?;
+            }
+            for a in &self.type_args {
+                if !first {
+                    write!(f, ", ")?;
+                }
+                first = false;
+                write!(f, "{}", a)?;
+            }
+            write!(f, ">")?;
+        }
+        Ok(())
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TypeKind {
     Int(IntTy),
@@ -69,11 +127,8 @@ pub enum TypeKind {
     Bool,
     Unit,
     Never,
-    /// Struct or enum type reference. `lifetime_args` and `type_args`
-    /// are the two parameter lists at the use site; both empty for a
-    /// non-generic decl (`Foo`). Order is lifetimes-first (Rust
-    /// convention): `Foo<'a, 'b, T, U>`.
-    Custom(String, Vec<Lifetime>, Vec<Type>),
+    /// Struct or enum type reference. See [`Instance`] for the shape.
+    Custom(Instance),
     /// A reference to a generic type parameter declared on the
     /// enclosing decl (struct/enum/fn). Written as a bare identifier
     /// in source; the parser emits this variant when the name is in
@@ -112,29 +167,7 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Bool => write!(f, "bool"),
             TypeKind::Unit => write!(f, "unit"),
             TypeKind::Never => write!(f, "never"),
-            TypeKind::Custom(name, lifetimes, args) => {
-                write!(f, "{}", name)?;
-                if !lifetimes.is_empty() || !args.is_empty() {
-                    write!(f, "<")?;
-                    let mut first = true;
-                    for lt in lifetimes {
-                        if !first {
-                            write!(f, ", ")?;
-                        }
-                        first = false;
-                        write!(f, "{}", lt)?;
-                    }
-                    for a in args {
-                        if !first {
-                            write!(f, ", ")?;
-                        }
-                        first = false;
-                        write!(f, "{}", a)?;
-                    }
-                    write!(f, ">")?;
-                }
-                Ok(())
-            }
+            TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
             TypeKind::Fn(params) => {
                 write!(f, "fn(")?;
@@ -870,5 +903,63 @@ impl Program {
     pub fn function_bodies(&self) -> impl Iterator<Item = (&Function, &FunctionBody)> + '_ {
         self.functions()
             .filter_map(|f| f.body.as_ref().map(|b| (f, b)))
+    }
+}
+
+#[cfg(test)]
+mod instance_tests {
+    use super::*;
+    use crate::mir::helpers::*;
+
+    #[test]
+    fn new_preserves_all_three_field_slots() {
+        let inst = Instance::new(
+            "Foo",
+            vec![Lifetime("a".into()), Lifetime("b".into())],
+            vec![i64_ty(), bool_ty()],
+        );
+        assert_eq!(inst.name, "Foo");
+        assert_eq!(inst.lifetime_args.len(), 2);
+        assert_eq!(inst.lifetime_args[0], Lifetime("a".into()));
+        assert_eq!(inst.lifetime_args[1], Lifetime("b".into()));
+        assert_eq!(inst.type_args.len(), 2);
+        assert_eq!(inst.type_args[0].kind, TypeKind::Int(IntTy::I64));
+        assert_eq!(inst.type_args[1].kind, TypeKind::Bool);
+    }
+
+    #[test]
+    fn bare_yields_empty_arg_lists() {
+        let inst = Instance::bare("Foo");
+        assert_eq!(inst.name, "Foo");
+        assert!(inst.lifetime_args.is_empty());
+        assert!(inst.type_args.is_empty());
+    }
+
+    #[test]
+    fn display_bare_is_just_the_name() {
+        let inst = Instance::bare("Foo");
+        assert_eq!(inst.to_string(), "Foo");
+    }
+
+    #[test]
+    fn display_full_instance_uses_lifetimes_first_order() {
+        let inst = Instance::new(
+            "Foo",
+            vec![Lifetime("a".into()), Lifetime("b".into())],
+            vec![i64_ty(), bool_ty()],
+        );
+        assert_eq!(inst.to_string(), "Foo<'a, 'b, i64, bool>");
+    }
+
+    #[test]
+    fn display_lifetimes_only() {
+        let inst = Instance::new("Foo", vec![Lifetime("a".into())], vec![]);
+        assert_eq!(inst.to_string(), "Foo<'a>");
+    }
+
+    #[test]
+    fn display_types_only() {
+        let inst = Instance::new("Foo", vec![], vec![i64_ty()]);
+        assert_eq!(inst.to_string(), "Foo<i64>");
     }
 }

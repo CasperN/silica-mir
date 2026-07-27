@@ -5,7 +5,7 @@
 //! and non-child structural data cannot drift between transformations.
 
 use crate::common::Lifetime;
-use crate::mir::ast::{Type, TypeKind};
+use crate::mir::ast::{Instance, Type, TypeKind};
 
 /// Override selected type nodes or lifetimes while using the shared exhaustive
 /// rebuild for the rest of the tree.
@@ -51,14 +51,15 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
         | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => return ty.clone(),
-        TypeKind::Custom(name, lifetimes, args) => TypeKind::Custom(
-            name.clone(),
-            lifetimes
+        TypeKind::Custom(inst) => TypeKind::Custom(Instance {
+            name: inst.name.clone(),
+            lifetime_args: inst
+                .lifetime_args
                 .iter()
                 .map(|lifetime| folder.fold_lifetime(lifetime))
                 .collect(),
-            args.iter().map(|arg| folder.fold_type(arg)).collect(),
-        ),
+            type_args: inst.type_args.iter().map(|arg| folder.fold_type(arg)).collect(),
+        }),
         TypeKind::Fn(params) => {
             TypeKind::Fn(params.iter().map(|param| folder.fold_type(param)).collect())
         }
@@ -111,11 +112,11 @@ mod tests {
         let parameter = Type::new(TypeKind::Param("T".into()), source(5));
         let pointer = Type::new(TypeKind::RawPtr(Box::new(parameter)), source(4));
         let custom = Type::new(
-            TypeKind::Custom(
-                "Wrapper".into(),
+            TypeKind::Custom(Instance::new(
+                "Wrapper",
                 vec![Lifetime("wrapper".into())],
                 vec![pointer],
-            ),
+            )),
             source(3),
         );
         let reference = Type::new(
@@ -155,7 +156,7 @@ mod tests {
             Some("reference")
         );
         assert_eq!(custom.source, source(3));
-        let TypeKind::Custom(_, lifetimes, args) = &custom.kind else {
+        let TypeKind::Custom(Instance { lifetime_args: lifetimes, type_args: args, .. }) = &custom.kind else {
             panic!("expected nested custom type");
         };
         assert_eq!(lifetimes[0].0, "wrapper");
@@ -174,11 +175,11 @@ mod tests {
                 RefKind::Mut,
                 Some(Lifetime("reference".into())),
                 Box::new(Type::new(
-                    TypeKind::Custom(
-                        "Wrapper".into(),
+                    TypeKind::Custom(Instance::new(
+                        "Wrapper",
                         vec![Lifetime("argument".into())],
                         Vec::new(),
-                    ),
+                    )),
                     source(1),
                 )),
             ),
@@ -191,7 +192,7 @@ mod tests {
             panic!("expected reference");
         };
         assert_eq!(reference.0, "reference_folded");
-        let TypeKind::Custom(_, lifetimes, _) = inner.kind else {
+        let TypeKind::Custom(Instance { lifetime_args: lifetimes, .. }) = inner.kind else {
             panic!("expected custom pointee");
         };
         assert_eq!(lifetimes, vec![Lifetime("argument_folded".into())]);

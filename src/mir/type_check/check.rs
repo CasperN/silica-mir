@@ -122,13 +122,13 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
             walk_lifetimes(inner, scope, out);
         }
         TypeKind::Ref(_, None, inner) => walk_lifetimes(inner, scope, out),
-        TypeKind::Custom(_, lts, args) => {
-            for lt in lts {
+        TypeKind::Custom(inst) => {
+            for lt in &inst.lifetime_args {
                 if !scope.contains(lt) {
                     out.push(lt.clone());
                 }
             }
-            for a in args {
+            for a in &inst.type_args {
                 walk_lifetimes(a, scope, out);
             }
         }
@@ -635,14 +635,14 @@ impl Env {
                 // label-existence checks still run on every case.
                 let enum_decl: Option<&EnumDecl> = match self.type_of_place(place, locals) {
                     Ok(ty) => match ty.kind {
-                        TypeKind::Custom(name, _, _) => match self.types.get(&name) {
+                        TypeKind::Custom(inst) => match self.types.get(&inst.name) {
                             Some(TypeDecl::Enum(e)) => Some(e),
                             Some(TypeDecl::Struct(_)) => {
                                 d.push_error(terminator_diag(
                                     TypeCheckCode::SwitchOnNonEnum,
                                     format!(
                                         "switchEnum place must be an enum type, found struct '{}'",
-                                        name
+                                        inst.name
                                     ),
                                 ));
                                 None
@@ -650,7 +650,7 @@ impl Env {
                             None => {
                                 d.push_error(terminator_diag(
                                     TypeCheckCode::SwitchOnNonEnum,
-                                    format!("Undeclared enum '{}' in switchEnum", name),
+                                    format!("Undeclared enum '{}' in switchEnum", inst.name),
                                 ));
                                 None
                             }

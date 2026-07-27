@@ -338,10 +338,10 @@ fn resolve_enum_of_place<'a>(
 ) -> Option<&'a EnumDecl> {
     let locals = func.locals_map();
     let ty = env.type_of_place(place, &locals).ok()?;
-    let TypeKind::Custom(name, _, _) = ty.kind else {
+    let TypeKind::Custom(inst) = ty.kind else {
         return None;
     };
-    match env.types.get(&name) {
+    match env.types.get(&inst.name) {
         Some(TypeDecl::Enum(e)) => Some(e),
         _ => None,
     }

@@ -4,7 +4,7 @@
 //! single pass: inhabitedness, generic parameter substitution, etc.
 
 use crate::common::Lifetime;
-use crate::mir::ast::{DeclMeta, Type, TypeKind, TypeParam};
+use crate::mir::ast::{DeclMeta, Instance, Type, TypeKind, TypeParam};
 use crate::mir::type_check::{Env, TypeDecl};
 use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
@@ -126,7 +126,7 @@ pub fn place_type(
     let mut ty = locals.get(&root)?.clone();
     for step in steps {
         ty = match (step, ty.kind) {
-            (PathStep::Field(f), TypeKind::Custom(name, lts, args)) => {
+            (PathStep::Field(f), TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args })) => {
                 let TypeDecl::Struct(s) = env.types.get(&name)? else {
                     return None;
                 };
@@ -139,7 +139,7 @@ pub fn place_type(
                     .collect();
                 substitute_all(&field.ty, &decl_lts, &lts, &s.meta.type_params, &args)
             }
-            (PathStep::Downcast(v), TypeKind::Custom(name, lts, args)) => {
+            (PathStep::Downcast(v), TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args })) => {
                 let TypeDecl::Enum(e) = env.types.get(&name)? else {
                     return None;
                 };
@@ -179,7 +179,7 @@ pub fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
     fn walk(ty: &Type, env: &Env, visited: &mut BTreeSet<String>) -> bool {
         match &ty.kind {
             TypeKind::Never => true,
-            TypeKind::Custom(name, _, _) => {
+            TypeKind::Custom(Instance { name, .. }) => {
                 if !visited.insert(name.clone()) {
                     return false;
                 }

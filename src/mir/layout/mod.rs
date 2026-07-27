@@ -57,7 +57,7 @@ pub fn size_of(ty: &Type, env: &Env) -> u64 {
         TypeKind::Bool => 1,
         TypeKind::Unit | TypeKind::Never => 0,
         TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
-        TypeKind::Custom(name, _, _) => match env.types.get(name) {
+        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_size(s, env),
             Some(TypeDecl::Enum(e)) => enum_size(e, env),
             None => panic!("layout::size_of: unknown type '{}'", name),
@@ -81,7 +81,7 @@ pub fn align_of(ty: &Type, env: &Env) -> u64 {
         TypeKind::Bool => 1,
         TypeKind::Unit | TypeKind::Never => 1,
         TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
-        TypeKind::Custom(name, _, _) => match env.types.get(name) {
+        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_align(s, env),
             Some(TypeDecl::Enum(e)) => enum_align(e, env),
             None => panic!("layout::align_of: unknown type '{}'", name),
@@ -191,14 +191,14 @@ fn by_value_edges(name: &str, env: &Env) -> Vec<String> {
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
             for f in &s.fields {
-                if let TypeKind::Custom(sub, _, _) = &f.ty.kind {
+                if let TypeKind::Custom(Instance { name: sub, .. }) = &f.ty.kind {
                     out.push(sub.clone());
                 }
             }
         }
         Some(TypeDecl::Enum(e)) => {
             for v in &e.variants {
-                if let TypeKind::Custom(sub, _, _) = &v.ty.kind {
+                if let TypeKind::Custom(Instance { name: sub, .. }) = &v.ty.kind {
                     out.push(sub.clone());
                 }
             }

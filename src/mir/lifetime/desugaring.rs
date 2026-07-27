@@ -152,7 +152,7 @@ fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
                 elide_type_pos(a, pos, ctx);
             }
         }
-        TypeKind::Custom(_, _lifetime_args, args) => {
+        TypeKind::Custom(Instance { type_args: args, .. }) => {
             for a in args {
                 elide_type_pos(a, pos, ctx);
             }

@@ -221,7 +221,7 @@ impl<'a> CodeGenContext<'a> {
             TypeKind::Bool => "i1".to_string(),
             TypeKind::Unit | TypeKind::Never => "{}".to_string(),
             TypeKind::Ref(_, _, _) | TypeKind::Fn(_) | TypeKind::RawPtr(_) => "ptr".to_string(),
-            TypeKind::Custom(name, _, args) => {
+            TypeKind::Custom(Instance { name, type_args: args, .. }) => {
                 assert!(
                     args.is_empty(),
                     "codegen: TypeKind::Custom('{}', ...) still has type args — the mono pass \
@@ -243,7 +243,7 @@ impl<'a> CodeGenContext<'a> {
 
     /// Zero-based struct field index and its type. Panics on non-struct.
     fn field_lookup(&self, ty: &Type, field: &str) -> (usize, Type) {
-        let TypeKind::Custom(name, _, _) = &ty.kind else {
+        let TypeKind::Custom(Instance { name, .. }) = &ty.kind else {
             panic!("field access on non-struct type {:?}", ty);
         };
         let Some(TypeDecl::Struct(s)) = self.env.types.get(name) else {
@@ -259,7 +259,7 @@ impl<'a> CodeGenContext<'a> {
     }
 
     fn enum_decl(&self, ty: &Type) -> &'a EnumDecl {
-        let TypeKind::Custom(name, _, _) = &ty.kind else {
+        let TypeKind::Custom(Instance { name, .. }) = &ty.kind else {
             panic!("expected enum type, got {:?}", ty);
         };
         match self.env.types.get(name) {
