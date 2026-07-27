@@ -157,7 +157,7 @@ impl Parser {
             return None;
         }
 
-        match self.map_program(root) {
+        match self.map_program(root, d) {
             Ok(program) => Some(program),
             Err(err) => {
                 d.push_error(err);
@@ -229,12 +229,12 @@ impl Parser {
         }
     }
 
-    fn map_program(&self, node: Node) -> Result<Program, Diagnostic> {
+    fn map_program(&self, node: Node, d: &mut Diagnostics) -> Result<Program, Diagnostic> {
         let mut declarations = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() == "declaration" {
-                declarations.push(self.map_declaration(child)?);
+                declarations.push(self.map_declaration(child, d)?);
             }
         }
         Ok(Program {
@@ -243,13 +243,17 @@ impl Parser {
         })
     }
 
-    fn map_declaration(&self, node: Node) -> Result<Declaration, Diagnostic> {
+    fn map_declaration(
+        &self,
+        node: Node,
+        d: &mut Diagnostics,
+    ) -> Result<Declaration, Diagnostic> {
         let child = node
             .child(0)
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "empty declaration"))?;
         match child.kind() {
-            "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child)?)),
-            "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child)?)),
+            "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child, d)?)),
+            "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child, d)?)),
             "fn_decl" => Ok(Declaration::Fn(self.map_fn_decl(child)?)),
             _ => Err(self.diag(
                 child,
@@ -259,11 +263,16 @@ impl Parser {
         }
     }
 
-    fn map_struct_decl(&self, node: Node) -> Result<StructDecl, Diagnostic> {
+    fn map_struct_decl(
+        &self,
+        node: Node,
+        d: &mut Diagnostics,
+    ) -> Result<StructDecl, Diagnostic> {
         let name_node = node
             .child_by_field_name("name")
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "struct decl missing name"))?;
         let name = self.get_text(name_node).to_string();
+        let name_span = span_of(name_node);
         let span = span_of(node);
 
         let mut scope: TypeScope = BTreeSet::new();
@@ -280,7 +289,16 @@ impl Parser {
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
         {
-            self.map_markers(markers_node)?
+            let (markers, redundant_move) =
+                Markers::from_declared(self.map_marker_tokens(markers_node)?);
+            if redundant_move {
+                d.push_info(Diagnostic::new(
+                    ParserCode::MoveMarkerRedundant,
+                    SourceInfo::written(name_span),
+                    Markers::redundant_move_message(&name),
+                ));
+            }
+            markers
         } else {
             Markers::empty()
         };
@@ -313,11 +331,12 @@ impl Parser {
         })
     }
 
-    fn map_enum_decl(&self, node: Node) -> Result<EnumDecl, Diagnostic> {
+    fn map_enum_decl(&self, node: Node, d: &mut Diagnostics) -> Result<EnumDecl, Diagnostic> {
         let name_node = node
             .child_by_field_name("name")
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "enum decl missing name"))?;
         let name = self.get_text(name_node).to_string();
+        let name_span = span_of(name_node);
         let span = span_of(node);
 
         let mut scope: TypeScope = BTreeSet::new();
@@ -334,7 +353,16 @@ impl Parser {
         let markers = if let Some(markers_node) =
             node.children(&mut cursor).find(|c| c.kind() == "markers")
         {
-            self.map_markers(markers_node)?
+            let (markers, redundant_move) =
+                Markers::from_declared(self.map_marker_tokens(markers_node)?);
+            if redundant_move {
+                d.push_info(Diagnostic::new(
+                    ParserCode::MoveMarkerRedundant,
+                    SourceInfo::written(name_span),
+                    Markers::redundant_move_message(&name),
+                ));
+            }
+            markers
         } else {
             Markers::empty()
         };
@@ -677,7 +705,7 @@ impl Parser {
                         .children(&mut child.walk())
                         .find(|c| c.kind() == "markers")
                     {
-                        self.map_markers(m)?
+                        Markers::from_iter(self.map_marker_tokens(m)?)
                     } else {
                         Markers::empty()
                     };
@@ -1351,8 +1379,10 @@ impl Parser {
     }
 
     /// Parse a `markers` node (one or more `Copy`/`Drop`/`Move` in any
-    /// order). Errors on duplicates.
-    fn map_markers(&self, node: Node) -> Result<Markers, Diagnostic> {
+    /// order) into the raw sequence the user wrote. Errors on duplicates.
+    /// Callers canonicalize via `Markers::from_iter` or `Markers::from_declared`
+    /// (the latter also flags redundant Move for an info diagnostic).
+    fn map_marker_tokens(&self, node: Node) -> Result<Vec<Marker>, Diagnostic> {
         let mut seen: Vec<Marker> = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
@@ -1381,7 +1411,7 @@ impl Parser {
             }
             seen.push(m);
         }
-        Ok(Markers::from_iter(seen))
+        Ok(seen)
     }
 }
 

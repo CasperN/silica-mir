@@ -69,8 +69,6 @@ pub enum SubstructuralCompositionCode {
     /// Struct/enum is marked `Move` but a field/variant payload is
     /// not `Move`.
     MoveMarkerNotSatisfied,
-    /// Move marker is redundant because both Copy and Drop are present.
-    MoveMarkerRedundant,
 }
 
 impl From<SubstructuralCompositionCode> for DiagCode {
@@ -189,21 +187,7 @@ fn check_markers_against(
     }
 }
 
-fn check_redundant_move(decl_meta: &DeclMeta, d: &mut Diagnostics) {
-    if decl_meta.markers.is_redundant_move() {
-        d.push_info(diag(
-            MoveMarkerRedundant,
-            decl_meta.name_source,
-            format!(
-                "Move marker is redundant on '{}' because both Copy and Drop are present",
-                decl_meta.name
-            ),
-        ));
-    }
-}
-
 fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
-    check_redundant_move(&s.meta, d);
     let scope = s.meta.param_scope();
     for f in &s.fields {
         let c = class_of(&f.ty, env, &scope);
@@ -228,7 +212,6 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
 }
 
 fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
-    check_redundant_move(&e.meta, d);
     let scope = e.meta.param_scope();
     for v in &e.variants {
         let c = class_of(&v.ty, env, &scope);

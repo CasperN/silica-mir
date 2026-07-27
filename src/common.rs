@@ -33,29 +33,18 @@ enum Tier {
 /// stays flexible as the marker vocabulary grows.
 ///
 /// Two query modes:
-/// - [`declared`] — literal presence of a marker on the decl. Used
-///   by composition checking to avoid cascading redundant errors
+/// - [`declared`] — literal presence of a marker in the canonical set.
+///   Used by composition checking to avoid cascading redundant errors
 ///   from the closure.
 /// - [`implies`] — semantic satisfaction, accounting for the
 ///   vertical closure (higher tiers imply lower) and the horizontal
 ///   closure (Copy + Drop implies Move). Used by every other query.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Markers {
-    // One tier per column, `None` = the type has no impl for that
-    // operation (linear in that dimension). Kept private so callers
-    // can't build inconsistent states.
     copy: Option<Tier>,
     drop: Option<Tier>,
     mov: Option<Tier>,
-    redundant_move: bool,
 }
-
-impl PartialEq for Markers {
-    fn eq(&self, other: &Self) -> bool {
-        self.copy == other.copy && self.drop == other.drop && self.mov == other.mov
-    }
-}
-impl Eq for Markers {}
 
 impl Markers {
     /// A marker set with nothing declared — linear in every dimension.
@@ -63,65 +52,40 @@ impl Markers {
         Self::default()
     }
 
-    /// Build from a set of declared markers. Duplicates are idempotent.
-    /// The result is canonicalized: markers derivable from the others
-    /// via closure are removed, so any two equivalent inputs produce
-    /// the same `Markers` value. E.g., `[Copy, Drop, Move]` and
-    /// `[Copy, Drop]` both yield `{copy, drop}` — `Move` is redundant
-    /// since it's already implied by Copy + Drop.
+    /// Build from a set of markers. Duplicates are idempotent. The
+    /// result is canonicalized: markers derivable from the others via
+    /// closure are removed, so any two equivalent inputs produce the
+    /// same value. E.g., `[Copy, Drop, Move]` and `[Copy, Drop]` both
+    /// yield `{copy, drop}` — `Move` is redundant because it is already
+    /// implied by Copy + Drop.
     pub fn from_iter(ms: impl IntoIterator<Item = Marker>) -> Self {
         let mut out = Self::empty();
-        let mut has_copy = false;
-        let mut has_drop = false;
-        let mut has_move = false;
         for m in ms {
             match m {
-                Marker::Copy => {
-                    out.copy = Some(Tier::Trivial);
-                    has_copy = true;
-                }
-                Marker::Drop => {
-                    out.drop = Some(Tier::Trivial);
-                    has_drop = true;
-                }
-                Marker::Move => {
-                    out.mov = Some(Tier::Trivial);
-                    has_move = true;
-                }
+                Marker::Copy => out.copy = Some(Tier::Trivial),
+                Marker::Drop => out.drop = Some(Tier::Trivial),
+                Marker::Move => out.mov = Some(Tier::Trivial),
             }
-        }
-        if has_copy && has_drop && has_move {
-            out.redundant_move = true;
         }
         out.canonicalize();
         out
     }
 
-    /// Strip declarations that the closure already implies. Called
-    /// from `from_iter` so `Markers` values are always canonical.
     fn canonicalize(&mut self) {
-        // Copy + Drop implies Move via the horizontal closure — an
-        // explicit Move declaration alongside them is redundant.
         if self.copy.is_some() && self.drop.is_some() {
             self.mov = None;
         }
     }
 
-    /// True iff the user literally wrote this marker on the decl.
-    /// Does *not* consider the closure. Composition uses this to
-    /// avoid emitting redundant errors on closure-derived markers.
+    /// True iff this marker is present in the canonical set (post-
+    /// canonicalization). Composition uses this to avoid emitting
+    /// redundant errors on closure-derived markers.
     pub fn declared(&self, m: Marker) -> bool {
         match m {
             Marker::Copy => self.copy.is_some(),
             Marker::Drop => self.drop.is_some(),
             Marker::Move => self.mov.is_some(),
         }
-    }
-
-    /// True if the Move marker was explicitly declared but redundant
-    /// because both Copy and Drop were also declared.
-    pub fn is_redundant_move(&self) -> bool {
-        self.redundant_move
     }
 
     /// True iff the type semantically satisfies this marker, considering
@@ -135,7 +99,7 @@ impl Markers {
         }
     }
 
-    /// Iterate declared markers in canonical order (Copy, Drop, Move).
+    /// Iterate the canonical set in canonical order (Copy, Drop, Move).
     /// Closure-derived markers are not included. Used by pretty-print.
     pub fn iter_declared(&self) -> impl Iterator<Item = Marker> + '_ {
         [
@@ -145,6 +109,27 @@ impl Markers {
         ]
         .into_iter()
         .filter_map(|(present, m)| if present { Some(m) } else { None })
+    }
+
+    /// Same as `from_iter` but also returns whether the user's token
+    /// list included a redundant `Move` alongside both `Copy` and `Drop`.
+    /// Callers (typically parsers) pair the flag with their own DiagCode
+    /// to emit an info diagnostic — see [`Markers::redundant_move_message`].
+    pub fn from_declared(tokens: impl IntoIterator<Item = Marker>) -> (Self, bool) {
+        let seen: Vec<Marker> = tokens.into_iter().collect();
+        let redundant = seen.contains(&Marker::Copy)
+            && seen.contains(&Marker::Drop)
+            && seen.contains(&Marker::Move);
+        (Markers::from_iter(seen), redundant)
+    }
+
+    /// Message body for the redundant-Move info diagnostic. Shared so
+    /// both parsers emit identical text.
+    pub fn redundant_move_message(decl_name: &str) -> String {
+        format!(
+            "Move marker is redundant on '{}' because both Copy and Drop are present",
+            decl_name
+        )
     }
 }
 
