@@ -959,14 +959,22 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
 }
 
 /// The payload state to use for a switch arm's variant, or `None` if
-/// that variant isn't admissible at the switch (the arm is dead code).
+/// the pre-switch state can't be refined at all (empty / diverged).
 /// Opaque `Init` admits any variant with `Init` payload. A refined
-/// `Partial` admits only the variants present in its map. Empty and
-/// diverged states don't refine — the caller keeps the pre-switch shape.
+/// `Partial` returns the tracked payload for the requested variant if
+/// present, or `Init` if not — the "not present" case is a dead arm
+/// (reachability's `SwitchArmDeadCode` covers it), and returning `Init`
+/// rather than nothing keeps the arm's tracked state a clean singleton
+/// `{V: Init}` so loop back-edges don't leak stale variant info across
+/// iterations.
 fn variant_admissible_payload(state: &InitState, variant: &str) -> Option<InitState> {
     match state {
         InitState::Init => Some(InitState::Init),
-        InitState::Partial(map) => map.get(&InitSlot::Variant(variant.to_string())).cloned(),
+        InitState::Partial(map) => Some(
+            map.get(&InitSlot::Variant(variant.to_string()))
+                .cloned()
+                .unwrap_or(InitState::Init),
+        ),
         InitState::NeverInit | InitState::Moved | InitState::Diverged => None,
     }
 }

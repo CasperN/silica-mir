@@ -33,6 +33,9 @@
 #   variant_with_empty_enum_payload_allows_unreachable    two-variant               Void payload             none         Void      none
 #   variant_with_never_payload_allows_unreachable         two-variant               never payload            none         never     none
 #   variant_with_transitively_never_struct_payload        two-variant               struct-with-never        none         Voidish   none
+#   chained_projection_switch                             two-variant (field proj)  dead (prior switch)      projection   unit      none
+#   loop_reassigns_variant_across_backedge                two-variant               widened across backedge  loop         unit      none
+#   nested_downcast_field_switch                          two-variant (mixed proj)  none                     nested       unit      none
 
 enum Option: Copy + Drop { None: unit Some: i64 }
 enum One: Copy + Drop { Only: i64 }
@@ -330,4 +333,78 @@ fn variant_with_transitively_never_struct_payload_allows_unreachable_arm(e: Tran
     return
   n_arm:
     unreachable
+}
+
+# ---------- chained switch on a struct-field projection ----------
+
+# Two consecutive `switchEnum(s.e)` on the same projection: the second
+# switch sees the refinement narrowing from the first, so its opposite
+# arm is provably dead.
+struct S: Copy + Drop { e: Sub }
+fn chained_projection_switch(s: S) {
+  entry:
+    switchEnum(s.e) [S1: s1, S2: s2]
+  s1:
+    switchEnum(s.e) [S1: s1_inner, S2: dead]
+  s2:
+    drop s;
+    return
+  s1_inner:
+    drop s;
+    return
+  dead:
+    unreachable
+}
+
+# ---------- loop reassigns variant across the backedge ----------
+
+# On the first iteration, `e` is `{S1}` at the loop head. Arm S2 is
+# dead (reachability warns), and the arm's tracked state is a filler
+# `{S2: Init}` — the state doesn't leak `{S1}` across the backedge. On
+# subsequent iterations, `e` is `{S1, S2}` and both arms are live; the
+# downcast in each arm sees a clean singleton refinement.
+enum Se: Move + Drop { S1: unit, S2: unit }
+fn loop_reassigns_variant_across_backedge(u: unit) {
+  e: Se;
+  entry:
+    e = Se::S1(unit);
+    goto head
+  head:
+    switchEnum(e) [S1: s1, S2: s2]
+  s1:
+    drop e as S1;
+    e = Se::S2(unit);
+    goto head
+  s2:
+    drop e as S2;
+    drop u;
+    return
+}
+
+# ---------- nested downcast + field in the switch place ----------
+
+# `we as W .e` is a switch place that mixes a variant downcast with
+# a struct-field projection. Refinement propagates through both steps:
+# the outer switch pins `we` to `W`, the inner switch pins the field
+# `we as W .e` to a specific variant.
+enum WrapEnum: Copy + Drop { W: S, N: unit }
+fn nested_downcast_field_switch(we: WrapEnum) {
+  x: unit;
+  entry:
+    switchEnum(we) [W: w_arm, N: n_arm]
+  w_arm:
+    switchEnum(we as W .e) [S1: s1, S2: s2]
+  n_arm:
+    drop we;
+    return
+  s1:
+    x = copy we as W .e as S1;
+    drop x;
+    drop we;
+    return
+  s2:
+    x = copy we as W .e as S2;
+    drop x;
+    drop we;
+    return
 }

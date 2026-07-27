@@ -253,3 +253,70 @@ fn<'s0> variant_with_transitively_never_struct_payload_allows_unreachable_arm(e:
   n_arm:
     unreachable
 }
+
+struct S: Copy + Drop {
+  e: Sub
+}
+
+fn chained_projection_switch(s: S) {
+  entry:
+    switchEnum(s.e) [S1: s1, S2: s2]
+  s1:
+    switchEnum(s.e) [S1: s1_inner, S2: dead]
+  s2:
+    drop s;
+    return
+  s1_inner:
+    drop s;
+    return
+  dead:
+    unreachable
+}
+
+enum Se: Drop + Move {
+  S1: unit
+  S2: unit
+}
+
+fn loop_reassigns_variant_across_backedge(u: unit) {
+  e: Se;
+  entry:
+    e = Se::S1(unit);
+    goto head
+  head:
+    switchEnum(e) [S1: s1, S2: s2]
+  s1:
+    drop e as S1;
+    e = Se::S2(unit);
+    goto head
+  s2:
+    drop e as S2;
+    drop u;
+    return
+}
+
+enum WrapEnum: Copy + Drop {
+  W: S
+  N: unit
+}
+
+fn nested_downcast_field_switch(we: WrapEnum) {
+  x: unit;
+  entry:
+    switchEnum(we) [W: w_arm, N: n_arm]
+  w_arm:
+    switchEnum(we as W.e) [S1: s1, S2: s2]
+  n_arm:
+    drop we;
+    return
+  s1:
+    x = copy we as W.e as S1;
+    drop x;
+    drop we;
+    return
+  s2:
+    x = copy we as W.e as S2;
+    drop x;
+    drop we;
+    return
+}
