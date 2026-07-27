@@ -32,9 +32,6 @@ pub enum DiagCode {
     /// Errors from initialization-state dataflow
     /// (see `init_state::InitStateCode`).
     InitState(crate::mir::place_state::analysis::InitStateCode),
-    /// Diagnostics from the variant-flow / `switchEnum` analysis
-    /// (see `variant_flow::VariantFlowCode`).
-    VariantFlow(crate::mir::variant_flow::VariantFlowCode),
     /// Errors from the substructural per-statement checker
     /// (see `substructural::check::SubstructuralCheckCode`).
     SubstructuralCheck(crate::mir::substructural::check::SubstructuralCheckCode),
@@ -70,7 +67,6 @@ impl DiagCode {
         match self {
             DiagCode::TypeCheck(c) => format!("TC-{:?}", c),
             DiagCode::InitState(c) => format!("INIT-{:?}", c),
-            DiagCode::VariantFlow(c) => format!("VF-{:?}", c),
             DiagCode::SubstructuralCheck(c) => format!("SUB-{:?}", c),
             DiagCode::SubstructuralComposition(c) => format!("COMP-{:?}", c),
             DiagCode::Layout(c) => format!("LAY-{:?}", c),

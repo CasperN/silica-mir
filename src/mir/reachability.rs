@@ -37,6 +37,14 @@ pub enum ReachabilityCode {
     /// (warning) A `switchEnum` arm exists for a variant that flow
     /// analysis proves cannot occur at this point — dead code.
     SwitchArmDeadCode,
+    /// `switchEnum` has no arms — no control-flow successor.
+    SwitchNoArms,
+    /// `switchEnum` doesn't cover every declared variant of the enum.
+    /// Each missing variant reports its own diagnostic.
+    SwitchNotExhaustive,
+    /// `switchEnum` names the same variant twice. Each repeat reports
+    /// its own diagnostic.
+    SwitchDuplicateArm,
 }
 
 impl From<ReachabilityCode> for DiagCode {
@@ -84,6 +92,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         let TerminatorKind::SwitchEnum { place, cases } = &block.terminator.kind else {
             continue;
         };
+        check_switch_structure(env, func, block, place, cases, d);
         let Some(state) = entry_states.get(&block.label) else {
             continue;
         };
@@ -94,6 +103,62 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
             crate::mir::place_state::analysis::transfer_stmt_silent(env, func, stmt, &mut term_state);
         }
         check_switch_arms(env, func, body, block, place, cases, &term_state, d);
+    }
+}
+
+/// Structural well-formedness of a `switchEnum`: the set of arm labels
+/// must bijectively match the declared variants of the switched enum.
+/// Emits `SwitchNoArms` for the empty case, `SwitchNotExhaustive` for
+/// each declared variant with no arm, and `SwitchDuplicateArm` for each
+/// repeat. Only runs on reachable blocks — dead-code switches stay
+/// silent.
+fn check_switch_structure(
+    env: &Env,
+    func: &Function,
+    block: &BasicBlock,
+    place: &Place,
+    cases: &[(String, String)],
+    d: &mut Diagnostics,
+) {
+    let source = block.terminator.source;
+    if cases.is_empty() {
+        d.push_error(diag(
+            ReachabilityCode::SwitchNoArms,
+            source,
+            func,
+            block,
+            "switchEnum requires at least one arm".to_string(),
+        ));
+    }
+    let Some(enum_decl) = resolve_enum_of_place(env, func, place) else {
+        return;
+    };
+    let handled: BTreeSet<&str> = cases.iter().map(|(v, _)| v.as_str()).collect();
+    for variant in &enum_decl.variants {
+        if !handled.contains(variant.name.as_str()) {
+            d.push_error(diag(
+                ReachabilityCode::SwitchNotExhaustive,
+                source,
+                func,
+                block,
+                format!(
+                    "switchEnum on '{}' does not handle variant '{}'",
+                    enum_decl.meta.name, variant.name
+                ),
+            ));
+        }
+    }
+    let mut seen: BTreeSet<&str> = BTreeSet::new();
+    for (variant, _) in cases {
+        if !seen.insert(variant.as_str()) {
+            d.push_error(diag(
+                ReachabilityCode::SwitchDuplicateArm,
+                source,
+                func,
+                block,
+                format!("switchEnum has duplicate arm for variant '{}'", variant),
+            ));
+        }
     }
 }
 

@@ -19,91 +19,28 @@ error: at 154:5: [TC-SwitchOnNonEnum] In function 'downcast_in_switch_place_with
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  155 |   n:
      |
-error: at 51:5: [VF-SwitchNotExhaustive] In function 'coverage_missing_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
-    |
- 50 |   entry:
- 51 |     switchEnum(o) [None: n]
-    |     ^^^^^^^^^^^^^^^^^^^^^^^
- 52 |   n:
-    |
-error: at 64:5: [VF-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'B'
-    |
- 63 |   entry:
- 64 |     switchEnum(t) [A: a]
-    |     ^^^^^^^^^^^^^^^^^^^^
- 65 |   a:
-    |
-error: at 64:5: [VF-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'C'
-    |
- 63 |   entry:
- 64 |     switchEnum(t) [A: a]
-    |     ^^^^^^^^^^^^^^^^^^^^
- 65 |   a:
-    |
-error: at 76:5: [VF-SwitchDuplicateArm] In function 'coverage_duplicate_arm', block 'entry': switchEnum has duplicate arm for variant 'None'
-    |
- 75 |   entry:
- 76 |     switchEnum(o) [None: a, None: b, Some: s]
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 77 |   a:
-    |
-error: at 94:5: [VF-SwitchNotExhaustive] In function 'coverage_unknown_variant_still_reported_and_missing_still_fires', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
-    |
- 93 |   entry:
- 94 |     switchEnum(o) [None: n, Bogus: b]
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 95 |   n:
-    |
-error: at 109:5: [VF-SwitchNoArms] In function 'empty_enum_switch_with_no_arms_rejected', block 'entry': switchEnum requires at least one arm
-     |
- 108 |   entry:
- 109 |     switchEnum(v) []
-     |     ^^^^^^^^^^^^^^^^
- 110 | }
-     |
-error: at 118:5: [VF-SwitchNoArms] In function 'switch_with_no_arms', block 'entry': switchEnum requires at least one arm
-     |
- 117 |   entry:
- 118 |     switchEnum(o) []
-     |     ^^^^^^^^^^^^^^^^
- 119 | }
-     |
-error: at 118:5: [VF-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'None'
-     |
- 117 |   entry:
- 118 |     switchEnum(o) []
-     |     ^^^^^^^^^^^^^^^^
- 119 | }
-     |
-error: at 118:5: [VF-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
-     |
- 117 |   entry:
- 118 |     switchEnum(o) []
-     |     ^^^^^^^^^^^^^^^^
- 119 | }
-     |
-error: at 140:5: [VF-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+error: at 140:5: [INIT-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
  139 |   entry:
  140 |     x = copy o as Some;
      |     ^^^^^^^^^^^^^^^^^^
  141 |     drop x;
      |
-error: at 154:5: [VF-DowncastVariantNotRefined] In function 'downcast_in_switch_place_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
+error: at 154:5: [INIT-DowncastVariantNotRefined] In function 'downcast_in_switch_place_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
  153 |   entry:
  154 |     switchEnum(o as Some) [None: n]
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  155 |   n:
      |
-error: at 170:5: [VF-DowncastVariantNotRefined] In function 'downcast_on_field_of_struct_errors', block 'entry': cannot downcast 'w.inner as Some' here: 'w.inner' is not refined to variant 'Some'
+error: at 170:5: [INIT-DowncastVariantNotRefined] In function 'downcast_on_field_of_struct_errors', block 'entry': cannot downcast 'w.inner as Some' here: 'w.inner' is not refined to variant 'Some'
      |
  169 |   entry:
  170 |     x = copy w.inner as Some;
      |     ^^^^^^^^^^^^^^^^^^^^^^^^
  171 |     drop x;
      |
-error: at 187:5: [VF-DowncastVariantNotRefined] In function 'downcast_on_array_slot_errors', block 'entry': cannot downcast 'a[0] as Some' here: 'a[0]' is not refined to variant 'Some'
+error: at 187:5: [INIT-DowncastVariantNotRefined] In function 'downcast_on_array_slot_errors', block 'entry': cannot downcast 'a[0] as Some' here: 'a[0]' is not refined to variant 'Some'
      |
  186 |     a[1] = Option::None(unit);
  187 |     x = copy a[0] as Some;
@@ -131,12 +68,75 @@ error: at 338:5: [INIT-UseAfterMove] In function 'flow_uninit_borrow_clobbers_re
      |     ^^^^^^
  339 |     drop b;
      |
-error: at 432:5: [VF-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
+error: at 432:5: [INIT-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
      |
  431 |     call set_a(move ab_ref);
  432 |     f = copy ab as B;  # Variant read not okay - it could have changed.
      |     ^^^^^^^^^^^^^^^^
  433 |     goto ret;
+     |
+error: at 51:5: [REACH-SwitchNotExhaustive] In function 'coverage_missing_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+    |
+ 50 |   entry:
+ 51 |     switchEnum(o) [None: n]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^
+ 52 |   n:
+    |
+error: at 64:5: [REACH-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'B'
+    |
+ 63 |   entry:
+ 64 |     switchEnum(t) [A: a]
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 65 |   a:
+    |
+error: at 64:5: [REACH-SwitchNotExhaustive] In function 'coverage_multiple_missing_reported', block 'entry': switchEnum on 'Three' does not handle variant 'C'
+    |
+ 63 |   entry:
+ 64 |     switchEnum(t) [A: a]
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 65 |   a:
+    |
+error: at 76:5: [REACH-SwitchDuplicateArm] In function 'coverage_duplicate_arm', block 'entry': switchEnum has duplicate arm for variant 'None'
+    |
+ 75 |   entry:
+ 76 |     switchEnum(o) [None: a, None: b, Some: s]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 77 |   a:
+    |
+error: at 94:5: [REACH-SwitchNotExhaustive] In function 'coverage_unknown_variant_still_reported_and_missing_still_fires', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+    |
+ 93 |   entry:
+ 94 |     switchEnum(o) [None: n, Bogus: b]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 95 |   n:
+    |
+error: at 109:5: [REACH-SwitchNoArms] In function 'empty_enum_switch_with_no_arms_rejected', block 'entry': switchEnum requires at least one arm
+     |
+ 108 |   entry:
+ 109 |     switchEnum(v) []
+     |     ^^^^^^^^^^^^^^^^
+ 110 | }
+     |
+error: at 118:5: [REACH-SwitchNoArms] In function 'switch_with_no_arms', block 'entry': switchEnum requires at least one arm
+     |
+ 117 |   entry:
+ 118 |     switchEnum(o) []
+     |     ^^^^^^^^^^^^^^^^
+ 119 | }
+     |
+error: at 118:5: [REACH-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'None'
+     |
+ 117 |   entry:
+ 118 |     switchEnum(o) []
+     |     ^^^^^^^^^^^^^^^^
+ 119 | }
+     |
+error: at 118:5: [REACH-SwitchNotExhaustive] In function 'switch_with_no_arms', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+     |
+ 117 |   entry:
+ 118 |     switchEnum(o) []
+     |     ^^^^^^^^^^^^^^^^
+ 119 | }
      |
 error: at 202:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_on_parameter', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
      |

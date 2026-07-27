@@ -10,10 +10,9 @@ use super::analysis::{
     advance_ty, capture_carried_refs, describe_obligation_mismatch, describe_pointee_state,
     describe_state, enum_variant_payload_ty, extract_init_path, format_path, is_state_fully_init,
     partial_is_uninit, read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
-    states_before_returns, InitSlot, InitState, InitStateCode::*, InitStateContext, PointState,
-    RefState,
+    states_before_returns, InitSlot, InitState, InitStateCode, InitStateCode::*, InitStateContext,
+    PointState, RefState,
 };
-use crate::mir::variant_flow::VariantFlowCode;
 
 pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
     for f in program.functions() {
@@ -378,7 +377,7 @@ impl<'a> InitStateContext<'a> {
                 if !state_refines_to_variant(&prefix_state, v) {
                     let prefix = format_path(&root, &path[..i]);
                     d.push_error(diag(
-                        VariantFlowCode::DowncastVariantNotRefined,
+                        InitStateCode::DowncastVariantNotRefined,
                         source,
                         func,
                         block,

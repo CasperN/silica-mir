@@ -138,7 +138,7 @@ error: at 180:5: [TC-UndeclaredVariable] In function 'undeclared_variable_at_stm
      |     ^^^^^^^^^^^^^^^^
  181 |     return
      |
-error: at 135:5: [VF-SwitchNotExhaustive] In function 'switch_enum_multi_errors', block 'entry': switchEnum on 'SwitchOption' does not handle variant 'Some'
+error: at 135:5: [REACH-SwitchNotExhaustive] In function 'switch_enum_multi_errors', block 'entry': switchEnum on 'SwitchOption' does not handle variant 'Some'
      |
  134 |   entry:
  135 |     switchEnum(o) [Wat: nowhere, None: end]

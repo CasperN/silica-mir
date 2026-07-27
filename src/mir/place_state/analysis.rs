@@ -93,6 +93,12 @@ pub enum InitStateCode {
     /// being downcast isn't `Init` at that point. Enum construction
     /// must go via `Name::V(...)`.
     WriteThroughUninitEnumProjection,
+
+    // ---- Downcast refinement ----
+    /// `place as V` where the tracked state doesn't prove the enclosing
+    /// enum is currently variant `V`. Usually needs a preceding
+    /// `switchEnum` arm (or an enum construction) to narrow the state.
+    DowncastVariantNotRefined,
 }
 
 impl From<InitStateCode> for DiagCode {
@@ -692,8 +698,8 @@ pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Env
                 let slot_state = map.get(&InitSlot::Variant(v.clone()));
                 // When the map tracks per-variant payload, descend into
                 // the requested variant's slot. Otherwise fall back to
-                // the opaque-Init behavior — variant refinement is
-                // checked separately by variant_flow.
+                // the opaque-Init behavior — the checker's place walker
+                // emits DowncastVariantNotRefined for that case.
                 let payload_state = match slot_state {
                     Some(s) => s.clone(),
                     None => InitState::Init,
@@ -968,8 +974,6 @@ fn variant_admissible_payload(state: &InitState, variant: &str) -> Option<InitSt
 /// True when `state` proves the enum is exactly `variant`. A `Partial`
 /// with a single `Variant(v)` key qualifies; an opaque `Init` (any
 /// declared variant possible) does not, nor do multi-variant maps.
-/// Matches the pre-unification variant_flow rule
-/// `set.len() == 1 && set.contains(v)`.
 pub(super) fn state_refines_to_variant(state: &InitState, variant: &str) -> bool {
     match state {
         InitState::Partial(map) => {

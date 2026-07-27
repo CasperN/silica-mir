@@ -1178,7 +1178,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             writeln!(cx.out, "  {} = load i16, ptr {}", disc_val, disc_addr).unwrap();
 
             // Reserve a `.switch_default.N` label. MIR guarantees the
-            // switch is exhaustive (variant_flow); the default block is
+            // switch is exhaustive (reachability); the default block is
             // just LLVM's syntactic requirement, filled with `unreachable`.
             let default_label = format!(".switch_default.{}", cx.pending_default_blocks.len());
             cx.pending_default_blocks.push(default_label.clone());

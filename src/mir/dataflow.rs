@@ -62,7 +62,7 @@ pub trait Analysis {
 
     /// Optionally refine `state` when propagating along an outgoing edge
     /// `block -> succ_label`. Default: no refinement. Used e.g. by
-    /// `variant_flow` to pin a place to a specific enum variant on a
+    /// `place_state` to pin a place to a specific enum variant on a
     /// `switchEnum` arm edge.
     fn refine_edge(&self, _state: &mut Self::State, _block: &BasicBlock, _succ_label: &str) {}
 }
@@ -108,8 +108,8 @@ pub enum WalkPoint<'a, S> {
 /// `transfer_stmt` / `transfer_terminator`.
 ///
 /// Passes whose diagnostics can be expressed as "check preconditions at
-/// each program point, then advance" (e.g. `variant_flow`) can call this
-/// instead of writing their own walk loop. Passes with finer-grained
+/// each program point, then advance" can call this instead of writing
+/// their own walk loop. Passes with finer-grained
 /// interleaving of check and transfer (e.g. `init_state`, whose Call
 /// handling checks operand N against state after operand N-1's move)
 /// still write their own walk.

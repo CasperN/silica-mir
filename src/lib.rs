@@ -49,7 +49,6 @@ fn prepare_mir_for_analysis(
     mir::substructural::composition::check_program(&env, d);
     mir::layout::check_sizes_finite(&env, d);
     mir::substructural::check::check_statements(&program, &env, d);
-    mir::variant_flow::check_program(&program, &env, d);
     (program, env)
 }
 

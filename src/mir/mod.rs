@@ -16,7 +16,6 @@ pub mod substructural;
 pub mod type_check;
 pub(crate) mod type_fold;
 pub mod type_util;
-pub mod variant_flow;
 
 #[cfg(test)]
 pub mod test_util;

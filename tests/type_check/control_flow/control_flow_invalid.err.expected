@@ -54,21 +54,21 @@ error: at 107:5: [TC-TerminatorUndefinedTarget] In function 'switch_enum_undefin
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  108 | }
      |
-error: at 95:5: [VF-SwitchNotExhaustive] In function 'switch_enum_unknown_variant', block 'entry': switchEnum on 'Option' does not handle variant 'None'
+error: at 95:5: [REACH-SwitchNotExhaustive] In function 'switch_enum_unknown_variant', block 'entry': switchEnum on 'Option' does not handle variant 'None'
     |
  94 |   entry:
  95 |     switchEnum(o) [Wat: end]
     |     ^^^^^^^^^^^^^^^^^^^^^^^^
  96 |   end:
     |
-error: at 95:5: [VF-SwitchNotExhaustive] In function 'switch_enum_unknown_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+error: at 95:5: [REACH-SwitchNotExhaustive] In function 'switch_enum_unknown_variant', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
     |
  94 |   entry:
  95 |     switchEnum(o) [Wat: end]
     |     ^^^^^^^^^^^^^^^^^^^^^^^^
  96 |   end:
     |
-error: at 107:5: [VF-SwitchNotExhaustive] In function 'switch_enum_undefined_target', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
+error: at 107:5: [REACH-SwitchNotExhaustive] In function 'switch_enum_undefined_target', block 'entry': switchEnum on 'Option' does not handle variant 'Some'
      |
  106 |   entry:
  107 |     switchEnum(o) [None: nowhere]
