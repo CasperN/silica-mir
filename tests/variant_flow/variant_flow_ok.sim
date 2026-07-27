@@ -174,6 +174,23 @@ fn flow_unreachable_after_prior_switch(o: Option) {
     unreachable
 }
 
+# ---------- dead arm on struct field: projection refinement rules out the arm ----------
+
+# `w.inner` is a struct field. Constructing `w.inner = Sub::S1(0)`
+# refines the state at that projection path to `S1` only, so a
+# subsequent switch can mark the `S2` arm unreachable.
+fn flow_unreachable_field_projection_after_construction() {
+  w: Wrap;
+  entry:
+    w.inner = Sub::S1(unit);
+    switchEnum(w.inner) [S1: s, S2: dead]
+  s:
+    drop w;
+    return
+  dead:
+    unreachable
+}
+
 # ---------- dead arm from abort join: only the non-aborting path reaches the switch ----------
 
 # One predecessor of the join block always aborts. The only path that

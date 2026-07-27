@@ -50,7 +50,6 @@ fn prepare_mir_for_analysis(
     mir::layout::check_sizes_finite(&env, d);
     mir::substructural::check::check_statements(&program, &env, d);
     mir::variant_flow::check_program(&program, &env, d);
-    mir::block_reachability::check_program(&program, d);
     (program, env)
 }
 
@@ -58,6 +57,7 @@ fn prepare_mir_for_analysis(
 fn check_place_and_loan_state(program: &Program, env: &mir::type_check::Env, d: &mut Diagnostics) {
     mir::place_state::check::check_program(program, env, d);
     mir::lifetime::check::check_program(program, env, d);
+    mir::reachability::check_program(program, env, d);
 }
 
 /// Type-check and validate MIR without running NLL or place-state

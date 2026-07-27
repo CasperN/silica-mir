@@ -82,83 +82,6 @@ error: at 118:5: [VF-SwitchNotExhaustive] In function 'switch_with_no_arms', blo
      |     ^^^^^^^^^^^^^^^^
  119 | }
      |
-error: at 202:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_on_parameter', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 201 |   entry:
- 202 |     switchEnum(o) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 203 |   n:
-     |
-error: at 220:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_reassign', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 219 |     o = copy other;
- 220 |     switchEnum(o) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 221 |   n:
-     |
-error: at 246:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_ambiguous_join', block 'join': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 245 |   join:
- 246 |     switchEnum(o) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 247 |   n:
-     |
-error: at 268:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_exclusive_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 267 |     unborrow r;
- 268 |     switchEnum(o) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 269 |   n:
-     |
-error: at 290:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_out_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
-     |
- 289 |     unborrow r;
- 290 |     switchEnum(o) [None: dead, Some: s]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 291 |   s:
-     |
-error: at 315:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
-     |
- 314 |     unborrow r;
- 315 |     switchEnum(o) [None: dead, Some: s]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 316 |   dead:
-     |
-error: at 336:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 335 |     unborrow r;
- 336 |     switchEnum(o) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 337 |   n:
-     |
-error: at 359:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_switch_in_loop_widens_variant_correctly', block 'header': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 358 |   header:
- 359 |     switchEnum(o) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 360 |   n:
-     |
-error: at 385:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_deref_switch_place_treated_as_top', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 384 |     r = &o;
- 385 |     switchEnum(r.*) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 386 |   n:
-     |
-error: at 404:5: [VF-SwitchArmFalselyUnreachable] In function 'flow_field_switch_place_treated_as_top', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-     |
- 403 |     w.inner = Option::None(unit);
- 404 |     switchEnum(w.inner) [None: n, Some: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 405 |   n:
-     |
-error: at 421:5: [VF-SwitchArmFalselyUnreachable] In function 'variant_with_inhabited_struct_payload_still_reachable', block 'entry': switchEnum arm for variant 'Bad' claims unreachable but variant is reachable at this point
-     |
- 420 |   entry:
- 421 |     switchEnum(e) [Good: g, Bad: dead]
-     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 422 |   g:
-     |
 error: at 140:5: [VF-DowncastVariantNotRefined] In function 'downcast_read_without_refinement', block 'entry': cannot downcast 'o as Some' here: 'o' is not refined to variant 'Some'
      |
  139 |   entry:
@@ -208,12 +131,82 @@ error: at 338:5: [INIT-UseAfterMove] In function 'flow_uninit_borrow_clobbers_re
      |     ^^^^^^
  339 |     drop b;
      |
-error: at 450:5: [VF-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
+error: at 432:5: [VF-DowncastVariantNotRefined] In function 'mutation_between_variant_check_and_read', block 'do_bad': cannot downcast 'ab as B' here: 'ab' is not refined to variant 'B'
      |
- 449 |     call set_a(move ab_ref);
- 450 |     f = copy ab as B;  # Variant read not okay - it could have changed.
+ 431 |     call set_a(move ab_ref);
+ 432 |     f = copy ab as B;  # Variant read not okay - it could have changed.
      |     ^^^^^^^^^^^^^^^^
- 451 |     goto ret;
+ 433 |     goto ret;
+     |
+error: at 202:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_on_parameter', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 201 |   entry:
+ 202 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 203 |   n:
+     |
+error: at 220:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_reassign', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 219 |     o = copy other;
+ 220 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 221 |   n:
+     |
+error: at 246:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_unreachable_arm_after_ambiguous_join', block 'join': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 245 |   join:
+ 246 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 247 |   n:
+     |
+error: at 268:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_exclusive_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 267 |     unborrow r;
+ 268 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 269 |   n:
+     |
+error: at 290:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_out_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
+     |
+ 289 |     unborrow r;
+ 290 |     switchEnum(o) [None: dead, Some: s]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 291 |   s:
+     |
+error: at 315:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_drop_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'None' claims unreachable but variant is reachable at this point
+     |
+ 314 |     unborrow r;
+ 315 |     switchEnum(o) [None: dead, Some: s]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 316 |   dead:
+     |
+error: at 336:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_uninit_borrow_clobbers_refinement', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 335 |     unborrow r;
+ 336 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 337 |   n:
+     |
+error: at 359:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_switch_in_loop_widens_variant_correctly', block 'header': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 358 |   header:
+ 359 |     switchEnum(o) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 360 |   n:
+     |
+error: at 385:5: [REACH-SwitchArmFalselyUnreachable] In function 'flow_deref_switch_place_treated_as_top', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+     |
+ 384 |     r = &o;
+ 385 |     switchEnum(r.*) [None: n, Some: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 386 |   n:
+     |
+error: at 403:5: [REACH-SwitchArmFalselyUnreachable] In function 'variant_with_inhabited_struct_payload_still_reachable', block 'entry': switchEnum arm for variant 'Bad' claims unreachable but variant is reachable at this point
+     |
+ 402 |   entry:
+ 403 |     switchEnum(e) [Good: g, Bad: dead]
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 404 |   g:
      |
 note: at 39:8: [COMP-RedundantMoveMarker] Move marker is redundant on 'HasInhabited' because both Copy and Drop are present
     |

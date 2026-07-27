@@ -25,7 +25,6 @@ use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction, WalkPoint};
 use crate::mir::helpers::*;
 use crate::mir::type_check::{Env, TypeDecl};
-use crate::mir::type_util::is_type_uninhabited;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -51,14 +50,6 @@ pub enum VariantFlowCode {
     /// `switchEnum` names the same variant twice. Each repeat reports
     /// its own diagnostic.
     SwitchDuplicateArm,
-    /// A `switchEnum` arm targets a block whose terminator is
-    /// `unreachable`, but flow analysis proves the variant IS
-    /// reachable at the switch. Declaring an arm `unreachable` is
-    /// only sound when the analysis actually rules it out.
-    SwitchArmFalselyUnreachable,
-    /// (warning) A `switchEnum` arm exists for a variant that flow
-    /// analysis proves cannot occur at this point — dead code.
-    SwitchArmDeadCode,
 }
 
 impl From<VariantFlowCode> for DiagCode {
@@ -125,9 +116,9 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
     let entry_states = dataflow::run(&VariantFlow, body);
 
     dataflow::walk_forward(&VariantFlow, body, &entry_states, |pt| {
-        if let WalkPoint::Terminator { state, block, .. } = pt {
+        if let WalkPoint::Terminator { block, .. } = pt {
             if let TerminatorKind::SwitchEnum { place, cases } = &block.terminator.kind {
-                check_switch(env, func, body, &locals, block, place, cases, state, d);
+                check_switch(env, func, &locals, block, place, cases, d);
             }
         }
     });
@@ -230,12 +221,10 @@ fn join(a: &PointState, b: &PointState) -> PointState {
 fn check_switch(
     env: &Env,
     func: &Function,
-    body: &FunctionBody,
     locals: &IndexMap<String, Type>,
     block: &BasicBlock,
     place: &Place,
     cases: &[(String, String)],
-    state: &PointState,
     d: &mut Diagnostics,
 ) {
     let terminator_source = block.terminator.source;
@@ -287,70 +276,10 @@ fn check_switch(
         }
     }
 
-    // Per-arm flow check.
-    let root = root_var(place);
-    let known: Option<&BTreeSet<String>> = root.and_then(|r| state.get(r));
-
-    let blocks_by_label = body.blocks_by_label();
-
-    for (variant, label) in cases {
-        // Skip arms for variants that don't belong to this enum (tc reports
-        // that separately) and skip arms with undefined targets.
-        if !declared.contains(&variant.as_str()) {
-            continue;
-        }
-        let Some(target) = blocks_by_label.get(label.as_str()) else {
-            continue;
-        };
-        let target_unreachable = matches!(target.terminator.kind, TerminatorKind::Unreachable);
-
-        let variant_reachable = match known {
-            Some(set) => set.contains(variant),
-            None => {
-                // ⊤ over declared variants, but uninhabited variants
-                // (whose payload type can't be constructed) never
-                // occur at runtime — treat as unreachable so an
-                // `unreachable` arm for `N: never` is valid without
-                // requiring prior refinement.
-                let payload_ty = enum_decl
-                    .variants
-                    .iter()
-                    .find(|v| v.name == *variant)
-                    .map(|v| &v.ty);
-                match payload_ty {
-                    Some(ty) => !is_type_uninhabited(ty, env),
-                    None => true,
-                }
-            }
-        };
-
-        match (target_unreachable, variant_reachable) {
-            (true, true) => d.push_error(diag(
-                SwitchArmFalselyUnreachable,
-                terminator_source,
-                func,
-                block,
-                format!(
-                    "switchEnum arm for variant '{}' claims unreachable but variant is reachable at this point",
-                    variant
-                ),
-            )),
-            (false, false) => d.push_warning(diag(
-                SwitchArmDeadCode,
-                terminator_source,
-                func,
-                block,
-                format!(
-                    "switchEnum arm for variant '{}' is dead code (variant is unreachable at this point)",
-                    variant
-                ),
-            )),
-            // (true, false) reachable and not-marked-unreachable: correct.
-            // (false, true) unreachable and marked-unreachable: correct.
-            // Both are the intended cases; no diagnostic to emit.
-            (true, false) | (false, true) => {}
-        }
-    }
+    // Per-arm reachability (SwitchArmFalselyUnreachable / SwitchArmDeadCode)
+    // lives in the reachability module now, keyed off place_state's
+    // per-variant refinement rather than variant_flow's own dataflow.
+    let _ = declared;
 }
 
 fn resolve_enum_of_place<'a>(

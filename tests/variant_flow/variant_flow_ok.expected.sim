@@ -137,6 +137,18 @@ fn flow_unreachable_after_prior_switch(o: Option) {
     unreachable
 }
 
+fn flow_unreachable_field_projection_after_construction() {
+  w: Wrap;
+  entry:
+    w.inner = Sub::S1(unit);
+    switchEnum(w.inner) [S1: s, S2: dead]
+  s:
+    drop w;
+    return
+  dead:
+    unreachable
+}
+
 fn flow_unreachable_after_abort_join(b: bool) {
   o: Option;
   entry:

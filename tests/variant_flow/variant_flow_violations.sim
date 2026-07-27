@@ -391,24 +391,6 @@ fn flow_deref_switch_place_treated_as_top() {
     unreachable
 }
 
-# ---------- flow_field_switch_place_treated_as_top: field projection is never tracked ----------
-
-# Switching on `w.inner` (a field projection) means the switch place is
-# not a root Var. Variant flow never tracks refinement for field paths,
-# so the state is always Top. Even though `w.inner` was constructed as
-# `None`, the pass cannot prove the `Some` arm is dead.
-fn flow_field_switch_place_treated_as_top() {
-  w: Wrap;
-  entry:
-    w.inner = Option::None(unit);
-    switchEnum(w.inner) [None: n, Some: dead]
-  n:
-    drop w;
-    return
-  dead:
-    unreachable
-}
-
 # ---------- variant_with_inhabited_struct_payload_still_reachable ----------
 
 # A variant whose payload is a struct with only inhabited (non-never)

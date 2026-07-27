@@ -17,7 +17,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
   type. Sizes and offsets are inherently non-negative, matching
   `$sizeof<T>` returning `u64`. Require the index operand to be `u64` and
   update fixtures that still index arrays with `i64` values.
-- **New reachability module.** All of `variant_flow`'s remaining diagnostics — `SwitchNoArms`, `SwitchNotExhaustive`, `SwitchDuplicateArm`, `SwitchArmFalselyUnreachable`, `SwitchArmDeadCode` — need to run against a reachability filter so dead blocks stay silent. Combine into a dedicated pass that (a) filters blocks by `block_reachability`, (b) folds `branch(Const::Bool(true|false))` so trivially-dead arms stop counting as reachable, and (c) consumes place_state's per-variant refinement to decide arm reachability. Const-folding on `bool` is preferred over reifying `bool` as an enum since `bool` is already a first-class scalar. Retiring `variant_flow.rs` entirely blocks on this pass landing.
+- **Retire remaining `variant_flow.rs`.** `SwitchArmFalselyUnreachable` / `SwitchArmDeadCode` now live in `reachability` alongside bool-const branch folding; the remaining `SwitchNoArms` / `SwitchNotExhaustive` / `SwitchDuplicateArm` still live in `variant_flow.rs` because they need dead-block filtering. Move them into `reachability` (they can reuse its reachable-blocks set) and delete `variant_flow.rs` + `DiagCode::VariantFlow`. `DowncastVariantNotRefined` — the last `VariantFlowCode` — is emitted by `place_state` today; it can move to a place_state-owned code enum in the same pass.
 
 ## Lifetime checker gaps (semantic)
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime

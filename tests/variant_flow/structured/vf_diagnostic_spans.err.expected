@@ -1,10 +1,3 @@
-error: at 35:5: [VF-SwitchArmFalselyUnreachable] In function 'switch_arm_falsely_unreachable_at_terminator_span', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
-    |
- 34 |   entry:
- 35 |     switchEnum(o) [None: n, Some: dead]
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 36 |   n: return
-    |
 error: at 46:5: [VF-SwitchDuplicateArm] In function 'switch_duplicate_arm_at_terminator_span', block 'entry': switchEnum has duplicate arm for variant 'None'
     |
  45 |   entry:
@@ -25,4 +18,11 @@ error: at 24:5: [VF-DowncastVariantNotRefined] In function 'downcast_variant_not
  24 |     x = copy o as Some;
     |     ^^^^^^^^^^^^^^^^^^
  25 |     return
+    |
+error: at 35:5: [REACH-SwitchArmFalselyUnreachable] In function 'switch_arm_falsely_unreachable_at_terminator_span', block 'entry': switchEnum arm for variant 'Some' claims unreachable but variant is reachable at this point
+    |
+ 34 |   entry:
+ 35 |     switchEnum(o) [None: n, Some: dead]
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 36 |   n: return
     |

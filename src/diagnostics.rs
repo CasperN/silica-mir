@@ -48,8 +48,8 @@ pub enum DiagCode {
     /// (see `lifetime::LifetimeCode`).
     Lifetime(crate::mir::lifetime::LifetimeCode),
     /// Warnings from the block-reachability pass
-    /// (see `block_reachability::BlockReachabilityCode`).
-    BlockReachability(crate::mir::block_reachability::BlockReachabilityCode),
+    /// (see `reachability::ReachabilityCode`).
+    Reachability(crate::mir::reachability::ReachabilityCode),
     /// Errors from the MIR parser — surface syntax errors from the
     /// tree-sitter ERROR/MISSING walker, plus CST-to-AST invariant
     /// failures and literal decode errors (see `parser::ParserCode`).
@@ -75,7 +75,7 @@ impl DiagCode {
             DiagCode::SubstructuralComposition(c) => format!("COMP-{:?}", c),
             DiagCode::Layout(c) => format!("LAY-{:?}", c),
             DiagCode::Lifetime(c) => format!("LT-{:?}", c),
-            DiagCode::BlockReachability(c) => format!("REACH-{:?}", c),
+            DiagCode::Reachability(c) => format!("REACH-{:?}", c),
             DiagCode::Parser(c) => format!("PARSE-{:?}", c),
             DiagCode::HllTypeCheck(c) => format!("HTC-{:?}", c),
             DiagCode::HllMutCheck(c) => format!("HMC-{:?}", c),
