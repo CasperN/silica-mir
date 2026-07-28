@@ -245,3 +245,16 @@ the deliberate later refinement to nested operand and projection sources.
 - Silica C FFI and calling conventions: Define C linkage declarations (`extern "C" fn`) and emit standard ABI parameter attributes in LLVM.
 - Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
 - Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
+
+# Paper cuts
+- `struct<T> Box {..}` in MIR should be `struct Box<T> {..}`
+- `fn<T> foo(..) {..}` in MIR should be `fn foo<T>(..) {..}`
+- `type_util::substitute_params` / `substitute_all` silently return
+  `ty.clone()` on arity mismatch. Arity is a caller precondition;
+  hiding a mismatch as a no-op turns programmer bugs into subtly wrong
+  types. Replace with an `assert_eq!` and audit callers.
+- `typecheck_impl` doesn't bail out after target-validation fails; it
+  continues with `imp.target = Custom("Self")` (or any other bad
+  target) into the conformance check, emitting a
+  `SignatureMismatch` cascade after the primary `UndeclaredType`.
+  Second error is noise once the root cause is reported.

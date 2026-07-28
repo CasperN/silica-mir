@@ -1,9 +1,9 @@
 trait Sink {
-  fn accept(recv: &mut Self, v: i64);
+  fn<'s0> accept(recv: &mut 's0 Self, v: i64);
 }
 
 trait<T: Copy + Drop> Iter {
-  fn next(recv: &mut Self, $return: &out T);
+  fn<'s0, 's1> next(recv: &mut 's0 Self, $return: &out 's1 T);
 }
 
 struct Foo: Copy + Drop {
@@ -15,7 +15,7 @@ struct List: Copy + Drop {
 }
 
 impl Sink for Foo {
-  fn accept(recv: &mut Foo, v: i64) {
+  fn<'s0> accept(recv: &mut 's0 Foo, v: i64) {
     entry:
       recv.*.x = move v;
       return
@@ -23,7 +23,7 @@ impl Sink for Foo {
 }
 
 impl Iter<i64> for List {
-  fn next(recv: &mut List, $return: &out i64) {
+  fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 i64) {
     entry:
       $return.* = 0;
       return
@@ -31,7 +31,7 @@ impl Iter<i64> for List {
 }
 
 impl Iter<u8> for List {
-  fn next(recv: &mut List, $return: &out u8) {
+  fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 u8) {
     entry:
       $return.* = 0u8;
       return

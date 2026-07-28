@@ -298,6 +298,10 @@ impl Env {
     /// existing `typecheck_function` path so their bodies get the same
     /// checks as free fns, under a scope that includes impl-header
     /// generics.
+    ///
+    /// `Self` has already been desugared to the impl's target type by
+    /// [`crate::mir::desugar::self_alias::desugar_self_alias`], so
+    /// nothing here has to reintroduce it into scope.
     fn effective_impl_method(header: &DeclMeta, method: &Function) -> Function {
         let mut meta = method.meta.clone();
         let mut lps = header.lifetime_params.clone();
@@ -342,6 +346,32 @@ impl Env {
                     imp.trait_path.name, lt,
                 ),
             ));
+        }
+
+        // Validate trait-ref type args under impl-header scope. Without
+        // this, an out-of-scope name in the trait ref (e.g. `Self`
+        // outside the impl body's scope, or an undeclared struct name)
+        // slips through and only surfaces later as a substitution-derived
+        // `SignatureMismatch`.
+        for arg in &imp.trait_path.type_args {
+            if let Err(e) = self.validate_type(arg, &header_scope) {
+                d.push_error(validation_diagnostic(
+                    e,
+                    arg.source,
+                    header,
+                    format!("In impl of '{}', trait type argument", imp.trait_path.name),
+                ));
+            }
+            for lt in undeclared_lifetimes(arg, &header_lt_scope) {
+                d.push_error(Diagnostic::new(
+                    UndeclaredLifetime,
+                    arg.source,
+                    format!(
+                        "In impl of '{}', trait type argument: undeclared lifetime {}",
+                        imp.trait_path.name, lt,
+                    ),
+                ));
+            }
         }
 
         // Resolve the trait. Missing trait → skip the rest (nothing to

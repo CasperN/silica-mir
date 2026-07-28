@@ -6,8 +6,20 @@
 #   Simple for Foo                   non-generic trait + concrete target
 #   Iter<i64> for List               generic trait + concrete target, Self substitution
 #   Iter<T> for Bag<T>               generic trait + generic target under impl header
-#   MgTrait for Foo                  trait method has its own type parameter
-#   LtTrait<'a> for LtHolder<'a>     trait has a lifetime parameter
+#   MgTrait for Foo                  trait method has its own type parameter,
+#                                    impl spells the receiver as `Self`
+#   LtTrait<'a> for LtHolder<'a>     trait has a lifetime parameter,
+#                                    impl spells the receiver as `Self`
+#   SelfAlias for Bag<T>             `Self` inside an impl-method sig
+#                                    desugars to the target for each ref kind
+#   SelfLocal for Foo                `Self` inside a method local desugars
+#                                    to the target
+#   SelfInBody for Foo               `Self` inside body operands (fn-name
+#                                    type args, trait-fn `self_ty`) desugars
+#                                    to the target
+#   LtTrait<'s0> for LtHolder<'s0>   impl header uses an `'sN`-shaped
+#                                    lifetime name; method-sig elision
+#                                    must skip it and synthesize `'s1`
 
 trait Simple {
   fn ping(recv: & Self);
@@ -53,7 +65,7 @@ trait MgTrait {
 }
 
 impl MgTrait for Foo {
-  fn<V: Copy + Drop> ignore(recv: & Foo, other: & V) {
+  fn<V: Copy + Drop> ignore(recv: & Self, other: & V) {
     entry:
       return
   }
@@ -68,7 +80,81 @@ trait<'a> LtTrait {
 }
 
 impl<'a> LtTrait<'a> for LtHolder<'a> {
-  fn peek(recv: & LtHolder<'a>) {
+  fn peek(recv: & Self) {
+    entry:
+      return
+  }
+}
+
+# `Self` inside an impl method is a scoped alias for the target type;
+# after desugar these are indistinguishable from spelling the target
+# out. Covers the three ref kinds a method receiver commonly uses,
+# against a generic target so the substitution has non-trivial content.
+trait SelfAlias {
+  fn s(recv: & Self);
+  fn m(recv: &mut Self);
+  fn d(recv: &drop Self);
+}
+
+impl<T: Copy + Drop> SelfAlias for Bag<T> {
+  fn s(recv: & Self) {
+    entry:
+      return
+  }
+  fn m(recv: &mut Self) {
+    entry:
+      return
+  }
+  fn d(recv: &drop Self) {
+    entry:
+      return
+  }
+}
+
+# `Self` inside an impl-method body local also desugars to the target
+# type. Covers the local-declaration position, which the parser routes
+# through the same `type_scope` as parameter types.
+trait SelfLocal {
+  fn foo(recv: & Self);
+}
+
+impl SelfLocal for Foo {
+  fn foo(recv: & Self) {
+    p: & Self;
+    entry:
+      p = copy recv;
+      return
+  }
+}
+
+# `Self` inside body-position operand type slots — generic-fn callee
+# type args and trait-fn callee `self_ty` — also desugars to the
+# target. Uses `Simple` (declared above) as the trait dispatched
+# through, and a small generic free fn as the FnName callee.
+fn<T: Copy + Drop> visit_ref(r: & T) {
+  entry:
+    return
+}
+
+trait SelfInBody {
+  fn dispatch(recv: & Self);
+}
+
+impl SelfInBody for Foo {
+  fn dispatch(recv: & Self) {
+    entry:
+      call visit_ref<Self>(copy recv);
+      call <Self as Simple>::ping(copy recv);
+      return
+  }
+}
+
+# Impl-header lifetime seed for elision: the method's unnamed ref
+# elides to a fresh `'sN`. Without seeding the fresh-name skiplist
+# with the impl-header's own lifetime param `'s0`, elision would
+# regenerate `'s0` for the method and shadow the header.
+impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
+  fn peek(recv: & Self) {
     entry:
       return
   }

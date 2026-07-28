@@ -57,9 +57,10 @@
 //!   per concrete arg — the second time the walker sees `Node<i32>`
 //!   the instantiation is already registered, so no infinite loop.
 
-use crate::mir::helpers::{call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt};
 use crate::mir::type_fold::TypeFolder;
-use crate::mir::type_util::substitute_params;
+use crate::mir::type_util::{
+    substitute_params, substitute_stmt_types, substitute_terminator_types,
+};
 use crate::mir::{ast::*, helpers::*};
 use std::collections::{BTreeMap, VecDeque};
 
@@ -175,7 +176,17 @@ impl MonoCtx {
                 let mangled = self.need(name, &new_args);
                 ConstVal::FnName(mangled, Vec::new())
             }
-            _ => c.clone(),
+            // Trait-fn callees pass through mono unchanged. The mono
+            // trait-resolution pass (still to be implemented) rewrites
+            // them into concrete `FnName`s; codegen panics on any
+            // surviving `TraitFn`, so a program that reaches LLVM
+            // without resolution fails loudly rather than silently.
+            ConstVal::TraitFn { .. } => c.clone(),
+            ConstVal::Int { .. }
+            | ConstVal::Float { .. }
+            | ConstVal::Bool(_)
+            | ConstVal::Unit
+            | ConstVal::ByteStr(_) => c.clone(),
         }
     }
 
@@ -398,78 +409,6 @@ fn mangle(name: &str, args: &[Type]) -> String {
     }
     let parts: Vec<String> = args.iter().map(|a| format!("{}", a)).collect();
     format!("{}<{}>", name, parts.join(", "))
-}
-
-/// Substitute Params in every Type-carrying position inside a statement.
-fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]) -> Statement {
-    match &s.kind {
-        StatementKind::Assign(p, r) => assign_stmt(
-            p.clone(),
-            substitute_rvalue_types(r, type_params, args),
-            s.source,
-        ),
-        StatementKind::Call(callee, cargs) => call_stmt(
-            substitute_operand_types(callee, type_params, args),
-            cargs
-                .iter()
-                .map(|a| substitute_operand_types(a, type_params, args))
-                .collect(),
-            s.source,
-        ),
-        StatementKind::Drop(p) => drop_stmt(p.clone(), s.source),
-        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.source),
-        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.source),
-    }
-}
-
-fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Type]) -> RValue {
-    match r {
-        RValue::EnumConstr(name, targs, variant, payload) => RValue::EnumConstr(
-            name.clone(),
-            targs
-                .iter()
-                .map(|a| substitute_params(a, type_params, args))
-                .collect(),
-            variant.clone(),
-            substitute_operand_types(payload, type_params, args),
-        ),
-        RValue::Use(op) => RValue::Use(substitute_operand_types(op, type_params, args)),
-        RValue::Ref(k, p) => RValue::Ref(*k, p.clone()),
-        RValue::RawRef(p) => RValue::RawRef(p.clone()),
-        RValue::ArrayLit(ops) => RValue::ArrayLit(
-            ops.iter()
-                .map(|o| substitute_operand_types(o, type_params, args))
-                .collect(),
-        ),
-        RValue::PtrCast(op, ty) => RValue::PtrCast(
-            substitute_operand_types(op, type_params, args),
-            substitute_params(ty, type_params, args),
-        ),
-    }
-}
-
-fn substitute_operand_types(op: &Operand, type_params: &[TypeParam], args: &[Type]) -> Operand {
-    match op {
-        Operand::Const(ConstVal::FnName(name, targs)) => Operand::Const(ConstVal::FnName(
-            name.clone(),
-            targs
-                .iter()
-                .map(|a| substitute_params(a, type_params, args))
-                .collect(),
-        )),
-        _ => op.clone(),
-    }
-}
-
-fn substitute_terminator_types(
-    t: &Terminator,
-    _type_params: &[TypeParam],
-    _args: &[Type],
-) -> Terminator {
-    // Branch's `cond` is an Operand that's always a bool operand — bool
-    // isn't parameterizable, so no substitution needed. Other terminators
-    // don't carry types.
-    t.clone()
 }
 
 #[cfg(test)]

@@ -36,7 +36,8 @@ fn prepare_mir_for_analysis(
     program
         .declarations
         .extend(mir::intrinsics::prelude_body_decls());
-    mir::lifetime::desugaring::elide_program(&mut program);
+    mir::desugar::self_alias::desugar_self_alias(&mut program);
+    mir::desugar::lifetime::desugar_program(&mut program);
     let (env, env_errs) = mir::type_check::Env::build(&program);
     d.extend_errors(env_errs);
     env.typecheck(&program, d);

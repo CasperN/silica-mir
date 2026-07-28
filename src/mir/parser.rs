@@ -34,6 +34,11 @@ pub enum ParserCode {
     /// `Move` is redundant under the horizontal closure. Info-level
     /// lint on the parsed marker list.
     MoveMarkerRedundant,
+    /// A type-parameter binder used a name the language reserves for
+    /// something else. Grammar accepts any identifier at the
+    /// binder position; the parser rejects reserved names on the way
+    /// to the AST.
+    ReservedTypeParamName,
 }
 
 impl From<ParserCode> for DiagCode {
@@ -1134,6 +1139,17 @@ impl Parser {
                         self.diag(child, ParserCode::MalformedCst, "type param missing name")
                     })?;
                     let pname = self.get_text(name_node).to_string();
+                    // `Self` is reserved as the trait/impl-scoped alias
+                    // for the receiver / target type. A user-declared
+                    // `<Self>` param would silently overshadow that
+                    // alias in the impl scope, so reject at parse time.
+                    if pname == "Self" {
+                        return Err(self.diag(
+                            name_node,
+                            ParserCode::ReservedTypeParamName,
+                            "'Self' is reserved and cannot be used as a type-parameter name",
+                        ));
+                    }
                     if self.type_scope.borrow().contains(&pname) {
                         return Err(self.diag(
                             name_node,
@@ -1452,6 +1468,14 @@ impl Parser {
             self.diag(node, ParserCode::MalformedCst, "impl decl missing target type")
         })?;
         let target = self.map_type(target_node)?;
+
+        // Bind the implicit `Self` type parameter into the impl's method
+        // scope so method sigs and bodies can reference `Self` instead of
+        // repeating the target type. The `desugar::self_alias` pass
+        // rewrites `Self := target` before type-check runs. Inserted
+        // after `target` is parsed so `impl Trait for Self` is a
+        // reference to an undeclared type, not a paradox.
+        self.type_scope.borrow_mut().insert("Self".to_string());
 
         // Snapshot the impl-header scope so it persists across each
         // method's `map_function_decl` call (which clears the scope

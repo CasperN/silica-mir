@@ -26,7 +26,7 @@ error: at 46:6: [TC-ImplMissingTraitMethod] Impl of 'Trait' is missing method 'b
     |      ^^^^^
  47 |   fn a(recv: & Foo) {
     |
-error: at 65:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut Foo, trait declares & Foo (after Self := Foo)
+error: at 65:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut 's0 Foo, trait declares & 's0 Foo (after Self := Foo)
     |
  64 | impl TraitS for Foo {
  65 |   fn touch(recv: &mut Foo) {

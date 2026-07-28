@@ -1,9 +1,9 @@
 trait Simple {
-  fn ping(recv: & Self);
+  fn<'s0> ping(recv: & 's0 Self);
 }
 
 trait<T: Copy + Drop> Iter {
-  fn next(recv: &mut Self, $return: &out T);
+  fn<'s0, 's1> next(recv: &mut 's0 Self, $return: &out 's1 T);
 }
 
 struct Foo: Copy + Drop {
@@ -19,14 +19,14 @@ struct<T: Copy + Drop> Bag: Copy + Drop {
 }
 
 impl Simple for Foo {
-  fn ping(recv: & Foo) {
+  fn<'s0> ping(recv: & 's0 Foo) {
     entry:
       return
   }
 }
 
 impl Iter<i64> for List {
-  fn next(recv: &mut List, $return: &out i64) {
+  fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 i64) {
     entry:
       $return.* = 0;
       return
@@ -34,7 +34,7 @@ impl Iter<i64> for List {
 }
 
 impl<T: Copy + Drop> Iter<T> for Bag<T> {
-  fn next(recv: &mut Bag<T>, $return: &out T) {
+  fn<'s0, 's1> next(recv: &mut 's0 Bag<T>, $return: &out 's1 T) {
     entry:
       $return.* = copy recv.*.inner;
       return
@@ -42,11 +42,11 @@ impl<T: Copy + Drop> Iter<T> for Bag<T> {
 }
 
 trait MgTrait {
-  fn<U: Copy + Drop> ignore(recv: & Self, other: & U);
+  fn<'s0, 's1, U: Copy + Drop> ignore(recv: & 's0 Self, other: & 's1 U);
 }
 
 impl MgTrait for Foo {
-  fn<V: Copy + Drop> ignore(recv: & Foo, other: & V) {
+  fn<'s0, 's1, V: Copy + Drop> ignore(recv: & 's0 Foo, other: & 's1 V) {
     entry:
       return
   }
@@ -57,11 +57,71 @@ struct<'a> LtHolder: Copy + Drop {
 }
 
 trait<'a> LtTrait {
-  fn peek(recv: & Self);
+  fn<'s0> peek(recv: & 's0 Self);
 }
 
 impl<'a> LtTrait<'a> for LtHolder<'a> {
-  fn peek(recv: & LtHolder<'a>) {
+  fn<'s0> peek(recv: & 's0 LtHolder<'a>) {
+    entry:
+      return
+  }
+}
+
+trait SelfAlias {
+  fn<'s0> s(recv: & 's0 Self);
+  fn<'s0> m(recv: &mut 's0 Self);
+  fn<'s0> d(recv: &drop 's0 Self);
+}
+
+impl<T: Copy + Drop> SelfAlias for Bag<T> {
+  fn<'s0> s(recv: & 's0 Bag<T>) {
+    entry:
+      return
+  }
+  fn<'s0> m(recv: &mut 's0 Bag<T>) {
+    entry:
+      return
+  }
+  fn<'s0> d(recv: &drop 's0 Bag<T>) {
+    entry:
+      return
+  }
+}
+
+trait SelfLocal {
+  fn<'s0> foo(recv: & 's0 Self);
+}
+
+impl SelfLocal for Foo {
+  fn<'s0> foo(recv: & 's0 Foo) {
+    p: & Foo;
+    entry:
+      p = copy recv;
+      return
+  }
+}
+
+fn<'s0, T: Copy + Drop> visit_ref(r: & 's0 T) {
+  entry:
+    unborrow r;
+    return
+}
+
+trait SelfInBody {
+  fn<'s0> dispatch(recv: & 's0 Self);
+}
+
+impl SelfInBody for Foo {
+  fn<'s0> dispatch(recv: & 's0 Foo) {
+    entry:
+      call visit_ref<Foo>(copy recv);
+      call <Foo as Simple>::ping(copy recv);
+      return
+  }
+}
+
+impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
+  fn<'s1> peek(recv: & 's1 LtHolder<'s0>) {
     entry:
       return
   }

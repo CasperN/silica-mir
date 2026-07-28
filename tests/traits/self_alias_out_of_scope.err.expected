@@ -1,0 +1,42 @@
+error: at 18:6: [TC-InvalidDeclaredType] In struct 'HoldsSelf', field 's': Use of undeclared type 'Self'
+    |
+ 17 | struct HoldsSelf {
+ 18 |   s: Self
+    |      ^^^^
+ 19 | }
+    |
+error: at 12:17: [TC-InvalidDeclaredType] In function 'take_self', parameter 'x': Use of undeclared type 'Self'
+    |
+ 11 | 
+ 12 | fn take_self(x: & Self) {
+    |                 ^^^^^^
+ 13 |   entry:
+    |
+error: at 36:20: [TC-InvalidDeclaredType] In impl of 'SomeTrait', target type: Use of undeclared type 'Self'
+    |
+ 35 | # root cause.
+ 36 | impl SomeTrait for Self {
+    |                    ^^^^
+ 37 |   fn touch(recv: & Foo) {
+    |
+error: at 37:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type & 's0 Foo, trait declares & 's0 Self (after Self := Self)
+    |
+ 36 | impl SomeTrait for Self {
+ 37 |   fn touch(recv: & Foo) {
+    |                  ^^^^^
+ 38 |     entry:
+    |
+error: at 46:23: [TC-InvalidDeclaredType] In impl of 'SomeGenericTrait', trait type argument: Use of undeclared type 'Self'
+    |
+ 45 | # `Self` as an undeclared type in the trait-arg validator.
+ 46 | impl SomeGenericTrait<Self> for Foo {
+    |                       ^^^^
+ 47 |   fn touch(recv: & Foo, arg: & Foo) {
+    |
+error: at 47:30: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 2 has type & 's1 Foo, trait declares & 's1 Self (after Self := Foo)
+    |
+ 46 | impl SomeGenericTrait<Self> for Foo {
+ 47 |   fn touch(recv: & Foo, arg: & Foo) {
+    |                              ^^^^^
+ 48 |     entry:
+    |

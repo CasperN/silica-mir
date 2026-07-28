@@ -78,45 +78,57 @@ When documentation and implementation disagree, use these authorities:
 Do not infer current behavior from stale prose when the relevant code or
 fixture can answer directly.
 
-## Substructural semantics
+## Substructural type classes
 
-`Copy`, `Drop`, and `Move` are independent capabilities:
+Values in Silica are linear. Relaxations will be provided by the `AutoDrop` and
+`AutoClone` traits, which tell the compiler that the type may be used fewer
+than 1 and greater than 1 times respectively. Scalar types are both `AutoDrop`
+and `AutoClone` so they can be used freely.
 
-| Markers | Repeated use | May forget | Bitwise move |
-|---|---:|---:|---:|
-| none | no | no | no |
-| `Copy` | yes | no | no |
-| `Drop` | no | yes | no |
-| `Move` | no | no | yes |
-| `Copy + Drop` | yes | yes | yes, implied |
-| `Copy + Move` | yes | no | yes |
-| `Drop + Move` | no | yes | yes |
-| `Copy + Drop + Move` | yes | yes | yes; explicit `Move` is redundant |
+Substructural class comes from the declaration markers:
 
-The only implemented blanket implication is:
+| markers                 | class        | may use twice | may be forgotten |
+|-------------------------|--------------|---------------|------------------|
+| (none)                  | linear       | no            | no               |
+| `AutoDrop`              | affine       | no            | yes              |
+| `AutoCopy`              | relevant     | yes           | no               |
+| `AutoCopy + Auto Drop`  | unrestricted | yes           | yes              |
 
-```text
-Copy + Drop → Move
-```
+Substructural types typically only track how many times a value can be used.
+However, Silica has twelve traits that track whether a value may be
+copied, moved, or destroyed; and how trivially or explicitly that happens.
 
-Higher-tier traits such as `Clone`, `Destroy`, or `Transfer` may appear in
-design prose but are not part of the current marker representation.
+| Implementation         | `Copy`      | `Drop`        | `Move`           |
+|------------------------|-------------|---------------|------------------|
+| Trivial (bitwise)      | `Copy`      | `Drop`        | `Move`           |
+| Pure and implicit      | `AutoClone` | `AutoDestroy` | `AutoTransfer`   |
+| Pure and explicit      | `Clone`     | `Destroy`     | `Transfer`       |
+| Effectful and explicit | `CoClone`   | `CoDestroy`   | `CoTransfer`     |
 
-For aggregates, a declared marker must be satisfied compositionally by every
-field or variant payload. Arrays inherit the element class.
+* `Copy` and `Move` are bitwise operations, `Move` marks the original place as
+logicially deinitialized. Similarly `Drop` is a no-op deinitialization.
+* `Clone`, `Destroy`, and `Transfer` require non-trivial but pure methods to
+duplicate, destroy, or move an object.
+* The `Auto*` variants allow the compiler to implicitly call those methods to
+help programs typecheck. This is useful for passing reference counted pointers,
+where easy sharing is the intent. 
+* The `Co` variants may perform algebraic effects when invoked. E.g. for
+asynchronous object destruction.
+* **Rust comparison:** `Copy` and `Move` are analogous between Rust and Silica,
+  but Rust's `Drop` is more like Silica's `AutoDestroy` - customizable and
+  implictly inserted.
+* Blanket implementations:
+  * Each row in the table has a blanket implementation for the following row.
+    E.g. all types that are `Copy` are also `CoClone` and all types that are
+    `AutoDestroy` are also `Destroy`. 
+  * The compiler derives default implementations so `T: Copy + Drop` imply
+    `T: Move`, `T: Clone + Destroy` imply `T: Transfer`, etc. This default
+    implementation may be overridden, e.g. to remove an intermedediate value. 
+  * Because the last two rules can be applied repeatedly, `T: Copy + Destroy`
+    imply `T: CoTransfer`.
 
-Generic marker bounds have two sides:
+Only the trivial tier of substructural traits have been implemented.
 
-- Declaration side: a generic body is checked assuming each parameter’s
-  declared bounds.
-- Use side: concrete arguments must satisfy those bounds at every
-  instantiation.
-
-Together these allow the class of a valid custom-type instantiation to be read
-from the declaration without substituting its arguments during `class_of`.
-
-`Drop` currently means that a value may be explicitly consumed or forgotten.
-It should not be confused with a fully implemented runtime destructor system.
 
 ## Reference obligations
 
@@ -440,9 +452,13 @@ feature work, mark it with a TODO.
 
 ## Pre-commit check
 Before commiting, please execute the following steps, step by step, one at a time. If changes have to be made, redo the steps.
-1. Review the current change for correctness, maintainability, and simplicity. Be skeptical of incomplete matches `expect/unwrap` and other code smells of partial implementations.
+1. Review the current change for correctness, maintainability, and simplicity. Be skeptical of incomplete matches, `expect`, `unwrap`, and other code that smells of partial implementations.
 2. Reject work as incomplete if they are hacky or contain shortcuts. Sacrifices to long term correctness and rigor has cost the project more time than any shortcut has saved. 
-3. Review changes to test fixtures for totality of test coverage. Every new feature needs to be tested against every existing feature it may interact with. Every feature interaction requires a success case (that passes compilation) and at least one error case.
-4. Remove any references to session-specific enumerations, so they do not
+3. Reject work as incomplete if a feature is not fully implemented, e.g. if there are missing cases, unhandled interactions, or caveats to completeness.
+4. Reject work as incomplete if any punchlist item is sufficiently related or small be folded into this commit.
+5. Review changes to test fixtures for totality of test coverage. Every new feature needs to be tested against every existing feature it may interact with. Every feature interaction requires a success case (that passes compilation) and at least one error case.
+6. Remove any unit-tests that are redundant with end-to-end tests under `tests/`, or if they may be implemented as end-to-end tests, rewrite them as such.
+7. Combine any small end-to-end test fixtures into an existing large test fixture or a new large test fixture if there are sufficient related cases. See the Testing Discipline rules.
+8. Remove any references to session-specific enumerations, so they do not
 get stored in the durable commit history. E.g. "arc-1", "task-1", "pass-1", etc. Future work may be marked with TODO comments.
-5. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.
+9. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.

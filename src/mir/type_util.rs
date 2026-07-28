@@ -4,7 +4,13 @@
 //! single pass: inhabitedness, generic parameter substitution, etc.
 
 use crate::common::Lifetime;
-use crate::mir::ast::{DeclMeta, Instance, Type, TypeKind, TypeParam};
+use crate::mir::ast::{
+    ConstVal, DeclMeta, Instance, Operand, RValue, Statement, StatementKind, Terminator, Type,
+    TypeKind, TypeParam,
+};
+use crate::mir::helpers::{
+    assign_stmt, call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt,
+};
 use crate::mir::type_check::{Env, TypeDecl};
 use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
@@ -109,6 +115,128 @@ impl TypeFolder for SubstituteFolder<'_> {
         }
         lifetime.clone()
     }
+}
+
+/// Substitute type parameters in every Type-carrying position inside a
+/// statement. Dispatches to [`substitute_rvalue_types`] / [`substitute_operand_types`]
+/// for the embedded slots; statement kinds that carry no types
+/// (`Drop`, `Unborrow`, `RequireUninit`) clone through.
+pub fn substitute_stmt_types(
+    s: &Statement,
+    type_params: &[TypeParam],
+    args: &[Type],
+) -> Statement {
+    match &s.kind {
+        StatementKind::Assign(p, r) => assign_stmt(
+            p.clone(),
+            substitute_rvalue_types(r, type_params, args),
+            s.source,
+        ),
+        StatementKind::Call(callee, cargs) => call_stmt(
+            substitute_operand_types(callee, type_params, args),
+            cargs
+                .iter()
+                .map(|a| substitute_operand_types(a, type_params, args))
+                .collect(),
+            s.source,
+        ),
+        StatementKind::Drop(p) => drop_stmt(p.clone(), s.source),
+        StatementKind::Unborrow(p) => unborrow_stmt(p.clone(), s.source),
+        StatementKind::RequireUninit(p) => require_uninit_stmt(p.clone(), s.source),
+    }
+}
+
+/// Substitute type parameters in the Type slots of an rvalue: enum
+/// construction type args, the type argument of a `PtrCast`, and any
+/// operand-embedded types (see [`substitute_operand_types`]).
+pub fn substitute_rvalue_types(
+    r: &RValue,
+    type_params: &[TypeParam],
+    args: &[Type],
+) -> RValue {
+    match r {
+        RValue::EnumConstr(name, targs, variant, payload) => RValue::EnumConstr(
+            name.clone(),
+            targs
+                .iter()
+                .map(|a| substitute_params(a, type_params, args))
+                .collect(),
+            variant.clone(),
+            substitute_operand_types(payload, type_params, args),
+        ),
+        RValue::Use(op) => RValue::Use(substitute_operand_types(op, type_params, args)),
+        RValue::Ref(k, p) => RValue::Ref(*k, p.clone()),
+        RValue::RawRef(p) => RValue::RawRef(p.clone()),
+        RValue::ArrayLit(ops) => RValue::ArrayLit(
+            ops.iter()
+                .map(|o| substitute_operand_types(o, type_params, args))
+                .collect(),
+        ),
+        RValue::PtrCast(op, ty) => RValue::PtrCast(
+            substitute_operand_types(op, type_params, args),
+            substitute_params(ty, type_params, args),
+        ),
+    }
+}
+
+/// Substitute type parameters in the Type slots of an operand: the
+/// type-arg list of an `FnName` const, and the `self_ty` and trait-ref
+/// type args of a `TraitFn` const. All other operand shapes have no
+/// embedded types.
+pub fn substitute_operand_types(
+    op: &Operand,
+    type_params: &[TypeParam],
+    args: &[Type],
+) -> Operand {
+    match op {
+        Operand::Const(ConstVal::FnName(name, targs)) => Operand::Const(ConstVal::FnName(
+            name.clone(),
+            targs
+                .iter()
+                .map(|a| substitute_params(a, type_params, args))
+                .collect(),
+        )),
+        Operand::Const(ConstVal::TraitFn {
+            trait_path,
+            self_ty,
+            method,
+        }) => Operand::Const(ConstVal::TraitFn {
+            trait_path: Instance {
+                name: trait_path.name.clone(),
+                lifetime_args: trait_path.lifetime_args.clone(),
+                type_args: trait_path
+                    .type_args
+                    .iter()
+                    .map(|a| substitute_params(a, type_params, args))
+                    .collect(),
+            },
+            self_ty: substitute_params(self_ty, type_params, args),
+            method: Instance {
+                name: method.name.clone(),
+                lifetime_args: method.lifetime_args.clone(),
+                type_args: method
+                    .type_args
+                    .iter()
+                    .map(|a| substitute_params(a, type_params, args))
+                    .collect(),
+            },
+        }),
+        _ => op.clone(),
+    }
+}
+
+/// Substitute type parameters in the Type slots of a terminator. No
+/// terminator variant carries a `Type` today — `Branch`'s condition is
+/// a bool operand, `SwitchEnum` names the scrutinee by `Place`, and
+/// the rest are leaf variants — so this is a shape-preserving clone.
+/// Callers still route through it so that adding a Type slot to any
+/// terminator has a single extension point.
+pub fn substitute_terminator_types(
+    t: &Terminator,
+    _type_params: &[TypeParam],
+    _args: &[Type],
+) -> Terminator {
+    t.clone()
 }
 
 /// Compute the type of `place` inside `func`. Walks the place's

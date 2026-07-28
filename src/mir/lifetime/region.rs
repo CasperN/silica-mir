@@ -301,7 +301,7 @@ mod tests {
             }
         ";
         let mut program = Parser::parse_or_panic(src);
-        crate::mir::lifetime::desugaring::elide_program(&mut program);
+        crate::mir::desugar::lifetime::desugar_program(&mut program);
         let (env, _errs) = Env::build(&program);
         let func = program.find_fn("f").expect("fn f");
         let ctx = build_region_ctx(func, &env);
