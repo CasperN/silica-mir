@@ -513,6 +513,16 @@ pub enum ConstVal {
     /// the list of type arguments — empty for non-generic fns, non-
     /// empty for generic-fn instantiations (`call foo<i32>(x)`).
     FnName(String, Vec<Type>),
+    /// Trait-method callee, spelled UFCS-style at the surface:
+    /// `<SelfTy as Trait<Args>>::method<MethodArgs>`. The type checker
+    /// resolves this against the env's impl table for concrete
+    /// `self_ty`; `Param(T)` receivers require trait bounds and are
+    /// deferred behind that work.
+    TraitFn {
+        trait_path: Instance,
+        self_ty: Type,
+        method: Instance,
+    },
     /// Byte string literal `b"..."`. Value semantics: has type
     /// `[u8; N]` where N = bytes.len(). Codegen emits an inline LLVM
     /// aggregate constant `c"..."`; larger strings could be moved to
@@ -863,11 +873,41 @@ pub struct EnumDecl {
     pub variants: Vec<EnumVariant>,
 }
 
+/// A trait declaration: name, generics, and a set of method signatures.
+/// Methods are stored as body-less `FunctionSignature`s. `Self` is a
+/// reserved identifier in the trait's scope, resolved to
+/// `TypeKind::Param("Self")` during parsing; impls substitute it with
+/// the target type at check time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TraitDecl {
+    pub meta: DeclMeta,
+    pub methods: Vec<FunctionSignature>,
+}
+
+/// An `impl Trait<Args> for Target` block. `meta` carries the impl-
+/// header generics (bound throughout `trait_path`, `target`, and every
+/// method body). `trait_path` is the trait ref as an `Instance` (name
+/// + lifetime + type args); `target` is the type filling the trait's
+/// `Self` slot. Methods are full `Function`s (body required).
+///
+/// The type checker verifies each method's signature matches the
+/// trait's declared signature after substituting `Self := target` and
+/// the trait's type_params from `trait_path`'s arguments.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ImplBlock {
+    pub meta: DeclMeta,
+    pub trait_path: Instance,
+    pub target: Type,
+    pub methods: Vec<Function>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Declaration {
     Struct(StructDecl),
     Enum(EnumDecl),
     Fn(Function),
+    Trait(TraitDecl),
+    Impl(ImplBlock),
 }
 
 impl Declaration {
@@ -879,6 +919,8 @@ impl Declaration {
             Declaration::Struct(s) => &s.meta,
             Declaration::Enum(e) => &e.meta,
             Declaration::Fn(f) => &f.meta,
+            Declaration::Trait(t) => &t.meta,
+            Declaration::Impl(i) => &i.meta,
         }
     }
 }

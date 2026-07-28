@@ -1,0 +1,67 @@
+# Trait-method calls in MIR use UFCS-style callees:
+# `<SelfTy as Trait<Args>>::method<MArgs>`. Resolution goes through
+# the env's impl-table with structural target equality; generic-impl-
+# target unification is a follow-up.
+#
+#   trait/impl                         covers
+#   Iter<i64> for List                 concrete impl target, no method args
+#   Sink for Foo                       non-generic trait; nested trait-method call
+#   Iter<u8> for List                  same trait, different type args on same
+#                                      target — impl-table key must include the
+#                                      full trait_path so both coexist
+
+trait Sink {
+  fn accept(recv: &mut Self, v: i64);
+}
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+}
+
+struct Foo: Copy + Drop { x: i64 }
+
+struct List: Copy + Drop { xs: [i64; 4] }
+
+impl Sink for Foo {
+  fn accept(recv: &mut Foo, v: i64) {
+    entry:
+      recv.*.x = move v;
+      return
+  }
+}
+
+impl Iter<i64> for List {
+  fn next(recv: &mut List, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+impl Iter<u8> for List {
+  fn next(recv: &mut List, $return: &out u8) {
+    entry:
+      $return.* = 0u8;
+      return
+  }
+}
+
+# Calls the non-generic `Sink` method and the `Iter<i64>` method.
+fn drive(f: &mut Foo, l: &mut List, $return: &out i64) {
+  out_ref: &out i64;
+  entry:
+    call <Foo as Sink>::accept(move f, 7);
+    out_ref = &out $return.*;
+    call <List as Iter<i64>>::next(move l, move out_ref);
+    return
+}
+
+# Calls the `Iter<u8>` impl on the same `List` target — proves both
+# trait_path type_arg variants coexist in the impl-table.
+fn drive_bytes(l: &mut List, $return: &out u8) {
+  out_ref: &out u8;
+  entry:
+    out_ref = &out $return.*;
+    call <List as Iter<u8>>::next(move l, move out_ref);
+    return
+}

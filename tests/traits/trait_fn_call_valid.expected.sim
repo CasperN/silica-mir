@@ -1,0 +1,58 @@
+trait Sink {
+  fn accept(recv: &mut Self, v: i64);
+}
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+}
+
+struct Foo: Copy + Drop {
+  x: i64
+}
+
+struct List: Copy + Drop {
+  xs: [i64; 4]
+}
+
+impl Sink for Foo {
+  fn accept(recv: &mut Foo, v: i64) {
+    entry:
+      recv.*.x = move v;
+      return
+  }
+}
+
+impl Iter<i64> for List {
+  fn next(recv: &mut List, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+impl Iter<u8> for List {
+  fn next(recv: &mut List, $return: &out u8) {
+    entry:
+      $return.* = 0u8;
+      return
+  }
+}
+
+fn<'s0, 's1, 's2> drive(f: &mut 's0 Foo, l: &mut 's1 List, $return: &out 's2 i64) {
+  out_ref: &out i64;
+  entry:
+    call <Foo as Sink>::accept(move f, 7);
+    out_ref = &out $return.*;
+    call <List as Iter<i64>>::next(move l, move out_ref);
+    unborrow $return;
+    return
+}
+
+fn<'s0, 's1> drive_bytes(l: &mut 's0 List, $return: &out 's1 u8) {
+  out_ref: &out u8;
+  entry:
+    out_ref = &out $return.*;
+    call <List as Iter<u8>>::next(move l, move out_ref);
+    unborrow $return;
+    return
+}

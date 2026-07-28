@@ -1,0 +1,7 @@
+# Trait method sigs cannot be `extern` — extern linkage is only
+# meaningful on top-level free fns. Parse errors short-circuit;
+# see sibling fixtures for the other trait-method parse rejections.
+
+trait Foo {
+  extern fn m(recv: & Self);
+}

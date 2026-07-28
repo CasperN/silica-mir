@@ -1,0 +1,7 @@
+error: at 12:3: [PARSE-MalformedCst] impl method 'm' cannot be extern
+    |
+ 11 | impl T for S {
+ 12 |   extern fn m(recv: & S);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^
+ 13 | }
+    |

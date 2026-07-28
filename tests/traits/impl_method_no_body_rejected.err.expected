@@ -1,0 +1,7 @@
+error: at 12:3: [PARSE-MalformedCst] impl method 'm' requires a body
+    |
+ 11 | impl T for S {
+ 12 |   fn m(recv: & S);
+    |   ^^^^^^^^^^^^^^^^
+ 13 | }
+    |

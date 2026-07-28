@@ -1,0 +1,19 @@
+# Trait declaration well-formedness errors that fire from the type
+# checker (not the parser — parser-time errors like body-present or
+# duplicate method names are covered by unit tests in mir/parser.rs).
+#
+#   trait              error
+#   Iter               method-sig references undeclared type `Missing`
+#   Duplicated         collides with `struct Duplicated` declared above
+
+struct Duplicated {
+  x: i64
+}
+
+trait Duplicated {
+  fn ping(recv: & Self);
+}
+
+trait Iter {
+  fn next(recv: &mut Self, out: & Missing);
+}

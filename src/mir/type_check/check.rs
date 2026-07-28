@@ -218,6 +218,370 @@ impl Env {
         for f in program.functions() {
             self.typecheck_function(f, d);
         }
+
+        // Validate trait method signatures. Each method's types are
+        // checked under the trait's params + implicit `Self` + the
+        // method's own params. Duplicate/body/extern checks already
+        // fired at parse time.
+        for trait_decl in self.traits.values() {
+            self.typecheck_trait(trait_decl, d);
+        }
+
+        // Validate impl blocks: header well-formedness, trait ref
+        // resolution, and method-signature conformance against the
+        // trait. Method bodies get type-checked through the effective
+        // meta path inside `typecheck_impl`; the other check passes
+        // don't yet see impl methods and will pick them up once the
+        // mono trait-resolution pass emits concrete `Fn` decls in
+        // their place.
+        for decl in &program.declarations {
+            if let Declaration::Impl(imp) = decl {
+                self.typecheck_impl(imp, d);
+            }
+        }
+    }
+
+    fn typecheck_trait(&self, trait_decl: &TraitDecl, d: &mut Diagnostics) {
+        let meta = &trait_decl.meta;
+        validate_lifetime_decls(meta, "trait", d);
+        let trait_lt_scope = lifetime_scope(&meta.lifetime_params);
+
+        // Trait-level type-param scope, augmented with `Self` (linear
+        // marker set — an impl-side target type contributes its own
+        // markers; the trait-decl checker only validates well-formedness).
+        let mut trait_scope = meta.param_scope();
+        trait_scope.insert("Self".to_string(), Markers::empty());
+
+        for method in &trait_decl.methods {
+            let method_meta = &method.meta;
+            validate_lifetime_decls(method_meta, "trait method", d);
+
+            // Effective scope = trait scope + method's own type params.
+            let mut scope = trait_scope.clone();
+            for p in &method_meta.type_params {
+                scope.insert(p.name.clone(), p.bounds.markers);
+            }
+            let mut lt_scope = trait_lt_scope.clone();
+            for lp in &method_meta.lifetime_params {
+                lt_scope.insert(lp.lifetime.clone());
+            }
+
+            for p in &method.params {
+                if let Err(e) = self.validate_type(&p.ty, &scope) {
+                    d.push_error(validation_diagnostic(
+                        e,
+                        p.ty.source,
+                        meta,
+                        format!(
+                            "In trait '{}', method '{}' param '{}'",
+                            meta.name, method_meta.name, p.name,
+                        ),
+                    ));
+                }
+                for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
+                    d.push_error(Diagnostic::new(
+                        UndeclaredLifetime,
+                        p.ty.source,
+                        format!(
+                            "In trait '{}', method '{}' param '{}': undeclared lifetime {}",
+                            meta.name, method_meta.name, p.name, lt,
+                        ),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Build an "effective" `Function` for an impl method: its own
+    /// meta prepended with the impl-header's lifetime params, outlives
+    /// axioms, and type params. Used to feed impl methods through the
+    /// existing `typecheck_function` path so their bodies get the same
+    /// checks as free fns, under a scope that includes impl-header
+    /// generics.
+    fn effective_impl_method(header: &DeclMeta, method: &Function) -> Function {
+        let mut meta = method.meta.clone();
+        let mut lps = header.lifetime_params.clone();
+        lps.extend(std::mem::take(&mut meta.lifetime_params));
+        meta.lifetime_params = lps;
+        let mut outs = header.outlives.clone();
+        outs.extend(std::mem::take(&mut meta.outlives));
+        meta.outlives = outs;
+        let mut tps = header.type_params.clone();
+        tps.extend(std::mem::take(&mut meta.type_params));
+        meta.type_params = tps;
+        Function {
+            meta,
+            is_extern: method.is_extern,
+            abi: method.abi.clone(),
+            params: method.params.clone(),
+            body: method.body.clone(),
+        }
+    }
+
+    fn typecheck_impl(&self, imp: &ImplBlock, d: &mut Diagnostics) {
+        let header = &imp.meta;
+        validate_lifetime_decls(header, "impl", d);
+        let header_lt_scope = lifetime_scope(&header.lifetime_params);
+        let header_scope = header.param_scope();
+
+        // Validate target type under impl-header scope.
+        if let Err(e) = self.validate_type(&imp.target, &header_scope) {
+            d.push_error(validation_diagnostic(
+                e,
+                imp.target.source,
+                header,
+                format!("In impl of '{}', target type", imp.trait_path.name),
+            ));
+        }
+        for lt in undeclared_lifetimes(&imp.target, &header_lt_scope) {
+            d.push_error(Diagnostic::new(
+                UndeclaredLifetime,
+                imp.target.source,
+                format!(
+                    "In impl of '{}', target type: undeclared lifetime {}",
+                    imp.trait_path.name, lt,
+                ),
+            ));
+        }
+
+        // Resolve the trait. Missing trait → skip the rest (nothing to
+        // check against; still emit the error).
+        let Some(trait_decl) = self.traits.get(&imp.trait_path.name) else {
+            d.push_error(Diagnostic::new(
+                ImplForUnknownTrait,
+                header.name_source,
+                format!("Impl references undeclared trait '{}'", imp.trait_path.name),
+            ));
+            return;
+        };
+
+        // Trait arg arity: lifetime + type args must match trait's decl
+        // exactly. `Custom` at type-position tolerates zero lifetime args
+        // to let elision fill them in; impls don't run through elision,
+        // and silently missing lifetime args make the signature-conformance
+        // check emit misleading substitution-mismatch errors instead of a
+        // targeted arity diagnostic.
+        let trait_meta = &trait_decl.meta;
+        if imp.trait_path.type_args.len() != trait_meta.type_params.len() {
+            d.push_error(Diagnostic::new(
+                ImplTraitArgArity,
+                header.name_source,
+                format!(
+                    "Trait '{}' expects {} type argument(s), got {}",
+                    imp.trait_path.name,
+                    trait_meta.type_params.len(),
+                    imp.trait_path.type_args.len(),
+                ),
+            ));
+            return;
+        }
+        if imp.trait_path.lifetime_args.len() != trait_meta.lifetime_params.len() {
+            d.push_error(Diagnostic::new(
+                ImplTraitArgArity,
+                header.name_source,
+                format!(
+                    "Trait '{}' expects {} lifetime argument(s), got {}",
+                    imp.trait_path.name,
+                    trait_meta.lifetime_params.len(),
+                    imp.trait_path.lifetime_args.len(),
+                ),
+            ));
+            return;
+        }
+
+        // Substitution universe for lifting a trait method sig into
+        // impl-space: Self := target (prepended), then trait's
+        // type_params := trait_path.type_args.
+        let self_source = SourceInfo::generated(
+            crate::common::GeneratedKind::TypeSynthesis,
+            crate::common::Span::default(),
+        );
+        let mut subst_type_params: Vec<TypeParam> = vec![TypeParam {
+            name: "Self".to_string(),
+            bounds: Bounds::default(),
+            source: self_source,
+        }];
+        subst_type_params.extend(trait_meta.type_params.iter().cloned());
+        let mut subst_type_args: Vec<Type> = vec![imp.target.clone()];
+        subst_type_args.extend(imp.trait_path.type_args.iter().cloned());
+
+        // Method-set conformance: name-for-name match.
+        let mut impl_by_name: std::collections::HashMap<&str, &Function> =
+            std::collections::HashMap::new();
+        for m in &imp.methods {
+            impl_by_name.insert(m.meta.name.as_str(), m);
+        }
+        let trait_by_name: std::collections::HashMap<&str, &FunctionSignature> = trait_decl
+            .methods
+            .iter()
+            .map(|m| (m.meta.name.as_str(), m))
+            .collect();
+
+        for m in &imp.methods {
+            if !trait_by_name.contains_key(m.meta.name.as_str()) {
+                d.push_error(Diagnostic::new(
+                    ImplMethodNotInTrait,
+                    m.meta.name_source,
+                    format!(
+                        "Impl of '{}' has method '{}' not declared on the trait",
+                        imp.trait_path.name, m.meta.name,
+                    ),
+                ));
+            }
+        }
+        for trait_method in &trait_decl.methods {
+            let Some(impl_method) = impl_by_name.get(trait_method.meta.name.as_str()) else {
+                d.push_error(Diagnostic::new(
+                    ImplMissingTraitMethod,
+                    header.name_source,
+                    format!(
+                        "Impl of '{}' is missing method '{}'",
+                        imp.trait_path.name, trait_method.meta.name,
+                    ),
+                ));
+                continue;
+            };
+
+            // Method-generic conformance: impl method must have the
+            // same shape of type_params and lifetime_params as the
+            // trait method. Param NAMES may differ (impl may rename
+            // them); positions and marker bounds must match.
+            if trait_method.meta.lifetime_params.len()
+                != impl_method.meta.lifetime_params.len()
+            {
+                d.push_error(Diagnostic::new(
+                    ImplMethodSignatureMismatch,
+                    impl_method.meta.name_source,
+                    format!(
+                        "Impl method '{}' declares {} lifetime parameter(s), trait declares {}",
+                        impl_method.meta.name,
+                        impl_method.meta.lifetime_params.len(),
+                        trait_method.meta.lifetime_params.len(),
+                    ),
+                ));
+                continue;
+            }
+            if trait_method.meta.type_params.len() != impl_method.meta.type_params.len() {
+                d.push_error(Diagnostic::new(
+                    ImplMethodSignatureMismatch,
+                    impl_method.meta.name_source,
+                    format!(
+                        "Impl method '{}' declares {} type parameter(s), trait declares {}",
+                        impl_method.meta.name,
+                        impl_method.meta.type_params.len(),
+                        trait_method.meta.type_params.len(),
+                    ),
+                ));
+                continue;
+            }
+            let mut method_generics_mismatch = false;
+            for (t_tp, i_tp) in trait_method
+                .meta
+                .type_params
+                .iter()
+                .zip(impl_method.meta.type_params.iter())
+            {
+                // Compares the whole `Bounds` (markers + traits). The
+                // traits half is always empty until trait-bound syntax
+                // lands; comparing it now keeps the check honest at
+                // that point without a separate follow-up.
+                if t_tp.bounds != i_tp.bounds {
+                    d.push_error(Diagnostic::new(
+                        ImplMethodSignatureMismatch,
+                        i_tp.source,
+                        format!(
+                            "Impl method '{}' type parameter '{}' has bounds that don't match trait's declaration",
+                            impl_method.meta.name, i_tp.name,
+                        ),
+                    ));
+                    method_generics_mismatch = true;
+                }
+            }
+            if method_generics_mismatch {
+                continue;
+            }
+
+            // Signature conformance: substitute Self + trait type_params
+            // (and rename method-level type params to the impl's names)
+            // in the trait method's param types, then compare against
+            // the impl method's param types structurally.
+            if trait_method.params.len() != impl_method.params.len() {
+                d.push_error(Diagnostic::new(
+                    ImplMethodSignatureMismatch,
+                    impl_method.meta.name_source,
+                    format!(
+                        "Impl method '{}' has {} parameter(s), trait declares {}",
+                        impl_method.meta.name,
+                        impl_method.params.len(),
+                        trait_method.params.len(),
+                    ),
+                ));
+                continue;
+            }
+
+            // Extend the substitution with method-level generics so an
+            // impl that renames the trait's `<U>` to `<V>` still compares
+            // equal after substitution: rewrite each `Param(U)` in the
+            // trait sig to `Param(V)` at the impl side.
+            let mut method_type_params = subst_type_params.clone();
+            method_type_params.extend(trait_method.meta.type_params.iter().cloned());
+            let mut method_type_args = subst_type_args.clone();
+            for i_tp in &impl_method.meta.type_params {
+                method_type_args.push(Type::new(
+                    TypeKind::Param(i_tp.name.clone()),
+                    i_tp.source,
+                ));
+            }
+            let mut method_lifetime_params: Vec<Lifetime> = trait_meta
+                .lifetime_params
+                .iter()
+                .map(|lp| lp.lifetime.clone())
+                .collect();
+            method_lifetime_params
+                .extend(trait_method.meta.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
+            let mut method_lifetime_args: Vec<Lifetime> = imp.trait_path.lifetime_args.clone();
+            method_lifetime_args
+                .extend(impl_method.meta.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
+
+            for (i, (t_param, i_param)) in trait_method
+                .params
+                .iter()
+                .zip(impl_method.params.iter())
+                .enumerate()
+            {
+                let expected = crate::mir::type_util::substitute_all(
+                    &t_param.ty,
+                    &method_lifetime_params,
+                    &method_lifetime_args,
+                    &method_type_params,
+                    &method_type_args,
+                );
+                if !self.types_match(&expected, &i_param.ty) {
+                    d.push_error(Diagnostic::new(
+                        ImplMethodSignatureMismatch,
+                        i_param.ty.source,
+                        format!(
+                            "Impl method '{}' param {} has type {}, trait declares {} (after Self := {})",
+                            impl_method.meta.name,
+                            i + 1,
+                            i_param.ty,
+                            expected,
+                            imp.target,
+                        ),
+                    ));
+                }
+            }
+        }
+
+        // Type-check every impl-method body. Feed each through the
+        // existing `typecheck_function` path with an effective meta so
+        // the body's scope includes both the impl-header generics and
+        // the method's own. Bodies with type errors would otherwise
+        // slip through since impls don't participate in `Program::functions()`.
+        for method in &imp.methods {
+            let effective = Self::effective_impl_method(header, method);
+            self.typecheck_function(&effective, d);
+        }
     }
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {

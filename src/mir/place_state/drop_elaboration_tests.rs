@@ -533,7 +533,7 @@ fn f() {
     );
 }
 
-// ---------- Deferred behaviors (pins current phase-1 semantics) ----------
+// ---------- Deferred behaviors (pins current semantics) ----------
 
 #[test]
 fn diverged_state_splits_edge_and_drops_on_init_side() {

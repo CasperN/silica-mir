@@ -165,7 +165,15 @@
           "named": true
         },
         {
+          "type": "impl_decl",
+          "named": true
+        },
+        {
           "type": "struct_decl",
+          "named": true
+        },
+        {
+          "type": "trait_decl",
           "named": true
         }
       ]
@@ -250,10 +258,61 @@
   {
     "type": "fn_name",
     "named": true,
-    "fields": {},
+    "fields": {
+      "method_args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_args",
+            "named": true
+          }
+        ]
+      },
+      "method_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "self_ty": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "trait_args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_args",
+            "named": true
+          }
+        ]
+      },
+      "trait_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
     "children": {
       "multiple": true,
-      "required": true,
+      "required": false,
       "types": [
         {
           "type": "identifier",
@@ -328,6 +387,50 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "impl_decl",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "trait_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "function_decl",
+          "named": true
+        },
+        {
+          "type": "type_args",
+          "named": true
+        },
+        {
+          "type": "type_params",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -782,6 +885,36 @@
     }
   },
   {
+    "type": "trait_decl",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "function_decl",
+          "named": true
+        },
+        {
+          "type": "type_params",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "type",
     "named": true,
     "fields": {
@@ -1071,6 +1204,10 @@
     "named": false
   },
   {
+    "type": "for",
+    "named": false
+  },
+  {
     "type": "goto",
     "named": false
   },
@@ -1093,6 +1230,10 @@
   {
     "type": "identifier",
     "named": true
+  },
+  {
+    "type": "impl",
+    "named": false
   },
   {
     "type": "int_lit",
@@ -1136,6 +1277,10 @@
   },
   {
     "type": "take",
+    "named": false
+  },
+  {
+    "type": "trait",
     "named": false
   },
   {

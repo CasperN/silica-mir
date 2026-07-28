@@ -140,6 +140,34 @@ pub enum TypeCheckCode {
     /// substructural class doesn't satisfy the corresponding param's
     /// declared bound (e.g. `Foo<Linear>` when `Foo<T: Copy>`).
     TypeArgBoundNotSatisfied,
+
+    // ---- Impl blocks ----
+    /// `impl Trait for T` where `Trait` isn't a declared trait.
+    ImplForUnknownTrait,
+    /// `impl<...> Trait<Args> for T` where `Args` arity doesn't match
+    /// the trait's declared generics.
+    ImplTraitArgArity,
+    /// Impl body has a method whose name doesn't exist on the trait.
+    ImplMethodNotInTrait,
+    /// Trait requires a method the impl body doesn't provide.
+    ImplMissingTraitMethod,
+    /// Impl method's signature (after Self+trait-arg substitution)
+    /// doesn't match the trait's declared method signature.
+    ImplMethodSignatureMismatch,
+
+    // ---- Trait method calls ----
+    /// A `TraitFn` callee references a trait not declared in the env.
+    TraitFnUnknownTrait,
+    /// A `TraitFn` callee's `self_ty` is a generic type parameter.
+    /// Resolution through the parameter's trait bounds needs the trait
+    /// bounds vocabulary populated on `TypeParam.bounds.traits`.
+    TraitFnParamReceiver,
+    /// No impl of the trait matches the callee's `self_ty`. Impls are
+    /// looked up by structural target equality; generic impl-target
+    /// unification is a follow-up.
+    TraitFnNoImpl,
+    /// Impl exists but doesn't declare the method the callee names.
+    TraitFnNoMethod,
 }
 
 impl From<TypeCheckCode> for DiagCode {

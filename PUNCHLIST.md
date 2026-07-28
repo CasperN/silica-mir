@@ -17,6 +17,29 @@ the compiler evolves; treat entries as snapshots, not commitments.
   type. Sizes and offsets are inherently non-negative, matching
   `$sizeof<T>` returning `u64`. Require the index operand to be `u64` and
   update fixtures that still index arrays with `i64` values.
+- **Generic parameter position on decls.** MIR puts generics between the
+  keyword and the name (`fn<T> foo`, `struct<T> Box`, `trait<T> Iter`).
+  Rust convention is post-name (`fn foo<T>`, `struct Box<T>`, `trait Iter<T>`).
+  Consider moving to the post-name position across both HLL and MIR
+  grammars — cheaper authoring cost, matches every other language readers
+  are used to. Grammar change + fixture regen; no semantics move.
+- **Extract a common `instance` grammar rule.** Multiple grammar sites
+  ("identifier + optional type_args") already share the shape: `fn_name`'s
+  free-fn form, the trait ref inside `impl_decl` (`trait_name` +
+  `type_args`), the trait/method halves of `fn_name`'s UFCS form, and
+  the enum-construction rvalue. Extract to `common.grammar.js`'s shared
+  rule set so all four sites route through one node kind. Parser
+  wrappers collapse into a single `map_instance` helper.
+- **Impl method bodies bypass most checkers.** `typecheck_impl` runs each
+  impl method through `typecheck_function` (via a synthesized effective
+  `Function` with impl-header generics prepended), so type errors in
+  bodies are caught. But `Program::functions()` still doesn't include
+  impl methods, so NLL / place-state / substructural check / drop-elab
+  / reachability skip them. The mono trait-resolution pass (still to be
+  implemented) is expected to emit each impl method as a concrete
+  `Declaration::Fn` decl that participates in the full pipeline; if
+  that plan changes, impl methods need to be plumbed through the check
+  passes directly.
 
 ## Lifetime checker gaps (semantic)
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime

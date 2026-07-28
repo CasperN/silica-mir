@@ -145,6 +145,18 @@ enum TypeResolutionErrorKind {
     },
     PtrCastSourceNotPointer(Type),
     PtrCastTargetNotPointer(Type),
+    /// `TraitFn` callee names a trait not in the env.
+    TraitFnUnknownTrait(String),
+    /// `TraitFn` receiver is a generic type parameter; resolution
+    /// through the parameter's trait bounds needs the trait-bound
+    /// vocabulary populated on `TypeParam.bounds.traits`, which
+    /// requires trait-bound syntax at the binding site.
+    TraitFnParamReceiver(String),
+    /// No impl of `trait_path` matches the given self_ty.
+    TraitFnNoImpl { trait_path: Instance, self_ty: Type },
+    /// Impl of `trait_path` for self_ty exists but doesn't declare the
+    /// method the callee names.
+    TraitFnNoMethod { trait_path: Instance, self_ty: Type, method: String },
 }
 
 impl TypeResolutionError {
@@ -174,6 +186,10 @@ impl TypeResolutionError {
             TypeResolutionErrorKind::ArrayElementMismatch { .. } => ArrayLitElementTypeMismatch,
             TypeResolutionErrorKind::PtrCastSourceNotPointer(_) => PtrCastSourceNotPointer,
             TypeResolutionErrorKind::PtrCastTargetNotPointer(_) => PtrCastTargetNotPointer,
+            TypeResolutionErrorKind::TraitFnUnknownTrait(_) => TraitFnUnknownTrait,
+            TypeResolutionErrorKind::TraitFnParamReceiver(_) => TraitFnParamReceiver,
+            TypeResolutionErrorKind::TraitFnNoImpl { .. } => TraitFnNoImpl,
+            TypeResolutionErrorKind::TraitFnNoMethod { .. } => TraitFnNoMethod,
         }
     }
 
@@ -290,6 +306,31 @@ impl TypeResolutionError {
                 "Pointer cast target must be a raw pointer or reference type, found {}",
                 format.ty(caller_scope, ty),
             ),
+            TypeResolutionErrorKind::TraitFnUnknownTrait(name) => {
+                format!("Trait-method call references undeclared trait '{}'", name)
+            }
+            TypeResolutionErrorKind::TraitFnParamReceiver(name) => format!(
+                "Trait-method call on generic parameter '{}' requires a trait bound (deferred pending trait-bound syntax)",
+                name,
+            ),
+            TypeResolutionErrorKind::TraitFnNoImpl {
+                trait_path,
+                self_ty,
+            } => format!(
+                "No impl of '{}' for {} in scope",
+                trait_path,
+                format.ty(caller_scope, self_ty),
+            ),
+            TypeResolutionErrorKind::TraitFnNoMethod {
+                trait_path,
+                self_ty,
+                method,
+            } => format!(
+                "Impl of '{}' for {} has no method '{}'",
+                trait_path,
+                format.ty(caller_scope, self_ty),
+                method,
+            ),
         }
     }
 }
@@ -300,6 +341,14 @@ pub struct Env {
     /// iteration order matches declaration order — analyses that iterate
     /// (e.g. field validation) produce diagnostics deterministically.
     pub types: IndexMap<String, TypeDecl>,
+    /// Trait declarations, keyed by name. Kept out of `types` because
+    /// a trait is not a first-class type: `x: MyTrait` and
+    /// `Vec<MyTrait>` are illegal at the type-name resolver, so putting
+    /// traits in `types` would make them accidentally satisfy those
+    /// positions. Name-uniqueness between `types` and `traits` is
+    /// enforced together (see `Env::build`) — Rust's type-namespace
+    /// rule.
+    pub traits: IndexMap<String, TraitDecl>,
     /// Function signatures, keyed by name. Bodies live in
     /// [`Program`](crate::mir::ast::Program) — callers that need to
     /// walk statements iterate `Program::functions()` and use `Env` for
@@ -307,6 +356,15 @@ pub struct Env {
     /// Keeping only signatures in `Env` means elaboration can mutate
     /// bodies in-place on `Program` without an `Env` resync step.
     pub functions: IndexMap<String, FunctionSignature>,
+    /// Impl blocks, keyed by `(trait_path, target_type)`. The full
+    /// trait path (name + lifetime + type args) is the key so multiple
+    /// impls of a generic trait for the same target coexist —
+    /// `impl Iter<i64> for X` and `impl Iter<u8> for X` are distinct
+    /// impls, not a collision. Lookup uses structural equality;
+    /// unification for generic impl targets like `impl<T> Iter<T> for
+    /// Bag<T>` is a follow-up under the mono trait-resolution work.
+    /// Duplicate keys are a coherence error caught at build time.
+    pub impls: IndexMap<(Instance, Type), ImplBlock>,
 }
 
 impl Env {
@@ -328,15 +386,35 @@ impl Env {
             functions.insert(f.meta.name.clone(), FunctionSignature::from_function(&f));
         }
 
+        let mut traits: IndexMap<String, TraitDecl> = IndexMap::new();
+        let mut impls: IndexMap<(Instance, Type), ImplBlock> = IndexMap::new();
         for decl in &program.declarations {
             let m = decl.meta();
-            let (existing, kind_word) = match decl {
-                Declaration::Struct(_) | Declaration::Enum(_) => {
-                    (types.contains_key(&m.name), "type")
+            // Types and traits share the type namespace: `struct Foo`
+            // and `trait Foo` collide (Rust's rule). Functions have
+            // their own namespace, so `struct Foo` and `fn Foo`
+            // coexist. Impls are anonymous — keyed by (trait, target),
+            // duplicates are a coherence error.
+            let existing = match decl {
+                Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {
+                    if types.contains_key(&m.name) {
+                        Some("type")
+                    } else if traits.contains_key(&m.name) {
+                        Some("trait")
+                    } else {
+                        None
+                    }
                 }
-                Declaration::Fn(_) => (functions.contains_key(&m.name), "function"),
+                Declaration::Fn(_) => {
+                    if functions.contains_key(&m.name) {
+                        Some("function")
+                    } else {
+                        None
+                    }
+                }
+                Declaration::Impl(_) => None,
             };
-            if existing {
+            if let Some(kind_word) = existing {
                 errors.push(Diagnostic::new(
                     DuplicateDeclaration,
                     m.name_source,
@@ -354,10 +432,36 @@ impl Env {
                 Declaration::Fn(f) => {
                     functions.insert(m.name.clone(), FunctionSignature::from_function(f));
                 }
+                Declaration::Trait(t) => {
+                    traits.insert(m.name.clone(), t.clone());
+                }
+                Declaration::Impl(imp) => {
+                    let key = (imp.trait_path.clone(), imp.target.clone());
+                    if impls.contains_key(&key) {
+                        errors.push(Diagnostic::new(
+                            DuplicateDeclaration,
+                            imp.meta.name_source,
+                            format!(
+                                "Duplicate impl of trait '{}' for target type {}",
+                                imp.trait_path, imp.target,
+                            ),
+                        ));
+                        continue;
+                    }
+                    impls.insert(key, imp.clone());
+                }
             }
         }
 
-        (Env { types, functions }, errors)
+        (
+            Env {
+                types,
+                traits,
+                functions,
+                impls,
+            },
+            errors,
+        )
     }
 
     /// Validate `ty` against the current type-parameter scope.
@@ -602,6 +706,63 @@ impl Env {
         }
     }
 
+    /// Resolve a `TraitFn` callee to the concrete `fn(...)` type of its
+    /// method after impl-table lookup and substitution. Errors trickle
+    /// out as `TypeResolutionError`s so the caller renders them
+    /// alongside other operand-typing errors.
+    ///
+    /// Impl lookup uses structural target equality: `self_ty` must
+    /// exactly equal an impl's declared target. Generic-impl-target
+    /// unification (matching `Bag<i64>` to `impl<T> Iter<T> for Bag<T>`)
+    /// is a follow-up under monomorphization.
+    fn resolve_trait_fn(
+        &self,
+        trait_path: &Instance,
+        self_ty: &Type,
+        method: &Instance,
+    ) -> Result<Type, TypeResolutionError> {
+        if !self.traits.contains_key(&trait_path.name) {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::TraitFnUnknownTrait(trait_path.name.clone()),
+            ));
+        }
+        if let TypeKind::Param(name) = &self_ty.kind {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::TraitFnParamReceiver(name.clone()),
+            ));
+        }
+        let imp = self
+            .impls
+            .get(&(trait_path.clone(), self_ty.clone()))
+            .ok_or_else(|| {
+                TypeResolutionError::new(TypeResolutionErrorKind::TraitFnNoImpl {
+                    trait_path: trait_path.clone(),
+                    self_ty: self_ty.clone(),
+                })
+            })?;
+        let impl_method = imp
+            .methods
+            .iter()
+            .find(|m| m.meta.name == method.name)
+            .ok_or_else(|| {
+                TypeResolutionError::new(TypeResolutionErrorKind::TraitFnNoMethod {
+                    trait_path: trait_path.clone(),
+                    self_ty: self_ty.clone(),
+                    method: method.name.clone(),
+                })
+            })?;
+        // Impl-header substitution is a no-op: the impl was found via
+        // structural equality on a concrete target, so its methods are
+        // already instantiated. Only the method's own type_params
+        // need substituting from the callee's method args.
+        let param_tys = impl_method
+            .params
+            .iter()
+            .map(|p| impl_method.meta.substitute_types(&p.ty, &method.type_args))
+            .collect();
+        Ok(fn_ty(param_tys))
+    }
+
     pub fn type_of_operand(
         &self,
         op: &Operand,
@@ -634,6 +795,11 @@ impl Env {
                         .collect();
                     Ok(fn_ty(param_tys))
                 }
+                ConstVal::TraitFn {
+                    trait_path,
+                    self_ty,
+                    method,
+                } => self.resolve_trait_fn(trait_path, self_ty, method),
                 ConstVal::ByteStr(bytes) => Ok(array_ty(u8_ty(), bytes.len() as u64)),
             },
         }

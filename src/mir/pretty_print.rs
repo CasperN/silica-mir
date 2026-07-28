@@ -45,6 +45,8 @@ fn write_declaration(out: &mut String, decl: &Declaration) {
         Declaration::Struct(s) => write_struct(out, s),
         Declaration::Enum(e) => write_enum(out, e),
         Declaration::Fn(f) => write_function(out, f),
+        Declaration::Trait(t) => write_trait(out, t),
+        Declaration::Impl(i) => write_impl(out, i),
     }
 }
 
@@ -130,6 +132,54 @@ fn write_enum(out: &mut String, e: &EnumDecl) {
         write!(out, "  {}: ", v.name).unwrap();
         write_type(out, &v.ty);
         out.push('\n');
+    }
+    out.push_str("}\n");
+}
+
+fn write_trait(out: &mut String, t: &TraitDecl) {
+    out.push_str("trait");
+    write_type_params(out, &t.meta);
+    out.push(' ');
+    out.push_str(&t.meta.name);
+    out.push_str(" {\n");
+    for m in &t.methods {
+        out.push_str("  fn");
+        write_type_params(out, &m.meta);
+        out.push(' ');
+        out.push_str(&m.meta.name);
+        out.push('(');
+        for (i, p) in m.params.iter().enumerate() {
+            if i > 0 {
+                out.push_str(", ");
+            }
+            write!(out, "{}: ", p.name).unwrap();
+            write_type(out, &p.ty);
+        }
+        out.push_str(");\n");
+    }
+    out.push_str("}\n");
+}
+
+fn write_impl(out: &mut String, i: &ImplBlock) {
+    out.push_str("impl");
+    write_type_params(out, &i.meta);
+    out.push(' ');
+    // `Instance` renders as `Name<args>` via Display — matches the
+    // trait-path syntax the parser accepts.
+    write!(out, "{}", i.trait_path).unwrap();
+    out.push_str(" for ");
+    write_type(out, &i.target);
+    out.push_str(" {\n");
+    for m in &i.methods {
+        // Reuse write_function; indent each line so nested methods
+        // read like body members of the impl block.
+        let mut body = String::new();
+        write_function(&mut body, m);
+        for line in body.lines() {
+            out.push_str("  ");
+            out.push_str(line);
+            out.push('\n');
+        }
     }
     out.push_str("}\n");
 }
@@ -298,6 +348,20 @@ fn write_const(out: &mut String, c: &ConstVal) {
                 out.push('>');
             }
         }
+        // `<SelfTy as Trait<TraitArgs>>::method<MethodArgs>` — matches
+        // the grammar's UFCS-style fn_name shape.
+        ConstVal::TraitFn {
+            trait_path,
+            self_ty,
+            method,
+        } => {
+            out.push('<');
+            write_type(out, self_ty);
+            out.push_str(" as ");
+            write!(out, "{}", trait_path).unwrap();
+            out.push_str(">::");
+            write!(out, "{}", method).unwrap();
+        }
     }
 }
 
@@ -445,6 +509,8 @@ mod tests {
                 Declaration::Struct(s) => &mut s.meta,
                 Declaration::Enum(e) => &mut e.meta,
                 Declaration::Fn(f) => &mut f.meta,
+                Declaration::Trait(t) => &mut t.meta,
+                Declaration::Impl(i) => &mut i.meta,
             };
             for lifetime in &mut meta.lifetime_params {
                 lifetime.source = SourceInfo::written(zero);
@@ -488,6 +554,48 @@ mod tests {
                             b.terminator.source = SourceInfo::written(zero);
                             for statement in b.statements.iter_mut() {
                                 statement.source = SourceInfo::written(zero);
+                            }
+                        }
+                    }
+                }
+                Declaration::Trait(t) => {
+                    t.meta.name_source = SourceInfo::written(zero);
+                    for tp in &mut t.meta.type_params {
+                        tp.source = SourceInfo::written(zero);
+                    }
+                    for m in &mut t.methods {
+                        m.meta.name_source = SourceInfo::written(zero);
+                        for tp in &mut m.meta.type_params {
+                            tp.source = SourceInfo::written(zero);
+                        }
+                        for p in &mut m.params {
+                            p.source = SourceInfo::written(zero);
+                        }
+                    }
+                }
+                Declaration::Impl(i) => {
+                    i.meta.name_source = SourceInfo::written(zero);
+                    for tp in &mut i.meta.type_params {
+                        tp.source = SourceInfo::written(zero);
+                    }
+                    for m in &mut i.methods {
+                        m.meta.name_source = SourceInfo::written(zero);
+                        for tp in &mut m.meta.type_params {
+                            tp.source = SourceInfo::written(zero);
+                        }
+                        for p in &mut m.params {
+                            p.source = SourceInfo::written(zero);
+                        }
+                        if let Some(body) = &mut m.body {
+                            for l in &mut body.locals {
+                                l.source = SourceInfo::written(zero);
+                            }
+                            for b in &mut body.blocks {
+                                b.label_source = SourceInfo::written(zero);
+                                b.terminator.source = SourceInfo::written(zero);
+                                for statement in b.statements.iter_mut() {
+                                    statement.source = SourceInfo::written(zero);
+                                }
                             }
                         }
                     }
@@ -655,6 +763,60 @@ mod tests {
               entry:
                 n = copy r.*;
                 r.* = 42;
+                return
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn roundtrip_trait_decl() {
+        assert_roundtrip(
+            "
+            trait Simple {
+              fn ping(recv: &Self);
+            }
+            trait<T: Copy + Drop> Iter {
+              fn next(recv: &mut Self, out: &out T);
+              fn<U> map(recv: &Self, other: &U, out: &out T);
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn roundtrip_impl_block() {
+        assert_roundtrip(
+            "
+            trait<T: Copy + Drop> Iter {
+              fn next(recv: &mut Self, out: &out T);
+            }
+            struct Foo: Copy + Drop { x: i64 }
+            impl Iter<i64> for Foo {
+              fn next(recv: &mut Foo, out: &out i64) {
+                entry:
+                  return
+              }
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn roundtrip_trait_fn_callee() {
+        assert_roundtrip(
+            "
+            trait Sink { fn accept(recv: &mut Self, v: i64); }
+            struct Foo: Copy + Drop { x: i64 }
+            impl Sink for Foo {
+              fn accept(recv: &mut Foo, v: i64) {
+                entry:
+                  return
+              }
+            }
+            fn drive(f: &mut Foo) {
+              entry:
+                call <Foo as Sink>::accept(move f, 7);
                 return
             }
             ",

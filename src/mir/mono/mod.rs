@@ -67,9 +67,15 @@ use std::collections::{BTreeMap, VecDeque};
 /// copies for every reachable instantiation.
 pub fn monomorphize(program: &mut Program) {
     // Index the original decls by name for lookup during specialization.
+    // Impl blocks bypass mono entirely — they're not name-keyed decls
+    // that mono can specialize by args, and their methods are addressed
+    // via `(trait, target)` lookup. Skip them here and prepend back
+    // onto the mono output at the end.
+    let is_mono_target = |d: &Declaration| !matches!(d, Declaration::Impl(_));
     let originals: BTreeMap<String, Declaration> = program
         .declarations
         .iter()
+        .filter(|d| is_mono_target(d))
         .map(|d| (d.meta().name.clone(), d.clone()))
         .collect();
 
@@ -82,7 +88,7 @@ pub fn monomorphize(program: &mut Program) {
     // Seed: every non-generic decl is trivially reachable. Generic
     // decls are only pulled in via instantiations found while walking
     // reachable code.
-    for decl in &program.declarations {
+    for decl in program.declarations.iter().filter(|d| is_mono_target(d)) {
         let m = decl.meta();
         if m.type_params.is_empty() {
             ctx.need(&m.name, &[]);
@@ -108,6 +114,14 @@ pub fn monomorphize(program: &mut Program) {
             continue;
         };
         out.push(ctx.specialize(decl, &args, mangled));
+    }
+    // Preserve impl blocks unchanged past mono. The mono trait-fn
+    // resolution pass (still to be implemented) consumes them via the
+    // env's impl table and emits concrete `Fn` decls in their place.
+    for decl in program.declarations.drain(..) {
+        if matches!(decl, Declaration::Impl(_)) {
+            out.push(decl);
+        }
     }
     program.declarations = out;
 }
@@ -331,6 +345,15 @@ impl MonoCtx {
                     body,
                 })
             }
+            // Trait decls carry only signatures, not instantiable
+            // code — mono has nothing to specialize. Pass through
+            // unchanged so downstream passes still see the decl.
+            Declaration::Trait(t) => Declaration::Trait(t),
+            // Impl blocks are extracted before mono runs (see
+            // `monomorphize`); they never reach specialization.
+            Declaration::Impl(_) => unreachable!(
+                "impl blocks are extracted from mono's input; specialize should not see one"
+            ),
         }
     }
 }

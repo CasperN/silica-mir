@@ -1,0 +1,11 @@
+# Trait method sigs must be body-less (`;` termination). A body-present
+# method is rejected at parse time. Parse errors short-circuit — this
+# fixture pins the diagnostic for the body-present case; the extern
+# and duplicate-method cases live in sibling fixtures.
+
+trait Foo {
+  fn m(recv: & Self) {
+    entry:
+      return
+  }
+}

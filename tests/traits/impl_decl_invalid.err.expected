@@ -1,0 +1,56 @@
+error: at 28:6: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
+    |
+ 27 | # Unknown trait name.
+ 28 | impl Unknown for Foo {
+    |      ^^^^^^^
+ 29 |   fn zap(recv: & Foo) {
+    |
+error: at 36:6: [TC-ImplTraitArgArity] Trait 'Iter' expects 1 type argument(s), got 0
+    |
+ 35 | # Wrong number of trait type args (Iter takes 1, got 0).
+ 36 | impl Iter for Foo {
+    |      ^^^^
+ 37 |   fn next(recv: &mut Foo, $return: &out i64) {
+    |
+error: at 51:6: [TC-ImplMethodNotInTrait] Impl of 'Trait' has method 'extra' not declared on the trait
+    |
+ 50 |   }
+ 51 |   fn extra(recv: & Foo) {
+    |      ^^^^^
+ 52 |     entry:
+    |
+error: at 46:6: [TC-ImplMissingTraitMethod] Impl of 'Trait' is missing method 'b'
+    |
+ 45 | # `a` and `extra`).
+ 46 | impl Trait for Foo {
+    |      ^^^^^
+ 47 |   fn a(recv: & Foo) {
+    |
+error: at 65:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut Foo, trait declares & Foo (after Self := Foo)
+    |
+ 64 | impl TraitS for Foo {
+ 65 |   fn touch(recv: &mut Foo) {
+    |                  ^^^^^^^^
+ 66 |     entry:
+    |
+error: at 82:7: [TC-AssignmentTypeMismatch] In function 'go', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+    |
+ 81 |     entry:
+ 82 |       flag = 0i64;
+    |       ^^^^^^^^^^^
+ 83 |       return
+    |
+error: at 94:6: [TC-ImplMethodSignatureMismatch] Impl method 'pick' declares 0 type parameter(s), trait declares 1
+    |
+ 93 | impl MgTrait for Foo {
+ 94 |   fn pick(recv: & Foo, $return: &out i64) {
+    |      ^^^^
+ 95 |     entry:
+    |
+error: at 107:6: [TC-ImplTraitArgArity] Trait 'LtTrait' expects 1 lifetime argument(s), got 0
+     |
+ 106 | 
+ 107 | impl LtTrait for Foo {
+     |      ^^^^^^^
+ 108 |   fn peek(recv: & Foo) {
+     |

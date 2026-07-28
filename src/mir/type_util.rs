@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn substitute_params_still_substitutes_nested_type_params() {
-        use crate::common::{GeneratedKind, Lifetime, Markers, SourceInfo, Span};
+        use crate::common::{GeneratedKind, Lifetime, SourceInfo, Span};
         use crate::mir::ast::{RefKind, TypeParam};
         let tp = TypeParam {
             name: "T".into(),
@@ -334,7 +334,7 @@ mod tests {
 
     #[test]
     fn substitution_preserves_container_and_argument_provenance() {
-        use crate::common::{GeneratedKind, Markers, SourceInfo, Span};
+        use crate::common::{GeneratedKind, SourceInfo, Span};
 
         let container_source = SourceInfo::generated(
             GeneratedKind::TypeSynthesis,

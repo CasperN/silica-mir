@@ -1,0 +1,7 @@
+error: at 16:3: [PARSE-MalformedCst] duplicate impl method 'm'
+    |
+ 15 |   }
+ 16 |   fn m(recv: & S) {
+    |   ^
+ 17 |     entry:
+    |

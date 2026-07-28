@@ -1,0 +1,75 @@
+# Impl blocks parse, type-check against the trait, and round-trip
+# through pretty-print. Each cell isolates one shape so a regression
+# is localizable.
+#
+#   impl                             covers
+#   Simple for Foo                   non-generic trait + concrete target
+#   Iter<i64> for List               generic trait + concrete target, Self substitution
+#   Iter<T> for Bag<T>               generic trait + generic target under impl header
+#   MgTrait for Foo                  trait method has its own type parameter
+#   LtTrait<'a> for LtHolder<'a>     trait has a lifetime parameter
+
+trait Simple {
+  fn ping(recv: & Self);
+}
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+}
+
+struct Foo: Copy + Drop { x: i64 }
+
+struct List: Copy + Drop { xs: [i64; 4] }
+
+struct<T: Copy + Drop> Bag: Copy + Drop { inner: T }
+
+impl Simple for Foo {
+  fn ping(recv: & Foo) {
+    entry:
+      return
+  }
+}
+
+impl Iter<i64> for List {
+  fn next(recv: &mut List, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+impl<T: Copy + Drop> Iter<T> for Bag<T> {
+  fn next(recv: &mut Bag<T>, $return: &out T) {
+    entry:
+      $return.* = copy recv.*.inner;
+      return
+  }
+}
+
+# Trait method with its own type parameter: impl must preserve the
+# generic (may rename it), not specialize it away.
+trait MgTrait {
+  fn<U: Copy + Drop> ignore(recv: & Self, other: & U);
+}
+
+impl MgTrait for Foo {
+  fn<V: Copy + Drop> ignore(recv: & Foo, other: & V) {
+    entry:
+      return
+  }
+}
+
+# Trait with a lifetime parameter: impl must supply exact-arity
+# lifetime args in the trait ref.
+struct<'a> LtHolder: Copy + Drop { p: & 'a i64 }
+
+trait<'a> LtTrait {
+  fn peek(recv: & Self);
+}
+
+impl<'a> LtTrait<'a> for LtHolder<'a> {
+  fn peek(recv: & LtHolder<'a>) {
+    entry:
+      return
+  }
+}

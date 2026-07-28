@@ -25,6 +25,8 @@ module.exports = grammar({
       $.struct_decl,
       $.enum_decl,
       $.function_decl,
+      $.trait_decl,
+      $.impl_decl,
     ),
 
     ...common.rules,
@@ -88,6 +90,44 @@ module.exports = grammar({
         ';',
         seq('{', repeat($.local_decl), repeat($.basic_block), '}'),
       ),
+    ),
+
+    // Trait declaration: name + optional generics + a body of method
+    // signatures. Signatures reuse `function_decl` in its body-omitted
+    // form (matches `extern fn` shape) — the type checker rejects
+    // methods with bodies at this position.
+    //
+    // `Self` is a reserved identifier bound implicitly in the trait's
+    // scope; methods reference it as `Self` and impls substitute it
+    // with the target type.
+    trait_decl: $ => seq(
+      'trait',
+      optional($.type_params),
+      field('name', $.identifier),
+      '{',
+      repeat($.function_decl),
+      '}',
+    ),
+
+    // Impl block: `impl<T> Trait<TypeArgs> for TargetType { methods }`.
+    // Header generics (`<T>`) are the impl's own; they bind for the
+    // trait ref, target type, and every method sig/body. The trait
+    // name + optional type args identify which trait is being
+    // implemented; the target type fills the trait's `Self` slot.
+    // Methods reuse `function_decl` with bodies — the type checker
+    // verifies each method's signature matches the trait's after
+    // substituting `Self := target` and the trait's type_params from
+    // the trait ref's args.
+    impl_decl: $ => seq(
+      'impl',
+      optional($.type_params),
+      field('trait_name', $.identifier),
+      optional($.type_args),
+      'for',
+      field('target', $.type),
+      '{',
+      repeat($.function_decl),
+      '}',
     ),
 
     basic_block: $ => seq(
@@ -215,11 +255,34 @@ module.exports = grammar({
       $.fn_name,
     ),
 
-    // Function name const, with optional type args for calling a
-    // generic function: `foo` or `foo<i32, bool>`. The parser stores
-    // args on `ConstVal::FnName`; codegen internal-errors on non-empty
-    // args until monomorphization lands.
-    fn_name: $ => seq($.identifier, optional($.type_args)),
+    // Function name const. Two shapes:
+    //
+    //   foo                        — free fn, optionally with type args:
+    //   foo<i32, bool>               `ConstVal::FnName(name, args)`.
+    //
+    //   <SelfTy as Trait<Args>>::method<MethodArgs>
+    //                              — trait-method callee (UFCS-style):
+    //                                `ConstVal::TraitFn { trait_path,
+    //                                self_ty, method }`. The `as`
+    //                                keyword disambiguates from a plain
+    //                                `<` starting type_args.
+    //
+    // Codegen internal-errors on non-empty type args until
+    // monomorphization lands.
+    fn_name: $ => choice(
+      seq($.identifier, optional($.type_args)),
+      seq(
+        '<',
+        field('self_ty', $.type),
+        'as',
+        field('trait_name', $.identifier),
+        optional(field('trait_args', $.type_args)),
+        '>',
+        '::',
+        field('method_name', $.identifier),
+        optional(field('method_args', $.type_args)),
+      ),
+    ),
 
     rvalue: $ => choice(
       $.operand,

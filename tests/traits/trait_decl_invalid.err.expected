@@ -1,0 +1,14 @@
+error: at 13:7: [TC-DuplicateDeclaration] Duplicate declaration of type 'Duplicated'
+    |
+ 12 | 
+ 13 | trait Duplicated {
+    |       ^^^^^^^^^^
+ 14 |   fn ping(recv: & Self);
+    |
+error: at 18:33: [TC-InvalidDeclaredType] In trait 'Iter', method 'next' param 'out': Use of undeclared type 'Missing'
+    |
+ 17 | trait Iter {
+ 18 |   fn next(recv: &mut Self, out: & Missing);
+    |                                 ^^^^^^^^^
+ 19 | }
+    |

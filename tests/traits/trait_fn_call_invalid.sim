@@ -1,0 +1,66 @@
+# Trait-method call resolution errors. Each `call` below exercises one
+# failure mode; type-check errors don't short-circuit so all fire.
+#
+#   call site                                error
+#   <Foo as Unknown>::any(...)               unknown trait
+#   <Bar as Iter<i64>>::next(...)            no impl for that (trait, target)
+#   <List as Iter<bool>>::next(...)          right target, wrong trait args
+#                                            (List has Iter<i64>, not Iter<bool>)
+#   <List as Iter<i64>>::missing(...)        impl exists but has no such method
+#   <T as Iter<i64>>::next(...)              generic-param receiver, deferred
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+}
+
+struct Foo: Copy + Drop { x: i64 }
+struct Bar: Copy + Drop { y: i64 }
+struct List: Copy + Drop { xs: [i64; 4] }
+
+impl Iter<i64> for List {
+  fn next(recv: &mut List, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+fn unknown_trait(f: &mut Foo, $return: &out i64) {
+  out_ref: &out i64;
+  entry:
+    out_ref = &out $return.*;
+    call <Foo as Unknown>::any(move f, move out_ref);
+    return
+}
+
+fn no_impl(b: &mut Bar, $return: &out i64) {
+  out_ref: &out i64;
+  entry:
+    out_ref = &out $return.*;
+    call <Bar as Iter<i64>>::next(move b, move out_ref);
+    return
+}
+
+fn wrong_trait_args(l: &mut List, $return: &out bool) {
+  out_ref: &out bool;
+  entry:
+    out_ref = &out $return.*;
+    call <List as Iter<bool>>::next(move l, move out_ref);
+    return
+}
+
+fn no_method(l: &mut List, $return: &out i64) {
+  out_ref: &out i64;
+  entry:
+    out_ref = &out $return.*;
+    call <List as Iter<i64>>::missing(move l, move out_ref);
+    return
+}
+
+fn<T> param_receiver(t: &mut T, $return: &out i64) {
+  out_ref: &out i64;
+  entry:
+    out_ref = &out $return.*;
+    call <T as Iter<i64>>::next(move t, move out_ref);
+    return
+}

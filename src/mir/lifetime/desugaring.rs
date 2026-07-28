@@ -34,6 +34,10 @@ pub fn elide_program(program: &mut Program) {
             Declaration::Fn(f) => elide_function(f),
             Declaration::Struct(s) => elide_struct(s),
             Declaration::Enum(e) => elide_enum(e),
+            // TODO: elide lifetimes in trait method signatures and
+            // impl-method bodies once trait method calls need it.
+            Declaration::Trait(_) => {}
+            Declaration::Impl(_) => {}
         }
     }
 }

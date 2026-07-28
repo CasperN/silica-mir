@@ -460,6 +460,8 @@ impl Parser {
             "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child, d)?)),
             "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child, d)?)),
             "function_decl" => Ok(Declaration::Fn(self.map_function_decl(child)?)),
+            "trait_decl" => Ok(Declaration::Trait(self.map_trait_decl(child)?)),
+            "impl_decl" => Ok(Declaration::Impl(self.map_impl_decl(child)?)),
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -718,8 +720,49 @@ impl Parser {
                 })?;
                 self.map_const(child)
             }
-            // `fn_name`: identifier with optional `<T, U>` args.
+            // `fn_name`: two shapes — free-fn `foo<T>` or UFCS-style
+            // trait-method callee `<SelfTy as Trait<Args>>::method<A>`.
+            // The UFCS form carries a `self_ty` field; the free form
+            // starts with the identifier at child(0).
             "fn_name" => {
+                if let Some(self_ty_node) = node.child_by_field_name("self_ty") {
+                    let self_ty = self.map_type(self_ty_node)?;
+                    let trait_name_node =
+                        node.child_by_field_name("trait_name").ok_or_else(|| {
+                            self.diag(
+                                node,
+                                ParserCode::MalformedCst,
+                                "trait-method callee missing trait name",
+                            )
+                        })?;
+                    let trait_name = self.get_text(trait_name_node).to_string();
+                    let (trait_lt_args, trait_type_args) =
+                        if let Some(ta) = node.child_by_field_name("trait_args") {
+                            self.map_type_args(ta)?
+                        } else {
+                            (Vec::new(), Vec::new())
+                        };
+                    let method_name_node =
+                        node.child_by_field_name("method_name").ok_or_else(|| {
+                            self.diag(
+                                node,
+                                ParserCode::MalformedCst,
+                                "trait-method callee missing method name",
+                            )
+                        })?;
+                    let method_name = self.get_text(method_name_node).to_string();
+                    let (method_lt_args, method_type_args) =
+                        if let Some(ma) = node.child_by_field_name("method_args") {
+                            self.map_type_args(ma)?
+                        } else {
+                            (Vec::new(), Vec::new())
+                        };
+                    return Ok(ConstVal::TraitFn {
+                        trait_path: Instance::new(trait_name, trait_lt_args, trait_type_args),
+                        self_ty,
+                        method: Instance::new(method_name, method_lt_args, method_type_args),
+                    });
+                }
                 let ident_node = node.child(0).ok_or_else(|| {
                     self.diag(node, ParserCode::MalformedCst, "fn_name missing identifier")
                 })?;
@@ -1294,6 +1337,177 @@ impl Parser {
                 markers,
             },
             variants,
+        })
+    }
+
+    fn map_trait_decl(&self, node: Node) -> Result<TraitDecl, Diagnostic> {
+        let name_node = node
+            .child_by_field_name("name")
+            .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "trait decl missing name"))?;
+        let name = self.get_text(name_node).to_string();
+        let name_span = span_of(name_node);
+
+        let mut cursor = node.walk();
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node)?
+        } else {
+            (Vec::new(), Vec::new(), Vec::new())
+        };
+
+        // Bind the implicit `Self` type parameter into the trait's scope
+        // so method signatures can reference it. Impls substitute
+        // `Self` with the target type at check time.
+        self.type_scope.borrow_mut().insert("Self".to_string());
+
+        // `map_function_decl` clears the entire type_scope when it
+        // exits — appropriate for top-level fns, but for trait
+        // methods we need the trait's type_params + Self to persist
+        // across method sigs. Snapshot here and restore before each.
+        let trait_scope: std::collections::BTreeSet<String> =
+            self.type_scope.borrow().clone();
+
+        let mut methods: Vec<FunctionSignature> = Vec::new();
+        let mut seen_names: std::collections::HashSet<String> = Default::default();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "function_decl" {
+                continue;
+            }
+            *self.type_scope.borrow_mut() = trait_scope.clone();
+            let f = self.map_function_decl(child)?;
+            if f.is_extern {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("trait method '{}' cannot be extern", f.meta.name),
+                ));
+            }
+            if f.body.is_some() {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("trait method '{}' must not have a body", f.meta.name),
+                ));
+            }
+            if !seen_names.insert(f.meta.name.clone()) {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("duplicate trait method '{}'", f.meta.name),
+                ));
+            }
+            methods.push(FunctionSignature::from_function(&f));
+        }
+        self.type_scope.borrow_mut().clear();
+
+        Ok(TraitDecl {
+            meta: DeclMeta {
+                name,
+                name_source: SourceInfo::written(name_span),
+                lifetime_params,
+                outlives,
+                type_params,
+                markers: Markers::empty(),
+            },
+            methods,
+        })
+    }
+
+    fn map_impl_decl(&self, node: Node) -> Result<ImplBlock, Diagnostic> {
+        let trait_name_node = node.child_by_field_name("trait_name").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "impl decl missing trait name")
+        })?;
+        let trait_name = self.get_text(trait_name_node).to_string();
+        let trait_name_span = span_of(trait_name_node);
+
+        let mut cursor = node.walk();
+
+        // Impl-header generics come first (`impl<T> ...`). Populates
+        // the type_scope so the trait_path type_args, target, and
+        // method bodies can reference them.
+        let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_params")
+        {
+            self.map_type_params(tp_node)?
+        } else {
+            (Vec::new(), Vec::new(), Vec::new())
+        };
+
+        // Optional trait type_args (`Iter<T>`). Absent = non-generic
+        // trait (`Iter`).
+        let (trait_lt_args, trait_type_args) = if let Some(args_node) = node
+            .children(&mut cursor)
+            .find(|c| c.kind() == "type_args")
+        {
+            self.map_type_args(args_node)?
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let trait_path = Instance::new(&trait_name, trait_lt_args, trait_type_args);
+
+        let target_node = node.child_by_field_name("target").ok_or_else(|| {
+            self.diag(node, ParserCode::MalformedCst, "impl decl missing target type")
+        })?;
+        let target = self.map_type(target_node)?;
+
+        // Snapshot the impl-header scope so it persists across each
+        // method's `map_function_decl` call (which clears the scope
+        // on exit — see `map_trait_decl` for the same pattern).
+        let impl_scope: std::collections::BTreeSet<String> =
+            self.type_scope.borrow().clone();
+
+        let mut methods: Vec<Function> = Vec::new();
+        let mut seen_names: std::collections::HashSet<String> = Default::default();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "function_decl" {
+                continue;
+            }
+            *self.type_scope.borrow_mut() = impl_scope.clone();
+            let f = self.map_function_decl(child)?;
+            if f.is_extern {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("impl method '{}' cannot be extern", f.meta.name),
+                ));
+            }
+            if f.body.is_none() {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("impl method '{}' requires a body", f.meta.name),
+                ));
+            }
+            if !seen_names.insert(f.meta.name.clone()) {
+                return Err(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("duplicate impl method '{}'", f.meta.name),
+                ));
+            }
+            methods.push(f);
+        }
+        self.type_scope.borrow_mut().clear();
+
+        Ok(ImplBlock {
+            meta: DeclMeta {
+                // Impls are anonymous; the name field is unused (env's
+                // collision check skips Impl). `name_source` points at
+                // the trait name so any accidental usage lands somewhere
+                // legible in the source rather than at 0:0.
+                name: String::new(),
+                name_source: SourceInfo::written(trait_name_span),
+                lifetime_params,
+                outlives,
+                type_params,
+                markers: Markers::empty(),
+            },
+            trait_path,
+            target,
+            methods,
         })
     }
 
@@ -1884,4 +2098,5 @@ mod tests {
             Parser::parse_or_panic(src);
         }
     }
+
 }

@@ -1,0 +1,20 @@
+trait Simple {
+  fn ping(recv: & Self);
+}
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+  fn peek(recv: & Self, $return: &out T);
+}
+
+trait<T> Foo {
+  fn<U> map(recv: & Self, other: & U, $return: &out T);
+}
+
+trait RefMethods {
+  fn shared(recv: & Self);
+  fn mut_(recv: &mut Self);
+  fn out_(recv: &out Self);
+  fn drop_(recv: &drop Self);
+  fn uninit(recv: &uninit Self);
+}

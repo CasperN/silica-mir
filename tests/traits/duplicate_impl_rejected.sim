@@ -1,0 +1,26 @@
+# Two impls of the same trait for the same target type are rejected
+# at env-build time (coherence). Impl-table keying is structural
+# `(trait_path, target)` equality; two `impl Iter<i64> for Foo` blocks
+# collide even if their bodies differ.
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+}
+
+struct Foo: Copy + Drop { x: i64 }
+
+impl Iter<i64> for Foo {
+  fn next(recv: &mut Foo, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+impl Iter<i64> for Foo {
+  fn next(recv: &mut Foo, $return: &out i64) {
+    entry:
+      $return.* = 7;
+      return
+  }
+}

@@ -435,14 +435,14 @@ compromises to long term quality. Reject the feature work even if the
 prerequisite was discovered in the middle of a change. Escalate for direction or
 use `jj` to land the maintainability pass upstream of the feature change.
 
-## Pre-commit check
-Review the current change for correctness, maintainability, and simplicity.
-Reject work as incomplete if they are hacky or contain shortcuts. Sacrifices to
-long term correctness and rigor has cost the project more time than any shortcut
-has saved. Be skeptical of incomplete matches `expect/unwrap` and other code
-smells of partial implementations.
+If a feature or cleanup is nice-to-have but should not block the current
+feature work, mark it with a TODO.
 
-Review changes to test fixtures for totality of test coverage. Every new feature
-needs to be tested against every existing feature it may interact with. Every
-feature interaction requires a success case (that passes compilation) and at
-least one error case.
+## Pre-commit check
+Before commiting, please execute the following steps, step by step, one at a time. If changes have to be made, redo the steps.
+1. Review the current change for correctness, maintainability, and simplicity. Be skeptical of incomplete matches `expect/unwrap` and other code smells of partial implementations.
+2. Reject work as incomplete if they are hacky or contain shortcuts. Sacrifices to long term correctness and rigor has cost the project more time than any shortcut has saved. 
+3. Review changes to test fixtures for totality of test coverage. Every new feature needs to be tested against every existing feature it may interact with. Every feature interaction requires a success case (that passes compilation) and at least one error case.
+4. Remove any references to session-specific enumerations, so they do not
+get stored in the durable commit history. E.g. "arc-1", "task-1", "pass-1", etc. Future work may be marked with TODO comments.
+5. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.

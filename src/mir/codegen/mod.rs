@@ -79,6 +79,12 @@ pub fn lower_mir_to_llvm(program: Program) -> String {
                 emit_enum_decl(&mut cx, e);
             }
             Declaration::Fn(_) => {}
+            Declaration::Trait(_) => {}
+            // Impl-method bodies aren't emitted directly — the mono
+            // trait-resolution pass rewrites `TraitFn` callees into
+            // concrete `FnName` decls that participate in codegen
+            // through the fn namespace.
+            Declaration::Impl(_) => {}
         }
     }
     if had_type {
@@ -973,6 +979,13 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
         ConstVal::ByteStr(bytes) => (
             llvm_byte_str_literal(bytes),
             array_ty(u8_ty(), bytes.len() as u64),
+        ),
+        // The mono trait-resolution pass rewrites `TraitFn` into a
+        // concrete `FnName` pointing at the mangled impl-method fn.
+        // If codegen sees a `TraitFn`, the resolution pass hasn't run.
+        ConstVal::TraitFn { trait_path, self_ty, method } => panic!(
+            "codegen: trait-fn callee `<{} as {}>::{}` reached codegen — mono trait-resolution missing",
+            self_ty, trait_path, method,
         ),
     }
 }

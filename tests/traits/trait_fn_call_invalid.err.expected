@@ -1,0 +1,35 @@
+error: at 32:5: [TC-TraitFnUnknownTrait] In function 'unknown_trait', block 'entry': Trait-method call references undeclared trait 'Unknown'
+    |
+ 31 |     out_ref = &out $return.*;
+ 32 |     call <Foo as Unknown>::any(move f, move out_ref);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 33 |     return
+    |
+error: at 40:5: [TC-TraitFnNoImpl] In function 'no_impl', block 'entry': No impl of 'Iter<i64>' for Bar in scope
+    |
+ 39 |     out_ref = &out $return.*;
+ 40 |     call <Bar as Iter<i64>>::next(move b, move out_ref);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 41 |     return
+    |
+error: at 48:5: [TC-TraitFnNoImpl] In function 'wrong_trait_args', block 'entry': No impl of 'Iter<bool>' for List in scope
+    |
+ 47 |     out_ref = &out $return.*;
+ 48 |     call <List as Iter<bool>>::next(move l, move out_ref);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 49 |     return
+    |
+error: at 56:5: [TC-TraitFnNoMethod] In function 'no_method', block 'entry': Impl of 'Iter<i64>' for List has no method 'missing'
+    |
+ 55 |     out_ref = &out $return.*;
+ 56 |     call <List as Iter<i64>>::missing(move l, move out_ref);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 57 |     return
+    |
+error: at 64:5: [TC-TraitFnParamReceiver] In function 'param_receiver', block 'entry': Trait-method call on generic parameter 'T' requires a trait bound (deferred pending trait-bound syntax)
+    |
+ 63 |     out_ref = &out $return.*;
+ 64 |     call <T as Iter<i64>>::next(move t, move out_ref);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 65 |     return
+    |
