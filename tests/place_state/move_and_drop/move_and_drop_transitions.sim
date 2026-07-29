@@ -20,7 +20,15 @@
 
 struct Unit0: Copy + Drop { }
 
+struct Linear: Move { r: &out i64 }
+
+enum Option: Copy + Drop { None: unit Some: i64 }
+
 extern fn take_two(a: i64, b: i64);
+
+extern fn consume(a: i64);
+
+extern fn sink_linear(x: Linear);
 
 # ---------- Param: starts Init, read via copy ----------
 
@@ -83,3 +91,80 @@ fn call_args_copy_then_move(x: i64) {
     call take_two(copy x, move x);
     return
 }
+
+# ---------- Elaboration inserts drop for a bare param on return ----------
+
+# The smallest drop-insertion case: one Copy+Drop param, one return
+# block, no other statements. Elaboration must emit exactly one `drop x`.
+fn single_param_drop(x: i64) {
+  entry:
+    return
+}
+
+# ---------- Reverse-decl-order drops: locals first, then params ----------
+
+# Elaboration schedules drops in reverse combined declaration order:
+# locals (reverse) then params (reverse). Here the order at return is
+# y, x, c, b, a.
+fn reverse_decl_order_drops(a: i64, b: i64, c: i64) {
+  x: i64;
+  y: i64;
+  entry:
+    x = 1;
+    y = 2;
+    return
+}
+
+# ---------- Linear (non-Drop) param: not dropped ----------
+
+# `Linear` carries `&out` and is therefore linear (Move only, no Drop).
+# The value is consumed by `sink_linear`; elaboration must not insert a
+# drop for it.
+fn linear_param_not_dropped(x: Linear) {
+  entry:
+    call sink_linear(move x);
+    return
+}
+
+# ---------- Moved param: not dropped ----------
+
+# `x` is moved into the call; after the call it is in the Moved state
+# and elaboration must not schedule a drop for it.
+fn moved_param_not_dropped(x: i64) {
+  entry:
+    call consume(move x);
+    return
+}
+
+# ---------- NeverInit local: not dropped ----------
+
+# `x` is declared but never written, so it stays NeverInit and is not
+# dropped at return.
+fn never_init_local_not_dropped() {
+  x: i64;
+  entry:
+    return
+}
+
+# ---------- Copy+Drop enum: dropped like any other Drop type ----------
+
+# `Option: Copy + Drop` requires the same drop-insertion treatment as a
+# scalar; the param is dropped at return.
+fn enum_param_drop(o: Option) {
+  entry:
+    return
+}
+
+# ---------- Explicit user drop: not doubled ----------
+
+# The user already wrote `drop x`; elaboration must recognise that the
+# obligation is discharged and not emit a second drop.
+fn respects_explicit_user_drop(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+# ---------- Extern declaration: elaborator leaves it alone ----------
+
+extern fn extern_untouched(x: i64);

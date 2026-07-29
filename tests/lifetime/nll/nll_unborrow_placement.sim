@@ -22,8 +22,13 @@
 #   mut_branch_each_arm_unborrows       &mut         branch              separate loans per arm
 #   mut_cross_edge_one_arm_dies         &mut         branch (asymmetric) cross-edge unborrow for dead arm
 #   mut_loop_unborrow_on_exit           &mut         loop                last use is in loop, unborrow on exit edge
+#   mut_move_into_call_no_unborrow      &mut         linear              move into call closes loan, no unborrow
+#   mut_drop_borrow_no_unborrow         &mut         linear              explicit drop closes loan, no unborrow
+#   out_reborrow_child_before_parent    &out         linear              nested reborrow, child unborrowed first
+#   mut_chained_reborrow_deepest_first  &mut         linear              three-level chain, deepest unborrow first
 
 extern fn use_num(n: i64);
+extern fn sink(r: &mut i64);
 
 struct P: Copy + Drop { a: i64  b: i64 }
 
@@ -215,5 +220,60 @@ fn mut_loop_unborrow_on_exit(x: i64, b: bool) {
     goto head
   done:
     x = 42;
+    return
+}
+
+# ---------- Natural close by move into call: no unborrow inserted ----------
+
+# Moving the borrow into a call closes the loan by consumption.  There
+# is no live-range end that NLL must synthesize, so no `unborrow` is
+# inserted after the call.
+fn mut_move_into_call_no_unborrow(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call sink(move r);
+    return
+}
+
+# ---------- Natural close by drop: no unborrow inserted ----------
+
+# `drop r` closes the loan by explicit release.  NLL does not add an
+# `unborrow` because the loan already ends at the drop.
+fn mut_drop_borrow_no_unborrow(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    drop r;
+    return
+}
+
+# ---------- &out reborrow: child unborrowed before parent ----------
+
+# `s` reborrows `r.*` with `&out`; both live until return.  NLL must
+# emit `unborrow s` before `unborrow r` so the deepest loan is closed
+# first, releasing s's obligation on r's pointee before r is consumed.
+fn out_reborrow_child_before_parent(r: &out i64) {
+  s: &out i64;
+  entry:
+    s = &out r.*;
+    s.* = 42;
+    return
+}
+
+# ---------- Three-level chained reborrow: deepest unborrow first ----------
+
+# `r` loans `x`, `s` reborrows `r`, `t` reborrows `s`.  `t` is
+# consumed by the call; NLL then closes `s`, then `r`, in strict
+# innermost-first order at the return.
+fn mut_chained_reborrow_deepest_first(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  t: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    t = &mut s.*;
+    call sink(move t);
     return
 }

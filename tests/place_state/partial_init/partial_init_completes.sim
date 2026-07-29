@@ -117,3 +117,42 @@ fn nested_move_inner_leaf(o: Outer) {
     c = copy o.c;
     return
 }
+
+# ---------- Partial after single field move: drop only the remaining field ----------
+
+# Moving `p.x` leaves state as `Partial{x: Moved, y: Init}`. Elaboration
+# schedules a drop only for the surviving leaf `p.y`.
+fn partial_field_move_drops_remaining(p: P) {
+  a: i64;
+  entry:
+    a = move p.x;
+    return
+}
+
+# ---------- Nested partial with single leaf write: recursive walk ----------
+
+# Only `o.i.a` is written; `o.i` is `Partial{a: Init, b: NeverInit}` and
+# `o.c` is NeverInit. Elaboration walks recursively and drops only the
+# single Init leaf.
+fn nested_partial_after_single_leaf_write() {
+  o: Outer;
+  entry:
+    o.i.a = 1;
+    return
+}
+
+# ---------- Partial leaves: reverse decl-order drop ----------
+
+# `p.x = 1` (Partial), then `p.y = copy src.y` (still Partial because
+# `src.x` was moved out earlier and canonicalisation of `p` folds to
+# Init only when all field states match). Both `p.x` and `p.y` are Init
+# at return; elaboration drops `p.y` before `p.x`.
+fn partial_field_lifo_drop_order(src: P) {
+  p: P;
+  a: i64;
+  entry:
+    a = move src.x;
+    p.x = 1;
+    p.y = copy src.y;
+    return
+}

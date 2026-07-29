@@ -1,5 +1,7 @@
 extern fn use_num(n: i64);
 
+extern fn sink(r: &mut 's0 i64);
+
 struct P: Copy + Drop {
   a: i64
   b: i64
@@ -165,6 +167,49 @@ fn mut_loop_unborrow_on_exit(x: i64, b: bool) {
     drop x;
     x = 42;
     drop b;
+    drop x;
+    return
+}
+
+fn mut_move_into_call_no_unborrow(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    call sink(move r);
+    drop x;
+    return
+}
+
+fn mut_drop_borrow_no_unborrow(x: i64) {
+  r: &mut i64;
+  entry:
+    r = &mut x;
+    drop r;
+    drop x;
+    return
+}
+
+fn<'s0> out_reborrow_child_before_parent(r: &out 's0 i64) {
+  s: &out i64;
+  entry:
+    s = &out r.*;
+    s.* = 42;
+    unborrow s;
+    unborrow r;
+    return
+}
+
+fn mut_chained_reborrow_deepest_first(x: i64) {
+  r: &mut i64;
+  s: &mut i64;
+  t: &mut i64;
+  entry:
+    r = &mut x;
+    s = &mut r.*;
+    t = &mut s.*;
+    call sink(move t);
+    unborrow s;
+    unborrow r;
     drop x;
     return
 }

@@ -1,7 +1,20 @@
 struct Unit0: Copy + Drop {
 }
 
+struct<'s0> Linear: Move {
+  r: &out 's0 i64
+}
+
+enum Option: Copy + Drop {
+  None: unit
+  Some: i64
+}
+
 extern fn take_two(a: i64, b: i64);
+
+extern fn consume(a: i64);
+
+extern fn sink_linear(x: Linear);
 
 fn param_starts_init(x: i64) {
   y: i64;
@@ -52,3 +65,55 @@ fn call_args_copy_then_move(x: i64) {
     call take_two(copy x, move x);
     return
 }
+
+fn single_param_drop(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+fn reverse_decl_order_drops(a: i64, b: i64, c: i64) {
+  x: i64;
+  y: i64;
+  entry:
+    x = 1;
+    y = 2;
+    drop y;
+    drop x;
+    drop c;
+    drop b;
+    drop a;
+    return
+}
+
+fn linear_param_not_dropped(x: Linear) {
+  entry:
+    call sink_linear(move x);
+    return
+}
+
+fn moved_param_not_dropped(x: i64) {
+  entry:
+    call consume(move x);
+    return
+}
+
+fn never_init_local_not_dropped() {
+  x: i64;
+  entry:
+    return
+}
+
+fn enum_param_drop(o: Option) {
+  entry:
+    drop o;
+    return
+}
+
+fn respects_explicit_user_drop(x: i64) {
+  entry:
+    drop x;
+    return
+}
+
+extern fn extern_untouched(x: i64);

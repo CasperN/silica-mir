@@ -1,0 +1,48 @@
+# Drop-elaboration inserts drops correctly across different CFG shapes.
+#
+# `init_across_cfg_shapes.sim` pins init-state dataflow through the
+# same shapes. This fixture pins where elaboration *emits drops* in
+# multi-block and non-returning-terminator programs.
+#
+#   fn                                   shape                          property
+#   drop_at_return_after_upstream_write  entry -> mid -> end (return)   write in mid, drop at end
+#   drop_per_return_block                branch -> two returns          each return block gets its own drops
+#   abort_block_no_drops                 entry -> abort                 abort is not `return`; no drops inserted
+
+# ---------- Multi-block: return sees writes from upstream blocks ----------
+
+# `y` is written in `mid` and its state at `end`'s return is Init. The
+# drop must be emitted at `end`, not `mid`.
+fn drop_at_return_after_upstream_write() {
+  y: i64;
+  entry:
+    goto mid
+  mid:
+    y = 42;
+    goto end
+  end:
+    return
+}
+
+# ---------- Two returns: each block drops its own live values ----------
+
+# The branch has two returning arms and each terminal block gets its
+# own drop sequence in reverse combined declaration order (x, b).
+fn drop_per_return_block(b: bool, x: i64) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    return
+  fbr:
+    return
+}
+
+# ---------- abort terminator: no drops inserted ----------
+
+# `abort` and `unreachable` waive caller-observable cleanup, so
+# elaboration emits no drops even though `x` would be Init at the
+# terminator.
+fn abort_block_no_drops(x: i64) {
+  entry:
+    abort
+}

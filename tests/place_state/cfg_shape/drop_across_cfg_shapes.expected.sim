@@ -1,0 +1,29 @@
+fn drop_at_return_after_upstream_write() {
+  y: i64;
+  entry:
+    goto mid
+  mid:
+    y = 42;
+    goto end
+  end:
+    drop y;
+    return
+}
+
+fn drop_per_return_block(b: bool, x: i64) {
+  entry:
+    branch(copy b) [true: t, false: fbr]
+  t:
+    drop x;
+    drop b;
+    return
+  fbr:
+    drop x;
+    drop b;
+    return
+}
+
+fn abort_block_no_drops(x: i64) {
+  entry:
+    abort
+}

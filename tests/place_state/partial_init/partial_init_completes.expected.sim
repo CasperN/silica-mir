@@ -104,3 +104,33 @@ fn nested_move_inner_leaf(o: Outer) {
     drop o.i.b;
     return
 }
+
+fn partial_field_move_drops_remaining(p: P) {
+  a: i64;
+  entry:
+    a = move p.x;
+    drop a;
+    drop p.y;
+    return
+}
+
+fn nested_partial_after_single_leaf_write() {
+  o: Outer;
+  entry:
+    o.i.a = 1;
+    drop o.i.a;
+    return
+}
+
+fn partial_field_lifo_drop_order(src: P) {
+  p: P;
+  a: i64;
+  entry:
+    a = move src.x;
+    p.x = 1;
+    p.y = copy src.y;
+    drop a;
+    drop p;
+    drop src.y;
+    return
+}
