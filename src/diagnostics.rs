@@ -281,6 +281,17 @@ impl Diagnostics {
         }
     }
 
+    /// Annotate all errors added at or after index `from` with the given
+    /// basic-block label. Parallel of [`annotate_errors_in_function`] for
+    /// the block context.
+    pub fn annotate_errors_in_block(&mut self, from: usize, label: &str) {
+        for d in &mut self.errors[from..] {
+            if d.block.is_empty() {
+                d.block = label.to_owned();
+            }
+        }
+    }
+
     /// True if no errors OR internal errors have been recorded.
     /// Warnings are ignored.
     pub fn is_clean(&self) -> bool {
