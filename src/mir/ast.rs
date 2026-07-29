@@ -148,8 +148,10 @@ pub enum TypeKind {
     /// Fixed-size array `[T; N]`. Layout is `N * size_of(T)`, align
     /// equals `T`'s align. Element access via `Place::Index`. Init
     /// state is tracked per-slot for constant indices (using slot
-    /// numbers as `Partial` keys); dynamic indices widen to the
-    /// whole array.
+    /// numbers as `Partial` keys); dynamic indices cannot name a
+    /// specific slot, so state-changing operations through them are
+    /// rejected and reads/`&mut`/`&` borrows require uniform init
+    /// across all slots.
     Array(Box<Type>, u64),
 }
 
@@ -199,7 +201,11 @@ pub enum Place {
     /// arbitrary rvalue-shaped index; analyses that need static
     /// tracking (init state, per-slot loans) inspect the operand
     /// for an integer const and treat it like a numbered field
-    /// step. Dynamic (non-const) indices widen to the whole array.
+    /// step. A dynamic (non-const) index has no per-slot identity:
+    /// state-changing operations through it are rejected outright,
+    /// non-state-changing operations require the containing array
+    /// to be uniformly initialized, and loan conflict detection
+    /// treats a dynamic index as matching every slot.
     Index(Box<Place>, Box<Operand>),
 }
 
@@ -208,17 +214,19 @@ pub enum Place {
 /// returned by [`extract_path_with_deref`]; the plain [`extract_path`] bails
 /// on Deref since analyses that use it (init-state locals tracking, variant
 /// flow) can't reason across reference boundaries.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum PathStep {
     Field(String),
     Downcast(String),
     Deref,
     /// Array slot access. `Some(k)` = constant slot k; `None` =
     /// dynamic index (unknown slot). `extract_path` returns `None`
-    /// if any index step is dynamic (untrackable in the locals
-    /// tree); `extract_path_with_deref` preserves both forms so the
-    /// loan tracker can widen dynamic indices to "matches any slot"
-    /// via the conflict helper.
+    /// if any index step is dynamic — init-state tracking cannot
+    /// name a specific slot, so callers requiring a trackable path
+    /// bail. `extract_path_with_deref` preserves both forms so loan
+    /// conflict detection (`paths_conflict`, `is_ancestor_or_self`)
+    /// can treat a dynamic index as matching every slot when
+    /// deciding whether an active loan blocks a subsequent access.
     Index(Option<u64>),
 }
 

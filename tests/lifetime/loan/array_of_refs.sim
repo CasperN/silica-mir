@@ -1,0 +1,106 @@
+# Lifetime and loan interactions for `[&T; N]` arrays.
+#
+# Each function tests one shape where the array element carries a
+# reference. Constant-index slots are tracked per-slot, so the
+# element region participates in inter-fn constraints, escape
+# detection, and bound checking. Sibling test:
+# `tests/lifetime/inter_decl/inter_decl_violations.sim` covers the
+# same interactions for plain refs, struct fields, and enum variants.
+#
+#   fn                                 shape                                            expected
+#   sig_array_slot_flows_through       read `[&'a i64; N]` slot into `&'a i64` return   clean
+#   sig_array_wrong_bound              write `'b` element into `[&'a i64; N]` slot      LT-LifetimeMismatch
+#   body_local_escapes_into_sig_array  body-local borrow into caller-visible slot       LT-LifetimeEscape
+#   move_body_array_into_sig           move body-local [&i64; N] into caller slot       LT-LifetimeEscape
+#   arraylit_wrong_bound               ArrayLit rvalue with wrong-lifetime operand      LT-LifetimeMismatch
+#   call_takes_body_array              extern with existential 'r receives body array   clean
+
+extern fn use_ref(r: &i64);
+extern fn<'r> take_arr_named(arr: [&'r i64; 2]);
+
+# ---------- Inter-fn constraint via `[&'a T; N]` signature param ----------
+
+# The array's element type carries lifetime 'a. Reading `arr[0]`
+# yields `&'a i64`; the assignment target `$return.*` is also
+# `&'a i64`. Regions match, no diagnostic fires.
+fn<'a> sig_array_slot_flows_through(arr: [&'a i64; 2], $return: &out 'a &'a i64) {
+  entry:
+    $return.* = copy arr[0];
+    return
+}
+
+# ---------- Wrong-lifetime into signature-slot fires MissingBound ----------
+
+# `y: &'b i64` written into `$return.*[1]: &'a i64` requires 'b: 'a.
+# The signature doesn't declare that bound, so LT-LifetimeMismatch
+# fires with a "declare bound 'b: 'a" hint.
+fn<'a, 'b> sig_array_wrong_bound(x: &'a i64, y: &'b i64, $return: &out [&'a i64; 2]) {
+  entry:
+    $return.*[0] = copy x;
+    $return.*[1] = copy y;
+    return
+}
+
+# ---------- Body-local borrow stored into caller-visible array slot ----------
+
+# `$return.*[0] = &local` writes a body-local borrow into a
+# signature-visible slot whose declared region is 'a. LT-LifetimeEscape
+# fires. Only slot 0 is written, so the ref-obligation for `$return`
+# also fires with a "partially initialized" message.
+fn<'a> body_local_escapes_into_sig_array($return: &out [&'a i64; 2]) {
+  local: i64;
+  entry:
+    local = 5;
+    $return.*[0] = &local;
+    return
+}
+
+# ---------- Move a body-local array-of-refs into caller-visible slot ----------
+
+# The array is body-local; its elements borrow a body-local scalar.
+# Moving the whole array into `$return.*` fires escape once — all
+# slots share a single Free region for the element's elided lifetime,
+# so the per-slot constraint set collapses to one diagnostic.
+fn<'a> move_body_array_into_sig($return: &out [&'a i64; 2]) {
+  local: i64;
+  arr: [&i64; 2];
+  entry:
+    local = 9;
+    arr[0] = &local;
+    arr[1] = &local;
+    $return.* = move arr;
+    return
+}
+
+# ---------- Array-literal with wrong-lifetime operand fires MissingBound ----------
+
+# `$return.* = [copy x, copy y]` builds the array from operands with
+# different named lifetimes. Slot 1 requires 'b: 'a to store y into
+# an 'a slot. The constraint machinery must see through the ArrayLit
+# rvalue into each element — otherwise the aggregate silently
+# accepts a shorter-lived ref in a longer-lived slot.
+fn<'a, 'b> arraylit_wrong_bound(x: &'a i64, y: &'b i64, $return: &out [&'a i64; 2]) {
+  entry:
+    $return.* = [copy x, copy y];
+    return
+}
+
+# ---------- Pass a body-local array-of-refs to an extern callee ----------
+
+# The callee's `'r` is existential — instantiated at the call site
+# and resolved to a region that outlives the call. A synchronous
+# call keeps every body-local live for its duration, so the
+# body-local borrows in `arr` are valid for 'r's instantiation. No
+# diagnostic fires. The test guards against regressions that would
+# emit a spurious escape when the per-slot constraint reaches the
+# existential lifetime.
+fn call_takes_body_array() {
+  local: i64;
+  arr: [&i64; 2];
+  entry:
+    local = 3;
+    arr[0] = &local;
+    arr[1] = &local;
+    call take_arr_named(move arr);
+    return
+}

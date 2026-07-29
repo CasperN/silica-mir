@@ -462,3 +462,4 @@ Before commiting, please execute the following steps, step by step, one at a tim
 8. Remove any references to session-specific enumerations, so they do not
 get stored in the durable commit history. E.g. "arc-1", "task-1", "pass-1", etc. Future work may be marked with TODO comments.
 9. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.
+10. Remove or relocate any comments that are irrelevant to the surrounding code, e.g. referencing how a different system works when the current file does not otherwise mention that system.

@@ -1,0 +1,44 @@
+error: at 55:5: [PS-RefObligationUnfulfilled] In function 'body_local_escapes_into_sig_array', block 'entry': reference '$return' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
+    |
+ 49 | # also fires with a "partially initialized" message.
+ 50 | fn<'a> body_local_escapes_into_sig_array($return: &out [&'a i64; 2]) {
+    |                                          -------------------------- reference declared here
+ 51 |   local: i64;
+    |
+    | ...
+    |
+ 54 |     $return.*[0] = &local;
+ 55 |     return
+    |     ^^^^^^
+ 56 | }
+    |
+error: at 40:5: [LT-LifetimeMismatch] In function 'sig_array_wrong_bound': this assignment requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'sig_array_wrong_bound'
+    |
+ 39 |     $return.*[0] = copy x;
+ 40 |     $return.*[1] = copy y;
+    |     ^^^^^^^^^^^^^^^^^^^^^
+ 41 |     return
+    |
+  hint: declare bound 'b: 'a on function 'sig_array_wrong_bound' or change the value flow so it is not required
+error: at 54:5: [LT-LifetimeEscape] In function 'body_local_escapes_into_sig_array': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+    |
+ 53 |     local = 5;
+ 54 |     $return.*[0] = &local;
+    |     ^^^^^^^^^^^^^^^^^^^^^
+ 55 |     return
+    |
+error: at 71:5: [LT-LifetimeEscape] In function 'move_body_array_into_sig': borrow escapes function: value with local (unnamed) region cannot be stored into region 'a
+    |
+ 70 |     arr[1] = &local;
+ 71 |     $return.* = move arr;
+    |     ^^^^^^^^^^^^^^^^^^^^
+ 72 |     return
+    |
+error: at 84:5: [LT-LifetimeMismatch] In function 'arraylit_wrong_bound': this assignment requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'arraylit_wrong_bound'
+    |
+ 83 |   entry:
+ 84 |     $return.* = [copy x, copy y];
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 85 |     return
+    |
+  hint: declare bound 'b: 'a on function 'arraylit_wrong_bound' or change the value flow so it is not required

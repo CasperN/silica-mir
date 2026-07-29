@@ -24,7 +24,6 @@ use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
-use super::region::{self, Region};
 
 /// A record of a borrow that's currently in force. `loaned` is a set to
 /// support multi-loan: when a branch-of-borrows produces different loaned
@@ -33,22 +32,16 @@ use super::region::{self, Region};
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Loan {
     pub kind: RefKind,
-    /// The region this loan lives in. Set when the loan is registered
-    /// (at `x = &p`) from the borrower's region assignment. Body-local
-    /// borrowers get `Region::Free`; signature borrowers get
-    /// `Region::Named`.
-    pub region: Region,
     pub loaned: BTreeSet<Place>,
     pub create_source: SourceInfo,
 }
 
 impl Loan {
-    pub fn single(kind: RefKind, region: Region, loaned: Place, create_source: SourceInfo) -> Self {
+    pub fn single(kind: RefKind, loaned: Place, create_source: SourceInfo) -> Self {
         let mut set = BTreeSet::new();
         set.insert(loaned);
         Loan {
             kind,
-            region,
             loaned: set,
             create_source,
         }
@@ -254,11 +247,9 @@ fn capture_carried_loans(target: &Place, rvalue: &RValue, loans: &LoanMap) -> Ve
 /// Forward dataflow analysis over `LoanMap`. Runs independently of the
 /// init-state analysis — the two share nothing beyond the statement they
 /// both observe.
-struct LoanAnalysis<'a> {
-    region_ctx: &'a region::RegionCtx,
-}
+struct LoanAnalysis;
 
-impl<'a> Analysis for LoanAnalysis<'a> {
+impl Analysis for LoanAnalysis {
     type State = LoanMap;
     fn direction(&self) -> Direction {
         Direction::Forward
@@ -270,7 +261,7 @@ impl<'a> Analysis for LoanAnalysis<'a> {
         join_loans(a, b)
     }
     fn transfer_stmt(&self, state: &mut Self::State, stmt: &Statement, source: SourceInfo) {
-        transfer_stmt(state, stmt, source, self.region_ctx);
+        transfer_stmt(state, stmt, source);
     }
     fn transfer_terminator(&self, state: &mut Self::State, term: &Terminator) {
         if let TerminatorKind::Branch { cond, .. } = &term.kind {
@@ -282,12 +273,7 @@ impl<'a> Analysis for LoanAnalysis<'a> {
 /// Apply the whole-statement loan transition. Silent (no diagnostics);
 /// the diagnostic walk in `check` uses the smaller `consume_operand`
 /// helper alongside inline inserts/removes.
-pub(super) fn transfer_stmt(
-    loans: &mut LoanMap,
-    stmt: &Statement,
-    source: SourceInfo,
-    region_ctx: &region::RegionCtx,
-) {
+pub(super) fn transfer_stmt(loans: &mut LoanMap, stmt: &Statement, source: SourceInfo) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
             // Capture BEFORE consume: the loans rooted at the moved
@@ -301,8 +287,7 @@ pub(super) fn transfer_stmt(
                 loans.shift_remove(&t);
             }
             if let (Some(t), RValue::Ref(kind, place)) = (as_owned_path(target), rvalue) {
-                let region = region_ctx.get(&t).cloned().unwrap_or(Region::Static);
-                loans.insert(t, Loan::single(kind.clone(), region, place.clone(), source));
+                loans.insert(t, Loan::single(kind.clone(), place.clone(), source));
             }
             for (new_key, loan) in carried {
                 loans.insert(new_key, loan);
@@ -329,8 +314,7 @@ pub(super) fn transfer_stmt(
     }
 }
 
-/// Run the LoanAnalysis fixpoint over `body` using the per-fn region
-/// context.
-pub fn run(body: &FunctionBody, region_ctx: &region::RegionCtx) -> Results<LoanMap> {
-    dataflow::run(&LoanAnalysis { region_ctx }, body)
+/// Run the LoanAnalysis fixpoint over `body`.
+pub fn run(body: &FunctionBody) -> Results<LoanMap> {
+    dataflow::run(&LoanAnalysis, body)
 }

@@ -193,13 +193,21 @@ pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::Env) -> R
         let storage = ctx.fresh();
         ctx.assign_storage(name.clone(), storage);
         let mut visited = std::collections::BTreeSet::new();
+        // Cache regions by index-erased path so array slots
+        // arr[0]..arr[N-1] that all reach the same ref layer share a
+        // single Free — matching the type's single elided lifetime.
+        let mut position_regions: IndexMap<Vec<PathStep>, Region> = IndexMap::new();
         walk_ref_places(
             &var_place(name.clone()),
             ty,
             env,
             &mut visited,
             &mut |place, lt_opt| {
-                let region = ctx.region_for_ref(lt_opt);
+                let key = index_erased_key(place);
+                let region = position_regions
+                    .entry(key)
+                    .or_insert_with(|| ctx.region_for_ref(lt_opt))
+                    .clone();
                 ctx.assign(place.clone(), region);
             },
         );
@@ -207,23 +215,36 @@ pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::Env) -> R
     ctx
 }
 
+/// Path from `place`'s root Var, with all array indices erased. Two
+/// places sharing this key hit the same lifetime position in the type
+/// (differing only in which array slot they occupy) and therefore
+/// share a region.
+fn index_erased_key(place: &Place) -> Vec<PathStep> {
+    let (_, mut steps) = as_owned_path(place)
+        .and_then(|owned| extract_path(&owned))
+        .expect("walk_ref_places yields owned paths");
+    for step in &mut steps {
+        if let PathStep::Index(_) = step {
+            *step = PathStep::Index(None);
+        }
+    }
+    steps
+}
+
 /// Walk `ty`'s place structure starting at `place`, invoking `on_ref` for
-/// every owned-path descendant of ref type. Recurses through struct fields
-/// and enum variants (substituting the parent's generic arguments), and
-/// stops at Ref boundaries — we don't traverse a reference's pointee.
+/// every owned-path descendant of ref type. Recurses through struct fields,
+/// enum variants, and array slots (substituting the parent's generic
+/// arguments for structs and enums), and stops at Ref boundaries — we
+/// don't traverse a reference's pointee.
 ///
 /// `visited` is a defensive cycle guard for self-referential Custom types;
 /// by-value type recursion is banned upstream by `layout::check_program`,
 /// so this can only fire if someone bypasses the standard pipeline.
 ///
-/// `TypeKind::Array(elem, _)` is a known precision gap: an owned
-/// `[&mut T; N]` local has N ref-typed slots that this walk skips, so
-/// callers never see them. Loan tracking still catches conflicts on the
-/// slots, and place-state materializes ref-state lazily on access, so the
-/// omission is precision, not soundness — but a `&mut` slot in an array
-/// won't participate in inter-fn lifetime constraints or NLL last-use
-/// insertion. Fix when `[T; N]` needs to appear in fn signatures with
-/// lifetime arguments (see Consistency 4 in the punchlist).
+/// Array descent enumerates each constant-index slot as its own owned
+/// path. For a large `[T; N]`, this materializes N region entries; the
+/// cost is accepted so slot lookups stay uniform with struct-field and
+/// enum-variant lookups.
 pub(super) fn walk_ref_places(
     place: &Place,
     ty: &Type,
@@ -278,12 +299,21 @@ pub(super) fn walk_ref_places(
             }
             visited.remove(name);
         }
+        TypeKind::Array(elem, n) => {
+            use crate::mir::helpers::index_place;
+            for k in 0..*n {
+                let sub = index_place(
+                    place.clone(),
+                    Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 }),
+                );
+                walk_ref_places(&sub, elem, env, visited, on_ref);
+            }
+        }
         // Scalars carry no refs. `TypeKind::Fn` erases its ref-carrying
         // parameter types at the type level (fn signatures aren't walked
         // here — they're the callee's problem). `TypeKind::Param` is
         // opaque without substitution. `TypeKind::RawPtr` deliberately
-        // has no lifetime bound. `TypeKind::Array` is the known precision
-        // gap documented on this function.
+        // has no lifetime bound.
         TypeKind::Unit
         | TypeKind::Int(_)
         | TypeKind::Float(_)
@@ -291,8 +321,7 @@ pub(super) fn walk_ref_places(
         | TypeKind::Never
         | TypeKind::Param(_)
         | TypeKind::Fn(_)
-        | TypeKind::RawPtr(_)
-        | TypeKind::Array(_, _) => {}
+        | TypeKind::RawPtr(_) => {}
     }
 }
 

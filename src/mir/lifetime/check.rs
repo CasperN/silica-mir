@@ -42,7 +42,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
         return;
     }
     let region_ctx = region::build_region_ctx(func, env);
-    let entry_states = loans::run(body, &region_ctx);
+    let entry_states = loans::run(body);
     let mut constraints = constraints::ConstraintSet::new();
     let locals = func.locals_map();
     let mut checker = Checker {
@@ -677,6 +677,40 @@ impl<'a> Checker<'a> {
             );
             return;
         }
+        // Array literals build a `[T; N]` from N operands. Each operand
+        // flows into a slot with the array element type, so per-slot
+        // variance constraints must be emitted or wrong-lifetime element
+        // refs would slip into a signature-visible array without a
+        // diagnostic. Handled here, before the single-source `match` below.
+        if let RValue::ArrayLit(ops) = rvalue {
+            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.env, target)
+            else {
+                return;
+            };
+            let TypeKind::Array(elem_ty, _) = &tgt_ty.kind else {
+                return;
+            };
+            for (k, op) in ops.iter().enumerate() {
+                let Some(src_place) = operand_place(op) else { continue };
+                let Some(src_ty) =
+                    crate::mir::type_util::place_type(&self.locals, self.env, src_place)
+                else {
+                    continue;
+                };
+                let slot = index_place(
+                    target.clone(),
+                    Operand::Const(ConstVal::Int { bits: k as u64, ty: IntTy::I64 }),
+                );
+                self.emit_use_type_constraints(
+                    &src_ty,
+                    elem_ty,
+                    Some((src_place, &slot)),
+                    Variance::Covariant,
+                    stmt.source,
+                );
+            }
+            return;
+        }
         let (src_region, target_place) = match rvalue {
             RValue::Ref(_, place) => {
                 let Some(r) =
@@ -792,8 +826,25 @@ impl<'a> Checker<'a> {
                     self.emit_use_type_constraints(s_arg, t_arg, None, inv, source);
                 }
             }
-            (TypeKind::Array(s_el, _), TypeKind::Array(t_el, _)) => {
-                self.emit_use_type_constraints(s_el, t_el, None, variance, source);
+            (TypeKind::Array(s_el, n), TypeKind::Array(t_el, _)) => {
+                // Iterate slots so a nested Ref inside the element type
+                // has per-slot places to look up its region against.
+                // Passing `None` here would strand elided element refs
+                // without a src/tgt place and lose the outer constraint.
+                for k in 0..*n {
+                    let idx = || {
+                        Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 })
+                    };
+                    let slot_places =
+                        outer_places.map(|(s, t)| (index_place(s.clone(), idx()), index_place(t.clone(), idx())));
+                    self.emit_use_type_constraints(
+                        s_el,
+                        t_el,
+                        slot_places.as_ref().map(|(s, t)| (s, t)),
+                        variance,
+                        source,
+                    );
+                }
             }
             (TypeKind::RawPtr(s_inner), TypeKind::RawPtr(t_inner)) => {
                 self.emit_use_type_constraints(
@@ -1102,7 +1153,6 @@ impl<'a> Checker<'a> {
                         slot,
                         loans::Loan {
                             kind: synth_kind.clone(),
-                            region: out_region.clone(),
                             loaned: merged.clone(),
                             create_source: source,
                         },
@@ -1214,7 +1264,29 @@ impl<'a> Checker<'a> {
                     );
                 }
             }
-            TypeKind::Array(elem, _) | TypeKind::RawPtr(elem) => {
+            TypeKind::Array(elem, n) => {
+                // Iterate constant-index slots so nested Ref layers reach
+                // per-slot caller places — a whole-array `caller_place`
+                // has no Ref type, so `region_of_place` at the Ref layer
+                // would return None and skip the constraint emission.
+                for k in 0..*n {
+                    let slot = index_place(
+                        caller_place.clone(),
+                        Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 }),
+                    );
+                    self.walk_call_regions(
+                        elem,
+                        &slot,
+                        inst,
+                        variance,
+                        loans,
+                        per_output_inputs,
+                        callee_name,
+                        source,
+                    );
+                }
+            }
+            TypeKind::RawPtr(elem) => {
                 self.walk_call_regions(
                     elem,
                     caller_place,
@@ -1297,7 +1369,7 @@ impl<'a> Checker<'a> {
                     }
                 }
                 self.check_loan_conflict(block, target, AccessKind::Write, stmt.source, loans);
-                transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
+                transfer_stmt(loans, stmt, stmt.source);
             }
             StatementKind::Call(target, args) => {
                 self.check_operand_access(block, target, stmt.source, loans);
@@ -1320,7 +1392,7 @@ impl<'a> Checker<'a> {
                 if !is_elab_inserted_drop(place, stmt.source, next) {
                     self.check_loan_conflict(block, place, AccessKind::Move, stmt.source, loans);
                 }
-                transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
+                transfer_stmt(loans, stmt, stmt.source);
             }
             StatementKind::Unborrow(place) => {
                 // Consumes the borrower Var. Its own loan is skipped in
@@ -1328,7 +1400,7 @@ impl<'a> Checker<'a> {
                 // empty path" case), but a *reborrow* of this borrower —
                 // loan borrowed by s on `*r` — still needs to block `unborrow r`.
                 self.check_loan_conflict(block, place, AccessKind::Move, stmt.source, loans);
-                transfer_stmt(loans, stmt, stmt.source, self.region_ctx);
+                transfer_stmt(loans, stmt, stmt.source);
             }
             StatementKind::RequireUninit(_) => {
                 // Place-state validates the assertion. It is not a runtime
