@@ -20,11 +20,11 @@ extern fn take_num(a: i64);
 
 extern fn take_move_p(p: MoveP);
 
-extern fn take_linear(x: L);
+extern fn<'s0> take_linear(x: L<'s0>);
 
-extern fn take_out(r: &out 's0 i64);
+extern fn<'s0> take_out(r: &out 's0 i64);
 
-extern fn init_s(r: &out 's0 S);
+extern fn<'s0> init_s(r: &out 's0 S);
 
 extern fn take_s(s: S);
 
@@ -52,7 +52,7 @@ fn linear_struct_moved_whole(p: MoveP) {
     return
 }
 
-fn linear_struct_moved_via_call(x: L) {
+fn<'s0> linear_struct_moved_via_call(x: L<'s0>) {
   entry:
     call take_linear(move x);
     return

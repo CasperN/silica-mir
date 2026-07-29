@@ -262,35 +262,40 @@ pub(super) fn walk_ref_places(
             }
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
-                    let fields: Vec<_> = s
+                    let fields: Option<Vec<_>> = s
                         .fields
                         .iter()
                         .map(|f| {
-                            (
-                                f.name.clone(),
-                                s.meta.substitute(&f.ty, lifetime_args, args),
-                            )
+                            s.meta
+                                .try_substitute(&f.ty, lifetime_args, args)
+                                .map(|ty| (f.name.clone(), ty))
                         })
                         .collect();
-                    for (fname, fty) in fields {
-                        let sub = field_place(place.clone(), fname);
-                        walk_ref_places(&sub, &fty, env, visited, on_ref);
+                    if let Some(fields) = fields {
+                        for (fname, fty) in fields {
+                            let sub = field_place(place.clone(), fname);
+                            walk_ref_places(&sub, &fty, env, visited, on_ref);
+                        }
                     }
+                    // Arity-mismatched Instance: skip the walk. typecheck
+                    // has reported the mismatch; further recursion here
+                    // would consume nonsensical types.
                 }
                 Some(TypeDecl::Enum(e)) => {
-                    let variants: Vec<_> = e
+                    let variants: Option<Vec<_>> = e
                         .variants
                         .iter()
                         .map(|v| {
-                            (
-                                v.name.clone(),
-                                e.meta.substitute(&v.ty, lifetime_args, args),
-                            )
+                            e.meta
+                                .try_substitute(&v.ty, lifetime_args, args)
+                                .map(|ty| (v.name.clone(), ty))
                         })
                         .collect();
-                    for (vname, vty) in variants {
-                        let sub = downcast_place(place.clone(), vname);
-                        walk_ref_places(&sub, &vty, env, visited, on_ref);
+                    if let Some(variants) = variants {
+                        for (vname, vty) in variants {
+                            let sub = downcast_place(place.clone(), vname);
+                            walk_ref_places(&sub, &vty, env, visited, on_ref);
+                        }
                     }
                 }
                 // `None` here means the Custom type isn't in the env —

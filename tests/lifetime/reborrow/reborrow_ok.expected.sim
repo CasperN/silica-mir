@@ -2,9 +2,9 @@ enum E: Move {
   V: i64
 }
 
-extern fn sink_mut(r: &mut 's0 i64);
+extern fn<'s0> sink_mut(r: &mut 's0 i64);
 
-extern fn sink_shared(r: & 's0 i64);
+extern fn<'s0> sink_shared(r: & 's0 i64);
 
 fn mut_from_mut_local(x: i64) {
   r: &mut i64;

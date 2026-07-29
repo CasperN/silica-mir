@@ -1,6 +1,6 @@
 extern fn use_i64(x: i64);
 
-extern fn f($return: &out 's0 i64);
+extern fn<'s0> f($return: &out 's0 i64);
 
 fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
   x: i64;

@@ -11,16 +11,16 @@ struct<'s0> Linear: Move {
   r: &out 's0 i64
 }
 
-extern fn use_mut(r: &mut 's0 i64);
+extern fn<'s0> use_mut(r: &mut 's0 i64);
 
-extern fn sink(r: &mut 's0 i64);
+extern fn<'s0> sink(r: &mut 's0 i64);
 
-extern fn take_box(b: RefBox);
+extern fn<'s0> take_box(b: RefBox<'s0>);
 
-extern fn sink_linear(y: Linear);
+extern fn<'s0> sink_linear(y: Linear<'s0>);
 
-fn split_fields_independent(x: i64, y: i64) {
-  b: RefBox2;
+fn<'s0, 's1> split_fields_independent(x: i64, y: i64) {
+  b: RefBox2<'s0, 's1>;
   entry:
     b.q = &mut x;
     b.r = &mut y;
@@ -31,8 +31,8 @@ fn split_fields_independent(x: i64, y: i64) {
     return
 }
 
-fn reborrow_through_field(x: i64) {
-  b: RefBox;
+fn<'s0> reborrow_through_field(x: i64) {
+  b: RefBox<'s0>;
   s: &mut i64;
   entry:
     b.p = &mut x;
@@ -43,8 +43,8 @@ fn reborrow_through_field(x: i64) {
     return
 }
 
-fn move_ancestor_closes_loans(x: i64) {
-  b: RefBox;
+fn<'s0> move_ancestor_closes_loans(x: i64) {
+  b: RefBox<'s0>;
   entry:
     b.p = &mut x;
     call take_box(move b);
@@ -54,8 +54,8 @@ fn move_ancestor_closes_loans(x: i64) {
     return
 }
 
-fn whole_struct_move_survives_loan(x: i64) {
-  b: RefBox;
+fn<'s0> whole_struct_move_survives_loan(x: i64) {
+  b: RefBox<'s0>;
   entry:
     b.p = &mut x;
     call take_box(move b);
@@ -63,16 +63,16 @@ fn whole_struct_move_survives_loan(x: i64) {
     return
 }
 
-fn struct_with_ref_typed_field(x: Linear) {
-  y: Linear;
+fn<'s0> struct_with_ref_typed_field(x: Linear<'s0>) {
+  y: Linear<'s0>;
   entry:
     y = move x;
     call sink_linear(move y);
     return
 }
 
-fn fulfilled_field_ref_before_move(x: i64, z: i64) {
-  b: RefBox;
+fn<'s0> fulfilled_field_ref_before_move(x: i64, z: i64) {
+  b: RefBox<'s0>;
   y: i64;
   entry:
     b.p = &mut x;

@@ -22,13 +22,13 @@ struct<'s0, 's1> Pair: Move {
   b: &mut 's1 i64
 }
 
-extern fn use_pair(p: Pair);
+extern fn<'s0, 's1> use_pair(p: Pair<'s0, 's1>);
 
-fn pack_and_pass(x: i64, y: i64) {
+fn<'s0, 's1> pack_and_pass(x: i64, y: i64) {
   _temp_0: unit;
   xm: i64;
   ym: i64;
-  p: Pair;
+  p: Pair<'s0, 's1>;
   _temp_1: unit;
   entry:
     xm = move x;

@@ -186,12 +186,12 @@ fn write_impl(out: &mut String, i: &ImplBlock) {
 
 fn write_function(out: &mut String, f: &Function) {
     if f.is_extern {
-        out.push_str("extern fn ");
+        out.push_str("extern fn");
     } else {
         out.push_str("fn");
-        write_type_params(out, &f.meta);
-        out.push(' ');
     }
+    write_type_params(out, &f.meta);
+    out.push(' ');
     out.push_str(&f.meta.name);
     out.push('(');
     for (i, p) in f.params.iter().enumerate() {

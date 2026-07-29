@@ -26,7 +26,14 @@ error: at 75:5: [TC-PtrCastTargetNotPointer] In function 'ptr_cast_target_not_po
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^
  76 |     return
     |
-error: at 37:5: [SUB-CopyOfNonCopy] In function 'copy_of_non_copy_pointee', block 'entry': cannot copy non-Copy type Linear
+error: at 37:5: [SUB-CopyOfNonCopy] In function 'copy_of_non_copy_pointee', block 'entry': cannot copy non-Copy type Linear<'1>
+    |
+ 31 | # the substructural checker. The user must use `move` instead.
+ 32 | fn copy_of_non_copy_pointee(l: Linear) {
+    |                                ------ the lifetime of this reference is called '1 in this diagnostic
+ 33 |   p: *Linear;
+    |
+    | ...
     |
  36 |     p = &raw l;
  37 |     q = copy p.*;

@@ -1,6 +1,6 @@
-extern fn sink_mut(r: &mut 's0 i64);
+extern fn<'s0> sink_mut(r: &mut 's0 i64);
 
-extern fn sink_drop(r: &drop 's0 i64);
+extern fn<'s0> sink_drop(r: &drop 's0 i64);
 
 fn<'s0> drop_mut_ref_untouched(r: &mut 's0 i64) {
   entry:

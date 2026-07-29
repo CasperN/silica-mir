@@ -6,8 +6,12 @@ error: at 58:5: [SUB-CopyOfNonCopy] In function 'copy_drop_only_struct', block '
  59 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 65:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', block 'entry': cannot copy non-Copy type Linear
+error: at 65:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_rvalue', block 'entry': cannot copy non-Copy type Linear<'1>
     |
+ 61 | 
+ 62 | fn copy_linear_struct_as_rvalue(x: Linear) {
+    |                                    ------ the lifetime of this reference is called '1 in this diagnostic
+ 63 |   y: Linear;
  64 |   entry:
  65 |     y = copy x;
     |     ^^^^^^^^^^
@@ -50,16 +54,23 @@ error: at 86:5: [SUB-CopyOfNonCopy] In function 'copy_uninit_ref', block 'entry'
  87 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 94:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_call_arg', block 'entry': cannot copy non-Copy type Linear
+error: at 94:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_call_arg', block 'entry': cannot copy non-Copy type Linear<'1>
     |
+ 91 | 
+ 92 | fn copy_linear_struct_as_call_arg(x: Linear) {
+    |                                      ------ the lifetime of this reference is called '1 in this diagnostic
  93 |   entry:
  94 |     call take_linear(copy x);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^
  95 |     return
     |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 103:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_enum_payload', block 'entry': cannot copy non-Copy type Linear
+error: at 103:5: [SUB-CopyOfNonCopy] In function 'copy_linear_struct_as_enum_payload', block 'entry': cannot copy non-Copy type Linear<'1>
      |
+  99 | 
+ 100 | fn copy_linear_struct_as_enum_payload(x: Linear) {
+     |                                          ------ the lifetime of this reference is called '1 in this diagnostic
+ 101 |   w: Wrap;
  102 |   entry:
  103 |     w = Wrap::W(copy x);
      |     ^^^^^^^^^^^^^^^^^^^
@@ -74,15 +85,26 @@ error: at 113:5: [SUB-MoveOfNonMove] In function 'move_copy_only_struct', block 
  114 |     return
      |
   hint: linear types cannot be moved out of non-Move contexts
-error: at 122:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
+error: at 122:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear<'1>
      |
+ 118 | # and the call-arg move fail independently at the same fn.
+ 119 | fn move_non_move_struct(x: Linear) {
+     |                            ------ the lifetime of this reference is called '1 in this diagnostic
+ 120 |   y: Linear;
  121 |   entry:
  122 |     y = move x;
      |     ^^^^^^^^^^
  123 |     call take_linear(move y);
      |
   hint: linear types cannot be moved out of non-Move contexts
-error: at 123:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear
+error: at 123:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block 'entry': cannot move non-Move type Linear<'1>
+     |
+ 118 | # and the call-arg move fail independently at the same fn.
+ 119 | fn move_non_move_struct(x: Linear) {
+     |                            ------ the lifetime of this reference is called '1 in this diagnostic
+ 120 |   y: Linear;
+     |
+     | ...
      |
  122 |     y = move x;
  123 |     call take_linear(move y);
@@ -90,8 +112,11 @@ error: at 123:5: [SUB-MoveOfNonMove] In function 'move_non_move_struct', block '
  124 |     return
      |
   hint: linear types cannot be moved out of non-Move contexts
-error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'entry': cannot drop non-Drop type Linear
+error: at 131:5: [SUB-DropOfNonDrop] In function 'drop_linear_struct', block 'entry': cannot drop non-Drop type Linear<'1>
      |
+ 128 | 
+ 129 | fn drop_linear_struct(x: Linear) {
+     |                          ------ the lifetime of this reference is called '1 in this diagnostic
  130 |   entry:
  131 |     drop x;
      |     ^^^^^^

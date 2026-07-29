@@ -10,11 +10,11 @@ enum Option: Copy + Drop {
 
 extern fn noop();
 
-extern fn sink(r: &mut 's0 i64);
+extern fn<'s0> sink(r: &mut 's0 i64);
 
 extern fn use_num(n: i64);
 
-extern fn use_ref(r: &mut 's0 i64);
+extern fn<'s0> use_ref(r: &mut 's0 i64);
 
 fn branch_both_borrow_merge_carry(x: i64, b: bool) {
   r: &mut i64;

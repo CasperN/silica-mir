@@ -51,9 +51,9 @@ extern fn take_num(x: i64);
 
 extern fn take_point(p: P);
 
-extern fn take_mut(r: &mut 's0 i64);
+extern fn<'s0> take_mut(r: &mut 's0 i64);
 
-extern fn take_out(r: &out 's0 i64);
+extern fn<'s0> take_out(r: &out 's0 i64);
 
 extern fn take_mat_c(x: MatC);
 
@@ -118,8 +118,8 @@ fn move_copy_drop_struct_via_call(p: P) {
     return
 }
 
-fn move_move_marker_struct_rvalue(x: L) {
-  y: L;
+fn<'s0> move_move_marker_struct_rvalue(x: L<'s0>) {
+  y: L<'s0>;
   entry:
     y = move x;
     call take_out(move y.r);

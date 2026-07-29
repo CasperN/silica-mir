@@ -1,6 +1,6 @@
 extern fn use_num(n: i64);
 
-extern fn sink(r: &mut 's0 i64);
+extern fn<'s0> sink(r: &mut 's0 i64);
 
 struct P: Copy + Drop {
   a: i64

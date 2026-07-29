@@ -102,7 +102,7 @@ fn use_identity() {
     return
 }
 
-extern fn use_wrap(w: Wrap);
+extern fn<'s0> use_wrap(w: Wrap<'s0>);
 
 fn<'a> local_wrap_consumed(x: & 'a i64) {
   w: Wrap<'a>;
@@ -126,5 +126,51 @@ fn<'a, 's0> wrap_ref_in_enum(r: & 'a i64, $return: &out 's0 MaybeRef<'a>) {
     $return.* = MaybeRef::Some(copy r);
     unborrow $return;
     unborrow r;
+    return
+}
+
+fn<'a> bare_custom_reuses_fn_lifetime(w: Wrap<'a>, x: & 'a i64) {
+  entry:
+    drop w.r;
+    w.r = copy x;
+    unborrow x;
+    call use_wrap(move w);
+    return
+}
+
+fn<'a> bare_custom_local_shares_param_region(x: Wrap<'a>) {
+  y: Wrap<'a>;
+  entry:
+    y = move x;
+    call use_wrap(move y);
+    return
+}
+
+struct<'a, 'b, 'c> Trip: Move {
+  p: & 'a i64
+  q: & 'b i64
+  r: & 'c i64
+}
+
+struct<'s0, 's1, 's2> Nest1: Move {
+  t: Trip<'s0, 's1, 's2>
+}
+
+struct<'s0, 's1, 's2> Nest2: Move {
+  n: Nest1<'s0, 's1, 's2>
+}
+
+extern fn<'s0, 's1, 's2> use_nest2(x: Nest2<'s0, 's1, 's2>);
+
+fn<'a, 'b, 'c> propagate_arity(p: & 'a i64, q: & 'b i64, r: & 'c i64) {
+  n: Nest2<'a, 'b, 'c>;
+  entry:
+    n.n.t.p = copy p;
+    unborrow p;
+    n.n.t.q = copy q;
+    unborrow q;
+    n.n.t.r = copy r;
+    unborrow r;
+    call use_nest2(move n);
     return
 }

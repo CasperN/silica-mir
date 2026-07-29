@@ -1,196 +1,225 @@
-error: at 94:29: [TC-InvalidDeclaredType] In struct 'WrongArity1', field 'field': Type 'Box' expects 1 type argument(s), got 2
+error: at 96:29: [TC-InvalidDeclaredType] In struct 'WrongArity1', field 'field': Type 'Box' expects 1 type argument(s), got 2
     |
- 93 | # Type-argument arity: Box takes exactly one param.
- 94 | struct WrongArity1 { field: Box<i32, bool> }
+ 95 | # Type-argument arity: Box takes exactly one param.
+ 96 | struct WrongArity1 { field: Box<i32, bool> }
     |                             ^^^^^^^^^^^^^^
- 95 | struct WrongArity2 { field: Box }
+ 97 | struct WrongArity2 { field: Box }
     |
-error: at 95:29: [TC-InvalidDeclaredType] In struct 'WrongArity2', field 'field': Type 'Box' expects 1 type argument(s), got 0
+error: at 97:29: [TC-InvalidDeclaredType] In struct 'WrongArity2', field 'field': Type 'Box' expects 1 type argument(s), got 0
     |
- 94 | struct WrongArity1 { field: Box<i32, bool> }
- 95 | struct WrongArity2 { field: Box }
+ 96 | struct WrongArity1 { field: Box<i32, bool> }
+ 97 | struct WrongArity2 { field: Box }
     |                             ^^^
- 96 | 
+ 98 | 
     |
-error: at 98:28: [TC-InvalidDeclaredType] In struct 'UsesBadBox', field 'field': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
-    |
- 97 | # Linear is not Copy+Drop, so Box<Linear> fails the T: Copy+Drop bound.
- 98 | struct UsesBadBox { field: Box<Linear> }
-    |                            ^^^^^^^^^^^
- 99 | 
-    |
-error: at 116:28: [TC-InvalidDeclaredType] In struct 'DeepBadBox', field 'field': Type argument Linear for 'Option::T' does not satisfy required bound 'Copy'
+error: at 105:40: [TC-InvalidDeclaredType] In struct 'WrongLifetimeArity', field 'field': Type 'Both' expects 2 lifetime argument(s), got 1
      |
- 115 | # Copy+Drop bound before the outer Box is even evaluated.
- 116 | struct DeepBadBox { field: Box<Option<Linear>> }
+ 104 | struct<'a, 'b> Both: Move { l: &'a i64, r: &'b i64 }
+ 105 | struct<'a> WrongLifetimeArity { field: Both<'a> }
+     |                                        ^^^^^^^^
+ 106 | 
+     |
+error: at 121:28: [TC-InvalidDeclaredType] In struct 'UsesBadBox', field 'field': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+     |
+ 120 | # Linear is not Copy+Drop, so Box<Linear> fails the T: Copy+Drop bound.
+ 121 | struct UsesBadBox { field: Box<Linear> }
+     |                            ^^^^^^^^^^^
+ 122 | 
+     |
+error: at 139:28: [TC-InvalidDeclaredType] In struct 'DeepBadBox', field 'field': Type argument Linear for 'Option::T' does not satisfy required bound 'Copy'
+     |
+ 138 | # Copy+Drop bound before the outer Box is even evaluated.
+ 139 | struct DeepBadBox { field: Box<Option<Linear>> }
      |                            ^^^^^^^^^^^^^^^^^^^
- 117 | 
+ 140 | 
      |
-error: at 120:26: [TC-InvalidDeclaredType] In struct 'UseBoxC_MatL', field 'b': Type argument MatL for 'BoxC::T' does not satisfy required bound 'Copy'
+error: at 143:26: [TC-InvalidDeclaredType] In struct 'UseBoxC_MatL', field 'b': Type argument MatL for 'BoxC::T' does not satisfy required bound 'Copy'
      |
- 119 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatL:none
- 120 | struct UseBoxC_MatL { b: BoxC<MatL> }
+ 142 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatL:none
+ 143 | struct UseBoxC_MatL { b: BoxC<MatL> }
      |                          ^^^^^^^^^^
- 121 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatD:Drop (not Copy)
+ 144 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatD:Drop (not Copy)
      |
-error: at 122:26: [TC-InvalidDeclaredType] In struct 'UseBoxC_MatD', field 'b': Type argument MatD for 'BoxC::T' does not satisfy required bound 'Copy'
+error: at 145:26: [TC-InvalidDeclaredType] In struct 'UseBoxC_MatD', field 'b': Type argument MatD for 'BoxC::T' does not satisfy required bound 'Copy'
      |
- 121 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatD:Drop (not Copy)
- 122 | struct UseBoxC_MatD { b: BoxC<MatD> }
+ 144 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatD:Drop (not Copy)
+ 145 | struct UseBoxC_MatD { b: BoxC<MatD> }
      |                          ^^^^^^^^^^
- 123 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatM:Move (not Copy)
+ 146 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatM:Move (not Copy)
      |
-error: at 124:26: [TC-InvalidDeclaredType] In struct 'UseBoxC_MatM', field 'b': Type argument MatM for 'BoxC::T' does not satisfy required bound 'Copy'
+error: at 147:26: [TC-InvalidDeclaredType] In struct 'UseBoxC_MatM', field 'b': Type argument MatM for 'BoxC::T' does not satisfy required bound 'Copy'
      |
- 123 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatM:Move (not Copy)
- 124 | struct UseBoxC_MatM { b: BoxC<MatM> }
+ 146 | # covers: type_kind=struct class=Copy op=use_site_bound bound=MatM:Move (not Copy)
+ 147 | struct UseBoxC_MatM { b: BoxC<MatM> }
      |                          ^^^^^^^^^^
- 125 | 
+ 148 | 
      |
-error: at 128:26: [TC-InvalidDeclaredType] In struct 'UseBoxD_MatL', field 'b': Type argument MatL for 'BoxD::T' does not satisfy required bound 'Drop'
+error: at 151:26: [TC-InvalidDeclaredType] In struct 'UseBoxD_MatL', field 'b': Type argument MatL for 'BoxD::T' does not satisfy required bound 'Drop'
      |
- 127 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatL:none
- 128 | struct UseBoxD_MatL { b: BoxD<MatL> }
+ 150 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatL:none
+ 151 | struct UseBoxD_MatL { b: BoxD<MatL> }
      |                          ^^^^^^^^^^
- 129 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatC:Copy (not Drop)
+ 152 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatC:Copy (not Drop)
      |
-error: at 130:26: [TC-InvalidDeclaredType] In struct 'UseBoxD_MatC', field 'b': Type argument MatC for 'BoxD::T' does not satisfy required bound 'Drop'
+error: at 153:26: [TC-InvalidDeclaredType] In struct 'UseBoxD_MatC', field 'b': Type argument MatC for 'BoxD::T' does not satisfy required bound 'Drop'
      |
- 129 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatC:Copy (not Drop)
- 130 | struct UseBoxD_MatC { b: BoxD<MatC> }
+ 152 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatC:Copy (not Drop)
+ 153 | struct UseBoxD_MatC { b: BoxD<MatC> }
      |                          ^^^^^^^^^^
- 131 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatM:Move (not Drop)
+ 154 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatM:Move (not Drop)
      |
-error: at 132:26: [TC-InvalidDeclaredType] In struct 'UseBoxD_MatM', field 'b': Type argument MatM for 'BoxD::T' does not satisfy required bound 'Drop'
+error: at 155:26: [TC-InvalidDeclaredType] In struct 'UseBoxD_MatM', field 'b': Type argument MatM for 'BoxD::T' does not satisfy required bound 'Drop'
      |
- 131 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatM:Move (not Drop)
- 132 | struct UseBoxD_MatM { b: BoxD<MatM> }
+ 154 | # covers: type_kind=struct class=Drop op=use_site_bound bound=MatM:Move (not Drop)
+ 155 | struct UseBoxD_MatM { b: BoxD<MatM> }
      |                          ^^^^^^^^^^
- 133 | 
+ 156 | 
      |
-error: at 136:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatL', field 'b': Type argument MatL for 'BoxM::T' does not satisfy required bound 'Move'
+error: at 159:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatL', field 'b': Type argument MatL for 'BoxM::T' does not satisfy required bound 'Move'
      |
- 135 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatL:none
- 136 | struct UseBoxM_MatL { b: BoxM<MatL> }
+ 158 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatL:none
+ 159 | struct UseBoxM_MatL { b: BoxM<MatL> }
      |                          ^^^^^^^^^^
- 137 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatC:Copy (not Move)
+ 160 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatC:Copy (not Move)
      |
-error: at 139:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatC', field 'b': Type argument MatC for 'BoxM::T' does not satisfy required bound 'Move'
+error: at 162:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatC', field 'b': Type argument MatC for 'BoxM::T' does not satisfy required bound 'Move'
      |
- 138 | # Copy alone does not imply Move — silent hole risk.
- 139 | struct UseBoxM_MatC { b: BoxM<MatC> }
+ 161 | # Copy alone does not imply Move — silent hole risk.
+ 162 | struct UseBoxM_MatC { b: BoxM<MatC> }
      |                          ^^^^^^^^^^
- 140 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatD:Drop (not Move)
+ 163 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatD:Drop (not Move)
      |
-error: at 141:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatD', field 'b': Type argument MatD for 'BoxM::T' does not satisfy required bound 'Move'
+error: at 164:26: [TC-InvalidDeclaredType] In struct 'UseBoxM_MatD', field 'b': Type argument MatD for 'BoxM::T' does not satisfy required bound 'Move'
      |
- 140 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatD:Drop (not Move)
- 141 | struct UseBoxM_MatD { b: BoxM<MatD> }
+ 163 | # covers: type_kind=struct class=Move op=use_site_bound bound=MatD:Drop (not Move)
+ 164 | struct UseBoxM_MatD { b: BoxM<MatD> }
      |                          ^^^^^^^^^^
- 142 | 
+ 165 | 
      |
-error: at 145:29: [TC-InvalidDeclaredType] In struct 'UseOuter_MutRef', field 'b': Type argument &mut '1 i64 for 'OuterBox::T' does not satisfy required bound 'Copy'
+error: at 168:29: [TC-InvalidDeclaredType] In struct 'UseOuter_MutRef', field 'b': Type argument &mut '1 i64 for 'OuterBox::T' does not satisfy required bound 'Copy'
      |
- 144 | # covers: type_kind=struct op=nested_param_subst class=Copy+Drop bound=MutRef:Drop+Move
- 145 | struct UseOuter_MutRef { b: OuterBox<&mut i64> }
+ 167 | # covers: type_kind=struct op=nested_param_subst class=Copy+Drop bound=MutRef:Drop+Move
+ 168 | struct UseOuter_MutRef { b: OuterBox<&mut i64> }
      |                             ^^^^^^^^^^^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
- 146 | 
+ 169 | 
      |
-error: at 101:15: [TC-InvalidDeclaredType] In function 'consume', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+error: at 113:32: [TC-InvalidDeclaredType] In function 'arity_error_no_panic', parameter 'x': Type 'Both' expects 2 lifetime argument(s), got 1
      |
- 100 | # Same bound failure via a function parameter.
- 101 | fn consume(b: Box<Linear>) {
+ 112 | # via decl-lifetime leak, or crash the pipeline on the invalid Instance.
+ 113 | fn<'a> arity_error_no_panic(x: Both<'a>) {
+     |                                ^^^^^^^^
+ 114 |   y: i64;
+     |
+error: at 124:15: [TC-InvalidDeclaredType] In function 'consume', parameter 'b': Type argument Linear for 'Box::T' does not satisfy required bound 'Copy'
+     |
+ 123 | # Same bound failure via a function parameter.
+ 124 | fn consume(b: Box<Linear>) {
      |               ^^^^^^^^^^^
- 102 |   entry:
+ 125 |   entry:
      |
-error: at 109:30: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out '1 U for 'Option::T' does not satisfy required bound 'Copy'
+error: at 132:30: [TC-InvalidDeclaredType] In function 'option_of_out', parameter 'x': Type argument &out '1 U for 'Option::T' does not satisfy required bound 'Copy'
      |
- 108 | # and still does not grant Copy or Drop.
- 109 | fn<U: Move> option_of_out(x: Option<&out U>) {
+ 131 | # and still does not grant Copy or Drop.
+ 132 | fn<U: Move> option_of_out(x: Option<&out U>) {
      |                              ^^^^^^^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
- 110 |   entry:
+ 133 |   entry:
      |
-error: at 49:37: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
+error: at 51:37: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
     |
- 48 | # T has no bounds, so class_of(T) is empty. Claiming Copy fails.
- 49 | struct<T> ClaimsCopy: Copy { inner: T }
+ 50 | # T has no bounds, so class_of(T) is empty. Claiming Copy fails.
+ 51 | struct<T> ClaimsCopy: Copy { inner: T }
     |                                     ^
- 50 | 
+ 52 | 
     |
-error: at 52:43: [COMP-DropMarkerNotSatisfied] In struct 'ClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
+error: at 54:43: [COMP-DropMarkerNotSatisfied] In struct 'ClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
     |
- 51 | # T is Copy but not Drop, so claiming Drop fails.
- 52 | struct<T: Copy> ClaimsDrop: Drop { inner: T }
+ 53 | # T is Copy but not Drop, so claiming Drop fails.
+ 54 | struct<T: Copy> ClaimsDrop: Drop { inner: T }
     |                                           ^
- 53 | 
+ 55 | 
     |
-error: at 55:51: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopyFromMove' (marked Copy), field 'inner' has type T which is not Copy
+error: at 57:51: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopyFromMove' (marked Copy), field 'inner' has type T which is not Copy
     |
- 54 | # T is only Move; Move does not imply Copy. Claiming Copy fails.
- 55 | struct<T: Move> ClaimsCopyFromMove: Copy { inner: T }
+ 56 | # T is only Move; Move does not imply Copy. Claiming Copy fails.
+ 57 | struct<T: Move> ClaimsCopyFromMove: Copy { inner: T }
     |                                                   ^
- 56 | 
+ 58 | 
     |
-error: at 59:35: [COMP-CopyMarkerNotSatisfied] In enum 'ClaimsCopyEnum' (marked Copy), variant 'A' payload type T is not Copy
+error: at 61:35: [COMP-CopyMarkerNotSatisfied] In enum 'ClaimsCopyEnum' (marked Copy), variant 'A' payload type T is not Copy
     |
- 58 | # Copy claim on the enum is unsatisfied by variant A's payload type T.
- 59 | enum<T> ClaimsCopyEnum: Copy { A: T  B: unit }
+ 60 | # Copy claim on the enum is unsatisfied by variant A's payload type T.
+ 61 | enum<T> ClaimsCopyEnum: Copy { A: T  B: unit }
     |                                   ^
- 60 | 
+ 62 | 
     |
-error: at 63:61: [COMP-CopyMarkerNotSatisfied] In struct 'BoxBad_DropClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
+error: at 65:61: [COMP-CopyMarkerNotSatisfied] In struct 'BoxBad_DropClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
     |
- 62 | # T:Drop only; claiming Copy+Drop — COMP-CopyMarkerNotSatisfied.
- 63 | struct<T: Drop> BoxBad_DropClaimsCopy: Copy + Drop { inner: T }
+ 64 | # T:Drop only; claiming Copy+Drop — COMP-CopyMarkerNotSatisfied.
+ 65 | struct<T: Drop> BoxBad_DropClaimsCopy: Copy + Drop { inner: T }
     |                                                             ^
- 64 | 
+ 66 | 
     |
-error: at 67:61: [COMP-DropMarkerNotSatisfied] In struct 'BoxBad_CopyClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
+error: at 69:61: [COMP-DropMarkerNotSatisfied] In struct 'BoxBad_CopyClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
     |
- 66 | # T:Copy only; claiming Copy+Drop — COMP-DropMarkerNotSatisfied.
- 67 | struct<T: Copy> BoxBad_CopyClaimsDrop: Copy + Drop { inner: T }
+ 68 | # T:Copy only; claiming Copy+Drop — COMP-DropMarkerNotSatisfied.
+ 69 | struct<T: Copy> BoxBad_CopyClaimsDrop: Copy + Drop { inner: T }
     |                                                             ^
- 68 | 
+ 70 | 
     |
-error: at 71:54: [COMP-CopyMarkerNotSatisfied] In struct 'BoxBad_MoveClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
+error: at 73:54: [COMP-CopyMarkerNotSatisfied] In struct 'BoxBad_MoveClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
     |
- 70 | # T:Move; claiming Copy — COMP-CopyMarkerNotSatisfied.
- 71 | struct<T: Move> BoxBad_MoveClaimsCopy: Copy { inner: T }
+ 72 | # T:Move; claiming Copy — COMP-CopyMarkerNotSatisfied.
+ 73 | struct<T: Move> BoxBad_MoveClaimsCopy: Copy { inner: T }
     |                                                      ^
- 72 | 
+ 74 | 
     |
-error: at 75:54: [COMP-DropMarkerNotSatisfied] In struct 'BoxBad_MoveClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
+error: at 77:54: [COMP-DropMarkerNotSatisfied] In struct 'BoxBad_MoveClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
     |
- 74 | # T:Move; claiming Drop — COMP-DropMarkerNotSatisfied.
- 75 | struct<T: Move> BoxBad_MoveClaimsDrop: Drop { inner: T }
+ 76 | # T:Move; claiming Drop — COMP-DropMarkerNotSatisfied.
+ 77 | struct<T: Move> BoxBad_MoveClaimsDrop: Drop { inner: T }
     |                                                      ^
- 76 | 
+ 78 | 
     |
-error: at 79:50: [COMP-CopyMarkerNotSatisfied] In struct 'UnboundedBox_ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
+error: at 81:50: [COMP-CopyMarkerNotSatisfied] In struct 'UnboundedBox_ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
     |
- 78 | # No bound; claiming Copy — COMP-CopyMarkerNotSatisfied.
- 79 | struct<T> UnboundedBox_ClaimsCopy: Copy { inner: T }
+ 80 | # No bound; claiming Copy — COMP-CopyMarkerNotSatisfied.
+ 81 | struct<T> UnboundedBox_ClaimsCopy: Copy { inner: T }
     |                                                  ^
- 80 | 
+ 82 | 
     |
-error: at 82:50: [COMP-DropMarkerNotSatisfied] In struct 'UnboundedBox_ClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
+error: at 84:50: [COMP-DropMarkerNotSatisfied] In struct 'UnboundedBox_ClaimsDrop' (marked Drop), field 'inner' has type T which is not Drop
     |
- 81 | # covers: type_kind=struct class=Drop op=composition bound=none
- 82 | struct<T> UnboundedBox_ClaimsDrop: Drop { inner: T }
+ 83 | # covers: type_kind=struct class=Drop op=composition bound=none
+ 84 | struct<T> UnboundedBox_ClaimsDrop: Drop { inner: T }
     |                                                  ^
- 83 | 
+ 85 | 
     |
-error: at 85:50: [COMP-MoveMarkerNotSatisfied] In struct 'UnboundedBox_ClaimsMove' (marked Move), field 'inner' has type T which is not Move
+error: at 87:50: [COMP-MoveMarkerNotSatisfied] In struct 'UnboundedBox_ClaimsMove' (marked Move), field 'inner' has type T which is not Move
     |
- 84 | # covers: type_kind=struct class=Move op=composition bound=none
- 85 | struct<T> UnboundedBox_ClaimsMove: Move { inner: T }
+ 86 | # covers: type_kind=struct class=Move op=composition bound=none
+ 87 | struct<T> UnboundedBox_ClaimsMove: Move { inner: T }
     |                                                  ^
- 86 | 
+ 88 | 
     |
-error: at 89:54: [COMP-MoveMarkerNotSatisfied] In struct 'BoxBad_CopyClaimsMove' (marked Move), field 'inner' has type T which is not Move
+error: at 91:54: [COMP-MoveMarkerNotSatisfied] In struct 'BoxBad_CopyClaimsMove' (marked Move), field 'inner' has type T which is not Move
     |
- 88 | # Copy alone does not imply Move — COMP-MoveMarkerNotSatisfied.
- 89 | struct<T: Copy> BoxBad_CopyClaimsMove: Move { inner: T }
+ 90 | # Copy alone does not imply Move — COMP-MoveMarkerNotSatisfied.
+ 91 | struct<T: Copy> BoxBad_CopyClaimsMove: Move { inner: T }
     |                                                      ^
- 90 | 
+ 92 | 
     |
+error: at 117:5: [PS-ReturnValueLeak] In function 'arity_error_no_panic', block 'entry': value 'x' of type Both<'a> is not consumed at return
+     |
+ 112 | # via decl-lifetime leak, or crash the pipeline on the invalid Instance.
+ 113 | fn<'a> arity_error_no_panic(x: Both<'a>) {
+     |                             ----------- variable declared here
+ 114 |   y: i64;
+     |
+     | ...
+     |
+ 116 |     y = copy x.l.*;
+ 117 |     return
+     |     ^^^^^^
+ 118 | }
+     |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

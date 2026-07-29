@@ -1,4 +1,4 @@
-extern fn take_out(r: &out 's0 i64);
+extern fn<'s0> take_out(r: &out 's0 i64);
 
 fn f() {
   x: i64;

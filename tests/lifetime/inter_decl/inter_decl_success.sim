@@ -155,3 +155,65 @@ fn<'a> wrap_ref_in_enum(r: &'a i64, $return: &out MaybeRef<'a>) {
     $return.* = MaybeRef::Some(copy r);
     return
 }
+
+# ---------- bare Custom in signature reuses fn's lifetime ----------
+
+# `w: Wrap` elides to `w: Wrap<'a>` — the reuse-first rule picks the
+# fn's already-declared 'a rather than synthesizing a fresh lifetime.
+# `x: &'a i64` therefore writes into `w.r: &'a i64` with matching
+# region and no bound is required.
+#
+# Under the pre-elision silent-substitute era, this program also
+# accepted, but by coincidence: substitute mismatched the empty
+# lifetime_args against Wrap's declared `'b`, silently returned the
+# raw field type `&'b i64`, and the checker happened to unify 'b
+# against 'a whenever names collided. Renaming Wrap's parameter
+# would have surfaced a confusing "declare bound 'a: 'b" diagnostic
+# referring to a name not in the fn's scope. Reuse-first makes
+# the acceptance intentional and name-agnostic.
+fn<'a> bare_custom_reuses_fn_lifetime(w: Wrap, x: &'a i64) {
+  entry:
+    w.r = copy x;
+    call use_wrap(move w);
+    return
+}
+
+# ---------- bare Custom body-local shares fn param region ----------
+
+# `y: Wrap` local reuses 'a positionally, matching `x: Wrap<'a>` in
+# the signature. `y = move x` transfers the same region without
+# needing an outlives bound. Guards against a regression where body-
+# local Custom elision would synthesize a distinct region and force
+# a spurious `'a: 's0` mismatch on the move.
+fn<'a> bare_custom_local_shares_param_region(x: Wrap) {
+  y: Wrap;
+  entry:
+    y = move x;
+    call use_wrap(move y);
+    return
+}
+
+# ---------- multi-step arity propagation via fixpoint iteration ----------
+
+# `Trip` has 3 lifetime params. `Nest1` bare-uses Trip, so its own
+# arity grows to 3 during the second struct/enum elision pass.
+# `Nest2` bare-uses Nest1 — at the start of pass 2, arities['Nest1']
+# is still 0 (from pass 1 where Nest1 had no bare Customs to
+# process). Only after pass 2 lifts Nest1 to arity 3 does pass 3
+# see the right arity for Nest2's bare Nest1 field. The fixpoint
+# loop is what makes this converge — a single second pass would
+# leave Nest2 at arity 0. Regression guard: removing the fixpoint
+# loop breaks Nest2's elided form.
+struct<'a, 'b, 'c> Trip: Move { p: &'a i64, q: &'b i64, r: &'c i64 }
+struct Nest1: Move { t: Trip }
+struct Nest2: Move { n: Nest1 }
+extern fn use_nest2(x: Nest2);
+fn<'a, 'b, 'c> propagate_arity(p: &'a i64, q: &'b i64, r: &'c i64) {
+  n: Nest2;
+  entry:
+    n.n.t.p = copy p;
+    n.n.t.q = copy q;
+    n.n.t.r = copy r;
+    call use_nest2(move n);
+    return
+}

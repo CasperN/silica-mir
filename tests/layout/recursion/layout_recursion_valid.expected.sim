@@ -4,20 +4,20 @@ struct PlainStruct {
 }
 
 struct<'s0> StructRefSelf {
-  next: &mut 's0 StructRefSelf
+  next: &mut 's0 StructRefSelf<'s0>
 }
 
 enum<'s0> EnumRefSelf {
   Nil: unit
-  Cons: &mut 's0 EnumRefSelf
+  Cons: &mut 's0 EnumRefSelf<'s0>
 }
 
 struct<'s0> MutualA {
-  b: &mut 's0 MutualB
+  b: &mut 's0 MutualB<'s0>
 }
 
 struct<'s0> MutualB {
-  a: &mut 's0 MutualA
+  a: &mut 's0 MutualA<'s0>
 }
 
 struct StructFnSelf {

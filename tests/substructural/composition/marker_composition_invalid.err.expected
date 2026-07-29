@@ -19,25 +19,25 @@ error: at 42:30: [COMP-DropMarkerNotSatisfied] In struct 'DropOutRef' (marked Dr
     |                              ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  43 | 
     |
-error: at 48:39: [COMP-DropMarkerNotSatisfied] In struct 'DropLinearField' (marked Drop), field 'inner' has type Linear which is not Drop
+error: at 48:39: [COMP-DropMarkerNotSatisfied] In struct 'DropLinearField' (marked Drop), field 'inner' has type Linear<'1> which is not Drop
     |
  47 | # that contains it violates the constraint on that field.
  48 | struct DropLinearField: Drop { inner: Linear }
-    |                                       ^^^^^^
+    |                                       ^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  49 | 
     |
-error: at 53:35: [COMP-MoveMarkerNotSatisfied] In struct 'MoveLinearField' (marked Move), field 'i' has type Linear which is not Move
+error: at 53:35: [COMP-MoveMarkerNotSatisfied] In struct 'MoveLinearField' (marked Move), field 'i' has type Linear<'1> which is not Move
     |
  52 | # `Linear` is not Move. A Move outer struct may not contain it.
  53 | struct MoveLinearField: Move { i: Linear }
-    |                                   ^^^^^^
+    |                                   ^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  54 | 
     |
-error: at 59:40: [COMP-CopyMarkerNotSatisfied] In struct 'CopyNestedLinear' (marked Copy), field 'inner' has type Linear which is not Copy
+error: at 59:40: [COMP-CopyMarkerNotSatisfied] In struct 'CopyNestedLinear' (marked Copy), field 'inner' has type Linear<'1> which is not Copy
     |
  58 | # the marker constraint on the outer struct reaches the field's type.
  59 | struct CopyNestedLinear: Copy { inner: Linear }
-    |                                        ^^^^^^
+    |                                        ^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  60 | 
     |
 error: at 65:41: [COMP-CopyMarkerNotSatisfied] In struct 'CopyDropOutRef' (marked Copy), field 'r' has type &out '1 i64 which is not Copy
@@ -68,11 +68,11 @@ error: at 75:35: [COMP-DropMarkerNotSatisfied] In enum 'DropOutRefVariant' (mark
     |                                   ^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  76 | 
     |
-error: at 81:35: [COMP-MoveMarkerNotSatisfied] In enum 'MoveLinearVariant' (marked Move), variant 'W' payload type Linear is not Move
+error: at 81:35: [COMP-MoveMarkerNotSatisfied] In enum 'MoveLinearVariant' (marked Move), variant 'W' payload type Linear<'1> is not Move
     |
  80 | # it from the Move constraint declared on the enum.
  81 | enum MoveLinearVariant: Move { W: Linear }
-    |                                   ^^^^^^
+    |                                   ^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  82 | 
     |
 note: at 86:8: [PARSE-MoveMarkerRedundant] Move marker is redundant on 'RedundantStruct' because both Copy and Drop are present

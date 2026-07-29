@@ -14,7 +14,7 @@ extern fn take_two(a: i64, b: i64);
 
 extern fn consume(a: i64);
 
-extern fn sink_linear(x: Linear);
+extern fn<'s0> sink_linear(x: Linear<'s0>);
 
 fn param_starts_init(x: i64) {
   y: i64;
@@ -86,7 +86,7 @@ fn reverse_decl_order_drops(a: i64, b: i64, c: i64) {
     return
 }
 
-fn linear_param_not_dropped(x: Linear) {
+fn<'s0> linear_param_not_dropped(x: Linear<'s0>) {
   entry:
     call sink_linear(move x);
     return

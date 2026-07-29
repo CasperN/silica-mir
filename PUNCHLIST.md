@@ -116,44 +116,12 @@ formatting drift, further abstraction is diminishing-return work.
 
 ## Compiler consistency roadmap
 
-These are targeted repairs for demonstrated drift mechanisms: semantic
-identity encoded as display text and malformed generic applications
-represented as ordinary valid data. Keep the changes reviewable and
-fixture-backed; do not parameterize or duplicate `Program` by pipeline
-phase. The existing `verify_no_take` boundary and downstream invariant
-panics are intentional and sufficiently covered.
+Keep the changes reviewable and fixture-backed; do not parameterize or
+duplicate `Program` by pipeline phase. The existing `verify_no_take`
+boundary and downstream invariant panics are intentional and sufficiently
+covered.
 
-Implement the repairs in this order:
-
-1. **Backfill elided Custom lifetimes, then make instantiation validated data.**
-   Elision currently adds lifetime parameters for unannotated refs but leaves
-   bare Custom self-mentions and local types with zero lifetime arguments. First
-   make elision two-pass: determine each declaration's final lifetime
-   parameters, then materialize fresh arguments at every bare Custom use and add
-   them to the containing scope. Once zero arguments are no longer ambiguous,
-   require exact lifetime and type arity.
-
-   Replace parallel parameter/argument slices at substitution sites with
-   structured generic arguments and an `Instantiation` constructible only
-   after the applicable arities validate. Custom types validate both lifetime
-   and type arguments; `FnName` validates its explicit type arguments while
-   call-region inference remains a separate lifetime operation. Valid-path
-   substitution must be total and must not return the original type on
-   mismatch. Diagnostic continuation must use a separately named recovery API
-   and only after recording the construction error; later semantic passes
-   should consume validated instantiations or skip malformed uses. Migrate
-   field/downcast projection, function references, enum construction,
-   lifetime-region expansion, and monomorphization, with interaction fixtures
-   proving malformed uses do not suppress independent diagnostics.
-
-   Keep this reviewable as four commits: (a) two-pass elision and Custom
-   lifetime backfill, (b) the validated argument/instantiation data model and
-   unit tests, (c) type-environment and checker migration with explicit
-   recovery diagnostics, and (d) downstream lifetime/monomorphization
-   migration plus interaction fixtures. Do not combine the prerequisite with
-   caller migration merely to keep the intermediate API private.
-
-2. **Centralize place projection semantics.** Build one lossless, exhaustive
+1. **Centralize place projection semantics.** Build one lossless, exhaustive
    decomposition/reconstruction library over `Place` and its projection
    steps. Derive explicit queries for owned paths, statically trackable
    paths, dereference-containing paths, loan paths, and initialization
@@ -171,12 +139,10 @@ Likewise, phase-specific `Program` wrappers are deliberately out of scope.
 When diagnostics and consistency work are interleaved, use this dependency
 order rather than completing either roadmap in isolation:
 
-1. Consistency 1 before Diagnostics 1: establish validated instantiation and
-   explicit recovery before type-check payloads depend on those failures.
-2. Consistency 2 before Diagnostics 3–4: centralize semantic place projections
+1. Consistency 1 before Diagnostics 3–4: centralize semantic place projections
    before adding occurrence provenance, so the large provenance refactor has
    one projection boundary to update rather than many pass-local walkers.
-3. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
+2. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
    and hygiene guards. Diagnostics 5 remains the stop point for abstraction
    that is not justified by a concrete inconsistency or lost semantic datum.
 
@@ -215,7 +181,3 @@ the deliberate later refinement to nested operand and projection sources.
 # Paper cuts
 - `struct<T> Box {..}` in MIR should be `struct Box<T> {..}`
 - `fn<T> foo(..) {..}` in MIR should be `fn foo<T>(..) {..}`
-- `type_util::substitute_params` / `substitute_all` silently return
-  `ty.clone()` on arity mismatch. Arity is a caller precondition;
-  hiding a mismatch as a no-op turns programmer bugs into subtly wrong
-  types. Replace with an `assert_eq!` and audit callers.

@@ -256,7 +256,9 @@ pub(super) struct PlaceStateContext<'a> {
 /// Fields of a struct type with type-parameter substitution applied.
 /// `Box<i64>` → `[{inner: i64}]`, not `[{inner: T}]` — otherwise deep
 /// nested projections (`p.f.g` on `Outer<Inner<i64>>`) lose the type
-/// after the first step and downstream lookups fail.
+/// after the first step and downstream lookups fail. Returns `None`
+/// on type-arg arity mismatch — typecheck reported the error and the
+/// walker skips this projection.
 pub(super) fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>> {
     let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
         return None;
@@ -264,16 +266,18 @@ pub(super) fn struct_fields_of(ty: &Type, env: &Env) -> Option<Vec<StructField>>
     let TypeDecl::Struct(s) = env.types.get(name)? else {
         return None;
     };
-    Some(
-        s.fields
-            .iter()
-            .map(|f| StructField {
-                name: f.name.clone(),
-                ty: s.meta.substitute_types(&f.ty, args),
-                source: f.source,
-            })
-            .collect(),
-    )
+    s.fields
+        .iter()
+        .map(|f| {
+            s.meta
+                .try_substitute_types(&f.ty, args)
+                .map(|ty| StructField {
+                    name: f.name.clone(),
+                    ty,
+                    source: f.source,
+                })
+        })
+        .collect()
 }
 
 pub(super) fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Option<Type> {
@@ -284,7 +288,7 @@ pub(super) fn enum_variant_payload_ty(ty: &Type, variant: &str, env: &Env) -> Op
         return None;
     };
     let payload = e.variants.iter().find(|v| v.name == variant)?;
-    Some(e.meta.substitute_types(&payload.ty, args))
+    e.meta.try_substitute_types(&payload.ty, args)
 }
 
 // ---------- Canonicalization ----------
@@ -859,24 +863,25 @@ pub(super) fn seed_parameter_ref_states(
         return;
     }
     if let Some(TypeDecl::Struct(def)) = env.types.get(name) {
-        let fields: Vec<_> = def
+        let fields: Option<Vec<_>> = def
             .fields
             .iter()
             .map(|field| {
-                (
-                    field.name.clone(),
-                    def.meta.substitute_types(&field.ty, args),
-                )
+                def.meta
+                    .try_substitute_types(&field.ty, args)
+                    .map(|ty| (field.name.clone(), ty))
             })
             .collect();
-        for (field_name, field_ty) in fields {
-            seed_parameter_ref_states(
-                field_place(place.clone(), field_name),
-                &field_ty,
-                env,
-                visited,
-                refs,
-            );
+        if let Some(fields) = fields {
+            for (field_name, field_ty) in fields {
+                seed_parameter_ref_states(
+                    field_place(place.clone(), field_name),
+                    &field_ty,
+                    env,
+                    visited,
+                    refs,
+                );
+            }
         }
     }
     visited.remove(name);

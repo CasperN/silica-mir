@@ -34,7 +34,7 @@ extern fn take_num(x: i64);
 
 extern fn take_token(x: Token);
 
-extern fn observe(r: & 's0 i64);
+extern fn<'s0> observe(r: & 's0 i64);
 
 fn repeated_scalar(x: i64) {
   entry:
@@ -100,7 +100,7 @@ fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &m
     return
 }
 
-fn repeated_field_between_derefs(link: Link) {
+fn<'s0, 's1> repeated_field_between_derefs(link: Link<'s0, 's1>) {
   entry:
     call take_num(copy link.next.*.*.right);
     call take_num(move link.next.*.*.right);
@@ -109,7 +109,7 @@ fn repeated_field_between_derefs(link: Link) {
     return
 }
 
-fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice) {
+fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice<'s0>) {
   entry:
     call take_num(copy r.* as HasRef.*.left);
     call take_num(move r.* as HasRef.*.left);
@@ -118,7 +118,7 @@ fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice) {
     return
 }
 
-fn repeated_complex_projection(foo: ProjectionRoot) {
+fn<'s0, 's1> repeated_complex_projection(foo: ProjectionRoot<'s0, 's1>) {
   entry:
     call take_num(copy foo.field.*[2].* as Variant);
     call take_num(move foo.field.*[2].* as Variant);

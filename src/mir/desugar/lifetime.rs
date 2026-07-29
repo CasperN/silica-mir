@@ -25,23 +25,154 @@
 //! there's no notion of "input" vs "output" on a data decl.
 
 use crate::mir::ast::*;
+use std::collections::HashMap;
 
 /// Run lifetime elision on every declaration in `program`. Mutates in
 /// place. Idempotent — a second run finds no `None` slots to fill.
+///
+/// Two phases:
+///   1. Elide struct and enum decls first. Their `lifetime_params` may
+///      grow via synthesis on unannotated ref fields, so downstream
+///      Custom uses need the *final* arity to materialize fresh
+///      lifetime args.
+///   2. Elide fn / trait / impl decls, which reference those Custom
+///      types.
 pub fn desugar_program(program: &mut Program) {
+    // Iterate struct/enum elision to a fixpoint. Each pass materializes
+    // synthesized lifetime params on the visited decls; a subsequent
+    // pass then sees the updated arities and can elide bare Custom
+    // mentions elsewhere that reference the just-grown decls. Fixpoint
+    // over arity counts converges in one or two iterations in practice.
+    let mut arities = HashMap::new();
+    loop {
+        for decl in &mut program.declarations {
+            match decl {
+                Declaration::Struct(s) => desugar_struct(s, &arities),
+                Declaration::Enum(e) => desugar_enum(e, &arities),
+                _ => {}
+            }
+        }
+        let next = type_arities(program);
+        if next == arities {
+            break;
+        }
+        arities = next;
+    }
     for decl in &mut program.declarations {
         match decl {
-            Declaration::Fn(f) => desugar_fn(f),
-            Declaration::Struct(s) => desugar_struct(s),
-            Declaration::Enum(e) => desugar_enum(e),
-            Declaration::Trait(t) => desugar_trait(t),
-            Declaration::Impl(i) => desugar_impl(i),
+            Declaration::Fn(f) => desugar_fn(f, &arities),
+            Declaration::Trait(t) => desugar_trait(t, &arities),
+            Declaration::Impl(i) => desugar_impl(i, &arities),
+            _ => {}
         }
     }
 }
 
-fn desugar_fn(f: &mut Function) {
-    desugar_signature(&mut f.meta, &mut f.params);
+/// Map each named type decl to its lifetime-parameter count. Called
+/// after struct/enum elision so the count reflects any synthesized
+/// lifetime params.
+fn type_arities(program: &Program) -> HashMap<String, usize> {
+    let mut arities = HashMap::new();
+    for decl in &program.declarations {
+        match decl {
+            Declaration::Struct(s) => {
+                arities.insert(s.meta.name.clone(), s.meta.lifetime_params.len());
+            }
+            Declaration::Enum(e) => {
+                arities.insert(e.meta.name.clone(), e.meta.lifetime_params.len());
+            }
+            _ => {}
+        }
+    }
+    arities
+}
+
+fn desugar_fn(f: &mut Function, arities: &HashMap<String, usize>) {
+    desugar_signature(&mut f.meta, &mut f.params, arities);
+    // Extend Custom-arg elision to body-locals. A bare `w: Wrap`
+    // reuses the fn's lifetime params positionally (same rule as
+    // struct-field elision) so two locals of the same bare type
+    // share a region — making `y = move x` between them regionally
+    // trivial. Bare `Ref` layers in body locals stay `None`: region
+    // inference handles those at check time via body-local Free
+    // regions.
+    if let Some(body) = &mut f.body {
+        let mut ctx = DesugarCtx::new(&f.meta.lifetime_params, arities);
+        let fn_params = f.meta.lifetime_params.clone();
+        for local in &mut body.locals {
+            desugar_body_local_ty(&mut local.ty, &fn_params, &mut ctx);
+        }
+        f.meta.lifetime_params.extend(ctx.synthesized);
+    }
+}
+
+/// Body-local variant of [`desugar_type_pos`]. Fills bare `Custom`
+/// lifetime args by reusing the fn's lifetime params positionally
+/// (same rule as struct-field elision). Bare `Ref` layers stay
+/// `None` — region inference materializes their regions during
+/// checking; synthesizing 'sN here would pollute the fn signature.
+fn desugar_body_local_ty(
+    ty: &mut Type,
+    fn_params: &[LifetimeParam],
+    ctx: &mut DesugarCtx,
+) {
+    let ty_source = ty.source;
+    match &mut ty.kind {
+        TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
+            desugar_body_local_ty(inner, fn_params, ctx);
+        }
+        TypeKind::Fn(args) => {
+            for a in args {
+                desugar_body_local_ty(a, fn_params, ctx);
+            }
+        }
+        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+            reuse_first_lifetime_args(name, lifetime_args, ty_source, fn_params, ctx);
+            for a in type_args {
+                desugar_body_local_ty(a, fn_params, ctx);
+            }
+        }
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
+    }
+}
+
+/// Materialize lifetime args for a bare Custom use by reusing the
+/// containing decl's lifetime params positionally, then synthesized
+/// params, then fresh ones. Shared by struct-field, enum-variant,
+/// and body-local elision walkers — signature-position elision has
+/// its own copy since it also tracks input/output axioms for the
+/// synthesized args.
+fn reuse_first_lifetime_args(
+    name: &str,
+    lifetime_args: &mut Vec<Lifetime>,
+    ty_source: SourceInfo,
+    reuse: &[LifetimeParam],
+    ctx: &mut DesugarCtx,
+) {
+    if !lifetime_args.is_empty() {
+        return;
+    }
+    let Some(&arity) = ctx.arities.get(name) else {
+        return;
+    };
+    let available_from_existing = reuse.len();
+    let available_synth = ctx.synthesized.len();
+    let total_available = available_from_existing + available_synth;
+    for i in 0..arity {
+        let lt = if i < available_from_existing {
+            reuse[i].lifetime.clone()
+        } else if i < total_available {
+            ctx.synthesized[i - available_from_existing].lifetime.clone()
+        } else {
+            ctx.fresh_at(ty_source)
+        };
+        lifetime_args.push(lt);
+    }
 }
 
 /// Trait method sigs and impl method sigs elide by the same rule as free
@@ -52,13 +183,13 @@ fn desugar_fn(f: &mut Function) {
 /// method-level synth params, so trait-vs-impl signature conformance
 /// after `Self := target` and header-lifetime substitution matches
 /// positionally.
-fn desugar_trait(t: &mut TraitDecl) {
+fn desugar_trait(t: &mut TraitDecl, arities: &HashMap<String, usize>) {
     for method in &mut t.methods {
-        desugar_signature(&mut method.meta, &mut method.params);
+        desugar_signature(&mut method.meta, &mut method.params, arities);
     }
 }
 
-fn desugar_impl(i: &mut ImplBlock) {
+fn desugar_impl(i: &mut ImplBlock, arities: &HashMap<String, usize>) {
     // Seed the fresh-name skiplist with the impl-header's lifetime
     // params too — they're in scope for method bodies through
     // `effective_impl_method`, so a synthesized `'sN` colliding with
@@ -66,23 +197,28 @@ fn desugar_impl(i: &mut ImplBlock) {
     // the header is prepended.
     let header_lts: Vec<LifetimeParam> = i.meta.lifetime_params.clone();
     for method in &mut i.methods {
-        let mut ctx = ElideCtx::new_with_extra(&method.meta.lifetime_params, &header_lts);
+        let mut ctx =
+            DesugarCtx::new_with_extra(&method.meta.lifetime_params, &header_lts, arities);
         for p in &mut method.params {
-            elide_type_pos(&mut p.ty, Pos::Input, &mut ctx);
+            desugar_type_pos(&mut p.ty, Pos::Input, &mut ctx);
         }
-        finish_signature_elision(&mut method.meta, ctx);
+        finish_signature_desugar(&mut method.meta, ctx);
     }
 }
 
-fn desugar_signature(meta: &mut DeclMeta, params: &mut [Param]) {
-    let mut ctx = ElideCtx::new(&meta.lifetime_params);
+fn desugar_signature(
+    meta: &mut DeclMeta,
+    params: &mut [Param],
+    arities: &HashMap<String, usize>,
+) {
+    let mut ctx = DesugarCtx::new(&meta.lifetime_params, arities);
     for p in params {
-        elide_type_pos(&mut p.ty, Pos::Input, &mut ctx);
+        desugar_type_pos(&mut p.ty, Pos::Input, &mut ctx);
     }
-    finish_signature_elision(meta, ctx);
+    finish_signature_desugar(meta, ctx);
 }
 
-fn finish_signature_elision(meta: &mut DeclMeta, ctx: ElideCtx) {
+fn finish_signature_desugar(meta: &mut DeclMeta, ctx: DesugarCtx) {
     meta.lifetime_params.extend(ctx.synthesized);
     // Every synthesized output lifetime is outlived by every input
     // lifetime. Explicit output lifetimes are not axiomatized — the
@@ -99,20 +235,65 @@ fn finish_signature_elision(meta: &mut DeclMeta, ctx: ElideCtx) {
     }
 }
 
-fn desugar_struct(s: &mut StructDecl) {
-    let mut ctx = ElideCtx::new(&s.meta.lifetime_params);
+fn desugar_struct(s: &mut StructDecl, arities: &HashMap<String, usize>) {
+    let mut ctx = DesugarCtx::new(&s.meta.lifetime_params, arities);
     for f in &mut s.fields {
-        elide_type_pos(&mut f.ty, Pos::Input, &mut ctx);
+        desugar_decl_field_ty(&mut f.ty, &s.meta.lifetime_params, &mut ctx);
     }
     s.meta.lifetime_params.extend(ctx.synthesized);
 }
 
-fn desugar_enum(e: &mut EnumDecl) {
-    let mut ctx = ElideCtx::new(&e.meta.lifetime_params);
+fn desugar_enum(e: &mut EnumDecl, arities: &HashMap<String, usize>) {
+    let mut ctx = DesugarCtx::new(&e.meta.lifetime_params, arities);
     for v in &mut e.variants {
-        elide_type_pos(&mut v.ty, Pos::Input, &mut ctx);
+        desugar_decl_field_ty(&mut v.ty, &e.meta.lifetime_params, &mut ctx);
     }
     e.meta.lifetime_params.extend(ctx.synthesized);
+}
+
+/// Struct/enum-field variant of [`desugar_type_pos`]. Ref layers still
+/// synthesize fresh `'sN` (the usual elision rule), but bare `Custom`
+/// mentions inside a field reuse the containing decl's own lifetime
+/// params positionally rather than synthesizing more. This is what
+/// makes `struct Node { next: &mut Node }` work — the &mut synthesizes
+/// `'s0`, and the bare `Node` inside reuses that same `'s0` instead of
+/// growing the decl to arity 2. If the containing decl doesn't yet
+/// have enough params, synthesize the missing ones (extends the decl).
+fn desugar_decl_field_ty(
+    ty: &mut Type,
+    containing_params: &[LifetimeParam],
+    ctx: &mut DesugarCtx,
+) {
+    let ty_source = ty.source;
+    match &mut ty.kind {
+        TypeKind::Ref(_kind, slot, inner) => {
+            if slot.is_none() {
+                let lt = ctx.fresh_at(ty_source);
+                *slot = Some(lt);
+            }
+            desugar_decl_field_ty(inner, containing_params, ctx);
+        }
+        TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
+            desugar_decl_field_ty(inner, containing_params, ctx);
+        }
+        TypeKind::Fn(args) => {
+            for a in args {
+                desugar_decl_field_ty(a, containing_params, ctx);
+            }
+        }
+        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+            reuse_first_lifetime_args(name, lifetime_args, ty_source, containing_params, ctx);
+            for a in type_args {
+                desugar_decl_field_ty(a, containing_params, ctx);
+            }
+        }
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
+    }
 }
 
 #[derive(Copy, Clone, PartialEq, Eq)]
@@ -121,20 +302,32 @@ enum Pos {
     Output,
 }
 
-struct ElideCtx {
+struct DesugarCtx<'a> {
     counter: u32,
     used: Vec<String>,
     synthesized: Vec<LifetimeParam>,
+    /// Lifetime params already declared on the enclosing decl (before
+    /// synthesis) plus any extras seeded via `new_with_extra`. Used
+    /// by bare-Custom elision to reuse an in-scope lifetime rather
+    /// than always allocating a fresh one — so a body-local
+    /// `y: Linear` can share the fn's Linear-param region.
+    pre_existing: Vec<LifetimeParam>,
     /// All lifetimes seen at input position, real or synthesized.
     input: Vec<Lifetime>,
     /// Synthesized lifetimes seen at output position. These get
     /// axioms `in outlives out` for every `in` in `input`.
     synth_output: Vec<(Lifetime, SourceInfo)>,
+    /// Type-decl lifetime arities, so bare `Custom` uses materialize
+    /// fresh lifetime args of the right count. Empty when running the
+    /// struct/enum elision pre-pass — bare Custom mentions inside
+    /// struct/enum fields still elide their type_args recursively but
+    /// leave their own lifetime_args empty until the second pass.
+    arities: &'a HashMap<String, usize>,
 }
 
-impl ElideCtx {
-    fn new(existing: &[LifetimeParam]) -> Self {
-        Self::new_with_extra(existing, &[])
+impl<'a> DesugarCtx<'a> {
+    fn new(existing: &[LifetimeParam], arities: &'a HashMap<String, usize>) -> Self {
+        Self::new_with_extra(existing, &[], arities)
     }
 
     /// Seed the fresh-name skiplist with two independent sets of
@@ -142,18 +335,25 @@ impl ElideCtx {
     /// the method's own lifetime params and the impl header's — the
     /// header's names are prepended into the effective method scope
     /// downstream, so a collision here would shadow them silently.
-    fn new_with_extra(existing: &[LifetimeParam], extra: &[LifetimeParam]) -> Self {
+    fn new_with_extra(
+        existing: &[LifetimeParam],
+        extra: &[LifetimeParam],
+        arities: &'a HashMap<String, usize>,
+    ) -> Self {
         let used = existing
             .iter()
             .chain(extra.iter())
             .map(|l| l.lifetime.0.clone())
             .collect();
+        let pre_existing = existing.iter().chain(extra.iter()).cloned().collect();
         Self {
             counter: 0,
             used,
             synthesized: Vec::new(),
+            pre_existing,
             input: Vec::new(),
             synth_output: Vec::new(),
+            arities,
         }
     }
 
@@ -175,7 +375,7 @@ impl ElideCtx {
     }
 }
 
-fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
+fn desugar_type_pos(ty: &mut Type, pos: Pos, ctx: &mut DesugarCtx) {
     let ty_source = ty.source;
     match &mut ty.kind {
         TypeKind::Ref(kind, slot, inner) => {
@@ -197,18 +397,60 @@ fn elide_type_pos(ty: &mut Type, pos: Pos, ctx: &mut ElideCtx) {
                 RefKind::Mut | RefKind::Out => Pos::Output,
                 _ => pos,
             };
-            elide_type_pos(inner, inner_pos, ctx);
+            desugar_type_pos(inner, inner_pos, ctx);
         }
-        TypeKind::RawPtr(inner) => elide_type_pos(inner, pos, ctx),
-        TypeKind::Array(elem, _) => elide_type_pos(elem, pos, ctx),
+        TypeKind::RawPtr(inner) => desugar_type_pos(inner, pos, ctx),
+        TypeKind::Array(elem, _) => desugar_type_pos(elem, pos, ctx),
         TypeKind::Fn(args) => {
             for a in args {
-                elide_type_pos(a, pos, ctx);
+                desugar_type_pos(a, pos, ctx);
             }
         }
-        TypeKind::Custom(Instance { type_args: args, .. }) => {
-            for a in args {
-                elide_type_pos(a, pos, ctx);
+        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+            // Materialize lifetime args for a bare use of a Custom
+            // type whose decl has lifetime params. Reuse the fn's
+            // already-in-scope lifetime params positionally if
+            // enough exist — that way two bare `Linear` params share
+            // one region, and a body-local `y: Linear` can trivially
+            // hold `move x`. Synthesize the missing ones fresh and
+            // apply the standard input/output axiom treatment to
+            // just the fresh ones.
+            if lifetime_args.is_empty() {
+                if let Some(&arity) = ctx.arities.get(name) {
+                    let available_from_existing = ctx.pre_existing.len();
+                    let available_synth = ctx.synthesized.len();
+                    let total_available = available_from_existing + available_synth;
+                    for i in 0..arity {
+                        let (lt, is_new) = if i < available_from_existing {
+                            (ctx.pre_existing[i].lifetime.clone(), false)
+                        } else if i < total_available {
+                            (
+                                ctx.synthesized[i - available_from_existing]
+                                    .lifetime
+                                    .clone(),
+                                false,
+                            )
+                        } else {
+                            (ctx.fresh_at(ty_source), true)
+                        };
+                        if is_new {
+                            match pos {
+                                Pos::Input => ctx.input.push(lt.clone()),
+                                Pos::Output => ctx.synth_output.push((lt.clone(), ty_source)),
+                            }
+                        } else if matches!(pos, Pos::Input) {
+                            // Existing param reused in input position
+                            // must appear in the input set so any
+                            // output-position synths axiomatize
+                            // against it.
+                            ctx.input.push(lt.clone());
+                        }
+                        lifetime_args.push(lt);
+                    }
+                }
+            }
+            for a in type_args {
+                desugar_type_pos(a, pos, ctx);
             }
         }
         TypeKind::Int(_)

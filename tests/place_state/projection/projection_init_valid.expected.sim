@@ -7,7 +7,7 @@ struct Wrap: Copy + Drop {
   inner: Option
 }
 
-extern fn use_shared(r: & 's0 i64);
+extern fn<'s0> use_shared(r: & 's0 i64);
 
 fn<'s0> deref_read_of_ref_param(r: & 's0 i64) {
   a: i64;

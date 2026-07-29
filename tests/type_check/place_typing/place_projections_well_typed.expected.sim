@@ -76,7 +76,7 @@ fn<'s0: 's1, 's1> deref_of_nested_ref(r: &mut 's0 &mut 's1 i64) {
     return
 }
 
-fn deref_through_field(p: Ptr) {
+fn<'s0> deref_through_field(p: Ptr<'s0>) {
   a: i64;
   entry:
     a = copy p.r.*;

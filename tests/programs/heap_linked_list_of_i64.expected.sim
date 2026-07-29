@@ -1,4 +1,4 @@
-extern fn malloc_node(size: i64, $return: &out 's0 *Node);
+extern fn<'s0> malloc_node(size: i64, $return: &out 's0 *Node);
 
 extern fn free_node(p: *Node);
 

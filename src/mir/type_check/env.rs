@@ -568,7 +568,14 @@ impl Env {
             return None;
         };
         let f_ty = &s.fields.iter().find(|f| f.name == field)?.ty;
-        Some(s.meta.substitute_types(f_ty, args))
+        // Arity mismatch on the instance is already reported by
+        // validate_type; fall back to the raw field type so callers
+        // don't misinterpret arity errors as "no such field".
+        Some(
+            s.meta
+                .try_substitute_types(f_ty, args)
+                .unwrap_or_else(|| f_ty.clone()),
+        )
     }
 
     pub fn types_match(&self, t1: &Type, t2: &Type) -> bool {
@@ -638,17 +645,23 @@ impl Env {
                     }
                 };
                 match self.types.get(name) {
-                    Some(TypeDecl::Struct(s)) => s
-                        .fields
-                        .iter()
-                        .find(|f| f.name == *field_name)
-                        .map(|f| s.meta.substitute_types(&f.ty, args))
-                        .ok_or_else(|| {
-                            err(TypeResolutionErrorKind::NoSuchField {
-                                type_name: name.clone(),
-                                field: field_name.clone(),
-                            })
-                        }),
+                    Some(TypeDecl::Struct(s)) => {
+                        let f = s.fields.iter().find(|f| f.name == *field_name).ok_or_else(
+                            || {
+                                err(TypeResolutionErrorKind::NoSuchField {
+                                    type_name: name.clone(),
+                                    field: field_name.clone(),
+                                })
+                            },
+                        )?;
+                        // Arity mismatch on the instance is already reported by
+                        // validate_type; fall back to the raw field type so
+                        // downstream typecheck doesn't misdiagnose (e.g. as
+                        // "no such field") on a valid projection.
+                        Ok(s.meta
+                            .try_substitute_types(&f.ty, args)
+                            .unwrap_or_else(|| f.ty.clone()))
+                    }
                     Some(TypeDecl::Enum(_)) => Err(err(TypeResolutionErrorKind::FieldOfEnum {
                         field: field_name.clone(),
                         enum_name: name.clone(),
@@ -663,17 +676,19 @@ impl Env {
                     _ => return Err(err(TypeResolutionErrorKind::DowncastOfNonEnum(inner_ty))),
                 };
                 match self.types.get(name) {
-                    Some(TypeDecl::Enum(e)) => e
-                        .variants
-                        .iter()
-                        .find(|v| v.name == *variant_name)
-                        .map(|v| e.meta.substitute_types(&v.ty, args))
-                        .ok_or_else(|| {
-                            err(TypeResolutionErrorKind::NoSuchVariant {
-                                enum_name: name.clone(),
-                                variant: variant_name.clone(),
-                            })
-                        }),
+                    Some(TypeDecl::Enum(e)) => {
+                        let v = e.variants.iter().find(|v| v.name == *variant_name).ok_or_else(
+                            || {
+                                err(TypeResolutionErrorKind::NoSuchVariant {
+                                    enum_name: name.clone(),
+                                    variant: variant_name.clone(),
+                                })
+                            },
+                        )?;
+                        Ok(e.meta
+                            .try_substitute_types(&v.ty, args)
+                            .unwrap_or_else(|| v.ty.clone()))
+                    }
                     Some(TypeDecl::Struct(_)) => {
                         Err(err(TypeResolutionErrorKind::DowncastOfStruct(name.clone())))
                     }
@@ -758,7 +773,12 @@ impl Env {
         let param_tys = impl_method
             .params
             .iter()
-            .map(|p| impl_method.meta.substitute_types(&p.ty, &method.type_args))
+            .map(|p| {
+                impl_method
+                    .meta
+                    .try_substitute_types(&p.ty, &method.type_args)
+                    .unwrap_or_else(|| p.ty.clone())
+            })
             .collect();
         Ok(fn_ty(param_tys))
     }
@@ -791,7 +811,11 @@ impl Env {
                     let param_tys = f
                         .params
                         .iter()
-                        .map(|p| f.meta.substitute_types(&p.ty, type_args))
+                        .map(|p| {
+                            f.meta
+                                .try_substitute_types(&p.ty, type_args)
+                                .unwrap_or_else(|| p.ty.clone())
+                        })
                         .collect();
                     Ok(fn_ty(param_tys))
                 }

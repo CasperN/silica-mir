@@ -372,14 +372,18 @@ fn collect_named_regions(
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
-                        let sub = s.meta.substitute(&f.ty, lifetime_args, type_args);
-                        collect_named_regions(&sub, env, visited, out);
+                        if let Some(sub) = s.meta.try_substitute(&f.ty, lifetime_args, type_args)
+                        {
+                            collect_named_regions(&sub, env, visited, out);
+                        }
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
                     for v in &e.variants {
-                        let sub = e.meta.substitute(&v.ty, lifetime_args, type_args);
-                        collect_named_regions(&sub, env, visited, out);
+                        if let Some(sub) = e.meta.try_substitute(&v.ty, lifetime_args, type_args)
+                        {
+                            collect_named_regions(&sub, env, visited, out);
+                        }
                     }
                 }
                 // `None`: type not registered — a type-check error is

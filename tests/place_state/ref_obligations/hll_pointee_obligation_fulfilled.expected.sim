@@ -124,7 +124,7 @@ fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
     return
 }
 
-extern fn write_into(r: &out 's0 Box, v: i64);
+extern fn<'s0> write_into(r: &out 's0 Box, v: i64);
 
 extern fn consume(b: Box);
 

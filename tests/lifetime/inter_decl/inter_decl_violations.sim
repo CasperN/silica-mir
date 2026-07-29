@@ -108,3 +108,4 @@ fn<'a, 'b> multi_lifetime_local_leak(x: &'a i64, y: &'b i64, $return: &out &'a i
     $return.* = &local;
     return
 }
+

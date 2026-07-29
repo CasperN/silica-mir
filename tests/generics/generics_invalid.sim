@@ -15,6 +15,8 @@
 #   ClaimsCopyEnum         COMP     T (no bounds) in Copy enum variant  COMP-CopyMarkerNotSatisfied
 #   WrongArity1            TC       Box<i32, bool>: 2 args, expects 1   TC-InvalidDeclaredType
 #   WrongArity2            TC       Box (bare): 0 args, expects 1       TC-InvalidDeclaredType
+#   WrongLifetimeArity     TC       Both<'a>: 1 lifetime arg, expects 2 TC-InvalidDeclaredType
+#   arity_error_no_panic   TC       fn using wrong-arity Custom + body  TC-InvalidDeclaredType (elaboration doesn't panic)
 #   UsesBadBox             TC       Box<Linear>: Linear not Copy+Drop   TC-InvalidDeclaredType
 #   take (fn param)        TC       Box<Linear> in fn signature         TC-InvalidDeclaredType
 #   option_of_out          TC       Option<&out U>: &out not Copy+Drop  TC-InvalidDeclaredType
@@ -93,6 +95,27 @@ struct<T: Copy> BoxBad_CopyClaimsMove: Move { inner: T }
 # Type-argument arity: Box takes exactly one param.
 struct WrongArity1 { field: Box<i32, bool> }
 struct WrongArity2 { field: Box }
+
+# Lifetime-argument arity: Both takes exactly two lifetime params.
+# `Both<'a>` supplies one — TC-InvalidDeclaredType fires with the
+# expected count. Guards against a regression where elision would
+# silently pad the missing arg, or downstream `substitute` would panic
+# on the mismatched Instance.
+struct<'a, 'b> Both: Move { l: &'a i64, r: &'b i64 }
+struct<'a> WrongLifetimeArity { field: Both<'a> }
+
+# Wrong-arity Custom used past typecheck exercises the elaboration
+# walkers' fallible substitute path. The primary TC-InvalidDeclaredType
+# fires; elaboration reports whatever additional diagnostics it can
+# extract from the partially-typed program without panicking. Guards
+# against a regression that would either silently mask the arity error
+# via decl-lifetime leak, or crash the pipeline on the invalid Instance.
+fn<'a> arity_error_no_panic(x: Both<'a>) {
+  y: i64;
+  entry:
+    y = copy x.l.*;
+    return
+}
 
 # Linear is not Copy+Drop, so Box<Linear> fails the T: Copy+Drop bound.
 struct UsesBadBox { field: Box<Linear> }

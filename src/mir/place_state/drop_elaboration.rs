@@ -517,7 +517,10 @@ fn walk_diverged(
                                 else {
                                     continue;
                                 };
-                                let field_ty = s.meta.substitute_types(&f.ty, args);
+                                let Some(field_ty) = s.meta.try_substitute_types(&f.ty, args)
+                                else {
+                                    continue;
+                                };
                                 let sub_place = field_place(place.clone(), f.name.clone());
                                 walk_diverged(env, sub_place, &field_ty, field_state, out);
                             }
@@ -529,7 +532,10 @@ fn walk_diverged(
                                 else {
                                     continue;
                                 };
-                                let variant_ty = e.meta.substitute_types(&v.ty, args);
+                                let Some(variant_ty) = e.meta.try_substitute_types(&v.ty, args)
+                                else {
+                                    continue;
+                                };
                                 let sub_place = downcast_place(place.clone(), v.name.clone());
                                 walk_diverged(env, sub_place, &variant_ty, variant_state, out);
                             }
@@ -698,11 +704,18 @@ fn plan_drops_for_place(
                     // type — otherwise a `Bag<DropVal>.b` recurses with the raw
                     // `Param(T)`, which `class_of` resolves to empty markers
                     // under an empty scope and misses the drop.
-                    let field_decls: Vec<_> = s
+                    let field_decls: Option<Vec<_>> = s
                         .fields
                         .iter()
-                        .map(|f| (f.name.clone(), s.meta.substitute_types(&f.ty, args)))
+                        .map(|f| {
+                            s.meta
+                                .try_substitute_types(&f.ty, args)
+                                .map(|ty| (f.name.clone(), ty))
+                        })
                         .collect();
+                    let Some(field_decls) = field_decls else {
+                        return;
+                    };
                     for (name, field_ty) in field_decls.iter().rev() {
                         let Some(field_state) = fields.get(&InitSlot::Field(name.clone())) else {
                             continue;

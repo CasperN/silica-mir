@@ -2,7 +2,7 @@ struct Buffer: Copy + Drop {
   values: [i32; 3]
 }
 
-extern fn set_i64(slot: &out 's0 i64, value: i64);
+extern fn<'s0> set_i64(slot: &out 's0 i64, value: i64);
 
 fn<'s0> literal_and_constant_read($return: &out 's0 i64) {
   a: [i64; 3];

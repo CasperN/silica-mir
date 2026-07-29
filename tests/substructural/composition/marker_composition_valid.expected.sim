@@ -44,7 +44,7 @@ struct CopyNested: Copy {
 
 enum<'s0> RecursiveList: Copy + Drop {
   Nil: unit
-  Cons: & 's0 RecursiveList
+  Cons: & 's0 RecursiveList<'s0>
 }
 
 enum CopyDropScalarVariants: Copy + Drop {

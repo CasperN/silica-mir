@@ -20,12 +20,13 @@ impl DeclMeta {
     /// `ty` with the args at a use site. Convenience wrapper around
     /// [`substitute_all`] so callers don't have to spell the four
     /// slices in the right order every time.
+    ///
+    /// Panics on arity mismatch — callers post-typecheck should already
+    /// have validated the use-site's arity. Elaboration walks that see
+    /// parser output (which may contain arity errors reported by
+    /// typecheck) should use [`DeclMeta::try_substitute`] instead.
     pub fn substitute(&self, ty: &Type, lifetime_args: &[Lifetime], type_args: &[Type]) -> Type {
-        let lifetime_params: Vec<_> = self
-            .lifetime_params
-            .iter()
-            .map(|param| param.lifetime.clone())
-            .collect();
+        let lifetime_params = self.lifetime_names();
         substitute_all(
             ty,
             &lifetime_params,
@@ -41,6 +42,42 @@ impl DeclMeta {
     pub fn substitute_types(&self, ty: &Type, type_args: &[Type]) -> Type {
         substitute_params(ty, &self.type_params, type_args)
     }
+
+    /// Fallible substitution for callers that walk parser-produced use
+    /// sites. Returns `None` when the use-site arity doesn't match the
+    /// decl's — typecheck reported the mismatch; recursion through this
+    /// slot has no meaningful continuation, so the walker skips it.
+    /// Callers that panic on mismatch use [`DeclMeta::substitute`].
+    pub fn try_substitute(
+        &self,
+        ty: &Type,
+        lifetime_args: &[Lifetime],
+        type_args: &[Type],
+    ) -> Option<Type> {
+        if lifetime_args.len() != self.lifetime_params.len()
+            || type_args.len() != self.type_params.len()
+        {
+            return None;
+        }
+        Some(self.substitute(ty, lifetime_args, type_args))
+    }
+
+    /// Fallible type-only substitution — pair to [`DeclMeta::substitute_types`]
+    /// for walkers over parser data. Returns `None` on type-arg arity
+    /// mismatch.
+    pub fn try_substitute_types(&self, ty: &Type, type_args: &[Type]) -> Option<Type> {
+        if type_args.len() != self.type_params.len() {
+            return None;
+        }
+        Some(self.substitute_types(ty, type_args))
+    }
+
+    fn lifetime_names(&self) -> Vec<Lifetime> {
+        self.lifetime_params
+            .iter()
+            .map(|param| param.lifetime.clone())
+            .collect()
+    }
 }
 
 /// Substitute type-parameter references in `ty` with the concrete
@@ -48,12 +85,26 @@ impl DeclMeta {
 /// the args on `Custom(name, args)`, replaces every `TypeKind::Param(T)`
 /// in `ty` with the corresponding arg.
 ///
-/// If args and type_params disagree in length, returns `ty` unchanged
-/// — callers that need arity validation should check first.
+/// Arity is a caller precondition — callers must validate before
+/// invoking (e.g. via `Env::validate_type` or the trait/impl arity
+/// checks in type_check). A mismatch here would silently leak the
+/// declaration's own lifetime/type params into the use-site scope,
+/// so we panic to surface the bug at the call boundary rather than
+/// after downstream analyses have consumed a nonsensical type.
+///
+/// TODO: replace the two-slice signature with a `Substitution` struct
+/// holding `Vec<(TypeParam, Type)>` (and its lifetime counterpart) so
+/// callers can't construct mismatched pairs. Validation moves to the
+/// constructor, substitute becomes total.
 pub fn substitute_params(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
-    if args.len() != type_params.len() {
-        return ty.clone();
-    }
+    assert_eq!(
+        args.len(),
+        type_params.len(),
+        "substitute_params arity mismatch on type {:?}: {} params, {} args",
+        ty,
+        type_params.len(),
+        args.len(),
+    );
     substitute(ty, &[], &[], type_params, args)
 }
 
@@ -67,9 +118,22 @@ pub fn substitute_all(
     type_params: &[TypeParam],
     type_args: &[Type],
 ) -> Type {
-    if lifetime_args.len() != lifetime_params.len() || type_args.len() != type_params.len() {
-        return ty.clone();
-    }
+    assert_eq!(
+        lifetime_args.len(),
+        lifetime_params.len(),
+        "substitute_all lifetime arity mismatch on type {:?}: {} params, {} args",
+        ty,
+        lifetime_params.len(),
+        lifetime_args.len(),
+    );
+    assert_eq!(
+        type_args.len(),
+        type_params.len(),
+        "substitute_all type arity mismatch on type {:?}: {} params, {} args",
+        ty,
+        type_params.len(),
+        type_args.len(),
+    );
     substitute(ty, lifetime_params, lifetime_args, type_params, type_args)
 }
 
@@ -259,26 +323,20 @@ pub fn place_type(
                     return None;
                 };
                 let field = s.fields.iter().find(|fd| fd.name == f)?;
-                let decl_lts: Vec<Lifetime> = s
-                    .meta
-                    .lifetime_params
-                    .iter()
-                    .map(|param| param.lifetime.clone())
-                    .collect();
-                substitute_all(&field.ty, &decl_lts, &lts, &s.meta.type_params, &args)
+                // Arity mismatch is already reported; fall back to the
+                // raw type so downstream sees the projection shape.
+                s.meta
+                    .try_substitute(&field.ty, &lts, &args)
+                    .unwrap_or_else(|| field.ty.clone())
             }
             (PathStep::Downcast(v), TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args })) => {
                 let TypeDecl::Enum(e) = env.types.get(&name)? else {
                     return None;
                 };
                 let variant = e.variants.iter().find(|vd| vd.name == v)?;
-                let decl_lts: Vec<Lifetime> = e
-                    .meta
-                    .lifetime_params
-                    .iter()
-                    .map(|param| param.lifetime.clone())
-                    .collect();
-                substitute_all(&variant.ty, &decl_lts, &lts, &e.meta.type_params, &args)
+                e.meta
+                    .try_substitute(&variant.ty, &lts, &args)
+                    .unwrap_or_else(|| variant.ty.clone())
             }
             (PathStep::Deref, TypeKind::Ref(_, _, inner)) => *inner,
             (PathStep::Deref, TypeKind::RawPtr(inner)) => *inner,

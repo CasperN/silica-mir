@@ -1,4 +1,4 @@
-extern fn malloc_bytes(size: u64, $return: &out 's0 *u8);
+extern fn<'s0> malloc_bytes(size: u64, $return: &out 's0 *u8);
 
 extern fn free_bytes(p: *u8);
 
