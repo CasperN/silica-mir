@@ -1,7 +1,0 @@
-error: at 20:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' for target type Foo
-    |
- 19 | 
- 20 | impl Iter<i64> for Foo {
-    |      ^^^^
- 21 |   fn next(recv: &mut Foo, $return: &out i64) {
-    |

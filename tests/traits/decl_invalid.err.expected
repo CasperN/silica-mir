@@ -1,0 +1,119 @@
+error: at 35:7: [TC-DuplicateDeclaration] Duplicate declaration of type 'Duplicated'
+    |
+ 34 | 
+ 35 | trait Duplicated {
+    |       ^^^^^^^^^^
+ 36 |   fn ping(recv: & Self);
+    |
+error: at 159:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' for target type DupTarget
+     |
+ 158 | 
+ 159 | impl Iter<i64> for DupTarget {
+     |      ^^^^
+ 160 |   fn next(recv: &mut DupTarget, $return: &out i64) {
+     |
+error: at 180:6: [TC-InvalidDeclaredType] In struct 'HoldsSelf', field 's': Use of undeclared type 'Self'
+     |
+ 179 | struct HoldsSelf {
+ 180 |   s: Self
+     |      ^^^^
+ 181 | }
+     |
+error: at 174:17: [TC-InvalidDeclaredType] In function 'take_self', parameter 'x': Use of undeclared type 'Self'
+     |
+ 173 | 
+ 174 | fn take_self(x: & Self) {
+     |                 ^^^^^^
+ 175 |   entry:
+     |
+error: at 40:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next' param 'out': Use of undeclared type 'Missing'
+    |
+ 39 | trait IterMissingT {
+ 40 |   fn next(recv: &mut Self, out: & Missing);
+    |                                 ^^^^^^^^^
+ 41 | }
+    |
+error: at 57:6: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
+    |
+ 56 | # Unknown trait name.
+ 57 | impl Unknown for Foo {
+    |      ^^^^^^^
+ 58 |   fn zap(recv: & Foo) {
+    |
+error: at 65:6: [TC-ImplTraitArgArity] Trait 'Iter' expects 1 type argument(s), got 0
+    |
+ 64 | # Wrong number of trait type args (Iter takes 1, got 0).
+ 65 | impl Iter for Foo {
+    |      ^^^^
+ 66 |   fn next(recv: &mut Foo, $return: &out i64) {
+    |
+error: at 80:6: [TC-ImplMethodNotInTrait] Impl of 'Trait' has method 'extra' not declared on the trait
+    |
+ 79 |   }
+ 80 |   fn extra(recv: & Foo) {
+    |      ^^^^^
+ 81 |     entry:
+    |
+error: at 75:6: [TC-ImplMissingTraitMethod] Impl of 'Trait' is missing method 'b'
+    |
+ 74 | # `a` and `extra`).
+ 75 | impl Trait for Foo {
+    |      ^^^^^
+ 76 |   fn a(recv: & Foo) {
+    |
+error: at 94:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut 's0 Foo, trait declares & 's0 Foo (after Self := Foo)
+    |
+ 93 | impl TraitS for Foo {
+ 94 |   fn touch(recv: &mut Foo) {
+    |                  ^^^^^^^^
+ 95 |     entry:
+    |
+error: at 111:7: [TC-AssignmentTypeMismatch] In function 'go', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+     |
+ 110 |     entry:
+ 111 |       flag = 0i64;
+     |       ^^^^^^^^^^^
+ 112 |       return
+     |
+error: at 123:6: [TC-ImplMethodSignatureMismatch] Impl method 'pick' declares 0 type parameter(s), trait declares 1
+     |
+ 122 | impl MgTrait for Foo {
+ 123 |   fn pick(recv: & Foo, $return: &out i64) {
+     |      ^^^^
+ 124 |     entry:
+     |
+error: at 136:6: [TC-ImplTraitArgArity] Trait 'LtTrait' expects 1 lifetime argument(s), got 0
+     |
+ 135 | 
+ 136 | impl LtTrait for Foo {
+     |      ^^^^^^^
+ 137 |   fn peek(recv: & Foo) {
+     |
+error: at 196:20: [TC-InvalidDeclaredType] In impl of 'SomeTrait', target type: Use of undeclared type 'Self'
+     |
+ 195 | # root cause.
+ 196 | impl SomeTrait for Self {
+     |                    ^^^^
+ 197 |   fn touch(recv: & Foo) {
+     |
+error: at 197:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type & 's0 Foo, trait declares & 's0 Self (after Self := Self)
+     |
+ 196 | impl SomeTrait for Self {
+ 197 |   fn touch(recv: & Foo) {
+     |                  ^^^^^
+ 198 |     entry:
+     |
+error: at 206:23: [TC-InvalidDeclaredType] In impl of 'SomeGenericTrait', trait type argument: Use of undeclared type 'Self'
+     |
+ 205 | # `Self` as an undeclared type in the trait-arg validator.
+ 206 | impl SomeGenericTrait<Self> for Foo {
+     |                       ^^^^
+ 207 |   fn touch(recv: & Foo, arg: & Foo) {
+     |
+error: at 207:30: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 2 has type & 's1 Foo, trait declares & 's1 Self (after Self := Foo)
+     |
+ 206 | impl SomeGenericTrait<Self> for Foo {
+ 207 |   fn touch(recv: & Foo, arg: & Foo) {
+     |                              ^^^^^
+ 208 |     entry:
+     |

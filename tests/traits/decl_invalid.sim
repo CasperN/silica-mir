@@ -1,0 +1,211 @@
+# Trait- and impl-declaration well-formedness errors that fire from
+# the type checker or env-build (coherence). Parser-time errors
+# (body-less/extern method, duplicate method names, `Self` as a
+# type-parameter name) live in the sibling `*_rejected.sim` fixtures.
+#
+#   context                          error
+#   struct + trait share a name      DuplicateDeclaration
+#   trait method sig refs Missing    InvalidDeclaredType (unknown type)
+#
+#   impl Unknown for Foo             ImplForUnknownTrait
+#   impl Iter for Foo                ImplTraitArgArity (0 vs 1 type arg)
+#   impl Trait for Foo (extra fn)    ImplMethodNotInTrait
+#   impl Trait for Foo (missing fn)  ImplMissingTraitMethod
+#   impl TraitS for Foo (bad sig)    ImplMethodSignatureMismatch
+#   impl BadBody for Foo             AssignmentTypeMismatch (body typecheck)
+#   impl MgTrait for Foo             ImplMethodSignatureMismatch (dropped generic)
+#   impl LtTrait for Foo             ImplTraitArgArity (0 vs 1 lifetime arg)
+#
+#   two impls of Iter<i64> for       DuplicateDeclaration (coherence)
+#     DupTarget
+#
+#   free fn param `& Self`           InvalidDeclaredType outside impl scope
+#   struct field `Self`              InvalidDeclaredType outside impl scope
+#   impl target `Self`               InvalidDeclaredType (target parsed
+#                                    before Self enters scope)
+#   impl trait-arg `Self`            InvalidDeclaredType (trait args parsed
+#                                    before Self enters scope)
+
+# --- Trait declaration errors ------------------------------------------
+
+struct Duplicated {
+  x: i64
+}
+
+trait Duplicated {
+  fn ping(recv: & Self);
+}
+
+trait IterMissingT {
+  fn next(recv: &mut Self, out: & Missing);
+}
+
+# --- Impl declaration errors -------------------------------------------
+
+struct Foo: Copy + Drop { x: i64 }
+
+trait Trait {
+  fn a(recv: & Self);
+  fn b(recv: & Self);
+}
+
+trait<T: Copy + Drop> Iter {
+  fn next(recv: &mut Self, $return: &out T);
+}
+
+# Unknown trait name.
+impl Unknown for Foo {
+  fn zap(recv: & Foo) {
+    entry:
+      return
+  }
+}
+
+# Wrong number of trait type args (Iter takes 1, got 0).
+impl Iter for Foo {
+  fn next(recv: &mut Foo, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+# Extra method + missing method (Trait wants `a` and `b`; impl gives
+# `a` and `extra`).
+impl Trait for Foo {
+  fn a(recv: & Foo) {
+    entry:
+      return
+  }
+  fn extra(recv: & Foo) {
+    entry:
+      return
+  }
+}
+
+# Signature mismatch: trait says `recv: & Self` (shared ref), impl says
+# `recv: &mut Foo` (mut ref). After Self := Foo the expected shape is
+# `& Foo`, not `&mut Foo`.
+trait TraitS {
+  fn touch(recv: & Self);
+}
+
+impl TraitS for Foo {
+  fn touch(recv: &mut Foo) {
+    entry:
+      return
+  }
+}
+
+# Method body has a type error: assigning i64 to a bool local. The
+# type checker sees this because `typecheck_impl` runs each method
+# through `typecheck_function` with an effective scope.
+trait BadBody {
+  fn go(recv: & Self);
+}
+
+impl BadBody for Foo {
+  fn go(recv: & Foo) {
+    flag: bool;
+    entry:
+      flag = 0i64;
+      return
+  }
+}
+
+# Method-generic mismatch: the trait's method takes a `<U>` parameter;
+# the impl drops the method generic and specializes to i64.
+trait MgTrait {
+  fn<U> pick(recv: & Self, $return: &out U);
+}
+
+impl MgTrait for Foo {
+  fn pick(recv: & Foo, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+# Trait has a lifetime parameter but the impl omits the lifetime arg.
+# Impls skip elision, so an exact-arity match is required.
+trait<'a> LtTrait {
+  fn peek(recv: & Self);
+}
+
+impl LtTrait for Foo {
+  fn peek(recv: & Foo) {
+    entry:
+      return
+  }
+}
+
+# --- Coherence: duplicate impl ------------------------------------------
+
+# Two impls of the same trait for the same target type are rejected
+# at env-build time. Impl-table keying is structural
+# `(trait_path, target)` equality; two `impl Iter<i64> for DupTarget`
+# blocks collide even if their bodies differ.
+struct DupTarget: Copy + Drop { x: i64 }
+
+impl Iter<i64> for DupTarget {
+  fn next(recv: &mut DupTarget, $return: &out i64) {
+    entry:
+      $return.* = 0;
+      return
+  }
+}
+
+impl Iter<i64> for DupTarget {
+  fn next(recv: &mut DupTarget, $return: &out i64) {
+    entry:
+      $return.* = 7;
+      return
+  }
+}
+
+# --- Self alias out of scope --------------------------------------------
+
+# `Self` is a scoped alias bound only inside trait and impl blocks.
+# Outside those scopes — and, inside an impl block, at the target and
+# trait-ref-arg positions parsed before `Self` enters scope — it
+# resolves as an ordinary identifier and the type validator rejects it.
+
+fn take_self(x: & Self) {
+  entry:
+    return
+}
+
+struct HoldsSelf {
+  s: Self
+}
+
+trait SomeTrait {
+  fn touch(recv: & Self);
+}
+
+trait<T: Copy + Drop> SomeGenericTrait {
+  fn touch(recv: & Self, arg: & T);
+}
+
+# `Self` in target position: at parse time the target is read before
+# `Self` is inserted into the impl scope, so `Self` resolves as an
+# unknown custom type. The target-validation error fires; the trailing
+# `SignatureMismatch` on `touch` is a recovery cascade from the same
+# root cause.
+impl SomeTrait for Self {
+  fn touch(recv: & Foo) {
+    entry:
+      return
+  }
+}
+
+# `Self` in trait-ref type-arg position: same parse order — trait args
+# are read before `Self` enters scope, so `typecheck_impl` catches
+# `Self` as an undeclared type in the trait-arg validator.
+impl SomeGenericTrait<Self> for Foo {
+  fn touch(recv: & Foo, arg: & Foo) {
+    entry:
+      return
+  }
+}
