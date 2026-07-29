@@ -1,0 +1,63 @@
+# Parse-time rejections in trait/impl declarations. Each cell isolates
+# one malformed source shape and pins the exact PARSE-* diagnostic.
+# Trait- and impl-body well-formedness rejections accumulate rather
+# than short-circuit, so distinct cells co-exist here without needing
+# separate fixture files.
+#
+#   trait or impl                error
+#   trait ExternTraitM           trait method cannot be extern
+#   trait BodyTraitM             trait method must not have a body
+#   trait DupTraitM              two trait methods share a name
+#   impl ExternM for S           impl method cannot be extern
+#   impl BodylessM for S         impl method requires a body
+#   impl DupM for S              two impl methods share a name
+#   impl<Self> ReservedT for R   `Self` cannot be a type-parameter name
+
+struct S { x: i64 }
+struct R: Copy + Drop { x: i64 }
+
+trait ExternTraitM {
+  extern fn m(recv: & Self);
+}
+
+trait BodyTraitM {
+  fn m(recv: & Self) {
+    entry:
+      return
+  }
+}
+
+trait DupTraitM {
+  fn m(recv: & Self);
+  fn m(recv: &mut Self);
+}
+
+trait ExternM { fn m(recv: & Self); }
+impl ExternM for S {
+  extern fn m(recv: & S);
+}
+
+trait BodylessM { fn m(recv: & Self); }
+impl BodylessM for S {
+  fn m(recv: & S);
+}
+
+trait DupM { fn m(recv: & Self); }
+impl DupM for S {
+  fn m(recv: & S) {
+    entry:
+      return
+  }
+  fn m(recv: & S) {
+    entry:
+      return
+  }
+}
+
+trait ReservedT { fn m(recv: & Self); }
+impl<Self> ReservedT for R {
+  fn m(recv: & R) {
+    entry:
+      return
+  }
+}

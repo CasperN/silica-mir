@@ -1,7 +1,0 @@
-error: at 7:3: [PARSE-MalformedCst] duplicate trait method 'm'
-   |
- 6 |   fn m(recv: & Self);
- 7 |   fn m(recv: &mut Self);
-   |   ^^^^^^^^^^^^^^^^^^^^^^
- 8 | }
-   |

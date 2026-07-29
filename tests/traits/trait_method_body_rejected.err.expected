@@ -1,7 +1,0 @@
-error: at 7:3: [PARSE-MalformedCst] trait method 'm' must not have a body
-   |
- 6 | trait Foo {
- 7 |   fn m(recv: & Self) {
-   |   ^
- 8 |     entry:
-   |

@@ -1,0 +1,49 @@
+error: at 20:3: [PARSE-MalformedCst] trait method 'm' cannot be extern
+    |
+ 19 | trait ExternTraitM {
+ 20 |   extern fn m(recv: & Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 21 | }
+    |
+error: at 24:3: [PARSE-MalformedCst] trait method 'm' must not have a body
+    |
+ 23 | trait BodyTraitM {
+ 24 |   fn m(recv: & Self) {
+    |   ^
+ 25 |     entry:
+    |
+error: at 32:3: [PARSE-MalformedCst] duplicate trait method 'm'
+    |
+ 31 |   fn m(recv: & Self);
+ 32 |   fn m(recv: &mut Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^
+ 33 | }
+    |
+error: at 37:3: [PARSE-MalformedCst] impl method 'm' cannot be extern
+    |
+ 36 | impl ExternM for S {
+ 37 |   extern fn m(recv: & S);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^
+ 38 | }
+    |
+error: at 42:3: [PARSE-MalformedCst] impl method 'm' requires a body
+    |
+ 41 | impl BodylessM for S {
+ 42 |   fn m(recv: & S);
+    |   ^^^^^^^^^^^^^^^^
+ 43 | }
+    |
+error: at 51:3: [PARSE-MalformedCst] duplicate impl method 'm'
+    |
+ 50 |   }
+ 51 |   fn m(recv: & S) {
+    |   ^
+ 52 |     entry:
+    |
+error: at 58:6: [PARSE-ReservedTypeParamName] 'Self' is reserved and cannot be used as a type-parameter name
+    |
+ 57 | trait ReservedT { fn m(recv: & Self); }
+ 58 | impl<Self> ReservedT for R {
+    |      ^^^^
+ 59 |   fn m(recv: & R) {
+    |

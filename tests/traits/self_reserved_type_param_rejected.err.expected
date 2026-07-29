@@ -1,7 +1,0 @@
-error: at 13:6: [PARSE-ReservedTypeParamName] 'Self' is reserved and cannot be used as a type-parameter name
-    |
- 12 | 
- 13 | impl<Self> T for Foo {
-    |      ^^^^
- 14 |   fn m(recv: & Foo) {
-    |

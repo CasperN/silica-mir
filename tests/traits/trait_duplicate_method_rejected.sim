@@ -1,8 +1,0 @@
-# Two trait methods with the same name are rejected at parse time.
-# Parse errors short-circuit; see sibling fixtures for the other
-# trait-method parse rejections.
-
-trait Foo {
-  fn m(recv: & Self);
-  fn m(recv: &mut Self);
-}

@@ -347,13 +347,8 @@ impl Parser {
             return None;
         }
 
-        match self.map_program(root, d) {
-            Ok(program) => Some(program),
-            Err(err) => {
-                d.push_error(err);
-                None
-            }
-        }
+        let program = self.map_program(root, d);
+        if d.has_errors() { None } else { Some(program) }
     }
 
     fn get_text(&self, node: Node) -> &str {
@@ -439,18 +434,22 @@ impl Parser {
         }
     }
 
-    fn map_program(&self, node: Node, d: &mut Diagnostics) -> Result<Program, Diagnostic> {
+    fn map_program(&self, node: Node, d: &mut Diagnostics) -> Program {
         let mut declarations = Vec::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            if child.kind() == "declaration" {
-                declarations.push(self.map_declaration(child, d)?);
+            if child.kind() != "declaration" {
+                continue;
+            }
+            match self.map_declaration(child, d) {
+                Ok(decl) => declarations.push(decl),
+                Err(err) => d.push_error(err),
             }
         }
-        Ok(Program {
+        Program {
             declarations,
             source: self.source.clone(),
-        })
+        }
     }
 
     fn map_declaration(
@@ -464,9 +463,9 @@ impl Parser {
         match child.kind() {
             "struct_decl" => Ok(Declaration::Struct(self.map_struct_decl(child, d)?)),
             "enum_decl" => Ok(Declaration::Enum(self.map_enum_decl(child, d)?)),
-            "function_decl" => Ok(Declaration::Fn(self.map_function_decl(child)?)),
-            "trait_decl" => Ok(Declaration::Trait(self.map_trait_decl(child)?)),
-            "impl_decl" => Ok(Declaration::Impl(self.map_impl_decl(child)?)),
+            "function_decl" => Ok(Declaration::Fn(self.map_function_decl(child, d)?)),
+            "trait_decl" => Ok(Declaration::Trait(self.map_trait_decl(child, d)?)),
+            "impl_decl" => Ok(Declaration::Impl(self.map_impl_decl(child, d)?)),
             _ => Err(self.diag(
                 child,
                 ParserCode::MalformedCst,
@@ -1096,6 +1095,7 @@ impl Parser {
     fn map_type_params(
         &self,
         node: Node,
+        d: &mut Diagnostics,
     ) -> Result<(Vec<LifetimeParam>, Vec<TypeParam>, Vec<OutlivesBound>), Diagnostic> {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
@@ -1144,18 +1144,20 @@ impl Parser {
                     // `<Self>` param would silently overshadow that
                     // alias in the impl scope, so reject at parse time.
                     if pname == "Self" {
-                        return Err(self.diag(
+                        d.push_error(self.diag(
                             name_node,
                             ParserCode::ReservedTypeParamName,
                             "'Self' is reserved and cannot be used as a type-parameter name",
                         ));
+                        continue;
                     }
                     if self.type_scope.borrow().contains(&pname) {
-                        return Err(self.diag(
+                        d.push_error(self.diag(
                             name_node,
                             ParserCode::MalformedCst,
                             format!("Duplicate type parameter '{}'", pname),
                         ));
+                        continue;
                     }
                     let markers = if let Some(m) = child
                         .children(&mut child.walk())
@@ -1236,7 +1238,7 @@ impl Parser {
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
-            self.map_type_params(tp_node)?
+            self.map_type_params(tp_node, d)?
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
@@ -1302,7 +1304,7 @@ impl Parser {
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
-            self.map_type_params(tp_node)?
+            self.map_type_params(tp_node, d)?
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
@@ -1356,7 +1358,7 @@ impl Parser {
         })
     }
 
-    fn map_trait_decl(&self, node: Node) -> Result<TraitDecl, Diagnostic> {
+    fn map_trait_decl(&self, node: Node, d: &mut Diagnostics) -> Result<TraitDecl, Diagnostic> {
         let name_node = node
             .child_by_field_name("name")
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "trait decl missing name"))?;
@@ -1368,7 +1370,7 @@ impl Parser {
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
-            self.map_type_params(tp_node)?
+            self.map_type_params(tp_node, d)?
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
@@ -1392,27 +1394,30 @@ impl Parser {
                 continue;
             }
             *self.type_scope.borrow_mut() = trait_scope.clone();
-            let f = self.map_function_decl(child)?;
+            let f = self.map_function_decl(child, d)?;
             if f.is_extern {
-                return Err(self.diag(
+                d.push_error(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("trait method '{}' cannot be extern", f.meta.name),
                 ));
+                continue;
             }
             if f.body.is_some() {
-                return Err(self.diag(
+                d.push_error(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("trait method '{}' must not have a body", f.meta.name),
                 ));
+                continue;
             }
             if !seen_names.insert(f.meta.name.clone()) {
-                return Err(self.diag(
+                d.push_error(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("duplicate trait method '{}'", f.meta.name),
                 ));
+                continue;
             }
             methods.push(FunctionSignature::from_function(&f));
         }
@@ -1431,7 +1436,7 @@ impl Parser {
         })
     }
 
-    fn map_impl_decl(&self, node: Node) -> Result<ImplBlock, Diagnostic> {
+    fn map_impl_decl(&self, node: Node, d: &mut Diagnostics) -> Result<ImplBlock, Diagnostic> {
         let trait_name_node = node.child_by_field_name("trait_name").ok_or_else(|| {
             self.diag(node, ParserCode::MalformedCst, "impl decl missing trait name")
         })?;
@@ -1447,7 +1452,7 @@ impl Parser {
             .children(&mut cursor)
             .find(|c| c.kind() == "type_params")
         {
-            self.map_type_params(tp_node)?
+            self.map_type_params(tp_node, d)?
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
@@ -1490,27 +1495,30 @@ impl Parser {
                 continue;
             }
             *self.type_scope.borrow_mut() = impl_scope.clone();
-            let f = self.map_function_decl(child)?;
+            let f = self.map_function_decl(child, d)?;
             if f.is_extern {
-                return Err(self.diag(
+                d.push_error(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("impl method '{}' cannot be extern", f.meta.name),
                 ));
+                continue;
             }
             if f.body.is_none() {
-                return Err(self.diag(
+                d.push_error(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("impl method '{}' requires a body", f.meta.name),
                 ));
+                continue;
             }
             if !seen_names.insert(f.meta.name.clone()) {
-                return Err(self.diag(
+                d.push_error(self.diag(
                     child,
                     ParserCode::MalformedCst,
                     format!("duplicate impl method '{}'", f.meta.name),
                 ));
+                continue;
             }
             methods.push(f);
         }
@@ -1535,7 +1543,7 @@ impl Parser {
         })
     }
 
-    fn map_function_decl(&self, node: Node) -> Result<Function, Diagnostic> {
+    fn map_function_decl(&self, node: Node, d: &mut Diagnostics) -> Result<Function, Diagnostic> {
         let name_node = node
             .child_by_field_name("name")
             .ok_or_else(|| self.diag(node, ParserCode::MalformedCst, "function missing name"))?;
@@ -1557,7 +1565,7 @@ impl Parser {
             .children(&mut tp_cursor)
             .find(|c| c.kind() == "type_params")
         {
-            self.map_type_params(tp_node)?
+            self.map_type_params(tp_node, d)?
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };

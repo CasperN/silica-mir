@@ -1,7 +1,0 @@
-error: at 6:3: [PARSE-MalformedCst] trait method 'm' cannot be extern
-   |
- 5 | trait Foo {
- 6 |   extern fn m(recv: & Self);
-   |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
- 7 | }
-   |
