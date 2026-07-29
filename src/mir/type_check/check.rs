@@ -328,7 +328,15 @@ impl Env {
         let header_lt_scope = lifetime_scope(&header.lifetime_params);
         let header_scope = header.param_scope();
 
-        // Validate target type under impl-header scope.
+        // Validate the inputs that feed the signature-conformance
+        // substitution: the impl's `target` and each `trait_path`
+        // type arg become `Self := target, T := arg` when comparing
+        // trait vs impl method signatures. Any error here would
+        // propagate through every method as a `SignatureMismatch`
+        // cascade, so we snapshot the diagnostics count and bail
+        // before conformance if anything landed.
+        let signature_inputs_start = d.error_count();
+
         if let Err(e) = self.validate_type(&imp.target, &header_scope) {
             d.push_error(validation_diagnostic(
                 e,
@@ -348,11 +356,6 @@ impl Env {
             ));
         }
 
-        // Validate trait-ref type args under impl-header scope. Without
-        // this, an out-of-scope name in the trait ref (e.g. `Self`
-        // outside the impl body's scope, or an undeclared struct name)
-        // slips through and only surfaces later as a substitution-derived
-        // `SignatureMismatch`.
         for arg in &imp.trait_path.type_args {
             if let Err(e) = self.validate_type(arg, &header_scope) {
                 d.push_error(validation_diagnostic(
@@ -416,6 +419,10 @@ impl Env {
                     imp.trait_path.lifetime_args.len(),
                 ),
             ));
+            return;
+        }
+
+        if d.error_count() != signature_inputs_start {
             return;
         }
 

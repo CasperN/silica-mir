@@ -1,49 +1,147 @@
-error: at 20:3: [PARSE-MalformedCst] trait method 'm' cannot be extern
+error: at 35:3: [PARSE-MalformedCst] trait method 'm' cannot be extern
     |
- 19 | trait ExternTraitM {
- 20 |   extern fn m(recv: & Self);
+ 34 | trait ExternTraitM {
+ 35 |   extern fn m(recv: & Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
- 21 | }
+ 36 | }
     |
-error: at 24:3: [PARSE-MalformedCst] trait method 'm' must not have a body
+error: at 39:3: [PARSE-MalformedCst] trait method 'm' must not have a body
     |
- 23 | trait BodyTraitM {
- 24 |   fn m(recv: & Self) {
+ 38 | trait BodyTraitM {
+ 39 |   fn m(recv: & Self) {
     |   ^
- 25 |     entry:
+ 40 |     entry:
     |
-error: at 32:3: [PARSE-MalformedCst] duplicate trait method 'm'
+error: at 47:3: [PARSE-MalformedCst] duplicate trait method 'm'
     |
- 31 |   fn m(recv: & Self);
- 32 |   fn m(recv: &mut Self);
+ 46 |   fn m(recv: & Self);
+ 47 |   fn m(recv: &mut Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^
- 33 | }
+ 48 | }
     |
-error: at 37:3: [PARSE-MalformedCst] impl method 'm' cannot be extern
+error: at 52:3: [PARSE-MalformedCst] impl method 'm' cannot be extern
     |
- 36 | impl ExternM for S {
- 37 |   extern fn m(recv: & S);
+ 51 | impl ExternM for S {
+ 52 |   extern fn m(recv: & S);
     |   ^^^^^^^^^^^^^^^^^^^^^^^
- 38 | }
+ 53 | }
     |
-error: at 42:3: [PARSE-MalformedCst] impl method 'm' requires a body
+error: at 57:3: [PARSE-MalformedCst] impl method 'm' requires a body
     |
- 41 | impl BodylessM for S {
- 42 |   fn m(recv: & S);
+ 56 | impl BodylessM for S {
+ 57 |   fn m(recv: & S);
     |   ^^^^^^^^^^^^^^^^
- 43 | }
+ 58 | }
     |
-error: at 51:3: [PARSE-MalformedCst] duplicate impl method 'm'
+error: at 66:3: [PARSE-MalformedCst] duplicate impl method 'm'
     |
- 50 |   }
- 51 |   fn m(recv: & S) {
+ 65 |   }
+ 66 |   fn m(recv: & S) {
     |   ^
- 52 |     entry:
+ 67 |     entry:
     |
-error: at 58:6: [PARSE-ReservedTypeParamName] 'Self' is reserved and cannot be used as a type-parameter name
+error: at 73:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a type-parameter name
     |
- 57 | trait ReservedT { fn m(recv: & Self); }
- 58 | impl<Self> ReservedT for R {
+ 72 | trait ReservedT { fn m(recv: & Self); }
+ 73 | impl<Self> ReservedT for R {
     |      ^^^^
- 59 |   fn m(recv: & R) {
+ 74 |   fn m(recv: & R) {
     |
+error: at 83:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a struct name
+    |
+ 82 | # implicit trait/impl receiver alias.
+ 83 | struct Self { x: i64 }
+    |        ^^^^
+ 84 | 
+    |
+error: at 85:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as an enum name
+    |
+ 84 | 
+ 85 | enum Self { A: i64 }
+    |      ^^^^
+ 86 | 
+    |
+error: at 87:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
+    |
+ 86 | 
+ 87 | trait Self { fn m(recv: & S); }
+    |       ^^^^
+ 88 | 
+    |
+error: at 89:4: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a function name
+    |
+ 88 | 
+ 89 | fn Self() { entry: return }
+    |    ^^^^
+ 90 | 
+    |
+error: at 94:24: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a field name
+    |
+ 93 | # binder position.
+ 94 | struct WithSelfField { Self: i64 }
+    |                        ^^^^
+ 95 | 
+    |
+error: at 96:24: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a variant name
+    |
+ 95 | 
+ 96 | enum WithSelfVariant { Self: i64 }
+    |                        ^^^^
+ 97 | 
+    |
+error: at 98:20: [PARSE-ReservedIdent] In function 'with_self_param': 'Self' is reserved and cannot be used as a parameter name
+    |
+ 97 | 
+ 98 | fn with_self_param(Self: i64) {
+    |                    ^^^^
+ 99 |   entry:
+    |
+error: at 104:3: [PARSE-ReservedIdent] In function 'with_self_local': 'Self' is reserved and cannot be used as a local name
+     |
+ 103 | fn with_self_local() {
+ 104 |   Self: i64;
+     |   ^^^^
+ 105 |   entry:
+     |
+error: at 114:32: [PARSE-ReservedIdent] In function 'take_self_out_of_scope': 'Self' may only appear as a type reference inside a trait or impl body
+     |
+ 113 | # `UndeclaredType`.
+ 114 | fn take_self_out_of_scope(x: & Self) {
+     |                                ^^^^
+ 115 |   entry:
+     |
+error: at 120:6: [PARSE-ReservedIdent] 'Self' may only appear as a type reference inside a trait or impl body
+     |
+ 119 | struct HoldsSelfField {
+ 120 |   s: Self
+     |      ^^^^
+ 121 | }
+     |
+error: at 126:20: [PARSE-ReservedIdent] 'Self' may only appear as a type reference inside a trait or impl body
+     |
+ 125 | # target reads `Self` while it is still out of scope.
+ 126 | impl ReservedT for Self {
+     |                    ^^^^
+ 127 |   fn m(recv: & R) {
+     |
+error: at 136:15: [PARSE-ReservedIdent] 'Self' may only appear as a type reference inside a trait or impl body
+     |
+ 135 | trait<T: Copy + Drop> GenericT { fn m(recv: & Self, arg: & T); }
+ 136 | impl GenericT<Self> for R {
+     |               ^^^^
+ 137 |   fn m(recv: & R, arg: & R) {
+     |
+error: at 146:52: [PARSE-ReservedIdent] In function 'm': 'Self' does not take type or lifetime arguments
+     |
+ 145 | # so passing it type or lifetime arguments is rejected.
+ 146 | trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: & Self<T>); }
+     |                                                    ^^^^
+ 147 | 
+     |
+error: at 152:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
+     |
+ 151 | # `ImplForUnknownTrait`.
+ 152 | impl Self for R {
+     |      ^^^^
+ 153 |   fn m(recv: & R) {
+     |

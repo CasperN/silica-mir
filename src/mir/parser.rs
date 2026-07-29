@@ -34,11 +34,15 @@ pub enum ParserCode {
     /// `Move` is redundant under the horizontal closure. Info-level
     /// lint on the parsed marker list.
     MoveMarkerRedundant,
-    /// A type-parameter binder used a name the language reserves for
-    /// something else. Grammar accepts any identifier at the
-    /// binder position; the parser rejects reserved names on the way
-    /// to the AST.
-    ReservedTypeParamName,
+    /// A binder or type-reference position used a name the language
+    /// reserves. The grammar accepts any identifier here; the parser
+    /// rejects reserved names (currently `Self`) on the way to the
+    /// AST. Reserving `Self` at the parser boundary prevents a
+    /// user-declared struct/enum/trait/param/field/local named `Self`
+    /// from colliding with the implicit `Self` alias in trait and
+    /// impl bodies, and prevents an out-of-scope `Self` type
+    /// reference from silently resolving as a `Custom("Self")`.
+    ReservedIdent,
 }
 
 impl From<ParserCode> for DiagCode {
@@ -360,6 +364,28 @@ impl Parser {
         Diagnostic::new(code, SourceInfo::written(span_of(node)), message)
     }
 
+    /// Emit `ReservedIdent` if `name` is the reserved word `Self` and
+    /// return whether it was rejected. `context` fills the diagnostic
+    /// message ("a type-parameter name", "a struct name", etc.).
+    fn reject_self_ident(
+        &self,
+        name: &str,
+        node: Node,
+        context: &str,
+        d: &mut Diagnostics,
+    ) -> bool {
+        if name == "Self" {
+            d.push_error(self.diag(
+                node,
+                ParserCode::ReservedIdent,
+                format!("'Self' is reserved and cannot be used as {context}"),
+            ));
+            true
+        } else {
+            false
+        }
+    }
+
     /// Wrap a `Result<T, String>` produced by a literal decoder into a
     /// `Diagnostic` with `InvalidLiteral` code and the source span of
     /// the literal token, pushing the diagnostic into `d` and returning
@@ -511,6 +537,13 @@ impl Parser {
                     Some(bool_ty())
                 } else if self.type_scope.borrow().contains(text) {
                     Some(param_ty(text))
+                } else if text == "Self" {
+                    d.push_error(self.diag(
+                        node,
+                        ParserCode::ReservedIdent,
+                        "'Self' may only appear as a type reference inside a trait or impl body",
+                    ));
+                    None
                 } else {
                     Some(custom_ty(text))
                 }
@@ -542,6 +575,25 @@ impl Parser {
                     } else {
                         (Vec::new(), Vec::new())
                     };
+                    if text == "Self" {
+                        if !lifetimes.is_empty() || !args.is_empty() {
+                            d.push_error(self.diag(
+                                first_child,
+                                ParserCode::ReservedIdent,
+                                "'Self' does not take type or lifetime arguments",
+                            ));
+                            return None;
+                        }
+                        if !self.type_scope.borrow().contains(text) {
+                            d.push_error(self.diag(
+                                first_child,
+                                ParserCode::ReservedIdent,
+                                "'Self' may only appear as a type reference inside a trait or impl body",
+                            ));
+                            return None;
+                        }
+                        return Some(param_ty(text));
+                    }
                     if !lifetimes.is_empty() || !args.is_empty() {
                         return Some(custom_ty_generic(text, lifetimes, args));
                     }
@@ -1336,16 +1388,7 @@ impl Parser {
                         return None;
                     };
                     let pname = self.get_text(name_node).to_string();
-                    // `Self` is reserved as the trait/impl-scoped alias
-                    // for the receiver / target type. A user-declared
-                    // `<Self>` param would silently overshadow that
-                    // alias in the impl scope, so reject at parse time.
-                    if pname == "Self" {
-                        d.push_error(self.diag(
-                            name_node,
-                            ParserCode::ReservedTypeParamName,
-                            "'Self' is reserved and cannot be used as a type-parameter name",
-                        ));
+                    if self.reject_self_ident(&pname, name_node, "a type-parameter name", d) {
                         continue;
                     }
                     if self.type_scope.borrow().contains(&pname) {
@@ -1426,6 +1469,9 @@ impl Parser {
         };
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
+        if self.reject_self_ident(&name, name_node, "a struct name", d) {
+            return None;
+        }
 
         let mut cursor = node.walk();
         // Populate scope BEFORE walking fields so `t: T` resolves to
@@ -1475,6 +1521,9 @@ impl Parser {
                     ));
                     return None;
                 };
+                if self.reject_self_ident(&f_name, f_name_node, "a field name", d) {
+                    continue;
+                }
                 let f_type = self.map_type(f_type_node, d)?;
                 fields.push(StructField {
                     name: f_name,
@@ -1505,6 +1554,9 @@ impl Parser {
         };
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
+        if self.reject_self_ident(&name, name_node, "an enum name", d) {
+            return None;
+        }
 
         let mut cursor = node.walk();
         let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
@@ -1552,6 +1604,9 @@ impl Parser {
                     ));
                     return None;
                 };
+                if self.reject_self_ident(&v_name, v_name_node, "a variant name", d) {
+                    continue;
+                }
                 let v_type = self.map_type(v_type_node, d)?;
                 variants.push(EnumVariant {
                     name: v_name,
@@ -1582,6 +1637,9 @@ impl Parser {
         };
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
+        if self.reject_self_ident(&name, name_node, "a trait name", d) {
+            return None;
+        }
 
         let mut cursor = node.walk();
         let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
@@ -1665,6 +1723,9 @@ impl Parser {
         };
         let trait_name = self.get_text(trait_name_node).to_string();
         let trait_name_span = span_of(trait_name_node);
+        if self.reject_self_ident(&trait_name, trait_name_node, "a trait reference", d) {
+            return None;
+        }
 
         let mut cursor = node.walk();
 
@@ -1778,6 +1839,9 @@ impl Parser {
         };
         let name = self.get_text(name_node).to_string();
         let name_span = span_of(name_node);
+        if self.reject_self_ident(&name, name_node, "a function name", d) {
+            return None;
+        }
         let is_extern = self.get_text(node).starts_with("extern");
         let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
             let raw = self.get_text(abi_node);
@@ -1851,6 +1915,9 @@ impl Parser {
                         ));
                         return None;
                     };
+                    if self.reject_self_ident(&p_name, p_name_node, "a parameter name", d) {
+                        continue;
+                    }
                     let p_type = self.map_type(p_type_node, d)?;
                     params.push(Param {
                         name: p_name,
@@ -1877,6 +1944,9 @@ impl Parser {
                         ));
                         return None;
                     };
+                    if self.reject_self_ident(&l_name, l_name_node, "a local name", d) {
+                        continue;
+                    }
                     let l_type = self.map_type(l_type_node, d)?;
                     locals.push(Local {
                         name: l_name,

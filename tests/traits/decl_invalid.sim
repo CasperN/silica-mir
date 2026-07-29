@@ -1,7 +1,7 @@
 # Trait- and impl-declaration well-formedness errors that fire from
 # the type checker or env-build (coherence). Parser-time errors
-# (body-less/extern method, duplicate method names, `Self` as a
-# type-parameter name) live in the sibling `*_rejected.sim` fixtures.
+# (body-less/extern method, duplicate method names, `Self`
+# reservation) live in the sibling `parse_errors.sim`.
 #
 #   context                          error
 #   struct + trait share a name      DuplicateDeclaration
@@ -19,12 +19,12 @@
 #   two impls of Iter<i64> for       DuplicateDeclaration (coherence)
 #     DupTarget
 #
-#   free fn param `& Self`           InvalidDeclaredType outside impl scope
-#   struct field `Self`              InvalidDeclaredType outside impl scope
-#   impl target `Self`               InvalidDeclaredType (target parsed
-#                                    before Self enters scope)
-#   impl trait-arg `Self`            InvalidDeclaredType (trait args parsed
-#                                    before Self enters scope)
+#   impl target unknown              InvalidDeclaredType — sole error,
+#                                    conformance must be skipped so
+#                                    the target failure doesn't fan out
+#                                    into per-method SignatureMismatch
+#   impl Iter<MissingArg>            InvalidDeclaredType on the trait
+#                                    arg — same bail, sole diagnostic
 
 # --- Trait declaration errors ------------------------------------------
 
@@ -164,47 +164,27 @@ impl Iter<i64> for DupTarget {
   }
 }
 
-# --- Self alias out of scope --------------------------------------------
+# --- Impl signature-input validation ------------------------------------
 
-# `Self` is a scoped alias bound only inside trait and impl blocks.
-# Outside those scopes — and, inside an impl block, at the target and
-# trait-ref-arg positions parsed before `Self` enters scope — it
-# resolves as an ordinary identifier and the type validator rejects it.
-
-fn take_self(x: & Self) {
-  entry:
-    return
-}
-
-struct HoldsSelf {
-  s: Self
-}
-
-trait SomeTrait {
-  fn touch(recv: & Self);
-}
-
-trait<T: Copy + Drop> SomeGenericTrait {
-  fn touch(recv: & Self, arg: & T);
-}
-
-# `Self` in target position: at parse time the target is read before
-# `Self` is inserted into the impl scope, so `Self` resolves as an
-# unknown custom type. The target-validation error fires; the trailing
-# `SignatureMismatch` on `touch` is a recovery cascade from the same
-# root cause.
-impl SomeTrait for Self {
-  fn touch(recv: & Foo) {
+# When the impl's target (or a trait-ref type arg) is well-formed
+# syntactically but doesn't validate — e.g. it names an undeclared
+# type — `typecheck_impl` must emit only that primary error and skip
+# method-signature conformance. Otherwise every method downstream of
+# `Self := <bad target>` fans out into a `SignatureMismatch` cascade.
+impl Iter<i64> for MissingTarget {
+  fn next(recv: &mut MissingTarget, $return: &out i64) {
     entry:
+      $return.* = 0;
       return
   }
 }
 
-# `Self` in trait-ref type-arg position: same parse order — trait args
-# are read before `Self` enters scope, so `typecheck_impl` catches
-# `Self` as an undeclared type in the trait-arg validator.
-impl SomeGenericTrait<Self> for Foo {
-  fn touch(recv: & Foo, arg: & Foo) {
+# Same bail, this time triggered by a bad trait-ref type argument
+# (target is well-formed, the trait arg is not). The single
+# `InvalidDeclaredType` on the trait arg is the only diagnostic;
+# no per-method `SignatureMismatch` on the trait arg's substitution.
+impl Iter<MissingArg> for Foo {
+  fn next(recv: &mut Foo, $return: &out MissingArg) {
     entry:
       return
   }

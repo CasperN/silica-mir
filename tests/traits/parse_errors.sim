@@ -4,14 +4,29 @@
 # than short-circuit, so distinct cells co-exist here without needing
 # separate fixture files.
 #
-#   trait or impl                error
-#   trait ExternTraitM           trait method cannot be extern
-#   trait BodyTraitM             trait method must not have a body
-#   trait DupTraitM              two trait methods share a name
-#   impl ExternM for S           impl method cannot be extern
-#   impl BodylessM for S         impl method requires a body
-#   impl DupM for S              two impl methods share a name
-#   impl<Self> ReservedT for R   `Self` cannot be a type-parameter name
+#   trait or impl                     error
+#   trait ExternTraitM                trait method cannot be extern
+#   trait BodyTraitM                  trait method must not have a body
+#   trait DupTraitM                   two trait methods share a name
+#   impl ExternM for S                impl method cannot be extern
+#   impl BodylessM for S              impl method requires a body
+#   impl DupM for S                   two impl methods share a name
+#
+#   `Self` reservation                error
+#   impl<Self> ReservedT for R        Self as type-parameter name
+#   struct/enum/trait/fn Self         Self as decl name
+#   struct { Self: T }                Self as field name
+#   enum { Self: T }                  Self as variant name
+#   fn f(Self: T)                     Self as parameter name
+#   fn f() { Self: T; ... }           Self as local name
+#   fn f(x: & Self)                   Self type ref outside trait/impl
+#   struct H { s: Self }              Self type ref outside trait/impl
+#   impl T for Self                   Self as impl target (out of scope
+#                                     at target parse time)
+#   impl T<Self> for R                Self as trait-ref type arg (out of
+#                                     scope at args parse time)
+#   trait T { fn m(recv: & Self<T>) } Self does not take type arguments
+#   impl Self for R                   Self as trait reference
 
 struct S { x: i64 }
 struct R: Copy + Drop { x: i64 }
@@ -56,6 +71,85 @@ impl DupM for S {
 
 trait ReservedT { fn m(recv: & Self); }
 impl<Self> ReservedT for R {
+  fn m(recv: & R) {
+    entry:
+      return
+  }
+}
+
+# `Self` as a decl name — struct, enum, trait, fn. Reserving `Self`
+# at parse rejects the collision before it can compete with the
+# implicit trait/impl receiver alias.
+struct Self { x: i64 }
+
+enum Self { A: i64 }
+
+trait Self { fn m(recv: & S); }
+
+fn Self() { entry: return }
+
+# `Self` as a binder inside a well-named decl — field, variant,
+# parameter, local. Same reservation applies at every identifier
+# binder position.
+struct WithSelfField { Self: i64 }
+
+enum WithSelfVariant { Self: i64 }
+
+fn with_self_param(Self: i64) {
+  entry:
+    return
+}
+
+fn with_self_local() {
+  Self: i64;
+  entry:
+    return
+}
+
+# `Self` as a type reference outside a trait or impl body. `Self`
+# only enters the parser's type scope inside those blocks; anywhere
+# else it must be rejected rather than falling through to
+# `Custom("Self")` and later surfacing as an unrelated
+# `UndeclaredType`.
+fn take_self_out_of_scope(x: & Self) {
+  entry:
+    return
+}
+
+struct HoldsSelfField {
+  s: Self
+}
+
+# `Self` at an impl's target position. The parser inserts `Self`
+# into the type scope only after the target is parsed, so the
+# target reads `Self` while it is still out of scope.
+impl ReservedT for Self {
+  fn m(recv: & R) {
+    entry:
+      return
+  }
+}
+
+# `Self` at a trait-ref type argument. The trait-arg list is parsed
+# before the target, so `Self` is out of scope for the same reason.
+trait<T: Copy + Drop> GenericT { fn m(recv: & Self, arg: & T); }
+impl GenericT<Self> for R {
+  fn m(recv: & R, arg: & R) {
+    entry:
+      return
+  }
+}
+
+# `Self` in scope but written with type arguments. `Self` is a bare
+# alias for the receiver / target type, not a generic constructor,
+# so passing it type or lifetime arguments is rejected.
+trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: & Self<T>); }
+
+# `Self` in an impl's trait-reference position. There is no trait
+# named `Self`; the token here is a stray reference to the receiver
+# alias, so parse-reject before it slips through as
+# `ImplForUnknownTrait`.
+impl Self for R {
   fn m(recv: & R) {
     entry:
       return

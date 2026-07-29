@@ -12,20 +12,6 @@ error: at 159:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' f
      |      ^^^^
  160 |   fn next(recv: &mut DupTarget, $return: &out i64) {
      |
-error: at 180:6: [TC-InvalidDeclaredType] In struct 'HoldsSelf', field 's': Use of undeclared type 'Self'
-     |
- 179 | struct HoldsSelf {
- 180 |   s: Self
-     |      ^^^^
- 181 | }
-     |
-error: at 174:17: [TC-InvalidDeclaredType] In function 'take_self', parameter 'x': Use of undeclared type 'Self'
-     |
- 173 | 
- 174 | fn take_self(x: & Self) {
-     |                 ^^^^^^
- 175 |   entry:
-     |
 error: at 40:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next' param 'out': Use of undeclared type 'Missing'
     |
  39 | trait IterMissingT {
@@ -89,31 +75,17 @@ error: at 136:6: [TC-ImplTraitArgArity] Trait 'LtTrait' expects 1 lifetime argum
      |      ^^^^^^^
  137 |   fn peek(recv: & Foo) {
      |
-error: at 196:20: [TC-InvalidDeclaredType] In impl of 'SomeTrait', target type: Use of undeclared type 'Self'
+error: at 174:20: [TC-InvalidDeclaredType] In impl of 'Iter', target type: Use of undeclared type 'MissingTarget'
      |
- 195 | # root cause.
- 196 | impl SomeTrait for Self {
-     |                    ^^^^
- 197 |   fn touch(recv: & Foo) {
+ 173 | # `Self := <bad target>` fans out into a `SignatureMismatch` cascade.
+ 174 | impl Iter<i64> for MissingTarget {
+     |                    ^^^^^^^^^^^^^
+ 175 |   fn next(recv: &mut MissingTarget, $return: &out i64) {
      |
-error: at 197:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type & 's0 Foo, trait declares & 's0 Self (after Self := Self)
+error: at 186:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argument: Use of undeclared type 'MissingArg'
      |
- 196 | impl SomeTrait for Self {
- 197 |   fn touch(recv: & Foo) {
-     |                  ^^^^^
- 198 |     entry:
-     |
-error: at 206:23: [TC-InvalidDeclaredType] In impl of 'SomeGenericTrait', trait type argument: Use of undeclared type 'Self'
-     |
- 205 | # `Self` as an undeclared type in the trait-arg validator.
- 206 | impl SomeGenericTrait<Self> for Foo {
-     |                       ^^^^
- 207 |   fn touch(recv: & Foo, arg: & Foo) {
-     |
-error: at 207:30: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 2 has type & 's1 Foo, trait declares & 's1 Self (after Self := Foo)
-     |
- 206 | impl SomeGenericTrait<Self> for Foo {
- 207 |   fn touch(recv: & Foo, arg: & Foo) {
-     |                              ^^^^^
- 208 |     entry:
+ 185 | # no per-method `SignatureMismatch` on the trait arg's substitution.
+ 186 | impl Iter<MissingArg> for Foo {
+     |           ^^^^^^^^^^
+ 187 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
      |
