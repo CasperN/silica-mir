@@ -117,26 +117,15 @@ formatting drift, further abstraction is diminishing-return work.
 ## Compiler consistency roadmap
 
 These are targeted repairs for demonstrated drift mechanisms: semantic
-identity encoded as display text, duplicated structural walks, and malformed
-generic applications represented as ordinary valid data. Keep the changes
-reviewable and fixture-backed; do not parameterize or duplicate `Program` by
-pipeline phase. The existing `verify_no_take` boundary and downstream invariant
+identity encoded as display text and malformed generic applications
+represented as ordinary valid data. Keep the changes reviewable and
+fixture-backed; do not parameterize or duplicate `Program` by pipeline
+phase. The existing `verify_no_take` boundary and downstream invariant
 panics are intentional and sufficiently covered.
 
 Implement the repairs in this order:
 
-1. **Close missing-descent gaps in MIR walkers.** The remaining hand-rolled
-   type walks skip specific variants and diverge in ways the type checker
-   can't catch. Fix each in a separate commit; extract shared recursion
-   only when two or more walkers demonstrably duplicate it.
-   - `region::walk_ref_places` — the shared traversal now consumed by
-     `build_region_ctx` and `collect_borrowers`; must descend
-     `TypeKind::Array` so owned `[&mut T; N]` slots are added to the NLL
-     borrower set and inter-fn lifetime constraints flow through array
-     slots. Adding Array descent interacts with Consistency 4's
-     per-slot-region strategy.
-
-2. **Backfill elided Custom lifetimes, then make instantiation validated data.**
+1. **Backfill elided Custom lifetimes, then make instantiation validated data.**
    Elision currently adds lifetime parameters for unannotated refs but leaves
    bare Custom self-mentions and local types with zero lifetime arguments. First
    make elision two-pass: determine each declaration's final lifetime
@@ -164,7 +153,7 @@ Implement the repairs in this order:
    migration plus interaction fixtures. Do not combine the prerequisite with
    caller migration merely to keep the intermediate API private.
 
-3. **Centralize place projection semantics.** Build one lossless, exhaustive
+2. **Centralize place projection semantics.** Build one lossless, exhaustive
    decomposition/reconstruction library over `Place` and its projection
    steps. Derive explicit queries for owned paths, statically trackable
    paths, dereference-containing paths, loan paths, and initialization
@@ -172,14 +161,6 @@ Implement the repairs in this order:
    Preserve dynamic index operands losslessly, and require every new
    `Place` variant to update the central projection library before
    downstream passes compile.
-
-4. **Finish lifetime traversal without eager array expansion.**
-   Make all lifetime type walks descend arrays consistently, but do not
-   allocate one region entry for every element of an arbitrary `u64`-length
-   array. Materialize per-slot state from actually referenced constant-index
-   places, while signature-level lifetime flow traverses the element type
-   structurally. Add positive and negative fixtures for reference-bearing
-   arrays, constant slots, dynamic slots, and inter-function constraints.
 
 The function-type loss of ABI and lifetime-signature information remains a
 feature prerequisite under FFI/lifetime work rather than part of this cleanup.
@@ -190,17 +171,12 @@ Likewise, phase-specific `Program` wrappers are deliberately out of scope.
 When diagnostics and consistency work are interleaved, use this dependency
 order rather than completing either roadmap in isolation:
 
-1. Consistency 1 first: close the missing-descent gaps and consolidate any
-   demonstrable walker duplication so downstream migrations aren't chasing
-   the same variant additions across pass-local walks.
-2. Consistency 2 before Diagnostics 1: establish validated instantiation and
+1. Consistency 1 before Diagnostics 1: establish validated instantiation and
    explicit recovery before type-check payloads depend on those failures.
-3. Consistency 3 before Diagnostics 3–4: centralize semantic place projections
+2. Consistency 2 before Diagnostics 3–4: centralize semantic place projections
    before adding occurrence provenance, so the large provenance refactor has
    one projection boundary to update rather than many pass-local walkers.
-4. Consistency 4: move lifetime analysis onto the new typed
-   projection/type foundations.
-5. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
+3. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
    and hygiene guards. Diagnostics 5 remains the stop point for abstraction
    that is not justified by a concrete inconsistency or lost semantic datum.
 
