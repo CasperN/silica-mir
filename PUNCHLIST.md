@@ -173,15 +173,13 @@ Implement the repairs in this order:
    `Place` variant to update the central projection library before
    downstream passes compile.
 
-4. **Finish lifetime traversal without sentinels or eager array expansion.**
-   Replace the `Region::Free(u32::MAX)` unresolved-region sentinel with an
-   explicit resolution result or region category. Make all lifetime type walks
-   descend arrays consistently, but do not allocate one region entry for every
-   element of an arbitrary `u64`-length array. Materialize per-slot state from
-   actually referenced constant-index places, while signature-level lifetime
-   flow traverses the element type structurally. Add positive and negative
-   fixtures for reference-bearing arrays, constant slots, dynamic slots, and
-   inter-function constraints.
+4. **Finish lifetime traversal without eager array expansion.**
+   Make all lifetime type walks descend arrays consistently, but do not
+   allocate one region entry for every element of an arbitrary `u64`-length
+   array. Materialize per-slot state from actually referenced constant-index
+   places, while signature-level lifetime flow traverses the element type
+   structurally. Add positive and negative fixtures for reference-bearing
+   arrays, constant slots, dynamic slots, and inter-function constraints.
 
 The function-type loss of ABI and lifetime-signature information remains a
 feature prerequisite under FFI/lifetime work rather than part of this cleanup.

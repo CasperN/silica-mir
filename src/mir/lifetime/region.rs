@@ -44,16 +44,23 @@ impl std::fmt::Display for Region {
 }
 
 /// Per-function region context. Owns the counter shared by fresh body-local
-/// and call-instantiation regions, plus the map from every ref-typed owned path
-/// to its region.
+/// and call-instantiation regions, the map from every ref-typed owned path
+/// to its region, and one storage region per root local.
 ///
-/// Signature refs (params) get `Named(lt)` from their declared type.
-/// Body-local refs (fn locals) get `Free(N)` — they have no source
-/// name, and constraints will pin them.
+/// Signature refs (params) get `Named(lt)` from their declared type in
+/// `place_region`. Body-local refs (fn locals) get `Free(N)`.
+///
+/// `local_storage` stores an independent `Free(N)` per root local — the
+/// region of that local's stack slot. It answers "what region does
+/// `&x`, `&x.f`, or `&x[k]` inherit as its outer region?" for any
+/// non-reborrow borrow of `x`. Every local (ref-typed or not) needs a
+/// storage region, since even a body-local scalar can be borrowed and
+/// the resulting ref must not escape.
 #[derive(Debug, Clone, Default)]
 pub struct RegionCtx {
     fresh: std::cell::Cell<u32>,
     pub place_region: IndexMap<Place, Region>,
+    local_storage: IndexMap<String, Region>,
 }
 
 impl RegionCtx {
@@ -129,6 +136,45 @@ impl RegionCtx {
             None
         }
     }
+
+    /// Storage region for a root local. Populated once per local at
+    /// [`build_region_ctx`] time so every borrow of `x`, `x.f`, or
+    /// `x[k]` resolves to the same body-local region.
+    pub fn storage_region_of_local(&self, name: &str) -> Option<&Region> {
+        self.local_storage.get(name)
+    }
+
+    fn assign_storage(&mut self, name: String, region: Region) {
+        self.local_storage.insert(name, region);
+    }
+
+    /// The region that a borrow rvalue `&place` inherits as its outer
+    /// region — used to emit the source side of the `source outlives
+    /// target` constraint when the target is a ref-typed slot.
+    ///
+    /// Two shapes reach this helper. A reborrow (`&place.*` or its
+    /// nested projection) carries the deref'd reference's own region,
+    /// resolved via [`RegionCtx::region_of_place`]. A borrow of a
+    /// body-owned place resolves to that place's root local's storage
+    /// region — every local has one, so this is total for well-typed
+    /// programs.
+    pub fn region_of_borrow_source(
+        &self,
+        place: &Place,
+        locals: &IndexMap<String, Type>,
+        env: &crate::mir::type_check::Env,
+    ) -> Option<Region> {
+        let mut cur = place;
+        loop {
+            match cur {
+                Place::Var(name) => return self.storage_region_of_local(name).cloned(),
+                Place::Deref(inner) => return self.region_of_place(inner, locals, env),
+                Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
+                    cur = inner;
+                }
+            }
+        }
+    }
 }
 
 /// Build the per-function region map. Walks every ref-typed owned
@@ -142,6 +188,10 @@ pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::Env) -> R
     let mut ctx = RegionCtx::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
+        // Every local has a body-local storage region. Borrows of the
+        // local's own stack slot (`&x`, `&x.f`, `&x[k]`) resolve here.
+        let storage = ctx.fresh();
+        ctx.assign_storage(name.clone(), storage);
         let mut visited = std::collections::BTreeSet::new();
         walk_ref_places(
             &var_place(name.clone()),

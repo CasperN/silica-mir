@@ -642,11 +642,9 @@ impl<'a> Checker<'a> {
     ///   - Non-Assign statements have no ref-flow to constrain here
     ///     (call-site region flow is handled by `walk_call_regions`).
     ///   - `Operand::Const` has no source place → no source region.
-    ///   - Ref rvalues on projected places (non-owned) resolve to
-    ///     `Region::Free(u32::MAX)` (sentinel) rather than bailing —
-    ///     the sentinel keeps the constraint emission live.
-    ///   - `region_of_place` returning `None` means the place isn't
-    ///     ref-typed → no constraint needed.
+    ///   - `region_of_place` and `region_of_borrow_source` returning
+    ///     `None` mean the place isn't ref-typed / can't be resolved →
+    ///     no constraint needed.
     fn emit_stmt_constraints(&mut self, stmt: &Statement) {
         let StatementKind::Assign(target, rvalue) = &stmt.kind else {
             return;
@@ -681,26 +679,11 @@ impl<'a> Checker<'a> {
         }
         let (src_region, target_place) = match rvalue {
             RValue::Ref(_, place) => {
-                let r = if let Some(owned) = as_owned_path(place) {
+                let Some(r) =
                     self.region_ctx
-                        .get(&owned)
-                        .cloned()
-                        .unwrap_or(Region::Free(u32::MAX))
-                } else {
-                    let mut cur = place;
-                    while let Place::Field(inner, _)
-                    | Place::Downcast(inner, _)
-                    | Place::Index(inner, _) = cur
-                    {
-                        cur = inner;
-                    }
-                    if let Place::Deref(inner) = cur {
-                        self.region_ctx
-                            .region_of_place(inner, &self.locals, self.env)
-                            .unwrap_or(Region::Free(u32::MAX))
-                    } else {
-                        Region::Free(u32::MAX)
-                    }
+                        .region_of_borrow_source(place, &self.locals, self.env)
+                else {
+                    return;
                 };
                 (r, target.clone())
             }
