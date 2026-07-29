@@ -1,13 +1,16 @@
-# Drop-elab cross-edge insertion — regression guard for three shapes
+# Drop-elab cross-edge insertion — regression guard for six shapes
 # where an Init place (or Init sub-field) transitions to `Diverged` at
 # a non-return join and must be dropped on the Init-side predecessor
 # edges. A regression that narrows the fix will re-surface a leak and
 # diverge this fixture's pinned MIR.
 #
-#   fn                       pattern                                  cross-edge drop
-#   chained_matches          two postfix matches in a row             arm-bound `a`, `b`
-#   loop_if_break            `if c { break }` inside `loop`           block-local unit temps
-#   struct_field_diverged    heterogeneous per-field init across arms `p.y` / `p.z` per arm
+#   fn                              pattern                                    cross-edge drop
+#   chained_matches                 two postfix matches in a row               arm-bound `a`, `b`
+#   loop_if_break                   `if c { break }` inside `loop`             block-local unit temps
+#   struct_field_diverged           heterogeneous per-field init across arms   `p.y` / `p.z` per arm
+#   array_slot_diverged             heterogeneous per-slot init across arms    `a[1]` / `a[2]` per arm
+#   nested_array_slot_diverged      heterogeneous inner-slot init across arms  `m[0][1]` / `m[1][0]`
+#   struct_field_array_slot_diverged struct→array composition                  `s.a[1]` / `s.a[2]`
 
 # ---------- Chained postfix matches: arm bindings dropped at the inner join ----------
 
@@ -69,4 +72,68 @@ fn struct_field_diverged(c: bool) -> i64 {
     p.y = 2;
   }
   p.x
+}
+
+# ---------- Heterogeneous per-slot init: arm-specific array-slot drops ----------
+
+# Structurally identical to `struct_field_diverged`, but `p` is an array
+# and the diverged sub-places are constant-index slots. Both arms Init
+# `a[0]`, then the true arm sets `a[2]`, the false arm sets `a[1]`. At
+# the merge `a` is Partial{[0]: Init, [1]: Diverged, [2]: Diverged}.
+# Drop-elab must recurse into the array `Partial` (mirroring the struct
+# path) and plan `drop a[2]` on the true arm, `drop a[1]` on the false
+# arm. Post-merge only `a[0]` is Init.
+fn array_slot_diverged(c: bool) -> i64 {
+  let mut a: [i64; 3];
+  if c {
+    a[0] = 1;
+    a[2] = 3;
+  } else {
+    a[0] = 1;
+    a[1] = 2;
+  }
+  a[0]
+}
+
+# ---------- Heterogeneous per-slot init inside a nested array ----------
+
+# Confirms drop-elab's array descent recurses to arbitrary depth. Both
+# arms Init `m[0][0]`, then the true arm sets `m[0][1]` and the false
+# arm sets `m[1][0]`. At the merge `m` is
+# Partial{[0]: Partial{[0]: Init, [1]: Diverged}, [1]: Partial{[0]:
+# Diverged, [1]: NeverInit}}. Drop-elab must descend twice — once into
+# the outer array, then again into `m[0]` — before it reaches the
+# Diverged leaves. `drop m[0][1]` fires on the true arm, `drop m[1][0]`
+# on the false arm; the return reads `m[0][0]` which both arms Init'd.
+fn nested_array_slot_diverged(c: bool) -> i64 {
+  let mut m: [[i64; 2]; 2];
+  if c {
+    m[0][0] = 1;
+    m[0][1] = 2;
+  } else {
+    m[0][0] = 1;
+    m[1][0] = 3;
+  }
+  m[0][0]
+}
+
+# ---------- Heterogeneous per-slot init inside a struct's array field ----------
+
+# Verifies the struct-arm and array-arm compose: the struct walk
+# descends into `s.a` (Partial), then the array walk descends into
+# its slots. True arm Inits `s.a[2]`, false arm Inits `s.a[1]`;
+# `drop s.a[2]` fires on the true arm and `drop s.a[1]` on the false
+# arm. Without struct→array composition either arm would leak its
+# arm-specific slot.
+struct Bag: Copy + Drop { a: [i64; 3] }
+fn struct_field_array_slot_diverged(c: bool) -> i64 {
+  let mut s: Bag;
+  if c {
+    s.a[0] = 1;
+    s.a[2] = 3;
+  } else {
+    s.a[0] = 1;
+    s.a[1] = 2;
+  }
+  s.a[0]
 }

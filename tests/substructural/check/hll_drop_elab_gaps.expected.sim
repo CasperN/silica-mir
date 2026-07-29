@@ -136,3 +136,154 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
     require_uninit c;
     return
 }
+
+fn<'s0> array_slot_diverged(c: bool, $return: &out 's0 i64) {
+  a: [i64; 3];
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: unit;
+  _temp_4: unit;
+  entry:
+    branch(copy c) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    a[0] = 1;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
+    a[2] = 3;
+    _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
+    _temp_0 = unit;
+    goto $edge0
+  $edge0:
+    drop a[2];
+    goto if_merge_2
+  if_false_1:
+    a[0] = 1;
+    _temp_3 = unit;
+    drop _temp_3;
+    require_uninit _temp_3;
+    a[1] = 2;
+    _temp_4 = unit;
+    drop _temp_4;
+    require_uninit _temp_4;
+    _temp_0 = unit;
+    goto $edge1
+  $edge1:
+    drop a[1];
+    goto if_merge_2
+  if_merge_2:
+    drop _temp_0;
+    require_uninit _temp_0;
+    $return.* = move a[0];
+    unborrow $return;
+    require_uninit a;
+    require_uninit $return;
+    drop c;
+    require_uninit c;
+    return
+}
+
+fn<'s0> nested_array_slot_diverged(c: bool, $return: &out 's0 i64) {
+  m: [[i64; 2]; 2];
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: unit;
+  _temp_4: unit;
+  entry:
+    branch(copy c) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    m[0][0] = 1;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
+    m[0][1] = 2;
+    _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
+    _temp_0 = unit;
+    goto $edge0
+  $edge0:
+    drop m[0][1];
+    goto if_merge_2
+  if_false_1:
+    m[0][0] = 1;
+    _temp_3 = unit;
+    drop _temp_3;
+    require_uninit _temp_3;
+    m[1][0] = 3;
+    _temp_4 = unit;
+    drop _temp_4;
+    require_uninit _temp_4;
+    _temp_0 = unit;
+    goto $edge1
+  $edge1:
+    drop m[1][0];
+    goto if_merge_2
+  if_merge_2:
+    drop _temp_0;
+    require_uninit _temp_0;
+    $return.* = move m[0][0];
+    unborrow $return;
+    require_uninit m;
+    require_uninit $return;
+    drop c;
+    require_uninit c;
+    return
+}
+
+struct Bag: Copy + Drop {
+  a: [i64; 3]
+}
+
+fn<'s0> struct_field_array_slot_diverged(c: bool, $return: &out 's0 i64) {
+  s: Bag;
+  _temp_0: unit;
+  _temp_1: unit;
+  _temp_2: unit;
+  _temp_3: unit;
+  _temp_4: unit;
+  entry:
+    branch(copy c) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    s.a[0] = 1;
+    _temp_1 = unit;
+    drop _temp_1;
+    require_uninit _temp_1;
+    s.a[2] = 3;
+    _temp_2 = unit;
+    drop _temp_2;
+    require_uninit _temp_2;
+    _temp_0 = unit;
+    goto $edge0
+  $edge0:
+    drop s.a[2];
+    goto if_merge_2
+  if_false_1:
+    s.a[0] = 1;
+    _temp_3 = unit;
+    drop _temp_3;
+    require_uninit _temp_3;
+    s.a[1] = 2;
+    _temp_4 = unit;
+    drop _temp_4;
+    require_uninit _temp_4;
+    _temp_0 = unit;
+    goto $edge1
+  $edge1:
+    drop s.a[1];
+    goto if_merge_2
+  if_merge_2:
+    drop _temp_0;
+    require_uninit _temp_0;
+    $return.* = move s.a[0];
+    unborrow $return;
+    require_uninit s;
+    require_uninit $return;
+    drop c;
+    require_uninit c;
+    return
+}

@@ -276,9 +276,10 @@ fn array_slot_one_arm_init(b: bool) {
 
 # covers: init=Diverged cfg=if type_kind=array class=move_one_arm field_diverged=slot1
 # Both arms init a[0] and a[1]. t arm then moves a[1] out. At merge a[1] is
-# Moved ⊔ Init = Diverged. No drop-elab for Moved⊔Init (the Init side would
-# need a drop, but the elab walks the Init-predecessor edge). UseInconsistent
-# fires. ReturnValueLeak also fires because a[1] is Diverged and not consumed.
+# Moved ⊔ Init = Diverged. Drop-elab descends into the array's Partial and
+# inserts `drop a[1]` on the f→merge edge so both predecessors see a[1] as
+# Moved; the read of a[1] then fires UseAfterMove instead of UseInconsistent
+# — a more precise diagnostic than the pre-descent behavior would have given.
 fn array_slot_move_one_arm(b: bool) {
   a: [i64; 2];
   n: i64;

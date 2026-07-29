@@ -133,9 +133,8 @@ Implement the repairs in this order:
      `build_region_ctx` and `collect_borrowers`; must descend
      `TypeKind::Array` so owned `[&mut T; N]` slots are added to the NLL
      borrower set and inter-fn lifetime constraints flow through array
-     slots. Adding Array descent interacts with Consistency 5's
-     per-slot-region strategy. Drop-elab's `walk_diverged` array/enum
-     Custom descent is tracked separately under Consistency 4.
+     slots. Adding Array descent interacts with Consistency 4's
+     per-slot-region strategy.
 
 2. **Backfill elided Custom lifetimes, then make instantiation validated data.**
    Elision currently adds lifetime parameters for unannotated refs but leaves
@@ -174,14 +173,7 @@ Implement the repairs in this order:
    `Place` variant to update the central projection library before
    downstream passes compile.
 
-4. **Extend `walk_diverged` to array slots.** `InitState::Partial` is now
-   keyed by `InitSlot::{Field, Index, Variant}`, and `walk_diverged`
-   descends struct-Field and enum-Variant slots. `TypeKind::Array` still
-   falls through — partially-initialized arrays fall through to the
-   final `check_return_leaks` sweep instead of getting per-slot edge
-   drops. Adding array-slot descent is the remaining gap.
-
-5. **Finish lifetime traversal without sentinels or eager array expansion.**
+4. **Finish lifetime traversal without sentinels or eager array expansion.**
    Replace the `Region::Free(u32::MAX)` unresolved-region sentinel with an
    explicit resolution result or region category. Make all lifetime type walks
    descend arrays consistently, but do not allocate one region entry for every
@@ -208,7 +200,7 @@ order rather than completing either roadmap in isolation:
 3. Consistency 3 before Diagnostics 3–4: centralize semantic place projections
    before adding occurrence provenance, so the large provenance refactor has
    one projection boundary to update rather than many pass-local walkers.
-4. Consistency 4–5: move init-state and lifetime analyses onto the new typed
+4. Consistency 4: move lifetime analysis onto the new typed
    projection/type foundations.
 5. Diagnostics 2–5: finish source-bearing context and syntax, precise spans,
    and hygiene guards. Diagnostics 5 remains the stop point for abstraction
@@ -274,13 +266,6 @@ those items need to close.
     don't reach the constraint solver.
   - Body-local ref stored into a caller-visible array slot: escape
     check (`check.rs:592-609`) never sees the slot.
-- `place_state::drop_elaboration::walk_diverged`
-  (`src/mir/place_state/drop_elaboration.rs:511-518`) —
-  `TypeKind::Array` explicitly documented as a precision gap. Partially-
-  initialized arrays across CFG joins get no per-slot edge-drop
-  planning; `check_return_leaks`'s post-hoc sweep catches leaks with
-  worse diagnostics.
-
 **Dynamic-index modeled as "forbid or collapse."**
 - MIR spec bans `move`, `drop`, assignment, `&out`, `&drop` through
   dynamic index (see `CLAUDE.md` initialization-state section). No
@@ -291,9 +276,6 @@ those items need to close.
   as opaque.
 - Loan tracker collapses dynamic index to "conflicts with any slot" in
   `paths_conflict` (`loans.rs:103-107`) — sound but coarse.
-- `u64::MAX` used as a display sentinel for dynamic-index rendering
-  (`ast.rs:265`, `pretty_print.rs:293`, `codegen/mod.rs:939`). Stringly
-  typed and easy to accidentally leak into semantic checks.
 - Substructural checker (`place_state/check.rs:1111`) requires the
   containing array to be uniformly initialized (or uniformly
   uninitialized) at any dynamic-index access — the only tool available
@@ -321,9 +303,6 @@ surface is under-tested:
   untested).
 - Dynamic-index write while a constant-slot borrow is live: no
   fixture.
-- Partially-init arrays across CFG joins with different arms
-  initializing different slots: no per-slot edge-drop fixture.
-
 **Positively-supported paths, for baseline.**
 These paths DO treat arrays as first-class and don't need work:
 - `type_util::place_type` and `is_type_uninhabited`.
@@ -339,15 +318,12 @@ These paths DO treat arrays as first-class and don't need work:
   arrays via the element type.
 
 **Actionable summary.**
-The array system is not broken, it's uniformly under-invested. Almost
-every gap has a "precision, not soundness" comment or a fall-through
-catch-all that quietly disables analysis for array slots. Closing this
-is Consistency 1 + Consistency 5 done together — they interact, and 5
-gates the correctness of 1. Consistency 4 (drop-elab array descent)
-can be done independently but shares the same per-slot-state design
-question. Every fix in this area needs a paired negative fixture; the
-current gap in ref-carrying array test coverage is what has made the
-shortcuts survive this long.
+The array system is uniformly under-invested. The remaining gaps have
+"precision, not soundness" comments or fall-through catch-alls that
+quietly disable analysis for array slots. Closing this now reduces to
+Consistency 1 + Consistency 4 (lifetime traversal). Every fix in this
+area needs a paired negative fixture; the current gap in ref-carrying
+array test coverage is what has made the shortcuts survive this long.
 
 # Paper cuts
 - `struct<T> Box {..}` in MIR should be `struct Box<T> {..}`

@@ -507,40 +507,54 @@ fn walk_diverged(
             // recursion the caller sees a whole-aggregate `Partial`
             // whose `state_at` at any pred exit reads back as `Partial`
             // rather than `Init`, and no per-field drop is planned.
-            //
-            // Precision gap (not soundness): `TypeKind::Array` falls through
-            // the `_ => {}` below and doesn't get per-slot edge-drop
-            // planning. The final `check_return_leaks` catches whatever
-            // this misses (its `find_return_leaks` walk does descend
-            // arrays), so the program is still rejected — just without
-            // the automatic per-arm cleanup drop-elab would have inserted.
-            let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
-                return;
-            };
-            match env.types.get(name) {
-                Some(TypeDecl::Struct(s)) => {
-                    for f in &s.fields {
-                        let Some(field_state) = fields.get(&InitSlot::Field(f.name.clone()))
-                        else {
-                            continue;
-                        };
-                        let field_ty = s.meta.substitute_types(&f.ty, args);
-                        let sub_place = field_place(place.clone(), f.name.clone());
-                        walk_diverged(env, sub_place, &field_ty, field_state, out);
+            match &ty.kind {
+                TypeKind::Custom(Instance { name, type_args: args, .. }) => {
+                    match env.types.get(name) {
+                        Some(TypeDecl::Struct(s)) => {
+                            for f in &s.fields {
+                                let Some(field_state) =
+                                    fields.get(&InitSlot::Field(f.name.clone()))
+                                else {
+                                    continue;
+                                };
+                                let field_ty = s.meta.substitute_types(&f.ty, args);
+                                let sub_place = field_place(place.clone(), f.name.clone());
+                                walk_diverged(env, sub_place, &field_ty, field_state, out);
+                            }
+                        }
+                        Some(TypeDecl::Enum(e)) => {
+                            for v in &e.variants {
+                                let Some(variant_state) =
+                                    fields.get(&InitSlot::Variant(v.name.clone()))
+                                else {
+                                    continue;
+                                };
+                                let variant_ty = e.meta.substitute_types(&v.ty, args);
+                                let sub_place = downcast_place(place.clone(), v.name.clone());
+                                walk_diverged(env, sub_place, &variant_ty, variant_state, out);
+                            }
+                        }
+                        None => {}
                     }
                 }
-                Some(TypeDecl::Enum(e)) => {
-                    for v in &e.variants {
-                        let Some(variant_state) = fields.get(&InitSlot::Variant(v.name.clone()))
-                        else {
+                TypeKind::Array(elem, n) => {
+                    for k in 0..*n {
+                        let Some(slot_state) = fields.get(&InitSlot::Index(k)) else {
                             continue;
                         };
-                        let variant_ty = e.meta.substitute_types(&v.ty, args);
-                        let sub_place = downcast_place(place.clone(), v.name.clone());
-                        walk_diverged(env, sub_place, &variant_ty, variant_state, out);
+                        let sub_place = index_place(
+                            place.clone(),
+                            Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 }),
+                        );
+                        walk_diverged(env, sub_place, elem, slot_state, out);
                     }
                 }
-                None => {}
+                // Non-aggregate types can only be Init/NeverInit/Moved
+                // (see `analysis::expand_uniform` / `expand_uniform_array` —
+                // Partial is only produced for structs, enums, and
+                // arrays). A Partial state here would indicate a lattice
+                // invariant violation upstream.
+                _ => {}
             }
         }
     }

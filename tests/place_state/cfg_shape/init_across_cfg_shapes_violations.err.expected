@@ -100,44 +100,33 @@ error: at 270:5: [PS-UseBeforeInit] In function 'array_slot_one_arm_init', block
      |     ^^^^^^^^^^^^^
  271 |     call use_i64(move n);
      |
-error: at 298:5: [PS-UseInconsistent] In function 'array_slot_move_one_arm', block 'merge': 'a[1]' may be used before initialization or after move (state inconsistent across paths)
+error: at 299:5: [PS-UseAfterMove] In function 'array_slot_move_one_arm', block 'merge': variable 'a' is used after move
      |
- 288 |     a[0] = 1;
- 289 |     a[1] = 10;
-     |     --------- initialized here on some path
- 290 |     n = move a[1];
-     |
-     | ...
-     |
- 294 |     a[0] = 2;
- 295 |     a[1] = 20;
-     |     --------- initialized here on some path
- 296 |     goto merge
- 297 |   merge:
- 298 |     n = copy a[1];
+ 298 |   merge:
+ 299 |     n = copy a[1];
      |     ^^^^^^^^^^^^^
- 299 |     call use_i64(move n);
+ 300 |     call use_i64(move n);
      |
-error: at 320:5: [PS-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block '$edge0': variable 's' is used before initialization
+error: at 321:5: [PS-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block '$edge0': variable 's' is used before initialization
      |
- 319 |   f:
- 320 |     goto merge
+ 320 |   f:
+ 321 |     goto merge
      |     ^^^^^^^^^^
- 321 |   merge:
+ 322 |   merge:
      |
-error: at 322:5: [PS-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block 'merge': variable 's' is used before initialization
+error: at 323:5: [PS-UseBeforeInit] In function 'struct_with_ref_field_one_arm', block 'merge': variable 's' is used before initialization
      |
- 321 |   merge:
- 322 |     n = copy s.n;
+ 322 |   merge:
+ 323 |     n = copy s.n;
      |     ^^^^^^^^^^^^
- 323 |     call use_i64(move n);
+ 324 |     call use_i64(move n);
      |
-error: at 351:5: [PS-UseBeforeInit] In function 'nested_if_scalar_diverged_propagates', block 'outer_merge': variable 'x' is used before initialization
+error: at 352:5: [PS-UseBeforeInit] In function 'nested_if_scalar_diverged_propagates', block 'outer_merge': variable 'x' is used before initialization
      |
- 350 |   outer_merge:
- 351 |     y = copy x;
+ 351 |   outer_merge:
+ 352 |     y = copy x;
      |     ^^^^^^^^^^
- 352 |     return
+ 353 |     return
      |
 error: at 250:5: [PS-ReturnValueLeak] In function 'loop_move_struct_diverged_backedge', block 'done': value 'x' of type MatM is not consumed at return
      |
@@ -152,20 +141,5 @@ error: at 250:5: [PS-ReturnValueLeak] In function 'loop_move_struct_diverged_bac
  250 |     return
      |     ^^^^^^
  251 | }
-     |
-  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
-error: at 300:5: [PS-ReturnValueLeak] In function 'array_slot_move_one_arm', block 'merge': value 'a[1]' of type i64 is not consumed at return
-     |
- 282 | fn array_slot_move_one_arm(b: bool) {
- 283 |   a: [i64; 2];
-     |   ------------ variable declared here
- 284 |   n: i64;
-     |
-     | ...
-     |
- 299 |     call use_i64(move n);
- 300 |     return
-     |     ^^^^^^
- 301 | }
      |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
