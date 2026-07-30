@@ -11,12 +11,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   a strict alias) and delete the other.
 - **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
 - **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
-- **Conditional HLL marker bounds.** (`impl<T: Copy> Copy for Foo<T> {}`).
-- **Array indices should be `u64`.** Array lengths are represented as
-  `u64` in both HLL and MIR, but `place[operand]` still accepts any integer
-  type. Sizes and offsets are inherently non-negative, matching
-  `$sizeof<T>` returning `u64`. Require the index operand to be `u64` and
-  update fixtures that still index arrays with `i64` values.
 - **Generic parameter position on decls.** MIR puts generics between the
   keyword and the name (`fn<T> foo`, `struct<T> Box`, `trait<T> Iter`).
   Rust convention is post-name (`fn foo<T>`, `struct Box<T>`, `trait Iter<T>`).
@@ -30,16 +24,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
   the enum-construction rvalue. Extract to `common.grammar.js`'s shared
   rule set so all four sites route through one node kind. Parser
   wrappers collapse into a single `map_instance` helper.
-- **Impl method bodies bypass most checkers.** `typecheck_impl` runs each
-  impl method through `typecheck_function` (via a synthesized effective
-  `Function` with impl-header generics prepended), so type errors in
-  bodies are caught. But `Program::functions()` still doesn't include
-  impl methods, so NLL / place-state / substructural check / drop-elab
-  / reachability skip them. The mono trait-resolution pass (still to be
-  implemented) is expected to emit each impl method as a concrete
-  `Declaration::Fn` decl that participates in the full pipeline; if
-  that plan changes, impl methods need to be plumbed through the check
-  passes directly.
+- Decide on and standardize on whether malloc size and array index type should be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
@@ -167,7 +152,6 @@ the deliberate later refinement to nested operand and projection sources.
   - `impl AutoDestroy for String`
   - HLL lifetimes.
   - Phantom data?
-- Round-trip fixture test (`pretty_print → parse → pretty_print`)
   as an anti-drift check between grammar and codebase.
 - Tighten MIR struct/enum decl separators from whitespace-or-comma
   to comma-required-optional-trailing (match HLL).
@@ -178,6 +162,14 @@ the deliberate later refinement to nested operand and projection sources.
 - Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
 - Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
 
-# Paper cuts
-- `struct<T> Box {..}` in MIR should be `struct Box<T> {..}`
-- `fn<T> foo(..) {..}` in MIR should be `fn foo<T>(..) {..}`
+# Next
+- **Impl method bodies bypass most checkers.** `typecheck_impl` runs each
+  impl method through `typecheck_function` (via a synthesized effective
+  `Function` with impl-header generics prepended), so type errors in
+  bodies are caught. But `Program::functions()` still doesn't include
+  impl methods, so NLL / place-state / substructural check / drop-elab
+  / reachability skip them. The mono trait-resolution pass (still to be
+  implemented) is expected to emit each impl method as a concrete
+  `Declaration::Fn` decl that participates in the full pipeline; if
+  that plan changes, impl methods need to be plumbed through the check
+  passes directly.
