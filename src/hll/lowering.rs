@@ -1746,7 +1746,7 @@ mod tests {
             );
         }
 
-        pretty_print(&mir_prog)
+        pretty_print(&env)
     }
 
     fn assert_lower_eq(source: &str, expected_mir: &str) {

@@ -173,7 +173,10 @@ the deliberate later refinement to nested operand and projection sources.
   - MIR has `move x` and `copy x` operands.
 
 
-# Next
+# Current Yak-shaving stack
+- A standard `Box` type
+- destructor elaboration
+- Traits working properly
 - **Impl method bodies bypass most checkers.** `typecheck_impl` runs each
   impl method through `typecheck_function` (via a synthesized effective
   `Function` with impl-header generics prepended), so type errors in
@@ -185,3 +188,9 @@ the deliberate later refinement to nested operand and projection sources.
   that plan changes, impl methods need to be plumbed through the check
   passes directly.
   - Examine `effective_impl_method`
+- Standardize iteration over function and method bodies
+- Analysis should use a a LocalEnv that augments the IndexedProgram with the
+in scope generic parameters from impl<..> and fn foo<...>.
+- Replace Program + GlobalEnv with a single IndexedProgram
+- Rename GlobalEnv to IndexedProgram
+- Migrate the pipeline to take GlobalEnv

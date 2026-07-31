@@ -95,7 +95,8 @@ fn main() {
     };
 
     if matches!(emit, EmitKind::PreElabMir) {
-        print!("{}", mir::pretty_print::pretty_print(&program));
+        let indexed = mir::type_check::GlobalEnv::build(&program).0;
+        print!("{}", mir::pretty_print::pretty_print(&indexed));
         return;
     }
 
@@ -122,7 +123,10 @@ fn main() {
         EmitKind::Llvm => {
             print!("{}", mir::codegen::lower_mir_to_llvm(elaborated));
         }
-        EmitKind::Mir => print!("{}", mir::pretty_print::pretty_print(&elaborated)),
+        EmitKind::Mir => {
+            let indexed = mir::type_check::GlobalEnv::build(&elaborated).0;
+            print!("{}", mir::pretty_print::pretty_print(&indexed));
+        }
         EmitKind::PreElabMir => unreachable!("handled above"),
     }
 }

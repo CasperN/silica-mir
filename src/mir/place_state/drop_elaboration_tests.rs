@@ -3,8 +3,13 @@ use super::drop_elaboration::*;
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::Program;
 use crate::mir::parser::Parser;
-use crate::mir::pretty_print::pretty_print;
+use crate::mir::pretty_print::pretty_print as pretty_print_indexed;
 use crate::mir::type_check;
+
+fn pretty_print(program: &Program) -> String {
+    let indexed = type_check::GlobalEnv::build(program).0;
+    pretty_print_indexed(&indexed)
+}
 
 /// Run the full parse → typecheck → elaborate pipeline, returning the
 /// mutated program for inspection.
@@ -506,4 +511,3 @@ fn strict_check_still_fails_for_linear_leak() {
         errs
     );
 }
-

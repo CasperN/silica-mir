@@ -1,7 +1,7 @@
 //! Pretty-printer for MIR programs.
 //!
-//! The output is exact-parse: `Parser::new(pretty_print(program)).parse()`
-//! yields a program equivalent to `program` modulo spans. This gives us a
+//! The output is exact-parse: parsing `pretty_print(program)` yields a program
+//! equivalent to the indexed declarations modulo spans. This gives us a
 //! textual golden-file style for tests (see `drop_elaboration` tests) and
 //! makes elaborated output human-readable.
 //!
@@ -14,12 +14,13 @@
 //! - Types render with the same tokens the parser accepts.
 
 use crate::mir::ast::*;
+use crate::mir::env::{DeclarationRef, GlobalEnv};
 use std::fmt::Write;
 
-pub fn pretty_print(program: &Program) -> String {
+pub fn pretty_print(program: &GlobalEnv) -> String {
     let mut out = String::new();
     let mut first = true;
-    for decl in &program.declarations {
+    for decl in program.declarations() {
         if is_prelude_decl(decl) {
             continue;
         }
@@ -36,17 +37,20 @@ pub fn pretty_print(program: &Program) -> String {
 /// into every program to expose the `$`-prefixed intrinsics under
 /// non-`$` names. They're not user-authored and shouldn't appear in
 /// fixture-pinned pretty-printed output.
-fn is_prelude_decl(decl: &Declaration) -> bool {
-    matches!(decl.meta().map(|m| m.name.as_str()), Some("size_of" | "ptr_offset"))
+fn is_prelude_decl(decl: DeclarationRef<'_>) -> bool {
+    matches!(
+        decl.meta().map(|m| m.name.as_str()),
+        Some("size_of" | "ptr_offset")
+    )
 }
 
-fn write_declaration(out: &mut String, decl: &Declaration) {
+fn write_declaration(out: &mut String, decl: DeclarationRef<'_>) {
     match decl {
-        Declaration::Struct(s) => write_struct(out, s),
-        Declaration::Enum(e) => write_enum(out, e),
-        Declaration::Fn(f) => write_function(out, f),
-        Declaration::Trait(t) => write_trait(out, t),
-        Declaration::Impl(i) => write_impl(out, i),
+        DeclarationRef::Struct(s) => write_struct(out, s),
+        DeclarationRef::Enum(e) => write_enum(out, e),
+        DeclarationRef::Function(f) => write_function(out, f),
+        DeclarationRef::Trait(t) => write_trait(out, t),
+        DeclarationRef::Impl(i) => write_impl(out, i),
     }
 }
 
@@ -479,6 +483,7 @@ fn write_terminator(out: &mut String, term: &Terminator) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::mir::env::GlobalEnv;
     use crate::mir::parser::Parser;
 
     /// Parse `src`, pretty-print, and verify the output re-parses to a
@@ -487,7 +492,8 @@ mod tests {
     #[track_caller]
     fn assert_roundtrip(src: &str) {
         let original = Parser::parse_or_panic(src);
-        let printed = pretty_print(&original);
+        let indexed = GlobalEnv::build(&original).0;
+        let printed = pretty_print(&indexed);
         let reparsed = Parser::parse_or_panic(printed.clone());
         assert_eq!(
             strip_spans(original.clone()),

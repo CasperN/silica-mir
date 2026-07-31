@@ -11,7 +11,7 @@
 //! and return either the concrete type or a structured
 //! [`TypeResolutionError`] explaining why it couldn't be resolved.
 
-use crate::common::Marker;
+use crate::common::{GeneratedKind, Marker, SourceInfo};
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{DiagnosticFormat, DiagnosticScope};
@@ -335,6 +335,37 @@ impl TypeResolutionError {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+pub enum DeclarationRef<'a> {
+    Struct(&'a StructDecl),
+    Enum(&'a EnumDecl),
+    Function(&'a Function),
+    Trait(&'a TraitDecl),
+    Impl(&'a ImplBlock),
+}
+
+impl<'a> DeclarationRef<'a> {
+    pub fn meta(self) -> Option<&'a DeclMeta> {
+        match self {
+            DeclarationRef::Struct(s) => Some(&s.meta),
+            DeclarationRef::Enum(e) => Some(&e.meta),
+            DeclarationRef::Function(f) => Some(&f.meta),
+            DeclarationRef::Trait(t) => Some(&t.meta),
+            DeclarationRef::Impl(_) => None,
+        }
+    }
+
+    pub fn source(self) -> SourceInfo {
+        match self {
+            DeclarationRef::Struct(s) => s.meta.name_source,
+            DeclarationRef::Enum(e) => e.meta.name_source,
+            DeclarationRef::Function(f) => f.meta.name_source,
+            DeclarationRef::Trait(t) => t.meta.name_source,
+            DeclarationRef::Impl(i) => i.params.source,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct GlobalEnv {
     /// Struct and enum declarations, keyed by name. Uses `IndexMap` so
@@ -349,12 +380,9 @@ pub struct GlobalEnv {
     /// enforced together (see `GlobalEnv::build`) — Rust's type-namespace
     /// rule.
     pub traits: IndexMap<String, TraitDecl>,
-    /// Function signatures, keyed by name. Bodies live in
-    /// [`Program`](crate::mir::ast::Program) — callers that need to
-    /// walk statements iterate `Program::functions()` and use `GlobalEnv` for
-    /// name resolution (`env.functions[callee_name].params`, etc.).
-    /// Keeping only signatures in `GlobalEnv` means elaboration can mutate
-    /// bodies in-place on `Program` without an `GlobalEnv` resync step.
+    /// Functions, including bodies, keyed by name. Compiler-provided
+    /// intrinsics also occupy this lookup namespace but do not participate in
+    /// ordered declaration traversal.
     pub functions: IndexMap<String, Function>,
     /// Impl blocks, keyed by `(trait_path, target_type)`. The full
     /// trait path (name + lifetime + type args) is the key so multiple
@@ -463,6 +491,32 @@ impl GlobalEnv {
             },
             errors,
         )
+    }
+
+    /// Return accepted declarations in source order.
+    /// Compiler-provided intrinsic signatures are lookup entries only and are
+    /// excluded from declaration traversal.
+    pub fn declarations(&self) -> Vec<DeclarationRef<'_>> {
+        let types = self.types.values().map(|decl| match decl {
+            TypeDecl::Struct(s) => DeclarationRef::Struct(s),
+            TypeDecl::Enum(e) => DeclarationRef::Enum(e),
+        });
+        let traits = self.traits.values().map(DeclarationRef::Trait);
+        let functions = self
+            .functions
+            .values()
+            .filter(|function| {
+                function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+            })
+            .map(DeclarationRef::Function);
+        let impls = self.impls.values().map(DeclarationRef::Impl);
+
+        let mut declarations: Vec<_> = types.chain(traits).chain(functions).chain(impls).collect();
+        declarations.sort_by_key(|declaration| {
+            let span = declaration.source().span();
+            (span.line, span.col, span.end_line, span.end_col)
+        });
+        declarations
     }
 
     /// Return the substructural class of `ty` as a `Markers` value under
@@ -982,5 +1036,45 @@ impl GlobalEnv {
                 Ok(to_ty.clone())
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod declaration_iteration_tests {
+    use super::*;
+    use crate::mir::parser::Parser;
+
+    #[test]
+    fn declarations_cover_indexed_namespaces_and_exclude_intrinsics() {
+        let program = Parser::parse_or_panic(
+            "
+            trait T { fn use_(value: & Self); }
+            struct S: Copy + Drop { value: i64 }
+            impl T for S {
+              fn use_(value: & S) { entry: return }
+            }
+            fn f() { entry: return }
+            enum E: Copy + Drop { V: unit }
+            ",
+        );
+        let (program, errors) = GlobalEnv::build(&program);
+        assert!(errors.is_empty(), "environment errors: {errors:?}");
+
+        let declarations: Vec<String> = program
+            .declarations()
+            .into_iter()
+            .map(|declaration| match declaration {
+                DeclarationRef::Struct(s) => format!("struct {}", s.meta.name),
+                DeclarationRef::Enum(e) => format!("enum {}", e.meta.name),
+                DeclarationRef::Function(f) => format!("fn {}", f.meta.name),
+                DeclarationRef::Trait(t) => format!("trait {}", t.meta.name),
+                DeclarationRef::Impl(_) => "impl".to_string(),
+            })
+            .collect();
+
+        assert_eq!(
+            declarations,
+            ["trait T", "struct S", "impl", "fn f", "enum E"]
+        );
     }
 }
