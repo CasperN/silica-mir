@@ -13,19 +13,19 @@ use super::analysis::{
     PlaceStateContext, PointState, RefState,
 };
 
-pub fn check_program(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
+pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     for f in program.functions() {
-        check_function(env, f, d);
+        check_function(program, f, d);
     }
-    check_return_leaks(program, env, d);
+    check_return_leaks(program, d);
 }
 
 /// Return validation is part of the single final place-state check.
-pub(super) fn check_return_leaks(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
+pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) {
     for (func, _body) in program.function_bodies() {
         let locals = func.locals_map();
-        for (block, state) in states_before_returns(env, func) {
-            check_return_state(env, func, block, &locals, &state, d);
+        for (block, state) in states_before_returns(program, func) {
+            check_return_state(program, func, block, &locals, &state, d);
         }
     }
 }

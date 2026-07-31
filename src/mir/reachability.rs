@@ -52,9 +52,9 @@ impl From<ReachabilityCode> for DiagCode {
     }
 }
 
-pub fn check_program(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
+pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     for f in program.functions() {
-        check_function(env, f, d);
+        check_function(program, f, d);
     }
 }
 

@@ -60,7 +60,7 @@ When documentation and implementation disagree, use these authorities:
 
 - Pipeline order and pass interaction:
   [`src/lib.rs`](./src/lib.rs), especially `lower_hll_to_mir`,
-  `check_mir_without_elaboration`, and `elaborate_and_check_mir`.
+  and `elaborate_and_check_mir`.
 - Accepted syntax:
   [`tree-sitter-silica/common/grammar.js`](./tree-sitter-silica/common/grammar.js),
   [`tree-sitter-silica/hll/grammar.js`](./tree-sitter-silica/hll/grammar.js),

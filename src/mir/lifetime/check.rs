@@ -26,11 +26,11 @@ use super::loans::{
 use super::region::{self, Region};
 use super::LifetimeCode;
 
-pub fn check_program(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
-    check_decl_wf(env, d);
+pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
+    check_decl_wf(program, d);
     for f in program.functions() {
-        check_fn_signature_wf(f, env, d);
-        check_function(env, f, d);
+        check_fn_signature_wf(f, program, d);
+        check_function(program, f, d);
     }
 }
 
@@ -1528,7 +1528,7 @@ mod tests {
         let (env, env_errors) = IndexedProgram::build(&program);
         assert!(env_errors.is_empty());
         let mut diagnostics = Diagnostics::default();
-        check_program(&program, &env, &mut diagnostics);
+        check_program(&env, &mut diagnostics);
 
         let conflict = diagnostics
             .errors()
@@ -1573,7 +1573,7 @@ mod tests {
         let (env, env_errors) = IndexedProgram::build(&program);
         assert!(env_errors.is_empty());
         let mut diagnostics = Diagnostics::default();
-        check_program(&program, &env, &mut diagnostics);
+        check_program(&env, &mut diagnostics);
 
         let conflict = diagnostics
             .errors()

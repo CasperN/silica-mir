@@ -507,13 +507,7 @@ impl IndexedProgram {
             TypeDecl::Enum(e) => DeclarationRef::Enum(e),
         });
         let traits = self.traits.values().map(DeclarationRef::Trait);
-        let functions = self
-            .functions
-            .values()
-            .filter(|function| {
-                function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
-            })
-            .map(DeclarationRef::Function);
+        let functions = self.functions().map(DeclarationRef::Function);
         let impls = self.impls.values().map(DeclarationRef::Impl);
 
         let mut declarations: Vec<_> = types.chain(traits).chain(functions).chain(impls).collect();
@@ -522,6 +516,19 @@ impl IndexedProgram {
             (span.line, span.col, span.end_line, span.end_col)
         });
         declarations
+    }
+
+    /// Iterate function declarations, excluding intrinsic lookup entries.
+    pub fn functions(&self) -> impl Iterator<Item = &Function> {
+        self.functions.values().filter(|function| {
+            function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+        })
+    }
+
+    /// Iterate functions that have MIR bodies.
+    pub fn function_bodies(&self) -> impl Iterator<Item = (&Function, &FunctionBody)> {
+        self.functions()
+            .filter_map(|function| function.body.as_ref().map(|body| (function, body)))
     }
 
     /// Return the substructural class of `ty` as a `Markers` value under
@@ -1119,5 +1126,13 @@ mod declaration_iteration_tests {
             declarations,
             ["trait T", "struct S", "impl", "fn f", "enum E"]
         );
+        assert_eq!(
+            program
+                .functions()
+                .map(|function| function.meta.name.as_str())
+                .collect::<Vec<_>>(),
+            ["f"]
+        );
+        assert_eq!(program.function_bodies().count(), 1);
     }
 }

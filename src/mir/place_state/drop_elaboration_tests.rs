@@ -46,7 +46,7 @@ fn assert_strict_clean_after_elaboration(src: &str) {
     let mut d = Diagnostics::default();
     let env = type_check::IndexedProgram::build(&program).0;
     env.typecheck(&program, &mut d);
-    check_return_leaks(&program, &env, &mut d);
+    check_return_leaks(&env, &mut d);
     let errs = d.errors_str();
     let leak_errs: Vec<&String> = errs
         .iter()
@@ -107,7 +107,8 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
     elaborate(&mut program, &env);
 
     let mut d = Diagnostics::default();
-    check_program(&program, &env, &mut d);
+    let elaborated = type_check::IndexedProgram::build(&program).0;
+    check_program(&elaborated, &mut d);
     let errors = d.errors_str();
     assert!(
         errors
@@ -501,7 +502,7 @@ fn strict_check_still_fails_for_linear_leak() {
     let mut d2 = Diagnostics::default();
     let env2 = type_check::IndexedProgram::build(&program).0;
     env2.typecheck(&program, &mut d2);
-    check_return_leaks(&program, &env2, &mut d2);
+    check_return_leaks(&env2, &mut d2);
 
     let errs = d2.errors_str();
     assert!(

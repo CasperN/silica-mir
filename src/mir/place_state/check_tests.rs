@@ -16,7 +16,7 @@ mod direct_leak_check_tests {
         let program = Parser::parse_or_panic(src);
         let mut d = Diagnostics::default();
         let env = type_check::IndexedProgram::build(&program).0;
-        check_return_leaks(&program, &env, &mut d);
+        check_return_leaks(&env, &mut d);
         let errs = d.errors_str();
         assert!(
             errs.iter()
@@ -32,7 +32,7 @@ mod direct_leak_check_tests {
         let program = Parser::parse_or_panic(src);
         let mut d = Diagnostics::default();
         let env = type_check::IndexedProgram::build(&program).0;
-        check_return_leaks(&program, &env, &mut d);
+        check_return_leaks(&env, &mut d);
         let errs = d.errors_str();
         let leak_errs: Vec<_> = errs
             .iter()
@@ -52,7 +52,7 @@ mod nested_reference_state_tests {
         let program = Parser::parse_or_panic(source);
         let env = IndexedProgram::build(&program).0;
         let mut diagnostics = Diagnostics::default();
-        check_program(&program, &env, &mut diagnostics);
+        check_program(&env, &mut diagnostics);
         diagnostics.errors_str()
     }
 

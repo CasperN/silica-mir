@@ -49,13 +49,12 @@ fn prepare_mir_for_analysis(
 
 /// Validate initialization state and lifetime loans.
 fn check_place_and_loan_state(
-    program: &Program,
-    env: &mir::type_check::IndexedProgram,
+    program: &mir::env::IndexedProgram,
     d: &mut Diagnostics,
 ) {
-    mir::place_state::check::check_program(program, env, d);
-    mir::lifetime::check::check_program(program, env, d);
-    mir::reachability::check_program(program, env, d);
+    mir::place_state::check::check_program(program, d);
+    mir::lifetime::check::check_program(program, d);
+    mir::reachability::check_program(program, d);
 }
 
 /// Type-check and validate MIR without running NLL or place-state
@@ -69,7 +68,7 @@ pub fn check_mir_without_elaboration(
     d: &mut Diagnostics,
 ) -> (Program, mir::type_check::IndexedProgram) {
     let (program, env) = prepare_mir_for_analysis(program, d);
-    check_place_and_loan_state(&program, &env, d);
+    check_place_and_loan_state(&env, d);
     (program, env)
 }
 
@@ -127,7 +126,7 @@ pub fn elaborate_and_check_mir(
     // Final dynamic validation runs once, over the canonical elaborated MIR.
     // This surfaces invalid source transitions that no elaborator repaired,
     // plus obligations exposed by NLL-inserted `unborrow` statements.
-    check_place_and_loan_state(&elaborated, &env, d);
-
-    mir::env::IndexedProgram::build(&elaborated).0
+    let elaborated = mir::env::IndexedProgram::build(&elaborated).0;
+    check_place_and_loan_state(&elaborated, d);
+    elaborated
 }
