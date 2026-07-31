@@ -48,7 +48,11 @@ fn prepare_mir_for_analysis(
 }
 
 /// Validate initialization state and lifetime loans.
-fn check_place_and_loan_state(program: &Program, env: &mir::type_check::IndexedProgram, d: &mut Diagnostics) {
+fn check_place_and_loan_state(
+    program: &Program,
+    env: &mir::type_check::IndexedProgram,
+    d: &mut Diagnostics,
+) {
     mir::place_state::check::check_program(program, env, d);
     mir::lifetime::check::check_program(program, env, d);
     mir::reachability::check_program(program, env, d);

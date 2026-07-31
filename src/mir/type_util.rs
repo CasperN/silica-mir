@@ -5,12 +5,10 @@
 
 use crate::common::Lifetime;
 use crate::mir::ast::{
-    ConstVal, DeclMeta, Instance, Operand, ParamsIntro, RValue, Statement, StatementKind, Terminator, Type,
-    TypeKind, TypeParam,
+    ConstVal, DeclMeta, Instance, Operand, ParamsIntro, RValue, Statement, StatementKind,
+    Terminator, Type, TypeKind, TypeParam,
 };
-use crate::mir::helpers::{
-    assign_stmt, call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt,
-};
+use crate::mir::helpers::{assign_stmt, call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt};
 use crate::mir::type_check::{IndexedProgram, TypeDecl};
 use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
@@ -199,11 +197,7 @@ impl TypeFolder for SubstituteFolder<'_> {
 /// statement. Dispatches to [`substitute_rvalue_types`] / [`substitute_operand_types`]
 /// for the embedded slots; statement kinds that carry no types
 /// (`Drop`, `Unborrow`, `RequireUninit`) clone through.
-pub fn substitute_stmt_types(
-    s: &Statement,
-    type_params: &[TypeParam],
-    args: &[Type],
-) -> Statement {
+pub fn substitute_stmt_types(s: &Statement, type_params: &[TypeParam], args: &[Type]) -> Statement {
     match &s.kind {
         StatementKind::Assign(p, r) => assign_stmt(
             p.clone(),
@@ -227,11 +221,7 @@ pub fn substitute_stmt_types(
 /// Substitute type parameters in the Type slots of an rvalue: enum
 /// construction type args, the type argument of a `PtrCast`, and any
 /// operand-embedded types (see [`substitute_operand_types`]).
-pub fn substitute_rvalue_types(
-    r: &RValue,
-    type_params: &[TypeParam],
-    args: &[Type],
-) -> RValue {
+pub fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Type]) -> RValue {
     match r {
         RValue::EnumConstr(name, targs, variant, payload) => RValue::EnumConstr(
             name.clone(),
@@ -261,11 +251,7 @@ pub fn substitute_rvalue_types(
 /// type-arg list of an `FnName` const, and the `self_ty` and trait-ref
 /// type args of a `TraitFn` const. All other operand shapes have no
 /// embedded types.
-pub fn substitute_operand_types(
-    op: &Operand,
-    type_params: &[TypeParam],
-    args: &[Type],
-) -> Operand {
+pub fn substitute_operand_types(op: &Operand, type_params: &[TypeParam], args: &[Type]) -> Operand {
     match op {
         Operand::Const(ConstVal::FnName(name, targs)) => Operand::Const(ConstVal::FnName(
             name.clone(),
@@ -332,7 +318,14 @@ pub fn place_type(
     let mut ty = locals.get(&root)?.clone();
     for step in steps {
         ty = match (step, ty.kind) {
-            (PathStep::Field(f), TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args })) => {
+            (
+                PathStep::Field(f),
+                TypeKind::Custom(Instance {
+                    name,
+                    lifetime_args: lts,
+                    type_args: args,
+                }),
+            ) => {
                 let TypeDecl::Struct(s) = env.types.get(&name)? else {
                     return None;
                 };
@@ -343,7 +336,14 @@ pub fn place_type(
                     .try_substitute(&field.ty, &lts, &args)
                     .unwrap_or_else(|| field.ty.clone())
             }
-            (PathStep::Downcast(v), TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args })) => {
+            (
+                PathStep::Downcast(v),
+                TypeKind::Custom(Instance {
+                    name,
+                    lifetime_args: lts,
+                    type_args: args,
+                }),
+            ) => {
                 let TypeDecl::Enum(e) = env.types.get(&name)? else {
                     return None;
                 };

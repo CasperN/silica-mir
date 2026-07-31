@@ -593,7 +593,14 @@ fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll:
             }
             find_param_at(name, a_r, b_r)
         }
-        (hll::TypeKind::Custom(hll::Instance { type_args: a_args, .. }), hll::TypeKind::Custom(hll::Instance { type_args: b_args, .. })) => {
+        (
+            hll::TypeKind::Custom(hll::Instance {
+                type_args: a_args, ..
+            }),
+            hll::TypeKind::Custom(hll::Instance {
+                type_args: b_args, ..
+            }),
+        ) => {
             for (a, b) in a_args.iter().zip(b_args.iter()) {
                 if let Some(t) = find_param_at(name, a, b) {
                     return Some(t);
@@ -612,9 +619,17 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::Bool => mir::TypeKind::Bool,
         hll::TypeKind::Unit => mir::TypeKind::Unit,
         hll::TypeKind::Never => mir::TypeKind::Never,
-        hll::TypeKind::Custom(hll::Instance { name, lifetime_args: lifetimes, type_args: args }) => {
+        hll::TypeKind::Custom(hll::Instance {
+            name,
+            lifetime_args: lifetimes,
+            type_args: args,
+        }) => {
             let lowered_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
-            mir::TypeKind::Custom(mir::Instance::new(name.clone(), lifetimes.clone(), lowered_args))
+            mir::TypeKind::Custom(mir::Instance::new(
+                name.clone(),
+                lifetimes.clone(),
+                lowered_args,
+            ))
         }
         hll::TypeKind::Param(name) => mir::TypeKind::Param(name.clone()),
         hll::TypeKind::Ref(kind, lt, inner) => {
@@ -1373,7 +1388,12 @@ fn lower_expr_into(
                         )
                     })?;
                     let (enum_is_copy, bound_var_mir_ty) =
-                        if let hll::TypeKind::Custom(hll::Instance { name: enum_name, type_args: args, .. }) = &target_hll_ty.kind {
+                        if let hll::TypeKind::Custom(hll::Instance {
+                            name: enum_name,
+                            type_args: args,
+                            ..
+                        }) = &target_hll_ty.kind
+                        {
                             let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
                                 diag(
                                     HllLoweringCode::EnumDeclMissing,
@@ -1492,7 +1512,10 @@ fn lower_expr_into(
             // context. For a non-generic enum this is empty.
             let type_args = match types.get(&expr.source) {
                 Some(hll::Type {
-                    kind: hll::TypeKind::Custom(hll::Instance { type_args: args, .. }),
+                    kind:
+                        hll::TypeKind::Custom(hll::Instance {
+                            type_args: args, ..
+                        }),
                     ..
                 }) => args.iter().map(lower_type).collect(),
                 _ => Vec::new(),
@@ -1735,7 +1758,10 @@ mod tests {
         // Run MIR typecheck sanity check on the lowered program
         let (env, env_errs) = crate::mir::type_check::IndexedProgram::build(&mir_prog);
         if !env_errs.is_empty() {
-            panic!("MIR IndexedProgram build failed on lowered program: {:?}", env_errs);
+            panic!(
+                "MIR IndexedProgram build failed on lowered program: {:?}",
+                env_errs
+            );
         }
         let mut d = crate::Diagnostics::default();
         env.typecheck(&mir_prog, &mut d);

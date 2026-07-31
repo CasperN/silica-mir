@@ -46,7 +46,10 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
         TypeKind::Custom(inst) => TypeKind::Custom(crate::hll::ast::Instance::new(
             inst.name.clone(),
             inst.lifetime_args.clone(),
-            inst.type_args.iter().map(|arg| folder.fold_type(arg)).collect(),
+            inst.type_args
+                .iter()
+                .map(|arg| folder.fold_type(arg))
+                .collect(),
         )),
         TypeKind::Ref(kind, lifetime, inner) => {
             TypeKind::Ref(*kind, lifetime.clone(), Box::new(folder.fold_type(inner)))

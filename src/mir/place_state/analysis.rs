@@ -1,8 +1,8 @@
 use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow;
-use crate::mir::helpers::*;
 use crate::mir::env::IndexedProgram;
+use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -253,10 +253,6 @@ pub(super) struct PlaceStateContext<'a> {
 
 // ---------- Type lookups ----------
 
-
-
-
-
 // ---------- Canonicalization ----------
 
 /// If a `Partial` has all fields at the same simple (non-Partial) state,
@@ -381,7 +377,10 @@ pub(super) fn join_partials(
     ma: &BTreeMap<InitSlot, InitState>,
     mb: &BTreeMap<InitSlot, InitState>,
 ) -> InitState {
-    let variant_keyed = ma.keys().chain(mb.keys()).any(|k| matches!(k, InitSlot::Variant(_)));
+    let variant_keyed = ma
+        .keys()
+        .chain(mb.keys())
+        .any(|k| matches!(k, InitSlot::Variant(_)));
     if variant_keyed {
         return join_variant_partials(ma, mb);
     }
@@ -430,7 +429,11 @@ fn join_variant_partials(
     canonicalize(InitState::Partial(out))
 }
 
-pub(super) fn join_point(ctx: &PlaceStateContext<'_>, a: &PointState, b: &PointState) -> PointState {
+pub(super) fn join_point(
+    ctx: &PlaceStateContext<'_>,
+    a: &PointState,
+    b: &PointState,
+) -> PointState {
     let locals: IndexMap<String, InitState> = a
         .locals
         .iter()
@@ -627,7 +630,12 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: 
 }
 
 /// Return the effective state at the given path (for a read check).
-pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &IndexedProgram) -> InitState {
+pub(super) fn read_at(
+    state: &InitState,
+    ty: &Type,
+    path: &[PathStep],
+    env: &IndexedProgram,
+) -> InitState {
     if path.is_empty() {
         return state.clone();
     }
@@ -727,7 +735,12 @@ pub fn block_entry_states(env: &IndexedProgram, func: &Function) -> IndexMap<Str
 /// same transfer as the fixpoint. For callers that hold a per-block
 /// entry state and want to reconstruct the state at any point inside
 /// the block.
-pub fn transfer_stmt_silent(env: &IndexedProgram, func: &Function, stmt: &Statement, state: &mut PointState) {
+pub fn transfer_stmt_silent(
+    env: &IndexedProgram,
+    func: &Function,
+    stmt: &Statement,
+    state: &mut PointState,
+) {
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
         env,
@@ -772,7 +785,11 @@ pub fn states_before_returns<'a>(
     out
 }
 
-pub(super) fn boundary_state(func: &Function, body: &FunctionBody, env: &IndexedProgram) -> PointState {
+pub(super) fn boundary_state(
+    func: &Function,
+    body: &FunctionBody,
+    env: &IndexedProgram,
+) -> PointState {
     let mut s = PointState::default();
     for p in &func.params {
         s.locals.insert(p.name.clone(), InitState::Init);
@@ -817,7 +834,12 @@ pub(super) fn seed_parameter_ref_states(
         return;
     }
 
-    let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
+    let TypeKind::Custom(Instance {
+        name,
+        type_args: args,
+        ..
+    }) = &ty.kind
+    else {
         return;
     };
     if !visited.insert(name.clone()) {

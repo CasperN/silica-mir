@@ -121,13 +121,15 @@ fn derive_fixture_path(
 #[track_caller]
 pub fn run_structured(src: &str) -> Diagnostics {
     let mut d = Diagnostics::default();
-    let program = Parser::new(src.to_string()).parse(&mut d).unwrap_or_else(|| {
-        panic!(
-            "parse error:\n{}\n--- source ---\n{}",
-            d.errors_str().join("\n"),
-            src
-        )
-    });
+    let program = Parser::new(src.to_string())
+        .parse(&mut d)
+        .unwrap_or_else(|| {
+            panic!(
+                "parse error:\n{}\n--- source ---\n{}",
+                d.errors_str().join("\n"),
+                src
+            )
+        });
     d.set_source(program.source.clone());
     elaborate_and_check_mir(program, &mut d);
     maybe_write_fixture(src, d.has_errors());
@@ -200,13 +202,15 @@ fn format_diagnostics<'a>(diagnostics: impl Iterator<Item = &'a Diagnostic>) -> 
 /// use that when a test needs code/span rather than substring matching.
 pub fn run(src: &str) -> (Vec<String>, Vec<String>) {
     let mut d = Diagnostics::default();
-    let program = Parser::new(src.to_string()).parse(&mut d).unwrap_or_else(|| {
-        panic!(
-            "parse error:\n{}\n--- source ---\n{}",
-            d.errors_str().join("\n"),
-            src
-        )
-    });
+    let program = Parser::new(src.to_string())
+        .parse(&mut d)
+        .unwrap_or_else(|| {
+            panic!(
+                "parse error:\n{}\n--- source ---\n{}",
+                d.errors_str().join("\n"),
+                src
+            )
+        });
     d.set_source(program.source.clone());
     elaborate_and_check_mir(program, &mut d);
     maybe_write_fixture(src, d.has_errors());

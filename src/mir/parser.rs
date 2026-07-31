@@ -307,9 +307,9 @@ impl Parser {
     #[cfg(test)]
     pub fn parse_or_panic(src: impl Into<String>) -> Program {
         let mut d = Diagnostics::default();
-        Self::new(src).parse(&mut d).unwrap_or_else(|| {
-            panic!("MIR parse failed:\n{}", d.errors_str().join("\n"))
-        })
+        Self::new(src)
+            .parse(&mut d)
+            .unwrap_or_else(|| panic!("MIR parse failed:\n{}", d.errors_str().join("\n")))
     }
 
     /// Parse `self.source` into a `Program`, emitting all diagnostics
@@ -352,7 +352,11 @@ impl Parser {
         }
 
         let program = self.map_program(root, d);
-        if d.has_errors() { None } else { Some(program) }
+        if d.has_errors() {
+            None
+        } else {
+            Some(program)
+        }
     }
 
     fn get_text(&self, node: Node) -> &str {
@@ -390,12 +394,7 @@ impl Parser {
     /// `Diagnostic` with `InvalidLiteral` code and the source span of
     /// the literal token, pushing the diagnostic into `d` and returning
     /// `None` on error.
-    fn lit_diag<T>(
-        &self,
-        res: Result<T, String>,
-        node: Node,
-        d: &mut Diagnostics,
-    ) -> Option<T> {
+    fn lit_diag<T>(&self, res: Result<T, String>, node: Node, d: &mut Diagnostics) -> Option<T> {
         match res {
             Ok(v) => Some(v),
             Err(s) => {
@@ -489,11 +488,7 @@ impl Parser {
         }
     }
 
-    fn map_declaration(
-        &self,
-        node: Node,
-        d: &mut Diagnostics,
-    ) -> Option<Declaration> {
+    fn map_declaration(&self, node: Node, d: &mut Diagnostics) -> Option<Declaration> {
         let Some(child) = node.child(0) else {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "empty declaration"));
             return None;
@@ -784,11 +779,7 @@ impl Parser {
     fn map_operand(&self, node: Node, d: &mut Diagnostics) -> Option<Operand> {
         if node.kind() == "operand" {
             let Some(first_child) = node.child(0) else {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::MalformedCst,
-                    "operand missing children",
-                ));
+                d.push_error(self.diag(node, ParserCode::MalformedCst, "operand missing children"));
                 return None;
             };
             let text = self.get_text(first_child);
@@ -843,16 +834,10 @@ impl Parser {
             "int_lit" => self.lit_diag(parse_int_literal(self.get_text(node)), node, d),
             "float_lit" => self.lit_diag(parse_float_literal(self.get_text(node)), node, d),
             "byte_str_lit" => self.lit_diag(parse_byte_str_literal(self.get_text(node)), node, d),
-            "byte_char_lit" => {
-                self.lit_diag(parse_byte_char_literal(self.get_text(node)), node, d)
-            }
+            "byte_char_lit" => self.lit_diag(parse_byte_char_literal(self.get_text(node)), node, d),
             "const" => {
                 let Some(child) = node.child(0) else {
-                    d.push_error(self.diag(
-                        node,
-                        ParserCode::MalformedCst,
-                        "const node is empty",
-                    ));
+                    d.push_error(self.diag(node, ParserCode::MalformedCst, "const node is empty"));
                     return None;
                 };
                 self.map_const(child, d)
@@ -1012,8 +997,7 @@ impl Parser {
                             return None;
                         };
                         let enum_name = self.get_text(enum_name_node).to_string();
-                        let Some(variant_name_node) =
-                            node.child_by_field_name("variant_name")
+                        let Some(variant_name_node) = node.child_by_field_name("variant_name")
                         else {
                             d.push_error(self.diag(
                                 node,
@@ -1105,11 +1089,7 @@ impl Parser {
             }
             "drop_stmt" => {
                 let Some(place_node) = child.child_by_field_name("place") else {
-                    d.push_error(self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        "drop missing place",
-                    ));
+                    d.push_error(self.diag(child, ParserCode::MalformedCst, "drop missing place"));
                     return None;
                 };
                 Some(drop_stmt(self.map_place(place_node, d)?, child_span))
@@ -1159,11 +1139,7 @@ impl Parser {
         match child.kind() {
             "goto" => {
                 let Some(label_node) = child.child_by_field_name("label") else {
-                    d.push_error(self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        "goto missing label",
-                    ));
+                    d.push_error(self.diag(child, ParserCode::MalformedCst, "goto missing label"));
                     return None;
                 };
                 Some(goto_term(self.get_text(label_node), child_span))
@@ -1252,11 +1228,7 @@ impl Parser {
 
     fn map_basic_block(&self, node: Node, d: &mut Diagnostics) -> Option<BasicBlock> {
         let Some(label_node) = node.child_by_field_name("label") else {
-            d.push_error(self.diag(
-                node,
-                ParserCode::MalformedCst,
-                "basic block missing label",
-            ));
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "basic block missing label"));
             return None;
         };
         let label = self.get_text(label_node).to_string();
@@ -1310,11 +1282,7 @@ impl Parser {
     /// Parse a `type_args` node (`<'a, T, U>`) into (lifetime_args,
     /// type_args). Requires the type_scope already reflects the
     /// enclosing decl's params so nested `Param` refs resolve.
-    fn map_type_args(
-        &self,
-        node: Node,
-        d: &mut Diagnostics,
-    ) -> Option<(Vec<Lifetime>, Vec<Type>)> {
+    fn map_type_args(&self, node: Node, d: &mut Diagnostics) -> Option<(Vec<Lifetime>, Vec<Type>)> {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut cursor = node.walk();
@@ -1666,8 +1634,7 @@ impl Parser {
         // exits — appropriate for top-level fns, but for trait
         // methods we need the trait's type_params + Self to persist
         // across method sigs. Snapshot here and restore before each.
-        let trait_scope: std::collections::BTreeSet<String> =
-            self.type_scope.borrow().clone();
+        let trait_scope: std::collections::BTreeSet<String> = self.type_scope.borrow().clone();
 
         let mut methods: Vec<Function> = Vec::new();
         let mut seen_names: std::collections::HashSet<String> = Default::default();
@@ -1752,14 +1719,12 @@ impl Parser {
 
         // Optional trait type_args (`Iter<T>`). Absent = non-generic
         // trait (`Iter`).
-        let (trait_lt_args, trait_type_args) = if let Some(args_node) = node
-            .children(&mut cursor)
-            .find(|c| c.kind() == "type_args")
-        {
-            self.map_type_args(args_node, d)?
-        } else {
-            (Vec::new(), Vec::new())
-        };
+        let (trait_lt_args, trait_type_args) =
+            if let Some(args_node) = node.children(&mut cursor).find(|c| c.kind() == "type_args") {
+                self.map_type_args(args_node, d)?
+            } else {
+                (Vec::new(), Vec::new())
+            };
         let trait_path = Instance::new(&trait_name, trait_lt_args, trait_type_args);
 
         let Some(target_node) = node.child_by_field_name("target") else {
@@ -1783,8 +1748,7 @@ impl Parser {
         // Snapshot the impl-header scope so it persists across each
         // method's `map_function_decl` call (which clears the scope
         // on exit — see `map_trait_decl` for the same pattern).
-        let impl_scope: std::collections::BTreeSet<String> =
-            self.type_scope.borrow().clone();
+        let impl_scope: std::collections::BTreeSet<String> = self.type_scope.borrow().clone();
 
         let mut methods: Vec<Function> = Vec::new();
         let mut seen_names: std::collections::HashSet<String> = Default::default();
@@ -1857,14 +1821,7 @@ impl Parser {
         // this function's body can be tagged with `in_function(name)`
         // after the fact — mirrors the block-context annotation.
         let errors_before = d.error_count();
-        let result = self.map_function_decl_body(
-            node,
-            name.clone(),
-            name_span,
-            is_extern,
-            abi,
-            d,
-        );
+        let result = self.map_function_decl_body(node, name.clone(), name_span, is_extern, abi, d);
         d.annotate_errors_in_function(errors_before, &name);
         self.type_scope.borrow_mut().clear();
         result
@@ -2301,7 +2258,10 @@ mod tests {
         let src = "struct P: Copy + Copy { x: i64 }";
         let mut diags = Diagnostics::default();
         let prog = Parser::new(src.to_string()).parse(&mut diags);
-        assert!(prog.is_none(), "expected parse failure for duplicate marker");
+        assert!(
+            prog.is_none(),
+            "expected parse failure for duplicate marker"
+        );
         let errs = diags.errors_str();
         assert!(
             errs.iter().any(|e| e.contains("Duplicate marker")),
@@ -2458,5 +2418,4 @@ mod tests {
             Parser::parse_or_panic(src);
         }
     }
-
 }

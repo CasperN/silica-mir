@@ -111,11 +111,7 @@ fn desugar_fn(f: &mut Function, arities: &HashMap<String, usize>) {
 /// (same rule as struct-field elision). Bare `Ref` layers stay
 /// `None` — region inference materializes their regions during
 /// checking; synthesizing 'sN here would pollute the fn signature.
-fn desugar_body_local_ty(
-    ty: &mut Type,
-    fn_params: &[LifetimeParam],
-    ctx: &mut DesugarCtx,
-) {
+fn desugar_body_local_ty(ty: &mut Type, fn_params: &[LifetimeParam], ctx: &mut DesugarCtx) {
     let ty_source = ty.source;
     match &mut ty.kind {
         TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
@@ -126,7 +122,11 @@ fn desugar_body_local_ty(
                 desugar_body_local_ty(a, fn_params, ctx);
             }
         }
-        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args,
+            type_args,
+        }) => {
             reuse_first_lifetime_args(name, lifetime_args, ty_source, fn_params, ctx);
             for a in type_args {
                 desugar_body_local_ty(a, fn_params, ctx);
@@ -167,7 +167,9 @@ fn reuse_first_lifetime_args(
         let lt = if i < available_from_existing {
             reuse[i].lifetime.clone()
         } else if i < total_available {
-            ctx.synthesized[i - available_from_existing].lifetime.clone()
+            ctx.synthesized[i - available_from_existing]
+                .lifetime
+                .clone()
         } else {
             ctx.fresh_at(ty_source)
         };
@@ -206,11 +208,7 @@ fn desugar_impl(i: &mut ImplBlock, arities: &HashMap<String, usize>) {
     }
 }
 
-fn desugar_signature(
-    meta: &mut DeclMeta,
-    params: &mut [Param],
-    arities: &HashMap<String, usize>,
-) {
+fn desugar_signature(meta: &mut DeclMeta, params: &mut [Param], arities: &HashMap<String, usize>) {
     let mut ctx = DesugarCtx::new(&meta.params.lifetime_params, arities);
     for p in params {
         desugar_type_pos(&mut p.ty, Pos::Input, &mut ctx);
@@ -259,11 +257,7 @@ fn desugar_enum(e: &mut EnumDecl, arities: &HashMap<String, usize>) {
 /// `'s0`, and the bare `Node` inside reuses that same `'s0` instead of
 /// growing the decl to arity 2. If the containing decl doesn't yet
 /// have enough params, synthesize the missing ones (extends the decl).
-fn desugar_decl_field_ty(
-    ty: &mut Type,
-    containing_params: &[LifetimeParam],
-    ctx: &mut DesugarCtx,
-) {
+fn desugar_decl_field_ty(ty: &mut Type, containing_params: &[LifetimeParam], ctx: &mut DesugarCtx) {
     let ty_source = ty.source;
     match &mut ty.kind {
         TypeKind::Ref(_kind, slot, inner) => {
@@ -281,7 +275,11 @@ fn desugar_decl_field_ty(
                 desugar_decl_field_ty(a, containing_params, ctx);
             }
         }
-        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args,
+            type_args,
+        }) => {
             reuse_first_lifetime_args(name, lifetime_args, ty_source, containing_params, ctx);
             for a in type_args {
                 desugar_decl_field_ty(a, containing_params, ctx);
@@ -406,7 +404,11 @@ fn desugar_type_pos(ty: &mut Type, pos: Pos, ctx: &mut DesugarCtx) {
                 desugar_type_pos(a, pos, ctx);
             }
         }
-        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args,
+            type_args,
+        }) => {
             // Materialize lifetime args for a bare use of a Custom
             // type whose decl has lifetime params. Reuse the fn's
             // already-in-scope lifetime params positionally if
@@ -461,4 +463,3 @@ fn desugar_type_pos(ty: &mut Type, pos: Pos, ctx: &mut DesugarCtx) {
         | TypeKind::Param(_) => {}
     }
 }
-

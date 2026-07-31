@@ -19,8 +19,6 @@ use crate::mir::helpers::*;
 use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*};
 use indexmap::IndexMap;
 
-
-
 #[derive(Debug, Clone)]
 pub struct TypeResolutionError {
     kind: TypeResolutionErrorKind,
@@ -152,10 +150,17 @@ enum TypeResolutionErrorKind {
     /// requires trait-bound syntax at the binding site.
     TraitFnParamReceiver(String),
     /// No impl of `trait_path` matches the given self_ty.
-    TraitFnNoImpl { trait_path: Instance, self_ty: Type },
+    TraitFnNoImpl {
+        trait_path: Instance,
+        self_ty: Type,
+    },
     /// Impl of `trait_path` for self_ty exists but doesn't declare the
     /// method the callee names.
-    TraitFnNoMethod { trait_path: Instance, self_ty: Type, method: String },
+    TraitFnNoMethod {
+        trait_path: Instance,
+        self_ty: Type,
+        method: String,
+    },
 }
 
 impl TypeResolutionError {
@@ -560,14 +565,22 @@ impl IndexedProgram {
     /// [`composition`](crate::mir::substructural::composition) —
     /// together they license `class_of(Custom(_, args))` returning
     /// the decl's declared markers without substitution.
-    pub fn validate_type(&self, ty: &Type, params: &ParamsIntro) -> Result<(), TypeValidationError> {
+    pub fn validate_type(
+        &self,
+        ty: &Type,
+        params: &ParamsIntro,
+    ) -> Result<(), TypeValidationError> {
         match &ty.kind {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
             | TypeKind::Unit
             | TypeKind::Never => Ok(()),
-            TypeKind::Custom(Instance { name, lifetime_args, type_args: args }) => {
+            TypeKind::Custom(Instance {
+                name,
+                lifetime_args,
+                type_args: args,
+            }) => {
                 let Some(decl) = self.types.get(name) else {
                     return Err(TypeValidationError::new(
                         TypeValidationErrorKind::UndeclaredType(name.clone()),
@@ -650,7 +663,12 @@ impl IndexedProgram {
     /// Substitutes the struct's type-parameter references (`TypeKind::Param`)
     /// with the concrete args on `ty`.
     pub fn struct_fields(&self, ty: &Type) -> Option<Vec<StructField>> {
-        let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
+        let TypeKind::Custom(Instance {
+            name,
+            type_args: args,
+            ..
+        }) = &ty.kind
+        else {
             return None;
         };
         let TypeDecl::Struct(s) = self.types.get(name)? else {
@@ -676,7 +694,12 @@ impl IndexedProgram {
     /// with the concrete args on `ty`, so `Box<i64>::inner` yields `i64`,
     /// not the raw declared `T`.
     pub fn field_type(&self, ty: &Type, field: &str) -> Option<Type> {
-        let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
+        let TypeKind::Custom(Instance {
+            name,
+            type_args: args,
+            ..
+        }) = &ty.kind
+        else {
             return None;
         };
         let TypeDecl::Struct(s) = self.types.get(name)? else {
@@ -699,7 +722,12 @@ impl IndexedProgram {
     /// with the concrete args on `ty`, so `Option<i64>::Some` yields `i64`,
     /// not the raw declared `T`.
     pub fn variant_payload_type(&self, ty: &Type, variant: &str) -> Option<Type> {
-        let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
+        let TypeKind::Custom(Instance {
+            name,
+            type_args: args,
+            ..
+        }) = &ty.kind
+        else {
             return None;
         };
         let TypeDecl::Enum(e) = self.types.get(name)? else {
@@ -720,7 +748,18 @@ impl IndexedProgram {
             (TypeKind::Bool, TypeKind::Bool) => true,
             (TypeKind::Unit, TypeKind::Unit) => true,
             (TypeKind::Never, TypeKind::Never) => true,
-            (TypeKind::Custom(Instance { name: a_name, type_args: a_args, .. }), TypeKind::Custom(Instance { name: b_name, type_args: b_args, .. })) => {
+            (
+                TypeKind::Custom(Instance {
+                    name: a_name,
+                    type_args: a_args,
+                    ..
+                }),
+                TypeKind::Custom(Instance {
+                    name: b_name,
+                    type_args: b_args,
+                    ..
+                }),
+            ) => {
                 a_name == b_name
                     && a_args.len() == b_args.len()
                     && a_args
@@ -998,7 +1037,11 @@ impl IndexedProgram {
                 }
 
                 Ok(Type::new(
-                    TypeKind::Custom(Instance::new(enum_name.clone(), Vec::new(), type_args.clone())),
+                    TypeKind::Custom(Instance::new(
+                        enum_name.clone(),
+                        Vec::new(),
+                        type_args.clone(),
+                    )),
                     SourceInfo::generated(GeneratedKind::TypeSynthesis, source.span()),
                 ))
             }

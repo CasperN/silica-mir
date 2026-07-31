@@ -183,7 +183,10 @@ impl RegionCtx {
 ///
 /// Recursion through generic type parameters uses the same
 /// param-substitution rule as `collect_borrowers`.
-pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::IndexedProgram) -> RegionCtx {
+pub fn build_region_ctx(
+    func: &Function,
+    env: &crate::mir::type_check::IndexedProgram,
+) -> RegionCtx {
     use crate::mir::helpers::var_place;
     let mut ctx = RegionCtx::new();
     let locals = func.locals_map();
@@ -252,11 +255,15 @@ pub(super) fn walk_ref_places(
     visited: &mut std::collections::BTreeSet<String>,
     on_ref: &mut dyn FnMut(&Place, &Option<Lifetime>),
 ) {
-    use crate::mir::helpers::{downcast_place, field_place};
     use crate::mir::ast::TypeDecl;
+    use crate::mir::helpers::{downcast_place, field_place};
     match &ty.kind {
         TypeKind::Ref(_, lt_opt, _) => on_ref(place, lt_opt),
-        TypeKind::Custom(Instance { name, lifetime_args, type_args: args }) => {
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args,
+            type_args: args,
+        }) => {
             if !visited.insert(name.clone()) {
                 return;
             }
@@ -309,7 +316,10 @@ pub(super) fn walk_ref_places(
             for k in 0..*n {
                 let sub = index_place(
                     place.clone(),
-                    Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 }),
+                    Operand::Const(ConstVal::Int {
+                        bits: k,
+                        ty: IntTy::I64,
+                    }),
                 );
                 walk_ref_places(&sub, elem, env, visited, on_ref);
             }
@@ -371,9 +381,9 @@ mod tests {
 
     #[test]
     fn build_region_ctx_assigns_named_to_signature_free_to_locals() {
+        use crate::mir::env::IndexedProgram;
         use crate::mir::helpers::var_place;
         use crate::mir::parser::Parser;
-        use crate::mir::env::IndexedProgram;
         // Signature refs get Named (from elision or user); body-local
         // refs get Free (elision doesn't run on locals).
         let src = "

@@ -363,9 +363,18 @@ impl Subst {
             (TypeKind::Float(f1), TypeKind::Float(f2)) if f1 == f2 => Ok(()),
             (TypeKind::Bool, TypeKind::Bool) => Ok(()),
             (TypeKind::Unit, TypeKind::Unit) => Ok(()),
-            (TypeKind::Custom(Instance { name: n1, type_args: a1, .. }), TypeKind::Custom(Instance { name: n2, type_args: a2, .. }))
-                if n1 == n2 && a1.len() == a2.len() =>
-            {
+            (
+                TypeKind::Custom(Instance {
+                    name: n1,
+                    type_args: a1,
+                    ..
+                }),
+                TypeKind::Custom(Instance {
+                    name: n2,
+                    type_args: a2,
+                    ..
+                }),
+            ) if n1 == n2 && a1.len() == a2.len() => {
                 let a1 = a1.clone();
                 let a2 = a2.clone();
                 for (x, y) in a1.iter().zip(a2.iter()) {
@@ -414,7 +423,9 @@ impl Subst {
             TypeKind::Fn(params, ret) => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
-            TypeKind::Custom(Instance { type_args: args, .. }) => args.iter().any(|a| self.occurs_in(id, a)),
+            TypeKind::Custom(Instance {
+                type_args: args, ..
+            }) => args.iter().any(|a| self.occurs_in(id, a)),
             _ => false,
         }
     }
@@ -544,7 +555,11 @@ impl TypeEnv {
                 }
                 self.validate_type(ret, scope, d);
             }
-            TypeKind::Custom(Instance { name, type_args: args, .. }) => {
+            TypeKind::Custom(Instance {
+                name,
+                type_args: args,
+                ..
+            }) => {
                 for a in args {
                     self.validate_type(a, scope, d);
                 }
@@ -781,7 +796,9 @@ fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) 
             }
             collect_unresolved_vars(ret, subst, vars);
         }
-        TypeKind::Custom(Instance { type_args: args, .. }) => {
+        TypeKind::Custom(Instance {
+            type_args: args, ..
+        }) => {
             for a in args {
                 collect_unresolved_vars(a, subst, vars);
             }
@@ -964,7 +981,12 @@ fn infer_inner(
                 TypeKind::Ref(_, _, inner) => subst.resolve(inner),
                 _ => resolved.clone(),
             };
-            if let TypeKind::Custom(Instance { name: struct_name, type_args: args, .. }) = &struct_ty.kind {
+            if let TypeKind::Custom(Instance {
+                name: struct_name,
+                type_args: args,
+                ..
+            }) = &struct_ty.kind
+            {
                 if let Some(s_decl) = env.structs.get(struct_name).cloned() {
                     if let Some(f) = s_decl
                         .fields
@@ -1211,7 +1233,12 @@ fn infer_inner(
             if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            if let TypeKind::Custom(Instance { name: enum_name, type_args: args, .. }) = resolved.kind {
+            if let TypeKind::Custom(Instance {
+                name: enum_name,
+                type_args: args,
+                ..
+            }) = resolved.kind
+            {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
@@ -1520,7 +1547,12 @@ fn check_inner(
         (ExprKind::Match(target, arms), _) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
-            if let TypeKind::Custom(Instance { name: enum_name, type_args: args, .. }) = resolved.kind {
+            if let TypeKind::Custom(Instance {
+                name: enum_name,
+                type_args: args,
+                ..
+            }) = resolved.kind
+            {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
                     Some(decl) => decl,
                     None => {
@@ -1752,7 +1784,12 @@ mod tests {
         leaf_source: SourceInfo,
     ) {
         assert_eq!(ty.source, outer_source);
-        let TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) = &ty.kind else {
+        let TypeKind::Custom(Instance {
+            name,
+            lifetime_args: lifetimes,
+            type_args: args,
+        }) = &ty.kind
+        else {
             panic!("expected custom type");
         };
         assert_eq!(name, "Wrap");
@@ -1836,7 +1873,12 @@ mod tests {
 
         let resolved = subst.resolve_default(&unresolved);
         assert_eq!(resolved.source, outer_source);
-        let TypeKind::Custom(Instance { lifetime_args: outer_lifetimes, type_args: outer_args, .. }) = &resolved.kind else {
+        let TypeKind::Custom(Instance {
+            lifetime_args: outer_lifetimes,
+            type_args: outer_args,
+            ..
+        }) = &resolved.kind
+        else {
             panic!("expected custom type");
         };
         assert_eq!(outer_lifetimes, &[Lifetime("outer".into())]);

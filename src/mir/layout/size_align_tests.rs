@@ -2,9 +2,9 @@
 //! types, structs, and enums.
 
 use crate::mir::ast::*;
+use crate::mir::env::IndexedProgram;
 use crate::mir::layout::{align_of, size_of};
 use crate::mir::parser::Parser;
-use crate::mir::env::IndexedProgram;
 
 /// Parse `src` and build an `IndexedProgram`. Doesn't run any check pass — the
 /// tests just need type-name resolution.

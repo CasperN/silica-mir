@@ -1,5 +1,4 @@
 pub mod ast;
-pub mod reachability;
 pub mod cfg_edit;
 pub mod codegen;
 pub mod dataflow;
@@ -14,6 +13,7 @@ pub mod mono;
 pub mod parser;
 pub mod place_state;
 pub mod pretty_print;
+pub mod reachability;
 pub mod substructural;
 pub mod type_check;
 pub(crate) mod type_fold;

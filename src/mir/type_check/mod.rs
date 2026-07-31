@@ -14,7 +14,6 @@
 
 use crate::diagnostics::DiagCode;
 
-
 pub mod check;
 
 pub use crate::mir::env::{IndexedProgram, TypeResolutionError, TypeValidationError};

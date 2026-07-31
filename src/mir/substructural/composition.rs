@@ -40,7 +40,6 @@ use crate::mir::env::IndexedProgram;
 /// it encounters a `TypeKind::Param(name)` — the substructural class of a
 /// param is exactly what the bounds guarantee.
 
-
 /// Machine-readable codes emitted by the class-composition check. Each
 /// variant flags "declared marker M on container C isn't satisfied by
 /// content X". The variant discriminates *which* marker was violated;

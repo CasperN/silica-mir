@@ -12,8 +12,8 @@
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::DiagnosticFormat;
-use crate::mir::helpers::*;
 use crate::mir::env::IndexedProgram;
+use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -215,7 +215,11 @@ fn name_to_region(lt: &Lifetime) -> Region {
 /// explicit types: `PtrCast(_, ty)` and `EnumConstr(_, type_args, ..)`.
 /// Places and operands don't carry standalone type mentions — their
 /// types derive from local/param decls, already walked upstream.
-fn emit_stmt_wf_constraints(stmt: &Statement, env: &IndexedProgram, cs: &mut constraints::ConstraintSet) {
+fn emit_stmt_wf_constraints(
+    stmt: &Statement,
+    env: &IndexedProgram,
+    cs: &mut constraints::ConstraintSet,
+) {
     match &stmt.kind {
         StatementKind::Assign(_, rvalue) => match rvalue {
             RValue::PtrCast(op, ty) => {
@@ -250,7 +254,11 @@ fn emit_stmt_wf_constraints(stmt: &Statement, env: &IndexedProgram, cs: &mut con
 /// type_arg's Custom outlives obligations. FnName can appear in call
 /// targets, call args, and any rvalue that consumes an operand
 /// (`Use`, `PtrCast`, `EnumConstr`, `ArrayLit`).
-fn emit_operand_wf_constraints(op: &Operand, env: &IndexedProgram, cs: &mut constraints::ConstraintSet) {
+fn emit_operand_wf_constraints(
+    op: &Operand,
+    env: &IndexedProgram,
+    cs: &mut constraints::ConstraintSet,
+) {
     if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
         for ty in type_args {
             emit_type_wf_constraints(ty, env, cs);
@@ -271,7 +279,11 @@ fn emit_operand_wf_constraints(op: &Operand, env: &IndexedProgram, cs: &mut cons
 /// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
 fn emit_type_wf_constraints(ty: &Type, env: &IndexedProgram, cs: &mut constraints::ConstraintSet) {
     match &ty.kind {
-        TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args }) => {
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args: lts,
+            type_args: args,
+        }) => {
             if let Some(decl) = env.types.get(name) {
                 let meta = decl.meta();
                 if lts.len() == meta.params.lifetime_params.len() {
@@ -365,7 +377,11 @@ fn collect_named_regions(
         TypeKind::Ref(_, None, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             collect_named_regions(inner, env, visited, out);
         }
-        TypeKind::Custom(Instance { name, lifetime_args, type_args }) => {
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args,
+            type_args,
+        }) => {
             for lt in lifetime_args {
                 out.insert(lt.clone());
             }
@@ -375,16 +391,14 @@ fn collect_named_regions(
             match env.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
-                        if let Some(sub) = s.meta.try_substitute(&f.ty, lifetime_args, type_args)
-                        {
+                        if let Some(sub) = s.meta.try_substitute(&f.ty, lifetime_args, type_args) {
                             collect_named_regions(&sub, env, visited, out);
                         }
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
                     for v in &e.variants {
-                        if let Some(sub) = e.meta.try_substitute(&v.ty, lifetime_args, type_args)
-                        {
+                        if let Some(sub) = e.meta.try_substitute(&v.ty, lifetime_args, type_args) {
                             collect_named_regions(&sub, env, visited, out);
                         }
                     }
@@ -512,7 +526,11 @@ fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Re
 }
 
 /// Get the outer ref-kind of `place` when its type is `TypeKind::Ref`.
-fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &IndexedProgram) -> Option<RefKind> {
+fn ref_kind_of_place(
+    place: &Place,
+    locals: &IndexMap<String, Type>,
+    env: &IndexedProgram,
+) -> Option<RefKind> {
     match crate::mir::type_util::place_type(locals, env, place)?.kind {
         TypeKind::Ref(kind, _, _) => Some(kind),
         _ => None,
@@ -666,9 +684,10 @@ impl<'a> Checker<'a> {
         // target's shape, and `PtrCast` bridges types where a parallel walk
         // isn't well-defined.
         if let RValue::Use(op) = rvalue {
-            let Some(src_place) = operand_place(op) else { return };
-            let Some(src_ty) =
-                crate::mir::type_util::place_type(&self.locals, self.env, src_place)
+            let Some(src_place) = operand_place(op) else {
+                return;
+            };
+            let Some(src_ty) = crate::mir::type_util::place_type(&self.locals, self.env, src_place)
             else {
                 return;
             };
@@ -699,7 +718,9 @@ impl<'a> Checker<'a> {
                 return;
             };
             for (k, op) in ops.iter().enumerate() {
-                let Some(src_place) = operand_place(op) else { continue };
+                let Some(src_place) = operand_place(op) else {
+                    continue;
+                };
                 let Some(src_ty) =
                     crate::mir::type_util::place_type(&self.locals, self.env, src_place)
                 else {
@@ -707,7 +728,10 @@ impl<'a> Checker<'a> {
                 };
                 let slot = index_place(
                     target.clone(),
-                    Operand::Const(ConstVal::Int { bits: k as u64, ty: IntTy::I64 }),
+                    Operand::Const(ConstVal::Int {
+                        bits: k as u64,
+                        ty: IntTy::I64,
+                    }),
                 );
                 self.emit_use_type_constraints(
                     &src_ty,
@@ -816,7 +840,18 @@ impl<'a> Checker<'a> {
                 }
                 self.emit_use_type_constraints(s_inner, t_inner, None, layer_variance, source);
             }
-            (TypeKind::Custom(Instance { lifetime_args: s_lts, type_args: s_args, .. }), TypeKind::Custom(Instance { lifetime_args: t_lts, type_args: t_args, .. })) => {
+            (
+                TypeKind::Custom(Instance {
+                    lifetime_args: s_lts,
+                    type_args: s_args,
+                    ..
+                }),
+                TypeKind::Custom(Instance {
+                    lifetime_args: t_lts,
+                    type_args: t_args,
+                    ..
+                }),
+            ) => {
                 let inv = variance.combine(Variance::Invariant);
                 for (s_lt, t_lt) in s_lts.iter().zip(t_lts) {
                     let sr = name_to_region(s_lt);
@@ -841,10 +876,14 @@ impl<'a> Checker<'a> {
                 // without a src/tgt place and lose the outer constraint.
                 for k in 0..*n {
                     let idx = || {
-                        Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 })
+                        Operand::Const(ConstVal::Int {
+                            bits: k,
+                            ty: IntTy::I64,
+                        })
                     };
-                    let slot_places =
-                        outer_places.map(|(s, t)| (index_place(s.clone(), idx()), index_place(t.clone(), idx())));
+                    let slot_places = outer_places.map(|(s, t)| {
+                        (index_place(s.clone(), idx()), index_place(t.clone(), idx()))
+                    });
                     self.emit_use_type_constraints(
                         s_el,
                         t_el,
@@ -1231,7 +1270,11 @@ impl<'a> Checker<'a> {
                     source,
                 );
             }
-            TypeKind::Custom(Instance { lifetime_args: lts, type_args: args, .. }) => {
+            TypeKind::Custom(Instance {
+                lifetime_args: lts,
+                type_args: args,
+                ..
+            }) => {
                 // Match callee and caller lifetime args positionally, not
                 // all-to-first. A generic type's lifetime slots behave
                 // like container references: default to invariance
@@ -1239,7 +1282,11 @@ impl<'a> Checker<'a> {
                 let caller_ty =
                     crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
                 if let Some(caller_ty) = caller_ty {
-                    if let TypeKind::Custom(Instance { lifetime_args: caller_lts, .. }) = &caller_ty.kind {
+                    if let TypeKind::Custom(Instance {
+                        lifetime_args: caller_lts,
+                        ..
+                    }) = &caller_ty.kind
+                    {
                         for (callee_lt, caller_lt) in lts.iter().zip(caller_lts.iter()) {
                             let inst_region = inst
                                 .get(callee_lt)
@@ -1281,7 +1328,10 @@ impl<'a> Checker<'a> {
                 for k in 0..*n {
                     let slot = index_place(
                         caller_place.clone(),
-                        Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 }),
+                        Operand::Const(ConstVal::Int {
+                            bits: k,
+                            ty: IntTy::I64,
+                        }),
                     );
                     self.walk_call_regions(
                         elem,

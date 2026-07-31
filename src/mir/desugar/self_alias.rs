@@ -51,4 +51,3 @@ pub fn desugar_self_alias(program: &mut Program) {
         }
     }
 }
-

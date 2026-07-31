@@ -129,7 +129,11 @@ impl DiagnosticFormat {
             TypeKind::Bool => out.write_str("bool"),
             TypeKind::Unit => out.write_str("unit"),
             TypeKind::Never => out.write_str("never"),
-            TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) => {
+            TypeKind::Custom(Instance {
+                name,
+                lifetime_args: lifetimes,
+                type_args: args,
+            }) => {
                 out.write_str(name)?;
                 if lifetimes.is_empty() && args.is_empty() {
                     return Ok(());

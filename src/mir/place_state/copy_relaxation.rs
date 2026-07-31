@@ -36,9 +36,9 @@
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
+use crate::mir::env::IndexedProgram;
 use crate::mir::helpers::*;
 use crate::mir::place_state::analysis::RefState;
-use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -857,7 +857,11 @@ fn relax_operand(
 /// carry no ownership tracking and the author is already in `unsafe`
 /// territory, so `take *p` resolves via the ordinary flexible rule
 /// (prefer `move` when the type supports it).
-fn requires_copy_semantics(place: &Place, env: &IndexedProgram, locals: &IndexMap<String, Type>) -> bool {
+fn requires_copy_semantics(
+    place: &Place,
+    env: &IndexedProgram,
+    locals: &IndexMap<String, Type>,
+) -> bool {
     match place {
         Place::Var(_) => false,
         Place::Field(inner, _) | Place::Downcast(inner, _) => {

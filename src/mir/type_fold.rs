@@ -58,7 +58,11 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
                 .iter()
                 .map(|lifetime| folder.fold_lifetime(lifetime))
                 .collect(),
-            type_args: inst.type_args.iter().map(|arg| folder.fold_type(arg)).collect(),
+            type_args: inst
+                .type_args
+                .iter()
+                .map(|arg| folder.fold_type(arg))
+                .collect(),
         }),
         TypeKind::Fn(params) => {
             TypeKind::Fn(params.iter().map(|param| folder.fold_type(param)).collect())
@@ -156,7 +160,12 @@ mod tests {
             Some("reference")
         );
         assert_eq!(custom.source, source(3));
-        let TypeKind::Custom(Instance { lifetime_args: lifetimes, type_args: args, .. }) = &custom.kind else {
+        let TypeKind::Custom(Instance {
+            lifetime_args: lifetimes,
+            type_args: args,
+            ..
+        }) = &custom.kind
+        else {
             panic!("expected nested custom type");
         };
         assert_eq!(lifetimes[0].0, "wrapper");
@@ -192,7 +201,11 @@ mod tests {
             panic!("expected reference");
         };
         assert_eq!(reference.0, "reference_folded");
-        let TypeKind::Custom(Instance { lifetime_args: lifetimes, .. }) = inner.kind else {
+        let TypeKind::Custom(Instance {
+            lifetime_args: lifetimes,
+            ..
+        }) = inner.kind
+        else {
             panic!("expected custom pointee");
         };
         assert_eq!(lifetimes, vec![Lifetime("argument_folded".into())]);

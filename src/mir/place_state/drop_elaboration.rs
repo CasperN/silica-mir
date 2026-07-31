@@ -37,11 +37,11 @@
 use super::analysis::{
     block_entry_states, is_state_fully_init, transfer_stmt_silent, InitSlot, InitState, PointState,
 };
+use crate::mir::ast::ParamsIntro;
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
-use crate::mir::helpers::*;
-use crate::mir::ast::ParamsIntro;
 use crate::mir::env::IndexedProgram;
+use crate::mir::helpers::*;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.
@@ -347,7 +347,10 @@ fn pre_stmt_transitions(
     if let (Place::Downcast(inner, variant), RValue::Use(operand)) = (target, rvalue) {
         if let Some(inner_owned) = as_owned_path(inner) {
             if let Ok(inner_ty) = env.type_of_place(inner, locals) {
-                if let TypeKind::Custom(Instance { name: enum_name, .. }) = &inner_ty.kind {
+                if let TypeKind::Custom(Instance {
+                    name: enum_name, ..
+                }) = &inner_ty.kind
+                {
                     let payload_place = downcast_place(inner_owned.clone(), variant.clone());
                     if is_init_and_drop(&payload_place, state, env, locals, scope) {
                         drops.push(payload_place);
@@ -477,7 +480,11 @@ fn is_init_and_drop(
 /// for the positive fixture and
 /// `tests/init_state/partial_init/hll_partial_init_use.si` for the
 /// diagnostic on the paired misuse.
-fn collect_diverged_paths(env: &IndexedProgram, func: &Function, state: &PointState) -> Vec<(Place, Type)> {
+fn collect_diverged_paths(
+    env: &IndexedProgram,
+    func: &Function,
+    state: &PointState,
+) -> Vec<(Place, Type)> {
     let mut out = Vec::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
@@ -508,41 +515,40 @@ fn walk_diverged(
             // whose `state_at` at any pred exit reads back as `Partial`
             // rather than `Init`, and no per-field drop is planned.
             match &ty.kind {
-                TypeKind::Custom(Instance { name, type_args: args, .. }) => {
-                    match env.types.get(name) {
-                        Some(TypeDecl::Struct(s)) => {
-                            for f in &s.fields {
-                                let Some(field_state) =
-                                    fields.get(&InitSlot::Field(f.name.clone()))
-                                else {
-                                    continue;
-                                };
-                                let Some(field_ty) = s.meta.try_substitute_types(&f.ty, args)
-                                else {
-                                    continue;
-                                };
-                                let sub_place = field_place(place.clone(), f.name.clone());
-                                walk_diverged(env, sub_place, &field_ty, field_state, out);
-                            }
+                TypeKind::Custom(Instance {
+                    name,
+                    type_args: args,
+                    ..
+                }) => match env.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => {
+                        for f in &s.fields {
+                            let Some(field_state) = fields.get(&InitSlot::Field(f.name.clone()))
+                            else {
+                                continue;
+                            };
+                            let Some(field_ty) = s.meta.try_substitute_types(&f.ty, args) else {
+                                continue;
+                            };
+                            let sub_place = field_place(place.clone(), f.name.clone());
+                            walk_diverged(env, sub_place, &field_ty, field_state, out);
                         }
-                        Some(TypeDecl::Enum(e)) => {
-                            for v in &e.variants {
-                                let Some(variant_state) =
-                                    fields.get(&InitSlot::Variant(v.name.clone()))
-                                else {
-                                    continue;
-                                };
-                                let Some(variant_ty) = e.meta.try_substitute_types(&v.ty, args)
-                                else {
-                                    continue;
-                                };
-                                let sub_place = downcast_place(place.clone(), v.name.clone());
-                                walk_diverged(env, sub_place, &variant_ty, variant_state, out);
-                            }
-                        }
-                        None => {}
                     }
-                }
+                    Some(TypeDecl::Enum(e)) => {
+                        for v in &e.variants {
+                            let Some(variant_state) =
+                                fields.get(&InitSlot::Variant(v.name.clone()))
+                            else {
+                                continue;
+                            };
+                            let Some(variant_ty) = e.meta.try_substitute_types(&v.ty, args) else {
+                                continue;
+                            };
+                            let sub_place = downcast_place(place.clone(), v.name.clone());
+                            walk_diverged(env, sub_place, &variant_ty, variant_state, out);
+                        }
+                    }
+                    None => {}
+                },
                 TypeKind::Array(elem, n) => {
                     for k in 0..*n {
                         let Some(slot_state) = fields.get(&InitSlot::Index(k)) else {
@@ -550,7 +556,10 @@ fn walk_diverged(
                         };
                         let sub_place = index_place(
                             place.clone(),
-                            Operand::Const(ConstVal::Int { bits: k, ty: IntTy::I64 }),
+                            Operand::Const(ConstVal::Int {
+                                bits: k,
+                                ty: IntTy::I64,
+                            }),
                         );
                         walk_diverged(env, sub_place, elem, slot_state, out);
                     }
@@ -685,7 +694,11 @@ fn plan_drops_for_place(
         InitState::Partial(fields) => {
             match &ty.kind {
                 // Reverse declared field order = LIFO for that container.
-                TypeKind::Custom(Instance { name: struct_name, type_args: args, .. }) => {
+                TypeKind::Custom(Instance {
+                    name: struct_name,
+                    type_args: args,
+                    ..
+                }) => {
                     // `None` on `env.types.get`: type not registered —
                     // type-check already reported. Non-Struct decl: an
                     // enum-typed Partial with variant-refinement is

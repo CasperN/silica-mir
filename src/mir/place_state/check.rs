@@ -1,16 +1,16 @@
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::helpers::*;
 use crate::mir::env::IndexedProgram;
+use crate::mir::helpers::*;
 use indexmap::IndexMap;
 
 use super::analysis::{
     advance_ty, capture_carried_refs, describe_obligation_mismatch, describe_pointee_state,
-    describe_state, extract_init_path, format_path, is_state_fully_init,
-    partial_is_uninit, read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
-    states_before_returns, InitSlot, InitState, PlaceStateCode, PlaceStateCode::*, PlaceStateContext,
-    PointState, RefState,
+    describe_state, extract_init_path, format_path, is_state_fully_init, partial_is_uninit,
+    read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
+    states_before_returns, InitSlot, InitState, PlaceStateCode, PlaceStateCode::*,
+    PlaceStateContext, PointState, RefState,
 };
 
 pub fn check_program(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
@@ -1141,7 +1141,11 @@ impl<'a> PlaceStateContext<'a> {
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && is_state_fully_init(&leaf) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, self.locals) {
-                if self.env.class_of(&leaf_ty, &func.meta.params).implies(Marker::Drop) {
+                if self
+                    .env
+                    .class_of(&leaf_ty, &func.meta.params)
+                    .implies(Marker::Drop)
+                {
                     return;
                 }
             }

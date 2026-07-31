@@ -45,8 +45,8 @@ mod direct_leak_check_tests {
 mod nested_reference_state_tests {
     use super::super::check::check_program;
     use crate::diagnostics::Diagnostics;
-    use crate::mir::parser::Parser;
     use crate::mir::env::IndexedProgram;
+    use crate::mir::parser::Parser;
 
     fn errors(source: &str) -> Vec<String> {
         let program = Parser::parse_or_panic(source);

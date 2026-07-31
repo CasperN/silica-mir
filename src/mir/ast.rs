@@ -838,7 +838,6 @@ impl Function {
     }
 }
 
-
 /// A set of generic parameters and bounds introduced in either a declaration or impl block.
 // e.g. struct Foo<A: Bar, 'b: 'c>
 //                ^^^^^^^^^^^^^^^^
@@ -849,7 +848,7 @@ pub struct ParamsIntro {
     pub lifetime_params: Vec<LifetimeParam>,
     pub outlives: Vec<OutlivesBound>,
     pub type_params: Vec<TypeParam>,
-    pub source: SourceInfo,  // Source of the introducer <...>.
+    pub source: SourceInfo, // Source of the introducer <...>.
 }
 
 impl ParamsIntro {

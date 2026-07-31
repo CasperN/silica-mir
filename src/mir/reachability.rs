@@ -17,9 +17,9 @@
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
+use crate::mir::env::IndexedProgram;
 use crate::mir::helpers::diag;
 use crate::mir::place_state::analysis::{block_entry_states, InitSlot, InitState, PointState};
-use crate::mir::env::IndexedProgram;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Machine-readable codes emitted by the reachability pass.
@@ -99,7 +99,12 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
         // sees the state at the terminator, not the block entry.
         let mut term_state = state.clone();
         for stmt in &block.statements {
-            crate::mir::place_state::analysis::transfer_stmt_silent(env, func, stmt, &mut term_state);
+            crate::mir::place_state::analysis::transfer_stmt_silent(
+                env,
+                func,
+                stmt,
+                &mut term_state,
+            );
         }
         check_switch_arms(env, func, body, block, place, cases, &term_state, d);
     }
@@ -195,7 +200,11 @@ fn effective_successors(term: &Terminator) -> Vec<&str> {
     } = &term.kind
     {
         if let Operand::Const(ConstVal::Bool(b)) = cond {
-            return vec![if *b { true_label.as_str() } else { false_label.as_str() }];
+            return vec![if *b {
+                true_label.as_str()
+            } else {
+                false_label.as_str()
+            }];
         }
     }
     terminator_successors(term)
@@ -346,7 +355,6 @@ fn resolve_enum_of_place<'a>(
     }
 }
 
-
 /// True if a value of `ty` cannot be constructed.
 fn is_type_uninhabited(ty: &Type, env: &IndexedProgram) -> bool {
     fn walk(ty: &Type, env: &IndexedProgram, visited: &mut BTreeSet<String>) -> bool {
@@ -374,12 +382,11 @@ fn is_type_uninhabited(ty: &Type, env: &IndexedProgram) -> bool {
     walk(ty, env, &mut BTreeSet::new())
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::test_util::*;
     use crate::mir::helpers::*;
+    use crate::mir::test_util::*;
 
     /// Build an IndexedProgram from MIR source, discarding any diagnostics.
     fn env_of(src: &str) -> IndexedProgram {
@@ -614,32 +621,28 @@ mod tests {
 
     #[test]
     fn branch_true_folds_false_arm_dead() {
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             fn f() {
               entry:
                 branch(true) [true: t, false: dead]
               t: return
               dead: return
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
         assert_warnings_contain(&warns, &["block 'dead' is unreachable"]);
     }
 
     #[test]
     fn branch_false_folds_true_arm_dead() {
-        let (errs, warns) = run(
-            "
+        let (errs, warns) = run("
             fn f() {
               entry:
                 branch(false) [true: dead, false: fbr]
               dead: return
               fbr: return
             }
-            ",
-        );
+            ");
         assert!(errs.is_empty(), "unexpected errors: {:?}", errs);
         assert_warnings_contain(&warns, &["block 'dead' is unreachable"]);
     }

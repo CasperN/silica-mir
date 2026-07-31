@@ -5,7 +5,6 @@
 //! from the environment (parameters, locals) and from the structural
 //! `type_of_*` queries; this pass only checks that they line up.
 
-use crate::mir::env::{TypeResolutionError, TypeValidationError};
 use super::IndexedProgram;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;
@@ -14,6 +13,7 @@ use crate::common::{Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
+use crate::mir::env::{TypeResolutionError, TypeValidationError};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashSet};
@@ -278,8 +278,12 @@ impl IndexedProgram {
             validate_lifetime_decls(method_meta, "trait method", d);
 
             let mut effective_params = trait_params.clone();
-            effective_params.lifetime_params.extend(method_meta.params.lifetime_params.clone());
-            effective_params.type_params.extend(method_meta.params.type_params.clone());
+            effective_params
+                .lifetime_params
+                .extend(method_meta.params.lifetime_params.clone());
+            effective_params
+                .type_params
+                .extend(method_meta.params.type_params.clone());
 
             let mut lt_scope = trait_lt_scope.clone();
             for lp in &method_meta.params.lifetime_params {
@@ -509,7 +513,9 @@ impl IndexedProgram {
                 ));
                 continue;
             }
-            if trait_method.meta.params.type_params.len() != impl_method.meta.params.type_params.len() {
+            if trait_method.meta.params.type_params.len()
+                != impl_method.meta.params.type_params.len()
+            {
                 d.push_error(Diagnostic::new(
                     ImplMethodSignatureMismatch,
                     impl_method.meta.name_source,
@@ -576,10 +582,7 @@ impl IndexedProgram {
             method_type_params.extend(trait_method.meta.params.type_params.iter().cloned());
             let mut method_type_args = subst_type_args.clone();
             for i_tp in &impl_method.meta.params.type_params {
-                method_type_args.push(Type::new(
-                    TypeKind::Param(i_tp.name.clone()),
-                    i_tp.source,
-                ));
+                method_type_args.push(Type::new(TypeKind::Param(i_tp.name.clone()), i_tp.source));
             }
             let mut method_lifetime_params: Vec<Lifetime> = trait_meta
                 .params
@@ -587,11 +590,23 @@ impl IndexedProgram {
                 .iter()
                 .map(|lp| lp.lifetime.clone())
                 .collect();
-            method_lifetime_params
-                .extend(trait_method.meta.params.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
+            method_lifetime_params.extend(
+                trait_method
+                    .meta
+                    .params
+                    .lifetime_params
+                    .iter()
+                    .map(|lp| lp.lifetime.clone()),
+            );
             let mut method_lifetime_args: Vec<Lifetime> = imp.trait_path.lifetime_args.clone();
-            method_lifetime_args
-                .extend(impl_method.meta.params.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
+            method_lifetime_args.extend(
+                impl_method
+                    .meta
+                    .params
+                    .lifetime_params
+                    .iter()
+                    .map(|lp| lp.lifetime.clone()),
+            );
 
             for (i, (t_param, i_param)) in trait_method
                 .params

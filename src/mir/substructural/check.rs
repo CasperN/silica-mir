@@ -20,8 +20,8 @@
 use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::helpers::*;
 use crate::mir::env::IndexedProgram;
+use crate::mir::helpers::*;
 use indexmap::IndexMap;
 
 /// Machine-readable codes emitted by the substructural per-statement

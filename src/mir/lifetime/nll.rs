@@ -55,8 +55,8 @@
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
-use crate::mir::helpers::*;
 use crate::mir::env::IndexedProgram;
+use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 

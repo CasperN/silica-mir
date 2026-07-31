@@ -126,9 +126,9 @@ impl Parser {
     #[cfg(test)]
     pub fn parse_or_panic(src: impl Into<String>) -> Program {
         let mut d = Diagnostics::default();
-        Self::new(src).parse(&mut d).unwrap_or_else(|| {
-            panic!("HLL parse failed:\n{}", d.errors_str().join("\n"))
-        })
+        Self::new(src)
+            .parse(&mut d)
+            .unwrap_or_else(|| panic!("HLL parse failed:\n{}", d.errors_str().join("\n")))
     }
 
     pub fn parse(&self, d: &mut Diagnostics) -> Option<Program> {
@@ -158,7 +158,11 @@ impl Parser {
         }
 
         let program = self.map_program(root, d);
-        if d.has_errors() { None } else { program }
+        if d.has_errors() {
+            None
+        } else {
+            program
+        }
     }
 
     fn get_text(&self, node: Node) -> &str {
@@ -246,11 +250,7 @@ impl Parser {
         })
     }
 
-    fn map_declaration(
-        &self,
-        node: Node,
-        d: &mut Diagnostics,
-    ) -> Option<Declaration> {
+    fn map_declaration(&self, node: Node, d: &mut Diagnostics) -> Option<Declaration> {
         let Some(child) = node.child(0) else {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "empty declaration"));
             return None;
@@ -270,11 +270,7 @@ impl Parser {
         }
     }
 
-    fn map_struct_decl(
-        &self,
-        node: Node,
-        d: &mut Diagnostics,
-    ) -> Option<StructDecl> {
+    fn map_struct_decl(&self, node: Node, d: &mut Diagnostics) -> Option<StructDecl> {
         let Some(name_node) = node.child_by_field_name("name") else {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "struct decl missing name"));
             return None;
@@ -315,11 +311,19 @@ impl Parser {
         for child in node.children(&mut cursor) {
             if child.kind() == "struct_field" {
                 let Some(f_name_node) = child.child_by_field_name("name") else {
-                    d.push_error(self.diag(child, ParserCode::MalformedCst, "struct field missing name"));
+                    d.push_error(self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "struct field missing name",
+                    ));
                     continue;
                 };
                 let Some(f_type_node) = child.child_by_field_name("type") else {
-                    d.push_error(self.diag(child, ParserCode::MalformedCst, "struct field missing type"));
+                    d.push_error(self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "struct field missing type",
+                    ));
                     continue;
                 };
                 let Some(ty) = self.map_type(f_type_node, &scope, d) else {
@@ -385,11 +389,19 @@ impl Parser {
         for child in node.children(&mut cursor) {
             if child.kind() == "enum_variant" {
                 let Some(v_name_node) = child.child_by_field_name("name") else {
-                    d.push_error(self.diag(child, ParserCode::MalformedCst, "enum variant missing name"));
+                    d.push_error(self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "enum variant missing name",
+                    ));
                     continue;
                 };
                 let Some(v_type_node) = child.child_by_field_name("type") else {
-                    d.push_error(self.diag(child, ParserCode::MalformedCst, "enum variant missing type"));
+                    d.push_error(self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        "enum variant missing type",
+                    ));
                     continue;
                 };
                 let Some(ty) = self.map_type(v_type_node, &scope, d) else {
@@ -520,7 +532,12 @@ impl Parser {
     /// Parse a type's structural kind. [`Self::map_type`] owns construction of
     /// the source-bearing outer node; recursive calls construct source-bearing
     /// child types from their own CST nodes.
-    fn map_type_kind(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<TypeKind> {
+    fn map_type_kind(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<TypeKind> {
         // Shared type rule with MIR; the shape is identical.
         if let Some(ty) = scalar_kind_to_type_kind(node.kind()) {
             return Some(ty);
@@ -619,15 +636,27 @@ impl Parser {
         }
         if text == "[" {
             let Some(elem) = node.child_by_field_name("element") else {
-                d.push_error(self.diag(node, ParserCode::MalformedCst, "array type missing element"));
+                d.push_error(self.diag(
+                    node,
+                    ParserCode::MalformedCst,
+                    "array type missing element",
+                ));
                 return None;
             };
             let Some(len_node) = node.child_by_field_name("length") else {
-                d.push_error(self.diag(node, ParserCode::MalformedCst, "array type missing length"));
+                d.push_error(self.diag(
+                    node,
+                    ParserCode::MalformedCst,
+                    "array type missing length",
+                ));
                 return None;
             };
-            let (len, _) = self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node, d)?;
-            return Some(TypeKind::Array(Box::new(self.map_type(elem, scope, d)?), len));
+            let (len, _) =
+                self.lit_diag(parse_int_literal(self.get_text(len_node)), len_node, d)?;
+            return Some(TypeKind::Array(
+                Box::new(self.map_type(elem, scope, d)?),
+                len,
+            ));
         }
         if text == "fn" {
             // `fn(T,...) [-> R]`. The optional `return_type` field
@@ -730,7 +759,11 @@ impl Parser {
                 }
                 "type_param" => {
                     let Some(name_node) = child.child_by_field_name("name") else {
-                        d.push_error(self.diag(child, ParserCode::MalformedCst, "type param missing name"));
+                        d.push_error(self.diag(
+                            child,
+                            ParserCode::MalformedCst,
+                            "type param missing name",
+                        ));
                         continue;
                     };
                     let pname = self.get_text(name_node).to_string();
@@ -828,10 +861,7 @@ impl Parser {
             }),
             "byte_str_lit" => {
                 let raw = self.get_text(node);
-                let Some(inner) = raw
-                    .strip_prefix("b\"")
-                    .and_then(|s| s.strip_suffix('"'))
-                else {
+                let Some(inner) = raw.strip_prefix("b\"").and_then(|s| s.strip_suffix('"')) else {
                     d.push_error(self.diag(
                         node,
                         ParserCode::MalformedCst,
@@ -839,7 +869,8 @@ impl Parser {
                     ));
                     return None;
                 };
-                let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node, d)?;
+                let bytes =
+                    self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node, d)?;
                 Some(Expr {
                     kind: ExprKind::Literal(Literal::ByteStr(bytes)),
                     source: SourceInfo::written(span),
@@ -847,10 +878,7 @@ impl Parser {
             }
             "byte_char_lit" => {
                 let raw = self.get_text(node);
-                let Some(inner) = raw
-                    .strip_prefix("b'")
-                    .and_then(|s| s.strip_suffix('\''))
-                else {
+                let Some(inner) = raw.strip_prefix("b'").and_then(|s| s.strip_suffix('\'')) else {
                     d.push_error(self.diag(
                         node,
                         ParserCode::MalformedCst,
@@ -858,7 +886,8 @@ impl Parser {
                     ));
                     return None;
                 };
-                let bytes = self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node, d)?;
+                let bytes =
+                    self.lit_diag(crate::mir::parser::decode_byte_escapes(inner), node, d)?;
                 if bytes.len() != 1 {
                     d.push_error(self.diag(
                         node,
@@ -985,7 +1014,11 @@ impl Parser {
                     }
                 };
                 let Some(target) = node.child_by_field_name("target") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "borrow missing target"));
+                    d.push_error(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "borrow missing target",
+                    ));
                     return None;
                 };
                 Some(Expr {
@@ -1101,7 +1134,11 @@ impl Parser {
                     return None;
                 };
                 let Some(field) = node.child_by_field_name("field") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "field access missing field"));
+                    d.push_error(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "field access missing field",
+                    ));
                     return None;
                 };
                 Some(Expr {
@@ -1141,7 +1178,11 @@ impl Parser {
             }
             "call_expr" => {
                 let Some(func) = node.child_by_field_name("function") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "call missing function"));
+                    d.push_error(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "call missing function",
+                    ));
                     return None;
                 };
                 // Generic calls parse as `call_expr(instantiation_expr(f, <T>), args)`
@@ -1215,7 +1256,11 @@ impl Parser {
             }
             "match_expr" => {
                 let Some(scrut) = node.child_by_field_name("scrutinee") else {
-                    d.push_error(self.diag(node, ParserCode::MalformedCst, "match missing scrutinee"));
+                    d.push_error(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "match missing scrutinee",
+                    ));
                     return None;
                 };
                 self.map_match(node, scrut, scope, d)
@@ -1371,7 +1416,11 @@ impl Parser {
         for c in node.children(&mut cursor) {
             if c.kind() == "match_arm" {
                 let Some(pat_node) = c.child_by_field_name("pattern") else {
-                    d.push_error(self.diag(c, ParserCode::MalformedCst, "match arm missing pattern"));
+                    d.push_error(self.diag(
+                        c,
+                        ParserCode::MalformedCst,
+                        "match arm missing pattern",
+                    ));
                     continue;
                 };
                 let Some(body_node) = c.child_by_field_name("body") else {
@@ -1405,7 +1454,12 @@ impl Parser {
         Some(Pattern::Variant(variant, bound))
     }
 
-    fn map_struct_constr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+    fn map_struct_constr(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<Expr> {
         let span = span_of(node);
         let Some(name_node) = node.child_by_field_name("name") else {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "struct constr missing name"));
@@ -1421,16 +1475,17 @@ impl Parser {
                     continue;
                 };
                 let Some(fn_val) = c.child_by_field_name("value") else {
-                    d.push_error(self.diag(c, ParserCode::MalformedCst, "field init missing value"));
+                    d.push_error(self.diag(
+                        c,
+                        ParserCode::MalformedCst,
+                        "field init missing value",
+                    ));
                     continue;
                 };
                 let Some(val) = self.map_expr(fn_val, scope, d) else {
                     continue;
                 };
-                fields.push((
-                    self.get_text(fn_name).to_string(),
-                    val,
-                ));
+                fields.push((self.get_text(fn_name).to_string(), val));
             }
         }
         Some(Expr {
@@ -2128,7 +2183,10 @@ mod tests {
             fn b() { @@; }\n";
         let mut diags = Diagnostics::default();
         let prog = Parser::new(src).parse(&mut diags);
-        assert!(prog.is_none(), "expected parse failure for two broken functions");
+        assert!(
+            prog.is_none(),
+            "expected parse failure for two broken functions"
+        );
         assert!(
             diags.error_count() >= 2,
             "expected ≥2 errors, got {}: {:?}",

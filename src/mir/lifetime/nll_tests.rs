@@ -6,11 +6,11 @@
 //!   obligations. Fixture cells assert one program per file; these
 //!   assertions ("some error occurred") are looser and are checked here.
 
+use crate::mir::env::IndexedProgram;
 use crate::mir::lifetime::nll::elaborate;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print as pretty_print_indexed;
 use crate::mir::test_util::*;
-use crate::mir::env::IndexedProgram;
 
 fn pretty_print(program: &crate::mir::ast::Program) -> String {
     let indexed = IndexedProgram::build(program).0;
