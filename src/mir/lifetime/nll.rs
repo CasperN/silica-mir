@@ -62,17 +62,17 @@ use std::collections::BTreeSet;
 
 /// Elaborate `program` in place: insert `unborrow` statements at every
 /// borrower's last-use points. Idempotent.
-pub fn elaborate(program: &mut Program, env: &IndexedProgram) {
+pub fn elaborate(program: &mut IndexedProgram) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
     for func in program.functions() {
-        if let Some(plan) = plan_for_function(func, env) {
+        if let Some(plan) = plan_for_function(func, program) {
             plans.insert(func.meta.name.clone(), plan);
         }
     }
 
     // Apply (mutable): splice the planned statements and edge splits.
-    for func in program.functions_mut() {
+    for func in program.functions.values_mut() {
         let Some(plan) = plans.get(&func.meta.name) else {
             continue;
         };

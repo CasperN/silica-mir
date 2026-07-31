@@ -78,9 +78,18 @@ impl From<CopyRelaxationCode> for DiagCode {
 /// resolved to any valid operand (e.g. a non-Copy pointee through a
 /// shared-reference or dynamic-index boundary, where `copy` would be
 /// required but the type isn't `Copy`).
-pub fn elaborate(program: &mut Program, env: &IndexedProgram, d: &mut Diagnostics) {
-    for func in program.functions_mut() {
-        elaborate_function(func, env, d);
+pub fn elaborate(program: &mut IndexedProgram, d: &mut Diagnostics) {
+    // Type and callee lookup must keep seeing the unchanged index while
+    // operands are relaxed, including recursive calls to the current
+    // function. Rewrite cloned functions, then replace them as one apply phase.
+    let mut elaborated = Vec::new();
+    for func in program.functions() {
+        let mut func = func.clone();
+        elaborate_function(&mut func, program, d);
+        elaborated.push(func);
+    }
+    for func in elaborated {
+        program.functions.insert(func.meta.name.clone(), func);
     }
 }
 
@@ -89,7 +98,7 @@ pub fn elaborate(program: &mut Program, env: &IndexedProgram, d: &mut Diagnostic
 /// (with a count so a broken pass doesn't spam per-operand). Downstream
 /// passes assume this invariant and `unreachable!` on `Take`, so callers
 /// must skip elaboration/checking when this returns anything.
-pub fn verify_no_take(program: &Program, d: &mut crate::diagnostics::Diagnostics) {
+pub fn verify_no_take(program: &IndexedProgram, d: &mut crate::diagnostics::Diagnostics) {
     let mut first: Option<SourceInfo> = None;
     let mut count = 0usize;
     for func in program.functions() {
@@ -894,13 +903,14 @@ fn push_relax_error(ctx: &mut RelaxCtx, source: SourceInfo, code: CopyRelaxation
 mod tests {
     use super::*;
     use crate::mir::parser::Parser;
+    use crate::mir::pretty_print::pretty_print;
 
-    fn elaborate_source(source: &str) -> Program {
-        let mut program = Parser::parse_or_panic(source);
-        let (env, errors) = IndexedProgram::build(&program);
+    fn elaborate_source(source: &str) -> IndexedProgram {
+        let parsed = Parser::parse_or_panic(source);
+        let (mut program, errors) = IndexedProgram::build(&parsed);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
         let mut d = Diagnostics::default();
-        elaborate(&mut program, &env, &mut d);
+        elaborate(&mut program, &mut d);
         assert!(
             !d.has_errors(),
             "unexpected relaxation diagnostics: {:?}",
@@ -909,7 +919,11 @@ mod tests {
         program
     }
 
-    fn call_arg<'a>(program: &'a Program, function: &str, statement: usize) -> &'a Operand {
+    fn call_arg<'a>(
+        program: &'a IndexedProgram,
+        function: &str,
+        statement: usize,
+    ) -> &'a Operand {
         let func = program
             .functions()
             .find(|func| func.meta.name == function)
@@ -922,7 +936,7 @@ mod tests {
     }
 
     fn call_arg_in_block<'a>(
-        program: &'a Program,
+        program: &'a IndexedProgram,
         function: &str,
         block_label: &str,
         statement: usize,
@@ -1498,7 +1512,7 @@ mod tests {
 
     #[test]
     fn elaboration_is_idempotent() {
-        let mut program = Parser::parse_or_panic(
+        let parsed = Parser::parse_or_panic(
             "
             extern fn consume(x: i64);
             fn f(x: i64) {
@@ -1509,13 +1523,13 @@ mod tests {
             }
             ",
         );
-        let (env, errors) = IndexedProgram::build(&program);
+        let (mut program, errors) = IndexedProgram::build(&parsed);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
 
         let mut d = Diagnostics::default();
-        elaborate(&mut program, &env, &mut d);
-        let once = program.clone();
-        elaborate(&mut program, &env, &mut d);
-        assert_eq!(program, once);
+        elaborate(&mut program, &mut d);
+        let once = pretty_print(&program);
+        elaborate(&mut program, &mut d);
+        assert_eq!(pretty_print(&program), once);
     }
 }

@@ -92,7 +92,7 @@ pub fn elaborate_and_check_mir(
     program: Program,
     d: &mut Diagnostics,
 ) -> mir::env::IndexedProgram {
-    let (program, env) = prepare_mir_for_analysis(program, d);
+    let (_program, mut elaborated) = prepare_mir_for_analysis(program, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
     // diagnostics and elaboration proceeds regardless. Elaborators are
@@ -103,12 +103,7 @@ pub fn elaborate_and_check_mir(
     // a `TC-*` violation in one fn and an `INIT-*` violation in
     // another surfaces both classes in a single run.
 
-    let mut elaborated = program;
-
-    // Elaboration still mutates the declaration tree while these passes are
-    // being migrated. The final index is rebuilt from the canonical bodies
-    // before returning.
-    mir::place_state::copy_relaxation::elaborate(&mut elaborated, &env, d);
+    mir::place_state::copy_relaxation::elaborate(&mut elaborated, d);
 
     // Downstream passes assume every operand is `move` or `copy`; a
     // surviving `take` means copy relaxation missed a case. Emit an
@@ -117,11 +112,10 @@ pub fn elaborate_and_check_mir(
     // first `take` they saw.
     mir::place_state::copy_relaxation::verify_no_take(&elaborated, d);
     if d.internal_error_count() > 0 {
-        return mir::env::IndexedProgram::build(&elaborated).0;
+        return elaborated;
     }
 
-    mir::lifetime::nll::elaborate(&mut elaborated, &env);
-    let mut elaborated = mir::env::IndexedProgram::build(&elaborated).0;
+    mir::lifetime::nll::elaborate(&mut elaborated);
     mir::place_state::drop_elaboration::elaborate(&mut elaborated);
 
     // Final dynamic validation runs once, over the canonical elaborated MIR.
