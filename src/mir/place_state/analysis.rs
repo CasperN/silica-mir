@@ -2,7 +2,7 @@ use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow;
 use crate::mir::helpers::*;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -247,7 +247,7 @@ pub(super) fn is_static_place(place: &Place) -> bool {
 }
 
 pub(super) struct PlaceStateContext<'a> {
-    pub(super) env: &'a GlobalEnv,
+    pub(super) env: &'a IndexedProgram,
     pub(super) locals: &'a IndexMap<String, Type>,
 }
 
@@ -493,7 +493,7 @@ pub(super) fn write_at(
     state: &mut InitState,
     ty: &Type,
     path: &[PathStep],
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     leaf_state: InitState,
 ) {
     if path.is_empty() {
@@ -559,7 +559,7 @@ pub(super) fn array_info(ty: &Type) -> Option<(Type, u64)> {
 /// the step is ill-typed against `ty` (type_check surfaces those errors
 /// separately) or when the step is a raw dereference outside the tracked
 /// projection model.
-pub(super) fn advance_ty(ty: &Type, step: &PathStep, env: &GlobalEnv) -> Option<Type> {
+pub(super) fn advance_ty(ty: &Type, step: &PathStep, env: &IndexedProgram) -> Option<Type> {
     match step {
         PathStep::Field(f) => env.field_type(ty, f),
         PathStep::Index(_) => array_info(ty).map(|(elem, _)| elem),
@@ -581,7 +581,7 @@ pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<InitSl
 /// regardless of which variant the state currently tracks. Per-variant
 /// partial moves would otherwise strand the enum in a disjunctive
 /// `Partial` state that no subsequent CFG join can resolve.
-pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &GlobalEnv) {
+pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &IndexedProgram) {
     if path.is_empty() {
         *state = InitState::Moved;
         return;
@@ -627,7 +627,7 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: 
 }
 
 /// Return the effective state at the given path (for a read check).
-pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &GlobalEnv) -> InitState {
+pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &IndexedProgram) -> InitState {
     if path.is_empty() {
         return state.clone();
     }
@@ -708,7 +708,7 @@ pub(super) fn read_at(state: &InitState, ty: &Type, path: &[PathStep], env: &Glo
 /// Also returns a closure that advances a state through a single
 /// statement (silent — no diagnostics), so callers can walk a block
 /// forward from its entry state to compute intermediate points.
-pub fn block_entry_states(env: &GlobalEnv, func: &Function) -> IndexMap<String, PointState> {
+pub fn block_entry_states(env: &IndexedProgram, func: &Function) -> IndexMap<String, PointState> {
     let Some(body) = &func.body else {
         return IndexMap::new();
     };
@@ -727,7 +727,7 @@ pub fn block_entry_states(env: &GlobalEnv, func: &Function) -> IndexMap<String, 
 /// same transfer as the fixpoint. For callers that hold a per-block
 /// entry state and want to reconstruct the state at any point inside
 /// the block.
-pub fn transfer_stmt_silent(env: &GlobalEnv, func: &Function, stmt: &Statement, state: &mut PointState) {
+pub fn transfer_stmt_silent(env: &IndexedProgram, func: &Function, stmt: &Statement, state: &mut PointState) {
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
         env,
@@ -737,7 +737,7 @@ pub fn transfer_stmt_silent(env: &GlobalEnv, func: &Function, stmt: &Statement, 
 }
 
 pub fn states_before_returns<'a>(
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     func: &'a Function,
 ) -> Vec<(&'a BasicBlock, PointState)> {
     let mut out = Vec::new();
@@ -772,7 +772,7 @@ pub fn states_before_returns<'a>(
     out
 }
 
-pub(super) fn boundary_state(func: &Function, body: &FunctionBody, env: &GlobalEnv) -> PointState {
+pub(super) fn boundary_state(func: &Function, body: &FunctionBody, env: &IndexedProgram) -> PointState {
     let mut s = PointState::default();
     for p in &func.params {
         s.locals.insert(p.name.clone(), InitState::Init);
@@ -806,7 +806,7 @@ pub(super) fn boundary_state(func: &Function, body: &FunctionBody, env: &GlobalE
 pub(super) fn seed_parameter_ref_states(
     place: Place,
     ty: &Type,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     visited: &mut BTreeSet<String>,
     refs: &mut IndexMap<Place, RefState>,
 ) {
@@ -848,7 +848,7 @@ pub(super) fn seed_parameter_ref_states(
     visited.remove(name);
 }
 
-pub(super) fn is_trivially_init(ty: &Type, env: &GlobalEnv) -> bool {
+pub(super) fn is_trivially_init(ty: &Type, env: &IndexedProgram) -> bool {
     match &ty.kind {
         TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
             Some(TypeDecl::Struct(s)) => s.fields.is_empty(),

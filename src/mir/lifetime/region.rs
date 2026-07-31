@@ -118,7 +118,7 @@ impl RegionCtx {
         &self,
         place: &Place,
         locals: &IndexMap<String, Type>,
-        env: &crate::mir::type_check::GlobalEnv,
+        env: &crate::mir::type_check::IndexedProgram,
     ) -> Option<Region> {
         if let Some(owned) = as_owned_path(place) {
             if let Some(r) = self.get(&owned) {
@@ -162,7 +162,7 @@ impl RegionCtx {
         &self,
         place: &Place,
         locals: &IndexMap<String, Type>,
-        env: &crate::mir::type_check::GlobalEnv,
+        env: &crate::mir::type_check::IndexedProgram,
     ) -> Option<Region> {
         let mut cur = place;
         loop {
@@ -183,7 +183,7 @@ impl RegionCtx {
 ///
 /// Recursion through generic type parameters uses the same
 /// param-substitution rule as `collect_borrowers`.
-pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::GlobalEnv) -> RegionCtx {
+pub fn build_region_ctx(func: &Function, env: &crate::mir::type_check::IndexedProgram) -> RegionCtx {
     use crate::mir::helpers::var_place;
     let mut ctx = RegionCtx::new();
     let locals = func.locals_map();
@@ -248,7 +248,7 @@ fn index_erased_key(place: &Place) -> Vec<PathStep> {
 pub(super) fn walk_ref_places(
     place: &Place,
     ty: &Type,
-    env: &crate::mir::type_check::GlobalEnv,
+    env: &crate::mir::type_check::IndexedProgram,
     visited: &mut std::collections::BTreeSet<String>,
     on_ref: &mut dyn FnMut(&Place, &Option<Lifetime>),
 ) {
@@ -373,7 +373,7 @@ mod tests {
     fn build_region_ctx_assigns_named_to_signature_free_to_locals() {
         use crate::mir::helpers::var_place;
         use crate::mir::parser::Parser;
-        use crate::mir::env::GlobalEnv;
+        use crate::mir::env::IndexedProgram;
         // Signature refs get Named (from elision or user); body-local
         // refs get Free (elision doesn't run on locals).
         let src = "
@@ -386,7 +386,7 @@ mod tests {
         ";
         let mut program = Parser::parse_or_panic(src);
         crate::mir::desugar::lifetime::desugar_program(&mut program);
-        let (env, _errs) = GlobalEnv::build(&program);
+        let (env, _errs) = IndexedProgram::build(&program);
         let func = program.find_fn("f").expect("fn f");
         let ctx = build_region_ctx(func, &env);
         assert_eq!(

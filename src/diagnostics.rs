@@ -255,7 +255,7 @@ impl Diagnostics {
     }
 
     /// Append every diagnostic from `other` as errors. Used by
-    /// `elaborate_and_check_mir` to fold in `GlobalEnv::build`'s pre-typecheck
+    /// `elaborate_and_check_mir` to fold in `IndexedProgram::build`'s pre-typecheck
     /// errors.
     pub fn extend_errors(&mut self, other: impl IntoIterator<Item = Diagnostic>) {
         self.errors.extend(other);

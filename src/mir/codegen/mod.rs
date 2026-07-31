@@ -38,14 +38,14 @@
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::layout;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::fmt::Write;
 
 pub fn lower_mir_to_llvm(program: Program) -> String {
     let mut mono_prog = program;
     crate::mir::mono::monomorphize(&mut mono_prog);
-    let (env, _) = crate::mir::type_check::GlobalEnv::build(&mono_prog);
+    let (env, _) = crate::mir::type_check::IndexedProgram::build(&mono_prog);
 
     let mut cx = CodeGenContext {
         env: &env,
@@ -187,7 +187,7 @@ fn uses_register_return(abi: &Option<String>) -> bool {
 // ---------- Context ----------
 
 struct CodeGenContext<'a> {
-    env: &'a GlobalEnv,
+    env: &'a IndexedProgram,
     out: String,
     v_counter: u32,
     locals: IndexMap<String, Type>,
@@ -1222,7 +1222,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
 
 /// Overall alignment of an enum: the stricter of the discriminant's
 /// alignment (i16 = 2) and any variant payload's alignment.
-fn enum_overall_align(e: &EnumDecl, env: &GlobalEnv) -> u64 {
+fn enum_overall_align(e: &EnumDecl, env: &IndexedProgram) -> u64 {
     let mut a = 2u64;
     for v in &e.variants {
         a = a.max(layout::align_of(&v.ty, env));
@@ -1232,7 +1232,7 @@ fn enum_overall_align(e: &EnumDecl, env: &GlobalEnv) -> u64 {
 
 /// Byte offset of the payload within an enum's LLVM struct. Equals the
 /// discriminant size (2) rounded up to the enum's overall alignment.
-fn payload_offset(e: &EnumDecl, env: &GlobalEnv) -> u64 {
+fn payload_offset(e: &EnumDecl, env: &IndexedProgram) -> u64 {
     align_up(2, enum_overall_align(e, env))
 }
 
@@ -1248,7 +1248,7 @@ fn payload_lane_type(align: u64) -> (&'static str, u64) {
     }
 }
 
-fn max_payload_size(e: &EnumDecl, env: &GlobalEnv) -> u64 {
+fn max_payload_size(e: &EnumDecl, env: &IndexedProgram) -> u64 {
     e.variants
         .iter()
         .map(|v| layout::size_of(&v.ty, env))

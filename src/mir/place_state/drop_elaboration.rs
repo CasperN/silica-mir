@@ -41,7 +41,7 @@ use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
 use crate::mir::ast::ParamsIntro;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.
@@ -73,7 +73,7 @@ struct FnPlan {
 
 /// Insert return-leak drops in `program` using analysis state from `env`.
 /// `env` should have been built from `program` before calling.
-pub fn elaborate(program: &mut Program, env: &GlobalEnv) {
+pub fn elaborate(program: &mut Program, env: &IndexedProgram) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in program.functions() {
@@ -168,7 +168,7 @@ pub fn elaborate(program: &mut Program, env: &GlobalEnv) {
     }
 }
 
-fn plan_for_function(env: &GlobalEnv, func: &Function) -> FnPlan {
+fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
     let mut plan = FnPlan::default();
     let Some(body) = &func.body else {
         return plan;
@@ -325,7 +325,7 @@ fn plan_for_function(env: &GlobalEnv, func: &Function) -> FnPlan {
 fn pre_stmt_transitions(
     stmt: &Statement,
     state: &PointState,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     locals: &IndexMap<String, Type>,
     scope: &ParamsIntro,
 ) -> (Vec<Place>, Option<Statement>) {
@@ -398,7 +398,7 @@ fn pre_stmt_transitions(
 fn plan_drops_for_requirement(
     place: &Place,
     state: &PointState,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     locals: &IndexMap<String, Type>,
     scope: &ParamsIntro,
 ) -> Vec<Place> {
@@ -440,7 +440,7 @@ fn path_has_downcast(place: &Place) -> bool {
 fn is_init_and_drop(
     place: &Place,
     state: &PointState,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     locals: &IndexMap<String, Type>,
     scope: &ParamsIntro,
 ) -> bool {
@@ -477,7 +477,7 @@ fn is_init_and_drop(
 /// for the positive fixture and
 /// `tests/init_state/partial_init/hll_partial_init_use.si` for the
 /// diagnostic on the paired misuse.
-fn collect_diverged_paths(env: &GlobalEnv, func: &Function, state: &PointState) -> Vec<(Place, Type)> {
+fn collect_diverged_paths(env: &IndexedProgram, func: &Function, state: &PointState) -> Vec<(Place, Type)> {
     let mut out = Vec::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
@@ -490,7 +490,7 @@ fn collect_diverged_paths(env: &GlobalEnv, func: &Function, state: &PointState) 
 }
 
 fn walk_diverged(
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     place: Place,
     ty: &Type,
     state: &InitState,
@@ -617,7 +617,7 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
 fn plan_drops_at_return(
     func: &Function,
     state: &PointState,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     scope: &ParamsIntro,
 ) -> Vec<Place> {
     // Combined declaration order: params, then locals. LIFO drop = reverse.
@@ -661,7 +661,7 @@ fn plan_drops_for_place(
     place: Place,
     ty: &Type,
     state: &InitState,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     scope: &ParamsIntro,
     out: &mut Vec<Place>,
 ) {

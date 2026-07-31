@@ -38,7 +38,7 @@ use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::helpers::*;
 use crate::mir::place_state::analysis::RefState;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -78,7 +78,7 @@ impl From<CopyRelaxationCode> for DiagCode {
 /// resolved to any valid operand (e.g. a non-Copy pointee through a
 /// shared-reference or dynamic-index boundary, where `copy` would be
 /// required but the type isn't `Copy`).
-pub fn elaborate(program: &mut Program, env: &GlobalEnv, d: &mut Diagnostics) {
+pub fn elaborate(program: &mut Program, env: &IndexedProgram, d: &mut Diagnostics) {
     for func in program.functions_mut() {
         elaborate_function(func, env, d);
     }
@@ -213,7 +213,7 @@ fn scan_place_for_take(
     }
 }
 
-fn elaborate_function(func: &mut Function, env: &GlobalEnv, d: &mut Diagnostics) {
+fn elaborate_function(func: &mut Function, env: &IndexedProgram, d: &mut Diagnostics) {
     let locals = func.locals_map();
     let scope = &func.meta.params;
     let return_obligations = collect_return_obligations(func);
@@ -255,7 +255,7 @@ fn elaborate_function(func: &mut Function, env: &GlobalEnv, d: &mut Diagnostics)
 /// used when emitting a user-facing error (e.g. `take` of a place that
 /// resolves to neither `move` nor `copy`).
 struct RelaxCtx<'a> {
-    env: &'a GlobalEnv,
+    env: &'a IndexedProgram,
     locals: &'a IndexMap<String, Type>,
     scope: &'a ParamsIntro,
     d: &'a mut Diagnostics,
@@ -857,7 +857,7 @@ fn relax_operand(
 /// carry no ownership tracking and the author is already in `unsafe`
 /// territory, so `take *p` resolves via the ordinary flexible rule
 /// (prefer `move` when the type supports it).
-fn requires_copy_semantics(place: &Place, env: &GlobalEnv, locals: &IndexMap<String, Type>) -> bool {
+fn requires_copy_semantics(place: &Place, env: &IndexedProgram, locals: &IndexMap<String, Type>) -> bool {
     match place {
         Place::Var(_) => false,
         Place::Field(inner, _) | Place::Downcast(inner, _) => {
@@ -893,7 +893,7 @@ mod tests {
 
     fn elaborate_source(source: &str) -> Program {
         let mut program = Parser::parse_or_panic(source);
-        let (env, errors) = GlobalEnv::build(&program);
+        let (env, errors) = IndexedProgram::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
         let mut d = Diagnostics::default();
         elaborate(&mut program, &env, &mut d);
@@ -1505,7 +1505,7 @@ mod tests {
             }
             ",
         );
-        let (env, errors) = GlobalEnv::build(&program);
+        let (env, errors) = IndexedProgram::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
 
         let mut d = Diagnostics::default();

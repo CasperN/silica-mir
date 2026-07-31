@@ -979,7 +979,7 @@ impl Program {
     /// Iterate over function declarations in declaration order. Callers
     /// that need bodies (checkers walking blocks, elaborators inspecting
     /// state, drop-elab planning drops) go through here rather than
-    /// through [`GlobalEnv`](crate::mir::type_check::GlobalEnv), which caches only
+    /// through [`IndexedProgram`](crate::mir::type_check::IndexedProgram), which caches only
     /// signatures.
     pub fn functions(&self) -> impl Iterator<Item = &Function> + '_ {
         self.declarations.iter().filter_map(|d| match d {

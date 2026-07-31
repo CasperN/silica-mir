@@ -14,10 +14,10 @@
 //! - Types render with the same tokens the parser accepts.
 
 use crate::mir::ast::*;
-use crate::mir::env::{DeclarationRef, GlobalEnv};
+use crate::mir::env::{DeclarationRef, IndexedProgram};
 use std::fmt::Write;
 
-pub fn pretty_print(program: &GlobalEnv) -> String {
+pub fn pretty_print(program: &IndexedProgram) -> String {
     let mut out = String::new();
     let mut first = true;
     for decl in program.declarations() {
@@ -483,7 +483,7 @@ fn write_terminator(out: &mut String, term: &Terminator) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::env::GlobalEnv;
+    use crate::mir::env::IndexedProgram;
     use crate::mir::parser::Parser;
 
     /// Parse `src`, pretty-print, and verify the output re-parses to a
@@ -492,7 +492,7 @@ mod tests {
     #[track_caller]
     fn assert_roundtrip(src: &str) {
         let original = Parser::parse_or_panic(src);
-        let indexed = GlobalEnv::build(&original).0;
+        let indexed = IndexedProgram::build(&original).0;
         let printed = pretty_print(&indexed);
         let reparsed = Parser::parse_or_panic(printed.clone());
         assert_eq!(

@@ -4,13 +4,13 @@
 use crate::mir::ast::*;
 use crate::mir::layout::{align_of, size_of};
 use crate::mir::parser::Parser;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 
-/// Parse `src` and build an `GlobalEnv`. Doesn't run any check pass — the
+/// Parse `src` and build an `IndexedProgram`. Doesn't run any check pass — the
 /// tests just need type-name resolution.
-fn env_of(src: &str) -> GlobalEnv {
+fn env_of(src: &str) -> IndexedProgram {
     let program = Parser::parse_or_panic(src);
-    GlobalEnv::build(&program).0
+    IndexedProgram::build(&program).0
 }
 
 // ---------- Scalars and pointers ----------

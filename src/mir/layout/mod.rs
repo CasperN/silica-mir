@@ -43,14 +43,14 @@ impl From<LayoutCode> for DiagCode {
         DiagCode::Layout(code)
     }
 }
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
 // ---------- Size / alignment ----------
 
 /// Size of `ty` in bytes on a 64-bit target.
-pub fn size_of(ty: &Type, env: &GlobalEnv) -> u64 {
+pub fn size_of(ty: &Type, env: &IndexedProgram) -> u64 {
     match &ty.kind {
         TypeKind::Int(i) => i.bytes(),
         TypeKind::Float(f) => f.bytes(),
@@ -74,7 +74,7 @@ pub fn size_of(ty: &Type, env: &GlobalEnv) -> u64 {
 
 /// Alignment of `ty` in bytes on a 64-bit target. Always a power of two.
 /// For scalars, alignment equals the type's own size (natural alignment).
-pub fn align_of(ty: &Type, env: &GlobalEnv) -> u64 {
+pub fn align_of(ty: &Type, env: &IndexedProgram) -> u64 {
     match &ty.kind {
         TypeKind::Int(i) => i.bytes(),
         TypeKind::Float(f) => f.bytes(),
@@ -96,7 +96,7 @@ pub fn align_of(ty: &Type, env: &GlobalEnv) -> u64 {
     }
 }
 
-fn struct_size(s: &StructDecl, env: &GlobalEnv) -> u64 {
+fn struct_size(s: &StructDecl, env: &IndexedProgram) -> u64 {
     let mut offset = 0u64;
     let mut align = 1u64;
     for f in &s.fields {
@@ -108,7 +108,7 @@ fn struct_size(s: &StructDecl, env: &GlobalEnv) -> u64 {
     align_up(offset, align)
 }
 
-fn struct_align(s: &StructDecl, env: &GlobalEnv) -> u64 {
+fn struct_align(s: &StructDecl, env: &IndexedProgram) -> u64 {
     let mut align = 1u64;
     for f in &s.fields {
         align = align.max(align_of(&f.ty, env));
@@ -116,7 +116,7 @@ fn struct_align(s: &StructDecl, env: &GlobalEnv) -> u64 {
     align
 }
 
-fn enum_size(e: &EnumDecl, env: &GlobalEnv) -> u64 {
+fn enum_size(e: &EnumDecl, env: &IndexedProgram) -> u64 {
     // {i16 discriminant, [N x i8] payload} with the whole thing aligned
     // to the enum's overall alignment. Discriminant lives at offset 0;
     // payload starts at max(2, max_payload_align).
@@ -133,7 +133,7 @@ fn enum_size(e: &EnumDecl, env: &GlobalEnv) -> u64 {
     align_up(payload_offset + max_payload_size, overall_align)
 }
 
-fn enum_align(e: &EnumDecl, env: &GlobalEnv) -> u64 {
+fn enum_align(e: &EnumDecl, env: &IndexedProgram) -> u64 {
     let mut a = 2u64; // discriminant alignment
     for v in &e.variants {
         a = a.max(align_of(&v.ty, env));
@@ -152,7 +152,7 @@ fn align_up(x: u64, a: u64) -> u64 {
 /// Report each maximal group of struct/enum types that participates in a
 /// by-value cycle. Recursion through references or function pointers is
 /// allowed (the referent is behind a pointer of bounded size).
-pub fn check_sizes_finite(env: &GlobalEnv, d: &mut Diagnostics) {
+pub fn check_sizes_finite(env: &IndexedProgram, d: &mut Diagnostics) {
     let strongly_connected_components = tarjan_sccs(env);
     for scc in strongly_connected_components {
         if scc.len() > 1 || (scc.len() == 1 && has_self_loop(&scc[0], env)) {
@@ -161,7 +161,7 @@ pub fn check_sizes_finite(env: &GlobalEnv, d: &mut Diagnostics) {
     }
 }
 
-fn report_cycle(scc: &[String], env: &GlobalEnv, d: &mut Diagnostics) {
+fn report_cycle(scc: &[String], env: &IndexedProgram, d: &mut Diagnostics) {
     let head = &scc[0];
     let source = decl_source(head, env);
     let members = scc.join(", ");
@@ -175,7 +175,7 @@ fn report_cycle(scc: &[String], env: &GlobalEnv, d: &mut Diagnostics) {
     ));
 }
 
-fn decl_source(name: &str, env: &GlobalEnv) -> SourceInfo {
+fn decl_source(name: &str, env: &IndexedProgram) -> SourceInfo {
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => s.meta.name_source,
         Some(TypeDecl::Enum(e)) => e.meta.name_source,
@@ -186,7 +186,7 @@ fn decl_source(name: &str, env: &GlobalEnv) -> SourceInfo {
 /// Names of nominal types that appear by value in the declaration of
 /// `name`. References and function types don't contribute — the pointer
 /// is bounded regardless of the pointee.
-fn by_value_edges(name: &str, env: &GlobalEnv) -> Vec<String> {
+fn by_value_edges(name: &str, env: &IndexedProgram) -> Vec<String> {
     let mut out = Vec::new();
     match env.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
@@ -208,7 +208,7 @@ fn by_value_edges(name: &str, env: &GlobalEnv) -> Vec<String> {
     out
 }
 
-fn has_self_loop(name: &str, env: &GlobalEnv) -> bool {
+fn has_self_loop(name: &str, env: &IndexedProgram) -> bool {
     by_value_edges(name, env).iter().any(|n| n == name)
 }
 
@@ -216,7 +216,7 @@ fn has_self_loop(name: &str, env: &GlobalEnv) -> bool {
 /// Nodes are struct/enum names in declaration order. Result: one Vec
 /// per SCC; single-node SCCs without a self-loop are trivial (not
 /// cycles) but included — the caller filters them.
-fn tarjan_sccs(env: &GlobalEnv) -> Vec<Vec<String>> {
+fn tarjan_sccs(env: &IndexedProgram) -> Vec<Vec<String>> {
     let mut state = Tarjan {
         env,
         index: IndexMap::new(),
@@ -236,7 +236,7 @@ fn tarjan_sccs(env: &GlobalEnv) -> Vec<Vec<String>> {
 }
 
 struct Tarjan<'a> {
-    env: &'a GlobalEnv,
+    env: &'a IndexedProgram,
     index: IndexMap<String, u32>,
     lowlink: IndexMap<String, u32>,
     on_stack: BTreeSet<String>,

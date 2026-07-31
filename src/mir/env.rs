@@ -197,7 +197,7 @@ impl TypeResolutionError {
         &self,
         format: &mut DiagnosticFormat,
         caller_scope: &DiagnosticScope,
-        env: &GlobalEnv,
+        env: &IndexedProgram,
     ) -> String {
         match &self.kind {
             TypeResolutionErrorKind::UndeclaredVariable(name) => {
@@ -367,7 +367,7 @@ impl<'a> DeclarationRef<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct GlobalEnv {
+pub struct IndexedProgram {
     /// Struct and enum declarations, keyed by name. Uses `IndexMap` so
     /// iteration order matches declaration order — analyses that iterate
     /// (e.g. field validation) produce diagnostics deterministically.
@@ -377,7 +377,7 @@ pub struct GlobalEnv {
     /// `Vec<MyTrait>` are illegal at the type-name resolver, so putting
     /// traits in `types` would make them accidentally satisfy those
     /// positions. Name-uniqueness between `types` and `traits` is
-    /// enforced together (see `GlobalEnv::build`) — Rust's type-namespace
+    /// enforced together (see `IndexedProgram::build`) — Rust's type-namespace
     /// rule.
     pub traits: IndexMap<String, TraitDecl>,
     /// Functions, including bodies, keyed by name. Compiler-provided
@@ -395,7 +395,7 @@ pub struct GlobalEnv {
     pub impls: IndexMap<(Instance, Type), ImplBlock>,
 }
 
-impl GlobalEnv {
+impl IndexedProgram {
     /// Build the checker's projection over `program`. Returns the env
     /// plus any duplicate-declaration errors — callers that care (i.e.
     /// the main pipeline) plumb them into their `Diagnostics`; callers
@@ -483,7 +483,7 @@ impl GlobalEnv {
         }
 
         (
-            GlobalEnv {
+            IndexedProgram {
                 types,
                 traits,
                 functions,
@@ -1057,7 +1057,7 @@ mod declaration_iteration_tests {
             enum E: Copy + Drop { V: unit }
             ",
         );
-        let (program, errors) = GlobalEnv::build(&program);
+        let (program, errors) = IndexedProgram::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
 
         let declarations: Vec<String> = program

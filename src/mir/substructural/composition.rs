@@ -26,14 +26,14 @@
 //! Generics: the decl-side check runs under a `ParamScope` built from
 //! the decl's `type_params`, so a `Param(T)` reads its declared bounds
 //! as its class. The dual use-site check lives in
-//! [`GlobalEnv::validate_type`](crate::mir::type_check::GlobalEnv::validate_type) —
+//! [`IndexedProgram::validate_type`](crate::mir::type_check::IndexedProgram::validate_type) —
 //! together they mean `class_of(Custom(_, args))` can return the
 //! decl's declared markers without inspecting the args.
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 
 /// Map from a generic decl's type-parameter names to the Markers each
 /// param carries via its declared bounds. `class_of` consults this when
@@ -72,7 +72,7 @@ fn diag(code: impl Into<DiagCode>, source: SourceInfo, msg: String) -> Diagnosti
     Diagnostic::new(code, source, msg)
 }
 
-pub fn check_program(env: &GlobalEnv, d: &mut Diagnostics) {
+pub fn check_program(env: &IndexedProgram, d: &mut Diagnostics) {
     for type_decl in env.types.values() {
         match type_decl {
             TypeDecl::Struct(s) => check_struct(s, env, d),
@@ -109,7 +109,7 @@ fn check_markers_against(
     }
 }
 
-fn check_struct(s: &StructDecl, env: &GlobalEnv, d: &mut Diagnostics) {
+fn check_struct(s: &StructDecl, env: &IndexedProgram, d: &mut Diagnostics) {
     for f in &s.fields {
         let c = env.class_of(&f.ty, &s.meta.params);
         check_markers_against(
@@ -132,7 +132,7 @@ fn check_struct(s: &StructDecl, env: &GlobalEnv, d: &mut Diagnostics) {
     }
 }
 
-fn check_enum(e: &EnumDecl, env: &GlobalEnv, d: &mut Diagnostics) {
+fn check_enum(e: &EnumDecl, env: &IndexedProgram, d: &mut Diagnostics) {
     for v in &e.variants {
         let c = env.class_of(&v.ty, &e.meta.params);
         check_markers_against(

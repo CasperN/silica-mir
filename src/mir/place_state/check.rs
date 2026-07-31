@@ -2,7 +2,7 @@ use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 
 use super::analysis::{
@@ -13,7 +13,7 @@ use super::analysis::{
     PointState, RefState,
 };
 
-pub fn check_program(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
+pub fn check_program(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
     for f in program.functions() {
         check_function(env, f, d);
     }
@@ -21,7 +21,7 @@ pub fn check_program(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
 }
 
 /// Return validation is part of the single final place-state check.
-pub(super) fn check_return_leaks(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
+pub(super) fn check_return_leaks(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
     for (func, _body) in program.function_bodies() {
         let locals = func.locals_map();
         for (block, state) in states_before_returns(env, func) {
@@ -31,7 +31,7 @@ pub(super) fn check_return_leaks(program: &Program, env: &GlobalEnv, d: &mut Dia
 }
 
 fn check_return_state(
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -98,7 +98,7 @@ fn check_return_state(
 }
 
 fn find_return_leaks(
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     state: &InitState,
     ty: &Type,
     path: &mut String,
@@ -155,7 +155,7 @@ pub(super) fn find_decl_source(func: &Function, name: &str) -> Option<SourceInfo
         .map(|local| local.source)
 }
 
-fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
+fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -188,7 +188,7 @@ fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
 pub(super) fn walk_overwrite_leaves(
     state: &InitState,
     ty: &Type,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     path: &mut String,
     report: &mut dyn FnMut(&str, &Type),
 ) {

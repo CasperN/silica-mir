@@ -11,7 +11,7 @@ use crate::mir::ast::{
 use crate::mir::helpers::{
     assign_stmt, call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt,
 };
-use crate::mir::type_check::{GlobalEnv, TypeDecl};
+use crate::mir::type_check::{IndexedProgram, TypeDecl};
 use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
 
@@ -100,7 +100,7 @@ impl DeclMeta {
 /// in `ty` with the corresponding arg.
 ///
 /// Arity is a caller precondition — callers must validate before
-/// invoking (e.g. via `GlobalEnv::validate_type` or the trait/impl arity
+/// invoking (e.g. via `IndexedProgram::validate_type` or the trait/impl arity
 /// checks in type_check). A mismatch here would silently leak the
 /// declaration's own lifetime/type params into the use-site scope,
 /// so we panic to surface the bug at the call boundary rather than
@@ -324,7 +324,7 @@ pub fn substitute_terminator_types(
 /// field/variant, etc.).
 pub fn place_type(
     locals: &indexmap::IndexMap<String, Type>,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     place: &crate::mir::ast::Place,
 ) -> Option<Type> {
     use crate::mir::ast::{extract_path_with_deref, PathStep};
@@ -375,8 +375,8 @@ pub fn place_type(
 /// bounded by the visited set — a Custom name seen twice in the
 /// same walk conservatively returns false (inhabited) rather than
 /// looping.
-pub fn is_type_uninhabited(ty: &Type, env: &GlobalEnv) -> bool {
-    fn walk(ty: &Type, env: &GlobalEnv, visited: &mut BTreeSet<String>) -> bool {
+pub fn is_type_uninhabited(ty: &Type, env: &IndexedProgram) -> bool {
+    fn walk(ty: &Type, env: &IndexedProgram, visited: &mut BTreeSet<String>) -> bool {
         match &ty.kind {
             TypeKind::Never => true,
             TypeKind::Custom(Instance { name, .. }) => {
@@ -408,10 +408,10 @@ mod tests {
     use crate::mir::helpers::*;
     use crate::mir::parser::Parser;
 
-    /// Build an GlobalEnv from MIR source, discarding any diagnostics.
-    fn env_of(src: &str) -> GlobalEnv {
+    /// Build an IndexedProgram from MIR source, discarding any diagnostics.
+    fn env_of(src: &str) -> IndexedProgram {
         let program: Program = Parser::parse_or_panic(src);
-        GlobalEnv::build(&program).0
+        IndexedProgram::build(&program).0
     }
 
     #[test]

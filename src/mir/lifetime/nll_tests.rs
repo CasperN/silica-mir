@@ -10,10 +10,10 @@ use crate::mir::lifetime::nll::elaborate;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print as pretty_print_indexed;
 use crate::mir::test_util::*;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 
 fn pretty_print(program: &crate::mir::ast::Program) -> String {
-    let indexed = GlobalEnv::build(program).0;
+    let indexed = IndexedProgram::build(program).0;
     pretty_print_indexed(&indexed)
 }
 
@@ -33,12 +33,12 @@ fn idempotent_second_run_is_noop() {
         }
         ";
     let mut program = Parser::parse_or_panic(src);
-    let env = GlobalEnv::build(&program).0;
+    let env = IndexedProgram::build(&program).0;
     elaborate(&mut program, &env);
     let after_first = pretty_print(&program);
 
     // Rebuild env against the elaborated program and run NLL again.
-    let env2 = GlobalEnv::build(&program).0;
+    let env2 = IndexedProgram::build(&program).0;
     elaborate(&mut program, &env2);
     let after_second = pretty_print(&program);
 

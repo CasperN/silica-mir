@@ -376,7 +376,7 @@ fn generated_split_label_round_trips_through_mir_syntax() {
         "target",
     );
 
-    let indexed = crate::mir::env::GlobalEnv::build(&program).0;
+    let indexed = crate::mir::env::IndexedProgram::build(&program).0;
     let printed = pretty_print(&indexed);
     assert!(printed.contains("$edge0:"));
     Parser::parse_or_panic(printed);

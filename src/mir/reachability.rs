@@ -19,7 +19,7 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::diag;
 use crate::mir::place_state::analysis::{block_entry_states, InitSlot, InitState, PointState};
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Machine-readable codes emitted by the reachability pass.
@@ -52,13 +52,13 @@ impl From<ReachabilityCode> for DiagCode {
     }
 }
 
-pub fn check_program(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
+pub fn check_program(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
     for f in program.functions() {
         check_function(env, f, d);
     }
 }
 
-fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
+fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -112,7 +112,7 @@ fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
 /// repeat. Only runs on reachable blocks — dead-code switches stay
 /// silent.
 fn check_switch_structure(
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     func: &Function,
     block: &BasicBlock,
     place: &Place,
@@ -202,7 +202,7 @@ fn effective_successors(term: &Terminator) -> Vec<&str> {
 }
 
 fn check_switch_arms(
-    env: &GlobalEnv,
+    env: &IndexedProgram,
     func: &Function,
     body: &FunctionBody,
     block: &BasicBlock,
@@ -331,7 +331,7 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
 }
 
 fn resolve_enum_of_place<'a>(
-    env: &'a GlobalEnv,
+    env: &'a IndexedProgram,
     func: &Function,
     place: &Place,
 ) -> Option<&'a EnumDecl> {
@@ -348,8 +348,8 @@ fn resolve_enum_of_place<'a>(
 
 
 /// True if a value of `ty` cannot be constructed.
-fn is_type_uninhabited(ty: &Type, env: &GlobalEnv) -> bool {
-    fn walk(ty: &Type, env: &GlobalEnv, visited: &mut BTreeSet<String>) -> bool {
+fn is_type_uninhabited(ty: &Type, env: &IndexedProgram) -> bool {
+    fn walk(ty: &Type, env: &IndexedProgram, visited: &mut BTreeSet<String>) -> bool {
         match &ty.kind {
             TypeKind::Never => true,
             TypeKind::Custom(Instance { name, .. }) => {
@@ -381,10 +381,10 @@ mod tests {
     use crate::mir::test_util::*;
     use crate::mir::helpers::*;
 
-    /// Build an GlobalEnv from MIR source, discarding any diagnostics.
-    fn env_of(src: &str) -> GlobalEnv {
+    /// Build an IndexedProgram from MIR source, discarding any diagnostics.
+    fn env_of(src: &str) -> IndexedProgram {
         let program: Program = crate::mir::parser::Parser::parse_or_panic(src);
-        GlobalEnv::build(&program).0
+        IndexedProgram::build(&program).0
     }
 
     #[test]

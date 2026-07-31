@@ -15,7 +15,7 @@ mod direct_leak_check_tests {
         let src = "fn f(x: i64) { entry: return }";
         let program = Parser::parse_or_panic(src);
         let mut d = Diagnostics::default();
-        let env = type_check::GlobalEnv::build(&program).0;
+        let env = type_check::IndexedProgram::build(&program).0;
         check_return_leaks(&program, &env, &mut d);
         let errs = d.errors_str();
         assert!(
@@ -31,7 +31,7 @@ mod direct_leak_check_tests {
         let src = "fn f(x: i64) { entry: drop x; return }";
         let program = Parser::parse_or_panic(src);
         let mut d = Diagnostics::default();
-        let env = type_check::GlobalEnv::build(&program).0;
+        let env = type_check::IndexedProgram::build(&program).0;
         check_return_leaks(&program, &env, &mut d);
         let errs = d.errors_str();
         let leak_errs: Vec<_> = errs
@@ -46,11 +46,11 @@ mod nested_reference_state_tests {
     use super::super::check::check_program;
     use crate::diagnostics::Diagnostics;
     use crate::mir::parser::Parser;
-    use crate::mir::env::GlobalEnv;
+    use crate::mir::env::IndexedProgram;
 
     fn errors(source: &str) -> Vec<String> {
         let program = Parser::parse_or_panic(source);
-        let env = GlobalEnv::build(&program).0;
+        let env = IndexedProgram::build(&program).0;
         let mut diagnostics = Diagnostics::default();
         check_program(&program, &env, &mut diagnostics);
         diagnostics.errors_str()

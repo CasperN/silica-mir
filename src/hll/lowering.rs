@@ -1733,9 +1733,9 @@ mod tests {
         let mir_prog = lower_program(&hll_prog, &types).unwrap();
 
         // Run MIR typecheck sanity check on the lowered program
-        let (env, env_errs) = crate::mir::type_check::GlobalEnv::build(&mir_prog);
+        let (env, env_errs) = crate::mir::type_check::IndexedProgram::build(&mir_prog);
         if !env_errs.is_empty() {
-            panic!("MIR GlobalEnv build failed on lowered program: {:?}", env_errs);
+            panic!("MIR IndexedProgram build failed on lowered program: {:?}", env_errs);
         }
         let mut d = crate::Diagnostics::default();
         env.typecheck(&mir_prog, &mut d);

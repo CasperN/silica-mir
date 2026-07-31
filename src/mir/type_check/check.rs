@@ -1,12 +1,12 @@
 //! MIR type-checking pass.
 //!
 //! Verifies that every declaration, statement, and terminator in the
-//! program is well-typed against the `GlobalEnv`. No inference: types come
+//! program is well-typed against the `IndexedProgram`. No inference: types come
 //! from the environment (parameters, locals) and from the structural
 //! `type_of_*` queries; this pass only checks that they line up.
 
 use crate::mir::env::{TypeResolutionError, TypeValidationError};
-use super::GlobalEnv;
+use super::IndexedProgram;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;
 use super::TypeDecl;
@@ -22,7 +22,7 @@ fn resolution_diagnostic(
     error: TypeResolutionError,
     source: SourceInfo,
     meta: &DeclMeta,
-    env: &GlobalEnv,
+    env: &IndexedProgram,
 ) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
     let scope = format.scope(meta);
@@ -168,7 +168,7 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
     }
 }
 
-impl GlobalEnv {
+impl IndexedProgram {
     pub fn typecheck(&self, program: &Program, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {

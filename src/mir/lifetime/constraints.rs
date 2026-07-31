@@ -359,7 +359,7 @@ mod tests {
     fn ref_to_ref_assignment_emits_outlives() {
         use crate::mir::desugar::lifetime as desugaring;
         use crate::mir::parser::Parser;
-        use crate::mir::env::GlobalEnv;
+        use crate::mir::env::IndexedProgram;
         // `r = copy x` where both are `&i64`: source region must
         // outlive destination region. After elision x's region is
         // 's0 (from signature). r is a body-local, so its region is
@@ -374,7 +374,7 @@ mod tests {
         ";
         let mut program = Parser::parse_or_panic(src);
         desugaring::desugar_program(&mut program);
-        let (env, _errs) = GlobalEnv::build(&program);
+        let (env, _errs) = IndexedProgram::build(&program);
         let func = program.find_fn("f").expect("fn f");
         let cs = crate::mir::lifetime::check::constraints_for(&env, func);
         assert_eq!(cs.len(), 1, "expected one outlives constraint");

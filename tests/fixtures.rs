@@ -200,7 +200,7 @@ fn render_fixture(path: &Path, run: &FixtureRun, expectation: Expectation) -> St
     match expectation {
         Expectation::Mir => match &run.program {
             Some(program) if !run.diagnostics.has_errors() => {
-                let (program, _) = mir::env::GlobalEnv::build(program);
+                let (program, _) = mir::env::IndexedProgram::build(program);
                 mir::pretty_print::pretty_print(&program)
             }
             _ => panic!(

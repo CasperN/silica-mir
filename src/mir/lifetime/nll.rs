@@ -56,13 +56,13 @@ use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::helpers::*;
-use crate::mir::env::GlobalEnv;
+use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
 /// Elaborate `program` in place: insert `unborrow` statements at every
 /// borrower's last-use points. Idempotent.
-pub fn elaborate(program: &mut Program, env: &GlobalEnv) {
+pub fn elaborate(program: &mut Program, env: &IndexedProgram) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
     for func in program.functions() {
@@ -97,7 +97,7 @@ struct ElaborationPlan {
     cross_edge: IndexMap<(String, String), Vec<Place>>,
 }
 
-fn plan_for_function(func: &Function, env: &GlobalEnv) -> Option<ElaborationPlan> {
+fn plan_for_function(func: &Function, env: &IndexedProgram) -> Option<ElaborationPlan> {
     let body = func.body.as_ref()?;
     if body.blocks.is_empty() {
         return None;
@@ -451,7 +451,7 @@ fn deref_ancestor(place: &Place) -> Option<Place> {
 /// self-referential type declarations is bounded by tracking visited
 /// type names on each root walk. The Array precision gap is documented
 /// on `region::walk_ref_places`.
-fn collect_borrowers(func: &Function, env: &GlobalEnv) -> BTreeSet<Place> {
+fn collect_borrowers(func: &Function, env: &IndexedProgram) -> BTreeSet<Place> {
     let mut out = BTreeSet::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
