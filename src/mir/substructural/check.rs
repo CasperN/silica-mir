@@ -47,9 +47,9 @@ use SubstructuralCheckCode::*;
 
 /// Class-precondition checks over statements (does not include
 /// `check_return_leaks`, which callers run separately after elaboration).
-pub fn check_statements(program: &Program, env: &IndexedProgram, d: &mut Diagnostics) {
+pub fn check_statements(program: &IndexedProgram, d: &mut Diagnostics) {
     for f in program.functions() {
-        check_function(env, f, d);
+        check_function(program, f, d);
     }
 }
 

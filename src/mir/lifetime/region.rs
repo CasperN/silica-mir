@@ -394,10 +394,10 @@ mod tests {
                 return
             }
         ";
-        let mut program = Parser::parse_or_panic(src);
-        crate::mir::desugar::lifetime::desugar_program(&mut program);
-        let (env, _errs) = IndexedProgram::build(&program);
-        let func = program.find_fn("f").expect("fn f");
+        let program = Parser::parse_or_panic(src);
+        let (mut env, _errs) = IndexedProgram::build(&program);
+        crate::mir::desugar::lifetime::desugar_program(&mut env);
+        let func = env.functions.get("f").expect("fn f");
         let ctx = build_region_ctx(func, &env);
         assert_eq!(
             ctx.get(&var_place("x")),

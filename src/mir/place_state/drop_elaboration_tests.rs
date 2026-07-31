@@ -11,7 +11,7 @@ fn elaborate_src(src: &str) -> IndexedProgram {
     let program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
     let mut indexed = IndexedProgram::build(&program).0;
-    indexed.typecheck(&program, &mut d);
+    indexed.typecheck(&mut d);
     elaborate(&mut indexed);
     indexed
 }
@@ -478,7 +478,7 @@ fn strict_check_still_fails_for_linear_leak() {
     let program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
     let mut elaborated = IndexedProgram::build(&program).0;
-    elaborated.typecheck(&program, &mut d);
+    elaborated.typecheck(&mut d);
     elaborate(&mut elaborated);
 
     let mut d2 = Diagnostics::default();

@@ -1764,7 +1764,7 @@ mod tests {
             );
         }
         let mut d = crate::Diagnostics::default();
-        env.typecheck(&mir_prog, &mut d);
+        env.typecheck(&mut d);
         if d.has_errors() {
             panic!(
                 "MIR typecheck failed on lowered program: {:?}",

@@ -25,6 +25,7 @@
 //! there's no notion of "input" vs "output" on a data decl.
 
 use crate::mir::ast::*;
+use crate::mir::env::IndexedProgram;
 use std::collections::HashMap;
 
 /// Run lifetime elision on every declaration in `program`. Mutates in
@@ -37,7 +38,7 @@ use std::collections::HashMap;
 ///      lifetime args.
 ///   2. Elide fn / trait / impl decls, which reference those Custom
 ///      types.
-pub fn desugar_program(program: &mut Program) {
+pub fn desugar_program(program: &mut IndexedProgram) {
     // Iterate struct/enum elision to a fixpoint. Each pass materializes
     // synthesized lifetime params on the visited decls; a subsequent
     // pass then sees the updated arities and can elide bare Custom
@@ -45,11 +46,10 @@ pub fn desugar_program(program: &mut Program) {
     // over arity counts converges in one or two iterations in practice.
     let mut arities = HashMap::new();
     loop {
-        for decl in &mut program.declarations {
+        for decl in program.types.values_mut() {
             match decl {
-                Declaration::Struct(s) => desugar_struct(s, &arities),
-                Declaration::Enum(e) => desugar_enum(e, &arities),
-                _ => {}
+                TypeDecl::Struct(s) => desugar_struct(s, &arities),
+                TypeDecl::Enum(e) => desugar_enum(e, &arities),
             }
         }
         let next = type_arities(program);
@@ -58,30 +58,32 @@ pub fn desugar_program(program: &mut Program) {
         }
         arities = next;
     }
-    for decl in &mut program.declarations {
-        match decl {
-            Declaration::Fn(f) => desugar_fn(f, &arities),
-            Declaration::Trait(t) => desugar_trait(t, &arities),
-            Declaration::Impl(i) => desugar_impl(i, &arities),
-            _ => {}
-        }
+    for function in program.functions.values_mut().filter(|function| {
+        function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+    }) {
+        desugar_fn(function, &arities);
+    }
+    for trait_decl in program.traits.values_mut() {
+        desugar_trait(trait_decl, &arities);
+    }
+    for impl_block in program.impls.values_mut() {
+        desugar_impl(impl_block, &arities);
     }
 }
 
 /// Map each named type decl to its lifetime-parameter count. Called
 /// after struct/enum elision so the count reflects any synthesized
 /// lifetime params.
-fn type_arities(program: &Program) -> HashMap<String, usize> {
+fn type_arities(program: &IndexedProgram) -> HashMap<String, usize> {
     let mut arities = HashMap::new();
-    for decl in &program.declarations {
+    for decl in program.types.values() {
         match decl {
-            Declaration::Struct(s) => {
+            TypeDecl::Struct(s) => {
                 arities.insert(s.meta.name.clone(), s.meta.params.lifetime_params.len());
             }
-            Declaration::Enum(e) => {
+            TypeDecl::Enum(e) => {
                 arities.insert(e.meta.name.clone(), e.meta.params.lifetime_params.len());
             }
-            _ => {}
         }
     }
     arities

@@ -8,7 +8,7 @@
 //!   locals with the impl's target type.
 //!
 //! Passes are independent and idempotent. Call order is fixed by
-//! [`crate::lib`]'s `prepare_mir_for_analysis`.
+//! [`crate::lib`]'s `prepare_mir_for_elaboration`.
 
 pub mod lifetime;
 pub mod self_alias;

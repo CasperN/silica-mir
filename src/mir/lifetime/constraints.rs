@@ -372,10 +372,10 @@ mod tests {
                 return
             }
         ";
-        let mut program = Parser::parse_or_panic(src);
-        desugaring::desugar_program(&mut program);
-        let (env, _errs) = IndexedProgram::build(&program);
-        let func = program.find_fn("f").expect("fn f");
+        let program = Parser::parse_or_panic(src);
+        let (mut env, _errs) = IndexedProgram::build(&program);
+        desugaring::desugar_program(&mut env);
+        let func = env.functions.get("f").expect("fn f");
         let cs = crate::mir::lifetime::check::constraints_for(&env, func);
         assert_eq!(cs.len(), 1, "expected one outlives constraint");
         let c = &cs.constraints[0];

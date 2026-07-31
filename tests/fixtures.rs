@@ -183,10 +183,9 @@ fn execute_fixture(path: &Path, stage: Stage) -> FixtureRun {
         Stage::Elab | Stage::Codegen => program
             .as_ref()
             .map(|p| elaborate_and_check_mir(p.clone(), &mut d)),
-        Stage::Check => program.as_ref().map(|p| {
-            let (program, _) = check_mir_without_elaboration(p.clone(), &mut d);
-            mir::env::IndexedProgram::build(&program).0
-        }),
+        Stage::Check => program
+            .as_ref()
+            .map(|p| check_mir_without_elaboration(p.clone(), &mut d)),
         Stage::CodegenRaw => program
             .as_ref()
             .map(|program| mir::env::IndexedProgram::build(program).0),

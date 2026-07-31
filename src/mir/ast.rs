@@ -975,11 +975,7 @@ pub struct Program {
 }
 
 impl Program {
-    /// Iterate over function declarations in declaration order. Callers
-    /// that need bodies (checkers walking blocks, elaborators inspecting
-    /// state, drop-elab planning drops) go through here rather than
-    /// through [`IndexedProgram`](crate::mir::type_check::IndexedProgram), which caches only
-    /// signatures.
+    /// Iterate over parsed function declarations in declaration order.
     pub fn functions(&self) -> impl Iterator<Item = &Function> + '_ {
         self.declarations.iter().filter_map(|d| match d {
             Declaration::Fn(f) => Some(f),
@@ -987,9 +983,7 @@ impl Program {
         })
     }
 
-    /// Mutable counterpart of [`functions`](Self::functions). Elaboration
-    /// passes iterate through here to splice statements and rewrite
-    /// bodies in place; the immutable form is preferred everywhere else.
+    /// Mutable counterpart of [`functions`](Self::functions).
     pub fn functions_mut(&mut self) -> impl Iterator<Item = &mut Function> + '_ {
         self.declarations.iter_mut().filter_map(|d| match d {
             Declaration::Fn(f) => Some(f),
@@ -1007,7 +1001,7 @@ impl Program {
 
     /// Iterate `(fn, body)` pairs for every function with a body. Skips
     /// externs. Convenience over `functions().filter_map(|f| f.body...)`
-    /// used by every check pass.
+    /// for callers working with an unindexed parsed program.
     pub fn function_bodies(&self) -> impl Iterator<Item = (&Function, &FunctionBody)> + '_ {
         self.functions()
             .filter_map(|f| f.body.as_ref().map(|b| (f, b)))

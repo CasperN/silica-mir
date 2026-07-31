@@ -2,6 +2,7 @@
 //! locals, and bodies with the impl's target type.
 
 use crate::mir::ast::*;
+use crate::mir::env::IndexedProgram;
 use crate::mir::type_util::{
     substitute_params, substitute_stmt_types, substitute_terminator_types,
 };
@@ -21,11 +22,8 @@ use crate::mir::type_util::{
 /// Trait method sigs still mention `Self` after this pass — traits are
 /// templates. `typecheck_impl` substitutes `Self := target` on the
 /// trait side at conformance-check time.
-pub fn desugar_self_alias(program: &mut Program) {
-    for decl in &mut program.declarations {
-        let Declaration::Impl(imp) = decl else {
-            continue;
-        };
+pub fn desugar_self_alias(program: &mut IndexedProgram) {
+    for imp in program.impls.values_mut() {
         let self_param = [TypeParam {
             name: "Self".to_string(),
             bounds: Bounds::default(),

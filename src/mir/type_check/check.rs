@@ -169,7 +169,7 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
 }
 
 impl IndexedProgram {
-    pub fn typecheck(&self, program: &Program, d: &mut Diagnostics) {
+    pub fn typecheck(&self, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
             let (container_kind, item_kind, duplicate_code, items) = match type_decl {
@@ -232,7 +232,7 @@ impl IndexedProgram {
         }
 
         // Validate all functions
-        for f in program.functions() {
+        for f in self.functions() {
             self.typecheck_function(f, d);
         }
 
@@ -251,10 +251,8 @@ impl IndexedProgram {
         // don't yet see impl methods and will pick them up once the
         // mono trait-resolution pass emits concrete `Fn` decls in
         // their place.
-        for decl in &program.declarations {
-            if let Declaration::Impl(imp) = decl {
-                self.typecheck_impl(imp, d);
-            }
+        for imp in self.impls.values() {
+            self.typecheck_impl(imp, d);
         }
     }
 
@@ -642,7 +640,7 @@ impl IndexedProgram {
         // existing `typecheck_function` path with an effective meta so
         // the body's scope includes both the impl-header generics and
         // the method's own. Bodies with type errors would otherwise
-        // slip through since impls don't participate in `Program::functions()`.
+        // slip through since impls don't participate in `IndexedProgram::functions()`.
         for method in &imp.methods {
             let effective = Self::effective_impl_method(header, method);
             self.typecheck_function(&effective, d);

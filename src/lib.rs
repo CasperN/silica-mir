@@ -24,10 +24,10 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
 /// This preparation is deliberately shared by both pipelines below: the
 /// check-only pipeline validates MIR exactly as written, while the full
 /// pipeline elaborates it before the final dynamic checks.
-fn prepare_mir_for_analysis(
+fn prepare_mir_for_elaboration(
     mut program: Program,
     d: &mut Diagnostics,
-) -> (Program, mir::type_check::IndexedProgram) {
+) -> mir::env::IndexedProgram {
     // Inject compiler-provided prelude wrappers (non-`$` names like
     // `size_of<T>`, `ptr_offset<T>` that forward to the reserved
     // `$sizeof<T>` / `$ptr_offset<T>` intrinsics) before any pass
@@ -36,22 +36,19 @@ fn prepare_mir_for_analysis(
     program
         .declarations
         .extend(mir::intrinsics::prelude_body_decls());
-    mir::desugar::self_alias::desugar_self_alias(&mut program);
-    mir::desugar::lifetime::desugar_program(&mut program);
-    let (env, env_errs) = mir::type_check::IndexedProgram::build(&program);
+    let (mut env, env_errs) = mir::type_check::IndexedProgram::build(&program);
     d.extend_errors(env_errs);
-    env.typecheck(&program, d);
+    mir::desugar::self_alias::desugar_self_alias(&mut env);
+    mir::desugar::lifetime::desugar_program(&mut env);
+    env.typecheck(d);
     mir::substructural::composition::check_program(&env, d);
     mir::layout::check_sizes_finite(&env, d);
-    mir::substructural::check::check_statements(&program, &env, d);
-    (program, env)
+    mir::substructural::check::check_statements(&env, d);
+    env
 }
 
 /// Validate initialization state and lifetime loans.
-fn check_place_and_loan_state(
-    program: &mir::env::IndexedProgram,
-    d: &mut Diagnostics,
-) {
+fn check_place_and_loan_state(program: &mir::env::IndexedProgram, d: &mut Diagnostics) {
     mir::place_state::check::check_program(program, d);
     mir::lifetime::check::check_program(program, d);
     mir::reachability::check_program(program, d);
@@ -66,10 +63,10 @@ fn check_place_and_loan_state(
 pub fn check_mir_without_elaboration(
     program: Program,
     d: &mut Diagnostics,
-) -> (Program, mir::type_check::IndexedProgram) {
-    let (program, env) = prepare_mir_for_analysis(program, d);
-    check_place_and_loan_state(&env, d);
-    (program, env)
+) -> mir::env::IndexedProgram {
+    let program = prepare_mir_for_elaboration(program, d);
+    check_place_and_loan_state(&program, d);
+    program
 }
 
 /// Run the MIR pipeline: pre-elab sanity checks, elaboration
@@ -88,11 +85,8 @@ pub fn check_mir_without_elaboration(
 /// The dynamic init-state and loan checkers each run once, on that canonical
 /// elaborated form. [`check_mir_without_elaboration`] is the explicit
 /// check-only entry point for fixtures that need to observe raw MIR.
-pub fn elaborate_and_check_mir(
-    program: Program,
-    d: &mut Diagnostics,
-) -> mir::env::IndexedProgram {
-    let (_program, mut elaborated) = prepare_mir_for_analysis(program, d);
+pub fn elaborate_and_check_mir(program: Program, d: &mut Diagnostics) -> mir::env::IndexedProgram {
+    let mut elaborated = prepare_mir_for_elaboration(program, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
     // diagnostics and elaboration proceeds regardless. Elaborators are
