@@ -355,7 +355,7 @@ pub struct GlobalEnv {
     /// name resolution (`env.functions[callee_name].params`, etc.).
     /// Keeping only signatures in `GlobalEnv` means elaboration can mutate
     /// bodies in-place on `Program` without an `GlobalEnv` resync step.
-    pub functions: IndexMap<String, FunctionSignature>,
+    pub functions: IndexMap<String, Function>,
     /// Impl blocks, keyed by `(trait_path, target_type)`. The full
     /// trait path (name + lifetime + type args) is the key so multiple
     /// impls of a generic trait for the same target coexist —
@@ -383,7 +383,7 @@ impl GlobalEnv {
         // level, but if we ever add non-`$` prelude items, redeclarations
         // will hit the duplicate-declaration path below.
         for f in crate::mir::intrinsics::prelude_fns() {
-            functions.insert(f.meta.name.clone(), FunctionSignature::from_function(&f));
+            functions.insert(f.meta.name.clone(), f.clone());
         }
 
         let mut traits: IndexMap<String, TraitDecl> = IndexMap::new();
@@ -430,7 +430,7 @@ impl GlobalEnv {
                         types.insert(m.name.clone(), TypeDecl::Enum(e.clone()));
                     }
                     Declaration::Fn(f) => {
-                        functions.insert(m.name.clone(), FunctionSignature::from_function(f));
+                        functions.insert(m.name.clone(), f.clone());
                     }
                     Declaration::Trait(t) => {
                         traits.insert(m.name.clone(), t.clone());

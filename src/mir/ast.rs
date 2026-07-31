@@ -808,41 +808,6 @@ pub struct Function {
     pub body: Option<FunctionBody>,
 }
 
-/// A `Function` without its body — the name-resolution view used by
-/// [`GlobalEnv`](crate::mir::type_check::GlobalEnv). Bodies live in [`Program`] and
-/// are mutated by elaboration; `GlobalEnv` caches only what's stable across
-/// elaboration so no resync is needed between passes.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct FunctionSignature {
-    pub meta: DeclMeta,
-    pub is_extern: bool,
-    pub abi: Option<String>,
-    pub params: Vec<Param>,
-}
-
-impl FunctionSignature {
-    pub fn from_function(f: &Function) -> Self {
-        Self {
-            meta: f.meta.clone(),
-            is_extern: f.is_extern,
-            abi: f.abi.clone(),
-            params: f.params.clone(),
-        }
-    }
-
-    /// Instantiate parameter types by substituting `type_args` for the function's declared type parameters.
-    pub fn instantiate_params(&self, type_args: &[Type]) -> Vec<Type> {
-        self.params
-            .iter()
-            .map(|p| {
-                self.meta
-                    .try_substitute_types(&p.ty, type_args)
-                    .unwrap_or_else(|| p.ty.clone())
-            })
-            .collect()
-    }
-}
-
 impl Function {
     /// Build a `name -> type` map from the function's parameters and (if
     /// present) its body's locals. Iteration follows declaration order:
@@ -859,6 +824,17 @@ impl Function {
             }
         }
         m
+    }
+    /// Instantiate parameter types by substituting `type_args` for the function's declared type parameters.
+    pub fn instantiate_params(&self, type_args: &[Type]) -> Vec<Type> {
+        self.params
+            .iter()
+            .map(|p| {
+                self.meta
+                    .try_substitute_types(&p.ty, type_args)
+                    .unwrap_or_else(|| p.ty.clone())
+            })
+            .collect()
     }
 }
 
@@ -917,15 +893,10 @@ pub struct EnumDecl {
     pub variants: Vec<EnumVariant>,
 }
 
-/// A trait declaration: name, generics, and a set of method signatures.
-/// Methods are stored as body-less `FunctionSignature`s. `Self` is a
-/// reserved identifier in the trait's scope, resolved to
-/// `TypeKind::Param("Self")` during parsing; impls substitute it with
-/// the target type at check time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraitDecl {
     pub meta: DeclMeta,
-    pub methods: Vec<FunctionSignature>,
+    pub methods: Vec<Function>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

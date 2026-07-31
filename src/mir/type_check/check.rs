@@ -459,7 +459,7 @@ impl GlobalEnv {
         for m in &imp.methods {
             impl_by_name.insert(m.meta.name.as_str(), m);
         }
-        let trait_by_name: std::collections::HashMap<&str, &FunctionSignature> = trait_decl
+        let trait_by_name: std::collections::HashMap<&str, &Function> = trait_decl
             .methods
             .iter()
             .map(|m| (m.meta.name.as_str(), m))

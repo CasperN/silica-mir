@@ -1669,7 +1669,7 @@ impl Parser {
         let trait_scope: std::collections::BTreeSet<String> =
             self.type_scope.borrow().clone();
 
-        let mut methods: Vec<FunctionSignature> = Vec::new();
+        let mut methods: Vec<Function> = Vec::new();
         let mut seen_names: std::collections::HashSet<String> = Default::default();
         for child in node.children(&mut cursor) {
             if child.kind() != "function_decl" {
@@ -1701,7 +1701,7 @@ impl Parser {
                 ));
                 continue;
             }
-            methods.push(FunctionSignature::from_function(&f));
+            methods.push(f);
         }
         self.type_scope.borrow_mut().clear();
 
