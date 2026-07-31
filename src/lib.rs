@@ -121,12 +121,12 @@ pub fn elaborate_and_check_mir(
     }
 
     mir::lifetime::nll::elaborate(&mut elaborated, &env);
-    mir::place_state::drop_elaboration::elaborate(&mut elaborated, &env);
+    let mut elaborated = mir::env::IndexedProgram::build(&elaborated).0;
+    mir::place_state::drop_elaboration::elaborate(&mut elaborated);
 
     // Final dynamic validation runs once, over the canonical elaborated MIR.
     // This surfaces invalid source transitions that no elaborator repaired,
     // plus obligations exposed by NLL-inserted `unborrow` statements.
-    let elaborated = mir::env::IndexedProgram::build(&elaborated).0;
     check_place_and_loan_state(&elaborated, d);
     elaborated
 }

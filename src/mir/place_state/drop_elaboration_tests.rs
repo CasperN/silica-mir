@@ -1,25 +1,19 @@
 use super::check::{check_program, check_return_leaks};
 use super::drop_elaboration::*;
 use crate::diagnostics::Diagnostics;
-use crate::mir::ast::Program;
+use crate::mir::env::IndexedProgram;
 use crate::mir::parser::Parser;
-use crate::mir::pretty_print::pretty_print as pretty_print_indexed;
-use crate::mir::type_check;
-
-fn pretty_print(program: &Program) -> String {
-    let indexed = type_check::IndexedProgram::build(program).0;
-    pretty_print_indexed(&indexed)
-}
+use crate::mir::pretty_print::pretty_print;
 
 /// Run the full parse → typecheck → elaborate pipeline, returning the
 /// mutated program for inspection.
-fn elaborate_src(src: &str) -> Program {
-    let mut program = Parser::parse_or_panic(src);
+fn elaborate_src(src: &str) -> IndexedProgram {
+    let program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
-    let env = type_check::IndexedProgram::build(&program).0;
-    env.typecheck(&program, &mut d);
-    elaborate(&mut program, &env);
-    program
+    let mut indexed = IndexedProgram::build(&program).0;
+    indexed.typecheck(&program, &mut d);
+    elaborate(&mut indexed);
+    indexed
 }
 
 /// Assert that elaborating `before` yields a program whose
@@ -44,9 +38,7 @@ fn assert_elaborated_eq(before: &str, expected: &str) {
 fn assert_strict_clean_after_elaboration(src: &str) {
     let program = elaborate_src(src);
     let mut d = Diagnostics::default();
-    let env = type_check::IndexedProgram::build(&program).0;
-    env.typecheck(&program, &mut d);
-    check_return_leaks(&env, &mut d);
+    check_return_leaks(&program, &mut d);
     let errs = d.errors_str();
     let leak_errs: Vec<&String> = errs
         .iter()
@@ -93,7 +85,7 @@ fn f(x: Linear) {
 
 #[test]
 fn linear_require_uninit_remains_an_error_after_elaboration() {
-    let mut program = Parser::parse_or_panic(
+    let program = Parser::parse_or_panic(
         "
         struct Linear: Move { }
         fn f(x: Linear) {
@@ -103,11 +95,10 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
         }
         ",
     );
-    let env = type_check::IndexedProgram::build(&program).0;
-    elaborate(&mut program, &env);
+    let mut elaborated = IndexedProgram::build(&program).0;
+    elaborate(&mut elaborated);
 
     let mut d = Diagnostics::default();
-    let elaborated = type_check::IndexedProgram::build(&program).0;
     check_program(&elaborated, &mut d);
     let errors = d.errors_str();
     assert!(
@@ -244,10 +235,7 @@ fn diverged_elab_idempotent() {
     let once = elaborate_src(src);
     let twice = {
         let mut program = once.clone();
-        let mut d = Diagnostics::default();
-        let env = type_check::IndexedProgram::build(&program).0;
-        env.typecheck(&program, &mut d);
-        elaborate(&mut program, &env);
+        elaborate(&mut program);
         program
     };
     assert_eq!(pretty_print(&once), pretty_print(&twice));
@@ -263,10 +251,7 @@ fn elaboration_is_idempotent() {
     // Elaborate the already-elaborated program a second time and
     // compare via pretty-printed forms.
     let mut twice = once.clone();
-    let mut d = Diagnostics::default();
-    let env = type_check::IndexedProgram::build(&twice).0;
-    env.typecheck(&twice, &mut d);
-    elaborate(&mut twice, &env);
+    elaborate(&mut twice);
 
     assert_eq!(pretty_print(&once), pretty_print(&twice));
 }
@@ -369,10 +354,7 @@ fn strict_check_passes_after_elaboration_with_multi_block() {
 fn assert_idempotent(src: &str) {
     let once = elaborate_src(src);
     let mut twice = once.clone();
-    let mut d = Diagnostics::default();
-    let env = type_check::IndexedProgram::build(&twice).0;
-    env.typecheck(&twice, &mut d);
-    elaborate(&mut twice, &env);
+    elaborate(&mut twice);
     assert_eq!(
         pretty_print(&once),
         pretty_print(&twice),
@@ -493,16 +475,14 @@ fn strict_check_still_fails_for_linear_leak() {
                 return
             }
         ";
-    let mut program = Parser::parse_or_panic(src);
+    let program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
-    let env = type_check::IndexedProgram::build(&program).0;
-    env.typecheck(&program, &mut d);
-    elaborate(&mut program, &env);
+    let mut elaborated = IndexedProgram::build(&program).0;
+    elaborated.typecheck(&program, &mut d);
+    elaborate(&mut elaborated);
 
     let mut d2 = Diagnostics::default();
-    let env2 = type_check::IndexedProgram::build(&program).0;
-    env2.typecheck(&program, &mut d2);
-    check_return_leaks(&env2, &mut d2);
+    check_return_leaks(&elaborated, &mut d2);
 
     let errs = d2.errors_str();
     assert!(

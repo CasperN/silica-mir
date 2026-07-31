@@ -71,13 +71,12 @@ struct FnPlan {
     cross_edge: IndexMap<(String, String), Vec<Place>>,
 }
 
-/// Insert return-leak drops in `program` using analysis state from `env`.
-/// `env` should have been built from `program` before calling.
-pub fn elaborate(program: &mut Program, env: &IndexedProgram) {
+/// Insert return-leak drops in `program`.
+pub fn elaborate(program: &mut IndexedProgram) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in program.functions() {
-        let plan = plan_for_function(env, func);
+        let plan = plan_for_function(program, func);
         if !plan.pre_stmt.is_empty() || !plan.rewrite_stmt.is_empty() || !plan.cross_edge.is_empty()
         {
             plans.insert(func.meta.name.clone(), plan);
@@ -85,7 +84,7 @@ pub fn elaborate(program: &mut Program, env: &IndexedProgram) {
     }
 
     // Apply (mutable): splice the planned changes into each body.
-    for func in program.functions_mut() {
+    for func in program.functions.values_mut() {
         let Some(plan) = plans.get(&func.meta.name) else {
             continue;
         };
