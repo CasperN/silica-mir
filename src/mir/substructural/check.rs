@@ -21,7 +21,7 @@ use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::type_check::Env;
+use crate::mir::env::Env;
 use indexmap::IndexMap;
 
 /// Machine-readable codes emitted by the substructural per-statement

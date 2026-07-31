@@ -46,7 +46,7 @@ mod nested_reference_state_tests {
     use super::super::check::check_program;
     use crate::diagnostics::Diagnostics;
     use crate::mir::parser::Parser;
-    use crate::mir::type_check::Env;
+    use crate::mir::env::Env;
 
     fn errors(source: &str) -> Vec<String> {
         let program = Parser::parse_or_panic(source);

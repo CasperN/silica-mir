@@ -2,7 +2,7 @@ mod parameter_ref_tests {
     use crate::mir::helpers::*;
     use crate::mir::parser::Parser;
     use crate::mir::place_state::analysis::{boundary_state, InitState, RefState};
-    use crate::mir::type_check::Env;
+    use crate::mir::env::Env;
 
     #[test]
     fn seeds_nested_struct_parameter_reference_obligations() {

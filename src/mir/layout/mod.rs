@@ -43,7 +43,7 @@ impl From<LayoutCode> for DiagCode {
         DiagCode::Layout(code)
     }
 }
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::env::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 

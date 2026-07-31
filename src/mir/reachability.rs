@@ -19,7 +19,7 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::helpers::diag;
 use crate::mir::place_state::analysis::{block_entry_states, InitSlot, InitState, PointState};
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::env::Env;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Machine-readable codes emitted by the reachability pass.

@@ -33,7 +33,7 @@
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::env::Env;
 
 /// Map from a generic decl's type-parameter names to the Markers each
 /// param carries via its declared bounds. `class_of` consults this when

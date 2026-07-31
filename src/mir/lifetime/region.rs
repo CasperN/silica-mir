@@ -253,7 +253,7 @@ pub(super) fn walk_ref_places(
     on_ref: &mut dyn FnMut(&Place, &Option<Lifetime>),
 ) {
     use crate::mir::helpers::{downcast_place, field_place};
-    use crate::mir::type_check::TypeDecl;
+    use crate::mir::ast::TypeDecl;
     match &ty.kind {
         TypeKind::Ref(_, lt_opt, _) => on_ref(place, lt_opt),
         TypeKind::Custom(Instance { name, lifetime_args, type_args: args }) => {
@@ -373,7 +373,7 @@ mod tests {
     fn build_region_ctx_assigns_named_to_signature_free_to_locals() {
         use crate::mir::helpers::var_place;
         use crate::mir::parser::Parser;
-        use crate::mir::type_check::Env;
+        use crate::mir::env::Env;
         // Signature refs get Named (from elision or user); body-local
         // refs get Free (elision doesn't run on locals).
         let src = "

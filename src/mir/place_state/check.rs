@@ -2,12 +2,12 @@ use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::type_check::Env;
+use crate::mir::env::Env;
 use indexmap::IndexMap;
 
 use super::analysis::{
     advance_ty, capture_carried_refs, describe_obligation_mismatch, describe_pointee_state,
-    describe_state, enum_variant_payload_ty, extract_init_path, format_path, is_state_fully_init,
+    describe_state, extract_init_path, format_path, is_state_fully_init,
     partial_is_uninit, read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
     states_before_returns, InitSlot, InitState, PlaceStateCode, PlaceStateCode::*, PlaceStateContext,
     PointState, RefState,
@@ -115,7 +115,7 @@ fn find_return_leaks(
                         Some(ft) => ft,
                         None => continue,
                     },
-                    (_, InitSlot::Variant(v)) => match enum_variant_payload_ty(ty, v, env) {
+                    (_, InitSlot::Variant(v)) => match env.variant_payload_type(ty, v) {
                         Some(pt) => pt,
                         None => continue,
                     },
@@ -203,7 +203,7 @@ pub(super) fn walk_overwrite_leaves(
                         Some(ft) => ft,
                         None => continue,
                     },
-                    (_, InitSlot::Variant(v)) => match enum_variant_payload_ty(ty, v, env) {
+                    (_, InitSlot::Variant(v)) => match env.variant_payload_type(ty, v) {
                         Some(pt) => pt,
                         None => continue,
                     },
@@ -369,7 +369,7 @@ impl<'a> PlaceStateContext<'a> {
                 // Downcast on a non-enum type is a type error already
                 // reported by type_check; skip the refinement check
                 // rather than pile on a misleading "not refined" message.
-                if enum_variant_payload_ty(&prefix_ty, v, self.env).is_none() {
+                if self.env.variant_payload_type(&prefix_ty, v).is_none() {
                     return;
                 }
                 let prefix_state = read_at(root_state, &root_ty, &path[..i], self.env);

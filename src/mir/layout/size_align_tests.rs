@@ -4,7 +4,7 @@
 use crate::mir::ast::*;
 use crate::mir::layout::{align_of, size_of};
 use crate::mir::parser::Parser;
-use crate::mir::type_check::Env;
+use crate::mir::env::Env;
 
 /// Parse `src` and build an `Env`. Doesn't run any check pass — the
 /// tests just need type-name resolution.

@@ -13,7 +13,7 @@ use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::DiagnosticFormat;
 use crate::mir::helpers::*;
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::env::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 

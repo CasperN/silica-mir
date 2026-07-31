@@ -16,7 +16,7 @@ use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{DiagnosticFormat, DiagnosticScope};
 use crate::mir::helpers::*;
-use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*, TypeDecl};
+use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*};
 use indexmap::IndexMap;
 
 pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
@@ -598,6 +598,30 @@ impl Env {
         self.validate_type(ty, &IndexMap::new())
     }
 
+    /// Return all instantiated fields of the struct type `ty`, if `ty` is a declared struct.
+    /// Substitutes the struct's type-parameter references (`TypeKind::Param`)
+    /// with the concrete args on `ty`.
+    pub fn struct_fields(&self, ty: &Type) -> Option<Vec<StructField>> {
+        let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
+            return None;
+        };
+        let TypeDecl::Struct(s) = self.types.get(name)? else {
+            return None;
+        };
+        s.fields
+            .iter()
+            .map(|f| {
+                s.meta
+                    .try_substitute_types(&f.ty, args)
+                    .map(|substituted_ty| StructField {
+                        name: f.name.clone(),
+                        ty: substituted_ty,
+                        source: f.source,
+                    })
+            })
+            .collect()
+    }
+
     /// Type of `field` in the struct type `ty`, if any. Returns `None` if
     /// `ty` isn't a declared struct or the field doesn't exist.
     /// Substitutes the struct's type-parameter references (`TypeKind::Param`)
@@ -618,6 +642,26 @@ impl Env {
             s.meta
                 .try_substitute_types(f_ty, args)
                 .unwrap_or_else(|| f_ty.clone()),
+        )
+    }
+
+    /// Payload type of `variant` in the enum type `ty`, if any. Returns `None` if
+    /// `ty` isn't a declared enum or the variant doesn't exist.
+    /// Substitutes the enum's type-parameter references (`TypeKind::Param`)
+    /// with the concrete args on `ty`, so `Option<i64>::Some` yields `i64`,
+    /// not the raw declared `T`.
+    pub fn variant_payload_type(&self, ty: &Type, variant: &str) -> Option<Type> {
+        let TypeKind::Custom(Instance { name, type_args: args, .. }) = &ty.kind else {
+            return None;
+        };
+        let TypeDecl::Enum(e) = self.types.get(name)? else {
+            return None;
+        };
+        let v_ty = &e.variants.iter().find(|v| v.name == variant)?.ty;
+        Some(
+            e.meta
+                .try_substitute_types(v_ty, args)
+                .unwrap_or_else(|| v_ty.clone()),
         )
     }
 
@@ -678,8 +722,11 @@ impl Env {
             }
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, locals)?;
-                let (name, args) = match &inner_ty.kind {
-                    TypeKind::Custom(Instance { name: n, type_args: a, .. }) => (n, a),
+                if let Some(f_ty) = self.field_type(&inner_ty, field_name) {
+                    return Ok(f_ty);
+                }
+                let name = match &inner_ty.kind {
+                    TypeKind::Custom(Instance { name: n, .. }) => n,
                     _ => {
                         return Err(err(TypeResolutionErrorKind::FieldOfNonStruct {
                             field: field_name.clone(),
@@ -688,23 +735,10 @@ impl Env {
                     }
                 };
                 match self.types.get(name) {
-                    Some(TypeDecl::Struct(s)) => {
-                        let f = s.fields.iter().find(|f| f.name == *field_name).ok_or_else(
-                            || {
-                                err(TypeResolutionErrorKind::NoSuchField {
-                                    type_name: name.clone(),
-                                    field: field_name.clone(),
-                                })
-                            },
-                        )?;
-                        // Arity mismatch on the instance is already reported by
-                        // validate_type; fall back to the raw field type so
-                        // downstream typecheck doesn't misdiagnose (e.g. as
-                        // "no such field") on a valid projection.
-                        Ok(s.meta
-                            .try_substitute_types(&f.ty, args)
-                            .unwrap_or_else(|| f.ty.clone()))
-                    }
+                    Some(TypeDecl::Struct(_)) => Err(err(TypeResolutionErrorKind::NoSuchField {
+                        type_name: name.clone(),
+                        field: field_name.clone(),
+                    })),
                     Some(TypeDecl::Enum(_)) => Err(err(TypeResolutionErrorKind::FieldOfEnum {
                         field: field_name.clone(),
                         enum_name: name.clone(),
@@ -714,24 +748,18 @@ impl Env {
             }
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, locals)?;
-                let (name, args) = match &inner_ty.kind {
-                    TypeKind::Custom(Instance { name: n, type_args: a, .. }) => (n, a),
+                if let Some(payload_ty) = self.variant_payload_type(&inner_ty, variant_name) {
+                    return Ok(payload_ty);
+                }
+                let name = match &inner_ty.kind {
+                    TypeKind::Custom(Instance { name: n, .. }) => n,
                     _ => return Err(err(TypeResolutionErrorKind::DowncastOfNonEnum(inner_ty))),
                 };
                 match self.types.get(name) {
-                    Some(TypeDecl::Enum(e)) => {
-                        let v = e.variants.iter().find(|v| v.name == *variant_name).ok_or_else(
-                            || {
-                                err(TypeResolutionErrorKind::NoSuchVariant {
-                                    enum_name: name.clone(),
-                                    variant: variant_name.clone(),
-                                })
-                            },
-                        )?;
-                        Ok(e.meta
-                            .try_substitute_types(&v.ty, args)
-                            .unwrap_or_else(|| v.ty.clone()))
-                    }
+                    Some(TypeDecl::Enum(_)) => Err(err(TypeResolutionErrorKind::NoSuchVariant {
+                        enum_name: name.clone(),
+                        variant: variant_name.clone(),
+                    })),
                     Some(TypeDecl::Struct(_)) => {
                         Err(err(TypeResolutionErrorKind::DowncastOfStruct(name.clone())))
                     }

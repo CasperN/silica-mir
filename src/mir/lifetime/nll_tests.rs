@@ -10,7 +10,7 @@ use crate::mir::lifetime::nll::elaborate;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print;
 use crate::mir::test_util::*;
-use crate::mir::type_check::Env;
+use crate::mir::env::Env;
 
 // ---------- Idempotence ----------
 

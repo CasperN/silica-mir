@@ -38,7 +38,7 @@
 use crate::mir::ast::*;
 use crate::mir::helpers::*;
 use crate::mir::layout;
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::env::Env;
 use indexmap::IndexMap;
 use std::fmt::Write;
 

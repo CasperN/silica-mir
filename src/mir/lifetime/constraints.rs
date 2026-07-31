@@ -359,7 +359,7 @@ mod tests {
     fn ref_to_ref_assignment_emits_outlives() {
         use crate::mir::desugar::lifetime as desugaring;
         use crate::mir::parser::Parser;
-        use crate::mir::type_check::Env;
+        use crate::mir::env::Env;
         // `r = copy x` where both are `&i64`: source region must
         // outlive destination region. After elision x's region is
         // 's0 (from signature). r is a body-local, so its region is

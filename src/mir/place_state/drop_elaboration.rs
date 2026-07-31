@@ -41,7 +41,7 @@ use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
 use crate::mir::env::ParamScope;
-use crate::mir::type_check::{Env, TypeDecl};
+use crate::mir::env::Env;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.

@@ -928,6 +928,25 @@ pub struct TraitDecl {
     pub methods: Vec<FunctionSignature>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeDecl {
+    Struct(StructDecl),
+    Enum(EnumDecl),
+}
+
+impl TypeDecl {
+    /// Shared declaration metadata (name, generics, markers). Present
+    /// on both struct and enum variants at the same field name — this
+    /// accessor lets callers read the metadata without pattern-matching
+    /// on the variant.
+    pub fn meta(&self) -> &DeclMeta {
+        match self {
+            TypeDecl::Struct(s) => &s.meta,
+            TypeDecl::Enum(e) => &e.meta,
+        }
+    }
+}
+
 /// An `impl Trait<Args> for Target` block. `meta` carries the impl-
 /// header generics (bound throughout `trait_path`, `target`, and every
 /// method body). `trait_path` is the trait ref as an `Instance` (name
