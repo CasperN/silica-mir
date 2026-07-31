@@ -34,31 +34,12 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::type_check::{Env, TypeDecl};
-use indexmap::IndexMap;
 
 /// Map from a generic decl's type-parameter names to the Markers each
 /// param carries via its declared bounds. `class_of` consults this when
 /// it encounters a `TypeKind::Param(name)` — the substructural class of a
 /// param is exactly what the bounds guarantee.
-pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
-
-impl ParamsIntro {
-    /// Build the param scope for this parameter introduction block.
-    /// Params without any bounds contribute an empty `Markers` — those
-    /// params are linear inside the decl body.
-    pub fn param_scope(&self) -> IndexMap<String, Markers> {
-        self.type_params
-            .iter()
-            .map(|p| (p.name.clone(), p.bounds.markers))
-            .collect()
-    }
-}
-
-impl DeclMeta {
-    pub fn param_scope(&self) -> IndexMap<String, Markers> {
-        self.params.param_scope()
-    }
-}
+pub use crate::mir::env::ParamScope;
 
 /// Machine-readable codes emitted by the class-composition check. Each
 /// variant flags "declared marker M on container C isn't satisfied by
@@ -89,71 +70,6 @@ use SubstructuralCompositionCode::*;
 /// declarations before any function body is checked).
 fn diag(code: impl Into<DiagCode>, source: SourceInfo, msg: String) -> Diagnostic {
     Diagnostic::new(code, source, msg)
-}
-
-/// Return the substructural class of `ty` as a `Markers` value under
-/// the given type-parameter scope.
-///
-/// Callers query the result via `implies(Marker::X)` — this bakes in
-/// both the vertical closure (higher tiers imply lower) and the
-/// horizontal closure (Copy + Drop → Move). Composition uses the raw
-/// `declared` on the *declaration's* markers to phrase errors; that
-/// pass reads `s.meta.markers.declared(_)` directly, not through here.
-///
-/// `scope` maps generic-parameter names to their declared bounds. It
-/// is populated by callers that know which decl is being checked (see
-/// `scope_from`). A `TypeKind::Param(name)` reaching an out-of-scope
-/// resolution returns empty Markers; every parse-produced Param is
-/// guaranteed to be in scope by construction, so this only matters
-/// for synthetic types outside a decl body.
-pub fn class_of(ty: &Type, env: &Env, scope: ParamScope) -> Markers {
-    let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
-    match &ty.kind {
-        TypeKind::Int(_)
-        | TypeKind::Float(_)
-        | TypeKind::Bool
-        | TypeKind::Unit
-        | TypeKind::Fn(_) => all(),
-        // Never is uninhabited: the substructural rules quantify over
-        // values, and there are none. All three ops apply vacuously.
-        TypeKind::Never => all(),
-        // Raw pointers are unrestricted (aliasable, forgettable,
-        // relocatable) — same class as shared refs. No loan / no
-        // obligation, so no linearity to worry about.
-        TypeKind::RawPtr(_) => all(),
-        TypeKind::Ref(kind, _, _) => match kind {
-            // Shared refs are unrestricted and relocatable.
-            RefKind::Shared => all(),
-            // Exclusive mutable/uninit refs: affine + movable. The ref
-            // itself is a pointer we can freely relocate; the referent's
-            // obligation goes with it.
-            RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
-            // `&out` / `&drop` carry linear obligations, but the
-            // reference value itself is a pointer that can be relocated
-            // (obligation transfers with the ref).
-            RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
-        },
-        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
-            // For a generic instantiation, the declared markers on the
-            // decl are the type's markers regardless of the args — the
-            // decl-side check verified those markers under the params'
-            // bounds, so the decl-declared class is a sound conclusion
-            // for every instantiation that passes the use-site bound
-            // check. Args are not substituted here.
-            Some(TypeDecl::Struct(s)) => s.meta.markers,
-            Some(TypeDecl::Enum(e)) => e.meta.markers,
-            // Unknown name — tc has already reported "undeclared type".
-            None => Markers::empty(),
-        },
-        // A generic type parameter's class is exactly what its bounds
-        // guarantee. Bounds live on the enclosing decl's `type_params`;
-        // callers thread that scope in.
-        TypeKind::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
-        // Array class inherits from its element type. Zero-length
-        // arrays are trivially Copy Drop Move (no elements to worry
-        // about) — treat like the element class regardless.
-        TypeKind::Array(elem, _) => class_of(elem, env, scope),
-    }
 }
 
 pub fn check_program(env: &Env, d: &mut Diagnostics) {
@@ -196,7 +112,7 @@ fn check_markers_against(
 fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
     let scope = s.meta.param_scope();
     for f in &s.fields {
-        let c = class_of(&f.ty, env, &scope);
+        let c = env.class_of(&f.ty, &scope);
         check_markers_against(
             &s.meta,
             c,
@@ -220,7 +136,7 @@ fn check_struct(s: &StructDecl, env: &Env, d: &mut Diagnostics) {
 fn check_enum(e: &EnumDecl, env: &Env, d: &mut Diagnostics) {
     let scope = e.meta.param_scope();
     for v in &e.variants {
-        let c = class_of(&v.ty, env, &scope);
+        let c = env.class_of(&v.ty, &scope);
         check_markers_against(
             &e.meta,
             c,

@@ -40,7 +40,7 @@ use super::analysis::{
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
-use crate::mir::substructural::composition::{class_of, ParamScope};
+use crate::mir::env::ParamScope;
 use crate::mir::type_check::{Env, TypeDecl};
 use indexmap::IndexMap;
 
@@ -280,7 +280,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
             };
             for (path_place, ty) in &diverged_paths {
                 if state_at(pred_exit, path_place) == Some(InitState::Init)
-                    && class_of(ty, env, &scope).implies(Marker::Drop)
+                    && env.class_of(ty, &scope).implies(Marker::Drop)
                 {
                     plan.cross_edge
                         .entry((pred_block.label.clone(), block.label.clone()))
@@ -457,7 +457,7 @@ fn is_init_and_drop(
     let Ok(leaf_ty) = env.type_of_place(place, locals) else {
         return false;
     };
-    class_of(&leaf_ty, env, scope).implies(Marker::Drop)
+    env.class_of(&leaf_ty, scope).implies(Marker::Drop)
 }
 
 /// Walk `state` looking for Diverged leaves, recursing into Partial
@@ -670,7 +670,7 @@ fn plan_drops_for_place(
     // dispatch selects the right variant. Handle this before the
     // structural Partial arm so we don't try to walk per-slot below.
     if is_state_fully_init(state) {
-        if class_of(ty, env, scope).implies(Marker::Drop) {
+        if env.class_of(ty, scope).implies(Marker::Drop) {
             out.push(place);
         }
         return;
@@ -678,7 +678,7 @@ fn plan_drops_for_place(
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Diverged => {}
         InitState::Init => {
-            if class_of(ty, env, scope).implies(Marker::Drop) {
+            if env.class_of(ty, scope).implies(Marker::Drop) {
                 out.push(place);
             }
         }

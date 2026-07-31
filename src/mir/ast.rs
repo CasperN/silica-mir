@@ -829,6 +829,18 @@ impl FunctionSignature {
             params: f.params.clone(),
         }
     }
+
+    /// Instantiate parameter types by substituting `type_args` for the function's declared type parameters.
+    pub fn instantiate_params(&self, type_args: &[Type]) -> Vec<Type> {
+        self.params
+            .iter()
+            .map(|p| {
+                self.meta
+                    .try_substitute_types(&p.ty, type_args)
+                    .unwrap_or_else(|| p.ty.clone())
+            })
+            .collect()
+    }
 }
 
 impl Function {

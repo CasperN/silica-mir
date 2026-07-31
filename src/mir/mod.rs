@@ -5,6 +5,7 @@ pub mod codegen;
 pub mod dataflow;
 pub mod desugar;
 pub(crate) mod diagnostic_format;
+pub mod env;
 pub mod helpers;
 pub mod intrinsics;
 pub mod layout;

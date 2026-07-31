@@ -2,7 +2,6 @@ use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
@@ -684,7 +683,7 @@ impl<'a> PlaceStateContext<'a> {
             self.env,
             &mut String::new(),
             &mut |leaf_path, leaf_ty| {
-                let c = class_of(leaf_ty, self.env, &scope);
+                let c = self.env.class_of(leaf_ty, &scope);
                 if !c.implies(Marker::Drop) {
                     let path_str = format!("{}{}", format_place(target), leaf_path);
                     d.push_error(format_type_diagnostic(&func.meta, leaf_ty, |ty| {
@@ -1144,7 +1143,7 @@ impl<'a> PlaceStateContext<'a> {
         if !requires_init && is_state_fully_init(&leaf) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, self.locals) {
                 let scope = func.meta.param_scope();
-                if class_of(&leaf_ty, self.env, &scope).implies(Marker::Drop) {
+                if self.env.class_of(&leaf_ty, &scope).implies(Marker::Drop) {
                     return;
                 }
             }

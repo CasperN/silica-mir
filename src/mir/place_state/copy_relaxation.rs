@@ -38,7 +38,6 @@ use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
 use crate::mir::helpers::*;
 use crate::mir::place_state::analysis::RefState;
-use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
@@ -724,7 +723,7 @@ fn resolve_index_operand(
             let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
             let is_copy = ty
                 .as_ref()
-                .map(|t| class_of(t, ctx.env, ctx.scope).implies(Marker::Copy))
+                .map(|t| ctx.env.class_of(t, ctx.scope).implies(Marker::Copy))
                 .unwrap_or(false);
             if !is_copy {
                 ctx.d.push_error(
@@ -785,7 +784,7 @@ fn relax_operand(
     let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
     let class = ty
         .as_ref()
-        .map(|t| class_of(t, ctx.env, ctx.scope))
+        .map(|t| ctx.env.class_of(t, ctx.scope))
         .unwrap_or_default();
     let is_copy = class.implies(Marker::Copy);
     let is_move = class.implies(Marker::Move);

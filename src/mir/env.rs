@@ -11,16 +11,30 @@
 //! and return either the concrete type or a structured
 //! [`TypeResolutionError`] explaining why it couldn't be resolved.
 
-// TODO: Should this be moved to mir/ since its used widely?
-
-use super::TypeCheckCode::*;
-use super::TypeDecl;
+use crate::common::Marker;
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{DiagnosticFormat, DiagnosticScope};
 use crate::mir::helpers::*;
-use crate::mir::substructural::composition::{class_of, ParamScope};
+use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*, TypeDecl};
 use indexmap::IndexMap;
+
+pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
+
+impl ParamsIntro {
+    pub fn param_scope(&self) -> IndexMap<String, Markers> {
+        self.type_params
+            .iter()
+            .map(|p| (p.name.clone(), p.bounds.markers))
+            .collect()
+    }
+}
+
+impl DeclMeta {
+    pub fn param_scope(&self) -> IndexMap<String, Markers> {
+        self.params.param_scope()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct TypeResolutionError {
@@ -164,7 +178,8 @@ impl TypeResolutionError {
         Self { kind }
     }
 
-    pub fn code(&self) -> super::TypeCheckCode {
+    // TODO: Why is there this translation happening, can this be inlined or simplified?
+    pub fn code(&self) -> TypeCheckCode {
         match &self.kind {
             TypeResolutionErrorKind::UndeclaredVariable(_) => UndeclaredVariable,
             TypeResolutionErrorKind::DerefOfNonPointer(_) => DerefOfNonPointer,
@@ -465,6 +480,33 @@ impl Env {
         )
     }
 
+    /// Return the substructural class of `ty` as a `Markers` value under
+    /// the given type-parameter scope.
+    pub fn class_of(&self, ty: &Type, scope: ParamScope) -> Markers {
+        let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Fn(_) => all(),
+            TypeKind::Never => all(),
+            TypeKind::RawPtr(_) => all(),
+            TypeKind::Ref(kind, _, _) => match kind {
+                RefKind::Shared => all(),
+                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
+                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
+            },
+            TypeKind::Custom(Instance { name, .. }) => match self.types.get(name) {
+                Some(TypeDecl::Struct(s)) => s.meta.markers,
+                Some(TypeDecl::Enum(e)) => e.meta.markers,
+                None => Markers::empty(),
+            },
+            TypeKind::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
+            TypeKind::Array(elem, _) => self.class_of(elem, scope),
+        }
+    }
+
     /// Validate `ty` against the current type-parameter scope.
     ///
     /// `Custom(name, args)` triggers a use-site check: arity must
@@ -516,7 +558,7 @@ impl Env {
                 }
                 for (arg, param) in args.iter().zip(decl_params.iter()) {
                     self.validate_type(arg, scope)?;
-                    let arg_class = class_of(arg, self, scope);
+                    let arg_class = self.class_of(arg, scope);
                     for bound in param.bounds.markers.iter_declared() {
                         if !arg_class.implies(bound) {
                             return Err(TypeValidationError::new(
@@ -722,6 +764,16 @@ impl Env {
         }
     }
 
+    /// Look up free function `name` and instantiate its signature for `type_args`.
+    pub fn fn_type(&self, name: &str, type_args: &[Type]) -> Result<Type, TypeResolutionError> {
+        let f = self.functions.get(name).ok_or_else(|| {
+            TypeResolutionError::new(TypeResolutionErrorKind::UndeclaredFunction(
+                name.to_string(),
+            ))
+        })?;
+        Ok(fn_ty(f.instantiate_params(type_args)))
+    }
+
     /// Resolve a `TraitFn` callee to the concrete `fn(...)` type of its
     /// method after impl-table lookup and substitution. Errors trickle
     /// out as `TypeResolutionError`s so the caller renders them
@@ -798,28 +850,7 @@ impl Env {
                 ConstVal::Float { ty, .. } => Ok(float_ty(*ty)),
                 ConstVal::Bool(_) => Ok(bool_ty()),
                 ConstVal::Unit => Ok(unit_ty()),
-                ConstVal::FnName(name, type_args) => {
-                    // Substitute the fn's declared type-params with the
-                    // args on this reference: e.g. `identity<i64>` gives
-                    // `fn(i64) -> i64` after walking the declared
-                    // `fn<T>(T) -> T`. Non-generic fns have empty args
-                    // and substitution is a no-op.
-                    let f = self.functions.get(name).ok_or_else(|| {
-                        TypeResolutionError::new(TypeResolutionErrorKind::UndeclaredFunction(
-                            name.clone(),
-                        ))
-                    })?;
-                    let param_tys = f
-                        .params
-                        .iter()
-                        .map(|p| {
-                            f.meta
-                                .try_substitute_types(&p.ty, type_args)
-                                .unwrap_or_else(|| p.ty.clone())
-                        })
-                        .collect();
-                    Ok(fn_ty(param_tys))
-                }
+                ConstVal::FnName(name, type_args) => self.fn_type(name, type_args),
                 ConstVal::TraitFn {
                     trait_path,
                     self_ty,

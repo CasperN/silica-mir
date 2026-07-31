@@ -16,9 +16,8 @@ use crate::diagnostics::DiagCode;
 use crate::mir::ast::{DeclMeta, EnumDecl, StructDecl};
 
 pub mod check;
-pub mod env;
 
-pub use env::Env;
+pub use crate::mir::env::{Env, TypeResolutionError, TypeValidationError};
 
 /// Machine-readable error codes emitted by the type checker.
 ///

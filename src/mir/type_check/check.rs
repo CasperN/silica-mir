@@ -5,7 +5,7 @@
 //! from the environment (parameters, locals) and from the structural
 //! `type_of_*` queries; this pass only checks that they line up.
 
-use super::env::{TypeResolutionError, TypeValidationError};
+use crate::mir::env::{TypeResolutionError, TypeValidationError};
 use super::Env;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;

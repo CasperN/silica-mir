@@ -21,7 +21,6 @@ use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::substructural::composition::class_of;
 use crate::mir::type_check::Env;
 use indexmap::IndexMap;
 
@@ -91,7 +90,7 @@ fn check_stmt(
                 return;
             };
             let scope = func.meta.param_scope();
-            let c = class_of(&ty, env, &scope);
+            let c = env.class_of(&ty, &scope);
             if !c.implies(Marker::Drop) {
                 d.push_error(format_type_diagnostic(&func.meta, &ty, |ty| {
                     diag(
@@ -161,7 +160,7 @@ fn check_operand(
         return;
     };
     let scope = func.meta.param_scope();
-    let c = class_of(&ty, env, &scope);
+    let c = env.class_of(&ty, &scope);
     let ok = match needed {
         ClassMarker::Copy => c.implies(Marker::Copy),
         ClassMarker::Move => c.implies(Marker::Move),

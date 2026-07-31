@@ -20,7 +20,6 @@ use crate::mir::ast::*;
 use crate::mir::helpers::diag;
 use crate::mir::place_state::analysis::{block_entry_states, InitSlot, InitState, PointState};
 use crate::mir::type_check::{Env, TypeDecl};
-use crate::mir::type_util::is_type_uninhabited;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Machine-readable codes emitted by the reachability pass.
@@ -347,9 +346,124 @@ fn resolve_enum_of_place<'a>(
     }
 }
 
+
+/// True if a value of `ty` cannot be constructed.
+fn is_type_uninhabited(ty: &Type, env: &Env) -> bool {
+    fn walk(ty: &Type, env: &Env, visited: &mut BTreeSet<String>) -> bool {
+        match &ty.kind {
+            TypeKind::Never => true,
+            TypeKind::Custom(Instance { name, .. }) => {
+                if !visited.insert(name.clone()) {
+                    return false;
+                }
+                let out = match env.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => s.fields.iter().any(|f| walk(&f.ty, env, visited)),
+                    // An enum is uninhabited when EVERY variant is
+                    // uninhabited. Vacuous truth handles the empty
+                    // enum (no variants → all() returns true).
+                    Some(TypeDecl::Enum(e)) => e.variants.iter().all(|v| walk(&v.ty, env, visited)),
+                    None => false,
+                };
+                visited.remove(name);
+                out
+            }
+            TypeKind::Array(elem, n) => *n > 0 && walk(elem, env, &mut BTreeSet::new()),
+            _ => false,
+        }
+    }
+    walk(ty, env, &mut BTreeSet::new())
+}
+
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::mir::test_util::*;
+    use crate::mir::helpers::*;
+
+    /// Build an Env from MIR source, discarding any diagnostics.
+    fn env_of(src: &str) -> Env {
+        let program: Program = crate::mir::parser::Parser::parse_or_panic(src);
+        Env::build(&program).0
+    }
+
+    #[test]
+    fn never_is_uninhabited() {
+        let env = env_of("fn f() { entry: return }");
+        assert!(is_type_uninhabited(&never_ty(), &env));
+    }
+
+    #[test]
+    fn scalars_are_inhabited() {
+        let env = env_of("fn f() { entry: return }");
+        assert!(!is_type_uninhabited(&i64_ty(), &env));
+        assert!(!is_type_uninhabited(&bool_ty(), &env));
+        assert!(!is_type_uninhabited(&unit_ty(), &env));
+    }
+
+    #[test]
+    fn struct_with_never_field_is_uninhabited() {
+        let env = env_of("struct S { a: i64 b: never } fn f() { entry: return }");
+        assert!(is_type_uninhabited(&custom_ty("S"), &env));
+    }
+
+    #[test]
+    fn struct_with_all_inhabited_fields_is_inhabited() {
+        let env = env_of("struct S { a: i64 b: bool } fn f() { entry: return }");
+        assert!(!is_type_uninhabited(&custom_ty("S"), &env));
+    }
+
+    #[test]
+    fn empty_enum_is_uninhabited() {
+        // No variants → vacuous truth: every variant is uninhabited.
+        let env = env_of("enum E { } fn f() { entry: return }");
+        assert!(is_type_uninhabited(&custom_ty("E"), &env));
+    }
+
+    #[test]
+    fn enum_with_one_inhabited_variant_is_inhabited() {
+        let env = env_of("enum E { A: i64 B: never } fn f() { entry: return }");
+        assert!(!is_type_uninhabited(&custom_ty("E"), &env));
+    }
+
+    #[test]
+    fn enum_with_all_never_variants_is_uninhabited() {
+        let env = env_of("enum E { A: never B: never } fn f() { entry: return }");
+        assert!(is_type_uninhabited(&custom_ty("E"), &env));
+    }
+
+    #[test]
+    fn zero_length_array_of_never_is_inhabited() {
+        // `[Never; 0]` has no elements to construct — trivially inhabited
+        // by the empty array literal.
+        let env = env_of("fn f() { entry: return }");
+        let ty = array_ty(never_ty(), 0);
+        assert!(!is_type_uninhabited(&ty, &env));
+    }
+
+    #[test]
+    fn nonempty_array_of_never_is_uninhabited() {
+        let env = env_of("fn f() { entry: return }");
+        let ty = array_ty(never_ty(), 3);
+        assert!(is_type_uninhabited(&ty, &env));
+    }
+
+    #[test]
+    fn recursive_via_reference_does_not_loop() {
+        // A recursive-through-reference struct: the walker must not
+        // infinitely recurse into `S`'s own name; the visited set
+        // conservatively treats a second occurrence as inhabited.
+        let env = env_of("struct S { r: &S } fn f() { entry: return }");
+        assert!(!is_type_uninhabited(&custom_ty("S"), &env));
+    }
+
+    #[test]
+    fn references_are_always_inhabited() {
+        // Even a reference to Never is a fine reference value.
+        let env = env_of("fn f() { entry: return }");
+        let ty = shared_ref_ty(never_ty());
+        assert!(!is_type_uninhabited(&ty, &env));
+    }
 
     #[test]
     fn single_block_is_reachable() {
