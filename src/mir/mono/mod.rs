@@ -1,9 +1,9 @@
 //! Monomorphization pass.
 //!
 //! Runs after all type-checks and elaboration, immediately before
-//! codegen. Takes a MIR `Program` that may contain generic decls
+//! codegen. Takes a MIR [`IndexedProgram`] that may contain generic decls
 //! (`struct<T> Box`, `fn<T> id`) and their instantiations
-//! (`Box<i32>`, `id<i32>(x)`) and produces a `Program` where:
+//! (`Box<i32>`, `id<i32>(x)`) and produces an indexed program where:
 //!
 //!   - Every `Custom(name, args)` has `args = []`; `name` is the
 //!     mangled instantiation name (e.g. `Box<i32>`).
@@ -57,6 +57,8 @@
 //!   per concrete arg — the second time the walker sees `Node<i32>`
 //!   the instantiation is already registered, so no infinite loop.
 
+use crate::common::GeneratedKind;
+use crate::mir::env::{DeclarationRef, IndexedProgram};
 use crate::mir::type_fold::TypeFolder;
 use crate::mir::type_util::{
     substitute_params, substitute_stmt_types, substitute_terminator_types,
@@ -66,15 +68,26 @@ use std::collections::{BTreeMap, VecDeque};
 
 /// Rewrite `program` in place: erase generic decls, emit specialized
 /// copies for every reachable instantiation.
-pub fn monomorphize(program: &mut Program) {
+pub fn monomorphize(program: &mut IndexedProgram) {
+    let declarations: Vec<Declaration> = program
+        .declarations()
+        .into_iter()
+        .map(|declaration| match declaration {
+            DeclarationRef::Struct(s) => Declaration::Struct(s.clone()),
+            DeclarationRef::Enum(e) => Declaration::Enum(e.clone()),
+            DeclarationRef::Function(f) => Declaration::Fn(f.clone()),
+            DeclarationRef::Trait(t) => Declaration::Trait(t.clone()),
+            DeclarationRef::Impl(i) => Declaration::Impl(i.clone()),
+        })
+        .collect();
+
     // Index the original decls by name for lookup during specialization.
     // Impl blocks bypass mono entirely — they're not name-keyed decls
     // that mono can specialize by args, and their methods are addressed
     // via `(trait, target)` lookup. Skip them here and prepend back
     // onto the mono output at the end.
     let is_mono_target = |d: &Declaration| !matches!(d, Declaration::Impl(_));
-    let originals: BTreeMap<String, Declaration> = program
-        .declarations
+    let originals: BTreeMap<String, Declaration> = declarations
         .iter()
         .filter(|d| is_mono_target(d))
         .map(|d| (d.meta().unwrap().name.clone(), d.clone()))
@@ -89,7 +102,7 @@ pub fn monomorphize(program: &mut Program) {
     // Seed: every non-generic decl is trivially reachable. Generic
     // decls are only pulled in via instantiations found while walking
     // reachable code.
-    for decl in program.declarations.iter().filter(|d| is_mono_target(d)) {
+    for decl in declarations.iter().filter(|d| is_mono_target(d)) {
         if let Some(m) = decl.meta() {
             if m.params.type_params.is_empty() {
                 ctx.need(&m.name, &[]);
@@ -120,12 +133,48 @@ pub fn monomorphize(program: &mut Program) {
     // Preserve impl blocks unchanged past mono. The mono trait-fn
     // resolution pass (still to be implemented) consumes them via the
     // env's impl table and emits concrete `Fn` decls in their place.
-    for decl in program.declarations.drain(..) {
+    for decl in declarations {
         if matches!(decl, Declaration::Impl(_)) {
             out.push(decl);
         }
     }
-    program.declarations = out;
+
+    program.types.clear();
+    program.traits.clear();
+    program.functions.retain(|_, function| {
+        function.meta.name_source.generated_kind() == Some(GeneratedKind::Intrinsic)
+    });
+    program.impls.clear();
+    for declaration in out {
+        match declaration {
+            Declaration::Struct(declaration) => {
+                program
+                    .types
+                    .insert(declaration.meta.name.clone(), TypeDecl::Struct(declaration));
+            }
+            Declaration::Enum(declaration) => {
+                program
+                    .types
+                    .insert(declaration.meta.name.clone(), TypeDecl::Enum(declaration));
+            }
+            Declaration::Fn(declaration) => {
+                program
+                    .functions
+                    .insert(declaration.meta.name.clone(), declaration);
+            }
+            Declaration::Trait(declaration) => {
+                program
+                    .traits
+                    .insert(declaration.meta.name.clone(), declaration);
+            }
+            Declaration::Impl(declaration) => {
+                program.impls.insert(
+                    (declaration.trait_path.clone(), declaration.target.clone()),
+                    declaration,
+                );
+            }
+        }
+    }
 }
 
 struct MonoCtx {
@@ -446,7 +495,11 @@ mod tests {
         let ty = Type::new(
             TypeKind::Array(
                 Box::new(Type::new(
-                    TypeKind::Custom(Instance::new("Box", vec![Lifetime("box".into())], vec![i64_ty()])),
+                    TypeKind::Custom(Instance::new(
+                        "Box",
+                        vec![Lifetime("box".into())],
+                        vec![i64_ty()],
+                    )),
                     inner_source,
                 )),
                 1,
@@ -466,7 +519,12 @@ mod tests {
             panic!("expected rewritten array type");
         };
         assert_eq!(inner.source, inner_source);
-        let TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) = inner.kind else {
+        let TypeKind::Custom(Instance {
+            name,
+            lifetime_args: lifetimes,
+            type_args: args,
+        }) = inner.kind
+        else {
             panic!("expected rewritten custom type");
         };
         assert_eq!(name, "Box<i64>");
@@ -476,7 +534,7 @@ mod tests {
 
     #[test]
     fn monomorphization_preserves_declared_lifetime_metadata() {
-        let mut program = Parser::parse_or_panic(
+        let parsed = Parser::parse_or_panic(
             "
             struct<'a: 'static, T: Copy + Drop> Borrowed: Copy + Drop {
               value: & 'a T
@@ -490,7 +548,7 @@ mod tests {
             ",
         );
 
-        let original_struct = program
+        let original_struct = parsed
             .declarations
             .iter()
             .find_map(|decl| match decl {
@@ -498,22 +556,19 @@ mod tests {
                 _ => None,
             })
             .expect("generic struct exists");
-        let original_function = program
+        let original_function = parsed
             .functions()
             .find(|function| function.meta.name == "use_borrowed")
             .cloned()
             .expect("root function exists");
 
+        let mut program = IndexedProgram::build(&parsed).0;
         monomorphize(&mut program);
 
-        let specialized_struct = program
-            .declarations
-            .iter()
-            .find_map(|decl| match decl {
-                Declaration::Struct(decl) if decl.meta.name == "Borrowed<i64>" => Some(decl),
-                _ => None,
-            })
-            .expect("specialized struct exists");
+        let specialized_struct = match program.types.get("Borrowed<i64>") {
+            Some(TypeDecl::Struct(declaration)) => declaration,
+            _ => panic!("specialized struct exists"),
+        };
         assert_eq!(
             specialized_struct.meta.params.lifetime_params,
             original_struct.meta.params.lifetime_params
@@ -532,15 +587,18 @@ mod tests {
             panic!("specialized field remains a named reference");
         };
         assert_eq!(field_lifetime, &Lifetime("a".into()));
-        let TypeKind::Custom(Instance { type_args: original_type_args, .. }) = &original_function.params[0].ty.kind
+        let TypeKind::Custom(Instance {
+            type_args: original_type_args,
+            ..
+        }) = &original_function.params[0].ty.kind
         else {
             panic!("original root parameter is a custom type");
         };
         assert_eq!(field_inner.source, original_type_args[0].source);
 
         let specialized_function = program
-            .functions()
-            .find(|function| function.meta.name == "use_borrowed")
+            .functions
+            .get("use_borrowed")
             .expect("root function remains");
         assert_eq!(
             specialized_function.meta.params.lifetime_params,
@@ -554,7 +612,11 @@ mod tests {
             specialized_function.params[0].ty.source,
             original_function.params[0].ty.source
         );
-        let TypeKind::Custom(Instance { name, lifetime_args: lifetimes, type_args: args }) = &specialized_function.params[0].ty.kind
+        let TypeKind::Custom(Instance {
+            name,
+            lifetime_args: lifetimes,
+            type_args: args,
+        }) = &specialized_function.params[0].ty.kind
         else {
             panic!("root parameter remains a custom type");
         };

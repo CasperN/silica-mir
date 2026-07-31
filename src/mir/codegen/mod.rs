@@ -35,20 +35,19 @@
 //! Not ABI-stable — variant order in enums is declaration order; struct
 //! field order is declaration order. Padding and alignment can change.
 
+use crate::common::GeneratedKind;
 use crate::mir::ast::*;
+use crate::mir::env::IndexedProgram;
 use crate::mir::helpers::*;
 use crate::mir::layout;
-use crate::mir::env::IndexedProgram;
 use indexmap::IndexMap;
 use std::fmt::Write;
 
-pub fn lower_mir_to_llvm(program: Program) -> String {
-    let mut mono_prog = program;
-    crate::mir::mono::monomorphize(&mut mono_prog);
-    let (env, _) = crate::mir::type_check::IndexedProgram::build(&mono_prog);
+pub fn lower_mir_to_llvm(mut program: IndexedProgram) -> String {
+    crate::mir::mono::monomorphize(&mut program);
 
     let mut cx = CodeGenContext {
-        env: &env,
+        env: &program,
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
@@ -62,29 +61,22 @@ pub fn lower_mir_to_llvm(program: Program) -> String {
     // lines here. Only intrinsics actually called by the program are
     // included, deduped — keeps output tight so unused intrinsics
     // don't bloat every emitted module.
-    for decl in llvm_declares_needed(&mono_prog) {
+    for decl in llvm_declares_needed(&program) {
         writeln!(cx.out, "{}", decl).unwrap();
     }
     writeln!(cx.out).unwrap();
 
     let mut had_type = false;
-    for decl in &mono_prog.declarations {
+    for decl in program.types.values() {
         match decl {
-            Declaration::Struct(s) => {
+            TypeDecl::Struct(s) => {
                 had_type = true;
                 emit_struct_decl(&mut cx, s);
             }
-            Declaration::Enum(e) => {
+            TypeDecl::Enum(e) => {
                 had_type = true;
                 emit_enum_decl(&mut cx, e);
             }
-            Declaration::Fn(_) => {}
-            Declaration::Trait(_) => {}
-            // Impl-method bodies aren't emitted directly — the mono
-            // trait-resolution pass rewrites `TraitFn` callees into
-            // concrete `FnName` decls that participate in codegen
-            // through the fn namespace.
-            Declaration::Impl(_) => {}
         }
     }
     if had_type {
@@ -92,39 +84,39 @@ pub fn lower_mir_to_llvm(program: Program) -> String {
     }
 
     let mut had_extern = false;
-    for decl in &mono_prog.declarations {
-        if let Declaration::Fn(f) = decl {
-            if f.is_extern {
-                had_extern = true;
-                emit_extern_fn(&mut cx, f);
-            }
+    for f in codegen_functions(&program) {
+        if f.is_extern {
+            had_extern = true;
+            emit_extern_fn(&mut cx, f);
         }
     }
     if had_extern {
         writeln!(cx.out).unwrap();
     }
 
-    for decl in &mono_prog.declarations {
-        if let Declaration::Fn(f) = decl {
-            if !f.is_extern {
-                emit_fn_body(&mut cx, f);
-            }
+    for f in codegen_functions(&program) {
+        if !f.is_extern {
+            emit_fn_body(&mut cx, f);
         }
     }
 
     // If the program has a Silica `fn main` (renamed to `@silica.main`
     // in emission), synthesize a C-conformant `i32 @main()` wrapper so
     // the linked binary has a proper entry point + exit code.
-    for decl in &mono_prog.declarations {
-        if let Declaration::Fn(f) = decl {
-            if f.meta.name == "main" && !f.is_extern {
-                emit_main_wrapper(&mut cx, f);
-                break;
-            }
+    for f in codegen_functions(&program) {
+        if f.meta.name == "main" && !f.is_extern {
+            emit_main_wrapper(&mut cx, f);
+            break;
         }
     }
 
     cx.out
+}
+
+fn codegen_functions(program: &IndexedProgram) -> impl Iterator<Item = &Function> {
+    program.functions.values().filter(|function| {
+        function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+    })
 }
 
 /// Map a Silica function name to the LLVM symbol codegen emits for
@@ -227,7 +219,11 @@ impl<'a> CodeGenContext<'a> {
             TypeKind::Bool => "i1".to_string(),
             TypeKind::Unit | TypeKind::Never => "{}".to_string(),
             TypeKind::Ref(_, _, _) | TypeKind::Fn(_) | TypeKind::RawPtr(_) => "ptr".to_string(),
-            TypeKind::Custom(Instance { name, type_args: args, .. }) => {
+            TypeKind::Custom(Instance {
+                name,
+                type_args: args,
+                ..
+            }) => {
                 assert!(
                     args.is_empty(),
                     "codegen: TypeKind::Custom('{}', ...) still has type args — the mono pass \
@@ -651,10 +647,9 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
 /// name, and return the deduped `llvm_declares` those intrinsics
 /// require. Preserves the order intrinsics are listed in
 /// `intrinsics::all()` so output is stable across runs.
-fn llvm_declares_needed(program: &Program) -> Vec<&'static str> {
+fn llvm_declares_needed(program: &IndexedProgram) -> Vec<&'static str> {
     let mut called: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
-    for decl in &program.declarations {
-        let Declaration::Fn(f) = decl else { continue };
+    for f in program.functions.values() {
         let Some(body) = &f.body else { continue };
         for block in &body.blocks {
             for stmt in &block.statements {
@@ -1270,7 +1265,7 @@ fn align_up(x: u64, a: u64) -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mir::ast::{Function, Program};
+    use crate::mir::ast::Function;
 
     #[test]
     #[should_panic(expected = "unsupported ABI: \"system\"")]
@@ -1282,10 +1277,11 @@ mod tests {
             params: Vec::new(),
             body: None,
         };
-        let program = Program {
+        let parsed = Program {
             declarations: vec![crate::mir::ast::Declaration::Fn(f)],
             source: std::sync::Arc::new("".to_string()),
         };
+        let program = IndexedProgram::build(&parsed).0;
         lower_mir_to_llvm(program);
     }
 }

@@ -121,7 +121,8 @@ fn main() {
     }
     match emit {
         EmitKind::Llvm => {
-            print!("{}", mir::codegen::lower_mir_to_llvm(elaborated));
+            let indexed = mir::type_check::IndexedProgram::build(&elaborated).0;
+            print!("{}", mir::codegen::lower_mir_to_llvm(indexed));
         }
         EmitKind::Mir => {
             let indexed = mir::type_check::IndexedProgram::build(&elaborated).0;

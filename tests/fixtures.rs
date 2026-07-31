@@ -212,7 +212,8 @@ fn render_fixture(path: &Path, run: &FixtureRun, expectation: Expectation) -> St
         Expectation::Diagnostics => render_diagnostics(&run.diagnostics),
         Expectation::Llvm => match &run.program {
             Some(program) if !run.diagnostics.has_errors() => {
-                mir::codegen::lower_mir_to_llvm(program.clone())
+                let (program, _) = mir::env::IndexedProgram::build(program);
+                mir::codegen::lower_mir_to_llvm(program)
             }
             _ => panic!(
                 "codegen fixture {} produced errors:\n{}",
