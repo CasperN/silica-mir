@@ -2,7 +2,7 @@ use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::env::Env;
+use crate::mir::env::GlobalEnv;
 use indexmap::IndexMap;
 
 use super::analysis::{
@@ -13,7 +13,7 @@ use super::analysis::{
     PointState, RefState,
 };
 
-pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
+pub fn check_program(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
     for f in program.functions() {
         check_function(env, f, d);
     }
@@ -21,7 +21,7 @@ pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
 }
 
 /// Return validation is part of the single final place-state check.
-pub(super) fn check_return_leaks(program: &Program, env: &Env, d: &mut Diagnostics) {
+pub(super) fn check_return_leaks(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
     for (func, _body) in program.function_bodies() {
         let locals = func.locals_map();
         for (block, state) in states_before_returns(env, func) {
@@ -31,7 +31,7 @@ pub(super) fn check_return_leaks(program: &Program, env: &Env, d: &mut Diagnosti
 }
 
 fn check_return_state(
-    env: &Env,
+    env: &GlobalEnv,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -98,7 +98,7 @@ fn check_return_state(
 }
 
 fn find_return_leaks(
-    env: &Env,
+    env: &GlobalEnv,
     state: &InitState,
     ty: &Type,
     path: &mut String,
@@ -155,7 +155,7 @@ pub(super) fn find_decl_source(func: &Function, name: &str) -> Option<SourceInfo
         .map(|local| local.source)
 }
 
-fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
+fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -188,7 +188,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 pub(super) fn walk_overwrite_leaves(
     state: &InitState,
     ty: &Type,
-    env: &Env,
+    env: &GlobalEnv,
     path: &mut String,
     report: &mut dyn FnMut(&str, &Type),
 ) {
@@ -676,14 +676,13 @@ impl<'a> PlaceStateContext<'a> {
         let Some(target_ty) = self.infer_ref_place_type(target) else {
             return;
         };
-        let scope = func.meta.param_scope();
         walk_overwrite_leaves(
             &target_state,
             &target_ty,
             self.env,
             &mut String::new(),
             &mut |leaf_path, leaf_ty| {
-                let c = self.env.class_of(leaf_ty, &scope);
+                let c = self.env.class_of(leaf_ty, &func.meta.params);
                 if !c.implies(Marker::Drop) {
                     let path_str = format!("{}{}", format_place(target), leaf_path);
                     d.push_error(format_type_diagnostic(&func.meta, leaf_ty, |ty| {
@@ -1142,8 +1141,7 @@ impl<'a> PlaceStateContext<'a> {
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && is_state_fully_init(&leaf) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, self.locals) {
-                let scope = func.meta.param_scope();
-                if self.env.class_of(&leaf_ty, &scope).implies(Marker::Drop) {
+                if self.env.class_of(&leaf_ty, &func.meta.params).implies(Marker::Drop) {
                     return;
                 }
             }

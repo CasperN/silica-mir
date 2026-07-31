@@ -13,7 +13,7 @@ use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::DiagnosticFormat;
 use crate::mir::helpers::*;
-use crate::mir::env::Env;
+use crate::mir::env::GlobalEnv;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
 
@@ -26,7 +26,7 @@ use super::loans::{
 use super::region::{self, Region};
 use super::LifetimeCode;
 
-pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
+pub fn check_program(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
     check_decl_wf(env, d);
     for f in program.functions() {
         check_fn_signature_wf(f, env, d);
@@ -34,7 +34,7 @@ pub fn check_program(program: &Program, env: &Env, d: &mut Diagnostics) {
     }
 }
 
-fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
+fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -74,7 +74,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 /// existence, so extern fn declarations with ill-formed signatures are
 /// still rejected. The emitted constraints are checked against the
 /// fn's own declared outlives axioms.
-fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
+fn check_fn_signature_wf(func: &Function, env: &GlobalEnv, d: &mut Diagnostics) {
     let mut cs = constraints::ConstraintSet::new();
     for p in &func.params {
         emit_type_wf_constraints(&p.ty, env, &mut cs);
@@ -123,7 +123,7 @@ fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
 /// type's declared outlives obligations. E.g. a field of type
 /// `Wrap<'a, 'b>` where `Wrap` requires `'b: 'a` forces the outer decl
 /// to declare `'b: 'a` on its own params.
-fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
+fn check_decl_wf(env: &GlobalEnv, d: &mut Diagnostics) {
     for decl in env.types.values() {
         let meta = decl.meta();
         let mut cs = constraints::ConstraintSet::new();
@@ -215,7 +215,7 @@ fn name_to_region(lt: &Lifetime) -> Region {
 /// explicit types: `PtrCast(_, ty)` and `EnumConstr(_, type_args, ..)`.
 /// Places and operands don't carry standalone type mentions — their
 /// types derive from local/param decls, already walked upstream.
-fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::ConstraintSet) {
+fn emit_stmt_wf_constraints(stmt: &Statement, env: &GlobalEnv, cs: &mut constraints::ConstraintSet) {
     match &stmt.kind {
         StatementKind::Assign(_, rvalue) => match rvalue {
             RValue::PtrCast(op, ty) => {
@@ -250,7 +250,7 @@ fn emit_stmt_wf_constraints(stmt: &Statement, env: &Env, cs: &mut constraints::C
 /// type_arg's Custom outlives obligations. FnName can appear in call
 /// targets, call args, and any rvalue that consumes an operand
 /// (`Use`, `PtrCast`, `EnumConstr`, `ArrayLit`).
-fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::ConstraintSet) {
+fn emit_operand_wf_constraints(op: &Operand, env: &GlobalEnv, cs: &mut constraints::ConstraintSet) {
     if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
         for ty in type_args {
             emit_type_wf_constraints(ty, env, cs);
@@ -269,7 +269,7 @@ fn emit_operand_wf_constraints(op: &Operand, env: &Env, cs: &mut constraints::Co
 /// declared outlives obligations against the containing scope's axioms.
 /// Mirrors the fn-call instantiation pattern in `check_call_regions`
 /// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
-fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::ConstraintSet) {
+fn emit_type_wf_constraints(ty: &Type, env: &GlobalEnv, cs: &mut constraints::ConstraintSet) {
     match &ty.kind {
         TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args }) => {
             if let Some(decl) = env.types.get(name) {
@@ -325,7 +325,7 @@ fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::Constrai
 /// A Named region that only appears in body-local types (e.g. a
 /// struct field of a locally-owned struct decl instantiated at
 /// use-site with no lifetime args) is NOT escape-visible.
-fn signature_visible_regions(func: &Function, env: &Env) -> BTreeSet<Lifetime> {
+fn signature_visible_regions(func: &Function, env: &GlobalEnv) -> BTreeSet<Lifetime> {
     let mut out = BTreeSet::new();
     for p in &func.params {
         // $return is the sret slot; any &out or &mut is caller-provided
@@ -353,7 +353,7 @@ fn signature_visible_regions(func: &Function, env: &Env) -> BTreeSet<Lifetime> {
 
 fn collect_named_regions(
     ty: &Type,
-    env: &Env,
+    env: &GlobalEnv,
     visited: &mut BTreeSet<String>,
     out: &mut BTreeSet<Lifetime>,
 ) {
@@ -415,7 +415,7 @@ fn collect_named_regions(
 /// Test-only: compute the outlives constraints emitted for `func`
 /// without running any check. Exercises the accumulation path.
 #[cfg(test)]
-pub fn constraints_for(env: &Env, func: &Function) -> constraints::ConstraintSet {
+pub fn constraints_for(env: &GlobalEnv, func: &Function) -> constraints::ConstraintSet {
     let mut cs = constraints::ConstraintSet::new();
     // `None` here means an extern fn: no body, no statements, no
     // constraints to emit. Return the empty set.
@@ -512,7 +512,7 @@ fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Re
 }
 
 /// Get the outer ref-kind of `place` when its type is `TypeKind::Ref`.
-fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &Env) -> Option<RefKind> {
+fn ref_kind_of_place(place: &Place, locals: &IndexMap<String, Type>, env: &GlobalEnv) -> Option<RefKind> {
     match crate::mir::type_util::place_type(locals, env, place)?.kind {
         TypeKind::Ref(kind, _, _) => Some(kind),
         _ => None,
@@ -528,7 +528,7 @@ fn ref_region(
     place: Option<&Place>,
     region_ctx: &region::RegionCtx,
     locals: &IndexMap<String, Type>,
-    env: &Env,
+    env: &GlobalEnv,
 ) -> Option<Region> {
     if let Some(lt) = lt {
         return Some(name_to_region(lt));
@@ -547,7 +547,7 @@ fn operand_place(op: &Operand) -> Option<&Place> {
 }
 
 struct Checker<'a> {
-    env: &'a Env,
+    env: &'a GlobalEnv,
     func: &'a Function,
     locals: IndexMap<String, Type>,
     region_ctx: &'a region::RegionCtx,
@@ -1475,7 +1475,7 @@ mod tests {
             stmt.source = SourceInfo::generated(GeneratedKind::HllDesugaring, stmt.span());
         }
 
-        let (env, env_errors) = Env::build(&program);
+        let (env, env_errors) = GlobalEnv::build(&program);
         assert!(env_errors.is_empty());
         let mut diagnostics = Diagnostics::default();
         check_program(&program, &env, &mut diagnostics);
@@ -1520,7 +1520,7 @@ mod tests {
             stmt.source = SourceInfo::generated(GeneratedKind::HllDesugaring, stmt.span());
         }
 
-        let (env, env_errors) = Env::build(&program);
+        let (env, env_errors) = GlobalEnv::build(&program);
         assert!(env_errors.is_empty());
         let mut diagnostics = Diagnostics::default();
         check_program(&program, &env, &mut diagnostics);

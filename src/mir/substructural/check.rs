@@ -21,7 +21,7 @@ use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
 use crate::mir::helpers::*;
-use crate::mir::env::Env;
+use crate::mir::env::GlobalEnv;
 use indexmap::IndexMap;
 
 /// Machine-readable codes emitted by the substructural per-statement
@@ -47,13 +47,13 @@ use SubstructuralCheckCode::*;
 
 /// Class-precondition checks over statements (does not include
 /// `check_return_leaks`, which callers run separately after elaboration).
-pub fn check_statements(program: &Program, env: &Env, d: &mut Diagnostics) {
+pub fn check_statements(program: &Program, env: &GlobalEnv, d: &mut Diagnostics) {
     for f in program.functions() {
         check_function(env, f, d);
     }
 }
 
-fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
+fn check_function(env: &GlobalEnv, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -67,7 +67,7 @@ fn check_function(env: &Env, func: &Function, d: &mut Diagnostics) {
 }
 
 fn check_stmt(
-    env: &Env,
+    env: &GlobalEnv,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -89,8 +89,7 @@ fn check_stmt(
             let Ok(ty) = env.type_of_place(place, locals) else {
                 return;
             };
-            let scope = func.meta.param_scope();
-            let c = env.class_of(&ty, &scope);
+            let c = env.class_of(&ty, &func.meta.params);
             if !c.implies(Marker::Drop) {
                 d.push_error(format_type_diagnostic(&func.meta, &ty, |ty| {
                     diag(
@@ -116,7 +115,7 @@ fn check_stmt(
 }
 
 fn check_rvalue(
-    env: &Env,
+    env: &GlobalEnv,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -138,7 +137,7 @@ fn check_rvalue(
 }
 
 fn check_operand(
-    env: &Env,
+    env: &GlobalEnv,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -159,8 +158,7 @@ fn check_operand(
     let Ok(ty) = env.type_of_place(place, locals) else {
         return;
     };
-    let scope = func.meta.param_scope();
-    let c = env.class_of(&ty, &scope);
+    let c = env.class_of(&ty, &func.meta.params);
     let ok = match needed {
         ClassMarker::Copy => c.implies(Marker::Copy),
         ClassMarker::Move => c.implies(Marker::Move),
@@ -204,7 +202,7 @@ enum ClassMarker {
 }
 
 fn check_terminator(
-    env: &Env,
+    env: &GlobalEnv,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,

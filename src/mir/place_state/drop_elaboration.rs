@@ -40,8 +40,8 @@ use super::analysis::{
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::helpers::*;
-use crate::mir::env::ParamScope;
-use crate::mir::env::Env;
+use crate::mir::ast::ParamsIntro;
+use crate::mir::env::GlobalEnv;
 use indexmap::IndexMap;
 
 /// Per-function plan for the elaboration pass.
@@ -73,7 +73,7 @@ struct FnPlan {
 
 /// Insert return-leak drops in `program` using analysis state from `env`.
 /// `env` should have been built from `program` before calling.
-pub fn elaborate(program: &mut Program, env: &Env) {
+pub fn elaborate(program: &mut Program, env: &GlobalEnv) {
     // Plan (immutable): compute the per-function insertion set.
     let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
     for func in program.functions() {
@@ -168,7 +168,7 @@ pub fn elaborate(program: &mut Program, env: &Env) {
     }
 }
 
-fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
+fn plan_for_function(env: &GlobalEnv, func: &Function) -> FnPlan {
     let mut plan = FnPlan::default();
     let Some(body) = &func.body else {
         return plan;
@@ -179,7 +179,7 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 
     let entry_states = block_entry_states(env, func);
     let locals = func.locals_map();
-    let scope = func.meta.param_scope();
+    let scope = &func.meta.params;
     // The cross-edge fallback below needs the state of the program it will
     // actually emit, including the drops planned before ghost requirements.
     // Looking only at the original fixpoint state would schedule a second
@@ -325,9 +325,9 @@ fn plan_for_function(env: &Env, func: &Function) -> FnPlan {
 fn pre_stmt_transitions(
     stmt: &Statement,
     state: &PointState,
-    env: &Env,
+    env: &GlobalEnv,
     locals: &IndexMap<String, Type>,
-    scope: ParamScope,
+    scope: &ParamsIntro,
 ) -> (Vec<Place>, Option<Statement>) {
     if let StatementKind::RequireUninit(place) = &stmt.kind {
         return (
@@ -398,9 +398,9 @@ fn pre_stmt_transitions(
 fn plan_drops_for_requirement(
     place: &Place,
     state: &PointState,
-    env: &Env,
+    env: &GlobalEnv,
     locals: &IndexMap<String, Type>,
-    scope: ParamScope,
+    scope: &ParamsIntro,
 ) -> Vec<Place> {
     let Some(owned) = as_owned_path(place) else {
         return Vec::new();
@@ -440,9 +440,9 @@ fn path_has_downcast(place: &Place) -> bool {
 fn is_init_and_drop(
     place: &Place,
     state: &PointState,
-    env: &Env,
+    env: &GlobalEnv,
     locals: &IndexMap<String, Type>,
-    scope: ParamScope,
+    scope: &ParamsIntro,
 ) -> bool {
     let Some((root, path)) = extract_path(place) else {
         return false;
@@ -477,7 +477,7 @@ fn is_init_and_drop(
 /// for the positive fixture and
 /// `tests/init_state/partial_init/hll_partial_init_use.si` for the
 /// diagnostic on the paired misuse.
-fn collect_diverged_paths(env: &Env, func: &Function, state: &PointState) -> Vec<(Place, Type)> {
+fn collect_diverged_paths(env: &GlobalEnv, func: &Function, state: &PointState) -> Vec<(Place, Type)> {
     let mut out = Vec::new();
     let locals = func.locals_map();
     for (name, ty) in &locals {
@@ -490,7 +490,7 @@ fn collect_diverged_paths(env: &Env, func: &Function, state: &PointState) -> Vec
 }
 
 fn walk_diverged(
-    env: &Env,
+    env: &GlobalEnv,
     place: Place,
     ty: &Type,
     state: &InitState,
@@ -617,8 +617,8 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
 fn plan_drops_at_return(
     func: &Function,
     state: &PointState,
-    env: &Env,
-    scope: ParamScope,
+    env: &GlobalEnv,
+    scope: &ParamsIntro,
 ) -> Vec<Place> {
     // Combined declaration order: params, then locals. LIFO drop = reverse.
     let mut order: Vec<(String, Type)> = Vec::new();
@@ -661,8 +661,8 @@ fn plan_drops_for_place(
     place: Place,
     ty: &Type,
     state: &InitState,
-    env: &Env,
-    scope: ParamScope,
+    env: &GlobalEnv,
+    scope: &ParamsIntro,
     out: &mut Vec<Place>,
 ) {
     // A fully-init Partial (an enum refined to variants each with an

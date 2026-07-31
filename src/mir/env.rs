@@ -19,22 +19,7 @@ use crate::mir::helpers::*;
 use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*};
 use indexmap::IndexMap;
 
-pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
 
-impl ParamsIntro {
-    pub fn param_scope(&self) -> IndexMap<String, Markers> {
-        self.type_params
-            .iter()
-            .map(|p| (p.name.clone(), p.bounds.markers))
-            .collect()
-    }
-}
-
-impl DeclMeta {
-    pub fn param_scope(&self) -> IndexMap<String, Markers> {
-        self.params.param_scope()
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct TypeResolutionError {
@@ -212,7 +197,7 @@ impl TypeResolutionError {
         &self,
         format: &mut DiagnosticFormat,
         caller_scope: &DiagnosticScope,
-        env: &Env,
+        env: &GlobalEnv,
     ) -> String {
         match &self.kind {
             TypeResolutionErrorKind::UndeclaredVariable(name) => {
@@ -351,7 +336,7 @@ impl TypeResolutionError {
 }
 
 #[derive(Debug, Clone)]
-pub struct Env {
+pub struct GlobalEnv {
     /// Struct and enum declarations, keyed by name. Uses `IndexMap` so
     /// iteration order matches declaration order — analyses that iterate
     /// (e.g. field validation) produce diagnostics deterministically.
@@ -361,15 +346,15 @@ pub struct Env {
     /// `Vec<MyTrait>` are illegal at the type-name resolver, so putting
     /// traits in `types` would make them accidentally satisfy those
     /// positions. Name-uniqueness between `types` and `traits` is
-    /// enforced together (see `Env::build`) — Rust's type-namespace
+    /// enforced together (see `GlobalEnv::build`) — Rust's type-namespace
     /// rule.
     pub traits: IndexMap<String, TraitDecl>,
     /// Function signatures, keyed by name. Bodies live in
     /// [`Program`](crate::mir::ast::Program) — callers that need to
-    /// walk statements iterate `Program::functions()` and use `Env` for
+    /// walk statements iterate `Program::functions()` and use `GlobalEnv` for
     /// name resolution (`env.functions[callee_name].params`, etc.).
-    /// Keeping only signatures in `Env` means elaboration can mutate
-    /// bodies in-place on `Program` without an `Env` resync step.
+    /// Keeping only signatures in `GlobalEnv` means elaboration can mutate
+    /// bodies in-place on `Program` without an `GlobalEnv` resync step.
     pub functions: IndexMap<String, FunctionSignature>,
     /// Impl blocks, keyed by `(trait_path, target_type)`. The full
     /// trait path (name + lifetime + type args) is the key so multiple
@@ -382,7 +367,7 @@ pub struct Env {
     pub impls: IndexMap<(Instance, Type), ImplBlock>,
 }
 
-impl Env {
+impl GlobalEnv {
     /// Build the checker's projection over `program`. Returns the env
     /// plus any duplicate-declaration errors — callers that care (i.e.
     /// the main pipeline) plumb them into their `Diagnostics`; callers
@@ -470,7 +455,7 @@ impl Env {
         }
 
         (
-            Env {
+            GlobalEnv {
                 types,
                 traits,
                 functions,
@@ -482,7 +467,7 @@ impl Env {
 
     /// Return the substructural class of `ty` as a `Markers` value under
     /// the given type-parameter scope.
-    pub fn class_of(&self, ty: &Type, scope: ParamScope) -> Markers {
+    pub fn class_of(&self, ty: &Type, params: &ParamsIntro) -> Markers {
         let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
         match &ty.kind {
             TypeKind::Int(_)
@@ -502,8 +487,13 @@ impl Env {
                 Some(TypeDecl::Enum(e)) => e.meta.markers,
                 None => Markers::empty(),
             },
-            TypeKind::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
-            TypeKind::Array(elem, _) => self.class_of(elem, scope),
+            TypeKind::Param(name) => params
+                .type_params
+                .iter()
+                .find(|p| p.name == *name)
+                .map(|p| p.bounds.markers)
+                .unwrap_or_else(Markers::empty),
+            TypeKind::Array(elem, _) => self.class_of(elem, params),
         }
     }
 
@@ -516,7 +506,7 @@ impl Env {
     /// [`composition`](crate::mir::substructural::composition) —
     /// together they license `class_of(Custom(_, args))` returning
     /// the decl's declared markers without substitution.
-    pub fn validate_type(&self, ty: &Type, scope: ParamScope) -> Result<(), TypeValidationError> {
+    pub fn validate_type(&self, ty: &Type, params: &ParamsIntro) -> Result<(), TypeValidationError> {
         match &ty.kind {
             TypeKind::Int(_)
             | TypeKind::Float(_)
@@ -557,8 +547,8 @@ impl Env {
                     ));
                 }
                 for (arg, param) in args.iter().zip(decl_params.iter()) {
-                    self.validate_type(arg, scope)?;
-                    let arg_class = self.class_of(arg, scope);
+                    self.validate_type(arg, params)?;
+                    let arg_class = self.class_of(arg, params);
                     for bound in param.bounds.markers.iter_declared() {
                         if !arg_class.implies(bound) {
                             return Err(TypeValidationError::new(
@@ -578,15 +568,15 @@ impl Env {
             // for names in the current type-param scope). Nothing more
             // to check here.
             TypeKind::Param(_) => Ok(()),
-            TypeKind::Fn(params) => {
-                for p in params {
-                    self.validate_type(p, scope)?;
+            TypeKind::Fn(fn_params) => {
+                for p in fn_params {
+                    self.validate_type(p, params)?;
                 }
                 Ok(())
             }
-            TypeKind::Ref(_, _, inner) => self.validate_type(inner, scope),
-            TypeKind::RawPtr(inner) => self.validate_type(inner, scope),
-            TypeKind::Array(elem, _) => self.validate_type(elem, scope),
+            TypeKind::Ref(_, _, inner) => self.validate_type(inner, params),
+            TypeKind::RawPtr(inner) => self.validate_type(inner, params),
+            TypeKind::Array(elem, _) => self.validate_type(elem, params),
         }
     }
 
@@ -595,7 +585,11 @@ impl Env {
     /// well-formed (Ok) but its markers can't be resolved to real
     /// bounds — use only outside of generic decl bodies.
     pub fn validate_type_empty_scope(&self, ty: &Type) -> Result<(), TypeValidationError> {
-        self.validate_type(ty, &IndexMap::new())
+        let empty = ParamsIntro::empty(crate::common::SourceInfo::generated(
+            crate::common::GeneratedKind::TestHelper,
+            crate::common::Span::default(),
+        ));
+        self.validate_type(ty, &empty)
     }
 
     /// Return all instantiated fields of the struct type `ty`, if `ty` is a declared struct.

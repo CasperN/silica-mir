@@ -1,12 +1,12 @@
 //! MIR type-checking pass.
 //!
 //! Verifies that every declaration, statement, and terminator in the
-//! program is well-typed against the `Env`. No inference: types come
+//! program is well-typed against the `GlobalEnv`. No inference: types come
 //! from the environment (parameters, locals) and from the structural
 //! `type_of_*` queries; this pass only checks that they line up.
 
 use crate::mir::env::{TypeResolutionError, TypeValidationError};
-use super::Env;
+use super::GlobalEnv;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;
 use super::TypeDecl;
@@ -22,7 +22,7 @@ fn resolution_diagnostic(
     error: TypeResolutionError,
     source: SourceInfo,
     meta: &DeclMeta,
-    env: &Env,
+    env: &GlobalEnv,
 ) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
     let scope = format.scope(meta);
@@ -168,7 +168,7 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
     }
 }
 
-impl Env {
+impl GlobalEnv {
     pub fn typecheck(&self, program: &Program, d: &mut Diagnostics) {
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
@@ -193,7 +193,6 @@ impl Env {
                 ),
             };
             let meta = type_decl.meta();
-            let scope = meta.param_scope();
             let lt_scope = lifetime_scope(&meta.params.lifetime_params);
             let mut seen: HashSet<&str> = HashSet::new();
             for (name, ty, source) in items {
@@ -207,7 +206,7 @@ impl Env {
                         ),
                     ));
                 }
-                if let Err(e) = self.validate_type(ty, &scope) {
+                if let Err(e) = self.validate_type(ty, &meta.params) {
                     d.push_error(validation_diagnostic(
                         e,
                         ty.source,
@@ -267,25 +266,28 @@ impl Env {
         // Trait-level type-param scope, augmented with `Self` (linear
         // marker set — an impl-side target type contributes its own
         // markers; the trait-decl checker only validates well-formedness).
-        let mut trait_scope = meta.param_scope();
-        trait_scope.insert("Self".to_string(), Markers::empty());
+        let mut trait_params = meta.params.clone();
+        trait_params.type_params.push(TypeParam {
+            name: "Self".to_string(),
+            bounds: Bounds::default(),
+            source: meta.name_source,
+        });
 
         for method in &trait_decl.methods {
             let method_meta = &method.meta;
             validate_lifetime_decls(method_meta, "trait method", d);
 
-            // Effective scope = trait scope + method's own type params.
-            let mut scope = trait_scope.clone();
-            for p in &method_meta.params.type_params {
-                scope.insert(p.name.clone(), p.bounds.markers);
-            }
+            let mut effective_params = trait_params.clone();
+            effective_params.lifetime_params.extend(method_meta.params.lifetime_params.clone());
+            effective_params.type_params.extend(method_meta.params.type_params.clone());
+
             let mut lt_scope = trait_lt_scope.clone();
             for lp in &method_meta.params.lifetime_params {
                 lt_scope.insert(lp.lifetime.clone());
             }
 
             for p in &method.params {
-                if let Err(e) = self.validate_type(&p.ty, &scope) {
+                if let Err(e) = self.validate_type(&p.ty, &effective_params) {
                     d.push_error(validation_diagnostic(
                         e,
                         p.ty.source,
@@ -344,7 +346,6 @@ impl Env {
         let header = &imp.params;
         validate_lifetime_params(header, "impl", d);
         let header_lt_scope = lifetime_scope(&header.lifetime_params);
-        let header_scope = header.param_scope();
 
         // Validate the inputs that feed the signature-conformance
         // substitution: the impl's `target` and each `trait_path`
@@ -355,7 +356,7 @@ impl Env {
         // before conformance if anything landed.
         let signature_inputs_start = d.error_count();
 
-        if let Err(e) = self.validate_type(&imp.target, &header_scope) {
+        if let Err(e) = self.validate_type(&imp.target, header) {
             d.push_error(validation_diagnostic_params(
                 e,
                 imp.target.source,
@@ -365,7 +366,7 @@ impl Env {
         }
 
         for arg in &imp.trait_path.type_args {
-            if let Err(e) = self.validate_type(arg, &header_scope) {
+            if let Err(e) = self.validate_type(arg, header) {
                 d.push_error(validation_diagnostic_params(
                     e,
                     arg.source,
@@ -634,7 +635,7 @@ impl Env {
     }
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
-        let scope = f.meta.param_scope();
+        let scope = &f.meta.params;
         let lt_scope = lifetime_scope(&f.meta.params.lifetime_params);
         validate_lifetime_decls(&f.meta, "function", d);
         for (i, p) in f.params.iter().enumerate() {
@@ -665,7 +666,7 @@ impl Env {
                     }
                 }
             }
-            if let Err(e) = self.validate_type(&p.ty, &scope) {
+            if let Err(e) = self.validate_type(&p.ty, scope) {
                 d.push_error(validation_diagnostic(
                     e,
                     p.ty.source,
@@ -727,7 +728,7 @@ impl Env {
             }
         }
         for l in &body.locals {
-            if let Err(e) = self.validate_type(&l.ty, &scope) {
+            if let Err(e) = self.validate_type(&l.ty, scope) {
                 d.push_error(validation_diagnostic(
                     e,
                     l.ty.source,
@@ -774,10 +775,10 @@ impl Env {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        let scope = func.meta.param_scope();
+        let scope = &func.meta.params;
         let lt_scope = lifetime_scope(&func.meta.params.lifetime_params);
         for stmt in &block.statements {
-            self.validate_stmt_embedded_types(func, block, stmt, &scope, &lt_scope, d);
+            self.validate_stmt_embedded_types(func, block, stmt, scope, &lt_scope, d);
             if let Err(e) = self.typecheck_statement(func, block, stmt, locals) {
                 d.push_error(e);
             }
@@ -795,7 +796,7 @@ impl Env {
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
-        scope: crate::mir::substructural::composition::ParamScope,
+        scope: &ParamsIntro,
         lt_scope: &BTreeSet<Lifetime>,
         d: &mut Diagnostics,
     ) {

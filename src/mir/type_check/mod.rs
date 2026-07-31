@@ -1,6 +1,6 @@
 //! MIR type-checking pass and its supporting environment.
 //!
-//! - [`env`]: the type environment (`Env`) and structural
+//! - [`env`]: the type environment (`GlobalEnv`) and structural
 //!   type-of-expression queries (`type_of_place` / `_operand` /
 //!   `_rvalue`). Pure queries; no diagnostics beyond the failures
 //!   these queries surface.
@@ -17,7 +17,7 @@ use crate::diagnostics::DiagCode;
 
 pub mod check;
 
-pub use crate::mir::env::{Env, TypeResolutionError, TypeValidationError};
+pub use crate::mir::env::{GlobalEnv, TypeResolutionError, TypeValidationError};
 
 /// Machine-readable error codes emitted by the type checker.
 ///

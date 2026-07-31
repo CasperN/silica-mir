@@ -27,7 +27,7 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
 fn prepare_mir_for_analysis(
     mut program: Program,
     d: &mut Diagnostics,
-) -> (Program, mir::type_check::Env) {
+) -> (Program, mir::type_check::GlobalEnv) {
     // Inject compiler-provided prelude wrappers (non-`$` names like
     // `size_of<T>`, `ptr_offset<T>` that forward to the reserved
     // `$sizeof<T>` / `$ptr_offset<T>` intrinsics) before any pass
@@ -38,7 +38,7 @@ fn prepare_mir_for_analysis(
         .extend(mir::intrinsics::prelude_body_decls());
     mir::desugar::self_alias::desugar_self_alias(&mut program);
     mir::desugar::lifetime::desugar_program(&mut program);
-    let (env, env_errs) = mir::type_check::Env::build(&program);
+    let (env, env_errs) = mir::type_check::GlobalEnv::build(&program);
     d.extend_errors(env_errs);
     env.typecheck(&program, d);
     mir::substructural::composition::check_program(&env, d);
@@ -48,7 +48,7 @@ fn prepare_mir_for_analysis(
 }
 
 /// Validate initialization state and lifetime loans.
-fn check_place_and_loan_state(program: &Program, env: &mir::type_check::Env, d: &mut Diagnostics) {
+fn check_place_and_loan_state(program: &Program, env: &mir::type_check::GlobalEnv, d: &mut Diagnostics) {
     mir::place_state::check::check_program(program, env, d);
     mir::lifetime::check::check_program(program, env, d);
     mir::reachability::check_program(program, env, d);
@@ -63,7 +63,7 @@ fn check_place_and_loan_state(program: &Program, env: &mir::type_check::Env, d: 
 pub fn check_mir_without_elaboration(
     program: Program,
     d: &mut Diagnostics,
-) -> (Program, mir::type_check::Env) {
+) -> (Program, mir::type_check::GlobalEnv) {
     let (program, env) = prepare_mir_for_analysis(program, d);
     check_place_and_loan_state(&program, &env, d);
     (program, env)
@@ -76,7 +76,7 @@ pub fn check_mir_without_elaboration(
 /// # Pipeline contract
 ///
 /// Preparation reports static errors but produces a normalized program and
-/// signature-only [`mir::type_check::Env`] for subsequent passes. Elaboration
+/// signature-only [`mir::type_check::GlobalEnv`] for subsequent passes. Elaboration
 /// is total on parsed MIR: it may recover conservatively from malformed input
 /// so independent diagnostics can accumulate in one compiler run.
 ///
@@ -89,7 +89,7 @@ pub fn check_mir_without_elaboration(
 pub fn elaborate_and_check_mir(
     program: Program,
     d: &mut Diagnostics,
-) -> (Program, mir::type_check::Env) {
+) -> (Program, mir::type_check::GlobalEnv) {
     let (program, env) = prepare_mir_for_analysis(program, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
@@ -103,8 +103,8 @@ pub fn elaborate_and_check_mir(
 
     let mut elaborated = program;
 
-    // Elaboration passes mutate function bodies in-place. `Env` caches
-    // only signatures (see `Env.functions`), so no resync is needed
+    // Elaboration passes mutate function bodies in-place. `GlobalEnv` caches
+    // only signatures (see `GlobalEnv.functions`), so no resync is needed
     // between passes — subsequent passes read bodies straight from the
     // mutated `Program`.
     mir::place_state::copy_relaxation::elaborate(&mut elaborated, &env, d);

@@ -11,7 +11,7 @@ use crate::mir::type_check;
 fn elaborate_src(src: &str) -> Program {
     let mut program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&program).0;
+    let env = type_check::GlobalEnv::build(&program).0;
     env.typecheck(&program, &mut d);
     elaborate(&mut program, &env);
     program
@@ -39,7 +39,7 @@ fn assert_elaborated_eq(before: &str, expected: &str) {
 fn assert_strict_clean_after_elaboration(src: &str) {
     let program = elaborate_src(src);
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&program).0;
+    let env = type_check::GlobalEnv::build(&program).0;
     env.typecheck(&program, &mut d);
     check_return_leaks(&program, &env, &mut d);
     let errs = d.errors_str();
@@ -98,7 +98,7 @@ fn linear_require_uninit_remains_an_error_after_elaboration() {
         }
         ",
     );
-    let env = type_check::Env::build(&program).0;
+    let env = type_check::GlobalEnv::build(&program).0;
     elaborate(&mut program, &env);
 
     let mut d = Diagnostics::default();
@@ -239,7 +239,7 @@ fn diverged_elab_idempotent() {
     let twice = {
         let mut program = once.clone();
         let mut d = Diagnostics::default();
-        let env = type_check::Env::build(&program).0;
+        let env = type_check::GlobalEnv::build(&program).0;
         env.typecheck(&program, &mut d);
         elaborate(&mut program, &env);
         program
@@ -258,7 +258,7 @@ fn elaboration_is_idempotent() {
     // compare via pretty-printed forms.
     let mut twice = once.clone();
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&twice).0;
+    let env = type_check::GlobalEnv::build(&twice).0;
     env.typecheck(&twice, &mut d);
     elaborate(&mut twice, &env);
 
@@ -364,7 +364,7 @@ fn assert_idempotent(src: &str) {
     let once = elaborate_src(src);
     let mut twice = once.clone();
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&twice).0;
+    let env = type_check::GlobalEnv::build(&twice).0;
     env.typecheck(&twice, &mut d);
     elaborate(&mut twice, &env);
     assert_eq!(
@@ -489,12 +489,12 @@ fn strict_check_still_fails_for_linear_leak() {
         ";
     let mut program = Parser::parse_or_panic(src);
     let mut d = Diagnostics::default();
-    let env = type_check::Env::build(&program).0;
+    let env = type_check::GlobalEnv::build(&program).0;
     env.typecheck(&program, &mut d);
     elaborate(&mut program, &env);
 
     let mut d2 = Diagnostics::default();
-    let env2 = type_check::Env::build(&program).0;
+    let env2 = type_check::GlobalEnv::build(&program).0;
     env2.typecheck(&program, &mut d2);
     check_return_leaks(&program, &env2, &mut d2);
 

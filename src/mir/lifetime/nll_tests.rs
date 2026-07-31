@@ -10,7 +10,7 @@ use crate::mir::lifetime::nll::elaborate;
 use crate::mir::parser::Parser;
 use crate::mir::pretty_print::pretty_print;
 use crate::mir::test_util::*;
-use crate::mir::env::Env;
+use crate::mir::env::GlobalEnv;
 
 // ---------- Idempotence ----------
 
@@ -28,12 +28,12 @@ fn idempotent_second_run_is_noop() {
         }
         ";
     let mut program = Parser::parse_or_panic(src);
-    let env = Env::build(&program).0;
+    let env = GlobalEnv::build(&program).0;
     elaborate(&mut program, &env);
     let after_first = pretty_print(&program);
 
     // Rebuild env against the elaborated program and run NLL again.
-    let env2 = Env::build(&program).0;
+    let env2 = GlobalEnv::build(&program).0;
     elaborate(&mut program, &env2);
     let after_second = pretty_print(&program);
 

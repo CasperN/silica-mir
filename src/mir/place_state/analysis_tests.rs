@@ -2,7 +2,7 @@ mod parameter_ref_tests {
     use crate::mir::helpers::*;
     use crate::mir::parser::Parser;
     use crate::mir::place_state::analysis::{boundary_state, InitState, RefState};
-    use crate::mir::env::Env;
+    use crate::mir::env::GlobalEnv;
 
     #[test]
     fn seeds_nested_struct_parameter_reference_obligations() {
@@ -13,7 +13,7 @@ mod parameter_ref_tests {
             fn f(p: Outer) { entry: return }
             ",
         );
-        let env = Env::build(&program).0;
+        let env = GlobalEnv::build(&program).0;
         let func = program.find_fn("f").expect("fn f");
         let body = func.body.as_ref().expect("body");
 
@@ -41,7 +41,7 @@ mod parameter_ref_tests {
             }
             ",
         );
-        let env = Env::build(&program).0;
+        let env = GlobalEnv::build(&program).0;
         let func = program.find_fn("f").expect("fn f");
         let states = super::super::analysis::states_before_returns(&env, func);
         let state = &states[0].1;

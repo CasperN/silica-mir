@@ -809,8 +809,8 @@ pub struct Function {
 }
 
 /// A `Function` without its body — the name-resolution view used by
-/// [`Env`](crate::mir::type_check::Env). Bodies live in [`Program`] and
-/// are mutated by elaboration; `Env` caches only what's stable across
+/// [`GlobalEnv`](crate::mir::type_check::GlobalEnv). Bodies live in [`Program`] and
+/// are mutated by elaboration; `GlobalEnv` caches only what's stable across
 /// elaboration so no resync is needed between passes.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FunctionSignature {
@@ -1008,7 +1008,7 @@ impl Program {
     /// Iterate over function declarations in declaration order. Callers
     /// that need bodies (checkers walking blocks, elaborators inspecting
     /// state, drop-elab planning drops) go through here rather than
-    /// through [`Env`](crate::mir::type_check::Env), which caches only
+    /// through [`GlobalEnv`](crate::mir::type_check::GlobalEnv), which caches only
     /// signatures.
     pub fn functions(&self) -> impl Iterator<Item = &Function> + '_ {
         self.declarations.iter().filter_map(|d| match d {

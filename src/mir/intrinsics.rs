@@ -9,7 +9,7 @@
 //! - Intrinsic specs live in [`all`]. Each entry declares operand
 //!   types (used to build extern signatures via [`prelude_fns`]) and
 //!   an `emit` closure that owns its LLVM lowering.
-//! - `Env::build` preloads the signatures into `Env::functions`.
+//! - `GlobalEnv::build` preloads the signatures into `GlobalEnv::functions`.
 //! - Codegen intercepts `call $name(...)`, materializes the input
 //!   operands, calls `spec.emit(inputs, mk_name)` to get back the
 //!   LLVM lines + the SSA name holding the result, then stores the
@@ -464,7 +464,7 @@ pub fn lookup(name: &str) -> Option<&'static IntrinsicSpec> {
 }
 
 /// Return prebuilt `Function` signatures for every intrinsic in [`all`],
-/// ready to insert into `Env::functions`. Also includes the generic
+/// ready to insert into `GlobalEnv::functions`. Also includes the generic
 /// intrinsics that don't fit the flat `IntrinsicSpec` shape (they take
 /// a type parameter and are lowered specially by codegen).
 pub fn prelude_fns() -> Vec<Function> {
