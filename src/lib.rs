@@ -74,13 +74,12 @@ pub fn check_mir_without_elaboration(
 }
 
 /// Run the MIR pipeline: pre-elab sanity checks, elaboration
-/// passes, post-elab checks. Returns the elaborated program and
-/// its type environment.
+/// passes, post-elab checks. Returns the indexed, elaborated program.
 ///
 /// # Pipeline contract
 ///
 /// Preparation reports static errors but produces a normalized program and
-/// signature-only [`mir::type_check::IndexedProgram`] for subsequent passes. Elaboration
+/// [`mir::env::IndexedProgram`] for subsequent passes. Elaboration
 /// is total on parsed MIR: it may recover conservatively from malformed input
 /// so independent diagnostics can accumulate in one compiler run.
 ///
@@ -93,7 +92,7 @@ pub fn check_mir_without_elaboration(
 pub fn elaborate_and_check_mir(
     program: Program,
     d: &mut Diagnostics,
-) -> (Program, mir::type_check::IndexedProgram) {
+) -> mir::env::IndexedProgram {
     let (program, env) = prepare_mir_for_analysis(program, d);
 
     // No `d.has_errors()` gate here: pre-elab checks accumulate their
@@ -107,10 +106,9 @@ pub fn elaborate_and_check_mir(
 
     let mut elaborated = program;
 
-    // Elaboration passes mutate function bodies in-place. `IndexedProgram` caches
-    // only signatures (see `IndexedProgram.functions`), so no resync is needed
-    // between passes — subsequent passes read bodies straight from the
-    // mutated `Program`.
+    // Elaboration still mutates the declaration tree while these passes are
+    // being migrated. The final index is rebuilt from the canonical bodies
+    // before returning.
     mir::place_state::copy_relaxation::elaborate(&mut elaborated, &env, d);
 
     // Downstream passes assume every operand is `move` or `copy`; a
@@ -120,7 +118,7 @@ pub fn elaborate_and_check_mir(
     // first `take` they saw.
     mir::place_state::copy_relaxation::verify_no_take(&elaborated, d);
     if d.internal_error_count() > 0 {
-        return (elaborated, env);
+        return mir::env::IndexedProgram::build(&elaborated).0;
     }
 
     mir::lifetime::nll::elaborate(&mut elaborated, &env);
@@ -131,5 +129,5 @@ pub fn elaborate_and_check_mir(
     // plus obligations exposed by NLL-inserted `unborrow` statements.
     check_place_and_loan_state(&elaborated, &env, d);
 
-    (elaborated, env)
+    mir::env::IndexedProgram::build(&elaborated).0
 }

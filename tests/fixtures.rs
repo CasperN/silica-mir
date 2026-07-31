@@ -160,7 +160,7 @@ fn detect_fixture_kind(fixture: &Path) -> Option<FixtureKind> {
 }
 
 struct FixtureRun {
-    program: Option<mir::ast::Program>,
+    program: Option<mir::env::IndexedProgram>,
     diagnostics: Diagnostics,
 }
 
@@ -182,11 +182,14 @@ fn execute_fixture(path: &Path, stage: Stage) -> FixtureRun {
     let program = match stage {
         Stage::Elab | Stage::Codegen => program
             .as_ref()
-            .map(|p| elaborate_and_check_mir(p.clone(), &mut d).0),
-        Stage::Check => program
+            .map(|p| elaborate_and_check_mir(p.clone(), &mut d)),
+        Stage::Check => program.as_ref().map(|p| {
+            let (program, _) = check_mir_without_elaboration(p.clone(), &mut d);
+            mir::env::IndexedProgram::build(&program).0
+        }),
+        Stage::CodegenRaw => program
             .as_ref()
-            .map(|p| check_mir_without_elaboration(p.clone(), &mut d).0),
-        Stage::CodegenRaw => program,
+            .map(|program| mir::env::IndexedProgram::build(program).0),
     };
 
     FixtureRun {
@@ -200,8 +203,7 @@ fn render_fixture(path: &Path, run: &FixtureRun, expectation: Expectation) -> St
     match expectation {
         Expectation::Mir => match &run.program {
             Some(program) if !run.diagnostics.has_errors() => {
-                let (program, _) = mir::env::IndexedProgram::build(program);
-                mir::pretty_print::pretty_print(&program)
+                mir::pretty_print::pretty_print(program)
             }
             _ => panic!(
                 "MIR fixture {} produced errors — use an .err.expected sibling or fix it:\n{}",
@@ -212,8 +214,7 @@ fn render_fixture(path: &Path, run: &FixtureRun, expectation: Expectation) -> St
         Expectation::Diagnostics => render_diagnostics(&run.diagnostics),
         Expectation::Llvm => match &run.program {
             Some(program) if !run.diagnostics.has_errors() => {
-                let (program, _) = mir::env::IndexedProgram::build(program);
-                mir::codegen::lower_mir_to_llvm(program)
+                mir::codegen::lower_mir_to_llvm(program.clone())
             }
             _ => panic!(
                 "codegen fixture {} produced errors:\n{}",

@@ -100,7 +100,7 @@ fn main() {
         return;
     }
 
-    let (elaborated, _env) = elaborate_and_check_mir(program, &mut d);
+    let elaborated = elaborate_and_check_mir(program, &mut d);
 
     if d.has_errors() {
         report_and_exit(&d);
@@ -121,12 +121,10 @@ fn main() {
     }
     match emit {
         EmitKind::Llvm => {
-            let indexed = mir::type_check::IndexedProgram::build(&elaborated).0;
-            print!("{}", mir::codegen::lower_mir_to_llvm(indexed));
+            print!("{}", mir::codegen::lower_mir_to_llvm(elaborated));
         }
         EmitKind::Mir => {
-            let indexed = mir::type_check::IndexedProgram::build(&elaborated).0;
-            print!("{}", mir::pretty_print::pretty_print(&indexed));
+            print!("{}", mir::pretty_print::pretty_print(&elaborated));
         }
         EmitKind::PreElabMir => unreachable!("handled above"),
     }
