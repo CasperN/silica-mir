@@ -37,7 +37,7 @@ pub fn pretty_print(program: &Program) -> String {
 /// non-`$` names. They're not user-authored and shouldn't appear in
 /// fixture-pinned pretty-printed output.
 fn is_prelude_decl(decl: &Declaration) -> bool {
-    matches!(decl.meta().name.as_str(), "size_of" | "ptr_offset")
+    matches!(decl.meta().map(|m| m.name.as_str()), Some("size_of" | "ptr_offset"))
 }
 
 fn write_declaration(out: &mut String, decl: &Declaration) {
@@ -61,13 +61,13 @@ fn write_markers(out: &mut String, m: &Markers) {
     out.push_str(&names.join(" + "));
 }
 
-fn write_type_params(out: &mut String, meta: &DeclMeta) {
-    if meta.lifetime_params.is_empty() && meta.type_params.is_empty() {
+fn write_type_params(out: &mut String, params: &ParamsIntro) {
+    if params.lifetime_params.is_empty() && params.type_params.is_empty() {
         return;
     }
     out.push('<');
     let mut first = true;
-    for lt in &meta.lifetime_params {
+    for lt in &params.lifetime_params {
         if !first {
             out.push_str(", ");
         }
@@ -77,7 +77,7 @@ fn write_type_params(out: &mut String, meta: &DeclMeta) {
         // matching the source shape `'a: 'b + 'c`. Bounds keyed to
         // other subjects fall through this iteration and land next to
         // their subject.
-        let mut bounds = meta
+        let mut bounds = params
             .outlives
             .iter()
             .filter(|bound| bound.longer == lt.lifetime)
@@ -95,7 +95,7 @@ fn write_type_params(out: &mut String, meta: &DeclMeta) {
             }
         }
     }
-    for p in &meta.type_params {
+    for p in &params.type_params {
         if !first {
             out.push_str(", ");
         }
@@ -108,7 +108,7 @@ fn write_type_params(out: &mut String, meta: &DeclMeta) {
 
 fn write_struct(out: &mut String, s: &StructDecl) {
     out.push_str("struct");
-    write_type_params(out, &s.meta);
+    write_type_params(out, &s.meta.params);
     out.push(' ');
     out.push_str(&s.meta.name);
     write_markers(out, &s.meta.markers);
@@ -123,7 +123,7 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
     out.push_str("enum");
-    write_type_params(out, &e.meta);
+    write_type_params(out, &e.meta.params);
     out.push(' ');
     out.push_str(&e.meta.name);
     write_markers(out, &e.meta.markers);
@@ -138,13 +138,13 @@ fn write_enum(out: &mut String, e: &EnumDecl) {
 
 fn write_trait(out: &mut String, t: &TraitDecl) {
     out.push_str("trait");
-    write_type_params(out, &t.meta);
+    write_type_params(out, &t.meta.params);
     out.push(' ');
     out.push_str(&t.meta.name);
     out.push_str(" {\n");
     for m in &t.methods {
         out.push_str("  fn");
-        write_type_params(out, &m.meta);
+        write_type_params(out, &m.meta.params);
         out.push(' ');
         out.push_str(&m.meta.name);
         out.push('(');
@@ -162,7 +162,7 @@ fn write_trait(out: &mut String, t: &TraitDecl) {
 
 fn write_impl(out: &mut String, i: &ImplBlock) {
     out.push_str("impl");
-    write_type_params(out, &i.meta);
+    write_type_params(out, &i.params);
     out.push(' ');
     // `Instance` renders as `Name<args>` via Display — matches the
     // trait-path syntax the parser accepts.
@@ -190,7 +190,7 @@ fn write_function(out: &mut String, f: &Function) {
     } else {
         out.push_str("fn");
     }
-    write_type_params(out, &f.meta);
+    write_type_params(out, &f.meta.params);
     out.push(' ');
     out.push_str(&f.meta.name);
     out.push('(');
@@ -498,6 +498,19 @@ mod tests {
         );
     }
 
+    fn strip_params(params: &mut ParamsIntro, zero: Span) {
+        params.source = SourceInfo::written(zero);
+        for lifetime in &mut params.lifetime_params {
+            lifetime.source = SourceInfo::written(zero);
+        }
+        for bound in &mut params.outlives {
+            bound.source = SourceInfo::written(zero);
+        }
+        for tp in &mut params.type_params {
+            tp.source = SourceInfo::written(zero);
+        }
+    }
+
     /// Replace every span with a zero span AND clear the source arc so
     /// equality ignores positions and formatting of the original text
     /// (a re-parsed pretty-print is not byte-identical to the input).
@@ -505,43 +518,23 @@ mod tests {
         p.source = std::sync::Arc::new(String::new());
         let zero = Span::default();
         for decl in &mut p.declarations {
-            let meta = match decl {
-                Declaration::Struct(s) => &mut s.meta,
-                Declaration::Enum(e) => &mut e.meta,
-                Declaration::Fn(f) => &mut f.meta,
-                Declaration::Trait(t) => &mut t.meta,
-                Declaration::Impl(i) => &mut i.meta,
-            };
-            for lifetime in &mut meta.lifetime_params {
-                lifetime.source = SourceInfo::written(zero);
-            }
-            for bound in &mut meta.outlives {
-                bound.source = SourceInfo::written(zero);
-            }
-            match decl {
+            let params = match decl {
                 Declaration::Struct(s) => {
                     s.meta.name_source = SourceInfo::written(zero);
-                    for tp in &mut s.meta.type_params {
-                        tp.source = SourceInfo::written(zero);
-                    }
                     for f in &mut s.fields {
                         f.source = SourceInfo::written(zero);
                     }
+                    &mut s.meta.params
                 }
                 Declaration::Enum(e) => {
                     e.meta.name_source = SourceInfo::written(zero);
-                    for tp in &mut e.meta.type_params {
-                        tp.source = SourceInfo::written(zero);
-                    }
                     for v in &mut e.variants {
                         v.source = SourceInfo::written(zero);
                     }
+                    &mut e.meta.params
                 }
                 Declaration::Fn(f) => {
                     f.meta.name_source = SourceInfo::written(zero);
-                    for tp in &mut f.meta.type_params {
-                        tp.source = SourceInfo::written(zero);
-                    }
                     for p in &mut f.params {
                         p.source = SourceInfo::written(zero);
                     }
@@ -557,32 +550,23 @@ mod tests {
                             }
                         }
                     }
+                    &mut f.meta.params
                 }
                 Declaration::Trait(t) => {
                     t.meta.name_source = SourceInfo::written(zero);
-                    for tp in &mut t.meta.type_params {
-                        tp.source = SourceInfo::written(zero);
-                    }
                     for m in &mut t.methods {
                         m.meta.name_source = SourceInfo::written(zero);
-                        for tp in &mut m.meta.type_params {
-                            tp.source = SourceInfo::written(zero);
-                        }
+                        strip_params(&mut m.meta.params, zero);
                         for p in &mut m.params {
                             p.source = SourceInfo::written(zero);
                         }
                     }
+                    &mut t.meta.params
                 }
                 Declaration::Impl(i) => {
-                    i.meta.name_source = SourceInfo::written(zero);
-                    for tp in &mut i.meta.type_params {
-                        tp.source = SourceInfo::written(zero);
-                    }
                     for m in &mut i.methods {
                         m.meta.name_source = SourceInfo::written(zero);
-                        for tp in &mut m.meta.type_params {
-                            tp.source = SourceInfo::written(zero);
-                        }
+                        strip_params(&mut m.meta.params, zero);
                         for p in &mut m.params {
                             p.source = SourceInfo::written(zero);
                         }
@@ -599,8 +583,10 @@ mod tests {
                             }
                         }
                     }
+                    &mut i.params
                 }
-            }
+            };
+            strip_params(params, zero);
         }
         p
     }

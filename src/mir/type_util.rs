@@ -5,7 +5,7 @@
 
 use crate::common::Lifetime;
 use crate::mir::ast::{
-    ConstVal, DeclMeta, Instance, Operand, RValue, Statement, StatementKind, Terminator, Type,
+    ConstVal, DeclMeta, Instance, Operand, ParamsIntro, RValue, Statement, StatementKind, Terminator, Type,
     TypeKind, TypeParam,
 };
 use crate::mir::helpers::{
@@ -15,16 +15,9 @@ use crate::mir::type_check::{Env, TypeDecl};
 use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
 
-impl DeclMeta {
+impl ParamsIntro {
     /// Substitute the decl's declared lifetime and type parameters in
-    /// `ty` with the args at a use site. Convenience wrapper around
-    /// [`substitute_all`] so callers don't have to spell the four
-    /// slices in the right order every time.
-    ///
-    /// Panics on arity mismatch — callers post-typecheck should already
-    /// have validated the use-site's arity. Elaboration walks that see
-    /// parser output (which may contain arity errors reported by
-    /// typecheck) should use [`DeclMeta::try_substitute`] instead.
+    /// `ty` with the args at a use site.
     pub fn substitute(&self, ty: &Type, lifetime_args: &[Lifetime], type_args: &[Type]) -> Type {
         let lifetime_params = self.lifetime_names();
         substitute_all(
@@ -36,18 +29,14 @@ impl DeclMeta {
         )
     }
 
-    /// Type-only degenerate case of [`DeclMeta::substitute`] for callers
-    /// that only have `type_args` on hand (a decl with no lifetime
-    /// parameters, or a caller that doesn't need lifetime substitution).
+    /// Type-only degenerate case of [`ParamsIntro::substitute`] for callers
+    /// that only have `type_args` on hand.
     pub fn substitute_types(&self, ty: &Type, type_args: &[Type]) -> Type {
         substitute_params(ty, &self.type_params, type_args)
     }
 
     /// Fallible substitution for callers that walk parser-produced use
-    /// sites. Returns `None` when the use-site arity doesn't match the
-    /// decl's — typecheck reported the mismatch; recursion through this
-    /// slot has no meaningful continuation, so the walker skips it.
-    /// Callers that panic on mismatch use [`DeclMeta::substitute`].
+    /// sites. Returns `None` when the use-site arity doesn't match.
     pub fn try_substitute(
         &self,
         ty: &Type,
@@ -62,9 +51,7 @@ impl DeclMeta {
         Some(self.substitute(ty, lifetime_args, type_args))
     }
 
-    /// Fallible type-only substitution — pair to [`DeclMeta::substitute_types`]
-    /// for walkers over parser data. Returns `None` on type-arg arity
-    /// mismatch.
+    /// Fallible type-only substitution — pair to [`ParamsIntro::substitute_types`].
     pub fn try_substitute_types(&self, ty: &Type, type_args: &[Type]) -> Option<Type> {
         if type_args.len() != self.type_params.len() {
             return None;
@@ -72,11 +59,38 @@ impl DeclMeta {
         Some(self.substitute_types(ty, type_args))
     }
 
-    fn lifetime_names(&self) -> Vec<Lifetime> {
+    pub fn lifetime_names(&self) -> Vec<Lifetime> {
         self.lifetime_params
             .iter()
             .map(|param| param.lifetime.clone())
             .collect()
+    }
+}
+
+impl DeclMeta {
+    pub fn substitute(&self, ty: &Type, lifetime_args: &[Lifetime], type_args: &[Type]) -> Type {
+        self.params.substitute(ty, lifetime_args, type_args)
+    }
+
+    pub fn substitute_types(&self, ty: &Type, type_args: &[Type]) -> Type {
+        self.params.substitute_types(ty, type_args)
+    }
+
+    pub fn try_substitute(
+        &self,
+        ty: &Type,
+        lifetime_args: &[Lifetime],
+        type_args: &[Type],
+    ) -> Option<Type> {
+        self.params.try_substitute(ty, lifetime_args, type_args)
+    }
+
+    pub fn try_substitute_types(&self, ty: &Type, type_args: &[Type]) -> Option<Type> {
+        self.params.try_substitute_types(ty, type_args)
+    }
+
+    pub fn lifetime_names(&self) -> Vec<Lifetime> {
+        self.params.lifetime_names()
     }
 }
 

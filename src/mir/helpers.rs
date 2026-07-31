@@ -23,13 +23,17 @@ pub fn trivial_markers() -> Markers {
     Markers::from_iter([Marker::Copy, Marker::Drop])
 }
 pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
+    let source = SourceInfo::generated(GeneratedKind::TestHelper, Span::default());
     DeclMeta {
         name: name.into(),
-        name_source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
+        name_source: source,
+        params: ParamsIntro {
+            lifetime_params: vec![],
+            outlives: vec![],
+            type_params: vec![],
+            source,
+        },
         markers: trivial_markers(),
-        lifetime_params: vec![],
-        outlives: vec![],
-        type_params: vec![],
     }
 }
 

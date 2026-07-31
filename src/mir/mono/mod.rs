@@ -77,7 +77,7 @@ pub fn monomorphize(program: &mut Program) {
         .declarations
         .iter()
         .filter(|d| is_mono_target(d))
-        .map(|d| (d.meta().name.clone(), d.clone()))
+        .map(|d| (d.meta().unwrap().name.clone(), d.clone()))
         .collect();
 
     let mut ctx = MonoCtx {
@@ -90,9 +90,10 @@ pub fn monomorphize(program: &mut Program) {
     // decls are only pulled in via instantiations found while walking
     // reachable code.
     for decl in program.declarations.iter().filter(|d| is_mono_target(d)) {
-        let m = decl.meta();
-        if m.type_params.is_empty() {
-            ctx.need(&m.name, &[]);
+        if let Some(m) = decl.meta() {
+            if m.params.type_params.is_empty() {
+                ctx.need(&m.name, &[]);
+            }
         }
     }
 
@@ -245,7 +246,7 @@ impl MonoCtx {
     fn specialize(&mut self, decl: Declaration, args: &[Type], mangled: String) -> Declaration {
         match decl {
             Declaration::Struct(s) => {
-                let type_params = s.meta.type_params.clone();
+                let type_params = s.meta.params.type_params.clone();
                 let subst = |ty: &Type| substitute_params(ty, &type_params, args);
                 let fields = s
                     .fields
@@ -260,16 +261,19 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: s.meta.name_source,
-                        lifetime_params: s.meta.lifetime_params,
-                        type_params: Vec::new(),
+                        params: ParamsIntro {
+                            lifetime_params: s.meta.params.lifetime_params,
+                            outlives: s.meta.params.outlives,
+                            type_params: Vec::new(),
+                            source: s.meta.params.source,
+                        },
                         markers: s.meta.markers,
-                        outlives: s.meta.outlives,
                     },
                     fields,
                 })
             }
             Declaration::Enum(e) => {
-                let type_params = e.meta.type_params.clone();
+                let type_params = e.meta.params.type_params.clone();
                 let subst = |ty: &Type| substitute_params(ty, &type_params, args);
                 let variants = e
                     .variants
@@ -284,16 +288,19 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: e.meta.name_source,
-                        lifetime_params: e.meta.lifetime_params,
-                        type_params: Vec::new(),
-                        outlives: e.meta.outlives,
+                        params: ParamsIntro {
+                            lifetime_params: e.meta.params.lifetime_params,
+                            outlives: e.meta.params.outlives,
+                            type_params: Vec::new(),
+                            source: e.meta.params.source,
+                        },
                         markers: e.meta.markers,
                     },
                     variants,
                 })
             }
             Declaration::Fn(f) => {
-                let type_params = f.meta.type_params.clone();
+                let type_params = f.meta.params.type_params.clone();
                 let subst = |ty: &Type| substitute_params(ty, &type_params, args);
                 let params = f
                     .params
@@ -345,9 +352,12 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: f.meta.name_source,
-                        lifetime_params: f.meta.lifetime_params,
-                        outlives: f.meta.outlives,
-                        type_params: Vec::new(),
+                        params: ParamsIntro {
+                            lifetime_params: f.meta.params.lifetime_params,
+                            outlives: f.meta.params.outlives,
+                            type_params: Vec::new(),
+                            source: f.meta.params.source,
+                        },
                         markers: trivial_markers(),
                     },
                     is_extern: f.is_extern,
@@ -505,12 +515,12 @@ mod tests {
             })
             .expect("specialized struct exists");
         assert_eq!(
-            specialized_struct.meta.lifetime_params,
-            original_struct.meta.lifetime_params
+            specialized_struct.meta.params.lifetime_params,
+            original_struct.meta.params.lifetime_params
         );
         assert_eq!(
-            specialized_struct.meta.outlives,
-            original_struct.meta.outlives
+            specialized_struct.meta.params.outlives,
+            original_struct.meta.params.outlives
         );
         assert_eq!(
             specialized_struct.fields[0].ty.source,
@@ -533,12 +543,12 @@ mod tests {
             .find(|function| function.meta.name == "use_borrowed")
             .expect("root function remains");
         assert_eq!(
-            specialized_function.meta.lifetime_params,
-            original_function.meta.lifetime_params
+            specialized_function.meta.params.lifetime_params,
+            original_function.meta.params.lifetime_params
         );
         assert_eq!(
-            specialized_function.meta.outlives,
-            original_function.meta.outlives
+            specialized_function.meta.params.outlives,
+            original_function.meta.params.outlives
         );
         assert_eq!(
             specialized_function.params[0].ty.source,

@@ -487,7 +487,7 @@ fn intrinsic_meta(name: impl Into<String>) -> DeclMeta {
 /// are inherently non-negative.
 fn sizeof_fn() -> Function {
     let mut meta = intrinsic_meta(SIZEOF_NAME);
-    meta.type_params.push(TypeParam {
+    meta.params.type_params.push(TypeParam {
         name: "T".to_string(),
         bounds: Bounds::default(),
         source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),
@@ -517,7 +517,7 @@ pub const SIZEOF_NAME: &str = "$sizeof";
 /// non-negative in the current model.
 fn ptr_offset_fn() -> Function {
     let mut meta = intrinsic_meta(PTR_OFFSET_NAME);
-    meta.type_params.push(TypeParam {
+    meta.params.type_params.push(TypeParam {
         name: "T".to_string(),
         bounds: Bounds::default(),
         source: SourceInfo::generated(GeneratedKind::Intrinsic, SPAN),

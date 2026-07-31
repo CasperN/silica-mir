@@ -9,7 +9,7 @@
 
 use crate::common::{GeneratedKind, Lifetime, SourceInfo};
 use crate::diagnostics::Diagnostic;
-use crate::mir::ast::{DeclMeta, Instance, Type, TypeKind};
+use crate::mir::ast::{DeclMeta, Instance, ParamsIntro, Type, TypeKind};
 use crate::mir::lifetime::Region;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -53,9 +53,13 @@ impl DiagnosticFormat {
     /// mentioned by the diagnostic and reuse the returned scope for every
     /// fragment from that declaration.
     pub fn scope(&mut self, meta: &DeclMeta) -> DiagnosticScope {
+        self.scope_params(&meta.params)
+    }
+
+    pub fn scope_params(&mut self, params: &ParamsIntro) -> DiagnosticScope {
         let id = self.next_scope;
         self.next_scope += 1;
-        let generated = meta
+        let generated = params
             .lifetime_params
             .iter()
             .filter(|param| param.source.generated_kind() == Some(GeneratedKind::LifetimeElision))
@@ -190,8 +194,16 @@ pub fn format_type_diagnostic(
     ty: &Type,
     build: impl FnOnce(String) -> Diagnostic,
 ) -> Diagnostic {
+    format_type_diagnostic_params(&meta.params, ty, build)
+}
+
+pub fn format_type_diagnostic_params(
+    params: &ParamsIntro,
+    ty: &Type,
+    build: impl FnOnce(String) -> Diagnostic,
+) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
-    let scope = format.scope(meta);
+    let scope = format.scope_params(params);
     let ty = format.ty(&scope, ty);
     format.finish(build(ty))
 }
@@ -203,12 +215,16 @@ mod tests {
     use crate::mir::ast::{DeclMeta, RefKind};
 
     fn meta(name: &str, params: Vec<LifetimeParam>) -> DeclMeta {
+        let source = SourceInfo::generated(GeneratedKind::TestHelper, Span::default());
         DeclMeta {
             name: name.into(),
-            name_source: SourceInfo::generated(GeneratedKind::TestHelper, Span::default()),
-            lifetime_params: params,
-            outlives: Vec::new(),
-            type_params: Vec::new(),
+            name_source: source,
+            params: ParamsIntro {
+                lifetime_params: params,
+                outlives: Vec::new(),
+                type_params: Vec::new(),
+                source,
+            },
             markers: Markers::empty(),
         }
     }

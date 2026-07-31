@@ -94,6 +94,7 @@ fn check_fn_signature_wf(func: &Function, env: &Env, d: &mut Diagnostics) {
     }
     let axioms: Vec<(Region, Region)> = func
         .meta
+        .params
         .outlives
         .iter()
         .map(|bound| {
@@ -146,6 +147,7 @@ fn check_decl_wf(env: &Env, d: &mut Diagnostics) {
             TypeDecl::Enum(_) => "enum",
         };
         let axioms: Vec<(Region, Region)> = meta
+            .params
             .outlives
             .iter()
             .map(|bound| {
@@ -272,14 +274,15 @@ fn emit_type_wf_constraints(ty: &Type, env: &Env, cs: &mut constraints::Constrai
         TypeKind::Custom(Instance { name, lifetime_args: lts, type_args: args }) => {
             if let Some(decl) = env.types.get(name) {
                 let meta = decl.meta();
-                if lts.len() == meta.lifetime_params.len() {
+                if lts.len() == meta.params.lifetime_params.len() {
                     let sub: IndexMap<&Lifetime, &Lifetime> = meta
+                        .params
                         .lifetime_params
                         .iter()
                         .map(|p| &p.lifetime)
                         .zip(lts.iter())
                         .collect();
-                    for bound in &meta.outlives {
+                    for bound in &meta.params.outlives {
                         let a_lt = sub.get(&bound.longer).copied().unwrap_or(&bound.longer);
                         let b_lt = sub.get(&bound.shorter).copied().unwrap_or(&bound.shorter);
                         cs.emit(
@@ -567,6 +570,7 @@ impl<'a> Checker<'a> {
         let axioms: Vec<(Region, Region)> = self
             .func
             .meta
+            .params
             .outlives
             .iter()
             .map(|bound| {
@@ -1068,6 +1072,7 @@ impl<'a> Checker<'a> {
         // Fresh instantiation region per callee lifetime param.
         let inst: IndexMap<Lifetime, Region> = callee
             .meta
+            .params
             .lifetime_params
             .iter()
             .map(|lt| (lt.lifetime.clone(), self.region_ctx.fresh_inference()))
@@ -1091,7 +1096,7 @@ impl<'a> Checker<'a> {
             );
         }
 
-        for bound in &callee.meta.outlives {
+        for bound in &callee.meta.params.outlives {
             let a_r = inst
                 .get(&bound.longer)
                 .cloned()

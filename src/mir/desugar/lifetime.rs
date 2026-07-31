@@ -76,10 +76,10 @@ fn type_arities(program: &Program) -> HashMap<String, usize> {
     for decl in &program.declarations {
         match decl {
             Declaration::Struct(s) => {
-                arities.insert(s.meta.name.clone(), s.meta.lifetime_params.len());
+                arities.insert(s.meta.name.clone(), s.meta.params.lifetime_params.len());
             }
             Declaration::Enum(e) => {
-                arities.insert(e.meta.name.clone(), e.meta.lifetime_params.len());
+                arities.insert(e.meta.name.clone(), e.meta.params.lifetime_params.len());
             }
             _ => {}
         }
@@ -97,12 +97,12 @@ fn desugar_fn(f: &mut Function, arities: &HashMap<String, usize>) {
     // inference handles those at check time via body-local Free
     // regions.
     if let Some(body) = &mut f.body {
-        let mut ctx = DesugarCtx::new(&f.meta.lifetime_params, arities);
-        let fn_params = f.meta.lifetime_params.clone();
+        let mut ctx = DesugarCtx::new(&f.meta.params.lifetime_params, arities);
+        let fn_params = f.meta.params.lifetime_params.clone();
         for local in &mut body.locals {
             desugar_body_local_ty(&mut local.ty, &fn_params, &mut ctx);
         }
-        f.meta.lifetime_params.extend(ctx.synthesized);
+        f.meta.params.lifetime_params.extend(ctx.synthesized);
     }
 }
 
@@ -195,10 +195,10 @@ fn desugar_impl(i: &mut ImplBlock, arities: &HashMap<String, usize>) {
     // `effective_impl_method`, so a synthesized `'sN` colliding with
     // an explicit header name (e.g. `impl<'s0>`) would shadow it once
     // the header is prepended.
-    let header_lts: Vec<LifetimeParam> = i.meta.lifetime_params.clone();
+    let header_lts: Vec<LifetimeParam> = i.params.lifetime_params.clone();
     for method in &mut i.methods {
         let mut ctx =
-            DesugarCtx::new_with_extra(&method.meta.lifetime_params, &header_lts, arities);
+            DesugarCtx::new_with_extra(&method.meta.params.lifetime_params, &header_lts, arities);
         for p in &mut method.params {
             desugar_type_pos(&mut p.ty, Pos::Input, &mut ctx);
         }
@@ -211,7 +211,7 @@ fn desugar_signature(
     params: &mut [Param],
     arities: &HashMap<String, usize>,
 ) {
-    let mut ctx = DesugarCtx::new(&meta.lifetime_params, arities);
+    let mut ctx = DesugarCtx::new(&meta.params.lifetime_params, arities);
     for p in params {
         desugar_type_pos(&mut p.ty, Pos::Input, &mut ctx);
     }
@@ -219,13 +219,13 @@ fn desugar_signature(
 }
 
 fn finish_signature_desugar(meta: &mut DeclMeta, ctx: DesugarCtx) {
-    meta.lifetime_params.extend(ctx.synthesized);
+    meta.params.lifetime_params.extend(ctx.synthesized);
     // Every synthesized output lifetime is outlived by every input
     // lifetime. Explicit output lifetimes are not axiomatized — the
     // user annotated them intentionally.
     for (out_lt, out_source) in &ctx.synth_output {
         for in_lt in &ctx.input {
-            meta.outlives.push(OutlivesBound::generated(
+            meta.params.outlives.push(OutlivesBound::generated(
                 in_lt.clone(),
                 out_lt.clone(),
                 GeneratedKind::LifetimeElision,
@@ -236,19 +236,19 @@ fn finish_signature_desugar(meta: &mut DeclMeta, ctx: DesugarCtx) {
 }
 
 fn desugar_struct(s: &mut StructDecl, arities: &HashMap<String, usize>) {
-    let mut ctx = DesugarCtx::new(&s.meta.lifetime_params, arities);
+    let mut ctx = DesugarCtx::new(&s.meta.params.lifetime_params, arities);
     for f in &mut s.fields {
-        desugar_decl_field_ty(&mut f.ty, &s.meta.lifetime_params, &mut ctx);
+        desugar_decl_field_ty(&mut f.ty, &s.meta.params.lifetime_params, &mut ctx);
     }
-    s.meta.lifetime_params.extend(ctx.synthesized);
+    s.meta.params.lifetime_params.extend(ctx.synthesized);
 }
 
 fn desugar_enum(e: &mut EnumDecl, arities: &HashMap<String, usize>) {
-    let mut ctx = DesugarCtx::new(&e.meta.lifetime_params, arities);
+    let mut ctx = DesugarCtx::new(&e.meta.params.lifetime_params, arities);
     for v in &mut e.variants {
-        desugar_decl_field_ty(&mut v.ty, &e.meta.lifetime_params, &mut ctx);
+        desugar_decl_field_ty(&mut v.ty, &e.meta.params.lifetime_params, &mut ctx);
     }
-    e.meta.lifetime_params.extend(ctx.synthesized);
+    e.meta.params.lifetime_params.extend(ctx.synthesized);
 }
 
 /// Struct/enum-field variant of [`desugar_type_pos`]. Ref layers still

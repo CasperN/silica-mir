@@ -42,15 +42,21 @@ use indexmap::IndexMap;
 /// param is exactly what the bounds guarantee.
 pub type ParamScope<'a> = &'a IndexMap<String, Markers>;
 
-impl DeclMeta {
-    /// Build the param scope for this decl. Params without any bounds
-    /// contribute an empty `Markers` — those params are linear inside
-    /// the decl body.
+impl ParamsIntro {
+    /// Build the param scope for this parameter introduction block.
+    /// Params without any bounds contribute an empty `Markers` — those
+    /// params are linear inside the decl body.
     pub fn param_scope(&self) -> IndexMap<String, Markers> {
         self.type_params
             .iter()
             .map(|p| (p.name.clone(), p.bounds.markers))
             .collect()
+    }
+}
+
+impl DeclMeta {
+    pub fn param_scope(&self) -> IndexMap<String, Markers> {
+        self.params.param_scope()
     }
 }
 

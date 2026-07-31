@@ -162,6 +162,17 @@ the deliberate later refinement to nested operand and projection sources.
 - Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
 - Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
 
+## Compiler design
+- To what exent should we unify the MIR and HLL AST?
+  - Declarations seem to mostly be sharable. Sharing them might make the
+  compiler simpler, especially if we eventually want a demand-driven, zig-like,
+  architecture.
+  - MIR uses `$return: &out T` instead of `-> T`
+  - MIR has `$` prefixed identifers that are illegal in the HLL
+  - MIR fn bodies are CFGs with no temporaries.
+  - MIR has `move x` and `copy x` operands.
+
+
 # Next
 - **Impl method bodies bypass most checkers.** `typecheck_impl` runs each
   impl method through `typecheck_function` (via a synthesized effective
@@ -173,3 +184,4 @@ the deliberate later refinement to nested operand and projection sources.
   `Declaration::Fn` decl that participates in the full pipeline; if
   that plan changes, impl methods need to be plumbed through the check
   passes directly.
+  - Examine `effective_impl_method`

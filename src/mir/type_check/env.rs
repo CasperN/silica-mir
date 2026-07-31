@@ -389,67 +389,68 @@ impl Env {
         let mut traits: IndexMap<String, TraitDecl> = IndexMap::new();
         let mut impls: IndexMap<(Instance, Type), ImplBlock> = IndexMap::new();
         for decl in &program.declarations {
-            let m = decl.meta();
-            // Types and traits share the type namespace: `struct Foo`
-            // and `trait Foo` collide (Rust's rule). Functions have
-            // their own namespace, so `struct Foo` and `fn Foo`
-            // coexist. Impls are anonymous — keyed by (trait, target),
-            // duplicates are a coherence error.
-            let existing = match decl {
-                Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {
-                    if types.contains_key(&m.name) {
-                        Some("type")
-                    } else if traits.contains_key(&m.name) {
-                        Some("trait")
-                    } else {
-                        None
+            if let Some(m) = decl.meta() {
+                // Types and traits share the type namespace: `struct Foo`
+                // and `trait Foo` collide (Rust's rule). Functions have
+                // their own namespace, so `struct Foo` and `fn Foo`
+                // coexist. Impls are anonymous — keyed by (trait, target),
+                // duplicates are a coherence error.
+                let existing = match decl {
+                    Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {
+                        if types.contains_key(&m.name) {
+                            Some("type")
+                        } else if traits.contains_key(&m.name) {
+                            Some("trait")
+                        } else {
+                            None
+                        }
                     }
-                }
-                Declaration::Fn(_) => {
-                    if functions.contains_key(&m.name) {
-                        Some("function")
-                    } else {
-                        None
+                    Declaration::Fn(_) => {
+                        if functions.contains_key(&m.name) {
+                            Some("function")
+                        } else {
+                            None
+                        }
                     }
+                    Declaration::Impl(_) => None,
+                };
+                if let Some(kind_word) = existing {
+                    errors.push(Diagnostic::new(
+                        DuplicateDeclaration,
+                        m.name_source,
+                        format!("Duplicate declaration of {} '{}'", kind_word, m.name),
+                    ));
+                    continue;
                 }
-                Declaration::Impl(_) => None,
-            };
-            if let Some(kind_word) = existing {
-                errors.push(Diagnostic::new(
-                    DuplicateDeclaration,
-                    m.name_source,
-                    format!("Duplicate declaration of {} '{}'", kind_word, m.name),
-                ));
-                continue;
-            }
-            match decl {
-                Declaration::Struct(s) => {
-                    types.insert(m.name.clone(), TypeDecl::Struct(s.clone()));
-                }
-                Declaration::Enum(e) => {
-                    types.insert(m.name.clone(), TypeDecl::Enum(e.clone()));
-                }
-                Declaration::Fn(f) => {
-                    functions.insert(m.name.clone(), FunctionSignature::from_function(f));
-                }
-                Declaration::Trait(t) => {
-                    traits.insert(m.name.clone(), t.clone());
-                }
-                Declaration::Impl(imp) => {
-                    let key = (imp.trait_path.clone(), imp.target.clone());
-                    if impls.contains_key(&key) {
-                        errors.push(Diagnostic::new(
-                            DuplicateDeclaration,
-                            imp.meta.name_source,
-                            format!(
-                                "Duplicate impl of trait '{}' for target type {}",
-                                imp.trait_path, imp.target,
-                            ),
-                        ));
-                        continue;
+                match decl {
+                    Declaration::Struct(s) => {
+                        types.insert(m.name.clone(), TypeDecl::Struct(s.clone()));
                     }
-                    impls.insert(key, imp.clone());
+                    Declaration::Enum(e) => {
+                        types.insert(m.name.clone(), TypeDecl::Enum(e.clone()));
+                    }
+                    Declaration::Fn(f) => {
+                        functions.insert(m.name.clone(), FunctionSignature::from_function(f));
+                    }
+                    Declaration::Trait(t) => {
+                        traits.insert(m.name.clone(), t.clone());
+                    }
+                    Declaration::Impl(_) => {}
                 }
+            } else if let Declaration::Impl(imp) = decl {
+                let key = (imp.trait_path.clone(), imp.target.clone());
+                if impls.contains_key(&key) {
+                    errors.push(Diagnostic::new(
+                        DuplicateDeclaration,
+                        imp.params.source,
+                        format!(
+                            "Duplicate impl of trait '{}' for target type {}",
+                            imp.trait_path, imp.target,
+                        ),
+                    ));
+                    continue;
+                }
+                impls.insert(key, imp.clone());
             }
         }
 
@@ -493,17 +494,17 @@ impl Env {
                 // loophole needs the elision-backfill work tracked in
                 // the punchlist.
                 if !lifetime_args.is_empty()
-                    && lifetime_args.len() != decl_meta.lifetime_params.len()
+                    && lifetime_args.len() != decl_meta.params.lifetime_params.len()
                 {
                     return Err(TypeValidationError::new(
                         TypeValidationErrorKind::LifetimeArgArity {
                             type_name: name.clone(),
-                            expected: decl_meta.lifetime_params.len(),
+                            expected: decl_meta.params.lifetime_params.len(),
                             found: lifetime_args.len(),
                         },
                     ));
                 }
-                let decl_params: &[TypeParam] = &decl_meta.type_params;
+                let decl_params: &[TypeParam] = &decl_meta.params.type_params;
                 if args.len() != decl_params.len() {
                     return Err(TypeValidationError::new(
                         TypeValidationErrorKind::TypeArgArity {
@@ -860,10 +861,10 @@ impl Env {
                         )))
                     }
                 };
-                if type_args.len() != e_decl.meta.type_params.len() {
+                if type_args.len() != e_decl.meta.params.type_params.len() {
                     return Err(err(TypeResolutionErrorKind::EnumTypeArgArity {
                         enum_name: enum_name.clone(),
-                        expected: e_decl.meta.type_params.len(),
+                        expected: e_decl.meta.params.type_params.len(),
                         found: type_args.len(),
                     }));
                 }

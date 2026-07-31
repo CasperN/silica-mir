@@ -1538,9 +1538,12 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                lifetime_params,
-                outlives,
-                type_params,
+                params: ParamsIntro {
+                    lifetime_params,
+                    outlives,
+                    type_params,
+                    source: SourceInfo::written(span_of(node)),
+                },
                 markers,
             },
             fields,
@@ -1621,9 +1624,12 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                lifetime_params,
-                outlives,
-                type_params,
+                params: ParamsIntro {
+                    lifetime_params,
+                    outlives,
+                    type_params,
+                    source: SourceInfo::written(span_of(node)),
+                },
                 markers,
             },
             variants,
@@ -1703,9 +1709,12 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                lifetime_params,
-                outlives,
-                type_params,
+                params: ParamsIntro {
+                    lifetime_params,
+                    outlives,
+                    type_params,
+                    source: SourceInfo::written(span_of(node)),
+                },
                 markers: Markers::empty(),
             },
             methods,
@@ -1814,17 +1823,11 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Some(ImplBlock {
-            meta: DeclMeta {
-                // Impls are anonymous; the name field is unused (env's
-                // collision check skips Impl). `name_source` points at
-                // the trait name so any accidental usage lands somewhere
-                // legible in the source rather than at 0:0.
-                name: String::new(),
-                name_source: SourceInfo::written(trait_name_span),
+            params: ParamsIntro {
                 lifetime_params,
                 outlives,
                 type_params,
-                markers: Markers::empty(),
+                source: SourceInfo::written(trait_name_span),
             },
             trait_path,
             target,
@@ -1975,9 +1978,12 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                lifetime_params,
-                outlives,
-                type_params,
+                params: ParamsIntro {
+                    lifetime_params,
+                    outlives,
+                    type_params,
+                    source: SourceInfo::written(span_of(node)),
+                },
                 markers: trivial_markers(),
             },
             is_extern,
@@ -2134,10 +2140,10 @@ mod tests {
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add_impl");
             assert!(f.is_extern);
-            assert_eq!(f.meta.lifetime_params.len(), 1);
-            assert_eq!(f.meta.lifetime_params[0].0, "a");
-            assert_eq!(f.meta.type_params.len(), 1);
-            assert_eq!(f.meta.type_params[0].name, "T");
+            assert_eq!(f.meta.params.lifetime_params.len(), 1);
+            assert_eq!(f.meta.params.lifetime_params[0].0, "a");
+            assert_eq!(f.meta.params.type_params.len(), 1);
+            assert_eq!(f.meta.params.type_params[0].name, "T");
             assert_eq!(f.params.len(), 2);
             assert!(f.body.is_none());
         } else {

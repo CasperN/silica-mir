@@ -850,16 +850,40 @@ impl Function {
     }
 }
 
+
+/// A set of generic parameters and bounds introduced in either a declaration or impl block.
+// e.g. struct Foo<A: Bar, 'b: 'c>
+//                ^^^^^^^^^^^^^^^^
+// e.g. impl<A: Bar, 'b: 'c> Baz for A { .. }
+//          ^^^^^^^^^^^^^^^^
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ParamsIntro {
+    pub lifetime_params: Vec<LifetimeParam>,
+    pub outlives: Vec<OutlivesBound>,
+    pub type_params: Vec<TypeParam>,
+    pub source: SourceInfo,  // Source of the introducer <...>.
+}
+
+impl ParamsIntro {
+    pub fn empty(source: SourceInfo) -> Self {
+        Self {
+            lifetime_params: Vec::new(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            source,
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.lifetime_params.is_empty() && self.outlives.is_empty() && self.type_params.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DeclMeta {
     pub name: String,
     pub name_source: SourceInfo,
-    pub lifetime_params: Vec<LifetimeParam>,
-    /// Elision-derived outlives axioms on the function's signature.
-    /// Each `(a, b)` means "region `a` outlives region `b`" is a
-    /// known fact holding for any invocation.
-    pub outlives: Vec<OutlivesBound>,
-    pub type_params: Vec<TypeParam>,
+    pub params: ParamsIntro,
     pub markers: Markers,
 }
 
@@ -903,7 +927,7 @@ pub struct TraitDecl {
 /// the trait's type_params from `trait_path`'s arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImplBlock {
-    pub meta: DeclMeta,
+    pub params: ParamsIntro,
     pub trait_path: Instance,
     pub target: Type,
     pub methods: Vec<Function>,
@@ -920,15 +944,25 @@ pub enum Declaration {
 
 impl Declaration {
     /// Shared declaration metadata (name, generics, markers). Present
-    /// on every variant at the same field name — this accessor lets
-    /// callers read the metadata without pattern-matching on the kind.
-    pub fn meta(&self) -> &DeclMeta {
+    /// on Struct, Enum, Fn, and Trait variants.
+    pub fn meta(&self) -> Option<&DeclMeta> {
         match self {
-            Declaration::Struct(s) => &s.meta,
-            Declaration::Enum(e) => &e.meta,
-            Declaration::Fn(f) => &f.meta,
-            Declaration::Trait(t) => &t.meta,
-            Declaration::Impl(i) => &i.meta,
+            Declaration::Struct(s) => Some(&s.meta),
+            Declaration::Enum(e) => Some(&e.meta),
+            Declaration::Fn(f) => Some(&f.meta),
+            Declaration::Trait(t) => Some(&t.meta),
+            Declaration::Impl(_) => None,
+        }
+    }
+
+    /// Shared parameter introduction for all declarations (including impl blocks).
+    pub fn params(&self) -> &ParamsIntro {
+        match self {
+            Declaration::Struct(s) => &s.meta.params,
+            Declaration::Enum(e) => &e.meta.params,
+            Declaration::Fn(f) => &f.meta.params,
+            Declaration::Trait(t) => &t.meta.params,
+            Declaration::Impl(i) => &i.params,
         }
     }
 }

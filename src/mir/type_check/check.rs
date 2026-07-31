@@ -36,8 +36,17 @@ fn validation_diagnostic(
     meta: &DeclMeta,
     context: String,
 ) -> Diagnostic {
+    validation_diagnostic_params(error, source, &meta.params, context)
+}
+
+fn validation_diagnostic_params(
+    error: TypeValidationError,
+    source: SourceInfo,
+    params: &crate::mir::ast::ParamsIntro,
+    context: String,
+) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
-    let scope = format.scope(meta);
+    let scope = format.scope_params(params);
     let reason = error.message(&mut format, &scope);
     format.finish(Diagnostic::new(
         InvalidDeclaredType,
@@ -59,20 +68,20 @@ fn lifetime_scope(params: &[LifetimeParam]) -> BTreeSet<Lifetime> {
 /// - `'static` is reserved and cannot be a user param.
 /// - Duplicates are rejected (any subsequent occurrence).
 /// - Outlives clauses must reference in-scope lifetimes on both sides.
-fn validate_lifetime_decls(
-    meta: &crate::mir::ast::DeclMeta,
-    container_kind: &str,
+fn validate_lifetime_params(
+    params: &crate::mir::ast::ParamsIntro,
+    container_desc: &str,
     d: &mut Diagnostics,
 ) {
     let mut seen: BTreeSet<&Lifetime> = BTreeSet::new();
-    for lt in &meta.lifetime_params {
+    for lt in &params.lifetime_params {
         if lt.lifetime.0 == "static" {
             d.push_error(Diagnostic::new(
                 ReservedLifetimeName,
                 lt.source,
                 format!(
-                    "In {} '{}': 'static is a reserved lifetime and cannot be declared as a parameter",
-                    container_kind, meta.name,
+                    "In {}: 'static is a reserved lifetime and cannot be declared as a parameter",
+                    container_desc,
                 ),
             ));
         }
@@ -81,27 +90,36 @@ fn validate_lifetime_decls(
                 DuplicateLifetimeParam,
                 lt.source,
                 format!(
-                    "In {} '{}': lifetime parameter {} is declared more than once",
-                    container_kind, meta.name, lt,
+                    "In {}: lifetime parameter {} is declared more than once",
+                    container_desc, lt,
                 ),
             ));
         }
     }
-    let lt_scope = lifetime_scope(&meta.lifetime_params);
-    for bound in &meta.outlives {
+    let lt_scope = lifetime_scope(&params.lifetime_params);
+    for bound in &params.outlives {
         for lt in [&bound.longer, &bound.shorter] {
             if !lt_scope.contains(lt) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
                     bound.source,
                     format!(
-                        "In {} '{}': outlives clause references undeclared lifetime {}",
-                        container_kind, meta.name, lt,
+                        "In {}: outlives clause references undeclared lifetime {}",
+                        container_desc, lt,
                     ),
                 ));
             }
         }
     }
+}
+
+fn validate_lifetime_decls(
+    meta: &crate::mir::ast::DeclMeta,
+    container_kind: &str,
+    d: &mut Diagnostics,
+) {
+    let desc = format!("{} '{}'", container_kind, meta.name);
+    validate_lifetime_params(&meta.params, &desc, d);
 }
 
 /// Collect all Named lifetimes referenced in `ty` that aren't in
@@ -176,7 +194,7 @@ impl Env {
             };
             let meta = type_decl.meta();
             let scope = meta.param_scope();
-            let lt_scope = lifetime_scope(&meta.lifetime_params);
+            let lt_scope = lifetime_scope(&meta.params.lifetime_params);
             let mut seen: HashSet<&str> = HashSet::new();
             for (name, ty, source) in items {
                 if !seen.insert(name) {
@@ -244,7 +262,7 @@ impl Env {
     fn typecheck_trait(&self, trait_decl: &TraitDecl, d: &mut Diagnostics) {
         let meta = &trait_decl.meta;
         validate_lifetime_decls(meta, "trait", d);
-        let trait_lt_scope = lifetime_scope(&meta.lifetime_params);
+        let trait_lt_scope = lifetime_scope(&meta.params.lifetime_params);
 
         // Trait-level type-param scope, augmented with `Self` (linear
         // marker set — an impl-side target type contributes its own
@@ -258,11 +276,11 @@ impl Env {
 
             // Effective scope = trait scope + method's own type params.
             let mut scope = trait_scope.clone();
-            for p in &method_meta.type_params {
+            for p in &method_meta.params.type_params {
                 scope.insert(p.name.clone(), p.bounds.markers);
             }
             let mut lt_scope = trait_lt_scope.clone();
-            for lp in &method_meta.lifetime_params {
+            for lp in &method_meta.params.lifetime_params {
                 lt_scope.insert(lp.lifetime.clone());
             }
 
@@ -302,17 +320,17 @@ impl Env {
     /// `Self` has already been desugared to the impl's target type by
     /// [`crate::mir::desugar::self_alias::desugar_self_alias`], so
     /// nothing here has to reintroduce it into scope.
-    fn effective_impl_method(header: &DeclMeta, method: &Function) -> Function {
+    fn effective_impl_method(header: &ParamsIntro, method: &Function) -> Function {
         let mut meta = method.meta.clone();
         let mut lps = header.lifetime_params.clone();
-        lps.extend(std::mem::take(&mut meta.lifetime_params));
-        meta.lifetime_params = lps;
+        lps.extend(std::mem::take(&mut meta.params.lifetime_params));
+        meta.params.lifetime_params = lps;
         let mut outs = header.outlives.clone();
-        outs.extend(std::mem::take(&mut meta.outlives));
-        meta.outlives = outs;
+        outs.extend(std::mem::take(&mut meta.params.outlives));
+        meta.params.outlives = outs;
         let mut tps = header.type_params.clone();
-        tps.extend(std::mem::take(&mut meta.type_params));
-        meta.type_params = tps;
+        tps.extend(std::mem::take(&mut meta.params.type_params));
+        meta.params.type_params = tps;
         Function {
             meta,
             is_extern: method.is_extern,
@@ -323,8 +341,8 @@ impl Env {
     }
 
     fn typecheck_impl(&self, imp: &ImplBlock, d: &mut Diagnostics) {
-        let header = &imp.meta;
-        validate_lifetime_decls(header, "impl", d);
+        let header = &imp.params;
+        validate_lifetime_params(header, "impl", d);
         let header_lt_scope = lifetime_scope(&header.lifetime_params);
         let header_scope = header.param_scope();
 
@@ -338,51 +356,43 @@ impl Env {
         let signature_inputs_start = d.error_count();
 
         if let Err(e) = self.validate_type(&imp.target, &header_scope) {
-            d.push_error(validation_diagnostic(
+            d.push_error(validation_diagnostic_params(
                 e,
                 imp.target.source,
                 header,
                 format!("In impl of '{}', target type", imp.trait_path.name),
             ));
         }
-        for lt in undeclared_lifetimes(&imp.target, &header_lt_scope) {
-            d.push_error(Diagnostic::new(
-                UndeclaredLifetime,
-                imp.target.source,
-                format!(
-                    "In impl of '{}', target type: undeclared lifetime {}",
-                    imp.trait_path.name, lt,
-                ),
-            ));
-        }
 
         for arg in &imp.trait_path.type_args {
             if let Err(e) = self.validate_type(arg, &header_scope) {
-                d.push_error(validation_diagnostic(
+                d.push_error(validation_diagnostic_params(
                     e,
                     arg.source,
                     header,
                     format!("In impl of '{}', trait type argument", imp.trait_path.name),
                 ));
             }
-            for lt in undeclared_lifetimes(arg, &header_lt_scope) {
+        }
+
+        for (i, lt_arg) in imp.trait_path.lifetime_args.iter().enumerate() {
+            if !header_lt_scope.contains(lt_arg) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
-                    arg.source,
+                    header.source,
                     format!(
-                        "In impl of '{}', trait type argument: undeclared lifetime {}",
-                        imp.trait_path.name, lt,
+                        "Impl trait path lifetime argument {} references undeclared lifetime {}",
+                        i + 1,
+                        lt_arg,
                     ),
                 ));
             }
         }
 
-        // Resolve the trait. Missing trait → skip the rest (nothing to
-        // check against; still emit the error).
         let Some(trait_decl) = self.traits.get(&imp.trait_path.name) else {
             d.push_error(Diagnostic::new(
                 ImplForUnknownTrait,
-                header.name_source,
+                header.source,
                 format!("Impl references undeclared trait '{}'", imp.trait_path.name),
             ));
             return;
@@ -395,27 +405,27 @@ impl Env {
         // check emit misleading substitution-mismatch errors instead of a
         // targeted arity diagnostic.
         let trait_meta = &trait_decl.meta;
-        if imp.trait_path.type_args.len() != trait_meta.type_params.len() {
+        if imp.trait_path.type_args.len() != trait_meta.params.type_params.len() {
             d.push_error(Diagnostic::new(
                 ImplTraitArgArity,
-                header.name_source,
+                header.source,
                 format!(
                     "Trait '{}' expects {} type argument(s), got {}",
                     imp.trait_path.name,
-                    trait_meta.type_params.len(),
+                    trait_meta.params.type_params.len(),
                     imp.trait_path.type_args.len(),
                 ),
             ));
             return;
         }
-        if imp.trait_path.lifetime_args.len() != trait_meta.lifetime_params.len() {
+        if imp.trait_path.lifetime_args.len() != trait_meta.params.lifetime_params.len() {
             d.push_error(Diagnostic::new(
                 ImplTraitArgArity,
-                header.name_source,
+                header.source,
                 format!(
                     "Trait '{}' expects {} lifetime argument(s), got {}",
                     imp.trait_path.name,
-                    trait_meta.lifetime_params.len(),
+                    trait_meta.params.lifetime_params.len(),
                     imp.trait_path.lifetime_args.len(),
                 ),
             ));
@@ -438,7 +448,7 @@ impl Env {
             bounds: Bounds::default(),
             source: self_source,
         }];
-        subst_type_params.extend(trait_meta.type_params.iter().cloned());
+        subst_type_params.extend(trait_meta.params.type_params.iter().cloned());
         let mut subst_type_args: Vec<Type> = vec![imp.target.clone()];
         subst_type_args.extend(imp.trait_path.type_args.iter().cloned());
 
@@ -470,7 +480,7 @@ impl Env {
             let Some(impl_method) = impl_by_name.get(trait_method.meta.name.as_str()) else {
                 d.push_error(Diagnostic::new(
                     ImplMissingTraitMethod,
-                    header.name_source,
+                    header.source,
                     format!(
                         "Impl of '{}' is missing method '{}'",
                         imp.trait_path.name, trait_method.meta.name,
@@ -483,8 +493,8 @@ impl Env {
             // same shape of type_params and lifetime_params as the
             // trait method. Param NAMES may differ (impl may rename
             // them); positions and marker bounds must match.
-            if trait_method.meta.lifetime_params.len()
-                != impl_method.meta.lifetime_params.len()
+            if trait_method.meta.params.lifetime_params.len()
+                != impl_method.meta.params.lifetime_params.len()
             {
                 d.push_error(Diagnostic::new(
                     ImplMethodSignatureMismatch,
@@ -492,21 +502,21 @@ impl Env {
                     format!(
                         "Impl method '{}' declares {} lifetime parameter(s), trait declares {}",
                         impl_method.meta.name,
-                        impl_method.meta.lifetime_params.len(),
-                        trait_method.meta.lifetime_params.len(),
+                        impl_method.meta.params.lifetime_params.len(),
+                        trait_method.meta.params.lifetime_params.len(),
                     ),
                 ));
                 continue;
             }
-            if trait_method.meta.type_params.len() != impl_method.meta.type_params.len() {
+            if trait_method.meta.params.type_params.len() != impl_method.meta.params.type_params.len() {
                 d.push_error(Diagnostic::new(
                     ImplMethodSignatureMismatch,
                     impl_method.meta.name_source,
                     format!(
                         "Impl method '{}' declares {} type parameter(s), trait declares {}",
                         impl_method.meta.name,
-                        impl_method.meta.type_params.len(),
-                        trait_method.meta.type_params.len(),
+                        impl_method.meta.params.type_params.len(),
+                        trait_method.meta.params.type_params.len(),
                     ),
                 ));
                 continue;
@@ -514,9 +524,10 @@ impl Env {
             let mut method_generics_mismatch = false;
             for (t_tp, i_tp) in trait_method
                 .meta
+                .params
                 .type_params
                 .iter()
-                .zip(impl_method.meta.type_params.iter())
+                .zip(impl_method.meta.params.type_params.iter())
             {
                 // Compares the whole `Bounds` (markers + traits). The
                 // traits half is always empty until trait-bound syntax
@@ -561,24 +572,25 @@ impl Env {
             // equal after substitution: rewrite each `Param(U)` in the
             // trait sig to `Param(V)` at the impl side.
             let mut method_type_params = subst_type_params.clone();
-            method_type_params.extend(trait_method.meta.type_params.iter().cloned());
+            method_type_params.extend(trait_method.meta.params.type_params.iter().cloned());
             let mut method_type_args = subst_type_args.clone();
-            for i_tp in &impl_method.meta.type_params {
+            for i_tp in &impl_method.meta.params.type_params {
                 method_type_args.push(Type::new(
                     TypeKind::Param(i_tp.name.clone()),
                     i_tp.source,
                 ));
             }
             let mut method_lifetime_params: Vec<Lifetime> = trait_meta
+                .params
                 .lifetime_params
                 .iter()
                 .map(|lp| lp.lifetime.clone())
                 .collect();
             method_lifetime_params
-                .extend(trait_method.meta.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
+                .extend(trait_method.meta.params.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
             let mut method_lifetime_args: Vec<Lifetime> = imp.trait_path.lifetime_args.clone();
             method_lifetime_args
-                .extend(impl_method.meta.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
+                .extend(impl_method.meta.params.lifetime_params.iter().map(|lp| lp.lifetime.clone()));
 
             for (i, (t_param, i_param)) in trait_method
                 .params
@@ -623,7 +635,7 @@ impl Env {
 
     fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
         let scope = f.meta.param_scope();
-        let lt_scope = lifetime_scope(&f.meta.lifetime_params);
+        let lt_scope = lifetime_scope(&f.meta.params.lifetime_params);
         validate_lifetime_decls(&f.meta, "function", d);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {
@@ -763,7 +775,7 @@ impl Env {
         d: &mut Diagnostics,
     ) {
         let scope = func.meta.param_scope();
-        let lt_scope = lifetime_scope(&func.meta.lifetime_params);
+        let lt_scope = lifetime_scope(&func.meta.params.lifetime_params);
         for stmt in &block.statements {
             self.validate_stmt_embedded_types(func, block, stmt, &scope, &lt_scope, d);
             if let Err(e) = self.typecheck_statement(func, block, stmt, locals) {
