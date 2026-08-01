@@ -13,13 +13,14 @@ use crate::common::{
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::mir::parser::ParserCode;
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 use tree_sitter::{Node, Parser as TSParser};
 
-/// Names of type parameters in scope for the enclosing decl. Threaded
-/// explicitly through `map_type`; identifiers in scope resolve to
-/// `TypeKind::Param`, otherwise to `TypeKind::Custom`.
-type TypeScope = BTreeSet<String>;
+#[derive(Clone, Default)]
+struct TypeScope {
+    params: BTreeSet<String>,
+    self_ty: Option<Type>,
+}
 
 extern "C" {
     fn tree_sitter_silica() -> *const std::ffi::c_void;
@@ -173,6 +174,24 @@ impl Parser {
         Diagnostic::new(code, SourceInfo::written(span_of(node)), msg)
     }
 
+    fn reject_self_ident(
+        &self,
+        name: &str,
+        node: Node,
+        position: &str,
+        d: &mut Diagnostics,
+    ) -> bool {
+        if name != "Self" {
+            return false;
+        }
+        d.push_error(self.diag(
+            node,
+            ParserCode::ReservedIdent,
+            format!("'Self' is reserved and cannot be used as {}", position),
+        ));
+        true
+    }
+
     fn lit_diag<T>(&self, res: Result<T, String>, node: Node, d: &mut Diagnostics) -> Option<T> {
         match res {
             Ok(v) => Some(v),
@@ -259,6 +278,8 @@ impl Parser {
             "struct_decl" => Some(Declaration::Struct(self.map_struct_decl(child, d)?)),
             "enum_decl" => Some(Declaration::Enum(self.map_enum_decl(child, d)?)),
             "fn_decl" => Some(Declaration::Fn(self.map_fn_decl(child, d)?)),
+            "trait_decl" => Some(Declaration::Trait(self.map_trait_decl(child, d)?)),
+            "impl_decl" => Some(Declaration::Impl(self.map_impl_decl(child, d)?)),
             _ => {
                 d.push_error(self.diag(
                     child,
@@ -276,10 +297,13 @@ impl Parser {
             return None;
         };
         let name = self.get_text(name_node).to_string();
+        if self.reject_self_ident(&name, name_node, "a struct name", d) {
+            return None;
+        }
         let name_span = span_of(name_node);
         let span = span_of(node);
 
-        let mut scope: TypeScope = BTreeSet::new();
+        let mut scope = TypeScope::default();
         let mut cursor = node.walk();
         let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
@@ -354,10 +378,13 @@ impl Parser {
             return None;
         };
         let name = self.get_text(name_node).to_string();
+        if self.reject_self_ident(&name, name_node, "an enum name", d) {
+            return None;
+        }
         let name_span = span_of(name_node);
         let span = span_of(node);
 
-        let mut scope: TypeScope = BTreeSet::new();
+        let mut scope = TypeScope::default();
         let mut cursor = node.walk();
         let (lifetime_params, type_params, outlives) = if let Some(tp_node) = node
             .children(&mut cursor)
@@ -427,6 +454,15 @@ impl Parser {
     }
 
     fn map_fn_decl(&self, node: Node, d: &mut Diagnostics) -> Option<FnDecl> {
+        self.map_fn_decl_in_scope(node, &TypeScope::default(), d)
+    }
+
+    fn map_fn_decl_in_scope(
+        &self,
+        node: Node,
+        enclosing_scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<FnDecl> {
         let errors_before = d.error_count();
         let Some(name_node) = node.child_by_field_name("name") else {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "fn decl missing name"));
@@ -451,7 +487,7 @@ impl Parser {
             (None, None)
         };
 
-        let mut scope: TypeScope = BTreeSet::new();
+        let mut scope = enclosing_scope.clone();
         let mut cursor = node.walk();
         let type_params_result = if let Some(tp_node) = node
             .children(&mut cursor)
@@ -517,6 +553,182 @@ impl Parser {
             ret_ty,
             body,
             source: SourceInfo::written(span),
+        })
+    }
+
+    fn map_trait_decl(&self, node: Node, d: &mut Diagnostics) -> Option<TraitDecl> {
+        let Some(name_node) = node.child_by_field_name("name") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "trait decl missing name"));
+            return None;
+        };
+        let name = self.get_text(name_node).to_string();
+        if self.reject_self_ident(&name, name_node, "a trait name", d) {
+            return None;
+        }
+        let mut scope = TypeScope::default();
+        let mut cursor = node.walk();
+        let (lifetime_params, type_params, outlives) = if let Some(params) = node
+            .children(&mut cursor)
+            .find(|child| child.kind() == "type_params")
+        {
+            self.map_type_params(params, &mut scope, d)?
+        } else {
+            (Vec::new(), Vec::new(), Vec::new())
+        };
+        scope.params.insert("Self".to_string());
+
+        let mut methods = Vec::new();
+        let mut names = HashSet::new();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "fn_decl" {
+                continue;
+            }
+            let method = self.map_fn_decl_in_scope(child, &scope, d)?;
+            if method.abi.is_some()
+                || child
+                    .children(&mut child.walk())
+                    .any(|part| part.kind() == "extern")
+            {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("trait method '{}' cannot be extern", method.name),
+                ));
+                continue;
+            }
+            if method.is_unsafe {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("trait method '{}' cannot be unsafe", method.name),
+                ));
+                continue;
+            }
+            if method.body.is_some() {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("trait method '{}' must not have a body", method.name),
+                ));
+                continue;
+            }
+            if !names.insert(method.name.clone()) {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("duplicate trait method '{}'", method.name),
+                ));
+                continue;
+            }
+            methods.push(method);
+        }
+
+        Some(TraitDecl {
+            name,
+            lifetime_params,
+            outlives,
+            type_params,
+            methods,
+            source: SourceInfo::written(span_of(node)),
+        })
+    }
+
+    fn map_impl_decl(&self, node: Node, d: &mut Diagnostics) -> Option<ImplBlock> {
+        let Some(trait_name_node) = node.child_by_field_name("trait_name") else {
+            d.push_error(self.diag(
+                node,
+                ParserCode::MalformedCst,
+                "impl decl missing trait name",
+            ));
+            return None;
+        };
+        if self.reject_self_ident(
+            self.get_text(trait_name_node),
+            trait_name_node,
+            "a trait reference",
+            d,
+        ) {
+            return None;
+        }
+        let mut scope = TypeScope::default();
+        let mut cursor = node.walk();
+        let (lifetime_params, type_params, outlives) = if let Some(params) = node
+            .children(&mut cursor)
+            .find(|child| child.kind() == "type_params")
+        {
+            self.map_type_params(params, &mut scope, d)?
+        } else {
+            (Vec::new(), Vec::new(), Vec::new())
+        };
+        let (trait_lifetimes, trait_types) = if let Some(args) = node
+            .children(&mut cursor)
+            .find(|child| child.kind() == "type_args")
+        {
+            self.map_type_args(args, &scope, d)?
+        } else {
+            (Vec::new(), Vec::new())
+        };
+        let Some(target_node) = node.child_by_field_name("target") else {
+            d.push_error(self.diag(node, ParserCode::MalformedCst, "impl decl missing target"));
+            return None;
+        };
+        let target = self.map_type(target_node, &scope, d)?;
+        scope.self_ty = Some(target.clone());
+
+        let mut methods = Vec::new();
+        let mut names = HashSet::new();
+        for child in node.children(&mut cursor) {
+            if child.kind() != "fn_decl" {
+                continue;
+            }
+            let method = self.map_fn_decl_in_scope(child, &scope, d)?;
+            if method.abi.is_some()
+                || child
+                    .children(&mut child.walk())
+                    .any(|part| part.kind() == "extern")
+            {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("impl method '{}' cannot be extern", method.name),
+                ));
+                continue;
+            }
+            if method.is_unsafe {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("impl method '{}' cannot be unsafe", method.name),
+                ));
+                continue;
+            }
+            if method.body.is_none() {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("impl method '{}' requires a body", method.name),
+                ));
+                continue;
+            }
+            if !names.insert(method.name.clone()) {
+                d.push_error(self.diag(
+                    child,
+                    ParserCode::MalformedCst,
+                    format!("duplicate impl method '{}'", method.name),
+                ));
+                continue;
+            }
+            methods.push(method);
+        }
+
+        Some(ImplBlock {
+            lifetime_params,
+            outlives,
+            type_params,
+            trait_path: Instance::new(self.get_text(trait_name_node), trait_lifetimes, trait_types),
+            target,
+            methods,
+            source: SourceInfo::written(span_of(node)),
         })
     }
 
@@ -702,7 +914,12 @@ impl Parser {
         args: Vec<Type>,
         scope: &TypeScope,
     ) -> TypeKind {
-        if lifetimes.is_empty() && args.is_empty() && scope.contains(name) {
+        if name == "Self" && lifetimes.is_empty() && args.is_empty() {
+            if let Some(self_ty) = &scope.self_ty {
+                return self_ty.kind.clone();
+            }
+        }
+        if lifetimes.is_empty() && args.is_empty() && scope.params.contains(name) {
             TypeKind::Param(name.to_string())
         } else {
             TypeKind::Custom(Instance::new(name.to_string(), lifetimes, args))
@@ -767,7 +984,11 @@ impl Parser {
                         continue;
                     };
                     let pname = self.get_text(name_node).to_string();
-                    if scope.contains(&pname) {
+                    if self.reject_self_ident(&pname, name_node, "a type parameter", d) {
+                        return None;
+                    }
+                    if scope.params.contains(&pname) || (pname == "Self" && scope.self_ty.is_some())
+                    {
                         d.push_error(self.diag(
                             name_node,
                             ParserCode::MalformedCst,
@@ -783,7 +1004,7 @@ impl Parser {
                     } else {
                         Markers::empty()
                     };
-                    scope.insert(pname.clone());
+                    scope.params.insert(pname.clone());
                     types.push(TypeParam {
                         name: pname,
                         bounds: Bounds::from_markers(markers),
@@ -1465,7 +1686,7 @@ impl Parser {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "struct constr missing name"));
             return None;
         };
-        let name = self.get_text(name_node).to_string();
+        let name = self.resolve_constructor_name(self.get_text(name_node), scope);
         let mut fields = Vec::new();
         let mut cursor = node.walk();
         for c in node.children(&mut cursor) {
@@ -1518,12 +1739,25 @@ impl Parser {
         };
         Some(Expr {
             kind: ExprKind::EnumConstr(
-                self.get_text(name_node).to_string(),
+                self.resolve_constructor_name(self.get_text(name_node), scope),
                 self.get_text(variant_node).to_string(),
                 Box::new(self.map_expr(payload_node, scope, d)?),
             ),
             source: SourceInfo::written(span),
         })
+    }
+
+    fn resolve_constructor_name(&self, name: &str, scope: &TypeScope) -> String {
+        if name == "Self" {
+            if let Some(Type {
+                kind: TypeKind::Custom(instance),
+                ..
+            }) = &scope.self_ty
+            {
+                return instance.name.clone();
+            }
+        }
+        name.to_string()
     }
 
     /// True if `node` is any expression-carrying node kind that

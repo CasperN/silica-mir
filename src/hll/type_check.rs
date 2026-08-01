@@ -673,6 +673,7 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
                     f.type_params.iter().map(|tp| tp.name.clone()).collect(),
                 );
             }
+            Declaration::Trait(_) | Declaration::Impl(_) => {}
         }
     }
 
@@ -703,45 +704,46 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
                 env.validate_type(&f.ret_ty, &scope, d);
                 d.annotate_errors_in_function(errors_before, &f.name);
             }
+            Declaration::Trait(t) => {
+                for method in &t.methods {
+                    let mut params = t.type_params.clone();
+                    params.push(TypeParam {
+                        name: "Self".to_string(),
+                        bounds: Bounds::default(),
+                        source: t.source,
+                    });
+                    params.extend(method.type_params.clone());
+                    validate_fn_signature(&env, method, &params, d);
+                }
+            }
+            Declaration::Impl(i) => {
+                let impl_scope = type_params_scope(&i.type_params);
+                env.validate_type(&i.target, &impl_scope, d);
+                for arg in &i.trait_path.type_args {
+                    env.validate_type(arg, &impl_scope, d);
+                }
+                for method in &i.methods {
+                    let mut params = i.type_params.clone();
+                    params.extend(method.type_params.clone());
+                    validate_fn_signature(&env, method, &params, d);
+                }
+            }
         }
     }
 
     // Typecheck function bodies
     for decl in &program.declarations {
-        if let Declaration::Fn(f) = decl {
-            // Extern fn declarations carry no body; validate the ABI
-            // string (bare `extern` or `extern "C"` only for now) and
-            // skip body-checking. Signature was already registered
-            // into `env.functions` above.
-            let Some(body) = &f.body else {
-                if let Some(abi) = &f.abi {
-                    if abi != "C" {
-                        // Prefer the ABI string's span; fall back to
-                        // the whole decl if it isn't populated (safety
-                        // net — parser always fills it when abi is Some).
-                        let source = f.abi_source.unwrap_or(f.source);
-                        d.push_error(source_diagnostic(
-                            HllTypeCheckCode::UnknownAbi,
-                            source,
-                            format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
-                        ));
-                    }
-                }
-                continue;
-            };
-            env.current_type_params = type_params_scope(&f.type_params);
-            env.push_scope();
-            env.current_ret_ty = Some(f.ret_ty.clone());
-            env.in_unsafe = f.is_unsafe;
-            for param in &f.params {
-                env.insert_var(param.name.clone(), param.ty.clone());
+        match decl {
+            Declaration::Fn(f) => {
+                validate_extern_abi(f, d);
+                check_fn_body(&mut env, &mut subst, &mut types, f, &[], d);
             }
-            let errors_before = d.error_count();
-            check_inner(&mut env, &mut subst, body, &f.ret_ty, &mut types, d);
-            d.annotate_errors_in_function(errors_before, &f.name);
-            env.pop_scope();
-            env.in_unsafe = false;
-            env.current_type_params = HashMap::new();
+            Declaration::Impl(i) => {
+                for method in &i.methods {
+                    check_fn_body(&mut env, &mut subst, &mut types, method, &i.type_params, d);
+                }
+            }
+            Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {}
         }
     }
 
@@ -771,6 +773,63 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
     }
 
     resolved_types
+}
+
+fn validate_fn_signature(
+    env: &TypeEnv,
+    function: &FnDecl,
+    effective_params: &[TypeParam],
+    d: &mut Diagnostics,
+) {
+    let scope = type_params_scope(effective_params);
+    let errors_before = d.error_count();
+    for param in &function.params {
+        env.validate_type(&param.ty, &scope, d);
+    }
+    env.validate_type(&function.ret_ty, &scope, d);
+    d.annotate_errors_in_function(errors_before, &function.name);
+}
+
+fn check_fn_body(
+    env: &mut TypeEnv,
+    subst: &mut Subst,
+    types: &mut ExpressionTypes,
+    function: &FnDecl,
+    enclosing_params: &[TypeParam],
+    d: &mut Diagnostics,
+) {
+    let Some(body) = &function.body else { return };
+
+    let mut effective_params = enclosing_params.to_vec();
+    effective_params.extend(function.type_params.clone());
+    env.current_type_params = type_params_scope(&effective_params);
+    env.push_scope();
+    env.current_ret_ty = Some(function.ret_ty.clone());
+    env.in_unsafe = function.is_unsafe;
+    for param in &function.params {
+        env.insert_var(param.name.clone(), param.ty.clone());
+    }
+    let errors_before = d.error_count();
+    check_inner(env, subst, body, &function.ret_ty, types, d);
+    d.annotate_errors_in_function(errors_before, &function.name);
+    env.pop_scope();
+    env.in_unsafe = false;
+    env.current_type_params.clear();
+}
+
+fn validate_extern_abi(function: &FnDecl, d: &mut Diagnostics) {
+    if function.body.is_some() {
+        return;
+    }
+    let Some(abi) = &function.abi else { return };
+    if abi != "C" {
+        let source = function.abi_source.unwrap_or(function.source);
+        d.push_error(source_diagnostic(
+            HllTypeCheckCode::UnknownAbi,
+            source,
+            format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
+        ));
+    }
 }
 
 fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) {

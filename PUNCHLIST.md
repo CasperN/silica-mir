@@ -191,7 +191,11 @@ the deliberate later refinement to nested operand and projection sources.
 
 
 # Current Yak-shaving stack
-- Traits working properly
+- Complete HLL trait use
+  - UFCS and receiver-style method calls
+  - inference-driven method and impl selection
+  - unsafe trait methods and safety conformance
+  - ABI modifiers on trait and impl methods
   - trait bounds: `trait Foo: Copy + MyTrait {..}`
 - Standard library
 - Modules

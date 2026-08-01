@@ -1001,7 +1001,15 @@
           "named": true
         },
         {
+          "type": "impl_decl",
+          "named": true
+        },
+        {
           "type": "struct_decl",
+          "named": true
+        },
+        {
+          "type": "trait_decl",
           "named": true
         }
       ]
@@ -1592,6 +1600,50 @@
           }
         ]
       }
+    }
+  },
+  {
+    "type": "impl_decl",
+    "named": true,
+    "fields": {
+      "target": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "trait_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "fn_decl",
+          "named": true
+        },
+        {
+          "type": "type_args",
+          "named": true
+        },
+        {
+          "type": "type_params",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2420,6 +2472,36 @@
     }
   },
   {
+    "type": "trait_decl",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "fn_decl",
+          "named": true
+        },
+        {
+          "type": "type_params",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
     "type": "type",
     "named": true,
     "fields": {
@@ -2878,6 +2960,10 @@
     "named": false
   },
   {
+    "type": "for",
+    "named": false
+  },
+  {
     "type": "i16",
     "named": false
   },
@@ -2899,6 +2985,10 @@
   },
   {
     "type": "if",
+    "named": false
+  },
+  {
+    "type": "impl",
     "named": false
   },
   {
@@ -2939,6 +3029,10 @@
   },
   {
     "type": "struct",
+    "named": false
+  },
+  {
+    "type": "trait",
     "named": false
   },
   {

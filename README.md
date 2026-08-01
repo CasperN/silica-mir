@@ -359,7 +359,7 @@ lives in `tree-sitter-silica/{common,hll}/grammar.js`.
 
 ```
 program     = declaration*
-declaration = struct_decl | enum_decl | fn_decl
+declaration = struct_decl | enum_decl | fn_decl | trait_decl | impl_decl
 
 # Fields/variants are comma-separated with an optional trailing comma.
 # Generics: `struct<T: Copy> Box: Copy { inner: T }`. The optional
@@ -374,6 +374,15 @@ variant     = identifier : type
 # Generics: `fn<T: Copy>(x: T) -> T { ... }`.
 fn_decl = fn [type_params] identifier ( param , ..., ) [ -> type ] block_expr
 param   = identifier : type
+
+# Trait methods are signatures; impl methods are ordinary HLL functions.
+# `Self` names the implementing type within method signatures and bodies.
+trait_decl = trait [type_params] identifier {
+               fn [type_params] identifier ( param , ..., ) [ -> type ] ; ...
+             }
+impl_decl  = impl [type_params] identifier [type_args] for type {
+               fn_decl ...
+             }
 
 markers     = : marker (+ marker)*     # marker ∈ {Copy, Drop, Move}
 type_params = < type_param (, type_param)* [,] >

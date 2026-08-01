@@ -178,8 +178,8 @@ impl Param {
 /// (Copy/Drop/Move); `traits` carries user-declared trait bounds as
 /// `Instance` values — trait references share the type-reference shape
 /// (name + lifetime args + type args), and until trait bounds grow
-/// bound-specific state a plain `Vec<Instance>` says everything.
-/// Empty today; populated once trait-decl syntax lands.
+/// bound-specific state a plain `Vec<Instance>` says everything. HLL
+/// type-parameter syntax does not populate trait bounds yet.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Bounds {
     pub markers: Markers,
@@ -195,7 +195,7 @@ impl Bounds {
     }
 }
 
-/// Generic type parameter declared on a struct/enum/fn. Bounds are
+/// Generic type parameter declared on a declaration. Bounds are
 /// unconditional markers plus (later) trait references (`T: Copy + Iter`).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeParam {
@@ -315,10 +315,33 @@ impl EnumDecl {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct TraitDecl {
+    pub name: String,
+    pub lifetime_params: Vec<LifetimeParam>,
+    pub outlives: Vec<OutlivesBound>,
+    pub type_params: Vec<TypeParam>,
+    pub methods: Vec<FnDecl>,
+    pub source: SourceInfo,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ImplBlock {
+    pub lifetime_params: Vec<LifetimeParam>,
+    pub outlives: Vec<OutlivesBound>,
+    pub type_params: Vec<TypeParam>,
+    pub trait_path: Instance,
+    pub target: Type,
+    pub methods: Vec<FnDecl>,
+    pub source: SourceInfo,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
     Struct(StructDecl),
     Enum(EnumDecl),
     Fn(FnDecl),
+    Trait(TraitDecl),
+    Impl(ImplBlock),
 }
 
 #[derive(Debug, Clone, PartialEq)]

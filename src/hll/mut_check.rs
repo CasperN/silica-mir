@@ -83,8 +83,14 @@ impl Scope {
 /// Check that non-`mut` bindings are never reassigned.
 pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
     for decl in &program.declarations {
-        if let Declaration::Fn(f) = decl {
-            check_fn(f, d);
+        match decl {
+            Declaration::Fn(f) => check_fn(f, d),
+            Declaration::Impl(i) => {
+                for method in &i.methods {
+                    check_fn(method, d);
+                }
+            }
+            Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {}
         }
     }
 }

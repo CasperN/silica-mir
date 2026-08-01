@@ -60,3 +60,18 @@ extern "fastcall" fn stdcall_thing(y: i64);
 # in the `Neg` arm of `to_i64`.
 fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
 fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+
+# ---------- HTC-TypeMismatch: impl method body ----------
+
+# Impl methods pass through the same HLL inference path as free functions.
+struct TraitBodyTarget: Copy + Drop { value: i64 }
+
+trait BadTraitBody {
+  fn value(recv: & Self) -> i64;
+}
+
+impl BadTraitBody for TraitBodyTarget {
+  fn value(recv: & Self) -> i64 {
+    false
+  }
+}

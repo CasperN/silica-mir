@@ -66,6 +66,14 @@ error: at 62:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool
  61 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
  62 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
     |                                               ^
+ 63 | 
+    |
+error: at 75:5: [HTC-TypeMismatch] In function 'value': type mismatch: expected bool, found i64
+    |
+ 74 |   fn value(recv: & Self) -> i64 {
+ 75 |     false
+    |     ^^^^^
+ 76 |   }
     |
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |

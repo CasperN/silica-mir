@@ -1,4 +1,4 @@
-use crate::common::RefKind;
+use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
 use crate::hll::type_check::ExpressionTypes;
@@ -517,12 +517,19 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
         .iter()
         .map(|p| mir::TypeParam {
             name: p.name.clone(),
-            // TODO: `p.bounds.traits` is always empty pre-trait-decl-syntax;
-            // when it lands, lower Instance from hll to mir here.
+            // TODO: Lower trait bounds once HLL type-parameter bounds accept them.
             bounds: mir::Bounds::from_markers(p.bounds.markers),
             source: p.source,
         })
         .collect()
+}
+
+fn lower_instance(instance: &hll::Instance) -> mir::Instance {
+    mir::Instance::new(
+        instance.name.clone(),
+        instance.lifetime_args.clone(),
+        instance.type_args.iter().map(lower_type).collect(),
+    )
 }
 
 /// Recover the inferred type arguments at a generic-fn call site by
@@ -1478,6 +1485,92 @@ fn lower_expr_into(
     }
 }
 
+fn lower_function(
+    f: &hll::FnDecl,
+    program: &hll::Program,
+    types: &ExpressionTypes,
+    bodyless_is_extern: bool,
+) -> Result<mir::Function, Diagnostic> {
+    let mut params: Vec<mir::Param> = f
+        .params
+        .iter()
+        .map(|p| mir::Param {
+            name: p.name.clone(),
+            ty: lower_type(&p.ty),
+            source: p.source,
+        })
+        .collect();
+
+    if f.ret_ty.kind != hll::TypeKind::Unit {
+        params.push(mir::Param {
+            name: "$return".to_string(),
+            ty: mir::Type::new(
+                mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(&f.ret_ty))),
+                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, f.ret_ty.span()),
+            ),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, f.span()),
+        });
+    }
+
+    let meta = DeclMeta {
+        name: f.name.clone(),
+        name_source: f.source,
+        params: GenericParams {
+            lifetime_params: f.lifetime_params.clone(),
+            outlives: f.outlives.clone(),
+            type_params: lower_type_params(&f.type_params),
+            source: f.source,
+        },
+        markers: trivial_markers(),
+    };
+
+    let Some(body_expr) = &f.body else {
+        return Ok(mir::Function {
+            meta,
+            is_extern: bodyless_is_extern,
+            abi: f.abi.clone(),
+            params,
+            body: None,
+        });
+    };
+
+    let mut ctx = LowerCtx::new(program);
+    ctx.push_scope(false, scope_exit_span(body_expr.span()));
+    ctx.push_binding_scope();
+    for p in &params {
+        ctx.taken_names.insert(p.name.clone());
+        ctx.bind_in_scope(&p.name, p.name.clone());
+        ctx.register_scope_cleanup(var_place(p.name.clone()), p.span());
+    }
+    ctx.start_block("entry".to_string());
+
+    if f.ret_ty.kind != hll::TypeKind::Unit {
+        lower_expr_into(
+            &mut ctx,
+            body_expr,
+            &deref_place(var_place("$return")),
+            types,
+        )?;
+    } else {
+        let dummy = ctx.fresh_scope_temp(unit_ty(), body_expr.span());
+        lower_expr_into(&mut ctx, body_expr, &dummy, types)?;
+    }
+
+    if ctx.current_block_label.is_some() {
+        ctx.pop_and_emit_scope_exit(types)?;
+        ctx.pop_binding_scope();
+        ctx.terminate_block(return_term(body_expr.span()));
+    }
+
+    Ok(mir::Function {
+        meta,
+        is_extern: false,
+        abi: None,
+        params,
+        body: Some(ctx.body),
+    })
+}
+
 pub fn lower_program(
     program: &hll::Program,
     types: &ExpressionTypes,
@@ -1537,111 +1630,45 @@ pub fn lower_program(
                 }));
             }
             hll::Declaration::Fn(f) => {
-                let mut params: Vec<mir::Param> = f
-                    .params
-                    .iter()
-                    .map(|p| mir::Param {
-                        name: p.name.clone(),
-                        ty: lower_type(&p.ty),
-                        source: p.source,
-                    })
-                    .collect();
-
-                if f.ret_ty.kind != hll::TypeKind::Unit {
-                    params.push(mir::Param {
-                        name: "$return".to_string(),
-                        ty: mir::Type::new(
-                            mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(&f.ret_ty))),
-                            mir::SourceInfo::generated(
-                                mir::GeneratedKind::HllDesugaring,
-                                f.ret_ty.span(),
-                            ),
-                        ),
-                        source: mir::SourceInfo::generated(
-                            mir::GeneratedKind::HllDesugaring,
-                            f.span(),
-                        ),
-                    });
-                }
-
-                let Some(body_expr) = &f.body else {
-                    declarations.push(mir::Declaration::Fn(mir::Function {
-                        meta: DeclMeta {
-                            name: f.name.clone(),
-                            name_source: f.source,
-                            params: GenericParams {
-                                lifetime_params: f.lifetime_params.clone(),
-                                outlives: f.outlives.clone(),
-                                type_params: lower_type_params(&f.type_params),
-                                source: f.source,
-                            },
-                            markers: trivial_markers(),
-                        },
-                        is_extern: true,
-                        abi: f.abi.clone(),
-                        params,
-                        body: None,
-                    }));
-                    continue;
-                };
-
-                let mut ctx = LowerCtx::new(program);
-
-                // The function itself is the outermost lexical cleanup scope.
-                // Parameters are bindings in it, so a normal return (or an
-                // explicit return from a nested block) demands that each has
-                // been consumed after its last use.
-                ctx.push_scope(false, scope_exit_span(body_expr.span()));
-
-                // Seed the matching base binding scope with fn params so
-                // body-level references resolve to them and later `let`
-                // bindings that clash get renamed rather than fired as
-                // duplicate locals.
-                ctx.push_binding_scope();
-                for p in &params {
-                    ctx.taken_names.insert(p.name.clone());
-                    ctx.bind_in_scope(&p.name, p.name.clone());
-                    ctx.register_scope_cleanup(var_place(p.name.clone()), p.span());
-                }
-
-                let start_label = "entry".to_string();
-                ctx.start_block(start_label);
-
-                if f.ret_ty.kind != hll::TypeKind::Unit {
-                    let ret_place = deref_place(var_place("$return"));
-                    lower_expr_into(&mut ctx, body_expr, &ret_place, types)?;
-                } else {
-                    let dummy = ctx.fresh_scope_temp(unit_ty(), body_expr.span());
-                    lower_expr_into(&mut ctx, body_expr, &dummy, types)?;
-                }
-
-                // If the entry block or last block hasn't been terminated,
-                // terminate it with Return. Use the body's end span for
-                // the terminator — pointing INIT-ReturnValueLeak and
-                // ref-obligation diagnostics at the body's closing brace
-                // rather than at the whole fn signature line.
-                if ctx.current_block_label.is_some() {
-                    ctx.pop_and_emit_scope_exit(types)?;
-                    ctx.pop_binding_scope();
-                    ctx.terminate_block(return_term(body_expr.span()));
-                }
-
-                declarations.push(mir::Declaration::Fn(mir::Function {
+                declarations.push(mir::Declaration::Fn(lower_function(
+                    f, program, types, true,
+                )?));
+            }
+            hll::Declaration::Trait(t) => {
+                declarations.push(mir::Declaration::Trait(mir::TraitDecl {
                     meta: DeclMeta {
-                        name: f.name.clone(),
-                        name_source: f.source,
+                        name: t.name.clone(),
+                        name_source: t.source,
                         params: GenericParams {
-                            lifetime_params: f.lifetime_params.clone(),
-                            outlives: f.outlives.clone(),
-                            type_params: lower_type_params(&f.type_params),
-                            source: f.source,
+                            lifetime_params: t.lifetime_params.clone(),
+                            outlives: t.outlives.clone(),
+                            type_params: lower_type_params(&t.type_params),
+                            source: t.source,
                         },
-                        markers: trivial_markers(),
+                        markers: Markers::empty(),
                     },
-                    is_extern: false,
-                    abi: None,
-                    params,
-                    body: Some(ctx.body),
+                    methods: t
+                        .methods
+                        .iter()
+                        .map(|method| lower_function(method, program, types, false))
+                        .collect::<Result<Vec<_>, _>>()?,
+                }));
+            }
+            hll::Declaration::Impl(i) => {
+                declarations.push(mir::Declaration::Impl(mir::ImplBlock {
+                    params: GenericParams {
+                        lifetime_params: i.lifetime_params.clone(),
+                        outlives: i.outlives.clone(),
+                        type_params: lower_type_params(&i.type_params),
+                        source: i.source,
+                    },
+                    trait_path: lower_instance(&i.trait_path),
+                    target: lower_type(&i.target),
+                    methods: i
+                        .methods
+                        .iter()
+                        .map(|method| lower_function(method, program, types, false))
+                        .collect::<Result<Vec<_>, _>>()?,
                 }));
             }
         }

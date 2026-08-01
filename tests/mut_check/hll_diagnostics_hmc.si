@@ -23,3 +23,19 @@ fn defer_assign_immutable() {
     let x = 1;
     defer x = 2;
 }
+
+# ---------- HMC-AssignToImmutable: impl method body ----------
+
+# Impl methods pass through the same mutability checker as free functions.
+struct MutTraitTarget: Copy + Drop { value: i64 }
+
+trait MutTraitBody {
+  fn mutate(recv: & Self);
+}
+
+impl MutTraitBody for MutTraitTarget {
+  fn mutate(recv: & Self) {
+    let value = 0;
+    value = 1;
+  }
+}

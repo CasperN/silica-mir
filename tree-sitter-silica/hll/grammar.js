@@ -4,14 +4,8 @@
 // `if`, `match`, `loop`, blocks, `let`. Statements terminate with
 // `;`; the last expression in a block is the block's value.
 //
-// Shared with MIR (via `../common/grammar.js`): lexical tokens,
-// marker keywords, `type`, `struct_decl`, `enum_decl`. Everything
-// else in `rules` below is HLL-specific.
-//
-// The HLL currently has no arithmetic/comparison operators —
-// those go through intrinsic function calls when the HLL is
-// lowered to MIR. When surface operators land, they slot into
-// the precedence ladder between `prefix` and `postfix`.
+// Lexical tokens, marker keywords, and the common parts of types and
+// aggregate declarations are shared with MIR through `common/grammar.js`.
 
 const common = require('../common/grammar.js');
 
@@ -52,6 +46,8 @@ module.exports = grammar({
       $.struct_decl,
       $.enum_decl,
       $.fn_decl,
+      $.trait_decl,
+      $.impl_decl,
     ),
 
     ...common.rules,
@@ -109,6 +105,27 @@ module.exports = grammar({
         ';',
         field('body', $.block_expr),
       ),
+    ),
+
+    trait_decl: $ => seq(
+      'trait',
+      optional($.type_params),
+      field('name', $.identifier),
+      '{',
+      repeat($.fn_decl),
+      '}',
+    ),
+
+    impl_decl: $ => seq(
+      'impl',
+      optional($.type_params),
+      field('trait_name', $.identifier),
+      optional($.type_args),
+      'for',
+      field('target', $.type),
+      '{',
+      repeat($.fn_decl),
+      '}',
     ),
 
     param_decl: $ => seq(

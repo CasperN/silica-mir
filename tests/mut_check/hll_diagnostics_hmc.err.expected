@@ -25,3 +25,12 @@ error: at 24:11: [HMC-AssignToImmutable] In function 'defer_assign_immutable': c
     |           ^
  25 | }
     |
+error: at 39:5: [HMC-AssignToImmutable] In function 'mutate': cannot assign to immutable binding 'value'
+    |
+ 37 |   fn mutate(recv: & Self) {
+ 38 |     let value = 0;
+    |     -------------- variable declared as immutable here
+ 39 |     value = 1;
+    |     ^^^^^
+ 40 |   }
+    |
