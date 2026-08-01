@@ -160,10 +160,10 @@ pub enum TypeCheckCode {
     /// Resolution through the parameter's trait bounds needs the trait
     /// bounds vocabulary populated on `TypeParam.bounds.traits`.
     TraitFnParamReceiver,
-    /// No impl of the trait matches the callee's `self_ty`. Impls are
-    /// looked up by structural target equality; generic impl-target
-    /// unification is a follow-up.
+    /// No impl pattern matches the callee's trait path and `self_ty`.
     TraitFnNoImpl,
+    /// More than one generic impl pattern matches the call.
+    TraitFnAmbiguousImpl,
     /// Impl exists but doesn't declare the method the callee names.
     TraitFnNoMethod,
 }

@@ -11,13 +11,14 @@
 //! and return either the concrete type or a structured
 //! [`TypeResolutionError`] explaining why it couldn't be resolved.
 
-use crate::common::{GeneratedKind, Marker, SourceInfo};
+use crate::common::{GeneratedKind, Lifetime, Marker, SourceInfo};
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{DiagnosticFormat, DiagnosticScope};
 use crate::mir::helpers::*;
 use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*};
 use indexmap::IndexMap;
+use std::collections::BTreeMap;
 
 #[derive(Debug, Clone)]
 pub struct TypeResolutionError {
@@ -154,6 +155,11 @@ enum TypeResolutionErrorKind {
         trait_path: Instance,
         self_ty: Type,
     },
+    /// Multiple impl patterns match the call.
+    TraitFnAmbiguousImpl {
+        trait_path: Instance,
+        self_ty: Type,
+    },
     /// Impl of `trait_path` for self_ty exists but doesn't declare the
     /// method the callee names.
     TraitFnNoMethod {
@@ -195,6 +201,7 @@ impl TypeResolutionError {
             TypeResolutionErrorKind::TraitFnUnknownTrait(_) => TraitFnUnknownTrait,
             TypeResolutionErrorKind::TraitFnParamReceiver(_) => TraitFnParamReceiver,
             TypeResolutionErrorKind::TraitFnNoImpl { .. } => TraitFnNoImpl,
+            TypeResolutionErrorKind::TraitFnAmbiguousImpl { .. } => TraitFnAmbiguousImpl,
             TypeResolutionErrorKind::TraitFnNoMethod { .. } => TraitFnNoMethod,
         }
     }
@@ -324,6 +331,14 @@ impl TypeResolutionError {
                 self_ty,
             } => format!(
                 "No impl of '{}' for {} in scope",
+                trait_path,
+                format.ty(caller_scope, self_ty),
+            ),
+            TypeResolutionErrorKind::TraitFnAmbiguousImpl {
+                trait_path,
+                self_ty,
+            } => format!(
+                "Multiple impls of '{}' match {}",
                 trait_path,
                 format.ty(caller_scope, self_ty),
             ),
@@ -574,11 +589,196 @@ pub struct IndexedProgram {
     /// trait path (name + lifetime + type args) is the key so multiple
     /// impls of a generic trait for the same target coexist —
     /// `impl Iter<i64> for X` and `impl Iter<u8> for X` are distinct
-    /// impls, not a collision. Lookup uses structural equality;
-    /// unification for generic impl targets like `impl<T> Iter<T> for
-    /// Bag<T>` is a follow-up under the mono trait-resolution work.
-    /// Duplicate keys are a coherence error caught at build time.
+    /// impls, not a collision. Exact duplicate keys are rejected at build
+    /// time; call resolution structurally matches generic impl headers and
+    /// diagnoses overlapping matches.
     pub impls: IndexMap<(Instance, Type), ImplBlock>,
+}
+
+pub(crate) struct ImplBindings {
+    pub type_args: Vec<Type>,
+}
+
+pub(crate) fn impl_marker_bounds_satisfied(
+    impl_block: &ImplBlock,
+    bindings: &ImplBindings,
+    mut class_of: impl FnMut(&Type) -> Markers,
+) -> bool {
+    impl_block
+        .params
+        .type_params
+        .iter()
+        .zip(&bindings.type_args)
+        .all(|(param, arg)| {
+            // TODO(trait bounds): Check `bounds.traits` here once
+            // binding-site trait-bound syntax populates it.
+            param
+                .bounds
+                .markers
+                .iter_declared()
+                .all(|bound| class_of(arg).implies(bound))
+        })
+}
+
+pub(crate) fn match_impl_header(
+    impl_block: &ImplBlock,
+    trait_path: &Instance,
+    self_ty: &Type,
+) -> Option<ImplBindings> {
+    let mut type_bindings = BTreeMap::new();
+    let mut lifetime_bindings = BTreeMap::new();
+    if !match_instance(
+        &impl_block.trait_path,
+        trait_path,
+        &impl_block.params,
+        &mut type_bindings,
+        &mut lifetime_bindings,
+    ) || !match_type(
+        &impl_block.target,
+        self_ty,
+        &impl_block.params,
+        &mut type_bindings,
+        &mut lifetime_bindings,
+    ) {
+        return None;
+    }
+    let type_args = impl_block
+        .params
+        .type_params
+        .iter()
+        .map(|param| type_bindings.get(&param.name).cloned())
+        .collect::<Option<Vec<_>>>()?;
+    let lifetimes_bound = impl_block
+        .params
+        .lifetime_params
+        .iter()
+        .all(|param| lifetime_bindings.contains_key(&param.lifetime));
+    lifetimes_bound.then_some(ImplBindings { type_args })
+}
+
+fn match_instance(
+    pattern: &Instance,
+    actual: &Instance,
+    params: &GenericParams,
+    type_bindings: &mut BTreeMap<String, Type>,
+    lifetime_bindings: &mut BTreeMap<Lifetime, Lifetime>,
+) -> bool {
+    pattern.name == actual.name
+        && pattern.lifetime_args.len() == actual.lifetime_args.len()
+        && pattern.type_args.len() == actual.type_args.len()
+        && pattern
+            .lifetime_args
+            .iter()
+            .zip(&actual.lifetime_args)
+            .all(|(pattern, actual)| match_lifetime(pattern, actual, params, lifetime_bindings))
+        && pattern
+            .type_args
+            .iter()
+            .zip(&actual.type_args)
+            .all(|(pattern, actual)| {
+                match_type(pattern, actual, params, type_bindings, lifetime_bindings)
+            })
+}
+
+fn match_lifetime(
+    pattern: &Lifetime,
+    actual: &Lifetime,
+    params: &GenericParams,
+    bindings: &mut BTreeMap<Lifetime, Lifetime>,
+) -> bool {
+    if params
+        .lifetime_params
+        .iter()
+        .any(|param| param.lifetime == *pattern)
+    {
+        match bindings.get(pattern) {
+            Some(bound) => bound == actual,
+            None => {
+                bindings.insert(pattern.clone(), actual.clone());
+                true
+            }
+        }
+    } else {
+        pattern == actual
+    }
+}
+
+fn match_optional_lifetime(
+    pattern: &Option<Lifetime>,
+    actual: &Option<Lifetime>,
+    params: &GenericParams,
+    bindings: &mut BTreeMap<Lifetime, Lifetime>,
+) -> bool {
+    match (pattern, actual) {
+        (Some(pattern), Some(actual)) => match_lifetime(pattern, actual, params, bindings),
+        (None, None) => true,
+        _ => false,
+    }
+}
+
+fn match_type(
+    pattern: &Type,
+    actual: &Type,
+    params: &GenericParams,
+    type_bindings: &mut BTreeMap<String, Type>,
+    lifetime_bindings: &mut BTreeMap<Lifetime, Lifetime>,
+) -> bool {
+    if let TypeKind::Param(name) = &pattern.kind {
+        if params.type_params.iter().any(|param| param.name == *name) {
+            return match type_bindings.get(name) {
+                Some(bound) => bound == actual,
+                None => {
+                    type_bindings.insert(name.clone(), actual.clone());
+                    true
+                }
+            };
+        }
+    }
+
+    match (&pattern.kind, &actual.kind) {
+        (TypeKind::Int(pattern), TypeKind::Int(actual)) => pattern == actual,
+        (TypeKind::Float(pattern), TypeKind::Float(actual)) => pattern == actual,
+        (TypeKind::Bool, TypeKind::Bool)
+        | (TypeKind::Unit, TypeKind::Unit)
+        | (TypeKind::Never, TypeKind::Never) => true,
+        (TypeKind::Param(pattern), TypeKind::Param(actual)) => pattern == actual,
+        (TypeKind::Custom(pattern), TypeKind::Custom(actual)) => {
+            match_instance(pattern, actual, params, type_bindings, lifetime_bindings)
+        }
+        (TypeKind::Fn(pattern), TypeKind::Fn(actual)) => {
+            pattern.len() == actual.len()
+                && pattern.iter().zip(actual).all(|(pattern, actual)| {
+                    match_type(pattern, actual, params, type_bindings, lifetime_bindings)
+                })
+        }
+        (
+            TypeKind::Ref(pattern_kind, pattern_lifetime, pattern_inner),
+            TypeKind::Ref(actual_kind, actual_lifetime, actual_inner),
+        ) => {
+            pattern_kind == actual_kind
+                && match_optional_lifetime(
+                    pattern_lifetime,
+                    actual_lifetime,
+                    params,
+                    lifetime_bindings,
+                )
+                && match_type(
+                    pattern_inner,
+                    actual_inner,
+                    params,
+                    type_bindings,
+                    lifetime_bindings,
+                )
+        }
+        (TypeKind::RawPtr(pattern), TypeKind::RawPtr(actual)) => {
+            match_type(pattern, actual, params, type_bindings, lifetime_bindings)
+        }
+        (TypeKind::Array(pattern, pattern_len), TypeKind::Array(actual, actual_len)) => {
+            pattern_len == actual_len
+                && match_type(pattern, actual, params, type_bindings, lifetime_bindings)
+        }
+        _ => false,
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -1081,10 +1281,8 @@ impl LocalEnv<'_> {
     /// out as `TypeResolutionError`s so the caller renders them
     /// alongside other operand-typing errors.
     ///
-    /// Impl lookup uses structural target equality: `self_ty` must
-    /// exactly equal an impl's declared target. Generic-impl-target
-    /// unification (matching `Bag<i64>` to `impl<T> Iter<T> for Bag<T>`)
-    /// is a follow-up under monomorphization.
+    /// Impl lookup structurally matches the trait path and target together,
+    /// binding impl-header parameters consistently across both patterns.
     fn resolve_trait_fn(
         &self,
         trait_path: &Instance,
@@ -1101,16 +1299,35 @@ impl LocalEnv<'_> {
                 TypeResolutionErrorKind::TraitFnParamReceiver(name.clone()),
             ));
         }
-        let imp = self
+        let matches = self
             .program
             .impls
-            .get(&(trait_path.clone(), self_ty.clone()))
-            .ok_or_else(|| {
-                TypeResolutionError::new(TypeResolutionErrorKind::TraitFnNoImpl {
-                    trait_path: trait_path.clone(),
-                    self_ty: self_ty.clone(),
-                })
-            })?;
+            .values()
+            .filter_map(|imp| {
+                let bindings = match_impl_header(imp, trait_path, self_ty)?;
+                impl_marker_bounds_satisfied(imp, &bindings, |arg| self.class_of(arg))
+                    .then_some((imp, bindings))
+            })
+            .collect::<Vec<_>>();
+        let (imp, bindings) = match matches.as_slice() {
+            [] => {
+                return Err(TypeResolutionError::new(
+                    TypeResolutionErrorKind::TraitFnNoImpl {
+                        trait_path: trait_path.clone(),
+                        self_ty: self_ty.clone(),
+                    },
+                ));
+            }
+            [matched] => matched,
+            _ => {
+                return Err(TypeResolutionError::new(
+                    TypeResolutionErrorKind::TraitFnAmbiguousImpl {
+                        trait_path: trait_path.clone(),
+                        self_ty: self_ty.clone(),
+                    },
+                ));
+            }
+        };
         let impl_method = imp
             .methods
             .iter()
@@ -1122,17 +1339,28 @@ impl LocalEnv<'_> {
                     method: method.name.clone(),
                 })
             })?;
-        // Impl-header substitution is a no-op: the impl was found via
-        // structural equality on a concrete target, so its methods are
-        // already instantiated. Only the method's own type_params
-        // need substituting from the callee's method args.
+        let mut params = imp.params.clone();
+        params
+            .lifetime_params
+            .extend(impl_method.meta.params.lifetime_params.clone());
+        params
+            .outlives
+            .extend(impl_method.meta.params.outlives.clone());
+        params
+            .type_params
+            .extend(impl_method.meta.params.type_params.clone());
+        let type_args = bindings
+            .type_args
+            .iter()
+            .cloned()
+            .chain(method.type_args.iter().cloned())
+            .collect::<Vec<_>>();
         let param_tys = impl_method
             .params
             .iter()
             .map(|p| {
-                impl_method
-                    .meta
-                    .try_substitute_types(&p.ty, &method.type_args)
+                params
+                    .try_substitute_types(&p.ty, &type_args)
                     .unwrap_or_else(|| p.ty.clone())
             })
             .collect();

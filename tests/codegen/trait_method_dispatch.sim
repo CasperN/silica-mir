@@ -1,0 +1,169 @@
+# Trait-method dispatch at the monomorphization boundary.
+#
+#   Twice for Counter                 concrete impl method
+#   Twice::twice -> Read::read        nested dispatch discovers another method
+#   Identity::id<i64>                 method-generic specialization
+#   Identity::id<bool>                a distinct method specialization
+#   Get<T> for Box<T>                 concrete call matches generic impl header
+#   Tagged<i64>/Tagged<bool>          trait args distinguish impls for one target
+#   LifetimeRead<'a>/<'b>             lifetimes select impls but erase in codegen
+#   Dead for Counter                  unreachable impl method is not emitted
+
+trait Read {
+  fn read(recv: & Self, $return: &out i64);
+}
+
+trait Twice {
+  fn twice(recv: & Self, $return: &out i64);
+}
+
+trait Identity {
+  fn<T: Copy + Drop> id(recv: & Self, value: T, $return: &out T);
+}
+
+trait<T: Copy + Drop> Get {
+  fn get(recv: & Self, $return: &out T);
+}
+
+trait Dead {
+  fn dead(recv: & Self);
+}
+
+trait<T: Copy + Drop> Tagged {
+  fn tagged(recv: & Self, $return: &out T);
+}
+
+trait<'a> LifetimeRead {
+  fn lifetime_read(recv: & Self);
+}
+
+struct Counter: Copy + Drop { value: i64 }
+struct<T: Copy + Drop> Box: Copy + Drop { value: T }
+struct<'a> BorrowedCounter: Copy + Drop { counter: & 'a Counter }
+
+impl Read for Counter {
+  fn read(recv: & Counter, $return: &out i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      return
+  }
+}
+
+impl Twice for Counter {
+  fn twice(recv: & Counter, $return: &out i64) {
+    inner: i64;
+    inner_out: &out i64;
+    entry:
+      inner_out = &out inner;
+      call <Counter as Read>::read(copy recv, move inner_out);
+      $return.* = copy inner;
+      return
+  }
+}
+
+impl Identity for Counter {
+  fn<T: Copy + Drop> id(recv: & Counter, value: T, $return: &out T) {
+    entry:
+      $return.* = copy value;
+      return
+  }
+}
+
+impl<T: Copy + Drop> Get<T> for Box<T> {
+  fn get(recv: & Box<T>, $return: &out T) {
+    entry:
+      $return.* = copy recv.*.value;
+      return
+  }
+}
+
+impl Dead for Counter {
+  fn dead(recv: & Counter) {
+    entry:
+      return
+  }
+}
+
+impl Tagged<i64> for Counter {
+  fn tagged(recv: & Counter, $return: &out i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      return
+  }
+}
+
+impl Tagged<bool> for Counter {
+  fn tagged(recv: & Counter, $return: &out bool) {
+    entry:
+      $return.* = true;
+      return
+  }
+}
+
+impl<'a> LifetimeRead<'a> for BorrowedCounter<'a> {
+  fn lifetime_read(recv: & BorrowedCounter<'a>) {
+    entry:
+      return
+  }
+}
+
+fn<'a, 'b> lifetime_dispatch(
+  left: & BorrowedCounter<'a>,
+  right: & BorrowedCounter<'b>,
+) {
+  entry:
+    call <BorrowedCounter<'a> as LifetimeRead<'a>>::lifetime_read(copy left);
+    call <BorrowedCounter<'b> as LifetimeRead<'b>>::lifetime_read(copy right);
+    return
+}
+
+fn main(exit: &out i32) {
+  counter: Counter;
+  boxed: Box<i64>;
+  twice_result: i64;
+  identity_result: i64;
+  identity_bool_result: bool;
+  get_result: i64;
+  tagged_i64_result: i64;
+  tagged_bool_result: bool;
+  twice_recv: &Counter;
+  twice_out: &out i64;
+  identity_recv: &Counter;
+  identity_out: &out i64;
+  identity_bool_out: &out bool;
+  get_recv: &Box<i64>;
+  get_out: &out i64;
+  tagged_recv: &Counter;
+  tagged_i64_out: &out i64;
+  tagged_bool_out: &out bool;
+  entry:
+    counter.value = 5;
+    boxed.value = 9;
+
+    twice_recv = &counter;
+    twice_out = &out twice_result;
+    call <Counter as Twice>::twice(move twice_recv, move twice_out);
+
+    identity_recv = &counter;
+    identity_out = &out identity_result;
+    call <Counter as Identity>::id<i64>(move identity_recv, 7, move identity_out);
+
+    identity_recv = &counter;
+    identity_bool_out = &out identity_bool_result;
+    call <Counter as Identity>::id<bool>(move identity_recv, true, move identity_bool_out);
+
+    get_recv = &boxed;
+    get_out = &out get_result;
+    call <Box<i64> as Get<i64>>::get(move get_recv, move get_out);
+
+    tagged_recv = &counter;
+    tagged_i64_out = &out tagged_i64_result;
+    call <Counter as Tagged<i64>>::tagged(move tagged_recv, move tagged_i64_out);
+
+    tagged_recv = &counter;
+    tagged_bool_out = &out tagged_bool_result;
+    call <Counter as Tagged<bool>>::tagged(move tagged_recv, move tagged_bool_out);
+
+    exit.* = 0i32;
+    return
+}

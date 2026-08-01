@@ -976,11 +976,8 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
             llvm_byte_str_literal(bytes),
             array_ty(u8_ty(), bytes.len() as u64),
         ),
-        // The mono trait-resolution pass rewrites `TraitFn` into a
-        // concrete `FnName` pointing at the mangled impl-method fn.
-        // If codegen sees a `TraitFn`, the resolution pass hasn't run.
         ConstVal::TraitFn { trait_path, self_ty, method } => panic!(
-            "codegen: trait-fn callee `<{} as {}>::{}` reached codegen — mono trait-resolution missing",
+            "codegen: monomorphization invariant violated by unresolved trait-fn callee `<{} as {}>::{}`",
             self_ty, trait_path, method,
         ),
     }

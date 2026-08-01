@@ -1,35 +1,63 @@
-error: at 32:5: [TC-TraitFnUnknownTrait] In function 'unknown_trait', block 'entry': Trait-method call references undeclared trait 'Unknown'
+error: at 38:5: [TC-TraitFnUnknownTrait] In function 'unknown_trait', block 'entry': Trait-method call references undeclared trait 'Unknown'
     |
- 31 |     out_ref = &out $return.*;
- 32 |     call <Foo as Unknown>::any(move f, move out_ref);
+ 37 |     out_ref = &out $return.*;
+ 38 |     call <Foo as Unknown>::any(move f, move out_ref);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 33 |     return
+ 39 |     return
     |
-error: at 40:5: [TC-TraitFnNoImpl] In function 'no_impl', block 'entry': No impl of 'Iter<i64>' for Bar in scope
+error: at 46:5: [TC-TraitFnNoImpl] In function 'no_impl', block 'entry': No impl of 'Iter<i64>' for Bar in scope
     |
- 39 |     out_ref = &out $return.*;
- 40 |     call <Bar as Iter<i64>>::next(move b, move out_ref);
+ 45 |     out_ref = &out $return.*;
+ 46 |     call <Bar as Iter<i64>>::next(move b, move out_ref);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 41 |     return
+ 47 |     return
     |
-error: at 48:5: [TC-TraitFnNoImpl] In function 'wrong_trait_args', block 'entry': No impl of 'Iter<bool>' for List in scope
+error: at 54:5: [TC-TraitFnNoImpl] In function 'wrong_trait_args', block 'entry': No impl of 'Iter<bool>' for List in scope
     |
- 47 |     out_ref = &out $return.*;
- 48 |     call <List as Iter<bool>>::next(move l, move out_ref);
+ 53 |     out_ref = &out $return.*;
+ 54 |     call <List as Iter<bool>>::next(move l, move out_ref);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 49 |     return
+ 55 |     return
     |
-error: at 56:5: [TC-TraitFnNoMethod] In function 'no_method', block 'entry': Impl of 'Iter<i64>' for List has no method 'missing'
+error: at 62:5: [TC-TraitFnNoMethod] In function 'no_method', block 'entry': Impl of 'Iter<i64>' for List has no method 'missing'
     |
- 55 |     out_ref = &out $return.*;
- 56 |     call <List as Iter<i64>>::missing(move l, move out_ref);
+ 61 |     out_ref = &out $return.*;
+ 62 |     call <List as Iter<i64>>::missing(move l, move out_ref);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 57 |     return
+ 63 |     return
     |
-error: at 64:5: [TC-TraitFnParamReceiver] In function 'param_receiver', block 'entry': Trait-method call on generic parameter 'T' requires a trait bound (deferred pending trait-bound syntax)
+error: at 70:5: [TC-TraitFnParamReceiver] In function 'param_receiver', block 'entry': Trait-method call on generic parameter 'T' requires a trait bound (deferred pending trait-bound syntax)
     |
- 63 |     out_ref = &out $return.*;
- 64 |     call <T as Iter<i64>>::next(move t, move out_ref);
+ 69 |     out_ref = &out $return.*;
+ 70 |     call <T as Iter<i64>>::next(move t, move out_ref);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 65 |     return
+ 71 |     return
     |
+error: at 92:5: [TC-TraitFnNoImpl] In function 'inconsistent_impl_binding', block 'entry': No impl of 'Same<i64>' for Pair<i64, bool> in scope
+    |
+ 91 |   entry:
+ 92 |     call <Pair<i64, bool> as Same<i64>>::same(move pair);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 93 |     return
+    |
+error: at 116:5: [TC-TraitFnAmbiguousImpl] In function 'ambiguous_impl', block 'entry': Multiple impls of 'Amb<i64>' match Pair<i64, i64>
+     |
+ 115 |   entry:
+ 116 |     call <Pair<i64, i64> as Amb<i64>>::amb(move pair);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 117 |     return
+     |
+error: at 136:5: [TC-TraitFnNoImpl] In function 'impl_bound_mismatch', block 'entry': No impl of 'Bounded' for Wrapper<Linear> in scope
+     |
+ 135 |   entry:
+ 136 |     call <Wrapper<Linear> as Bounded>::run(move wrapper);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 137 |     return
+     |
+error: at 155:5: [TC-TraitFnNoImpl] In function 'lifetime_impl_mismatch', block 'entry': No impl of 'LifetimeTrait<'b>' for LifetimeBox<'a> in scope
+     |
+ 154 |   entry:
+ 155 |     call <LifetimeBox<'a> as LifetimeTrait<'b>>::inspect(copy value);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 156 |     return
+     |

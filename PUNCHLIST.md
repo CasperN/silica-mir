@@ -9,8 +9,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
   `&deinit`. Every fixture author, diagnostic reader, and agent has
   to remember the mapping. Pick one across both surfaces (or make one
   a strict alias) and delete the other.
-- **Lifetime annotations on MIR fn signatures and datastructures.** NLL infers lifetimes intra-fn, but there's no way to express "the returned `&T` is bounded by the input `&Foo`'s lifetime" or "this struct field's ref outlives the struct." Blocks safe ref-returning fns, ref-carrying types that get returned/stored, and any principled ref-cast story (`*T as &T` would conjure a reference with no lifetime bound; `&mut T as &T` is really a permission downgrade and needs a distinct MIR op).
-- **Generics in the MIR — remaining.** All checker + elab passes are in, monomorphization is in (`src/mir/mono`), and codegen emits LLVM quoted names for mono'd instantiations. Only conditional marker declarations (`Foo<T>: Copy where T: Copy`) are still deferred behind the unconditional-bounds form; the inline form on the decl and a separate `impl`-style form will coexist.
+- **Conditional traits and markers**
 - **Generic parameter position on decls.** MIR puts generics between the
   keyword and the name (`fn<T> foo`, `struct<T> Box`, `trait<T> Iter`).
   Rust convention is post-name (`fn foo<T>`, `struct Box<T>`, `trait Iter<T>`).
@@ -163,10 +162,22 @@ the deliberate later refinement to nested operand and projection sources.
   to comma-required-optional-trailing (match HLL).
 - Coroutines. Prerequisites: generics, lifetime arguments, HLL `defer`.
 - Lambdas.
-- MIR traits.
 - Silica C FFI and calling conventions: Define C linkage declarations (`extern "C" fn`) and emit standard ABI parameter attributes in LLVM.
 - Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
 - Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
+
+## Trait coherence
+- Define crate ownership/orphan rules for trait implementations.
+- Reject overlapping generic impls at declaration time, including overlaps that
+  are never selected by a call. Extend this to an ODR across translation units.
+- Diagnose impl parameters that cannot be inferred from the trait path or target
+  instead of allowing every call to fail later with `TraitFnNoImpl`.
+
+## First-class function types
+- Audit and complete function values across checking, monomorphization, and
+  codegen. This includes deciding how trait methods become function values;
+  direct trait-method calls are currently the supported dispatch form.
+
 
 ## Compiler design
 - To what exent should we unify the MIR and HLL AST?
@@ -189,5 +200,4 @@ the deliberate later refinement to nested operand and projection sources.
 - Extend copy relaxation with AutoClone.
 - Extend drop elaboration with AutoDestroy.
 - trait bounds on type parameters
-- Resolve concrete TraitFn calls to impl methods during monomorphization.
 - Make monomorphization not mutate the program and just write to LLVM.

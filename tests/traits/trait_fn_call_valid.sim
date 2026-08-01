@@ -1,7 +1,6 @@
 # Trait-method calls in MIR use UFCS-style callees:
-# `<SelfTy as Trait<Args>>::method<MArgs>`. Resolution goes through
-# the env's impl-table with structural target equality; generic-impl-
-# target unification is a follow-up.
+# `<SelfTy as Trait<Args>>::method<MArgs>`. Resolution structurally matches
+# the trait path and target together, including generic impl headers.
 #
 #   trait/impl                         covers
 #   Iter<i64> for List                 concrete impl target, no method args

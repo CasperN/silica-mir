@@ -9,9 +9,13 @@
 //!     mangled instantiation name (e.g. `Box<i32>`).
 //!   - Every `FnName(name, args)` has `args = []`; `name` is the
 //!     mangled instantiation name.
+//!   - Every `TraitFn` has been resolved to the selected impl method and
+//!     rewritten to a concrete `FnName`.
 //!   - No `Function.type_params`, `StructDecl.type_params`, or
 //!     `EnumDecl.type_params` remain — every decl is a concrete
 //!     instantiation.
+//!   - Impl blocks are gone; their reachable methods are emitted as ordinary
+//!     functions.
 //!   - Generic decls that are never instantiated are dropped.
 //!
 //! ## Algorithm
@@ -57,8 +61,8 @@
 //!   per concrete arg — the second time the walker sees `Node<i32>`
 //!   the instantiation is already registered, so no infinite loop.
 
-use crate::common::GeneratedKind;
-use crate::mir::env::IndexedProgram;
+use crate::common::{GeneratedKind, Marker, Markers};
+use crate::mir::env::{impl_marker_bounds_satisfied, match_impl_header, IndexedProgram};
 use crate::mir::type_fold::TypeFolder;
 use crate::mir::type_util::{
     substitute_params, substitute_stmt_types, substitute_terminator_types,
@@ -67,13 +71,18 @@ use crate::mir::{ast::*, helpers::*};
 use std::collections::{BTreeMap, VecDeque};
 
 /// Consume `program` and return its concrete, monomorphized form.
-pub fn monomorphize(program: IndexedProgram) -> IndexedProgram {
+pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
     let IndexedProgram {
         types,
         traits,
         functions,
         impls,
     } = program;
+
+    let type_markers = types
+        .iter()
+        .map(|(name, declaration)| (name.clone(), declaration.meta().markers))
+        .collect();
 
     let mut declarations =
         Vec::with_capacity(types.len() + traits.len() + functions.len() + impls.len());
@@ -101,14 +110,13 @@ pub fn monomorphize(program: IndexedProgram) -> IndexedProgram {
         (span.line, span.col, span.end_line, span.end_col)
     });
 
-    // Index the original decls by name for lookup during specialization.
-    // Impl blocks bypass mono entirely — they're not name-keyed decls
-    // that mono can specialize by args, and their methods are addressed
-    // via `(trait, target)` lookup. Preserve them separately and append
-    // them unchanged to the output.
+    // Index ordinary declarations and impl-method templates by name for
+    // lookup during specialization. Impl-header type parameters are prepended
+    // to each method's own parameters so both can use the ordinary function
+    // specialization path once trait lookup has inferred the header args.
     let is_mono_target = |d: &Declaration| !matches!(d, Declaration::Impl(_));
     let mut originals = BTreeMap::new();
-    let mut impl_declarations = Vec::new();
+    let mut impl_blocks = Vec::new();
     let mut seeds = Vec::new();
     for declaration in declarations {
         if is_mono_target(&declaration) {
@@ -117,13 +125,26 @@ pub fn monomorphize(program: IndexedProgram) -> IndexedProgram {
                 seeds.push(meta.name.clone());
             }
             originals.insert(meta.name.clone(), declaration);
-        } else {
-            impl_declarations.push(declaration);
+        } else if let Declaration::Impl(impl_block) = declaration {
+            for method in &impl_block.methods {
+                let template = impl_method_template(&impl_block, method);
+                let template_name = template.meta.name.clone();
+                assert!(
+                    originals
+                        .insert(template_name.clone(), Declaration::Fn(template))
+                        .is_none(),
+                    "mono: duplicate impl-method template '{}'",
+                    template_name,
+                );
+            }
+            impl_blocks.push(impl_block);
         }
     }
 
     let mut ctx = MonoCtx {
         originals,
+        impl_blocks,
+        type_markers,
         needed: BTreeMap::new(),
         pending: VecDeque::new(),
     };
@@ -155,11 +176,6 @@ pub fn monomorphize(program: IndexedProgram) -> IndexedProgram {
         };
         out.push(ctx.specialize(decl, &args, mangled));
     }
-    // Preserve impl blocks unchanged past mono. The mono trait-fn
-    // resolution pass (still to be implemented) consumes them via the
-    // env's impl table and emits concrete `Fn` decls in their place.
-    out.extend(impl_declarations);
-
     let mut program = IndexedProgram {
         types: indexmap::IndexMap::new(),
         traits: indexmap::IndexMap::new(),
@@ -199,11 +215,35 @@ pub fn monomorphize(program: IndexedProgram) -> IndexedProgram {
     program
 }
 
+fn impl_method_template_name(impl_block: &ImplBlock, method: &Function) -> String {
+    format!(
+        "<{} as {}>::{}",
+        impl_block.target, impl_block.trait_path, method.meta.name,
+    )
+}
+
+fn impl_method_template(impl_block: &ImplBlock, method: &Function) -> Function {
+    let mut params = impl_block.params.clone();
+    params
+        .lifetime_params
+        .extend(method.meta.params.lifetime_params.clone());
+    params.outlives.extend(method.meta.params.outlives.clone());
+    params
+        .type_params
+        .extend(method.meta.params.type_params.clone());
+
+    let mut method = method.clone();
+    method.meta.name = impl_method_template_name(impl_block, &method);
+    method.meta.params = params;
+    method
+}
+
 struct MonoCtx {
     originals: BTreeMap<String, Declaration>,
+    impl_blocks: Vec<ImplBlock>,
+    type_markers: BTreeMap<String, Markers>,
     /// Map from (original decl name, concrete args) to mangled name.
-    /// Insertion order determines the emit order — post-mono decls
-    /// come out in reachability order.
+    /// `pending` separately preserves reachability discovery order.
     needed: BTreeMap<(String, Vec<Type>), String>,
     pending: VecDeque<(String, Vec<Type>)>,
 }
@@ -213,11 +253,18 @@ impl MonoCtx {
     /// Idempotent — a second call with the same key returns the same
     /// mangled name and does not re-queue.
     fn need(&mut self, name: &str, args: &[Type]) -> String {
+        self.need_named(name, args, mangle(name, args))
+    }
+
+    fn need_named(&mut self, name: &str, args: &[Type], mangled: String) -> String {
         let key = (name.to_string(), args.to_vec());
-        if let Some(mangled) = self.needed.get(&key) {
-            return mangled.clone();
+        if let Some(existing) = self.needed.get(&key) {
+            assert_eq!(
+                existing, &mangled,
+                "mono: one specialization key produced multiple symbols",
+            );
+            return existing.clone();
         }
-        let mangled = mangle(name, args);
         self.needed.insert(key.clone(), mangled.clone());
         self.pending.push_back(key);
         mangled
@@ -248,12 +295,30 @@ impl MonoCtx {
                 let mangled = self.need(name, &new_args);
                 ConstVal::FnName(mangled, Vec::new())
             }
-            // Trait-fn callees pass through mono unchanged. The mono
-            // trait-resolution pass (still to be implemented) rewrites
-            // them into concrete `FnName`s; codegen panics on any
-            // surviving `TraitFn`, so a program that reaches LLVM
-            // without resolution fails loudly rather than silently.
-            ConstVal::TraitFn { .. } => c.clone(),
+            ConstVal::TraitFn {
+                trait_path,
+                self_ty,
+                method,
+            } => {
+                let (template_name, impl_args) =
+                    self.resolve_trait_fn(trait_path, self_ty, &method.name);
+                let concrete_self = self.fold_type(self_ty);
+                let concrete_trait = self.fold_instance(trait_path);
+                let concrete_method = self.fold_instance(method);
+                let args = impl_args
+                    .into_iter()
+                    .chain(method.type_args.iter().cloned())
+                    .map(|arg| self.fold_type(&arg))
+                    .collect::<Vec<_>>();
+                let symbol = format!(
+                    "<{} as {}>::{}",
+                    erase_type_lifetimes(&concrete_self),
+                    erase_instance_lifetimes(&concrete_trait),
+                    erase_instance_lifetimes(&concrete_method),
+                );
+                let mangled = self.need_named(&template_name, &args, symbol);
+                ConstVal::FnName(mangled, Vec::new())
+            }
             ConstVal::Int { .. }
             | ConstVal::Float { .. }
             | ConstVal::Bool(_)
@@ -281,6 +346,96 @@ impl MonoCtx {
                 RValue::ArrayLit(ops.iter().map(|o| self.walk_operand(o)).collect())
             }
             RValue::PtrCast(op, ty) => RValue::PtrCast(self.walk_operand(op), self.fold_type(ty)),
+        }
+    }
+
+    fn fold_instance(&mut self, instance: &Instance) -> Instance {
+        Instance {
+            name: instance.name.clone(),
+            lifetime_args: instance
+                .lifetime_args
+                .iter()
+                .map(|lifetime| self.fold_lifetime(lifetime))
+                .collect(),
+            type_args: instance
+                .type_args
+                .iter()
+                .map(|ty| self.fold_type(ty))
+                .collect(),
+        }
+    }
+
+    fn resolve_trait_fn(
+        &self,
+        trait_path: &Instance,
+        self_ty: &Type,
+        method_name: &str,
+    ) -> (String, Vec<Type>) {
+        let mut selected = None;
+        for impl_block in &self.impl_blocks {
+            if impl_block.trait_path.name != trait_path.name {
+                continue;
+            }
+            let Some(bindings) = match_impl_header(impl_block, trait_path, self_ty) else {
+                continue;
+            };
+            if !impl_marker_bounds_satisfied(impl_block, &bindings, |ty| self.class_of_concrete(ty))
+            {
+                continue;
+            }
+            let Some(method) = impl_block
+                .methods
+                .iter()
+                .find(|method| method.meta.name == method_name)
+            else {
+                continue;
+            };
+            let candidate = (
+                impl_method_template_name(impl_block, method),
+                bindings.type_args,
+            );
+            assert!(
+                selected.is_none(),
+                "mono: overlapping impls while resolving <{} as {}>::{}",
+                self_ty,
+                trait_path,
+                method_name,
+            );
+            selected = Some(candidate);
+        }
+        selected.unwrap_or_else(|| {
+            panic!(
+                "mono: no impl method found while resolving <{} as {}>::{}; type checking should have rejected the call",
+                self_ty, trait_path, method_name,
+            )
+        })
+    }
+
+    fn class_of_concrete(&self, ty: &Type) -> Markers {
+        let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Never
+            | TypeKind::Fn(_)
+            | TypeKind::RawPtr(_) => all(),
+            TypeKind::Ref(kind, _, _) => match kind {
+                RefKind::Shared => all(),
+                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
+                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
+            },
+            TypeKind::Custom(instance) => self
+                .type_markers
+                .get(&instance.name)
+                .copied()
+                .unwrap_or_else(Markers::empty),
+            TypeKind::Array(element, _) => self.class_of_concrete(element),
+            TypeKind::Param(name) => panic!(
+                "mono: unresolved type parameter '{}' during impl-bound checking",
+                name,
+            ),
         }
     }
 
@@ -492,6 +647,39 @@ fn mangle(name: &str, args: &[Type]) -> String {
     format!("{}<{}>", name, parts.join(", "))
 }
 
+fn erase_instance_lifetimes(instance: &Instance) -> Instance {
+    Instance {
+        name: instance.name.clone(),
+        lifetime_args: Vec::new(),
+        type_args: instance
+            .type_args
+            .iter()
+            .map(erase_type_lifetimes)
+            .collect(),
+    }
+}
+
+fn erase_type_lifetimes(ty: &Type) -> Type {
+    let kind = match &ty.kind {
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Never
+        | TypeKind::Param(_) => return ty.clone(),
+        TypeKind::Custom(instance) => TypeKind::Custom(erase_instance_lifetimes(instance)),
+        TypeKind::Fn(params) => TypeKind::Fn(params.iter().map(erase_type_lifetimes).collect()),
+        TypeKind::Ref(kind, _, inner) => {
+            TypeKind::Ref(*kind, None, Box::new(erase_type_lifetimes(inner)))
+        }
+        TypeKind::RawPtr(inner) => TypeKind::RawPtr(Box::new(erase_type_lifetimes(inner))),
+        TypeKind::Array(element, size) => {
+            TypeKind::Array(Box::new(erase_type_lifetimes(element)), *size)
+        }
+    };
+    Type::new(kind, ty.source)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -530,6 +718,8 @@ mod tests {
         );
         let mut ctx = MonoCtx {
             originals: BTreeMap::new(),
+            impl_blocks: Vec::new(),
+            type_markers: BTreeMap::new(),
             needed: BTreeMap::new(),
             pending: VecDeque::new(),
         };
