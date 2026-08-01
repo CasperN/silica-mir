@@ -63,7 +63,8 @@ Implement this as the following sequence of reviewable commits:
    describe compiler-generated edge-split labels instead of exposing names
    such as `$edge0`. Keep this context separate from the primary
    diagnostic source: one identifies the enclosing scope, the other identifies
-   the operation being blamed.
+   the operation being blamed. Function context must distinguish identically
+   named impl methods by including their trait and target type.
 
 3. **Give MIR syntax below a statement precise provenance without changing
    semantic identity.** Design a shared source-bearing representation for the
@@ -138,6 +139,11 @@ the deliberate later refinement to nested operand and projection sources.
 - **`TypeKind::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
 
 ## Testing gaps
+- **Warning-only fixtures are not pinned.** A clean `.expected.sim` fixture
+  compares only pretty-printed MIR, so warnings are discarded. Allow an
+  explicit diagnostics expectation for programs that emit warnings but no
+  errors, and make `UPDATE_EXPECT` preserve that choice rather than switching
+  solely on `has_errors()`.
 - **End-to-end runtime fixtures.** `tests/programs/*` today pins elaborated MIR, but real behavior — `sum_to_n(10) → 55`, `hello_world` prints `hi!\n`, linked-list `exit=6` — is only verified manually. Automate: compile to `.ll`, link any sibling C shim, execute, pin exit code + stdout in a `.run.expected`. Needs a new fixture-runner stage + `clang` gating. Bazel migration (see Longer term) is one path to the cross-language build infra this requires.
 
 ## Longer term

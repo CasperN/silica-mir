@@ -3,7 +3,7 @@
 //! Verifies per-statement access against the active loan set (emits
 //! `LT-LoanConflict`), accumulates outlives constraints from ref-typed
 //! assignments and call sites, and reports any that can't be discharged
-//! against the function's declared outlives axioms (`LT-LifetimeMismatch`
+//! against the outlives axioms in the function's `LocalEnv` (`LT-LifetimeMismatch`
 //! and `LT-LifetimeEscape`).
 //!
 //! Independent of `init_state`: this pass sees a program purely as
@@ -28,16 +28,9 @@ use super::LifetimeCode;
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     check_decl_wf(program, d);
-    for f in program.functions() {
-        let env = LocalEnv::for_decl(program, &f.meta.params);
-        check_fn_signature_wf(env, f, d);
-        if let Some(body) = &f.body {
-            check_function(env, f, body, d);
-        }
-    }
-    program.visit_function_bodies(|env, func, body| {
-        if env.impl_generics().is_some() {
-            check_fn_signature_wf(env, func, d);
+    program.functions(|env, func, body| {
+        check_fn_signature_wf(env, func, d);
+        if let Some(body) = body {
             check_function(env, func, body, d);
         }
     });

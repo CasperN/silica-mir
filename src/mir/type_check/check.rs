@@ -9,7 +9,7 @@ use super::IndexedProgram;
 use super::TypeCheckCode;
 use super::TypeCheckCode::*;
 use super::TypeDecl;
-use crate::common::{Lifetime, LifetimeParam};
+use crate::common::{GeneratedKind, Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
@@ -266,7 +266,9 @@ impl IndexedProgram {
         }
 
         // Validate all functions
-        for f in self.functions() {
+        for f in self.functions.values().filter(|function| {
+            function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+        }) {
             self.typecheck_function(LocalEnv::for_decl(self, &f.meta.params), f, d);
         }
 

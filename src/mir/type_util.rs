@@ -103,10 +103,6 @@ impl DeclMeta {
 /// so we panic to surface the bug at the call boundary rather than
 /// after downstream analyses have consumed a nonsensical type.
 ///
-/// TODO: replace the two-slice signature with a `Substitution` struct
-/// holding `Vec<(TypeParam, Type)>` (and its lifetime counterpart) so
-/// callers can't construct mismatched pairs. Validation moves to the
-/// constructor, substitute becomes total.
 pub fn substitute_params(ty: &Type, type_params: &[TypeParam], args: &[Type]) -> Type {
     assert_eq!(
         args.len(),

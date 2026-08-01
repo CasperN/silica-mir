@@ -14,13 +14,13 @@ use super::analysis::{
 };
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
-    program.visit_function_bodies(|env, func, body| check_function(env, func, body, d));
+    program.function_bodies(|env, func, body| check_function(env, func, body, d));
     check_return_leaks(program, d);
 }
 
 /// Return validation is part of the single final place-state check.
 pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) {
-    program.visit_function_bodies(|env, func, body| {
+    program.function_bodies(|env, func, body| {
         let locals = body.locals_map(&func.params);
         for (block, state) in states_before_returns(env, func, body) {
             check_return_state(env.program(), func, block, &locals, &state, d);

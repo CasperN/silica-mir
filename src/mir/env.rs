@@ -168,7 +168,8 @@ impl TypeResolutionError {
         Self { kind }
     }
 
-    // TODO: Why is there this translation happening, can this be inlined or simplified?
+    // TODO(diagnostics): Derive TypeCheckCode from the eventual typed failure
+    // payload instead of translating TypeResolutionError separately.
     pub fn code(&self) -> TypeCheckCode {
         match &self.kind {
             TypeResolutionErrorKind::UndeclaredVariable(_) => UndeclaredVariable,
@@ -696,7 +697,13 @@ impl IndexedProgram {
             TypeDecl::Enum(e) => DeclarationRef::Enum(e),
         });
         let traits = self.traits.values().map(DeclarationRef::Trait);
-        let functions = self.functions().map(DeclarationRef::Function);
+        let functions = self
+            .functions
+            .values()
+            .filter(|function| {
+                function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+            })
+            .map(DeclarationRef::Function);
         let impls = self.impls.values().map(DeclarationRef::Impl);
 
         let mut declarations: Vec<_> = types.chain(traits).chain(functions).chain(impls).collect();
@@ -707,40 +714,28 @@ impl IndexedProgram {
         declarations
     }
 
-    /// Iterate function declarations, excluding intrinsic lookup entries.
-    pub fn functions(&self) -> impl Iterator<Item = &Function> {
-        self.functions.values().filter(|function| {
-            function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
-        })
-    }
-
-    /// Visit free-function and impl-method bodies in source declaration order,
-    /// with the generic context in which each body is defined.
-    pub fn visit_function_bodies(
+    /// Visit free functions and impl methods in source declaration order,
+    /// with their generic context and optional body. Compiler-provided
+    /// intrinsic lookup entries are excluded.
+    pub fn functions(
         &self,
-        mut visitor: impl FnMut(LocalEnv<'_>, &Function, &FunctionBody),
+        mut visitor: impl FnMut(LocalEnv<'_>, &Function, Option<&FunctionBody>),
     ) {
         for declaration in self.declarations() {
             match declaration {
                 DeclarationRef::Function(function) => {
-                    let Some(body) = &function.body else {
-                        continue;
-                    };
                     visitor(
                         LocalEnv::for_decl(self, &function.meta.params),
                         function,
-                        body,
+                        function.body.as_ref(),
                     );
                 }
                 DeclarationRef::Impl(impl_block) => {
                     for method in &impl_block.methods {
-                        let Some(body) = &method.body else {
-                            continue;
-                        };
                         visitor(
                             LocalEnv::for_impl_method(self, impl_block, method),
                             method,
-                            body,
+                            method.body.as_ref(),
                         );
                     }
                 }
@@ -749,7 +744,16 @@ impl IndexedProgram {
         }
     }
 
-    /// Mutable counterpart of [`visit_function_bodies`](Self::visit_function_bodies).
+    /// Visit free-function and impl-method bodies with their generic context.
+    pub fn function_bodies(&self, mut visitor: impl FnMut(LocalEnv<'_>, &Function, &FunctionBody)) {
+        self.functions(|env, function, body| {
+            if let Some(body) = body {
+                visitor(env, function, body);
+            }
+        });
+    }
+
+    /// Mutable body visitor for free functions and impl methods.
     /// Each body is detached while the visitor runs so the accompanying
     /// [`LocalEnv`] can borrow the complete indexed program immutably.
     pub fn visit_function_bodies_mut(
@@ -1303,17 +1307,18 @@ mod declaration_iteration_tests {
             declarations,
             ["trait T", "struct S", "impl", "fn f", "enum E"]
         );
+        let mut functions = Vec::new();
+        program.functions(|_env, function, body| {
+            functions.push((function.meta.name.clone(), body.is_some()));
+        });
         assert_eq!(
-            program
-                .functions()
-                .map(|function| function.meta.name.as_str())
-                .collect::<Vec<_>>(),
-            ["f"]
+            functions,
+            [("use_".to_string(), true), ("f".to_string(), true)]
         );
     }
 
     #[test]
-    fn body_visitors_provide_generic_context_and_reattach_mutated_bodies() {
+    fn function_visitors_provide_generic_context_and_reattach_mutated_bodies() {
         let program = Parser::parse_or_panic(
             "
             trait<T> Tr { fn<U> method(value: & Self, other: U); }
@@ -1322,13 +1327,14 @@ mod declaration_iteration_tests {
               fn<Y> method(value: & S<X>, other: Y) { entry: return }
             }
             fn<Z> free(value: Z) { entry: return }
+            extern fn<Z> external(value: Z);
             ",
         );
         let (mut program, errors) = IndexedProgram::build(&program);
         assert!(errors.is_empty(), "environment errors: {errors:?}");
 
         let mut contexts = Vec::new();
-        program.visit_function_bodies(|env, function, _body| {
+        program.functions(|env, function, body| {
             if function.meta.name == "method" {
                 assert!(env.type_param("X").is_some());
                 assert!(env.type_param("Y").is_some());
@@ -1346,6 +1352,7 @@ mod declaration_iteration_tests {
                     .first()
                     .map(|param| param.name.clone()),
                 env.self_ty().map(ToString::to_string),
+                body.is_some(),
             ));
         });
         assert_eq!(
@@ -1356,8 +1363,16 @@ mod declaration_iteration_tests {
                     Some("X".to_string()),
                     Some("Y".to_string()),
                     Some("S<X>".to_string()),
+                    true,
                 ),
-                ("free".to_string(), None, Some("Z".to_string()), None,),
+                ("free".to_string(), None, Some("Z".to_string()), None, true),
+                (
+                    "external".to_string(),
+                    None,
+                    Some("Z".to_string()),
+                    None,
+                    false,
+                ),
             ]
         );
 
@@ -1377,7 +1392,7 @@ mod declaration_iteration_tests {
         });
 
         let mut labels = Vec::new();
-        program.visit_function_bodies(|_env, function, body| {
+        program.function_bodies(|_env, function, body| {
             labels.push((function.meta.name.clone(), body.blocks[0].label.clone()));
         });
         assert_eq!(

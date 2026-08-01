@@ -92,7 +92,7 @@ pub fn elaborate(program: &mut IndexedProgram, d: &mut Diagnostics) {
 pub fn verify_no_take(program: &IndexedProgram, d: &mut crate::diagnostics::Diagnostics) {
     let mut first: Option<SourceInfo> = None;
     let mut count = 0usize;
-    program.visit_function_bodies(|_env, _func, body| {
+    program.function_bodies(|_env, _func, body| {
         for block in &body.blocks {
             for stmt in &block.statements {
                 scan_statement_for_take(stmt, &mut first, &mut count);
@@ -910,10 +910,7 @@ mod tests {
     }
 
     fn call_arg<'a>(program: &'a IndexedProgram, function: &str, statement: usize) -> &'a Operand {
-        let func = program
-            .functions()
-            .find(|func| func.meta.name == function)
-            .unwrap();
+        let func = program.functions.get(function).unwrap();
         let body = func.body.as_ref().unwrap();
         let StatementKind::Call(_, args) = &body.blocks[0].statements[statement].kind else {
             panic!("expected call statement");
@@ -927,10 +924,7 @@ mod tests {
         block_label: &str,
         statement: usize,
     ) -> &'a Operand {
-        let func = program
-            .functions()
-            .find(|func| func.meta.name == function)
-            .unwrap();
+        let func = program.functions.get(function).unwrap();
         let block = func
             .body
             .as_ref()

@@ -53,7 +53,7 @@ impl From<ReachabilityCode> for DiagCode {
 }
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
-    program.visit_function_bodies(|env, func, body| check_function(env, func, body, d));
+    program.function_bodies(|env, func, body| check_function(env, func, body, d));
 }
 
 fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
