@@ -58,7 +58,7 @@
 //!   the instantiation is already registered, so no infinite loop.
 
 use crate::common::GeneratedKind;
-use crate::mir::env::{DeclarationRef, IndexedProgram};
+use crate::mir::env::IndexedProgram;
 use crate::mir::type_fold::TypeFolder;
 use crate::mir::type_util::{
     substitute_params, substitute_stmt_types, substitute_terminator_types,
@@ -66,32 +66,61 @@ use crate::mir::type_util::{
 use crate::mir::{ast::*, helpers::*};
 use std::collections::{BTreeMap, VecDeque};
 
-/// Rewrite `program` in place: erase generic decls, emit specialized
-/// copies for every reachable instantiation.
-pub fn monomorphize(program: &mut IndexedProgram) {
-    let declarations: Vec<Declaration> = program
-        .declarations()
-        .into_iter()
-        .map(|declaration| match declaration {
-            DeclarationRef::Struct(s) => Declaration::Struct(s.clone()),
-            DeclarationRef::Enum(e) => Declaration::Enum(e.clone()),
-            DeclarationRef::Function(f) => Declaration::Fn(f.clone()),
-            DeclarationRef::Trait(t) => Declaration::Trait(t.clone()),
-            DeclarationRef::Impl(i) => Declaration::Impl(i.clone()),
-        })
-        .collect();
+/// Consume `program` and return its concrete, monomorphized form.
+pub fn monomorphize(program: IndexedProgram) -> IndexedProgram {
+    let IndexedProgram {
+        types,
+        traits,
+        functions,
+        impls,
+    } = program;
+
+    let mut declarations =
+        Vec::with_capacity(types.len() + traits.len() + functions.len() + impls.len());
+    declarations.extend(types.into_values().map(|declaration| match declaration {
+        TypeDecl::Struct(declaration) => Declaration::Struct(declaration),
+        TypeDecl::Enum(declaration) => Declaration::Enum(declaration),
+    }));
+    declarations.extend(traits.into_values().map(Declaration::Trait));
+
+    let mut intrinsic_functions = indexmap::IndexMap::new();
+    for (name, function) in functions {
+        if function.meta.name_source.generated_kind() == Some(GeneratedKind::Intrinsic) {
+            intrinsic_functions.insert(name, function);
+        } else {
+            declarations.push(Declaration::Fn(function));
+        }
+    }
+    declarations.extend(impls.into_values().map(Declaration::Impl));
+    declarations.sort_by_key(|declaration| {
+        let source = declaration
+            .meta()
+            .map(|meta| meta.name_source)
+            .unwrap_or(declaration.params().source);
+        let span = source.span();
+        (span.line, span.col, span.end_line, span.end_col)
+    });
 
     // Index the original decls by name for lookup during specialization.
     // Impl blocks bypass mono entirely — they're not name-keyed decls
     // that mono can specialize by args, and their methods are addressed
-    // via `(trait, target)` lookup. Skip them here and prepend back
-    // onto the mono output at the end.
+    // via `(trait, target)` lookup. Preserve them separately and append
+    // them unchanged to the output.
     let is_mono_target = |d: &Declaration| !matches!(d, Declaration::Impl(_));
-    let originals: BTreeMap<String, Declaration> = declarations
-        .iter()
-        .filter(|d| is_mono_target(d))
-        .map(|d| (d.meta().unwrap().name.clone(), d.clone()))
-        .collect();
+    let mut originals = BTreeMap::new();
+    let mut impl_declarations = Vec::new();
+    let mut seeds = Vec::new();
+    for declaration in declarations {
+        if is_mono_target(&declaration) {
+            let meta = declaration.meta().unwrap();
+            if meta.params.type_params.is_empty() {
+                seeds.push(meta.name.clone());
+            }
+            originals.insert(meta.name.clone(), declaration);
+        } else {
+            impl_declarations.push(declaration);
+        }
+    }
 
     let mut ctx = MonoCtx {
         originals,
@@ -102,12 +131,8 @@ pub fn monomorphize(program: &mut IndexedProgram) {
     // Seed: every non-generic decl is trivially reachable. Generic
     // decls are only pulled in via instantiations found while walking
     // reachable code.
-    for decl in declarations.iter().filter(|d| is_mono_target(d)) {
-        if let Some(m) = decl.meta() {
-            if m.params.type_params.is_empty() {
-                ctx.need(&m.name, &[]);
-            }
-        }
+    for name in seeds {
+        ctx.need(&name, &[]);
     }
 
     let mut out: Vec<Declaration> = Vec::new();
@@ -133,18 +158,14 @@ pub fn monomorphize(program: &mut IndexedProgram) {
     // Preserve impl blocks unchanged past mono. The mono trait-fn
     // resolution pass (still to be implemented) consumes them via the
     // env's impl table and emits concrete `Fn` decls in their place.
-    for decl in declarations {
-        if matches!(decl, Declaration::Impl(_)) {
-            out.push(decl);
-        }
-    }
+    out.extend(impl_declarations);
 
-    program.types.clear();
-    program.traits.clear();
-    program.functions.retain(|_, function| {
-        function.meta.name_source.generated_kind() == Some(GeneratedKind::Intrinsic)
-    });
-    program.impls.clear();
+    let mut program = IndexedProgram {
+        types: indexmap::IndexMap::new(),
+        traits: indexmap::IndexMap::new(),
+        functions: intrinsic_functions,
+        impls: indexmap::IndexMap::new(),
+    };
     for declaration in out {
         match declaration {
             Declaration::Struct(declaration) => {
@@ -175,6 +196,7 @@ pub fn monomorphize(program: &mut IndexedProgram) {
             }
         }
     }
+    program
 }
 
 struct MonoCtx {
@@ -562,8 +584,8 @@ mod tests {
             .cloned()
             .expect("root function exists");
 
-        let mut program = IndexedProgram::build(&parsed).0;
-        monomorphize(&mut program);
+        let program = IndexedProgram::build(&parsed).0;
+        let program = monomorphize(program);
 
         let specialized_struct = match program.types.get("Borrowed<i64>") {
             Some(TypeDecl::Struct(declaration)) => declaration,

@@ -43,8 +43,8 @@ use crate::mir::layout;
 use indexmap::IndexMap;
 use std::fmt::Write;
 
-pub fn lower_mir_to_llvm(mut program: IndexedProgram) -> String {
-    crate::mir::mono::monomorphize(&mut program);
+pub fn lower_mir_to_llvm(program: IndexedProgram) -> String {
+    let program = crate::mir::mono::monomorphize(program);
 
     let mut cx = CodeGenContext {
         prog: &program,

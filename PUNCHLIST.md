@@ -190,3 +190,4 @@ the deliberate later refinement to nested operand and projection sources.
 - Extend drop elaboration with AutoDestroy.
 - trait bounds on type parameters
 - Resolve concrete TraitFn calls to impl methods during monomorphization.
+- Make monomorphization not mutate the program and just write to LLVM.
