@@ -79,31 +79,9 @@ impl From<CopyRelaxationCode> for DiagCode {
 /// shared-reference or dynamic-index boundary, where `copy` would be
 /// required but the type isn't `Copy`).
 pub fn elaborate(program: &mut IndexedProgram, d: &mut Diagnostics) {
-    let function_names: Vec<_> = program
-        .functions()
-        .map(|function| function.meta.name.clone())
-        .collect();
-
-    for name in function_names {
-        let Some(mut body) = program
-            .functions
-            .get_mut(&name)
-            .and_then(|function| function.body.take())
-        else {
-            continue;
-        };
-
-        let function = program
-            .functions
-            .get(&name)
-            .expect("function collected from this index");
-        elaborate_function(function, &mut body, program, d);
-        program
-            .functions
-            .get_mut(&name)
-            .expect("elaboration does not remove functions")
-            .body = Some(body);
-    }
+    program.visit_function_bodies_mut(|env, function, body| {
+        elaborate_function(function, body, env, d)
+    });
 }
 
 /// Post-elaboration invariant: no `Take` operand survives. If any do,
@@ -114,15 +92,14 @@ pub fn elaborate(program: &mut IndexedProgram, d: &mut Diagnostics) {
 pub fn verify_no_take(program: &IndexedProgram, d: &mut crate::diagnostics::Diagnostics) {
     let mut first: Option<SourceInfo> = None;
     let mut count = 0usize;
-    for func in program.functions() {
-        let Some(body) = &func.body else { continue };
+    program.visit_function_bodies(|_env, _func, body| {
         for block in &body.blocks {
             for stmt in &block.statements {
                 scan_statement_for_take(stmt, &mut first, &mut count);
             }
             scan_terminator_for_take(&block.terminator, &mut first, &mut count);
         }
-    }
+    });
     if count == 0 {
         return;
     }
@@ -238,7 +215,7 @@ fn scan_place_for_take(
 fn elaborate_function(
     func: &Function,
     body: &mut FunctionBody,
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     d: &mut Diagnostics,
 ) {
     let mut locals = IndexMap::new();
@@ -248,7 +225,6 @@ fn elaborate_function(
     for local in &body.locals {
         locals.insert(local.name.clone(), local.ty.clone());
     }
-    let env = LocalEnv::for_decl(env, &func.meta.params);
     let return_obligations = collect_return_obligations(func, body);
     let func_name = func.meta.name.clone();
     if body.blocks.is_empty() {

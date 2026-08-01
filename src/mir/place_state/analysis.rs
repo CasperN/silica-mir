@@ -716,7 +716,7 @@ pub(super) fn read_at(
 /// Also returns a closure that advances a state through a single
 /// statement (silent — no diagnostics), so callers can walk a block
 /// forward from its entry state to compute intermediate points.
-pub fn block_entry_states(env: &IndexedProgram, func: &Function) -> IndexMap<String, PointState> {
+pub fn block_entry_states(env: LocalEnv<'_>, func: &Function) -> IndexMap<String, PointState> {
     let Some(body) = &func.body else {
         return IndexMap::new();
     };
@@ -725,7 +725,7 @@ pub fn block_entry_states(env: &IndexedProgram, func: &Function) -> IndexMap<Str
     }
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env: LocalEnv::for_decl(env, &func.meta.params),
+        env,
         locals: &locals,
     };
     run_fixpoint(&ctx, func, body)
@@ -736,21 +736,21 @@ pub fn block_entry_states(env: &IndexedProgram, func: &Function) -> IndexMap<Str
 /// entry state and want to reconstruct the state at any point inside
 /// the block.
 pub fn transfer_stmt_silent(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     stmt: &Statement,
     state: &mut PointState,
 ) {
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env: LocalEnv::for_decl(env, &func.meta.params),
+        env,
         locals: &locals,
     };
     ctx.transfer_stmt(stmt, state);
 }
 
 pub fn states_before_returns<'a>(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &'a Function,
 ) -> Vec<(&'a BasicBlock, PointState)> {
     let mut out = Vec::new();
@@ -763,7 +763,7 @@ pub fn states_before_returns<'a>(
 
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env: LocalEnv::for_decl(env, &func.meta.params),
+        env,
         locals: &locals,
     };
     let entry_states = run_fixpoint(&ctx, func, body);

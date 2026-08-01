@@ -89,3 +89,11 @@ error: at 186:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argumen
      |           ^^^^^^^^^^
  187 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
      |
+error: at 209:7: [SUB-CopyOfNonCopy] In function 'duplicate', block 'entry': cannot copy non-Copy type T
+     |
+ 208 |     entry:
+ 209 |       duplicate = copy value;
+     |       ^^^^^^^^^^^^^^^^^^^^^^
+ 210 |       call consume<T>(move value);
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'

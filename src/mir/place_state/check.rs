@@ -15,7 +15,7 @@ use super::analysis::{
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     for f in program.functions() {
-        check_function(program, f, d);
+        check_function(LocalEnv::for_decl(program, &f.meta.params), f, d);
     }
     check_return_leaks(program, d);
 }
@@ -23,9 +23,10 @@ pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
 /// Return validation is part of the single final place-state check.
 pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) {
     for (func, _body) in program.function_bodies() {
+        let env = LocalEnv::for_decl(program, &func.meta.params);
         let locals = func.locals_map();
-        for (block, state) in states_before_returns(program, func) {
-            check_return_state(program, func, block, &locals, &state, d);
+        for (block, state) in states_before_returns(env, func) {
+            check_return_state(env.program(), func, block, &locals, &state, d);
         }
     }
 }
@@ -155,7 +156,7 @@ pub(super) fn find_decl_source(func: &Function, name: &str) -> Option<SourceInfo
         .map(|local| local.source)
 }
 
-fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
+fn check_function(env: LocalEnv<'_>, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
@@ -165,7 +166,7 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
 
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env: LocalEnv::for_decl(env, &func.meta.params),
+        env,
         locals: &locals,
     };
     let init_entry_states = run_fixpoint(&ctx, func, body);

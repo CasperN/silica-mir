@@ -48,16 +48,10 @@ use SubstructuralCheckCode::*;
 /// Class-precondition checks over statements (does not include
 /// `check_return_leaks`, which callers run separately after elaboration).
 pub fn check_statements(program: &IndexedProgram, d: &mut Diagnostics) {
-    for f in program.functions() {
-        check_function(program, f, d);
-    }
+    program.visit_function_bodies(|env, func, body| check_function(env, func, body, d));
 }
 
-fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else {
-        return;
-    };
-    let env = LocalEnv::for_decl(env, &func.meta.params);
+fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
     let locals = func.locals_map();
     for block in &body.blocks {
         for stmt in &block.statements {

@@ -435,3 +435,19 @@ fn mutation_between_variant_check_and_read(ab: AB) {
   ret:
     return
 }
+
+# ---------- impl_method_unreachable_block ----------
+
+# Reachability visits impl-method bodies as well as free functions.
+trait ReachabilityImpl {
+  fn check(recv: & Self);
+}
+
+impl ReachabilityImpl for Option {
+  fn check(recv: & Option) {
+    entry:
+      return
+    dead:
+      return
+  }
+}

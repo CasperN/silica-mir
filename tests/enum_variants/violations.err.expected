@@ -208,6 +208,13 @@ error: at 404:5: [REACH-SwitchArmFalselyUnreachable] In function 'variant_with_i
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  405 |   g:
      |
+warning: at 450:5: [REACH-BlockUnreachable] In function 'check': block 'dead' is unreachable from entry
+     |
+ 449 |       return
+ 450 |     dead:
+     |     ^^^^
+ 451 |       return
+     |
 note: at 40:8: [PARSE-MoveMarkerRedundant] Move marker is redundant on 'HasInhabited' because both Copy and Drop are present
     |
  39 | struct Wrap: Copy + Drop { inner: Option }

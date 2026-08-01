@@ -189,3 +189,26 @@ impl Iter<MissingArg> for Foo {
       return
   }
 }
+
+# --- Impl method body checking -----------------------------------------
+
+# The substructural statement checker visits impl methods with their impl-header
+# generic parameters in scope. Move does not imply Copy.
+extern fn<T: Move> consume(value: T);
+
+struct<T> Box { value: T }
+
+trait<T: Move> BadSub {
+  fn duplicate(recv: & Self, value: T);
+}
+
+impl<T: Move> BadSub<T> for Box<T> {
+  fn duplicate(recv: & Box<T>, value: T) {
+    duplicate: T;
+    entry:
+      duplicate = copy value;
+      call consume<T>(move value);
+      call consume<T>(move duplicate);
+      return
+  }
+}

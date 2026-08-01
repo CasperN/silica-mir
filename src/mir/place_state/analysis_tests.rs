@@ -43,7 +43,10 @@ mod parameter_ref_tests {
         );
         let env = IndexedProgram::build(&program).0;
         let func = program.find_fn("f").expect("fn f");
-        let states = super::super::analysis::states_before_returns(&env, func);
+        let states = super::super::analysis::states_before_returns(
+            crate::mir::env::LocalEnv::for_decl(&env, &func.meta.params),
+            func,
+        );
         let state = &states[0].1;
         assert!(state.refs.contains_key(&field_place(var_place("x"), "r")));
         assert!(!state.refs.contains_key(&field_place(var_place("y"), "r")));

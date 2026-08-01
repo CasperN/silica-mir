@@ -53,15 +53,10 @@ impl From<ReachabilityCode> for DiagCode {
 }
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
-    for f in program.functions() {
-        check_function(program, f, d);
-    }
+    program.visit_function_bodies(|env, func, body| check_function(env, func, body, d));
 }
 
-fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else {
-        return;
-    };
+fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
     if body.blocks.is_empty() {
         return;
     }
@@ -117,7 +112,7 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
 /// repeat. Only runs on reachable blocks — dead-code switches stay
 /// silent.
 fn check_switch_structure(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     place: &Place,
@@ -211,7 +206,7 @@ fn effective_successors(term: &Terminator) -> Vec<&str> {
 }
 
 fn check_switch_arms(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     body: &FunctionBody,
     block: &BasicBlock,
@@ -249,7 +244,7 @@ fn check_switch_arms(
                     .find(|v| v.name == *variant)
                     .map(|v| &v.ty);
                 match payload_ty {
-                    Some(ty) => !is_type_uninhabited(ty, env),
+                    Some(ty) => !is_type_uninhabited(ty, env.program()),
                     None => true,
                 }
             }
@@ -340,19 +335,16 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
 }
 
 fn resolve_enum_of_place<'a>(
-    env: &'a IndexedProgram,
+    env: LocalEnv<'a>,
     func: &Function,
     place: &Place,
 ) -> Option<&'a EnumDecl> {
     let locals = func.locals_map();
-    let ty = {
-        let env = LocalEnv::for_decl(env, &func.meta.params);
-        env.type_of_place(place, &locals).ok()?
-    };
+    let ty = env.type_of_place(place, &locals).ok()?;
     let TypeKind::Custom(inst) = ty.kind else {
         return None;
     };
-    match env.types.get(&inst.name) {
+    match env.program().types.get(&inst.name) {
         Some(TypeDecl::Enum(e)) => Some(e),
         _ => None,
     }

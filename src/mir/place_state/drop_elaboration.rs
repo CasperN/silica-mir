@@ -176,7 +176,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
     }
 
     let env = LocalEnv::for_decl(env, &func.meta.params);
-    let entry_states = block_entry_states(env.program(), func);
+    let entry_states = block_entry_states(env, func);
     let locals = func.locals_map();
     // The cross-edge fallback below needs the state of the program it will
     // actually emit, including the drops planned before ghost requirements.
@@ -210,7 +210,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
             if !drops.is_empty() {
                 for place in &drops {
                     transfer_stmt_silent(
-                        env.program(),
+                        env,
                         func,
                         &drop_stmt(
                             place.clone(),
@@ -227,7 +227,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
             // effect, but we track the elaborated form for
             // correctness under later analysis.
             let effective = rewrite.clone().unwrap_or_else(|| stmt.clone());
-            transfer_stmt_silent(env.program(), func, &effective, &mut state);
+            transfer_stmt_silent(env, func, &effective, &mut state);
             if let Some(new_stmt) = rewrite {
                 plan.rewrite_stmt
                     .insert((block.label.clone(), stmt_idx), new_stmt);
