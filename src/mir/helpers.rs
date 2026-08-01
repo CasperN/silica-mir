@@ -223,6 +223,9 @@ pub fn trait_fn_op(trait_path: Instance, self_ty: Type, method: Instance) -> Ope
         method,
     })
 }
+pub fn inherent_fn_op(self_ty: Type, method: Instance) -> Operand {
+    const_op(ConstVal::InherentFn { self_ty, method })
+}
 
 // ---------- RValues ----------
 

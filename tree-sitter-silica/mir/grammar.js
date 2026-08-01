@@ -276,6 +276,14 @@ module.exports = grammar({
       seq(
         '<',
         field('self_ty', $.type),
+        '>',
+        '::',
+        field('method_name', $.identifier),
+        optional(field('method_args', $.type_args)),
+      ),
+      seq(
+        '<',
+        field('self_ty', $.type),
         'as',
         field('trait_name', $.identifier),
         optional(field('trait_args', $.type_args)),

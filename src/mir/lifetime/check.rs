@@ -255,19 +255,43 @@ fn emit_stmt_wf_constraints(
     }
 }
 
-/// If `op` is a fn-name const with type arguments, discharge each
-/// type_arg's Custom outlives obligations. FnName can appear in call
-/// targets, call args, and any rvalue that consumes an operand
-/// (`Use`, `PtrCast`, `EnumConstr`, `ArrayLit`).
+/// Discharge the outlives obligations of types embedded in function
+/// constants. Such constants can appear in call targets, call arguments, and
+/// any rvalue that consumes an operand (`Use`, `PtrCast`, `EnumConstr`,
+/// `ArrayLit`).
 fn emit_operand_wf_constraints(
     op: &Operand,
     prog: &IndexedProgram,
     cs: &mut constraints::ConstraintSet,
 ) {
-    if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
-        for ty in type_args {
-            emit_type_wf_constraints(ty, prog, cs);
+    let Operand::Const(constant) = op else { return };
+    match constant {
+        ConstVal::FnName(_, type_args) => {
+            for ty in type_args {
+                emit_type_wf_constraints(ty, prog, cs);
+            }
         }
+        ConstVal::InherentFn { self_ty, method } => {
+            emit_type_wf_constraints(self_ty, prog, cs);
+            for ty in &method.type_args {
+                emit_type_wf_constraints(ty, prog, cs);
+            }
+        }
+        ConstVal::TraitFn {
+            trait_path,
+            self_ty,
+            method,
+        } => {
+            emit_type_wf_constraints(self_ty, prog, cs);
+            for ty in trait_path.type_args.iter().chain(&method.type_args) {
+                emit_type_wf_constraints(ty, prog, cs);
+            }
+        }
+        ConstVal::Int { .. }
+        | ConstVal::Float { .. }
+        | ConstVal::Bool(_)
+        | ConstVal::Unit
+        | ConstVal::ByteStr(_) => {}
     }
 }
 

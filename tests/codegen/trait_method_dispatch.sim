@@ -7,6 +7,8 @@
 #   Get<T> for Box<T>                 concrete call matches generic impl header
 #   Tagged<i64>/Tagged<bool>          trait args distinguish impls for one target
 #   LifetimeRead<'a>/<'b>             lifetimes select impls but erase in codegen
+#   <Counter>::inherent_read           concrete inherent method dispatch
+#   <Box<T>>::inherent_get             generic caller and impl specialization
 #   Dead for Counter                  unreachable impl method is not emitted
 
 trait Read {
@@ -43,6 +45,23 @@ struct<'a> BorrowedCounter: Copy + Drop { counter: & 'a Counter }
 
 impl Read for Counter {
   fn read(recv: & Counter, $return: &out i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      return
+  }
+}
+
+impl Counter {
+  fn inherent_read(recv: & Counter, $return: &out i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      return
+  }
+}
+
+# covers: generic inherent impl selected from a generic caller
+impl<T: Copy + Drop> Box<T> {
+  fn inherent_get(recv: & Box<T>, $return: &out T) {
     entry:
       $return.* = copy recv.*.value;
       return
@@ -117,6 +136,12 @@ fn<'a, 'b> lifetime_dispatch(
     return
 }
 
+fn<T: Copy + Drop> inherent_dispatch(recv: & Box<T>, $return: &out T) {
+  entry:
+    call <Box<T>>::inherent_get(copy recv, move $return);
+    return
+}
+
 fn main(exit: &out i32) {
   counter: Counter;
   boxed: Box<i64>;
@@ -126,6 +151,8 @@ fn main(exit: &out i32) {
   get_result: i64;
   tagged_i64_result: i64;
   tagged_bool_result: bool;
+  inherent_result: i64;
+  generic_inherent_result: i64;
   twice_recv: &Counter;
   twice_out: &out i64;
   identity_recv: &Counter;
@@ -136,6 +163,9 @@ fn main(exit: &out i32) {
   tagged_recv: &Counter;
   tagged_i64_out: &out i64;
   tagged_bool_out: &out bool;
+  inherent_recv: &Counter;
+  inherent_out: &out i64;
+  generic_inherent_out: &out i64;
   entry:
     counter.value = 5;
     boxed.value = 9;
@@ -163,6 +193,15 @@ fn main(exit: &out i32) {
     tagged_recv = &counter;
     tagged_bool_out = &out tagged_bool_result;
     call <Counter as Tagged<bool>>::tagged(move tagged_recv, move tagged_bool_out);
+
+    # covers: concrete inherent method reference reaches codegen
+    inherent_recv = &counter;
+    inherent_out = &out inherent_result;
+    call <Counter>::inherent_read(move inherent_recv, move inherent_out);
+
+    get_recv = &boxed;
+    generic_inherent_out = &out generic_inherent_result;
+    call inherent_dispatch<i64>(move get_recv, move generic_inherent_out);
 
     exit.* = 0i32;
     return

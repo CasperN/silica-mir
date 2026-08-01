@@ -143,6 +143,32 @@ enum TypeResolutionErrorKind {
     },
     PtrCastSourceNotPointer(Type),
     PtrCastTargetNotPointer(Type),
+    InherentFnNoImpl {
+        self_ty: Type,
+    },
+    InherentFnAmbiguousImpl {
+        self_ty: Type,
+    },
+    InherentFnNoMethod {
+        self_ty: Type,
+        method: String,
+    },
+    QualifiedFnLifetimeArgArity {
+        method: String,
+        expected: usize,
+        found: usize,
+    },
+    QualifiedFnTypeArgArity {
+        method: String,
+        expected: usize,
+        found: usize,
+    },
+    QualifiedFnTypeArgBoundNotSatisfied {
+        method: String,
+        parameter: String,
+        argument: Type,
+        bound: Marker,
+    },
     /// `TraitFn` callee names a trait not in the env.
     TraitFnUnknownTrait(String),
     /// `TraitFn` receiver is a generic type parameter; resolution
@@ -198,6 +224,14 @@ impl TypeResolutionError {
             TypeResolutionErrorKind::ArrayElementMismatch { .. } => ArrayLitElementTypeMismatch,
             TypeResolutionErrorKind::PtrCastSourceNotPointer(_) => PtrCastSourceNotPointer,
             TypeResolutionErrorKind::PtrCastTargetNotPointer(_) => PtrCastTargetNotPointer,
+            TypeResolutionErrorKind::InherentFnNoImpl { .. } => InherentFnNoImpl,
+            TypeResolutionErrorKind::InherentFnAmbiguousImpl { .. } => InherentFnAmbiguousImpl,
+            TypeResolutionErrorKind::InherentFnNoMethod { .. } => InherentFnNoMethod,
+            TypeResolutionErrorKind::QualifiedFnLifetimeArgArity { .. }
+            | TypeResolutionErrorKind::QualifiedFnTypeArgArity { .. } => TypeArgArity,
+            TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied { .. } => {
+                TypeArgBoundNotSatisfied
+            }
             TypeResolutionErrorKind::TraitFnUnknownTrait(_) => TraitFnUnknownTrait,
             TypeResolutionErrorKind::TraitFnParamReceiver(_) => TraitFnParamReceiver,
             TypeResolutionErrorKind::TraitFnNoImpl { .. } => TraitFnNoImpl,
@@ -318,6 +352,47 @@ impl TypeResolutionError {
             TypeResolutionErrorKind::PtrCastTargetNotPointer(ty) => format!(
                 "Pointer cast target must be a raw pointer or reference type, found {}",
                 format.ty(caller_scope, ty),
+            ),
+            TypeResolutionErrorKind::InherentFnNoImpl { self_ty } => format!(
+                "No inherent impl for {} in scope",
+                format.ty(caller_scope, self_ty),
+            ),
+            TypeResolutionErrorKind::InherentFnAmbiguousImpl { self_ty } => format!(
+                "Multiple inherent impls match {}",
+                format.ty(caller_scope, self_ty),
+            ),
+            TypeResolutionErrorKind::InherentFnNoMethod { self_ty, method } => format!(
+                "Inherent impl for {} has no method '{}'",
+                format.ty(caller_scope, self_ty),
+                method,
+            ),
+            TypeResolutionErrorKind::QualifiedFnLifetimeArgArity {
+                method,
+                expected,
+                found,
+            } => format!(
+                "Method '{}' expects {} lifetime argument(s), got {}",
+                method, expected, found,
+            ),
+            TypeResolutionErrorKind::QualifiedFnTypeArgArity {
+                method,
+                expected,
+                found,
+            } => format!(
+                "Method '{}' expects {} type argument(s), got {}",
+                method, expected, found,
+            ),
+            TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied {
+                method,
+                parameter,
+                argument,
+                bound,
+            } => format!(
+                "Type argument {} for method '{}::{}' does not satisfy required bound '{}'",
+                format.ty(caller_scope, argument),
+                method,
+                parameter,
+                bound.name(),
             ),
             TypeResolutionErrorKind::TraitFnUnknownTrait(name) => {
                 format!("Trait-method call references undeclared trait '{}'", name)
@@ -616,6 +691,7 @@ pub struct IndexedProgram {
     pub inherent_impls: Vec<ImplBlock>,
 }
 
+#[derive(Debug, Clone)]
 pub(crate) struct ImplBindings {
     pub type_args: Vec<Type>,
 }
@@ -656,6 +732,38 @@ pub(crate) fn match_impl_header(
         &mut type_bindings,
         &mut lifetime_bindings,
     ) || !match_type(
+        &impl_block.target,
+        self_ty,
+        &impl_block.params,
+        &mut type_bindings,
+        &mut lifetime_bindings,
+    ) {
+        return None;
+    }
+    let type_args = impl_block
+        .params
+        .type_params
+        .iter()
+        .map(|param| type_bindings.get(&param.name).cloned())
+        .collect::<Option<Vec<_>>>()?;
+    let lifetimes_bound = impl_block
+        .params
+        .lifetime_params
+        .iter()
+        .all(|param| lifetime_bindings.contains_key(&param.lifetime));
+    lifetimes_bound.then_some(ImplBindings { type_args })
+}
+
+pub(crate) fn match_inherent_impl_header(
+    impl_block: &ImplBlock,
+    self_ty: &Type,
+) -> Option<ImplBindings> {
+    if impl_block.trait_path.is_some() {
+        return None;
+    }
+    let mut type_bindings = BTreeMap::new();
+    let mut lifetime_bindings = BTreeMap::new();
+    if !match_type(
         &impl_block.target,
         self_ty,
         &impl_block.params,
@@ -1347,6 +1455,142 @@ impl LocalEnv<'_> {
         Ok(fn_ty(f.instantiate_params(type_args)))
     }
 
+    fn impl_method_type(
+        &self,
+        imp: &ImplBlock,
+        bindings: &ImplBindings,
+        impl_method: &Function,
+        method_args: &Instance,
+    ) -> Result<Type, TypeResolutionError> {
+        // Lifetime elaboration adds generated parameters for elided reference
+        // lifetimes. Only written method parameters are supplied at the call
+        // site; generated parameters are inferred by lifetime checking.
+        let expected_lifetimes = impl_method
+            .meta
+            .params
+            .lifetime_params
+            .iter()
+            .filter(|param| param.source.generated_kind().is_none())
+            .count();
+        if method_args.lifetime_args.len() != expected_lifetimes {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::QualifiedFnLifetimeArgArity {
+                    method: method_args.name.clone(),
+                    expected: expected_lifetimes,
+                    found: method_args.lifetime_args.len(),
+                },
+            ));
+        }
+        let expected_types = impl_method.meta.params.type_params.len();
+        if method_args.type_args.len() != expected_types {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::QualifiedFnTypeArgArity {
+                    method: method_args.name.clone(),
+                    expected: expected_types,
+                    found: method_args.type_args.len(),
+                },
+            ));
+        }
+        for (parameter, argument) in impl_method
+            .meta
+            .params
+            .type_params
+            .iter()
+            .zip(&method_args.type_args)
+        {
+            // TODO(trait bounds): Check `parameter.bounds.traits` when
+            // binding-site trait bounds participate in class resolution.
+            for bound in parameter.bounds.markers.iter_declared() {
+                if !self.class_of(argument).implies(bound) {
+                    return Err(TypeResolutionError::new(
+                        TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied {
+                            method: method_args.name.clone(),
+                            parameter: parameter.name.clone(),
+                            argument: argument.clone(),
+                            bound,
+                        },
+                    ));
+                }
+            }
+        }
+        let mut params = imp.params.clone();
+        params
+            .lifetime_params
+            .extend(impl_method.meta.params.lifetime_params.clone());
+        params
+            .outlives
+            .extend(impl_method.meta.params.outlives.clone());
+        params
+            .type_params
+            .extend(impl_method.meta.params.type_params.clone());
+        let type_args = bindings
+            .type_args
+            .iter()
+            .cloned()
+            .chain(method_args.type_args.iter().cloned())
+            .collect::<Vec<_>>();
+        Ok(fn_ty(
+            impl_method
+                .params
+                .iter()
+                .map(|param| params.substitute_types(&param.ty, &type_args))
+                .collect(),
+        ))
+    }
+
+    fn resolve_inherent_fn(
+        &self,
+        self_ty: &Type,
+        method: &Instance,
+    ) -> Result<Type, TypeResolutionError> {
+        let applicable = self
+            .program
+            .inherent_impls
+            .iter()
+            .filter_map(|imp| {
+                let bindings = match_inherent_impl_header(imp, self_ty)?;
+                impl_marker_bounds_satisfied(imp, &bindings, |arg| self.class_of(arg))
+                    .then_some((imp, bindings))
+            })
+            .collect::<Vec<_>>();
+        if applicable.is_empty() {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::InherentFnNoImpl {
+                    self_ty: self_ty.clone(),
+                },
+            ));
+        }
+        let matches = applicable
+            .iter()
+            .filter_map(|(imp, bindings)| {
+                let impl_method = imp
+                    .methods
+                    .iter()
+                    .find(|candidate| candidate.meta.name == method.name)?;
+                Some((*imp, bindings, impl_method))
+            })
+            .collect::<Vec<_>>();
+        let (imp, bindings, impl_method) = match matches.as_slice() {
+            [] => {
+                return Err(TypeResolutionError::new(
+                    TypeResolutionErrorKind::InherentFnNoMethod {
+                        self_ty: self_ty.clone(),
+                        method: method.name.clone(),
+                    },
+                ));
+            }
+            [matched] => matched,
+            _ => {
+                return Err(TypeResolutionError::new(
+                    TypeResolutionErrorKind::InherentFnAmbiguousImpl {
+                        self_ty: self_ty.clone(),
+                    },
+                ));
+            }
+        };
+        self.impl_method_type(imp, bindings, impl_method, method)
+    }
+
     /// Resolve a `TraitFn` callee to the concrete `fn(...)` type of its
     /// method after impl-table lookup and substitution. Errors trickle
     /// out as `TypeResolutionError`s so the caller renders them
@@ -1393,7 +1637,7 @@ impl LocalEnv<'_> {
         let impl_method = imp
             .methods
             .iter()
-            .find(|m| m.meta.name == method.name)
+            .find(|candidate| candidate.meta.name == method.name)
             .ok_or_else(|| {
                 TypeResolutionError::new(TypeResolutionErrorKind::TraitFnNoMethod {
                     trait_path: trait_path.clone(),
@@ -1401,32 +1645,7 @@ impl LocalEnv<'_> {
                     method: method.name.clone(),
                 })
             })?;
-        let mut params = imp.params.clone();
-        params
-            .lifetime_params
-            .extend(impl_method.meta.params.lifetime_params.clone());
-        params
-            .outlives
-            .extend(impl_method.meta.params.outlives.clone());
-        params
-            .type_params
-            .extend(impl_method.meta.params.type_params.clone());
-        let type_args = bindings
-            .type_args
-            .iter()
-            .cloned()
-            .chain(method.type_args.iter().cloned())
-            .collect::<Vec<_>>();
-        let param_tys = impl_method
-            .params
-            .iter()
-            .map(|p| {
-                params
-                    .try_substitute_types(&p.ty, &type_args)
-                    .unwrap_or_else(|| p.ty.clone())
-            })
-            .collect();
-        Ok(fn_ty(param_tys))
+        self.impl_method_type(imp, bindings, impl_method, method)
     }
 
     fn matching_impls(
@@ -1460,6 +1679,9 @@ impl LocalEnv<'_> {
                 ConstVal::Bool(_) => Ok(bool_ty()),
                 ConstVal::Unit => Ok(unit_ty()),
                 ConstVal::FnName(name, type_args) => self.fn_type(name, type_args),
+                ConstVal::InherentFn { self_ty, method } => {
+                    self.resolve_inherent_fn(self_ty, method)
+                }
                 ConstVal::TraitFn {
                     trait_path,
                     self_ty,

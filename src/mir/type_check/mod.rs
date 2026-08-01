@@ -157,6 +157,14 @@ pub enum TypeCheckCode {
     /// Two inherent impl blocks for the same target declare the same method.
     DuplicateInherentMethod,
 
+    // ---- Inherent method calls ----
+    /// No inherent impl pattern matches the callee's self type.
+    InherentFnNoImpl,
+    /// More than one inherent impl pattern matches the call.
+    InherentFnAmbiguousImpl,
+    /// A matching inherent impl does not declare the requested method.
+    InherentFnNoMethod,
+
     // ---- Trait method calls ----
     /// A `TraitFn` callee references a trait not declared in the env.
     TraitFnUnknownTrait,

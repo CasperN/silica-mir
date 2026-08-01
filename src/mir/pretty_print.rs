@@ -349,6 +349,12 @@ fn write_const(out: &mut String, c: &ConstVal) {
                 out.push('>');
             }
         }
+        ConstVal::InherentFn { self_ty, method } => {
+            out.push('<');
+            write_type(out, self_ty);
+            out.push_str(">::");
+            write!(out, "{}", method).unwrap();
+        }
         // `<SelfTy as Trait<TraitArgs>>::method<MethodArgs>` — matches
         // the grammar's UFCS-style fn_name shape.
         ConstVal::TraitFn {

@@ -62,7 +62,9 @@
 //!   the instantiation is already registered, so no infinite loop.
 
 use crate::common::{GeneratedKind, Marker, Markers};
-use crate::mir::env::{impl_marker_bounds_satisfied, match_impl_header, IndexedProgram};
+use crate::mir::env::{
+    impl_marker_bounds_satisfied, match_impl_header, match_inherent_impl_header, IndexedProgram,
+};
 use crate::mir::type_fold::TypeFolder;
 use crate::mir::type_util::{
     substitute_params, substitute_stmt_types, substitute_terminator_types,
@@ -306,6 +308,23 @@ impl MonoCtx {
                 let mangled = self.need(name, &new_args);
                 ConstVal::FnName(mangled, Vec::new())
             }
+            ConstVal::InherentFn { self_ty, method } => {
+                let (template_name, impl_args) = self.resolve_inherent_fn(self_ty, &method.name);
+                let concrete_self = self.fold_type(self_ty);
+                let concrete_method = self.fold_instance(method);
+                let args = impl_args
+                    .into_iter()
+                    .chain(method.type_args.iter().cloned())
+                    .map(|arg| self.fold_type(&arg))
+                    .collect::<Vec<_>>();
+                let symbol = format!(
+                    "<{}>::{}",
+                    erase_type_lifetimes(&concrete_self),
+                    erase_instance_lifetimes(&concrete_method),
+                );
+                let mangled = self.need_named(&template_name, &args, symbol);
+                ConstVal::FnName(mangled, Vec::new())
+            }
             ConstVal::TraitFn {
                 trait_path,
                 self_ty,
@@ -421,6 +440,43 @@ impl MonoCtx {
             panic!(
                 "mono: no impl method found while resolving <{} as {}>::{}; type checking should have rejected the call",
                 self_ty, trait_path, method_name,
+            )
+        })
+    }
+
+    fn resolve_inherent_fn(&self, self_ty: &Type, method_name: &str) -> (String, Vec<Type>) {
+        let mut selected = None;
+        for impl_block in &self.impl_blocks {
+            let Some(bindings) = match_inherent_impl_header(impl_block, self_ty) else {
+                continue;
+            };
+            if !impl_marker_bounds_satisfied(impl_block, &bindings, |ty| self.class_of_concrete(ty))
+            {
+                continue;
+            }
+            let Some(method) = impl_block
+                .methods
+                .iter()
+                .find(|method| method.meta.name == method_name)
+            else {
+                continue;
+            };
+            let candidate = (
+                impl_method_template_name(impl_block, method),
+                bindings.type_args,
+            );
+            assert!(
+                selected.is_none(),
+                "mono: overlapping inherent impls while resolving <{}>::{}",
+                self_ty,
+                method_name,
+            );
+            selected = Some(candidate);
+        }
+        selected.unwrap_or_else(|| {
+            panic!(
+                "mono: no inherent method found while resolving <{}>::{}; type checking should have rejected the call",
+                self_ty, method_name,
             )
         })
     }

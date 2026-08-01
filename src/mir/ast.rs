@@ -521,6 +521,11 @@ pub enum ConstVal {
     /// the list of type arguments — empty for non-generic fns, non-
     /// empty for generic-fn instantiations (`call foo<i32>(x)`).
     FnName(String, Vec<Type>),
+    /// Inherent-method callee, spelled `<SelfTy>::method<MethodArgs>`.
+    InherentFn {
+        self_ty: Type,
+        method: Instance,
+    },
     /// Trait-method callee, spelled UFCS-style at the surface:
     /// `<SelfTy as Trait<Args>>::method<MethodArgs>`. The type checker
     /// resolves this against the env's impl table for concrete

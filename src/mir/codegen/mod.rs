@@ -976,6 +976,10 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
             llvm_byte_str_literal(bytes),
             array_ty(u8_ty(), bytes.len() as u64),
         ),
+        ConstVal::InherentFn { self_ty, method } => panic!(
+            "codegen: monomorphization invariant violated by unresolved inherent-fn callee `<{}>::{}`",
+            self_ty, method,
+        ),
         ConstVal::TraitFn { trait_path, self_ty, method } => panic!(
             "codegen: monomorphization invariant violated by unresolved trait-fn callee `<{} as {}>::{}`",
             self_ty, trait_path, method,

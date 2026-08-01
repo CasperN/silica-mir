@@ -842,33 +842,16 @@ impl Parser {
                 };
                 self.map_const(child, d)
             }
-            // `fn_name`: two shapes — free-fn `foo<T>` or UFCS-style
-            // trait-method callee `<SelfTy as Trait<Args>>::method<A>`.
-            // The UFCS form carries a `self_ty` field; the free form
-            // starts with the identifier at child(0).
+            // Qualified method forms carry a `self_ty` field; the free
+            // function form starts with the identifier at child(0).
             "fn_name" => {
                 if let Some(self_ty_node) = node.child_by_field_name("self_ty") {
                     let self_ty = self.map_type(self_ty_node, d)?;
-                    let Some(trait_name_node) = node.child_by_field_name("trait_name") else {
-                        d.push_error(self.diag(
-                            node,
-                            ParserCode::MalformedCst,
-                            "trait-method callee missing trait name",
-                        ));
-                        return None;
-                    };
-                    let trait_name = self.get_text(trait_name_node).to_string();
-                    let (trait_lt_args, trait_type_args) =
-                        if let Some(ta) = node.child_by_field_name("trait_args") {
-                            self.map_type_args(ta, d)?
-                        } else {
-                            (Vec::new(), Vec::new())
-                        };
                     let Some(method_name_node) = node.child_by_field_name("method_name") else {
                         d.push_error(self.diag(
                             node,
                             ParserCode::MalformedCst,
-                            "trait-method callee missing method name",
+                            "qualified callee missing method name",
                         ));
                         return None;
                     };
@@ -879,11 +862,26 @@ impl Parser {
                         } else {
                             (Vec::new(), Vec::new())
                         };
-                    return Some(ConstVal::TraitFn {
-                        trait_path: Instance::new(trait_name, trait_lt_args, trait_type_args),
-                        self_ty,
-                        method: Instance::new(method_name, method_lt_args, method_type_args),
-                    });
+                    let method = Instance::new(method_name, method_lt_args, method_type_args);
+                    return if let Some(trait_name_node) = node.child_by_field_name("trait_name") {
+                        let (trait_lt_args, trait_type_args) =
+                            if let Some(ta) = node.child_by_field_name("trait_args") {
+                                self.map_type_args(ta, d)?
+                            } else {
+                                (Vec::new(), Vec::new())
+                            };
+                        Some(ConstVal::TraitFn {
+                            trait_path: Instance::new(
+                                self.get_text(trait_name_node),
+                                trait_lt_args,
+                                trait_type_args,
+                            ),
+                            self_ty,
+                            method,
+                        })
+                    } else {
+                        Some(ConstVal::InherentFn { self_ty, method })
+                    };
                 }
                 let Some(ident_node) = node.child(0) else {
                     d.push_error(self.diag(

@@ -32,6 +32,8 @@ define void @silica.main(ptr %arg.exit) {
   %local.get_result = alloca i64, align 8
   %local.tagged_i64_result = alloca i64, align 8
   %local.tagged_bool_result = alloca i1, align 1
+  %local.inherent_result = alloca i64, align 8
+  %local.generic_inherent_result = alloca i64, align 8
   %local.twice_recv = alloca ptr, align 8
   %local.twice_out = alloca ptr, align 8
   %local.identity_recv = alloca ptr, align 8
@@ -42,6 +44,9 @@ define void @silica.main(ptr %arg.exit) {
   %local.tagged_recv = alloca ptr, align 8
   %local.tagged_i64_out = alloca ptr, align 8
   %local.tagged_bool_out = alloca ptr, align 8
+  %local.inherent_recv = alloca ptr, align 8
+  %local.inherent_out = alloca ptr, align 8
+  %local.generic_inherent_out = alloca ptr, align 8
   br label %entry
 entry:
   %t.0 = getelementptr %Counter, ptr %local.counter, i32 0, i32 0
@@ -78,8 +83,18 @@ entry:
   %t.12 = load ptr, ptr %local.tagged_recv
   %t.13 = load ptr, ptr %local.tagged_bool_out
   call void @"<Counter as Tagged<bool>>::tagged"(ptr %t.12, ptr %t.13)
-  %t.14 = load ptr, ptr %local.exit
-  store i32 0, ptr %t.14
+  store ptr %local.counter, ptr %local.inherent_recv
+  store ptr %local.inherent_result, ptr %local.inherent_out
+  %t.14 = load ptr, ptr %local.inherent_recv
+  %t.15 = load ptr, ptr %local.inherent_out
+  call void @"<Counter>::inherent_read"(ptr %t.14, ptr %t.15)
+  store ptr %local.boxed, ptr %local.get_recv
+  store ptr %local.generic_inherent_result, ptr %local.generic_inherent_out
+  %t.16 = load ptr, ptr %local.get_recv
+  %t.17 = load ptr, ptr %local.generic_inherent_out
+  call void @"inherent_dispatch<i64>"(ptr %t.16, ptr %t.17)
+  %t.18 = load ptr, ptr %local.exit
+  store i32 0, ptr %t.18
   ret void
 }
 
@@ -189,6 +204,36 @@ entry:
   ret void
 }
 
+define void @"<Counter>::inherent_read"(ptr %arg.recv, ptr %arg.$return) {
+.init:
+  %local.$return = alloca ptr, align 8
+  store ptr %arg.$return, ptr %local.$return
+  %local.recv = alloca ptr, align 8
+  store ptr %arg.recv, ptr %local.recv
+  br label %entry
+entry:
+  %t.0 = load ptr, ptr %local.recv
+  %t.1 = getelementptr %Counter, ptr %t.0, i32 0, i32 0
+  %t.2 = load i64, ptr %t.1
+  %t.3 = load ptr, ptr %local.$return
+  store i64 %t.2, ptr %t.3
+  ret void
+}
+
+define void @"inherent_dispatch<i64>"(ptr %arg.recv, ptr %arg.$return) {
+.init:
+  %local.$return = alloca ptr, align 8
+  store ptr %arg.$return, ptr %local.$return
+  %local.recv = alloca ptr, align 8
+  store ptr %arg.recv, ptr %local.recv
+  br label %entry
+entry:
+  %t.0 = load ptr, ptr %local.recv
+  %t.1 = load ptr, ptr %local.$return
+  call void @"<Box<i64>>::inherent_get"(ptr %t.0, ptr %t.1)
+  ret void
+}
+
 define void @"<Counter as Read>::read"(ptr %arg.recv, ptr %arg.$return) {
 .init:
   %local.$return = alloca ptr, align 8
@@ -199,6 +244,22 @@ define void @"<Counter as Read>::read"(ptr %arg.recv, ptr %arg.$return) {
 entry:
   %t.0 = load ptr, ptr %local.recv
   %t.1 = getelementptr %Counter, ptr %t.0, i32 0, i32 0
+  %t.2 = load i64, ptr %t.1
+  %t.3 = load ptr, ptr %local.$return
+  store i64 %t.2, ptr %t.3
+  ret void
+}
+
+define void @"<Box<i64>>::inherent_get"(ptr %arg.recv, ptr %arg.$return) {
+.init:
+  %local.$return = alloca ptr, align 8
+  store ptr %arg.$return, ptr %local.$return
+  %local.recv = alloca ptr, align 8
+  store ptr %arg.recv, ptr %local.recv
+  br label %entry
+entry:
+  %t.0 = load ptr, ptr %local.recv
+  %t.1 = getelementptr %"Box<i64>", ptr %t.0, i32 0, i32 0
   %t.2 = load i64, ptr %t.1
   %t.3 = load ptr, ptr %local.$return
   store i64 %t.2, ptr %t.3

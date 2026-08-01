@@ -243,9 +243,8 @@ pub fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Ty
 }
 
 /// Substitute type parameters in the Type slots of an operand: the
-/// type-arg list of an `FnName` const, and the `self_ty` and trait-ref
-/// type args of a `TraitFn` const. All other operand shapes have no
-/// embedded types.
+/// type-arg list of an `FnName` const and the type slots of qualified method
+/// constants. All other operand shapes have no embedded types.
 pub fn substitute_operand_types(op: &Operand, type_params: &[TypeParam], args: &[Type]) -> Operand {
     match op {
         Operand::Const(ConstVal::FnName(name, targs)) => Operand::Const(ConstVal::FnName(
@@ -255,6 +254,20 @@ pub fn substitute_operand_types(op: &Operand, type_params: &[TypeParam], args: &
                 .map(|a| substitute_params(a, type_params, args))
                 .collect(),
         )),
+        Operand::Const(ConstVal::InherentFn { self_ty, method }) => {
+            Operand::Const(ConstVal::InherentFn {
+                self_ty: substitute_params(self_ty, type_params, args),
+                method: Instance {
+                    name: method.name.clone(),
+                    lifetime_args: method.lifetime_args.clone(),
+                    type_args: method
+                        .type_args
+                        .iter()
+                        .map(|arg| substitute_params(arg, type_params, args))
+                        .collect(),
+                },
+            })
+        }
         Operand::Const(ConstVal::TraitFn {
             trait_path,
             self_ty,

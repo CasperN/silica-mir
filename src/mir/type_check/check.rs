@@ -888,10 +888,54 @@ impl IndexedProgram {
             }
         };
         let record_op = |op: &Operand, d: &mut Diagnostics| {
-            if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
-                for ty in type_args {
-                    record(ty, d);
+            let Operand::Const(constant) = op else { return };
+            let record_lifetimes = |lifetimes: &[Lifetime], d: &mut Diagnostics| {
+                for lifetime in lifetimes {
+                    if !lt_scope.contains(lifetime) {
+                        d.push_error(
+                            Diagnostic::new(
+                                UndeclaredLifetime,
+                                stmt.source,
+                                format!(
+                                    "In function '{}': undeclared lifetime {}",
+                                    func.meta.name, lifetime
+                                ),
+                            )
+                            .in_block(&block.label),
+                        );
+                    }
                 }
+            };
+            match constant {
+                ConstVal::FnName(_, type_args) => {
+                    for ty in type_args {
+                        record(ty, d);
+                    }
+                }
+                ConstVal::InherentFn { self_ty, method } => {
+                    record(self_ty, d);
+                    record_lifetimes(&method.lifetime_args, d);
+                    for ty in &method.type_args {
+                        record(ty, d);
+                    }
+                }
+                ConstVal::TraitFn {
+                    trait_path,
+                    self_ty,
+                    method,
+                } => {
+                    record(self_ty, d);
+                    record_lifetimes(&trait_path.lifetime_args, d);
+                    record_lifetimes(&method.lifetime_args, d);
+                    for ty in trait_path.type_args.iter().chain(&method.type_args) {
+                        record(ty, d);
+                    }
+                }
+                ConstVal::Int { .. }
+                | ConstVal::Float { .. }
+                | ConstVal::Bool(_)
+                | ConstVal::Unit
+                | ConstVal::ByteStr(_) => {}
             }
         };
         match &stmt.kind {

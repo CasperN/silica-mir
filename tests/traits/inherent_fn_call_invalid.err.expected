@@ -1,0 +1,56 @@
+error: at 27:5: [TC-InherentFnNoImpl] In function 'no_impl', block 'entry': No inherent impl for Bar in scope
+    |
+ 26 |   entry:
+ 27 |     call <Bar>::present(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 28 |     return
+    |
+error: at 34:5: [TC-InherentFnNoMethod] In function 'no_method', block 'entry': Inherent impl for Foo has no method 'missing'
+    |
+ 33 |   entry:
+ 34 |     call <Foo>::missing(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 35 |     return
+    |
+error: at 41:5: [TC-TypeArgArity] In function 'method_argument_errors', block 'entry': Method 'generic' expects 1 type argument(s), got 0
+    |
+ 40 |   entry:
+ 41 |     call <Foo>::generic(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 42 |     call <Foo>::generic<i64, bool>(copy value);
+    |
+error: at 42:5: [TC-TypeArgArity] In function 'method_argument_errors', block 'entry': Method 'generic' expects 1 type argument(s), got 2
+    |
+ 41 |     call <Foo>::generic(copy value);
+ 42 |     call <Foo>::generic<i64, bool>(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 43 |     call <Foo>::generic<Linear>(copy value);
+    |
+error: at 43:5: [TC-TypeArgBoundNotSatisfied] In function 'method_argument_errors', block 'entry': Type argument Linear for method 'generic::T' does not satisfy required bound 'Copy'
+    |
+ 42 |     call <Foo>::generic<i64, bool>(copy value);
+ 43 |     call <Foo>::generic<Linear>(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 44 |     call <Foo>::lifetime(copy value);
+    |
+error: at 44:5: [TC-TypeArgArity] In function 'method_argument_errors', block 'entry': Method 'lifetime' expects 1 lifetime argument(s), got 0
+    |
+ 43 |     call <Foo>::generic<Linear>(copy value);
+ 44 |     call <Foo>::lifetime(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 45 |     call <Foo>::lifetime<'missing>(copy value);
+    |
+error: at 45:5: [TC-UndeclaredLifetime] In function 'method_argument_errors': undeclared lifetime 'missing
+    |
+ 44 |     call <Foo>::lifetime(copy value);
+ 45 |     call <Foo>::lifetime<'missing>(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 46 |     return
+    |
+error: at 71:5: [TC-InherentFnAmbiguousImpl] In function 'ambiguous', block 'entry': Multiple inherent impls match Pair<i64, i64>
+    |
+ 70 |   entry:
+ 71 |     call <Pair<i64, i64>>::overlap(copy value);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 72 |     return
+    |
