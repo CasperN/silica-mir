@@ -496,7 +496,7 @@ pub(super) fn write_at(
     state: &mut InitState,
     ty: &Type,
     path: &[PathStep],
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     leaf_state: InitState,
 ) {
     if path.is_empty() {
@@ -505,7 +505,7 @@ pub(super) fn write_at(
     }
     match &path[0] {
         PathStep::Field(f) => {
-            let Some(fields) = env.struct_fields(ty) else {
+            let Some(fields) = prog.struct_fields(ty) else {
                 return;
             };
             if !matches!(state, InitState::Partial(_)) {
@@ -514,7 +514,7 @@ pub(super) fn write_at(
             let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(&InitSlot::Field(f.clone())) {
-                    write_at(field_state, &field_ty, &path[1..], env, leaf_state);
+                    write_at(field_state, &field_ty, &path[1..], prog, leaf_state);
                 }
             }
         }
@@ -527,15 +527,15 @@ pub(super) fn write_at(
             }
             if let InitState::Partial(map) = &mut *state {
                 if let Some(slot_state) = map.get_mut(&InitSlot::Index(*k)) {
-                    write_at(slot_state, &elem_ty, &path[1..], env, leaf_state);
+                    write_at(slot_state, &elem_ty, &path[1..], prog, leaf_state);
                 }
             }
         }
         PathStep::Downcast(v) => {
-            let payload_ty = env.variant_payload_type(ty, v);
+            let payload_ty = prog.variant_payload_type(ty, v);
             if let (Some(payload_ty), InitState::Partial(map)) = (payload_ty, &mut *state) {
                 if let Some(slot_state) = map.get_mut(&InitSlot::Variant(v.clone())) {
-                    write_at(slot_state, &payload_ty, &path[1..], env, leaf_state);
+                    write_at(slot_state, &payload_ty, &path[1..], prog, leaf_state);
                 }
             }
         }
@@ -562,11 +562,11 @@ pub(super) fn array_info(ty: &Type) -> Option<(Type, u64)> {
 /// the step is ill-typed against `ty` (type_check surfaces those errors
 /// separately) or when the step is a raw dereference outside the tracked
 /// projection model.
-pub(super) fn advance_ty(ty: &Type, step: &PathStep, env: &IndexedProgram) -> Option<Type> {
+pub(super) fn advance_ty(ty: &Type, step: &PathStep, prog: &IndexedProgram) -> Option<Type> {
     match step {
-        PathStep::Field(f) => env.field_type(ty, f),
+        PathStep::Field(f) => prog.field_type(ty, f),
         PathStep::Index(_) => array_info(ty).map(|(elem, _)| elem),
-        PathStep::Downcast(v) => env.variant_payload_type(ty, v),
+        PathStep::Downcast(v) => prog.variant_payload_type(ty, v),
         PathStep::Deref => None,
     }
 }
@@ -584,14 +584,14 @@ pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<InitSl
 /// regardless of which variant the state currently tracks. Per-variant
 /// partial moves would otherwise strand the enum in a disjunctive
 /// `Partial` state that no subsequent CFG join can resolve.
-pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: &IndexedProgram) {
+pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], prog: &IndexedProgram) {
     if path.is_empty() {
         *state = InitState::Moved;
         return;
     }
     match &path[0] {
         PathStep::Field(f) => {
-            let Some(fields) = env.struct_fields(ty) else {
+            let Some(fields) = prog.struct_fields(ty) else {
                 return;
             };
             if !matches!(state, InitState::Partial(_)) {
@@ -600,7 +600,7 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: 
             let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
                 if let Some(field_state) = map.get_mut(&InitSlot::Field(f.clone())) {
-                    move_at(field_state, &field_ty, &path[1..], env);
+                    move_at(field_state, &field_ty, &path[1..], prog);
                 }
             }
         }
@@ -613,7 +613,7 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], env: 
             }
             if let InitState::Partial(map) = &mut *state {
                 if let Some(slot_state) = map.get_mut(&InitSlot::Index(*k)) {
-                    move_at(slot_state, &elem_ty, &path[1..], env);
+                    move_at(slot_state, &elem_ty, &path[1..], prog);
                 }
             }
         }
@@ -634,7 +634,7 @@ pub(super) fn read_at(
     state: &InitState,
     ty: &Type,
     path: &[PathStep],
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
 ) -> InitState {
     if path.is_empty() {
         return state.clone();
@@ -645,13 +645,13 @@ pub(super) fn read_at(
                 state.clone()
             }
             InitState::Partial(map) => {
-                let field_ty = env.field_type(ty, f);
+                let field_ty = prog.field_type(ty, f);
                 let field_state = map
                     .get(&InitSlot::Field(f.clone()))
                     .cloned()
                     .unwrap_or(InitState::NeverInit);
                 match field_ty {
-                    Some(ft) => read_at(&field_state, &ft, &path[1..], env),
+                    Some(ft) => read_at(&field_state, &ft, &path[1..], prog),
                     None => field_state,
                 }
             }
@@ -660,14 +660,14 @@ pub(super) fn read_at(
             InitState::NeverInit | InitState::Moved | InitState::Diverged => state.clone(),
             InitState::Init => {
                 // Opaque enum: assume the payload is Init.
-                let payload_ty = env.variant_payload_type(ty, v);
+                let payload_ty = prog.variant_payload_type(ty, v);
                 match payload_ty {
-                    Some(pt) => read_at(&InitState::Init, &pt, &path[1..], env),
+                    Some(pt) => read_at(&InitState::Init, &pt, &path[1..], prog),
                     None => InitState::Init,
                 }
             }
             InitState::Partial(map) => {
-                let payload_ty = env.variant_payload_type(ty, v);
+                let payload_ty = prog.variant_payload_type(ty, v);
                 let slot_state = map.get(&InitSlot::Variant(v.clone()));
                 // When the map tracks per-variant payload, descend into
                 // the requested variant's slot. Otherwise fall back to
@@ -678,7 +678,7 @@ pub(super) fn read_at(
                     None => InitState::Init,
                 };
                 match payload_ty {
-                    Some(pt) => read_at(&payload_state, &pt, &path[1..], env),
+                    Some(pt) => read_at(&payload_state, &pt, &path[1..], prog),
                     None => payload_state,
                 }
             }
@@ -694,7 +694,7 @@ pub(super) fn read_at(
                     .cloned()
                     .unwrap_or(InitState::NeverInit);
                 match elem_ty {
-                    Some(et) => read_at(&slot_state, &et, &path[1..], env),
+                    Some(et) => read_at(&slot_state, &et, &path[1..], prog),
                     None => slot_state,
                 }
             }
@@ -788,7 +788,7 @@ pub fn states_before_returns<'a>(
 pub(super) fn boundary_state(
     func: &Function,
     body: &FunctionBody,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
 ) -> PointState {
     let mut s = PointState::default();
     for p in &func.params {
@@ -802,7 +802,7 @@ pub(super) fn boundary_state(
         seed_parameter_ref_states(
             var_place(p.name.clone()),
             &p.ty,
-            env,
+            prog,
             &mut visited,
             &mut s.refs,
         );
@@ -810,7 +810,7 @@ pub(super) fn boundary_state(
     for l in &body.locals {
         // A struct with zero declared fields is trivially initialized —
         // there's nothing to write. Same for any type reducing to one.
-        let init = if is_trivially_init(&l.ty, env) {
+        let init = if is_trivially_init(&l.ty, prog) {
             InitState::Init
         } else {
             InitState::NeverInit
@@ -823,7 +823,7 @@ pub(super) fn boundary_state(
 pub(super) fn seed_parameter_ref_states(
     place: Place,
     ty: &Type,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     visited: &mut BTreeSet<String>,
     refs: &mut IndexMap<Place, RefState>,
 ) {
@@ -845,7 +845,7 @@ pub(super) fn seed_parameter_ref_states(
     if !visited.insert(name.clone()) {
         return;
     }
-    if let Some(TypeDecl::Struct(def)) = env.types.get(name) {
+    if let Some(TypeDecl::Struct(def)) = prog.types.get(name) {
         let fields: Option<Vec<_>> = def
             .fields
             .iter()
@@ -860,7 +860,7 @@ pub(super) fn seed_parameter_ref_states(
                 seed_parameter_ref_states(
                     field_place(place.clone(), field_name),
                     &field_ty,
-                    env,
+                    prog,
                     visited,
                     refs,
                 );
@@ -870,9 +870,9 @@ pub(super) fn seed_parameter_ref_states(
     visited.remove(name);
 }
 
-pub(super) fn is_trivially_init(ty: &Type, env: &IndexedProgram) -> bool {
+pub(super) fn is_trivially_init(ty: &Type, prog: &IndexedProgram) -> bool {
     match &ty.kind {
-        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
+        TypeKind::Custom(Instance { name, .. }) => match prog.types.get(name) {
             Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
             _ => false,
         },

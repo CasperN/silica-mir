@@ -29,7 +29,7 @@ pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) 
 }
 
 fn check_return_state(
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -48,7 +48,7 @@ fn check_return_state(
         }
         let mut path = var.clone();
         let mut leaks = Vec::new();
-        find_return_leaks(env, place_state, ty, &mut path, &mut leaks);
+        find_return_leaks(prog, place_state, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
             let mut diagnostic = format_type_diagnostic(&func.meta, &leaked_ty, |ty| {
                 diag(
@@ -96,7 +96,7 @@ fn check_return_state(
 }
 
 fn find_return_leaks(
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     state: &InitState,
     ty: &Type,
     path: &mut String,
@@ -109,11 +109,11 @@ fn find_return_leaks(
             for (slot, sub_state) in fields {
                 let sub_ty = match (&ty.kind, slot) {
                     (TypeKind::Array(elem, _), InitSlot::Index(_)) => (**elem).clone(),
-                    (_, InitSlot::Field(f)) => match env.field_type(ty, f) {
+                    (_, InitSlot::Field(f)) => match prog.field_type(ty, f) {
                         Some(ft) => ft,
                         None => continue,
                     },
-                    (_, InitSlot::Variant(v)) => match env.variant_payload_type(ty, v) {
+                    (_, InitSlot::Variant(v)) => match prog.variant_payload_type(ty, v) {
                         Some(pt) => pt,
                         None => continue,
                     },
@@ -124,7 +124,7 @@ fn find_return_leaks(
                 };
                 let saved_len = path.len();
                 path.push_str(&slot.to_string());
-                find_return_leaks(env, sub_state, &sub_ty, path, out);
+                find_return_leaks(prog, sub_state, &sub_ty, path, out);
                 path.truncate(saved_len);
             }
         }
@@ -183,7 +183,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
 pub(super) fn walk_overwrite_leaves(
     state: &InitState,
     ty: &Type,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     path: &mut String,
     report: &mut dyn FnMut(&str, &Type),
 ) {
@@ -194,11 +194,11 @@ pub(super) fn walk_overwrite_leaves(
             for (slot, sub_state) in fields {
                 let sub_ty = match (&ty.kind, slot) {
                     (TypeKind::Array(elem, _), InitSlot::Index(_)) => (**elem).clone(),
-                    (_, InitSlot::Field(f)) => match env.field_type(ty, f) {
+                    (_, InitSlot::Field(f)) => match prog.field_type(ty, f) {
                         Some(ft) => ft,
                         None => continue,
                     },
-                    (_, InitSlot::Variant(v)) => match env.variant_payload_type(ty, v) {
+                    (_, InitSlot::Variant(v)) => match prog.variant_payload_type(ty, v) {
                         Some(pt) => pt,
                         None => continue,
                     },
@@ -206,7 +206,7 @@ pub(super) fn walk_overwrite_leaves(
                 };
                 let saved_len = path.len();
                 path.push_str(&slot.to_string());
-                walk_overwrite_leaves(sub_state, &sub_ty, env, path, report);
+                walk_overwrite_leaves(sub_state, &sub_ty, prog, path, report);
                 path.truncate(saved_len);
             }
         }

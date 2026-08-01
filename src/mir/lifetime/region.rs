@@ -118,14 +118,14 @@ impl RegionCtx {
         &self,
         place: &Place,
         locals: &IndexMap<String, Type>,
-        env: &crate::mir::type_check::IndexedProgram,
+        prog: &crate::mir::type_check::IndexedProgram,
     ) -> Option<Region> {
         if let Some(owned) = as_owned_path(place) {
             if let Some(r) = self.get(&owned) {
                 return Some(r.clone());
             }
         }
-        let ty = crate::mir::type_util::place_type(locals, env, place)?;
+        let ty = crate::mir::type_util::place_type(locals, prog, place)?;
         if let TypeKind::Ref(_, Some(lt), _) = ty.kind {
             Some(if lt.0 == "static" {
                 Region::Static
@@ -162,13 +162,13 @@ impl RegionCtx {
         &self,
         place: &Place,
         locals: &IndexMap<String, Type>,
-        env: &crate::mir::type_check::IndexedProgram,
+        prog: &crate::mir::type_check::IndexedProgram,
     ) -> Option<Region> {
         let mut cur = place;
         loop {
             match cur {
                 Place::Var(name) => return self.storage_region_of_local(name).cloned(),
-                Place::Deref(inner) => return self.region_of_place(inner, locals, env),
+                Place::Deref(inner) => return self.region_of_place(inner, locals, prog),
                 Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Index(inner, _) => {
                     cur = inner;
                 }
@@ -186,7 +186,7 @@ impl RegionCtx {
 pub fn build_region_ctx(
     func: &Function,
     body: &FunctionBody,
-    env: &crate::mir::type_check::IndexedProgram,
+    prog: &crate::mir::type_check::IndexedProgram,
 ) -> RegionCtx {
     use crate::mir::helpers::var_place;
     let mut ctx = RegionCtx::new();
@@ -204,7 +204,7 @@ pub fn build_region_ctx(
         walk_ref_places(
             &var_place(name.clone()),
             ty,
-            env,
+            prog,
             &mut visited,
             &mut |place, lt_opt| {
                 let key = index_erased_key(place);
@@ -252,7 +252,7 @@ fn index_erased_key(place: &Place) -> Vec<PathStep> {
 pub(super) fn walk_ref_places(
     place: &Place,
     ty: &Type,
-    env: &crate::mir::type_check::IndexedProgram,
+    prog: &crate::mir::type_check::IndexedProgram,
     visited: &mut std::collections::BTreeSet<String>,
     on_ref: &mut dyn FnMut(&Place, &Option<Lifetime>),
 ) {
@@ -268,7 +268,7 @@ pub(super) fn walk_ref_places(
             if !visited.insert(name.clone()) {
                 return;
             }
-            match env.types.get(name) {
+            match prog.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     let fields: Option<Vec<_>> = s
                         .fields
@@ -282,7 +282,7 @@ pub(super) fn walk_ref_places(
                     if let Some(fields) = fields {
                         for (fname, fty) in fields {
                             let sub = field_place(place.clone(), fname);
-                            walk_ref_places(&sub, &fty, env, visited, on_ref);
+                            walk_ref_places(&sub, &fty, prog, visited, on_ref);
                         }
                     }
                     // Arity-mismatched Instance: skip the walk. typecheck
@@ -302,11 +302,11 @@ pub(super) fn walk_ref_places(
                     if let Some(variants) = variants {
                         for (vname, vty) in variants {
                             let sub = downcast_place(place.clone(), vname);
-                            walk_ref_places(&sub, &vty, env, visited, on_ref);
+                            walk_ref_places(&sub, &vty, prog, visited, on_ref);
                         }
                     }
                 }
-                // `None` here means the Custom type isn't in the env —
+                // `None` here means the Custom type isn't in the program —
                 // a type-check error already reported. Nothing to walk.
                 None => {}
             }
@@ -322,7 +322,7 @@ pub(super) fn walk_ref_places(
                         ty: IntTy::I64,
                     }),
                 );
-                walk_ref_places(&sub, elem, env, visited, on_ref);
+                walk_ref_places(&sub, elem, prog, visited, on_ref);
             }
         }
         // Scalars carry no refs. `TypeKind::Fn` erases its ref-carrying

@@ -66,11 +66,11 @@ fn diag(code: impl Into<DiagCode>, source: SourceInfo, msg: String) -> Diagnosti
     Diagnostic::new(code, source, msg)
 }
 
-pub fn check_program(env: &IndexedProgram, d: &mut Diagnostics) {
-    for type_decl in env.types.values() {
+pub fn check_program(prog: &IndexedProgram, d: &mut Diagnostics) {
+    for type_decl in prog.types.values() {
         match type_decl {
-            TypeDecl::Struct(s) => check_struct(s, env, d),
-            TypeDecl::Enum(e) => check_enum(e, env, d),
+            TypeDecl::Struct(s) => check_struct(s, prog, d),
+            TypeDecl::Enum(e) => check_enum(e, prog, d),
         }
     }
 }
@@ -103,8 +103,8 @@ fn check_markers_against(
     }
 }
 
-fn check_struct(s: &StructDecl, env: &IndexedProgram, d: &mut Diagnostics) {
-    let env = LocalEnv::for_decl(env, &s.meta.params);
+fn check_struct(s: &StructDecl, prog: &IndexedProgram, d: &mut Diagnostics) {
+    let env = LocalEnv::for_decl(prog, &s.meta.params);
     for f in &s.fields {
         let c = env.class_of(&f.ty);
         check_markers_against(
@@ -127,8 +127,8 @@ fn check_struct(s: &StructDecl, env: &IndexedProgram, d: &mut Diagnostics) {
     }
 }
 
-fn check_enum(e: &EnumDecl, env: &IndexedProgram, d: &mut Diagnostics) {
-    let env = LocalEnv::for_decl(env, &e.meta.params);
+fn check_enum(e: &EnumDecl, prog: &IndexedProgram, d: &mut Diagnostics) {
+    let env = LocalEnv::for_decl(prog, &e.meta.params);
     for v in &e.variants {
         let c = env.class_of(&v.ty);
         check_markers_against(

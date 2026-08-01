@@ -19,10 +19,10 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     hll::lowering::run_lowering(&hll_prog, &types, d)
 }
 
- fn run_mir_pipeline(
+fn run_mir_pipeline(
     mut raw_program: Program,
     diagnostics: &mut Diagnostics,
-    elaborate: bool
+    elaborate: bool,
 ) -> mir::env::IndexedProgram {
     raw_program
         .declarations
@@ -53,7 +53,6 @@ pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     mir::reachability::check_program(&program, diagnostics);
     program
 }
-
 
 /// Type-check and validate MIR without running NLL or place-state
 /// elaboration. This is for MIR that must exercise the checker without a

@@ -444,7 +444,7 @@ fn deref_ancestor(place: &Place) -> Option<Place> {
 fn collect_borrowers(
     func: &Function,
     body: &FunctionBody,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
 ) -> BTreeSet<Place> {
     let mut out = BTreeSet::new();
     let locals = body.locals_map(&func.params);
@@ -453,7 +453,7 @@ fn collect_borrowers(
         super::region::walk_ref_places(
             &var_place(name.clone()),
             ty,
-            env,
+            prog,
             &mut visited,
             &mut |place, _lt_opt| {
                 out.insert(place.clone());

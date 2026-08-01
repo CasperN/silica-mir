@@ -22,11 +22,11 @@ fn resolution_diagnostic(
     error: TypeResolutionError,
     source: SourceInfo,
     meta: &DeclMeta,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
 ) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
     let scope = format.scope(meta);
-    let message = error.message(&mut format, &scope, env);
+    let message = error.message(&mut format, &scope, prog);
     format.finish(Diagnostic::new(error.code(), source, message))
 }
 

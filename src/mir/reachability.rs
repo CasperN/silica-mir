@@ -354,30 +354,34 @@ fn resolve_enum_of_place<'a>(
 }
 
 /// True if a value of `ty` cannot be constructed.
-fn is_type_uninhabited(ty: &Type, env: &IndexedProgram) -> bool {
-    fn walk(ty: &Type, env: &IndexedProgram, visited: &mut BTreeSet<String>) -> bool {
+fn is_type_uninhabited(ty: &Type, prog: &IndexedProgram) -> bool {
+    fn walk(ty: &Type, prog: &IndexedProgram, visited: &mut BTreeSet<String>) -> bool {
         match &ty.kind {
             TypeKind::Never => true,
             TypeKind::Custom(Instance { name, .. }) => {
                 if !visited.insert(name.clone()) {
                     return false;
                 }
-                let out = match env.types.get(name) {
-                    Some(TypeDecl::Struct(s)) => s.fields.iter().any(|f| walk(&f.ty, env, visited)),
+                let out = match prog.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => {
+                        s.fields.iter().any(|f| walk(&f.ty, prog, visited))
+                    }
                     // An enum is uninhabited when EVERY variant is
                     // uninhabited. Vacuous truth handles the empty
                     // enum (no variants → all() returns true).
-                    Some(TypeDecl::Enum(e)) => e.variants.iter().all(|v| walk(&v.ty, env, visited)),
+                    Some(TypeDecl::Enum(e)) => {
+                        e.variants.iter().all(|v| walk(&v.ty, prog, visited))
+                    }
                     None => false,
                 };
                 visited.remove(name);
                 out
             }
-            TypeKind::Array(elem, n) => *n > 0 && walk(elem, env, &mut BTreeSet::new()),
+            TypeKind::Array(elem, n) => *n > 0 && walk(elem, prog, &mut BTreeSet::new()),
             _ => false,
         }
     }
-    walk(ty, env, &mut BTreeSet::new())
+    walk(ty, prog, &mut BTreeSet::new())
 }
 
 #[cfg(test)]

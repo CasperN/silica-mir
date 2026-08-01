@@ -9,7 +9,7 @@
 
 use crate::common::{GeneratedKind, Lifetime, SourceInfo};
 use crate::diagnostics::Diagnostic;
-use crate::mir::ast::{DeclMeta, Instance, GenericParams, Type, TypeKind};
+use crate::mir::ast::{DeclMeta, GenericParams, Instance, Type, TypeKind};
 use crate::mir::lifetime::Region;
 use std::collections::HashMap;
 use std::fmt::Write;

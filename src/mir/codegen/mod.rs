@@ -47,7 +47,7 @@ pub fn lower_mir_to_llvm(mut program: IndexedProgram) -> String {
     crate::mir::mono::monomorphize(&mut program);
 
     let mut cx = CodeGenContext {
-        env: &program,
+        prog: &program,
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
@@ -179,7 +179,7 @@ fn uses_register_return(abi: &Option<String>) -> bool {
 // ---------- Context ----------
 
 struct CodeGenContext<'a> {
-    env: &'a IndexedProgram,
+    prog: &'a IndexedProgram,
     out: String,
     v_counter: u32,
     locals: IndexMap<String, Type>,
@@ -248,7 +248,7 @@ impl<'a> CodeGenContext<'a> {
         let TypeKind::Custom(Instance { name, .. }) = &ty.kind else {
             panic!("field access on non-struct type {:?}", ty);
         };
-        let Some(TypeDecl::Struct(s)) = self.env.types.get(name) else {
+        let Some(TypeDecl::Struct(s)) = self.prog.types.get(name) else {
             panic!("field lookup on non-struct '{}'", name);
         };
         let (idx, f) = s
@@ -264,7 +264,7 @@ impl<'a> CodeGenContext<'a> {
         let TypeKind::Custom(Instance { name, .. }) = &ty.kind else {
             panic!("expected enum type, got {:?}", ty);
         };
-        match self.env.types.get(name) {
+        match self.prog.types.get(name) {
             Some(TypeDecl::Enum(e)) => e,
             _ => panic!("expected enum type, got '{}'", name),
         }
@@ -285,8 +285,8 @@ fn emit_struct_decl(cx: &mut CodeGenContext, s: &StructDecl) {
 }
 
 fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
-    let pay_off = payload_offset(e, cx.env);
-    let pay_size = max_payload_size(e, cx.env);
+    let pay_off = payload_offset(e, cx.prog);
+    let pay_size = max_payload_size(e, cx.prog);
     // pad_bytes = payload_offset - disc_size (2). Always ≥ 0 since
     // payload_offset ≥ 2 (aligned up from disc).
     let pad_bytes = pay_off - 2;
@@ -297,7 +297,7 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
     // the payload at a stricter-than-actual offset — UB on payload
     // access. Lane count is `ceil(pay_size / sizeof(lane_ty))`, so
     // total storage is at least `pay_size` bytes.
-    let overall_align = enum_overall_align(e, cx.env);
+    let overall_align = enum_overall_align(e, cx.prog);
     let (lane_ty, lane_size) = payload_lane_type(overall_align);
     let lane_count = pay_size.div_ceil(lane_size);
     writeln!(
@@ -446,7 +446,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
         if use_reg_ret {
             if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
                 let inner_llvm = cx.lower_type(inner);
-                let inner_align = layout::align_of(inner, cx.env);
+                let inner_align = layout::align_of(inner, cx.prog);
                 writeln!(
                     cx.out,
                     "  %local.$return_val = alloca {}, align {}",
@@ -505,7 +505,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
 
 fn emit_alloca(cx: &mut CodeGenContext, name: &str, ty: &Type) {
     let llvm_ty = cx.lower_type(ty);
-    let align = layout::align_of(ty, cx.env);
+    let align = layout::align_of(ty, cx.prog);
     writeln!(
         cx.out,
         "  %local.{} = alloca {}, align {}",
@@ -571,7 +571,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             let _ = param_tys; // types are already implicit in arg_pairs
 
             let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(name, _)) = target {
-                if let Some(callee_f) = cx.env.functions.get(name) {
+                if let Some(callee_f) = cx.prog.functions.get(name) {
                     uses_register_return(&callee_f.abi)
                 } else {
                     false
@@ -582,7 +582,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
 
             let ret_llvm = if callee_use_reg_ret {
                 if let Operand::Const(ConstVal::FnName(name, _)) = target {
-                    if let Some(f) = cx.env.functions.get(name) {
+                    if let Some(f) = cx.prog.functions.get(name) {
                         if let Some(p) = get_return_param(&f.params) {
                             if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
                                 Some(cx.lower_type(inner))
@@ -774,7 +774,7 @@ fn emit_ptr_offset_call(cx: &mut CodeGenContext, type_args: &[Type], args: &[Ope
     writeln!(cx.out, "  store ptr {}, ptr {}", result, out_val).unwrap();
 }
 
-/// `call $sizeof<T>($return)` — store `layout::size_of(T, env)`
+/// `call $sizeof<T>($return)` — store `layout::size_of(T, prog)`
 /// through the `&out u64` slot. Type argument is read from the mono'd
 /// `FnName` const; layout comes from the shared layout module used
 /// by the layout-finiteness checker. LLVM has no signedness on
@@ -793,7 +793,7 @@ fn emit_sizeof_call(cx: &mut CodeGenContext, type_args: &[Type], args: &[Operand
             args.len()
         );
     };
-    let size = crate::mir::layout::size_of(t, cx.env);
+    let size = crate::mir::layout::size_of(t, cx.prog);
     let (out_val, _) = emit_operand(cx, out_operand);
     writeln!(cx.out, "  store i64 {}, ptr {}", size, out_val).unwrap();
 }
@@ -837,7 +837,7 @@ fn emit_enum_construction(
     let (operand_val, operand_ty) = emit_operand(cx, operand);
     let (lhs_addr, _) = emit_place_addr(cx, lhs);
 
-    let e_decl = match cx.env.types.get(enum_name) {
+    let e_decl = match cx.prog.types.get(enum_name) {
         Some(TypeDecl::Enum(e)) => e,
         _ => panic!("expected enum '{}'", enum_name),
     };
@@ -857,7 +857,7 @@ fn emit_enum_construction(
 
     // Payload — skip if zero-sized (unit / never). LLVM tolerates
     // `store {} zeroinitializer` but there's no reason to emit it.
-    if layout::size_of(&operand_ty, cx.env) > 0 {
+    if layout::size_of(&operand_ty, cx.prog) > 0 {
         let payload_addr = cx.fresh();
         writeln!(
             cx.out,
@@ -965,7 +965,7 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
                 name,
             );
             let f = cx
-                .env
+                .prog
                 .functions
                 .get(name)
                 .unwrap_or_else(|| panic!("undeclared function '{}'", name));
@@ -1218,18 +1218,18 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
 
 /// Overall alignment of an enum: the stricter of the discriminant's
 /// alignment (i16 = 2) and any variant payload's alignment.
-fn enum_overall_align(e: &EnumDecl, env: &IndexedProgram) -> u64 {
+fn enum_overall_align(e: &EnumDecl, prog: &IndexedProgram) -> u64 {
     let mut a = 2u64;
     for v in &e.variants {
-        a = a.max(layout::align_of(&v.ty, env));
+        a = a.max(layout::align_of(&v.ty, prog));
     }
     a
 }
 
 /// Byte offset of the payload within an enum's LLVM struct. Equals the
 /// discriminant size (2) rounded up to the enum's overall alignment.
-fn payload_offset(e: &EnumDecl, env: &IndexedProgram) -> u64 {
-    align_up(2, enum_overall_align(e, env))
+fn payload_offset(e: &EnumDecl, prog: &IndexedProgram) -> u64 {
+    align_up(2, enum_overall_align(e, prog))
 }
 
 /// LLVM integer type used for the payload lane so LLVM infers the
@@ -1244,10 +1244,10 @@ fn payload_lane_type(align: u64) -> (&'static str, u64) {
     }
 }
 
-fn max_payload_size(e: &EnumDecl, env: &IndexedProgram) -> u64 {
+fn max_payload_size(e: &EnumDecl, prog: &IndexedProgram) -> u64 {
     e.variants
         .iter()
-        .map(|v| layout::size_of(&v.ty, env))
+        .map(|v| layout::size_of(&v.ty, prog))
         .max()
         .unwrap_or(0)
 }

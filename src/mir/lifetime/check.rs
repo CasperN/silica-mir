@@ -52,7 +52,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
     let mut constraints = constraints::ConstraintSet::new();
     let locals = body.locals_map(&func.params);
     let mut checker = Checker {
-        env: env.program(),
+        prog: env.program(),
         func,
         locals,
         region_ctx: &region_ctx,
@@ -135,19 +135,19 @@ fn check_fn_signature_wf(env: LocalEnv<'_>, func: &Function, d: &mut Diagnostics
 /// type's declared outlives obligations. E.g. a field of type
 /// `Wrap<'a, 'b>` where `Wrap` requires `'b: 'a` forces the outer decl
 /// to declare `'b: 'a` on its own params.
-fn check_decl_wf(env: &IndexedProgram, d: &mut Diagnostics) {
-    for decl in env.types.values() {
+fn check_decl_wf(prog: &IndexedProgram, d: &mut Diagnostics) {
+    for decl in prog.types.values() {
         let meta = decl.meta();
         let mut cs = constraints::ConstraintSet::new();
         match decl {
             TypeDecl::Struct(s) => {
                 for f in &s.fields {
-                    emit_type_wf_constraints(&f.ty, env, &mut cs);
+                    emit_type_wf_constraints(&f.ty, prog, &mut cs);
                 }
             }
             TypeDecl::Enum(e) => {
                 for v in &e.variants {
-                    emit_type_wf_constraints(&v.ty, env, &mut cs);
+                    emit_type_wf_constraints(&v.ty, prog, &mut cs);
                 }
             }
         }
@@ -229,33 +229,33 @@ fn name_to_region(lt: &Lifetime) -> Region {
 /// types derive from local/param decls, already walked upstream.
 fn emit_stmt_wf_constraints(
     stmt: &Statement,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     cs: &mut constraints::ConstraintSet,
 ) {
     match &stmt.kind {
         StatementKind::Assign(_, rvalue) => match rvalue {
             RValue::PtrCast(op, ty) => {
-                emit_operand_wf_constraints(op, env, cs);
-                emit_type_wf_constraints(ty, env, cs);
+                emit_operand_wf_constraints(op, prog, cs);
+                emit_type_wf_constraints(ty, prog, cs);
             }
             RValue::EnumConstr(_, type_args, _, op) => {
                 for ty in type_args {
-                    emit_type_wf_constraints(ty, env, cs);
+                    emit_type_wf_constraints(ty, prog, cs);
                 }
-                emit_operand_wf_constraints(op, env, cs);
+                emit_operand_wf_constraints(op, prog, cs);
             }
-            RValue::Use(op) => emit_operand_wf_constraints(op, env, cs),
+            RValue::Use(op) => emit_operand_wf_constraints(op, prog, cs),
             RValue::ArrayLit(ops) => {
                 for op in ops {
-                    emit_operand_wf_constraints(op, env, cs);
+                    emit_operand_wf_constraints(op, prog, cs);
                 }
             }
             RValue::Ref(_, _) | RValue::RawRef(_) => {}
         },
         StatementKind::Call(target, args) => {
-            emit_operand_wf_constraints(target, env, cs);
+            emit_operand_wf_constraints(target, prog, cs);
             for op in args {
-                emit_operand_wf_constraints(op, env, cs);
+                emit_operand_wf_constraints(op, prog, cs);
             }
         }
         StatementKind::Drop(_) | StatementKind::Unborrow(_) | StatementKind::RequireUninit(_) => {}
@@ -268,12 +268,12 @@ fn emit_stmt_wf_constraints(
 /// (`Use`, `PtrCast`, `EnumConstr`, `ArrayLit`).
 fn emit_operand_wf_constraints(
     op: &Operand,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     cs: &mut constraints::ConstraintSet,
 ) {
     if let Operand::Const(ConstVal::FnName(_, type_args)) = op {
         for ty in type_args {
-            emit_type_wf_constraints(ty, env, cs);
+            emit_type_wf_constraints(ty, prog, cs);
         }
     }
 }
@@ -289,14 +289,14 @@ fn emit_operand_wf_constraints(
 /// declared outlives obligations against the containing scope's axioms.
 /// Mirrors the fn-call instantiation pattern in `check_call_regions`
 /// (which handles the analog for `fn foo<'a, 'b: 'a>(...)` calls).
-fn emit_type_wf_constraints(ty: &Type, env: &IndexedProgram, cs: &mut constraints::ConstraintSet) {
+fn emit_type_wf_constraints(ty: &Type, prog: &IndexedProgram, cs: &mut constraints::ConstraintSet) {
     match &ty.kind {
         TypeKind::Custom(Instance {
             name,
             lifetime_args: lts,
             type_args: args,
         }) => {
-            if let Some(decl) = env.types.get(name) {
+            if let Some(decl) = prog.types.get(name) {
                 let meta = decl.meta();
                 if lts.len() == meta.params.lifetime_params.len() {
                     let sub: IndexMap<&Lifetime, &Lifetime> = meta
@@ -321,15 +321,15 @@ fn emit_type_wf_constraints(ty: &Type, env: &IndexedProgram, cs: &mut constraint
                 }
             }
             for a in args {
-                emit_type_wf_constraints(a, env, cs);
+                emit_type_wf_constraints(a, prog, cs);
             }
         }
         TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
-            emit_type_wf_constraints(inner, env, cs);
+            emit_type_wf_constraints(inner, prog, cs);
         }
         TypeKind::Fn(inners) => {
             for i in inners {
-                emit_type_wf_constraints(i, env, cs);
+                emit_type_wf_constraints(i, prog, cs);
             }
         }
         TypeKind::Unit
@@ -349,7 +349,7 @@ fn emit_type_wf_constraints(ty: &Type, env: &IndexedProgram, cs: &mut constraint
 /// A Named region that only appears in body-local types (e.g. a
 /// struct field of a locally-owned struct decl instantiated at
 /// use-site with no lifetime args) is NOT escape-visible.
-fn signature_visible_regions(func: &Function, env: &IndexedProgram) -> BTreeSet<Lifetime> {
+fn signature_visible_regions(func: &Function, prog: &IndexedProgram) -> BTreeSet<Lifetime> {
     let mut out = BTreeSet::new();
     for p in &func.params {
         // $return is the sret slot; any &out or &mut is caller-provided
@@ -370,24 +370,24 @@ fn signature_visible_regions(func: &Function, env: &IndexedProgram) -> BTreeSet<
             _ => p.ty.clone(),
         };
         let mut visited = BTreeSet::new();
-        collect_named_regions(&pointee, env, &mut visited, &mut out);
+        collect_named_regions(&pointee, prog, &mut visited, &mut out);
     }
     out
 }
 
 fn collect_named_regions(
     ty: &Type,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     visited: &mut BTreeSet<String>,
     out: &mut BTreeSet<Lifetime>,
 ) {
     match &ty.kind {
         TypeKind::Ref(_, Some(lt), inner) => {
             out.insert(lt.clone());
-            collect_named_regions(inner, env, visited, out);
+            collect_named_regions(inner, prog, visited, out);
         }
         TypeKind::Ref(_, None, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
-            collect_named_regions(inner, env, visited, out);
+            collect_named_regions(inner, prog, visited, out);
         }
         TypeKind::Custom(Instance {
             name,
@@ -400,18 +400,18 @@ fn collect_named_regions(
             if !visited.insert(name.clone()) {
                 return;
             }
-            match env.types.get(name) {
+            match prog.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
                     for f in &s.fields {
                         if let Some(sub) = s.meta.try_substitute(&f.ty, lifetime_args, type_args) {
-                            collect_named_regions(&sub, env, visited, out);
+                            collect_named_regions(&sub, prog, visited, out);
                         }
                     }
                 }
                 Some(TypeDecl::Enum(e)) => {
                     for v in &e.variants {
                         if let Some(sub) = e.meta.try_substitute(&v.ty, lifetime_args, type_args) {
-                            collect_named_regions(&sub, env, visited, out);
+                            collect_named_regions(&sub, prog, visited, out);
                         }
                     }
                 }
@@ -423,7 +423,7 @@ fn collect_named_regions(
         }
         TypeKind::Fn(args) => {
             for a in args {
-                collect_named_regions(a, env, visited, out);
+                collect_named_regions(a, prog, visited, out);
             }
         }
         // Scalars carry no lifetimes. `TypeKind::Param` is an in-scope
@@ -441,7 +441,7 @@ fn collect_named_regions(
 /// Test-only: compute the outlives constraints emitted for `func`
 /// without running any check. Exercises the accumulation path.
 #[cfg(test)]
-pub fn constraints_for(env: &IndexedProgram, func: &Function) -> constraints::ConstraintSet {
+pub fn constraints_for(prog: &IndexedProgram, func: &Function) -> constraints::ConstraintSet {
     let mut cs = constraints::ConstraintSet::new();
     // `None` here means an extern fn: no body, no statements, no
     // constraints to emit. Return the empty set.
@@ -449,11 +449,11 @@ pub fn constraints_for(env: &IndexedProgram, func: &Function) -> constraints::Co
     if body.blocks.is_empty() {
         return cs;
     }
-    let region_ctx = region::build_region_ctx(func, body, env);
+    let region_ctx = region::build_region_ctx(func, body, prog);
     let locals = body.locals_map(&func.params);
     let mut dummy_d = Diagnostics::default();
     let mut checker = Checker {
-        env,
+        prog,
         func,
         locals,
         region_ctx: &region_ctx,
@@ -553,9 +553,9 @@ fn first_named_region(ty: &Type, inst: &IndexMap<Lifetime, Region>) -> Option<Re
 fn ref_kind_of_place(
     place: &Place,
     locals: &IndexMap<String, Type>,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
 ) -> Option<RefKind> {
-    match crate::mir::type_util::place_type(locals, env, place)?.kind {
+    match crate::mir::type_util::place_type(locals, prog, place)?.kind {
         TypeKind::Ref(kind, _, _) => Some(kind),
         _ => None,
     }
@@ -570,12 +570,12 @@ fn ref_region(
     place: Option<&Place>,
     region_ctx: &region::RegionCtx,
     locals: &IndexMap<String, Type>,
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
 ) -> Option<Region> {
     if let Some(lt) = lt {
         return Some(name_to_region(lt));
     }
-    place.and_then(|p| region_ctx.region_of_place(p, locals, env))
+    place.and_then(|p| region_ctx.region_of_place(p, locals, prog))
 }
 
 fn operand_place(op: &Operand) -> Option<&Place> {
@@ -589,7 +589,7 @@ fn operand_place(op: &Operand) -> Option<&Place> {
 }
 
 struct Checker<'a> {
-    env: &'a IndexedProgram,
+    prog: &'a IndexedProgram,
     func: &'a Function,
     locals: IndexMap<String, Type>,
     region_ctx: &'a region::RegionCtx,
@@ -699,11 +699,12 @@ impl<'a> Checker<'a> {
             let Some(src_place) = operand_place(op) else {
                 return;
             };
-            let Some(src_ty) = crate::mir::type_util::place_type(&self.locals, self.env, src_place)
+            let Some(src_ty) =
+                crate::mir::type_util::place_type(&self.locals, self.prog, src_place)
             else {
                 return;
             };
-            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.env, target)
+            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.prog, target)
             else {
                 return;
             };
@@ -722,7 +723,7 @@ impl<'a> Checker<'a> {
         // refs would slip into a signature-visible array without a
         // diagnostic. Handled here, before the single-source `match` below.
         if let RValue::ArrayLit(ops) = rvalue {
-            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.env, target)
+            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.prog, target)
             else {
                 return;
             };
@@ -734,7 +735,7 @@ impl<'a> Checker<'a> {
                     continue;
                 };
                 let Some(src_ty) =
-                    crate::mir::type_util::place_type(&self.locals, self.env, src_place)
+                    crate::mir::type_util::place_type(&self.locals, self.prog, src_place)
                 else {
                     continue;
                 };
@@ -759,7 +760,7 @@ impl<'a> Checker<'a> {
             RValue::Ref(_, place) => {
                 let Some(r) =
                     self.region_ctx
-                        .region_of_borrow_source(place, &self.locals, self.env)
+                        .region_of_borrow_source(place, &self.locals, self.prog)
                 else {
                     return;
                 };
@@ -767,14 +768,20 @@ impl<'a> Checker<'a> {
             }
             RValue::EnumConstr(_, _, variant, op) => {
                 let Some(src) = operand_place(op) else { return };
-                let Some(r) = self.region_ctx.region_of_place(src, &self.locals, self.env) else {
+                let Some(r) = self
+                    .region_ctx
+                    .region_of_place(src, &self.locals, self.prog)
+                else {
                     return;
                 };
                 (r, downcast_place(target.clone(), variant.clone()))
             }
             RValue::PtrCast(op, _) => {
                 let Some(src) = operand_place(op) else { return };
-                let Some(r) = self.region_ctx.region_of_place(src, &self.locals, self.env) else {
+                let Some(r) = self
+                    .region_ctx
+                    .region_of_place(src, &self.locals, self.prog)
+                else {
                     return;
                 };
                 (r, target.clone())
@@ -783,14 +790,14 @@ impl<'a> Checker<'a> {
         };
         let Some(t_r) = self
             .region_ctx
-            .region_of_place(&target_place, &self.locals, self.env)
+            .region_of_place(&target_place, &self.locals, self.prog)
         else {
             return;
         };
         // Emit variance-aware constraint. Shared refs are covariant
         // (source outlives dst is enough). Exclusive-write kinds are
         // invariant (source outlives dst AND dst outlives source).
-        let target_kind = ref_kind_of_place(&target_place, &self.locals, self.env);
+        let target_kind = ref_kind_of_place(&target_place, &self.locals, self.prog);
         self.constraints.emit(
             src_region.clone(),
             t_r.clone(),
@@ -824,14 +831,14 @@ impl<'a> Checker<'a> {
                     outer_places.map(|(s, _)| s),
                     self.region_ctx,
                     &self.locals,
-                    self.env,
+                    self.prog,
                 );
                 let tgt_region = ref_region(
                     t_lt,
                     outer_places.map(|(_, t)| t),
                     self.region_ctx,
                     &self.locals,
-                    self.env,
+                    self.prog,
                 );
                 let layer_variance = variance.combine(match kind {
                     RefKind::Shared => Variance::Covariant,
@@ -1085,7 +1092,7 @@ impl<'a> Checker<'a> {
     /// state discipline distinguishes them; lifetime doesn't.
     ///
     /// Algorithm:
-    /// 1. Look up callee's Function in env. Bail on fn-pointer /
+    /// 1. Look up callee's Function in the program. Bail on fn-pointer /
     ///    non-fn-name callees.
     /// 2. Allocate fresh Free regions from `region_ctx.fresh()` for
     ///    each callee lifetime param.
@@ -1113,7 +1120,7 @@ impl<'a> Checker<'a> {
         let Operand::Const(ConstVal::FnName(callee_name, _)) = target else {
             return;
         };
-        let Some(callee) = self.env.functions.get(callee_name) else {
+        let Some(callee) = self.prog.functions.get(callee_name) else {
             return;
         };
         if callee.params.len() != args.len() {
@@ -1241,7 +1248,7 @@ impl<'a> Checker<'a> {
                 let inst_region = inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt));
                 if let Some(caller_r) =
                     self.region_ctx
-                        .region_of_place(caller_place, &self.locals, self.env)
+                        .region_of_place(caller_place, &self.locals, self.prog)
                 {
                     emit_variance(
                         &caller_r,
@@ -1292,7 +1299,7 @@ impl<'a> Checker<'a> {
                 // like container references: default to invariance
                 // (conservative, safe).
                 let caller_ty =
-                    crate::mir::type_util::place_type(&self.locals, self.env, caller_place);
+                    crate::mir::type_util::place_type(&self.locals, self.prog, caller_place);
                 if let Some(caller_ty) = caller_ty {
                     if let TypeKind::Custom(Instance {
                         lifetime_args: caller_lts,

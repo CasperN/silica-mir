@@ -202,7 +202,7 @@ impl TypeResolutionError {
         &self,
         format: &mut DiagnosticFormat,
         caller_scope: &DiagnosticScope,
-        env: &IndexedProgram,
+        prog: &IndexedProgram,
     ) -> String {
         match &self.kind {
             TypeResolutionErrorKind::UndeclaredVariable(name) => {
@@ -279,7 +279,7 @@ impl TypeResolutionError {
                 expected,
                 found,
             } => {
-                let expected_scope = env
+                let expected_scope = prog
                     .types
                     .get(enum_name)
                     .map(|declaration| format.scope(declaration.meta()));

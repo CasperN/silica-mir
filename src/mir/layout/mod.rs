@@ -50,16 +50,16 @@ use std::collections::BTreeSet;
 // ---------- Size / alignment ----------
 
 /// Size of `ty` in bytes on a 64-bit target.
-pub fn size_of(ty: &Type, env: &IndexedProgram) -> u64 {
+pub fn size_of(ty: &Type, prog: &IndexedProgram) -> u64 {
     match &ty.kind {
         TypeKind::Int(i) => i.bytes(),
         TypeKind::Float(f) => f.bytes(),
         TypeKind::Bool => 1,
         TypeKind::Unit | TypeKind::Never => 0,
         TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
-        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
-            Some(TypeDecl::Struct(s)) => struct_size(s, env),
-            Some(TypeDecl::Enum(e)) => enum_size(e, env),
+        TypeKind::Custom(Instance { name, .. }) => match prog.types.get(name) {
+            Some(TypeDecl::Struct(s)) => struct_size(s, prog),
+            Some(TypeDecl::Enum(e)) => enum_size(e, prog),
             None => panic!("layout::size_of: unknown type '{}'", name),
         },
         TypeKind::Param(name) => {
@@ -68,22 +68,22 @@ pub fn size_of(ty: &Type, env: &IndexedProgram) -> u64 {
                 name
             )
         }
-        TypeKind::Array(elem, n) => n * size_of(elem, env),
+        TypeKind::Array(elem, n) => n * size_of(elem, prog),
     }
 }
 
 /// Alignment of `ty` in bytes on a 64-bit target. Always a power of two.
 /// For scalars, alignment equals the type's own size (natural alignment).
-pub fn align_of(ty: &Type, env: &IndexedProgram) -> u64 {
+pub fn align_of(ty: &Type, prog: &IndexedProgram) -> u64 {
     match &ty.kind {
         TypeKind::Int(i) => i.bytes(),
         TypeKind::Float(f) => f.bytes(),
         TypeKind::Bool => 1,
         TypeKind::Unit | TypeKind::Never => 1,
         TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
-        TypeKind::Custom(Instance { name, .. }) => match env.types.get(name) {
-            Some(TypeDecl::Struct(s)) => struct_align(s, env),
-            Some(TypeDecl::Enum(e)) => enum_align(e, env),
+        TypeKind::Custom(Instance { name, .. }) => match prog.types.get(name) {
+            Some(TypeDecl::Struct(s)) => struct_align(s, prog),
+            Some(TypeDecl::Enum(e)) => enum_align(e, prog),
             None => panic!("layout::align_of: unknown type '{}'", name),
         },
         TypeKind::Param(name) => {
@@ -92,31 +92,31 @@ pub fn align_of(ty: &Type, env: &IndexedProgram) -> u64 {
                 name
             )
         }
-        TypeKind::Array(elem, _) => align_of(elem, env),
+        TypeKind::Array(elem, _) => align_of(elem, prog),
     }
 }
 
-fn struct_size(s: &StructDecl, env: &IndexedProgram) -> u64 {
+fn struct_size(s: &StructDecl, prog: &IndexedProgram) -> u64 {
     let mut offset = 0u64;
     let mut align = 1u64;
     for f in &s.fields {
-        let fa = align_of(&f.ty, env);
+        let fa = align_of(&f.ty, prog);
         offset = align_up(offset, fa);
-        offset += size_of(&f.ty, env);
+        offset += size_of(&f.ty, prog);
         align = align.max(fa);
     }
     align_up(offset, align)
 }
 
-fn struct_align(s: &StructDecl, env: &IndexedProgram) -> u64 {
+fn struct_align(s: &StructDecl, prog: &IndexedProgram) -> u64 {
     let mut align = 1u64;
     for f in &s.fields {
-        align = align.max(align_of(&f.ty, env));
+        align = align.max(align_of(&f.ty, prog));
     }
     align
 }
 
-fn enum_size(e: &EnumDecl, env: &IndexedProgram) -> u64 {
+fn enum_size(e: &EnumDecl, prog: &IndexedProgram) -> u64 {
     // {i16 discriminant, [N x i8] payload} with the whole thing aligned
     // to the enum's overall alignment. Discriminant lives at offset 0;
     // payload starts at max(2, max_payload_align).
@@ -125,18 +125,18 @@ fn enum_size(e: &EnumDecl, env: &IndexedProgram) -> u64 {
     let mut max_payload_size = 0u64;
     let mut max_payload_align = 1u64;
     for v in &e.variants {
-        max_payload_size = max_payload_size.max(size_of(&v.ty, env));
-        max_payload_align = max_payload_align.max(align_of(&v.ty, env));
+        max_payload_size = max_payload_size.max(size_of(&v.ty, prog));
+        max_payload_align = max_payload_align.max(align_of(&v.ty, prog));
     }
     let overall_align = disc_align.max(max_payload_align);
     let payload_offset = align_up(disc_size, overall_align);
     align_up(payload_offset + max_payload_size, overall_align)
 }
 
-fn enum_align(e: &EnumDecl, env: &IndexedProgram) -> u64 {
+fn enum_align(e: &EnumDecl, prog: &IndexedProgram) -> u64 {
     let mut a = 2u64; // discriminant alignment
     for v in &e.variants {
-        a = a.max(align_of(&v.ty, env));
+        a = a.max(align_of(&v.ty, prog));
     }
     a
 }
@@ -152,18 +152,18 @@ fn align_up(x: u64, a: u64) -> u64 {
 /// Report each maximal group of struct/enum types that participates in a
 /// by-value cycle. Recursion through references or function pointers is
 /// allowed (the referent is behind a pointer of bounded size).
-pub fn check_sizes_finite(env: &IndexedProgram, d: &mut Diagnostics) {
-    let strongly_connected_components = tarjan_sccs(env);
+pub fn check_sizes_finite(prog: &IndexedProgram, d: &mut Diagnostics) {
+    let strongly_connected_components = tarjan_sccs(prog);
     for scc in strongly_connected_components {
-        if scc.len() > 1 || (scc.len() == 1 && has_self_loop(&scc[0], env)) {
-            report_cycle(&scc, env, d);
+        if scc.len() > 1 || (scc.len() == 1 && has_self_loop(&scc[0], prog)) {
+            report_cycle(&scc, prog, d);
         }
     }
 }
 
-fn report_cycle(scc: &[String], env: &IndexedProgram, d: &mut Diagnostics) {
+fn report_cycle(scc: &[String], prog: &IndexedProgram, d: &mut Diagnostics) {
     let head = &scc[0];
-    let source = decl_source(head, env);
+    let source = decl_source(head, prog);
     let members = scc.join(", ");
     d.push_error(Diagnostic::new(
         LayoutCode::RecursiveTypeByValue,
@@ -175,8 +175,8 @@ fn report_cycle(scc: &[String], env: &IndexedProgram, d: &mut Diagnostics) {
     ));
 }
 
-fn decl_source(name: &str, env: &IndexedProgram) -> SourceInfo {
-    match env.types.get(name) {
+fn decl_source(name: &str, prog: &IndexedProgram) -> SourceInfo {
+    match prog.types.get(name) {
         Some(TypeDecl::Struct(s)) => s.meta.name_source,
         Some(TypeDecl::Enum(e)) => e.meta.name_source,
         None => unreachable!("layout SCC member must name a declared type"),
@@ -186,9 +186,9 @@ fn decl_source(name: &str, env: &IndexedProgram) -> SourceInfo {
 /// Names of nominal types that appear by value in the declaration of
 /// `name`. References and function types don't contribute — the pointer
 /// is bounded regardless of the pointee.
-fn by_value_edges(name: &str, env: &IndexedProgram) -> Vec<String> {
+fn by_value_edges(name: &str, prog: &IndexedProgram) -> Vec<String> {
     let mut out = Vec::new();
-    match env.types.get(name) {
+    match prog.types.get(name) {
         Some(TypeDecl::Struct(s)) => {
             for f in &s.fields {
                 if let TypeKind::Custom(Instance { name: sub, .. }) = &f.ty.kind {
@@ -208,17 +208,17 @@ fn by_value_edges(name: &str, env: &IndexedProgram) -> Vec<String> {
     out
 }
 
-fn has_self_loop(name: &str, env: &IndexedProgram) -> bool {
-    by_value_edges(name, env).iter().any(|n| n == name)
+fn has_self_loop(name: &str, prog: &IndexedProgram) -> bool {
+    by_value_edges(name, prog).iter().any(|n| n == name)
 }
 
 /// Tarjan's strongly-connected components on the by-value edge graph.
 /// Nodes are struct/enum names in declaration order. Result: one Vec
 /// per SCC; single-node SCCs without a self-loop are trivial (not
 /// cycles) but included — the caller filters them.
-fn tarjan_sccs(env: &IndexedProgram) -> Vec<Vec<String>> {
+fn tarjan_sccs(prog: &IndexedProgram) -> Vec<Vec<String>> {
     let mut state = Tarjan {
-        env,
+        prog,
         index: IndexMap::new(),
         lowlink: IndexMap::new(),
         on_stack: BTreeSet::new(),
@@ -226,7 +226,7 @@ fn tarjan_sccs(env: &IndexedProgram) -> Vec<Vec<String>> {
         counter: 0,
         sccs: Vec::new(),
     };
-    let names: Vec<String> = env.types.keys().cloned().collect();
+    let names: Vec<String> = prog.types.keys().cloned().collect();
     for n in &names {
         if !state.index.contains_key(n) {
             state.strong_connect(n);
@@ -236,7 +236,7 @@ fn tarjan_sccs(env: &IndexedProgram) -> Vec<Vec<String>> {
 }
 
 struct Tarjan<'a> {
-    env: &'a IndexedProgram,
+    prog: &'a IndexedProgram,
     index: IndexMap<String, u32>,
     lowlink: IndexMap<String, u32>,
     on_stack: BTreeSet<String>,
@@ -254,11 +254,11 @@ impl<'a> Tarjan<'a> {
         self.stack.push(v_owned.clone());
         self.on_stack.insert(v_owned.clone());
 
-        for w in by_value_edges(v, self.env) {
+        for w in by_value_edges(v, self.prog) {
             // Successor referring to a non-declared type: type_check will
             // have reported "undeclared type" elsewhere. Skip here to
             // avoid touching a non-existent node.
-            if !self.env.types.contains_key(&w) {
+            if !self.prog.types.contains_key(&w) {
                 continue;
             }
             if !self.index.contains_key(&w) {

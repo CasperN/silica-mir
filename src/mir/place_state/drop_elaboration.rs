@@ -457,7 +457,7 @@ fn is_init_and_drop(
 /// `tests/init_state/partial_init/hll_partial_init_use.si` for the
 /// diagnostic on the paired misuse.
 fn collect_diverged_paths(
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     locals: &IndexMap<String, Type>,
     state: &PointState,
 ) -> Vec<(Place, Type)> {
@@ -466,13 +466,13 @@ fn collect_diverged_paths(
         let Some(root_state) = state.locals.get(name) else {
             continue;
         };
-        walk_diverged(env, var_place(name.clone()), ty, root_state, &mut out);
+        walk_diverged(prog, var_place(name.clone()), ty, root_state, &mut out);
     }
     out
 }
 
 fn walk_diverged(
-    env: &IndexedProgram,
+    prog: &IndexedProgram,
     place: Place,
     ty: &Type,
     state: &InitState,
@@ -494,7 +494,7 @@ fn walk_diverged(
                     name,
                     type_args: args,
                     ..
-                }) => match env.types.get(name) {
+                }) => match prog.types.get(name) {
                     Some(TypeDecl::Struct(s)) => {
                         for f in &s.fields {
                             let Some(field_state) = fields.get(&InitSlot::Field(f.name.clone()))
@@ -505,7 +505,7 @@ fn walk_diverged(
                                 continue;
                             };
                             let sub_place = field_place(place.clone(), f.name.clone());
-                            walk_diverged(env, sub_place, &field_ty, field_state, out);
+                            walk_diverged(prog, sub_place, &field_ty, field_state, out);
                         }
                     }
                     Some(TypeDecl::Enum(e)) => {
@@ -519,7 +519,7 @@ fn walk_diverged(
                                 continue;
                             };
                             let sub_place = downcast_place(place.clone(), v.name.clone());
-                            walk_diverged(env, sub_place, &variant_ty, variant_state, out);
+                            walk_diverged(prog, sub_place, &variant_ty, variant_state, out);
                         }
                     }
                     None => {}
@@ -536,7 +536,7 @@ fn walk_diverged(
                                 ty: IntTy::I64,
                             }),
                         );
-                        walk_diverged(env, sub_place, elem, slot_state, out);
+                        walk_diverged(prog, sub_place, elem, slot_state, out);
                     }
                 }
                 // Non-aggregate types can only be Init/NeverInit/Moved
