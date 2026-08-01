@@ -33,14 +33,12 @@ pub fn pretty_print(program: &IndexedProgram) -> String {
     out
 }
 
-/// Prelude wrappers (`size_of`, `ptr_offset`) are compiler-injected
-/// into every program to expose the `$`-prefixed intrinsics under
-/// non-`$` names. They're not user-authored and shouldn't appear in
-/// fixture-pinned pretty-printed output.
+/// Compiler-injected prelude declarations are not user-authored and should
+/// not appear in fixture-pinned pretty-printed output.
 fn is_prelude_decl(decl: DeclarationRef<'_>) -> bool {
     matches!(
         decl.meta().map(|m| m.name.as_str()),
-        Some("size_of" | "ptr_offset")
+        Some("AutoClone" | "AutoDestroy" | "size_of" | "ptr_offset")
     )
 }
 

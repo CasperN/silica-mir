@@ -1,7 +1,7 @@
 //! HLL surface prelude — extern signatures for the compiler-provided
 //! wrappers (`size_of<T>`, `ptr_offset<T>`) that expose `$`-prefixed
 //! intrinsics under names user code can spell. The wrappers' *bodies*
-//! live in the MIR pipeline (see `mir::intrinsics::prelude_body_decls`).
+//! live in the MIR pipeline (see `mir::intrinsics::prelude_decls`).
 //! At the HLL layer we only need surface signatures; type-check and
 //! lowering both call `prelude_fn_decls()` to register them in their
 //! respective envs without adding the signatures to the user program's

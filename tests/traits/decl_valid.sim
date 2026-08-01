@@ -26,6 +26,8 @@
 #   SelfLocal for Foo                Self inside body local
 #   SelfInBody for Foo               Self inside body operands
 #   LtTrait<'s0> for LtHolder<'s0>   impl-header 'sN skiplist for elision
+#   AutoClone/AutoDestroy for Foo    compiler-provided traits are in scope and
+#                                    their method signatures use Self correctly
 
 # Trait-only shapes with no accompanying impl.
 trait<T> Combo {
@@ -188,6 +190,22 @@ trait Discard {
 impl Discard for Foo {
   fn<T: Drop> discard(recv: & Foo, value: T) {
     entry:
+      return
+  }
+}
+
+impl AutoClone for Foo {
+  fn clone(recv: & Foo, $return: &out Foo) {
+    entry:
+      $return.* = copy recv.*;
+      return
+  }
+}
+
+impl AutoDestroy for Foo {
+  fn destroy(recv: &drop Foo) {
+    entry:
+      drop recv.*;
       return
   }
 }

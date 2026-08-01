@@ -551,18 +551,24 @@ fn ptr_offset_fn() -> Function {
 /// Reserved name for the pointer-offset intrinsic.
 pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 
-/// User-facing wrappers around the `$`-prefixed intrinsics. `$` is a
-/// reserved namespace unspellable in HLL, so user code needs non-`$`
-/// entry points; these wrappers provide them as ordinary generic fns
-/// that forward directly to the intrinsic. Parsed once from a static
-/// MIR string at program-prep time and injected into every program's
-/// declarations before checks run.
+/// Compiler-provided declarations parsed once from a static MIR string and
+/// injected into every program before checks run. The functions expose the
+/// `$`-prefixed intrinsics under user-facing names; the traits define the
+/// interfaces used by implicit clone and destruction elaboration.
 ///
 /// Contract: these wrappers must parse cleanly and produce Function
 /// values with bodies (so mono can specialize them per-instantiation).
 /// The bodies use `$`-prefixed names because they are compiler-provided,
 /// not user-authored.
 pub const PRELUDE_MIR: &str = r#"
+trait AutoClone {
+  fn clone(recv: & Self, $return: &out Self);
+}
+
+trait AutoDestroy {
+  fn destroy(recv: &drop Self);
+}
+
 fn<T> size_of(out: &out u64) {
   entry:
     call $sizeof<T>(move out);
@@ -576,11 +582,11 @@ fn<T> ptr_offset(p: *T, i: u64, out: &out *T) {
 }
 "#;
 
-/// Parse `PRELUDE_MIR` into the wrapper `Function` declarations. Called
-/// by the pipeline entry to inject wrappers into every user program.
+/// Parse `PRELUDE_MIR` into compiler-provided declarations. Called by the
+/// pipeline entry to inject the prelude into every user program.
 /// Panics on parse failure — the constant is compiler-authored, so any
 /// failure is an internal bug rather than user error.
-pub fn prelude_body_decls() -> Vec<Declaration> {
+pub fn prelude_decls() -> Vec<Declaration> {
     let mut d = crate::diagnostics::Diagnostics::default();
     let program = crate::mir::parser::Parser::new(PRELUDE_MIR.to_string())
         .parse(&mut d)

@@ -180,7 +180,13 @@ the deliberate later refinement to nested operand and projection sources.
 
 
 # Current Yak-shaving stack
-- A standard `Box` type
-- destructor elaboration
 - Traits working properly
   - trait bounds: `trait Foo: Copy + MyTrait {..}`
+- Standard library
+- Modules
+- Standard `Span` and `Vec` types working properly 
+- A standard `Box` type working properly
+- Extend copy relaxation with AutoClone.
+- Extend drop elaboration with AutoDestroy.
+- trait bounds on type parameters
+- Resolve concrete TraitFn calls to impl methods during monomorphization.

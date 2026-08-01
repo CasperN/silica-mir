@@ -167,3 +167,22 @@ impl Discard for Foo {
       return
   }
 }
+
+impl AutoClone for Foo {
+  fn<'s0, 's1> clone(recv: & 's0 Foo, $return: &out 's1 Foo) {
+    entry:
+      $return.* = copy recv.*;
+      unborrow $return;
+      unborrow recv;
+      return
+  }
+}
+
+impl AutoDestroy for Foo {
+  fn<'s0> destroy(recv: &drop 's0 Foo) {
+    entry:
+      drop recv.*;
+      unborrow recv;
+      return
+  }
+}

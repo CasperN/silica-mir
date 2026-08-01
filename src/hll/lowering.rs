@@ -209,7 +209,7 @@ impl LowerCtx {
         let mut enums = HashMap::new();
         // Preload prelude wrappers so `size_of<T>` / `ptr_offset<T>`
         // in user code lower as fn-name calls rather than variable
-        // lookups. Their MIR bodies come from `intrinsics::prelude_body_decls`.
+        // lookups. Their MIR bodies come from `intrinsics::prelude_decls`.
         for f in crate::hll::prelude::prelude_fn_decls() {
             functions.insert(f.name.clone(), f);
         }

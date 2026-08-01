@@ -26,7 +26,7 @@ fn run_mir_pipeline(
 ) -> mir::env::IndexedProgram {
     raw_program
         .declarations
-        .extend(mir::intrinsics::prelude_body_decls());
+        .extend(mir::intrinsics::prelude_decls());
     let (mut program, env_errs) = mir::type_check::IndexedProgram::build(&raw_program);
 
     diagnostics.extend_errors(env_errs);
