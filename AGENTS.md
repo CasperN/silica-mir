@@ -125,9 +125,10 @@ asynchronous object destruction.
   * Because the last two rules can be applied repeatedly, `T: Copy + Destroy`
     imply `T: CoTransfer`.
 
-The trivial tier is implemented. Copy relaxation also inserts calls to
-applicable user-provided `AutoClone` implementations; `AutoDestroy`, the
-remaining tiers, and blanket/derived implementations are deferred.
+The trivial tier is implemented. Copy relaxation and drop elaboration also
+insert calls to applicable user-provided `AutoClone` and `AutoDestroy`
+implementations. The remaining tiers and blanket/derived implementations are
+deferred.
 
 
 ## Reference obligations
@@ -170,8 +171,8 @@ Important consequences:
 - `NeverInit` and `Moved` both satisfy an “uninitialized” precondition.
 - `Diverged` is not silently accepted by later checks.
 - Returning normally requires every owned value to have been consumed.
-- `abort` and `unreachable` have no returning continuation and therefore do
-  not require caller-observable cleanup.
+- `abort` and `unreachable` do not trigger exit cleanup. Cleanup required at
+  an earlier semantic program point still occurs.
 
 A dynamic array index has no stable move-path identity. Consequently:
 

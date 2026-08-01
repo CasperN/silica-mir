@@ -497,7 +497,7 @@ const =
 operand =
     | copy place        # bitwise copy; place must be Copy; place stays initialized
     | move place        # bitwise move; place becomes uninitialized
-    | take place        # deferred read; copy relaxation resolves to move or copy
+    | take place        # deferred read; copy relaxation makes ownership explicit
     | const
 
 rvalue =
@@ -515,8 +515,8 @@ statement =
     | place = rvalue
     | call operand ( operand, ... )
     | drop place
-        # Marks the place as consumed/forgotten. No-op for scalars and POD types
-        # and lowers to call Drop::drop(&drop place) for custom destructors.
+        # Trivially consumes the place. Custom implicit destruction is an
+        # AutoDestroy trait call inserted by drop elaboration, not `drop`.
     | unborrow place
         # Mark the place as no longer borrowed. Inserted by the NLL pass.
         # Legal iff the reference and every reborrow derived from it has been
@@ -702,9 +702,9 @@ tracked with full `InitState` granularity, so per-field writes via
 `r.*.field = ...` accumulate through `Partial` and fold to `Init` on
 completion. Shared `&T` carries no obligation (it's `Copy Drop`).
 
-For `&out` / `&uninit` on an `Init` place, drop elaboration inserts
-`drop place` before the borrow if the type is `Drop`; a linear (non-Drop)
-place must be moved out first.
+For `&out` / `&uninit` on an `Init` place, drop elaboration inserts `drop
+place` for a `Drop` type or calls an applicable `AutoDestroy` implementation.
+A place supporting neither mechanism must be consumed explicitly first.
 
 Canonical: `tests/init_state/borrow_precondition/`, `tests/init_state/ref_obligations/`.
 
@@ -756,34 +756,35 @@ Pre-elaboration checks:
 6. **Block reachability** — dead-block warnings.
 Elaboration:
 
-7. **Copy relaxation** — specialize each `take place` operand into
-   `move place` or `copy place`, based on backward may-demand and
-   static path shape. Paths fall into three classes:
-   - **Mandatory-copy** — shared-reference crossings and dynamic
+7. **Copy relaxation** — resolve each `take place` operand into `move place`,
+   `copy place`, or an `AutoClone` call followed by a move from its generated
+   result. Resolution uses backward may-demand and static path shape:
+   - **Mandatory preservation** — shared-reference crossings and dynamic
      indices. `move` is either illegal (shared) or would lose track
-     of the consumed slot (dynamic index), so `take` here always
-     specializes to `copy`; a non-Copy type at this position is a
-     `RELAX-MandatoryCopyNonCopy` user error.
+     of the consumed slot (dynamic index), so `take` uses `copy` when
+     available or an applicable AutoClone implementation for a Move type
+     otherwise. If neither can preserve the value, the pass emits
+     `RELAX-MandatoryPreservationUnavailable`.
    - **Stable candidates** — owned paths, chains of exclusive-ref
      dereferences, and paths crossing raw pointers (the author is
      already in `unsafe`, so raw-ptr boundaries don't gate the
-     decision). Resolution is demand-driven: `copy` when a later
-     reachable use demands the same static path or a ref's post-Init
-     obligation demands the pointee at expiry; otherwise `move`
-     (with a `copy` fallback for Copy-only types).
+     decision). Live demand uses `copy` for Copy types or AutoClone for an
+     eligible Move type; otherwise the place is consumed with `move` (with a
+     `copy` fallback for Copy-only types).
    - **`Index` operand position** — a non-consuming read. `take`
      here is forced to `copy`; a `move` operand is
      `RELAX-IndexOperandNotReading`. This keeps place-state, NLL,
      and lifetime analyses from needing to recurse into `Index`
      projections.
 
-   Fields, downcasts, and constant indices may appear anywhere in a
-   static path. Runs before NLL because copies do not close borrower
-   loans. Post-pass, every operand is `move` or `copy`; any
-   surviving `take` is an internal compiler error.
+   Fields, downcasts, and constant indices may appear anywhere in a static
+   path. The pass runs before NLL because preservation changes borrower
+   liveness. Any surviving `take` is an internal compiler error.
 8. **NLL lifetime elaboration** — insert `unborrow` at ASAP last-use points.
-9. **Place-state cleanup elaboration** — insert `drop` before returns for
-   Init-at-return values whose types are Drop.
+9. **Place-state cleanup elaboration** — make required cleanup explicit with
+   trivial `drop` or an applicable AutoDestroy call. Cleanup occurs before
+   normal returns, destructive overwrites, `&out`/`&uninit` transitions, and
+   `require_uninit`, including partial and divergent initialization states.
 
 Post-elaboration checks:
 

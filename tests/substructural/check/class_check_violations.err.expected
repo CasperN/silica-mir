@@ -377,6 +377,14 @@ error: at 470:5: [SUB-CopyOfNonCopy] In function 'explicit_copy_of_autoclone', b
  471 |     abort
      |
   hint: since the type is not Copy, try moving it instead using 'move'
+error: at 489:5: [SUB-DropOfNonDrop] In function 'explicit_drop_of_autodestroy', block 'entry': cannot drop non-Drop type AutoDestroyOnly
+     |
+ 488 |   entry:
+ 489 |     drop x;
+     |     ^^^^^^
+ 490 |     return
+     |
+  hint: only types implementing the Drop class can be explicitly dropped
 error: at 66:5: [PS-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  61 | 

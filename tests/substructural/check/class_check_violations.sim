@@ -470,3 +470,22 @@ fn explicit_copy_of_autoclone(x: AutoCloneOnly) {
     y = copy x;
     abort
 }
+
+# AutoDestroy permits compiler-inserted destruction through `&drop`; it does
+# not make an explicit trivial `drop` operation legal.
+struct AutoDestroyOnly: Move { v: i64 }
+
+impl AutoDestroy for AutoDestroyOnly {
+  fn destroy(recv: &drop AutoDestroyOnly) {
+    entry:
+      drop recv.*.v;
+      return
+  }
+}
+
+# covers: explicit drop remains marker-gated for an AutoDestroy-only type
+fn explicit_drop_of_autodestroy(x: AutoDestroyOnly) {
+  entry:
+    drop x;
+    return
+}

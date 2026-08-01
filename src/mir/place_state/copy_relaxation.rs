@@ -276,7 +276,7 @@ fn elaborate_function(
 /// Per-block relaxation context. Bundles the env/locals/scope needed for
 /// type queries with the diagnostics sink and the function/block context
 /// used when emitting a user-facing error (e.g. `take` of a place that
-/// resolves to neither `move` nor `copy`).
+/// cannot be legally consumed or preserved).
 struct RelaxCtx<'a> {
     env: LocalEnv<'a>,
     locals: &'a mut IndexMap<String, Type>,

@@ -1,0 +1,51 @@
+error: at 32:7: [PS-RefObligationUnfulfilled] In function 'destroy', block 'entry': reference 'recv' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+    |
+ 29 |   # covers: invalid AutoDestroy implementation body
+ 30 |   fn destroy(recv: &drop BrokenDestroy) {
+    |              ------------------------- reference declared here
+ 31 |     entry:
+ 32 |       return
+    |       ^^^^^^
+ 33 |   }
+    |
+error: at 72:5: [PS-RequireUninitNotSatisfied] In function 'dynamic_index_requirement_still_fails', block 'entry': value 'values[?]' must be fully uninitialized by this point, but its place is not statically trackable
+    |
+ 71 |   entry:
+ 72 |     require_uninit values[copy i];
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 73 |     abort
+    |
+error: at 47:5: [PS-ReturnValueLeak] In function 'missing_impl_still_leaks', block 'entry': value 'x' of type NoDestroy is not consumed at return
+    |
+ 44 | # covers: missing AutoDestroy implementation leaves the return leak intact
+ 45 | fn missing_impl_still_leaks(x: NoDestroy) {
+    |                             ------------ variable declared here
+ 46 |   entry:
+ 47 |     return
+    |     ^^^^^^
+ 48 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 54:5: [PS-ReturnValueLeak] In function 'unsatisfied_impl_bound_still_leaks', block 'entry': value 'x' of type MaybeDestroy<MoveOnly> is not consumed at return
+    |
+ 51 | # covers: unsatisfied generic impl bound does not select AutoDestroy
+ 52 | fn unsatisfied_impl_bound_still_leaks(x: MaybeDestroy<MoveOnly>) {
+    |                                       ------------------------- variable declared here
+ 53 |   entry:
+ 54 |     return
+    |     ^^^^^^
+ 55 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.
+error: at 64:5: [PS-ReturnValueLeak] In function 'partial_whole_still_leaks', block 'entry': value 'x.child' of type NoDestroy is not consumed at return
+    |
+ 60 | fn partial_whole_still_leaks(child: NoDestroy) {
+ 61 |   x: PartialWhole;
+    |   ---------------- variable declared here
+ 62 |   entry:
+ 63 |     x.child = move child;
+ 64 |     return
+    |     ^^^^^^
+ 65 | }
+    |
+  hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

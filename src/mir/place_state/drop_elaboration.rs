@@ -1,38 +1,10 @@
 //! Drop elaboration pass.
 //!
-//! Inserts explicit `drop p` statements at cleanup sites where a live
-//! `Drop` value must become uninitialized. Turns implicit cleanup into
-//! explicit consumption so a subsequent place-state check can validate the
-//! elaborated MIR.
-//!
-//! **Design status:** in the final compiler pipeline, drop *placement*
-//! is a HLL responsibility — the source language's scope rules dictate
-//! LIFO order and when destructors run. This pass exists as (a) a
-//! reference implementation for validating a frontend's drop insertion,
-//! (b) a convenience for hand-written MIR test programs, and (c) an
-//! exercise target for the leak checker. It emits drops in reverse
-//! declaration order (locals reversed first, then params reversed) —
-//! this agrees with LIFO for programs that init in declaration order,
-//! which is the norm.
-//!
-//! **Handled:**
-//!   * Simple return leaks — variable Init at return with a Drop type.
-//!   * `Partial` states at return — per-leaf drops walking the struct
-//!     field tree.
-//!   * `Diverged` states — per-edge drops inserted via `cfg_edit` on the
-//!     Init-side predecessors of the first divergent join.
-//!   * `require_uninit p` — cleanup immediately before the assertion for
-//!     each live, Drop-typed leaf of `p`. The assertion remains in the MIR
-//!     for the final place-state check; it is never itself a consume.
-//!
-//! **Not handled (delegated to the frontend or the checker):**
-//!   * An initialized non-Drop leaf at a cleanup site. Elaborating it away
-//!     would silently forget a linear value, so the final requirement check
-//!     reports the unsatisfied assertion instead.
-//!
-//! **Idempotent**: rerunning the pass produces no additional drops. A
-//! dropped variable transitions to `Moved` in the init dataflow, so a
-//! second run finds nothing to insert.
+//! Turns implicit cleanup into explicit consumption. `Drop` values use
+//! `drop p`; otherwise an applicable `AutoDestroy` implementation is called
+//! through a generated `&drop` receiver. Values supporting neither mechanism
+//! remain for the place-state checker to reject. Both cleanup forms transition
+//! the place to `Moved`, making the pass idempotent.
 
 use super::analysis::{
     block_entry_states, is_state_fully_init, transfer_stmt_silent, InitSlot, InitState, PointState,
@@ -46,53 +18,62 @@ use indexmap::IndexMap;
 /// Per-function plan for the elaboration pass.
 #[derive(Default)]
 struct FnPlan {
-    /// (block_label, insert_pos) → drops to splice at that position.
+    /// (block_label, insert_pos) → places to clean up at that position.
     /// `insert_pos` is an index in `[0, N]`: 0 means "before the
     /// first statement", N (= number of statements) means "before
     /// the terminator". Statement indices refer to the ORIGINAL
     /// (pre-splice) list; apply sorts descending so splices don't
     /// invalidate earlier indices. Handles both Init → Uninit
-    /// transitions mid-block (`&out place` on an Init-Drop place)
+    /// transitions mid-block (`&out place` on an initialized destructible place)
     /// AND end-of-block return cleanups uniformly: the terminator
-    /// acts as a "use" that consumes any still-Init Drop values.
+    /// acts as a "use" that consumes any still-initialized destructible values.
     pre_stmt: IndexMap<(String, usize), Vec<Place>>,
     /// (block_label, statement_index) → replacement for the original
     /// statement at that index. Used for the downcast-target
     /// reassignment case (`X as V = <operand>` becomes
     /// `X = EnumName::V(<operand>)`), which pairs with a pre_stmt
-    /// `drop (X as V)`. Applied BEFORE splicing so indices remain
+    /// cleanup of `X as V`. Applied BEFORE splicing so indices remain
     /// valid for the pre_stmt phase.
     rewrite_stmt: IndexMap<(String, usize), Statement>,
-    /// (pred, succ_return_block) → drops to place on the split edge,
+    /// (pred, succ_return_block) → places to clean up on the split edge,
     /// for `Diverged` places whose predecessor-exit state was Init.
     /// Kept separate because insertion requires structurally
     /// splitting the CFG edge.
     cross_edge: IndexMap<(String, String), Vec<Place>>,
 }
 
-/// Insert return-leak drops in `program`.
+/// Insert implicit destruction in `program`.
 pub fn elaborate(program: &mut IndexedProgram) {
     program.visit_function_bodies_mut(|env, func, body| {
         let plan = plan_for_function(env, func, body);
-        apply_plan(body, &plan);
+        apply_plan(env, func, body, &plan);
     });
 }
 
-fn apply_plan(body: &mut FunctionBody, plan: &FnPlan) {
+fn apply_plan(env: LocalEnv<'_>, func: &Function, body: &mut FunctionBody, plan: &FnPlan) {
     // Statement rewrites first: replace in place, no index shift.
-    // Pair with the pre-stmt drops planned for the same index.
+    // Pair with the pre-statement cleanup planned for the same index.
     for block in &mut body.blocks {
         for ((label, idx), new_stmt) in &plan.rewrite_stmt {
             if label != &block.label {
                 continue;
             }
-            if let Some(slot) = block.statements.get_mut(*idx) {
-                *slot = new_stmt.clone();
-            }
+            let slot = block
+                .statements
+                .get_mut(*idx)
+                .expect("cleanup planner records valid statement indices");
+            *slot = new_stmt.clone();
         }
     }
 
-    // Pre-stmt drops: splice into each block at the recorded
+    let mut emitter = CleanupEmitter {
+        env,
+        locals: body.locals_map(&func.params),
+        generated_locals: Vec::new(),
+        next_destroy: 0,
+    };
+
+    // Pre-stmt cleanups: splice into each block at the recorded
     // positions (0..=N, where pos=N means "before terminator").
     // Sort descending so earlier splices don't invalidate later
     // indices.
@@ -112,30 +93,13 @@ fn apply_plan(body: &mut FunctionBody, plan: &FnPlan) {
                 .unwrap_or(block.terminator.span());
             let items: Vec<Statement> = places
                 .iter()
-                .map(|p| {
-                    drop_stmt(
-                        p.clone(),
-                        SourceInfo::generated(GeneratedKind::DropElaboration, span),
-                    )
-                })
+                .flat_map(|place| emitter.emit(place, span))
                 .collect();
             block.statements.splice(pos..pos, items);
         }
     }
 
-    // Cross-edge drops: split each edge (idempotent), then append.
-    //
-    // TODO(diagnostic quality): the checker walks these synthesized
-    // split-edge blocks with the block's entry state, which reflects
-    // the predecessor's — not the successor's — divergence. When the
-    // pred side has a place NeverInit and cleanup would read it,
-    // the checker re-fires a UseBeforeInit-class diagnostic at the
-    // synthesized block, in addition to the real user-visible fire
-    // at the merge. See fixture `struct_with_ref_field_one_arm` in
-    // tests/place_state/cfg_shape/init_across_cfg_shapes_violations.sim.
-    // Fix candidate: filter drops here to only those whose place is
-    // Init at the pred's exit state, so no cleanup is emitted for
-    // a place the pred never initialised.
+    // Cross-edge cleanup: split each edge (idempotent), then append.
     for ((pred, succ), places) in &plan.cross_edge {
         let split_label = cfg_edit::split_edge(body, pred, succ);
         let split_block = body
@@ -144,12 +108,67 @@ fn apply_plan(body: &mut FunctionBody, plan: &FnPlan) {
             .find(|b| b.label == split_label)
             .expect("split_edge just guaranteed this block exists");
         let span = split_block.terminator.span();
-        for p in places {
-            split_block.statements.push(drop_stmt(
-                p.clone(),
-                SourceInfo::generated(GeneratedKind::DropElaboration, span),
-            ));
+        for place in places {
+            split_block.statements.extend(emitter.emit(place, span));
         }
+    }
+
+    body.locals.extend(emitter.generated_locals);
+}
+
+struct CleanupEmitter<'a> {
+    env: LocalEnv<'a>,
+    locals: IndexMap<String, Type>,
+    generated_locals: Vec<Local>,
+    next_destroy: usize,
+}
+
+impl CleanupEmitter<'_> {
+    fn emit(&mut self, place: &Place, span: Span) -> Vec<Statement> {
+        let ty = self
+            .env
+            .type_of_place(place, &self.locals)
+            .expect("cleanup planner records only well-typed places");
+        let source = SourceInfo::generated(GeneratedKind::DropElaboration, span);
+        if self.env.class_of(&ty).implies(Marker::Drop) {
+            return vec![drop_stmt(place.clone(), source)];
+        }
+        assert!(
+            self.env
+                .has_applicable_trait_impl(&Instance::bare("AutoDestroy"), &ty),
+            "cleanup planner recorded non-destructible place {}",
+            format_place(place),
+        );
+
+        let recv_name = loop {
+            let name = format!("$destroy_recv{}", self.next_destroy);
+            self.next_destroy += 1;
+            if !self.locals.contains_key(&name) {
+                break name;
+            }
+        };
+        let recv_ty = ref_ty(RefKind::Drop, ty.clone());
+        let recv = var_place(recv_name.clone());
+        let local = Local {
+            name: recv_name.clone(),
+            ty: recv_ty.clone(),
+            source,
+        };
+        self.locals.insert(recv_name, recv_ty);
+        self.generated_locals.push(local);
+
+        vec![
+            assign_stmt(recv.clone(), ref_rv(RefKind::Drop, place.clone()), source),
+            call_stmt(
+                const_op(ConstVal::TraitFn {
+                    trait_path: Instance::bare("AutoDestroy"),
+                    self_ty: ty,
+                    method: Instance::bare("destroy"),
+                }),
+                vec![move_op(recv)],
+                source,
+            ),
+        ]
     }
 }
 
@@ -162,27 +181,25 @@ fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) ->
     let entry_states = block_entry_states(env, func, body);
     let locals = body.locals_map(&func.params);
     // The cross-edge fallback below needs the state of the program it will
-    // actually emit, including the drops planned before ghost requirements.
+    // actually emit, including cleanup planned before ghost requirements.
     // Looking only at the original fixpoint state would schedule a second
-    // drop after a predecessor has already satisfied `require_uninit`.
+    // cleanup after a predecessor has already satisfied `require_uninit`.
     let mut elaborated_exit_states = IndexMap::new();
 
     // Unified walk: for each block, walk forward from its entry state
-    // and plan drops at each program point where a Drop-typed slot
-    // must transition Init → Uninit.
+    // and plan cleanup at each program point where an implicitly destructible
+    // slot must transition Init → Uninit.
     //   - Mid-block: before an `Assign(_, Ref(Out|Uninit, place))`
-    //     where `place` is Init Drop, insert `drop place` so the
+    //     where `place` is initialized and destructible, clean it up so the
     //     Uninit precondition holds after elaboration.
-    //   - Mid-block: before `require_uninit place`, insert the drops
-    //     that make the assertion true without ever forgetting a
-    //     non-Drop value.
+    //   - Mid-block: before `require_uninit place`, insert cleanup that makes
+    //     the assertion true without forgetting a non-destructible value.
     //   - End-of-block (return terminator): treat the return as a
-    //     "use" that consumes every still-Init Drop local — insert
-    //     drops in LIFO order right before the terminator.
+    //     "use" that consumes every still-Init destructible local — insert
+    //     cleanup in LIFO order right before the terminator.
     //
-    // Planned drops apply to the running state (via silent transfer)
-    // so the return-cleanup step doesn't re-drop something the pre-
-    // stmt step already dropped.
+    // Planned cleanup applies to the running state (via silent transfer) so
+    // return cleanup does not repeat work already planned before a statement.
     for block in &body.blocks {
         let Some(entry) = entry_states.get(&block.label) else {
             continue;
@@ -217,8 +234,7 @@ fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) ->
                     .insert((block.label.clone(), stmt_idx), new_stmt);
             }
         }
-        // Pre-terminator cleanup for return blocks: drop everything
-        // still Init-Drop at this point.
+        // Pre-terminator cleanup for return blocks.
         if matches!(block.terminator.kind, TerminatorKind::Return) {
             let drops = plan_drops_at_return(func, body, &state, env);
             if !drops.is_empty() {
@@ -230,19 +246,23 @@ fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) ->
         elaborated_exit_states.insert(block.label.clone(), state);
     }
 
-    // Cross-edge: at every join with Diverged-at-entry paths, split the
-    // Init-side predecessor edges and insert per-arm drops. Restricting
-    // this to return blocks (the earlier shape) misses the case where a
+    // Cross-edge: at every return-reachable join with Diverged-at-entry paths,
+    // split the Init-side predecessor edges and insert per-arm cleanup.
+    // Restricting this to return blocks (the earlier shape) misses the case where a
     // value goes Init on one arm and NeverInit on another, joins into
     // an intermediate merge block (whose terminator is switchEnum,
     // goto, branch, ...) rather than return, and stays Diverged all the
     // way through — at the eventual return the direct preds already
     // have Diverged exit states, so the pred-Init check finds nothing
-    // to drop. Handling every join catches the transition at its
+    // to clean up. Handling every join catches the transition at its
     // first occurrence. Its predecessor states include the intra-block
-    // drops planned above, so an explicit requirement cannot be followed
-    // by a redundant edge drop.
+    // cleanup planned above, so an explicit requirement cannot be followed
+    // by redundant edge cleanup.
+    let return_reachable = body.return_reachable();
     for block in &body.blocks {
+        if !return_reachable.contains(&block.label) {
+            continue;
+        }
         let Some(block_entry) = entry_states.get(&block.label) else {
             continue;
         };
@@ -262,7 +282,7 @@ fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) ->
             };
             for (path_place, ty) in &diverged_paths {
                 if state_at(pred_exit, path_place) == Some(InitState::Init)
-                    && env.class_of(ty).implies(Marker::Drop)
+                    && is_implicitly_destructible(env, ty)
                 {
                     plan.cross_edge
                         .entry((pred_block.label.clone(), block.label.clone()))
@@ -275,29 +295,24 @@ fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) ->
     plan
 }
 
-/// Return `(drops_to_insert_before, optional_statement_rewrite)` for
+/// Return `(places_to_clean_up_before, optional_statement_rewrite)` for
 /// `stmt` given the init state at this program point.
 ///
 /// Init → Uninit transition shapes:
 ///
 /// - **Overwriting assign (Var/Field target)**: `target = <rvalue>`
 ///   where `target` is an owned path currently Init and its type is
-///   Drop. Inserts `drop target` so the old value's destructor
-///   eventually runs (a no-op today with trivial bitwise-forget
-///   `Drop`; correct once `Destroy` (pure custom destructor) lands).
+///   implicitly destructible. Cleans up the old value before replacement.
 /// - **Overwriting assign (Downcast target)**: `X as V = <operand>`
-///   where the enum X is Init and V's payload is Drop. Rewrites the
-///   assign into `X = EnumName::V(<operand>)` and inserts
-///   `drop (X as V)` before. The rewrite bypasses the enum-
-///   atomicity trap: `drop (X as V)` cascades X to Moved, and the
-///   EnumConstr rebuilds it as variant V. Only fires when the
-///   rvalue is an operand — for Ref/ArrayLit payloads, the frontend
-///   still needs to hoist the payload into a temp (deferred).
-/// - **`&out` / `&uninit` borrow of an Init Drop place**: `foo =
-///   &out place` where `place` is Init Drop. Inserts `drop place`
-///   so the Uninit precondition is satisfied.
-/// - **`require_uninit place`**: recursively drops every initialized,
-///   Drop-typed leaf of the asserted owned path. The ghost statement
+///   where the enum X is Init and V's payload is destructible. Rewrites the
+///   assign into `X = EnumName::V(<operand>)` after cleaning up the old
+///   payload. The whole-value reconstruction restores the enum after cleanup
+///   marks it moved. Only operand rvalues are supported; other payload forms
+///   must first be hoisted into a temporary.
+/// - **`&out` / `&uninit` borrow of an initialized destructible place**:
+///   cleanup establishes the borrow's Uninit precondition.
+/// - **`require_uninit place`**: recursively cleans every initialized,
+///   destructible leaf of the asserted owned path. The ghost statement
 ///   remains for the post-elaboration checker to prove.
 ///
 /// Reborrow shapes (`&out *r`) remain governed by RefState. A
@@ -330,7 +345,7 @@ fn pre_stmt_transitions(
                 }) = &inner_ty.kind
                 {
                     let payload_place = downcast_place(inner_owned.clone(), variant.clone());
-                    if is_init_and_drop(&payload_place, state, env, locals) {
+                    if is_init_and_destructible(&payload_place, state, env, locals) {
                         drops.push(payload_place);
                         let rewrite = assign_stmt(
                             inner_owned,
@@ -344,20 +359,20 @@ fn pre_stmt_transitions(
         }
     }
 
-    // Case A: overwriting an owned-path target whose leaf state is
-    // Init and whose type is Drop. Skip Downcast-containing paths.
+    // Case A: overwriting an initialized, destructible owned path. Skip
+    // Downcast-containing paths.
     if let Some(owned) = as_owned_path(target) {
-        if !path_has_downcast(&owned) && is_init_and_drop(&owned, state, env, locals) {
+        if !path_has_downcast(&owned) && is_init_and_destructible(&owned, state, env, locals) {
             drops.push(owned);
         }
     }
 
-    // Case B: `&out` / `&uninit` on an Init Drop place.
+    // Case B: `&out` / `&uninit` on an initialized destructible place.
     if let RValue::Ref(RefKind::Out | RefKind::Uninit, place) = rvalue {
         if deref_inner(place).is_none() {
             if let Some(owned) = as_owned_path(place) {
                 if !path_has_downcast(&owned)
-                    && is_init_and_drop(&owned, state, env, locals)
+                    && is_init_and_destructible(&owned, state, env, locals)
                     && !drops.contains(&owned)
                 {
                     drops.push(owned);
@@ -373,9 +388,8 @@ fn pre_stmt_transitions(
 ///
 /// This is intentionally narrower than a generic "make it uninitialized"
 /// operation: only statically-owned paths participate, and every inserted
-/// operation must be a legal `drop`. If a live leaf is linear, no operation
-/// is planned; the requirement is left in place for the final checker to
-/// reject rather than treating the assertion as permission to forget it.
+/// operation must be a legal trivial drop or AutoDestroy call. If a live leaf
+/// supports neither, the requirement remains for the final checker to reject.
 fn plan_drops_for_requirement(
     place: &Place,
     state: &PointState,
@@ -414,10 +428,8 @@ fn path_has_downcast(place: &Place) -> bool {
         }
 }
 
-/// True iff `place` (an owned path) is fully `Init` at this state AND
-/// its type is Drop. Used to decide whether an implicit drop should
-/// be inserted for an Init → Uninit transition.
-fn is_init_and_drop(
+/// True iff `place` is fully initialized and supports implicit destruction.
+fn is_init_and_destructible(
     place: &Place,
     state: &PointState,
     env: LocalEnv<'_>,
@@ -436,7 +448,12 @@ fn is_init_and_drop(
     let Ok(leaf_ty) = env.type_of_place(place, locals) else {
         return false;
     };
-    env.class_of(&leaf_ty).implies(Marker::Drop)
+    is_implicitly_destructible(env, &leaf_ty)
+}
+
+fn is_implicitly_destructible(env: LocalEnv<'_>, ty: &Type) -> bool {
+    env.class_of(ty).implies(Marker::Drop)
+        || env.has_applicable_trait_impl(&Instance::bare("AutoDestroy"), ty)
 }
 
 /// Walk `state` looking for Diverged leaves, recursing into Partial
@@ -631,12 +648,12 @@ fn plan_drops_at_return(
     drops
 }
 
-/// Walk the init state at `place: ty` and append the drops needed to
+/// Walk the init state at `place: ty` and append the cleanup sites needed to
 /// leave every leaf `Moved`/`NeverInit`. Emitted in LIFO order — for a
 /// `Partial`, fields are iterated in reverse declaration order.
 ///
 /// `Diverged` sub-paths are skipped here because they require CFG edge
-/// cleanup rather than an unconditional pre-statement drop. The cross-edge
+/// cleanup rather than an unconditional pre-statement operation. The cross-edge
 /// phase handles the first divergent join; if no legal cleanup exists, the
 /// final requirement check remains authoritative.
 fn plan_drops_for_place(
@@ -646,12 +663,11 @@ fn plan_drops_for_place(
     env: LocalEnv<'_>,
     out: &mut Vec<Place>,
 ) {
-    // A fully-init Partial (an enum refined to variants each with an
-    // Init payload) drops atomically like plain Init — the runtime Drop
-    // dispatch selects the right variant. Handle this before the
-    // structural Partial arm so we don't try to walk per-slot below.
+    // A fully initialized aggregate is cleaned as one value. In particular,
+    // AutoDestroy must receive a complete Self; only genuinely partial state
+    // takes the structural path below.
     if is_state_fully_init(state) {
-        if env.class_of(ty).implies(Marker::Drop) {
+        if is_implicitly_destructible(env, ty) {
             out.push(place);
         }
         return;
@@ -659,7 +675,7 @@ fn plan_drops_for_place(
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Diverged => {}
         InitState::Init => {
-            if env.class_of(ty).implies(Marker::Drop) {
+            if is_implicitly_destructible(env, ty) {
                 out.push(place);
             }
         }

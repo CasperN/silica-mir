@@ -1,0 +1,74 @@
+# AutoDestroy is selected only for fully initialized values with an applicable
+# implementation. These cases pin the boundaries where ordinary place-state
+# diagnostics remain authoritative.
+
+struct NoDestroy: Move { value: i64 }
+struct MoveOnly: Move { value: i64 }
+struct<T: Move> MaybeDestroy: Move { value: T }
+struct PartialWhole: Move { child: NoDestroy tail: i64 }
+struct BrokenDestroy: Move { value: i64 }
+struct IndexedDestroy: Move { value: i64 }
+
+impl<T: Drop + Move> AutoDestroy for MaybeDestroy<T> {
+  fn destroy(recv: &drop MaybeDestroy<T>) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+impl AutoDestroy for PartialWhole {
+  fn destroy(recv: &drop PartialWhole) {
+    entry:
+      abort
+  }
+}
+
+impl AutoDestroy for BrokenDestroy {
+  # The implementation itself must fulfill its &drop Self obligation.
+  # covers: invalid AutoDestroy implementation body
+  fn destroy(recv: &drop BrokenDestroy) {
+    entry:
+      return
+  }
+}
+
+impl AutoDestroy for IndexedDestroy {
+  fn destroy(recv: &drop IndexedDestroy) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+# covers: missing AutoDestroy implementation leaves the return leak intact
+fn missing_impl_still_leaks(x: NoDestroy) {
+  entry:
+    return
+}
+
+# The generic impl requires Drop, which MoveOnly does not provide.
+# covers: unsatisfied generic impl bound does not select AutoDestroy
+fn unsatisfied_impl_bound_still_leaks(x: MaybeDestroy<MoveOnly>) {
+  entry:
+    return
+}
+
+# Whole-value AutoDestroy cannot run for a partial aggregate, and the live
+# child has no independent cleanup mechanism.
+# covers: non-destructible child of partial AutoDestroy aggregate still leaks
+fn partial_whole_still_leaks(child: NoDestroy) {
+  x: PartialWhole;
+  entry:
+    x.child = move child;
+    return
+}
+
+# A dynamic index has no stable place identity, so implicit destruction cannot
+# make a dynamic require_uninit target valid.
+# covers: AutoDestroy does not bypass dynamic-index consumption restrictions
+fn dynamic_index_requirement_still_fails(values: [IndexedDestroy; 2], i: i64) {
+  entry:
+    require_uninit values[copy i];
+    abort
+}

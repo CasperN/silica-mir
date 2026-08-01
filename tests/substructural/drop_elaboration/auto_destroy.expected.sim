@@ -1,0 +1,388 @@
+struct Destroyable: Move {
+  value: i64
+}
+
+struct ImmovableDestroyable {
+  value: i64
+}
+
+struct DropPreferred: Drop {
+  value: i64
+}
+
+struct<T: Copy + Drop> GenericDestroyable: Move {
+  value: T
+}
+
+struct<'a> BorrowedDestroyable: Move {
+  value: & 'a i64
+}
+
+struct<'a> MutHolder: Move {
+  r: &mut 'a i64
+}
+
+struct PartialOwner: Move {
+  item: Destroyable
+  tail: i64
+}
+
+struct PartialAutoDestroy: Move {
+  left: i64
+  right: i64
+}
+
+enum DestroyChoice: Move {
+  Item: Destroyable
+  Empty: unit
+}
+
+extern fn<'s0> init_destroyable(out: &out 's0 Destroyable);
+
+extern fn take_destroyable(value: Destroyable);
+
+impl AutoDestroy for Destroyable {
+  fn<'s0> destroy(recv: &drop 's0 Destroyable) {
+    entry:
+      drop recv.*.value;
+      unborrow recv;
+      return
+  }
+}
+
+impl AutoDestroy for ImmovableDestroyable {
+  fn<'s0> destroy(recv: &drop 's0 ImmovableDestroyable) {
+    entry:
+      drop recv.*.value;
+      unborrow recv;
+      return
+  }
+}
+
+impl AutoDestroy for DropPreferred {
+  fn<'s0> destroy(recv: &drop 's0 DropPreferred) {
+    entry:
+      drop recv.*.value;
+      unborrow recv;
+      return
+  }
+}
+
+impl<T: Copy + Drop> AutoDestroy for GenericDestroyable<T> {
+  fn<'s0> destroy(recv: &drop 's0 GenericDestroyable<T>) {
+    entry:
+      drop recv.*.value;
+      unborrow recv;
+      return
+  }
+}
+
+impl<'a> AutoDestroy for BorrowedDestroyable<'a> {
+  fn<'s0> destroy(recv: &drop 's0 BorrowedDestroyable<'a>) {
+    entry:
+      drop recv.*.value;
+      unborrow recv;
+      return
+  }
+}
+
+impl<'a> AutoDestroy for MutHolder<'a> {
+  fn<'s0> destroy(recv: &drop 's0 MutHolder<'a>) {
+    entry:
+      drop recv.*.r;
+      unborrow recv;
+      return
+  }
+}
+
+impl AutoDestroy for PartialAutoDestroy {
+  fn<'s0> destroy(recv: &drop 's0 PartialAutoDestroy) {
+    entry:
+      drop recv.*.right;
+      drop recv.*.left;
+      unborrow recv;
+      return
+  }
+}
+
+impl AutoDestroy for DestroyChoice {
+  fn<'s0> destroy(recv: &drop 's0 DestroyChoice) {
+    entry:
+      switchEnum(recv.*) [Item: item, Empty: empty]
+    item:
+      call take_destroyable(move recv.* as Item);
+      unborrow recv;
+      return
+    empty:
+      drop recv.* as Empty;
+      unborrow recv;
+      return
+  }
+}
+
+fn destroy_at_return(x: Destroyable) {
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn destroy_immovable_at_return(x: ImmovableDestroyable) {
+  $destroy_recv0: &drop ImmovableDestroyable;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <ImmovableDestroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn destruction_order(x: Destroyable, y: i64, z: Destroyable) {
+  $destroy_recv0: &drop Destroyable;
+  $destroy_recv1: &drop Destroyable;
+  entry:
+    $destroy_recv0 = &drop z;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    drop y;
+    $destroy_recv1 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv1);
+    return
+}
+
+fn generated_receiver_name_collision(x: Destroyable) {
+  $destroy_recv0: i64;
+  $destroy_recv1: &drop Destroyable;
+  entry:
+    $destroy_recv0 = 0;
+    drop $destroy_recv0;
+    $destroy_recv1 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv1);
+    return
+}
+
+fn trivial_drop_precedes_auto_destroy(x: DropPreferred) {
+  entry:
+    drop x;
+    return
+}
+
+fn destroy_before_overwrite(x: Destroyable, replacement: Destroyable) {
+  $destroy_recv0: &drop Destroyable;
+  $destroy_recv1: &drop Destroyable;
+  entry:
+    $destroy_recv1 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv1);
+    x = move replacement;
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn destroy_before_out(x: Destroyable) {
+  out: &out Destroyable;
+  $destroy_recv0: &drop Destroyable;
+  $destroy_recv1: &drop Destroyable;
+  entry:
+    $destroy_recv1 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv1);
+    out = &out x;
+    call init_destroyable(move out);
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn destroy_before_uninit(x: Destroyable) {
+  r: &uninit Destroyable;
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    r = &uninit x;
+    unborrow r;
+    return
+}
+
+fn destroy_for_requirement(x: Destroyable) {
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    require_uninit x;
+    return
+}
+
+fn destroy_partial_field(x: Destroyable) {
+  owner: PartialOwner;
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    owner.item = move x;
+    $destroy_recv0 = &drop owner.item;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn destroy_partial_array_slot(x: Destroyable) {
+  values: [Destroyable; 2];
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    values[0] = move x;
+    $destroy_recv0 = &drop values[0];
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn partial_auto_destroy_is_structural() {
+  x: PartialAutoDestroy;
+  entry:
+    x.left = 1;
+    drop x.left;
+    return
+}
+
+fn destroy_on_diverged_edge(cond: bool) {
+  x: Destroyable;
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    branch(copy cond) [true: initialized, false: empty]
+  initialized:
+    x.value = 1;
+    goto $edge0
+  $edge0:
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    goto done
+  empty:
+    goto done
+  done:
+    drop cond;
+    return
+}
+
+fn destroy_at_multiple_returns(cond: bool, x: Destroyable) {
+  $destroy_recv0: &drop Destroyable;
+  $destroy_recv1: &drop Destroyable;
+  entry:
+    branch(copy cond) [true: yes, false: no]
+  yes:
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    drop cond;
+    return
+  no:
+    $destroy_recv1 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv1);
+    drop cond;
+    return
+}
+
+fn destroy_after_loop(again: bool, x: Destroyable) {
+  $destroy_recv0: &drop Destroyable;
+  entry:
+    goto loop
+  loop:
+    branch(copy again) [true: loop, false: done]
+  done:
+    $destroy_recv0 = &drop x;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+    drop again;
+    return
+}
+
+fn abort_does_not_destroy(x: Destroyable) {
+  entry:
+    abort
+}
+
+fn diverged_then_abort_does_not_destroy(cond: bool) {
+  x: Destroyable;
+  entry:
+    branch(copy cond) [true: initialized, false: empty]
+  initialized:
+    x.value = 1;
+    goto done
+  empty:
+    goto done
+  done:
+    abort
+}
+
+fn destroy_enum_at_return(x: DestroyChoice) {
+  $destroy_recv0: &drop DestroyChoice;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <DestroyChoice as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn replace_destroyable_variant(x: DestroyChoice, replacement: Destroyable) {
+  $destroy_recv0: &drop DestroyChoice;
+  $destroy_recv1: &drop Destroyable;
+  $destroy_recv2: &drop DestroyChoice;
+  entry:
+    switchEnum(x) [Item: item, Empty: empty]
+  item:
+    $destroy_recv1 = &drop x as Item;
+    call <Destroyable as AutoDestroy>::destroy(move $destroy_recv1);
+    x = DestroyChoice::Item(move replacement);
+    $destroy_recv0 = &drop x;
+    call <DestroyChoice as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+  empty:
+    call take_destroyable(move replacement);
+    $destroy_recv2 = &drop x;
+    call <DestroyChoice as AutoDestroy>::destroy(move $destroy_recv2);
+    return
+}
+
+fn destroy_generic(x: GenericDestroyable<i64>) {
+  $destroy_recv0: &drop GenericDestroyable<i64>;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <GenericDestroyable<i64> as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn<T: Copy + Drop> destroy_in_generic_context(x: GenericDestroyable<T>) {
+  $destroy_recv0: &drop GenericDestroyable<T>;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <GenericDestroyable<T> as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn<'a> destroy_lifetime_value(x: BorrowedDestroyable<'a>) {
+  $destroy_recv0: &drop BorrowedDestroyable<'a>;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <BorrowedDestroyable<'a> as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn<'a> destroy_nested_reference(x: MutHolder<'a>) {
+  $destroy_recv0: &drop MutHolder<'a>;
+  entry:
+    $destroy_recv0 = &drop x;
+    call <MutHolder<'a> as AutoDestroy>::destroy(move $destroy_recv0);
+    return
+}
+
+fn moved_value_is_not_destroyed(x: Destroyable) {
+  entry:
+    call take_destroyable(move x);
+    return
+}
+
+trait ImplAutoDestroyOk {
+  fn<'s0> finish(recv: & 's0 Self, value: Destroyable);
+}
+
+impl ImplAutoDestroyOk for DropPreferred {
+  fn<'s0> finish(recv: & 's0 DropPreferred, value: Destroyable) {
+    $destroy_recv0: &drop Destroyable;
+    entry:
+      unborrow recv;
+      $destroy_recv0 = &drop value;
+      call <Destroyable as AutoDestroy>::destroy(move $destroy_recv0);
+      return
+  }
+}

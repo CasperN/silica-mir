@@ -1,0 +1,318 @@
+# AutoDestroy lets drop elaboration implicitly consume initialized values that
+# do not support trivial Drop. The generated call borrows the place through
+# `&drop`, transfers that receiver to the selected impl, and leaves the place
+# uninitialized.
+
+struct Destroyable: Move { value: i64 }
+struct ImmovableDestroyable { value: i64 }
+struct DropPreferred: Drop { value: i64 }
+struct<T: Copy + Drop> GenericDestroyable: Move { value: T }
+struct<'a> BorrowedDestroyable: Move { value: & 'a i64 }
+struct<'a> MutHolder: Move { r: &mut 'a i64 }
+struct PartialOwner: Move { item: Destroyable tail: i64 }
+struct PartialAutoDestroy: Move { left: i64 right: i64 }
+enum DestroyChoice: Move { Item: Destroyable Empty: unit }
+
+extern fn init_destroyable(out: &out Destroyable);
+extern fn take_destroyable(value: Destroyable);
+
+impl AutoDestroy for Destroyable {
+  fn destroy(recv: &drop Destroyable) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+impl AutoDestroy for ImmovableDestroyable {
+  fn destroy(recv: &drop ImmovableDestroyable) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+# Trivial Drop remains the preferred cleanup when both mechanisms exist.
+impl AutoDestroy for DropPreferred {
+  fn destroy(recv: &drop DropPreferred) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+impl<T: Copy + Drop> AutoDestroy for GenericDestroyable<T> {
+  fn destroy(recv: &drop GenericDestroyable<T>) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+impl<'a> AutoDestroy for BorrowedDestroyable<'a> {
+  fn destroy(recv: &drop BorrowedDestroyable<'a>) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+impl<'a> AutoDestroy for MutHolder<'a> {
+  fn destroy(recv: &drop MutHolder<'a>) {
+    entry:
+      drop recv.*.r;
+      return
+  }
+}
+
+impl AutoDestroy for PartialAutoDestroy {
+  fn destroy(recv: &drop PartialAutoDestroy) {
+    entry:
+      drop recv.*.right;
+      drop recv.*.left;
+      return
+  }
+}
+
+impl AutoDestroy for DestroyChoice {
+  fn destroy(recv: &drop DestroyChoice) {
+    entry:
+      switchEnum(recv.*) [Item: item, Empty: empty]
+    item:
+      call take_destroyable(move recv.* as Item);
+      return
+    empty:
+      drop recv.* as Empty;
+      return
+  }
+}
+
+# covers: untouched AutoDestroy-only parameter at return
+fn destroy_at_return(x: Destroyable) {
+  entry:
+    return
+}
+
+# AutoDestroy consumes in place through &drop and does not require Move.
+# covers: implicit destruction of an immovable AutoDestroy type
+fn destroy_immovable_at_return(x: ImmovableDestroyable) {
+  entry:
+    return
+}
+
+# Reverse declaration order is retained across generated and trivial cleanup.
+# covers: mixed AutoDestroy and Drop cleanup ordering
+fn destruction_order(x: Destroyable, y: i64, z: Destroyable) {
+  entry:
+    return
+}
+
+# Generated receiver names skip compiler locals that already occupy the same
+# namespace.
+# covers: collision-safe AutoDestroy receiver naming
+fn generated_receiver_name_collision(x: Destroyable) {
+  $destroy_recv0: i64;
+  entry:
+    $destroy_recv0 = 0;
+    return
+}
+
+# covers: Drop takes precedence when AutoDestroy is also implemented
+fn trivial_drop_precedes_auto_destroy(x: DropPreferred) {
+  entry:
+    return
+}
+
+# The old value is destroyed before the replacement is installed; the new
+# value is independently destroyed at return.
+# covers: AutoDestroy before whole-place overwrite
+fn destroy_before_overwrite(x: Destroyable, replacement: Destroyable) {
+  entry:
+    x = move replacement;
+    return
+}
+
+# An initialized place is destroyed before an &out borrow establishes a new
+# value, which is then destroyed at return.
+# covers: AutoDestroy before &out of an initialized place
+fn destroy_before_out(x: Destroyable) {
+  out: &out Destroyable;
+  entry:
+    out = &out x;
+    call init_destroyable(move out);
+    return
+}
+
+# An &uninit borrow preserves the uninitialized state established by the
+# generated destructor.
+# covers: AutoDestroy before &uninit of an initialized place
+fn destroy_before_uninit(x: Destroyable) {
+  r: &uninit Destroyable;
+  entry:
+    r = &uninit x;
+    return
+}
+
+# covers: AutoDestroy satisfies require_uninit
+fn destroy_for_requirement(x: Destroyable) {
+  entry:
+    require_uninit x;
+    return
+}
+
+# A partially initialized aggregate cannot invoke a whole-value destructor;
+# its initialized AutoDestroy field is cleaned independently.
+# covers: projected AutoDestroy cleanup in a partial struct
+fn destroy_partial_field(x: Destroyable) {
+  owner: PartialOwner;
+  entry:
+    owner.item = move x;
+    return
+}
+
+# covers: projected AutoDestroy cleanup in a partial array
+fn destroy_partial_array_slot(x: Destroyable) {
+  values: [Destroyable; 2];
+  entry:
+    values[0] = move x;
+    return
+}
+
+# Even when the aggregate itself implements AutoDestroy, partial state is
+# cleaned by initialized children rather than calling the whole destructor.
+# covers: no whole AutoDestroy call for a partially initialized value
+fn partial_auto_destroy_is_structural() {
+  x: PartialAutoDestroy;
+  entry:
+    x.left = 1;
+    return
+}
+
+# The initialized predecessor receives the generated destructor on a split
+# edge; the never-initialized predecessor remains untouched.
+# covers: AutoDestroy on the initialized side of a divergent join
+fn destroy_on_diverged_edge(cond: bool) {
+  x: Destroyable;
+  entry:
+    branch(copy cond) [true: initialized, false: empty]
+  initialized:
+    x.value = 1;
+    goto done
+  empty:
+    goto done
+  done:
+    return
+}
+
+# covers: AutoDestroy independently inserted before multiple returns
+fn destroy_at_multiple_returns(cond: bool, x: Destroyable) {
+  entry:
+    branch(copy cond) [true: yes, false: no]
+  yes:
+    return
+  no:
+    return
+}
+
+# A loop backedge is not a cleanup boundary; the value is destroyed only when
+# control reaches the normal return.
+# covers: AutoDestroy after exiting a loop
+fn destroy_after_loop(again: bool, x: Destroyable) {
+  entry:
+    goto loop
+  loop:
+    branch(copy again) [true: loop, false: done]
+  done:
+    return
+}
+
+# Abort has no returning continuation and therefore requires no cleanup.
+# covers: no AutoDestroy on a non-returning path
+fn abort_does_not_destroy(x: Destroyable) {
+  entry:
+    abort
+}
+
+# Diverged state normally triggers cleanup on the initialized predecessor, but
+# a component with no path to return has no caller-observable obligation.
+# covers: no cross-edge AutoDestroy in a non-returning CFG component
+fn diverged_then_abort_does_not_destroy(cond: bool) {
+  x: Destroyable;
+  entry:
+    branch(copy cond) [true: initialized, false: empty]
+  initialized:
+    x.value = 1;
+    goto done
+  empty:
+    goto done
+  done:
+    abort
+}
+
+# covers: whole-value AutoDestroy of an enum
+fn destroy_enum_at_return(x: DestroyChoice) {
+  entry:
+    return
+}
+
+# Replacing a known variant payload destroys the old payload and rebuilds the
+# enum atomically. The resulting whole enum is destroyed at return.
+# covers: AutoDestroy before downcast-payload replacement
+fn replace_destroyable_variant(x: DestroyChoice, replacement: Destroyable) {
+  entry:
+    switchEnum(x) [Item: item, Empty: empty]
+  item:
+    x as Item = move replacement;
+    return
+  empty:
+    call take_destroyable(move replacement);
+    return
+}
+
+# covers: generic AutoDestroy impl selection
+fn destroy_generic(x: GenericDestroyable<i64>) {
+  entry:
+    return
+}
+
+# Impl-header marker bounds remain available before monomorphization
+# substitutes a concrete argument.
+# covers: generic AutoDestroy selection in a generic function body
+fn<T: Copy + Drop> destroy_in_generic_context(x: GenericDestroyable<T>) {
+  entry:
+    return
+}
+
+# covers: lifetime-parameterized AutoDestroy impl selection
+fn<'a> destroy_lifetime_value(x: BorrowedDestroyable<'a>) {
+  entry:
+    return
+}
+
+# The caller transfers responsibility for the aggregate's nested exclusive
+# reference to the destructor implementation.
+# covers: AutoDestroy of an aggregate containing a reference obligation
+fn<'a> destroy_nested_reference(x: MutHolder<'a>) {
+  entry:
+    return
+}
+
+# A value explicitly consumed by the body needs no implicit destructor.
+# covers: no AutoDestroy after an explicit move
+fn moved_value_is_not_destroyed(x: Destroyable) {
+  entry:
+    call take_destroyable(move x);
+    return
+}
+
+trait ImplAutoDestroyOk {
+  fn finish(recv: &Self, value: Destroyable);
+}
+
+impl ImplAutoDestroyOk for DropPreferred {
+  # covers: AutoDestroy elaboration visits impl method bodies
+  fn finish(recv: &DropPreferred, value: Destroyable) {
+    entry:
+      return
+  }
+}

@@ -256,6 +256,29 @@ fn elaboration_is_idempotent() {
     assert_eq!(pretty_print(&once), pretty_print(&twice));
 }
 
+#[test]
+fn autodestruction_is_idempotent() {
+    assert_idempotent(
+        "
+            trait AutoDestroy {
+              fn destroy(recv: &drop Self);
+            }
+            struct Resource: Move { value: i64 }
+            impl AutoDestroy for Resource {
+              fn destroy(recv: &drop Resource) {
+                entry:
+                  drop recv.*.value;
+                  return
+              }
+            }
+            fn f(x: Resource) {
+              entry:
+                return
+            }
+            ",
+    );
+}
+
 // ---------- Post-elaboration strict check ----------
 
 #[test]

@@ -1,0 +1,21 @@
+# End-to-end implicit destruction: drop elaboration generates the trait call,
+# monomorphization resolves it to the concrete impl method, and LLVM lowering
+# emits that call.
+
+struct<T: Copy + Drop> Resource: Move { value: T }
+
+impl<T: Copy + Drop> AutoDestroy for Resource<T> {
+  fn destroy(recv: &drop Resource<T>) {
+    entry:
+      drop recv.*.value;
+      return
+  }
+}
+
+# covers: generated AutoDestroy call reaches LLVM as a concrete impl call
+fn main() {
+  resource: Resource<i64>;
+  entry:
+    resource.value = 42;
+    return
+}
