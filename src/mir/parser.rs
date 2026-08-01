@@ -1360,6 +1360,8 @@ impl Parser {
                         continue;
                     }
                     if self.type_scope.borrow().contains(&pname) {
+                        // TODO(diagnostics): Give duplicate type parameters a
+                        // dedicated ParserCode instead of MalformedCst.
                         d.push_error(self.diag(
                             name_node,
                             ParserCode::MalformedCst,

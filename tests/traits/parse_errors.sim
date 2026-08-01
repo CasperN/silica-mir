@@ -11,6 +11,7 @@
 #   impl ExternM for S                impl method cannot be extern
 #   impl BodylessM for S              impl method requires a body
 #   impl DupM for S                   two impl methods share a name
+#   impl<T> ShadowM for R             method type param shadows impl param
 #
 #   `Self` reservation                error
 #   impl<Self> ReservedT for R        Self as type-parameter name
@@ -151,6 +152,17 @@ trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: & Self<T>); }
 # `ImplForUnknownTrait`.
 impl Self for R {
   fn m(recv: & R) {
+    entry:
+      return
+  }
+}
+
+# Impl-header type parameters remain in the parser's scope while each method
+# is parsed, so a method cannot shadow one with another parameter of the same
+# name.
+trait ShadowM { fn m(recv: & Self); }
+impl<T> ShadowM for R {
+  fn<T> m(recv: & R) {
     entry:
       return
   }

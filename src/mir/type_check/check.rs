@@ -147,8 +147,6 @@ fn validate_lifetime_decls(
 }
 
 fn validate_function_lifetime_decls(env: LocalEnv<'_>, meta: &DeclMeta, d: &mut Diagnostics) {
-    // TODO: Reject type-parameter shadowing between impl headers and methods
-    // once duplicate type parameters are diagnosed generally.
     let desc = format!("function '{}'", meta.name);
     let outer = env
         .impl_generics()
