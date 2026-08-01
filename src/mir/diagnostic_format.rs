@@ -9,7 +9,7 @@
 
 use crate::common::{GeneratedKind, Lifetime, SourceInfo};
 use crate::diagnostics::Diagnostic;
-use crate::mir::ast::{DeclMeta, Instance, ParamsIntro, Type, TypeKind};
+use crate::mir::ast::{DeclMeta, Instance, GenericParams, Type, TypeKind};
 use crate::mir::lifetime::Region;
 use std::collections::HashMap;
 use std::fmt::Write;
@@ -56,7 +56,7 @@ impl DiagnosticFormat {
         self.scope_params(&meta.params)
     }
 
-    pub fn scope_params(&mut self, params: &ParamsIntro) -> DiagnosticScope {
+    pub fn scope_params(&mut self, params: &GenericParams) -> DiagnosticScope {
         let id = self.next_scope;
         self.next_scope += 1;
         let generated = params
@@ -202,7 +202,7 @@ pub fn format_type_diagnostic(
 }
 
 pub fn format_type_diagnostic_params(
-    params: &ParamsIntro,
+    params: &GenericParams,
     ty: &Type,
     build: impl FnOnce(String) -> Diagnostic,
 ) -> Diagnostic {
@@ -223,7 +223,7 @@ mod tests {
         DeclMeta {
             name: name.into(),
             name_source: source,
-            params: ParamsIntro {
+            params: GenericParams {
                 lifetime_params: params,
                 outlives: Vec::new(),
                 type_params: Vec::new(),

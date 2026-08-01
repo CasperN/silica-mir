@@ -371,6 +371,186 @@ impl<'a> DeclarationRef<'a> {
     }
 }
 
+/// Global declarations plus the generic parameters visible in one declaration
+/// body. Impl methods see both the impl header and their own parameters.
+#[derive(Debug, Clone, Copy)]
+pub struct LocalEnv<'a> {
+    program: &'a IndexedProgram,
+    impl_generics: Option<&'a GenericParams>,
+    decl_generics: &'a GenericParams,
+    self_ty: Option<&'a Type>,
+}
+
+impl<'a> LocalEnv<'a> {
+    pub fn for_decl(program: &'a IndexedProgram, decl_generics: &'a GenericParams) -> Self {
+        Self {
+            program,
+            impl_generics: None,
+            decl_generics,
+            self_ty: None,
+        }
+    }
+
+    pub fn for_impl_method(
+        program: &'a IndexedProgram,
+        impl_block: &'a ImplBlock,
+        method: &'a Function,
+    ) -> Self {
+        Self {
+            program,
+            impl_generics: Some(&impl_block.params),
+            decl_generics: &method.meta.params,
+            self_ty: Some(&impl_block.target),
+        }
+    }
+
+    pub fn program(&self) -> &'a IndexedProgram {
+        self.program
+    }
+
+    pub fn impl_generics(&self) -> Option<&'a GenericParams> {
+        self.impl_generics
+    }
+
+    pub fn decl_generics(&self) -> &'a GenericParams {
+        self.decl_generics
+    }
+
+    pub fn self_ty(&self) -> Option<&'a Type> {
+        self.self_ty
+    }
+
+    pub fn type_param(&self, name: &str) -> Option<&'a TypeParam> {
+        self.decl_generics
+            .type_params
+            .iter()
+            .find(|param| param.name == name)
+            .or_else(|| {
+                self.impl_generics?
+                    .type_params
+                    .iter()
+                    .find(|param| param.name == name)
+            })
+    }
+
+    pub fn lifetime_params(&self) -> impl Iterator<Item = &'a LifetimeParam> {
+        self.impl_generics
+            .into_iter()
+            .flat_map(|params| &params.lifetime_params)
+            .chain(&self.decl_generics.lifetime_params)
+    }
+
+    pub fn outlives_bounds(&self) -> impl Iterator<Item = &'a OutlivesBound> {
+        self.impl_generics
+            .into_iter()
+            .flat_map(|params| &params.outlives)
+            .chain(&self.decl_generics.outlives)
+    }
+
+    /// Return the substructural class of `ty` under this declaration's
+    /// visible generic parameters.
+    pub fn class_of(&self, ty: &Type) -> Markers {
+        let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Fn(_) => all(),
+            TypeKind::Never | TypeKind::RawPtr(_) => all(),
+            TypeKind::Ref(kind, _, _) => match kind {
+                RefKind::Shared => all(),
+                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
+                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
+            },
+            TypeKind::Custom(Instance { name, .. }) => match self.program.types.get(name) {
+                Some(TypeDecl::Struct(s)) => s.meta.markers,
+                Some(TypeDecl::Enum(e)) => e.meta.markers,
+                None => Markers::empty(),
+            },
+            TypeKind::Param(name) => self
+                .type_param(name)
+                .map(|param| param.bounds.markers)
+                .unwrap_or_else(Markers::empty),
+            TypeKind::Array(elem, _) => self.class_of(elem),
+        }
+    }
+
+    /// Validate `ty` under this declaration's visible generic parameters.
+    ///
+    /// A custom type use must have the declared argument arity and each type
+    /// argument must satisfy the corresponding parameter bounds.
+    pub fn validate_type(&self, ty: &Type) -> Result<(), TypeValidationError> {
+        match &ty.kind {
+            TypeKind::Int(_)
+            | TypeKind::Float(_)
+            | TypeKind::Bool
+            | TypeKind::Unit
+            | TypeKind::Never => Ok(()),
+            TypeKind::Custom(Instance {
+                name,
+                lifetime_args,
+                type_args: args,
+            }) => {
+                let Some(decl) = self.program.types.get(name) else {
+                    return Err(TypeValidationError::new(
+                        TypeValidationErrorKind::UndeclaredType(name.clone()),
+                    ));
+                };
+                let decl_meta = decl.meta();
+                if !lifetime_args.is_empty()
+                    && lifetime_args.len() != decl_meta.params.lifetime_params.len()
+                {
+                    return Err(TypeValidationError::new(
+                        TypeValidationErrorKind::LifetimeArgArity {
+                            type_name: name.clone(),
+                            expected: decl_meta.params.lifetime_params.len(),
+                            found: lifetime_args.len(),
+                        },
+                    ));
+                }
+                let decl_params = &decl_meta.params.type_params;
+                if args.len() != decl_params.len() {
+                    return Err(TypeValidationError::new(
+                        TypeValidationErrorKind::TypeArgArity {
+                            type_name: name.clone(),
+                            expected: decl_params.len(),
+                            found: args.len(),
+                        },
+                    ));
+                }
+                for (arg, param) in args.iter().zip(decl_params) {
+                    self.validate_type(arg)?;
+                    let arg_class = self.class_of(arg);
+                    for bound in param.bounds.markers.iter_declared() {
+                        if !arg_class.implies(bound) {
+                            return Err(TypeValidationError::new(
+                                TypeValidationErrorKind::BoundNotSatisfied {
+                                    argument: arg.clone(),
+                                    type_name: name.clone(),
+                                    parameter: param.name.clone(),
+                                    bound,
+                                },
+                            ));
+                        }
+                    }
+                }
+                Ok(())
+            }
+            TypeKind::Param(_) => Ok(()),
+            TypeKind::Fn(fn_params) => {
+                for param in fn_params {
+                    self.validate_type(param)?;
+                }
+                Ok(())
+            }
+            TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
+                self.validate_type(inner)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct IndexedProgram {
     /// Struct and enum declarations, keyed by name. Uses `IndexMap` so
@@ -398,6 +578,15 @@ pub struct IndexedProgram {
     /// Bag<T>` is a follow-up under the mono trait-resolution work.
     /// Duplicate keys are a coherence error caught at build time.
     pub impls: IndexMap<(Instance, Type), ImplBlock>,
+}
+
+#[derive(Debug, Clone)]
+enum FunctionBodyId {
+    Function(String),
+    ImplMethod {
+        impl_key: (Instance, Type),
+        method_index: usize,
+    },
 }
 
 impl IndexedProgram {
@@ -531,139 +720,129 @@ impl IndexedProgram {
             .filter_map(|function| function.body.as_ref().map(|body| (function, body)))
     }
 
-    /// Return the substructural class of `ty` as a `Markers` value under
-    /// the given type-parameter scope.
-    pub fn class_of(&self, ty: &Type, params: &ParamsIntro) -> Markers {
-        let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
-        match &ty.kind {
-            TypeKind::Int(_)
-            | TypeKind::Float(_)
-            | TypeKind::Bool
-            | TypeKind::Unit
-            | TypeKind::Fn(_) => all(),
-            TypeKind::Never => all(),
-            TypeKind::RawPtr(_) => all(),
-            TypeKind::Ref(kind, _, _) => match kind {
-                RefKind::Shared => all(),
-                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
-                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
-            },
-            TypeKind::Custom(Instance { name, .. }) => match self.types.get(name) {
-                Some(TypeDecl::Struct(s)) => s.meta.markers,
-                Some(TypeDecl::Enum(e)) => e.meta.markers,
-                None => Markers::empty(),
-            },
-            TypeKind::Param(name) => params
-                .type_params
-                .iter()
-                .find(|p| p.name == *name)
-                .map(|p| p.bounds.markers)
-                .unwrap_or_else(Markers::empty),
-            TypeKind::Array(elem, _) => self.class_of(elem, params),
+    /// Visit free-function and impl-method bodies in source declaration order,
+    /// with the generic context in which each body is defined.
+    pub fn visit_function_bodies(
+        &self,
+        mut visitor: impl FnMut(LocalEnv<'_>, &Function, &FunctionBody),
+    ) {
+        for declaration in self.declarations() {
+            match declaration {
+                DeclarationRef::Function(function) => {
+                    let Some(body) = &function.body else {
+                        continue;
+                    };
+                    visitor(
+                        LocalEnv::for_decl(self, &function.meta.params),
+                        function,
+                        body,
+                    );
+                }
+                DeclarationRef::Impl(impl_block) => {
+                    for method in &impl_block.methods {
+                        let Some(body) = &method.body else {
+                            continue;
+                        };
+                        visitor(
+                            LocalEnv::for_impl_method(self, impl_block, method),
+                            method,
+                            body,
+                        );
+                    }
+                }
+                DeclarationRef::Struct(_) | DeclarationRef::Enum(_) | DeclarationRef::Trait(_) => {}
+            }
         }
     }
 
-    /// Validate `ty` against the current type-parameter scope.
-    ///
-    /// `Custom(name, args)` triggers a use-site check: arity must
-    /// match the decl's `type_params` and each arg's substructural
-    /// class must imply the corresponding param's declared bounds.
-    /// This pairs with the decl-side marker check in
-    /// [`composition`](crate::mir::substructural::composition) —
-    /// together they license `class_of(Custom(_, args))` returning
-    /// the decl's declared markers without substitution.
-    pub fn validate_type(
-        &self,
-        ty: &Type,
-        params: &ParamsIntro,
-    ) -> Result<(), TypeValidationError> {
-        match &ty.kind {
-            TypeKind::Int(_)
-            | TypeKind::Float(_)
-            | TypeKind::Bool
-            | TypeKind::Unit
-            | TypeKind::Never => Ok(()),
-            TypeKind::Custom(Instance {
-                name,
-                lifetime_args,
-                type_args: args,
-            }) => {
-                let Some(decl) = self.types.get(name) else {
-                    return Err(TypeValidationError::new(
-                        TypeValidationErrorKind::UndeclaredType(name.clone()),
-                    ));
-                };
-                let decl_meta = decl.meta();
-                // Reject explicit-but-wrong-count lifetime args. Zero is
-                // still tolerated to preserve compatibility with bare
-                // mentions that rely on elision defaults — closing that
-                // loophole needs the elision-backfill work tracked in
-                // the punchlist.
-                if !lifetime_args.is_empty()
-                    && lifetime_args.len() != decl_meta.params.lifetime_params.len()
-                {
-                    return Err(TypeValidationError::new(
-                        TypeValidationErrorKind::LifetimeArgArity {
-                            type_name: name.clone(),
-                            expected: decl_meta.params.lifetime_params.len(),
-                            found: lifetime_args.len(),
-                        },
-                    ));
+    /// Mutable counterpart of [`visit_function_bodies`](Self::visit_function_bodies).
+    /// Each body is detached while the visitor runs so the accompanying
+    /// [`LocalEnv`] can borrow the complete indexed program immutably.
+    pub fn visit_function_bodies_mut(
+        &mut self,
+        mut visitor: impl FnMut(LocalEnv<'_>, &Function, &mut FunctionBody),
+    ) {
+        let body_ids = self.function_body_ids();
+        for body_id in body_ids {
+            match body_id {
+                FunctionBodyId::Function(name) => {
+                    let mut body = self
+                        .functions
+                        .get_mut(&name)
+                        .and_then(|function| function.body.take())
+                        .expect("body identity collected from this indexed program");
+                    let function = self
+                        .functions
+                        .get(&name)
+                        .expect("body visitation does not remove functions");
+                    visitor(
+                        LocalEnv::for_decl(self, &function.meta.params),
+                        function,
+                        &mut body,
+                    );
+                    self.functions
+                        .get_mut(&name)
+                        .expect("body visitation does not remove functions")
+                        .body = Some(body);
                 }
-                let decl_params: &[TypeParam] = &decl_meta.params.type_params;
-                if args.len() != decl_params.len() {
-                    return Err(TypeValidationError::new(
-                        TypeValidationErrorKind::TypeArgArity {
-                            type_name: name.clone(),
-                            expected: decl_params.len(),
-                            found: args.len(),
-                        },
-                    ));
+                FunctionBodyId::ImplMethod {
+                    impl_key,
+                    method_index,
+                } => {
+                    let mut body = self
+                        .impls
+                        .get_mut(&impl_key)
+                        .and_then(|impl_block| impl_block.methods.get_mut(method_index))
+                        .and_then(|method| method.body.take())
+                        .expect("method body identity collected from this indexed program");
+                    let impl_block = self
+                        .impls
+                        .get(&impl_key)
+                        .expect("body visitation does not remove impls");
+                    let method = impl_block
+                        .methods
+                        .get(method_index)
+                        .expect("body visitation does not remove methods");
+                    visitor(
+                        LocalEnv::for_impl_method(self, impl_block, method),
+                        method,
+                        &mut body,
+                    );
+                    self.impls
+                        .get_mut(&impl_key)
+                        .and_then(|impl_block| impl_block.methods.get_mut(method_index))
+                        .expect("body visitation does not remove methods")
+                        .body = Some(body);
                 }
-                for (arg, param) in args.iter().zip(decl_params.iter()) {
-                    self.validate_type(arg, params)?;
-                    let arg_class = self.class_of(arg, params);
-                    for bound in param.bounds.markers.iter_declared() {
-                        if !arg_class.implies(bound) {
-                            return Err(TypeValidationError::new(
-                                TypeValidationErrorKind::BoundNotSatisfied {
-                                    argument: arg.clone(),
-                                    type_name: name.clone(),
-                                    parameter: param.name.clone(),
-                                    bound,
-                                },
-                            ));
+            }
+        }
+    }
+
+    fn function_body_ids(&self) -> Vec<FunctionBodyId> {
+        let mut body_ids = Vec::new();
+        for declaration in self.declarations() {
+            match declaration {
+                DeclarationRef::Function(function) if function.body.is_some() => {
+                    body_ids.push(FunctionBodyId::Function(function.meta.name.clone()));
+                }
+                DeclarationRef::Impl(impl_block) => {
+                    let impl_key = (impl_block.trait_path.clone(), impl_block.target.clone());
+                    for (method_index, method) in impl_block.methods.iter().enumerate() {
+                        if method.body.is_some() {
+                            body_ids.push(FunctionBodyId::ImplMethod {
+                                impl_key: impl_key.clone(),
+                                method_index,
+                            });
                         }
                     }
                 }
-                Ok(())
+                DeclarationRef::Struct(_)
+                | DeclarationRef::Enum(_)
+                | DeclarationRef::Function(_)
+                | DeclarationRef::Trait(_) => {}
             }
-            // A `Param` is validated by the parser (which only emits it
-            // for names in the current type-param scope). Nothing more
-            // to check here.
-            TypeKind::Param(_) => Ok(()),
-            TypeKind::Fn(fn_params) => {
-                for p in fn_params {
-                    self.validate_type(p, params)?;
-                }
-                Ok(())
-            }
-            TypeKind::Ref(_, _, inner) => self.validate_type(inner, params),
-            TypeKind::RawPtr(inner) => self.validate_type(inner, params),
-            TypeKind::Array(elem, _) => self.validate_type(elem, params),
         }
-    }
-
-    /// Empty-scope convenience: for callers with no in-scope type
-    /// parameters. A `Param(_)` reachable via this path is
-    /// well-formed (Ok) but its markers can't be resolved to real
-    /// bounds — use only outside of generic decl bodies.
-    pub fn validate_type_empty_scope(&self, ty: &Type) -> Result<(), TypeValidationError> {
-        let empty = ParamsIntro::empty(crate::common::SourceInfo::generated(
-            crate::common::GeneratedKind::TestHelper,
-            crate::common::Span::default(),
-        ));
-        self.validate_type(ty, &empty)
+        body_ids
     }
 
     /// Return all instantiated fields of the struct type `ty`, if `ty` is a declared struct.
@@ -791,7 +970,9 @@ impl IndexedProgram {
             _ => false,
         }
     }
+}
 
+impl LocalEnv<'_> {
     /// Compute the type of a place. Failures remain structured; the checker
     /// that owns the enclosing statement or terminator supplies source and
     /// declaration context when turning them into diagnostics.
@@ -816,7 +997,7 @@ impl IndexedProgram {
             }
             Place::Field(inner, field_name) => {
                 let inner_ty = self.type_of_place(inner, locals)?;
-                if let Some(f_ty) = self.field_type(&inner_ty, field_name) {
+                if let Some(f_ty) = self.program.field_type(&inner_ty, field_name) {
                     return Ok(f_ty);
                 }
                 let name = match &inner_ty.kind {
@@ -828,7 +1009,7 @@ impl IndexedProgram {
                         }))
                     }
                 };
-                match self.types.get(name) {
+                match self.program.types.get(name) {
                     Some(TypeDecl::Struct(_)) => Err(err(TypeResolutionErrorKind::NoSuchField {
                         type_name: name.clone(),
                         field: field_name.clone(),
@@ -842,14 +1023,15 @@ impl IndexedProgram {
             }
             Place::Downcast(inner, variant_name) => {
                 let inner_ty = self.type_of_place(inner, locals)?;
-                if let Some(payload_ty) = self.variant_payload_type(&inner_ty, variant_name) {
+                if let Some(payload_ty) = self.program.variant_payload_type(&inner_ty, variant_name)
+                {
                     return Ok(payload_ty);
                 }
                 let name = match &inner_ty.kind {
                     TypeKind::Custom(Instance { name: n, .. }) => n,
                     _ => return Err(err(TypeResolutionErrorKind::DowncastOfNonEnum(inner_ty))),
                 };
-                match self.types.get(name) {
+                match self.program.types.get(name) {
                     Some(TypeDecl::Enum(_)) => Err(err(TypeResolutionErrorKind::NoSuchVariant {
                         enum_name: name.clone(),
                         variant: variant_name.clone(),
@@ -888,7 +1070,7 @@ impl IndexedProgram {
 
     /// Look up free function `name` and instantiate its signature for `type_args`.
     pub fn fn_type(&self, name: &str, type_args: &[Type]) -> Result<Type, TypeResolutionError> {
-        let f = self.functions.get(name).ok_or_else(|| {
+        let f = self.program.functions.get(name).ok_or_else(|| {
             TypeResolutionError::new(TypeResolutionErrorKind::UndeclaredFunction(
                 name.to_string(),
             ))
@@ -911,7 +1093,7 @@ impl IndexedProgram {
         self_ty: &Type,
         method: &Instance,
     ) -> Result<Type, TypeResolutionError> {
-        if !self.traits.contains_key(&trait_path.name) {
+        if !self.program.traits.contains_key(&trait_path.name) {
             return Err(TypeResolutionError::new(
                 TypeResolutionErrorKind::TraitFnUnknownTrait(trait_path.name.clone()),
             ));
@@ -922,6 +1104,7 @@ impl IndexedProgram {
             ));
         }
         let imp = self
+            .program
             .impls
             .get(&(trait_path.clone(), self_ty.clone()))
             .ok_or_else(|| {
@@ -1001,7 +1184,7 @@ impl IndexedProgram {
                 Ok(raw_ptr_ty(pointee_ty))
             }
             RValue::EnumConstr(enum_name, type_args, variant_name, op) => {
-                let e_decl = match self.types.get(enum_name) {
+                let e_decl = match self.program.types.get(enum_name) {
                     Some(TypeDecl::Enum(e)) => e,
                     Some(TypeDecl::Struct(_)) => {
                         return Err(err(TypeResolutionErrorKind::EnumConstrOnStruct(
@@ -1034,7 +1217,7 @@ impl IndexedProgram {
 
                 let expected_payload = e_decl.meta.substitute_types(&variant.ty, type_args);
                 let op_ty = self.type_of_operand(op, locals)?;
-                if !self.types_match(&expected_payload, &op_ty) {
+                if !self.program.types_match(&expected_payload, &op_ty) {
                     return Err(err(TypeResolutionErrorKind::EnumPayloadMismatch {
                         variant: variant_name.clone(),
                         enum_name: enum_name.clone(),
@@ -1063,7 +1246,7 @@ impl IndexedProgram {
                 let first_ty = self.type_of_operand(&ops[0], locals)?;
                 for (i, op) in ops.iter().enumerate().skip(1) {
                     let ty = self.type_of_operand(op, locals)?;
-                    if !self.types_match(&first_ty, &ty) {
+                    if !self.program.types_match(&first_ty, &ty) {
                         return Err(err(TypeResolutionErrorKind::ArrayElementMismatch {
                             index: i,
                             found: ty,
@@ -1134,5 +1317,82 @@ mod declaration_iteration_tests {
             ["f"]
         );
         assert_eq!(program.function_bodies().count(), 1);
+    }
+
+    #[test]
+    fn body_visitors_provide_generic_context_and_reattach_mutated_bodies() {
+        let program = Parser::parse_or_panic(
+            "
+            trait<T> Tr { fn<U> method(value: & Self, other: U); }
+            struct<T> S { value: T }
+            impl<X> Tr<X> for S<X> {
+              fn<Y> method(value: & S<X>, other: Y) { entry: return }
+            }
+            fn<Z> free(value: Z) { entry: return }
+            ",
+        );
+        let (mut program, errors) = IndexedProgram::build(&program);
+        assert!(errors.is_empty(), "environment errors: {errors:?}");
+
+        let mut contexts = Vec::new();
+        program.visit_function_bodies(|env, function, _body| {
+            if function.meta.name == "method" {
+                assert!(env.type_param("X").is_some());
+                assert!(env.type_param("Y").is_some());
+            } else {
+                assert!(env.type_param("Z").is_some());
+                assert!(env.type_param("X").is_none());
+            }
+            contexts.push((
+                function.meta.name.clone(),
+                env.impl_generics()
+                    .and_then(|params| params.type_params.first())
+                    .map(|param| param.name.clone()),
+                env.decl_generics()
+                    .type_params
+                    .first()
+                    .map(|param| param.name.clone()),
+                env.self_ty().map(ToString::to_string),
+            ));
+        });
+        assert_eq!(
+            contexts,
+            [
+                (
+                    "method".to_string(),
+                    Some("X".to_string()),
+                    Some("Y".to_string()),
+                    Some("S<X>".to_string()),
+                ),
+                ("free".to_string(), None, Some("Z".to_string()), None,),
+            ]
+        );
+
+        program.visit_function_bodies_mut(|env, function, body| {
+            if function.meta.name == "free" {
+                assert!(env.program().functions["free"].body.is_none());
+            } else {
+                assert!(env
+                    .program()
+                    .impls
+                    .values()
+                    .flat_map(|impl_block| &impl_block.methods)
+                    .find(|method| method.meta.name == function.meta.name)
+                    .is_some_and(|method| method.body.is_none()));
+            }
+            body.blocks[0].label.push_str("_visited");
+        });
+
+        let mut labels = Vec::new();
+        program.visit_function_bodies(|_env, function, body| {
+            labels.push((function.meta.name.clone(), body.blocks[0].label.clone()));
+        });
+        assert_eq!(
+            labels,
+            [
+                ("method".to_string(), "entry_visited".to_string()),
+                ("free".to_string(), "entry_visited".to_string()),
+            ]
+        );
     }
 }

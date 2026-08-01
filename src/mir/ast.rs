@@ -844,14 +844,14 @@ impl Function {
 // e.g. impl<A: Bar, 'b: 'c> Baz for A { .. }
 //          ^^^^^^^^^^^^^^^^
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ParamsIntro {
+pub struct GenericParams {
     pub lifetime_params: Vec<LifetimeParam>,
     pub outlives: Vec<OutlivesBound>,
     pub type_params: Vec<TypeParam>,
     pub source: SourceInfo, // Source of the introducer <...>.
 }
 
-impl ParamsIntro {
+impl GenericParams {
     pub fn empty(source: SourceInfo) -> Self {
         Self {
             lifetime_params: Vec::new(),
@@ -870,7 +870,7 @@ impl ParamsIntro {
 pub struct DeclMeta {
     pub name: String,
     pub name_source: SourceInfo,
-    pub params: ParamsIntro,
+    pub params: GenericParams,
     pub markers: Markers,
 }
 
@@ -895,6 +895,7 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraitDecl {
     pub meta: DeclMeta,
+    // TODO: Add self_bounds: Bounds - and use it across the compiler.
     pub methods: Vec<Function>,
 }
 
@@ -928,7 +929,7 @@ impl TypeDecl {
 /// the trait's type_params from `trait_path`'s arguments.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImplBlock {
-    pub params: ParamsIntro,
+    pub params: GenericParams,
     pub trait_path: Instance,
     pub target: Type,
     pub methods: Vec<Function>,
@@ -957,7 +958,7 @@ impl Declaration {
     }
 
     /// Shared parameter introduction for all declarations (including impl blocks).
-    pub fn params(&self) -> &ParamsIntro {
+    pub fn params(&self) -> &GenericParams {
         match self {
             Declaration::Struct(s) => &s.meta.params,
             Declaration::Enum(e) => &e.meta.params,

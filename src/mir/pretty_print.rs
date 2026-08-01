@@ -65,7 +65,7 @@ fn write_markers(out: &mut String, m: &Markers) {
     out.push_str(&names.join(" + "));
 }
 
-fn write_type_params(out: &mut String, params: &ParamsIntro) {
+fn write_type_params(out: &mut String, params: &GenericParams) {
     if params.lifetime_params.is_empty() && params.type_params.is_empty() {
         return;
     }
@@ -504,7 +504,7 @@ mod tests {
         );
     }
 
-    fn strip_params(params: &mut ParamsIntro, zero: Span) {
+    fn strip_params(params: &mut GenericParams, zero: Span) {
         params.source = SourceInfo::written(zero);
         for lifetime in &mut params.lifetime_params {
             lifetime.source = SourceInfo::written(zero);

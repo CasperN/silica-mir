@@ -37,10 +37,9 @@
 use super::analysis::{
     block_entry_states, is_state_fully_init, transfer_stmt_silent, InitSlot, InitState, PointState,
 };
-use crate::mir::ast::ParamsIntro;
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 
@@ -176,9 +175,9 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
         return plan;
     }
 
-    let entry_states = block_entry_states(env, func);
+    let env = LocalEnv::for_decl(env, &func.meta.params);
+    let entry_states = block_entry_states(env.program(), func);
     let locals = func.locals_map();
-    let scope = &func.meta.params;
     // The cross-edge fallback below needs the state of the program it will
     // actually emit, including the drops planned before ghost requirements.
     // Looking only at the original fixpoint state would schedule a second
@@ -207,11 +206,11 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
         };
         let mut state = entry.clone();
         for (stmt_idx, stmt) in block.statements.iter().enumerate() {
-            let (drops, rewrite) = pre_stmt_transitions(stmt, &state, env, &locals, &scope);
+            let (drops, rewrite) = pre_stmt_transitions(stmt, &state, env, &locals);
             if !drops.is_empty() {
                 for place in &drops {
                     transfer_stmt_silent(
-                        env,
+                        env.program(),
                         func,
                         &drop_stmt(
                             place.clone(),
@@ -228,7 +227,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
             // effect, but we track the elaborated form for
             // correctness under later analysis.
             let effective = rewrite.clone().unwrap_or_else(|| stmt.clone());
-            transfer_stmt_silent(env, func, &effective, &mut state);
+            transfer_stmt_silent(env.program(), func, &effective, &mut state);
             if let Some(new_stmt) = rewrite {
                 plan.rewrite_stmt
                     .insert((block.label.clone(), stmt_idx), new_stmt);
@@ -237,7 +236,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
         // Pre-terminator cleanup for return blocks: drop everything
         // still Init-Drop at this point.
         if matches!(block.terminator.kind, TerminatorKind::Return) {
-            let drops = plan_drops_at_return(func, &state, env, &scope);
+            let drops = plan_drops_at_return(func, &state, env);
             if !drops.is_empty() {
                 let insert_pos = block.statements.len();
                 plan.pre_stmt
@@ -263,7 +262,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
         let Some(block_entry) = entry_states.get(&block.label) else {
             continue;
         };
-        let diverged_paths = collect_diverged_paths(env, func, block_entry);
+        let diverged_paths = collect_diverged_paths(env.program(), func, block_entry);
         if diverged_paths.is_empty() {
             continue;
         }
@@ -279,7 +278,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
             };
             for (path_place, ty) in &diverged_paths {
                 if state_at(pred_exit, path_place) == Some(InitState::Init)
-                    && env.class_of(ty, &scope).implies(Marker::Drop)
+                    && env.class_of(ty).implies(Marker::Drop)
                 {
                     plan.cross_edge
                         .entry((pred_block.label.clone(), block.label.clone()))
@@ -324,15 +323,11 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
 fn pre_stmt_transitions(
     stmt: &Statement,
     state: &PointState,
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
-    scope: &ParamsIntro,
 ) -> (Vec<Place>, Option<Statement>) {
     if let StatementKind::RequireUninit(place) = &stmt.kind {
-        return (
-            plan_drops_for_requirement(place, state, env, locals, scope),
-            None,
-        );
+        return (plan_drops_for_requirement(place, state, env, locals), None);
     }
 
     let StatementKind::Assign(target, rvalue) = &stmt.kind else {
@@ -351,7 +346,7 @@ fn pre_stmt_transitions(
                 }) = &inner_ty.kind
                 {
                     let payload_place = downcast_place(inner_owned.clone(), variant.clone());
-                    if is_init_and_drop(&payload_place, state, env, locals, scope) {
+                    if is_init_and_drop(&payload_place, state, env, locals) {
                         drops.push(payload_place);
                         let rewrite = assign_stmt(
                             inner_owned,
@@ -368,7 +363,7 @@ fn pre_stmt_transitions(
     // Case A: overwriting an owned-path target whose leaf state is
     // Init and whose type is Drop. Skip Downcast-containing paths.
     if let Some(owned) = as_owned_path(target) {
-        if !path_has_downcast(&owned) && is_init_and_drop(&owned, state, env, locals, scope) {
+        if !path_has_downcast(&owned) && is_init_and_drop(&owned, state, env, locals) {
             drops.push(owned);
         }
     }
@@ -378,7 +373,7 @@ fn pre_stmt_transitions(
         if deref_inner(place).is_none() {
             if let Some(owned) = as_owned_path(place) {
                 if !path_has_downcast(&owned)
-                    && is_init_and_drop(&owned, state, env, locals, scope)
+                    && is_init_and_drop(&owned, state, env, locals)
                     && !drops.contains(&owned)
                 {
                     drops.push(owned);
@@ -400,9 +395,8 @@ fn pre_stmt_transitions(
 fn plan_drops_for_requirement(
     place: &Place,
     state: &PointState,
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
-    scope: &ParamsIntro,
 ) -> Vec<Place> {
     let Some(owned) = as_owned_path(place) else {
         return Vec::new();
@@ -419,7 +413,7 @@ fn plan_drops_for_requirement(
 
     let state = read_state_at_path(root_state, &path);
     let mut drops = Vec::new();
-    plan_drops_for_place(owned, &ty, &state, env, scope, &mut drops);
+    plan_drops_for_place(owned, &ty, &state, env, &mut drops);
     drops
 }
 
@@ -442,9 +436,8 @@ fn path_has_downcast(place: &Place) -> bool {
 fn is_init_and_drop(
     place: &Place,
     state: &PointState,
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
-    scope: &ParamsIntro,
 ) -> bool {
     let Some((root, path)) = extract_path(place) else {
         return false;
@@ -459,7 +452,7 @@ fn is_init_and_drop(
     let Ok(leaf_ty) = env.type_of_place(place, locals) else {
         return false;
     };
-    env.class_of(&leaf_ty, scope).implies(Marker::Drop)
+    env.class_of(&leaf_ty).implies(Marker::Drop)
 }
 
 /// Walk `state` looking for Diverged leaves, recursing into Partial
@@ -622,12 +615,7 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
     }
 }
 
-fn plan_drops_at_return(
-    func: &Function,
-    state: &PointState,
-    env: &IndexedProgram,
-    scope: &ParamsIntro,
-) -> Vec<Place> {
+fn plan_drops_at_return(func: &Function, state: &PointState, env: LocalEnv<'_>) -> Vec<Place> {
     // Combined declaration order: params, then locals. LIFO drop = reverse.
     let mut order: Vec<(String, Type)> = Vec::new();
     for p in &func.params {
@@ -652,7 +640,7 @@ fn plan_drops_at_return(
                 continue;
             }
         }
-        plan_drops_for_place(var_place(name.clone()), ty, s, env, scope, &mut drops);
+        plan_drops_for_place(var_place(name.clone()), ty, s, env, &mut drops);
     }
     drops
 }
@@ -669,8 +657,7 @@ fn plan_drops_for_place(
     place: Place,
     ty: &Type,
     state: &InitState,
-    env: &IndexedProgram,
-    scope: &ParamsIntro,
+    env: LocalEnv<'_>,
     out: &mut Vec<Place>,
 ) {
     // A fully-init Partial (an enum refined to variants each with an
@@ -678,7 +665,7 @@ fn plan_drops_for_place(
     // dispatch selects the right variant. Handle this before the
     // structural Partial arm so we don't try to walk per-slot below.
     if is_state_fully_init(state) {
-        if env.class_of(ty, scope).implies(Marker::Drop) {
+        if env.class_of(ty).implies(Marker::Drop) {
             out.push(place);
         }
         return;
@@ -686,7 +673,7 @@ fn plan_drops_for_place(
     match state {
         InitState::NeverInit | InitState::Moved | InitState::Diverged => {}
         InitState::Init => {
-            if env.class_of(ty, scope).implies(Marker::Drop) {
+            if env.class_of(ty).implies(Marker::Drop) {
                 out.push(place);
             }
         }
@@ -706,7 +693,7 @@ fn plan_drops_for_place(
                     // has diverged or moved payload state and can't be
                     // safely per-variant dropped — the outer leak
                     // check remains authoritative.
-                    let TypeDecl::Struct(s) = (match env.types.get(struct_name) {
+                    let TypeDecl::Struct(s) = (match env.program().types.get(struct_name) {
                         Some(d) => d,
                         None => return,
                     }) else {
@@ -733,7 +720,7 @@ fn plan_drops_for_place(
                             continue;
                         };
                         let fp = field_place(place.clone(), name.clone());
-                        plan_drops_for_place(fp, field_ty, field_state, env, scope, out);
+                        plan_drops_for_place(fp, field_ty, field_state, env, out);
                     }
                 }
                 // Constant-index places are tracked independently. Reverse
@@ -755,7 +742,7 @@ fn plan_drops_for_place(
                                 ty: IntTy::I64,
                             }),
                         );
-                        plan_drops_for_place(ip, elem, element_state, env, scope, out);
+                        plan_drops_for_place(ip, elem, element_state, env, out);
                     }
                 }
                 // A Partial state only arises on struct or array types

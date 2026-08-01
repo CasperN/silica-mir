@@ -310,7 +310,7 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: s.meta.name_source,
-                        params: ParamsIntro {
+                        params: GenericParams {
                             lifetime_params: s.meta.params.lifetime_params,
                             outlives: s.meta.params.outlives,
                             type_params: Vec::new(),
@@ -337,7 +337,7 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: e.meta.name_source,
-                        params: ParamsIntro {
+                        params: GenericParams {
                             lifetime_params: e.meta.params.lifetime_params,
                             outlives: e.meta.params.outlives,
                             type_params: Vec::new(),
@@ -401,7 +401,7 @@ impl MonoCtx {
                     meta: DeclMeta {
                         name: mangled,
                         name_source: f.meta.name_source,
-                        params: ParamsIntro {
+                        params: GenericParams {
                             lifetime_params: f.meta.params.lifetime_params,
                             outlives: f.meta.params.outlives,
                             type_params: Vec::new(),

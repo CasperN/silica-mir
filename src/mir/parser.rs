@@ -1506,7 +1506,7 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                params: ParamsIntro {
+                params: GenericParams {
                     lifetime_params,
                     outlives,
                     type_params,
@@ -1592,7 +1592,7 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                params: ParamsIntro {
+                params: GenericParams {
                     lifetime_params,
                     outlives,
                     type_params,
@@ -1676,7 +1676,7 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                params: ParamsIntro {
+                params: GenericParams {
                     lifetime_params,
                     outlives,
                     type_params,
@@ -1787,7 +1787,7 @@ impl Parser {
         self.type_scope.borrow_mut().clear();
 
         Some(ImplBlock {
-            params: ParamsIntro {
+            params: GenericParams {
                 lifetime_params,
                 outlives,
                 type_params,
@@ -1935,7 +1935,7 @@ impl Parser {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
-                params: ParamsIntro {
+                params: GenericParams {
                     lifetime_params,
                     outlives,
                     type_params,

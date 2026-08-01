@@ -1,7 +1,7 @@
 use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow;
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeMap, BTreeSet};
@@ -247,7 +247,7 @@ pub(super) fn is_static_place(place: &Place) -> bool {
 }
 
 pub(super) struct PlaceStateContext<'a> {
-    pub(super) env: &'a IndexedProgram,
+    pub(super) env: LocalEnv<'a>,
     pub(super) locals: &'a IndexMap<String, Type>,
 }
 
@@ -725,7 +725,7 @@ pub fn block_entry_states(env: &IndexedProgram, func: &Function) -> IndexMap<Str
     }
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env,
+        env: LocalEnv::for_decl(env, &func.meta.params),
         locals: &locals,
     };
     run_fixpoint(&ctx, func, body)
@@ -743,7 +743,7 @@ pub fn transfer_stmt_silent(
 ) {
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env,
+        env: LocalEnv::for_decl(env, &func.meta.params),
         locals: &locals,
     };
     ctx.transfer_stmt(stmt, state);
@@ -763,7 +763,7 @@ pub fn states_before_returns<'a>(
 
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env,
+        env: LocalEnv::for_decl(env, &func.meta.params),
         locals: &locals,
     };
     let entry_states = run_fixpoint(&ctx, func, body);
@@ -923,7 +923,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
         let Some(root_state) = state.locals.get(&root).cloned() else {
             return;
         };
-        let leaf_state = read_at(&root_state, &root_ty, &path, self.ctx.env);
+        let leaf_state = read_at(&root_state, &root_ty, &path, self.ctx.env.program());
         // Leave the state untouched when the arm's variant isn't in the
         // pre-switch tracked set — that arm is dead code and refining
         // would strand the place in a NeverInit variant slot that fires
@@ -939,7 +939,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
             &mut updated,
             &root_ty,
             &path,
-            self.ctx.env,
+            self.ctx.env.program(),
             InitState::Partial(refined),
         );
         state.locals.insert(root, updated);
@@ -986,7 +986,7 @@ pub(super) fn run_fixpoint(
 ) -> IndexMap<String, PointState> {
     let analysis = InitAnalysis {
         ctx,
-        boundary: boundary_state(func, body, ctx.env),
+        boundary: boundary_state(func, body, ctx.env.program()),
     };
     dataflow::run(&analysis, body)
 }
@@ -1164,7 +1164,7 @@ impl<'a> PlaceStateContext<'a> {
             return;
         };
         let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
-        write_at(root_state, &root_ty, &path, self.env, leaf);
+        write_at(root_state, &root_ty, &path, self.env.program(), leaf);
     }
 
     pub(super) fn apply_move(&self, place: &Place, state: &mut PointState) {
@@ -1184,7 +1184,7 @@ impl<'a> PlaceStateContext<'a> {
             .locals
             .entry(root.clone())
             .or_insert(InitState::NeverInit);
-        move_at(root_state, &root_ty, &path, self.env);
+        move_at(root_state, &root_ty, &path, self.env.program());
         // Move of a borrower place: drop its ref entry, and cascade
         // through any ref-typed descendants (an ancestor move like
         // `move b` closes all `b.p`, `b.q`, ...). Loans are handled by
@@ -1234,7 +1234,13 @@ impl<'a> PlaceStateContext<'a> {
         let Some(rs) = state.refs.get_mut(&ref_place) else {
             return;
         };
-        write_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env, leaf);
+        write_at(
+            &mut rs.pointee,
+            &pointee_ty,
+            &sub_path,
+            self.env.program(),
+            leaf,
+        );
         rs.pointee = canonicalize(std::mem::replace(&mut rs.pointee, InitState::NeverInit));
     }
 
@@ -1254,7 +1260,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(rs) = state.refs.get_mut(&ref_place) else {
             return;
         };
-        move_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env);
+        move_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env.program());
         rs.pointee = canonicalize(std::mem::replace(&mut rs.pointee, InitState::NeverInit));
     }
 
@@ -1451,7 +1457,7 @@ impl<'a> PlaceStateContext<'a> {
             DerefOp::Read | DerefOp::Move => true,
             DerefOp::Write => false,
         };
-        let current = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env);
+        let current = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env.program());
         let precondition_met = if required_init {
             matches!(current, InitState::Init)
         } else {
@@ -1491,12 +1497,12 @@ impl<'a> PlaceStateContext<'a> {
         let mut new_pointee = rs.pointee;
         match op {
             DerefOp::Read => {}
-            DerefOp::Move => move_at(&mut new_pointee, &pointee_ty, &sub_path, self.env),
+            DerefOp::Move => move_at(&mut new_pointee, &pointee_ty, &sub_path, self.env.program()),
             DerefOp::Write => write_at(
                 &mut new_pointee,
                 &pointee_ty,
                 &sub_path,
-                self.env,
+                self.env.program(),
                 InitState::Init,
             ),
         }
@@ -1554,7 +1560,7 @@ impl<'a> PlaceStateContext<'a> {
         if let Some((root, path)) = extract_path(place) {
             let root_ty = self.locals.get(&root)?;
             let root_state = state.locals.get(&root)?;
-            return Some(read_at(root_state, root_ty, &path, self.env));
+            return Some(read_at(root_state, root_ty, &path, self.env.program()));
         }
         if !is_static_place(place) {
             return None;
@@ -1569,7 +1575,12 @@ impl<'a> PlaceStateContext<'a> {
         } else {
             self.ensure_ref_state(&receiver, state)?.pointee
         };
-        Some(read_at(&pointee_state, &pointee_ty, &sub_path, self.env))
+        Some(read_at(
+            &pointee_state,
+            &pointee_ty,
+            &sub_path,
+            self.env.program(),
+        ))
     }
 
     /// Infer the type of a place, including arbitrary dereference depth.
@@ -1605,9 +1616,15 @@ impl<'a> PlaceStateContext<'a> {
             let TypeKind::Ref(_, _, pointee_ty) = inner_ty.kind else {
                 return;
             };
-            let mut leaf = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env);
+            let mut leaf = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env.program());
             clear_variant_refinement(&mut leaf);
-            write_at(&mut rs.pointee, &pointee_ty, &sub_path, self.env, leaf);
+            write_at(
+                &mut rs.pointee,
+                &pointee_ty,
+                &sub_path,
+                self.env.program(),
+                leaf,
+            );
             state.refs.insert(inner, rs);
             return;
         }
@@ -1618,9 +1635,9 @@ impl<'a> PlaceStateContext<'a> {
             return;
         };
         let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
-        let mut leaf = read_at(root_state, &root_ty, &path, self.env);
+        let mut leaf = read_at(root_state, &root_ty, &path, self.env.program());
         clear_variant_refinement(&mut leaf);
-        write_at(root_state, &root_ty, &path, self.env, leaf);
+        write_at(root_state, &root_ty, &path, self.env.program(), leaf);
     }
 
     pub(super) fn apply_eager_borrow_transition(

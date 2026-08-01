@@ -23,22 +23,17 @@
 //! fixpoint: we use the declared markers of a `Custom` name verbatim,
 //! which is sufficient for compositional checks.
 //!
-//! Generics: the decl-side check runs under a `ParamScope` built from
-//! the decl's `type_params`, so a `Param(T)` reads its declared bounds
-//! as its class. The dual use-site check lives in
-//! [`IndexedProgram::validate_type`](crate::mir::type_check::IndexedProgram::validate_type) —
+//! Generics: the declaration-side check uses a [`LocalEnv`] containing
+//! the declaration's generic parameters, so a `Param(T)` reads its declared
+//! bounds as its class. The dual use-site check lives in
+//! [`LocalEnv::validate_type`] —
 //! together they mean `class_of(Custom(_, args))` can return the
 //! decl's declared markers without inspecting the args.
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::env::IndexedProgram;
-
-/// Map from a generic decl's type-parameter names to the Markers each
-/// param carries via its declared bounds. `class_of` consults this when
-/// it encounters a `TypeKind::Param(name)` — the substructural class of a
-/// param is exactly what the bounds guarantee.
+use crate::mir::env::{IndexedProgram, LocalEnv};
 
 /// Machine-readable codes emitted by the class-composition check. Each
 /// variant flags "declared marker M on container C isn't satisfied by
@@ -109,8 +104,9 @@ fn check_markers_against(
 }
 
 fn check_struct(s: &StructDecl, env: &IndexedProgram, d: &mut Diagnostics) {
+    let env = LocalEnv::for_decl(env, &s.meta.params);
     for f in &s.fields {
-        let c = env.class_of(&f.ty, &s.meta.params);
+        let c = env.class_of(&f.ty);
         check_markers_against(
             &s.meta,
             c,
@@ -132,8 +128,9 @@ fn check_struct(s: &StructDecl, env: &IndexedProgram, d: &mut Diagnostics) {
 }
 
 fn check_enum(e: &EnumDecl, env: &IndexedProgram, d: &mut Diagnostics) {
+    let env = LocalEnv::for_decl(env, &e.meta.params);
     for v in &e.variants {
-        let c = env.class_of(&v.ty, &e.meta.params);
+        let c = env.class_of(&v.ty);
         check_markers_against(
             &e.meta,
             c,

@@ -17,7 +17,7 @@
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::diag;
 use crate::mir::place_state::analysis::{block_entry_states, InitSlot, InitState, PointState};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
@@ -345,7 +345,10 @@ fn resolve_enum_of_place<'a>(
     place: &Place,
 ) -> Option<&'a EnumDecl> {
     let locals = func.locals_map();
-    let ty = env.type_of_place(place, &locals).ok()?;
+    let ty = {
+        let env = LocalEnv::for_decl(env, &func.meta.params);
+        env.type_of_place(place, &locals).ok()?
+    };
     let TypeKind::Custom(inst) = ty.kind else {
         return None;
     };

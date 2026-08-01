@@ -36,7 +36,7 @@
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::dataflow::{self, Analysis, Direction};
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use crate::mir::place_state::analysis::RefState;
 use indexmap::IndexMap;
@@ -248,7 +248,7 @@ fn elaborate_function(
     for local in &body.locals {
         locals.insert(local.name.clone(), local.ty.clone());
     }
-    let scope = &func.meta.params;
+    let env = LocalEnv::for_decl(env, &func.meta.params);
     let return_obligations = collect_return_obligations(func, body);
     let func_name = func.meta.name.clone();
     if body.blocks.is_empty() {
@@ -268,7 +268,6 @@ fn elaborate_function(
         let mut ctx = RelaxCtx {
             env,
             locals: &locals,
-            scope,
             d,
             func_name: &func_name,
             block_label: &block.label,
@@ -285,9 +284,8 @@ fn elaborate_function(
 /// used when emitting a user-facing error (e.g. `take` of a place that
 /// resolves to neither `move` nor `copy`).
 struct RelaxCtx<'a> {
-    env: &'a IndexedProgram,
+    env: LocalEnv<'a>,
     locals: &'a IndexMap<String, Type>,
-    scope: &'a ParamsIntro,
     d: &'a mut Diagnostics,
     func_name: &'a str,
     block_label: &'a str,
@@ -751,7 +749,7 @@ fn resolve_index_operand(
             let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
             let is_copy = ty
                 .as_ref()
-                .map(|t| ctx.env.class_of(t, ctx.scope).implies(Marker::Copy))
+                .map(|t| ctx.env.class_of(t).implies(Marker::Copy))
                 .unwrap_or(false);
             if !is_copy {
                 ctx.d.push_error(
@@ -810,10 +808,7 @@ fn relax_operand(
 
     let mandatory_copy = requires_copy_semantics(&place, ctx.env, ctx.locals);
     let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
-    let class = ty
-        .as_ref()
-        .map(|t| ctx.env.class_of(t, ctx.scope))
-        .unwrap_or_default();
+    let class = ty.as_ref().map(|t| ctx.env.class_of(t)).unwrap_or_default();
     let is_copy = class.implies(Marker::Copy);
     let is_move = class.implies(Marker::Move);
 
@@ -887,7 +882,7 @@ fn relax_operand(
 /// (prefer `move` when the type supports it).
 fn requires_copy_semantics(
     place: &Place,
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
 ) -> bool {
     match place {

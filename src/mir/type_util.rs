@@ -5,7 +5,7 @@
 
 use crate::common::Lifetime;
 use crate::mir::ast::{
-    ConstVal, DeclMeta, Instance, Operand, ParamsIntro, RValue, Statement, StatementKind,
+    ConstVal, DeclMeta, GenericParams, Instance, Operand, RValue, Statement, StatementKind,
     Terminator, Type, TypeKind, TypeParam,
 };
 use crate::mir::helpers::{assign_stmt, call_stmt, drop_stmt, require_uninit_stmt, unborrow_stmt};
@@ -13,7 +13,7 @@ use crate::mir::type_check::{IndexedProgram, TypeDecl};
 use crate::mir::type_fold::TypeFolder;
 use std::collections::BTreeSet;
 
-impl ParamsIntro {
+impl GenericParams {
     /// Substitute the decl's declared lifetime and type parameters in
     /// `ty` with the args at a use site.
     pub fn substitute(&self, ty: &Type, lifetime_args: &[Lifetime], type_args: &[Type]) -> Type {
@@ -27,7 +27,7 @@ impl ParamsIntro {
         )
     }
 
-    /// Type-only degenerate case of [`ParamsIntro::substitute`] for callers
+    /// Type-only degenerate case of [`GenericParams::substitute`] for callers
     /// that only have `type_args` on hand.
     pub fn substitute_types(&self, ty: &Type, type_args: &[Type]) -> Type {
         substitute_params(ty, &self.type_params, type_args)
@@ -49,7 +49,7 @@ impl ParamsIntro {
         Some(self.substitute(ty, lifetime_args, type_args))
     }
 
-    /// Fallible type-only substitution — pair to [`ParamsIntro::substitute_types`].
+    /// Fallible type-only substitution — pair to [`GenericParams::substitute_types`].
     pub fn try_substitute_types(&self, ty: &Type, type_args: &[Type]) -> Option<Type> {
         if type_args.len() != self.type_params.len() {
             return None;
@@ -98,7 +98,7 @@ impl DeclMeta {
 /// in `ty` with the corresponding arg.
 ///
 /// Arity is a caller precondition — callers must validate before
-/// invoking (e.g. via `IndexedProgram::validate_type` or the trait/impl arity
+/// invoking (e.g. via `LocalEnv::validate_type` or the trait/impl arity
 /// checks in type_check). A mismatch here would silently leak the
 /// declaration's own lifetime/type params into the use-site scope,
 /// so we panic to surface the bug at the call boundary rather than

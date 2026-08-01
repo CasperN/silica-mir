@@ -1,7 +1,7 @@
 use crate::diagnostics::Diagnostics;
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 
@@ -165,7 +165,7 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
 
     let locals = func.locals_map();
     let ctx = PlaceStateContext {
-        env,
+        env: LocalEnv::for_decl(env, &func.meta.params),
         locals: &locals,
     };
     let init_entry_states = run_fixpoint(&ctx, func, body);
@@ -369,10 +369,15 @@ impl<'a> PlaceStateContext<'a> {
                 // Downcast on a non-enum type is a type error already
                 // reported by type_check; skip the refinement check
                 // rather than pile on a misleading "not refined" message.
-                if self.env.variant_payload_type(&prefix_ty, v).is_none() {
+                if self
+                    .env
+                    .program()
+                    .variant_payload_type(&prefix_ty, v)
+                    .is_none()
+                {
                     return;
                 }
-                let prefix_state = read_at(root_state, &root_ty, &path[..i], self.env);
+                let prefix_state = read_at(root_state, &root_ty, &path[..i], self.env.program());
                 if !state_refines_to_variant(&prefix_state, v) {
                     let prefix = format_path(&root, &path[..i]);
                     d.push_error(diag(
@@ -388,7 +393,7 @@ impl<'a> PlaceStateContext<'a> {
                     return;
                 }
             }
-            match advance_ty(&prefix_ty, step, self.env) {
+            match advance_ty(&prefix_ty, step, self.env.program()) {
                 Some(next) => prefix_ty = next,
                 None => return,
             }
@@ -672,17 +677,17 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let target_state = read_at(root_state, &root_ty, &path, self.env);
+        let target_state = read_at(root_state, &root_ty, &path, self.env.program());
         let Some(target_ty) = self.infer_ref_place_type(target) else {
             return;
         };
         walk_overwrite_leaves(
             &target_state,
             &target_ty,
-            self.env,
+            self.env.program(),
             &mut String::new(),
             &mut |leaf_path, leaf_ty| {
-                let c = self.env.class_of(leaf_ty, &func.meta.params);
+                let c = self.env.class_of(leaf_ty);
                 if !c.implies(Marker::Drop) {
                     let path_str = format!("{}{}", format_place(target), leaf_path);
                     d.push_error(format_type_diagnostic(&func.meta, leaf_ty, |ty| {
@@ -853,7 +858,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let prefix_state = read_at(root_state, &root_ty, &path[..idx], self.env);
+        let prefix_state = read_at(root_state, &root_ty, &path[..idx], self.env.program());
         if !is_state_fully_init(&prefix_state) {
             d.push_error(diag(
                 WriteThroughUninitEnumProjection,
@@ -886,7 +891,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let leaf = read_at(root_state, &root_ty, &path, self.env);
+        let leaf = read_at(root_state, &root_ty, &path, self.env.program());
         if is_state_fully_init(&leaf) {
             return;
         }
@@ -1033,7 +1038,12 @@ impl<'a> PlaceStateContext<'a> {
             {
                 return;
             }
-            let current = read_at(&parent_rs.pointee, &pointee_ty, &sub_path, self.env);
+            let current = read_at(
+                &parent_rs.pointee,
+                &pointee_ty,
+                &sub_path,
+                self.env.program(),
+            );
             let precondition_met = if requires_init {
                 is_state_fully_init(&current)
             } else {
@@ -1085,7 +1095,12 @@ impl<'a> PlaceStateContext<'a> {
             let Some(root_state) = state.locals.get(&root_widen) else {
                 return;
             };
-            let leaf = read_at(root_state, &root_ty, &path_widen[..dyn_pos], self.env);
+            let leaf = read_at(
+                root_state,
+                &root_ty,
+                &path_widen[..dyn_pos],
+                self.env.program(),
+            );
             let ok = if requires_init {
                 is_state_fully_init(&leaf)
             } else {
@@ -1122,7 +1137,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let leaf = read_at(root_state, &root_ty, &path, self.env);
+        let leaf = read_at(root_state, &root_ty, &path, self.env.program());
 
         let ok = if requires_init {
             is_state_fully_init(&leaf)
@@ -1141,11 +1156,7 @@ impl<'a> PlaceStateContext<'a> {
         // elaborated MIR and will surface anything drop-elab missed.
         if !requires_init && is_state_fully_init(&leaf) {
             if let Ok(leaf_ty) = self.env.type_of_place(place, self.locals) {
-                if self
-                    .env
-                    .class_of(&leaf_ty, &func.meta.params)
-                    .implies(Marker::Drop)
-                {
+                if self.env.class_of(&leaf_ty).implies(Marker::Drop) {
                     return;
                 }
             }
@@ -1222,7 +1233,7 @@ impl<'a> PlaceStateContext<'a> {
             return;
         };
 
-        let observed = read_at(root_state, root_ty, &path, self.env);
+        let observed = read_at(root_state, root_ty, &path, self.env.program());
         let reason = match observed {
             InitState::NeverInit | InitState::Moved => None,
             // Partial records the history of independently tracked fields or

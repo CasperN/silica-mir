@@ -2,7 +2,7 @@ use crate::common::RefKind;
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
 use crate::hll::type_check::ExpressionTypes;
-use crate::mir::ast::{self as mir, DeclMeta, ParamsIntro};
+use crate::mir::ast::{self as mir, DeclMeta, GenericParams};
 use crate::mir::helpers::*;
 use std::collections::HashMap;
 
@@ -1565,7 +1565,7 @@ pub fn lower_program(
                     meta: DeclMeta {
                         name: s.name.clone(),
                         name_source: s.source,
-                        params: ParamsIntro {
+                        params: GenericParams {
                             lifetime_params: s.lifetime_params.clone(),
                             outlives: s.outlives.clone(),
                             type_params: lower_type_params(&s.type_params),
@@ -1590,7 +1590,7 @@ pub fn lower_program(
                     meta: DeclMeta {
                         name: e.name.clone(),
                         name_source: e.source,
-                        params: ParamsIntro {
+                        params: GenericParams {
                             lifetime_params: e.lifetime_params.clone(),
                             outlives: e.outlives.clone(),
                             type_params: lower_type_params(&e.type_params),
@@ -1642,7 +1642,7 @@ pub fn lower_program(
                         meta: DeclMeta {
                             name: f.name.clone(),
                             name_source: f.source,
-                            params: ParamsIntro {
+                            params: GenericParams {
                                 lifetime_params: f.lifetime_params.clone(),
                                 outlives: f.outlives.clone(),
                                 type_params: lower_type_params(&f.type_params),
@@ -1707,7 +1707,7 @@ pub fn lower_program(
                     meta: DeclMeta {
                         name: f.name.clone(),
                         name_source: f.source,
-                        params: ParamsIntro {
+                        params: GenericParams {
                             lifetime_params: f.lifetime_params.clone(),
                             outlives: f.outlives.clone(),
                             type_params: lower_type_params(&f.type_params),

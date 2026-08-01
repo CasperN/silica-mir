@@ -20,7 +20,7 @@
 use crate::diagnostics::{DiagCode, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::format_type_diagnostic;
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 
@@ -57,6 +57,7 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
     let Some(body) = &func.body else {
         return;
     };
+    let env = LocalEnv::for_decl(env, &func.meta.params);
     let locals = func.locals_map();
     for block in &body.blocks {
         for stmt in &block.statements {
@@ -67,7 +68,7 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
 }
 
 fn check_stmt(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -89,7 +90,7 @@ fn check_stmt(
             let Ok(ty) = env.type_of_place(place, locals) else {
                 return;
             };
-            let c = env.class_of(&ty, &func.meta.params);
+            let c = env.class_of(&ty);
             if !c.implies(Marker::Drop) {
                 d.push_error(format_type_diagnostic(&func.meta, &ty, |ty| {
                     diag(
@@ -115,7 +116,7 @@ fn check_stmt(
 }
 
 fn check_rvalue(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -137,7 +138,7 @@ fn check_rvalue(
 }
 
 fn check_operand(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -158,7 +159,7 @@ fn check_operand(
     let Ok(ty) = env.type_of_place(place, locals) else {
         return;
     };
-    let c = env.class_of(&ty, &func.meta.params);
+    let c = env.class_of(&ty);
     let ok = match needed {
         ClassMarker::Copy => c.implies(Marker::Copy),
         ClassMarker::Move => c.implies(Marker::Move),
@@ -202,7 +203,7 @@ enum ClassMarker {
 }
 
 fn check_terminator(
-    env: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,

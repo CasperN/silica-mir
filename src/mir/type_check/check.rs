@@ -13,7 +13,7 @@ use crate::common::{Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
-use crate::mir::env::{TypeResolutionError, TypeValidationError};
+use crate::mir::env::{LocalEnv, TypeResolutionError, TypeValidationError};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashSet};
@@ -42,7 +42,7 @@ fn validation_diagnostic(
 fn validation_diagnostic_params(
     error: TypeValidationError,
     source: SourceInfo,
-    params: &crate::mir::ast::ParamsIntro,
+    params: &crate::mir::ast::GenericParams,
     context: String,
 ) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
@@ -69,7 +69,7 @@ fn lifetime_scope(params: &[LifetimeParam]) -> BTreeSet<Lifetime> {
 /// - Duplicates are rejected (any subsequent occurrence).
 /// - Outlives clauses must reference in-scope lifetimes on both sides.
 fn validate_lifetime_params(
-    params: &crate::mir::ast::ParamsIntro,
+    params: &crate::mir::ast::GenericParams,
     container_desc: &str,
     d: &mut Diagnostics,
 ) {
@@ -206,7 +206,7 @@ impl IndexedProgram {
                         ),
                     ));
                 }
-                if let Err(e) = self.validate_type(ty, &meta.params) {
+                if let Err(e) = LocalEnv::for_decl(self, &meta.params).validate_type(ty) {
                     d.push_error(validation_diagnostic(
                         e,
                         ty.source,
@@ -289,7 +289,7 @@ impl IndexedProgram {
             }
 
             for p in &method.params {
-                if let Err(e) = self.validate_type(&p.ty, &effective_params) {
+                if let Err(e) = LocalEnv::for_decl(self, &effective_params).validate_type(&p.ty) {
                     d.push_error(validation_diagnostic(
                         e,
                         p.ty.source,
@@ -324,7 +324,7 @@ impl IndexedProgram {
     /// `Self` has already been desugared to the impl's target type by
     /// [`crate::mir::desugar::self_alias::desugar_self_alias`], so
     /// nothing here has to reintroduce it into scope.
-    fn effective_impl_method(header: &ParamsIntro, method: &Function) -> Function {
+    fn effective_impl_method(header: &GenericParams, method: &Function) -> Function {
         let mut meta = method.meta.clone();
         let mut lps = header.lifetime_params.clone();
         lps.extend(std::mem::take(&mut meta.params.lifetime_params));
@@ -358,7 +358,7 @@ impl IndexedProgram {
         // before conformance if anything landed.
         let signature_inputs_start = d.error_count();
 
-        if let Err(e) = self.validate_type(&imp.target, header) {
+        if let Err(e) = LocalEnv::for_decl(self, header).validate_type(&imp.target) {
             d.push_error(validation_diagnostic_params(
                 e,
                 imp.target.source,
@@ -368,7 +368,7 @@ impl IndexedProgram {
         }
 
         for arg in &imp.trait_path.type_args {
-            if let Err(e) = self.validate_type(arg, header) {
+            if let Err(e) = LocalEnv::for_decl(self, header).validate_type(arg) {
                 d.push_error(validation_diagnostic_params(
                     e,
                     arg.source,
@@ -679,7 +679,7 @@ impl IndexedProgram {
                     }
                 }
             }
-            if let Err(e) = self.validate_type(&p.ty, scope) {
+            if let Err(e) = LocalEnv::for_decl(self, scope).validate_type(&p.ty) {
                 d.push_error(validation_diagnostic(
                     e,
                     p.ty.source,
@@ -741,7 +741,7 @@ impl IndexedProgram {
             }
         }
         for l in &body.locals {
-            if let Err(e) = self.validate_type(&l.ty, scope) {
+            if let Err(e) = LocalEnv::for_decl(self, scope).validate_type(&l.ty) {
                 d.push_error(validation_diagnostic(
                     e,
                     l.ty.source,
@@ -809,12 +809,12 @@ impl IndexedProgram {
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
-        scope: &ParamsIntro,
+        scope: &GenericParams,
         lt_scope: &BTreeSet<Lifetime>,
         d: &mut Diagnostics,
     ) {
         let record = |ty: &Type, d: &mut Diagnostics| {
-            if let Err(e) = self.validate_type(ty, scope) {
+            if let Err(e) = LocalEnv::for_decl(self, scope).validate_type(ty) {
                 d.push_error(
                     validation_diagnostic(
                         e,
@@ -885,6 +885,7 @@ impl IndexedProgram {
         stmt: &Statement,
         locals: &IndexMap<String, Type>,
     ) -> Result<(), Diagnostic> {
+        let env = LocalEnv::for_decl(self, &func.meta.params);
         // Local helper: build a Diagnostic with statement context.
         let stmt_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, stmt.source, msg)
@@ -895,17 +896,17 @@ impl IndexedProgram {
         // by an inner helper (which knows its code + span but not the
         // enclosing context).
         let with_context = |error: TypeResolutionError| -> Diagnostic {
-            resolution_diagnostic(error, stmt.source, &func.meta, self)
+            resolution_diagnostic(error, stmt.source, &func.meta, env.program())
                 .in_function(&func.meta.name)
                 .in_block(&block.label)
         };
         match &stmt.kind {
             StatementKind::Assign(place, rvalue) => {
-                let lhs_ty = self.type_of_place(place, locals).map_err(with_context)?;
-                let rhs_ty = self
+                let lhs_ty = env.type_of_place(place, locals).map_err(with_context)?;
+                let rhs_ty = env
                     .type_of_rvalue(rvalue, stmt.source, locals)
                     .map_err(with_context)?;
-                if !self.types_match(&lhs_ty, &rhs_ty) {
+                if !env.program().types_match(&lhs_ty, &rhs_ty) {
                     let mut format = DiagnosticFormat::new();
                     let scope = format.scope(&func.meta);
                     let lhs = format.ty(&scope, &lhs_ty);
@@ -921,7 +922,7 @@ impl IndexedProgram {
                 Ok(())
             }
             StatementKind::Call(target, args) => {
-                let target_ty = self.type_of_operand(target, locals).map_err(with_context)?;
+                let target_ty = env.type_of_operand(target, locals).map_err(with_context)?;
 
                 if !matches!(&target_ty.kind, TypeKind::Fn(_)) {
                     return Err(format_type_diagnostic(&func.meta, &target_ty, |ty| {
@@ -946,13 +947,13 @@ impl IndexedProgram {
                     ));
                 }
                 for (i, (arg, param_ty)) in args.iter().zip(param_tys.iter()).enumerate() {
-                    let arg_ty = self.type_of_operand(arg, locals).map_err(with_context)?;
-                    if !self.types_match(param_ty, &arg_ty) {
+                    let arg_ty = env.type_of_operand(arg, locals).map_err(with_context)?;
+                    if !env.program().types_match(param_ty, &arg_ty) {
                         let mut format = DiagnosticFormat::new();
                         let caller_scope = format.scope(&func.meta);
                         let expected = match target {
                             Operand::Const(ConstVal::FnName(name, _)) => {
-                                if let Some(callee) = self.functions.get(name) {
+                                if let Some(callee) = env.program().functions.get(name) {
                                     let callee_scope = format.scope(&callee.meta);
                                     format.ty(&callee_scope, param_ty)
                                 } else {
@@ -976,11 +977,11 @@ impl IndexedProgram {
             StatementKind::Drop(place) => {
                 // Just resolve the place — any legality (Drop,
                 // currently init) is enforced by the substructural checker.
-                self.type_of_place(place, locals).map_err(with_context)?;
+                env.type_of_place(place, locals).map_err(with_context)?;
                 Ok(())
             }
             StatementKind::Unborrow(place) => {
-                let ty = self.type_of_place(place, locals).map_err(with_context)?;
+                let ty = env.type_of_place(place, locals).map_err(with_context)?;
                 if !matches!(&ty.kind, TypeKind::Ref(_, _, _)) {
                     return Err(format_type_diagnostic(&func.meta, &ty, |ty| {
                         stmt_diag(
@@ -992,7 +993,7 @@ impl IndexedProgram {
                 Ok(())
             }
             StatementKind::RequireUninit(place) => {
-                self.type_of_place(place, locals).map_err(with_context)?;
+                env.type_of_place(place, locals).map_err(with_context)?;
                 Ok(())
             }
         }
@@ -1006,6 +1007,7 @@ impl IndexedProgram {
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
+        let env = LocalEnv::for_decl(self, &func.meta.params);
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, block.terminator.source, msg)
@@ -1027,7 +1029,7 @@ impl IndexedProgram {
                 true_label,
                 false_label,
             } => {
-                match self.type_of_operand(cond, locals) {
+                match env.type_of_operand(cond, locals) {
                     Ok(cond_ty) if cond_ty.kind != TypeKind::Bool => {
                         d.push_error(format_type_diagnostic(&func.meta, &cond_ty, |ty| {
                             terminator_diag(
@@ -1038,9 +1040,14 @@ impl IndexedProgram {
                     }
                     Ok(_) => {}
                     Err(error) => d.push_error(
-                        resolution_diagnostic(error, block.terminator.source, &func.meta, self)
-                            .in_function(&func.meta.name)
-                            .in_block(&block.label),
+                        resolution_diagnostic(
+                            error,
+                            block.terminator.source,
+                            &func.meta,
+                            env.program(),
+                        )
+                        .in_function(&func.meta.name)
+                        .in_block(&block.label),
                     ),
                 }
                 if !block_labels.contains(true_label) {
@@ -1060,9 +1067,9 @@ impl IndexedProgram {
                 // Resolve the place to (enum_name, decl) or record an error.
                 // Variant-membership checks are skipped if this fails, but
                 // label-existence checks still run on every case.
-                let enum_decl: Option<&EnumDecl> = match self.type_of_place(place, locals) {
+                let enum_decl: Option<&EnumDecl> = match env.type_of_place(place, locals) {
                     Ok(ty) => match ty.kind {
-                        TypeKind::Custom(inst) => match self.types.get(&inst.name) {
+                        TypeKind::Custom(inst) => match env.program().types.get(&inst.name) {
                             Some(TypeDecl::Enum(e)) => Some(e),
                             Some(TypeDecl::Struct(_)) => {
                                 d.push_error(terminator_diag(
@@ -1094,9 +1101,14 @@ impl IndexedProgram {
                     },
                     Err(error) => {
                         d.push_error(
-                            resolution_diagnostic(error, block.terminator.source, &func.meta, self)
-                                .in_function(&func.meta.name)
-                                .in_block(&block.label),
+                            resolution_diagnostic(
+                                error,
+                                block.terminator.source,
+                                &func.meta,
+                                env.program(),
+                            )
+                            .in_function(&func.meta.name)
+                            .in_block(&block.label),
                         );
                         None
                     }

@@ -27,7 +27,7 @@ pub fn basic_meta(name: impl Into<String>) -> DeclMeta {
     DeclMeta {
         name: name.into(),
         name_source: source,
-        params: ParamsIntro {
+        params: GenericParams {
             lifetime_params: vec![],
             outlives: vec![],
             type_params: vec![],

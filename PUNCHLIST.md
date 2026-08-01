@@ -177,6 +177,7 @@ the deliberate later refinement to nested operand and projection sources.
 - A standard `Box` type
 - destructor elaboration
 - Traits working properly
+  - trait bounds: `trait Foo: Copy + MyTrait {..}`
 - **Impl method bodies bypass most checkers.** `typecheck_impl` runs each
   impl method through `typecheck_function` (via a synthesized effective
   `Function` with impl-header generics prepended), so type errors in
@@ -191,6 +192,3 @@ the deliberate later refinement to nested operand and projection sources.
 - Standardize iteration over function and method bodies
 - Analysis should use a a LocalEnv that augments the IndexedProgram with the
 in scope generic parameters from impl<..> and fn foo<...>.
-- Replace Program + IndexedProgram with a single IndexedProgram
-- Rename IndexedProgram to IndexedProgram
-- Migrate the pipeline to take IndexedProgram
