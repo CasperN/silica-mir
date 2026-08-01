@@ -79,17 +79,30 @@ impl From<CopyRelaxationCode> for DiagCode {
 /// shared-reference or dynamic-index boundary, where `copy` would be
 /// required but the type isn't `Copy`).
 pub fn elaborate(program: &mut IndexedProgram, d: &mut Diagnostics) {
-    // Type and callee lookup must keep seeing the unchanged index while
-    // operands are relaxed, including recursive calls to the current
-    // function. Rewrite cloned functions, then replace them as one apply phase.
-    let mut elaborated = Vec::new();
-    for func in program.functions() {
-        let mut func = func.clone();
-        elaborate_function(&mut func, program, d);
-        elaborated.push(func);
-    }
-    for func in elaborated {
-        program.functions.insert(func.meta.name.clone(), func);
+    let function_names: Vec<_> = program
+        .functions()
+        .map(|function| function.meta.name.clone())
+        .collect();
+
+    for name in function_names {
+        let Some(mut body) = program
+            .functions
+            .get_mut(&name)
+            .and_then(|function| function.body.take())
+        else {
+            continue;
+        };
+
+        let function = program
+            .functions
+            .get(&name)
+            .expect("function collected from this index");
+        elaborate_function(function, &mut body, program, d);
+        program
+            .functions
+            .get_mut(&name)
+            .expect("elaboration does not remove functions")
+            .body = Some(body);
     }
 }
 
@@ -222,14 +235,22 @@ fn scan_place_for_take(
     }
 }
 
-fn elaborate_function(func: &mut Function, env: &IndexedProgram, d: &mut Diagnostics) {
-    let locals = func.locals_map();
+fn elaborate_function(
+    func: &Function,
+    body: &mut FunctionBody,
+    env: &IndexedProgram,
+    d: &mut Diagnostics,
+) {
+    let mut locals = IndexMap::new();
+    for param in &func.params {
+        locals.insert(param.name.clone(), param.ty.clone());
+    }
+    for local in &body.locals {
+        locals.insert(local.name.clone(), local.ty.clone());
+    }
     let scope = &func.meta.params;
-    let return_obligations = collect_return_obligations(func);
+    let return_obligations = collect_return_obligations(func, body);
     let func_name = func.meta.name.clone();
-    let Some(body) = &mut func.body else {
-        return;
-    };
     if body.blocks.is_empty() {
         return;
     }
@@ -281,15 +302,13 @@ struct RelaxCtx<'a> {
 /// Local refs may not actually live to `Return` — a move to a callee ends
 /// them earlier — but the write that transfers the ref also kills demand on
 /// its pointee, so the injection is safe over-approximation.
-fn collect_return_obligations(func: &Function) -> BTreeSet<Place> {
+fn collect_return_obligations(func: &Function, body: &FunctionBody) -> BTreeSet<Place> {
     let mut out = BTreeSet::new();
     for param in &func.params {
         collect_post_init_pointees(&var_place(param.name.clone()), &param.ty, &mut out);
     }
-    if let Some(body) = &func.body {
-        for local in &body.locals {
-            collect_post_init_pointees(&var_place(local.name.clone()), &local.ty, &mut out);
-        }
+    for local in &body.locals {
+        collect_post_init_pointees(&var_place(local.name.clone()), &local.ty, &mut out);
     }
     out
 }
@@ -919,11 +938,7 @@ mod tests {
         program
     }
 
-    fn call_arg<'a>(
-        program: &'a IndexedProgram,
-        function: &str,
-        statement: usize,
-    ) -> &'a Operand {
+    fn call_arg<'a>(program: &'a IndexedProgram, function: &str, statement: usize) -> &'a Operand {
         let func = program
             .functions()
             .find(|func| func.meta.name == function)
