@@ -57,7 +57,7 @@ fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
   _: unit;
   p: i64;
   n: i64;
-  _temp_0: &out i64;
+  $tmp_0: &out i64;
   entry:
     switchEnum(t) [Zero: switch_Zero_0, Pos: switch_Pos_1, Neg: switch_Neg_2]
   switch_Zero_0:
@@ -75,10 +75,10 @@ fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
     goto switch_merge_3
   switch_Neg_2:
     n = copy t as Neg;
-    _temp_0 = &out $return.*;
-    call $i64_neg(move n, move _temp_0);
+    $tmp_0 = &out $return.*;
+    call $i64_neg(move n, move $tmp_0);
     unborrow $return;
-    require_uninit _temp_0;
+    require_uninit $tmp_0;
     require_uninit n;
     goto switch_merge_3
   switch_merge_3:
@@ -89,24 +89,24 @@ fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
 }
 
 fn<'s0> sum_two_tags(a: [Tag; 2], $return: &out 's0 i64) {
-  _temp_0: i64;
-  _temp_1: &out i64;
-  _temp_2: i64;
-  _temp_3: &out i64;
-  _temp_4: &out i64;
+  $tmp_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: i64;
+  $tmp_3: &out i64;
+  $tmp_4: &out i64;
   entry:
-    _temp_1 = &out _temp_0;
-    call to_i64(move a[0], move _temp_1);
-    _temp_3 = &out _temp_2;
-    call to_i64(move a[1], move _temp_3);
-    _temp_4 = &out $return.*;
-    call $i64_add(move _temp_0, move _temp_2, move _temp_4);
+    $tmp_1 = &out $tmp_0;
+    call to_i64(move a[0], move $tmp_1);
+    $tmp_3 = &out $tmp_2;
+    call to_i64(move a[1], move $tmp_3);
+    $tmp_4 = &out $return.*;
+    call $i64_add(move $tmp_0, move $tmp_2, move $tmp_4);
     unborrow $return;
-    require_uninit _temp_4;
-    require_uninit _temp_3;
-    require_uninit _temp_2;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     require_uninit a;
     return
@@ -117,13 +117,13 @@ fn<'s0> sum_two_tags_direct(a: [Tag; 2], $return: &out 's0 i64) {
   _: unit;
   p: i64;
   n: i64;
-  _temp_0: &out i64;
+  $tmp_0: &out i64;
   second: i64;
-  $__1: unit;
-  $p_2: i64;
-  $n_3: i64;
-  _temp_4: &out i64;
-  _temp_5: &out i64;
+  $__0: unit;
+  $p_0: i64;
+  $n_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: &out i64;
   entry:
     switchEnum(a[0]) [Zero: switch_Zero_0, Pos: switch_Pos_1, Neg: switch_Neg_2]
   switch_Zero_0:
@@ -139,36 +139,36 @@ fn<'s0> sum_two_tags_direct(a: [Tag; 2], $return: &out 's0 i64) {
     goto switch_merge_3
   switch_Neg_2:
     n = copy a[0] as Neg;
-    _temp_0 = &out first;
-    call $i64_neg(move n, move _temp_0);
-    require_uninit _temp_0;
+    $tmp_0 = &out first;
+    call $i64_neg(move n, move $tmp_0);
+    require_uninit $tmp_0;
     require_uninit n;
     goto switch_merge_3
   switch_merge_3:
     switchEnum(a[1]) [Zero: switch_Zero_4, Pos: switch_Pos_5, Neg: switch_Neg_6]
   switch_Zero_4:
-    $__1 = copy a[1] as Zero;
+    $__0 = copy a[1] as Zero;
     second = 0;
-    drop $__1;
-    require_uninit $__1;
+    drop $__0;
+    require_uninit $__0;
     goto switch_merge_7
   switch_Pos_5:
-    $p_2 = copy a[1] as Pos;
-    second = move $p_2;
-    require_uninit $p_2;
+    $p_0 = copy a[1] as Pos;
+    second = move $p_0;
+    require_uninit $p_0;
     goto switch_merge_7
   switch_Neg_6:
-    $n_3 = copy a[1] as Neg;
-    _temp_4 = &out second;
-    call $i64_neg(move $n_3, move _temp_4);
-    require_uninit _temp_4;
-    require_uninit $n_3;
+    $n_0 = copy a[1] as Neg;
+    $tmp_1 = &out second;
+    call $i64_neg(move $n_0, move $tmp_1);
+    require_uninit $tmp_1;
+    require_uninit $n_0;
     goto switch_merge_7
   switch_merge_7:
-    _temp_5 = &out $return.*;
-    call $i64_add(move first, move second, move _temp_5);
+    $tmp_2 = &out $return.*;
+    call $i64_add(move first, move second, move $tmp_2);
     unborrow $return;
-    require_uninit _temp_5;
+    require_uninit $tmp_2;
     require_uninit second;
     require_uninit first;
     require_uninit $return;
@@ -185,9 +185,9 @@ struct Tagged: Copy + Drop {
 fn<'s0> decode_field(t: Tagged, $return: &out 's0 i64) {
   _: unit;
   p: i64;
-  _temp_0: &out i64;
+  $tmp_0: &out i64;
   n: i64;
-  _temp_1: &out i64;
+  $tmp_1: &out i64;
   entry:
     switchEnum(t.tag) [Zero: switch_Zero_0, Pos: switch_Pos_1, Neg: switch_Neg_2]
   switch_Zero_0:
@@ -199,18 +199,18 @@ fn<'s0> decode_field(t: Tagged, $return: &out 's0 i64) {
     goto switch_merge_3
   switch_Pos_1:
     p = copy t.tag as Pos;
-    _temp_0 = &out $return.*;
-    call $i64_add(move p, move t.extra, move _temp_0);
+    $tmp_0 = &out $return.*;
+    call $i64_add(move p, move t.extra, move $tmp_0);
     unborrow $return;
-    require_uninit _temp_0;
+    require_uninit $tmp_0;
     require_uninit p;
     goto switch_merge_3
   switch_Neg_2:
     n = copy t.tag as Neg;
-    _temp_1 = &out $return.*;
-    call $i64_sub(move t.extra, move n, move _temp_1);
+    $tmp_1 = &out $return.*;
+    call $i64_sub(move t.extra, move n, move $tmp_1);
     unborrow $return;
-    require_uninit _temp_1;
+    require_uninit $tmp_1;
     require_uninit n;
     goto switch_merge_3
   switch_merge_3:
@@ -226,7 +226,7 @@ enum Which: Copy + Drop {
 }
 
 fn<'s0> asymmetric_ref_use(r: &mut 's0 i64, w: Which) {
-  _temp_0: unit;
+  $tmp_0: unit;
   a: unit;
   observed: i64;
   b: unit;
@@ -239,7 +239,7 @@ fn<'s0> asymmetric_ref_use(r: &mut 's0 i64, w: Which) {
     a = copy w as A;
     observed = copy r.*;
     unborrow r;
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop observed;
     require_uninit observed;
     drop a;
@@ -247,13 +247,13 @@ fn<'s0> asymmetric_ref_use(r: &mut 's0 i64, w: Which) {
     goto switch_merge_2
   switch_B_1:
     b = copy w as B;
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop b;
     require_uninit b;
     goto switch_merge_2
   switch_merge_2:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     drop w;
     require_uninit w;
     require_uninit r;

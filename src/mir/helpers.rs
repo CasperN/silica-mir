@@ -216,6 +216,13 @@ pub fn move_op(place: Place) -> Operand {
 pub fn const_op(c: ConstVal) -> Operand {
     Operand::Const(c)
 }
+pub fn trait_fn_op(trait_path: Instance, self_ty: Type, method: Instance) -> Operand {
+    const_op(ConstVal::TraitFn {
+        trait_path,
+        self_ty,
+        method,
+    })
+}
 
 // ---------- RValues ----------
 

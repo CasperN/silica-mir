@@ -10,19 +10,19 @@ define void @silica.main(ptr %arg.exit) {
   %local.exit = alloca ptr, align 8
   store ptr %arg.exit, ptr %local.exit
   %local.value = alloca %Cloneable, align 8
-  %local.$clone0 = alloca %Cloneable, align 8
-  %local.$clone_recv0 = alloca ptr, align 8
-  %local.$clone_out0 = alloca ptr, align 8
+  %local.$clone_0 = alloca %Cloneable, align 8
+  %local.$clone_1 = alloca ptr, align 8
+  %local.$clone_2 = alloca ptr, align 8
   br label %entry
 entry:
   %t.0 = getelementptr %Cloneable, ptr %local.value, i32 0, i32 0
   store i64 7, ptr %t.0
-  store ptr %local.value, ptr %local.$clone_recv0
-  store ptr %local.$clone0, ptr %local.$clone_out0
-  %t.1 = load ptr, ptr %local.$clone_recv0
-  %t.2 = load ptr, ptr %local.$clone_out0
+  store ptr %local.value, ptr %local.$clone_1
+  store ptr %local.$clone_0, ptr %local.$clone_2
+  %t.1 = load ptr, ptr %local.$clone_1
+  %t.2 = load ptr, ptr %local.$clone_2
   call void @"<Cloneable as AutoClone>::clone"(ptr %t.1, ptr %t.2)
-  %t.3 = load %Cloneable, ptr %local.$clone0
+  %t.3 = load %Cloneable, ptr %local.$clone_0
   call void @consume(%Cloneable %t.3)
   %t.4 = load %Cloneable, ptr %local.value
   call void @consume(%Cloneable %t.4)

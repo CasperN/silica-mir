@@ -3,11 +3,11 @@ struct<T: Drop> Sink: Drop {
 }
 
 fn nested_bound_valid(x: Sink<Sink<i64>>) {
-  _temp_0: unit;
+  $tmp_0: unit;
   entry:
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     drop x;
     require_uninit x;
     return

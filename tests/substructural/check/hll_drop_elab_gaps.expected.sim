@@ -9,7 +9,7 @@ enum Level: Copy + Drop {
 }
 
 fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
-  _temp_0: Level;
+  $tmp_0: Level;
   a: i64;
   b: i64;
   h: i64;
@@ -18,31 +18,31 @@ fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
     switchEnum(s) [On: switch_On_0, Off: switch_Off_1]
   switch_On_0:
     a = copy s as On;
-    _temp_0 = Level::High(move a);
+    $tmp_0 = Level::High(move a);
     require_uninit a;
     goto switch_merge_2
   switch_Off_1:
     b = copy s as Off;
-    _temp_0 = Level::Low(move b);
+    $tmp_0 = Level::Low(move b);
     require_uninit b;
     goto switch_merge_2
   switch_merge_2:
-    switchEnum(_temp_0) [High: switch_High_3, Low: switch_Low_4]
+    switchEnum($tmp_0) [High: switch_High_3, Low: switch_Low_4]
   switch_High_3:
-    h = copy _temp_0 as High;
+    h = copy $tmp_0 as High;
     $return.* = move h;
     unborrow $return;
     require_uninit h;
     goto switch_merge_5
   switch_Low_4:
-    l = copy _temp_0 as Low;
+    l = copy $tmp_0 as Low;
     $return.* = move l;
     unborrow $return;
     require_uninit l;
     goto switch_merge_5
   switch_merge_5:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit $return;
     drop s;
     require_uninit s;
@@ -50,35 +50,35 @@ fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
 }
 
 fn loop_if_break() {
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: unit;
-  _temp_3: unit;
-  _temp_4: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: unit;
   entry:
     goto loop_start_0
   loop_start_0:
     branch(true) [true: if_true_2, false: if_false_3]
   if_true_2:
-    require_uninit _temp_4;
-    require_uninit _temp_3;
-    require_uninit _temp_2;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
     goto loop_end_1
   if_false_3:
-    _temp_3 = unit;
+    $tmp_3 = unit;
     goto if_merge_4
   if_merge_4:
-    drop _temp_3;
-    require_uninit _temp_3;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
     goto loop_start_0
   loop_end_1:
-    require_uninit _temp_1;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
@@ -90,44 +90,44 @@ struct P: Copy + Drop {
 
 fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
   p: P;
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: unit;
-  _temp_3: unit;
-  _temp_4: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: unit;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     p.x = 1;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     p.z = 3;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
-    _temp_0 = unit;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
     goto $edge0
   $edge0:
     drop p.z;
     goto if_merge_2
   if_false_1:
     p.x = 1;
-    _temp_3 = unit;
-    drop _temp_3;
-    require_uninit _temp_3;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
     p.y = 2;
-    _temp_4 = unit;
-    drop _temp_4;
-    require_uninit _temp_4;
-    _temp_0 = unit;
+    $tmp_4 = unit;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_0 = unit;
     goto $edge1
   $edge1:
     drop p.y;
     goto if_merge_2
   if_merge_2:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     $return.* = move p.x;
     unborrow $return;
     require_uninit p;
@@ -139,44 +139,44 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
 
 fn<'s0> array_slot_diverged(c: bool, $return: &out 's0 i64) {
   a: [i64; 3];
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: unit;
-  _temp_3: unit;
-  _temp_4: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: unit;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     a[0] = 1;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     a[2] = 3;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
-    _temp_0 = unit;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
     goto $edge0
   $edge0:
     drop a[2];
     goto if_merge_2
   if_false_1:
     a[0] = 1;
-    _temp_3 = unit;
-    drop _temp_3;
-    require_uninit _temp_3;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
     a[1] = 2;
-    _temp_4 = unit;
-    drop _temp_4;
-    require_uninit _temp_4;
-    _temp_0 = unit;
+    $tmp_4 = unit;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_0 = unit;
     goto $edge1
   $edge1:
     drop a[1];
     goto if_merge_2
   if_merge_2:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     $return.* = move a[0];
     unborrow $return;
     require_uninit a;
@@ -188,44 +188,44 @@ fn<'s0> array_slot_diverged(c: bool, $return: &out 's0 i64) {
 
 fn<'s0> nested_array_slot_diverged(c: bool, $return: &out 's0 i64) {
   m: [[i64; 2]; 2];
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: unit;
-  _temp_3: unit;
-  _temp_4: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: unit;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     m[0][0] = 1;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     m[0][1] = 2;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
-    _temp_0 = unit;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
     goto $edge0
   $edge0:
     drop m[0][1];
     goto if_merge_2
   if_false_1:
     m[0][0] = 1;
-    _temp_3 = unit;
-    drop _temp_3;
-    require_uninit _temp_3;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
     m[1][0] = 3;
-    _temp_4 = unit;
-    drop _temp_4;
-    require_uninit _temp_4;
-    _temp_0 = unit;
+    $tmp_4 = unit;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_0 = unit;
     goto $edge1
   $edge1:
     drop m[1][0];
     goto if_merge_2
   if_merge_2:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     $return.* = move m[0][0];
     unborrow $return;
     require_uninit m;
@@ -241,44 +241,44 @@ struct Bag: Copy + Drop {
 
 fn<'s0> struct_field_array_slot_diverged(c: bool, $return: &out 's0 i64) {
   s: Bag;
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: unit;
-  _temp_3: unit;
-  _temp_4: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: unit;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     s.a[0] = 1;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     s.a[2] = 3;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
-    _temp_0 = unit;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
     goto $edge0
   $edge0:
     drop s.a[2];
     goto if_merge_2
   if_false_1:
     s.a[0] = 1;
-    _temp_3 = unit;
-    drop _temp_3;
-    require_uninit _temp_3;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
     s.a[1] = 2;
-    _temp_4 = unit;
-    drop _temp_4;
-    require_uninit _temp_4;
-    _temp_0 = unit;
+    $tmp_4 = unit;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_0 = unit;
     goto $edge1
   $edge1:
     drop s.a[1];
     goto if_merge_2
   if_merge_2:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     $return.* = move s.a[0];
     unborrow $return;
     require_uninit s;

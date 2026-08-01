@@ -64,16 +64,16 @@ enum MoveList: Move {
 
 fn<'s0> move_only_owned_match(ml: MoveList, $return: &out 's0 i64) {
   u: unit;
-  _temp_0: &out i64;
+  $tmp_0: &out i64;
   x: i64;
   entry:
     switchEnum(ml) [EmptyM: switch_EmptyM_0, ConsM: switch_ConsM_1]
   switch_EmptyM_0:
     u = move ml as EmptyM;
-    _temp_0 = &out $return.*;
-    call u_to_zero(move u, move _temp_0);
+    $tmp_0 = &out $return.*;
+    call u_to_zero(move u, move $tmp_0);
     unborrow $return;
-    require_uninit _temp_0;
+    require_uninit $tmp_0;
     require_uninit u;
     goto switch_merge_2
   switch_ConsM_1:
@@ -171,12 +171,12 @@ fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
 }
 
 fn<'s0> make_option_of_box(x: i64, $return: &out 's0 Option<Box<i64>>) {
-  _temp_0: Box<i64>;
+  $tmp_0: Box<i64>;
   entry:
-    _temp_0.inner = move x;
-    $return.* = Option<Box<i64>>::Some(move _temp_0);
+    $tmp_0.inner = move x;
+    $return.* = Option<Box<i64>>::Some(move $tmp_0);
     unborrow $return;
-    require_uninit _temp_0;
+    require_uninit $tmp_0;
     require_uninit $return;
     require_uninit x;
     return
@@ -192,17 +192,17 @@ fn<'s0> read_nested_field(b: Box<Box<i64>>, $return: &out 's0 i64) {
 }
 
 fn<'s0> write_nested_pointee(r: &out 's0 Box<Box<i64>>, x: i64) {
-  _temp_0: unit;
-  _temp_1: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
   entry:
     r.*.inner.inner = move x;
     unborrow r;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit x;
     require_uninit r;
     return
@@ -240,81 +240,81 @@ fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
 }
 
 fn<'s0> call_generic_fn($return: &out 's0 i64) {
-  _temp_0: f64;
-  _temp_1: &out f64;
-  _temp_2: &out i64;
+  $tmp_0: f64;
+  $tmp_1: &out f64;
+  $tmp_2: &out i64;
   entry:
-    _temp_1 = &out _temp_0;
-    call identity<f64>(42.2, move _temp_1);
-    require_uninit _temp_1;
-    drop _temp_0;
-    require_uninit _temp_0;
-    _temp_2 = &out $return.*;
-    call identity<i64>(42, move _temp_2);
+    $tmp_1 = &out $tmp_0;
+    call identity<f64>(42.2, move $tmp_1);
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $tmp_2 = &out $return.*;
+    call identity<i64>(42, move $tmp_2);
     unborrow $return;
-    require_uninit _temp_2;
+    require_uninit $tmp_2;
     require_uninit $return;
     return
 }
 
 fn<'s0> call_generic_fn_via_ret($return: &out 's0 i64) {
-  _temp_0: i64;
-  _temp_1: &out i64;
-  _temp_2: &out i64;
+  $tmp_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: &out i64;
   entry:
-    _temp_1 = &out _temp_0;
-    call identity<i64>(7, move _temp_1);
-    _temp_2 = &out $return.*;
-    call identity<i64>(move _temp_0, move _temp_2);
+    $tmp_1 = &out $tmp_0;
+    call identity<i64>(7, move $tmp_1);
+    $tmp_2 = &out $return.*;
+    call identity<i64>(move $tmp_0, move $tmp_2);
     unborrow $return;
-    require_uninit _temp_2;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     return
 }
 
 fn<'s0> call_generic_explicit($return: &out 's0 i64) {
-  _temp_0: &out i64;
+  $tmp_0: &out i64;
   entry:
-    _temp_0 = &out $return.*;
-    call identity<i64>(42, move _temp_0);
+    $tmp_0 = &out $return.*;
+    call identity<i64>(42, move $tmp_0);
     unborrow $return;
-    require_uninit _temp_0;
+    require_uninit $tmp_0;
     require_uninit $return;
     return
 }
 
 fn<'s0> call_generic_explicit_nested($return: &out 's0 i64) {
-  _temp_0: i64;
-  _temp_1: &out i64;
-  _temp_2: &out i64;
+  $tmp_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: &out i64;
   entry:
-    _temp_1 = &out _temp_0;
-    call identity<i64>(7, move _temp_1);
-    _temp_2 = &out $return.*;
-    call identity<i64>(move _temp_0, move _temp_2);
+    $tmp_1 = &out $tmp_0;
+    call identity<i64>(7, move $tmp_1);
+    $tmp_2 = &out $return.*;
+    call identity<i64>(move $tmp_0, move $tmp_2);
     unborrow $return;
-    require_uninit _temp_2;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     return
 }
 
 fn<'s0> call_generic_explicit_mixed($return: &out 's0 i64) {
-  _temp_0: i64;
-  _temp_1: &out i64;
-  _temp_2: &out i64;
+  $tmp_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: &out i64;
   entry:
-    _temp_1 = &out _temp_0;
-    call identity<i64>(3, move _temp_1);
-    _temp_2 = &out $return.*;
-    call identity<i64>(move _temp_0, move _temp_2);
+    $tmp_1 = &out $tmp_0;
+    call identity<i64>(3, move $tmp_1);
+    $tmp_2 = &out $return.*;
+    call identity<i64>(move $tmp_0, move $tmp_2);
     unborrow $return;
-    require_uninit _temp_2;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     return
 }

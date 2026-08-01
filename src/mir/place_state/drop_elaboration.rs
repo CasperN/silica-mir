@@ -69,15 +69,16 @@ fn apply_plan(env: LocalEnv<'_>, func: &Function, body: &mut FunctionBody, plan:
     let mut emitter = CleanupEmitter {
         env,
         locals: body.locals_map(&func.params),
-        generated_locals: Vec::new(),
-        next_destroy: 0,
+        local_allocator: body.local_allocator(&func.params, "$destroy_"),
     };
+
+    let mut blocks = std::mem::take(&mut body.blocks);
 
     // Pre-stmt cleanups: splice into each block at the recorded
     // positions (0..=N, where pos=N means "before terminator").
     // Sort descending so earlier splices don't invalidate later
     // indices.
-    for block in &mut body.blocks {
+    for block in &mut blocks {
         let mut inserts: Vec<(usize, &Vec<Place>)> = plan
             .pre_stmt
             .iter()
@@ -93,38 +94,45 @@ fn apply_plan(env: LocalEnv<'_>, func: &Function, body: &mut FunctionBody, plan:
                 .unwrap_or(block.terminator.span());
             let items: Vec<Statement> = places
                 .iter()
-                .flat_map(|place| emitter.emit(place, span))
+                .flat_map(|place| emitter.emit(body, place, span))
                 .collect();
             block.statements.splice(pos..pos, items);
         }
     }
 
+    body.blocks = blocks;
+
     // Cross-edge cleanup: split each edge (idempotent), then append.
     for ((pred, succ), places) in &plan.cross_edge {
         let split_label = cfg_edit::split_edge(body, pred, succ);
-        let split_block = body
+        let span = body
             .blocks
+            .iter()
+            .find(|b| b.label == split_label)
+            .expect("split_edge just guaranteed this block exists")
+            .terminator
+            .span();
+        let statements = places
+            .iter()
+            .flat_map(|place| emitter.emit(body, place, span))
+            .collect::<Vec<_>>();
+        body.blocks
             .iter_mut()
             .find(|b| b.label == split_label)
-            .expect("split_edge just guaranteed this block exists");
-        let span = split_block.terminator.span();
-        for place in places {
-            split_block.statements.extend(emitter.emit(place, span));
-        }
+            .expect("split_edge just guaranteed this block exists")
+            .statements
+            .extend(statements);
     }
-
-    body.locals.extend(emitter.generated_locals);
 }
 
 struct CleanupEmitter<'a> {
     env: LocalEnv<'a>,
     locals: IndexMap<String, Type>,
-    generated_locals: Vec<Local>,
-    next_destroy: usize,
+    local_allocator: LocalAllocator,
 }
 
 impl CleanupEmitter<'_> {
-    fn emit(&mut self, place: &Place, span: Span) -> Vec<Statement> {
+    fn emit(&mut self, body: &mut FunctionBody, place: &Place, span: Span) -> Vec<Statement> {
         let ty = self
             .env
             .type_of_place(place, &self.locals)
@@ -140,31 +148,19 @@ impl CleanupEmitter<'_> {
             format_place(place),
         );
 
-        let recv_name = loop {
-            let name = format!("$destroy_recv{}", self.next_destroy);
-            self.next_destroy += 1;
-            if !self.locals.contains_key(&name) {
-                break name;
-            }
-        };
         let recv_ty = ref_ty(RefKind::Drop, ty.clone());
-        let recv = var_place(recv_name.clone());
-        let local = Local {
-            name: recv_name.clone(),
-            ty: recv_ty.clone(),
-            source,
+        let recv = self
+            .local_allocator
+            .add_local(body, recv_ty.clone(), source);
+        let Place::Var(recv_name) = &recv else {
+            unreachable!("local allocator always returns a variable place");
         };
-        self.locals.insert(recv_name, recv_ty);
-        self.generated_locals.push(local);
+        self.locals.insert(recv_name.clone(), recv_ty);
 
         vec![
             assign_stmt(recv.clone(), ref_rv(RefKind::Drop, place.clone()), source),
             call_stmt(
-                const_op(ConstVal::TraitFn {
-                    trait_path: Instance::bare("AutoDestroy"),
-                    self_ty: ty,
-                    method: Instance::bare("destroy"),
-                }),
+                trait_fn_op(Instance::bare("AutoDestroy"), ty, Instance::bare("destroy")),
                 vec![move_op(recv)],
                 source,
             ),

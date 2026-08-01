@@ -111,9 +111,9 @@ fn destruction_order(x: Destroyable, y: i64, z: Destroyable) {
 # namespace.
 # covers: collision-safe AutoDestroy receiver naming
 fn generated_receiver_name_collision(x: Destroyable) {
-  $destroy_recv0: i64;
+  $destroy_0: i64;
   entry:
-    $destroy_recv0 = 0;
+    $destroy_0 = 0;
     return
 }
 

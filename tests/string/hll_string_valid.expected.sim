@@ -1,93 +1,93 @@
 fn plain_byte_string() {
-  _temp_0: unit;
+  $tmp_0: unit;
   hello: [u8; 5];
   world: [u8; 5];
   entry:
     hello = b"hello";
     world = b"world";
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop world;
     require_uninit world;
     drop hello;
     require_uninit hello;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn empty_byte_string() {
-  _temp_0: unit;
+  $tmp_0: unit;
   e: [u8; 0];
   entry:
     e = b"";
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop e;
     require_uninit e;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn null_terminator() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 3];
   entry:
     s = b"hi\0";
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop s;
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn newline_escape() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 3];
   entry:
     s = b"a\nb";
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop s;
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn all_standard_escapes() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 6];
   entry:
     s = b"\n\t\r\0\\\"";
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop s;
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn hex_escape() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 3];
   entry:
     s = b"\xFF\0~";
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop s;
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn const_index_in_bounds() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 5];
   b: u8;
   entry:
     s = b"hello";
     b = move s[0u64];
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop b;
     require_uninit b;
     drop s[4];
@@ -95,13 +95,13 @@ fn const_index_in_bounds() {
     drop s[2];
     drop s[1];
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn const_index_multiple() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 5];
   h: u8;
   o: u8;
@@ -109,7 +109,7 @@ fn const_index_multiple() {
     s = b"hello";
     h = move s[0u64];
     o = move s[4u64];
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop o;
     require_uninit o;
     drop h;
@@ -118,26 +118,26 @@ fn const_index_multiple() {
     drop s[2];
     drop s[1];
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn byte_char_plain() {
-  _temp_0: unit;
+  $tmp_0: unit;
   x: u8;
   entry:
     x = 65u8;
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop x;
     require_uninit x;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn byte_char_all_escapes() {
-  _temp_0: unit;
+  $tmp_0: unit;
   nl: u8;
   nul: u8;
   bs: u8;
@@ -151,7 +151,7 @@ fn byte_char_all_escapes() {
     quote = 34u8;
     apos = 39u8;
     hex = 255u8;
-    _temp_0 = unit;
+    $tmp_0 = unit;
     drop hex;
     require_uninit hex;
     drop apos;
@@ -164,7 +164,7 @@ fn byte_char_all_escapes() {
     require_uninit nul;
     drop nl;
     require_uninit nl;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }

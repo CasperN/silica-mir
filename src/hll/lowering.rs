@@ -176,11 +176,9 @@ struct Scope {
 }
 
 struct LowerCtx {
-    locals: Vec<mir::Local>,
-    blocks: Vec<mir::BasicBlock>,
+    body: mir::FunctionBody,
     current_block_label: Option<String>,
     current_statements: Vec<mir::Statement>,
-    temp_counter: usize,
     block_counter: usize,
     loop_stack: Vec<(String, String, mir::Place)>, // (start_label, end_label, dest_place)
     scopes: Vec<Scope>,
@@ -195,9 +193,8 @@ struct LowerCtx {
     /// `${hll_name}_{N}` MIR name so the flat MIR local namespace stays
     /// unique while the HLL surface allows the usual scope shadowing.
     binding_scopes: Vec<HashMap<String, String>>,
-    /// MIR names already claimed in this fn (params, temps, bindings —
-    /// including renames). Guards `intro_binding` when deciding whether
-    /// to rewrite an HLL name.
+    /// Parameter and binding names already claimed in this function.
+    /// Generated temporaries use the function body's local allocator.
     taken_names: std::collections::HashSet<String>,
     functions: HashMap<String, hll::FnDecl>,
     enums: HashMap<String, hll::EnumDecl>,
@@ -225,11 +222,12 @@ impl LowerCtx {
             }
         }
         Self {
-            locals: Vec::new(),
-            blocks: Vec::new(),
+            body: mir::FunctionBody {
+                locals: Vec::new(),
+                blocks: Vec::new(),
+            },
             current_block_label: None,
             current_statements: Vec::new(),
-            temp_counter: 0,
             block_counter: 0,
             loop_stack: Vec::new(),
             scopes: Vec::new(),
@@ -272,22 +270,26 @@ impl LowerCtx {
     }
 
     /// Allocate a MIR name for an HLL binding and push its local. If
-    /// `hll_name` clashes with an already-claimed MIR name (param, prior
-    /// binding, or temp), a fresh `${hll_name}_{N}` name is chosen — the
+    /// `hll_name` clashes with a parameter or prior binding, a fresh
+    /// `${hll_name}_{N}` name is chosen. The
     /// `$` prefix is HLL-unspellable so the rewrite can't collide with
     /// user code. Does NOT yet install the scope mapping — call
     /// `bind_in_scope` after the RHS of the introducing `let` has been
     /// lowered (so `let x = x` reads the outer `x`).
     fn alloc_binding(&mut self, hll_name: &str, ty: mir::Type, source: mir::SourceInfo) -> String {
-        let mir_name = if self.taken_names.contains(hll_name) {
-            let name = format!("${}_{}", hll_name, self.temp_counter);
-            self.temp_counter += 1;
-            name
-        } else {
-            hll_name.to_string()
-        };
+        if self.taken_names.contains(hll_name) {
+            let mut allocator = self.body.local_allocator(&[], format!("${hll_name}_"));
+            let place = allocator.add_local(&mut self.body, ty, source);
+            let mir::Place::Var(mir_name) = place else {
+                unreachable!("local allocator always returns a variable place");
+            };
+            self.taken_names.insert(mir_name.clone());
+            return mir_name;
+        }
+
+        let mir_name = hll_name.to_string();
         self.taken_names.insert(mir_name.clone());
-        self.locals.push(mir::Local {
+        self.body.add_local(mir::Local {
             name: mir_name.clone(),
             ty,
             source,
@@ -434,16 +436,12 @@ impl LowerCtx {
         span: mir::Span,
         kind: mir::HllTemporaryKind,
     ) -> mir::Place {
-        let name = format!("_temp_{}", self.temp_counter);
-        self.temp_counter += 1;
-        self.taken_names.insert(name.clone());
-        let place = var_place(name.clone());
-        self.locals.push(mir::Local {
-            name: name.clone(),
+        let mut allocator = self.body.local_allocator(&[], "$tmp_");
+        allocator.add_local(
+            &mut self.body,
             ty,
-            source: mir::SourceInfo::generated(mir::GeneratedKind::HllTemporary(kind), span),
-        });
-        place
+            mir::SourceInfo::generated(mir::GeneratedKind::HllTemporary(kind), span),
+        )
     }
 
     fn fresh_region_temp(
@@ -494,7 +492,7 @@ impl LowerCtx {
     fn terminate_block(&mut self, mut term: mir::Terminator) {
         term.source = mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, term.span());
         if let Some(label) = self.current_block_label.take() {
-            self.blocks.push(mir::BasicBlock {
+            self.body.blocks.push(mir::BasicBlock {
                 label,
                 label_source: mir::SourceInfo::generated(
                     mir::GeneratedKind::HllDesugaring,
@@ -514,8 +512,6 @@ impl LowerCtx {
     }
 }
 
-/// HLL and MIR `TypeParam` have identical shape; this is a
-/// straight per-field copy.
 fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
     params
         .iter()
@@ -565,12 +561,8 @@ fn infer_fn_type_args(
             if let Some(t) = find_param_at(&tp.name, &f_decl.ret_ty, fresh_ret) {
                 return lower_type(&t);
             }
-            // Type param doesn't appear anywhere in the signature —
-            // HLL type_check would have left it as an unresolved Var,
-            // which resolve_default pins to i64. Fall back to unit
-            // here rather than panicking; codegen doesn't handle Param
-            // yet either, so this only matters once monomorphization
-            // lands.
+            // No call-site type can be recovered for a parameter absent from
+            // the signature. Preserve lowering after the earlier type check.
             unit_ty()
         })
         .collect()
@@ -783,7 +775,6 @@ fn lower_expr_to_place(
             Ok(index_place(target_place, index_op))
         }
         _ => {
-            // Allocate a temporary and evaluate the expression into it
             let hll_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
@@ -861,7 +852,6 @@ fn lower_expr_to_operand(
             Ok(mir::Operand::Take(place))
         }
         _ => {
-            // Evaluate into a temporary first, then move the temporary
             let place = lower_expr_to_place(ctx, expr, types)?;
             Ok(move_op(place))
         }
@@ -907,7 +897,6 @@ fn lower_expr_into(
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
             let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
             ctx.emit_statement(assign_stmt(lhs_place, use_rv(rhs_op), expr.span()));
-            // Assignment expression itself evaluates to Unit
             ctx.emit_statement(assign_stmt(
                 dest.clone(),
                 use_rv(const_op(unit_const())),
@@ -968,7 +957,6 @@ fn lower_expr_into(
             })?;
             let mir_ty = lower_type(lhs_hll_ty);
 
-            // Map BinOp to string name
             let op_name = match op {
                 hll::BinOp::Add => "add",
                 hll::BinOp::Sub => "sub",
@@ -1099,7 +1087,6 @@ fn lower_expr_into(
                 lower_expr_to_operand(ctx, fn_expr, types)?
             };
 
-            // Check if call has return value (if dest type is not Unit)
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
                     HllLoweringCode::MissingType,
@@ -1109,23 +1096,6 @@ fn lower_expr_into(
             })?;
 
             if hll_ret_ty.kind != hll::TypeKind::Unit {
-                // Return value is written to dest. In MIR, we pass &out dest as final argument.
-                // The codegen expects Statement::Call(fn_op, args) where the last argument is evaluated.
-                // Wait, in checkpoint 1:
-                // "Translated Statement::Call to omit the last argument from the LLVM call arguments list, capture the return value register, and emit a store to the target address."
-                // In LLVM codegen:
-                // `let (_, ret_ptr_val) = arg_pairs.pop().expect(...)`
-                // This means the last argument is indeed a pointer to the destination!
-                // How is that reference created in MIR call?
-                // It is created as a mutable/out borrow: `&out dest`!
-                // So in MIR Statement::Call, we must pass a temporary reference to the destination!
-                // Wait, how do we pass a reference as an operand?
-                // An operand can only be Copy(Place), Move(Place), or Const.
-                // It CANNOT be RValue::Ref!
-                // So in MIR, we must allocate a temporary local `_temp_out_ref` of type `&out T`,
-                // assign `_temp_out_ref = &out dest`,
-                // and pass `Operand::Move(_temp_out_ref)` as the final argument in Statement::Call!
-                // Yes! That is absolutely correct and matches MIR semantics perfectly!
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
                 let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
                 ctx.emit_statement(assign_stmt(
@@ -1137,7 +1107,6 @@ fn lower_expr_into(
                 ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
             } else {
                 ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
-                // Function returns unit, assign Unit to dest
                 ctx.emit_statement(assign_stmt(
                     dest.clone(),
                     use_rv(const_op(unit_const())),
@@ -1187,8 +1156,6 @@ fn lower_expr_into(
                         }
                         ctx.bind_in_scope(name, mir_name);
                         ctx.register_scope_cleanup(var_place(ctx.resolve_binding(name)), span);
-                        // No init: the local exists as NeverInit — the caller
-                        // must initialize it before use (init-state enforces).
                     }
                     hll::Stmt::Defer { body, source } => {
                         // Capture the binding scope at registration time so
@@ -1209,7 +1176,6 @@ fn lower_expr_into(
                         });
                     }
                     hll::Stmt::Expr(e) => {
-                        // Value is ignored, lower into a dummy temporary matching the expr type
                         let hll_ty = lookup_type(e, types).ok_or_else(|| {
                             diag(
                                 HllLoweringCode::MissingType,
@@ -1257,17 +1223,14 @@ fn lower_expr_into(
                 cond.span(),
             ));
 
-            // True branch
             ctx.start_block(true_label);
             lower_expr_into(ctx, true_block, dest, types)?;
             ctx.terminate_block(goto_term(merge_label.clone(), true_block.span()));
 
-            // False branch
             ctx.start_block(false_label);
             lower_expr_into(ctx, false_block, dest, types)?;
             ctx.terminate_block(goto_term(merge_label.clone(), false_block.span()));
 
-            // Merge block
             ctx.start_block(merge_label);
             Ok(())
         }
@@ -1282,7 +1245,6 @@ fn lower_expr_into(
             ctx.push_scope(true, scope_exit_span(body.span()));
             ctx.start_block(start_label.clone());
 
-            // Loop body value is discarded
             ctx.begin_temp_region();
             let dummy = ctx.fresh_lowering_temp(unit_ty(), body.span());
             lower_expr_into(ctx, body, &dummy, types)?;
@@ -1345,7 +1307,6 @@ fn lower_expr_into(
         }
         hll::ExprKind::Return(val_expr) => {
             if let Some(val) = val_expr {
-                // Return value is written to $return.*
                 let ret_place = deref_place(var_place("$return"));
                 ctx.begin_temp_region();
                 lower_expr_into(ctx, val, &ret_place, types)?;
@@ -1372,7 +1333,6 @@ fn lower_expr_into(
 
             ctx.terminate_block(switch_enum_term(target_place.clone(), cases, target.span()));
 
-            // Lower each arm block
             for ((pattern, body), label) in arms.iter().zip(case_labels.iter()) {
                 let hll::Pattern::Variant(variant, bound_var) = pattern;
                 ctx.start_block(label.clone());
@@ -1446,33 +1406,8 @@ fn lower_expr_into(
                     ctx.bind_in_scope(var_name, bound_mir_name.clone());
                     ctx.register_scope_cleanup(var_place(bound_mir_name.clone()), body.span());
 
-                    // Match arm payload extraction. Dispatch table (today):
-                    //
-                    //   scrutinee class   access mode        extraction
-                    //   ---------------   ---------------   -------------------
-                    //   Copy              owned/borrowed    move scrut as V
-                    //   Move (not Copy)   owned             move scrut as V
-                    //   Move (not Copy)   borrowed          move scrut as V
-                    //
-                    // The owned Move-only case uses `move` so init-state's
-                    // enum-atomicity rule cascades the whole scrutinee to
-                    // `Moved`; without it the scrutinee stays Init at the
-                    // merge and (since Move-only is not Drop) trips
-                    // INIT-ReturnValueLeak at return.
-                    //
-                    // Borrowed scrutinees can't be moved through (that
-                    // would consume the pointee behind someone else's
-                    // borrow), so those still copy — the payload copies
-                    // out and the scrutinee stays live via its borrow.
-                    //
-                    // Future: when AutoClone / AutoTransfer (pure, non-
-                    // trivial) and CoClone / CoTransfer (effectful)
-                    // markers land, this switch grows arms that emit
-                    // `call Clone::clone(&scrut as V, &out binding)` and
-                    // `call Transfer::transfer(&drop scrut as V, &out
-                    // binding)` in place of the bitwise ops. MIR stays
-                    // mechanical (only `copy`/`move` primitives); HLL
-                    // owns the class-marker dispatch.
+                    // Moving an owned payload applies enum atomicity to the
+                    // scrutinee. A borrowed scrutinee must remain initialized.
                     let downcast = downcast_place(target_place.clone(), variant.clone());
                     let scrutinee_is_owned = mir::extract_path(&target_place).is_some();
                     let op = if enum_is_copy || !scrutinee_is_owned {
@@ -1612,7 +1547,6 @@ pub fn lower_program(
                     })
                     .collect();
 
-                // If return type is not Unit, append $return parameter
                 if f.ret_ty.kind != hll::TypeKind::Unit {
                     params.push(mir::Param {
                         name: "$return".to_string(),
@@ -1630,13 +1564,6 @@ pub fn lower_program(
                     });
                 }
 
-                // Extern declarations: no body to lower; MIR carries
-                // extern-ness via `is_extern: true` and `body: None`.
-                // The ABI string (`f.abi`) is preserved in HLL but
-                // dropped here — MIR codegen currently ignores it (see
-                // punchlist). When codegen wires the ABI through,
-                // Function will grow an `abi: Option<String>` field
-                // and this call site will pass `f.abi.clone()`.
                 let Some(body_expr) = &f.body else {
                     declarations.push(mir::Declaration::Fn(mir::Function {
                         meta: DeclMeta {
@@ -1680,10 +1607,6 @@ pub fn lower_program(
                 let start_label = "entry".to_string();
                 ctx.start_block(start_label);
 
-                // Lower body block into ctx
-                // Since body is a block/expression, we lower it.
-                // If return type is not Unit, we write the result to $return.*.
-                // Otherwise we write it to a dummy Unit place.
                 if f.ret_ty.kind != hll::TypeKind::Unit {
                     let ret_place = deref_place(var_place("$return"));
                     lower_expr_into(&mut ctx, body_expr, &ret_place, types)?;
@@ -1718,10 +1641,7 @@ pub fn lower_program(
                     is_extern: false,
                     abi: None,
                     params,
-                    body: Some(mir::FunctionBody {
-                        locals: ctx.locals,
-                        blocks: ctx.blocks,
-                    }),
+                    body: Some(ctx.body),
                 }));
             }
         }
@@ -1755,7 +1675,6 @@ mod tests {
         }
         let mir_prog = lower_program(&hll_prog, &types).unwrap();
 
-        // Run MIR typecheck sanity check on the lowered program
         let (env, env_errs) = crate::mir::type_check::IndexedProgram::build(&mir_prog);
         if !env_errs.is_empty() {
             panic!(
@@ -1823,12 +1742,12 @@ mod tests {
             "
             fn add(a: i64, b: i64, $return: &out i64) {
               sum: i64;
-              _temp_0: unit;
+              $tmp_0: unit;
               entry:
                 sum = take a;
                 sum = take b;
-                _temp_0 = unit;
-                require_uninit _temp_0;
+                $tmp_0 = unit;
+                require_uninit $tmp_0;
                 $return.* = take sum;
                 require_uninit sum;
                 require_uninit $return;
@@ -1927,19 +1846,19 @@ mod tests {
             "
             fn check($return: &out i64) {
               x: i64;
-              _temp_0: unit;
-              _temp_1: unit;
-              _temp_2: unit;
+              $tmp_0: unit;
+              $tmp_1: unit;
+              $tmp_2: unit;
               entry:
                 x = 0;
                 goto loop_start_0
               loop_start_0:
                 x = 42;
-                _temp_1 = unit;
-                require_uninit _temp_1;
+                $tmp_1 = unit;
+                require_uninit $tmp_1;
                 $return.* = take x;
-                require_uninit _temp_2;
-                require_uninit _temp_0;
+                require_uninit $tmp_2;
+                require_uninit $tmp_0;
                 goto loop_end_1
               loop_end_1:
                 require_uninit x;
@@ -1963,20 +1882,20 @@ mod tests {
             source,
             "
             fn check(cond: bool) {
-              _temp_0: unit;
+              $tmp_0: unit;
               a: i64;
               entry:
                 branch(take cond) [true: if_true_0, false: if_false_1]
               if_true_0:
                 a = 1;
-                _temp_0 = unit;
+                $tmp_0 = unit;
                 require_uninit a;
                 goto if_merge_2
               if_false_1:
-                _temp_0 = unit;
+                $tmp_0 = unit;
                 goto if_merge_2
               if_merge_2:
-                require_uninit _temp_0;
+                require_uninit $tmp_0;
                 require_uninit cond;
                 return
             }
@@ -2081,11 +2000,11 @@ mod tests {
             "index expression must be evaluated exactly once:\n{lowered}"
         );
         assert!(
-            lowered.contains("call $i64_lt(copy _temp_"),
+            lowered.contains("call $i64_lt(copy $tmp_"),
             "lowered index must compare its saved value against the array length:\n{lowered}"
         );
         assert!(
-            lowered.contains(", 3, move _temp_"),
+            lowered.contains(", 3, move $tmp_"),
             "bounds check must use the array length:\n{lowered}"
         );
         assert!(
@@ -2171,12 +2090,12 @@ mod tests {
               u: unit;
               n: *Node;
               val: i64;
-              _temp_0: bool;
-              _temp_1: &out bool;
-              _temp_2: bool;
-              _temp_3: &out bool;
-              _temp_4: &out bool;
-              _temp_5: &out bool;
+              $tmp_0: bool;
+              $tmp_1: &out bool;
+              $tmp_2: bool;
+              $tmp_3: &out bool;
+              $tmp_4: &out bool;
+              $tmp_5: &out bool;
               entry:
                 switchEnum(tree) [Empty: switch_Empty_0, Node: switch_Node_1]
               switch_Empty_0:
@@ -2187,33 +2106,33 @@ mod tests {
               switch_Node_1:
                 n = copy tree as Node;
                 val = take n.*.value;
-                _temp_1 = &out _temp_0;
-                call is_equal(take val, take target, move _temp_1);
-                branch(move _temp_0) [true: if_true_3, false: if_false_4]
+                $tmp_1 = &out $tmp_0;
+                call is_equal(take val, take target, move $tmp_1);
+                branch(move $tmp_0) [true: if_true_3, false: if_false_4]
               if_true_3:
                 $return.* = true;
                 goto if_merge_5
               if_false_4:
-                _temp_3 = &out _temp_2;
-                call is_greater(take val, take target, move _temp_3);
-                branch(move _temp_2) [true: if_true_6, false: if_false_7]
+                $tmp_3 = &out $tmp_2;
+                call is_greater(take val, take target, move $tmp_3);
+                branch(move $tmp_2) [true: if_true_6, false: if_false_7]
               if_true_6:
-                _temp_4 = &out $return.*;
-                call search_tree(take n.*.left, take target, move _temp_4);
-                require_uninit _temp_4;
+                $tmp_4 = &out $return.*;
+                call search_tree(take n.*.left, take target, move $tmp_4);
+                require_uninit $tmp_4;
                 goto if_merge_8
               if_false_7:
-                _temp_5 = &out $return.*;
-                call search_tree(take n.*.right, take target, move _temp_5);
-                require_uninit _temp_5;
+                $tmp_5 = &out $return.*;
+                call search_tree(take n.*.right, take target, move $tmp_5);
+                require_uninit $tmp_5;
                 goto if_merge_8
               if_merge_8:
-                require_uninit _temp_3;
-                require_uninit _temp_2;
+                require_uninit $tmp_3;
+                require_uninit $tmp_2;
                 goto if_merge_5
               if_merge_5:
-                require_uninit _temp_1;
-                require_uninit _temp_0;
+                require_uninit $tmp_1;
+                require_uninit $tmp_0;
                 require_uninit val;
                 require_uninit n;
                 goto switch_merge_2
@@ -2258,21 +2177,21 @@ mod tests {
             "
             fn check(a: i64, b: i64, $return: &out bool) {
               x: i64;
-              _temp_0: i64;
-              _temp_1: &out i64;
-              _temp_2: &out i64;
-              _temp_3: &out bool;
+              $tmp_0: i64;
+              $tmp_1: &out i64;
+              $tmp_2: &out i64;
+              $tmp_3: &out bool;
               entry:
-                _temp_1 = &out _temp_0;
-                call $i64_mul(take b, 2, move _temp_1);
-                _temp_2 = &out x;
-                call $i64_add(take a, move _temp_0, move _temp_2);
-                require_uninit _temp_2;
-                require_uninit _temp_1;
-                require_uninit _temp_0;
-                _temp_3 = &out $return.*;
-                call $i64_lt(take x, 10, move _temp_3);
-                require_uninit _temp_3;
+                $tmp_1 = &out $tmp_0;
+                call $i64_mul(take b, 2, move $tmp_1);
+                $tmp_2 = &out x;
+                call $i64_add(take a, move $tmp_0, move $tmp_2);
+                require_uninit $tmp_2;
+                require_uninit $tmp_1;
+                require_uninit $tmp_0;
+                $tmp_3 = &out $return.*;
+                call $i64_lt(take x, 10, move $tmp_3);
+                require_uninit $tmp_3;
                 require_uninit x;
                 require_uninit $return;
                 require_uninit b;
@@ -2294,11 +2213,11 @@ mod tests {
             source,
             "
             fn check(a: u32, $return: &out u32) {
-              _temp_0: &out u32;
+              $tmp_0: &out u32;
               entry:
-                _temp_0 = &out $return.*;
-                call $u32_add(take a, 1u32, move _temp_0);
-                require_uninit _temp_0;
+                $tmp_0 = &out $return.*;
+                call $u32_add(take a, 1u32, move $tmp_0);
+                require_uninit $tmp_0;
                 require_uninit $return;
                 require_uninit a;
                 return
@@ -2333,11 +2252,11 @@ mod tests {
             source,
             "
             fn check(a: i64, $return: &out i64) {
-              _temp_0: never;
-              _temp_1: &out i64;
+              $tmp_0: never;
+              $tmp_1: &out i64;
               entry:
                 $return.* = 1;
-                require_uninit _temp_0;
+                require_uninit $tmp_0;
                 require_uninit $return;
                 require_uninit a;
                 return
@@ -2424,28 +2343,28 @@ mod tests {
             source,
             "
             fn f(res: &out i64) {
-              _temp_0: unit;
+              $tmp_0: unit;
               x: i64;
-              _temp_1: unit;
-              _temp_2: unit;
-              _temp_3: unit;
-              _temp_4: unit;
+              $tmp_1: unit;
+              $tmp_2: unit;
+              $tmp_3: unit;
+              $tmp_4: unit;
               entry:
                 x = 1;
-                _temp_1 = unit;
+                $tmp_1 = unit;
                 x = 20;
-                _temp_2 = unit;
-                require_uninit _temp_2;
+                $tmp_2 = unit;
+                require_uninit $tmp_2;
                 x = 10;
-                _temp_3 = unit;
-                require_uninit _temp_3;
-                require_uninit _temp_1;
+                $tmp_3 = unit;
+                require_uninit $tmp_3;
+                require_uninit $tmp_1;
                 res.* = take x;
-                _temp_4 = unit;
-                require_uninit _temp_4;
-                _temp_0 = unit;
+                $tmp_4 = unit;
+                require_uninit $tmp_4;
+                $tmp_0 = unit;
                 require_uninit x;
-                require_uninit _temp_0;
+                require_uninit $tmp_0;
                 require_uninit res;
                 return
             }
@@ -2465,12 +2384,12 @@ mod tests {
             source,
             "
             fn f(x: &mut i64, $return: &out i64) {
-              _temp_0: unit;
+              $tmp_0: unit;
               entry:
                 $return.* = take x.*;
                 x.* = 100;
-                _temp_0 = unit;
-                require_uninit _temp_0;
+                $tmp_0 = unit;
+                require_uninit $tmp_0;
                 require_uninit $return;
                 require_uninit x;
                 return
@@ -2496,32 +2415,32 @@ mod tests {
             source,
             "
             fn f(res: &out i64) {
-              _temp_0: unit;
+              $tmp_0: unit;
               x: i64;
-              _temp_1: unit;
-              _temp_2: unit;
-              _temp_3: unit;
-              _temp_4: unit;
-              _temp_5: unit;
+              $tmp_1: unit;
+              $tmp_2: unit;
+              $tmp_3: unit;
+              $tmp_4: unit;
+              $tmp_5: unit;
               entry:
                 x = 1;
                 res.* = take x;
-                _temp_1 = unit;
-                require_uninit _temp_1;
-                _temp_0 = unit;
+                $tmp_1 = unit;
+                require_uninit $tmp_1;
+                $tmp_0 = unit;
                 x = 10;
-                _temp_3 = unit;
-                require_uninit _temp_3;
+                $tmp_3 = unit;
+                require_uninit $tmp_3;
                 x = 30;
-                _temp_4 = unit;
-                require_uninit _temp_4;
-                _temp_2 = unit;
+                $tmp_4 = unit;
+                require_uninit $tmp_4;
+                $tmp_2 = unit;
                 x = 20;
-                _temp_5 = unit;
-                require_uninit _temp_5;
-                require_uninit _temp_2;
+                $tmp_5 = unit;
+                require_uninit $tmp_5;
+                require_uninit $tmp_2;
                 require_uninit x;
-                require_uninit _temp_0;
+                require_uninit $tmp_0;
                 require_uninit res;
                 return
             }
@@ -2547,55 +2466,55 @@ mod tests {
             source,
             "
             fn f(res: &out i64) {
-              _temp_0: unit;
+              $tmp_0: unit;
               x: i64;
-              _temp_1: unit;
-              _temp_2: unit;
-              _temp_3: unit;
-              _temp_4: unit;
-              _temp_5: i64;
-              _temp_6: &out i64;
-              _temp_7: unit;
-              _temp_8: i64;
-              _temp_9: &out i64;
-              _temp_10: unit;
+              $tmp_1: unit;
+              $tmp_2: unit;
+              $tmp_3: unit;
+              $tmp_4: unit;
+              $tmp_5: i64;
+              $tmp_6: &out i64;
+              $tmp_7: unit;
+              $tmp_8: i64;
+              $tmp_9: &out i64;
+              $tmp_10: unit;
               entry:
                 x = 0;
                 goto loop_start_0
               loop_start_0:
                 branch(true) [true: if_true_2, false: if_false_3]
               if_true_2:
-                require_uninit _temp_3;
-                require_uninit _temp_2;
-                _temp_6 = &out _temp_5;
-                call $i64_add(take x, 1, move _temp_6);
-                x = move _temp_5;
-                _temp_4 = unit;
-                require_uninit _temp_6;
-                require_uninit _temp_5;
-                require_uninit _temp_4;
+                require_uninit $tmp_3;
+                require_uninit $tmp_2;
+                $tmp_6 = &out $tmp_5;
+                call $i64_add(take x, 1, move $tmp_6);
+                x = move $tmp_5;
+                $tmp_4 = unit;
+                require_uninit $tmp_6;
+                require_uninit $tmp_5;
+                require_uninit $tmp_4;
                 goto loop_end_1
               if_false_3:
-                _temp_2 = unit;
+                $tmp_2 = unit;
                 goto if_merge_4
               if_merge_4:
-                _temp_9 = &out _temp_8;
-                call $i64_add(take x, 1, move _temp_9);
-                x = move _temp_8;
-                _temp_7 = unit;
-                require_uninit _temp_9;
-                require_uninit _temp_8;
-                require_uninit _temp_7;
-                require_uninit _temp_2;
+                $tmp_9 = &out $tmp_8;
+                call $i64_add(take x, 1, move $tmp_9);
+                x = move $tmp_8;
+                $tmp_7 = unit;
+                require_uninit $tmp_9;
+                require_uninit $tmp_8;
+                require_uninit $tmp_7;
+                require_uninit $tmp_2;
                 goto loop_start_0
               loop_end_1:
-                require_uninit _temp_1;
+                require_uninit $tmp_1;
                 res.* = take x;
-                _temp_10 = unit;
-                require_uninit _temp_10;
-                _temp_0 = unit;
+                $tmp_10 = unit;
+                require_uninit $tmp_10;
+                $tmp_0 = unit;
                 require_uninit x;
-                require_uninit _temp_0;
+                require_uninit $tmp_0;
                 require_uninit res;
                 return
             }

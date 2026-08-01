@@ -4,6 +4,7 @@ pub use crate::common::{
 };
 
 use indexmap::IndexMap;
+use std::collections::HashSet;
 
 /// A MIR type value with source attribution. See [`TypeKind`] for the
 /// shape variants. Two types with the same kind but different source metadata
@@ -66,9 +67,8 @@ impl std::hash::Hash for Type {
 /// Holds the referenced decl's name plus the two argument lists in
 /// lifetimes-first order. Both empty for a non-generic reference.
 ///
-/// Load-bearing across every site that names a decl at a use position —
-/// `TypeKind::Custom` today, extended to trait references and other
-/// generic-instantiation sites as the type system grows.
+/// Used wherever a declaration is named with generic arguments, including
+/// custom types, functions, traits, and methods.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Instance {
     pub name: String,
@@ -717,6 +717,27 @@ pub struct FunctionBody {
 }
 
 impl FunctionBody {
+    /// Add a local declaration and return its place.
+    pub fn add_local(&mut self, local: Local) -> Place {
+        let place = Place::Var(local.name.clone());
+        self.locals.push(local);
+        place
+    }
+
+    /// Create a collision-safe allocator for compiler locals with `prefix`.
+    pub fn local_allocator(&self, params: &[Param], prefix: impl Into<String>) -> LocalAllocator {
+        let occupied = params
+            .iter()
+            .map(|param| param.name.clone())
+            .chain(self.locals.iter().map(|local| local.name.clone()))
+            .collect();
+        LocalAllocator {
+            occupied,
+            prefix: prefix.into(),
+            next: 0,
+        }
+    }
+
     /// Build the place-root type map for a function body. Parameters precede
     /// body locals in declaration order.
     pub fn locals_map(&self, params: &[Param]) -> IndexMap<String, Type> {
@@ -777,14 +798,34 @@ impl FunctionBody {
     }
 }
 
+/// Adds fresh compiler locals to one function body.
+pub struct LocalAllocator {
+    occupied: HashSet<String>,
+    prefix: String,
+    next: usize,
+}
+
+impl LocalAllocator {
+    pub fn add_local(&mut self, body: &mut FunctionBody, ty: Type, source: SourceInfo) -> Place {
+        let name = loop {
+            let name = format!("{}{}", self.prefix, self.next);
+            self.next += 1;
+            if self.occupied.insert(name.clone()) {
+                break name;
+            }
+        };
+        body.add_local(Local { name, ty, source })
+    }
+}
+
 /// Everything a type-parameter binder promises about its parameter.
 /// `markers` carries the compiler-internal substructural vocabulary
 /// (Copy/Drop/Move); `traits` carries user-declared trait bounds as
 /// `Instance` values — trait references share the type-reference shape
 /// (name + lifetime args + type args), and until trait bounds grow
 /// bound-specific state (source attribution, negativity, HRTB) a plain
-/// `Vec<Instance>` says everything. Empty today; populated once
-/// trait-decl syntax lands.
+/// `Vec<Instance>` says everything. The HLL leaves it empty until trait-bound
+/// syntax lands.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Bounds {
     pub markers: Markers,

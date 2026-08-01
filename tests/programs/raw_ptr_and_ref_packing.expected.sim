@@ -25,28 +25,28 @@ struct<'s0, 's1> Pair: Move {
 extern fn<'s0, 's1> use_pair(p: Pair<'s0, 's1>);
 
 fn<'s0, 's1> pack_and_pass(x: i64, y: i64) {
-  _temp_0: unit;
+  $tmp_0: unit;
   xm: i64;
   ym: i64;
   p: Pair<'s0, 's1>;
-  _temp_1: unit;
+  $tmp_1: unit;
   entry:
     xm = move x;
     ym = move y;
     p.a = &mut xm;
     p.b = &mut ym;
     call use_pair(move p);
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
-    _temp_0 = unit;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
     require_uninit p;
     drop ym;
     require_uninit ym;
     drop xm;
     require_uninit xm;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit y;
     require_uninit x;
     return

@@ -1,43 +1,43 @@
 extern fn write(fd: i32, buf: *u8, count: u64);
 
 fn print_hi() {
-  _temp_0: unit;
+  $tmp_0: unit;
   s: [u8; 4];
   p: *u8;
-  _temp_1: unit;
+  $tmp_1: unit;
   entry:
     s = b"hi!\n";
     p = &raw s[0u64];
     call write(1i32, move p, 4u64);
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
-    _temp_0 = unit;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
     require_uninit p;
     drop s;
     require_uninit s;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 
 fn<'s0> main(exit: &out 's0 i32) {
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: unit;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
   entry:
     call print_hi();
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     exit.* = 0i32;
     unborrow exit;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit exit;
     return
 }

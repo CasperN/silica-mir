@@ -22,25 +22,25 @@ fn<'s0> list_empty($return: &out 's0 List) {
 
 fn<'s0> list_cons(value: i64, tail: List, $return: &out 's0 List) {
   p: *Node;
-  _temp_0: &out *Node;
-  _temp_1: unit;
-  _temp_2: unit;
-  _temp_3: unit;
+  $tmp_0: &out *Node;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
   entry:
-    _temp_0 = &out p;
-    call malloc_node(24, move _temp_0);
-    require_uninit _temp_0;
+    $tmp_0 = &out p;
+    call malloc_node(24, move $tmp_0);
+    require_uninit $tmp_0;
     p.*.value = move value;
-    _temp_2 = unit;
-    drop _temp_2;
-    require_uninit _temp_2;
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
     p.*.next = move tail;
-    _temp_3 = unit;
-    drop _temp_3;
-    require_uninit _temp_3;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     $return.* = List::Cons(move p);
     unborrow $return;
     require_uninit p;
@@ -51,33 +51,33 @@ fn<'s0> list_cons(value: i64, tail: List, $return: &out 's0 List) {
 }
 
 fn list_free(list: List) {
-  _temp_0: unit;
+  $tmp_0: unit;
   u: unit;
   p: *Node;
   tail: List;
-  _temp_1: unit;
+  $tmp_1: unit;
   entry:
     switchEnum(list) [Empty: switch_Empty_0, Cons: switch_Cons_1]
   switch_Empty_0:
     u = move list as Empty;
-    _temp_0 = move u;
+    $tmp_0 = move u;
     require_uninit u;
     goto switch_merge_2
   switch_Cons_1:
     p = move list as Cons;
     tail = move p.*.next;
     call free_node(move p);
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     call list_free(move tail);
-    _temp_0 = unit;
+    $tmp_0 = unit;
     require_uninit tail;
     require_uninit p;
     goto switch_merge_2
   switch_merge_2:
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit list;
     return
 }
@@ -85,10 +85,10 @@ fn list_free(list: List) {
 fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
   _: unit;
   p: *Node;
-  _temp_0: i64;
-  _temp_1: & List;
-  _temp_2: &out i64;
-  _temp_3: &out i64;
+  $tmp_0: i64;
+  $tmp_1: & List;
+  $tmp_2: &out i64;
+  $tmp_3: &out i64;
   entry:
     switchEnum(list.*) [Empty: switch_Empty_0, Cons: switch_Cons_1]
   switch_Empty_0:
@@ -102,16 +102,16 @@ fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
   switch_Cons_1:
     p = copy list.* as Cons;
     unborrow list;
-    _temp_1 = & p.*.next;
-    _temp_2 = &out _temp_0;
-    call list_sum(move _temp_1, move _temp_2);
-    _temp_3 = &out $return.*;
-    call $i64_add(move p.*.value, move _temp_0, move _temp_3);
+    $tmp_1 = & p.*.next;
+    $tmp_2 = &out $tmp_0;
+    call list_sum(move $tmp_1, move $tmp_2);
+    $tmp_3 = &out $return.*;
+    call $i64_add(move p.*.value, move $tmp_0, move $tmp_3);
     unborrow $return;
-    require_uninit _temp_3;
-    require_uninit _temp_2;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     drop p;
     require_uninit p;
     goto switch_merge_2
@@ -122,61 +122,61 @@ fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
 }
 
 fn<'s0> main(exit: &out 's0 i32) {
-  _temp_0: unit;
+  $tmp_0: unit;
   l0: List;
-  _temp_1: &out List;
+  $tmp_1: &out List;
   l1: List;
-  _temp_2: &out List;
+  $tmp_2: &out List;
   l2: List;
-  _temp_3: &out List;
+  $tmp_3: &out List;
   l3: List;
-  _temp_4: &out List;
+  $tmp_4: &out List;
   s: i64;
-  _temp_5: & List;
-  _temp_6: &out i64;
-  _temp_7: unit;
-  _temp_8: unit;
-  _temp_9: i32;
-  _temp_10: &out i32;
+  $tmp_5: & List;
+  $tmp_6: &out i64;
+  $tmp_7: unit;
+  $tmp_8: unit;
+  $tmp_9: i32;
+  $tmp_10: &out i32;
   entry:
-    _temp_1 = &out l0;
-    call list_empty(move _temp_1);
-    require_uninit _temp_1;
-    _temp_2 = &out l1;
-    call list_cons(3, move l0, move _temp_2);
-    require_uninit _temp_2;
-    _temp_3 = &out l2;
-    call list_cons(2, move l1, move _temp_3);
-    require_uninit _temp_3;
-    _temp_4 = &out l3;
-    call list_cons(1, move l2, move _temp_4);
-    require_uninit _temp_4;
-    _temp_5 = & l3;
-    _temp_6 = &out s;
-    call list_sum(move _temp_5, move _temp_6);
-    require_uninit _temp_6;
-    require_uninit _temp_5;
+    $tmp_1 = &out l0;
+    call list_empty(move $tmp_1);
+    require_uninit $tmp_1;
+    $tmp_2 = &out l1;
+    call list_cons(3, move l0, move $tmp_2);
+    require_uninit $tmp_2;
+    $tmp_3 = &out l2;
+    call list_cons(2, move l1, move $tmp_3);
+    require_uninit $tmp_3;
+    $tmp_4 = &out l3;
+    call list_cons(1, move l2, move $tmp_4);
+    require_uninit $tmp_4;
+    $tmp_5 = & l3;
+    $tmp_6 = &out s;
+    call list_sum(move $tmp_5, move $tmp_6);
+    require_uninit $tmp_6;
+    require_uninit $tmp_5;
     call list_free(move l3);
-    _temp_7 = unit;
-    drop _temp_7;
-    require_uninit _temp_7;
-    _temp_10 = &out _temp_9;
-    call $i64_to_i32(move s, move _temp_10);
-    exit.* = move _temp_9;
+    $tmp_7 = unit;
+    drop $tmp_7;
+    require_uninit $tmp_7;
+    $tmp_10 = &out $tmp_9;
+    call $i64_to_i32(move s, move $tmp_10);
+    exit.* = move $tmp_9;
     unborrow exit;
-    _temp_8 = unit;
-    require_uninit _temp_10;
-    require_uninit _temp_9;
-    drop _temp_8;
-    require_uninit _temp_8;
-    _temp_0 = unit;
+    $tmp_8 = unit;
+    require_uninit $tmp_10;
+    require_uninit $tmp_9;
+    drop $tmp_8;
+    require_uninit $tmp_8;
+    $tmp_0 = unit;
     require_uninit s;
     require_uninit l3;
     require_uninit l2;
     require_uninit l1;
     require_uninit l0;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit exit;
     return
 }

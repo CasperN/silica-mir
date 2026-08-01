@@ -230,105 +230,85 @@ fn elaborate_function(
         return_obligations: &return_obligations,
     };
     let exits = dataflow::run(&analysis, body);
-    let mut next_clone = 0usize;
-    let FunctionBody {
-        locals: body_locals,
-        blocks,
-    } = body;
-    for block in blocks {
-        let Some(exit_demand) = exits.get(&block.label) else {
-            continue;
-        };
-        let mut demand = exit_demand.clone();
-        analysis.transfer_terminator(&mut demand, &block.terminator);
-        let block_label = block.label.clone();
-        let mut ctx = RelaxCtx {
-            env,
-            locals: &mut locals,
-            body_locals,
-            next_clone: &mut next_clone,
-            d,
-            func_name: &func_name,
-            block_label: &block_label,
-        };
-        let mut terminator_prefix = Vec::new();
-        relax_terminator(
-            &mut block.terminator,
-            &mut demand,
-            &mut ctx,
-            &mut terminator_prefix,
-        );
+    let mut blocks = std::mem::take(&mut body.blocks);
+    {
+        let mut local_allocator = body.local_allocator(&func.params, "$clone_");
+        for block in &mut blocks {
+            let Some(exit_demand) = exits.get(&block.label) else {
+                continue;
+            };
+            let mut demand = exit_demand.clone();
+            analysis.transfer_terminator(&mut demand, &block.terminator);
+            let block_label = block.label.clone();
+            let mut ctx = RelaxCtx {
+                env,
+                locals: &mut locals,
+                body,
+                local_allocator: &mut local_allocator,
+                d,
+                func_name: &func_name,
+                block_label: &block_label,
+            };
+            let mut terminator_prefix = Vec::new();
+            relax_terminator(
+                &mut block.terminator,
+                &mut demand,
+                &mut ctx,
+                &mut terminator_prefix,
+            );
 
-        let mut rewritten = Vec::new();
-        for mut stmt in std::mem::take(&mut block.statements).into_iter().rev() {
-            let mut prefix = Vec::new();
-            relax_statement(&mut stmt, &mut demand, &mut ctx, &mut prefix);
-            rewritten.push((prefix, stmt));
+            let mut rewritten = Vec::new();
+            for mut stmt in std::mem::take(&mut block.statements).into_iter().rev() {
+                let mut prefix = Vec::new();
+                relax_statement(&mut stmt, &mut demand, &mut ctx, &mut prefix);
+                rewritten.push((prefix, stmt));
+            }
+            for (prefix, stmt) in rewritten.into_iter().rev() {
+                block.statements.extend(prefix);
+                block.statements.push(stmt);
+            }
+            block.statements.append(&mut terminator_prefix);
         }
-        for (prefix, stmt) in rewritten.into_iter().rev() {
-            block.statements.extend(prefix);
-            block.statements.push(stmt);
-        }
-        block.statements.append(&mut terminator_prefix);
     }
+    body.blocks = blocks;
 }
 
 /// Per-block relaxation context. Bundles the env/locals/scope needed for
 /// type queries with the diagnostics sink and the function/block context
 /// used when emitting a user-facing error (e.g. `take` of a place that
 /// cannot be legally consumed or preserved).
-struct RelaxCtx<'a> {
-    env: LocalEnv<'a>,
-    locals: &'a mut IndexMap<String, Type>,
-    body_locals: &'a mut Vec<Local>,
-    next_clone: &'a mut usize,
-    d: &'a mut Diagnostics,
-    func_name: &'a str,
-    block_label: &'a str,
+struct RelaxCtx<'env, 'ctx> {
+    env: LocalEnv<'env>,
+    locals: &'ctx mut IndexMap<String, Type>,
+    body: &'ctx mut FunctionBody,
+    local_allocator: &'ctx mut LocalAllocator,
+    d: &'ctx mut Diagnostics,
+    func_name: &'ctx str,
+    block_label: &'ctx str,
 }
 
-impl RelaxCtx<'_> {
-    fn auto_clone(&mut self, place: &Place, ty: &Type, source: SourceInfo) -> CloneExpansion {
-        let id = loop {
-            let id = *self.next_clone;
-            *self.next_clone += 1;
-            let names = clone_local_names(id);
-            if names.iter().all(|name| !self.locals.contains_key(name)) {
-                break id;
-            }
+impl RelaxCtx<'_, '_> {
+    fn add_local(&mut self, ty: Type, source: SourceInfo) -> Place {
+        let place = self
+            .local_allocator
+            .add_local(self.body, ty.clone(), source);
+        let Place::Var(name) = &place else {
+            unreachable!("local allocator always returns a variable place");
         };
-        let [value_name, recv_name, out_name] = clone_local_names(id);
-        let generated_source = SourceInfo::generated(GeneratedKind::CopyRelaxation, source.span());
-        let generated_locals = [
-            Local {
-                name: value_name.clone(),
-                ty: ty.clone(),
-                source: generated_source,
-            },
-            Local {
-                name: recv_name.clone(),
-                ty: shared_ref_ty(ty.clone()),
-                source: generated_source,
-            },
-            Local {
-                name: out_name.clone(),
-                ty: out_ref_ty(ty.clone()),
-                source: generated_source,
-            },
-        ];
-        for local in generated_locals {
-            self.locals.insert(local.name.clone(), local.ty.clone());
-            self.body_locals.push(local);
-        }
+        self.locals.insert(name.clone(), ty);
+        place
+    }
 
-        let value = var_place(value_name);
-        let recv = var_place(recv_name);
-        let out = var_place(out_name);
-        let callee = const_op(ConstVal::TraitFn {
-            trait_path: Instance::bare("AutoClone"),
-            self_ty: ty.clone(),
-            method: Instance::bare("clone"),
-        });
+    fn auto_clone(&mut self, place: &Place, ty: &Type, source: SourceInfo) -> CloneExpansion {
+        let generated_source = SourceInfo::generated(GeneratedKind::CopyRelaxation, source.span());
+        let value = self.add_local(ty.clone(), generated_source);
+        let recv = self.add_local(shared_ref_ty(ty.clone()), generated_source);
+        let out = self.add_local(out_ref_ty(ty.clone()), generated_source);
+        let callee = trait_fn_op(
+            Instance::bare("AutoClone"),
+            ty.clone(),
+            Instance::bare("clone"),
+        );
         CloneExpansion {
             operand: move_op(value.clone()),
             statements: vec![
@@ -347,14 +327,6 @@ impl RelaxCtx<'_> {
 struct CloneExpansion {
     operand: Operand,
     statements: Vec<Statement>,
-}
-
-fn clone_local_names(id: usize) -> [String; 3] {
-    [
-        format!("$clone{id}"),
-        format!("$clone_recv{id}"),
-        format!("$clone_out{id}"),
-    ]
 }
 
 /// Ref-typed places whose obligation requires an Init pointee at expiry.

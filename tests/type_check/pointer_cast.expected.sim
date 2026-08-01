@@ -35,13 +35,13 @@ fn<'s0: 's2, 's1: 's2, 's2> ref_to_ref(r: & 's0 i64, $return: &out 's1 & 's2 u8)
 }
 
 fn<'s0, 's1> mut_ref_to_mut_ptr(r: &mut 's0 i64, $return: &out 's1 *u8) {
-  _temp_0: *i64;
+  $tmp_0: *i64;
   entry:
-    _temp_0 = &raw r.*;
+    $tmp_0 = &raw r.*;
     unborrow r;
-    $return.* = ptr_cast(move _temp_0, *u8);
+    $return.* = ptr_cast(move $tmp_0, *u8);
     unborrow $return;
-    require_uninit _temp_0;
+    require_uninit $tmp_0;
     require_uninit $return;
     require_uninit r;
     return
@@ -57,16 +57,16 @@ fn<'s0: 's1, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
 }
 
 fn<'s0: 's2, 's1: 's2, 's2> mut_ref_to_mut_ref(r: &mut 's0 i64, $return: &out 's1 &mut 's2 u8) {
-  _temp_0: *u8;
-  _temp_1: *i64;
+  $tmp_0: *u8;
+  $tmp_1: *i64;
   entry:
-    _temp_1 = &raw r.*;
+    $tmp_1 = &raw r.*;
     unborrow r;
-    _temp_0 = ptr_cast(move _temp_1, *u8);
-    $return.* = ptr_cast(move _temp_0, &mut u8);
+    $tmp_0 = ptr_cast(move $tmp_1, *u8);
+    $return.* = ptr_cast(move $tmp_0, &mut u8);
     unborrow $return;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     require_uninit r;
     return

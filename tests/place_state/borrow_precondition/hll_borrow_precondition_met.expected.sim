@@ -37,15 +37,15 @@ fn<'s0> take_scalar(y: i64, $return: &out 's0 i64) {
 }
 
 fn<'s0> shared_of_init(x: i64, $return: &out 's0 i64) {
-  _temp_0: & i64;
-  _temp_1: &out i64;
+  $tmp_0: & i64;
+  $tmp_1: &out i64;
   entry:
-    _temp_0 = & x;
-    _temp_1 = &out $return.*;
-    call use_shared(move _temp_0, move _temp_1);
+    $tmp_0 = & x;
+    $tmp_1 = &out $return.*;
+    call use_shared(move $tmp_0, move $tmp_1);
     unborrow $return;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     drop x;
     require_uninit x;
@@ -54,16 +54,16 @@ fn<'s0> shared_of_init(x: i64, $return: &out 's0 i64) {
 
 fn<'s0> mut_of_init(x: i64, $return: &out 's0 i64) {
   y: i64;
-  _temp_0: &mut i64;
-  _temp_1: &out i64;
+  $tmp_0: &mut i64;
+  $tmp_1: &out i64;
   entry:
     y = move x;
-    _temp_0 = &mut y;
-    _temp_1 = &out $return.*;
-    call use_mut(move _temp_0, move _temp_1);
+    $tmp_0 = &mut y;
+    $tmp_1 = &out $return.*;
+    call use_mut(move $tmp_0, move $tmp_1);
     unborrow $return;
-    require_uninit _temp_1;
-    require_uninit _temp_0;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     drop y;
     require_uninit y;
     require_uninit $return;
@@ -73,22 +73,22 @@ fn<'s0> mut_of_init(x: i64, $return: &out 's0 i64) {
 
 fn<'s0> mut_of_init_field_of_partial($return: &out 's0 i64) {
   p: P;
-  _temp_0: unit;
+  $tmp_0: unit;
   r: &mut i64;
   v: i64;
-  _temp_1: unit;
+  $tmp_1: unit;
   entry:
     p.x = 1;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     r = &mut p.x;
     v = copy r.*;
     unborrow r;
     p.y = 2;
-    _temp_1 = unit;
-    drop _temp_1;
-    require_uninit _temp_1;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
     $return.* = move v;
     unborrow $return;
     require_uninit v;
@@ -102,14 +102,14 @@ fn<'s0> mut_of_init_field_of_partial($return: &out 's0 i64) {
 fn<'s0> out_of_never_init($return: &out 's0 i64) {
   x: i64;
   r: &out i64;
-  _temp_0: unit;
+  $tmp_0: unit;
   entry:
     r = &out x;
     r.* = 42;
     unborrow r;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     $return.* = move x;
     unborrow $return;
     require_uninit r;
@@ -121,16 +121,16 @@ fn<'s0> out_of_never_init($return: &out 's0 i64) {
 fn<'s0> out_of_init_drop_type(x: i64, $return: &out 's0 i64) {
   y: i64;
   r: &out i64;
-  _temp_0: unit;
+  $tmp_0: unit;
   entry:
     y = move x;
     drop y;
     r = &out y;
     r.* = 2;
     unborrow r;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     $return.* = move y;
     unborrow $return;
     require_uninit r;
@@ -160,16 +160,16 @@ fn<'s0> deinit_of_init(b: Box, $return: &out 's0 Box) {
 }
 
 fn uninit_of_never_init() {
-  _temp_0: unit;
+  $tmp_0: unit;
   x: i64;
   r: &uninit i64;
   entry:
     r = &uninit x;
     unborrow r;
-    _temp_0 = unit;
+    $tmp_0 = unit;
     require_uninit r;
     require_uninit x;
-    drop _temp_0;
-    require_uninit _temp_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }

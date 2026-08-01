@@ -1,37 +1,37 @@
 fn<'s0> use_val(x: &mut 's0 i64) {
-  _temp_0: unit;
+  $tmp_0: unit;
   entry:
     unborrow x;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit x;
     return
 }
 
 fn<'s0> reborrow_ok(r: &mut 's0 i64) {
-  _temp_0: unit;
-  _temp_1: unit;
-  _temp_2: &mut i64;
-  _temp_3: unit;
-  _temp_4: &mut i64;
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: &mut i64;
+  $tmp_3: unit;
+  $tmp_4: &mut i64;
   entry:
-    _temp_2 = &mut r.*;
-    call use_val(move _temp_2);
-    _temp_1 = unit;
-    require_uninit _temp_2;
-    drop _temp_1;
-    require_uninit _temp_1;
-    _temp_4 = &mut r.*;
-    call use_val(move _temp_4);
+    $tmp_2 = &mut r.*;
+    call use_val(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_4 = &mut r.*;
+    call use_val(move $tmp_4);
     unborrow r;
-    _temp_3 = unit;
-    require_uninit _temp_4;
-    drop _temp_3;
-    require_uninit _temp_3;
-    _temp_0 = unit;
-    drop _temp_0;
-    require_uninit _temp_0;
+    $tmp_3 = unit;
+    require_uninit $tmp_4;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     require_uninit r;
     return
 }
