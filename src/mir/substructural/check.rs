@@ -52,7 +52,7 @@ pub fn check_statements(program: &IndexedProgram, d: &mut Diagnostics) {
 }
 
 fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     for block in &body.blocks {
         for stmt in &block.statements {
             check_stmt(env, func, block, &locals, stmt, stmt.source, d);

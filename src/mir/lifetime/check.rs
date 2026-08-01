@@ -41,10 +41,10 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
     if body.blocks.is_empty() {
         return;
     }
-    let region_ctx = region::build_region_ctx(func, env);
+    let region_ctx = region::build_region_ctx(func, body, env);
     let entry_states = loans::run(body);
     let mut constraints = constraints::ConstraintSet::new();
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     let mut checker = Checker {
         env,
         func,
@@ -437,8 +437,8 @@ pub fn constraints_for(env: &IndexedProgram, func: &Function) -> constraints::Co
     if body.blocks.is_empty() {
         return cs;
     }
-    let region_ctx = region::build_region_ctx(func, env);
-    let locals = func.locals_map();
+    let region_ctx = region::build_region_ctx(func, body, env);
+    let locals = body.locals_map(&func.params);
     let mut dummy_d = Diagnostics::default();
     let mut checker = Checker {
         env,

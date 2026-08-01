@@ -78,7 +78,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
     // Arm reachability needs place_state's per-block variant
     // refinement; skip it for functions type_check has already
     // rejected (we may not have a well-typed enum to consult).
-    let entry_states = block_entry_states(env, func);
+    let entry_states = block_entry_states(env, func, body);
     for block in &body.blocks {
         if !reached.contains(block.label.as_str()) {
             continue;
@@ -86,7 +86,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
         let TerminatorKind::SwitchEnum { place, cases } = &block.terminator.kind else {
             continue;
         };
-        check_switch_structure(env, func, block, place, cases, d);
+        check_switch_structure(env, func, body, block, place, cases, d);
         let Some(state) = entry_states.get(&block.label) else {
             continue;
         };
@@ -97,6 +97,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
             crate::mir::place_state::analysis::transfer_stmt_silent(
                 env,
                 func,
+                body,
                 stmt,
                 &mut term_state,
             );
@@ -114,6 +115,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
 fn check_switch_structure(
     env: LocalEnv<'_>,
     func: &Function,
+    body: &FunctionBody,
     block: &BasicBlock,
     place: &Place,
     cases: &[(String, String)],
@@ -129,7 +131,7 @@ fn check_switch_structure(
             "switchEnum requires at least one arm".to_string(),
         ));
     }
-    let Some(enum_decl) = resolve_enum_of_place(env, func, place) else {
+    let Some(enum_decl) = resolve_enum_of_place(env, func, body, place) else {
         return;
     };
     let handled: BTreeSet<&str> = cases.iter().map(|(v, _)| v.as_str()).collect();
@@ -216,7 +218,7 @@ fn check_switch_arms(
     d: &mut Diagnostics,
 ) {
     let terminator_source = block.terminator.source;
-    let Some(enum_decl) = resolve_enum_of_place(env, func, place) else {
+    let Some(enum_decl) = resolve_enum_of_place(env, func, body, place) else {
         return;
     };
     let declared: BTreeSet<&str> = enum_decl.variants.iter().map(|v| v.name.as_str()).collect();
@@ -337,9 +339,10 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
 fn resolve_enum_of_place<'a>(
     env: LocalEnv<'a>,
     func: &Function,
+    body: &FunctionBody,
     place: &Place,
 ) -> Option<&'a EnumDecl> {
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     let ty = env.type_of_place(place, &locals).ok()?;
     let TypeKind::Custom(inst) = ty.kind else {
         return None;

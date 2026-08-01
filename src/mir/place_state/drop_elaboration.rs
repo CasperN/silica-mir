@@ -72,112 +72,95 @@ struct FnPlan {
 
 /// Insert return-leak drops in `program`.
 pub fn elaborate(program: &mut IndexedProgram) {
-    // Plan (immutable): compute the per-function insertion set.
-    let mut plans: IndexMap<String, FnPlan> = IndexMap::new();
-    for func in program.functions() {
-        let plan = plan_for_function(program, func);
-        if !plan.pre_stmt.is_empty() || !plan.rewrite_stmt.is_empty() || !plan.cross_edge.is_empty()
-        {
-            plans.insert(func.meta.name.clone(), plan);
+    program.visit_function_bodies_mut(|env, func, body| {
+        let plan = plan_for_function(env, func, body);
+        apply_plan(body, &plan);
+    });
+}
+
+fn apply_plan(body: &mut FunctionBody, plan: &FnPlan) {
+    // Statement rewrites first: replace in place, no index shift.
+    // Pair with the pre-stmt drops planned for the same index.
+    for block in &mut body.blocks {
+        for ((label, idx), new_stmt) in &plan.rewrite_stmt {
+            if label != &block.label {
+                continue;
+            }
+            if let Some(slot) = block.statements.get_mut(*idx) {
+                *slot = new_stmt.clone();
+            }
         }
     }
 
-    // Apply (mutable): splice the planned changes into each body.
-    for func in program.functions.values_mut() {
-        let Some(plan) = plans.get(&func.meta.name) else {
-            continue;
-        };
-        let Some(body) = &mut func.body else {
-            continue;
-        };
-
-        // Statement rewrites first: replace in place, no index shift.
-        // Pair with the pre-stmt drops planned for the same index.
-        for block in &mut body.blocks {
-            for ((label, idx), new_stmt) in &plan.rewrite_stmt {
-                if label != &block.label {
-                    continue;
-                }
-                if let Some(slot) = block.statements.get_mut(*idx) {
-                    *slot = new_stmt.clone();
-                }
-            }
-        }
-
-        // Pre-stmt drops: splice into each block at the recorded
-        // positions (0..=N, where pos=N means "before terminator").
-        // Sort descending so earlier splices don't invalidate later
-        // indices.
-        for block in &mut body.blocks {
-            let mut inserts: Vec<(usize, &Vec<Place>)> = plan
-                .pre_stmt
+    // Pre-stmt drops: splice into each block at the recorded
+    // positions (0..=N, where pos=N means "before terminator").
+    // Sort descending so earlier splices don't invalidate later
+    // indices.
+    for block in &mut body.blocks {
+        let mut inserts: Vec<(usize, &Vec<Place>)> = plan
+            .pre_stmt
+            .iter()
+            .filter(|((label, _), _)| label == &block.label)
+            .map(|((_, pos), v)| (*pos, v))
+            .collect();
+        inserts.sort_by(|a, b| b.0.cmp(&a.0));
+        for (pos, places) in inserts {
+            let span = block
+                .statements
+                .get(pos)
+                .map(|s| s.span())
+                .unwrap_or(block.terminator.span());
+            let items: Vec<Statement> = places
                 .iter()
-                .filter(|((label, _), _)| label == &block.label)
-                .map(|((_, pos), v)| (*pos, v))
+                .map(|p| {
+                    drop_stmt(
+                        p.clone(),
+                        SourceInfo::generated(GeneratedKind::DropElaboration, span),
+                    )
+                })
                 .collect();
-            inserts.sort_by(|a, b| b.0.cmp(&a.0));
-            for (pos, places) in inserts {
-                let span = block
-                    .statements
-                    .get(pos)
-                    .map(|s| s.span())
-                    .unwrap_or(block.terminator.span());
-                let items: Vec<Statement> = places
-                    .iter()
-                    .map(|p| {
-                        drop_stmt(
-                            p.clone(),
-                            SourceInfo::generated(GeneratedKind::DropElaboration, span),
-                        )
-                    })
-                    .collect();
-                block.statements.splice(pos..pos, items);
-            }
+            block.statements.splice(pos..pos, items);
         }
+    }
 
-        // Cross-edge drops: split each edge (idempotent), then append.
-        //
-        // TODO(diagnostic quality): the checker walks these synthesized
-        // split-edge blocks with the block's entry state, which reflects
-        // the predecessor's — not the successor's — divergence. When the
-        // pred side has a place NeverInit and cleanup would read it,
-        // the checker re-fires a UseBeforeInit-class diagnostic at the
-        // synthesized block, in addition to the real user-visible fire
-        // at the merge. See fixture `struct_with_ref_field_one_arm` in
-        // tests/place_state/cfg_shape/init_across_cfg_shapes_violations.sim.
-        // Fix candidate: filter drops here to only those whose place is
-        // Init at the pred's exit state, so no cleanup is emitted for
-        // a place the pred never initialised.
-        for ((pred, succ), places) in &plan.cross_edge {
-            let split_label = cfg_edit::split_edge(body, pred, succ);
-            let split_block = body
-                .blocks
-                .iter_mut()
-                .find(|b| b.label == split_label)
-                .expect("split_edge just guaranteed this block exists");
-            let span = split_block.terminator.span();
-            for p in places {
-                split_block.statements.push(drop_stmt(
-                    p.clone(),
-                    SourceInfo::generated(GeneratedKind::DropElaboration, span),
-                ));
-            }
+    // Cross-edge drops: split each edge (idempotent), then append.
+    //
+    // TODO(diagnostic quality): the checker walks these synthesized
+    // split-edge blocks with the block's entry state, which reflects
+    // the predecessor's — not the successor's — divergence. When the
+    // pred side has a place NeverInit and cleanup would read it,
+    // the checker re-fires a UseBeforeInit-class diagnostic at the
+    // synthesized block, in addition to the real user-visible fire
+    // at the merge. See fixture `struct_with_ref_field_one_arm` in
+    // tests/place_state/cfg_shape/init_across_cfg_shapes_violations.sim.
+    // Fix candidate: filter drops here to only those whose place is
+    // Init at the pred's exit state, so no cleanup is emitted for
+    // a place the pred never initialised.
+    for ((pred, succ), places) in &plan.cross_edge {
+        let split_label = cfg_edit::split_edge(body, pred, succ);
+        let split_block = body
+            .blocks
+            .iter_mut()
+            .find(|b| b.label == split_label)
+            .expect("split_edge just guaranteed this block exists");
+        let span = split_block.terminator.span();
+        for p in places {
+            split_block.statements.push(drop_stmt(
+                p.clone(),
+                SourceInfo::generated(GeneratedKind::DropElaboration, span),
+            ));
         }
     }
 }
 
-fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
+fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) -> FnPlan {
     let mut plan = FnPlan::default();
-    let Some(body) = &func.body else {
-        return plan;
-    };
     if body.blocks.is_empty() {
         return plan;
     }
 
-    let env = LocalEnv::for_decl(env, &func.meta.params);
-    let entry_states = block_entry_states(env, func);
-    let locals = func.locals_map();
+    let entry_states = block_entry_states(env, func, body);
+    let locals = body.locals_map(&func.params);
     // The cross-edge fallback below needs the state of the program it will
     // actually emit, including the drops planned before ghost requirements.
     // Looking only at the original fixpoint state would schedule a second
@@ -212,6 +195,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
                     transfer_stmt_silent(
                         env,
                         func,
+                        body,
                         &drop_stmt(
                             place.clone(),
                             SourceInfo::generated(GeneratedKind::DropElaboration, stmt.span()),
@@ -227,7 +211,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
             // effect, but we track the elaborated form for
             // correctness under later analysis.
             let effective = rewrite.clone().unwrap_or_else(|| stmt.clone());
-            transfer_stmt_silent(env, func, &effective, &mut state);
+            transfer_stmt_silent(env, func, body, &effective, &mut state);
             if let Some(new_stmt) = rewrite {
                 plan.rewrite_stmt
                     .insert((block.label.clone(), stmt_idx), new_stmt);
@@ -236,7 +220,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
         // Pre-terminator cleanup for return blocks: drop everything
         // still Init-Drop at this point.
         if matches!(block.terminator.kind, TerminatorKind::Return) {
-            let drops = plan_drops_at_return(func, &state, env);
+            let drops = plan_drops_at_return(func, body, &state, env);
             if !drops.is_empty() {
                 let insert_pos = block.statements.len();
                 plan.pre_stmt
@@ -262,7 +246,7 @@ fn plan_for_function(env: &IndexedProgram, func: &Function) -> FnPlan {
         let Some(block_entry) = entry_states.get(&block.label) else {
             continue;
         };
-        let diverged_paths = collect_diverged_paths(env.program(), func, block_entry);
+        let diverged_paths = collect_diverged_paths(env.program(), &locals, block_entry);
         if diverged_paths.is_empty() {
             continue;
         }
@@ -474,12 +458,11 @@ fn is_init_and_drop(
 /// diagnostic on the paired misuse.
 fn collect_diverged_paths(
     env: &IndexedProgram,
-    func: &Function,
+    locals: &IndexMap<String, Type>,
     state: &PointState,
 ) -> Vec<(Place, Type)> {
     let mut out = Vec::new();
-    let locals = func.locals_map();
-    for (name, ty) in &locals {
+    for (name, ty) in locals {
         let Some(root_state) = state.locals.get(name) else {
             continue;
         };
@@ -615,16 +598,19 @@ fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
     }
 }
 
-fn plan_drops_at_return(func: &Function, state: &PointState, env: LocalEnv<'_>) -> Vec<Place> {
+fn plan_drops_at_return(
+    func: &Function,
+    body: &FunctionBody,
+    state: &PointState,
+    env: LocalEnv<'_>,
+) -> Vec<Place> {
     // Combined declaration order: params, then locals. LIFO drop = reverse.
     let mut order: Vec<(String, Type)> = Vec::new();
     for p in &func.params {
         order.push((p.name.clone(), p.ty.clone()));
     }
-    if let Some(body) = &func.body {
-        for l in &body.locals {
-            order.push((l.name.clone(), l.ty.clone()));
-        }
+    for l in &body.locals {
+        order.push((l.name.clone(), l.ty.clone()));
     }
 
     let mut drops = Vec::new();

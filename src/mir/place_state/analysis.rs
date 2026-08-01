@@ -716,14 +716,15 @@ pub(super) fn read_at(
 /// Also returns a closure that advances a state through a single
 /// statement (silent — no diagnostics), so callers can walk a block
 /// forward from its entry state to compute intermediate points.
-pub fn block_entry_states(env: LocalEnv<'_>, func: &Function) -> IndexMap<String, PointState> {
-    let Some(body) = &func.body else {
-        return IndexMap::new();
-    };
+pub fn block_entry_states(
+    env: LocalEnv<'_>,
+    func: &Function,
+    body: &FunctionBody,
+) -> IndexMap<String, PointState> {
     if body.blocks.is_empty() {
         return IndexMap::new();
     }
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     let ctx = PlaceStateContext {
         env,
         locals: &locals,
@@ -738,10 +739,11 @@ pub fn block_entry_states(env: LocalEnv<'_>, func: &Function) -> IndexMap<String
 pub fn transfer_stmt_silent(
     env: LocalEnv<'_>,
     func: &Function,
+    body: &FunctionBody,
     stmt: &Statement,
     state: &mut PointState,
 ) {
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     let ctx = PlaceStateContext {
         env,
         locals: &locals,
@@ -751,17 +753,15 @@ pub fn transfer_stmt_silent(
 
 pub fn states_before_returns<'a>(
     env: LocalEnv<'_>,
-    func: &'a Function,
+    func: &Function,
+    body: &'a FunctionBody,
 ) -> Vec<(&'a BasicBlock, PointState)> {
     let mut out = Vec::new();
-    let Some(body) = &func.body else {
-        return out;
-    };
     if body.blocks.is_empty() {
         return out;
     }
 
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     let ctx = PlaceStateContext {
         env,
         locals: &locals,

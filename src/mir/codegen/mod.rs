@@ -202,7 +202,7 @@ impl<'a> CodeGenContext<'a> {
     /// per-fn field can't be missed at the reset boundary.
     fn reset_for_function(&mut self, f: &Function) {
         self.v_counter = 0;
-        self.locals = f.locals_map();
+        self.locals.clear();
         self.current_fn_abi = f.abi.clone();
         self.pending_default_blocks.clear();
     }
@@ -434,6 +434,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
         writeln!(cx.out).unwrap();
         return;
     };
+    cx.locals = body.locals_map(&f.params);
 
     // Synthetic `.init` block: alloca every param and local, store each
     // arg into its slot, then br to the MIR entry. `.` is a legal LLVM

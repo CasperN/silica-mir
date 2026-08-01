@@ -185,11 +185,12 @@ impl RegionCtx {
 /// param-substitution rule as `collect_borrowers`.
 pub fn build_region_ctx(
     func: &Function,
+    body: &FunctionBody,
     env: &crate::mir::type_check::IndexedProgram,
 ) -> RegionCtx {
     use crate::mir::helpers::var_place;
     let mut ctx = RegionCtx::new();
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     for (name, ty) in &locals {
         // Every local has a body-local storage region. Borrows of the
         // local's own stack slot (`&x`, `&x.f`, `&x[k]`) resolve here.
@@ -398,7 +399,8 @@ mod tests {
         let (mut env, _errs) = IndexedProgram::build(&program);
         crate::mir::desugar::lifetime::desugar_program(&mut env);
         let func = env.functions.get("f").expect("fn f");
-        let ctx = build_region_ctx(func, &env);
+        let body = func.body.as_ref().expect("fn f has a body");
+        let ctx = build_region_ctx(func, body, &env);
         assert_eq!(
             ctx.get(&var_place("x")),
             Some(&Region::Named(Lifetime("a".into())))

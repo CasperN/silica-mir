@@ -717,6 +717,20 @@ pub struct FunctionBody {
 }
 
 impl FunctionBody {
+    /// Build the place-root type map for a function body. Parameters precede
+    /// body locals in declaration order.
+    pub fn locals_map(&self, params: &[Param]) -> IndexMap<String, Type> {
+        params
+            .iter()
+            .map(|param| (param.name.clone(), param.ty.clone()))
+            .chain(
+                self.locals
+                    .iter()
+                    .map(|local| (local.name.clone(), local.ty.clone())),
+            )
+            .collect()
+    }
+
     /// Index blocks by label for O(1) lookup during dataflow.
     pub fn blocks_by_label(&self) -> IndexMap<&str, &BasicBlock> {
         self.blocks.iter().map(|b| (b.label.as_str(), b)).collect()
@@ -809,22 +823,6 @@ pub struct Function {
 }
 
 impl Function {
-    /// Build a `name -> type` map from the function's parameters and (if
-    /// present) its body's locals. Iteration follows declaration order:
-    /// params, then locals. Used by every analysis pass that needs to
-    /// look up the type of a place-root.
-    pub fn locals_map(&self) -> IndexMap<String, Type> {
-        let mut m = IndexMap::new();
-        for p in &self.params {
-            m.insert(p.name.clone(), p.ty.clone());
-        }
-        if let Some(body) = &self.body {
-            for l in &body.locals {
-                m.insert(l.name.clone(), l.ty.clone());
-            }
-        }
-        m
-    }
     /// Instantiate parameter types by substituting `type_args` for the function's declared type parameters.
     pub fn instantiate_params(&self, type_args: &[Type]) -> Vec<Type> {
         self.params

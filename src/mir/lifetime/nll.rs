@@ -55,7 +55,7 @@
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
 use crate::mir::dataflow::{self, Analysis, Direction};
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
@@ -63,24 +63,11 @@ use std::collections::BTreeSet;
 /// Elaborate `program` in place: insert `unborrow` statements at every
 /// borrower's last-use points. Idempotent.
 pub fn elaborate(program: &mut IndexedProgram) {
-    // Plan (immutable): compute the per-function insertion set.
-    let mut plans: IndexMap<String, ElaborationPlan> = IndexMap::new();
-    for func in program.functions() {
-        if let Some(plan) = plan_for_function(func, program) {
-            plans.insert(func.meta.name.clone(), plan);
+    program.visit_function_bodies_mut(|env, func, body| {
+        if let Some(plan) = plan_for_function(func, body, env) {
+            apply_plan(body, &plan);
         }
-    }
-
-    // Apply (mutable): splice the planned statements and edge splits.
-    for func in program.functions.values_mut() {
-        let Some(plan) = plans.get(&func.meta.name) else {
-            continue;
-        };
-        let Some(body) = &mut func.body else {
-            continue;
-        };
-        apply_plan(body, plan);
-    }
+    });
 }
 
 /// Planned insertions for a single function.
@@ -97,13 +84,16 @@ struct ElaborationPlan {
     cross_edge: IndexMap<(String, String), Vec<Place>>,
 }
 
-fn plan_for_function(func: &Function, env: &IndexedProgram) -> Option<ElaborationPlan> {
-    let body = func.body.as_ref()?;
+fn plan_for_function(
+    func: &Function,
+    body: &FunctionBody,
+    env: LocalEnv<'_>,
+) -> Option<ElaborationPlan> {
     if body.blocks.is_empty() {
         return None;
     }
 
-    let borrowers = collect_borrowers(func, env);
+    let borrowers = collect_borrowers(func, body, env.program());
     if borrowers.is_empty() {
         return None;
     }
@@ -451,9 +441,13 @@ fn deref_ancestor(place: &Place) -> Option<Place> {
 /// self-referential type declarations is bounded by tracking visited
 /// type names on each root walk. The Array precision gap is documented
 /// on `region::walk_ref_places`.
-fn collect_borrowers(func: &Function, env: &IndexedProgram) -> BTreeSet<Place> {
+fn collect_borrowers(
+    func: &Function,
+    body: &FunctionBody,
+    env: &IndexedProgram,
+) -> BTreeSet<Place> {
     let mut out = BTreeSet::new();
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     for (name, ty) in &locals {
         let mut visited = BTreeSet::new();
         super::region::walk_ref_places(

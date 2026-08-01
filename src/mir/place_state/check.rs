@@ -22,10 +22,10 @@ pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
 
 /// Return validation is part of the single final place-state check.
 pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) {
-    for (func, _body) in program.function_bodies() {
+    for (func, body) in program.function_bodies() {
         let env = LocalEnv::for_decl(program, &func.meta.params);
-        let locals = func.locals_map();
-        for (block, state) in states_before_returns(env, func) {
+        let locals = body.locals_map(&func.params);
+        for (block, state) in states_before_returns(env, func, body) {
             check_return_state(env.program(), func, block, &locals, &state, d);
         }
     }
@@ -164,7 +164,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, d: &mut Diagnostics) {
         return;
     }
 
-    let locals = func.locals_map();
+    let locals = body.locals_map(&func.params);
     let ctx = PlaceStateContext {
         env,
         locals: &locals,

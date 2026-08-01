@@ -178,3 +178,15 @@ impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
       return
   }
 }
+
+# Drop elaboration visits impl methods and resolves method-generic bounds.
+trait Discard {
+  fn<T: Drop> discard(recv: & Self, value: T);
+}
+
+impl Discard for Foo {
+  fn<T: Drop> discard(recv: & Foo, value: T) {
+    entry:
+      return
+  }
+}
