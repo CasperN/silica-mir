@@ -20,10 +20,14 @@ use crate::mir::type_util::{
 /// enum construction type args), and terminator Type slots.
 ///
 /// Trait method sigs still mention `Self` after this pass — traits are
-/// templates. `typecheck_impl` substitutes `Self := target` on the
+/// templates. Trait-impl checking substitutes `Self := target` on the
 /// trait side at conformance-check time.
 pub fn desugar_self_alias(program: &mut IndexedProgram) {
-    for imp in program.impls.values_mut() {
+    for imp in program
+        .impls
+        .values_mut()
+        .chain(program.inherent_impls.iter_mut())
+    {
         let self_param = [TypeParam {
             name: "Self".to_string(),
             bounds: Bounds::default(),

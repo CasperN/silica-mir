@@ -186,3 +186,23 @@ impl AutoDestroy for Foo {
       return
   }
 }
+
+impl<T: Copy + Drop> Bag<T> {
+  fn<'s0> make(value: T, $return: &out 's0 Bag<T>) {
+    entry:
+      $return.*.inner = copy value;
+      unborrow $return;
+      drop value;
+      return
+  }
+}
+
+impl<T: Copy + Drop> Bag<T> {
+  fn<'s0, 's1> get(recv: & 's0 Bag<T>, $return: &out 's1 T) {
+    entry:
+      $return.* = copy recv.*.inner;
+      unborrow $return;
+      unborrow recv;
+      return
+  }
+}

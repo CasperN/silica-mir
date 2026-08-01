@@ -28,6 +28,8 @@
 #   LtTrait<'s0> for LtHolder<'s0>   impl-header 'sN skiplist for elision
 #   AutoClone/AutoDestroy for Foo    compiler-provided traits are in scope and
 #                                    their method signatures use Self correctly
+#   Bag<T> (two inherent blocks)     generic inherent impls, Self substitution,
+#                                    body analyses, and split blocks
 
 # Trait-only shapes with no accompanying impl.
 trait<T> Combo {
@@ -206,6 +208,25 @@ impl AutoDestroy for Foo {
   fn destroy(recv: &drop Foo) {
     entry:
       drop recv.*;
+      return
+  }
+}
+
+# Inherent impls use the same combined impl-header/method environment and
+# participate in body checking and elaboration. Multiple blocks for one
+# target are legal when their method names are distinct.
+impl<T: Copy + Drop> Bag<T> {
+  fn make(value: T, $return: &out Self) {
+    entry:
+      $return.*.inner = copy value;
+      return
+  }
+}
+
+impl<T: Copy + Drop> Bag<T> {
+  fn get(recv: & Self, $return: &out T) {
+    entry:
+      $return.* = copy recv.*.inner;
       return
   }
 }

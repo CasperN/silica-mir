@@ -34,3 +34,12 @@ error: at 39:5: [HMC-AssignToImmutable] In function 'mutate': cannot assign to i
     |     ^^^^^
  40 |   }
     |
+error: at 46:5: [HMC-AssignToImmutable] In function 'inherent_mutate': cannot assign to immutable binding 'value'
+    |
+ 44 |   fn inherent_mutate(recv: & Self) {
+ 45 |     let value = 0;
+    |     -------------- variable declared as immutable here
+ 46 |     value = 1;
+    |     ^^^^^
+ 47 |   }
+    |

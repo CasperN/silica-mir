@@ -75,3 +75,10 @@ impl BadTraitBody for TraitBodyTarget {
     false
   }
 }
+
+# Inherent methods pass through that same inference path.
+impl TraitBodyTarget {
+  fn inherent_value(recv: & Self) -> i64 {
+    false
+  }
+}

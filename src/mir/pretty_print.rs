@@ -166,10 +166,9 @@ fn write_impl(out: &mut String, i: &ImplBlock) {
     out.push_str("impl");
     write_type_params(out, &i.params);
     out.push(' ');
-    // `Instance` renders as `Name<args>` via Display — matches the
-    // trait-path syntax the parser accepts.
-    write!(out, "{}", i.trait_path).unwrap();
-    out.push_str(" for ");
+    if let Some(trait_path) = &i.trait_path {
+        write!(out, "{} for ", trait_path).unwrap();
+    }
     write_type(out, &i.target);
     out.push_str(" {\n");
     for m in &i.methods {

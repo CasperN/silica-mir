@@ -1691,18 +1691,12 @@ impl Parser {
     }
 
     fn map_impl_decl(&self, node: Node, d: &mut Diagnostics) -> Option<ImplBlock> {
-        let Some(trait_name_node) = node.child_by_field_name("trait_name") else {
-            d.push_error(self.diag(
-                node,
-                ParserCode::MalformedCst,
-                "impl decl missing trait name",
-            ));
-            return None;
-        };
-        let trait_name = self.get_text(trait_name_node).to_string();
-        let trait_name_span = span_of(trait_name_node);
-        if self.reject_self_ident(&trait_name, trait_name_node, "a trait reference", d) {
-            return None;
+        let trait_name_node = node.child_by_field_name("trait_name");
+        if let Some(trait_name_node) = trait_name_node {
+            let trait_name = self.get_text(trait_name_node);
+            if self.reject_self_ident(trait_name, trait_name_node, "a trait reference", d) {
+                return None;
+            }
         }
 
         let mut cursor = node.walk();
@@ -1721,13 +1715,22 @@ impl Parser {
 
         // Optional trait type_args (`Iter<T>`). Absent = non-generic
         // trait (`Iter`).
-        let (trait_lt_args, trait_type_args) =
-            if let Some(args_node) = node.children(&mut cursor).find(|c| c.kind() == "type_args") {
+        let trait_path = if let Some(trait_name_node) = trait_name_node {
+            let (trait_lt_args, trait_type_args) = if let Some(args_node) =
+                node.children(&mut cursor).find(|c| c.kind() == "type_args")
+            {
                 self.map_type_args(args_node, d)?
             } else {
                 (Vec::new(), Vec::new())
             };
-        let trait_path = Instance::new(&trait_name, trait_lt_args, trait_type_args);
+            Some(Instance::new(
+                self.get_text(trait_name_node),
+                trait_lt_args,
+                trait_type_args,
+            ))
+        } else {
+            None
+        };
 
         let Some(target_node) = node.child_by_field_name("target") else {
             d.push_error(self.diag(
@@ -1738,6 +1741,9 @@ impl Parser {
             return None;
         };
         let target = self.map_type(target_node, d)?;
+        let header_span = trait_name_node
+            .map(span_of)
+            .unwrap_or_else(|| span_of(target_node));
 
         // Bind the implicit `Self` type parameter into the impl's method
         // scope so method sigs and bodies can reference `Self` instead of
@@ -1793,7 +1799,7 @@ impl Parser {
                 lifetime_params,
                 outlives,
                 type_params,
-                source: SourceInfo::written(trait_name_span),
+                source: SourceInfo::written(header_span),
             },
             trait_path,
             target,

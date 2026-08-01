@@ -166,10 +166,11 @@ the deliberate later refinement to nested operand and projection sources.
 - Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
 - Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
 
-## Trait coherence
+## Impl coherence
 - Define crate ownership/orphan rules for trait implementations.
-- Reject overlapping generic impls at declaration time, including overlaps that
-  are never selected by a call. Extend this to an ODR across translation units.
+- Reject overlapping generic trait and inherent impls at declaration time,
+  including overlaps that are never selected by a call. Extend this to an ODR
+  across translation units.
 - Diagnose impl parameters that cannot be inferred from the trait path or target
   instead of allowing every call to fail later with `TraitFnNoImpl`.
 

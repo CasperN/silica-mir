@@ -109,22 +109,24 @@ module.exports = grammar({
       '}',
     ),
 
-    // Impl block: `impl<T> Trait<TypeArgs> for TargetType { methods }`.
+    // Trait impl: `impl<T> Trait<TypeArgs> for TargetType { methods }`.
+    // Inherent impl: `impl<T> TargetType { methods }`.
     // Header generics (`<T>`) are the impl's own; they bind for the
-    // trait ref, target type, and every method sig/body. The trait
-    // name + optional type args identify which trait is being
-    // implemented; the target type fills the trait's `Self` slot.
-    // Methods reuse `function_decl` with bodies — the type checker
-    // verifies each method's signature matches the trait's after
-    // substituting `Self := target` and the trait's type_params from
-    // the trait ref's args.
+    // optional trait ref, target type, and every method sig/body.
+    // The target type fills the methods' `Self` slot. Trait impl methods
+    // are additionally checked against the trait declaration.
     impl_decl: $ => seq(
       'impl',
       optional($.type_params),
-      field('trait_name', $.identifier),
-      optional($.type_args),
-      'for',
-      field('target', $.type),
+      choice(
+        seq(
+          field('trait_name', $.identifier),
+          optional($.type_args),
+          'for',
+          field('target', $.type),
+        ),
+        field('target', $.type),
+      ),
       '{',
       repeat($.function_decl),
       '}',

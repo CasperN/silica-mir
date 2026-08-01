@@ -75,6 +75,13 @@ error: at 75:5: [HTC-TypeMismatch] In function 'value': type mismatch: expected 
     |     ^^^^^
  76 |   }
     |
+error: at 82:5: [HTC-TypeMismatch] In function 'inherent_value': type mismatch: expected bool, found i64
+    |
+ 81 |   fn inherent_value(recv: & Self) -> i64 {
+ 82 |     false
+    |     ^^^^^
+ 83 |   }
+    |
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
  1 | fn test_ambiguous_type() {

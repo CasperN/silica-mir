@@ -152,6 +152,10 @@ pub enum TypeCheckCode {
     /// Impl method's signature (after Self+trait-arg substitution)
     /// doesn't match the trait's declared method signature.
     ImplMethodSignatureMismatch,
+    /// An inherent impl target is not a declared struct or enum type.
+    InherentImplInvalidTarget,
+    /// Two inherent impl blocks for the same target declare the same method.
+    DuplicateInherentMethod,
 
     // ---- Trait method calls ----
     /// A `TraitFn` callee references a trait not declared in the env.

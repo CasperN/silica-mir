@@ -77,6 +77,7 @@ pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
         traits,
         functions,
         impls,
+        inherent_impls,
     } = program;
 
     let type_markers = types
@@ -84,8 +85,9 @@ pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
         .map(|(name, declaration)| (name.clone(), declaration.meta().markers))
         .collect();
 
-    let mut declarations =
-        Vec::with_capacity(types.len() + traits.len() + functions.len() + impls.len());
+    let mut declarations = Vec::with_capacity(
+        types.len() + traits.len() + functions.len() + impls.len() + inherent_impls.len(),
+    );
     declarations.extend(types.into_values().map(|declaration| match declaration {
         TypeDecl::Struct(declaration) => Declaration::Struct(declaration),
         TypeDecl::Enum(declaration) => Declaration::Enum(declaration),
@@ -101,6 +103,7 @@ pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
         }
     }
     declarations.extend(impls.into_values().map(Declaration::Impl));
+    declarations.extend(inherent_impls.into_iter().map(Declaration::Impl));
     declarations.sort_by_key(|declaration| {
         let source = declaration
             .meta()
@@ -181,6 +184,7 @@ pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
         traits: indexmap::IndexMap::new(),
         functions: intrinsic_functions,
         impls: indexmap::IndexMap::new(),
+        inherent_impls: Vec::new(),
     };
     for declaration in out {
         match declaration {
@@ -205,10 +209,14 @@ pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
                     .insert(declaration.meta.name.clone(), declaration);
             }
             Declaration::Impl(declaration) => {
-                program.impls.insert(
-                    (declaration.trait_path.clone(), declaration.target.clone()),
-                    declaration,
-                );
+                if let Some(trait_path) = &declaration.trait_path {
+                    program.impls.insert(
+                        (trait_path.clone(), declaration.target.clone()),
+                        declaration,
+                    );
+                } else {
+                    program.inherent_impls.push(declaration);
+                }
             }
         }
     }
@@ -216,10 +224,13 @@ pub(crate) fn monomorphize(program: IndexedProgram) -> IndexedProgram {
 }
 
 fn impl_method_template_name(impl_block: &ImplBlock, method: &Function) -> String {
-    format!(
-        "<{} as {}>::{}",
-        impl_block.target, impl_block.trait_path, method.meta.name,
-    )
+    match &impl_block.trait_path {
+        Some(trait_path) => format!(
+            "<{} as {}>::{}",
+            impl_block.target, trait_path, method.meta.name,
+        ),
+        None => format!("<{}>::{}", impl_block.target, method.meta.name),
+    }
 }
 
 fn impl_method_template(impl_block: &ImplBlock, method: &Function) -> Function {
@@ -373,7 +384,10 @@ impl MonoCtx {
     ) -> (String, Vec<Type>) {
         let mut selected = None;
         for impl_block in &self.impl_blocks {
-            if impl_block.trait_path.name != trait_path.name {
+            let Some(impl_trait_path) = &impl_block.trait_path else {
+                continue;
+            };
+            if impl_trait_path.name != trait_path.name {
                 continue;
             }
             let Some(bindings) = match_impl_header(impl_block, trait_path, self_ty) else {

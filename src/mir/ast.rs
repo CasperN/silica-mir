@@ -957,19 +957,13 @@ impl TypeDecl {
     }
 }
 
-/// An `impl Trait<Args> for Target` block. `meta` carries the impl-
-/// header generics (bound throughout `trait_path`, `target`, and every
-/// method body). `trait_path` is the trait ref as an `Instance` (name
-/// + lifetime + type args); `target` is the type filling the trait's
-/// `Self` slot. Methods are full `Function`s (body required).
-///
-/// The type checker verifies each method's signature matches the
-/// trait's declared signature after substituting `Self := target` and
-/// the trait's type_params from `trait_path`'s arguments.
+/// An inherent `impl Target` or trait `impl Trait<Args> for Target` block.
+/// Header generics are visible throughout the target, optional trait path,
+/// and every method.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ImplBlock {
     pub params: GenericParams,
-    pub trait_path: Instance,
+    pub trait_path: Option<Instance>,
     pub target: Type,
     pub methods: Vec<Function>,
 }

@@ -1662,7 +1662,7 @@ pub fn lower_program(
                         type_params: lower_type_params(&i.type_params),
                         source: i.source,
                     },
-                    trait_path: lower_instance(&i.trait_path),
+                    trait_path: i.trait_path.as_ref().map(lower_instance),
                     target: lower_type(&i.target),
                     methods: i
                         .methods

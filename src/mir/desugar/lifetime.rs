@@ -66,7 +66,11 @@ pub fn desugar_program(program: &mut IndexedProgram) {
     for trait_decl in program.traits.values_mut() {
         desugar_trait(trait_decl, &arities);
     }
-    for impl_block in program.impls.values_mut() {
+    for impl_block in program
+        .impls
+        .values_mut()
+        .chain(program.inherent_impls.iter_mut())
+    {
         desugar_impl(impl_block, &arities);
     }
 }

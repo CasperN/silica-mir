@@ -119,10 +119,15 @@ module.exports = grammar({
     impl_decl: $ => seq(
       'impl',
       optional($.type_params),
-      field('trait_name', $.identifier),
-      optional($.type_args),
-      'for',
-      field('target', $.type),
+      choice(
+        seq(
+          field('trait_name', $.identifier),
+          optional($.type_args),
+          'for',
+          field('target', $.type),
+        ),
+        field('target', $.type),
+      ),
       '{',
       repeat($.fn_decl),
       '}',

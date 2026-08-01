@@ -39,3 +39,10 @@ impl MutTraitBody for MutTraitTarget {
     value = 1;
   }
 }
+
+impl MutTraitTarget {
+  fn inherent_mutate(recv: & Self) {
+    let value = 0;
+    value = 1;
+  }
+}

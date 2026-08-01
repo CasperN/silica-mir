@@ -2,7 +2,8 @@
 #
 # covers: trait generics, method generics, Self, non-unit method returns,
 # generic impl headers, lifetime-parameterized traits, reference kinds,
-# Self-qualified struct/enum constructors, and HLL impl bodies
+# Self-qualified struct/enum constructors, HLL impl bodies, and generic and
+# concrete inherent impls split across multiple blocks
 
 struct<T: Copy + Drop> Box: Copy + Drop { value: T }
 
@@ -43,6 +44,26 @@ trait Make {
 
 impl Make for Choice {
   fn make() -> Self {
+    Self::Empty(unit)
+  }
+}
+
+# Inherent impls share the impl-header and method generic scopes used by
+# trait impls. Multiple blocks for one target are permitted.
+impl<T: Copy + Drop> Box<T> {
+  fn make(value: T) -> Self {
+    Self { value: value }
+  }
+}
+
+impl<T: Copy + Drop> Box<T> {
+  fn get(recv: & Self) -> T {
+    recv.*.value
+  }
+}
+
+impl Choice {
+  fn empty() -> Self {
     Self::Empty(unit)
   }
 }

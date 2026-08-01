@@ -634,21 +634,16 @@ impl Parser {
     }
 
     fn map_impl_decl(&self, node: Node, d: &mut Diagnostics) -> Option<ImplBlock> {
-        let Some(trait_name_node) = node.child_by_field_name("trait_name") else {
-            d.push_error(self.diag(
-                node,
-                ParserCode::MalformedCst,
-                "impl decl missing trait name",
-            ));
-            return None;
-        };
-        if self.reject_self_ident(
-            self.get_text(trait_name_node),
-            trait_name_node,
-            "a trait reference",
-            d,
-        ) {
-            return None;
+        let trait_name_node = node.child_by_field_name("trait_name");
+        if let Some(trait_name_node) = trait_name_node {
+            if self.reject_self_ident(
+                self.get_text(trait_name_node),
+                trait_name_node,
+                "a trait reference",
+                d,
+            ) {
+                return None;
+            }
         }
         let mut scope = TypeScope::default();
         let mut cursor = node.walk();
@@ -660,13 +655,22 @@ impl Parser {
         } else {
             (Vec::new(), Vec::new(), Vec::new())
         };
-        let (trait_lifetimes, trait_types) = if let Some(args) = node
-            .children(&mut cursor)
-            .find(|child| child.kind() == "type_args")
-        {
-            self.map_type_args(args, &scope, d)?
+        let trait_path = if let Some(trait_name_node) = trait_name_node {
+            let (trait_lifetimes, trait_types) = if let Some(args) = node
+                .children(&mut cursor)
+                .find(|child| child.kind() == "type_args")
+            {
+                self.map_type_args(args, &scope, d)?
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            Some(Instance::new(
+                self.get_text(trait_name_node),
+                trait_lifetimes,
+                trait_types,
+            ))
         } else {
-            (Vec::new(), Vec::new())
+            None
         };
         let Some(target_node) = node.child_by_field_name("target") else {
             d.push_error(self.diag(node, ParserCode::MalformedCst, "impl decl missing target"));
@@ -725,7 +729,7 @@ impl Parser {
             lifetime_params,
             outlives,
             type_params,
-            trait_path: Instance::new(self.get_text(trait_name_node), trait_lifetimes, trait_types),
+            trait_path,
             target,
             methods,
             source: SourceInfo::written(span_of(node)),

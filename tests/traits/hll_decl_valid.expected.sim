@@ -66,3 +66,36 @@ impl Make for Choice {
       return
   }
 }
+
+impl<T: Copy + Drop> Box<T> {
+  fn<'s0> make(value: T, $return: &out 's0 Box<T>) {
+    entry:
+      $return.*.value = move value;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit value;
+      return
+  }
+}
+
+impl<T: Copy + Drop> Box<T> {
+  fn<'s0, 's1> get(recv: & 's0 Box<T>, $return: &out 's1 T) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+impl Choice {
+  fn<'s0> empty($return: &out 's0 Choice) {
+    entry:
+      $return.* = Choice::Empty(unit);
+      unborrow $return;
+      require_uninit $return;
+      return
+  }
+}

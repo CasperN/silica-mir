@@ -719,8 +719,10 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
             Declaration::Impl(i) => {
                 let impl_scope = type_params_scope(&i.type_params);
                 env.validate_type(&i.target, &impl_scope, d);
-                for arg in &i.trait_path.type_args {
-                    env.validate_type(arg, &impl_scope, d);
+                if let Some(trait_path) = &i.trait_path {
+                    for arg in &trait_path.type_args {
+                        env.validate_type(arg, &impl_scope, d);
+                    }
                 }
                 for method in &i.methods {
                     let mut params = i.type_params.clone();

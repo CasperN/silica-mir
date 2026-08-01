@@ -329,7 +329,7 @@ pub struct ImplBlock {
     pub lifetime_params: Vec<LifetimeParam>,
     pub outlives: Vec<OutlivesBound>,
     pub type_params: Vec<TypeParam>,
-    pub trait_path: Instance,
+    pub trait_path: Option<Instance>,
     pub target: Type,
     pub methods: Vec<FnDecl>,
     pub source: SourceInfo,

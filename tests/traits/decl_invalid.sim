@@ -25,6 +25,8 @@
 #                                    into per-method SignatureMismatch
 #   impl Iter<MissingArg>            InvalidDeclaredType on the trait
 #                                    arg — same bail, sole diagnostic
+#   inherent impls                   invalid scalar target, duplicate methods,
+#                                    lifetime shadowing, and body analyses
 
 # --- Trait declaration errors ------------------------------------------
 
@@ -213,6 +215,18 @@ impl<T: Move> BadSub<T> for Box<T> {
   }
 }
 
+# The substructural checker also visits methods stored in inherent impl blocks.
+impl<T: Move> Box<T> {
+  fn inherent_duplicate(value: T) {
+    duplicate: T;
+    entry:
+      duplicate = copy value;
+      call consume<T>(move value);
+      call consume<T>(move duplicate);
+      return
+  }
+}
+
 # An impl method cannot redeclare a lifetime from its impl header. Named
 # lifetimes are shared across the combined LocalEnv and cannot shadow.
 trait<'a> LifetimeShadow {
@@ -222,6 +236,47 @@ trait<'a> LifetimeShadow {
 impl<'a> LifetimeShadow<'a> for Foo {
   fn<'a> borrow(recv: &'a Foo) {
     entry:
+      return
+  }
+}
+
+impl<'a> Foo {
+  fn<'a> inherent_borrow(recv: &'a Self) {
+    entry:
+      return
+  }
+}
+
+# Inherent impl targets must be declared nominal types.
+impl i64 {
+  fn invalid_target(recv: & Self) {
+    entry:
+      return
+  }
+}
+
+# Separate inherent blocks may add methods, but may not redeclare one for the
+# same exact target.
+impl Foo {
+  fn duplicate(recv: & Self) {
+    entry:
+      return
+  }
+}
+
+impl Foo {
+  fn duplicate(recv: & Self) {
+    entry:
+      return
+  }
+}
+
+# Inherent methods participate in ordinary MIR body type checking.
+impl Foo {
+  fn invalid_body(recv: & Self) {
+    flag: bool;
+    entry:
+      flag = 0i64;
       return
   }
 }

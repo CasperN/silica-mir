@@ -611,6 +611,9 @@ pub struct IndexedProgram {
     /// time; call resolution structurally matches generic impl headers and
     /// diagnoses overlapping matches.
     pub impls: IndexMap<(Instance, Type), ImplBlock>,
+    /// Inherent impl blocks. Multiple blocks for the same target are legal;
+    /// method-name overlap is checked across applicable blocks.
+    pub inherent_impls: Vec<ImplBlock>,
 }
 
 pub(crate) struct ImplBindings {
@@ -643,10 +646,11 @@ pub(crate) fn match_impl_header(
     trait_path: &Instance,
     self_ty: &Type,
 ) -> Option<ImplBindings> {
+    let impl_trait_path = impl_block.trait_path.as_ref()?;
     let mut type_bindings = BTreeMap::new();
     let mut lifetime_bindings = BTreeMap::new();
     if !match_instance(
-        &impl_block.trait_path,
+        impl_trait_path,
         trait_path,
         &impl_block.params,
         &mut type_bindings,
@@ -802,8 +806,12 @@ fn match_type(
 #[derive(Debug, Clone)]
 enum FunctionBodyId {
     Function(String),
-    ImplMethod {
+    TraitImplMethod {
         impl_key: (Instance, Type),
+        method_index: usize,
+    },
+    InherentImplMethod {
+        impl_index: usize,
         method_index: usize,
     },
 }
@@ -829,6 +837,7 @@ impl IndexedProgram {
 
         let mut traits: IndexMap<String, TraitDecl> = IndexMap::new();
         let mut impls: IndexMap<(Instance, Type), ImplBlock> = IndexMap::new();
+        let mut inherent_impls = Vec::new();
         for decl in &program.declarations {
             if let Some(m) = decl.meta() {
                 // Types and traits share the type namespace: `struct Foo`
@@ -879,19 +888,23 @@ impl IndexedProgram {
                     Declaration::Impl(_) => {}
                 }
             } else if let Declaration::Impl(imp) = decl {
-                let key = (imp.trait_path.clone(), imp.target.clone());
-                if impls.contains_key(&key) {
-                    errors.push(Diagnostic::new(
-                        DuplicateDeclaration,
-                        imp.params.source,
-                        format!(
-                            "Duplicate impl of trait '{}' for target type {}",
-                            imp.trait_path, imp.target,
-                        ),
-                    ));
-                    continue;
+                if let Some(trait_path) = &imp.trait_path {
+                    let key = (trait_path.clone(), imp.target.clone());
+                    if impls.contains_key(&key) {
+                        errors.push(Diagnostic::new(
+                            DuplicateDeclaration,
+                            imp.params.source,
+                            format!(
+                                "Duplicate impl of trait '{}' for target type {}",
+                                trait_path, imp.target,
+                            ),
+                        ));
+                        continue;
+                    }
+                    impls.insert(key, imp.clone());
+                } else {
+                    inherent_impls.push(imp.clone());
                 }
-                impls.insert(key, imp.clone());
             }
         }
 
@@ -901,6 +914,7 @@ impl IndexedProgram {
                 traits,
                 functions,
                 impls,
+                inherent_impls,
             },
             errors,
         )
@@ -922,7 +936,11 @@ impl IndexedProgram {
                 function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
             })
             .map(DeclarationRef::Function);
-        let impls = self.impls.values().map(DeclarationRef::Impl);
+        let impls = self
+            .impls
+            .values()
+            .chain(&self.inherent_impls)
+            .map(DeclarationRef::Impl);
 
         let mut declarations: Vec<_> = types.chain(traits).chain(functions).chain(impls).collect();
         declarations.sort_by_key(|declaration| {
@@ -1001,7 +1019,7 @@ impl IndexedProgram {
                         .expect("body visitation does not remove functions")
                         .body = Some(body);
                 }
-                FunctionBodyId::ImplMethod {
+                FunctionBodyId::TraitImplMethod {
                     impl_key,
                     method_index,
                 } => {
@@ -1030,35 +1048,70 @@ impl IndexedProgram {
                         .expect("body visitation does not remove methods")
                         .body = Some(body);
                 }
+                FunctionBodyId::InherentImplMethod {
+                    impl_index,
+                    method_index,
+                } => {
+                    let mut body = self.inherent_impls[impl_index].methods[method_index]
+                        .body
+                        .take()
+                        .expect("method body identity collected from this indexed program");
+                    let impl_block = &self.inherent_impls[impl_index];
+                    let method = &impl_block.methods[method_index];
+                    visitor(
+                        LocalEnv::for_impl_method(self, impl_block, method),
+                        method,
+                        &mut body,
+                    );
+                    self.inherent_impls[impl_index].methods[method_index].body = Some(body);
+                }
             }
         }
     }
 
     fn function_body_ids(&self) -> Vec<FunctionBodyId> {
         let mut body_ids = Vec::new();
-        for declaration in self.declarations() {
-            match declaration {
-                DeclarationRef::Function(function) if function.body.is_some() => {
-                    body_ids.push(FunctionBodyId::Function(function.meta.name.clone()));
-                }
-                DeclarationRef::Impl(impl_block) => {
-                    let impl_key = (impl_block.trait_path.clone(), impl_block.target.clone());
-                    for (method_index, method) in impl_block.methods.iter().enumerate() {
-                        if method.body.is_some() {
-                            body_ids.push(FunctionBodyId::ImplMethod {
-                                impl_key: impl_key.clone(),
-                                method_index,
-                            });
-                        }
-                    }
-                }
-                DeclarationRef::Struct(_)
-                | DeclarationRef::Enum(_)
-                | DeclarationRef::Function(_)
-                | DeclarationRef::Trait(_) => {}
+        for function in self.functions.values() {
+            if function.body.is_some()
+                && function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
+            {
+                body_ids.push((
+                    function.meta.name_source,
+                    FunctionBodyId::Function(function.meta.name.clone()),
+                ));
             }
         }
-        body_ids
+        for ((trait_path, target), impl_block) in &self.impls {
+            for (method_index, method) in impl_block.methods.iter().enumerate() {
+                if method.body.is_some() {
+                    body_ids.push((
+                        impl_block.params.source,
+                        FunctionBodyId::TraitImplMethod {
+                            impl_key: (trait_path.clone(), target.clone()),
+                            method_index,
+                        },
+                    ));
+                }
+            }
+        }
+        for (impl_index, impl_block) in self.inherent_impls.iter().enumerate() {
+            for (method_index, method) in impl_block.methods.iter().enumerate() {
+                if method.body.is_some() {
+                    body_ids.push((
+                        impl_block.params.source,
+                        FunctionBodyId::InherentImplMethod {
+                            impl_index,
+                            method_index,
+                        },
+                    ));
+                }
+            }
+        }
+        body_ids.sort_by_key(|(source, _)| {
+            let span = source.span();
+            (span.line, span.col, span.end_line, span.end_col)
+        });
+        body_ids.into_iter().map(|(_, body_id)| body_id).collect()
     }
 
     /// Return all instantiated fields of the struct type `ty`, if `ty` is a declared struct.

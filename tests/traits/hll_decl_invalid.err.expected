@@ -1,49 +1,63 @@
-error: at 12:1: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
+error: at 13:1: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
     |
- 11 | 
- 12 | impl Unknown for S {
+ 12 | 
+ 13 | impl Unknown for S {
     | ^
- 13 |   fn ignored(recv: & Self) { unit }
+ 14 |   fn ignored(recv: & Self) { unit }
     |
-error: at 17:3: [TC-ImplMethodNotInTrait] Impl of 'Required' has method 'extra' not declared on the trait
+error: at 18:3: [TC-ImplMethodNotInTrait] Impl of 'Required' has method 'extra' not declared on the trait
     |
- 16 | impl Required for S {
- 17 |   fn extra(recv: & Self) { unit }
+ 17 | impl Required for S {
+ 18 |   fn extra(recv: & Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 18 | }
+ 19 | }
     |
-error: at 16:1: [TC-ImplMissingTraitMethod] Impl of 'Required' is missing method 'required'
+error: at 17:1: [TC-ImplMissingTraitMethod] Impl of 'Required' is missing method 'required'
     |
- 15 | 
- 16 | impl Required for S {
+ 16 | 
+ 17 | impl Required for S {
     | ^
- 17 |   fn extra(recv: & Self) { unit }
+ 18 |   fn extra(recv: & Self) { unit }
     |
-error: at 25:30: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 has type &out 's1 bool, trait declares &out 's1 i64 (after Self := S)
+error: at 26:30: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 has type &out 's1 bool, trait declares &out 's1 i64 (after Self := S)
     |
- 24 | impl Result for S {
- 25 |   fn result(recv: & Self) -> bool { false }
+ 25 | impl Result for S {
+ 26 |   fn result(recv: & Self) -> bool { false }
     |                              ^^^^
- 26 | }
+ 27 | }
     |
-error: at 33:6: [TC-DuplicateLifetimeParam] In function 'lifetime': lifetime parameter 'a is declared more than once
+error: at 34:6: [TC-DuplicateLifetimeParam] In function 'lifetime': lifetime parameter 'a is declared more than once
     |
- 32 | impl<'a> Lifetime<'a> for S {
- 33 |   fn<'a> lifetime(recv: & 'a Self) { unit }
+ 33 | impl<'a> Lifetime<'a> for S {
+ 34 |   fn<'a> lifetime(recv: & 'a Self) { unit }
     |      ^^
- 34 | }
+ 35 | }
     |
-error: at 40:1: [TC-ImplTraitArgArity] Trait 'GenericTrait' expects 1 type argument(s), got 0
+error: at 41:1: [TC-ImplTraitArgArity] Trait 'GenericTrait' expects 1 type argument(s), got 0
     |
- 39 | 
- 40 | impl GenericTrait for S {
+ 40 | 
+ 41 | impl GenericTrait for S {
     | ^
- 41 |   fn generic(recv: & Self, value: i64) { unit }
+ 42 |   fn generic(recv: & Self, value: i64) { unit }
     |
-error: at 49:3: [TC-ImplMethodSignatureMismatch] Impl method 'method_generic' declares 0 type parameter(s), trait declares 1
+error: at 50:3: [TC-ImplMethodSignatureMismatch] Impl method 'method_generic' declares 0 type parameter(s), trait declares 1
     |
- 48 | impl MethodGeneric for S {
- 49 |   fn method_generic(recv: & Self, value: i64) { unit }
+ 49 | impl MethodGeneric for S {
+ 50 |   fn method_generic(recv: & Self, value: i64) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 50 | }
+ 51 | }
+    |
+error: at 54:6: [TC-InherentImplInvalidTarget] Inherent impl target must be a declared struct or enum type, found i64
+    |
+ 53 | # Inherent impl targets must be nominal types.
+ 54 | impl i64 {
+    |      ^^^
+ 55 |   fn invalid_target(recv: & Self) { unit }
+    |
+error: at 64:3: [TC-DuplicateInherentMethod] Inherent method 'duplicate' is declared more than once for S
+    |
+ 63 | impl S {
+ 64 |   fn duplicate(recv: & Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 65 | }
     |

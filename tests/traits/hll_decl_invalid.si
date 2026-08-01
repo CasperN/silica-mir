@@ -1,7 +1,8 @@
 # HLL declarations reach the MIR trait checker for cross-declaration rules.
 #
 # covers: unknown traits, trait-argument arity, missing and extra methods,
-# signature and method-generic mismatch, and impl-method lifetime shadowing
+# signature and method-generic mismatch, impl-method lifetime shadowing,
+# invalid inherent targets, and duplicate inherent methods across blocks
 
 struct S: Copy + Drop { value: i64 }
 
@@ -47,4 +48,18 @@ trait MethodGeneric {
 
 impl MethodGeneric for S {
   fn method_generic(recv: & Self, value: i64) { unit }
+}
+
+# Inherent impl targets must be nominal types.
+impl i64 {
+  fn invalid_target(recv: & Self) { unit }
+}
+
+# Multiple blocks are legal, but cannot redeclare a method for the same target.
+impl S {
+  fn duplicate(recv: & Self) { unit }
+}
+
+impl S {
+  fn duplicate(recv: & Self) { unit }
 }

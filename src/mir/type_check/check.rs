@@ -16,7 +16,7 @@ use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
 use crate::mir::env::{LocalEnv, TypeResolutionError, TypeValidationError};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 fn resolution_diagnostic(
     error: TypeResolutionError,
@@ -280,8 +280,25 @@ impl IndexedProgram {
 
         // Validate impl blocks: header well-formedness, trait ref
         // resolution, method-signature conformance, and method bodies.
-        for imp in self.impls.values() {
-            self.typecheck_impl(imp, d);
+        for ((trait_path, _), imp) in &self.impls {
+            self.typecheck_trait_impl(imp, trait_path, d);
+        }
+        let mut inherent_methods: HashMap<&Type, HashSet<&str>> = HashMap::new();
+        for imp in &self.inherent_impls {
+            let methods = inherent_methods.entry(&imp.target).or_default();
+            for method in &imp.methods {
+                if !methods.insert(&method.meta.name) {
+                    d.push_error(Diagnostic::new(
+                        DuplicateInherentMethod,
+                        method.meta.name_source,
+                        format!(
+                            "Inherent method '{}' is declared more than once for {}",
+                            method.meta.name, imp.target,
+                        ),
+                    ));
+                }
+            }
+            self.typecheck_inherent_impl(imp, d);
         }
     }
 
@@ -343,7 +360,7 @@ impl IndexedProgram {
         }
     }
 
-    fn typecheck_impl(&self, imp: &ImplBlock, d: &mut Diagnostics) {
+    fn typecheck_trait_impl(&self, imp: &ImplBlock, trait_path: &Instance, d: &mut Diagnostics) {
         let header = &imp.params;
         validate_lifetime_params(header, "impl", d);
         let header_lt_scope = lifetime_scope(&header.lifetime_params);
@@ -362,22 +379,22 @@ impl IndexedProgram {
                 e,
                 imp.target.source,
                 header,
-                format!("In impl of '{}', target type", imp.trait_path.name),
+                format!("In impl of '{}', target type", trait_path.name),
             ));
         }
 
-        for arg in &imp.trait_path.type_args {
+        for arg in &trait_path.type_args {
             if let Err(e) = LocalEnv::for_decl(self, header).validate_type(arg) {
                 d.push_error(validation_diagnostic_params(
                     e,
                     arg.source,
                     header,
-                    format!("In impl of '{}', trait type argument", imp.trait_path.name),
+                    format!("In impl of '{}', trait type argument", trait_path.name),
                 ));
             }
         }
 
-        for (i, lt_arg) in imp.trait_path.lifetime_args.iter().enumerate() {
+        for (i, lt_arg) in trait_path.lifetime_args.iter().enumerate() {
             if !header_lt_scope.contains(lt_arg) {
                 d.push_error(Diagnostic::new(
                     UndeclaredLifetime,
@@ -391,11 +408,11 @@ impl IndexedProgram {
             }
         }
 
-        let Some(trait_decl) = self.traits.get(&imp.trait_path.name) else {
+        let Some(trait_decl) = self.traits.get(&trait_path.name) else {
             d.push_error(Diagnostic::new(
                 ImplForUnknownTrait,
                 header.source,
-                format!("Impl references undeclared trait '{}'", imp.trait_path.name),
+                format!("Impl references undeclared trait '{}'", trait_path.name),
             ));
             return;
         };
@@ -407,28 +424,28 @@ impl IndexedProgram {
         // check emit misleading substitution-mismatch errors instead of a
         // targeted arity diagnostic.
         let trait_meta = &trait_decl.meta;
-        if imp.trait_path.type_args.len() != trait_meta.params.type_params.len() {
+        if trait_path.type_args.len() != trait_meta.params.type_params.len() {
             d.push_error(Diagnostic::new(
                 ImplTraitArgArity,
                 header.source,
                 format!(
                     "Trait '{}' expects {} type argument(s), got {}",
-                    imp.trait_path.name,
+                    trait_path.name,
                     trait_meta.params.type_params.len(),
-                    imp.trait_path.type_args.len(),
+                    trait_path.type_args.len(),
                 ),
             ));
             return;
         }
-        if imp.trait_path.lifetime_args.len() != trait_meta.params.lifetime_params.len() {
+        if trait_path.lifetime_args.len() != trait_meta.params.lifetime_params.len() {
             d.push_error(Diagnostic::new(
                 ImplTraitArgArity,
                 header.source,
                 format!(
                     "Trait '{}' expects {} lifetime argument(s), got {}",
-                    imp.trait_path.name,
+                    trait_path.name,
                     trait_meta.params.lifetime_params.len(),
-                    imp.trait_path.lifetime_args.len(),
+                    trait_path.lifetime_args.len(),
                 ),
             ));
             return;
@@ -452,7 +469,7 @@ impl IndexedProgram {
         }];
         subst_type_params.extend(trait_meta.params.type_params.iter().cloned());
         let mut subst_type_args: Vec<Type> = vec![imp.target.clone()];
-        subst_type_args.extend(imp.trait_path.type_args.iter().cloned());
+        subst_type_args.extend(trait_path.type_args.iter().cloned());
 
         // Method-set conformance: name-for-name match.
         let mut impl_by_name: std::collections::HashMap<&str, &Function> =
@@ -473,7 +490,7 @@ impl IndexedProgram {
                     m.meta.name_source,
                     format!(
                         "Impl of '{}' has method '{}' not declared on the trait",
-                        imp.trait_path.name, m.meta.name,
+                        trait_path.name, m.meta.name,
                     ),
                 ));
             }
@@ -485,7 +502,7 @@ impl IndexedProgram {
                     header.source,
                     format!(
                         "Impl of '{}' is missing method '{}'",
-                        imp.trait_path.name, trait_method.meta.name,
+                        trait_path.name, trait_method.meta.name,
                     ),
                 ));
                 continue;
@@ -595,7 +612,7 @@ impl IndexedProgram {
                     .iter()
                     .map(|lp| lp.lifetime.clone()),
             );
-            let mut method_lifetime_args: Vec<Lifetime> = imp.trait_path.lifetime_args.clone();
+            let mut method_lifetime_args: Vec<Lifetime> = trait_path.lifetime_args.clone();
             method_lifetime_args.extend(
                 impl_method
                     .meta
@@ -637,6 +654,43 @@ impl IndexedProgram {
 
         // Type-check every impl method under its impl-header and
         // method-level generic scopes.
+        for method in &imp.methods {
+            self.typecheck_function(LocalEnv::for_impl_method(self, imp, method), method, d);
+        }
+    }
+
+    fn typecheck_inherent_impl(&self, imp: &ImplBlock, d: &mut Diagnostics) {
+        let header = &imp.params;
+        validate_lifetime_params(header, "impl", d);
+        if let Err(e) = LocalEnv::for_decl(self, header).validate_type(&imp.target) {
+            d.push_error(validation_diagnostic_params(
+                e,
+                imp.target.source,
+                header,
+                "In inherent impl target".to_string(),
+            ));
+        }
+        for lifetime in undeclared_lifetimes(&imp.target, &lifetime_scope(&header.lifetime_params))
+        {
+            d.push_error(Diagnostic::new(
+                UndeclaredLifetime,
+                imp.target.source,
+                format!(
+                    "In inherent impl target {}: undeclared lifetime {}",
+                    imp.target, lifetime,
+                ),
+            ));
+        }
+        if !matches!(imp.target.kind, TypeKind::Custom(_)) {
+            d.push_error(Diagnostic::new(
+                InherentImplInvalidTarget,
+                imp.target.source,
+                format!(
+                    "Inherent impl target must be a declared struct or enum type, found {}",
+                    imp.target,
+                ),
+            ));
+        }
         for method in &imp.methods {
             self.typecheck_function(LocalEnv::for_impl_method(self, imp, method), method, d);
         }
