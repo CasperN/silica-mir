@@ -42,3 +42,18 @@ fn move_index_operand(a: [i64; 4], i: i64) {
     drop x;
     return
 }
+
+trait ImplCopyRelaxationViolation {
+  fn relax(recv: & Self, x: &Owned);
+}
+
+impl ImplCopyRelaxationViolation for Owned {
+  # covers: copy relaxation errors in impl method bodies
+  fn relax(recv: & Owned, x: &Owned) {
+    y: Owned;
+    entry:
+      y = take x.*;
+      call consume(move y);
+      return
+  }
+}

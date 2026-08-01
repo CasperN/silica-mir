@@ -162,3 +162,17 @@ fn repeated_uninit_pointee(r: &uninit i64) {
     call take_num(take r.*);
     return
 }
+
+trait ImplCopyRelaxationOk {
+  fn relax(recv: & Self, x: i64);
+}
+
+impl ImplCopyRelaxationOk for Token {
+  # covers: copy relaxation visits impl method bodies
+  fn relax(recv: & Token, x: i64) {
+    entry:
+      call take_num(take x);
+      call take_num(take x);
+      return
+  }
+}

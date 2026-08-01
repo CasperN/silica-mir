@@ -14,21 +14,18 @@ use super::analysis::{
 };
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
-    for f in program.functions() {
-        check_function(LocalEnv::for_decl(program, &f.meta.params), f, d);
-    }
+    program.visit_function_bodies(|env, func, body| check_function(env, func, body, d));
     check_return_leaks(program, d);
 }
 
 /// Return validation is part of the single final place-state check.
 pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) {
-    for (func, body) in program.function_bodies() {
-        let env = LocalEnv::for_decl(program, &func.meta.params);
+    program.visit_function_bodies(|env, func, body| {
         let locals = body.locals_map(&func.params);
         for (block, state) in states_before_returns(env, func, body) {
             check_return_state(env.program(), func, block, &locals, &state, d);
         }
-    }
+    });
 }
 
 fn check_return_state(
@@ -156,10 +153,7 @@ pub(super) fn find_decl_source(func: &Function, name: &str) -> Option<SourceInfo
         .map(|local| local.source)
 }
 
-fn check_function(env: LocalEnv<'_>, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else {
-        return;
-    };
+fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
     if body.blocks.is_empty() {
         return;
     }

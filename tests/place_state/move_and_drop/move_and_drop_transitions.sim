@@ -168,3 +168,17 @@ fn respects_explicit_user_drop(x: i64) {
 # ---------- Extern declaration: elaborator leaves it alone ----------
 
 extern fn extern_untouched(x: i64);
+
+trait ImplPlaceStateOk {
+  fn check(recv: & Self, x: i64);
+}
+
+impl ImplPlaceStateOk for Unit0 {
+  # covers: place-state checking visits impl method bodies
+  fn check(recv: & Unit0, x: i64) {
+    y: i64;
+    entry:
+      y = copy x;
+      return
+  }
+}

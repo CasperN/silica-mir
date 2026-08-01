@@ -126,6 +126,7 @@ impl<T: Copy + Drop> SelfAlias for Bag<T> {
   }
   fn d(recv: &drop Self) {
     entry:
+      drop recv.*;
       return
   }
 }

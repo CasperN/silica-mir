@@ -129,3 +129,15 @@ fn partial_array_slot_consumed() {
     call take_s(move a[1i64]);
     return
 }
+
+trait ImplDropElaborationOk {
+  fn finish(recv: & Self, x: i64);
+}
+
+impl ImplDropElaborationOk for P {
+  # covers: drop elaboration visits impl method bodies
+  fn finish(recv: & P, x: i64) {
+    entry:
+      return
+  }
+}

@@ -17,6 +17,7 @@ struct List: Copy + Drop {
 impl Sink for Foo {
   fn<'s0> accept(recv: &mut 's0 Foo, v: i64) {
     entry:
+      drop recv.*.x;
       recv.*.x = move v;
       unborrow recv;
       return

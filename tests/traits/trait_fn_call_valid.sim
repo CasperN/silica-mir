@@ -25,6 +25,7 @@ struct List: Copy + Drop { xs: [i64; 4] }
 impl Sink for Foo {
   fn accept(recv: &mut Foo, v: i64) {
     entry:
+      drop recv.*.x;
       recv.*.x = move v;
       return
   }

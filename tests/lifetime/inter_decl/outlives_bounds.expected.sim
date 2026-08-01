@@ -258,3 +258,22 @@ fn<'a: 'static, 's0> static_arg_required(x: & 'static i64, $return: &out 's0 & '
     unborrow x;
     return
 }
+
+struct ImplLifetimeHost: Copy + Drop {
+  value: i64
+}
+
+trait<'a, 'b> ImplLifetimeFlow {
+  fn<'s0, 's1> flow(recv: & 's0 Self, x: & 'a i64, $return: &out 's1 & 'b i64);
+}
+
+impl<'a: 'b, 'b> ImplLifetimeFlow<'a, 'b> for ImplLifetimeHost {
+  fn<'s0, 's1> flow(recv: & 's0 ImplLifetimeHost, x: & 'a i64, $return: &out 's1 & 'b i64) {
+    entry:
+      unborrow recv;
+      $return.* = copy x;
+      unborrow $return;
+      unborrow x;
+      return
+  }
+}

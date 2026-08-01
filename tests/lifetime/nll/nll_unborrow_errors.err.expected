@@ -18,3 +18,13 @@ error: at 32:5: [PS-RefObligationUnfulfilled] In function 'out_branch_return_wit
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  33 |   return_arm:
     |
+error: at 49:7: [PS-RefObligationUnfulfilled] In function 'close', block 'entry': reference 'x' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 46 |   # covers: unfulfilled obligations in impl method bodies after NLL
+ 47 |   fn close(recv: & ImplNllHost, x: &out i64) {
+    |                                 ----------- reference declared here
+ 48 |     entry:
+ 49 |       return
+    |       ^^^^^^
+ 50 |   }
+    |

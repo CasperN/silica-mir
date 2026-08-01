@@ -997,14 +997,6 @@ impl Program {
     pub fn find_fn(&self, name: &str) -> Option<&Function> {
         self.functions().find(|f| f.meta.name == name)
     }
-
-    /// Iterate `(fn, body)` pairs for every function with a body. Skips
-    /// externs. Convenience over `functions().filter_map(|f| f.body...)`
-    /// for callers working with an unindexed parsed program.
-    pub fn function_bodies(&self) -> impl Iterator<Item = (&Function, &FunctionBody)> + '_ {
-        self.functions()
-            .filter_map(|f| f.body.as_ref().map(|b| (f, b)))
-    }
 }
 
 #[cfg(test)]

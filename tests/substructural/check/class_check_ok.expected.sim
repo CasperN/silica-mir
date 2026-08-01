@@ -632,3 +632,19 @@ fn if_both_init_read_MatCDM(cond: bool) {
     drop cond;
     return
 }
+
+trait ImplClassCheckOk {
+  fn<'s0> check(recv: & 's0 Self, x: i64);
+}
+
+impl ImplClassCheckOk for MatCDM {
+  fn<'s0> check(recv: & 's0 MatCDM, x: i64) {
+    y: i64;
+    entry:
+      unborrow recv;
+      y = copy x;
+      drop y;
+      drop x;
+      return
+  }
+}

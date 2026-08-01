@@ -117,3 +117,19 @@ fn call_arg_move_then_move(x: M) {
     call take_two(move x, move x);
     return
 }
+
+trait ImplPlaceStateViolation {
+  fn check(recv: & Self, x: M);
+}
+
+impl ImplPlaceStateViolation for M {
+  # covers: place-state errors in impl method bodies
+  fn check(recv: & M, x: M) {
+    y: M;
+    z: M;
+    entry:
+      y = move x;
+      z = move x;
+      return
+  }
+}

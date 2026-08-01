@@ -35,3 +35,17 @@ fn out_branch_return_without_write(r: &out i64, b: bool) {
   die_arm:
     abort
 }
+
+struct ImplNllHost: Copy + Drop { }
+
+trait ImplNllViolation {
+  fn close(recv: & Self, x: &out i64);
+}
+
+impl ImplNllViolation for ImplNllHost {
+  # covers: unfulfilled obligations in impl method bodies after NLL
+  fn close(recv: & ImplNllHost, x: &out i64) {
+    entry:
+      return
+  }
+}

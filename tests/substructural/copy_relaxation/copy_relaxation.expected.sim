@@ -171,3 +171,17 @@ fn<'s0> repeated_uninit_pointee(r: &uninit 's0 i64) {
     unborrow r;
     return
 }
+
+trait ImplCopyRelaxationOk {
+  fn<'s0> relax(recv: & 's0 Self, x: i64);
+}
+
+impl ImplCopyRelaxationOk for Token {
+  fn<'s0> relax(recv: & 's0 Token, x: i64) {
+    entry:
+      unborrow recv;
+      call take_num(copy x);
+      call take_num(move x);
+      return
+  }
+}

@@ -19,3 +19,10 @@ error: at 41:5: [RELAX-IndexOperandNotReading] In function 'move_index_operand',
     |     ^^^^^^^^^^^^^^^^^^
  42 |     drop x;
     |
+error: at 55:7: [RELAX-MandatoryCopyNonCopy] In function 'relax', block 'entry': cannot resolve `take` of 'x.*' to `copy`: path crosses a shared reference or dynamic-index projection and the type is not Copy
+    |
+ 54 |     entry:
+ 55 |       y = take x.*;
+    |       ^^^^^^^^^^^^
+ 56 |       call consume(move y);
+    |

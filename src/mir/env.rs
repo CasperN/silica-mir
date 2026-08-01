@@ -714,12 +714,6 @@ impl IndexedProgram {
         })
     }
 
-    /// Iterate functions that have MIR bodies.
-    pub fn function_bodies(&self) -> impl Iterator<Item = (&Function, &FunctionBody)> {
-        self.functions()
-            .filter_map(|function| function.body.as_ref().map(|body| (function, body)))
-    }
-
     /// Visit free-function and impl-method bodies in source declaration order,
     /// with the generic context in which each body is defined.
     pub fn visit_function_bodies(
@@ -1316,7 +1310,6 @@ mod declaration_iteration_tests {
                 .collect::<Vec<_>>(),
             ["f"]
         );
-        assert_eq!(program.function_bodies().count(), 1);
     }
 
     #[test]

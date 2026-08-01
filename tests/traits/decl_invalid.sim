@@ -186,7 +186,7 @@ impl Iter<i64> for MissingTarget {
 impl Iter<MissingArg> for Foo {
   fn next(recv: &mut Foo, $return: &out MissingArg) {
     entry:
-      return
+      unreachable
   }
 }
 

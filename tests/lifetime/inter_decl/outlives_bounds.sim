@@ -341,3 +341,17 @@ fn<'a: 'static> static_arg_required(x: &'static i64, $return: &out &'a i64) {
     $return.* = copy x;
     return
 }
+# Impl-method checking combines impl-header lifetime bounds with method scope.
+struct ImplLifetimeHost: Copy + Drop { value: i64 }
+
+trait<'a, 'b> ImplLifetimeFlow {
+  fn flow(recv: & Self, x: &'a i64, $return: &out &'b i64);
+}
+
+impl<'a: 'b, 'b> ImplLifetimeFlow<'a, 'b> for ImplLifetimeHost {
+  fn flow(recv: & ImplLifetimeHost, x: &'a i64, $return: &out &'b i64) {
+    entry:
+      $return.* = copy x;
+      return
+  }
+}

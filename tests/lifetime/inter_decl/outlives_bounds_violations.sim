@@ -426,3 +426,17 @@ fn<'outer, 'inner_src, 'inner_tgt> nested_ref_lifetime_mismatch(
     $return.* = copy x;
     return
 }
+# Impl methods must satisfy flow constraints from combined impl/method bounds.
+struct BadImplLifetimeHost: Copy + Drop { value: i64 }
+
+trait<'a, 'b> BadImplLifetimeFlow {
+  fn flow(recv: & Self, x: &'a i64, $return: &out &'b i64);
+}
+
+impl<'a, 'b> BadImplLifetimeFlow<'a, 'b> for BadImplLifetimeHost {
+  fn flow(recv: & BadImplLifetimeHost, x: &'a i64, $return: &out &'b i64) {
+    entry:
+      $return.* = copy x;
+      return
+  }
+}

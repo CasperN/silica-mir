@@ -236,3 +236,11 @@ error: at 426:5: [LT-LifetimeMismatch] In function 'nested_ref_lifetime_mismatch
  427 |     return
      |
   hint: declare bound 'inner_src: 'inner_tgt on function 'nested_ref_lifetime_mismatch' or change the value flow so it is not required
+error: at 439:7: [LT-LifetimeMismatch] In function 'flow': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'flow'
+     |
+ 438 |     entry:
+ 439 |       $return.* = copy x;
+     |       ^^^^^^^^^^^^^^^^^^
+ 440 |       return
+     |
+  hint: declare bound 'a: 'b on function 'flow' or change the value flow so it is not required

@@ -12,7 +12,7 @@
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::DiagnosticFormat;
-use crate::mir::env::IndexedProgram;
+use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
@@ -29,28 +29,43 @@ use super::LifetimeCode;
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     check_decl_wf(program, d);
     for f in program.functions() {
-        check_fn_signature_wf(f, program, d);
-        check_function(program, f, d);
+        let env = LocalEnv::for_decl(program, &f.meta.params);
+        check_fn_signature_wf(env, f, d);
+        if let Some(body) = &f.body {
+            check_function(env, f, body, d);
+        }
     }
+    program.visit_function_bodies(|env, func, body| {
+        if env.impl_generics().is_some() {
+            check_fn_signature_wf(env, func, d);
+            check_function(env, func, body, d);
+        }
+    });
 }
 
-fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
-    let Some(body) = &func.body else {
-        return;
-    };
+fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
     if body.blocks.is_empty() {
         return;
     }
-    let region_ctx = region::build_region_ctx(func, body, env);
+    let region_ctx = region::build_region_ctx(func, body, env.program());
     let entry_states = loans::run(body);
     let mut constraints = constraints::ConstraintSet::new();
     let locals = body.locals_map(&func.params);
     let mut checker = Checker {
-        env,
+        env: env.program(),
         func,
         locals,
         region_ctx: &region_ctx,
         constraints: &mut constraints,
+        outlives_axioms: env
+            .outlives_bounds()
+            .map(|bound| {
+                (
+                    name_to_region(&bound.longer),
+                    name_to_region(&bound.shorter),
+                )
+            })
+            .collect(),
         d,
     };
     for block in &body.blocks {
@@ -65,7 +80,7 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
         }
         checker.check_and_transfer_terminator(block, &mut loans);
     }
-    let escape_visible = signature_visible_regions(func, env);
+    let escape_visible = signature_visible_regions(func, env.program());
     checker.check_constraints(&escape_visible);
 }
 
@@ -73,30 +88,27 @@ fn check_function(env: &IndexedProgram, func: &Function, d: &mut Diagnostics) {
 /// (params, `$return`) and local decls. Runs independently of body
 /// existence, so extern fn declarations with ill-formed signatures are
 /// still rejected. The emitted constraints are checked against the
-/// fn's own declared outlives axioms.
-fn check_fn_signature_wf(func: &Function, env: &IndexedProgram, d: &mut Diagnostics) {
+/// outlives axioms in scope at the function.
+fn check_fn_signature_wf(env: LocalEnv<'_>, func: &Function, d: &mut Diagnostics) {
     let mut cs = constraints::ConstraintSet::new();
     for p in &func.params {
-        emit_type_wf_constraints(&p.ty, env, &mut cs);
+        emit_type_wf_constraints(&p.ty, env.program(), &mut cs);
     }
     if let Some(body) = &func.body {
         for l in &body.locals {
-            emit_type_wf_constraints(&l.ty, env, &mut cs);
+            emit_type_wf_constraints(&l.ty, env.program(), &mut cs);
         }
         for block in &body.blocks {
             for stmt in &block.statements {
-                emit_stmt_wf_constraints(stmt, env, &mut cs);
+                emit_stmt_wf_constraints(stmt, env.program(), &mut cs);
             }
         }
     }
     if cs.is_empty() {
         return;
     }
-    let axioms: Vec<(Region, Region)> = func
-        .meta
-        .params
-        .outlives
-        .iter()
+    let axioms: Vec<(Region, Region)> = env
+        .outlives_bounds()
         .map(|bound| {
             (
                 name_to_region(&bound.longer),
@@ -446,6 +458,18 @@ pub fn constraints_for(env: &IndexedProgram, func: &Function) -> constraints::Co
         locals,
         region_ctx: &region_ctx,
         constraints: &mut cs,
+        outlives_axioms: func
+            .meta
+            .params
+            .outlives
+            .iter()
+            .map(|bound| {
+                (
+                    name_to_region(&bound.longer),
+                    name_to_region(&bound.shorter),
+                )
+            })
+            .collect(),
         d: &mut dummy_d,
     };
     for block in &body.blocks {
@@ -570,6 +594,7 @@ struct Checker<'a> {
     locals: IndexMap<String, Type>,
     region_ctx: &'a region::RegionCtx,
     constraints: &'a mut constraints::ConstraintSet,
+    outlives_axioms: Vec<(Region, Region)>,
     d: &'a mut Diagnostics,
 }
 
@@ -585,20 +610,7 @@ impl<'a> Checker<'a> {
     /// declared regions fire `LT-LifetimeMismatch`; a body-local region
     /// escaping through a caller-visible slot fires `LT-LifetimeEscape`.
     fn check_constraints(&mut self, escape_visible: &BTreeSet<Lifetime>) {
-        let axioms: Vec<(Region, Region)> = self
-            .func
-            .meta
-            .params
-            .outlives
-            .iter()
-            .map(|bound| {
-                (
-                    name_to_region(&bound.longer),
-                    name_to_region(&bound.shorter),
-                )
-            })
-            .collect();
-        let closure = constraints::transitive_closure(&axioms);
+        let closure = constraints::transitive_closure(&self.outlives_axioms);
         let projected = self.constraints.project_inference();
         for c in projected.iter() {
             match (&c.outlives, &c.sub) {

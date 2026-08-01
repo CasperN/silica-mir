@@ -133,3 +133,15 @@ fn ref_field_leak_via_nll_unborrow(x: i64) {
     s.r = &drop x;
     return
 }
+
+trait ImplDropElaborationViolation {
+  fn finish(recv: & Self, value: P);
+}
+
+impl ImplDropElaborationViolation for P {
+  # covers: non-Drop values still leak from impl method bodies
+  fn finish(recv: & P, value: P) {
+    entry:
+      return
+  }
+}

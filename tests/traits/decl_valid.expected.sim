@@ -106,6 +106,7 @@ impl<T: Copy + Drop> SelfAlias for Bag<T> {
   }
   fn<'s0> d(recv: &drop 's0 Bag<T>) {
     entry:
+      drop recv.*;
       unborrow recv;
       return
   }

@@ -437,3 +437,17 @@ fn if_both_drop_MatCM(x: MatCM, cond: bool) {
   done:
     return
 }
+
+trait ImplClassCheckViolation {
+  fn check(recv: & Self, x: D);
+}
+
+impl ImplClassCheckViolation for D {
+  # covers: substructural errors in impl method bodies
+  fn check(recv: & D, x: D) {
+    y: D;
+    entry:
+      y = copy x;
+      return
+  }
+}

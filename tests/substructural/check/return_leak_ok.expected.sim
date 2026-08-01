@@ -93,3 +93,16 @@ fn partial_array_slot_consumed() {
     call take_s(move a[1]);
     return
 }
+
+trait ImplDropElaborationOk {
+  fn<'s0> finish(recv: & 's0 Self, x: i64);
+}
+
+impl ImplDropElaborationOk for P {
+  fn<'s0> finish(recv: & 's0 P, x: i64) {
+    entry:
+      unborrow recv;
+      drop x;
+      return
+  }
+}
