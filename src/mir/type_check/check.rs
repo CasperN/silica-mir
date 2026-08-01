@@ -319,7 +319,13 @@ impl IndexedProgram {
 
         for method in &trait_decl.methods {
             let method_meta = &method.meta;
-            validate_lifetime_decls(method_meta, "trait method", d);
+            let desc = format!("trait method '{}'", method_meta.name);
+            validate_lifetime_params_with_outer(
+                &method_meta.params,
+                &meta.params.lifetime_params,
+                &desc,
+                d,
+            );
 
             let mut effective_params = trait_params.clone();
             effective_params
@@ -523,6 +529,62 @@ impl IndexedProgram {
                         impl_method.meta.name,
                         impl_method.meta.params.lifetime_params.len(),
                         trait_method.meta.params.lifetime_params.len(),
+                    ),
+                ));
+                continue;
+            }
+            let lifetime_renames = trait_meta
+                .params
+                .lifetime_params
+                .iter()
+                .map(|parameter| &parameter.lifetime)
+                .zip(&trait_path.lifetime_args)
+                .chain(
+                    trait_method
+                        .meta
+                        .params
+                        .lifetime_params
+                        .iter()
+                        .map(|parameter| &parameter.lifetime)
+                        .zip(
+                            impl_method
+                                .meta
+                                .params
+                                .lifetime_params
+                                .iter()
+                                .map(|parameter| &parameter.lifetime),
+                        ),
+                )
+                .collect::<HashMap<_, _>>();
+            let trait_outlives = trait_method
+                .meta
+                .params
+                .outlives
+                .iter()
+                .map(|bound| {
+                    let rename = |lifetime: &Lifetime| {
+                        lifetime_renames
+                            .get(lifetime)
+                            .map(|renamed| (*renamed).clone())
+                            .unwrap_or_else(|| lifetime.clone())
+                    };
+                    (rename(&bound.longer), rename(&bound.shorter))
+                })
+                .collect::<BTreeSet<_>>();
+            let impl_outlives = impl_method
+                .meta
+                .params
+                .outlives
+                .iter()
+                .map(|bound| (bound.longer.clone(), bound.shorter.clone()))
+                .collect::<BTreeSet<_>>();
+            if trait_outlives != impl_outlives {
+                d.push_error(Diagnostic::new(
+                    ImplMethodSignatureMismatch,
+                    impl_method.meta.params.source,
+                    format!(
+                        "Impl method '{}' lifetime bounds don't match trait's declaration",
+                        impl_method.meta.name,
                     ),
                 ));
                 continue;

@@ -84,3 +84,69 @@ fn caller_uses_make_ref() {
     read = copy ret_slot.*;
     return
 }
+
+# ---------- qualified methods preserve returned-reference aliases ----------
+
+struct MethodReceiver: Copy + Drop {}
+
+trait RefIdentity {
+  fn<'a> trait_identity(
+    recv: & Self,
+    seed: &'a i64,
+    $return: &out &'a i64,
+  );
+}
+
+impl MethodReceiver {
+  fn<'a> inherent_identity(
+    recv: & MethodReceiver,
+    seed: &'a i64,
+    $return: &out &'a i64,
+  ) {
+    entry:
+      $return.* = copy seed;
+      return
+  }
+}
+
+impl RefIdentity for MethodReceiver {
+  fn<'a> trait_identity(
+    recv: & MethodReceiver,
+    seed: &'a i64,
+    $return: &out &'a i64,
+  ) {
+    entry:
+      $return.* = copy seed;
+      return
+  }
+}
+
+# covers: inherent method output keeps the input's synthetic loan
+fn<'p> caller_uses_inherent_identity(recv: & MethodReceiver, seed: &mut 'p i64) {
+  shared: &'p i64;
+  ret_slot: &'p i64;
+  ret_out: &out &'p i64;
+  entry:
+    shared = &seed.*;
+    ret_out = &out ret_slot;
+    call <MethodReceiver>::inherent_identity<'p>(copy recv, move shared, move ret_out);
+    drop seed.*;
+    abort
+}
+
+# covers: trait method output keeps the input's synthetic loan
+fn<'p> caller_uses_trait_identity(recv: & MethodReceiver, seed: &mut 'p i64) {
+  shared: &'p i64;
+  ret_slot: &'p i64;
+  ret_out: &out &'p i64;
+  entry:
+    shared = &seed.*;
+    ret_out = &out ret_slot;
+    call <MethodReceiver as RefIdentity>::trait_identity<'p>(
+      copy recv,
+      move shared,
+      move ret_out,
+    );
+    drop seed.*;
+    abort
+}

@@ -48,6 +48,145 @@ fn<'p> invariant_forwarding(x: &'p i64, $return: &out &'p i64) {
     return
 }
 
+# ---------- qualified calls propagate satisfied method bounds ----------
+
+struct<'r> CallReceiver: Copy + Drop { value: &'r i64 }
+
+trait QualifiedNeedsBound {
+  fn<'a, 'b: 'a> trait_needs(recv: & Self, x: &'a i64, y: &'b i64);
+}
+
+impl<'r> CallReceiver<'r> {
+  fn<'a, 'b: 'a> inherent_needs(
+    recv: & CallReceiver<'r>,
+    x: &'a i64,
+    y: &'b i64,
+  ) {
+    entry:
+      return
+  }
+}
+
+impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
+  fn<'a, 'b: 'a> trait_needs(
+    recv: & CallReceiver<'r>,
+    x: &'a i64,
+    y: &'b i64,
+  ) {
+    entry:
+      return
+  }
+}
+
+# covers: inherent method outlives axiom is satisfied by the caller
+fn<'p, 'q: 'p> inherent_caller_bound_ok(
+  recv: & CallReceiver<'p>,
+  x: &'p i64,
+  y: &'q i64,
+) {
+  entry:
+    call <CallReceiver<'p>>::inherent_needs<'p, 'q>(copy recv, copy x, copy y);
+    return
+}
+
+# covers: trait method outlives axiom is satisfied by the caller
+fn<'p, 'q: 'p> trait_caller_bound_ok(
+  recv: & CallReceiver<'p>,
+  x: &'p i64,
+  y: &'q i64,
+) {
+  entry:
+    call <CallReceiver<'p> as QualifiedNeedsBound>::trait_needs<'p, 'q>(
+      copy recv,
+      copy x,
+      copy y,
+    );
+    return
+}
+
+trait<'a, 'b: 'a> QualifiedTraitHeaderBound {
+  fn invoke(recv: & Self);
+}
+
+struct<'a, 'b> HeaderReceiver: Copy + Drop {
+  first: &'a i64,
+  second: &'b i64,
+}
+
+impl<'a, 'b: 'a> HeaderReceiver<'a, 'b> {
+  fn inherent_header(recv: & HeaderReceiver<'a, 'b>) {
+    entry:
+      return
+  }
+}
+
+# covers: an impl header satisfies its trait path's lifetime bounds
+impl<'a, 'b: 'a> QualifiedTraitHeaderBound<'a, 'b> for HeaderReceiver<'a, 'b> {
+  fn invoke(recv: & HeaderReceiver<'a, 'b>) {
+    entry:
+      return
+  }
+}
+
+# covers: qualified trait declaration bound is satisfied by the caller
+fn<'p, 'q: 'p> trait_header_caller_bound_ok(recv: & HeaderReceiver<'p, 'q>) {
+  entry:
+    call <HeaderReceiver<'p, 'q> as QualifiedTraitHeaderBound<'p, 'q>>::invoke(copy recv);
+    return
+}
+
+# covers: inherent impl-header bound is satisfied by the caller
+fn<'p, 'q: 'p> impl_header_caller_bound_ok(recv: & HeaderReceiver<'p, 'q>) {
+  entry:
+    call <HeaderReceiver<'p, 'q>>::inherent_header(copy recv);
+    return
+}
+
+struct<T> ImplTypeReceiver { value: T }
+
+impl<T> ImplTypeReceiver<T> {
+  fn accept_impl_type(recv: & ImplTypeReceiver<T>, value: T) {
+    entry:
+      abort
+  }
+}
+
+# covers: inherent method parameter types substitute impl-header type arguments
+fn<'p, 'q: 'p> inherent_impl_type_bound_ok(
+  recv: & ImplTypeReceiver<&'p i64>,
+  value: &'q i64,
+) {
+  entry:
+    call <ImplTypeReceiver<&'p i64>>::accept_impl_type(copy recv, copy value);
+    return
+}
+
+struct MethodTypeReceiver: Copy + Drop {}
+
+trait GenericMethod {
+  fn<T> accept_method_type(recv: & Self, value: T);
+}
+
+impl GenericMethod for MethodTypeReceiver {
+  fn<T> accept_method_type(recv: & MethodTypeReceiver, value: T) {
+    entry:
+      abort
+  }
+}
+
+# covers: trait method parameter types substitute method type arguments
+fn<'p, 'q: 'p> trait_method_type_bound_ok(
+  recv: & MethodTypeReceiver,
+  value: &'q i64,
+) {
+  entry:
+    call <MethodTypeReceiver as GenericMethod>::accept_method_type<&'p i64>(
+      copy recv,
+      copy value,
+    );
+    return
+}
+
 # ---------- single outlives bound: 'a: 'b lets 'a flow into 'b slot ----------
 
 # covers: type_kind=fn lifetime_bound=single_outlives op=deref_write

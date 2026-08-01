@@ -18,3 +18,28 @@ error: at 83:5: [LT-LoanConflict] In function 'caller_uses_make_ref', block 'ent
  84 |     read = copy ret_slot.*;
     |
   hint: the borrow of 'ret_slot' is active until its last use or explicit unborrow.
+error: at 133:5: [LT-LoanConflict] In function 'caller_uses_inherent_identity', block 'entry': cannot move from 'seed.*': already borrowed by 'ret_slot'
+     |
+ 131 |     ret_out = &out ret_slot;
+ 132 |     call <MethodReceiver>::inherent_identity<'p>(copy recv, move shared, move ret_out);
+     |     ---------------------------------------------------------------------------------- borrow of 'seed.*' occurs here
+ 133 |     drop seed.*;
+     |     ^^^^^^^^^^^
+ 134 |     abort
+     |
+  hint: the borrow of 'ret_slot' is active until its last use or explicit unborrow.
+error: at 150:5: [LT-LoanConflict] In function 'caller_uses_trait_identity', block 'entry': cannot move from 'seed.*': already borrowed by 'ret_slot'
+     |
+ 144 |     ret_out = &out ret_slot;
+ 145 |     call <MethodReceiver as RefIdentity>::trait_identity<'p>(
+     |     - borrow of 'seed.*' occurs here
+ 146 |       copy recv,
+     |
+     | ...
+     |
+ 149 |     );
+ 150 |     drop seed.*;
+     |     ^^^^^^^^^^^
+ 151 |     abort
+     |
+  hint: the borrow of 'ret_slot' is active until its last use or explicit unborrow.

@@ -6,6 +6,7 @@
 #   context                          error
 #   struct + trait share a name      DuplicateDeclaration
 #   trait method sig refs Missing    InvalidDeclaredType (unknown type)
+#   trait method lifetime shadowing  DuplicateLifetimeParam
 #
 #   impl Unknown for Foo             ImplForUnknownTrait
 #   impl Iter for Foo                ImplTraitArgArity (0 vs 1 type arg)
@@ -14,6 +15,8 @@
 #   impl TraitS for Foo (bad sig)    ImplMethodSignatureMismatch
 #   impl BadBody for Foo             AssignmentTypeMismatch (body typecheck)
 #   impl MgTrait for Foo             ImplMethodSignatureMismatch (dropped generic)
+#   impl method lifetime bounds      ImplMethodSignatureMismatch when either
+#                                    weaker or stronger than the trait method
 #   impl LtTrait for Foo             ImplTraitArgArity (0 vs 1 lifetime arg)
 #
 #   two impls of Iter<i64> for       DuplicateDeclaration (coherence)
@@ -40,6 +43,10 @@ trait Duplicated {
 
 trait IterMissingT {
   fn next(recv: &mut Self, out: & Missing);
+}
+
+trait<'a> TraitLifetimeShadow {
+  fn<'a> borrow(recv: &'a Self);
 }
 
 # --- Impl declaration errors -------------------------------------------
@@ -125,6 +132,31 @@ impl MgTrait for Foo {
   fn pick(recv: & Foo, $return: &out i64) {
     entry:
       $return.* = 0;
+      return
+  }
+}
+
+# Method lifetime bounds are part of the trait contract. An impl may rename
+# lifetime parameters, but it may neither omit a required relationship nor
+# impose an additional one.
+trait<'a> BoundedMethod {
+  fn<'b: 'a> relate(recv: & Self, earlier: &'a i64, later: &'b i64);
+}
+
+impl<'x> BoundedMethod<'x> for Foo {
+  fn<'y> relate(recv: & Foo, earlier: &'x i64, later: &'y i64) {
+    entry:
+      return
+  }
+}
+
+trait UnboundedMethod {
+  fn<'a, 'b> accept(recv: & Self, first: &'a i64, second: &'b i64);
+}
+
+impl UnboundedMethod for Foo {
+  fn<'x, 'y: 'x> accept(recv: & Foo, first: &'x i64, second: &'y i64) {
+    entry:
       return
   }
 }

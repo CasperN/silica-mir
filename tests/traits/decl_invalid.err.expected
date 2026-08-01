@@ -1,142 +1,163 @@
-error: at 37:7: [TC-DuplicateDeclaration] Duplicate declaration of type 'Duplicated'
+error: at 40:7: [TC-DuplicateDeclaration] Duplicate declaration of type 'Duplicated'
     |
- 36 | 
- 37 | trait Duplicated {
+ 39 | 
+ 40 | trait Duplicated {
     |       ^^^^^^^^^^
- 38 |   fn ping(recv: & Self);
+ 41 |   fn ping(recv: & Self);
     |
-error: at 161:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' for target type DupTarget
+error: at 193:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' for target type DupTarget
      |
- 160 | 
- 161 | impl Iter<i64> for DupTarget {
+ 192 | 
+ 193 | impl Iter<i64> for DupTarget {
      |      ^^^^
- 162 |   fn next(recv: &mut DupTarget, $return: &out i64) {
+ 194 |   fn next(recv: &mut DupTarget, $return: &out i64) {
      |
-error: at 42:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next' param 'out': Use of undeclared type 'Missing'
+error: at 45:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next' param 'out': Use of undeclared type 'Missing'
     |
- 41 | trait IterMissingT {
- 42 |   fn next(recv: &mut Self, out: & Missing);
+ 44 | trait IterMissingT {
+ 45 |   fn next(recv: &mut Self, out: & Missing);
     |                                 ^^^^^^^^^
- 43 | }
+ 46 | }
     |
-error: at 59:6: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
+error: at 49:6: [TC-DuplicateLifetimeParam] In trait method 'borrow': lifetime parameter 'a is declared more than once
     |
- 58 | # Unknown trait name.
- 59 | impl Unknown for Foo {
+ 48 | trait<'a> TraitLifetimeShadow {
+ 49 |   fn<'a> borrow(recv: &'a Self);
+    |      ^^
+ 50 | }
+    |
+error: at 66:6: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
+    |
+ 65 | # Unknown trait name.
+ 66 | impl Unknown for Foo {
     |      ^^^^^^^
- 60 |   fn zap(recv: & Foo) {
+ 67 |   fn zap(recv: & Foo) {
     |
-error: at 67:6: [TC-ImplTraitArgArity] Trait 'Iter' expects 1 type argument(s), got 0
+error: at 74:6: [TC-ImplTraitArgArity] Trait 'Iter' expects 1 type argument(s), got 0
     |
- 66 | # Wrong number of trait type args (Iter takes 1, got 0).
- 67 | impl Iter for Foo {
+ 73 | # Wrong number of trait type args (Iter takes 1, got 0).
+ 74 | impl Iter for Foo {
     |      ^^^^
- 68 |   fn next(recv: &mut Foo, $return: &out i64) {
+ 75 |   fn next(recv: &mut Foo, $return: &out i64) {
     |
-error: at 82:6: [TC-ImplMethodNotInTrait] Impl of 'Trait' has method 'extra' not declared on the trait
+error: at 89:6: [TC-ImplMethodNotInTrait] Impl of 'Trait' has method 'extra' not declared on the trait
     |
- 81 |   }
- 82 |   fn extra(recv: & Foo) {
+ 88 |   }
+ 89 |   fn extra(recv: & Foo) {
     |      ^^^^^
- 83 |     entry:
+ 90 |     entry:
     |
-error: at 77:6: [TC-ImplMissingTraitMethod] Impl of 'Trait' is missing method 'b'
+error: at 84:6: [TC-ImplMissingTraitMethod] Impl of 'Trait' is missing method 'b'
     |
- 76 | # `a` and `extra`).
- 77 | impl Trait for Foo {
+ 83 | # `a` and `extra`).
+ 84 | impl Trait for Foo {
     |      ^^^^^
- 78 |   fn a(recv: & Foo) {
+ 85 |   fn a(recv: & Foo) {
     |
-error: at 96:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut 's0 Foo, trait declares & 's0 Foo (after Self := Foo)
-    |
- 95 | impl TraitS for Foo {
- 96 |   fn touch(recv: &mut Foo) {
-    |                  ^^^^^^^^
- 97 |     entry:
-    |
-error: at 113:7: [TC-AssignmentTypeMismatch] In function 'go', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+error: at 103:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut 's0 Foo, trait declares & 's0 Foo (after Self := Foo)
      |
- 112 |     entry:
- 113 |       flag = 0i64;
+ 102 | impl TraitS for Foo {
+ 103 |   fn touch(recv: &mut Foo) {
+     |                  ^^^^^^^^
+ 104 |     entry:
+     |
+error: at 120:7: [TC-AssignmentTypeMismatch] In function 'go', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+     |
+ 119 |     entry:
+ 120 |       flag = 0i64;
      |       ^^^^^^^^^^^
- 114 |       return
+ 121 |       return
      |
-error: at 125:6: [TC-ImplMethodSignatureMismatch] Impl method 'pick' declares 0 type parameter(s), trait declares 1
+error: at 132:6: [TC-ImplMethodSignatureMismatch] Impl method 'pick' declares 0 type parameter(s), trait declares 1
      |
- 124 | impl MgTrait for Foo {
- 125 |   fn pick(recv: & Foo, $return: &out i64) {
+ 131 | impl MgTrait for Foo {
+ 132 |   fn pick(recv: & Foo, $return: &out i64) {
      |      ^^^^
- 126 |     entry:
+ 133 |     entry:
      |
-error: at 138:6: [TC-ImplTraitArgArity] Trait 'LtTrait' expects 1 lifetime argument(s), got 0
+error: at 147:3: [TC-ImplMethodSignatureMismatch] Impl method 'relate' lifetime bounds don't match trait's declaration
      |
- 137 | 
- 138 | impl LtTrait for Foo {
+ 146 | impl<'x> BoundedMethod<'x> for Foo {
+ 147 |   fn<'y> relate(recv: & Foo, earlier: &'x i64, later: &'y i64) {
+     |   ^
+ 148 |     entry:
+     |
+error: at 158:3: [TC-ImplMethodSignatureMismatch] Impl method 'accept' lifetime bounds don't match trait's declaration
+     |
+ 157 | impl UnboundedMethod for Foo {
+ 158 |   fn<'x, 'y: 'x> accept(recv: & Foo, first: &'x i64, second: &'y i64) {
+     |   ^
+ 159 |     entry:
+     |
+error: at 170:6: [TC-ImplTraitArgArity] Trait 'LtTrait' expects 1 lifetime argument(s), got 0
+     |
+ 169 | 
+ 170 | impl LtTrait for Foo {
      |      ^^^^^^^
- 139 |   fn peek(recv: & Foo) {
+ 171 |   fn peek(recv: & Foo) {
      |
-error: at 176:20: [TC-InvalidDeclaredType] In impl of 'Iter', target type: Use of undeclared type 'MissingTarget'
+error: at 208:20: [TC-InvalidDeclaredType] In impl of 'Iter', target type: Use of undeclared type 'MissingTarget'
      |
- 175 | # `Self := <bad target>` fans out into a `SignatureMismatch` cascade.
- 176 | impl Iter<i64> for MissingTarget {
+ 207 | # `Self := <bad target>` fans out into a `SignatureMismatch` cascade.
+ 208 | impl Iter<i64> for MissingTarget {
      |                    ^^^^^^^^^^^^^
- 177 |   fn next(recv: &mut MissingTarget, $return: &out i64) {
+ 209 |   fn next(recv: &mut MissingTarget, $return: &out i64) {
      |
-error: at 188:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argument: Use of undeclared type 'MissingArg'
+error: at 220:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argument: Use of undeclared type 'MissingArg'
      |
- 187 | # no per-method `SignatureMismatch` on the trait arg's substitution.
- 188 | impl Iter<MissingArg> for Foo {
+ 219 | # no per-method `SignatureMismatch` on the trait arg's substitution.
+ 220 | impl Iter<MissingArg> for Foo {
      |           ^^^^^^^^^^
- 189 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
+ 221 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
      |
-error: at 237:6: [TC-DuplicateLifetimeParam] In function 'borrow': lifetime parameter 'a is declared more than once
+error: at 269:6: [TC-DuplicateLifetimeParam] In function 'borrow': lifetime parameter 'a is declared more than once
      |
- 236 | impl<'a> LifetimeShadow<'a> for Foo {
- 237 |   fn<'a> borrow(recv: &'a Foo) {
+ 268 | impl<'a> LifetimeShadow<'a> for Foo {
+ 269 |   fn<'a> borrow(recv: &'a Foo) {
      |      ^^
- 238 |     entry:
+ 270 |     entry:
      |
-error: at 244:6: [TC-DuplicateLifetimeParam] In function 'inherent_borrow': lifetime parameter 'a is declared more than once
+error: at 276:6: [TC-DuplicateLifetimeParam] In function 'inherent_borrow': lifetime parameter 'a is declared more than once
      |
- 243 | impl<'a> Foo {
- 244 |   fn<'a> inherent_borrow(recv: &'a Self) {
+ 275 | impl<'a> Foo {
+ 276 |   fn<'a> inherent_borrow(recv: &'a Self) {
      |      ^^
- 245 |     entry:
+ 277 |     entry:
      |
-error: at 251:6: [TC-InherentImplInvalidTarget] Inherent impl target must be a declared struct or enum type, found i64
+error: at 283:6: [TC-InherentImplInvalidTarget] Inherent impl target must be a declared struct or enum type, found i64
      |
- 250 | # Inherent impl targets must be declared nominal types.
- 251 | impl i64 {
+ 282 | # Inherent impl targets must be declared nominal types.
+ 283 | impl i64 {
      |      ^^^
- 252 |   fn invalid_target(recv: & Self) {
+ 284 |   fn invalid_target(recv: & Self) {
      |
-error: at 268:6: [TC-DuplicateInherentMethod] Inherent method 'duplicate' is declared more than once for Foo
+error: at 300:6: [TC-DuplicateInherentMethod] Inherent method 'duplicate' is declared more than once for Foo
      |
- 267 | impl Foo {
- 268 |   fn duplicate(recv: & Self) {
+ 299 | impl Foo {
+ 300 |   fn duplicate(recv: & Self) {
      |      ^^^^^^^^^
- 269 |     entry:
+ 301 |     entry:
      |
-error: at 279:7: [TC-AssignmentTypeMismatch] In function 'invalid_body', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+error: at 311:7: [TC-AssignmentTypeMismatch] In function 'invalid_body', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
      |
- 278 |     entry:
- 279 |       flag = 0i64;
+ 310 |     entry:
+ 311 |       flag = 0i64;
      |       ^^^^^^^^^^^
- 280 |       return
+ 312 |       return
      |
-error: at 211:7: [SUB-CopyOfNonCopy] In function 'duplicate', block 'entry': cannot copy non-Copy type T
+error: at 243:7: [SUB-CopyOfNonCopy] In function 'duplicate', block 'entry': cannot copy non-Copy type T
      |
- 210 |     entry:
- 211 |       duplicate = copy value;
+ 242 |     entry:
+ 243 |       duplicate = copy value;
      |       ^^^^^^^^^^^^^^^^^^^^^^
- 212 |       call consume<T>(move value);
+ 244 |       call consume<T>(move value);
      |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 223:7: [SUB-CopyOfNonCopy] In function 'inherent_duplicate', block 'entry': cannot copy non-Copy type T
+error: at 255:7: [SUB-CopyOfNonCopy] In function 'inherent_duplicate', block 'entry': cannot copy non-Copy type T
      |
- 222 |     entry:
- 223 |       duplicate = copy value;
+ 254 |     entry:
+ 255 |       duplicate = copy value;
      |       ^^^^^^^^^^^^^^^^^^^^^^
- 224 |       call consume<T>(move value);
+ 256 |       call consume<T>(move value);
      |
   hint: since the type is not Copy, try moving it instead using 'move'

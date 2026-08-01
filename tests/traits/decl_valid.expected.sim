@@ -71,6 +71,20 @@ impl MgTrait for Foo {
   }
 }
 
+trait<'a> LifetimeContract {
+  fn<'b: 'a, 's0> relate(recv: & 's0 Self, earlier: & 'a i64, later: & 'b i64);
+}
+
+impl<'x> LifetimeContract<'x> for Foo {
+  fn<'y: 'x, 's0> relate(recv: & 's0 Foo, earlier: & 'x i64, later: & 'y i64) {
+    entry:
+      unborrow earlier;
+      unborrow later;
+      unborrow recv;
+      return
+  }
+}
+
 struct<'a> LtHolder: Copy + Drop {
   p: & 'a i64
 }

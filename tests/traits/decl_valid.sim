@@ -12,6 +12,8 @@
 #   RefMethods                       method sig uses every &-kind
 #                                    (Shared/Mut/Out/Drop/Uninit)
 #   MgTrait                          method has its own type parameter
+#   LifetimeContract                method outlives bounds survive positional
+#                                    lifetime-parameter renaming in the impl
 #   LtTrait<'a>                      trait has a lifetime parameter
 #   SelfAlias, SelfLocal, SelfInBody Self desugars in receiver, local, and
 #                                    body-operand positions
@@ -89,6 +91,17 @@ trait MgTrait {
 
 impl MgTrait for Foo {
   fn<V: Copy + Drop> ignore(recv: & Self, other: & V) {
+    entry:
+      return
+  }
+}
+
+trait<'a> LifetimeContract {
+  fn<'b: 'a> relate(recv: & Self, earlier: &'a i64, later: &'b i64);
+}
+
+impl<'x> LifetimeContract<'x> for Foo {
+  fn<'y: 'x> relate(recv: & Foo, earlier: &'x i64, later: &'y i64) {
     entry:
       return
   }

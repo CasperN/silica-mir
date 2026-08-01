@@ -28,12 +28,80 @@ use super::LifetimeCode;
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     check_decl_wf(program, d);
+    check_trait_impl_wf(program, d);
     program.functions(|env, func, body| {
         check_fn_signature_wf(env, func, d);
         if let Some(body) = body {
             check_function(env, func, body, d);
         }
     });
+}
+
+fn check_trait_impl_wf(prog: &IndexedProgram, d: &mut Diagnostics) {
+    for ((trait_path, _), imp) in &prog.impls {
+        let Some(trait_decl) = prog.traits.get(&trait_path.name) else {
+            // MIR type checking reports unknown traits before lifetime analysis.
+            continue;
+        };
+        if trait_decl.meta.params.lifetime_params.len() != trait_path.lifetime_args.len() {
+            // MIR type checking owns trait-argument arity diagnostics.
+            continue;
+        }
+        let substitutions = trait_decl
+            .meta
+            .params
+            .lifetime_params
+            .iter()
+            .map(|parameter| &parameter.lifetime)
+            .zip(&trait_path.lifetime_args)
+            .collect::<IndexMap<_, _>>();
+        let axioms = imp
+            .params
+            .outlives
+            .iter()
+            .map(|bound| {
+                (
+                    name_to_region(&bound.longer),
+                    name_to_region(&bound.shorter),
+                )
+            })
+            .collect::<Vec<_>>();
+        let closure = constraints::transitive_closure(&axioms);
+        for bound in &trait_decl.meta.params.outlives {
+            let substitute = |lifetime: &Lifetime| {
+                substitutions
+                    .get(lifetime)
+                    .map(|substituted| name_to_region(substituted))
+                    .unwrap_or_else(|| name_to_region(lifetime))
+            };
+            let longer = substitute(&bound.longer);
+            let shorter = substitute(&bound.shorter);
+            if longer == shorter
+                || matches!(longer, Region::Static)
+                || closure.contains(&(longer.clone(), shorter.clone()))
+            {
+                continue;
+            }
+
+            let mut format = DiagnosticFormat::new();
+            let scope = format.scope_params(&imp.params);
+            let required = format!(
+                "{}: {}",
+                format.region(&scope, &longer),
+                format.region(&scope, &shorter),
+            );
+            let diagnostic = Diagnostic::new(
+                LifetimeCode::LifetimeMismatch,
+                imp.params.source,
+                format!(
+                    "trait '{}' requires lifetime bound {}, but it is not implied by the declared bounds on this impl",
+                    trait_path, required,
+                ),
+            )
+            .with_hint(format!("declare bound {} on this impl", required));
+            d.push_error(format.finish(diagnostic));
+        }
+    }
 }
 
 fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &mut Diagnostics) {
@@ -45,7 +113,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
     let mut constraints = constraints::ConstraintSet::new();
     let locals = body.locals_map(&func.params);
     let mut checker = Checker {
-        prog: env.program(),
+        env,
         func,
         locals,
         region_ctx: &region_ctx,
@@ -470,7 +538,7 @@ pub fn constraints_for(prog: &IndexedProgram, func: &Function) -> constraints::C
     let locals = body.locals_map(&func.params);
     let mut dummy_d = Diagnostics::default();
     let mut checker = Checker {
-        prog,
+        env: LocalEnv::for_decl(prog, &func.meta.params),
         func,
         locals,
         region_ctx: &region_ctx,
@@ -606,7 +674,7 @@ fn operand_place(op: &Operand) -> Option<&Place> {
 }
 
 struct Checker<'a> {
-    prog: &'a IndexedProgram,
+    env: LocalEnv<'a>,
     func: &'a Function,
     locals: IndexMap<String, Type>,
     region_ctx: &'a region::RegionCtx,
@@ -615,7 +683,103 @@ struct Checker<'a> {
     d: &'a mut Diagnostics,
 }
 
+struct CallSignature {
+    name: String,
+    param_types: Vec<Type>,
+    lifetime_params: Vec<LifetimeParam>,
+    outlives: Vec<OutlivesBound>,
+    fixed_lifetimes: IndexMap<Lifetime, Region>,
+    fixed_outlives: Vec<(Region, Region)>,
+}
+
 impl<'a> Checker<'a> {
+    fn call_signature(&self, target: &Operand) -> Option<CallSignature> {
+        let Operand::Const(constant) = target else {
+            return None;
+        };
+        match constant {
+            ConstVal::FnName(name, _) => {
+                let function = self.env.program().functions.get(name)?;
+                Some(CallSignature {
+                    name: name.clone(),
+                    param_types: function
+                        .params
+                        .iter()
+                        .map(|param| param.ty.clone())
+                        .collect(),
+                    lifetime_params: function.meta.params.lifetime_params.clone(),
+                    outlives: function.meta.params.outlives.clone(),
+                    fixed_lifetimes: IndexMap::new(),
+                    fixed_outlives: Vec::new(),
+                })
+            }
+            ConstVal::InherentFn { self_ty, method } => {
+                let Ok(resolved) = self.env.resolve_inherent_method(self_ty, method) else {
+                    // Qualified-call diagnostics belong to MIR type checking,
+                    // which must succeed before lifetime analysis is useful.
+                    return None;
+                };
+                Some(method_call_signature(
+                    format!("<{}>::{}", self_ty, method),
+                    resolved,
+                    method,
+                    Vec::new(),
+                ))
+            }
+            ConstVal::TraitFn {
+                trait_path,
+                self_ty,
+                method,
+            } => {
+                let Ok(resolved) = self.env.resolve_trait_method(trait_path, self_ty, method)
+                else {
+                    // Qualified-call diagnostics belong to MIR type checking,
+                    // which must succeed before lifetime analysis is useful.
+                    return None;
+                };
+                let declaration = self.env.program().traits.get(&trait_path.name)?;
+                let arguments = declaration
+                    .meta
+                    .params
+                    .lifetime_params
+                    .iter()
+                    .zip(&trait_path.lifetime_args)
+                    .map(|(parameter, argument)| {
+                        (parameter.lifetime.clone(), name_to_region(argument))
+                    })
+                    .collect::<IndexMap<_, _>>();
+                let fixed_outlives = declaration
+                    .meta
+                    .params
+                    .outlives
+                    .iter()
+                    .map(|bound| {
+                        let longer = arguments
+                            .get(&bound.longer)
+                            .cloned()
+                            .unwrap_or_else(|| name_to_region(&bound.longer));
+                        let shorter = arguments
+                            .get(&bound.shorter)
+                            .cloned()
+                            .unwrap_or_else(|| name_to_region(&bound.shorter));
+                        (longer, shorter)
+                    })
+                    .collect();
+                Some(method_call_signature(
+                    format!("<{} as {}>::{}", self_ty, trait_path, method),
+                    resolved,
+                    method,
+                    fixed_outlives,
+                ))
+            }
+            ConstVal::Int { .. }
+            | ConstVal::Float { .. }
+            | ConstVal::Bool(_)
+            | ConstVal::Unit
+            | ConstVal::ByteStr(_) => None,
+        }
+    }
+
     fn error(&self, code: LifetimeCode, source: SourceInfo, msg: String) -> Diagnostic {
         Diagnostic::new(code, source, msg).in_function(&self.func.meta.name)
     }
@@ -717,11 +881,12 @@ impl<'a> Checker<'a> {
                 return;
             };
             let Some(src_ty) =
-                crate::mir::type_util::place_type(&self.locals, self.prog, src_place)
+                crate::mir::type_util::place_type(&self.locals, self.env.program(), src_place)
             else {
                 return;
             };
-            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.prog, target)
+            let Some(tgt_ty) =
+                crate::mir::type_util::place_type(&self.locals, self.env.program(), target)
             else {
                 return;
             };
@@ -740,7 +905,8 @@ impl<'a> Checker<'a> {
         // refs would slip into a signature-visible array without a
         // diagnostic. Handled here, before the single-source `match` below.
         if let RValue::ArrayLit(ops) = rvalue {
-            let Some(tgt_ty) = crate::mir::type_util::place_type(&self.locals, self.prog, target)
+            let Some(tgt_ty) =
+                crate::mir::type_util::place_type(&self.locals, self.env.program(), target)
             else {
                 return;
             };
@@ -752,7 +918,7 @@ impl<'a> Checker<'a> {
                     continue;
                 };
                 let Some(src_ty) =
-                    crate::mir::type_util::place_type(&self.locals, self.prog, src_place)
+                    crate::mir::type_util::place_type(&self.locals, self.env.program(), src_place)
                 else {
                     continue;
                 };
@@ -775,19 +941,20 @@ impl<'a> Checker<'a> {
         }
         let (src_region, target_place) = match rvalue {
             RValue::Ref(_, place) => {
-                let Some(r) =
-                    self.region_ctx
-                        .region_of_borrow_source(place, &self.locals, self.prog)
-                else {
+                let Some(r) = self.region_ctx.region_of_borrow_source(
+                    place,
+                    &self.locals,
+                    self.env.program(),
+                ) else {
                     return;
                 };
                 (r, target.clone())
             }
             RValue::EnumConstr(_, _, variant, op) => {
                 let Some(src) = operand_place(op) else { return };
-                let Some(r) = self
-                    .region_ctx
-                    .region_of_place(src, &self.locals, self.prog)
+                let Some(r) =
+                    self.region_ctx
+                        .region_of_place(src, &self.locals, self.env.program())
                 else {
                     return;
                 };
@@ -795,9 +962,9 @@ impl<'a> Checker<'a> {
             }
             RValue::PtrCast(op, _) => {
                 let Some(src) = operand_place(op) else { return };
-                let Some(r) = self
-                    .region_ctx
-                    .region_of_place(src, &self.locals, self.prog)
+                let Some(r) =
+                    self.region_ctx
+                        .region_of_place(src, &self.locals, self.env.program())
                 else {
                     return;
                 };
@@ -805,16 +972,16 @@ impl<'a> Checker<'a> {
             }
             _ => return,
         };
-        let Some(t_r) = self
-            .region_ctx
-            .region_of_place(&target_place, &self.locals, self.prog)
+        let Some(t_r) =
+            self.region_ctx
+                .region_of_place(&target_place, &self.locals, self.env.program())
         else {
             return;
         };
         // Emit variance-aware constraint. Shared refs are covariant
         // (source outlives dst is enough). Exclusive-write kinds are
         // invariant (source outlives dst AND dst outlives source).
-        let target_kind = ref_kind_of_place(&target_place, &self.locals, self.prog);
+        let target_kind = ref_kind_of_place(&target_place, &self.locals, self.env.program());
         self.constraints.emit(
             src_region.clone(),
             t_r.clone(),
@@ -848,14 +1015,14 @@ impl<'a> Checker<'a> {
                     outer_places.map(|(s, _)| s),
                     self.region_ctx,
                     &self.locals,
-                    self.prog,
+                    self.env.program(),
                 );
                 let tgt_region = ref_region(
                     t_lt,
                     outer_places.map(|(_, t)| t),
                     self.region_ctx,
                     &self.locals,
-                    self.prog,
+                    self.env.program(),
                 );
                 let layer_variance = variance.combine(match kind {
                     RefKind::Shared => Variance::Covariant,
@@ -1109,10 +1276,10 @@ impl<'a> Checker<'a> {
     /// state discipline distinguishes them; lifetime doesn't.
     ///
     /// Algorithm:
-    /// 1. Look up callee's Function in the program. Bail on fn-pointer /
-    ///    non-fn-name callees.
-    /// 2. Allocate fresh Free regions from `region_ctx.fresh()` for
-    ///    each callee lifetime param.
+    /// 1. Resolve an ordinary or qualified method callee to its signature.
+    ///    Bail on function-pointer callees.
+    /// 2. Bind impl-header and explicit method lifetime arguments, then
+    ///    allocate fresh inference regions for elided lifetime parameters.
     /// 3. Walk each (caller arg, callee param) in parallel. At each
     ///    lifetime slot emit constraints:
     ///    - Argument-position (contravariant): `caller outlives inst`.
@@ -1134,44 +1301,38 @@ impl<'a> Checker<'a> {
         source: SourceInfo,
         loans: &mut LoanMap,
     ) {
-        let Operand::Const(ConstVal::FnName(callee_name, _)) = target else {
+        let Some(callee) = self.call_signature(target) else {
             return;
         };
-        let Some(callee) = self.prog.functions.get(callee_name) else {
-            return;
-        };
-        if callee.params.len() != args.len() {
+        if callee.param_types.len() != args.len() {
             return;
         }
 
-        // Fresh instantiation region per callee lifetime param.
-        let inst: IndexMap<Lifetime, Region> = callee
-            .meta
-            .params
-            .lifetime_params
-            .iter()
-            .map(|lt| (lt.lifetime.clone(), self.region_ctx.fresh_inference()))
-            .collect();
+        let mut inst = callee.fixed_lifetimes;
+        for parameter in &callee.lifetime_params {
+            inst.entry(parameter.lifetime.clone())
+                .or_insert_with(|| self.region_ctx.fresh_inference());
+        }
 
         let mut per_output_inputs: IndexMap<Region, BTreeSet<Place>> = IndexMap::new();
 
-        for (arg, param) in args.iter().zip(callee.params.iter()) {
+        for (arg, param_ty) in args.iter().zip(callee.param_types.iter()) {
             let Some(arg_place) = operand_place(arg) else {
                 continue;
             };
             self.walk_call_regions(
-                &param.ty,
+                param_ty,
                 arg_place,
                 &inst,
                 Variance::Contravariant,
                 loans,
                 &mut per_output_inputs,
-                callee_name,
+                &callee.name,
                 source,
             );
         }
 
-        for bound in &callee.meta.params.outlives {
+        for bound in &callee.outlives {
             let a_r = inst
                 .get(&bound.longer)
                 .cloned()
@@ -1184,20 +1345,30 @@ impl<'a> Checker<'a> {
                 a_r,
                 b_r,
                 ConstraintCause::Call {
-                    callee: callee_name.clone(),
+                    callee: callee.name.clone(),
+                },
+                source,
+            );
+        }
+        for (longer, shorter) in &callee.fixed_outlives {
+            self.constraints.emit(
+                longer.clone(),
+                shorter.clone(),
+                ConstraintCause::Call {
+                    callee: callee.name.clone(),
                 },
                 source,
             );
         }
 
-        for (arg, param) in args.iter().zip(callee.params.iter()) {
+        for (arg, param_ty) in args.iter().zip(callee.param_types.iter()) {
             let Some(arg_place) = operand_place(arg) else {
                 continue;
             };
             let Some(arg_owned) = as_owned_path(arg_place) else {
                 continue;
             };
-            let TypeKind::Ref(kind, _, inner_ty) = &param.ty.kind else {
+            let TypeKind::Ref(kind, _, inner_ty) = &param_ty.kind else {
                 continue;
             };
             if matches!(kind, RefKind::Shared) {
@@ -1265,7 +1436,7 @@ impl<'a> Checker<'a> {
                 let inst_region = inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt));
                 if let Some(caller_r) =
                     self.region_ctx
-                        .region_of_place(caller_place, &self.locals, self.prog)
+                        .region_of_place(caller_place, &self.locals, self.env.program())
                 {
                     emit_variance(
                         &caller_r,
@@ -1315,8 +1486,11 @@ impl<'a> Checker<'a> {
                 // all-to-first. A generic type's lifetime slots behave
                 // like container references: default to invariance
                 // (conservative, safe).
-                let caller_ty =
-                    crate::mir::type_util::place_type(&self.locals, self.prog, caller_place);
+                let caller_ty = crate::mir::type_util::place_type(
+                    &self.locals,
+                    self.env.program(),
+                    caller_place,
+                );
                 if let Some(caller_ty) = caller_ty {
                     if let TypeKind::Custom(Instance {
                         lifetime_args: caller_lts,
@@ -1526,6 +1700,49 @@ impl<'a> Checker<'a> {
             | TerminatorKind::Abort
             | TerminatorKind::Unreachable => {}
         }
+    }
+}
+
+fn method_call_signature(
+    name: String,
+    resolved: crate::mir::env::ResolvedImplMethod<'_>,
+    method_instance: &Instance,
+    fixed_outlives: Vec<(Region, Region)>,
+) -> CallSignature {
+    let param_types = resolved.instantiate_param_types(method_instance);
+    let mut lifetime_params = resolved.impl_block.params.lifetime_params.clone();
+    lifetime_params.extend(resolved.method.meta.params.lifetime_params.clone());
+    let mut outlives = resolved.impl_block.params.outlives.clone();
+    outlives.extend(resolved.method.meta.params.outlives.clone());
+
+    let mut fixed_lifetimes = IndexMap::new();
+    for (parameter, argument) in resolved
+        .impl_block
+        .params
+        .lifetime_params
+        .iter()
+        .zip(&resolved.bindings.lifetime_args)
+    {
+        fixed_lifetimes.insert(parameter.lifetime.clone(), name_to_region(argument));
+    }
+    let written_method_params = resolved
+        .method
+        .meta
+        .params
+        .lifetime_params
+        .iter()
+        .filter(|parameter| parameter.source.generated_kind().is_none());
+    for (parameter, argument) in written_method_params.zip(&method_instance.lifetime_args) {
+        fixed_lifetimes.insert(parameter.lifetime.clone(), name_to_region(argument));
+    }
+
+    CallSignature {
+        name,
+        param_types,
+        lifetime_params,
+        outlives,
+        fixed_lifetimes,
+        fixed_outlives,
     }
 }
 

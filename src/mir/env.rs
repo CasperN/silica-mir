@@ -693,7 +693,35 @@ pub struct IndexedProgram {
 
 #[derive(Debug, Clone)]
 pub(crate) struct ImplBindings {
+    pub lifetime_args: Vec<Lifetime>,
     pub type_args: Vec<Type>,
+}
+
+pub(crate) struct ResolvedImplMethod<'a> {
+    pub impl_block: &'a ImplBlock,
+    pub method: &'a Function,
+    pub bindings: ImplBindings,
+}
+
+impl ResolvedImplMethod<'_> {
+    pub(crate) fn instantiate_param_types(&self, method_args: &Instance) -> Vec<Type> {
+        let mut params = self.impl_block.params.clone();
+        params
+            .type_params
+            .extend(self.method.meta.params.type_params.clone());
+        let type_args = self
+            .bindings
+            .type_args
+            .iter()
+            .cloned()
+            .chain(method_args.type_args.iter().cloned())
+            .collect::<Vec<_>>();
+        self.method
+            .params
+            .iter()
+            .map(|param| params.substitute_types(&param.ty, &type_args))
+            .collect()
+    }
 }
 
 pub(crate) fn impl_marker_bounds_satisfied(
@@ -746,12 +774,16 @@ pub(crate) fn match_impl_header(
         .iter()
         .map(|param| type_bindings.get(&param.name).cloned())
         .collect::<Option<Vec<_>>>()?;
-    let lifetimes_bound = impl_block
+    let lifetime_args = impl_block
         .params
         .lifetime_params
         .iter()
-        .all(|param| lifetime_bindings.contains_key(&param.lifetime));
-    lifetimes_bound.then_some(ImplBindings { type_args })
+        .map(|param| lifetime_bindings.get(&param.lifetime).cloned())
+        .collect::<Option<Vec<_>>>()?;
+    Some(ImplBindings {
+        lifetime_args,
+        type_args,
+    })
 }
 
 pub(crate) fn match_inherent_impl_header(
@@ -778,12 +810,16 @@ pub(crate) fn match_inherent_impl_header(
         .iter()
         .map(|param| type_bindings.get(&param.name).cloned())
         .collect::<Option<Vec<_>>>()?;
-    let lifetimes_bound = impl_block
+    let lifetime_args = impl_block
         .params
         .lifetime_params
         .iter()
-        .all(|param| lifetime_bindings.contains_key(&param.lifetime));
-    lifetimes_bound.then_some(ImplBindings { type_args })
+        .map(|param| lifetime_bindings.get(&param.lifetime).cloned())
+        .collect::<Option<Vec<_>>>()?;
+    Some(ImplBindings {
+        lifetime_args,
+        type_args,
+    })
 }
 
 fn match_instance(
@@ -1455,13 +1491,11 @@ impl LocalEnv<'_> {
         Ok(fn_ty(f.instantiate_params(type_args)))
     }
 
-    fn impl_method_type(
+    fn validate_impl_method_args(
         &self,
-        imp: &ImplBlock,
-        bindings: &ImplBindings,
         impl_method: &Function,
         method_args: &Instance,
-    ) -> Result<Type, TypeResolutionError> {
+    ) -> Result<(), TypeResolutionError> {
         // Lifetime elaboration adds generated parameters for elided reference
         // lifetimes. Only written method parameters are supplied at the call
         // site; generated parameters are inferred by lifetime checking.
@@ -1513,29 +1547,7 @@ impl LocalEnv<'_> {
                 }
             }
         }
-        let mut params = imp.params.clone();
-        params
-            .lifetime_params
-            .extend(impl_method.meta.params.lifetime_params.clone());
-        params
-            .outlives
-            .extend(impl_method.meta.params.outlives.clone());
-        params
-            .type_params
-            .extend(impl_method.meta.params.type_params.clone());
-        let type_args = bindings
-            .type_args
-            .iter()
-            .cloned()
-            .chain(method_args.type_args.iter().cloned())
-            .collect::<Vec<_>>();
-        Ok(fn_ty(
-            impl_method
-                .params
-                .iter()
-                .map(|param| params.substitute_types(&param.ty, &type_args))
-                .collect(),
-        ))
+        Ok(())
     }
 
     fn resolve_inherent_fn(
@@ -1543,6 +1555,15 @@ impl LocalEnv<'_> {
         self_ty: &Type,
         method: &Instance,
     ) -> Result<Type, TypeResolutionError> {
+        let resolved = self.resolve_inherent_method(self_ty, method)?;
+        Ok(fn_ty(resolved.instantiate_param_types(method)))
+    }
+
+    pub(crate) fn resolve_inherent_method<'b>(
+        &'b self,
+        self_ty: &Type,
+        method: &Instance,
+    ) -> Result<ResolvedImplMethod<'b>, TypeResolutionError> {
         let applicable = self
             .program
             .inherent_impls
@@ -1588,7 +1609,12 @@ impl LocalEnv<'_> {
                 ));
             }
         };
-        self.impl_method_type(imp, bindings, impl_method, method)
+        self.validate_impl_method_args(impl_method, method)?;
+        Ok(ResolvedImplMethod {
+            impl_block: imp,
+            method: impl_method,
+            bindings: (*bindings).clone(),
+        })
     }
 
     /// Resolve a `TraitFn` callee to the concrete `fn(...)` type of its
@@ -1604,6 +1630,16 @@ impl LocalEnv<'_> {
         self_ty: &Type,
         method: &Instance,
     ) -> Result<Type, TypeResolutionError> {
+        let resolved = self.resolve_trait_method(trait_path, self_ty, method)?;
+        Ok(fn_ty(resolved.instantiate_param_types(method)))
+    }
+
+    pub(crate) fn resolve_trait_method<'b>(
+        &'b self,
+        trait_path: &Instance,
+        self_ty: &Type,
+        method: &Instance,
+    ) -> Result<ResolvedImplMethod<'b>, TypeResolutionError> {
         if !self.program.traits.contains_key(&trait_path.name) {
             return Err(TypeResolutionError::new(
                 TypeResolutionErrorKind::TraitFnUnknownTrait(trait_path.name.clone()),
@@ -1645,7 +1681,12 @@ impl LocalEnv<'_> {
                     method: method.name.clone(),
                 })
             })?;
-        self.impl_method_type(imp, bindings, impl_method, method)
+        self.validate_impl_method_args(impl_method, method)?;
+        Ok(ResolvedImplMethod {
+            impl_block: imp,
+            method: impl_method,
+            bindings: bindings.clone(),
+        })
     }
 
     fn matching_impls(
