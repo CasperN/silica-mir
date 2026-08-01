@@ -22,6 +22,17 @@ enum E: Move { V: i64 }
 extern fn sink_mut(r: &mut i64);
 extern fn sink_shared(r: &i64);
 
+# A shared parent has an initialized pointee by contract even though it does
+# not carry mutable RefState bookkeeping.
+# covers: shared-to-shared reborrow from a reference parameter
+fn shared_from_shared_param(r: &i64) {
+  s: &i64;
+  entry:
+    s = &r.*;
+    call sink_shared(move s);
+    return
+}
+
 # ---------- &mut derived from &mut local ----------
 
 # The derived borrow is moved to a call; NLL inserts `unborrow r` after

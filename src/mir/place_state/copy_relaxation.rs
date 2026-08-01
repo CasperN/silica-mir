@@ -1,11 +1,11 @@
-//! Copy relaxation: specialize `take` operands to `move` or `copy`.
+//! Copy relaxation: resolve `take` operands to `move`, `copy`, or `AutoClone`.
 //!
 //! HLL lowers ordinary value reads as `Operand::Take`. This pass rewrites
-//! each `take place` to either `move place` (last-use consumption) or
-//! `copy place` (a later reachable use / ref post-Init obligation demands
-//! the value, or the path structurally forbids consumption). Explicit
-//! `move` and `copy` in the input are authoritative and never rewritten,
-//! so hand-written `.sim` fixtures can pin exact operand kinds.
+//! each `take place` to `move place` (last-use consumption), `copy place`
+//! (trivial preservation), or an `AutoClone::clone` call followed by a move
+//! from the generated result (nontrivial preservation). Explicit `move` and
+//! `copy` in the input are authoritative and never rewritten, so hand-written
+//! `.sim` fixtures can pin exact operand kinds.
 //!
 //! It deliberately runs before NLL elaboration. Specializing `take` to
 //! `move` versus `copy` changes whether the read closes a borrower loan,
@@ -17,17 +17,19 @@
 //!
 //! Path classification (all `Field` / `Downcast` / const-`Index` steps
 //! are transparent):
-//! - **Mandatory-copy** — the path crosses a shared reference (`&T`) or
+//! - **Mandatory preservation** — the path crosses a shared reference (`&T`) or
 //!   contains a dynamic index. Moving through `&T` is illegal; a dynamic
 //!   index has no stable identity, so consuming it would silently lose
-//!   the storage. `take` on such a path is always specialized to `copy`;
-//!   a non-Copy type here is `RELAX-MandatoryCopyNonCopy`.
+//!   the storage. `take` on such a path uses `copy` when possible and an
+//!   `AutoClone` call otherwise; if neither is available, relaxation emits
+//!   `RELAX-MandatoryPreservationUnavailable`.
 //! - **Stable candidates** — owned paths, chains of exclusive-ref
 //!   dereferences, and paths crossing raw pointers. Raw pointers already
 //!   sit inside `unsafe`, so the pass demand-relaxes them like ordinary
-//!   candidates rather than mandating copy. Resolution: `copy` when
-//!   demand is live and the type is Copy, otherwise `move` (falling back
-//!   to `copy` for Copy-only types).
+//!   candidates rather than mandating preservation. Live demand resolves to
+//!   `copy` for Copy types or an `AutoClone` call for eligible Move types;
+//!   otherwise resolution consumes the place with `move` (falling back to
+//!   `copy` for Copy-only types).
 //! - **`Index` operand position** — a non-consuming read. `take` there
 //!   is forced to `copy`; `move` is `RELAX-IndexOperandNotReading`. This
 //!   keeps downstream analyses (place-state, NLL, lifetime) from having
@@ -47,14 +49,13 @@ use std::collections::BTreeSet;
 /// type supports neither `Copy` nor `Move`): these fire when the
 /// resolution decision itself has no valid target — for example, a
 /// `take` on a Move-only value through a shared-reference boundary,
-/// where the boundary demands `copy` but the type isn't `Copy`.
+/// where the boundary demands preservation but neither `Copy` nor an
+/// applicable `AutoClone` implementation is available.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyRelaxationCode {
-    /// The path crosses a shared reference or dynamic-index projection
-    /// (both mandate a `copy` resolution), but the place's type isn't
-    /// `Copy`. Only `move` would be type-valid, but `move` is
-    /// semantically illegal on this path.
-    MandatoryCopyNonCopy,
+    /// The path crosses a shared reference or dynamic-index projection, so
+    /// moving is illegal, but neither `Copy` nor `AutoClone` can preserve it.
+    MandatoryPreservationUnavailable,
     /// A `move` or `take` appears inside an `Index` projection. Array
     /// indexing reads its operand non-consumingly; place-state, NLL,
     /// and lifetime analyses only walk the outer operand, so a
@@ -218,13 +219,7 @@ fn elaborate_function(
     env: LocalEnv<'_>,
     d: &mut Diagnostics,
 ) {
-    let mut locals = IndexMap::new();
-    for param in &func.params {
-        locals.insert(param.name.clone(), param.ty.clone());
-    }
-    for local in &body.locals {
-        locals.insert(local.name.clone(), local.ty.clone());
-    }
+    let mut locals = body.locals_map(&func.params);
     let return_obligations = collect_return_obligations(func, body);
     let func_name = func.meta.name.clone();
     if body.blocks.is_empty() {
@@ -235,23 +230,46 @@ fn elaborate_function(
         return_obligations: &return_obligations,
     };
     let exits = dataflow::run(&analysis, body);
-    for block in &mut body.blocks {
+    let mut next_clone = 0usize;
+    let FunctionBody {
+        locals: body_locals,
+        blocks,
+    } = body;
+    for block in blocks {
         let Some(exit_demand) = exits.get(&block.label) else {
             continue;
         };
         let mut demand = exit_demand.clone();
         analysis.transfer_terminator(&mut demand, &block.terminator);
+        let block_label = block.label.clone();
         let mut ctx = RelaxCtx {
             env,
-            locals: &locals,
+            locals: &mut locals,
+            body_locals,
+            next_clone: &mut next_clone,
             d,
             func_name: &func_name,
-            block_label: &block.label,
+            block_label: &block_label,
         };
-        relax_terminator(&mut block.terminator, &mut demand, &mut ctx);
-        for stmt in block.statements.iter_mut().rev() {
-            relax_statement(stmt, &mut demand, &mut ctx);
+        let mut terminator_prefix = Vec::new();
+        relax_terminator(
+            &mut block.terminator,
+            &mut demand,
+            &mut ctx,
+            &mut terminator_prefix,
+        );
+
+        let mut rewritten = Vec::new();
+        for mut stmt in std::mem::take(&mut block.statements).into_iter().rev() {
+            let mut prefix = Vec::new();
+            relax_statement(&mut stmt, &mut demand, &mut ctx, &mut prefix);
+            rewritten.push((prefix, stmt));
         }
+        for (prefix, stmt) in rewritten.into_iter().rev() {
+            block.statements.extend(prefix);
+            block.statements.push(stmt);
+        }
+        block.statements.append(&mut terminator_prefix);
     }
 }
 
@@ -261,10 +279,82 @@ fn elaborate_function(
 /// resolves to neither `move` nor `copy`).
 struct RelaxCtx<'a> {
     env: LocalEnv<'a>,
-    locals: &'a IndexMap<String, Type>,
+    locals: &'a mut IndexMap<String, Type>,
+    body_locals: &'a mut Vec<Local>,
+    next_clone: &'a mut usize,
     d: &'a mut Diagnostics,
     func_name: &'a str,
     block_label: &'a str,
+}
+
+impl RelaxCtx<'_> {
+    fn auto_clone(&mut self, place: &Place, ty: &Type, source: SourceInfo) -> CloneExpansion {
+        let id = loop {
+            let id = *self.next_clone;
+            *self.next_clone += 1;
+            let names = clone_local_names(id);
+            if names.iter().all(|name| !self.locals.contains_key(name)) {
+                break id;
+            }
+        };
+        let [value_name, recv_name, out_name] = clone_local_names(id);
+        let generated_source = SourceInfo::generated(GeneratedKind::CopyRelaxation, source.span());
+        let generated_locals = [
+            Local {
+                name: value_name.clone(),
+                ty: ty.clone(),
+                source: generated_source,
+            },
+            Local {
+                name: recv_name.clone(),
+                ty: shared_ref_ty(ty.clone()),
+                source: generated_source,
+            },
+            Local {
+                name: out_name.clone(),
+                ty: out_ref_ty(ty.clone()),
+                source: generated_source,
+            },
+        ];
+        for local in generated_locals {
+            self.locals.insert(local.name.clone(), local.ty.clone());
+            self.body_locals.push(local);
+        }
+
+        let value = var_place(value_name);
+        let recv = var_place(recv_name);
+        let out = var_place(out_name);
+        let callee = const_op(ConstVal::TraitFn {
+            trait_path: Instance::bare("AutoClone"),
+            self_ty: ty.clone(),
+            method: Instance::bare("clone"),
+        });
+        CloneExpansion {
+            operand: move_op(value.clone()),
+            statements: vec![
+                assign_stmt(
+                    recv.clone(),
+                    ref_rv(RefKind::Shared, place.clone()),
+                    generated_source,
+                ),
+                assign_stmt(out.clone(), ref_rv(RefKind::Out, value), generated_source),
+                call_stmt(callee, vec![move_op(recv), move_op(out)], generated_source),
+            ],
+        }
+    }
+}
+
+struct CloneExpansion {
+    operand: Operand,
+    statements: Vec<Statement>,
+}
+
+fn clone_local_names(id: usize) -> [String; 3] {
+    [
+        format!("$clone{id}"),
+        format!("$clone_recv{id}"),
+        format!("$clone_out{id}"),
+    ]
 }
 
 /// Ref-typed places whose obligation requires an Init pointee at expiry.
@@ -598,7 +688,12 @@ fn nearest_owned_path(place: &Place) -> Option<Place> {
     }
 }
 
-fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx) {
+fn relax_statement(
+    stmt: &mut Statement,
+    demand: &mut Demand,
+    ctx: &mut RelaxCtx,
+    prefix: &mut Vec<Statement>,
+) {
     let source = stmt.source;
     match &mut stmt.kind {
         StatementKind::Assign(target, rvalue) => {
@@ -608,16 +703,16 @@ fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx
             // just an assignment sink.
             relax_place_index_operands(target, demand, ctx, source);
             kill_future_demand(demand, target);
-            relax_rvalue(rvalue, demand, ctx, source);
+            relax_rvalue(rvalue, demand, ctx, source, prefix);
             if as_owned_path(target).is_none() {
                 add_access_demand(demand, target);
             }
         }
         StatementKind::Call(target, args) => {
             for operand in args.iter_mut().rev() {
-                relax_operand(operand, demand, ctx, source);
+                relax_operand(operand, demand, ctx, source, prefix);
             }
-            relax_operand(target, demand, ctx, source);
+            relax_operand(target, demand, ctx, source, prefix);
         }
         StatementKind::Drop(place) | StatementKind::Unborrow(place) => {
             relax_place_index_operands(place, demand, ctx, source);
@@ -629,10 +724,15 @@ fn relax_statement(stmt: &mut Statement, demand: &mut Demand, ctx: &mut RelaxCtx
     }
 }
 
-fn relax_terminator(term: &mut Terminator, demand: &mut Demand, ctx: &mut RelaxCtx) {
+fn relax_terminator(
+    term: &mut Terminator,
+    demand: &mut Demand,
+    ctx: &mut RelaxCtx,
+    prefix: &mut Vec<Statement>,
+) {
     let source = term.source;
     match &mut term.kind {
-        TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, ctx, source),
+        TerminatorKind::Branch { cond, .. } => relax_operand(cond, demand, ctx, source, prefix),
         TerminatorKind::SwitchEnum { place, .. } => {
             relax_place_index_operands(place, demand, ctx, source);
             add_value_demand(demand, place);
@@ -644,11 +744,17 @@ fn relax_terminator(term: &mut Terminator, demand: &mut Demand, ctx: &mut RelaxC
     }
 }
 
-fn relax_rvalue(rvalue: &mut RValue, demand: &mut Demand, ctx: &mut RelaxCtx, source: SourceInfo) {
+fn relax_rvalue(
+    rvalue: &mut RValue,
+    demand: &mut Demand,
+    ctx: &mut RelaxCtx,
+    source: SourceInfo,
+    prefix: &mut Vec<Statement>,
+) {
     match rvalue {
         RValue::Use(operand)
         | RValue::EnumConstr(_, _, _, operand)
-        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, ctx, source),
+        | RValue::PtrCast(operand, _) => relax_operand(operand, demand, ctx, source, prefix),
         RValue::Ref(kind, place) => {
             relax_place_index_operands(place, demand, ctx, source);
             transfer_ref_demand(kind, place, demand);
@@ -658,7 +764,7 @@ fn relax_rvalue(rvalue: &mut RValue, demand: &mut Demand, ctx: &mut RelaxCtx, so
         }
         RValue::ArrayLit(operands) => {
             for operand in operands.iter_mut().rev() {
-                relax_operand(operand, demand, ctx, source);
+                relax_operand(operand, demand, ctx, source, prefix);
             }
         }
     }
@@ -753,6 +859,7 @@ fn relax_operand(
     demand: &mut Demand,
     ctx: &mut RelaxCtx,
     source: SourceInfo,
+    prefix: &mut Vec<Statement>,
 ) {
     // First, recurse into any `take` nested inside the operand's own
     // place (dynamic-index case: `move a[take i]`).
@@ -782,41 +889,56 @@ fn relax_operand(
         _ => unreachable!(),
     };
 
-    let mandatory_copy = requires_copy_semantics(&place, ctx.env, ctx.locals);
+    let mandatory_preservation = requires_preservation(&place, ctx.env, ctx.locals);
     let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
     let class = ty.as_ref().map(|t| ctx.env.class_of(t)).unwrap_or_default();
     let is_copy = class.implies(Marker::Copy);
     let is_move = class.implies(Marker::Move);
 
-    let resolved = if mandatory_copy {
-        // Move is semantically invalid here (shared-ref crossing or
-        // dynamic index). Copy is the only legal resolution — emit a
-        // user error if the type isn't Copy.
+    let has_demand = mandatory_preservation
+        || demand
+            .values
+            .iter()
+            .any(|needed| demand_preserves(&place, needed))
+        || demand
+            .accesses
+            .iter()
+            .any(|needed| demand_preserves(&place, needed));
+    if has_demand && !is_copy && is_move {
+        if let Some(ty) = &ty {
+            if ctx
+                .env
+                .has_applicable_trait_impl(&Instance::bare("AutoClone"), ty)
+            {
+                let expansion = ctx.auto_clone(&place, ty, source);
+                prefix.splice(0..0, expansion.statements);
+                *operand = expansion.operand;
+                add_value_demand(demand, &place);
+                return;
+            }
+        }
+    }
+
+    let resolved = if mandatory_preservation {
+        // Move is semantically invalid here (shared-ref crossing or dynamic
+        // index). AutoClone was attempted above; diagnose if trivial Copy is
+        // unavailable too.
         if !is_copy {
             push_relax_error(
                 ctx,
                 source,
-                CopyRelaxationCode::MandatoryCopyNonCopy,
+                CopyRelaxationCode::MandatoryPreservationUnavailable,
                 format!(
-                    "cannot resolve `take` of '{}' to `copy`: path crosses a shared \
-                     reference or dynamic-index projection and the type is not Copy",
+                    "cannot preserve `take` of '{}': path crosses a shared reference \
+                     or dynamic-index projection, and no valid Copy or AutoClone resolution is available",
                     format_place(&place)
                 ),
             );
         }
         Operand::Copy(place.clone())
     } else {
-        // Stable owned or all-exclusive-deref path. Prefer `copy` when a
-        // later use demands the value and the type supports it; otherwise
-        // fall through to `move` (or `copy` when only Copy is available).
-        let has_demand = demand
-            .values
-            .iter()
-            .any(|needed| demand_preserves(&place, needed))
-            || demand
-                .accesses
-                .iter()
-                .any(|needed| demand_preserves(&place, needed));
+        // AutoClone was attempted above when later demand requires preserving
+        // a stable owned or all-exclusive-deref path.
         if has_demand && is_copy {
             Operand::Copy(place.clone())
         } else if is_move {
@@ -856,7 +978,7 @@ fn relax_operand(
 /// carry no ownership tracking and the author is already in `unsafe`
 /// territory, so `take *p` resolves via the ordinary flexible rule
 /// (prefer `move` when the type supports it).
-fn requires_copy_semantics(
+fn requires_preservation(
     place: &Place,
     env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
@@ -864,19 +986,19 @@ fn requires_copy_semantics(
     match place {
         Place::Var(_) => false,
         Place::Field(inner, _) | Place::Downcast(inner, _) => {
-            requires_copy_semantics(inner, env, locals)
+            requires_preservation(inner, env, locals)
         }
         Place::Index(inner, op) => {
             if !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. })) {
                 return true;
             }
-            requires_copy_semantics(inner, env, locals)
+            requires_preservation(inner, env, locals)
         }
         Place::Deref(inner) => {
             let boundary_requires_copy = env
                 .type_of_place(inner, locals)
                 .is_ok_and(|ty| matches!(&ty.kind, TypeKind::Ref(RefKind::Shared, _, _)));
-            boundary_requires_copy || requires_copy_semantics(inner, env, locals)
+            boundary_requires_copy || requires_preservation(inner, env, locals)
         }
     }
 }
@@ -1510,6 +1632,38 @@ mod tests {
         elaborate(&mut program, &mut d);
         let once = pretty_print(&program);
         elaborate(&mut program, &mut d);
+        assert_eq!(pretty_print(&program), once);
+    }
+
+    #[test]
+    fn autoclone_elaboration_is_idempotent() {
+        let mut program = elaborate_source(
+            "
+            struct Value: Move { field: i64 }
+            impl AutoClone for Value {
+              fn clone(recv: &Value, out: &out Value) {
+                entry:
+                  out.*.field = copy recv.*.field;
+                  return
+              }
+            }
+            extern fn consume(x: Value);
+            fn f(x: Value) {
+              entry:
+                call consume(take x);
+                call consume(take x);
+                return
+            }
+            ",
+        );
+        let once = pretty_print(&program);
+        let mut d = Diagnostics::default();
+        elaborate(&mut program, &mut d);
+        assert!(
+            !d.has_errors(),
+            "unexpected diagnostics: {:?}",
+            d.errors_str()
+        );
         assert_eq!(pretty_print(&program), once);
     }
 }

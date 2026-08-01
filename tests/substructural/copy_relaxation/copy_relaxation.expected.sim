@@ -30,11 +30,208 @@ struct<'s0, 's1> Link: Move {
   next: &mut 's0 &mut 's1 CopyPair
 }
 
+struct Cloneable: Move {
+  value: i64
+}
+
+struct<T: Copy + Drop> GenericCloneable: Move {
+  value: T
+}
+
+struct CloneHolder: Move {
+  item: Cloneable
+  tail: i64
+}
+
+struct<'a> BorrowedCloneable: Move {
+  value: & 'a i64
+}
+
 extern fn take_num(x: i64);
 
 extern fn take_token(x: Token);
 
 extern fn<'s0> observe(r: & 's0 i64);
+
+extern fn take_cloneable(x: Cloneable);
+
+extern fn take_two_cloneable(x: Cloneable, y: Cloneable);
+
+extern fn take_generic_cloneable(x: GenericCloneable<i64>);
+
+extern fn<'a> take_borrowed_cloneable(x: BorrowedCloneable<'a>);
+
+impl AutoClone for Token {
+  fn<'s0, 's1> clone(recv: & 's0 Token, $return: &out 's1 Token) {
+    entry:
+      $return.* = copy recv.*;
+      unborrow $return;
+      unborrow recv;
+      return
+  }
+}
+
+impl AutoClone for Cloneable {
+  fn<'s0, 's1> clone(recv: & 's0 Cloneable, $return: &out 's1 Cloneable) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      return
+  }
+}
+
+impl<T: Copy + Drop> AutoClone for GenericCloneable<T> {
+  fn<'s0, 's1> clone(recv: & 's0 GenericCloneable<T>, $return: &out 's1 GenericCloneable<T>) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      return
+  }
+}
+
+impl<'a> AutoClone for BorrowedCloneable<'a> {
+  fn<'s0, 's1> clone(recv: & 's0 BorrowedCloneable<'a>, $return: &out 's1 BorrowedCloneable<'a>) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      return
+  }
+}
+
+fn repeated_autoclone(x: Cloneable) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    $clone_recv0 = & x;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_cloneable(move $clone0);
+    call take_cloneable(move x);
+    return
+}
+
+fn assign_autoclone(x: Cloneable) {
+  y: Cloneable;
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    $clone_recv0 = & x;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    y = move $clone0;
+    call take_cloneable(move y);
+    call take_cloneable(move x);
+    return
+}
+
+fn<'s0> autoclone_through_shared(r: & 's0 Cloneable) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    $clone_recv0 = & r.*;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    unborrow r;
+    call take_cloneable(move $clone0);
+    return
+}
+
+fn<'s0> autoclone_dynamic_index(r: & 's0 [Cloneable; 2], i: i64) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    $clone_recv0 = & r.*[copy i];
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    unborrow r;
+    call take_cloneable(move $clone0);
+    drop i;
+    return
+}
+
+fn repeated_generic_autoclone(x: GenericCloneable<i64>) {
+  $clone0: GenericCloneable<i64>;
+  $clone_recv0: & GenericCloneable<i64>;
+  $clone_out0: &out GenericCloneable<i64>;
+  entry:
+    $clone_recv0 = & x;
+    $clone_out0 = &out $clone0;
+    call <GenericCloneable<i64> as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_generic_cloneable(move $clone0);
+    call take_generic_cloneable(move x);
+    return
+}
+
+fn repeated_projected_autoclone(x: CloneHolder) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    $clone_recv0 = & x.item;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_cloneable(move $clone0);
+    call take_cloneable(move x.item);
+    call take_num(move x.tail);
+    return
+}
+
+fn multiple_autoclone_operands(x: Cloneable, y: Cloneable) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  $clone1: Cloneable;
+  $clone_recv1: & Cloneable;
+  $clone_out1: &out Cloneable;
+  entry:
+    $clone_recv1 = & x;
+    $clone_out1 = &out $clone1;
+    call <Cloneable as AutoClone>::clone(move $clone_recv1, move $clone_out1);
+    $clone_recv0 = & y;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_two_cloneable(move $clone1, move $clone0);
+    call take_two_cloneable(move x, move y);
+    return
+}
+
+fn<'a> repeated_lifetime_autoclone(x: BorrowedCloneable<'a>) {
+  $clone0: BorrowedCloneable<'a>;
+  $clone_recv0: & BorrowedCloneable<'a>;
+  $clone_out0: &out BorrowedCloneable<'a>;
+  entry:
+    $clone_recv0 = & x;
+    $clone_out0 = &out $clone0;
+    call <BorrowedCloneable<'a> as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_borrowed_cloneable(move $clone0);
+    call take_borrowed_cloneable(move x);
+    return
+}
+
+fn autoclone_loop(x: Cloneable, again: bool) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    goto loop
+  loop:
+    $clone_recv0 = & x;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_cloneable(move $clone0);
+    branch(copy again) [true: loop, false: done]
+  done:
+    call take_cloneable(move x);
+    drop again;
+    return
+}
 
 fn repeated_scalar(x: i64) {
   entry:
@@ -69,6 +266,21 @@ fn<'s0> repeated_mut_pointee(r: &mut 's0 i64) {
     call take_num(copy r.*);
     call take_num(move r.*);
     r.* = 0;
+    unborrow r;
+    return
+}
+
+fn<'s0> autoclone_through_mut(r: &mut 's0 Cloneable) {
+  $clone0: Cloneable;
+  $clone_recv0: & Cloneable;
+  $clone_out0: &out Cloneable;
+  entry:
+    $clone_recv0 = & r.*;
+    $clone_out0 = &out $clone0;
+    call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+    call take_cloneable(move $clone0);
+    call take_cloneable(move r.*);
+    r.*.value = 0;
     unborrow r;
     return
 }
@@ -173,15 +385,23 @@ fn<'s0> repeated_uninit_pointee(r: &uninit 's0 i64) {
 }
 
 trait ImplCopyRelaxationOk {
-  fn<'s0> relax(recv: & 's0 Self, x: i64);
+  fn<'s0> relax(recv: & 's0 Self, x: i64, y: Cloneable);
 }
 
 impl ImplCopyRelaxationOk for Token {
-  fn<'s0> relax(recv: & 's0 Token, x: i64) {
+  fn<'s0> relax(recv: & 's0 Token, x: i64, y: Cloneable) {
+    $clone0: Cloneable;
+    $clone_recv0: & Cloneable;
+    $clone_out0: &out Cloneable;
     entry:
       unborrow recv;
       call take_num(copy x);
       call take_num(move x);
+      $clone_recv0 = & y;
+      $clone_out0 = &out $clone0;
+      call <Cloneable as AutoClone>::clone(move $clone_recv0, move $clone_out0);
+      call take_cloneable(move $clone0);
+      call take_cloneable(move y);
       return
   }
 }

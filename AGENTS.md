@@ -125,7 +125,9 @@ asynchronous object destruction.
   * Because the last two rules can be applied repeatedly, `T: Copy + Destroy`
     imply `T: CoTransfer`.
 
-Only the trivial tier of substructural traits have been implemented.
+The trivial tier is implemented. Copy relaxation also inserts calls to
+applicable user-provided `AutoClone` implementations; `AutoDestroy`, the
+remaining tiers, and blanket/derived implementations are deferred.
 
 
 ## Reference obligations

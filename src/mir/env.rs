@@ -436,6 +436,24 @@ impl<'a> LocalEnv<'a> {
         self.self_ty
     }
 
+    /// Whether an impl whose header and marker bounds match is available.
+    /// Overlap is an invalid program awaiting declaration-time coherence
+    /// checking, so it remains an internal failure rather than a lookup state.
+    pub(crate) fn has_applicable_trait_impl(&self, trait_path: &Instance, self_ty: &Type) -> bool {
+        if matches!(self_ty.kind, TypeKind::Param(_)) {
+            return false;
+        }
+        let mut matches = self.matching_impls(trait_path, self_ty).into_iter();
+        let found = matches.next().is_some();
+        assert!(
+            matches.next().is_none(),
+            "overlapping impls while resolving {} for {}; coherence checking should have rejected them",
+            trait_path,
+            self_ty,
+        );
+        found
+    }
+
     pub fn type_param(&self, name: &str) -> Option<&'a TypeParam> {
         self.decl_generics
             .type_params
@@ -1299,16 +1317,7 @@ impl LocalEnv<'_> {
                 TypeResolutionErrorKind::TraitFnParamReceiver(name.clone()),
             ));
         }
-        let matches = self
-            .program
-            .impls
-            .values()
-            .filter_map(|imp| {
-                let bindings = match_impl_header(imp, trait_path, self_ty)?;
-                impl_marker_bounds_satisfied(imp, &bindings, |arg| self.class_of(arg))
-                    .then_some((imp, bindings))
-            })
-            .collect::<Vec<_>>();
+        let matches = self.matching_impls(trait_path, self_ty);
         let (imp, bindings) = match matches.as_slice() {
             [] => {
                 return Err(TypeResolutionError::new(
@@ -1365,6 +1374,22 @@ impl LocalEnv<'_> {
             })
             .collect();
         Ok(fn_ty(param_tys))
+    }
+
+    fn matching_impls(
+        &self,
+        trait_path: &Instance,
+        self_ty: &Type,
+    ) -> Vec<(&ImplBlock, ImplBindings)> {
+        self.program
+            .impls
+            .values()
+            .filter_map(|imp| {
+                let bindings = match_impl_header(imp, trait_path, self_ty)?;
+                impl_marker_bounds_satisfied(imp, &bindings, |arg| self.class_of(arg))
+                    .then_some((imp, bindings))
+            })
+            .collect()
     }
 
     pub fn type_of_operand(

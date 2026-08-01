@@ -197,7 +197,6 @@ the deliberate later refinement to nested operand and projection sources.
 - Modules
 - Standard `Span` and `Vec` types working properly 
 - A standard `Box` type working properly
-- Extend copy relaxation with AutoClone.
 - Extend drop elaboration with AutoDestroy.
 - trait bounds on type parameters
 - Make monomorphization not mutate the program and just write to LLVM.

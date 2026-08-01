@@ -1,28 +1,28 @@
-error: at 16:5: [RELAX-MandatoryCopyNonCopy] In function 'take_of_non_copy_through_shared_ref', block 'entry': cannot resolve `take` of 'r.*' to `copy`: path crosses a shared reference or dynamic-index projection and the type is not Copy
+error: at 15:5: [RELAX-MandatoryPreservationUnavailable] In function 'take_of_non_copy_through_shared_ref', block 'entry': cannot preserve `take` of 'r.*': path crosses a shared reference or dynamic-index projection, and no valid Copy or AutoClone resolution is available
     |
- 15 |   entry:
- 16 |     x = take r.*;
+ 14 |   entry:
+ 15 |     x = take r.*;
     |     ^^^^^^^^^^^^
- 17 |     call consume(move x);
+ 16 |     call consume(move x);
     |
-error: at 28:5: [RELAX-MandatoryCopyNonCopy] In function 'take_of_non_copy_at_dynamic_index', block 'entry': cannot resolve `take` of 'a[?]' to `copy`: path crosses a shared reference or dynamic-index projection and the type is not Copy
+error: at 27:5: [RELAX-MandatoryPreservationUnavailable] In function 'take_of_non_copy_at_dynamic_index', block 'entry': cannot preserve `take` of 'a[?]': path crosses a shared reference or dynamic-index projection, and no valid Copy or AutoClone resolution is available
     |
- 27 |   entry:
- 28 |     x = take a[copy i];
+ 26 |   entry:
+ 27 |     x = take a[copy i];
     |     ^^^^^^^^^^^^^^^^^^
- 29 |     call consume(move x);
+ 28 |     call consume(move x);
     |
-error: at 41:5: [RELAX-IndexOperandNotReading] In function 'move_index_operand', block 'entry': `move` of 'i' inside `Index` projection: array indexing is a non-consuming read, so its operand must be `copy` or a constant
+error: at 40:5: [RELAX-IndexOperandNotReading] In function 'move_index_operand', block 'entry': `move` of 'i' inside `Index` projection: array indexing is a non-consuming read, so its operand must be `copy` or a constant
     |
- 40 |   entry:
- 41 |     x = copy a[move i];
+ 39 |   entry:
+ 40 |     x = copy a[move i];
     |     ^^^^^^^^^^^^^^^^^^
- 42 |     drop x;
+ 41 |     drop x;
     |
-error: at 55:7: [RELAX-MandatoryCopyNonCopy] In function 'relax', block 'entry': cannot resolve `take` of 'x.*' to `copy`: path crosses a shared reference or dynamic-index projection and the type is not Copy
+error: at 54:7: [RELAX-MandatoryPreservationUnavailable] In function 'relax', block 'entry': cannot preserve `take` of 'x.*': path crosses a shared reference or dynamic-index projection, and no valid Copy or AutoClone resolution is available
     |
- 54 |     entry:
- 55 |       y = take x.*;
+ 53 |     entry:
+ 54 |       y = take x.*;
     |       ^^^^^^^^^^^^
- 56 |       call consume(move y);
+ 55 |       call consume(move y);
     |

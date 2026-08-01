@@ -451,3 +451,22 @@ impl ImplClassCheckViolation for D {
       return
   }
 }
+
+# AutoClone permits compiler-inserted cloning of `take`; it does not make an
+# explicit bitwise `copy` legal.
+struct AutoCloneOnly: Move { v: i64 }
+
+impl AutoClone for AutoCloneOnly {
+  fn clone(recv: & AutoCloneOnly, $return: &out AutoCloneOnly) {
+    entry:
+      abort
+  }
+}
+
+# covers: explicit copy remains marker-gated for an AutoClone-only type
+fn explicit_copy_of_autoclone(x: AutoCloneOnly) {
+  y: AutoCloneOnly;
+  entry:
+    y = copy x;
+    abort
+}

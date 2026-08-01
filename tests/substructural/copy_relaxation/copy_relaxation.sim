@@ -1,10 +1,9 @@
 # Copy relaxation is a pre-NLL, CFG-aware MIR elaboration pass. It
-# specializes each `take` operand to `move` (last use, no further demand)
-# or `copy` (later reachable use / ref post-Init obligation demands the
-# value). Hand-written `move` and `copy` are authoritative and never
-# rewritten. This fixture uses `take` throughout to exercise the pass's
-# specialization; unit tests cover branch, loop, projection, and `&out`
-# transfer edges.
+# specializes each `take` operand to `move` (last use), `copy` (trivial
+# preservation), or an AutoClone call (nontrivial preservation). Hand-written
+# `move` and `copy` are authoritative and never rewritten. This fixture uses
+# `take` throughout to exercise the pass's specialization; unit tests cover
+# additional dataflow invariants.
 
 struct Token: Copy + Drop { value: i64 }
 struct Pair: Move { left: i64 right: i64 }
@@ -13,10 +12,145 @@ enum DeepChoice: Copy + Drop { Variant: i64 Other: i64 }
 enum RefChoice: Move { HasRef: &mut CopyPair Empty: unit }
 struct ProjectionRoot: Move { field: &mut [&mut DeepChoice; 3] }
 struct Link: Move { next: &mut &mut CopyPair }
+struct Cloneable: Move { value: i64 }
+struct<T: Copy + Drop> GenericCloneable: Move { value: T }
+struct CloneHolder: Move { item: Cloneable tail: i64 }
+struct<'a> BorrowedCloneable: Move { value: & 'a i64 }
 
 extern fn take_num(x: i64);
 extern fn take_token(x: Token);
 extern fn observe(r: &i64);
+extern fn take_cloneable(x: Cloneable);
+extern fn take_two_cloneable(x: Cloneable, y: Cloneable);
+extern fn take_generic_cloneable(x: GenericCloneable<i64>);
+extern fn<'a> take_borrowed_cloneable(x: BorrowedCloneable<'a>);
+
+# Copy remains the preferred trivial relaxation even if AutoClone is also
+# implemented for the type.
+impl AutoClone for Token {
+  fn clone(recv: &Token, $return: &out Token) {
+    entry:
+      $return.* = copy recv.*;
+      return
+  }
+}
+
+impl AutoClone for Cloneable {
+  fn clone(recv: &Cloneable, $return: &out Cloneable) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      return
+  }
+}
+
+impl<T: Copy + Drop> AutoClone for GenericCloneable<T> {
+  fn clone(recv: &GenericCloneable<T>, $return: &out GenericCloneable<T>) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      return
+  }
+}
+
+impl<'a> AutoClone for BorrowedCloneable<'a> {
+  fn clone(recv: &BorrowedCloneable<'a>, $return: &out BorrowedCloneable<'a>) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      return
+  }
+}
+
+# The first use of an AutoClone-but-not-Copy value expands to a clone call;
+# the final use still moves the original value.
+# covers: implicit AutoClone followed by last-use move
+fn repeated_autoclone(x: Cloneable) {
+  entry:
+    call take_cloneable(take x);
+    call take_cloneable(take x);
+    return
+}
+
+# Assignment rvalues receive the generated clone prefix just like call
+# operands. The assigned clone and original value can then be consumed.
+# covers: AutoClone expansion before an assignment rvalue
+fn assign_autoclone(x: Cloneable) {
+  y: Cloneable;
+  entry:
+    y = take x;
+    call take_cloneable(move y);
+    call take_cloneable(move x);
+    return
+}
+
+# A shared-reference boundary forbids moving the pointee, but AutoClone can
+# preserve it without requiring the pointee itself to be Copy.
+# covers: AutoClone through a shared-reference boundary
+fn autoclone_through_shared(r: &Cloneable) {
+  entry:
+    call take_cloneable(take r.*);
+    return
+}
+
+# Dynamic indices have no stable move-path identity. Cloning through a shared
+# array reference provides a non-consuming resolution.
+# covers: AutoClone through a dynamic-index projection
+fn autoclone_dynamic_index(r: &[Cloneable; 2], i: i64) {
+  entry:
+    call take_cloneable(take r.*[copy i]);
+    return
+}
+
+# Generic impl headers participate in implicit AutoClone lookup.
+# covers: generic AutoClone impl selection
+fn repeated_generic_autoclone(x: GenericCloneable<i64>) {
+  entry:
+    call take_generic_cloneable(take x);
+    call take_generic_cloneable(take x);
+    return
+}
+
+# Ordinary projections use the projected type's AutoClone impl. The sibling
+# field is consumed separately so the containing Move aggregate is exhausted.
+# covers: AutoClone of an owned projected field
+fn repeated_projected_autoclone(x: CloneHolder) {
+  entry:
+    call take_cloneable(take x.item);
+    call take_cloneable(take x.item);
+    call take_num(take x.tail);
+    return
+}
+
+# Prefix expansions retain operand order even though demand is walked
+# backwards. Both operands clone for the first call and move in the second.
+# covers: multiple AutoClone expansions before one statement
+fn multiple_autoclone_operands(x: Cloneable, y: Cloneable) {
+  entry:
+    call take_two_cloneable(take x, take y);
+    call take_two_cloneable(take x, take y);
+    return
+}
+
+# Generated value and reference temporaries preserve lifetime-bearing types.
+# covers: AutoClone of a lifetime-parameterized value
+fn<'a> repeated_lifetime_autoclone(x: BorrowedCloneable<'a>) {
+  entry:
+    call take_borrowed_cloneable(take x);
+    call take_borrowed_cloneable(take x);
+    return
+}
+
+# Loop-carried demand clones on each iteration while the exit path eventually
+# moves the original value.
+# covers: AutoClone for loop-carried demand
+fn autoclone_loop(x: Cloneable, again: bool) {
+  entry:
+    goto loop
+  loop:
+    call take_cloneable(take x);
+    branch(copy again) [true: loop, false: done]
+  done:
+    call take_cloneable(take x);
+    return
+}
 
 # The first take preserves x for the second use; the last use stays a move.
 fn repeated_scalar(x: i64) {
@@ -27,6 +161,7 @@ fn repeated_scalar(x: i64) {
 }
 
 # Classification comes from the declared MIR class, not a lowering heuristic.
+# covers: Copy takes precedence when AutoClone is also implemented
 fn repeated_custom(x: Token) {
   entry:
     call take_token(take x);
@@ -60,6 +195,17 @@ fn repeated_mut_pointee(r: &mut i64) {
     call take_num(take r.*);
     call take_num(take r.*);
     r.* = 0;
+    return
+}
+
+# Generated AutoClone receivers may reborrow a mutable-reference pointee
+# shared. The final move and field write restore the pointee obligation.
+# covers: AutoClone through a mutable-reference pointee
+fn autoclone_through_mut(r: &mut Cloneable) {
+  entry:
+    call take_cloneable(take r.*);
+    call take_cloneable(take r.*);
+    r.*.value = 0;
     return
 }
 
@@ -164,15 +310,17 @@ fn repeated_uninit_pointee(r: &uninit i64) {
 }
 
 trait ImplCopyRelaxationOk {
-  fn relax(recv: & Self, x: i64);
+  fn relax(recv: &Self, x: i64, y: Cloneable);
 }
 
 impl ImplCopyRelaxationOk for Token {
   # covers: copy relaxation visits impl method bodies
-  fn relax(recv: & Token, x: i64) {
+  fn relax(recv: &Token, x: i64, y: Cloneable) {
     entry:
       call take_num(take x);
       call take_num(take x);
+      call take_cloneable(take y);
+      call take_cloneable(take y);
       return
   }
 }

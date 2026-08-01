@@ -1,0 +1,24 @@
+# Implicit AutoClone expansion reaches concrete trait dispatch and LLVM.
+
+struct Cloneable: Move { value: i64 }
+
+impl AutoClone for Cloneable {
+  fn clone(recv: & Cloneable, $return: &out Cloneable) {
+    entry:
+      $return.*.value = copy recv.*.value;
+      return
+  }
+}
+
+extern fn consume(x: Cloneable);
+
+# covers: generated AutoClone call resolves and lowers to LLVM
+fn main(exit: &out i32) {
+  value: Cloneable;
+  entry:
+    value.value = 7;
+    call consume(take value);
+    call consume(take value);
+    exit.* = 0i32;
+    return
+}

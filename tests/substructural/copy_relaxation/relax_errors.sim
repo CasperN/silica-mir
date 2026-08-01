@@ -5,11 +5,10 @@ struct Owned: Drop + Move { value: i64 }
 
 extern fn consume(x: Owned);
 
-# ---------- RELAX-MandatoryCopyNonCopy: shared-ref crossing ----------
+# ---------- RELAX-MandatoryPreservationUnavailable: shared-ref crossing ----------
 
-# `take r.*` through `&Owned` must resolve to `copy` (moving through a
-# shared reference is illegal), but `Owned` is not Copy — no valid
-# resolution exists.
+# Moving through a shared reference is illegal, and `Owned` has neither Copy
+# nor AutoClone, so no preserving resolution exists.
 fn take_of_non_copy_through_shared_ref(r: &Owned) {
   x: Owned;
   entry:
@@ -18,10 +17,10 @@ fn take_of_non_copy_through_shared_ref(r: &Owned) {
     return
 }
 
-# ---------- RELAX-MandatoryCopyNonCopy: dynamic-index projection ----------
+# ---------- RELAX-MandatoryPreservationUnavailable: dynamic-index projection ----------
 
-# Dynamic index makes the path mandatory-copy, but the slot type isn't
-# Copy so `copy` can't be emitted either.
+# A dynamic index requires preservation, but the slot type supports neither
+# Copy nor AutoClone.
 fn take_of_non_copy_at_dynamic_index(a: [Owned; 2], i: i64) {
   x: Owned;
   entry:

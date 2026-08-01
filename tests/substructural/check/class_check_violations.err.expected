@@ -369,6 +369,14 @@ error: at 450:7: [SUB-CopyOfNonCopy] In function 'check', block 'entry': cannot 
  451 |       return
      |
   hint: since the type is not Copy, try moving it instead using 'move'
+error: at 470:5: [SUB-CopyOfNonCopy] In function 'explicit_copy_of_autoclone', block 'entry': cannot copy non-Copy type AutoCloneOnly
+     |
+ 469 |   entry:
+ 470 |     y = copy x;
+     |     ^^^^^^^^^^
+ 471 |     abort
+     |
+  hint: since the type is not Copy, try moving it instead using 'move'
 error: at 66:5: [PS-RefObligationUnfulfilled] In function 'copy_linear_struct_as_rvalue', block 'entry': reference 'x.r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  61 | 

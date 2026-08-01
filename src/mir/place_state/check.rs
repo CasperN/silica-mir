@@ -1009,11 +1009,14 @@ impl<'a> PlaceStateContext<'a> {
             let Some(parent_ty) = self.infer_ref_place_type(&parent) else {
                 return;
             };
-            let TypeKind::Ref(_, _, pointee_ty) = parent_ty.kind else {
+            let TypeKind::Ref(parent_kind, _, pointee_ty) = parent_ty.kind else {
                 // Raw-pointer dereferences carry no tracked initialization
                 // state; unsafe source is responsible for their validity.
                 return;
             };
+            if matches!((parent_kind, kind), (RefKind::Shared, RefKind::Shared)) {
+                return;
+            }
             let Some(parent_rs) = self.ensure_ref_state(&parent, state) else {
                 d.push_error(diag(
                     ReferenceStateUnknown,
