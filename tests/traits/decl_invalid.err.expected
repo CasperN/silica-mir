@@ -89,6 +89,13 @@ error: at 186:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argumen
      |           ^^^^^^^^^^
  187 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
      |
+error: at 223:6: [TC-DuplicateLifetimeParam] In function 'borrow': lifetime parameter 'a is declared more than once
+     |
+ 222 | impl<'a> LifetimeShadow<'a> for Foo {
+ 223 |   fn<'a> borrow(recv: &'a Foo) {
+     |      ^^
+ 224 |     entry:
+     |
 error: at 209:7: [SUB-CopyOfNonCopy] In function 'duplicate', block 'entry': cannot copy non-Copy type T
      |
  208 |     entry:

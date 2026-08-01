@@ -195,10 +195,8 @@ fn desugar_trait(t: &mut TraitDecl, arities: &HashMap<String, usize>) {
 
 fn desugar_impl(i: &mut ImplBlock, arities: &HashMap<String, usize>) {
     // Seed the fresh-name skiplist with the impl-header's lifetime
-    // params too — they're in scope for method bodies through
-    // `effective_impl_method`, so a synthesized `'sN` colliding with
-    // an explicit header name (e.g. `impl<'s0>`) would shadow it once
-    // the header is prepended.
+    // params too, because they share a scope with the method-level
+    // synthesized lifetimes.
     let header_lts: Vec<LifetimeParam> = i.params.lifetime_params.clone();
     for method in &mut i.methods {
         let mut ctx =

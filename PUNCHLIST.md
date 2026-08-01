@@ -178,4 +178,3 @@ the deliberate later refinement to nested operand and projection sources.
 - destructor elaboration
 - Traits working properly
   - trait bounds: `trait Foo: Copy + MyTrait {..}`
-  - Examine `effective_impl_method`

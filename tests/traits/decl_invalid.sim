@@ -98,8 +98,8 @@ impl TraitS for Foo {
 }
 
 # Method body has a type error: assigning i64 to a bool local. The
-# type checker sees this because `typecheck_impl` runs each method
-# through `typecheck_function` with an effective scope.
+# type checker sees this because `typecheck_impl` checks each method
+# with its impl-header and method-level generics in scope.
 trait BadBody {
   fn go(recv: & Self);
 }
@@ -209,6 +209,19 @@ impl<T: Move> BadSub<T> for Box<T> {
       duplicate = copy value;
       call consume<T>(move value);
       call consume<T>(move duplicate);
+      return
+  }
+}
+
+# An impl method cannot redeclare a lifetime from its impl header. Named
+# lifetimes are shared across the combined LocalEnv and cannot shadow.
+trait<'a> LifetimeShadow {
+  fn<'b> borrow(recv: &'b Self);
+}
+
+impl<'a> LifetimeShadow<'a> for Foo {
+  fn<'a> borrow(recv: &'a Foo) {
+    entry:
       return
   }
 }

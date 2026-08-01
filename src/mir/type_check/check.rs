@@ -64,6 +64,15 @@ fn lifetime_scope(params: &[LifetimeParam]) -> BTreeSet<Lifetime> {
     s
 }
 
+fn local_lifetime_scope(env: LocalEnv<'_>) -> BTreeSet<Lifetime> {
+    let mut scope: BTreeSet<Lifetime> = env
+        .lifetime_params()
+        .map(|param| param.lifetime.clone())
+        .collect();
+    scope.insert(Lifetime("static".to_string()));
+    scope
+}
+
 /// Reject shape errors on a decl's declared lifetime params:
 /// - `'static` is reserved and cannot be a user param.
 /// - Duplicates are rejected (any subsequent occurrence).
@@ -73,7 +82,16 @@ fn validate_lifetime_params(
     container_desc: &str,
     d: &mut Diagnostics,
 ) {
-    let mut seen: BTreeSet<&Lifetime> = BTreeSet::new();
+    validate_lifetime_params_with_outer(params, &[], container_desc, d);
+}
+
+fn validate_lifetime_params_with_outer(
+    params: &GenericParams,
+    outer: &[LifetimeParam],
+    container_desc: &str,
+    d: &mut Diagnostics,
+) {
+    let mut seen: BTreeSet<&Lifetime> = outer.iter().map(|param| &param.lifetime).collect();
     for lt in &params.lifetime_params {
         if lt.lifetime.0 == "static" {
             d.push_error(Diagnostic::new(
@@ -96,7 +114,13 @@ fn validate_lifetime_params(
             ));
         }
     }
-    let lt_scope = lifetime_scope(&params.lifetime_params);
+    let mut lt_scope = lifetime_scope(outer);
+    lt_scope.extend(
+        params
+            .lifetime_params
+            .iter()
+            .map(|param| param.lifetime.clone()),
+    );
     for bound in &params.outlives {
         for lt in [&bound.longer, &bound.shorter] {
             if !lt_scope.contains(lt) {
@@ -120,6 +144,16 @@ fn validate_lifetime_decls(
 ) {
     let desc = format!("{} '{}'", container_kind, meta.name);
     validate_lifetime_params(&meta.params, &desc, d);
+}
+
+fn validate_function_lifetime_decls(env: LocalEnv<'_>, meta: &DeclMeta, d: &mut Diagnostics) {
+    // TODO: Reject type-parameter shadowing between impl headers and methods
+    // once duplicate type parameters are diagnosed generally.
+    let desc = format!("function '{}'", meta.name);
+    let outer = env
+        .impl_generics()
+        .map_or(&[][..], |params| params.lifetime_params.as_slice());
+    validate_lifetime_params_with_outer(&meta.params, outer, &desc, d);
 }
 
 /// Collect all Named lifetimes referenced in `ty` that aren't in
@@ -233,7 +267,7 @@ impl IndexedProgram {
 
         // Validate all functions
         for f in self.functions() {
-            self.typecheck_function(f, d);
+            self.typecheck_function(LocalEnv::for_decl(self, &f.meta.params), f, d);
         }
 
         // Validate trait method signatures. Each method's types are
@@ -245,12 +279,7 @@ impl IndexedProgram {
         }
 
         // Validate impl blocks: header well-formedness, trait ref
-        // resolution, and method-signature conformance against the
-        // trait. Method bodies get type-checked through the effective
-        // meta path inside `typecheck_impl`; the other check passes
-        // don't yet see impl methods and will pick them up once the
-        // mono trait-resolution pass emits concrete `Fn` decls in
-        // their place.
+        // resolution, method-signature conformance, and method bodies.
         for imp in self.impls.values() {
             self.typecheck_impl(imp, d);
         }
@@ -311,36 +340,6 @@ impl IndexedProgram {
                     ));
                 }
             }
-        }
-    }
-
-    /// Build an "effective" `Function` for an impl method: its own
-    /// meta prepended with the impl-header's lifetime params, outlives
-    /// axioms, and type params. Used to feed impl methods through the
-    /// existing `typecheck_function` path so their bodies get the same
-    /// checks as free fns, under a scope that includes impl-header
-    /// generics.
-    ///
-    /// `Self` has already been desugared to the impl's target type by
-    /// [`crate::mir::desugar::self_alias::desugar_self_alias`], so
-    /// nothing here has to reintroduce it into scope.
-    fn effective_impl_method(header: &GenericParams, method: &Function) -> Function {
-        let mut meta = method.meta.clone();
-        let mut lps = header.lifetime_params.clone();
-        lps.extend(std::mem::take(&mut meta.params.lifetime_params));
-        meta.params.lifetime_params = lps;
-        let mut outs = header.outlives.clone();
-        outs.extend(std::mem::take(&mut meta.params.outlives));
-        meta.params.outlives = outs;
-        let mut tps = header.type_params.clone();
-        tps.extend(std::mem::take(&mut meta.params.type_params));
-        meta.params.type_params = tps;
-        Function {
-            meta,
-            is_extern: method.is_extern,
-            abi: method.abi.clone(),
-            params: method.params.clone(),
-            body: method.body.clone(),
         }
     }
 
@@ -636,21 +635,16 @@ impl IndexedProgram {
             }
         }
 
-        // Type-check every impl-method body. Feed each through the
-        // existing `typecheck_function` path with an effective meta so
-        // the body's scope includes both the impl-header generics and
-        // the method's own. Bodies with type errors would otherwise
-        // slip through since impls don't participate in `IndexedProgram::functions()`.
+        // Type-check every impl method under its impl-header and
+        // method-level generic scopes.
         for method in &imp.methods {
-            let effective = Self::effective_impl_method(header, method);
-            self.typecheck_function(&effective, d);
+            self.typecheck_function(LocalEnv::for_impl_method(self, imp, method), method, d);
         }
     }
 
-    fn typecheck_function(&self, f: &Function, d: &mut Diagnostics) {
-        let scope = &f.meta.params;
-        let lt_scope = lifetime_scope(&f.meta.params.lifetime_params);
-        validate_lifetime_decls(&f.meta, "function", d);
+    fn typecheck_function(&self, env: LocalEnv<'_>, f: &Function, d: &mut Diagnostics) {
+        let lt_scope = local_lifetime_scope(env);
+        validate_function_lifetime_decls(env, &f.meta, d);
         for (i, p) in f.params.iter().enumerate() {
             if p.name == "$return" {
                 if i != f.params.len() - 1 {
@@ -679,7 +673,7 @@ impl IndexedProgram {
                     }
                 }
             }
-            if let Err(e) = LocalEnv::for_decl(self, scope).validate_type(&p.ty) {
+            if let Err(e) = env.validate_type(&p.ty) {
                 d.push_error(validation_diagnostic(
                     e,
                     p.ty.source,
@@ -741,7 +735,7 @@ impl IndexedProgram {
             }
         }
         for l in &body.locals {
-            if let Err(e) = LocalEnv::for_decl(self, scope).validate_type(&l.ty) {
+            if let Err(e) = env.validate_type(&l.ty) {
                 d.push_error(validation_diagnostic(
                     e,
                     l.ty.source,
@@ -776,27 +770,27 @@ impl IndexedProgram {
         let block_labels: HashSet<String> = body.blocks.iter().map(|b| b.label.clone()).collect();
 
         for block in &body.blocks {
-            self.typecheck_block(f, block, &locals_map, &block_labels, d);
+            self.typecheck_block(env, f, block, &locals_map, &block_labels, d);
         }
     }
 
     fn typecheck_block(
         &self,
+        env: LocalEnv<'_>,
         func: &Function,
         block: &BasicBlock,
         locals: &IndexMap<String, Type>,
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        let scope = &func.meta.params;
-        let lt_scope = lifetime_scope(&func.meta.params.lifetime_params);
+        let lt_scope = local_lifetime_scope(env);
         for stmt in &block.statements {
-            self.validate_stmt_embedded_types(func, block, stmt, scope, &lt_scope, d);
-            if let Err(e) = self.typecheck_statement(func, block, stmt, locals) {
+            self.validate_stmt_embedded_types(env, func, block, stmt, &lt_scope, d);
+            if let Err(e) = self.typecheck_statement(env, func, block, stmt, locals) {
                 d.push_error(e);
             }
         }
-        self.typecheck_terminator(func, block, locals, block_labels, d);
+        self.typecheck_terminator(env, func, block, locals, block_labels, d);
     }
 
     /// Validate every `Type` mentioned inside a statement's rvalues and
@@ -806,15 +800,15 @@ impl IndexedProgram {
     /// this closes the analogous gap for expression-embedded types.
     fn validate_stmt_embedded_types(
         &self,
+        env: LocalEnv<'_>,
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
-        scope: &GenericParams,
         lt_scope: &BTreeSet<Lifetime>,
         d: &mut Diagnostics,
     ) {
         let record = |ty: &Type, d: &mut Diagnostics| {
-            if let Err(e) = LocalEnv::for_decl(self, scope).validate_type(ty) {
+            if let Err(e) = env.validate_type(ty) {
                 d.push_error(
                     validation_diagnostic(
                         e,
@@ -880,12 +874,12 @@ impl IndexedProgram {
 
     fn typecheck_statement(
         &self,
+        env: LocalEnv<'_>,
         func: &Function,
         block: &BasicBlock,
         stmt: &Statement,
         locals: &IndexMap<String, Type>,
     ) -> Result<(), Diagnostic> {
-        let env = LocalEnv::for_decl(self, &func.meta.params);
         // Local helper: build a Diagnostic with statement context.
         let stmt_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, stmt.source, msg)
@@ -1001,13 +995,13 @@ impl IndexedProgram {
 
     fn typecheck_terminator(
         &self,
+        env: LocalEnv<'_>,
         func: &Function,
         block: &BasicBlock,
         locals: &IndexMap<String, Type>,
         block_labels: &HashSet<String>,
         d: &mut Diagnostics,
     ) {
-        let env = LocalEnv::for_decl(self, &func.meta.params);
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, block.terminator.source, msg)
