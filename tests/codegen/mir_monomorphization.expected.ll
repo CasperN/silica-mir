@@ -12,6 +12,20 @@ declare void @abort()
 
 declare void @consume_deep(%"Deep<i32>")
 
+define void @call_borrow_identity(ptr %arg.x, ptr %arg.$return) {
+.init:
+  %local.$return = alloca ptr, align 8
+  store ptr %arg.$return, ptr %local.$return
+  %local.x = alloca ptr, align 8
+  store ptr %arg.x, ptr %local.x
+  br label %entry
+entry:
+  %t.0 = load ptr, ptr %local.x
+  %t.1 = load ptr, ptr %local.$return
+  call void @"borrow_identity<i32>"(ptr %t.0, ptr %t.1)
+  ret void
+}
+
 define void @make_box(i32 %arg.x, ptr %arg.$return) {
 .init:
   %local.$return = alloca ptr, align 8
@@ -145,7 +159,35 @@ entry:
   %t.7 = getelementptr %"Box<i32>", ptr %local.b, i32 0, i32 0
   %t.8 = load i32, ptr %t.7
   %t.9 = load ptr, ptr %local.id_out
-  call void @"identity<i32>"(i32 %t.8, ptr %t.9)
+  call void @"wrapped_identity<i32>"(i32 %t.8, ptr %t.9)
+  ret void
+}
+
+define void @"borrow_identity<i32>"(ptr %arg.x, ptr %arg.$return) {
+.init:
+  %local.$return = alloca ptr, align 8
+  store ptr %arg.$return, ptr %local.$return
+  %local.x = alloca ptr, align 8
+  store ptr %arg.x, ptr %local.x
+  br label %entry
+entry:
+  %t.0 = load ptr, ptr %local.x
+  %t.1 = load ptr, ptr %local.$return
+  store ptr %t.0, ptr %t.1
+  ret void
+}
+
+define void @"wrapped_identity<i32>"(i32 %arg.x, ptr %arg.$return) {
+.init:
+  %local.$return = alloca ptr, align 8
+  store ptr %arg.$return, ptr %local.$return
+  %local.x = alloca i32, align 4
+  store i32 %arg.x, ptr %local.x
+  br label %entry
+entry:
+  %t.0 = load i32, ptr %local.x
+  %t.1 = load ptr, ptr %local.$return
+  call void @"identity<i32>"(i32 %t.0, ptr %t.1)
   ret void
 }
 

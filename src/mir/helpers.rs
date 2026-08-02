@@ -196,10 +196,17 @@ pub fn unit_const() -> ConstVal {
 }
 /// Bare function-name const (non-generic).
 pub fn fn_name_const(name: impl Into<String>) -> ConstVal {
-    ConstVal::FnName(name.into(), Vec::new())
+    ConstVal::FnName(Instance::new(name, Vec::new(), Vec::new()))
 }
 pub fn fn_name_const_with_args(name: impl Into<String>, args: Vec<Type>) -> ConstVal {
-    ConstVal::FnName(name.into(), args)
+    fn_name_const_with_generic_args(name, Vec::new(), args)
+}
+pub fn fn_name_const_with_generic_args(
+    name: impl Into<String>,
+    lifetime_args: Vec<Lifetime>,
+    type_args: Vec<Type>,
+) -> ConstVal {
+    ConstVal::FnName(Instance::new(name, lifetime_args, type_args))
 }
 pub fn byte_str_const(bytes: Vec<u8>) -> ConstVal {
     ConstVal::ByteStr(bytes)

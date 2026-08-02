@@ -16,7 +16,7 @@
 #   nested_bound_violation      HTC-BoundNotSatisfied          `Box<Box<Linear>>` inner fails
 #   return_type_bad_arity       HTC-TypeArgArityMismatch       return type has wrong arity
 #   let_annotation_bad_arity    HTC-TypeArgArityMismatch       `let x: Box<i64, i64> = ...`
-#   bare_instantiation          PARSE-UnexpectedToken          `foo<T>` as a value (not a call)
+#   call_*                      call-site generic validation failures
 
 struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
 
@@ -24,6 +24,7 @@ struct<T: Drop> Sink: Drop { inner: T }
 
 # Linear: not Copy, not Drop.
 struct Linear { r: &out i64 }
+struct DropOnly: Drop { value: i64 }
 
 # ---------- Undeclared type-param reference ----------
 
@@ -79,14 +80,55 @@ fn let_annotation_bad_arity() {
   let x: Box<i64, i64> = Box { inner: 0 };
 }
 
-# ---------- Bare `foo<T>` without a call is not a valid expression ----------
+# ---------- Generic function calls ----------
 
-# The `instantiation_expr` grammar rule exists only to make
-# tree-sitter's LR generator disambiguate `foo<T>(x)` from
-# `a < b > c`. It parses successfully but has no value semantics in
-# Silica — the HLL parser rejects it when it appears standalone.
-fn<T: Copy + Drop> identity_stub(x: T) -> T { x }
+fn<T: Copy + Drop> requires_copy(x: T) -> T { x }
+fn<T, U> first(x: T, y: U) -> T { x }
+fn<T> identity(x: T) -> T { x }
+fn<T> generic_side_effect() { unit }
+fn<'a> borrow_identity(x: &'a i64) -> &'a i64 { x }
+fn<'a, 'b> choose_first(x: &'a i64, y: &'b i64) -> &'a i64 { x }
 
-fn bare_instantiation_not_a_value() -> i64 {
-  identity_stub<i64>
+# covers: too few explicit type arguments on a direct call
+fn call_type_args_too_few() -> i64 { first<i64>(1, true) }
+# covers: too many explicit type arguments on a direct call
+fn call_type_args_too_many() -> i64 { identity<i64, bool>(1) }
+# covers: explicit type argument conflicts with value and return context
+fn call_explicit_type_mismatch() -> i64 { identity<bool>(1) }
+
+# covers: inferred type argument fails a marker bound
+fn call_inferred_bound_failure(x: DropOnly) -> DropOnly { requires_copy(x) }
+# covers: explicit type argument fails a marker bound
+fn call_explicit_bound_failure(x: DropOnly) -> DropOnly { requires_copy<DropOnly>(x) }
+
+# covers: inferred type parameter absent from the function signature
+fn call_unresolved_type_argument() { generic_side_effect(); }
+
+# covers: explicit generic arguments applied to a function-valued parameter
+fn call_generic_args_on_value(f: fn(i64) -> i64) -> i64 { f<i64>(1) }
+# covers: local function value shadows a global generic function name
+fn call_generic_args_on_shadow(identity: fn(i64) -> i64) -> i64 { identity<i64>(1) }
+
+# covers: too few explicit lifetime arguments on a direct call
+fn<'a> call_lifetime_args_too_few(x: &'a i64) -> &'a i64 {
+  choose_first<'a>(x, x)
 }
+# covers: too many explicit lifetime arguments on a direct call
+fn<'a> call_lifetime_args_too_many(x: &'a i64) -> &'a i64 {
+  borrow_identity<'a, 'a>(x)
+}
+# covers: explicit call lifetime is not in the caller's generic scope
+fn<'a> call_undeclared_lifetime(x: &'a i64) -> &'a i64 {
+  borrow_identity<'missing>(x)
+}
+
+# covers: inferred generic call inside an impl uses impl-header bounds
+impl DropOnly {
+  fn call_inferred_bound_failure_from_impl(recv: & Self, x: DropOnly) -> DropOnly {
+    requires_copy(x)
+  }
+}
+
+unsafe fn<T> unsafe_identity(x: T) -> T { x }
+# covers: generic unsafe call still requires an unsafe context
+fn call_generic_unsafe_without_block() -> i64 { unsafe_identity<i64>(1) }

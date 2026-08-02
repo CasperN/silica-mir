@@ -167,6 +167,41 @@ struct UseBoxM_MatD { b: BoxM<MatD> }
 # covers: type_kind=struct op=nested_param_subst class=Copy+Drop bound=MutRef:Drop+Move
 struct UseOuter_MutRef { b: OuterBox<&mut i64> }
 
+# ── Free-function generic arguments ──────────────────────────────────
+
+fn<'a, T: Copy + Drop> generic_call_target() {
+  entry:
+    return
+}
+
+# covers: MIR free-function constant omits a required type argument
+fn<'a> free_call_missing_type_arg() {
+  entry:
+    call generic_call_target<'a>();
+    return
+}
+
+# covers: MIR free-function constant supplies an extra type argument
+fn free_call_extra_type_arg() {
+  entry:
+    call generic_call_target<i64, bool>();
+    return
+}
+
+# covers: MIR free-function constant violates a marker bound
+fn free_call_bound_failure() {
+  entry:
+    call generic_call_target<MatD>();
+    return
+}
+
+# covers: MIR free-function constant supplies the wrong lifetime arity
+fn<'a> free_call_lifetime_arity() {
+  entry:
+    call generic_call_target<'a, 'a, i64>();
+    return
+}
+
 fn main() {
   entry:
     return

@@ -1,4 +1,4 @@
-use crate::common::{IntTy, Marker, Markers, RefKind, SourceInfo};
+use crate::common::{IntTy, Lifetime, LifetimeParam, Marker, Markers, RefKind, SourceInfo};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
@@ -185,6 +185,14 @@ pub enum HllTypeCheckCode {
     /// the declared marker bound on the corresponding type parameter
     /// (e.g. `Box<Linear>` where the decl is `struct<T: Copy> Box`).
     BoundNotSatisfied,
+    /// A function call supplies the wrong number of explicit lifetime
+    /// arguments.
+    LifetimeArgArityMismatch,
+    /// An explicit lifetime argument is not visible at the call site.
+    UndeclaredLifetime,
+    /// Explicit generic arguments were applied to a function-valued
+    /// expression rather than a named generic function.
+    GenericArgsOnFunctionValue,
     /// Ambiguous type (type annotations needed).
     AmbiguousType,
     /// Dereferencing a raw pointer outside an unsafe block.
@@ -435,14 +443,13 @@ pub struct TypeEnv {
     variables: Vec<HashMap<String, Type>>,
     structs: HashMap<String, StructDecl>,
     enums: HashMap<String, EnumDecl>,
-    functions: HashMap<String, (Vec<Type>, Type, bool)>,
-    /// Fn name → list of declared type-parameter names. Used at call
-    /// sites to freshen the signature into new inference vars.
-    fn_type_params: HashMap<String, Vec<String>>,
+    functions: HashMap<String, FnDecl>,
     current_ret_ty: Option<Type>,
     /// Type-parameter names → declared marker bounds for the fn being
     /// checked. Empty outside a fn body.
     current_type_params: HashMap<String, Markers>,
+    current_lifetimes: HashSet<Lifetime>,
+    current_function: Option<String>,
     in_unsafe: bool,
 }
 
@@ -453,9 +460,10 @@ impl TypeEnv {
             structs: HashMap::new(),
             enums: HashMap::new(),
             functions: HashMap::new(),
-            fn_type_params: HashMap::new(),
             current_ret_ty: None,
             current_type_params: HashMap::new(),
+            current_lifetimes: HashSet::new(),
+            current_function: None,
             in_unsafe: false,
         }
     }
@@ -613,9 +621,39 @@ impl TypeEnv {
 /// span do not alias.
 pub type ExpressionTypes = IndexMap<SourceInfo, Type>;
 
-/// Run HLL type-checking, pushing errors into `d`. Returns the
-/// per-expression type map; errors accumulate in `d`.
-pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<ExpressionTypes> {
+struct PendingInstantiation {
+    source: SourceInfo,
+    function_name: String,
+    caller_name: Option<String>,
+    caller_type_params: HashMap<String, Markers>,
+    type_params: Vec<TypeParam>,
+    type_args: Vec<Type>,
+}
+
+#[derive(Default)]
+pub struct TypeCheckResults {
+    pub expression_types: ExpressionTypes,
+    pub function_instantiations: IndexMap<SourceInfo, Instance>,
+    pending_instantiations: Vec<PendingInstantiation>,
+}
+
+impl std::ops::Deref for TypeCheckResults {
+    type Target = ExpressionTypes;
+
+    fn deref(&self) -> &Self::Target {
+        &self.expression_types
+    }
+}
+
+impl std::ops::DerefMut for TypeCheckResults {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.expression_types
+    }
+}
+
+/// Run HLL type-checking, pushing errors into `d`. Returns resolved expression
+/// types and function instantiations; errors accumulate in `d`.
+pub fn run_type_check(program: &Program, d: &mut Diagnostics) -> Option<TypeCheckResults> {
     let types = typecheck_program_collect(program, d);
     if d.has_errors() {
         None
@@ -634,25 +672,21 @@ pub(super) fn typecheck_program(program: &Program) -> Diagnostics {
     d
 }
 
-/// Run HLL type-checking, pushing all errors into `d` and returning the
-/// per-expression type map unconditionally. Production callers should use
-/// `run_type_check`.
-pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) -> ExpressionTypes {
+/// Run HLL type-checking, pushing all errors into `d` and returning its results
+/// unconditionally. Production callers should use `run_type_check`.
+pub(super) fn typecheck_program_collect(
+    program: &Program,
+    d: &mut Diagnostics,
+) -> TypeCheckResults {
     let mut env = TypeEnv::new();
     let mut subst = Subst::new();
-    let mut types = IndexMap::new();
+    let mut types = TypeCheckResults::default();
 
     // Preload prelude wrappers (`size_of<T>`, `ptr_offset<T>`) so user
     // code can spell them by name. Bodies live at the MIR level; here
     // we only need the surface signatures.
     for f in crate::hll::prelude::prelude_fn_decls() {
-        let params_tys: Vec<Type> = f.params.iter().map(|p| p.ty.clone()).collect();
-        env.functions
-            .insert(f.name.clone(), (params_tys, f.ret_ty.clone(), f.is_unsafe));
-        env.fn_type_params.insert(
-            f.name.clone(),
-            f.type_params.iter().map(|tp| tp.name.clone()).collect(),
-        );
+        env.functions.insert(f.name.clone(), f);
     }
 
     // Populate top-level declarations
@@ -665,13 +699,7 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
                 env.enums.insert(e.name.clone(), e.clone());
             }
             Declaration::Fn(f) => {
-                let params_tys: Vec<Type> = f.params.iter().map(|p| p.ty.clone()).collect();
-                env.functions
-                    .insert(f.name.clone(), (params_tys, f.ret_ty.clone(), f.is_unsafe));
-                env.fn_type_params.insert(
-                    f.name.clone(),
-                    f.type_params.iter().map(|tp| tp.name.clone()).collect(),
-                );
+                env.functions.insert(f.name.clone(), f.clone());
             }
             Declaration::Trait(_) | Declaration::Impl(_) => {}
         }
@@ -738,11 +766,19 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
         match decl {
             Declaration::Fn(f) => {
                 validate_extern_abi(f, d);
-                check_fn_body(&mut env, &mut subst, &mut types, f, &[], d);
+                check_fn_body(&mut env, &mut subst, &mut types, f, &[], &[], d);
             }
             Declaration::Impl(i) => {
                 for method in &i.methods {
-                    check_fn_body(&mut env, &mut subst, &mut types, method, &i.type_params, d);
+                    check_fn_body(
+                        &mut env,
+                        &mut subst,
+                        &mut types,
+                        method,
+                        &i.lifetime_params,
+                        &i.type_params,
+                        d,
+                    );
                 }
             }
             Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {}
@@ -751,7 +787,7 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
 
     // Check for unresolved type variables
     let mut reported_vars = HashSet::new();
-    for (source, ty) in &types {
+    for (source, ty) in &types.expression_types {
         let resolved = subst.resolve(ty);
         let mut unresolved = HashSet::new();
         collect_unresolved_vars(&resolved, &subst, &mut unresolved);
@@ -767,14 +803,42 @@ pub(super) fn typecheck_program_collect(program: &Program, d: &mut Diagnostics) 
             }
         }
     }
+    for pending in &types.pending_instantiations {
+        for argument in &pending.type_args {
+            let resolved = subst.resolve(argument);
+            let mut unresolved = HashSet::new();
+            collect_unresolved_vars(&resolved, &subst, &mut unresolved);
+            if unresolved.iter().any(|id| !reported_vars.contains(id)) {
+                reported_vars.extend(unresolved);
+                let diagnostic = source_diagnostic(
+                    HllTypeCheckCode::AmbiguousType,
+                    pending.source,
+                    format!(
+                        "type annotations needed: cannot infer all type arguments for function '{}'",
+                        pending.function_name
+                    ),
+                );
+                d.push_error(match &pending.caller_name {
+                    Some(function) => diagnostic.in_function(function),
+                    None => diagnostic,
+                });
+            }
+        }
+    }
 
     // Resolve all captured expression types in the final map
     let mut resolved_types = IndexMap::new();
-    for (source, ty) in types {
+    for (source, ty) in std::mem::take(&mut types.expression_types) {
         resolved_types.insert(source, subst.resolve_default(&ty));
     }
-
-    resolved_types
+    types.expression_types = resolved_types;
+    for instantiation in types.function_instantiations.values_mut() {
+        for ty in &mut instantiation.type_args {
+            *ty = subst.resolve_default(ty);
+        }
+    }
+    types.pending_instantiations.clear();
+    types
 }
 
 fn validate_fn_signature(
@@ -795,8 +859,9 @@ fn validate_fn_signature(
 fn check_fn_body(
     env: &mut TypeEnv,
     subst: &mut Subst,
-    types: &mut ExpressionTypes,
+    types: &mut TypeCheckResults,
     function: &FnDecl,
+    enclosing_lifetime_params: &[LifetimeParam],
     enclosing_params: &[TypeParam],
     d: &mut Diagnostics,
 ) {
@@ -805,6 +870,13 @@ fn check_fn_body(
     let mut effective_params = enclosing_params.to_vec();
     effective_params.extend(function.type_params.clone());
     env.current_type_params = type_params_scope(&effective_params);
+    env.current_lifetimes = enclosing_lifetime_params
+        .iter()
+        .chain(&function.lifetime_params)
+        .map(|parameter| parameter.lifetime.clone())
+        .chain(std::iter::once(Lifetime("static".to_string())))
+        .collect();
+    env.current_function = Some(function.name.clone());
     env.push_scope();
     env.current_ret_ty = Some(function.ret_ty.clone());
     env.in_unsafe = function.is_unsafe;
@@ -812,11 +884,44 @@ fn check_fn_body(
         env.insert_var(param.name.clone(), param.ty.clone());
     }
     let errors_before = d.error_count();
+    let pending_before = types.pending_instantiations.len();
     check_inner(env, subst, body, &function.ret_ty, types, d);
+    check_instantiation_bounds(env, subst, types, pending_before, d);
     d.annotate_errors_in_function(errors_before, &function.name);
     env.pop_scope();
     env.in_unsafe = false;
     env.current_type_params.clear();
+    env.current_lifetimes.clear();
+    env.current_function = None;
+}
+
+fn check_instantiation_bounds(
+    env: &TypeEnv,
+    subst: &Subst,
+    types: &TypeCheckResults,
+    first_pending: usize,
+    d: &mut Diagnostics,
+) {
+    for pending in &types.pending_instantiations[first_pending..] {
+        for (parameter, argument) in pending.type_params.iter().zip(&pending.type_args) {
+            let argument = subst.resolve(argument);
+            for marker in parameter.bounds.markers.iter_declared() {
+                if !env
+                    .class_of(&argument, &pending.caller_type_params)
+                    .implies(marker)
+                {
+                    d.push_error(source_diagnostic(
+                        BoundNotSatisfied,
+                        pending.source,
+                        format!(
+                            "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
+                            argument, pending.function_name, parameter.name, marker
+                        ),
+                    ));
+                }
+            }
+        }
+    }
 }
 
 fn validate_extern_abi(function: &FnDecl, d: &mut Diagnostics) {
@@ -922,11 +1027,105 @@ pub fn cast_intrinsic_name(from: &Type, to: &Type) -> Option<String> {
     Some(format!("${}_to_{}", ty_name(from), ty_name(to)))
 }
 
+fn instantiate_function(
+    env: &TypeEnv,
+    subst: &mut Subst,
+    name: &str,
+    generics: &GenericArgs,
+    source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Option<Type> {
+    let signature = env.functions.get(name)?.clone();
+
+    if !generics.lifetimes.is_empty() && generics.lifetimes.len() != signature.lifetime_params.len()
+    {
+        d.push_error(source_diagnostic(
+            LifetimeArgArityMismatch,
+            source,
+            format!(
+                "function '{}' takes {} lifetime argument(s), found {}",
+                name,
+                signature.lifetime_params.len(),
+                generics.lifetimes.len()
+            ),
+        ));
+        return None;
+    }
+    for lifetime in &generics.lifetimes {
+        if !env.current_lifetimes.contains(lifetime) {
+            d.push_error(source_diagnostic(
+                UndeclaredLifetime,
+                source,
+                format!("undeclared lifetime {}", lifetime),
+            ));
+        }
+    }
+
+    let type_args = if generics.types.is_empty() {
+        signature
+            .type_params
+            .iter()
+            .map(|_| subst.fresh_var())
+            .collect::<Vec<_>>()
+    } else {
+        if generics.types.len() != signature.type_params.len() {
+            d.push_error(source_diagnostic(
+                TypeArgArityMismatch,
+                source,
+                format!(
+                    "function '{}' takes {} type argument(s), found {}",
+                    name,
+                    signature.type_params.len(),
+                    generics.types.len()
+                ),
+            ));
+            return None;
+        }
+        for argument in &generics.types {
+            env.validate_type(argument, &env.current_type_params, d);
+        }
+        generics.types.clone()
+    };
+
+    let mapping: HashMap<String, Type> = signature
+        .type_params
+        .iter()
+        .map(|parameter| &parameter.name)
+        .cloned()
+        .zip(type_args.iter().cloned())
+        .collect();
+    let params = signature
+        .params
+        .iter()
+        .map(|parameter| substitute(&parameter.ty, &mapping))
+        .collect();
+    let ret = substitute(&signature.ret_ty, &mapping);
+
+    types.function_instantiations.insert(
+        source,
+        Instance::new(
+            name.to_string(),
+            generics.lifetimes.clone(),
+            type_args.clone(),
+        ),
+    );
+    types.pending_instantiations.push(PendingInstantiation {
+        source,
+        function_name: name.to_string(),
+        caller_name: env.current_function.clone(),
+        caller_type_params: env.current_type_params.clone(),
+        type_params: signature.type_params,
+        type_args,
+    });
+    Some(fn_ty(params, ret))
+}
+
 fn infer_inner(
     env: &mut TypeEnv,
     subst: &mut Subst,
     expr: &Expr,
-    types: &mut ExpressionTypes,
+    types: &mut TypeCheckResults,
     d: &mut Diagnostics,
 ) -> Type {
     let ty = match &expr.kind {
@@ -1008,21 +1207,17 @@ fn infer_inner(
         ExprKind::Variable(name) => {
             if let Some(ty) = env.lookup_var(name) {
                 ty
-            } else if let Some((params, ret, _is_unsafe)) = env.functions.get(name).cloned() {
-                // Freshen the fn's declared type parameters into new
-                // inference vars, then substitute through the signature.
-                // Each call site gets its own independent binding of T.
-                // The freshening also decouples the signature from any
-                // Params still visible from the caller's scope.
-                let type_params = env.fn_type_params.get(name).cloned().unwrap_or_default();
-                let mut mapping: HashMap<String, Type> = HashMap::new();
-                for tp in &type_params {
-                    mapping.insert(tp.clone(), subst.fresh_var());
-                }
-                let fresh_params: Vec<Type> =
-                    params.iter().map(|p| substitute(p, &mapping)).collect();
-                let fresh_ret = substitute(&ret, &mapping);
-                fn_ty(fresh_params, fresh_ret)
+            } else if env.functions.contains_key(name) {
+                instantiate_function(
+                    env,
+                    subst,
+                    name,
+                    &GenericArgs::empty(),
+                    expr.source,
+                    types,
+                    d,
+                )
+                .unwrap_or_else(error_ty)
             } else {
                 d.push_error(source_diagnostic(
                     UndeclaredVariable,
@@ -1150,10 +1345,18 @@ fn infer_inner(
             let inner_ty = infer_inner(env, subst, target, types, d);
             raw_ptr_ty(inner_ty)
         }
-        ExprKind::Call(fn_expr, _generics, args) => {
-            if let ExprKind::Variable(ref name) = fn_expr.kind {
-                if let Some((_, _, is_unsafe)) = env.functions.get(name) {
-                    if *is_unsafe && !env.in_unsafe {
+        ExprKind::Call(fn_expr, generics, args) => {
+            let direct_name = match &fn_expr.kind {
+                ExprKind::Variable(name)
+                    if env.lookup_var(name).is_none() && env.functions.contains_key(name) =>
+                {
+                    Some(name)
+                }
+                _ => None,
+            };
+            let fn_ty = if let Some(name) = direct_name {
+                if let Some(signature) = env.functions.get(name) {
+                    if signature.is_unsafe && !env.in_unsafe {
                         d.push_error(source_diagnostic(
                             HllTypeCheckCode::UnsafeRequired,
                             fn_expr.source,
@@ -1161,8 +1364,24 @@ fn infer_inner(
                         ));
                     }
                 }
-            }
-            let fn_ty = infer_inner(env, subst, fn_expr, types, d);
+                let Some(fn_ty) =
+                    instantiate_function(env, subst, name, generics, fn_expr.source, types, d)
+                else {
+                    return error_ty();
+                };
+                types.insert(fn_expr.source, fn_ty.clone());
+                fn_ty
+            } else {
+                if !generics.is_empty() {
+                    d.push_error(source_diagnostic(
+                        GenericArgsOnFunctionValue,
+                        fn_expr.source,
+                        "explicit generic arguments require a named function",
+                    ));
+                    return error_ty();
+                }
+                infer_inner(env, subst, fn_expr, types, d)
+            };
             let resolved = subst.resolve(&fn_ty);
             if resolved.kind == TypeKind::Error {
                 return error_ty();
@@ -1199,50 +1418,7 @@ fn infer_inner(
                 env.in_unsafe = true;
             }
             env.push_scope();
-            for stmt in stmts {
-                match stmt {
-                    Stmt::Let {
-                        is_mut: _,
-                        name,
-                        ty,
-                        init,
-                        source,
-                    } => {
-                        let var_ty = match (ty, init) {
-                            (Some(annotated_ty), Some(init)) => {
-                                let scope = env.current_type_params.clone();
-                                env.validate_type(annotated_ty, &scope, d);
-                                check_inner(env, subst, init, annotated_ty, types, d);
-                                annotated_ty.clone()
-                            }
-                            (Some(annotated_ty), None) => {
-                                let scope = env.current_type_params.clone();
-                                env.validate_type(annotated_ty, &scope, d);
-                                annotated_ty.clone()
-                            }
-                            (None, Some(init)) => infer_inner(env, subst, init, types, d),
-                            (None, None) => {
-                                d.push_error(source_diagnostic(
-                                    HllTypeCheckCode::AmbiguousType,
-                                    *source,
-                                    "let binding without initializer requires an explicit type annotation",
-                                ));
-                                error_ty()
-                            }
-                        };
-                        env.insert_var(name.clone(), var_ty);
-                    }
-                    Stmt::Defer { body, source: _ } => {
-                        let body_ty = infer_inner(env, subst, body, types, d);
-                        if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
-                            d.push_error(e.to_diag(body.source));
-                        }
-                    }
-                    Stmt::Expr(e) => {
-                        infer_inner(env, subst, e, types, d);
-                    }
-                }
-            }
+            check_block_statements(env, subst, stmts, types, d);
             let res = if let Some(last) = last_expr {
                 infer_inner(env, subst, last, types, d)
             } else {
@@ -1535,7 +1711,7 @@ fn check_inner(
     subst: &mut Subst,
     expr: &Expr,
     expected: &Type,
-    types: &mut ExpressionTypes,
+    types: &mut TypeCheckResults,
     d: &mut Diagnostics,
 ) {
     let resolved_expected = subst.resolve(expected);
@@ -1546,45 +1722,7 @@ fn check_inner(
                 env.in_unsafe = true;
             }
             env.push_scope();
-            for stmt in stmts {
-                match stmt {
-                    Stmt::Let {
-                        is_mut: _,
-                        name,
-                        ty,
-                        init,
-                        source,
-                    } => {
-                        let var_ty = match (ty, init) {
-                            (Some(annotated_ty), Some(init)) => {
-                                check_inner(env, subst, init, annotated_ty, types, d);
-                                annotated_ty.clone()
-                            }
-                            (Some(annotated_ty), None) => annotated_ty.clone(),
-                            (None, Some(init)) => infer_inner(env, subst, init, types, d),
-                            (None, None) => {
-                                d.push_error(source_diagnostic(
-                                    HllTypeCheckCode::AmbiguousType,
-                                    *source,
-                                    "let binding without initializer requires an explicit type annotation",
-                                ));
-                                error_ty()
-                            }
-                        };
-                        env.insert_var(name.clone(), var_ty);
-                    }
-                    Stmt::Defer { body, source: _ } => {
-                        check_no_control_flow(body, 0, d);
-                        let body_ty = infer_inner(env, subst, body, types, d);
-                        if let Err(e) = subst.unify(&body_ty, &unit_ty()) {
-                            d.push_error(e.to_diag(body.source));
-                        }
-                    }
-                    Stmt::Expr(e) => {
-                        infer_inner(env, subst, e, types, d);
-                    }
-                }
-            }
+            check_block_statements(env, subst, stmts, types, d);
             let errors_before = d.error_count();
             if let Some(last) = last_expr {
                 check_inner(env, subst, last, &resolved_expected, types, d);
@@ -1608,6 +1746,17 @@ fn check_inner(
         (ExprKind::Match(target, arms), _) => {
             let target_ty = infer_inner(env, subst, target, types, d);
             let resolved = subst.resolve(&target_ty);
+            if resolved.kind == TypeKind::Error {
+                return;
+            }
+            if arms.is_empty() {
+                d.push_error(source_diagnostic(
+                    EmptySwitch,
+                    expr.source,
+                    "empty switch expression",
+                ));
+                return;
+            }
             if let TypeKind::Custom(Instance {
                 name: enum_name,
                 type_args: args,
@@ -1692,6 +1841,57 @@ fn check_inner(
                 d.push_error(e.to_diag(expr.source));
             }
             types.insert(expr.source, resolved_expected.clone());
+        }
+    }
+}
+
+fn check_block_statements(
+    env: &mut TypeEnv,
+    subst: &mut Subst,
+    statements: &[Stmt],
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) {
+    for statement in statements {
+        match statement {
+            Stmt::Let {
+                name,
+                ty,
+                init,
+                source,
+                ..
+            } => {
+                if let Some(annotation) = ty {
+                    env.validate_type(annotation, &env.current_type_params, d);
+                }
+                let binding_type = match (ty, init) {
+                    (Some(annotation), Some(initializer)) => {
+                        check_inner(env, subst, initializer, annotation, types, d);
+                        annotation.clone()
+                    }
+                    (Some(annotation), None) => annotation.clone(),
+                    (None, Some(initializer)) => infer_inner(env, subst, initializer, types, d),
+                    (None, None) => {
+                        d.push_error(source_diagnostic(
+                            HllTypeCheckCode::AmbiguousType,
+                            *source,
+                            "let binding without initializer requires an explicit type annotation",
+                        ));
+                        error_ty()
+                    }
+                };
+                env.insert_var(name.clone(), binding_type);
+            }
+            Stmt::Defer { body, .. } => {
+                check_no_control_flow(body, 0, d);
+                let body_type = infer_inner(env, subst, body, types, d);
+                if let Err(error) = subst.unify(&body_type, &unit_ty()) {
+                    d.push_error(error.to_diag(body.source));
+                }
+            }
+            Stmt::Expr(expression) => {
+                infer_inner(env, subst, expression, types, d);
+            }
         }
     }
 }

@@ -350,3 +350,16 @@ fn<'s0, T: Copy + Drop> unbox(b: Box<T>, dest: &out 's0 T) {
     drop b;
     return
 }
+
+fn<'a, T: Copy + Drop> observe_generic(x: & 'a T) {
+  entry:
+    unborrow x;
+    return
+}
+
+fn<'a> call_observe_generic(x: & 'a i64) {
+  entry:
+    call observe_generic<'a, i64>(copy x);
+    unborrow x;
+    return
+}

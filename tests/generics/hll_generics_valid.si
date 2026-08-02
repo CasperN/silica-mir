@@ -185,6 +185,86 @@ fn call_generic_explicit_mixed() -> i64 {
   identity(identity<i64>(3))
 }
 
+# Explicit args are checked rather than merely copied into MIR.
+# covers: direct generic call with an explicit concrete type argument
+fn call_generic_explicit_float() -> f64 {
+  identity<f64>(42.0f64)
+}
+
+# covers: explicit nested custom type argument
+fn call_generic_explicit_nested_type(x: Box<i64>) -> Box<i64> {
+  identity<Box<i64>>(x)
+}
+
+# A type parameter may be inferred solely from the expected return type.
+extern fn<T: Copy + Drop> make_default() -> T;
+# covers: direct generic call inferred solely from return context
+fn infer_generic_from_return_only() -> i64 {
+  make_default()
+}
+
+# A generic function used as a first-class value is instantiated from the
+# receiving function type, independently of direct-call resolution.
+fn call_i64(f: fn(i64) -> i64, x: i64) -> i64 { f(x) }
+# covers: generic function value instantiated by a higher-order parameter
+fn generic_function_value() -> i64 {
+  call_i64(identity, 9)
+}
+
+# covers: generic function value inferred after storage in a local
+fn delayed_generic_function_value(x: i64) -> i64 {
+  let f = identity;
+  f(x)
+}
+
+# Bounds are checked both after inference and against a caller's own bounds.
+fn<T: Copy + Drop> requires_copy(x: T) -> T { x }
+# covers: inferred concrete type argument satisfies marker bounds
+fn inferred_concrete_bound() -> i64 { requires_copy(5) }
+# covers: inferred caller type parameter satisfies bounds through its scope
+fn<T: Copy + Drop> inferred_param_bound(x: T) -> T { requires_copy(x) }
+
+# covers: free generic call inherits an impl header's type-parameter bounds
+impl<T: Copy + Drop> Box<T> {
+  fn identity_from_impl(recv: & Self, x: T) -> T { identity(x) }
+}
+
+# Explicit lifetime arguments survive HLL lowering into the MIR function
+# constant instead of being discarded.
+fn<'a> borrow_identity(x: &'a i64) -> &'a i64 { x }
+# covers: explicit lifetime argument on a direct call
+fn<'a> call_explicit_lifetime(x: &'a i64) -> &'a i64 {
+  borrow_identity<'a>(x)
+}
+
+fn<'a, T: Copy + Drop> borrow_generic_identity(x: &'a T) -> &'a T { x }
+# covers: explicit lifetime argument combined with inferred type argument
+fn<'a> call_explicit_lifetime_inferred_type(x: &'a i64) -> &'a i64 {
+  borrow_generic_identity<'a>(x)
+}
+# covers: inferred lifetime argument combined with explicit type argument
+fn<'a> call_inferred_lifetime_explicit_type(x: &'a i64) -> &'a i64 {
+  borrow_generic_identity<i64>(x)
+}
+
+# Explicit arguments also resolve a parameter absent from the signature.
+fn<T: Copy + Drop> generic_side_effect() { unit }
+# covers: explicit type argument absent from all parameter and return types
+fn explicit_unmentioned_type_param() { generic_side_effect<i64>(); }
+
+# covers: explicit generic call lowered from a deferred expression
+fn deferred_generic_call() {
+  defer generic_side_effect<i64>();
+}
+
+fn<'a> lifetime_side_effect() { unit }
+# covers: reserved static lifetime explicitly instantiates an unmentioned parameter
+fn explicit_static_lifetime() { lifetime_side_effect<'static>(); }
+
+unsafe fn<T: Copy + Drop> unsafe_identity(x: T) -> T { x }
+# covers: generic unsafe call inside an unsafe block
+fn call_generic_unsafe() -> i64 { unsafe { unsafe_identity<i64>(11) } }
+
 # ---------- Unsafe block and raw pointer dereference ----------
 fn test_unsafe_deref(ptr: *i64) -> i64 {
   unsafe { ptr.* }

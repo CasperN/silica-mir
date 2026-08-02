@@ -7,7 +7,7 @@
 //!
 //!   - Every `Custom(name, args)` has `args = []`; `name` is the
 //!     mangled instantiation name (e.g. `Box<i32>`).
-//!   - Every `FnName(name, args)` has `args = []`; `name` is the
+//!   - Every `FnName(instance)` has no generic args; its name is the
 //!     mangled instantiation name.
 //!   - Every `TraitFn` has been resolved to the selected impl method and
 //!     rewritten to a concrete `FnName`.
@@ -296,17 +296,25 @@ impl MonoCtx {
 
     fn walk_const(&mut self, c: &ConstVal) -> ConstVal {
         match c {
-            ConstVal::FnName(name, args) => {
-                let new_args: Vec<Type> = args.iter().map(|a| self.fold_type(a)).collect();
+            ConstVal::FnName(instance) => {
+                let new_args: Vec<Type> = instance
+                    .type_args
+                    .iter()
+                    .map(|a| self.fold_type(a))
+                    .collect();
                 // Intrinsics keep their `$name` and type_args intact —
                 // codegen inspects the concrete args to lower generic
                 // intrinsics like `$sizeof<T>`. Non-intrinsic calls get
                 // mangled per-instantiation.
-                if crate::mir::intrinsics::is_intrinsic(name) {
-                    return ConstVal::FnName(name.clone(), new_args);
+                if crate::mir::intrinsics::is_intrinsic(&instance.name) {
+                    return ConstVal::FnName(Instance::new(
+                        instance.name.clone(),
+                        instance.lifetime_args.clone(),
+                        new_args,
+                    ));
                 }
-                let mangled = self.need(name, &new_args);
-                ConstVal::FnName(mangled, Vec::new())
+                let mangled = self.need(&instance.name, &new_args);
+                ConstVal::FnName(Instance::new(mangled, Vec::new(), Vec::new()))
             }
             ConstVal::InherentFn { self_ty, method } => {
                 let (template_name, impl_args) = self.resolve_inherent_fn(self_ty, &method.name);
@@ -323,7 +331,7 @@ impl MonoCtx {
                     erase_instance_lifetimes(&concrete_method),
                 );
                 let mangled = self.need_named(&template_name, &args, symbol);
-                ConstVal::FnName(mangled, Vec::new())
+                ConstVal::FnName(Instance::new(mangled, Vec::new(), Vec::new()))
             }
             ConstVal::TraitFn {
                 trait_path,
@@ -347,7 +355,7 @@ impl MonoCtx {
                     erase_instance_lifetimes(&concrete_method),
                 );
                 let mangled = self.need_named(&template_name, &args, symbol);
-                ConstVal::FnName(mangled, Vec::new())
+                ConstVal::FnName(Instance::new(mangled, Vec::new(), Vec::new()))
             }
             ConstVal::Int { .. }
             | ConstVal::Float { .. }

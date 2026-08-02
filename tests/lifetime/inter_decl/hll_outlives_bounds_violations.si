@@ -8,3 +8,19 @@ struct<'a, 'b: 'a> Wrap { x: &'a i64, y: &'b i64 }
 fn<'a, 'b> mk_missing(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
   Wrap { x: x, y: y }
 }
+
+fn<'a, 'b> first_ref(x: &'a i64, y: &'b i64) -> &'a i64 { x }
+
+# Swapping the explicit arguments asks `first_ref` to treat `x: &'a` as
+# `&'b` and return `&'b` through an `&'a` result without either outlives bound.
+# covers: explicit call lifetimes conflict with caller argument and result regions
+fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+  first_ref<'b, 'a>(x, y)
+}
+
+
+fn<T: Copy + Drop> identity(x: T) -> T { x }
+# covers: substituted reference type argument requires missing caller bounds
+fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
+  identity<&'a i64>(x)
+}

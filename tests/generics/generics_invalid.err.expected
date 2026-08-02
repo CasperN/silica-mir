@@ -124,6 +124,34 @@ error: at 132:30: [TC-InvalidDeclaredType] In function 'option_of_out', paramete
      |                              ^^^^^^^^^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  133 |   entry:
      |
+error: at 180:5: [TC-TypeArgArity] In function 'free_call_missing_type_arg', block 'entry': Function 'generic_call_target' expects 1 type argument(s), got 0
+     |
+ 179 |   entry:
+ 180 |     call generic_call_target<'a>();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 181 |     return
+     |
+error: at 187:5: [TC-TypeArgArity] In function 'free_call_extra_type_arg', block 'entry': Function 'generic_call_target' expects 1 type argument(s), got 2
+     |
+ 186 |   entry:
+ 187 |     call generic_call_target<i64, bool>();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 188 |     return
+     |
+error: at 194:5: [TC-TypeArgBoundNotSatisfied] In function 'free_call_bound_failure', block 'entry': Type argument MatD for function 'generic_call_target::T' does not satisfy required bound 'Copy'
+     |
+ 193 |   entry:
+ 194 |     call generic_call_target<MatD>();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 195 |     return
+     |
+error: at 201:5: [TC-TypeArgArity] In function 'free_call_lifetime_arity', block 'entry': Function 'generic_call_target' expects 1 lifetime argument(s), got 2
+     |
+ 200 |   entry:
+ 201 |     call generic_call_target<'a, 'a, i64>();
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 202 |     return
+     |
 error: at 51:37: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopy' (marked Copy), field 'inner' has type T which is not Copy
     |
  50 | # T has no bounds, so class_of(T) is empty. Claiming Copy fails.

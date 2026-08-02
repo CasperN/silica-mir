@@ -517,10 +517,8 @@ pub enum ConstVal {
     },
     Bool(bool),
     Unit,
-    /// Function-name const, used as the target of `call`. `args` is
-    /// the list of type arguments — empty for non-generic fns, non-
-    /// empty for generic-fn instantiations (`call foo<i32>(x)`).
-    FnName(String, Vec<Type>),
+    /// Function-name const, used as the target of `call`.
+    FnName(Instance),
     /// Inherent-method callee, spelled `<SelfTy>::method<MethodArgs>`.
     InherentFn {
         self_ty: Type,

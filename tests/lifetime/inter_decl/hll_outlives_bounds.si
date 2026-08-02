@@ -14,3 +14,16 @@ fn<'a, 'b: 'a> mk_ok(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
 fn<'a> mk_same(x: &'a i64) -> Wrap<'a, 'a> {
   Wrap { x: x, y: x }
 }
+
+# Explicit call lifetimes bind the callee's declared lifetime parameters.
+fn<'a, 'b> first_ref(x: &'a i64, y: &'b i64) -> &'a i64 { x }
+# covers: explicit call lifetimes satisfy argument and result constraints
+fn<'a, 'b> explicit_first_ref(x: &'a i64, y: &'b i64) -> &'a i64 {
+  first_ref<'a, 'b>(x, y)
+}
+
+fn<T: Copy + Drop> identity(x: T) -> T { x }
+# covers: lifetime checker substitutes a reference-valued function type argument
+fn<'a> generic_ref_identity(x: &'a i64) -> &'a i64 {
+  identity<&'a i64>(x)
+}

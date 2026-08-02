@@ -6,3 +6,35 @@ error: at 8:50: [LT-LifetimeMismatch] In function 'mk_missing': type 'Wrap' requ
  9 |   Wrap { x: x, y: y }
    |
   hint: declare bound 'b: 'a on function 'mk_missing' or change the value flow so it is not required
+error: at 18:3: [LT-LifetimeMismatch] In function 'explicit_lifetimes_conflict': the call to 'first_ref' requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'explicit_lifetimes_conflict'
+    |
+ 17 | fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+ 18 |   first_ref<'b, 'a>(x, y)
+    |   ^^^^^^^^^^^^^^^^^^^^^^^
+ 19 | }
+    |
+  hint: declare bound 'a: 'b on function 'explicit_lifetimes_conflict' or change the value flow so it is not required
+error: at 18:3: [LT-LifetimeMismatch] In function 'explicit_lifetimes_conflict': the call to 'first_ref' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'explicit_lifetimes_conflict'
+    |
+ 17 | fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+ 18 |   first_ref<'b, 'a>(x, y)
+    |   ^^^^^^^^^^^^^^^^^^^^^^^
+ 19 | }
+    |
+  hint: declare bound 'b: 'a on function 'explicit_lifetimes_conflict' or change the value flow so it is not required
+error: at 25:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict': the call to 'identity' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'generic_ref_result_conflict'
+    |
+ 24 | fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
+ 25 |   identity<&'a i64>(x)
+    |   ^^^^^^^^^^^^^^^^^^^^
+ 26 | }
+    |
+  hint: declare bound 'b: 'a on function 'generic_ref_result_conflict' or change the value flow so it is not required
+error: at 25:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict': the call to 'identity' requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'generic_ref_result_conflict'
+    |
+ 24 | fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
+ 25 |   identity<&'a i64>(x)
+    |   ^^^^^^^^^^^^^^^^^^^^
+ 26 | }
+    |
+  hint: declare bound 'a: 'b on function 'generic_ref_result_conflict' or change the value flow so it is not required

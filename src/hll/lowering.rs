@@ -1,7 +1,7 @@
 use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
-use crate::hll::type_check::ExpressionTypes;
+use crate::hll::type_check::TypeCheckResults;
 use crate::mir::ast::{self as mir, DeclMeta, GenericParams};
 use crate::mir::helpers::*;
 use std::collections::HashMap;
@@ -120,7 +120,7 @@ fn scope_exit_span(span: mir::Span) -> mir::Span {
     }
 }
 
-fn lookup_type<'a>(expr: &hll::Expr, types: &'a ExpressionTypes) -> Option<&'a hll::Type> {
+fn lookup_type<'a>(expr: &hll::Expr, types: &'a TypeCheckResults) -> Option<&'a hll::Type> {
     types.get(&expr.source)
 }
 
@@ -129,7 +129,7 @@ fn lookup_type<'a>(expr: &hll::Expr, types: &'a ExpressionTypes) -> Option<&'a h
 /// whether to continue.
 pub fn run_lowering(
     program: &hll::Program,
-    types: &ExpressionTypes,
+    types: &TypeCheckResults,
     d: &mut Diagnostics,
 ) -> Option<mir::Program> {
     match lower_program(program, types) {
@@ -362,7 +362,7 @@ impl LowerCtx {
     fn lower_deferred(
         &mut self,
         work: DeferredWork,
-        types: &ExpressionTypes,
+        types: &TypeCheckResults,
     ) -> Result<(), Diagnostic> {
         let live = std::mem::replace(&mut self.binding_scopes, work.binding_snapshot);
         self.begin_temp_region();
@@ -377,7 +377,11 @@ impl LowerCtx {
     /// popping it. This form is used by nonlocal exits (`return`, `break`,
     /// `continue`), which leave the lowerer's bookkeeping intact even though
     /// they terminate the current MIR block.
-    fn emit_scope_exit(&mut self, index: usize, types: &ExpressionTypes) -> Result<(), Diagnostic> {
+    fn emit_scope_exit(
+        &mut self,
+        index: usize,
+        types: &TypeCheckResults,
+    ) -> Result<(), Diagnostic> {
         let scope = self.scopes.get(index).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
@@ -409,7 +413,7 @@ impl LowerCtx {
     fn emit_scope_exits_to_depth(
         &mut self,
         depth: usize,
-        types: &ExpressionTypes,
+        types: &TypeCheckResults,
     ) -> Result<(), Diagnostic> {
         for i in (depth..self.scopes.len()).rev() {
             self.emit_scope_exit(i, types)?;
@@ -417,7 +421,7 @@ impl LowerCtx {
         Ok(())
     }
 
-    fn pop_and_emit_scope_exit(&mut self, types: &ExpressionTypes) -> Result<(), Diagnostic> {
+    fn pop_and_emit_scope_exit(&mut self, types: &TypeCheckResults) -> Result<(), Diagnostic> {
         let index = self.scopes.len().checked_sub(1).ok_or_else(|| {
             diag(
                 HllLoweringCode::ScopeStackUnderflow,
@@ -532,85 +536,6 @@ fn lower_instance(instance: &hll::Instance) -> mir::Instance {
     )
 }
 
-/// Recover the inferred type arguments at a generic-fn call site by
-/// diffing the callee's freshened signature (recorded in `types` at
-/// `fn_expr_source` by HLL type_check) against the fn's declared
-/// signature.
-///
-/// For each declared type parameter T, find the first position where
-/// T appears in the declared signature (params or return type), then
-/// read the corresponding fresh type at the same position. Non-generic
-/// fns yield an empty vec.
-fn infer_fn_type_args(
-    f_decl: &hll::FnDecl,
-    fn_expr_source: mir::SourceInfo,
-    types: &ExpressionTypes,
-) -> Vec<mir::Type> {
-    if f_decl.type_params.is_empty() {
-        return Vec::new();
-    }
-    let Some(hll::Type {
-        kind: hll::TypeKind::Fn(fresh_params, fresh_ret),
-        ..
-    }) = types.get(&fn_expr_source)
-    else {
-        return Vec::new();
-    };
-    f_decl
-        .type_params
-        .iter()
-        .map(|tp| {
-            for (decl, fresh) in f_decl.params.iter().map(|p| &p.ty).zip(fresh_params.iter()) {
-                if let Some(t) = find_param_at(&tp.name, decl, fresh) {
-                    return lower_type(&t);
-                }
-            }
-            if let Some(t) = find_param_at(&tp.name, &f_decl.ret_ty, fresh_ret) {
-                return lower_type(&t);
-            }
-            // No call-site type can be recovered for a parameter absent from
-            // the signature. Preserve lowering after the earlier type check.
-            unit_ty()
-        })
-        .collect()
-}
-
-/// Walk `decl` and `fresh` in lockstep looking for `TypeKind::Param(name)`
-/// in `decl`. Returns the corresponding `fresh` subtype at the first
-/// occurrence.
-fn find_param_at(name: &str, decl: &hll::Type, fresh: &hll::Type) -> Option<hll::Type> {
-    match (&decl.kind, &fresh.kind) {
-        (hll::TypeKind::Param(n), _) if n == name => Some(fresh.clone()),
-        (hll::TypeKind::Ref(_, _, a), hll::TypeKind::Ref(_, _, b))
-        | (hll::TypeKind::RawPtr(a), hll::TypeKind::RawPtr(b))
-        | (hll::TypeKind::Array(a, _), hll::TypeKind::Array(b, _)) => find_param_at(name, a, b),
-        (hll::TypeKind::Fn(a_ps, a_r), hll::TypeKind::Fn(b_ps, b_r)) => {
-            for (a, b) in a_ps.iter().zip(b_ps.iter()) {
-                if let Some(t) = find_param_at(name, a, b) {
-                    return Some(t);
-                }
-            }
-            find_param_at(name, a_r, b_r)
-        }
-        (
-            hll::TypeKind::Custom(hll::Instance {
-                type_args: a_args, ..
-            }),
-            hll::TypeKind::Custom(hll::Instance {
-                type_args: b_args, ..
-            }),
-        ) => {
-            for (a, b) in a_args.iter().zip(b_args.iter()) {
-                if let Some(t) = find_param_at(name, a, b) {
-                    return Some(t);
-                }
-            }
-            None
-        }
-        _ => None,
-    }
-}
-
 fn lower_type(ty: &hll::Type) -> mir::Type {
     let kind = match &ty.kind {
         hll::TypeKind::Int(t) => mir::TypeKind::Int(*t),
@@ -659,7 +584,7 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
 /// If `expr` is a place projection that crosses a reference dereference,
 /// return that reference's kind. Fields and indexes preserve the access mode
 /// of their base. Raw-pointer dereferences return `None`.
-fn projected_ref_kind(expr: &hll::Expr, types: &ExpressionTypes) -> Option<RefKind> {
+fn projected_ref_kind(expr: &hll::Expr, types: &TypeCheckResults) -> Option<RefKind> {
     match &expr.kind {
         hll::ExprKind::Deref(target) => match lookup_type(target, types).map(|ty| &ty.kind) {
             Some(hll::TypeKind::Ref(kind, _, _)) => Some(*kind),
@@ -675,7 +600,7 @@ fn projected_ref_kind(expr: &hll::Expr, types: &ExpressionTypes) -> Option<RefKi
 fn lower_expr_to_place(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
-    types: &ExpressionTypes,
+    types: &TypeCheckResults,
 ) -> Result<mir::Place, Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Variable(name) => Ok(mir::Place::Var(ctx.resolve_binding(name))),
@@ -800,7 +725,7 @@ fn lower_expr_to_place(
 fn lower_expr_to_operand(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
-    types: &ExpressionTypes,
+    types: &TypeCheckResults,
 ) -> Result<mir::Operand, Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Literal(lit) => {
@@ -836,11 +761,21 @@ fn lower_expr_to_operand(
         hll::ExprKind::Variable(name)
             if ctx.functions.contains_key(name) && !ctx.is_scoped_binding(name) =>
         {
-            let f_decl = ctx.functions.get(name).cloned().unwrap();
-            let mir_type_args = infer_fn_type_args(&f_decl, expr.source, types);
-            Ok(const_op(fn_name_const_with_args(
-                name.clone(),
-                mir_type_args,
+            let instantiation =
+                types
+                    .function_instantiations
+                    .get(&expr.source)
+                    .ok_or_else(|| {
+                        diag(
+                            HllLoweringCode::MissingType,
+                            expr.span(),
+                            "missing generic instantiation for function value",
+                        )
+                    })?;
+            Ok(const_op(fn_name_const_with_generic_args(
+                instantiation.name.clone(),
+                instantiation.lifetime_args.clone(),
+                instantiation.type_args.iter().map(lower_type).collect(),
             )))
         }
         hll::ExprKind::Variable(_)
@@ -869,7 +804,7 @@ fn lower_expr_into(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
     dest: &mir::Place,
-    types: &ExpressionTypes,
+    types: &TypeCheckResults,
 ) -> Result<(), Diagnostic> {
     match &expr.kind {
         hll::ExprKind::Literal(_)
@@ -1065,34 +1000,13 @@ fn lower_expr_into(
             ));
             Ok(())
         }
-        hll::ExprKind::Call(fn_expr, generics, args) => {
+        hll::ExprKind::Call(fn_expr, _generics, args) => {
             let mut arg_ops = Vec::new();
             for arg in args {
                 arg_ops.push(lower_expr_to_operand(ctx, arg, types)?);
             }
 
-            // Lower fn_expr to operand. Direct function names lower to
-            // a FnName const; for a generic fn, prefer explicit
-            // caller-written type args, otherwise fall back to type
-            // args inferred by HLL type_check (via `infer_fn_type_args`).
-            let fn_op = if let hll::ExprKind::Variable(ref name) = fn_expr.kind {
-                if let Some(f_decl) = ctx.functions.get(name).cloned() {
-                    if ctx.is_scoped_binding(name) {
-                        lower_expr_to_operand(ctx, fn_expr, types)?
-                    } else {
-                        let mir_type_args = if generics.types.is_empty() {
-                            infer_fn_type_args(&f_decl, fn_expr.source, types)
-                        } else {
-                            generics.types.iter().map(lower_type).collect()
-                        };
-                        const_op(fn_name_const_with_args(name.clone(), mir_type_args))
-                    }
-                } else {
-                    lower_expr_to_operand(ctx, fn_expr, types)?
-                }
-            } else {
-                lower_expr_to_operand(ctx, fn_expr, types)?
-            };
+            let fn_op = lower_expr_to_operand(ctx, fn_expr, types)?;
 
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
@@ -1488,7 +1402,7 @@ fn lower_expr_into(
 fn lower_function(
     f: &hll::FnDecl,
     program: &hll::Program,
-    types: &ExpressionTypes,
+    types: &TypeCheckResults,
     bodyless_is_extern: bool,
 ) -> Result<mir::Function, Diagnostic> {
     let mut params: Vec<mir::Param> = f
@@ -1573,7 +1487,7 @@ fn lower_function(
 
 pub fn lower_program(
     program: &hll::Program,
-    types: &ExpressionTypes,
+    types: &TypeCheckResults,
 ) -> Result<mir::Program, Diagnostic> {
     let mut declarations = Vec::new();
 

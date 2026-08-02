@@ -12,7 +12,9 @@
 #                       decl, needs `Node<i32>` again, but the second
 #                       lookup hits `needed` and doesn't re-queue)
 #   Pair<i32, f64>      two type params
-#   identity<i32>       generic fn call
+#   wrapped_identity<i32> generic fn reached from a non-generic caller
+#   identity<i32>       generic fn reached through another generic fn
+#   borrow_identity<i32> generic fn call with an explicit lifetime argument
 #   Deep<i32>           nested arrays, refs, fn types, and Custom args
 #   RefBox<i32>         lifetime-bearing Custom arg inside Deep<i32>
 #   Box<[i32; 2]>       array nested inside a Custom type argument
@@ -44,6 +46,26 @@ struct<T: Copy + Drop> Unused: Copy + Drop { x: T }
 fn<T: Copy + Drop> identity(x: T, $return: &out T) {
   entry:
     $return.* = copy x;
+    return
+}
+
+# covers: mono substitutes a caller type parameter in a generic function constant
+fn<T: Copy + Drop> wrapped_identity(x: T, $return: &out T) {
+  entry:
+    call identity<T>(copy x, move $return);
+    return
+}
+
+fn<'a, T: Copy + Drop> borrow_identity(x: &'a T, $return: &out &'a T) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+# covers: explicit lifetime and type arguments survive through mono and codegen
+fn<'a> call_borrow_identity(x: &'a i32, $return: &out &'a i32) {
+  entry:
+    call borrow_identity<'a, i32>(copy x, move $return);
     return
 }
 
@@ -117,6 +139,6 @@ fn main(exit: &out i32) {
     n_out = &out n;
     call make_node(17i32, move null_ptr, move n_out);
     id_out = &out exit.*;
-    call identity<i32>(copy b.inner, move id_out);
+    call wrapped_identity<i32>(copy b.inner, move id_out);
     return
 }

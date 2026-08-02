@@ -319,6 +319,263 @@ fn<'s0> call_generic_explicit_mixed($return: &out 's0 i64) {
     return
 }
 
+fn<'s0> call_generic_explicit_float($return: &out 's0 f64) {
+  $tmp_0: &out f64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call identity<f64>(42.0, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> call_generic_explicit_nested_type(x: Box<i64>, $return: &out 's0 Box<i64>) {
+  $tmp_0: &out Box<i64>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call identity<Box<i64>>(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+extern fn<'s0, T: Copy + Drop> make_default($return: &out 's0 T);
+
+fn<'s0> infer_generic_from_return_only($return: &out 's0 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call make_default<i64>(move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn<'s0, 's1> call_i64(f: fn(i64, &out 's0 i64), x: i64, $return: &out 's1 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call move f(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    require_uninit f;
+    return
+}
+
+fn<'s0> generic_function_value($return: &out 's0 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call call_i64(identity<i64>, 9, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> delayed_generic_function_value(x: i64, $return: &out 's0 i64) {
+  f: fn(i64, &out i64);
+  $tmp_0: &out i64;
+  entry:
+    f = identity<i64>;
+    $tmp_0 = &out $return.*;
+    call move f(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit f;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'s0, T: Copy + Drop> requires_copy(x: T, $return: &out 's0 T) {
+  entry:
+    $return.* = move x;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'s0> inferred_concrete_bound($return: &out 's0 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call requires_copy<i64>(5, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn<'s0, T: Copy + Drop> inferred_param_bound(x: T, $return: &out 's0 T) {
+  $tmp_0: &out T;
+  entry:
+    $tmp_0 = &out $return.*;
+    call requires_copy<T>(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+impl<T: Copy + Drop> Box<T> {
+  fn<'s0, 's1> identity_from_impl(recv: & 's0 Box<T>, x: T, $return: &out 's1 T) {
+    $tmp_0: &out T;
+    entry:
+      unborrow recv;
+      $tmp_0 = &out $return.*;
+      call identity<T>(move x, move $tmp_0);
+      unborrow $return;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      require_uninit x;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'a, 's0> borrow_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  entry:
+    $return.* = move x;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'a, 's0> call_explicit_lifetime(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  $tmp_0: &out & 'a i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call borrow_identity<'a>(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'a, 's0, T: Copy + Drop> borrow_generic_identity(x: & 'a T, $return: &out 's0 & 'a T) {
+  entry:
+    $return.* = move x;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'a, 's0> call_explicit_lifetime_inferred_type(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  $tmp_0: &out & 'a i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call borrow_generic_identity<'a, i64>(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'a, 's0> call_inferred_lifetime_explicit_type(x: & 'a i64, $return: &out 's0 & 'a i64) {
+  $tmp_0: &out & 'a i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call borrow_generic_identity<i64>(move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<T: Copy + Drop> generic_side_effect() {
+  $tmp_0: unit;
+  entry:
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn explicit_unmentioned_type_param() {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call generic_side_effect<i64>();
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn deferred_generic_call() {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    $tmp_0 = unit;
+    call generic_side_effect<i64>();
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn<'a> lifetime_side_effect() {
+  $tmp_0: unit;
+  entry:
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn explicit_static_lifetime() {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call lifetime_side_effect<'static>();
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn<'s0, T: Copy + Drop> unsafe_identity(x: T, $return: &out 's0 T) {
+  entry:
+    $return.* = move x;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn<'s0> call_generic_unsafe($return: &out 's0 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call unsafe_identity<i64>(11, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
 fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
   entry:
     $return.* = move ptr.*;

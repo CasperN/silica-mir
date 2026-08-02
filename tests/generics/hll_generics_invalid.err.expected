@@ -1,7 +1,188 @@
-error: at 91:3: [PARSE-UnexpectedToken] In function 'bare_instantiation_not_a_value': type arguments without a call are not a valid expression
+error: at 31:29: [HTC-UndeclaredType] In function 'undeclared_type_param': undeclared type 'T'
     |
- 90 | fn bare_instantiation_not_a_value() -> i64 {
- 91 |   identity_stub<i64>
-    |   ^^^^^^^^^^^^^^^^^^
- 92 | }
+ 30 | 
+ 31 | fn undeclared_type_param(x: T) -> i64 {
+    |                             ^
+ 32 |   0
     |
+error: at 37:30: [HTC-UndeclaredType] In function 'undeclared_custom_type': undeclared type 'Nope'
+    |
+ 36 | 
+ 37 | fn undeclared_custom_type(x: Nope) -> i64 {
+    |                              ^^^^
+ 38 |   0
+    |
+error: at 43:27: [HTC-TypeArgArityMismatch] In function 'arity_too_many_args': 'Box' takes 1 type argument(s), found 2
+    |
+ 42 | 
+ 43 | fn arity_too_many_args(x: Box<i64, i64>) -> i64 {
+    |                           ^^^^^^^^^^^^^
+ 44 |   0
+    |
+error: at 49:26: [HTC-TypeArgArityMismatch] In function 'arity_too_few_args': 'Box' takes 1 type argument(s), found 0
+    |
+ 48 | 
+ 49 | fn arity_too_few_args(x: Box) -> i64 {
+    |                          ^^^
+ 50 |   0
+    |
+error: at 55:36: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_copy': type argument 'Linear' for 'Box::T' does not satisfy bound 'Copy'
+    |
+ 54 | 
+ 55 | fn bound_not_satisfied_copy(x: Box<Linear>) -> i64 {
+    |                                    ^^^^^^
+ 56 |   0
+    |
+error: at 55:36: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_copy': type argument 'Linear' for 'Box::T' does not satisfy bound 'Drop'
+    |
+ 54 | 
+ 55 | fn bound_not_satisfied_copy(x: Box<Linear>) -> i64 {
+    |                                    ^^^^^^
+ 56 |   0
+    |
+error: at 61:37: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_drop': type argument 'Linear' for 'Sink::T' does not satisfy bound 'Drop'
+    |
+ 60 | 
+ 61 | fn bound_not_satisfied_drop(x: Sink<Linear>) -> i64 {
+    |                                     ^^^^^^
+ 62 |   0
+    |
+error: at 67:38: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': type argument 'Linear' for 'Box::T' does not satisfy bound 'Copy'
+    |
+ 66 | 
+ 67 | fn nested_bound_violation(x: Box<Box<Linear>>) -> i64 {
+    |                                      ^^^^^^
+ 68 |   0
+    |
+error: at 67:38: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': type argument 'Linear' for 'Box::T' does not satisfy bound 'Drop'
+    |
+ 66 | 
+ 67 | fn nested_bound_violation(x: Box<Box<Linear>>) -> i64 {
+    |                                      ^^^^^^
+ 68 |   0
+    |
+error: at 73:31: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity': 'Box' takes 1 type argument(s), found 2
+    |
+ 72 | 
+ 73 | fn return_type_bad_arity() -> Box<i64, i64> {
+    |                               ^^^^^^^^^^^^^
+ 74 |   Box { inner: 0 }
+    |
+error: at 74:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
+    |
+ 73 | fn return_type_bad_arity() -> Box<i64, i64> {
+ 74 |   Box { inner: 0 }
+    |   ^^^^^^^^^^^^^^^^
+ 75 | }
+    |
+error: at 80:10: [HTC-TypeArgArityMismatch] In function 'let_annotation_bad_arity': 'Box' takes 1 type argument(s), found 2
+    |
+ 79 | fn let_annotation_bad_arity() {
+ 80 |   let x: Box<i64, i64> = Box { inner: 0 };
+    |          ^^^^^^^^^^^^^
+ 81 | }
+    |
+error: at 80:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<?i3>, found Box<i64, i64>
+    |
+ 79 | fn let_annotation_bad_arity() {
+ 80 |   let x: Box<i64, i64> = Box { inner: 0 };
+    |                          ^^^^^^^^^^^^^^^^
+ 81 | }
+    |
+error: at 93:38: [HTC-TypeArgArityMismatch] In function 'call_type_args_too_few': function 'first' takes 2 type argument(s), found 1
+    |
+ 92 | # covers: too few explicit type arguments on a direct call
+ 93 | fn call_type_args_too_few() -> i64 { first<i64>(1, true) }
+    |                                      ^^^^^
+ 94 | # covers: too many explicit type arguments on a direct call
+    |
+error: at 95:39: [HTC-TypeArgArityMismatch] In function 'call_type_args_too_many': function 'identity' takes 1 type argument(s), found 2
+    |
+ 94 | # covers: too many explicit type arguments on a direct call
+ 95 | fn call_type_args_too_many() -> i64 { identity<i64, bool>(1) }
+    |                                       ^^^^^^^^
+ 96 | # covers: explicit type argument conflicts with value and return context
+    |
+error: at 97:58: [HTC-TypeMismatch] In function 'call_explicit_type_mismatch': type mismatch: expected integer type, found bool
+    |
+ 96 | # covers: explicit type argument conflicts with value and return context
+ 97 | fn call_explicit_type_mismatch() -> i64 { identity<bool>(1) }
+    |                                                          ^
+ 98 | 
+    |
+error: at 97:43: [HTC-TypeMismatch] In function 'call_explicit_type_mismatch': type mismatch: expected bool, found i64
+    |
+ 96 | # covers: explicit type argument conflicts with value and return context
+ 97 | fn call_explicit_type_mismatch() -> i64 { identity<bool>(1) }
+    |                                           ^^^^^^^^^^^^^^^^^
+ 98 | 
+    |
+error: at 100:59: [HTC-BoundNotSatisfied] In function 'call_inferred_bound_failure': type argument 'DropOnly' for 'requires_copy::T' does not satisfy bound 'Copy'
+     |
+  99 | # covers: inferred type argument fails a marker bound
+ 100 | fn call_inferred_bound_failure(x: DropOnly) -> DropOnly { requires_copy(x) }
+     |                                                           ^^^^^^^^^^^^^
+ 101 | # covers: explicit type argument fails a marker bound
+     |
+error: at 102:59: [HTC-BoundNotSatisfied] In function 'call_explicit_bound_failure': type argument 'DropOnly' for 'requires_copy::T' does not satisfy bound 'Copy'
+     |
+ 101 | # covers: explicit type argument fails a marker bound
+ 102 | fn call_explicit_bound_failure(x: DropOnly) -> DropOnly { requires_copy<DropOnly>(x) }
+     |                                                           ^^^^^^^^^^^^^
+ 103 | 
+     |
+error: at 108:59: [HTC-GenericArgsOnFunctionValue] In function 'call_generic_args_on_value': explicit generic arguments require a named function
+     |
+ 107 | # covers: explicit generic arguments applied to a function-valued parameter
+ 108 | fn call_generic_args_on_value(f: fn(i64) -> i64) -> i64 { f<i64>(1) }
+     |                                                           ^
+ 109 | # covers: local function value shadows a global generic function name
+     |
+error: at 110:67: [HTC-GenericArgsOnFunctionValue] In function 'call_generic_args_on_shadow': explicit generic arguments require a named function
+     |
+ 109 | # covers: local function value shadows a global generic function name
+ 110 | fn call_generic_args_on_shadow(identity: fn(i64) -> i64) -> i64 { identity<i64>(1) }
+     |                                                                   ^^^^^^^^
+ 111 | 
+     |
+error: at 114:3: [HTC-LifetimeArgArityMismatch] In function 'call_lifetime_args_too_few': function 'choose_first' takes 2 lifetime argument(s), found 1
+     |
+ 113 | fn<'a> call_lifetime_args_too_few(x: &'a i64) -> &'a i64 {
+ 114 |   choose_first<'a>(x, x)
+     |   ^^^^^^^^^^^^
+ 115 | }
+     |
+error: at 118:3: [HTC-LifetimeArgArityMismatch] In function 'call_lifetime_args_too_many': function 'borrow_identity' takes 1 lifetime argument(s), found 2
+     |
+ 117 | fn<'a> call_lifetime_args_too_many(x: &'a i64) -> &'a i64 {
+ 118 |   borrow_identity<'a, 'a>(x)
+     |   ^^^^^^^^^^^^^^^
+ 119 | }
+     |
+error: at 122:3: [HTC-UndeclaredLifetime] In function 'call_undeclared_lifetime': undeclared lifetime 'missing
+     |
+ 121 | fn<'a> call_undeclared_lifetime(x: &'a i64) -> &'a i64 {
+ 122 |   borrow_identity<'missing>(x)
+     |   ^^^^^^^^^^^^^^^
+ 123 | }
+     |
+error: at 128:5: [HTC-BoundNotSatisfied] In function 'call_inferred_bound_failure_from_impl': type argument 'DropOnly' for 'requires_copy::T' does not satisfy bound 'Copy'
+     |
+ 127 |   fn call_inferred_bound_failure_from_impl(recv: & Self, x: DropOnly) -> DropOnly {
+ 128 |     requires_copy(x)
+     |     ^^^^^^^^^^^^^
+ 129 |   }
+     |
+error: at 134:49: [HTC-UnsafeRequired] In function 'call_generic_unsafe_without_block': call to unsafe function 'unsafe_identity' requires unsafe block
+     |
+ 133 | # covers: generic unsafe call still requires an unsafe context
+ 134 | fn call_generic_unsafe_without_block() -> i64 { unsafe_identity<i64>(1) }
+     |                                                 ^^^^^^^^^^^^^^^
+     |
+error: at 105:38: [HTC-AmbiguousType] In function 'call_unresolved_type_argument': type annotations needed: cannot infer all type arguments for function 'generic_side_effect'
+     |
+ 104 | # covers: inferred type parameter absent from the function signature
+ 105 | fn call_unresolved_type_argument() { generic_side_effect(); }
+     |                                      ^^^^^^^^^^^^^^^^^^^
+ 106 | 
+     |

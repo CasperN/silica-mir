@@ -1,0 +1,7 @@
+error: at 8:3: [PARSE-UnexpectedToken] In function 'bare_instantiation_not_a_value': type arguments without a call are not a valid expression
+   |
+ 7 | fn bare_instantiation_not_a_value() -> i64 {
+ 8 |   identity<i64>
+   |   ^^^^^^^^^^^^^
+ 9 | }
+   |

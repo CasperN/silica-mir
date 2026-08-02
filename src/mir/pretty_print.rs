@@ -336,14 +336,23 @@ fn write_const(out: &mut String, c: &ConstVal) {
         ConstVal::Bool(true) => out.push_str("true"),
         ConstVal::Bool(false) => out.push_str("false"),
         ConstVal::Unit => out.push_str("unit"),
-        ConstVal::FnName(name, type_args) => {
-            out.push_str(name);
-            if !type_args.is_empty() {
+        ConstVal::FnName(instance) => {
+            out.push_str(&instance.name);
+            if !instance.lifetime_args.is_empty() || !instance.type_args.is_empty() {
                 out.push('<');
-                for (i, a) in type_args.iter().enumerate() {
-                    if i > 0 {
+                let mut first = true;
+                for lifetime in &instance.lifetime_args {
+                    if !first {
                         out.push_str(", ");
                     }
+                    first = false;
+                    write!(out, "{}", lifetime).unwrap();
+                }
+                for a in &instance.type_args {
+                    if !first {
+                        out.push_str(", ");
+                    }
+                    first = false;
                     write_type(out, a);
                 }
                 out.push('>');

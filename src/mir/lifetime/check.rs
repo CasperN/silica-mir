@@ -334,8 +334,8 @@ fn emit_operand_wf_constraints(
 ) {
     let Operand::Const(constant) = op else { return };
     match constant {
-        ConstVal::FnName(_, type_args) => {
-            for ty in type_args {
+        ConstVal::FnName(instance) => {
+            for ty in &instance.type_args {
                 emit_type_wf_constraints(ty, prog, cs);
             }
         }
@@ -698,18 +698,23 @@ impl<'a> Checker<'a> {
             return None;
         };
         match constant {
-            ConstVal::FnName(name, _) => {
-                let function = self.env.program().functions.get(name)?;
+            ConstVal::FnName(instance) => {
+                let function = self.env.program().functions.get(&instance.name)?;
+                let fixed_lifetimes = function
+                    .meta
+                    .params
+                    .lifetime_params
+                    .iter()
+                    .map(|parameter| &parameter.lifetime)
+                    .zip(&instance.lifetime_args)
+                    .map(|(parameter, argument)| (parameter.clone(), name_to_region(argument)))
+                    .collect();
                 Some(CallSignature {
-                    name: name.clone(),
-                    param_types: function
-                        .params
-                        .iter()
-                        .map(|param| param.ty.clone())
-                        .collect(),
+                    name: instance.name.clone(),
+                    param_types: function.instantiate_params(&instance.type_args),
                     lifetime_params: function.meta.params.lifetime_params.clone(),
                     outlives: function.meta.params.outlives.clone(),
-                    fixed_lifetimes: IndexMap::new(),
+                    fixed_lifetimes,
                     fixed_outlives: Vec::new(),
                 })
             }

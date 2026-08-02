@@ -553,9 +553,9 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             // Intercept intrinsic calls (`call $name(...)`): emit the LLVM
             // instruction sequence inline. The intrinsic symbol never
             // appears in the emitted `.ll`.
-            if let Operand::Const(ConstVal::FnName(name, type_args)) = target {
-                if crate::mir::intrinsics::is_intrinsic(name) {
-                    emit_intrinsic_call(cx, name, type_args, args);
+            if let Operand::Const(ConstVal::FnName(instance)) = target {
+                if crate::mir::intrinsics::is_intrinsic(&instance.name) {
+                    emit_intrinsic_call(cx, &instance.name, &instance.type_args, args);
                     return;
                 }
             }
@@ -570,8 +570,8 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             }
             let _ = param_tys; // types are already implicit in arg_pairs
 
-            let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(name, _)) = target {
-                if let Some(callee_f) = cx.prog.functions.get(name) {
+            let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(instance)) = target {
+                if let Some(callee_f) = cx.prog.functions.get(&instance.name) {
                     uses_register_return(&callee_f.abi)
                 } else {
                     false
@@ -581,8 +581,8 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
             };
 
             let ret_llvm = if callee_use_reg_ret {
-                if let Operand::Const(ConstVal::FnName(name, _)) = target {
-                    if let Some(f) = cx.prog.functions.get(name) {
+                if let Operand::Const(ConstVal::FnName(instance)) = target {
+                    if let Some(f) = cx.prog.functions.get(&instance.name) {
                         if let Some(p) = get_return_param(&f.params) {
                             if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
                                 Some(cx.lower_type(inner))
@@ -654,11 +654,11 @@ fn llvm_declares_needed(program: &IndexedProgram) -> Vec<&'static str> {
         let Some(body) = &f.body else { continue };
         for block in &body.blocks {
             for stmt in &block.statements {
-                if let StatementKind::Call(Operand::Const(ConstVal::FnName(name, _)), _) =
+                if let StatementKind::Call(Operand::Const(ConstVal::FnName(instance)), _) =
                     &stmt.kind
                 {
-                    if crate::mir::intrinsics::is_intrinsic(name) {
-                        called.insert(name.clone());
+                    if crate::mir::intrinsics::is_intrinsic(&instance.name) {
+                        called.insert(instance.name.clone());
                     }
                 }
             }
@@ -958,19 +958,19 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
         ConstVal::Bool(true) => ("true".to_string(), bool_ty()),
         ConstVal::Bool(false) => ("false".to_string(), bool_ty()),
         ConstVal::Unit => ("zeroinitializer".to_string(), unit_ty()),
-        ConstVal::FnName(name, type_args) => {
+        ConstVal::FnName(instance) => {
             assert!(
-                type_args.is_empty(),
+                instance.type_args.is_empty(),
                 "codegen: generic function instantiation not yet supported (monomorphization pass missing) — {}<...>",
-                name,
+                instance.name,
             );
             let f = cx
                 .prog
                 .functions
-                .get(name)
-                .unwrap_or_else(|| panic!("undeclared function '{}'", name));
+                .get(&instance.name)
+                .unwrap_or_else(|| panic!("undeclared function '{}'", instance.name));
             let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
-            (format!("@{}", llvm_fn_symbol(name)), fn_ty(param_tys))
+            (format!("@{}", llvm_fn_symbol(&instance.name)), fn_ty(param_tys))
         }
         ConstVal::ByteStr(bytes) => (
             llvm_byte_str_literal(bytes),

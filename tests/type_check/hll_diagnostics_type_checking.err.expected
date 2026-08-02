@@ -40,47 +40,54 @@ error: at 45:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type 
     |         ^^
  46 | }
     |
-error: at 53:8: [HTC-UnknownAbi] unknown extern ABI 'system' — expected 'C' or bare extern
+error: at 53:3: [HTC-EmptySwitch] In function 'test_empty_match': empty switch expression
     |
- 52 | # check widens.
- 53 | extern "system" fn win_api(x: i64);
+ 52 | fn test_empty_match(value: One) -> i64 {
+ 53 |   value match {}
+    |   ^^^^^^^^^^^^^^
+ 54 | }
+    |
+error: at 61:8: [HTC-UnknownAbi] unknown extern ABI 'system' — expected 'C' or bare extern
+    |
+ 60 | # check widens.
+ 61 | extern "system" fn win_api(x: i64);
     |        ^^^^^^^^
- 54 | extern "fastcall" fn stdcall_thing(y: i64);
+ 62 | extern "fastcall" fn stdcall_thing(y: i64);
     |
-error: at 54:8: [HTC-UnknownAbi] unknown extern ABI 'fastcall' — expected 'C' or bare extern
+error: at 62:8: [HTC-UnknownAbi] unknown extern ABI 'fastcall' — expected 'C' or bare extern
     |
- 53 | extern "system" fn win_api(x: i64);
- 54 | extern "fastcall" fn stdcall_thing(y: i64);
+ 61 | extern "system" fn win_api(x: i64);
+ 62 | extern "fastcall" fn stdcall_thing(y: i64);
     |        ^^^^^^^^^^
- 55 | 
-    |
-error: at 61:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
-    |
- 60 | # in the `Neg` arm of `to_i64`.
- 61 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
-    |                                                 ^
- 62 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
-    |
-error: at 62:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
-    |
- 61 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
- 62 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
-    |                                               ^
  63 | 
     |
-error: at 75:5: [HTC-TypeMismatch] In function 'value': type mismatch: expected bool, found i64
+error: at 69:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
     |
- 74 |   fn value(recv: & Self) -> i64 {
- 75 |     false
+ 68 | # in the `Neg` arm of `to_i64`.
+ 69 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+    |                                                 ^
+ 70 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+    |
+error: at 70:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
+    |
+ 69 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 70 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+    |                                               ^
+ 71 | 
+    |
+error: at 83:5: [HTC-TypeMismatch] In function 'value': type mismatch: expected bool, found i64
+    |
+ 82 |   fn value(recv: & Self) -> i64 {
+ 83 |     false
     |     ^^^^^
- 76 |   }
+ 84 |   }
     |
-error: at 82:5: [HTC-TypeMismatch] In function 'inherent_value': type mismatch: expected bool, found i64
+error: at 90:5: [HTC-TypeMismatch] In function 'inherent_value': type mismatch: expected bool, found i64
     |
- 81 |   fn inherent_value(recv: & Self) -> i64 {
- 82 |     false
+ 89 |   fn inherent_value(recv: & Self) -> i64 {
+ 90 |     false
     |     ^^^^^
- 83 |   }
+ 91 |   }
     |
 error: at 2:11: [HTC-AmbiguousType] type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |

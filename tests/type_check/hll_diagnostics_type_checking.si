@@ -45,6 +45,14 @@ fn test_defer_type_mismatch() {
   defer 42;
 }
 
+# ---------- HTC-EmptySwitch: checked-against-context match ----------
+
+enum One: Copy + Drop { Value: i64 }
+# covers: empty match checked against an expected return type
+fn test_empty_match(value: One) -> i64 {
+  value match {}
+}
+
 # ---------- HTC-UnknownAbi: extern with a non-C ABI string ----------
 
 # Bare `extern` (Silica ABI) and `extern "C"` (C ABI) are accepted;

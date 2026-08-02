@@ -247,13 +247,15 @@ pub fn substitute_rvalue_types(r: &RValue, type_params: &[TypeParam], args: &[Ty
 /// constants. All other operand shapes have no embedded types.
 pub fn substitute_operand_types(op: &Operand, type_params: &[TypeParam], args: &[Type]) -> Operand {
     match op {
-        Operand::Const(ConstVal::FnName(name, targs)) => Operand::Const(ConstVal::FnName(
-            name.clone(),
-            targs
+        Operand::Const(ConstVal::FnName(instance)) => Operand::Const(ConstVal::FnName(Instance {
+            name: instance.name.clone(),
+            lifetime_args: instance.lifetime_args.clone(),
+            type_args: instance
+                .type_args
                 .iter()
                 .map(|a| substitute_params(a, type_params, args))
                 .collect(),
-        )),
+        })),
         Operand::Const(ConstVal::InherentFn { self_ty, method }) => {
             Operand::Const(ConstVal::InherentFn {
                 self_ty: substitute_params(self_ty, type_params, args),

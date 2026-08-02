@@ -123,6 +123,22 @@ enum TypeResolutionErrorKind {
         len: u64,
     },
     UndeclaredFunction(String),
+    FreeFnLifetimeArgArity {
+        function: String,
+        expected: usize,
+        found: usize,
+    },
+    FreeFnTypeArgArity {
+        function: String,
+        expected: usize,
+        found: usize,
+    },
+    FreeFnTypeArgBoundNotSatisfied {
+        function: String,
+        parameter: String,
+        argument: Type,
+        bound: Marker,
+    },
     EnumConstrOnStruct(String),
     UndeclaredEnum(String),
     EnumTypeArgArity {
@@ -227,9 +243,12 @@ impl TypeResolutionError {
             TypeResolutionErrorKind::InherentFnNoImpl { .. } => InherentFnNoImpl,
             TypeResolutionErrorKind::InherentFnAmbiguousImpl { .. } => InherentFnAmbiguousImpl,
             TypeResolutionErrorKind::InherentFnNoMethod { .. } => InherentFnNoMethod,
-            TypeResolutionErrorKind::QualifiedFnLifetimeArgArity { .. }
+            TypeResolutionErrorKind::FreeFnLifetimeArgArity { .. }
+            | TypeResolutionErrorKind::FreeFnTypeArgArity { .. }
+            | TypeResolutionErrorKind::QualifiedFnLifetimeArgArity { .. }
             | TypeResolutionErrorKind::QualifiedFnTypeArgArity { .. } => TypeArgArity,
-            TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied { .. } => {
+            TypeResolutionErrorKind::FreeFnTypeArgBoundNotSatisfied { .. }
+            | TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied { .. } => {
                 TypeArgBoundNotSatisfied
             }
             TypeResolutionErrorKind::TraitFnUnknownTrait(_) => TraitFnUnknownTrait,
@@ -301,6 +320,34 @@ impl TypeResolutionError {
             TypeResolutionErrorKind::UndeclaredFunction(name) => {
                 format!("Undeclared function name '{}'", name)
             }
+            TypeResolutionErrorKind::FreeFnLifetimeArgArity {
+                function,
+                expected,
+                found,
+            } => format!(
+                "Function '{}' expects {} lifetime argument(s), got {}",
+                function, expected, found,
+            ),
+            TypeResolutionErrorKind::FreeFnTypeArgArity {
+                function,
+                expected,
+                found,
+            } => format!(
+                "Function '{}' expects {} type argument(s), got {}",
+                function, expected, found,
+            ),
+            TypeResolutionErrorKind::FreeFnTypeArgBoundNotSatisfied {
+                function,
+                parameter,
+                argument,
+                bound,
+            } => format!(
+                "Type argument {} for function '{}::{}' does not satisfy required bound '{}'",
+                format.ty(caller_scope, argument),
+                function,
+                parameter,
+                bound.name(),
+            ),
             TypeResolutionErrorKind::EnumConstrOnStruct(name) => {
                 format!("'{}' is a struct, not an enum", name)
             }
@@ -1481,14 +1528,54 @@ impl LocalEnv<'_> {
         }
     }
 
-    /// Look up free function `name` and instantiate its signature for `type_args`.
-    pub fn fn_type(&self, name: &str, type_args: &[Type]) -> Result<Type, TypeResolutionError> {
-        let f = self.program.functions.get(name).ok_or_else(|| {
+    /// Look up a free function and instantiate its signature.
+    pub fn fn_type(&self, instance: &Instance) -> Result<Type, TypeResolutionError> {
+        let f = self.program.functions.get(&instance.name).ok_or_else(|| {
             TypeResolutionError::new(TypeResolutionErrorKind::UndeclaredFunction(
-                name.to_string(),
+                instance.name.clone(),
             ))
         })?;
-        Ok(fn_ty(f.instantiate_params(type_args)))
+        let expected_lifetimes = f
+            .meta
+            .params
+            .lifetime_params
+            .iter()
+            .filter(|parameter| parameter.source.generated_kind().is_none())
+            .count();
+        if !instance.lifetime_args.is_empty() && instance.lifetime_args.len() != expected_lifetimes
+        {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::FreeFnLifetimeArgArity {
+                    function: instance.name.clone(),
+                    expected: expected_lifetimes,
+                    found: instance.lifetime_args.len(),
+                },
+            ));
+        }
+        if instance.type_args.len() != f.meta.params.type_params.len() {
+            return Err(TypeResolutionError::new(
+                TypeResolutionErrorKind::FreeFnTypeArgArity {
+                    function: instance.name.clone(),
+                    expected: f.meta.params.type_params.len(),
+                    found: instance.type_args.len(),
+                },
+            ));
+        }
+        for (parameter, argument) in f.meta.params.type_params.iter().zip(&instance.type_args) {
+            for bound in parameter.bounds.markers.iter_declared() {
+                if !self.class_of(argument).implies(bound) {
+                    return Err(TypeResolutionError::new(
+                        TypeResolutionErrorKind::FreeFnTypeArgBoundNotSatisfied {
+                            function: instance.name.clone(),
+                            parameter: parameter.name.clone(),
+                            argument: argument.clone(),
+                            bound,
+                        },
+                    ));
+                }
+            }
+        }
+        Ok(fn_ty(f.instantiate_params(&instance.type_args)))
     }
 
     fn validate_impl_method_args(
@@ -1719,7 +1806,7 @@ impl LocalEnv<'_> {
                 ConstVal::Float { ty, .. } => Ok(float_ty(*ty)),
                 ConstVal::Bool(_) => Ok(bool_ty()),
                 ConstVal::Unit => Ok(unit_ty()),
-                ConstVal::FnName(name, type_args) => self.fn_type(name, type_args),
+                ConstVal::FnName(instance) => self.fn_type(instance),
                 ConstVal::InherentFn { self_ty, method } => {
                     self.resolve_inherent_fn(self_ty, method)
                 }

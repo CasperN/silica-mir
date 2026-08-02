@@ -892,7 +892,7 @@ impl Parser {
                     return None;
                 };
                 let name = self.get_text(ident_node).to_string();
-                let (_lifetime_args, type_args) = if let Some(ta) = node.child(1) {
+                let (lifetime_args, type_args) = if let Some(ta) = node.child(1) {
                     if ta.kind() == "type_args" {
                         self.map_type_args(ta, d)?
                     } else {
@@ -901,7 +901,11 @@ impl Parser {
                 } else {
                     (Vec::new(), Vec::new())
                 };
-                Some(fn_name_const_with_args(name, type_args))
+                Some(fn_name_const_with_generic_args(
+                    name,
+                    lifetime_args,
+                    type_args,
+                ))
             }
             _ => {
                 let text = self.get_text(node);
@@ -909,7 +913,7 @@ impl Parser {
                     "true" => Some(ConstVal::Bool(true)),
                     "false" => Some(ConstVal::Bool(false)),
                     "unit" => Some(ConstVal::Unit),
-                    _ => Some(ConstVal::FnName(text.to_string(), Vec::new())),
+                    _ => Some(fn_name_const(text)),
                 }
             }
         }

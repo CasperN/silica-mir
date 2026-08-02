@@ -969,8 +969,9 @@ impl IndexedProgram {
                 }
             };
             match constant {
-                ConstVal::FnName(_, type_args) => {
-                    for ty in type_args {
+                ConstVal::FnName(instance) => {
+                    record_lifetimes(&instance.lifetime_args, d);
+                    for ty in &instance.type_args {
                         record(ty, d);
                     }
                 }
@@ -1106,8 +1107,8 @@ impl IndexedProgram {
                         let mut format = DiagnosticFormat::new();
                         let caller_scope = format.scope(&func.meta);
                         let expected = match target {
-                            Operand::Const(ConstVal::FnName(name, _)) => {
-                                if let Some(callee) = env.program().functions.get(name) {
+                            Operand::Const(ConstVal::FnName(instance)) => {
+                                if let Some(callee) = env.program().functions.get(&instance.name) {
                                     let callee_scope = format.scope(&callee.meta);
                                     format.ty(&callee_scope, param_ty)
                                 } else {
