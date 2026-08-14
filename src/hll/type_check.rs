@@ -218,6 +218,7 @@ impl From<HllTypeCheckCode> for DiagCode {
     }
 }
 
+#[derive(Clone)]
 pub struct Subst {
     map: HashMap<usize, Type>,
     next_id: usize,
@@ -629,8 +630,14 @@ impl TypeEnv {
 /// span do not alias.
 pub type ExpressionTypes = IndexMap<SourceInfo, Type>;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ReceiverAdjustment {
+    None,
+    Borrow(RefKind),
+}
+
 #[derive(Debug, Clone, PartialEq)]
-pub enum ResolvedReceiverCall {
+pub enum ResolvedReceiverTarget {
     Inherent {
         self_ty: Type,
         method: Instance,
@@ -642,6 +649,12 @@ pub enum ResolvedReceiverCall {
     },
     Field,
     FreeFunction(Instance),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ResolvedReceiverCall {
+    pub target: ResolvedReceiverTarget,
+    pub adjustment: ReceiverAdjustment,
 }
 
 struct PendingInstantiation {
@@ -875,15 +888,15 @@ pub(super) fn typecheck_program_collect(
             *ty = subst.resolve_default(ty);
         }
     }
-    for target in types.receiver_calls.values_mut() {
-        match target {
-            ResolvedReceiverCall::Inherent { self_ty, method } => {
+    for call in types.receiver_calls.values_mut() {
+        match &mut call.target {
+            ResolvedReceiverTarget::Inherent { self_ty, method } => {
                 *self_ty = subst.resolve_default(self_ty);
                 for ty in &mut method.type_args {
                     *ty = subst.resolve_default(ty);
                 }
             }
-            ResolvedReceiverCall::Trait {
+            ResolvedReceiverTarget::Trait {
                 trait_path,
                 self_ty,
                 method,
@@ -896,12 +909,12 @@ pub(super) fn typecheck_program_collect(
                     *ty = subst.resolve_default(ty);
                 }
             }
-            ResolvedReceiverCall::FreeFunction(instance) => {
+            ResolvedReceiverTarget::FreeFunction(instance) => {
                 for ty in &mut instance.type_args {
                     *ty = subst.resolve_default(ty);
                 }
             }
-            ResolvedReceiverCall::Field => {}
+            ResolvedReceiverTarget::Field => {}
         }
     }
     types.pending_instantiations.clear();
@@ -1405,7 +1418,7 @@ fn match_impl_method_receiver(
     method: &FnDecl,
     receiver_ty: &Type,
     env: &TypeEnv,
-) -> Option<(Type, ImplBindings)> {
+) -> Option<(Type, ImplBindings, ReceiverAdjustment)> {
     let receiver_param = method.params.first()?;
     let mut possible_self_types = vec![receiver_ty.clone()];
     if let (TypeKind::Ref(expected_kind, _, _), TypeKind::Ref(actual_kind, _, actual_inner)) =
@@ -1426,24 +1439,71 @@ fn match_impl_method_receiver(
         .iter()
         .map(|parameter| parameter.lifetime.clone())
         .collect::<HashSet<_>>();
-    possible_self_types.into_iter().find_map(|self_ty| {
-        let mut bindings = impl_bindings(impl_block, &self_ty, env)?;
-        let mut mapping = bindings
-            .types
-            .iter()
-            .map(|(name, ty)| (name.clone(), ty.clone()))
-            .collect::<HashMap<_, _>>();
-        mapping.insert("Self".to_string(), self_ty.clone());
-        let expected_receiver = substitute(&receiver_param.ty, &mapping);
-        match_impl_type(
-            &expected_receiver,
-            receiver_ty,
-            &type_parameters,
-            &lifetime_parameters,
-            &mut bindings,
-        )
-        .then_some((self_ty, bindings))
-    })
+    let matches = possible_self_types
+        .into_iter()
+        .filter_map(|self_ty| {
+            let mut bindings = impl_bindings(impl_block, &self_ty, env)?;
+            let mut mapping = bindings
+                .types
+                .iter()
+                .map(|(name, ty)| (name.clone(), ty.clone()))
+                .collect::<HashMap<_, _>>();
+            mapping.insert("Self".to_string(), self_ty.clone());
+            let expected_receiver = substitute(&receiver_param.ty, &mapping);
+            let mut exact_bindings = bindings.clone();
+            if match_impl_type(
+                &expected_receiver,
+                receiver_ty,
+                &type_parameters,
+                &lifetime_parameters,
+                &mut exact_bindings,
+            ) {
+                return Some((self_ty, exact_bindings, ReceiverAdjustment::None));
+            }
+            let TypeKind::Ref(kind, _, pointee) = &expected_receiver.kind else {
+                return None;
+            };
+            match_impl_type(
+                pointee,
+                receiver_ty,
+                &type_parameters,
+                &lifetime_parameters,
+                &mut bindings,
+            )
+            .then_some((self_ty, bindings, ReceiverAdjustment::Borrow(*kind)))
+        })
+        .collect::<Vec<_>>();
+    matches
+        .iter()
+        .find(|(_, _, adjustment)| *adjustment == ReceiverAdjustment::None)
+        .cloned()
+        .or_else(|| matches.into_iter().next())
+}
+
+fn receiver_adjustment_for_fn(
+    subst: &Subst,
+    function_ty: &Type,
+    receiver_ty: &Type,
+) -> ReceiverAdjustment {
+    let TypeKind::Fn(params, _) = &subst.resolve(function_ty).kind else {
+        return ReceiverAdjustment::None;
+    };
+    let Some(receiver_param) = params.first() else {
+        return ReceiverAdjustment::None;
+    };
+    let mut exact = subst.clone();
+    if exact.unify(receiver_param, receiver_ty).is_ok() {
+        return ReceiverAdjustment::None;
+    }
+    let TypeKind::Ref(kind, _, pointee) = &receiver_param.kind else {
+        return ReceiverAdjustment::None;
+    };
+    let mut borrowed = subst.clone();
+    if borrowed.unify(pointee, receiver_ty).is_ok() {
+        ReceiverAdjustment::Borrow(*kind)
+    } else {
+        ReceiverAdjustment::None
+    }
 }
 
 fn substitute_impl_instance(instance: &Instance, bindings: &ImplBindings) -> Instance {
@@ -1682,15 +1742,24 @@ fn resolve_receiver_call(
                 .methods
                 .iter()
                 .find(|candidate| candidate.name == method_name)?;
-            let (self_ty, bindings) =
+            let (self_ty, bindings, adjustment) =
                 match_impl_method_receiver(impl_block, method, &resolved_receiver_ty, env)?;
-            Some((impl_block, method, self_ty, bindings))
+            Some((impl_block, method, self_ty, bindings, adjustment))
+        })
+        .collect::<Vec<_>>();
+    let has_exact_inherent = inherent
+        .iter()
+        .any(|(_, _, _, _, adjustment)| *adjustment == ReceiverAdjustment::None);
+    let inherent = inherent
+        .into_iter()
+        .filter(|(_, _, _, _, adjustment)| {
+            !has_exact_inherent || *adjustment == ReceiverAdjustment::None
         })
         .collect::<Vec<_>>();
     if inherent.len() > 1 {
         let candidates = inherent
             .iter()
-            .map(|(impl_block, method, _, _)| {
+            .map(|(impl_block, method, _, _, _)| {
                 impl_method_context(&impl_block.target, None, &method.name)
             })
             .collect::<Vec<_>>()
@@ -1705,7 +1774,7 @@ fn resolve_receiver_call(
         ));
         return None;
     }
-    if let Some((impl_block, method, self_ty, bindings)) = inherent.into_iter().next() {
+    if let Some((impl_block, method, self_ty, bindings, adjustment)) = inherent.into_iter().next() {
         if method.is_unsafe && !env.in_unsafe {
             d.push_error(source_diagnostic(
                 UnsafeRequired,
@@ -1729,12 +1798,19 @@ fn resolve_receiver_call(
         )?;
         types.receiver_calls.insert(
             selector_source,
-            ResolvedReceiverCall::Inherent {
-                self_ty,
-                method: method_instance,
+            ResolvedReceiverCall {
+                target: ResolvedReceiverTarget::Inherent {
+                    self_ty,
+                    method: method_instance,
+                },
+                adjustment,
             },
         );
-        return Some((fn_ty, Some(receiver_ty)));
+        let receiver_arg_ty = match adjustment {
+            ReceiverAdjustment::None => receiver_ty.clone(),
+            ReceiverAdjustment::Borrow(kind) => ref_ty(kind, receiver_ty.clone()),
+        };
+        return Some((fn_ty, Some(receiver_arg_ty)));
     }
 
     let trait_methods = env
@@ -1746,7 +1822,7 @@ fn resolve_receiver_call(
                 .methods
                 .iter()
                 .find(|candidate| candidate.name == method_name)?;
-            let (self_ty, bindings) =
+            let (self_ty, bindings, adjustment) =
                 match_impl_method_receiver(impl_block, method, &resolved_receiver_ty, env)?;
             Some((
                 impl_block,
@@ -1754,13 +1830,23 @@ fn resolve_receiver_call(
                 substitute_impl_instance(trait_path, &bindings),
                 self_ty,
                 bindings,
+                adjustment,
             ))
+        })
+        .collect::<Vec<_>>();
+    let has_exact_trait = trait_methods
+        .iter()
+        .any(|(_, _, _, _, _, adjustment)| *adjustment == ReceiverAdjustment::None);
+    let trait_methods = trait_methods
+        .into_iter()
+        .filter(|(_, _, _, _, _, adjustment)| {
+            !has_exact_trait || *adjustment == ReceiverAdjustment::None
         })
         .collect::<Vec<_>>();
     if trait_methods.len() > 1 {
         let candidates = trait_methods
             .iter()
-            .map(|(impl_block, method, trait_path, _, _)| {
+            .map(|(impl_block, method, trait_path, _, _, _)| {
                 impl_method_context(&impl_block.target, Some(trait_path), &method.name)
             })
             .collect::<Vec<_>>()
@@ -1775,7 +1861,7 @@ fn resolve_receiver_call(
         ));
         return None;
     }
-    if let Some((impl_block, method, trait_path, self_ty, bindings)) =
+    if let Some((impl_block, method, trait_path, self_ty, bindings, adjustment)) =
         trait_methods.into_iter().next()
     {
         let (fn_ty, method_instance) = instantiate_method(
@@ -1791,13 +1877,20 @@ fn resolve_receiver_call(
         )?;
         types.receiver_calls.insert(
             selector_source,
-            ResolvedReceiverCall::Trait {
-                trait_path,
-                self_ty,
-                method: method_instance,
+            ResolvedReceiverCall {
+                target: ResolvedReceiverTarget::Trait {
+                    trait_path,
+                    self_ty,
+                    method: method_instance,
+                },
+                adjustment,
             },
         );
-        return Some((fn_ty, Some(receiver_ty)));
+        let receiver_arg_ty = match adjustment {
+            ReceiverAdjustment::None => receiver_ty.clone(),
+            ReceiverAdjustment::Borrow(kind) => ref_ty(kind, receiver_ty.clone()),
+        };
+        return Some((fn_ty, Some(receiver_arg_ty)));
     }
 
     let field_ty = receiver_field_type(env, subst, &receiver_ty, method_name);
@@ -1806,9 +1899,13 @@ fn resolve_receiver_call(
         Some(TypeKind::Fn(_, _))
     );
     if callable_field && generics.is_empty() {
-        types
-            .receiver_calls
-            .insert(selector_source, ResolvedReceiverCall::Field);
+        types.receiver_calls.insert(
+            selector_source,
+            ResolvedReceiverCall {
+                target: ResolvedReceiverTarget::Field,
+                adjustment: ReceiverAdjustment::None,
+            },
+        );
         return field_ty.map(|field_ty| (field_ty, None));
     }
 
@@ -1830,11 +1927,19 @@ fn resolve_receiver_call(
         }
         let (fn_ty, instance) =
             instantiate_function(env, subst, method_name, generics, method_source, types, d)?;
+        let adjustment = receiver_adjustment_for_fn(subst, &fn_ty, &receiver_ty);
         types.receiver_calls.insert(
             selector_source,
-            ResolvedReceiverCall::FreeFunction(instance),
+            ResolvedReceiverCall {
+                target: ResolvedReceiverTarget::FreeFunction(instance),
+                adjustment,
+            },
         );
-        return Some((fn_ty, Some(receiver_ty)));
+        let receiver_arg_ty = match adjustment {
+            ReceiverAdjustment::None => receiver_ty.clone(),
+            ReceiverAdjustment::Borrow(kind) => ref_ty(kind, receiver_ty.clone()),
+        };
+        return Some((fn_ty, Some(receiver_arg_ty)));
     }
 
     if callable_field {
@@ -2118,15 +2223,15 @@ fn infer_inner(
             if let TypeKind::Fn(param_tys, ret_ty) = resolved.kind {
                 let implicit_count = usize::from(receiver_ty.is_some());
                 if param_tys.len() != args.len() + implicit_count {
-                    let expected = param_tys.len().saturating_sub(implicit_count);
+                    let (expected, found) = if param_tys.len() < implicit_count {
+                        (param_tys.len(), args.len() + implicit_count)
+                    } else {
+                        (param_tys.len() - implicit_count, args.len())
+                    };
                     d.push_error(source_diagnostic(
                         ArityMismatch,
                         expr.source,
-                        format!(
-                            "function expected {} arguments, found {}",
-                            expected,
-                            args.len()
-                        ),
+                        format!("function expected {} arguments, found {}", expected, found),
                     ));
                     return error_ty();
                 }

@@ -10,6 +10,7 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 /// reference variable itself to be `mut` — only direct reassignment or
 /// field/index writes on owned places need it.
 use crate::hll::ast::*;
+use crate::hll::type_check::{ReceiverAdjustment, TypeCheckResults};
 use std::collections::HashMap;
 
 /// Machine-readable code for each HLL mutability-check error kind.
@@ -35,15 +36,17 @@ struct VarInfo {
     decl_source: SourceInfo,
 }
 
-struct Scope {
+struct Scope<'a> {
     /// Stack of frames; each frame maps binding name → VarInfo.
     frames: Vec<HashMap<String, VarInfo>>,
+    types: &'a TypeCheckResults,
 }
 
-impl Scope {
-    fn new() -> Self {
+impl<'a> Scope<'a> {
+    fn new(types: &'a TypeCheckResults) -> Self {
         Scope {
             frames: vec![HashMap::new()],
+            types,
         }
     }
 
@@ -81,15 +84,15 @@ impl Scope {
 // ── public entry ─────────────────────────────────────────────────────
 
 /// Check that non-`mut` bindings are never reassigned.
-pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
+pub fn check_mutability(program: &Program, types: &TypeCheckResults, d: &mut Diagnostics) {
     for decl in &program.declarations {
         match decl {
-            Declaration::Fn(f) => check_fn(f, &f.name, d),
+            Declaration::Fn(f) => check_fn(f, &f.name, types, d),
             Declaration::Impl(i) => {
                 for method in &i.methods {
                     let context =
                         impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
-                    check_fn(method, &context, d);
+                    check_fn(method, &context, types, d);
                 }
             }
             Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {}
@@ -97,10 +100,10 @@ pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
     }
 }
 
-fn check_fn(f: &FnDecl, context: &str, d: &mut Diagnostics) {
+fn check_fn(f: &FnDecl, context: &str, types: &TypeCheckResults, d: &mut Diagnostics) {
     // Extern fns have no body to check.
     let Some(body) = &f.body else { return };
-    let mut scope = Scope::new();
+    let mut scope = Scope::new(types);
     // Parameters are immutable (Param has no is_mut field).
     for p in &f.params {
         scope.declare(&p.name, false, p.source);
@@ -139,7 +142,36 @@ fn place_root(expr: &Expr) -> PlaceRoot<'_> {
 
 // ── expression / statement walk ──────────────────────────────────────
 
-fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
+fn check_borrow_mutability(
+    kind: RefKind,
+    target: &Expr,
+    scope: &Scope<'_>,
+    func: &str,
+    d: &mut Diagnostics,
+) {
+    if kind == RefKind::Shared {
+        return;
+    }
+    let PlaceRoot::Var(name, source) = place_root(target) else {
+        return;
+    };
+    let Some(info) = scope.get_info(name) else {
+        return;
+    };
+    if !info.is_mut {
+        d.push_error(
+            Diagnostic::new(
+                HllMutCheckCode::BorrowImmutableAsMut,
+                source,
+                format!("cannot borrow immutable binding '{}' as mutable", name),
+            )
+            .with_secondary(info.decl_source, "variable declared as immutable here")
+            .in_function(func),
+        );
+    }
+}
+
+fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostics) {
     match &expr.kind {
         // ── leaf / simple ────────────────────────────────────────
         ExprKind::Literal(_) | ExprKind::Variable(_) | ExprKind::Continue => {}
@@ -147,29 +179,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
         // ── unary wrappers ───────────────────────────────────────
         ExprKind::Borrow(kind, inner) => {
             check_expr(inner, scope, func, d);
-            if *kind != RefKind::Shared {
-                if let PlaceRoot::Var(name, source) = place_root(inner) {
-                    if let Some(info) = scope.get_info(name) {
-                        if !info.is_mut {
-                            d.push_error(
-                                Diagnostic::new(
-                                    HllMutCheckCode::BorrowImmutableAsMut,
-                                    source,
-                                    format!(
-                                        "cannot borrow immutable binding '{}' as mutable",
-                                        name
-                                    ),
-                                )
-                                .with_secondary(
-                                    info.decl_source,
-                                    "variable declared as immutable here",
-                                )
-                                .in_function(func),
-                            );
-                        }
-                    }
-                }
-            }
+            check_borrow_mutability(*kind, inner, scope, func, d);
         }
         ExprKind::RawBorrow(inner)
         | ExprKind::Deref(inner)
@@ -244,7 +254,21 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
         ExprKind::Call(target, _generics, args) => {
             match target {
                 CallTarget::Expr(callee) => check_expr(callee, scope, func, d),
-                CallTarget::Receiver { receiver, .. } => check_expr(receiver, scope, func, d),
+                CallTarget::Receiver {
+                    receiver,
+                    selector_source,
+                    ..
+                } => {
+                    check_expr(receiver, scope, func, d);
+                    if let Some(ReceiverAdjustment::Borrow(kind)) = scope
+                        .types
+                        .receiver_calls
+                        .get(selector_source)
+                        .map(|resolution| resolution.adjustment)
+                    {
+                        check_borrow_mutability(kind, receiver, scope, func, d);
+                    }
+                }
             }
             for arg in args {
                 check_expr(arg, scope, func, d);
@@ -289,7 +313,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
 /// Check sub-expressions inside the LHS of an assignment that are
 /// not part of the "place path" but are arbitrary expressions (e.g.
 /// the index expression in `a[expr]`).
-fn check_assign_subexprs(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
+fn check_assign_subexprs(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostics) {
     match &expr.kind {
         ExprKind::ArrayIndex(arr, idx) => {
             check_assign_subexprs(arr, scope, func, d);
@@ -308,7 +332,7 @@ fn check_assign_subexprs(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Dia
     }
 }
 
-fn check_stmt(stmt: &Stmt, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
+fn check_stmt(stmt: &Stmt, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostics) {
     match stmt {
         Stmt::Let {
             is_mut,
@@ -341,10 +365,11 @@ mod tests {
     /// strings (empty on success).
     fn check(source: &str) -> Vec<String> {
         let program = Parser::parse_or_panic(source);
-        let tc_d = type_check::typecheck_program(&program);
+        let mut tc_d = Diagnostics::default();
+        let types = type_check::typecheck_program_collect(&program, &mut tc_d);
         assert!(!tc_d.has_errors(), "typecheck ok: {:?}", tc_d.errors_str());
         let mut d = Diagnostics::default().with_source(program.source.clone());
-        check_mutability(&program, &mut d);
+        check_mutability(&program, &types, &mut d);
         d.errors_str()
     }
 

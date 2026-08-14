@@ -54,3 +54,17 @@ error: at 83:9: [HTC-BoundNotSatisfied] In function 'method_bound_failure': type
     |         ^^^^^^^
  84 | }
     |
+error: at 106:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_auto_borrow': receiver call 'BorrowAmbiguous.borrow_collision' is ambiguous; trait candidates: <BorrowAmbiguous as BorrowFirst>::borrow_collision, <BorrowAmbiguous as BorrowSecond>::borrow_collision
+     |
+ 105 | fn ambiguous_auto_borrow(value: BorrowAmbiguous) {
+ 106 |   value.borrow_collision();
+     |         ^^^^^^^^^^^^^^^^
+ 107 | }
+     |
+error: at 113:3: [HTC-ArityMismatch] In function 'free_without_receiver': function expected 0 arguments, found 1
+     |
+ 112 | fn free_without_receiver(value: Missing) {
+ 113 |   value.no_receiver();
+     |   ^^^^^^^^^^^^^^^^^^^
+ 114 | }
+     |

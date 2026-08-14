@@ -82,3 +82,33 @@ impl<T: Copy + Drop> Generic<T> {
 fn method_bound_failure(value: Generic<i64>, linear: Linear) {
   value.bounded<Linear>(linear);
 }
+
+struct BorrowAmbiguous: Copy + Drop { value: i64 }
+
+trait BorrowFirst {
+  fn borrow_collision(recv: & BorrowAmbiguous);
+}
+
+trait BorrowSecond {
+  fn borrow_collision(recv: & BorrowAmbiguous);
+}
+
+impl BorrowFirst for BorrowAmbiguous {
+  fn borrow_collision(recv: & BorrowAmbiguous) { unit }
+}
+
+impl BorrowSecond for BorrowAmbiguous {
+  fn borrow_collision(recv: & BorrowAmbiguous) { unit }
+}
+
+# covers: multiple auto-borrow candidates in one tier are ambiguous
+fn ambiguous_auto_borrow(value: BorrowAmbiguous) {
+  value.borrow_collision();
+}
+
+fn no_receiver() {}
+
+# covers: free UFCS requires a receiver parameter
+fn free_without_receiver(value: Missing) {
+  value.no_receiver();
+}

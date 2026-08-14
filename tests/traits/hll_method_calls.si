@@ -11,29 +11,29 @@ struct Dispatch: Copy + Drop {
 }
 
 trait PriorityTrait {
-  fn priority(recv: Dispatch, value: i64) -> i64;
+  fn priority(recv: & Dispatch, value: i64) -> i64;
 }
 
 impl PriorityTrait for Dispatch {
-  fn priority(recv: Dispatch, value: i64) -> i64 { value }
+  fn priority(recv: & Dispatch, value: i64) -> i64 { value }
 }
 
 trait FieldTrait {
-  fn trait_over_field(recv: Dispatch, value: i64) -> i64;
+  fn trait_over_field(recv: & Dispatch, value: i64) -> i64;
 }
 
 impl FieldTrait for Dispatch {
-  fn trait_over_field(recv: Dispatch, value: i64) -> i64 { value }
+  fn trait_over_field(recv: & Dispatch, value: i64) -> i64 { value }
 }
 
 impl Dispatch {
-  fn priority(recv: Dispatch, value: i64) -> i64 { value }
+  fn priority(recv: & Dispatch, value: i64) -> i64 { value }
 }
 
 fn priority(recv: Dispatch, value: i64) -> i64 { value }
 fn trait_over_field(recv: Dispatch, value: i64) -> i64 { value }
-fn field_over_free(recv: Dispatch, value: i64) -> i64 { value }
-fn free_over_noncallable(recv: Dispatch, value: i64) -> i64 { value }
+fn field_over_free(recv: & Dispatch, value: i64) -> i64 { value }
+fn free_over_noncallable(recv: & Dispatch, value: i64) -> i64 { value }
 unsafe fn unsafe_free(recv: Dispatch) -> i64 { recv.free_over_noncallable }
 
 # covers: inherent method outranks trait method, callable field, and free UFCS
@@ -69,18 +69,18 @@ fn select_unsafe_free(value: Dispatch) -> i64 {
 struct<T: Copy + Drop> Box: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<U: Copy + Drop> inherent_generic(recv: Box<T>, ignored: U) -> T {
-    recv.value
+  fn<U: Copy + Drop> inherent_generic(recv: & Box<T>, ignored: U) -> T {
+    recv.*.value
   }
 }
 
 trait<T: Copy + Drop> GenericTrait {
-  fn<U: Copy + Drop> trait_generic(recv: Box<T>, ignored: U) -> T;
+  fn<U: Copy + Drop> trait_generic(recv: & Box<T>, ignored: U) -> T;
 }
 
 impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
-  fn<U: Copy + Drop> trait_generic(recv: Box<T>, ignored: U) -> T {
-    recv.value
+  fn<U: Copy + Drop> trait_generic(recv: & Box<T>, ignored: U) -> T {
+    recv.*.value
   }
 }
 
@@ -148,6 +148,85 @@ impl NumericTrait for i64 {
 fn infer_receiver_type() -> i64 {
   let value = 1;
   value.infer_receiver()
+}
+
+struct Ranked: Copy + Drop { value: i64 }
+
+trait ExactRank {
+  fn ranked(recv: Ranked);
+}
+
+trait BorrowedRank {
+  fn ranked(recv: & Ranked);
+}
+
+impl ExactRank for Ranked {
+  fn ranked(recv: Ranked) { unit }
+}
+
+impl BorrowedRank for Ranked {
+  fn ranked(recv: & Ranked) { unit }
+}
+
+# covers: an exact receiver match outranks an auto-borrow in the same tier
+fn exact_outranks_auto_borrow(value: Ranked) {
+  value.ranked();
+}
+
+struct BorrowTarget: Copy + Drop { value: i64 }
+
+fn auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
+fn auto_mut(recv: &mut BorrowTarget) {
+  let old = recv.*.value;
+  recv.*.value = 2;
+  old;
+}
+fn auto_out(recv: &out BorrowTarget) { recv.* = BorrowTarget { value: 3 }; }
+fn auto_drop(recv: &drop BorrowTarget) { recv.*; }
+fn auto_uninit(recv: &uninit BorrowTarget) {}
+
+# covers: free UFCS automatically creates a shared receiver borrow
+fn call_auto_shared(value: BorrowTarget) -> i64 {
+  value.auto_shared()
+}
+
+# covers: free UFCS automatically creates a mutable receiver borrow
+fn call_auto_mut(value: BorrowTarget) -> BorrowTarget {
+  let mut local = value;
+  local.auto_mut();
+  local
+}
+
+# covers: free UFCS automatically creates an output receiver borrow
+fn call_auto_out() -> BorrowTarget {
+  let mut value: BorrowTarget;
+  value.auto_out();
+  value
+}
+
+# covers: AutoDrop may satisfy an output receiver's uninitialized precondition
+fn call_auto_out_replaces(value: BorrowTarget) -> BorrowTarget {
+  let mut local = value;
+  local.auto_out();
+  local
+}
+
+# covers: free UFCS automatically creates a dropping receiver borrow
+fn call_auto_drop(value: BorrowTarget) {
+  let mut local = value;
+  local.auto_drop();
+}
+
+# covers: free UFCS automatically creates an uninitialized receiver borrow
+fn call_auto_uninit() {
+  let mut value: BorrowTarget;
+  value.auto_uninit();
+}
+
+# covers: AutoDrop may satisfy an uninitialized receiver's precondition
+fn call_auto_uninit_after_drop(value: BorrowTarget) {
+  let mut local = value;
+  local.auto_uninit();
 }
 
 fn receiver_effect() {}

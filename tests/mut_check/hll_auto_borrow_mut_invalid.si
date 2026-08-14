@@ -1,0 +1,34 @@
+# Automatic non-shared receiver borrows obey ordinary HLL binding mutability.
+
+struct Target: Copy + Drop { value: i64 }
+
+fn shared(recv: & Target) {}
+fn mutable(recv: &mut Target) {}
+fn output(recv: &out Target) { recv.* = Target { value: 1 }; }
+fn dropping(recv: &drop Target) { recv.*; }
+fn uninitialized(recv: &uninit Target) {}
+
+# covers: shared auto-borrow does not require a mutable binding
+fn shared_of_immutable(value: Target) {
+  value.shared();
+}
+
+# covers: mutable auto-borrow rejects an immutable binding
+fn mutable_of_immutable(value: Target) {
+  value.mutable();
+}
+
+# covers: output auto-borrow rejects an immutable binding
+fn output_of_immutable(value: Target) {
+  value.output();
+}
+
+# covers: dropping auto-borrow rejects an immutable binding
+fn dropping_of_immutable(value: Target) {
+  value.dropping();
+}
+
+# covers: uninitialized auto-borrow rejects an immutable binding
+fn uninitialized_of_immutable(value: Target) {
+  value.uninitialized();
+}

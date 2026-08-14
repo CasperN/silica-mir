@@ -1,7 +1,7 @@
 use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
-use crate::hll::type_check::{ResolvedReceiverCall, TypeCheckResults};
+use crate::hll::type_check::{ReceiverAdjustment, ResolvedReceiverTarget, TypeCheckResults};
 use crate::mir::ast::{self as mir, DeclMeta, GenericParams};
 use crate::mir::helpers::*;
 use std::collections::HashMap;
@@ -825,8 +825,8 @@ fn lower_call_target_to_operand(
                     "missing receiver-call resolution",
                 ));
             };
-            match resolution {
-                ResolvedReceiverCall::Field => {
+            match &resolution.target {
+                ResolvedReceiverTarget::Field => {
                     let receiver_place = lower_expr_to_place(ctx, receiver, types)?;
                     let callee_place = field_place(receiver_place, method.clone());
                     let callee =
@@ -837,19 +837,21 @@ fn lower_call_target_to_operand(
                         };
                     Ok((callee, None))
                 }
-                ResolvedReceiverCall::Inherent { self_ty, method } => {
-                    let receiver = lower_expr_to_operand(ctx, receiver, types)?;
+                ResolvedReceiverTarget::Inherent { self_ty, method } => {
+                    let receiver =
+                        lower_receiver_operand(ctx, receiver, resolution.adjustment, types)?;
                     Ok((
                         inherent_fn_op(lower_type(self_ty), lower_instance(method)),
                         Some(receiver),
                     ))
                 }
-                ResolvedReceiverCall::Trait {
+                ResolvedReceiverTarget::Trait {
                     trait_path,
                     self_ty,
                     method,
                 } => {
-                    let receiver = lower_expr_to_operand(ctx, receiver, types)?;
+                    let receiver =
+                        lower_receiver_operand(ctx, receiver, resolution.adjustment, types)?;
                     Ok((
                         trait_fn_op(
                             lower_instance(trait_path),
@@ -859,8 +861,9 @@ fn lower_call_target_to_operand(
                         Some(receiver),
                     ))
                 }
-                ResolvedReceiverCall::FreeFunction(instance) => {
-                    let receiver = lower_expr_to_operand(ctx, receiver, types)?;
+                ResolvedReceiverTarget::FreeFunction(instance) => {
+                    let receiver =
+                        lower_receiver_operand(ctx, receiver, resolution.adjustment, types)?;
                     Ok((
                         const_op(fn_name_const_with_generic_args(
                             instance.name.clone(),
@@ -871,6 +874,35 @@ fn lower_call_target_to_operand(
                     ))
                 }
             }
+        }
+    }
+}
+
+fn lower_receiver_operand(
+    ctx: &mut LowerCtx,
+    receiver: &hll::Expr,
+    adjustment: ReceiverAdjustment,
+    types: &TypeCheckResults,
+) -> Result<mir::Operand, Diagnostic> {
+    match adjustment {
+        ReceiverAdjustment::None => lower_expr_to_operand(ctx, receiver, types),
+        ReceiverAdjustment::Borrow(kind) => {
+            let receiver_ty = lookup_type(receiver, types).ok_or_else(|| {
+                diag(
+                    HllLoweringCode::MissingType,
+                    receiver.span(),
+                    "missing receiver type for automatic borrow",
+                )
+            })?;
+            let receiver_place = lower_expr_to_place(ctx, receiver, types)?;
+            let borrow =
+                ctx.fresh_expression_temp(ref_ty(kind, lower_type(receiver_ty)), receiver.span());
+            ctx.emit_statement(assign_stmt(
+                borrow.clone(),
+                ref_rv(kind, receiver_place),
+                receiver.span(),
+            ));
+            Ok(move_op(borrow))
         }
     }
 }

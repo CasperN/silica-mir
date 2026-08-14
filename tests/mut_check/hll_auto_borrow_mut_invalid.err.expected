@@ -1,0 +1,36 @@
+error: at 18:3: [HMC-BorrowImmutableAsMut] In function 'mutable_of_immutable': cannot borrow immutable binding 'value' as mutable
+    |
+ 16 | # covers: mutable auto-borrow rejects an immutable binding
+ 17 | fn mutable_of_immutable(value: Target) {
+    |                         ------------- variable declared as immutable here
+ 18 |   value.mutable();
+    |   ^^^^^
+ 19 | }
+    |
+error: at 23:3: [HMC-BorrowImmutableAsMut] In function 'output_of_immutable': cannot borrow immutable binding 'value' as mutable
+    |
+ 21 | # covers: output auto-borrow rejects an immutable binding
+ 22 | fn output_of_immutable(value: Target) {
+    |                        ------------- variable declared as immutable here
+ 23 |   value.output();
+    |   ^^^^^
+ 24 | }
+    |
+error: at 28:3: [HMC-BorrowImmutableAsMut] In function 'dropping_of_immutable': cannot borrow immutable binding 'value' as mutable
+    |
+ 26 | # covers: dropping auto-borrow rejects an immutable binding
+ 27 | fn dropping_of_immutable(value: Target) {
+    |                          ------------- variable declared as immutable here
+ 28 |   value.dropping();
+    |   ^^^^^
+ 29 | }
+    |
+error: at 33:3: [HMC-BorrowImmutableAsMut] In function 'uninitialized_of_immutable': cannot borrow immutable binding 'value' as mutable
+    |
+ 31 | # covers: uninitialized auto-borrow rejects an immutable binding
+ 32 | fn uninitialized_of_immutable(value: Target) {
+    |                               ------------- variable declared as immutable here
+ 33 |   value.uninitialized();
+    |   ^^^^^
+ 34 | }
+    |

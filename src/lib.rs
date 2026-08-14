@@ -12,7 +12,7 @@ use mir::ast::Program;
 pub fn lower_hll_to_mir(source: &str, d: &mut Diagnostics) -> Option<Program> {
     let hll_prog = hll::parser::Parser::new(source).parse(d)?;
     let types = hll::type_check::run_type_check(&hll_prog, d)?;
-    hll::mut_check::check_mutability(&hll_prog, d);
+    hll::mut_check::check_mutability(&hll_prog, &types, d);
     if d.has_errors() {
         return None;
     }

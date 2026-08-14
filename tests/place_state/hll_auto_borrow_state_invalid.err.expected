@@ -1,0 +1,30 @@
+error: at 15:3: [PS-BorrowStateMismatch] In function 'mutable_of_uninitialized': cannot create &mut of 'value': place must be initialized at borrow, but is not yet initialized
+    |
+ 14 |   let mut value: Target;
+ 15 |   value.mutable();
+    |   ^^^^^
+ 16 | }
+    |
+error: at 21:3: [PS-BorrowStateMismatch] In function 'output_of_initialized': cannot create &out of 'local': place must be uninitialized at borrow, but is initialized
+    |
+ 20 |   let mut local = value;
+ 21 |   local.output();
+    |   ^^^^^
+ 22 |   consume(local);
+    |
+  hint: move 'local' out first — linear values cannot be forgotten in place
+error: at 28:3: [PS-BorrowStateMismatch] In function 'dropping_of_uninitialized': cannot create &drop of 'value': place must be initialized at borrow, but is not yet initialized
+    |
+ 27 |   let mut value: Target;
+ 28 |   value.dropping();
+    |   ^^^^^
+ 29 | }
+    |
+error: at 34:3: [PS-BorrowStateMismatch] In function 'uninitialized_of_initialized': cannot create &uninit of 'local': place must be uninitialized at borrow, but is initialized
+    |
+ 33 |   let mut local = value;
+ 34 |   local.uninitialized();
+    |   ^^^^^
+ 35 |   consume(local);
+    |
+  hint: move 'local' out first — linear values cannot be forgotten in place

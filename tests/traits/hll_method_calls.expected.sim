@@ -15,47 +15,47 @@ struct<'s0, 's1, 's2> Dispatch: Copy + Drop {
 }
 
 trait PriorityTrait {
-  fn<'s0, 's1, 's2, 's3> priority(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64);
+  fn<'s0, 's1, 's2, 's3> priority(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64);
 }
 
 impl PriorityTrait for Dispatch {
-  fn<'s0, 's1, 's2, 's3> priority(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+  fn<'s0, 's1, 's2, 's3> priority(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
     entry:
+      unborrow recv;
       $return.* = move value;
       unborrow $return;
       require_uninit $return;
       require_uninit value;
-      drop recv;
       require_uninit recv;
       return
   }
 }
 
 trait FieldTrait {
-  fn<'s0, 's1, 's2, 's3> trait_over_field(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64);
+  fn<'s0, 's1, 's2, 's3> trait_over_field(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64);
 }
 
 impl FieldTrait for Dispatch {
-  fn<'s0, 's1, 's2, 's3> trait_over_field(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+  fn<'s0, 's1, 's2, 's3> trait_over_field(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
     entry:
+      unborrow recv;
       $return.* = move value;
       unborrow $return;
       require_uninit $return;
       require_uninit value;
-      drop recv;
       require_uninit recv;
       return
   }
 }
 
 impl Dispatch {
-  fn<'s0, 's1, 's2, 's3> priority(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+  fn<'s0, 's1, 's2, 's3> priority(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
     entry:
+      unborrow recv;
       $return.* = move value;
       unborrow $return;
       require_uninit $return;
       require_uninit value;
-      drop recv;
       require_uninit recv;
       return
   }
@@ -83,24 +83,24 @@ fn<'s0, 's1, 's2, 's3> trait_over_field(recv: Dispatch<'s0, 's1, 's2>, value: i6
     return
 }
 
-fn<'s0, 's1, 's2, 's3> field_over_free(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+fn<'s0, 's1, 's2, 's3> field_over_free(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
   entry:
+    unborrow recv;
     $return.* = move value;
     unborrow $return;
     require_uninit $return;
     require_uninit value;
-    drop recv;
     require_uninit recv;
     return
 }
 
-fn<'s0, 's1, 's2, 's3> free_over_noncallable(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+fn<'s0, 's1, 's2, 's3> free_over_noncallable(recv: & 's0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
   entry:
+    unborrow recv;
     $return.* = move value;
     unborrow $return;
     require_uninit $return;
     require_uninit value;
-    drop recv;
     require_uninit recv;
     return
 }
@@ -118,14 +118,18 @@ fn<'s0, 's1, 's2, 's3> unsafe_free(recv: Dispatch<'s0, 's1, 's2>, $return: &out 
 }
 
 fn<'s0, 's1, 's2, 's3> select_inherent(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
-  $tmp_0: &out i64;
+  $tmp_0: & Dispatch<'s0, 's1, 's2>;
+  $tmp_1: &out i64;
   entry:
-    $tmp_0 = &out $return.*;
-    call <Dispatch>::priority(move value, move argument, move $tmp_0);
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <Dispatch>::priority(move $tmp_0, move argument, move $tmp_1);
     unborrow $return;
+    require_uninit $tmp_1;
     require_uninit $tmp_0;
     require_uninit $return;
     require_uninit argument;
+    drop value;
     require_uninit value;
     return
 }
@@ -147,14 +151,18 @@ fn<'s0, 's1, 's2, 's3> force_field(value: Dispatch<'s0, 's1, 's2>, argument: i64
 }
 
 fn<'s0, 's1, 's2, 's3> select_trait(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
-  $tmp_0: &out i64;
+  $tmp_0: & Dispatch<'s0, 's1, 's2>;
+  $tmp_1: &out i64;
   entry:
-    $tmp_0 = &out $return.*;
-    call <Dispatch as FieldTrait>::trait_over_field(move value, move argument, move $tmp_0);
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <Dispatch as FieldTrait>::trait_over_field(move $tmp_0, move argument, move $tmp_1);
     unborrow $return;
+    require_uninit $tmp_1;
     require_uninit $tmp_0;
     require_uninit $return;
     require_uninit argument;
+    drop value;
     require_uninit value;
     return
 }
@@ -176,14 +184,18 @@ fn<'s0, 's1, 's2, 's3> select_field(value: Dispatch<'s0, 's1, 's2>, argument: i6
 }
 
 fn<'s0, 's1, 's2, 's3> select_free_behind_noncallable_field(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
-  $tmp_0: &out i64;
+  $tmp_0: & Dispatch<'s0, 's1, 's2>;
+  $tmp_1: &out i64;
   entry:
-    $tmp_0 = &out $return.*;
-    call free_over_noncallable(move value, move argument, move $tmp_0);
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call free_over_noncallable(move $tmp_0, move argument, move $tmp_1);
     unborrow $return;
+    require_uninit $tmp_1;
     require_uninit $tmp_0;
     require_uninit $return;
     require_uninit argument;
+    drop value;
     require_uninit value;
     return
 }
@@ -205,10 +217,11 @@ struct<T: Copy + Drop> Box: Copy + Drop {
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<'s0, U: Copy + Drop> inherent_generic(recv: Box<T>, ignored: U, $return: &out 's0 T) {
+  fn<'s0, 's1, U: Copy + Drop> inherent_generic(recv: & 's0 Box<T>, ignored: U, $return: &out 's1 T) {
     entry:
-      $return.* = move recv.value;
+      $return.* = copy recv.*.value;
       unborrow $return;
+      unborrow recv;
       require_uninit $return;
       drop ignored;
       require_uninit ignored;
@@ -218,14 +231,15 @@ impl<T: Copy + Drop> Box<T> {
 }
 
 trait<T: Copy + Drop> GenericTrait {
-  fn<'s0, U: Copy + Drop> trait_generic(recv: Box<T>, ignored: U, $return: &out 's0 T);
+  fn<'s0, 's1, U: Copy + Drop> trait_generic(recv: & 's0 Box<T>, ignored: U, $return: &out 's1 T);
 }
 
 impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
-  fn<'s0, U: Copy + Drop> trait_generic(recv: Box<T>, ignored: U, $return: &out 's0 T) {
+  fn<'s0, 's1, U: Copy + Drop> trait_generic(recv: & 's0 Box<T>, ignored: U, $return: &out 's1 T) {
     entry:
-      $return.* = move recv.value;
+      $return.* = copy recv.*.value;
       unborrow $return;
+      unborrow recv;
       require_uninit $return;
       drop ignored;
       require_uninit ignored;
@@ -235,25 +249,33 @@ impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
 }
 
 fn<'s0> call_generic_inherent(value: Box<i64>, $return: &out 's0 i64) {
-  $tmp_0: &out i64;
+  $tmp_0: & Box<i64>;
+  $tmp_1: &out i64;
   entry:
-    $tmp_0 = &out $return.*;
-    call <Box<i64>>::inherent_generic<bool>(move value, true, move $tmp_0);
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <Box<i64>>::inherent_generic<bool>(move $tmp_0, true, move $tmp_1);
     unborrow $return;
+    require_uninit $tmp_1;
     require_uninit $tmp_0;
     require_uninit $return;
+    drop value;
     require_uninit value;
     return
 }
 
 fn<'s0> call_generic_trait(value: Box<i64>, $return: &out 's0 i64) {
-  $tmp_0: &out i64;
+  $tmp_0: & Box<i64>;
+  $tmp_1: &out i64;
   entry:
-    $tmp_0 = &out $return.*;
-    call <Box<i64> as GenericTrait<i64>>::trait_generic<bool>(move value, false, move $tmp_0);
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <Box<i64> as GenericTrait<i64>>::trait_generic<bool>(move $tmp_0, false, move $tmp_1);
     unborrow $return;
+    require_uninit $tmp_1;
     require_uninit $tmp_0;
     require_uninit $return;
+    drop value;
     require_uninit value;
     return
 }
@@ -387,6 +409,278 @@ fn<'s0> infer_receiver_type($return: &out 's0 i64) {
     return
 }
 
+struct Ranked: Copy + Drop {
+  value: i64
+}
+
+trait ExactRank {
+  fn ranked(recv: Ranked);
+}
+
+trait BorrowedRank {
+  fn<'s0> ranked(recv: & 's0 Ranked);
+}
+
+impl ExactRank for Ranked {
+  fn ranked(recv: Ranked) {
+    $tmp_0: unit;
+    entry:
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      drop recv;
+      require_uninit recv;
+      return
+  }
+}
+
+impl BorrowedRank for Ranked {
+  fn<'s0> ranked(recv: & 's0 Ranked) {
+    $tmp_0: unit;
+    entry:
+      unborrow recv;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+}
+
+fn exact_outranks_auto_borrow(value: Ranked) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Ranked as ExactRank>::ranked(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+struct BorrowTarget: Copy + Drop {
+  value: i64
+}
+
+fn<'s0, 's1> auto_shared(recv: & 's0 BorrowTarget, $return: &out 's1 i64) {
+  entry:
+    $return.* = copy recv.*.value;
+    unborrow $return;
+    unborrow recv;
+    require_uninit $return;
+    require_uninit recv;
+    return
+}
+
+fn<'s0> auto_mut(recv: &mut 's0 BorrowTarget) {
+  $tmp_0: unit;
+  old: i64;
+  $tmp_1: unit;
+  $tmp_2: i64;
+  entry:
+    old = move recv.*.value;
+    recv.*.value = 2;
+    unborrow recv;
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_2 = move old;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    require_uninit old;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit recv;
+    return
+}
+
+fn<'s0> auto_out(recv: &out 's0 BorrowTarget) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: BorrowTarget;
+  entry:
+    $tmp_2.value = 3;
+    recv.* = move $tmp_2;
+    unborrow recv;
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit recv;
+    return
+}
+
+fn<'s0> auto_drop(recv: &drop 's0 BorrowTarget) {
+  $tmp_0: unit;
+  $tmp_1: BorrowTarget;
+  entry:
+    $tmp_1 = move recv.*;
+    unborrow recv;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit recv;
+    return
+}
+
+fn<'s0> auto_uninit(recv: &uninit 's0 BorrowTarget) {
+  $tmp_0: unit;
+  entry:
+    unborrow recv;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit recv;
+    return
+}
+
+fn<'s0> call_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
+  $tmp_0: & BorrowTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call auto_shared(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+  local: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &mut BorrowTarget;
+  entry:
+    local = move value;
+    $tmp_1 = &mut local;
+    call auto_mut(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move local;
+    unborrow $return;
+    require_uninit local;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_auto_out($return: &out 's0 BorrowTarget) {
+  value: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &out BorrowTarget;
+  entry:
+    $tmp_1 = &out value;
+    call auto_out(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move value;
+    unborrow $return;
+    require_uninit value;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> call_auto_out_replaces(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+  local: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &out BorrowTarget;
+  entry:
+    local = move value;
+    drop local;
+    $tmp_1 = &out local;
+    call auto_out(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move local;
+    unborrow $return;
+    require_uninit local;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn call_auto_drop(value: BorrowTarget) {
+  $tmp_0: unit;
+  local: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &drop BorrowTarget;
+  entry:
+    local = move value;
+    $tmp_2 = &drop local;
+    call auto_drop(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit local;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn call_auto_uninit() {
+  $tmp_0: unit;
+  value: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &uninit BorrowTarget;
+  entry:
+    $tmp_2 = &uninit value;
+    call auto_uninit(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit value;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn call_auto_uninit_after_drop(value: BorrowTarget) {
+  $tmp_0: unit;
+  local: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &uninit BorrowTarget;
+  entry:
+    local = move value;
+    drop local;
+    $tmp_2 = &uninit local;
+    call auto_uninit(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit local;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
 fn receiver_effect() {
   $tmp_0: unit;
   entry:
@@ -407,23 +701,27 @@ fn<'s0> make_argument($return: &out 's0 i64) {
 fn<'s0, 's1, 's2, 's3> receiver_before_argument(value: Dispatch<'s0, 's1, 's2>, $return: &out 's3 i64) {
   $tmp_0: Dispatch<'s0, 's1, 's2>;
   $tmp_1: unit;
-  $tmp_2: i64;
-  $tmp_3: &out i64;
+  $tmp_2: & Dispatch<'s0, 's1, 's2>;
+  $tmp_3: i64;
   $tmp_4: &out i64;
+  $tmp_5: &out i64;
   entry:
     call receiver_effect();
     $tmp_1 = unit;
     drop $tmp_1;
     require_uninit $tmp_1;
     $tmp_0 = move value;
-    $tmp_3 = &out $tmp_2;
-    call make_argument(move $tmp_3);
-    $tmp_4 = &out $return.*;
-    call <Dispatch>::priority(move $tmp_0, move $tmp_2, move $tmp_4);
+    $tmp_2 = & $tmp_0;
+    $tmp_4 = &out $tmp_3;
+    call make_argument(move $tmp_4);
+    $tmp_5 = &out $return.*;
+    call <Dispatch>::priority(move $tmp_2, move $tmp_3, move $tmp_5);
     unborrow $return;
+    require_uninit $tmp_5;
     require_uninit $tmp_4;
     require_uninit $tmp_3;
     require_uninit $tmp_2;
+    drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit $return;
     require_uninit value;

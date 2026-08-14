@@ -1,0 +1,36 @@
+# Automatic receiver borrows retain each reference kind's pointee-state
+# precondition.
+
+struct Target: Move { value: i64 }
+
+extern fn mutable(recv: &mut Target);
+extern fn output(recv: &out Target);
+extern fn dropping(recv: &drop Target);
+extern fn uninitialized(recv: &uninit Target);
+extern fn consume(value: Target);
+
+# covers: mutable receiver borrow requires an initialized pointee
+fn mutable_of_uninitialized() {
+  let mut value: Target;
+  value.mutable();
+}
+
+# covers: output receiver borrow requires an uninitialized pointee
+fn output_of_initialized(value: Target) {
+  let mut local = value;
+  local.output();
+  consume(local);
+}
+
+# covers: dropping receiver borrow requires an initialized pointee
+fn dropping_of_uninitialized() {
+  let mut value: Target;
+  value.dropping();
+}
+
+# covers: uninitialized receiver borrow requires an uninitialized pointee
+fn uninitialized_of_initialized(value: Target) {
+  let mut local = value;
+  local.uninitialized();
+  consume(local);
+}
