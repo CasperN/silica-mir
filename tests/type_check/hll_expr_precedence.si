@@ -95,6 +95,19 @@ fn postfix_chain_on_match(t: Tag) -> i64 {
   w.inner
 }
 
+# ---------- Call evaluation order ----------
+
+# The function-position expression is evaluated before the argument list.
+# Receiver calls use the same ordering: receiver first, then method arguments.
+fn evaluation_sink(value: i64) {}
+fn make_callee() -> fn(i64) { evaluation_sink }
+fn make_argument() -> i64 { 1 }
+
+# covers: expression callee is lowered before its argument expressions
+fn callee_before_arguments() {
+  make_callee()(make_argument());
+}
+
 # Chained postfix matches parse correctly (see `chained_matches_leak`
 # in `tests/substructural/hll_diagnostics_sub.si`) — the parse-shape
 # aspect of this idiom is guaranteed by prec(-1) on `_block_like_stmt`,

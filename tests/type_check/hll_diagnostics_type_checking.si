@@ -89,4 +89,9 @@ impl TraitBodyTarget {
   fn inherent_value(recv: & Self) -> i64 {
     false
   }
+
+  # covers: deferred ambiguity diagnostics retain inherent-method identity
+  fn ambiguous_local(recv: & Self) {
+    let values = [];
+  }
 }

@@ -634,6 +634,7 @@ struct PendingInstantiation {
 pub struct TypeCheckResults {
     pub expression_types: ExpressionTypes,
     pub function_instantiations: IndexMap<SourceInfo, Instance>,
+    expression_contexts: IndexMap<SourceInfo, String>,
     pending_instantiations: Vec<PendingInstantiation>,
 }
 
@@ -741,7 +742,8 @@ pub(super) fn typecheck_program_collect(
                         source: t.source,
                     });
                     params.extend(method.type_params.clone());
-                    validate_fn_signature(&env, method, &params, d);
+                    let context = trait_method_context(&t.name, &method.name);
+                    validate_fn_signature(&env, method, &params, &context, d);
                 }
             }
             Declaration::Impl(i) => {
@@ -755,7 +757,9 @@ pub(super) fn typecheck_program_collect(
                 for method in &i.methods {
                     let mut params = i.type_params.clone();
                     params.extend(method.type_params.clone());
-                    validate_fn_signature(&env, method, &params, d);
+                    let context =
+                        impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
+                    validate_fn_signature(&env, method, &params, &context, d);
                 }
             }
         }
@@ -765,11 +769,13 @@ pub(super) fn typecheck_program_collect(
     for decl in &program.declarations {
         match decl {
             Declaration::Fn(f) => {
-                validate_extern_abi(f, d);
-                check_fn_body(&mut env, &mut subst, &mut types, f, &[], &[], d);
+                validate_extern_abi(f, &f.name, d);
+                check_fn_body(&mut env, &mut subst, &mut types, f, &[], &[], &f.name, d);
             }
             Declaration::Impl(i) => {
                 for method in &i.methods {
+                    let context =
+                        impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
                     check_fn_body(
                         &mut env,
                         &mut subst,
@@ -777,6 +783,7 @@ pub(super) fn typecheck_program_collect(
                         method,
                         &i.lifetime_params,
                         &i.type_params,
+                        &context,
                         d,
                     );
                 }
@@ -795,11 +802,15 @@ pub(super) fn typecheck_program_collect(
             let has_unreported = unresolved.iter().any(|id| !reported_vars.contains(id));
             if has_unreported {
                 reported_vars.extend(unresolved);
-                d.push_error(source_diagnostic(
+                let diagnostic = source_diagnostic(
                     HllTypeCheckCode::AmbiguousType,
                     *source,
                     format!("type annotations needed: type of expression is ambiguous (could not resolve type variable in {})", resolved),
-                ));
+                );
+                d.push_error(match types.expression_contexts.get(source) {
+                    Some(context) => diagnostic.in_function(context),
+                    None => diagnostic,
+                });
             }
         }
     }
@@ -845,6 +856,7 @@ fn validate_fn_signature(
     env: &TypeEnv,
     function: &FnDecl,
     effective_params: &[TypeParam],
+    context: &str,
     d: &mut Diagnostics,
 ) {
     let scope = type_params_scope(effective_params);
@@ -853,7 +865,19 @@ fn validate_fn_signature(
         env.validate_type(&param.ty, &scope, d);
     }
     env.validate_type(&function.ret_ty, &scope, d);
-    d.annotate_errors_in_function(errors_before, &function.name);
+    d.annotate_errors_in_function(errors_before, context);
+}
+
+fn record_expression_type(
+    env: &TypeEnv,
+    types: &mut TypeCheckResults,
+    source: SourceInfo,
+    ty: Type,
+) {
+    types.expression_types.insert(source, ty);
+    if let Some(context) = &env.current_function {
+        types.expression_contexts.insert(source, context.clone());
+    }
 }
 
 fn check_fn_body(
@@ -863,6 +887,7 @@ fn check_fn_body(
     function: &FnDecl,
     enclosing_lifetime_params: &[LifetimeParam],
     enclosing_params: &[TypeParam],
+    context: &str,
     d: &mut Diagnostics,
 ) {
     let Some(body) = &function.body else { return };
@@ -876,7 +901,7 @@ fn check_fn_body(
         .map(|parameter| parameter.lifetime.clone())
         .chain(std::iter::once(Lifetime("static".to_string())))
         .collect();
-    env.current_function = Some(function.name.clone());
+    env.current_function = Some(context.to_string());
     env.push_scope();
     env.current_ret_ty = Some(function.ret_ty.clone());
     env.in_unsafe = function.is_unsafe;
@@ -887,7 +912,7 @@ fn check_fn_body(
     let pending_before = types.pending_instantiations.len();
     check_inner(env, subst, body, &function.ret_ty, types, d);
     check_instantiation_bounds(env, subst, types, pending_before, d);
-    d.annotate_errors_in_function(errors_before, &function.name);
+    d.annotate_errors_in_function(errors_before, context);
     env.pop_scope();
     env.in_unsafe = false;
     env.current_type_params.clear();
@@ -924,18 +949,21 @@ fn check_instantiation_bounds(
     }
 }
 
-fn validate_extern_abi(function: &FnDecl, d: &mut Diagnostics) {
+fn validate_extern_abi(function: &FnDecl, context: &str, d: &mut Diagnostics) {
     if function.body.is_some() {
         return;
     }
     let Some(abi) = &function.abi else { return };
     if abi != "C" {
         let source = function.abi_source.unwrap_or(function.source);
-        d.push_error(source_diagnostic(
-            HllTypeCheckCode::UnknownAbi,
-            source,
-            format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
-        ));
+        d.push_error(
+            source_diagnostic(
+                HllTypeCheckCode::UnknownAbi,
+                source,
+                format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
+            )
+            .in_function(context),
+        );
     }
 }
 
@@ -1369,7 +1397,7 @@ fn infer_inner(
                 else {
                     return error_ty();
                 };
-                types.insert(fn_expr.source, fn_ty.clone());
+                record_expression_type(env, types, fn_expr.source, fn_ty.clone());
                 fn_ty
             } else {
                 if !generics.is_empty() {
@@ -1702,7 +1730,7 @@ fn infer_inner(
         }
     };
 
-    types.insert(expr.source, ty.clone());
+    record_expression_type(env, types, expr.source, ty.clone());
     ty
 }
 
@@ -1734,14 +1762,14 @@ fn check_inner(
             env.pop_scope();
             env.in_unsafe = old_unsafe;
             if d.error_count() == errors_before {
-                types.insert(expr.source, resolved_expected.clone());
+                record_expression_type(env, types, expr.source, resolved_expected.clone());
             }
         }
         (ExprKind::If(cond, true_block, false_block), _) => {
             check_inner(env, subst, cond, &bool_ty(), types, d);
             check_inner(env, subst, true_block, &resolved_expected, types, d);
             check_inner(env, subst, false_block, &resolved_expected, types, d);
-            types.insert(expr.source, resolved_expected.clone());
+            record_expression_type(env, types, expr.source, resolved_expected.clone());
         }
         (ExprKind::Match(target, arms), _) => {
             let target_ty = infer_inner(env, subst, target, types, d);
@@ -1800,7 +1828,7 @@ fn check_inner(
                         ));
                     }
                 }
-                types.insert(expr.source, resolved_expected.clone());
+                record_expression_type(env, types, expr.source, resolved_expected.clone());
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedEnum,
@@ -1810,10 +1838,10 @@ fn check_inner(
             }
         }
         (ExprKind::Literal(Literal::Int(_val, None)), TypeKind::Int(_ty)) => {
-            types.insert(expr.source, resolved_expected.clone());
+            record_expression_type(env, types, expr.source, resolved_expected.clone());
         }
         (ExprKind::Literal(Literal::Float(_val, None)), TypeKind::Float(_ty)) => {
-            types.insert(expr.source, resolved_expected.clone());
+            record_expression_type(env, types, expr.source, resolved_expected.clone());
         }
         (ExprKind::Array(elements), TypeKind::Array(expected_elem, expected_size)) => {
             let actual_size = array_len(elements.len());
@@ -1832,7 +1860,7 @@ fn check_inner(
             for el in elements {
                 check_inner(env, subst, el, expected_elem, types, d);
             }
-            types.insert(expr.source, resolved_expected.clone());
+            record_expression_type(env, types, expr.source, resolved_expected.clone());
         }
 
         _ => {
@@ -1840,7 +1868,7 @@ fn check_inner(
             if let Err(e) = subst.unify(&inferred, &resolved_expected) {
                 d.push_error(e.to_diag(expr.source));
             }
-            types.insert(expr.source, resolved_expected.clone());
+            record_expression_type(env, types, expr.source, resolved_expected.clone());
         }
     }
 }

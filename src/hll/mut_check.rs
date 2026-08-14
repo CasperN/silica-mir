@@ -84,10 +84,12 @@ impl Scope {
 pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
     for decl in &program.declarations {
         match decl {
-            Declaration::Fn(f) => check_fn(f, d),
+            Declaration::Fn(f) => check_fn(f, &f.name, d),
             Declaration::Impl(i) => {
                 for method in &i.methods {
-                    check_fn(method, d);
+                    let context =
+                        impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
+                    check_fn(method, &context, d);
                 }
             }
             Declaration::Struct(_) | Declaration::Enum(_) | Declaration::Trait(_) => {}
@@ -95,7 +97,7 @@ pub fn check_mutability(program: &Program, d: &mut Diagnostics) {
     }
 }
 
-fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
+fn check_fn(f: &FnDecl, context: &str, d: &mut Diagnostics) {
     // Extern fns have no body to check.
     let Some(body) = &f.body else { return };
     let mut scope = Scope::new();
@@ -103,7 +105,7 @@ fn check_fn(f: &FnDecl, d: &mut Diagnostics) {
     for p in &f.params {
         scope.declare(&p.name, false, p.source);
     }
-    check_expr(body, &mut scope, &f.name, d);
+    check_expr(body, &mut scope, context, d);
 }
 
 // ── place-root resolution ────────────────────────────────────────────

@@ -335,6 +335,25 @@ pub struct ImplBlock {
     pub source: SourceInfo,
 }
 
+/// User-facing identity of a method nested in an impl block. Method names are
+/// not globally unique, so diagnostics must retain both the target type and,
+/// for trait impls, the implemented trait path.
+pub fn impl_method_context(
+    target: &Type,
+    trait_path: Option<&Instance>,
+    method_name: &str,
+) -> String {
+    match trait_path {
+        Some(trait_path) => format!("<{} as {}>::{}", target, trait_path, method_name),
+        None => format!("<{}>::{}", target, method_name),
+    }
+}
+
+/// User-facing identity of a method signature nested in a trait declaration.
+pub fn trait_method_context(trait_name: &str, method_name: &str) -> String {
+    format!("{}::{}", trait_name, method_name)
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Declaration {
     Struct(StructDecl),

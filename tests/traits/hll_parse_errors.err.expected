@@ -12,77 +12,77 @@ error: at 10:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  11 | 
     |
-error: at 13:3: [PARSE-MalformedCst] trait method 'body' must not have a body
+error: at 13:3: [PARSE-MalformedCst] In function 'Body::body': trait method 'body' must not have a body
     |
  12 | trait Body {
  13 |   fn body(recv: & Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  14 | }
     |
-error: at 17:3: [PARSE-MalformedCst] trait method 'ext' cannot be extern
+error: at 17:3: [PARSE-MalformedCst] In function 'ExternTrait::ext': trait method 'ext' cannot be extern
     |
  16 | trait ExternTrait {
  17 |   extern fn ext(recv: & Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  18 | }
     |
-error: at 21:3: [PARSE-MalformedCst] trait method 'abi' cannot be extern
+error: at 21:3: [PARSE-MalformedCst] In function 'AbiTrait::abi': trait method 'abi' cannot be extern
     |
  20 | trait AbiTrait {
  21 |   extern "C" fn abi(recv: & Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  22 | }
     |
-error: at 25:3: [PARSE-MalformedCst] trait method 'unsafe_method' cannot be unsafe
+error: at 25:3: [PARSE-MalformedCst] In function 'UnsafeTrait::unsafe_method': trait method 'unsafe_method' cannot be unsafe
     |
  24 | trait UnsafeTrait {
  25 |   unsafe fn unsafe_method(recv: & Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  26 | }
     |
-error: at 30:3: [PARSE-MalformedCst] duplicate trait method 'same'
+error: at 30:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
     |
  29 |   fn same(recv: & Self);
  30 |   fn same(recv: & Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^
  31 | }
     |
-error: at 38:3: [PARSE-MalformedCst] impl method 'required' requires a body
+error: at 38:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' requires a body
     |
  37 | impl Required for S {
  38 |   fn required(recv: & Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
  39 | }
     |
-error: at 42:3: [PARSE-MalformedCst] impl method 'required' cannot be extern
+error: at 42:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be extern
     |
  41 | impl Required for S {
  42 |   extern fn required(recv: & Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  43 | }
     |
-error: at 46:3: [PARSE-MalformedCst] impl method 'required' cannot be extern
+error: at 46:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be extern
     |
  45 | impl Required for S {
  46 |   extern "C" fn required(recv: & Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  47 | }
     |
-error: at 50:3: [PARSE-MalformedCst] impl method 'required' cannot be unsafe
+error: at 50:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be unsafe
     |
  49 | impl Required for S {
  50 |   unsafe fn required(recv: & Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  51 | }
     |
-error: at 55:3: [PARSE-MalformedCst] duplicate impl method 'required'
+error: at 55:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
     |
  54 |   fn required(recv: & Self) { unit }
  55 |   fn required(recv: & Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  56 | }
     |
-error: at 59:6: [PARSE-MalformedCst] In function 'required': Duplicate type parameter 'T'
+error: at 59:6: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
     |
  58 | impl<T> Required for S {
  59 |   fn<T> required(recv: & Self) { unit }

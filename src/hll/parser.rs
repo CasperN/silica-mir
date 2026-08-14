@@ -154,7 +154,7 @@ impl Parser {
         let root = tree.root_node();
 
         if root.has_error() {
-            self.walk_syntax_errors(root, None, d);
+            self.walk_syntax_errors(root, None, None, d);
             return None;
         }
 
@@ -202,22 +202,53 @@ impl Parser {
         }
     }
 
-    /// Walk the CST emitting one diagnostic per ERROR/MISSING node.
-    /// Attaches `in_function` context when the error is inside a
-    /// `fn_decl` subtree.
+    /// Walk the CST emitting one diagnostic per ERROR/MISSING node. Function
+    /// context retains the enclosing trait or impl identity so equally named
+    /// methods remain distinguishable even when parsing fails before an AST
+    /// can be built.
     fn walk_syntax_errors<'a>(
         &'a self,
         node: Node<'a>,
-        ctx_fn: Option<&'a str>,
+        owner: Option<&str>,
+        ctx_fn: Option<&str>,
         diags: &mut Diagnostics,
     ) {
-        let ctx_fn = match node.kind() {
-            "fn_decl" => node
+        let next_owner = match node.kind() {
+            "trait_decl" => node
                 .child_by_field_name("name")
-                .map(|n| self.get_text(n))
-                .or(ctx_fn),
-            _ => ctx_fn,
+                .map(|name| self.get_text(name).to_string()),
+            "impl_decl" => node.child_by_field_name("target").map(|target| {
+                let target = self.get_text(target);
+                if let Some(trait_name) = node.child_by_field_name("trait_name") {
+                    let mut trait_path = self.get_text(trait_name).to_string();
+                    let mut cursor = node.walk();
+                    if let Some(args) = node
+                        .children(&mut cursor)
+                        .find(|child| child.kind() == "type_args")
+                    {
+                        trait_path.push_str(self.get_text(args));
+                    }
+                    format!("<{} as {}>", target, trait_path)
+                } else {
+                    format!("<{}>", target)
+                }
+            }),
+            _ => owner.map(str::to_string),
         };
+        let next_owner = next_owner.as_deref();
+
+        let next_ctx_fn = if node.kind() == "fn_decl" {
+            node.child_by_field_name("name").map(|name| {
+                let name = self.get_text(name);
+                match next_owner {
+                    Some(owner) => format!("{}::{}", owner, name),
+                    None => name.to_string(),
+                }
+            })
+        } else {
+            ctx_fn.map(str::to_string)
+        };
+        let next_ctx_fn = next_ctx_fn.as_deref();
 
         if node.is_missing() {
             let mut d = Diagnostic::new(
@@ -225,7 +256,7 @@ impl Parser {
                 SourceInfo::written(span_of(node)),
                 format!("missing '{}'", node.kind()),
             );
-            if let Some(f) = ctx_fn {
+            if let Some(f) = next_ctx_fn {
                 d = d.in_function(f);
             }
             diags.push_error(d);
@@ -241,7 +272,7 @@ impl Parser {
                 SourceInfo::written(span_of(node)),
                 msg,
             );
-            if let Some(f) = ctx_fn {
+            if let Some(f) = next_ctx_fn {
                 d = d.in_function(f);
             }
             diags.push_error(d);
@@ -249,7 +280,7 @@ impl Parser {
 
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
-            self.walk_syntax_errors(child, ctx_fn, diags);
+            self.walk_syntax_errors(child, next_owner, next_ctx_fn, diags);
         }
     }
 
@@ -454,13 +485,14 @@ impl Parser {
     }
 
     fn map_fn_decl(&self, node: Node, d: &mut Diagnostics) -> Option<FnDecl> {
-        self.map_fn_decl_in_scope(node, &TypeScope::default(), d)
+        self.map_fn_decl_in_scope(node, &TypeScope::default(), None, d)
     }
 
     fn map_fn_decl_in_scope(
         &self,
         node: Node,
         enclosing_scope: &TypeScope,
+        enclosing_context: Option<&str>,
         d: &mut Diagnostics,
     ) -> Option<FnDecl> {
         let errors_before = d.error_count();
@@ -535,7 +567,7 @@ impl Parser {
             Some(None)
         };
 
-        d.annotate_errors_in_function(errors_before, &name);
+        d.annotate_errors_in_function(errors_before, enclosing_context.unwrap_or(&name));
 
         let (lifetime_params, type_params, outlives) = type_params_result?;
         let ret_ty = ret_ty?;
@@ -583,41 +615,58 @@ impl Parser {
             if child.kind() != "fn_decl" {
                 continue;
             }
-            let method = self.map_fn_decl_in_scope(child, &scope, d)?;
+            let method_name = child
+                .child_by_field_name("name")
+                .map(|node| self.get_text(node))
+                .unwrap_or("<missing>");
+            let context = trait_method_context(&name, method_name);
+            let method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
             if method.abi.is_some()
                 || child
                     .children(&mut child.walk())
                     .any(|part| part.kind() == "extern")
             {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("trait method '{}' cannot be extern", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("trait method '{}' cannot be extern", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             if method.is_unsafe {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("trait method '{}' cannot be unsafe", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("trait method '{}' cannot be unsafe", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             if method.body.is_some() {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("trait method '{}' must not have a body", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("trait method '{}' must not have a body", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             if !names.insert(method.name.clone()) {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("duplicate trait method '{}'", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("duplicate trait method '{}'", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             methods.push(method);
@@ -685,41 +734,58 @@ impl Parser {
             if child.kind() != "fn_decl" {
                 continue;
             }
-            let method = self.map_fn_decl_in_scope(child, &scope, d)?;
+            let method_name = child
+                .child_by_field_name("name")
+                .map(|node| self.get_text(node))
+                .unwrap_or("<missing>");
+            let context = impl_method_context(&target, trait_path.as_ref(), method_name);
+            let method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
             if method.abi.is_some()
                 || child
                     .children(&mut child.walk())
                     .any(|part| part.kind() == "extern")
             {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("impl method '{}' cannot be extern", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("impl method '{}' cannot be extern", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             if method.is_unsafe {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("impl method '{}' cannot be unsafe", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("impl method '{}' cannot be unsafe", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             if method.body.is_none() {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("impl method '{}' requires a body", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("impl method '{}' requires a body", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             if !names.insert(method.name.clone()) {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("duplicate impl method '{}'", method.name),
-                ));
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::MalformedCst,
+                        format!("duplicate impl method '{}'", method.name),
+                    )
+                    .in_function(&context),
+                );
                 continue;
             }
             methods.push(method);
@@ -2430,6 +2496,25 @@ mod tests {
             "expected ≥2 errors, got {}: {:?}",
             diags.error_count(),
             diags.errors_str()
+        );
+    }
+
+    #[test]
+    fn syntax_errors_distinguish_trait_and_impl_methods() {
+        let src = "\
+            struct S: Copy + Drop {}\n\
+            trait Tr { fn broken(recv: & Self) { @@; } }\n\
+            impl Tr for S { fn broken(recv: & Self) { @@; } }\n";
+        let mut diags = Diagnostics::default();
+        assert!(Parser::new(src).parse(&mut diags).is_none());
+        let rendered = diags.errors_str().join("\n");
+        assert!(
+            rendered.contains("In function 'Tr::broken'"),
+            "missing qualified trait context: {rendered}"
+        );
+        assert!(
+            rendered.contains("In function '<S as Tr>::broken'"),
+            "missing qualified impl context: {rendered}"
         );
     }
 

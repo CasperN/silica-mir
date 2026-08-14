@@ -1001,12 +1001,15 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Call(fn_expr, _generics, args) => {
+            // The callee is an expression and therefore evaluates before the
+            // argument list. Receiver-call syntax will rely on this same
+            // ordering when it is introduced.
+            let fn_op = lower_expr_to_operand(ctx, fn_expr, types)?;
+
             let mut arg_ops = Vec::new();
             for arg in args {
                 arg_ops.push(lower_expr_to_operand(ctx, arg, types)?);
             }
-
-            let fn_op = lower_expr_to_operand(ctx, fn_expr, types)?;
 
             let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
                 diag(
@@ -1544,9 +1547,10 @@ pub fn lower_program(
                 }));
             }
             hll::Declaration::Fn(f) => {
-                declarations.push(mir::Declaration::Fn(lower_function(
-                    f, program, types, true,
-                )?));
+                declarations.push(mir::Declaration::Fn(
+                    lower_function(f, program, types, true)
+                        .map_err(|diagnostic| diagnostic.in_function(&f.name))?,
+                ));
             }
             hll::Declaration::Trait(t) => {
                 declarations.push(mir::Declaration::Trait(mir::TraitDecl {
@@ -1564,7 +1568,11 @@ pub fn lower_program(
                     methods: t
                         .methods
                         .iter()
-                        .map(|method| lower_function(method, program, types, false))
+                        .map(|method| {
+                            let context = hll::trait_method_context(&t.name, &method.name);
+                            lower_function(method, program, types, false)
+                                .map_err(|diagnostic| diagnostic.in_function(context))
+                        })
                         .collect::<Result<Vec<_>, _>>()?,
                 }));
             }
@@ -1581,7 +1589,15 @@ pub fn lower_program(
                     methods: i
                         .methods
                         .iter()
-                        .map(|method| lower_function(method, program, types, false))
+                        .map(|method| {
+                            let context = hll::impl_method_context(
+                                &i.target,
+                                i.trait_path.as_ref(),
+                                &method.name,
+                            );
+                            lower_function(method, program, types, false)
+                                .map_err(|diagnostic| diagnostic.in_function(context))
+                        })
                         .collect::<Result<Vec<_>, _>>()?,
                 }));
             }

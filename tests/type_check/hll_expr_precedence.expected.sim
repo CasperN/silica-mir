@@ -257,3 +257,56 @@ fn<'s0> postfix_chain_on_match(t: Tag, $return: &out 's0 i64) {
     require_uninit t;
     return
 }
+
+fn evaluation_sink(value: i64) {
+  $tmp_0: unit;
+  entry:
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn<'s0> make_callee($return: &out 's0 fn(i64)) {
+  entry:
+    $return.* = evaluation_sink;
+    unborrow $return;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> make_argument($return: &out 's0 i64) {
+  entry:
+    $return.* = 1;
+    unborrow $return;
+    require_uninit $return;
+    return
+}
+
+fn callee_before_arguments() {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: fn(i64);
+  $tmp_3: &out fn(i64);
+  $tmp_4: i64;
+  $tmp_5: &out i64;
+  entry:
+    $tmp_3 = &out $tmp_2;
+    call make_callee(move $tmp_3);
+    $tmp_5 = &out $tmp_4;
+    call make_argument(move $tmp_5);
+    call move $tmp_2(move $tmp_4);
+    $tmp_1 = unit;
+    require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
