@@ -514,18 +514,16 @@ impl<'a> DeclarationRef<'a> {
 #[derive(Debug, Clone, Copy)]
 pub struct LocalEnv<'a> {
     program: &'a IndexedProgram,
-    impl_generics: Option<&'a GenericParams>,
+    impl_block: Option<&'a ImplBlock>,
     decl_generics: &'a GenericParams,
-    self_ty: Option<&'a Type>,
 }
 
 impl<'a> LocalEnv<'a> {
     pub fn for_decl(program: &'a IndexedProgram, decl_generics: &'a GenericParams) -> Self {
         Self {
             program,
-            impl_generics: None,
+            impl_block: None,
             decl_generics,
-            self_ty: None,
         }
     }
 
@@ -536,9 +534,8 @@ impl<'a> LocalEnv<'a> {
     ) -> Self {
         Self {
             program,
-            impl_generics: Some(&impl_block.params),
+            impl_block: Some(impl_block),
             decl_generics: &method.meta.params,
-            self_ty: Some(&impl_block.target),
         }
     }
 
@@ -547,7 +544,7 @@ impl<'a> LocalEnv<'a> {
     }
 
     pub fn impl_generics(&self) -> Option<&'a GenericParams> {
-        self.impl_generics
+        self.impl_block.map(|impl_block| &impl_block.params)
     }
 
     pub fn decl_generics(&self) -> &'a GenericParams {
@@ -555,7 +552,7 @@ impl<'a> LocalEnv<'a> {
     }
 
     pub fn self_ty(&self) -> Option<&'a Type> {
-        self.self_ty
+        self.impl_block.map(|impl_block| &impl_block.target)
     }
 
     /// Whether an impl whose header and marker bounds match is available.
@@ -582,7 +579,7 @@ impl<'a> LocalEnv<'a> {
             .iter()
             .find(|param| param.name == name)
             .or_else(|| {
-                self.impl_generics?
+                self.impl_generics()?
                     .type_params
                     .iter()
                     .find(|param| param.name == name)
@@ -590,14 +587,14 @@ impl<'a> LocalEnv<'a> {
     }
 
     pub fn lifetime_params(&self) -> impl Iterator<Item = &'a LifetimeParam> {
-        self.impl_generics
+        self.impl_generics()
             .into_iter()
             .flat_map(|params| &params.lifetime_params)
             .chain(&self.decl_generics.lifetime_params)
     }
 
     pub fn outlives_bounds(&self) -> impl Iterator<Item = &'a OutlivesBound> {
-        self.impl_generics
+        self.impl_generics()
             .into_iter()
             .flat_map(|params| &params.outlives)
             .chain(&self.decl_generics.outlives)
