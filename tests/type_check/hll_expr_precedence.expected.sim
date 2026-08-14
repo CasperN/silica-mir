@@ -310,3 +310,39 @@ fn callee_before_arguments() {
     require_uninit $tmp_0;
     return
 }
+
+struct Callable: Copy + Drop {
+  invoke: fn(i64)
+}
+
+fn direct_function_field(value: Callable, argument: i64) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call move value.invoke(move argument);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit argument;
+    require_uninit value;
+    return
+}
+
+fn forced_function_field(value: Callable, argument: i64) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call move value.invoke(move argument);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit argument;
+    require_uninit value;
+    return
+}

@@ -1479,7 +1479,7 @@ impl Parser {
                 // Generic calls parse as `call_expr(instantiation_expr(f, <T>), args)`
                 // — unwrap the inner instantiation_expr to lift the type args
                 // onto the call's generics slot.
-                let (func_expr, generics) = if func.kind() == "instantiation_expr" {
+                let (func_node, generics) = if func.kind() == "instantiation_expr" {
                     let Some(inner_fn) = func.child_by_field_name("function") else {
                         d.push_error(self.diag(
                             func,
@@ -1497,12 +1497,35 @@ impl Parser {
                         return None;
                     };
                     let (lifetimes, types) = self.map_type_args(type_args_node, scope, d)?;
-                    (
-                        self.map_expr(inner_fn, scope, d)?,
-                        GenericArgs { lifetimes, types },
-                    )
+                    (inner_fn, GenericArgs { lifetimes, types })
                 } else {
-                    (self.map_expr(func, scope, d)?, GenericArgs::empty())
+                    (func, GenericArgs::empty())
+                };
+                let target = if func_node.kind() == "field_access" {
+                    let Some(receiver) = func_node.child_by_field_name("target") else {
+                        d.push_error(self.diag(
+                            func_node,
+                            ParserCode::MalformedCst,
+                            "receiver call missing receiver",
+                        ));
+                        return None;
+                    };
+                    let Some(method) = func_node.child_by_field_name("field") else {
+                        d.push_error(self.diag(
+                            func_node,
+                            ParserCode::MalformedCst,
+                            "receiver call missing method",
+                        ));
+                        return None;
+                    };
+                    CallTarget::Receiver {
+                        receiver: Box::new(self.map_expr(receiver, scope, d)?),
+                        method: self.get_text(method).to_string(),
+                        method_source: SourceInfo::written(span_of(method)),
+                        selector_source: SourceInfo::written(span_of(func_node)),
+                    }
+                } else {
+                    CallTarget::Expr(Box::new(self.map_expr(func_node, scope, d)?))
                 };
                 let mut cursor = node.walk();
                 let mut args = Vec::new();
@@ -1512,7 +1535,7 @@ impl Parser {
                     }
                 }
                 Some(Expr {
-                    kind: ExprKind::Call(Box::new(func_expr), generics, args),
+                    kind: ExprKind::Call(target, generics, args),
                     source: SourceInfo::written(span),
                 })
             }
@@ -2213,6 +2236,55 @@ mod tests {
         };
         assert_eq!(x, "x");
         assert!(matches!(target.kind, ExprKind::Call(_, _, _)));
+    }
+
+    #[test]
+    fn direct_field_callee_is_receiver_call_syntax() {
+        let source = "fn f(a: Point, b: i64) { let v = a.foo(b); }";
+        let init = first_let_init(&Parser::parse_or_panic(source));
+        let ExprKind::Call(
+            CallTarget::Receiver {
+                receiver,
+                method,
+                method_source,
+                selector_source,
+            },
+            generics,
+            args,
+        ) = init.kind
+        else {
+            panic!("expected receiver call");
+        };
+        assert!(matches!(receiver.kind, ExprKind::Variable(ref name) if name == "a"));
+        assert_eq!(method, "foo");
+        assert_eq!(method_source.span().col, 36);
+        assert_eq!(selector_source.span().col, 34);
+        assert!(generics.is_empty());
+        assert_eq!(args.len(), 1);
+    }
+
+    #[test]
+    fn parenthesized_field_callee_is_expression_call() {
+        let source = "fn f(a: Point, b: i64) { let v = (a.foo)(b); }";
+        let init = first_let_init(&Parser::parse_or_panic(source));
+        let ExprKind::Call(CallTarget::Expr(callee), generics, args) = init.kind else {
+            panic!("expected expression call");
+        };
+        assert!(matches!(callee.kind, ExprKind::FieldAccess(_, ref field) if field == "foo"));
+        assert!(generics.is_empty());
+        assert_eq!(args.len(), 1);
+    }
+
+    #[test]
+    fn receiver_call_preserves_explicit_generic_arguments() {
+        let source = "fn f(a: Point, b: i64) { let v = a.foo<i64>(b); }";
+        let init = first_let_init(&Parser::parse_or_panic(source));
+        let ExprKind::Call(CallTarget::Receiver { method, .. }, generics, args) = init.kind else {
+            panic!("expected generic receiver call");
+        };
+        assert_eq!(method, "foo");
+        assert_eq!(generics.types.len(), 1);
+        assert_eq!(args.len(), 1);
     }
 
     #[test]

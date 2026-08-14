@@ -108,6 +108,21 @@ fn callee_before_arguments() {
   make_callee()(make_argument());
 }
 
+# A callable field remains one possible interpretation of receiver syntax.
+# Parentheses force the field interpretation when a method of the same name
+# becomes available.
+struct Callable: Copy + Drop { invoke: fn(i64) }
+
+# covers: direct receiver syntax may call a function-valued field
+fn direct_function_field(value: Callable, argument: i64) {
+  value.invoke(argument);
+}
+
+# covers: parentheses explicitly force a function-valued field call
+fn forced_function_field(value: Callable, argument: i64) {
+  (value.invoke)(argument);
+}
+
 # Chained postfix matches parse correctly (see `chained_matches_leak`
 # in `tests/substructural/hll_diagnostics_sub.si`) — the parse-shape
 # aspect of this idiom is guaranteed by prec(-1) on `_block_like_stmt`,

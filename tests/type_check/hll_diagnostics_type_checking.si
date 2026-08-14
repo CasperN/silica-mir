@@ -69,6 +69,15 @@ extern "fastcall" fn stdcall_thing(y: i64);
 fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
 fn test_unary_neg_on_bool(b: bool) -> bool { -b }
 
+# ---------- HTC-ExpectedFunction: non-callable field candidate ----------
+
+struct NonCallableField: Copy + Drop { invoke: i64 }
+
+# covers: receiver syntax rejects a field whose value is not callable
+fn test_non_callable_field(value: NonCallableField) {
+  value.invoke(1);
+}
+
 # ---------- HTC-TypeMismatch: impl method body ----------
 
 # Impl methods pass through the same HLL inference path as free functions.

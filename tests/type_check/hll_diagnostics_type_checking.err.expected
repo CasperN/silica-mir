@@ -75,19 +75,26 @@ error: at 70:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool
     |                                               ^
  71 | 
     |
-error: at 83:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+error: at 78:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
     |
- 82 |   fn value(recv: & Self) -> i64 {
- 83 |     false
+ 77 | fn test_non_callable_field(value: NonCallableField) {
+ 78 |   value.invoke(1);
+    |   ^^^^^^^^^^^^^^^
+ 79 | }
+    |
+error: at 92:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+    |
+ 91 |   fn value(recv: & Self) -> i64 {
+ 92 |     false
     |     ^^^^^
- 84 |   }
+ 93 |   }
     |
-error: at 90:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
+error: at 99:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
     |
- 89 |   fn inherent_value(recv: & Self) -> i64 {
- 90 |     false
+ 98 |   fn inherent_value(recv: & Self) -> i64 {
+ 99 |     false
     |     ^^^^^
- 91 |   }
+ 100 |   }
     |
 error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
@@ -96,10 +103,10 @@ error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type anno
    |           ^^
  3 | }
    |
-error: at 95:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
-    |
- 94 |   fn ambiguous_local(recv: & Self) {
- 95 |     let values = [];
-    |                  ^^
- 96 |   }
-    |
+error: at 104:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
+     |
+ 103 |   fn ambiguous_local(recv: & Self) {
+ 104 |     let values = [];
+     |                  ^^
+ 105 |   }
+     |

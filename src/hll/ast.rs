@@ -379,6 +379,21 @@ pub enum Literal {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum CallTarget {
+    /// An ordinary callee expression, including an explicitly parenthesized
+    /// function-valued field such as `(value.callback)(arg)`.
+    Expr(Box<Expr>),
+    /// Unresolved `receiver.name(args)` syntax. Type checking may resolve this
+    /// to a method, a callable field, or free-function UFCS.
+    Receiver {
+        receiver: Box<Expr>,
+        method: String,
+        method_source: SourceInfo,
+        selector_source: SourceInfo,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum ExprKind {
     Literal(Literal),
     Variable(String),
@@ -390,7 +405,7 @@ pub enum ExprKind {
     Deref(Box<Expr>),
     Borrow(RefKind, Box<Expr>),
     RawBorrow(Box<Expr>),
-    Call(Box<Expr>, GenericArgs, Vec<Expr>),
+    Call(CallTarget, GenericArgs, Vec<Expr>),
     Block(Vec<Stmt>, Option<Box<Expr>>, bool), // true if it is an `unsafe { ... }` block
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),

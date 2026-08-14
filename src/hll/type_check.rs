@@ -1149,6 +1149,62 @@ fn instantiate_function(
     Some(fn_ty(params, ret))
 }
 
+fn infer_field_access(
+    env: &mut TypeEnv,
+    subst: &mut Subst,
+    target: &Expr,
+    field: &str,
+    source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Type {
+    let target_ty = infer_inner(env, subst, target, types, d);
+    let resolved = subst.resolve(&target_ty);
+    if resolved.kind == TypeKind::Error {
+        return error_ty();
+    }
+    let struct_ty = match &resolved.kind {
+        TypeKind::Ref(_, _, inner) => subst.resolve(inner),
+        _ => resolved.clone(),
+    };
+    if let TypeKind::Custom(Instance {
+        name: struct_name,
+        type_args: args,
+        ..
+    }) = &struct_ty.kind
+    {
+        if let Some(s_decl) = env.structs.get(struct_name).cloned() {
+            if let Some(field_decl) = s_decl.fields.iter().find(|decl| decl.name == field) {
+                match build_subst_map(struct_name, &s_decl.type_params, args, source, d) {
+                    Some(mapping) => substitute(&field_decl.ty, &mapping),
+                    None => error_ty(),
+                }
+            } else {
+                d.push_error(source_diagnostic(
+                    NoSuchField,
+                    target.source,
+                    format!("struct '{}' has no field '{}'", struct_name, field),
+                ));
+                error_ty()
+            }
+        } else {
+            d.push_error(source_diagnostic(
+                UndeclaredStruct,
+                target.source,
+                format!("undeclared struct '{}'", struct_name),
+            ));
+            error_ty()
+        }
+    } else {
+        d.push_error(source_diagnostic(
+            ExpectedStruct,
+            target.source,
+            format!("expected struct type, found {}", resolved),
+        ));
+        error_ty()
+    }
+}
+
 fn infer_inner(
     env: &mut TypeEnv,
     subst: &mut Subst,
@@ -1256,61 +1312,7 @@ fn infer_inner(
             }
         }
         ExprKind::FieldAccess(target, field) => {
-            let target_ty = infer_inner(env, subst, target, types, d);
-            let resolved = subst.resolve(&target_ty);
-            if resolved.kind == TypeKind::Error {
-                return error_ty();
-            }
-            let struct_ty = match &resolved.kind {
-                TypeKind::Ref(_, _, inner) => subst.resolve(inner),
-                _ => resolved.clone(),
-            };
-            if let TypeKind::Custom(Instance {
-                name: struct_name,
-                type_args: args,
-                ..
-            }) = &struct_ty.kind
-            {
-                if let Some(s_decl) = env.structs.get(struct_name).cloned() {
-                    if let Some(f) = s_decl
-                        .fields
-                        .iter()
-                        .find(|field_decl| field_decl.name == *field)
-                    {
-                        match build_subst_map(
-                            struct_name,
-                            &s_decl.type_params,
-                            args,
-                            expr.source,
-                            d,
-                        ) {
-                            Some(mapping) => substitute(&f.ty, &mapping),
-                            None => return error_ty(),
-                        }
-                    } else {
-                        d.push_error(source_diagnostic(
-                            NoSuchField,
-                            target.source,
-                            format!("struct '{}' has no field '{}'", struct_name, field),
-                        ));
-                        return error_ty();
-                    }
-                } else {
-                    d.push_error(source_diagnostic(
-                        UndeclaredStruct,
-                        target.source,
-                        format!("undeclared struct '{}'", struct_name),
-                    ));
-                    return error_ty();
-                }
-            } else {
-                d.push_error(source_diagnostic(
-                    ExpectedStruct,
-                    target.source,
-                    format!("expected struct type, found {}", resolved),
-                ));
-                return error_ty();
-            }
+            infer_field_access(env, subst, target, field, expr.source, types, d)
         }
         ExprKind::Cast(target, to_ty) => {
             let from_ty = infer_inner(env, subst, target, types, d);
@@ -1373,42 +1375,72 @@ fn infer_inner(
             let inner_ty = infer_inner(env, subst, target, types, d);
             raw_ptr_ty(inner_ty)
         }
-        ExprKind::Call(fn_expr, generics, args) => {
-            let direct_name = match &fn_expr.kind {
-                ExprKind::Variable(name)
-                    if env.lookup_var(name).is_none() && env.functions.contains_key(name) =>
-                {
-                    Some(name)
-                }
-                _ => None,
-            };
-            let fn_ty = if let Some(name) = direct_name {
-                if let Some(signature) = env.functions.get(name) {
-                    if signature.is_unsafe && !env.in_unsafe {
-                        d.push_error(source_diagnostic(
-                            HllTypeCheckCode::UnsafeRequired,
+        ExprKind::Call(target, generics, args) => {
+            let fn_ty = match target {
+                CallTarget::Expr(fn_expr) => {
+                    let direct_name = match &fn_expr.kind {
+                        ExprKind::Variable(name)
+                            if env.lookup_var(name).is_none()
+                                && env.functions.contains_key(name) =>
+                        {
+                            Some(name)
+                        }
+                        _ => None,
+                    };
+                    if let Some(name) = direct_name {
+                        if let Some(signature) = env.functions.get(name) {
+                            if signature.is_unsafe && !env.in_unsafe {
+                                d.push_error(source_diagnostic(
+                                    HllTypeCheckCode::UnsafeRequired,
+                                    fn_expr.source,
+                                    format!(
+                                        "call to unsafe function '{}' requires unsafe block",
+                                        name
+                                    ),
+                                ));
+                            }
+                        }
+                        let Some(fn_ty) = instantiate_function(
+                            env,
+                            subst,
+                            name,
+                            generics,
                             fn_expr.source,
-                            format!("call to unsafe function '{}' requires unsafe block", name),
-                        ));
+                            types,
+                            d,
+                        ) else {
+                            return error_ty();
+                        };
+                        record_expression_type(env, types, fn_expr.source, fn_ty.clone());
+                        fn_ty
+                    } else {
+                        if !generics.is_empty() {
+                            d.push_error(source_diagnostic(
+                                GenericArgsOnFunctionValue,
+                                fn_expr.source,
+                                "explicit generic arguments require a named function",
+                            ));
+                            return error_ty();
+                        }
+                        infer_inner(env, subst, fn_expr, types, d)
                     }
                 }
-                let Some(fn_ty) =
-                    instantiate_function(env, subst, name, generics, fn_expr.source, types, d)
-                else {
-                    return error_ty();
-                };
-                record_expression_type(env, types, fn_expr.source, fn_ty.clone());
-                fn_ty
-            } else {
-                if !generics.is_empty() {
-                    d.push_error(source_diagnostic(
-                        GenericArgsOnFunctionValue,
-                        fn_expr.source,
-                        "explicit generic arguments require a named function",
-                    ));
-                    return error_ty();
+                CallTarget::Receiver {
+                    receiver,
+                    method,
+                    method_source,
+                    selector_source,
+                } => {
+                    if !generics.is_empty() {
+                        d.push_error(source_diagnostic(
+                            GenericArgsOnFunctionValue,
+                            *method_source,
+                            "explicit generic arguments require a named function",
+                        ));
+                        return error_ty();
+                    }
+                    infer_field_access(env, subst, receiver, method, *selector_source, types, d)
                 }
-                infer_inner(env, subst, fn_expr, types, d)
             };
             let resolved = subst.resolve(&fn_ty);
             if resolved.kind == TypeKind::Error {
@@ -2004,8 +2036,13 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
         ExprKind::RawBorrow(base) => {
             check_no_control_flow(base, loop_depth, d);
         }
-        ExprKind::Call(callee, _generics, args) => {
-            check_no_control_flow(callee, loop_depth, d);
+        ExprKind::Call(target, _generics, args) => {
+            match target {
+                CallTarget::Expr(callee) => check_no_control_flow(callee, loop_depth, d),
+                CallTarget::Receiver { receiver, .. } => {
+                    check_no_control_flow(receiver, loop_depth, d)
+                }
+            }
             for arg in args {
                 check_no_control_flow(arg, loop_depth, d);
             }

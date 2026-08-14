@@ -241,8 +241,11 @@ fn check_expr(expr: &Expr, scope: &mut Scope, func: &str, d: &mut Diagnostics) {
         }
 
         // ── calls ────────────────────────────────────────────────
-        ExprKind::Call(callee, _generics, args) => {
-            check_expr(callee, scope, func, d);
+        ExprKind::Call(target, _generics, args) => {
+            match target {
+                CallTarget::Expr(callee) => check_expr(callee, scope, func, d),
+                CallTarget::Receiver { receiver, .. } => check_expr(receiver, scope, func, d),
+            }
             for arg in args {
                 check_expr(arg, scope, func, d);
             }

@@ -800,6 +800,27 @@ fn lower_expr_to_operand(
     }
 }
 
+fn lower_call_target_to_operand(
+    ctx: &mut LowerCtx,
+    target: &hll::CallTarget,
+    types: &TypeCheckResults,
+) -> Result<mir::Operand, Diagnostic> {
+    match target {
+        hll::CallTarget::Expr(callee) => lower_expr_to_operand(ctx, callee, types),
+        hll::CallTarget::Receiver {
+            receiver, method, ..
+        } => {
+            let receiver_place = lower_expr_to_place(ctx, receiver, types)?;
+            let callee_place = field_place(receiver_place, method.clone());
+            if matches!(projected_ref_kind(receiver, types), Some(RefKind::Shared)) {
+                Ok(copy_op(callee_place))
+            } else {
+                Ok(mir::Operand::Take(callee_place))
+            }
+        }
+    }
+}
+
 fn lower_expr_into(
     ctx: &mut LowerCtx,
     expr: &hll::Expr,
@@ -1000,11 +1021,10 @@ fn lower_expr_into(
             ));
             Ok(())
         }
-        hll::ExprKind::Call(fn_expr, _generics, args) => {
-            // The callee is an expression and therefore evaluates before the
-            // argument list. Receiver-call syntax will rely on this same
-            // ordering when it is introduced.
-            let fn_op = lower_expr_to_operand(ctx, fn_expr, types)?;
+        hll::ExprKind::Call(target, _generics, args) => {
+            // The call target evaluates before the argument list. For
+            // receiver syntax, evaluating the target starts with the receiver.
+            let fn_op = lower_call_target_to_operand(ctx, target, types)?;
 
             let mut arg_ops = Vec::new();
             for arg in args {
