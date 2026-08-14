@@ -33,13 +33,6 @@ error: at 43:5: [TC-TypeArgBoundNotSatisfied] In function 'method_argument_error
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  44 |     call <Foo>::lifetime(copy value);
     |
-error: at 44:5: [TC-TypeArgArity] In function 'method_argument_errors', block 'entry': Method 'lifetime' expects 1 lifetime argument(s), got 0
-    |
- 43 |     call <Foo>::generic<Linear>(copy value);
- 44 |     call <Foo>::lifetime(copy value);
-    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 45 |     call <Foo>::lifetime<'missing>(copy value);
-    |
 error: at 45:5: [TC-UndeclaredLifetime] In function 'method_argument_errors': undeclared lifetime 'missing
     |
  44 |     call <Foo>::lifetime(copy value);

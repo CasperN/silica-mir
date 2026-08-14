@@ -1,0 +1,56 @@
+error: at 24:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_trait': receiver call 'AmbiguousTraitTarget.collide' is ambiguous; trait candidates: <AmbiguousTraitTarget as First>::collide, <AmbiguousTraitTarget as Second>::collide
+    |
+ 23 | fn ambiguous_trait(value: AmbiguousTraitTarget) {
+ 24 |   value.collide();
+    |         ^^^^^^^
+ 25 | }
+    |
+error: at 31:9: [HTC-UnresolvedReceiverCall] In function 'unresolved': no method, callable field, or free function 'unknown' applies to receiver type Missing
+    |
+ 30 | fn unresolved(value: Missing) {
+ 31 |   value.unknown();
+    |         ^^^^^^^
+ 32 | }
+    |
+error: at 42:3: [HTC-ArityMismatch] In function 'wrong_arity': function expected 1 arguments, found 0
+    |
+ 41 | fn wrong_arity(value: WrongArity) {
+ 42 |   value.takes_argument();
+    |   ^^^^^^^^^^^^^^^^^^^^^^
+ 43 | }
+    |
+error: at 57:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_inherent': receiver call 'Overlap<i64>.duplicate' is ambiguous; inherent candidates: <Overlap<T>>::duplicate, <Overlap<i64>>::duplicate
+    |
+ 56 | fn ambiguous_inherent(value: Overlap<i64>) {
+ 57 |   value.duplicate();
+    |         ^^^^^^^^^
+ 58 | }
+    |
+error: at 64:9: [HTC-GenericArgsOnFunctionValue] In function 'generic_args_on_field': explicit generic arguments require a named function
+    |
+ 63 | fn generic_args_on_field(value: Callable) {
+ 64 |   value.generic<i64>(1);
+    |         ^^^^^^^
+ 65 | }
+    |
+error: at 71:9: [HTC-UnsafeRequired] In function 'unsafe_free_without_block': call to unsafe function 'unsafe_free' requires unsafe block
+    |
+ 70 | fn unsafe_free_without_block(value: Missing) {
+ 71 |   value.unsafe_free();
+    |         ^^^^^^^^^^^
+ 72 | }
+    |
+error: at 83:9: [HTC-BoundNotSatisfied] In function 'method_bound_failure': type argument 'Linear' for 'bounded::U' does not satisfy bound 'Copy'
+    |
+ 82 | fn method_bound_failure(value: Generic<i64>, linear: Linear) {
+ 83 |   value.bounded<Linear>(linear);
+    |         ^^^^^^^
+ 84 | }
+    |
+error: at 83:9: [HTC-BoundNotSatisfied] In function 'method_bound_failure': type argument 'Linear' for 'bounded::U' does not satisfy bound 'Drop'
+    |
+ 82 | fn method_bound_failure(value: Generic<i64>, linear: Linear) {
+ 83 |   value.bounded<Linear>(linear);
+    |         ^^^^^^^
+ 84 | }
+    |

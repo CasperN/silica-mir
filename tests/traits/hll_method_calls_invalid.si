@@ -1,0 +1,84 @@
+# Receiver-call diagnostics cover ambiguity and the absence of a callable
+# interpretation.
+
+struct AmbiguousTraitTarget: Copy + Drop { value: i64 }
+
+trait First {
+  fn collide(recv: AmbiguousTraitTarget);
+}
+
+trait Second {
+  fn collide(recv: AmbiguousTraitTarget);
+}
+
+impl First for AmbiguousTraitTarget {
+  fn collide(recv: AmbiguousTraitTarget) { unit }
+}
+
+impl Second for AmbiguousTraitTarget {
+  fn collide(recv: AmbiguousTraitTarget) { unit }
+}
+
+# covers: multiple applicable trait methods in one tier are ambiguous
+fn ambiguous_trait(value: AmbiguousTraitTarget) {
+  value.collide();
+}
+
+struct Missing: Copy + Drop { value: i64 }
+
+# covers: no method, callable field, or free function applies
+fn unresolved(value: Missing) {
+  value.unknown();
+}
+
+struct WrongArity: Copy + Drop { value: i64 }
+
+impl WrongArity {
+  fn takes_argument(recv: WrongArity, value: i64) { unit }
+}
+
+# covers: receiver is included in method-call arity checking
+fn wrong_arity(value: WrongArity) {
+  value.takes_argument();
+}
+
+struct<T: Copy + Drop> Overlap: Copy + Drop { value: T }
+
+impl<T: Copy + Drop> Overlap<T> {
+  fn duplicate(recv: Overlap<T>) { unit }
+}
+
+impl Overlap<i64> {
+  fn duplicate(recv: Overlap<i64>) { unit }
+}
+
+# covers: multiple applicable inherent methods in one tier are ambiguous
+fn ambiguous_inherent(value: Overlap<i64>) {
+  value.duplicate();
+}
+
+struct Callable: Copy + Drop { generic: fn(i64) }
+
+# covers: explicit generic arguments cannot apply to a callable field
+fn generic_args_on_field(value: Callable) {
+  value.generic<i64>(1);
+}
+
+unsafe fn unsafe_free(recv: Missing) {}
+
+# covers: free UFCS preserves ordinary unsafe-call checking
+fn unsafe_free_without_block(value: Missing) {
+  value.unsafe_free();
+}
+
+struct Linear { value: i64 }
+struct<T: Copy + Drop> Generic: Copy + Drop { value: T }
+
+impl<T: Copy + Drop> Generic<T> {
+  fn<U: Copy + Drop> bounded(recv: Generic<T>, value: U) { unit }
+}
+
+# covers: inferred receiver impl arguments do not bypass method bounds
+fn method_bound_failure(value: Generic<i64>, linear: Linear) {
+  value.bounded<Linear>(linear);
+}

@@ -4,7 +4,7 @@ use crate::hll::ast::*;
 use crate::hll::helpers::*;
 use crate::hll::type_fold::TypeFolder;
 use indexmap::IndexMap;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Construct an HLL type-check diagnostic without discarding whether its
 /// source node was written or generated.
@@ -204,6 +204,12 @@ pub enum HllTypeCheckCode {
     /// bool→int. Casts *to* bool aren't supported (use `!= 0`); casts
     /// to/from pointer/ref types are not yet supported.
     InvalidCast,
+    /// More than one callable in the highest-priority applicable receiver-call
+    /// tier has the requested name.
+    AmbiguousReceiverCall,
+    /// Receiver syntax found no applicable method, callable field, or free
+    /// function.
+    UnresolvedReceiverCall,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -444,6 +450,7 @@ pub struct TypeEnv {
     structs: HashMap<String, StructDecl>,
     enums: HashMap<String, EnumDecl>,
     functions: HashMap<String, FnDecl>,
+    impls: Vec<ImplBlock>,
     current_ret_ty: Option<Type>,
     /// Type-parameter names → declared marker bounds for the fn being
     /// checked. Empty outside a fn body.
@@ -460,6 +467,7 @@ impl TypeEnv {
             structs: HashMap::new(),
             enums: HashMap::new(),
             functions: HashMap::new(),
+            impls: Vec::new(),
             current_ret_ty: None,
             current_type_params: HashMap::new(),
             current_lifetimes: HashSet::new(),
@@ -621,6 +629,21 @@ impl TypeEnv {
 /// span do not alias.
 pub type ExpressionTypes = IndexMap<SourceInfo, Type>;
 
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResolvedReceiverCall {
+    Inherent {
+        self_ty: Type,
+        method: Instance,
+    },
+    Trait {
+        trait_path: Instance,
+        self_ty: Type,
+        method: Instance,
+    },
+    Field,
+    FreeFunction(Instance),
+}
+
 struct PendingInstantiation {
     source: SourceInfo,
     function_name: String,
@@ -634,6 +657,7 @@ struct PendingInstantiation {
 pub struct TypeCheckResults {
     pub expression_types: ExpressionTypes,
     pub function_instantiations: IndexMap<SourceInfo, Instance>,
+    pub receiver_calls: IndexMap<SourceInfo, ResolvedReceiverCall>,
     expression_contexts: IndexMap<SourceInfo, String>,
     pending_instantiations: Vec<PendingInstantiation>,
 }
@@ -702,7 +726,10 @@ pub(super) fn typecheck_program_collect(
             Declaration::Fn(f) => {
                 env.functions.insert(f.name.clone(), f.clone());
             }
-            Declaration::Trait(_) | Declaration::Impl(_) => {}
+            Declaration::Trait(_) => {}
+            Declaration::Impl(i) => {
+                env.impls.push(i.clone());
+            }
         }
     }
 
@@ -846,6 +873,35 @@ pub(super) fn typecheck_program_collect(
     for instantiation in types.function_instantiations.values_mut() {
         for ty in &mut instantiation.type_args {
             *ty = subst.resolve_default(ty);
+        }
+    }
+    for target in types.receiver_calls.values_mut() {
+        match target {
+            ResolvedReceiverCall::Inherent { self_ty, method } => {
+                *self_ty = subst.resolve_default(self_ty);
+                for ty in &mut method.type_args {
+                    *ty = subst.resolve_default(ty);
+                }
+            }
+            ResolvedReceiverCall::Trait {
+                trait_path,
+                self_ty,
+                method,
+            } => {
+                *self_ty = subst.resolve_default(self_ty);
+                for ty in &mut trait_path.type_args {
+                    *ty = subst.resolve_default(ty);
+                }
+                for ty in &mut method.type_args {
+                    *ty = subst.resolve_default(ty);
+                }
+            }
+            ResolvedReceiverCall::FreeFunction(instance) => {
+                for ty in &mut instance.type_args {
+                    *ty = subst.resolve_default(ty);
+                }
+            }
+            ResolvedReceiverCall::Field => {}
         }
     }
     types.pending_instantiations.clear();
@@ -1063,7 +1119,7 @@ fn instantiate_function(
     source: SourceInfo,
     types: &mut TypeCheckResults,
     d: &mut Diagnostics,
-) -> Option<Type> {
+) -> Option<(Type, Instance)> {
     let signature = env.functions.get(name)?.clone();
 
     if !generics.lifetimes.is_empty() && generics.lifetimes.len() != signature.lifetime_params.len()
@@ -1130,13 +1186,10 @@ fn instantiate_function(
         .collect();
     let ret = substitute(&signature.ret_ty, &mapping);
 
-    types.function_instantiations.insert(
-        source,
-        Instance::new(
-            name.to_string(),
-            generics.lifetimes.clone(),
-            type_args.clone(),
-        ),
+    let instance = Instance::new(
+        name.to_string(),
+        generics.lifetimes.clone(),
+        type_args.clone(),
     );
     types.pending_instantiations.push(PendingInstantiation {
         source,
@@ -1146,7 +1199,373 @@ fn instantiate_function(
         type_params: signature.type_params,
         type_args,
     });
-    Some(fn_ty(params, ret))
+    Some((fn_ty(params, ret), instance))
+}
+
+#[derive(Clone, Default)]
+struct ImplBindings {
+    lifetimes: BTreeMap<Lifetime, Lifetime>,
+    types: BTreeMap<String, Type>,
+}
+
+fn match_impl_lifetime(
+    pattern: &Option<Lifetime>,
+    actual: &Option<Lifetime>,
+    parameters: &HashSet<Lifetime>,
+    bindings: &mut ImplBindings,
+) -> bool {
+    match (pattern, actual) {
+        (Some(pattern), Some(actual)) if parameters.contains(pattern) => {
+            match bindings.lifetimes.get(pattern) {
+                Some(bound) => bound == actual,
+                None => {
+                    bindings.lifetimes.insert(pattern.clone(), actual.clone());
+                    true
+                }
+            }
+        }
+        (Some(pattern), Some(actual)) => pattern == actual,
+        (None, _) => true,
+        _ => false,
+    }
+}
+
+fn match_impl_instance(
+    pattern: &Instance,
+    actual: &Instance,
+    type_parameters: &HashSet<String>,
+    lifetime_parameters: &HashSet<Lifetime>,
+    bindings: &mut ImplBindings,
+) -> bool {
+    pattern.name == actual.name
+        && pattern.lifetime_args.len() == actual.lifetime_args.len()
+        && pattern.type_args.len() == actual.type_args.len()
+        && pattern
+            .lifetime_args
+            .iter()
+            .zip(&actual.lifetime_args)
+            .all(|(pattern, actual)| {
+                match_impl_lifetime(
+                    &Some(pattern.clone()),
+                    &Some(actual.clone()),
+                    lifetime_parameters,
+                    bindings,
+                )
+            })
+        && pattern
+            .type_args
+            .iter()
+            .zip(&actual.type_args)
+            .all(|(pattern, actual)| {
+                match_impl_type(
+                    pattern,
+                    actual,
+                    type_parameters,
+                    lifetime_parameters,
+                    bindings,
+                )
+            })
+}
+
+fn match_impl_type(
+    pattern: &Type,
+    actual: &Type,
+    type_parameters: &HashSet<String>,
+    lifetime_parameters: &HashSet<Lifetime>,
+    bindings: &mut ImplBindings,
+) -> bool {
+    if let TypeKind::Param(name) = &pattern.kind {
+        if type_parameters.contains(name) {
+            return match bindings.types.get(name) {
+                Some(bound) => bound == actual,
+                None => {
+                    bindings.types.insert(name.clone(), actual.clone());
+                    true
+                }
+            };
+        }
+    }
+
+    match (&pattern.kind, &actual.kind) {
+        (_, TypeKind::Var(_)) => true,
+        (TypeKind::Int(_), TypeKind::IntVar(_)) => true,
+        (TypeKind::Float(_), TypeKind::FloatVar(_)) => true,
+        (TypeKind::Int(pattern), TypeKind::Int(actual)) => pattern == actual,
+        (TypeKind::Float(pattern), TypeKind::Float(actual)) => pattern == actual,
+        (TypeKind::Bool, TypeKind::Bool)
+        | (TypeKind::Unit, TypeKind::Unit)
+        | (TypeKind::Never, TypeKind::Never) => true,
+        (TypeKind::Param(pattern), TypeKind::Param(actual)) => pattern == actual,
+        (TypeKind::Custom(pattern), TypeKind::Custom(actual)) => match_impl_instance(
+            pattern,
+            actual,
+            type_parameters,
+            lifetime_parameters,
+            bindings,
+        ),
+        (TypeKind::Fn(pattern_params, pattern_ret), TypeKind::Fn(actual_params, actual_ret)) => {
+            pattern_params.len() == actual_params.len()
+                && pattern_params
+                    .iter()
+                    .zip(actual_params)
+                    .all(|(pattern, actual)| {
+                        match_impl_type(
+                            pattern,
+                            actual,
+                            type_parameters,
+                            lifetime_parameters,
+                            bindings,
+                        )
+                    })
+                && match_impl_type(
+                    pattern_ret,
+                    actual_ret,
+                    type_parameters,
+                    lifetime_parameters,
+                    bindings,
+                )
+        }
+        (
+            TypeKind::Ref(pattern_kind, pattern_lifetime, pattern_inner),
+            TypeKind::Ref(actual_kind, actual_lifetime, actual_inner),
+        ) => {
+            pattern_kind == actual_kind
+                && match_impl_lifetime(
+                    pattern_lifetime,
+                    actual_lifetime,
+                    lifetime_parameters,
+                    bindings,
+                )
+                && match_impl_type(
+                    pattern_inner,
+                    actual_inner,
+                    type_parameters,
+                    lifetime_parameters,
+                    bindings,
+                )
+        }
+        (TypeKind::RawPtr(pattern), TypeKind::RawPtr(actual)) => match_impl_type(
+            pattern,
+            actual,
+            type_parameters,
+            lifetime_parameters,
+            bindings,
+        ),
+        (TypeKind::Array(pattern, pattern_len), TypeKind::Array(actual, actual_len)) => {
+            pattern_len == actual_len
+                && match_impl_type(
+                    pattern,
+                    actual,
+                    type_parameters,
+                    lifetime_parameters,
+                    bindings,
+                )
+        }
+        _ => false,
+    }
+}
+
+fn impl_bindings(impl_block: &ImplBlock, self_ty: &Type, env: &TypeEnv) -> Option<ImplBindings> {
+    let type_parameters = impl_block
+        .type_params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .collect::<HashSet<_>>();
+    let lifetime_parameters = impl_block
+        .lifetime_params
+        .iter()
+        .map(|parameter| parameter.lifetime.clone())
+        .collect::<HashSet<_>>();
+    let mut bindings = ImplBindings::default();
+    if !match_impl_type(
+        &impl_block.target,
+        self_ty,
+        &type_parameters,
+        &lifetime_parameters,
+        &mut bindings,
+    ) {
+        return None;
+    }
+    if impl_block.type_params.iter().any(|parameter| {
+        let Some(argument) = bindings.types.get(&parameter.name) else {
+            return true;
+        };
+        parameter.bounds.markers.iter_declared().any(|bound| {
+            !env.class_of(argument, &env.current_type_params)
+                .implies(bound)
+        })
+    }) {
+        return None;
+    }
+    Some(bindings)
+}
+
+fn match_impl_method_receiver(
+    impl_block: &ImplBlock,
+    method: &FnDecl,
+    receiver_ty: &Type,
+    env: &TypeEnv,
+) -> Option<(Type, ImplBindings)> {
+    let receiver_param = method.params.first()?;
+    let mut possible_self_types = vec![receiver_ty.clone()];
+    if let (TypeKind::Ref(expected_kind, _, _), TypeKind::Ref(actual_kind, _, actual_inner)) =
+        (&receiver_param.ty.kind, &receiver_ty.kind)
+    {
+        if expected_kind == actual_kind {
+            possible_self_types.push(*actual_inner.clone());
+        }
+    }
+
+    let type_parameters = impl_block
+        .type_params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .collect::<HashSet<_>>();
+    let lifetime_parameters = impl_block
+        .lifetime_params
+        .iter()
+        .map(|parameter| parameter.lifetime.clone())
+        .collect::<HashSet<_>>();
+    possible_self_types.into_iter().find_map(|self_ty| {
+        let mut bindings = impl_bindings(impl_block, &self_ty, env)?;
+        let mut mapping = bindings
+            .types
+            .iter()
+            .map(|(name, ty)| (name.clone(), ty.clone()))
+            .collect::<HashMap<_, _>>();
+        mapping.insert("Self".to_string(), self_ty.clone());
+        let expected_receiver = substitute(&receiver_param.ty, &mapping);
+        match_impl_type(
+            &expected_receiver,
+            receiver_ty,
+            &type_parameters,
+            &lifetime_parameters,
+            &mut bindings,
+        )
+        .then_some((self_ty, bindings))
+    })
+}
+
+fn substitute_impl_instance(instance: &Instance, bindings: &ImplBindings) -> Instance {
+    let type_mapping = bindings
+        .types
+        .iter()
+        .map(|(name, ty)| (name.clone(), ty.clone()))
+        .collect::<HashMap<_, _>>();
+    Instance::new(
+        instance.name.clone(),
+        instance
+            .lifetime_args
+            .iter()
+            .map(|lifetime| {
+                bindings
+                    .lifetimes
+                    .get(lifetime)
+                    .cloned()
+                    .unwrap_or_else(|| lifetime.clone())
+            })
+            .collect(),
+        instance
+            .type_args
+            .iter()
+            .map(|ty| substitute(ty, &type_mapping))
+            .collect(),
+    )
+}
+
+fn instantiate_method(
+    env: &TypeEnv,
+    subst: &mut Subst,
+    impl_block: &ImplBlock,
+    bindings: &ImplBindings,
+    method: &FnDecl,
+    generics: &GenericArgs,
+    source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Option<(Type, Instance)> {
+    if !generics.lifetimes.is_empty() && generics.lifetimes.len() != method.lifetime_params.len() {
+        d.push_error(source_diagnostic(
+            LifetimeArgArityMismatch,
+            source,
+            format!(
+                "method '{}' takes {} lifetime argument(s), found {}",
+                method.name,
+                method.lifetime_params.len(),
+                generics.lifetimes.len()
+            ),
+        ));
+        return None;
+    }
+    for lifetime in &generics.lifetimes {
+        if !env.current_lifetimes.contains(lifetime) {
+            d.push_error(source_diagnostic(
+                UndeclaredLifetime,
+                source,
+                format!("undeclared lifetime {}", lifetime),
+            ));
+        }
+    }
+    let method_type_args = if generics.types.is_empty() {
+        method
+            .type_params
+            .iter()
+            .map(|_| subst.fresh_var())
+            .collect::<Vec<_>>()
+    } else {
+        if generics.types.len() != method.type_params.len() {
+            d.push_error(source_diagnostic(
+                TypeArgArityMismatch,
+                source,
+                format!(
+                    "method '{}' takes {} type argument(s), found {}",
+                    method.name,
+                    method.type_params.len(),
+                    generics.types.len()
+                ),
+            ));
+            return None;
+        }
+        for argument in &generics.types {
+            env.validate_type(argument, &env.current_type_params, d);
+        }
+        generics.types.clone()
+    };
+    let mut mapping = bindings
+        .types
+        .iter()
+        .map(|(name, ty)| (name.clone(), ty.clone()))
+        .collect::<HashMap<_, _>>();
+    mapping.insert("Self".to_string(), substitute(&impl_block.target, &mapping));
+    mapping.extend(
+        method
+            .type_params
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .zip(method_type_args.iter().cloned()),
+    );
+    let params = method
+        .params
+        .iter()
+        .map(|parameter| substitute(&parameter.ty, &mapping))
+        .collect();
+    let ret = substitute(&method.ret_ty, &mapping);
+    types.pending_instantiations.push(PendingInstantiation {
+        source,
+        function_name: method.name.clone(),
+        caller_name: env.current_function.clone(),
+        caller_type_params: env.current_type_params.clone(),
+        type_params: method.type_params.clone(),
+        type_args: method_type_args.clone(),
+    });
+    Some((
+        fn_ty(params, ret),
+        Instance::new(
+            method.name.clone(),
+            generics.lifetimes.clone(),
+            method_type_args,
+        ),
+    ))
 }
 
 fn infer_field_access(
@@ -1203,6 +1622,244 @@ fn infer_field_access(
         ));
         error_ty()
     }
+}
+
+fn receiver_field_type(
+    env: &TypeEnv,
+    subst: &Subst,
+    receiver_ty: &Type,
+    field: &str,
+) -> Option<Type> {
+    let resolved = subst.resolve(receiver_ty);
+    let struct_ty = match &resolved.kind {
+        TypeKind::Ref(_, _, inner) => subst.resolve(inner),
+        _ => resolved,
+    };
+    let TypeKind::Custom(Instance {
+        name, type_args, ..
+    }) = &struct_ty.kind
+    else {
+        return None;
+    };
+    let declaration = env.structs.get(name)?;
+    let field = declaration
+        .fields
+        .iter()
+        .find(|candidate| candidate.name == field)?;
+    let mapping = declaration
+        .type_params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .zip(type_args.iter().cloned())
+        .collect();
+    Some(substitute(&field.ty, &mapping))
+}
+
+fn resolve_receiver_call(
+    env: &mut TypeEnv,
+    subst: &mut Subst,
+    receiver: &Expr,
+    method_name: &str,
+    generics: &GenericArgs,
+    method_source: SourceInfo,
+    selector_source: SourceInfo,
+    call_source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Option<(Type, Option<Type>)> {
+    let receiver_ty = infer_inner(env, subst, receiver, types, d);
+    let resolved_receiver_ty = subst.resolve(&receiver_ty);
+    if resolved_receiver_ty.kind == TypeKind::Error {
+        return None;
+    }
+
+    let inherent = env
+        .impls
+        .iter()
+        .filter(|impl_block| impl_block.trait_path.is_none())
+        .filter_map(|impl_block| {
+            let method = impl_block
+                .methods
+                .iter()
+                .find(|candidate| candidate.name == method_name)?;
+            let (self_ty, bindings) =
+                match_impl_method_receiver(impl_block, method, &resolved_receiver_ty, env)?;
+            Some((impl_block, method, self_ty, bindings))
+        })
+        .collect::<Vec<_>>();
+    if inherent.len() > 1 {
+        let candidates = inherent
+            .iter()
+            .map(|(impl_block, method, _, _)| {
+                impl_method_context(&impl_block.target, None, &method.name)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        d.push_error(source_diagnostic(
+            AmbiguousReceiverCall,
+            method_source,
+            format!(
+                "receiver call '{}.{}' is ambiguous; inherent candidates: {}",
+                resolved_receiver_ty, method_name, candidates
+            ),
+        ));
+        return None;
+    }
+    if let Some((impl_block, method, self_ty, bindings)) = inherent.into_iter().next() {
+        if method.is_unsafe && !env.in_unsafe {
+            d.push_error(source_diagnostic(
+                UnsafeRequired,
+                method_source,
+                format!(
+                    "call to unsafe method '{}' requires unsafe block",
+                    method_name
+                ),
+            ));
+        }
+        let (fn_ty, method_instance) = instantiate_method(
+            env,
+            subst,
+            &impl_block,
+            &bindings,
+            &method,
+            generics,
+            method_source,
+            types,
+            d,
+        )?;
+        types.receiver_calls.insert(
+            selector_source,
+            ResolvedReceiverCall::Inherent {
+                self_ty,
+                method: method_instance,
+            },
+        );
+        return Some((fn_ty, Some(receiver_ty)));
+    }
+
+    let trait_methods = env
+        .impls
+        .iter()
+        .filter_map(|impl_block| {
+            let trait_path = impl_block.trait_path.as_ref()?;
+            let method = impl_block
+                .methods
+                .iter()
+                .find(|candidate| candidate.name == method_name)?;
+            let (self_ty, bindings) =
+                match_impl_method_receiver(impl_block, method, &resolved_receiver_ty, env)?;
+            Some((
+                impl_block,
+                method,
+                substitute_impl_instance(trait_path, &bindings),
+                self_ty,
+                bindings,
+            ))
+        })
+        .collect::<Vec<_>>();
+    if trait_methods.len() > 1 {
+        let candidates = trait_methods
+            .iter()
+            .map(|(impl_block, method, trait_path, _, _)| {
+                impl_method_context(&impl_block.target, Some(trait_path), &method.name)
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        d.push_error(source_diagnostic(
+            AmbiguousReceiverCall,
+            method_source,
+            format!(
+                "receiver call '{}.{}' is ambiguous; trait candidates: {}",
+                resolved_receiver_ty, method_name, candidates
+            ),
+        ));
+        return None;
+    }
+    if let Some((impl_block, method, trait_path, self_ty, bindings)) =
+        trait_methods.into_iter().next()
+    {
+        let (fn_ty, method_instance) = instantiate_method(
+            env,
+            subst,
+            &impl_block,
+            &bindings,
+            &method,
+            generics,
+            method_source,
+            types,
+            d,
+        )?;
+        types.receiver_calls.insert(
+            selector_source,
+            ResolvedReceiverCall::Trait {
+                trait_path,
+                self_ty,
+                method: method_instance,
+            },
+        );
+        return Some((fn_ty, Some(receiver_ty)));
+    }
+
+    let field_ty = receiver_field_type(env, subst, &receiver_ty, method_name);
+    let callable_field = matches!(
+        field_ty.as_ref().map(|ty| &ty.kind),
+        Some(TypeKind::Fn(_, _))
+    );
+    if callable_field && generics.is_empty() {
+        types
+            .receiver_calls
+            .insert(selector_source, ResolvedReceiverCall::Field);
+        return field_ty.map(|field_ty| (field_ty, None));
+    }
+
+    if env.functions.contains_key(method_name) {
+        if env
+            .functions
+            .get(method_name)
+            .is_some_and(|function| function.is_unsafe)
+            && !env.in_unsafe
+        {
+            d.push_error(source_diagnostic(
+                UnsafeRequired,
+                method_source,
+                format!(
+                    "call to unsafe function '{}' requires unsafe block",
+                    method_name
+                ),
+            ));
+        }
+        let (fn_ty, instance) =
+            instantiate_function(env, subst, method_name, generics, method_source, types, d)?;
+        types.receiver_calls.insert(
+            selector_source,
+            ResolvedReceiverCall::FreeFunction(instance),
+        );
+        return Some((fn_ty, Some(receiver_ty)));
+    }
+
+    if callable_field {
+        d.push_error(source_diagnostic(
+            GenericArgsOnFunctionValue,
+            method_source,
+            "explicit generic arguments require a named function",
+        ));
+    } else if let Some(field_ty) = field_ty {
+        d.push_error(source_diagnostic(
+            ExpectedFunction,
+            call_source,
+            format!("expected function type, found {}", field_ty),
+        ));
+    } else {
+        d.push_error(source_diagnostic(
+            UnresolvedReceiverCall,
+            method_source,
+            format!(
+                "no method, callable field, or free function '{}' applies to receiver type {}",
+                method_name, resolved_receiver_ty
+            ),
+        ));
+    }
+    None
 }
 
 fn infer_inner(
@@ -1292,7 +1949,7 @@ fn infer_inner(
             if let Some(ty) = env.lookup_var(name) {
                 ty
             } else if env.functions.contains_key(name) {
-                instantiate_function(
+                let Some((fn_ty, instance)) = instantiate_function(
                     env,
                     subst,
                     name,
@@ -1300,8 +1957,11 @@ fn infer_inner(
                     expr.source,
                     types,
                     d,
-                )
-                .unwrap_or_else(error_ty)
+                ) else {
+                    return error_ty();
+                };
+                types.function_instantiations.insert(expr.source, instance);
+                fn_ty
             } else {
                 d.push_error(source_diagnostic(
                     UndeclaredVariable,
@@ -1376,7 +2036,7 @@ fn infer_inner(
             raw_ptr_ty(inner_ty)
         }
         ExprKind::Call(target, generics, args) => {
-            let fn_ty = match target {
+            let (fn_ty, receiver_ty) = match target {
                 CallTarget::Expr(fn_expr) => {
                     let direct_name = match &fn_expr.kind {
                         ExprKind::Variable(name)
@@ -1400,7 +2060,7 @@ fn infer_inner(
                                 ));
                             }
                         }
-                        let Some(fn_ty) = instantiate_function(
+                        let Some((fn_ty, instance)) = instantiate_function(
                             env,
                             subst,
                             name,
@@ -1411,8 +2071,11 @@ fn infer_inner(
                         ) else {
                             return error_ty();
                         };
+                        types
+                            .function_instantiations
+                            .insert(fn_expr.source, instance);
                         record_expression_type(env, types, fn_expr.source, fn_ty.clone());
-                        fn_ty
+                        (fn_ty, None)
                     } else {
                         if !generics.is_empty() {
                             d.push_error(source_diagnostic(
@@ -1422,7 +2085,7 @@ fn infer_inner(
                             ));
                             return error_ty();
                         }
-                        infer_inner(env, subst, fn_expr, types, d)
+                        (infer_inner(env, subst, fn_expr, types, d), None)
                     }
                 }
                 CallTarget::Receiver {
@@ -1431,15 +2094,21 @@ fn infer_inner(
                     method_source,
                     selector_source,
                 } => {
-                    if !generics.is_empty() {
-                        d.push_error(source_diagnostic(
-                            GenericArgsOnFunctionValue,
-                            *method_source,
-                            "explicit generic arguments require a named function",
-                        ));
+                    let Some((fn_ty, receiver_ty)) = resolve_receiver_call(
+                        env,
+                        subst,
+                        receiver,
+                        method,
+                        generics,
+                        *method_source,
+                        *selector_source,
+                        expr.source,
+                        types,
+                        d,
+                    ) else {
                         return error_ty();
-                    }
-                    infer_field_access(env, subst, receiver, method, *selector_source, types, d)
+                    };
+                    (fn_ty, receiver_ty)
                 }
             };
             let resolved = subst.resolve(&fn_ty);
@@ -1447,19 +2116,32 @@ fn infer_inner(
                 return error_ty();
             }
             if let TypeKind::Fn(param_tys, ret_ty) = resolved.kind {
-                if param_tys.len() != args.len() {
+                let implicit_count = usize::from(receiver_ty.is_some());
+                if param_tys.len() != args.len() + implicit_count {
+                    let expected = param_tys.len().saturating_sub(implicit_count);
                     d.push_error(source_diagnostic(
                         ArityMismatch,
                         expr.source,
                         format!(
                             "function expected {} arguments, found {}",
-                            param_tys.len(),
+                            expected,
                             args.len()
                         ),
                     ));
                     return error_ty();
                 }
-                for (arg, param_ty) in args.iter().zip(param_tys.iter()) {
+                let explicit_params = if let Some(receiver_ty) = receiver_ty {
+                    if let Err(error) = subst.unify(&param_tys[0], &receiver_ty) {
+                        d.push_error(error.to_diag(match target {
+                            CallTarget::Receiver { receiver, .. } => receiver.source,
+                            CallTarget::Expr(_) => expr.source,
+                        }));
+                    }
+                    &param_tys[1..]
+                } else {
+                    &param_tys[..]
+                };
+                for (arg, param_ty) in args.iter().zip(explicit_params) {
                     check_inner(env, subst, arg, param_ty, types, d);
                 }
                 *ret_ty

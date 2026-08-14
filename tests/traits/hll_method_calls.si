@@ -1,0 +1,159 @@
+# Receiver-call resolution selects the highest-priority applicable callable and
+# lowers the receiver as argument zero.
+
+fn field_value(value: i64) -> i64 { value }
+
+struct Dispatch: Copy + Drop {
+  priority: fn(i64) -> i64,
+  trait_over_field: fn(i64) -> i64,
+  field_over_free: fn(i64) -> i64,
+  free_over_noncallable: i64,
+}
+
+trait PriorityTrait {
+  fn priority(recv: Dispatch, value: i64) -> i64;
+}
+
+impl PriorityTrait for Dispatch {
+  fn priority(recv: Dispatch, value: i64) -> i64 { value }
+}
+
+trait FieldTrait {
+  fn trait_over_field(recv: Dispatch, value: i64) -> i64;
+}
+
+impl FieldTrait for Dispatch {
+  fn trait_over_field(recv: Dispatch, value: i64) -> i64 { value }
+}
+
+impl Dispatch {
+  fn priority(recv: Dispatch, value: i64) -> i64 { value }
+}
+
+fn priority(recv: Dispatch, value: i64) -> i64 { value }
+fn trait_over_field(recv: Dispatch, value: i64) -> i64 { value }
+fn field_over_free(recv: Dispatch, value: i64) -> i64 { value }
+fn free_over_noncallable(recv: Dispatch, value: i64) -> i64 { value }
+unsafe fn unsafe_free(recv: Dispatch) -> i64 { recv.free_over_noncallable }
+
+# covers: inherent method outranks trait method, callable field, and free UFCS
+fn select_inherent(value: Dispatch, argument: i64) -> i64 {
+  value.priority(argument)
+}
+
+# covers: parentheses force the callable-field interpretation
+fn force_field(value: Dispatch, argument: i64) -> i64 {
+  (value.priority)(argument)
+}
+
+# covers: trait method outranks callable field and free UFCS
+fn select_trait(value: Dispatch, argument: i64) -> i64 {
+  value.trait_over_field(argument)
+}
+
+# covers: callable field outranks free UFCS
+fn select_field(value: Dispatch, argument: i64) -> i64 {
+  value.field_over_free(argument)
+}
+
+# covers: a non-callable field does not block free UFCS
+fn select_free_behind_noncallable_field(value: Dispatch, argument: i64) -> i64 {
+  value.free_over_noncallable(argument)
+}
+
+# covers: free UFCS preserves ordinary unsafe-call checking
+fn select_unsafe_free(value: Dispatch) -> i64 {
+  unsafe { value.unsafe_free() }
+}
+
+struct<T: Copy + Drop> Box: Copy + Drop { value: T }
+
+impl<T: Copy + Drop> Box<T> {
+  fn<U: Copy + Drop> inherent_generic(recv: Box<T>, ignored: U) -> T {
+    recv.value
+  }
+}
+
+trait<T: Copy + Drop> GenericTrait {
+  fn<U: Copy + Drop> trait_generic(recv: Box<T>, ignored: U) -> T;
+}
+
+impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
+  fn<U: Copy + Drop> trait_generic(recv: Box<T>, ignored: U) -> T {
+    recv.value
+  }
+}
+
+# covers: generic inherent impl and explicit method arguments are instantiated
+fn call_generic_inherent(value: Box<i64>) -> i64 {
+  value.inherent_generic<bool>(true)
+}
+
+# covers: generic trait path and inferred method arguments are instantiated
+fn call_generic_trait(value: Box<i64>) -> i64 {
+  value.trait_generic(false)
+}
+
+fn<T: Copy + Drop, U: Copy + Drop> free_generic(recv: Box<T>, ignored: U) -> T {
+  recv.value
+}
+
+# covers: free UFCS infers generic arguments from receiver and explicit args
+fn call_generic_free(value: Box<i64>) -> i64 {
+  value.free_generic(false)
+}
+
+struct Shared: Copy + Drop { value: i64 }
+
+impl Shared {
+  fn exact_shared(recv: & Shared) -> i64 { recv.*.value }
+
+  fn<'a> inferred_method_lifetime(recv: & 'a Shared) -> i64 {
+    recv.*.value
+  }
+}
+
+# covers: an already-borrowed receiver matches a reference receiver exactly
+fn call_exact_shared(value: & Shared) -> i64 {
+  value.exact_shared()
+}
+
+# covers: omitted method lifetime arguments are inferred
+fn<'a> call_inferred_method_lifetime(value: & 'a Shared) -> i64 {
+  value.inferred_method_lifetime()
+}
+
+trait<'a> LifetimeTrait {
+  fn lifetime_method(recv: & 'a Shared) -> i64;
+}
+
+impl<'a> LifetimeTrait<'a> for Shared {
+  fn lifetime_method(recv: & 'a Shared) -> i64 { recv.*.value }
+}
+
+# covers: receiver lifetime instantiates a trait path
+fn<'a> call_lifetime_trait(value: & 'a Shared) -> i64 {
+  value.lifetime_method()
+}
+
+trait NumericTrait {
+  fn infer_receiver(recv: i64) -> i64;
+}
+
+impl NumericTrait for i64 {
+  fn infer_receiver(recv: i64) -> i64 { recv }
+}
+
+# covers: method selection constrains an otherwise-unsuffixed receiver type
+fn infer_receiver_type() -> i64 {
+  let value = 1;
+  value.infer_receiver()
+}
+
+fn receiver_effect() {}
+fn make_argument() -> i64 { 1 }
+
+# covers: receiver evaluation precedes explicit argument evaluation
+fn receiver_before_argument(value: Dispatch) -> i64 {
+  ({ receiver_effect(); value }).priority(make_argument())
+}

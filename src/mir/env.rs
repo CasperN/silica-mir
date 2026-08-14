@@ -1600,7 +1600,9 @@ impl LocalEnv<'_> {
             .iter()
             .filter(|param| param.source.generated_kind().is_none())
             .count();
-        if method_args.lifetime_args.len() != expected_lifetimes {
+        if !method_args.lifetime_args.is_empty()
+            && method_args.lifetime_args.len() != expected_lifetimes
+        {
             return Err(TypeResolutionError::new(
                 TypeResolutionErrorKind::QualifiedFnLifetimeArgArity {
                     method: method_args.name.clone(),

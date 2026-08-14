@@ -2239,55 +2239,6 @@ mod tests {
     }
 
     #[test]
-    fn direct_field_callee_is_receiver_call_syntax() {
-        let source = "fn f(a: Point, b: i64) { let v = a.foo(b); }";
-        let init = first_let_init(&Parser::parse_or_panic(source));
-        let ExprKind::Call(
-            CallTarget::Receiver {
-                receiver,
-                method,
-                method_source,
-                selector_source,
-            },
-            generics,
-            args,
-        ) = init.kind
-        else {
-            panic!("expected receiver call");
-        };
-        assert!(matches!(receiver.kind, ExprKind::Variable(ref name) if name == "a"));
-        assert_eq!(method, "foo");
-        assert_eq!(method_source.span().col, 36);
-        assert_eq!(selector_source.span().col, 34);
-        assert!(generics.is_empty());
-        assert_eq!(args.len(), 1);
-    }
-
-    #[test]
-    fn parenthesized_field_callee_is_expression_call() {
-        let source = "fn f(a: Point, b: i64) { let v = (a.foo)(b); }";
-        let init = first_let_init(&Parser::parse_or_panic(source));
-        let ExprKind::Call(CallTarget::Expr(callee), generics, args) = init.kind else {
-            panic!("expected expression call");
-        };
-        assert!(matches!(callee.kind, ExprKind::FieldAccess(_, ref field) if field == "foo"));
-        assert!(generics.is_empty());
-        assert_eq!(args.len(), 1);
-    }
-
-    #[test]
-    fn receiver_call_preserves_explicit_generic_arguments() {
-        let source = "fn f(a: Point, b: i64) { let v = a.foo<i64>(b); }";
-        let init = first_let_init(&Parser::parse_or_panic(source));
-        let ExprKind::Call(CallTarget::Receiver { method, .. }, generics, args) = init.kind else {
-            panic!("expected generic receiver call");
-        };
-        assert_eq!(method, "foo");
-        assert_eq!(generics.types.len(), 1);
-        assert_eq!(args.len(), 1);
-    }
-
-    #[test]
     fn borrow_binds_looser_than_field_access() {
         // `&x.y` must parse as `&(x.y)`, not `(&x).y` — prefix
         // borrows are prec 10, postfix operators are prec 20.

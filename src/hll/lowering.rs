@@ -1,7 +1,7 @@
 use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
-use crate::hll::type_check::TypeCheckResults;
+use crate::hll::type_check::{ResolvedReceiverCall, TypeCheckResults};
 use crate::mir::ast::{self as mir, DeclMeta, GenericParams};
 use crate::mir::helpers::*;
 use std::collections::HashMap;
@@ -31,6 +31,9 @@ pub enum HllLoweringCode {
     /// Array indexing reached lowering with a non-array target. The HLL
     /// type checker should have rejected it first.
     ArrayIndexTargetNotArray,
+    /// A receiver call passed type checking without a recorded concrete call
+    /// target.
+    MissingCallResolution,
     /// `match` scrutinee has a non-enum type.
     MatchTargetNotEnum,
     /// Match arm references an enum name with no declaration.
@@ -804,18 +807,69 @@ fn lower_call_target_to_operand(
     ctx: &mut LowerCtx,
     target: &hll::CallTarget,
     types: &TypeCheckResults,
-) -> Result<mir::Operand, Diagnostic> {
+) -> Result<(mir::Operand, Option<mir::Operand>), Diagnostic> {
     match target {
-        hll::CallTarget::Expr(callee) => lower_expr_to_operand(ctx, callee, types),
+        hll::CallTarget::Expr(callee) => {
+            lower_expr_to_operand(ctx, callee, types).map(|callee| (callee, None))
+        }
         hll::CallTarget::Receiver {
-            receiver, method, ..
+            receiver,
+            method,
+            selector_source,
+            ..
         } => {
-            let receiver_place = lower_expr_to_place(ctx, receiver, types)?;
-            let callee_place = field_place(receiver_place, method.clone());
-            if matches!(projected_ref_kind(receiver, types), Some(RefKind::Shared)) {
-                Ok(copy_op(callee_place))
-            } else {
-                Ok(mir::Operand::Take(callee_place))
+            let Some(resolution) = types.receiver_calls.get(selector_source) else {
+                return Err(diag(
+                    HllLoweringCode::MissingCallResolution,
+                    selector_source.span(),
+                    "missing receiver-call resolution",
+                ));
+            };
+            match resolution {
+                ResolvedReceiverCall::Field => {
+                    let receiver_place = lower_expr_to_place(ctx, receiver, types)?;
+                    let callee_place = field_place(receiver_place, method.clone());
+                    let callee =
+                        if matches!(projected_ref_kind(receiver, types), Some(RefKind::Shared)) {
+                            copy_op(callee_place)
+                        } else {
+                            mir::Operand::Take(callee_place)
+                        };
+                    Ok((callee, None))
+                }
+                ResolvedReceiverCall::Inherent { self_ty, method } => {
+                    let receiver = lower_expr_to_operand(ctx, receiver, types)?;
+                    Ok((
+                        inherent_fn_op(lower_type(self_ty), lower_instance(method)),
+                        Some(receiver),
+                    ))
+                }
+                ResolvedReceiverCall::Trait {
+                    trait_path,
+                    self_ty,
+                    method,
+                } => {
+                    let receiver = lower_expr_to_operand(ctx, receiver, types)?;
+                    Ok((
+                        trait_fn_op(
+                            lower_instance(trait_path),
+                            lower_type(self_ty),
+                            lower_instance(method),
+                        ),
+                        Some(receiver),
+                    ))
+                }
+                ResolvedReceiverCall::FreeFunction(instance) => {
+                    let receiver = lower_expr_to_operand(ctx, receiver, types)?;
+                    Ok((
+                        const_op(fn_name_const_with_generic_args(
+                            instance.name.clone(),
+                            instance.lifetime_args.clone(),
+                            instance.type_args.iter().map(lower_type).collect(),
+                        )),
+                        Some(receiver),
+                    ))
+                }
             }
         }
     }
@@ -1024,9 +1078,12 @@ fn lower_expr_into(
         hll::ExprKind::Call(target, _generics, args) => {
             // The call target evaluates before the argument list. For
             // receiver syntax, evaluating the target starts with the receiver.
-            let fn_op = lower_call_target_to_operand(ctx, target, types)?;
+            let (fn_op, receiver_op) = lower_call_target_to_operand(ctx, target, types)?;
 
             let mut arg_ops = Vec::new();
+            if let Some(receiver_op) = receiver_op {
+                arg_ops.push(receiver_op);
+            }
             for arg in args {
                 arg_ops.push(lower_expr_to_operand(ctx, arg, types)?);
             }

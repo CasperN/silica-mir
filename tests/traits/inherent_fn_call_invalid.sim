@@ -35,7 +35,7 @@ fn no_method(value: & Foo) {
     return
 }
 
-# covers: explicit method generic argument arity and lifetime scope
+# covers: method generic arity, bounds, lifetime scope, and omitted lifetime inference
 fn method_argument_errors(value: & Foo) {
   entry:
     call <Foo>::generic(copy value);
