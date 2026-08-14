@@ -16,6 +16,7 @@
 
 use crate::diagnostics::{DiagCode, Diagnostic};
 use crate::mir::ast::*;
+use crate::mir::env::LocalEnv;
 
 // ---------- Misc --------------
 
@@ -331,11 +332,12 @@ pub fn unreachable_term(source: SourceInfo) -> Terminator {
 pub fn diag(
     code: impl Into<DiagCode>,
     source: SourceInfo,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     msg: String,
 ) -> Diagnostic {
     Diagnostic::new(code, source, msg)
-        .in_function(&func.meta.name)
+        .in_function(env.fully_qualified_fn_name(&func.meta.name))
         .in_block(&block.label)
 }

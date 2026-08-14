@@ -23,13 +23,13 @@ pub(super) fn check_return_leaks(program: &IndexedProgram, d: &mut Diagnostics) 
     program.function_bodies(|env, func, body| {
         let locals = body.locals_map(&func.params);
         for (block, state) in states_before_returns(env, func, body) {
-            check_return_state(env.program(), func, block, &locals, &state, d);
+            check_return_state(env, func, block, &locals, &state, d);
         }
     });
 }
 
 fn check_return_state(
-    prog: &IndexedProgram,
+    env: LocalEnv<'_>,
     func: &Function,
     block: &BasicBlock,
     locals: &IndexMap<String, Type>,
@@ -48,12 +48,13 @@ fn check_return_state(
         }
         let mut path = var.clone();
         let mut leaks = Vec::new();
-        find_return_leaks(prog, place_state, ty, &mut path, &mut leaks);
+        find_return_leaks(env.program(), place_state, ty, &mut path, &mut leaks);
         for (leaked_path, leaked_ty) in leaks {
             let mut diagnostic = format_type_diagnostic(&func.meta, &leaked_ty, |ty| {
                 diag(
                     ReturnValueLeak,
                     block.terminator.source,
+                    env,
                     func,
                     block,
                     format!(
@@ -81,6 +82,7 @@ fn check_return_state(
         let mut diagnostic = diag(
             RefObligationUnfulfilled,
             block.terminator.source,
+            env,
             func,
             block,
             format!(
@@ -378,6 +380,7 @@ impl<'a> PlaceStateContext<'a> {
                     d.push_error(diag(
                         PlaceStateCode::DowncastVariantNotRefined,
                         source,
+                        self.env,
                         func,
                         block,
                         format!(
@@ -426,6 +429,7 @@ impl<'a> PlaceStateContext<'a> {
                     d.push_error(diag(
                         DynamicIndexConsumption,
                         source,
+                        self.env,
                         func,
                         block,
                         format!(
@@ -480,6 +484,7 @@ impl<'a> PlaceStateContext<'a> {
                     d.push_error(diag(
                         DynamicIndexConsumption,
                         source,
+                        self.env,
                         func,
                         block,
                         format!(
@@ -632,6 +637,7 @@ impl<'a> PlaceStateContext<'a> {
             d.push_error(diag(
                 DynamicIndexConsumption,
                 source,
+                self.env,
                 func,
                 block,
                 format!(
@@ -689,6 +695,7 @@ impl<'a> PlaceStateContext<'a> {
                         diag(
                             OverwriteWithoutDrop,
                             source,
+                            self.env,
                             func,
                             block,
                             format!(
@@ -736,6 +743,7 @@ impl<'a> PlaceStateContext<'a> {
                 let mut diagnostic = diag(
                     RefObligationUnfulfilled,
                     source,
+                    self.env,
                     func,
                     block,
                     format!(
@@ -820,7 +828,7 @@ impl<'a> PlaceStateContext<'a> {
                     expected,
                     current,
                 );
-                let mut diagnostic = diag(RefCallEntryMismatch, source, func, block, msg);
+                let mut diagnostic = diag(RefCallEntryMismatch, source, self.env, func, block, msg);
                 if let Some(decl_source) = ref_root_decl_source(func, &v) {
                     diagnostic = diagnostic.with_secondary(decl_source, "reference declared here");
                 }
@@ -858,6 +866,7 @@ impl<'a> PlaceStateContext<'a> {
             d.push_error(diag(
                 WriteThroughUninitEnumProjection,
                 source,
+                self.env,
                 func,
                 block,
                 format!(
@@ -895,6 +904,7 @@ impl<'a> PlaceStateContext<'a> {
             InitState::NeverInit => d.push_error(diag(
                 UseBeforeInit,
                 source,
+                self.env,
                 func,
                 block,
                 format!("variable '{}' is used before initialization", root),
@@ -902,6 +912,7 @@ impl<'a> PlaceStateContext<'a> {
             InitState::Moved => d.push_error(diag(
                 UseAfterMove,
                 source,
+                self.env,
                 func,
                 block,
                 format!("variable '{}' is used after move", root),
@@ -916,6 +927,7 @@ impl<'a> PlaceStateContext<'a> {
                 let mut err = diag(
                     UseInconsistent,
                     source,
+                    self.env,
                     func,
                     block,
                     format!(
@@ -942,6 +954,7 @@ impl<'a> PlaceStateContext<'a> {
             InitState::Partial(_) => d.push_error(diag(
                 UsePartiallyInit,
                 source,
+                self.env,
                 func,
                 block,
                 format!("variable '{}' is not fully initialized here", root),
@@ -985,6 +998,7 @@ impl<'a> PlaceStateContext<'a> {
             d.push_error(diag(
                 BorrowDynamicIndexStateChanging,
                 source,
+                self.env,
                 func,
                 block,
                 format!(
@@ -1021,6 +1035,7 @@ impl<'a> PlaceStateContext<'a> {
                 d.push_error(diag(
                     ReferenceStateUnknown,
                     source,
+                    self.env,
                     func,
                     block,
                     format!(
@@ -1057,6 +1072,7 @@ impl<'a> PlaceStateContext<'a> {
                 d.push_error(diag(
                     BorrowStateMismatch,
                     source,
+                    self.env,
                     func,
                     block,
                     format!(
@@ -1116,6 +1132,7 @@ impl<'a> PlaceStateContext<'a> {
             d.push_error(diag(
                 BorrowDynamicIndexNonUniform,
                 source,
+                self.env,
                 func,
                 block,
                 format!(
@@ -1170,6 +1187,7 @@ impl<'a> PlaceStateContext<'a> {
         let mut diagnostic = diag(
             BorrowStateMismatch,
             source,
+            self.env,
             func,
             block,
             format!(
@@ -1214,6 +1232,7 @@ impl<'a> PlaceStateContext<'a> {
             d.push_error(diag(
                 RequireUninitNotSatisfied,
                 source,
+                self.env,
                 func,
                 block,
                 format!(
@@ -1247,6 +1266,7 @@ impl<'a> PlaceStateContext<'a> {
             d.push_error(diag(
                 RequireUninitNotSatisfied,
                 source,
+                self.env,
                 func,
                 block,
                 format!(
@@ -1272,6 +1292,7 @@ impl<'a> PlaceStateContext<'a> {
             let mut diagnostic = diag(
                 RefObligationUnfulfilled,
                 source,
+                self.env,
                 func,
                 block,
                 format!(

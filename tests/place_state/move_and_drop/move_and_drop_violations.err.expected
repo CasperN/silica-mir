@@ -54,7 +54,7 @@ error: at 117:5: [PS-UseAfterMove] In function 'call_arg_move_then_move', block 
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  118 |     return
      |
-error: at 132:7: [PS-UseAfterMove] In function 'check', block 'entry': variable 'x' is used after move
+error: at 132:7: [PS-UseAfterMove] In function '<M as ImplPlaceStateViolation>::check', block 'entry': variable 'x' is used after move
      |
  131 |       y = move x;
  132 |       z = move x;

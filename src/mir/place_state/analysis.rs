@@ -1405,6 +1405,7 @@ impl<'a> PlaceStateContext<'a> {
                         d.push_error(diag(
                             WriteThroughSharedRef,
                             source,
+                            self.env,
                             func,
                             block,
                             format!(
@@ -1442,6 +1443,7 @@ impl<'a> PlaceStateContext<'a> {
                 d.push_error(diag(
                     ReferenceStateUnknown,
                     source,
+                    self.env,
                     func,
                     block,
                     format!(
@@ -1479,6 +1481,7 @@ impl<'a> PlaceStateContext<'a> {
                 d.push_error(diag(
                     DerefPointeeStateMismatch,
                     source,
+                    self.env,
                     func,
                     block,
                     format!(

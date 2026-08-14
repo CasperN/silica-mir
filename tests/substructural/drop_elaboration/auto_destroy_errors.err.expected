@@ -1,4 +1,4 @@
-error: at 32:7: [PS-RefObligationUnfulfilled] In function 'destroy', block 'entry': reference 'recv' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 32:7: [PS-RefObligationUnfulfilled] In function '<BrokenDestroy as AutoDestroy>::destroy', block 'entry': reference 'recv' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
  29 |   # covers: invalid AutoDestroy implementation body
  30 |   fn destroy(recv: &drop BrokenDestroy) {

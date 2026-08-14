@@ -61,7 +61,7 @@ error: at 103:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 h
      |                  ^^^^^^^^
  104 |     entry:
      |
-error: at 120:7: [TC-AssignmentTypeMismatch] In function 'go', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+error: at 120:7: [TC-AssignmentTypeMismatch] In function '<Foo as BadBody>::go', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
      |
  119 |     entry:
  120 |       flag = 0i64;
@@ -110,14 +110,14 @@ error: at 220:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argumen
      |           ^^^^^^^^^^
  221 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
      |
-error: at 269:6: [TC-DuplicateLifetimeParam] In function 'borrow': lifetime parameter 'a is declared more than once
+error: at 269:6: [TC-DuplicateLifetimeParam] In function '<Foo as LifetimeShadow<'a>>::borrow': lifetime parameter 'a is declared more than once
      |
  268 | impl<'a> LifetimeShadow<'a> for Foo {
  269 |   fn<'a> borrow(recv: &'a Foo) {
      |      ^^
  270 |     entry:
      |
-error: at 276:6: [TC-DuplicateLifetimeParam] In function 'inherent_borrow': lifetime parameter 'a is declared more than once
+error: at 276:6: [TC-DuplicateLifetimeParam] In function '<Foo>::inherent_borrow': lifetime parameter 'a is declared more than once
      |
  275 | impl<'a> Foo {
  276 |   fn<'a> inherent_borrow(recv: &'a Self) {
@@ -138,14 +138,14 @@ error: at 300:6: [TC-DuplicateInherentMethod] Inherent method 'duplicate' is dec
      |      ^^^^^^^^^
  301 |     entry:
      |
-error: at 311:7: [TC-AssignmentTypeMismatch] In function 'invalid_body', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
+error: at 311:7: [TC-AssignmentTypeMismatch] In function '<Foo>::invalid_body', block 'entry': Type mismatch in assignment. LHS is bool, RHS is i64
      |
  310 |     entry:
  311 |       flag = 0i64;
      |       ^^^^^^^^^^^
  312 |       return
      |
-error: at 243:7: [SUB-CopyOfNonCopy] In function 'duplicate', block 'entry': cannot copy non-Copy type T
+error: at 243:7: [SUB-CopyOfNonCopy] In function '<Box<T> as BadSub<T>>::duplicate', block 'entry': cannot copy non-Copy type T
      |
  242 |     entry:
  243 |       duplicate = copy value;
@@ -153,7 +153,7 @@ error: at 243:7: [SUB-CopyOfNonCopy] In function 'duplicate', block 'entry': can
  244 |       call consume<T>(move value);
      |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 255:7: [SUB-CopyOfNonCopy] In function 'inherent_duplicate', block 'entry': cannot copy non-Copy type T
+error: at 255:7: [SUB-CopyOfNonCopy] In function '<Box<T>>::inherent_duplicate', block 'entry': cannot copy non-Copy type T
      |
  254 |     entry:
  255 |       duplicate = copy value;

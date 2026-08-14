@@ -208,7 +208,7 @@ error: at 404:5: [REACH-SwitchArmFalselyUnreachable] In function 'variant_with_i
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  405 |   g:
      |
-warning: at 450:5: [REACH-BlockUnreachable] In function 'check': block 'dead' is unreachable from entry
+warning: at 450:5: [REACH-BlockUnreachable] In function '<Option as ReachabilityImpl>::check': block 'dead' is unreachable from entry
      |
  449 |       return
  450 |     dead:

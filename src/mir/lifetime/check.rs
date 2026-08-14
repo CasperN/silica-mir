@@ -178,13 +178,14 @@ fn check_fn_signature_wf(env: LocalEnv<'_>, func: &Function, d: &mut Diagnostics
         })
         .collect();
     let closure = constraints::transitive_closure(&axioms);
+    let fn_name = env.fully_qualified_fn_name(&func.meta.name);
     for c in cs.iter() {
         if let (Region::Named(_), Region::Named(_) | Region::Static) = (&c.outlives, &c.sub) {
             if c.outlives == c.sub || closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                 continue;
             }
             d.push_error(
-                missing_bound_diagnostic(c, "function", &func.meta).in_function(&func.meta.name),
+                missing_bound_diagnostic(c, "function", &fn_name, &func.meta).in_function(&fn_name),
             );
         }
     }
@@ -239,7 +240,12 @@ fn check_decl_wf(prog: &IndexedProgram, d: &mut Diagnostics) {
                 if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                     continue;
                 }
-                d.push_error(missing_bound_diagnostic(c, container_kind, meta));
+                d.push_error(missing_bound_diagnostic(
+                    c,
+                    container_kind,
+                    &meta.name,
+                    meta,
+                ));
             }
         }
     }
@@ -248,6 +254,7 @@ fn check_decl_wf(prog: &IndexedProgram, d: &mut Diagnostics) {
 fn missing_bound_diagnostic(
     constraint: &constraints::Constraint,
     owner_kind: &str,
+    owner_name: &str,
     owner: &DeclMeta,
 ) -> Diagnostic {
     let mut format = DiagnosticFormat::new();
@@ -262,11 +269,11 @@ fn missing_bound_diagnostic(
         constraint.cause.description(),
         bound,
         owner_kind,
-        owner.name,
+        owner_name,
     );
     let hint = format!(
         "declare bound {} on {} '{}' or change the value flow so it is not required",
-        bound, owner_kind, owner.name,
+        bound, owner_kind, owner_name,
     );
     format.finish(
         Diagnostic::new(LifetimeCode::LifetimeMismatch, constraint.origin, message).with_hint(hint),
@@ -786,7 +793,8 @@ impl<'a> Checker<'a> {
     }
 
     fn error(&self, code: LifetimeCode, source: SourceInfo, msg: String) -> Diagnostic {
-        Diagnostic::new(code, source, msg).in_function(&self.func.meta.name)
+        Diagnostic::new(code, source, msg)
+            .in_function(self.env.fully_qualified_fn_name(&self.func.meta.name))
     }
 
     /// Enforce accumulated outlives constraints. The only satisfiable
@@ -804,9 +812,10 @@ impl<'a> Checker<'a> {
                     if closure.contains(&(c.outlives.clone(), c.sub.clone())) {
                         continue;
                     }
+                    let fn_name = self.env.fully_qualified_fn_name(&self.func.meta.name);
                     self.d.push_error(
-                        missing_bound_diagnostic(c, "function", &self.func.meta)
-                            .in_function(&self.func.meta.name),
+                        missing_bound_diagnostic(c, "function", &fn_name, &self.func.meta)
+                            .in_function(fn_name),
                     );
                 }
                 // Escape: a Free-region loan (body-local storage) flowing

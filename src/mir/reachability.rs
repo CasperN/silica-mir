@@ -70,7 +70,7 @@ fn check_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody, d: &m
                     block.label_source,
                     format!("block '{}' is unreachable from entry", block.label),
                 )
-                .in_function(&func.meta.name),
+                .in_function(env.fully_qualified_fn_name(&func.meta.name)),
             );
         }
     }
@@ -126,6 +126,7 @@ fn check_switch_structure(
         d.push_error(diag(
             ReachabilityCode::SwitchNoArms,
             source,
+            env,
             func,
             block,
             "switchEnum requires at least one arm".to_string(),
@@ -140,6 +141,7 @@ fn check_switch_structure(
             d.push_error(diag(
                 ReachabilityCode::SwitchNotExhaustive,
                 source,
+                env,
                 func,
                 block,
                 format!(
@@ -155,6 +157,7 @@ fn check_switch_structure(
             d.push_error(diag(
                 ReachabilityCode::SwitchDuplicateArm,
                 source,
+                env,
                 func,
                 block,
                 format!("switchEnum has duplicate arm for variant '{}'", variant),
@@ -256,6 +259,7 @@ fn check_switch_arms(
             (true, true) => d.push_error(diag(
                 ReachabilityCode::SwitchArmFalselyUnreachable,
                 terminator_source,
+                env,
                 func,
                 block,
                 format!(
@@ -266,6 +270,7 @@ fn check_switch_arms(
             (false, false) => d.push_warning(diag(
                 ReachabilityCode::SwitchArmDeadCode,
                 terminator_source,
+                env,
                 func,
                 block,
                 format!(

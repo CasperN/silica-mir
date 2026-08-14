@@ -361,7 +361,7 @@ error: at 435:5: [SUB-DropOfNonDrop] In function 'if_both_drop_MatCM', block 'f'
  436 |     goto done
      |
   hint: only types implementing the Drop class can be explicitly dropped
-error: at 450:7: [SUB-CopyOfNonCopy] In function 'check', block 'entry': cannot copy non-Copy type D
+error: at 450:7: [SUB-CopyOfNonCopy] In function '<D as ImplClassCheckViolation>::check', block 'entry': cannot copy non-Copy type D
      |
  449 |     entry:
  450 |       y = copy x;

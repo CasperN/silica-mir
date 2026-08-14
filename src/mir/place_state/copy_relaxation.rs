@@ -221,7 +221,7 @@ fn elaborate_function(
 ) {
     let mut locals = body.locals_map(&func.params);
     let return_obligations = collect_return_obligations(func, body);
-    let func_name = func.meta.name.clone();
+    let func_name = env.fully_qualified_fn_name(&func.meta.name);
     if body.blocks.is_empty() {
         return;
     }

@@ -555,6 +555,16 @@ impl<'a> LocalEnv<'a> {
         self.impl_block.map(|impl_block| &impl_block.target)
     }
 
+    pub fn fully_qualified_fn_name(&self, name: &str) -> String {
+        let Some(impl_block) = self.impl_block else {
+            return name.to_owned();
+        };
+        match &impl_block.trait_path {
+            Some(trait_path) => format!("<{} as {}>::{}", impl_block.target, trait_path, name),
+            None => format!("<{}>::{}", impl_block.target, name),
+        }
+    }
+
     /// Whether an impl whose header and marker bounds match is available.
     /// Overlap is an invalid program awaiting declaration-time coherence
     /// checking, so it remains an internal failure rather than a lookup state.

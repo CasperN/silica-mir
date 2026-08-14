@@ -19,7 +19,7 @@ error: at 40:5: [RELAX-IndexOperandNotReading] In function 'move_index_operand',
     |     ^^^^^^^^^^^^^^^^^^
  41 |     drop x;
     |
-error: at 54:7: [RELAX-MandatoryPreservationUnavailable] In function 'relax', block 'entry': cannot preserve `take` of 'x.*': path crosses a shared reference or dynamic-index projection, and no valid Copy or AutoClone resolution is available
+error: at 54:7: [RELAX-MandatoryPreservationUnavailable] In function '<Owned as ImplCopyRelaxationViolation>::relax', block 'entry': cannot preserve `take` of 'x.*': path crosses a shared reference or dynamic-index projection, and no valid Copy or AutoClone resolution is available
     |
  53 |     entry:
  54 |       y = take x.*;

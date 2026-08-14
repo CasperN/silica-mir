@@ -90,6 +90,7 @@ fn check_stmt(
                     diag(
                         DropOfNonDrop,
                         source,
+                        env,
                         func,
                         block,
                         format!("cannot drop non-Drop type {}", ty),
@@ -181,6 +182,7 @@ fn check_operand(
             diag(
                 code,
                 source,
+                env,
                 func,
                 block,
                 format!("cannot {} non-{} type {}", kind_name, marker_name, ty),

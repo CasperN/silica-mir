@@ -62,8 +62,7 @@ Implement this as the following sequence of reviewable commits:
    describe compiler-generated edge-split labels instead of exposing names
    such as `$edge0`. Keep this context separate from the primary
    diagnostic source: one identifies the enclosing scope, the other identifies
-   the operation being blamed. Function context must distinguish identically
-   named impl methods by including their trait and target type.
+   the operation being blamed.
 
 3. **Give MIR syntax below a statement precise provenance without changing
    semantic identity.** Design a shared source-bearing representation for the

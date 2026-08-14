@@ -26,7 +26,7 @@ error: at 26:30: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 h
     |                              ^^^^
  27 | }
     |
-error: at 34:6: [TC-DuplicateLifetimeParam] In function 'lifetime': lifetime parameter 'a is declared more than once
+error: at 34:6: [TC-DuplicateLifetimeParam] In function '<S as Lifetime<'a>>::lifetime': lifetime parameter 'a is declared more than once
     |
  33 | impl<'a> Lifetime<'a> for S {
  34 |   fn<'a> lifetime(recv: & 'a Self) { unit }

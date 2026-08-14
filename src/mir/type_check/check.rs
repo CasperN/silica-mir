@@ -147,7 +147,7 @@ fn validate_lifetime_decls(
 }
 
 fn validate_function_lifetime_decls(env: LocalEnv<'_>, meta: &DeclMeta, d: &mut Diagnostics) {
-    let desc = format!("function '{}'", meta.name);
+    let desc = format!("function '{}'", env.fully_qualified_fn_name(&meta.name));
     let outer = env
         .impl_generics()
         .map_or(&[][..], |params| params.lifetime_params.as_slice());
@@ -759,6 +759,7 @@ impl IndexedProgram {
     }
 
     fn typecheck_function(&self, env: LocalEnv<'_>, f: &Function, d: &mut Diagnostics) {
+        let fn_name = env.fully_qualified_fn_name(&f.meta.name);
         let lt_scope = local_lifetime_scope(env);
         validate_function_lifetime_decls(env, &f.meta, d);
         for (i, p) in f.params.iter().enumerate() {
@@ -769,7 +770,7 @@ impl IndexedProgram {
                         p.source,
                         format!(
                             "In function '{}', parameter '$return' must be in the final position",
-                            f.meta.name
+                            fn_name
                         ),
                     ));
                 }
@@ -782,7 +783,7 @@ impl IndexedProgram {
                                 p.ty.source,
                                 format!(
                                     "In function '{}', parameter '$return' must be of type '&out ReturnType', found {}",
-                                    f.meta.name, ty,
+                                    fn_name, ty,
                                 ),
                             )
                         }));
@@ -794,7 +795,7 @@ impl IndexedProgram {
                     e,
                     p.ty.source,
                     &f.meta,
-                    format!("In function '{}', parameter '{}'", f.meta.name, p.name),
+                    format!("In function '{}', parameter '{}'", fn_name, p.name),
                 ));
             }
             for lt in undeclared_lifetimes(&p.ty, &lt_scope) {
@@ -803,7 +804,7 @@ impl IndexedProgram {
                     p.ty.source,
                     format!(
                         "In function '{}', parameter '{}': undeclared lifetime {}",
-                        f.meta.name, p.name, lt,
+                        fn_name, p.name, lt,
                     ),
                 ));
             }
@@ -827,7 +828,7 @@ impl IndexedProgram {
                 f.meta.name_source,
                 format!(
                     "Function '{}' has no entry block: body must contain at least one basic block",
-                    f.meta.name
+                    fn_name
                 ),
             ));
             return;
@@ -843,7 +844,7 @@ impl IndexedProgram {
                     p.source,
                     format!(
                         "Duplicate variable name '{}' in parameters of function '{}'",
-                        p.name, f.meta.name
+                        p.name, fn_name
                     ),
                 ));
             } else {
@@ -856,7 +857,7 @@ impl IndexedProgram {
                     e,
                     l.ty.source,
                     &f.meta,
-                    format!("In function '{}', local '{}'", f.meta.name, l.name),
+                    format!("In function '{}', local '{}'", fn_name, l.name),
                 ));
             }
             for lt in undeclared_lifetimes(&l.ty, &lt_scope) {
@@ -865,7 +866,7 @@ impl IndexedProgram {
                     l.ty.source,
                     format!(
                         "In function '{}', local '{}': undeclared lifetime {}",
-                        f.meta.name, l.name, lt,
+                        fn_name, l.name, lt,
                     ),
                 ));
             }
@@ -875,7 +876,7 @@ impl IndexedProgram {
                     l.source,
                     format!(
                         "Duplicate variable name '{}' in locals/parameters of function '{}'",
-                        l.name, f.meta.name
+                        l.name, fn_name
                     ),
                 ));
             } else {
@@ -930,7 +931,10 @@ impl IndexedProgram {
                         e,
                         ty.source,
                         &func.meta,
-                        format!("In function '{}'", func.meta.name),
+                        format!(
+                            "In function '{}'",
+                            env.fully_qualified_fn_name(&func.meta.name)
+                        ),
                     )
                     .in_block(&block.label),
                 );
@@ -942,7 +946,8 @@ impl IndexedProgram {
                         ty.source,
                         format!(
                             "In function '{}': undeclared lifetime {}",
-                            func.meta.name, lt
+                            env.fully_qualified_fn_name(&func.meta.name),
+                            lt
                         ),
                     )
                     .in_block(&block.label),
@@ -960,7 +965,8 @@ impl IndexedProgram {
                                 stmt.source,
                                 format!(
                                     "In function '{}': undeclared lifetime {}",
-                                    func.meta.name, lifetime
+                                    env.fully_qualified_fn_name(&func.meta.name),
+                                    lifetime
                                 ),
                             )
                             .in_block(&block.label),
@@ -1044,7 +1050,7 @@ impl IndexedProgram {
         // Local helper: build a Diagnostic with statement context.
         let stmt_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, stmt.source, msg)
-                .in_function(&func.meta.name)
+                .in_function(env.fully_qualified_fn_name(&func.meta.name))
                 .in_block(&block.label)
         };
         // Attach the current function/block to a Diagnostic produced
@@ -1052,7 +1058,7 @@ impl IndexedProgram {
         // enclosing context).
         let with_context = |error: TypeResolutionError| -> Diagnostic {
             resolution_diagnostic(error, stmt.source, &func.meta, env.program())
-                .in_function(&func.meta.name)
+                .in_function(env.fully_qualified_fn_name(&func.meta.name))
                 .in_block(&block.label)
         };
         match &stmt.kind {
@@ -1166,7 +1172,7 @@ impl IndexedProgram {
         // Local helper: build a Diagnostic with terminator context.
         let terminator_diag = |code, msg: String| -> Diagnostic {
             Diagnostic::new(code, block.terminator.source, msg)
-                .in_function(&func.meta.name)
+                .in_function(env.fully_qualified_fn_name(&func.meta.name))
                 .in_block(&block.label)
         };
         match &block.terminator.kind {
@@ -1201,7 +1207,7 @@ impl IndexedProgram {
                             &func.meta,
                             env.program(),
                         )
-                        .in_function(&func.meta.name)
+                        .in_function(env.fully_qualified_fn_name(&func.meta.name))
                         .in_block(&block.label),
                     ),
                 }
@@ -1262,7 +1268,7 @@ impl IndexedProgram {
                                 &func.meta,
                                 env.program(),
                             )
-                            .in_function(&func.meta.name)
+                            .in_function(env.fully_qualified_fn_name(&func.meta.name))
                             .in_block(&block.label),
                         );
                         None
