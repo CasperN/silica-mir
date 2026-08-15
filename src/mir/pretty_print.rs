@@ -63,6 +63,24 @@ fn write_markers(out: &mut String, m: &Markers) {
     out.push_str(&names.join(" + "));
 }
 
+fn write_bounds(out: &mut String, bounds: &Bounds) {
+    let bounds = bounds
+        .markers
+        .iter_declared()
+        .map(|marker| marker.name().to_string())
+        .chain(
+            bounds
+                .traits
+                .iter()
+                .map(|bound| bound.trait_path.to_string()),
+        )
+        .collect::<Vec<_>>();
+    if !bounds.is_empty() {
+        out.push_str(": ");
+        out.push_str(&bounds.join(" + "));
+    }
+}
+
 fn write_type_params(out: &mut String, params: &GenericParams) {
     if params.lifetime_params.is_empty() && params.type_params.is_empty() {
         return;
@@ -103,7 +121,7 @@ fn write_type_params(out: &mut String, params: &GenericParams) {
         }
         first = false;
         out.push_str(&p.name);
-        write_markers(out, &p.bounds.markers);
+        write_bounds(out, &p.bounds);
     }
     out.push('>');
 }

@@ -89,3 +89,10 @@ error: at 58:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  59 |   fn reserved(recv: & Self) { unit }
     |
+error: at 65:24: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+    |
+ 64 | # covers: the same direct trait bound cannot be declared twice
+ 65 | fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T) {
+    |                        ^^^^^^^^^^^^^^
+ 66 |   value;
+    |

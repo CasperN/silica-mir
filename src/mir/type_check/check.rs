@@ -13,7 +13,7 @@ use crate::common::{GeneratedKind, Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
-use crate::mir::env::{LocalEnv, TypeResolutionError, TypeValidationError};
+use crate::mir::env::{substitute_trait_bound, LocalEnv, TypeResolutionError, TypeValidationError};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -154,6 +154,119 @@ fn validate_function_lifetime_decls(env: LocalEnv<'_>, meta: &DeclMeta, d: &mut 
     validate_lifetime_params_with_outer(&meta.params, outer, &desc, d);
 }
 
+fn validate_bound_set(env: LocalEnv<'_>, bounds: &Bounds, owner: &str, d: &mut Diagnostics) {
+    let lifetime_scope = env
+        .lifetime_params()
+        .map(|parameter| parameter.lifetime.clone())
+        .chain(std::iter::once(Lifetime("static".to_string())))
+        .collect::<BTreeSet<_>>();
+    for bound in &bounds.traits {
+        for lifetime in &bound.trait_path.lifetime_args {
+            if !lifetime_scope.contains(lifetime) {
+                d.push_error(Diagnostic::new(
+                    UndeclaredLifetime,
+                    bound.source,
+                    format!("In {}: undeclared lifetime {}", owner, lifetime),
+                ));
+            }
+        }
+        for argument in &bound.trait_path.type_args {
+            if let Err(error) = env.validate_type(argument) {
+                d.push_error(validation_diagnostic_params(
+                    error,
+                    argument.source,
+                    env.decl_generics(),
+                    format!("In {}, trait-bound argument", owner),
+                ));
+            }
+            for lifetime in undeclared_lifetimes(argument, &lifetime_scope) {
+                d.push_error(Diagnostic::new(
+                    UndeclaredLifetime,
+                    argument.source,
+                    format!("In {}: undeclared lifetime {}", owner, lifetime),
+                ));
+            }
+        }
+        let Some(trait_decl) = env.program().traits.get(&bound.trait_path.name) else {
+            d.push_error(Diagnostic::new(
+                TraitBoundUnknownTrait,
+                bound.source,
+                format!(
+                    "In {}: trait bound references undeclared trait '{}'",
+                    owner, bound.trait_path.name
+                ),
+            ));
+            continue;
+        };
+        if bound.trait_path.lifetime_args.len() != trait_decl.meta.params.lifetime_params.len()
+            || bound.trait_path.type_args.len() != trait_decl.meta.params.type_params.len()
+        {
+            d.push_error(Diagnostic::new(
+                TraitBoundArgArity,
+                bound.source,
+                format!(
+                    "In {}: trait '{}' expects {} lifetime and {} type argument(s), got {} lifetime and {} type argument(s)",
+                    owner,
+                    bound.trait_path.name,
+                    trait_decl.meta.params.lifetime_params.len(),
+                    trait_decl.meta.params.type_params.len(),
+                    bound.trait_path.lifetime_args.len(),
+                    bound.trait_path.type_args.len(),
+                ),
+            ));
+            continue;
+        }
+        for (parameter, argument) in trait_decl
+            .meta
+            .params
+            .type_params
+            .iter()
+            .zip(&bound.trait_path.type_args)
+        {
+            let markers_satisfied = parameter
+                .bounds
+                .markers
+                .iter_declared()
+                .all(|marker| env.class_of(argument).implies(marker));
+            let traits_satisfied = parameter.bounds.traits.iter().all(|required| {
+                let required = substitute_trait_bound(
+                    &trait_decl.meta.params,
+                    &bound.trait_path.lifetime_args,
+                    &bound.trait_path.type_args,
+                    required,
+                );
+                env.satisfies_trait(argument, &required)
+            });
+            if !markers_satisfied || !traits_satisfied {
+                d.push_error(Diagnostic::new(
+                    TraitBoundNotSatisfied,
+                    bound.source,
+                    format!(
+                        "In {}: type argument '{}' for '{}::{}' does not satisfy its declared bounds",
+                        owner, argument, bound.trait_path.name, parameter.name
+                    ),
+                ));
+            }
+        }
+    }
+}
+
+fn validate_generic_bounds(
+    env: LocalEnv<'_>,
+    params: &GenericParams,
+    owner: &str,
+    d: &mut Diagnostics,
+) {
+    for parameter in &params.type_params {
+        validate_bound_set(
+            env,
+            &parameter.bounds,
+            &format!("{} type parameter '{}'", owner, parameter.name),
+            d,
+        );
+    }
+}
+
 /// Collect all Named lifetimes referenced in `ty` that aren't in
 /// `scope`. Duplicates are preserved so each occurrence gets a
 /// diagnostic at its enclosing decl's span.
@@ -225,6 +338,12 @@ impl IndexedProgram {
                 ),
             };
             let meta = type_decl.meta();
+            validate_generic_bounds(
+                LocalEnv::for_decl(self, &meta.params),
+                &meta.params,
+                &format!("{} '{}'", container_kind, meta.name),
+                d,
+            );
             let lt_scope = lifetime_scope(&meta.params.lifetime_params);
             let mut seen: HashSet<&str> = HashSet::new();
             for (name, ty, source) in items {
@@ -267,6 +386,12 @@ impl IndexedProgram {
         for f in self.functions.values().filter(|function| {
             function.meta.name_source.generated_kind() != Some(GeneratedKind::Intrinsic)
         }) {
+            validate_generic_bounds(
+                LocalEnv::for_decl(self, &f.meta.params),
+                &f.meta.params,
+                &format!("function '{}'", f.meta.name),
+                d,
+            );
             self.typecheck_function(LocalEnv::for_decl(self, &f.meta.params), f, d);
         }
 
@@ -307,9 +432,14 @@ impl IndexedProgram {
         validate_lifetime_decls(meta, "trait", d);
         let trait_lt_scope = lifetime_scope(&meta.params.lifetime_params);
 
-        // Trait-level type-param scope, augmented with `Self` (linear
-        // marker set — an impl-side target type contributes its own
-        // markers; the trait-decl checker only validates well-formedness).
+        validate_generic_bounds(
+            LocalEnv::for_decl(self, &meta.params),
+            &meta.params,
+            &format!("trait '{}'", meta.name),
+            d,
+        );
+
+        // Trait-level type-param scope, augmented with `Self`.
         let mut trait_params = meta.params.clone();
         trait_params.type_params.push(TypeParam {
             name: "Self".to_string(),
@@ -334,6 +464,12 @@ impl IndexedProgram {
             effective_params
                 .type_params
                 .extend(method_meta.params.type_params.clone());
+            validate_generic_bounds(
+                LocalEnv::for_decl(self, &effective_params),
+                &method_meta.params,
+                &format!("trait method '{}::{}'", meta.name, method_meta.name),
+                d,
+            );
 
             let mut lt_scope = trait_lt_scope.clone();
             for lp in &method_meta.params.lifetime_params {
@@ -369,6 +505,12 @@ impl IndexedProgram {
     fn typecheck_trait_impl(&self, imp: &ImplBlock, trait_path: &Instance, d: &mut Diagnostics) {
         let header = &imp.params;
         validate_lifetime_params(header, "impl", d);
+        validate_generic_bounds(
+            LocalEnv::for_decl(self, header),
+            header,
+            &format!("impl of '{}' for {}", trait_path, imp.target),
+            d,
+        );
         let header_lt_scope = lifetime_scope(&header.lifetime_params);
 
         // Validate the inputs that feed the signature-conformance
@@ -456,7 +598,6 @@ impl IndexedProgram {
             ));
             return;
         }
-
         if d.error_count() != signature_inputs_start {
             return;
         }
@@ -717,13 +858,26 @@ impl IndexedProgram {
         // Type-check every impl method under its impl-header and
         // method-level generic scopes.
         for method in &imp.methods {
-            self.typecheck_function(LocalEnv::for_impl_method(self, imp, method), method, d);
+            let env = LocalEnv::for_impl_method(self, imp, method);
+            validate_generic_bounds(
+                env,
+                &method.meta.params,
+                &format!("impl method '{}'", method.meta.name),
+                d,
+            );
+            self.typecheck_function(env, method, d);
         }
     }
 
     fn typecheck_inherent_impl(&self, imp: &ImplBlock, d: &mut Diagnostics) {
         let header = &imp.params;
         validate_lifetime_params(header, "impl", d);
+        validate_generic_bounds(
+            LocalEnv::for_decl(self, header),
+            header,
+            &format!("inherent impl for {}", imp.target),
+            d,
+        );
         if let Err(e) = LocalEnv::for_decl(self, header).validate_type(&imp.target) {
             d.push_error(validation_diagnostic_params(
                 e,
@@ -754,7 +908,14 @@ impl IndexedProgram {
             ));
         }
         for method in &imp.methods {
-            self.typecheck_function(LocalEnv::for_impl_method(self, imp, method), method, d);
+            let env = LocalEnv::for_impl_method(self, imp, method);
+            validate_generic_bounds(
+                env,
+                &method.meta.params,
+                &format!("inherent method '{}'", method.meta.name),
+                d,
+            );
+            self.typecheck_function(env, method, d);
         }
     }
 

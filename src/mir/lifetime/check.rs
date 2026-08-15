@@ -28,6 +28,7 @@ use super::LifetimeCode;
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
     check_decl_wf(program, d);
+    check_generic_trait_bound_wf(program, d);
     check_trait_impl_wf(program, d);
     program.functions(|env, func, body| {
         check_fn_signature_wf(env, func, d);
@@ -35,6 +36,181 @@ pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
             check_function(env, func, body, d);
         }
     });
+}
+
+fn check_generic_trait_bound_wf(prog: &IndexedProgram, d: &mut Diagnostics) {
+    for decl in prog.types.values() {
+        let meta = decl.meta();
+        let kind = match decl {
+            TypeDecl::Struct(_) => "struct",
+            TypeDecl::Enum(_) => "enum",
+        };
+        check_bound_sets_wf(
+            &meta.params.type_params,
+            &meta.params,
+            kind,
+            &meta.name,
+            prog,
+            d,
+        );
+    }
+    for function in prog.functions.values() {
+        check_bound_sets_wf(
+            &function.meta.params.type_params,
+            &function.meta.params,
+            "function",
+            &function.meta.name,
+            prog,
+            d,
+        );
+    }
+    for trait_decl in prog.traits.values() {
+        check_bound_sets_wf(
+            &trait_decl.meta.params.type_params,
+            &trait_decl.meta.params,
+            "trait",
+            &trait_decl.meta.name,
+            prog,
+            d,
+        );
+        for method in &trait_decl.methods {
+            let scope = combined_generic_params(&trait_decl.meta.params, &method.meta.params);
+            check_bound_sets_wf(
+                &method.meta.params.type_params,
+                &scope,
+                "trait method",
+                &format!("{}::{}", trait_decl.meta.name, method.meta.name),
+                prog,
+                d,
+            );
+        }
+    }
+    for imp in prog.impls.values().chain(prog.inherent_impls.iter()) {
+        let impl_name = match &imp.trait_path {
+            Some(trait_path) => format!("<{} as {}>", imp.target, trait_path),
+            None => format!("<{}>", imp.target),
+        };
+        check_bound_sets_wf(
+            &imp.params.type_params,
+            &imp.params,
+            "impl",
+            &impl_name,
+            prog,
+            d,
+        );
+        for method in &imp.methods {
+            let scope = combined_generic_params(&imp.params, &method.meta.params);
+            check_bound_sets_wf(
+                &method.meta.params.type_params,
+                &scope,
+                "method",
+                &format!("{}::{}", impl_name, method.meta.name),
+                prog,
+                d,
+            );
+        }
+    }
+}
+
+fn combined_generic_params(outer: &GenericParams, inner: &GenericParams) -> GenericParams {
+    let mut combined = outer.clone();
+    combined
+        .lifetime_params
+        .extend(inner.lifetime_params.iter().cloned());
+    combined.outlives.extend(inner.outlives.iter().cloned());
+    combined
+        .type_params
+        .extend(inner.type_params.iter().cloned());
+    combined.source = inner.source;
+    combined
+}
+
+fn check_bound_sets_wf(
+    type_params: &[TypeParam],
+    scope: &GenericParams,
+    owner_kind: &str,
+    owner_name: &str,
+    prog: &IndexedProgram,
+    d: &mut Diagnostics,
+) {
+    let mut required = constraints::ConstraintSet::new();
+    for parameter in type_params {
+        for bound in &parameter.bounds.traits {
+            for argument in &bound.trait_path.type_args {
+                emit_type_wf_constraints(argument, prog, &mut required);
+            }
+            let Some(trait_decl) = prog.traits.get(&bound.trait_path.name) else {
+                continue;
+            };
+            if trait_decl.meta.params.lifetime_params.len() != bound.trait_path.lifetime_args.len()
+            {
+                continue;
+            }
+            let substitutions = trait_decl
+                .meta
+                .params
+                .lifetime_params
+                .iter()
+                .map(|parameter| &parameter.lifetime)
+                .zip(&bound.trait_path.lifetime_args)
+                .collect::<IndexMap<_, _>>();
+            for outlives in &trait_decl.meta.params.outlives {
+                let substitute = |lifetime: &Lifetime| {
+                    substitutions
+                        .get(lifetime)
+                        .map(|substituted| name_to_region(substituted))
+                        .unwrap_or_else(|| name_to_region(lifetime))
+                };
+                required.emit(
+                    substitute(&outlives.longer),
+                    substitute(&outlives.shorter),
+                    ConstraintCause::TraitRequirement {
+                        trait_name: bound.trait_path.to_string(),
+                    },
+                    bound.source,
+                );
+            }
+        }
+    }
+    let axioms = scope
+        .outlives
+        .iter()
+        .map(|bound| {
+            (
+                name_to_region(&bound.longer),
+                name_to_region(&bound.shorter),
+            )
+        })
+        .collect::<Vec<_>>();
+    let closure = constraints::transitive_closure(&axioms);
+    for constraint in required.iter() {
+        if closure.contains(&(constraint.outlives.clone(), constraint.sub.clone())) {
+            continue;
+        }
+        let mut format = DiagnosticFormat::new();
+        let diagnostic_scope = format.scope_params(scope);
+        let required_bound = format!(
+            "{}: {}",
+            format.region(&diagnostic_scope, &constraint.outlives),
+            format.region(&diagnostic_scope, &constraint.sub),
+        );
+        let diagnostic = Diagnostic::new(
+            super::LifetimeCode::LifetimeMismatch,
+            constraint.origin,
+            format!(
+                "{} requires lifetime bound {}, but it is not implied by the declared bounds on {} '{}'",
+                constraint.cause.description(),
+                required_bound,
+                owner_kind,
+                owner_name,
+            ),
+        )
+        .with_hint(format!(
+            "declare bound {} on {} '{}'",
+            required_bound, owner_kind, owner_name,
+        ));
+        d.push_error(format.finish(diagnostic));
+    }
 }
 
 fn check_trait_impl_wf(prog: &IndexedProgram, d: &mut Diagnostics) {

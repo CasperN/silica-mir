@@ -101,7 +101,8 @@ module.exports = {
       repeat(seq('+', $.marker)),
     ),
 
-    // Generic parameter clause on a decl: `<'a, 'b: 'a, T, U: Move + Copy>`.
+    // Generic parameter clause on a decl:
+    // `<'a, 'b: 'a, T, U: Move + Iterator<T>>`.
     // Accepts a mix of lifetime and type parameters in any order; the
     // parser buckets them into `lifetime_params`, `outlives`, and
     // `type_params`. Rust convention is lifetimes-first; not
@@ -109,11 +110,20 @@ module.exports = {
     //
     // Lifetime params carry optional outlives bounds inline
     // (`'b: 'a + 'static`), mirroring the marker-bound syntax on type
-    // params (`T: Copy + Drop`). A separate `where` clause is
+    // params (`T: Copy + Iterator<T>`). A separate `where` clause is
     // deliberately absent — inline bounds are the discipline.
+    trait_bound: $ => seq(
+      field('name', $.identifier),
+      optional($.type_args),
+    ),
+    trait_bounds: $ => seq(
+      ':',
+      field('bound', $.trait_bound),
+      repeat(seq('+', field('bound', $.trait_bound))),
+    ),
     type_param: $ => seq(
       field('name', $.identifier),
-      optional($.markers),
+      optional($.trait_bounds),
     ),
     lifetime_param: $ => seq(
       field('name', $.lifetime),

@@ -822,18 +822,27 @@ impl LocalAllocator {
 }
 
 /// Everything a type-parameter binder promises about its parameter.
-/// `markers` carries the compiler-internal substructural vocabulary
-/// (Copy/Drop/Move); `traits` carries user-declared trait bounds as
-/// `Instance` values — trait references share the type-reference shape
-/// (name + lifetime args + type args), and until trait bounds grow
-/// bound-specific state (source attribution, negativity, HRTB) a plain
-/// `Vec<Instance>` says everything. The HLL leaves it empty until trait-bound
-/// syntax lands.
+/// Trait references share the type-reference shape: name plus lifetime and
+/// type arguments.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Bounds {
     pub markers: Markers,
-    pub traits: Vec<Instance>,
+    pub traits: Vec<TraitBound>,
 }
+
+#[derive(Debug, Clone)]
+pub struct TraitBound {
+    pub trait_path: Instance,
+    pub source: SourceInfo,
+}
+
+impl PartialEq for TraitBound {
+    fn eq(&self, other: &Self) -> bool {
+        self.trait_path == other.trait_path
+    }
+}
+
+impl Eq for TraitBound {}
 
 impl Bounds {
     pub fn from_markers(markers: Markers) -> Self {
@@ -937,7 +946,6 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraitDecl {
     pub meta: DeclMeta,
-    // TODO: Add self_bounds: Bounds - and use it across the compiler.
     pub methods: Vec<Function>,
 }
 

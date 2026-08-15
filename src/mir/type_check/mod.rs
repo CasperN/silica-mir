@@ -138,7 +138,12 @@ pub enum TypeCheckCode {
     /// substructural class doesn't satisfy the corresponding param's
     /// declared bound (e.g. `Foo<Linear>` when `Foo<T: Copy>`).
     TypeArgBoundNotSatisfied,
-
+    /// A bound names a trait that is not declared.
+    TraitBoundUnknownTrait,
+    /// A trait bound supplies the wrong number of generic arguments.
+    TraitBoundArgArity,
+    /// A bound argument or impl target does not satisfy a required bound.
+    TraitBoundNotSatisfied,
     // ---- Impl blocks ----
     /// `impl Trait for T` where `Trait` isn't a declared trait.
     ImplForUnknownTrait,
@@ -169,8 +174,6 @@ pub enum TypeCheckCode {
     /// A `TraitFn` callee references a trait not declared in the env.
     TraitFnUnknownTrait,
     /// A `TraitFn` callee's `self_ty` is a generic type parameter.
-    /// Resolution through the parameter's trait bounds needs the trait
-    /// bounds vocabulary populated on `TypeParam.bounds.traits`.
     TraitFnParamReceiver,
     /// No impl pattern matches the callee's trait path and `self_ty`.
     TraitFnNoImpl,

@@ -243,3 +243,27 @@ impl<T: Copy + Drop> Bag<T> {
       return
   }
 }
+
+# Direct trait bounds round-trip through MIR and discharge generic obligations.
+trait DirectBound {}
+trait<'a> LifetimeDirectBound {}
+trait<'a, 'b: 'a> OrderedDirectBound {}
+
+impl DirectBound for Foo {}
+
+struct<T: DirectBound> DirectBox { value: T }
+
+extern fn<T: DirectBound> accept_direct(value: & T);
+
+# covers: an exact caller bound satisfies a direct callee obligation
+fn<T: DirectBound> forward_direct(value: & T) {
+  entry:
+    call accept_direct<T>(copy value);
+    return
+}
+
+# covers: declared lifetimes are available in direct trait bounds
+extern fn<'a, T: LifetimeDirectBound<'a>> accept_lifetime_direct(value: &'a T);
+
+# covers: direct bounds inherit the bounded trait's lifetime requirements
+extern fn<'a, 'b: 'a, T: OrderedDirectBound<'a, 'b>> accept_ordered_direct(value: &'b T);

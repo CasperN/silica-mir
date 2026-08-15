@@ -58,3 +58,10 @@ trait Self {
 impl Self for S {
   fn reserved(recv: & Self) { unit }
 }
+
+trait DuplicateBound {}
+
+# covers: the same direct trait bound cannot be declared twice
+fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T) {
+  value;
+}

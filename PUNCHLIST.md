@@ -10,14 +10,12 @@ the compiler evolves; treat entries as snapshots, not commitments.
      current semantics. `Copy`, `Drop`, and `Move` remain the trivial markers;
      only the implemented `AutoClone` and `AutoDestroy` hooks receive special
      compiler behavior for now.
-  2. Parse, preserve, validate, and enforce direct trait bounds on generic
-     parameters everywhere those parameters can be instantiated.
-  3. Resolve method-call receivers through direct bounds on generic parameters,
+  2. Resolve method-call receivers through direct bounds on generic parameters,
      including receiver auto-borrowing and ambiguity diagnostics.
-  4. Add trait self-bounds/supertraits, including inherited obligations,
+  3. Add trait self-bounds/supertraits, including inherited obligations,
      implementation checking, and cycle handling.
-  5. Add qualified method syntax for explicit disambiguation.
-  6. Preserve and enforce ABI modifiers on all function forms, including free
+  4. Add qualified method syntax for explicit disambiguation.
+  5. Preserve and enforce ABI modifiers on all function forms, including free
      functions, trait methods, impl methods, and function values.
 - **Standardize `&drop` vs `&deinit`.** Same reference kind
   (`RefKind::Drop`) has two surface names — MIR uses `&drop`, HLL uses
@@ -41,6 +39,13 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - Decide on and standardize on whether malloc size and array index type should be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
+- **Infer omitted lifetimes before checking lifetime-dependent trait bounds.**
+  An obligation such as `T: Label<'a>` is currently checked before an omitted
+  call-site `'a` has been inferred. This conservatively rejects calls that an
+  explicit lifetime argument accepts; it does not accept an invalid impl.
+  Carry the trait obligation through lifetime inference, then select the impl
+  using the solved lifetime rather than treating an unresolved lifetime as a
+  wildcard.
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
   tracking; `copy fn_ptr(args)` doesn't. Silent hole. Prerequisite: extend
   `TypeKind::Fn` with per-slot lifetime bounds — the variance machinery

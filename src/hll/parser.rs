@@ -608,7 +608,6 @@ impl Parser {
             (Vec::new(), Vec::new(), Vec::new())
         };
         scope.params.insert("Self".to_string());
-
         let mut methods = Vec::new();
         let mut names = HashSet::new();
         for child in node.children(&mut cursor) {
@@ -990,6 +989,30 @@ impl Parser {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut outlives = Vec::new();
+        let mut declared_here = HashSet::new();
+        let mut pre_cursor = node.walk();
+        for child in node
+            .children(&mut pre_cursor)
+            .filter(|c| c.kind() == "type_param")
+        {
+            let Some(name_node) = child.child_by_field_name("name") else {
+                d.push_error(self.diag(child, ParserCode::MalformedCst, "type param missing name"));
+                return None;
+            };
+            let name = self.get_text(name_node).to_string();
+            if self.reject_self_ident(&name, name_node, "a type parameter", d) {
+                return None;
+            }
+            if scope.params.contains(&name) || !declared_here.insert(name.clone()) {
+                d.push_error(self.diag(
+                    name_node,
+                    ParserCode::MalformedCst,
+                    format!("Duplicate type parameter '{}'", name),
+                ));
+                return None;
+            }
+            scope.params.insert(name);
+        }
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             match child.kind() {
@@ -1032,30 +1055,18 @@ impl Parser {
                         continue;
                     };
                     let pname = self.get_text(name_node).to_string();
-                    if self.reject_self_ident(&pname, name_node, "a type parameter", d) {
-                        return None;
-                    }
-                    if scope.params.contains(&pname) || (pname == "Self" && scope.self_ty.is_some())
+                    let mut child_cursor = child.walk();
+                    let bounds = if let Some(bounds) = child
+                        .children(&mut child_cursor)
+                        .find(|node| node.kind() == "trait_bounds")
                     {
-                        d.push_error(self.diag(
-                            name_node,
-                            ParserCode::MalformedCst,
-                            format!("Duplicate type parameter '{}'", pname),
-                        ));
-                        return None;
-                    }
-                    let markers = if let Some(m) = child
-                        .children(&mut child.walk())
-                        .find(|c| c.kind() == "markers")
-                    {
-                        Markers::from_iter(self.map_marker_tokens(m, d)?)
+                        self.map_trait_bounds(bounds, scope, d)?
                     } else {
-                        Markers::empty()
+                        Bounds::default()
                     };
-                    scope.params.insert(pname.clone());
                     types.push(TypeParam {
                         name: pname,
-                        bounds: Bounds::from_markers(markers),
+                        bounds,
                         source: SourceInfo::written(span_of(child)),
                     });
                 }
@@ -1065,6 +1076,77 @@ impl Parser {
             }
         }
         Some((lifetimes, types, outlives))
+    }
+
+    fn map_trait_bounds(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<Bounds> {
+        let mut marker_bounds = Vec::new();
+        let mut trait_bounds = Vec::new();
+        let mut cursor = node.walk();
+        for bound in node.children_by_field_name("bound", &mut cursor) {
+            let Some(trait_name) = bound.child_by_field_name("name") else {
+                d.push_error(self.diag(
+                    bound,
+                    ParserCode::MalformedCst,
+                    "trait bound missing name",
+                ));
+                return None;
+            };
+            let name = self.get_text(trait_name).to_string();
+            if self.reject_self_ident(&name, trait_name, "a trait bound", d) {
+                return None;
+            }
+            let mut args_cursor = bound.walk();
+            let (lifetime_args, type_args) = if let Some(args) = bound
+                .children(&mut args_cursor)
+                .find(|node| node.kind() == "type_args")
+            {
+                self.map_type_args(args, scope, d)?
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            let marker = (lifetime_args.is_empty() && type_args.is_empty())
+                .then(|| match name.as_str() {
+                    "Copy" => Some(Marker::Copy),
+                    "Drop" => Some(Marker::Drop),
+                    "Move" => Some(Marker::Move),
+                    _ => None,
+                })
+                .flatten();
+            if let Some(marker) = marker {
+                if marker_bounds.contains(&marker) {
+                    d.push_error(self.diag(
+                        bound,
+                        ParserCode::MalformedCst,
+                        format!("Duplicate marker '{}'", name),
+                    ));
+                    return None;
+                }
+                marker_bounds.push(marker);
+                continue;
+            }
+            let trait_bound = TraitBound {
+                trait_path: Instance::new(name, lifetime_args, type_args),
+                source: SourceInfo::written(span_of(bound)),
+            };
+            if trait_bounds.contains(&trait_bound) {
+                d.push_error(self.diag(
+                    bound,
+                    ParserCode::MalformedCst,
+                    format!("Duplicate trait bound '{}'", trait_bound.trait_path),
+                ));
+                return None;
+            }
+            trait_bounds.push(trait_bound);
+        }
+        Some(Bounds {
+            markers: Markers::from_iter(marker_bounds),
+            traits: trait_bounds,
+        })
     }
 
     /// Parse a `type_args` node (`<'a, T, U>`) into (lifetime_args, type_args).

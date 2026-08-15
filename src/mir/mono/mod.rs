@@ -63,7 +63,7 @@
 
 use crate::common::{GeneratedKind, Marker, Markers};
 use crate::mir::env::{
-    impl_marker_bounds_satisfied, match_impl_header, match_inherent_impl_header, IndexedProgram,
+    match_impl_header, match_inherent_impl_header, substitute_trait_bound, IndexedProgram,
 };
 use crate::mir::type_fold::TypeFolder;
 use crate::mir::type_util::{
@@ -420,8 +420,7 @@ impl MonoCtx {
             let Some(bindings) = match_impl_header(impl_block, trait_path, self_ty) else {
                 continue;
             };
-            if !impl_marker_bounds_satisfied(impl_block, &bindings, |ty| self.class_of_concrete(ty))
-            {
+            if !self.impl_bounds_satisfied(impl_block, &bindings, &mut Vec::new()) {
                 continue;
             }
             let Some(method) = impl_block
@@ -458,8 +457,7 @@ impl MonoCtx {
             let Some(bindings) = match_inherent_impl_header(impl_block, self_ty) else {
                 continue;
             };
-            if !impl_marker_bounds_satisfied(impl_block, &bindings, |ty| self.class_of_concrete(ty))
-            {
+            if !self.impl_bounds_satisfied(impl_block, &bindings, &mut Vec::new()) {
                 continue;
             }
             let Some(method) = impl_block
@@ -515,6 +513,56 @@ impl MonoCtx {
                 name,
             ),
         }
+    }
+
+    fn impl_bounds_satisfied(
+        &self,
+        impl_block: &ImplBlock,
+        bindings: &crate::mir::env::ImplBindings,
+        obligations: &mut Vec<(Type, Instance)>,
+    ) -> bool {
+        impl_block
+            .params
+            .type_params
+            .iter()
+            .zip(&bindings.type_args)
+            .all(|(parameter, argument)| {
+                parameter
+                    .bounds
+                    .markers
+                    .iter_declared()
+                    .all(|bound| self.class_of_concrete(argument).implies(bound))
+                    && parameter.bounds.traits.iter().all(|bound| {
+                        let required = substitute_trait_bound(
+                            &impl_block.params,
+                            &bindings.lifetime_args,
+                            &bindings.type_args,
+                            bound,
+                        );
+                        self.satisfies_trait_concrete(argument, &required, obligations)
+                    })
+            })
+    }
+
+    fn satisfies_trait_concrete(
+        &self,
+        ty: &Type,
+        trait_path: &Instance,
+        obligations: &mut Vec<(Type, Instance)>,
+    ) -> bool {
+        let obligation = (ty.clone(), trait_path.clone());
+        if obligations.contains(&obligation) {
+            return false;
+        }
+        obligations.push(obligation);
+        let satisfied = self.impl_blocks.iter().any(|impl_block| {
+            let Some(bindings) = match_impl_header(impl_block, trait_path, ty) else {
+                return false;
+            };
+            self.impl_bounds_satisfied(impl_block, &bindings, obligations)
+        });
+        obligations.pop();
+        satisfied
     }
 
     fn walk_stmt(&mut self, s: &Statement) -> Statement {

@@ -49,6 +49,12 @@ enum TypeValidationErrorKind {
         parameter: String,
         bound: Marker,
     },
+    TraitBoundNotSatisfied {
+        argument: Type,
+        type_name: String,
+        parameter: String,
+        bound: Instance,
+    },
 }
 
 impl TypeValidationError {
@@ -88,6 +94,18 @@ impl TypeValidationError {
                 type_name,
                 parameter,
                 bound.name(),
+            ),
+            TypeValidationErrorKind::TraitBoundNotSatisfied {
+                argument,
+                type_name,
+                parameter,
+                bound,
+            } => format!(
+                "Type argument {} for '{}::{}' does not satisfy trait bound '{}'",
+                format.ty(scope, argument),
+                type_name,
+                parameter,
+                bound,
             ),
         }
     }
@@ -139,6 +157,12 @@ enum TypeResolutionErrorKind {
         argument: Type,
         bound: Marker,
     },
+    FreeFnTypeArgTraitBoundNotSatisfied {
+        function: String,
+        parameter: String,
+        argument: Type,
+        bound: Instance,
+    },
     EnumConstrOnStruct(String),
     UndeclaredEnum(String),
     EnumTypeArgArity {
@@ -185,12 +209,14 @@ enum TypeResolutionErrorKind {
         argument: Type,
         bound: Marker,
     },
+    QualifiedFnTypeArgTraitBoundNotSatisfied {
+        method: String,
+        parameter: String,
+        argument: Type,
+        bound: Instance,
+    },
     /// `TraitFn` callee names a trait not in the env.
     TraitFnUnknownTrait(String),
-    /// `TraitFn` receiver is a generic type parameter; resolution
-    /// through the parameter's trait bounds needs the trait-bound
-    /// vocabulary populated on `TypeParam.bounds.traits`, which
-    /// requires trait-bound syntax at the binding site.
     TraitFnParamReceiver(String),
     /// No impl of `trait_path` matches the given self_ty.
     TraitFnNoImpl {
@@ -248,7 +274,9 @@ impl TypeResolutionError {
             | TypeResolutionErrorKind::QualifiedFnLifetimeArgArity { .. }
             | TypeResolutionErrorKind::QualifiedFnTypeArgArity { .. } => TypeArgArity,
             TypeResolutionErrorKind::FreeFnTypeArgBoundNotSatisfied { .. }
-            | TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied { .. } => {
+            | TypeResolutionErrorKind::FreeFnTypeArgTraitBoundNotSatisfied { .. }
+            | TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied { .. }
+            | TypeResolutionErrorKind::QualifiedFnTypeArgTraitBoundNotSatisfied { .. } => {
                 TypeArgBoundNotSatisfied
             }
             TypeResolutionErrorKind::TraitFnUnknownTrait(_) => TraitFnUnknownTrait,
@@ -348,6 +376,18 @@ impl TypeResolutionError {
                 parameter,
                 bound.name(),
             ),
+            TypeResolutionErrorKind::FreeFnTypeArgTraitBoundNotSatisfied {
+                function,
+                parameter,
+                argument,
+                bound,
+            } => format!(
+                "Type argument {} for function '{}::{}' does not satisfy trait bound '{}'",
+                format.ty(caller_scope, argument),
+                function,
+                parameter,
+                bound,
+            ),
             TypeResolutionErrorKind::EnumConstrOnStruct(name) => {
                 format!("'{}' is a struct, not an enum", name)
             }
@@ -441,11 +481,23 @@ impl TypeResolutionError {
                 parameter,
                 bound.name(),
             ),
+            TypeResolutionErrorKind::QualifiedFnTypeArgTraitBoundNotSatisfied {
+                method,
+                parameter,
+                argument,
+                bound,
+            } => format!(
+                "Type argument {} for method '{}::{}' does not satisfy trait bound '{}'",
+                format.ty(caller_scope, argument),
+                method,
+                parameter,
+                bound,
+            ),
             TypeResolutionErrorKind::TraitFnUnknownTrait(name) => {
                 format!("Trait-method call references undeclared trait '{}'", name)
             }
             TypeResolutionErrorKind::TraitFnParamReceiver(name) => format!(
-                "Trait-method call on generic parameter '{}' requires a trait bound (deferred pending trait-bound syntax)",
+                "Cannot resolve trait-method call on generic parameter '{}'",
                 name,
             ),
             TypeResolutionErrorKind::TraitFnNoImpl {
@@ -565,24 +617,6 @@ impl<'a> LocalEnv<'a> {
         }
     }
 
-    /// Whether an impl whose header and marker bounds match is available.
-    /// Overlap is an invalid program awaiting declaration-time coherence
-    /// checking, so it remains an internal failure rather than a lookup state.
-    pub(crate) fn has_applicable_trait_impl(&self, trait_path: &Instance, self_ty: &Type) -> bool {
-        if matches!(self_ty.kind, TypeKind::Param(_)) {
-            return false;
-        }
-        let mut matches = self.matching_impls(trait_path, self_ty).into_iter();
-        let found = matches.next().is_some();
-        assert!(
-            matches.next().is_none(),
-            "overlapping impls while resolving {} for {}; coherence checking should have rejected them",
-            trait_path,
-            self_ty,
-        );
-        found
-    }
-
     pub fn type_param(&self, name: &str) -> Option<&'a TypeParam> {
         self.decl_generics
             .type_params
@@ -639,6 +673,84 @@ impl<'a> LocalEnv<'a> {
         }
     }
 
+    pub(crate) fn satisfies_trait(&self, ty: &Type, trait_path: &Instance) -> bool {
+        self.satisfies_trait_inner(ty, trait_path, &mut Vec::new())
+    }
+
+    pub(crate) fn has_applicable_trait_impl(&self, trait_path: &Instance, self_ty: &Type) -> bool {
+        if matches!(self_ty.kind, TypeKind::Param(_)) {
+            return false;
+        }
+        let mut matches = self.matching_impls(trait_path, self_ty).into_iter();
+        let found = matches.next().is_some();
+        assert!(
+            matches.next().is_none(),
+            "overlapping impls while resolving {} for {}; coherence checking should have rejected them",
+            trait_path,
+            self_ty,
+        );
+        found
+    }
+
+    fn satisfies_trait_inner(
+        &self,
+        ty: &Type,
+        trait_path: &Instance,
+        obligations: &mut Vec<(Type, Instance)>,
+    ) -> bool {
+        if let TypeKind::Param(name) = &ty.kind {
+            return self.type_param(name).is_some_and(|parameter| {
+                parameter
+                    .bounds
+                    .traits
+                    .iter()
+                    .any(|bound| bound.trait_path == *trait_path)
+            });
+        }
+        let obligation = (ty.clone(), trait_path.clone());
+        if obligations.contains(&obligation) {
+            return false;
+        }
+        obligations.push(obligation);
+        let satisfied = self.program.impls.values().any(|imp| {
+            let Some(bindings) = match_impl_header(imp, trait_path, ty) else {
+                return false;
+            };
+            self.impl_bounds_satisfied(imp, &bindings, obligations)
+        });
+        obligations.pop();
+        satisfied
+    }
+
+    fn impl_bounds_satisfied(
+        &self,
+        impl_block: &ImplBlock,
+        bindings: &ImplBindings,
+        obligations: &mut Vec<(Type, Instance)>,
+    ) -> bool {
+        impl_block
+            .params
+            .type_params
+            .iter()
+            .zip(&bindings.type_args)
+            .all(|(parameter, argument)| {
+                parameter
+                    .bounds
+                    .markers
+                    .iter_declared()
+                    .all(|bound| self.class_of(argument).implies(bound))
+                    && parameter.bounds.traits.iter().all(|bound| {
+                        let required = substitute_trait_bound(
+                            &impl_block.params,
+                            &bindings.lifetime_args,
+                            &bindings.type_args,
+                            bound,
+                        );
+                        self.satisfies_trait_inner(argument, &required, obligations)
+                    })
+            })
+    }
+
     /// Validate `ty` under this declaration's visible generic parameters.
     ///
     /// A custom type use must have the declared argument arity and each type
@@ -693,6 +805,20 @@ impl<'a> LocalEnv<'a> {
                                     type_name: name.clone(),
                                     parameter: param.name.clone(),
                                     bound,
+                                },
+                            ));
+                        }
+                    }
+                    for bound in &param.bounds.traits {
+                        let required =
+                            substitute_trait_bound(&decl_meta.params, lifetime_args, args, bound);
+                        if !self.satisfies_trait(arg, &required) {
+                            return Err(TypeValidationError::new(
+                                TypeValidationErrorKind::TraitBoundNotSatisfied {
+                                    argument: arg.clone(),
+                                    type_name: name.clone(),
+                                    parameter: param.name.clone(),
+                                    bound: required,
                                 },
                             ));
                         }
@@ -778,25 +904,38 @@ impl ResolvedImplMethod<'_> {
     }
 }
 
-pub(crate) fn impl_marker_bounds_satisfied(
-    impl_block: &ImplBlock,
-    bindings: &ImplBindings,
-    mut class_of: impl FnMut(&Type) -> Markers,
-) -> bool {
-    impl_block
-        .params
-        .type_params
+pub(crate) fn substitute_trait_bound(
+    params: &GenericParams,
+    lifetime_args: &[Lifetime],
+    type_args: &[Type],
+    bound: &TraitBound,
+) -> Instance {
+    let lifetime_mapping = params
+        .lifetime_params
         .iter()
-        .zip(&bindings.type_args)
-        .all(|(param, arg)| {
-            // TODO(trait bounds): Check `bounds.traits` here once
-            // binding-site trait-bound syntax populates it.
-            param
-                .bounds
-                .markers
-                .iter_declared()
-                .all(|bound| class_of(arg).implies(bound))
-        })
+        .map(|parameter| parameter.lifetime.clone())
+        .zip(lifetime_args.iter().cloned())
+        .collect::<BTreeMap<_, _>>();
+    Instance::new(
+        bound.trait_path.name.clone(),
+        bound
+            .trait_path
+            .lifetime_args
+            .iter()
+            .map(|lifetime| {
+                lifetime_mapping
+                    .get(lifetime)
+                    .cloned()
+                    .unwrap_or_else(|| lifetime.clone())
+            })
+            .collect(),
+        bound
+            .trait_path
+            .type_args
+            .iter()
+            .map(|argument| params.substitute(argument, lifetime_args, type_args))
+            .collect(),
+    )
 }
 
 pub(crate) fn match_impl_header(
@@ -1581,19 +1720,40 @@ impl LocalEnv<'_> {
                     ));
                 }
             }
+            for bound in &parameter.bounds.traits {
+                let required = substitute_trait_bound(
+                    &f.meta.params,
+                    &instance.lifetime_args,
+                    &instance.type_args,
+                    bound,
+                );
+                if !self.satisfies_trait(argument, &required) {
+                    return Err(TypeResolutionError::new(
+                        TypeResolutionErrorKind::FreeFnTypeArgTraitBoundNotSatisfied {
+                            function: instance.name.clone(),
+                            parameter: parameter.name.clone(),
+                            argument: argument.clone(),
+                            bound: required,
+                        },
+                    ));
+                }
+            }
         }
         Ok(fn_ty(f.instantiate_params(&instance.type_args)))
     }
 
-    fn validate_impl_method_args(
+    fn validate_method_args(
         &self,
-        impl_method: &Function,
+        context_params: &GenericParams,
+        context_lifetime_args: &[Lifetime],
+        context_type_args: &[Type],
+        method: &Function,
         method_args: &Instance,
     ) -> Result<(), TypeResolutionError> {
         // Lifetime elaboration adds generated parameters for elided reference
         // lifetimes. Only written method parameters are supplied at the call
         // site; generated parameters are inferred by lifetime checking.
-        let expected_lifetimes = impl_method
+        let expected_lifetimes = method
             .meta
             .params
             .lifetime_params
@@ -1611,7 +1771,7 @@ impl LocalEnv<'_> {
                 },
             ));
         }
-        let expected_types = impl_method.meta.params.type_params.len();
+        let expected_types = method.meta.params.type_params.len();
         if method_args.type_args.len() != expected_types {
             return Err(TypeResolutionError::new(
                 TypeResolutionErrorKind::QualifiedFnTypeArgArity {
@@ -1621,15 +1781,30 @@ impl LocalEnv<'_> {
                 },
             ));
         }
-        for (parameter, argument) in impl_method
+        let mut combined_params = context_params.clone();
+        combined_params
+            .lifetime_params
+            .extend(method.meta.params.lifetime_params.clone());
+        combined_params
+            .type_params
+            .extend(method.meta.params.type_params.clone());
+        let combined_lifetime_args = context_lifetime_args
+            .iter()
+            .cloned()
+            .chain(method_args.lifetime_args.iter().cloned())
+            .collect::<Vec<_>>();
+        let combined_type_args = context_type_args
+            .iter()
+            .cloned()
+            .chain(method_args.type_args.iter().cloned())
+            .collect::<Vec<_>>();
+        for (parameter, argument) in method
             .meta
             .params
             .type_params
             .iter()
             .zip(&method_args.type_args)
         {
-            // TODO(trait bounds): Check `parameter.bounds.traits` when
-            // binding-site trait bounds participate in class resolution.
             for bound in parameter.bounds.markers.iter_declared() {
                 if !self.class_of(argument).implies(bound) {
                     return Err(TypeResolutionError::new(
@@ -1638,6 +1813,24 @@ impl LocalEnv<'_> {
                             parameter: parameter.name.clone(),
                             argument: argument.clone(),
                             bound,
+                        },
+                    ));
+                }
+            }
+            for bound in &parameter.bounds.traits {
+                let required = substitute_trait_bound(
+                    &combined_params,
+                    &combined_lifetime_args,
+                    &combined_type_args,
+                    bound,
+                );
+                if !self.satisfies_trait(argument, &required) {
+                    return Err(TypeResolutionError::new(
+                        TypeResolutionErrorKind::QualifiedFnTypeArgTraitBoundNotSatisfied {
+                            method: method_args.name.clone(),
+                            parameter: parameter.name.clone(),
+                            argument: argument.clone(),
+                            bound: required,
                         },
                     ));
                 }
@@ -1666,7 +1859,7 @@ impl LocalEnv<'_> {
             .iter()
             .filter_map(|imp| {
                 let bindings = match_inherent_impl_header(imp, self_ty)?;
-                impl_marker_bounds_satisfied(imp, &bindings, |arg| self.class_of(arg))
+                self.impl_bounds_satisfied(imp, &bindings, &mut Vec::new())
                     .then_some((imp, bindings))
             })
             .collect::<Vec<_>>();
@@ -1705,11 +1898,17 @@ impl LocalEnv<'_> {
                 ));
             }
         };
-        self.validate_impl_method_args(impl_method, method)?;
+        self.validate_method_args(
+            &imp.params,
+            &bindings.lifetime_args,
+            &bindings.type_args,
+            impl_method,
+            method,
+        )?;
         Ok(ResolvedImplMethod {
             impl_block: imp,
             method: impl_method,
-            bindings: (*bindings).clone(),
+            bindings: (**bindings).clone(),
         })
     }
 
@@ -1777,11 +1976,17 @@ impl LocalEnv<'_> {
                     method: method.name.clone(),
                 })
             })?;
-        self.validate_impl_method_args(impl_method, method)?;
+        self.validate_method_args(
+            &imp.params,
+            &bindings.lifetime_args,
+            &bindings.type_args,
+            impl_method,
+            method,
+        )?;
         Ok(ResolvedImplMethod {
             impl_block: imp,
             method: impl_method,
-            bindings: bindings.clone(),
+            bindings: (*bindings).clone(),
         })
     }
 
@@ -1795,7 +2000,7 @@ impl LocalEnv<'_> {
             .values()
             .filter_map(|imp| {
                 let bindings = match_impl_header(imp, trait_path, self_ty)?;
-                impl_marker_bounds_satisfied(imp, &bindings, |arg| self.class_of(arg))
+                self.impl_bounds_satisfied(imp, &bindings, &mut Vec::new())
                     .then_some((imp, bindings))
             })
             .collect()

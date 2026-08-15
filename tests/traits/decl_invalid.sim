@@ -312,3 +312,32 @@ impl Foo {
       return
   }
 }
+
+# --- Direct generic trait-bound errors ---------------------------------
+
+trait DirectBound {}
+trait<T> GenericBound {}
+trait<'a> LifetimeDirectBound {}
+trait<'a, 'b: 'a> OrderedDirectBound {}
+struct Other: Copy + Drop { value: i64 }
+
+# covers: MIR bounds must name a declared trait
+extern fn<T: MissingBound> unknown_direct_bound(value: & T);
+
+# covers: MIR bounds must supply the trait's declared generic arity
+extern fn<T: GenericBound> wrong_direct_bound_arity(value: & T);
+
+# covers: MIR trait bounds reject undeclared lifetime arguments
+extern fn<T: LifetimeDirectBound<'missing>> unknown_direct_bound_lifetime(value: & T);
+
+# covers: a direct bound's trait lifetime requirements must be declared by its owner
+extern fn<'a, 'b, T: OrderedDirectBound<'a, 'b>> missing_direct_bound_outlives(value: &'b T);
+
+extern fn<T: DirectBound> accept_direct(value: & T);
+
+# covers: MIR call type arguments must satisfy direct trait bounds
+fn reject_direct_bound(value: & Other) {
+  entry:
+    call accept_direct<Other>(copy value);
+    return
+}

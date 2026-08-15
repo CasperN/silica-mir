@@ -2472,6 +2472,48 @@
     }
   },
   {
+    "type": "trait_bound",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "type_args",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "trait_bounds",
+    "named": true,
+    "fields": {
+      "bound": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "trait_bound",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "trait_decl",
     "named": true,
     "fields": {
@@ -2598,7 +2640,7 @@
       "required": false,
       "types": [
         {
-          "type": "markers",
+          "type": "trait_bounds",
           "named": true
         }
       ]

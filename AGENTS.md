@@ -456,7 +456,7 @@ Before commiting, please execute the following steps, step by step, one at a tim
 1. Review the current change for correctness, maintainability, and simplicity. Be skeptical of incomplete matches, `expect`, `unwrap`, and other code that smells of partial implementations.
 2. Reject work as incomplete if they are hacky or contain shortcuts. Sacrifices to long term correctness and rigor has cost the project more time than any shortcut has saved. 
 3. Reject work as incomplete if a feature is not fully implemented, e.g. if there are missing cases, unhandled interactions, or caveats to completeness.
-4. Reject work as incomplete if any punchlist item is sufficiently related or small be folded into this commit.
+4. Reject work as incomplete if any TODO or punchlist item is sufficiently related or small be folded into this commit.
 5. Review changes to test fixtures for totality of test coverage. Every new feature needs to be tested against every existing feature it may interact with. Every feature interaction requires a success case (that passes compilation) and at least one error case.
 6. Remove any unit-tests that are redundant with end-to-end tests under `tests/`, or if they may be implemented as end-to-end tests, rewrite them as such.
 7. Combine any small end-to-end test fixtures into an existing large test fixture or a new large test fixture if there are sufficient related cases. See the Testing Discipline rules.

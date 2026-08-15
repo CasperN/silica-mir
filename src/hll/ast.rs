@@ -174,17 +174,27 @@ impl Param {
 }
 
 /// Everything a type-parameter binder promises about its parameter.
-/// `markers` carries the compiler-internal substructural vocabulary
-/// (Copy/Drop/Move); `traits` carries user-declared trait bounds as
-/// `Instance` values — trait references share the type-reference shape
-/// (name + lifetime args + type args), and until trait bounds grow
-/// bound-specific state a plain `Vec<Instance>` says everything. HLL
-/// type-parameter syntax does not populate trait bounds yet.
+/// Trait references share the type-reference shape: name plus lifetime and
+/// type arguments.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Bounds {
     pub markers: Markers,
-    pub traits: Vec<Instance>,
+    pub traits: Vec<TraitBound>,
 }
+
+#[derive(Debug, Clone)]
+pub struct TraitBound {
+    pub trait_path: Instance,
+    pub source: SourceInfo,
+}
+
+impl PartialEq for TraitBound {
+    fn eq(&self, other: &Self) -> bool {
+        self.trait_path == other.trait_path
+    }
+}
+
+impl Eq for TraitBound {}
 
 impl Bounds {
     pub fn from_markers(markers: Markers) -> Self {
@@ -195,8 +205,7 @@ impl Bounds {
     }
 }
 
-/// Generic type parameter declared on a declaration. Bounds are
-/// unconditional markers plus (later) trait references (`T: Copy + Iter`).
+/// Generic type parameter declared on a declaration.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TypeParam {
     pub name: String,

@@ -152,3 +152,9 @@ error: at 165:6: [PARSE-MalformedCst] In function 'm': Duplicate type parameter 
      |      ^
  166 |     entry:
      |
+error: at 174:31: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+     |
+ 173 | # The same direct trait bound cannot be declared twice.
+ 174 | extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T);
+     |                               ^^^^^^^^^^^^^^
+     |

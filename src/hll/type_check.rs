@@ -18,11 +18,11 @@ fn source_diagnostic(
 
 /// Build a `name → bounds` map from a decl's type parameters. Used
 /// when computing a type's substructural class or validating uses
-/// against bounds — both need per-name marker info.
-fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Markers> {
+/// against bounds — both need the complete bounds for each name.
+fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Bounds> {
     params
         .iter()
-        .map(|p| (p.name.clone(), p.bounds.markers))
+        .map(|p| (p.name.clone(), p.bounds.clone()))
         .collect()
 }
 
@@ -32,22 +32,74 @@ fn type_params_scope(params: &[TypeParam]) -> HashMap<String, Markers> {
 /// caller sees `i64`. `mapping` binds each declared type-parameter
 /// name to the concrete argument at the use site.
 fn substitute(ty: &Type, mapping: &HashMap<String, Type>) -> Type {
-    SubstituteFolder { mapping }.fold_type(ty)
+    let lifetime_mapping = BTreeMap::new();
+    SubstituteFolder {
+        type_mapping: mapping,
+        lifetime_mapping: &lifetime_mapping,
+    }
+    .fold_type(ty)
+}
+
+fn substitute_all(
+    ty: &Type,
+    type_mapping: &HashMap<String, Type>,
+    lifetime_mapping: &BTreeMap<Lifetime, Lifetime>,
+) -> Type {
+    SubstituteFolder {
+        type_mapping,
+        lifetime_mapping,
+    }
+    .fold_type(ty)
 }
 
 struct SubstituteFolder<'a> {
-    mapping: &'a HashMap<String, Type>,
+    type_mapping: &'a HashMap<String, Type>,
+    lifetime_mapping: &'a BTreeMap<Lifetime, Lifetime>,
 }
 
 impl TypeFolder for SubstituteFolder<'_> {
     fn try_fold_type(&mut self, ty: &Type) -> Option<Type> {
         match &ty.kind {
-            TypeKind::Param(name) => self.mapping.get(name).cloned(),
+            TypeKind::Param(name) => self.type_mapping.get(name).cloned(),
             // Only named type parameters are substitution sites. Every other
             // variant uses the shared structural recursion.
             _ => None,
         }
     }
+
+    fn fold_lifetime(&mut self, lifetime: &Lifetime) -> Lifetime {
+        self.lifetime_mapping
+            .get(lifetime)
+            .cloned()
+            .unwrap_or_else(|| lifetime.clone())
+    }
+}
+
+fn substitute_bound(
+    bound: &TraitBound,
+    type_mapping: &HashMap<String, Type>,
+    lifetime_mapping: &BTreeMap<Lifetime, Lifetime>,
+) -> Instance {
+    Instance::new(
+        bound.trait_path.name.clone(),
+        bound
+            .trait_path
+            .lifetime_args
+            .iter()
+            .map(|lifetime| {
+                lifetime_mapping
+                    .get(lifetime)
+                    .cloned()
+                    .unwrap_or_else(|| lifetime.clone())
+            })
+            .collect(),
+        bound
+            .trait_path
+            .type_args
+            .iter()
+            .map(|argument| substitute_all(argument, type_mapping, lifetime_mapping))
+            .collect(),
+    )
 }
 
 /// Build a `param_name -> arg_type` substitution map, checking that
@@ -177,6 +229,10 @@ pub enum HllTypeCheckCode {
     ControlFlowInDefer,
     /// Type annotation references a struct/enum name that isn't declared.
     UndeclaredType,
+    /// A type-parameter bound references a trait that isn't declared.
+    UndeclaredTrait,
+    /// A trait bound supplies the wrong number of generic arguments.
+    TraitArgArityMismatch,
     /// Generic type instantiation has the wrong number of type arguments
     /// (e.g. `Box<i64, i64>` on a 1-parameter decl, or a bare `Box` on a
     /// generic decl).
@@ -463,9 +519,9 @@ pub struct TypeEnv {
     functions: HashMap<String, FnDecl>,
     impls: Vec<ImplBlock>,
     current_ret_ty: Option<Type>,
-    /// Type-parameter names → declared marker bounds for the fn being
-    /// checked. Empty outside a fn body.
-    current_type_params: HashMap<String, Markers>,
+    /// Type-parameter names → declared bounds for the fn being checked.
+    /// Empty outside a fn body.
+    current_type_params: HashMap<String, Bounds>,
     current_lifetimes: HashSet<Lifetime>,
     current_function: Option<String>,
     in_unsafe: bool,
@@ -517,7 +573,7 @@ impl TypeEnv {
     /// (or empty if the name is undeclared — validation catches that
     /// separately). A `Param` uses the bounds attached to it in
     /// `scope`. See MIR's `class_of` for the same rules.
-    fn class_of(&self, ty: &Type, scope: &HashMap<String, Markers>) -> Markers {
+    fn class_of(&self, ty: &Type, scope: &HashMap<String, Bounds>) -> Markers {
         let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
         match &ty.kind {
             TypeKind::Int(_)
@@ -540,7 +596,10 @@ impl TypeEnv {
                     Markers::empty()
                 }
             }
-            TypeKind::Param(name) => scope.get(name).copied().unwrap_or_else(Markers::empty),
+            TypeKind::Param(name) => scope
+                .get(name)
+                .map(|bounds| bounds.markers)
+                .unwrap_or_else(Markers::empty),
             TypeKind::Array(elem, _) => self.class_of(elem, scope),
             TypeKind::Var(_) | TypeKind::IntVar(_) | TypeKind::FloatVar(_) | TypeKind::Error => {
                 all()
@@ -554,7 +613,7 @@ impl TypeEnv {
     /// the source of the precise type node that is invalid. Continues past
     /// errors so a single top-level `Type` with multiple defects surfaces
     /// them all.
-    pub fn validate_type(&self, ty: &Type, scope: &HashMap<String, Markers>, d: &mut Diagnostics) {
+    pub fn validate_type(&self, ty: &Type, scope: &HashMap<String, Bounds>, d: &mut Diagnostics) {
         match &ty.kind {
             TypeKind::Int(_)
             | TypeKind::Float(_)
@@ -585,24 +644,25 @@ impl TypeEnv {
             }
             TypeKind::Custom(Instance {
                 name,
+                lifetime_args,
                 type_args: args,
-                ..
             }) => {
                 for a in args {
                     self.validate_type(a, scope, d);
                 }
-                let type_params: &[TypeParam] = if let Some(s) = self.structs.get(name) {
-                    &s.type_params
-                } else if let Some(e) = self.enums.get(name) {
-                    &e.type_params
-                } else {
-                    d.push_error(Diagnostic::new(
-                        UndeclaredType,
-                        ty.source,
-                        format!("undeclared type '{}'", name),
-                    ));
-                    return;
-                };
+                let (lifetime_params, type_params): (&[LifetimeParam], &[TypeParam]) =
+                    if let Some(s) = self.structs.get(name) {
+                        (&s.lifetime_params, &s.type_params)
+                    } else if let Some(e) = self.enums.get(name) {
+                        (&e.lifetime_params, &e.type_params)
+                    } else {
+                        d.push_error(Diagnostic::new(
+                            UndeclaredType,
+                            ty.source,
+                            format!("undeclared type '{}'", name),
+                        ));
+                        return;
+                    };
                 if args.len() != type_params.len() {
                     d.push_error(Diagnostic::new(
                         TypeArgArityMismatch,
@@ -616,6 +676,16 @@ impl TypeEnv {
                     ));
                     return;
                 }
+                let mapping = type_params
+                    .iter()
+                    .map(|parameter| parameter.name.clone())
+                    .zip(args.iter().cloned())
+                    .collect::<HashMap<_, _>>();
+                let lifetime_mapping = lifetime_params
+                    .iter()
+                    .map(|parameter| parameter.lifetime.clone())
+                    .zip(lifetime_args.iter().cloned())
+                    .collect::<BTreeMap<_, _>>();
                 for (tp, arg) in type_params.iter().zip(args.iter()) {
                     let arg_class = self.class_of(arg, scope);
                     for m in [Marker::Copy, Marker::Drop, Marker::Move] {
@@ -626,6 +696,19 @@ impl TypeEnv {
                                 format!(
                                     "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
                                     arg, name, tp.name, m
+                                ),
+                            ));
+                        }
+                    }
+                    for bound in &tp.bounds.traits {
+                        let bound = substitute_bound(bound, &mapping, &lifetime_mapping);
+                        if !type_satisfies_trait(self, arg, &bound, scope) {
+                            d.push_error(Diagnostic::new(
+                                BoundNotSatisfied,
+                                arg.source,
+                                format!(
+                                    "type argument '{}' for '{}::{}' does not satisfy trait bound '{}'",
+                                    arg, name, tp.name, bound
                                 ),
                             ));
                         }
@@ -672,9 +755,11 @@ struct PendingInstantiation {
     source: SourceInfo,
     function_name: String,
     caller_name: Option<String>,
-    caller_type_params: HashMap<String, Markers>,
+    caller_type_params: HashMap<String, Bounds>,
     type_params: Vec<TypeParam>,
     type_args: Vec<Type>,
+    type_mapping: HashMap<String, Type>,
+    lifetime_mapping: BTreeMap<Lifetime, Lifetime>,
 }
 
 #[derive(Default)]
@@ -737,6 +822,9 @@ pub(super) fn typecheck_program_collect(
     for f in crate::hll::prelude::prelude_fn_decls() {
         env.functions.insert(f.name.clone(), f);
     }
+    for trait_decl in crate::hll::prelude::prelude_trait_decls() {
+        env.traits.insert(trait_decl.name.clone(), trait_decl);
+    }
 
     // Populate top-level declarations
     for decl in &program.declarations {
@@ -769,18 +857,21 @@ pub(super) fn typecheck_program_collect(
         match decl {
             Declaration::Struct(s) => {
                 let scope = type_params_scope(&s.type_params);
+                validate_type_param_bounds(&env, &s.type_params, &scope, d);
                 for f in &s.fields {
                     env.validate_type(&f.ty, &scope, d);
                 }
             }
             Declaration::Enum(e) => {
                 let scope = type_params_scope(&e.type_params);
+                validate_type_param_bounds(&env, &e.type_params, &scope, d);
                 for v in &e.variants {
                     env.validate_type(&v.ty, &scope, d);
                 }
             }
             Declaration::Fn(f) => {
                 let scope = type_params_scope(&f.type_params);
+                validate_type_param_bounds(&env, &f.type_params, &scope, d);
                 let errors_before = d.error_count();
                 for p in &f.params {
                     env.validate_type(&p.ty, &scope, d);
@@ -789,6 +880,9 @@ pub(super) fn typecheck_program_collect(
                 d.annotate_errors_in_function(errors_before, &f.name);
             }
             Declaration::Trait(t) => {
+                let mut trait_scope = type_params_scope(&t.type_params);
+                trait_scope.insert("Self".to_string(), Bounds::default());
+                validate_type_param_bounds(&env, &t.type_params, &trait_scope, d);
                 for method in &t.methods {
                     let mut params = t.type_params.clone();
                     params.push(TypeParam {
@@ -797,12 +891,15 @@ pub(super) fn typecheck_program_collect(
                         source: t.source,
                     });
                     params.extend(method.type_params.clone());
+                    let scope = type_params_scope(&params);
+                    validate_type_param_bounds(&env, &method.type_params, &scope, d);
                     let context = trait_method_context(&t.name, &method.name);
                     validate_fn_signature(&env, method, &params, &context, d);
                 }
             }
             Declaration::Impl(i) => {
                 let impl_scope = type_params_scope(&i.type_params);
+                validate_type_param_bounds(&env, &i.type_params, &impl_scope, d);
                 env.validate_type(&i.target, &impl_scope, d);
                 if let Some(trait_path) = &i.trait_path {
                     for arg in &trait_path.type_args {
@@ -812,6 +909,8 @@ pub(super) fn typecheck_program_collect(
                 for method in &i.methods {
                     let mut params = i.type_params.clone();
                     params.extend(method.type_params.clone());
+                    let scope = type_params_scope(&params);
+                    validate_type_param_bounds(&env, &method.type_params, &scope, d);
                     let context =
                         impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
                     validate_fn_signature(&env, method, &params, &context, d);
@@ -1001,6 +1100,102 @@ fn validate_fn_signature(
     d.annotate_errors_in_function(errors_before, context);
 }
 
+fn validate_type_param_bounds(
+    env: &TypeEnv,
+    params: &[TypeParam],
+    scope: &HashMap<String, Bounds>,
+    d: &mut Diagnostics,
+) {
+    for parameter in params {
+        validate_bounds(
+            env,
+            &format!("type parameter '{}'", parameter.name),
+            &parameter.bounds,
+            scope,
+            d,
+        );
+    }
+}
+
+fn validate_bounds(
+    env: &TypeEnv,
+    owner: &str,
+    bounds: &Bounds,
+    scope: &HashMap<String, Bounds>,
+    d: &mut Diagnostics,
+) {
+    for bound in &bounds.traits {
+        for argument in &bound.trait_path.type_args {
+            env.validate_type(argument, scope, d);
+        }
+        let Some(trait_decl) = env.traits.get(&bound.trait_path.name) else {
+            d.push_error(source_diagnostic(
+                UndeclaredTrait,
+                bound.source,
+                format!(
+                    "{} has undeclared trait bound '{}'",
+                    owner, bound.trait_path.name
+                ),
+            ));
+            continue;
+        };
+        if bound.trait_path.lifetime_args.len() != trait_decl.lifetime_params.len()
+            || bound.trait_path.type_args.len() != trait_decl.type_params.len()
+        {
+            d.push_error(source_diagnostic(
+                    TraitArgArityMismatch,
+                    bound.source,
+                    format!(
+                        "trait bound '{}' expects {} lifetime and {} type argument(s), found {} lifetime and {} type argument(s)",
+                        bound.trait_path.name,
+                        trait_decl.lifetime_params.len(),
+                        trait_decl.type_params.len(),
+                        bound.trait_path.lifetime_args.len(),
+                        bound.trait_path.type_args.len()
+                    ),
+                ));
+            continue;
+        }
+        let mapping = trait_decl
+            .type_params
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .zip(bound.trait_path.type_args.iter().cloned())
+            .collect::<HashMap<_, _>>();
+        let lifetime_mapping = trait_decl
+            .lifetime_params
+            .iter()
+            .map(|parameter| parameter.lifetime.clone())
+            .zip(bound.trait_path.lifetime_args.iter().cloned())
+            .collect::<BTreeMap<_, _>>();
+        for (trait_parameter, argument) in trait_decl
+            .type_params
+            .iter()
+            .zip(&bound.trait_path.type_args)
+        {
+            let markers_satisfied = trait_parameter
+                .bounds
+                .markers
+                .iter_declared()
+                .all(|marker| env.class_of(argument, scope).implies(marker));
+            let traits_satisfied = trait_parameter.bounds.traits.iter().all(|required| {
+                let required = substitute_bound(required, &mapping, &lifetime_mapping);
+                type_satisfies_trait(env, argument, &required, scope)
+            });
+            if !markers_satisfied || !traits_satisfied {
+                d.push_error(source_diagnostic(
+                        BoundNotSatisfied,
+                        bound.source,
+                        format!(
+                            "type argument '{}' for trait bound '{}::{}' does not satisfy its declared bounds",
+                            argument, bound.trait_path.name, trait_parameter.name
+                        ),
+                    ));
+            }
+        }
+    }
+}
+
 fn record_expression_type(
     env: &TypeEnv,
     types: &mut TypeCheckResults,
@@ -1061,6 +1256,11 @@ fn check_instantiation_bounds(
     d: &mut Diagnostics,
 ) {
     for pending in &types.pending_instantiations[first_pending..] {
+        let mapping = pending
+            .type_mapping
+            .iter()
+            .map(|(name, argument)| (name.clone(), subst.resolve(argument)))
+            .collect::<HashMap<_, _>>();
         for (parameter, argument) in pending.type_params.iter().zip(&pending.type_args) {
             let argument = subst.resolve(argument);
             for marker in parameter.bounds.markers.iter_declared() {
@@ -1074,6 +1274,19 @@ fn check_instantiation_bounds(
                         format!(
                             "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
                             argument, pending.function_name, parameter.name, marker
+                        ),
+                    ));
+                }
+            }
+            for bound in &parameter.bounds.traits {
+                let bound = substitute_bound(bound, &mapping, &pending.lifetime_mapping);
+                if !type_satisfies_trait(env, &argument, &bound, &pending.caller_type_params) {
+                    d.push_error(source_diagnostic(
+                        BoundNotSatisfied,
+                        pending.source,
+                        format!(
+                            "type argument '{}' for '{}::{}' does not satisfy trait bound '{}'",
+                            argument, pending.function_name, parameter.name, bound
                         ),
                     ));
                 }
@@ -1268,6 +1481,12 @@ fn instantiate_function(
         generics.lifetimes.clone(),
         type_args.clone(),
     );
+    let lifetime_mapping = signature
+        .lifetime_params
+        .iter()
+        .map(|parameter| parameter.lifetime.clone())
+        .zip(generics.lifetimes.iter().cloned())
+        .collect();
     types.pending_instantiations.push(PendingInstantiation {
         source,
         function_name: name.to_string(),
@@ -1275,6 +1494,8 @@ fn instantiate_function(
         caller_type_params: env.current_type_params.clone(),
         type_params: signature.type_params,
         type_args,
+        type_mapping: mapping,
+        lifetime_mapping,
     });
     Some((fn_ty(params, ret), instance))
 }
@@ -1443,6 +1664,24 @@ fn match_impl_type(
 }
 
 fn impl_bindings(impl_block: &ImplBlock, self_ty: &Type, env: &TypeEnv) -> Option<ImplBindings> {
+    impl_bindings_inner(
+        impl_block,
+        self_ty,
+        None,
+        env,
+        &env.current_type_params,
+        &mut Vec::new(),
+    )
+}
+
+fn impl_bindings_inner(
+    impl_block: &ImplBlock,
+    self_ty: &Type,
+    required_trait: Option<&Instance>,
+    env: &TypeEnv,
+    scope: &HashMap<String, Bounds>,
+    obligations: &mut Vec<(Type, Instance)>,
+) -> Option<ImplBindings> {
     let type_parameters = impl_block
         .type_params
         .iter()
@@ -1463,18 +1702,71 @@ fn impl_bindings(impl_block: &ImplBlock, self_ty: &Type, env: &TypeEnv) -> Optio
     ) {
         return None;
     }
+    if let Some(required_trait) = required_trait {
+        let impl_trait = impl_block.trait_path.as_ref()?;
+        if !match_impl_instance(
+            impl_trait,
+            required_trait,
+            &type_parameters,
+            &lifetime_parameters,
+            &mut bindings,
+        ) {
+            return None;
+        }
+    }
     if impl_block.type_params.iter().any(|parameter| {
         let Some(argument) = bindings.types.get(&parameter.name) else {
             return true;
         };
-        parameter.bounds.markers.iter_declared().any(|bound| {
-            !env.class_of(argument, &env.current_type_params)
-                .implies(bound)
-        })
+        parameter
+            .bounds
+            .markers
+            .iter_declared()
+            .any(|bound| !env.class_of(argument, scope).implies(bound))
+            || parameter.bounds.traits.iter().any(|bound| {
+                let bound = substitute_impl_instance(&bound.trait_path, &bindings);
+                !type_satisfies_trait_inner(env, argument, &bound, scope, obligations)
+            })
     }) {
         return None;
     }
     Some(bindings)
+}
+
+fn type_satisfies_trait(
+    env: &TypeEnv,
+    ty: &Type,
+    trait_path: &Instance,
+    scope: &HashMap<String, Bounds>,
+) -> bool {
+    type_satisfies_trait_inner(env, ty, trait_path, scope, &mut Vec::new())
+}
+
+fn type_satisfies_trait_inner(
+    env: &TypeEnv,
+    ty: &Type,
+    trait_path: &Instance,
+    scope: &HashMap<String, Bounds>,
+    obligations: &mut Vec<(Type, Instance)>,
+) -> bool {
+    if let TypeKind::Param(name) = &ty.kind {
+        return scope.get(name).is_some_and(|bounds| {
+            bounds
+                .traits
+                .iter()
+                .any(|bound| bound.trait_path == *trait_path)
+        });
+    }
+    let obligation = (ty.clone(), trait_path.clone());
+    if obligations.contains(&obligation) {
+        return false;
+    }
+    obligations.push(obligation);
+    let satisfied = env.impls.iter().any(|impl_block| {
+        impl_bindings_inner(impl_block, ty, Some(trait_path), env, scope, obligations).is_some()
+    });
+    obligations.pop();
+    satisfied
 }
 
 fn match_impl_method_receiver(
@@ -1590,7 +1882,7 @@ fn substitute_impl_instance(instance: &Instance, bindings: &ImplBindings) -> Ins
         instance
             .type_args
             .iter()
-            .map(|ty| substitute(ty, &type_mapping))
+            .map(|ty| substitute_all(ty, &type_mapping, &bindings.lifetimes))
             .collect(),
     )
 }
@@ -1601,6 +1893,36 @@ fn instantiate_method(
     impl_block: &ImplBlock,
     bindings: &ImplBindings,
     method: &FnDecl,
+    generics: &GenericArgs,
+    source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Option<(Type, Instance)> {
+    let mut mapping = bindings
+        .types
+        .iter()
+        .map(|(name, ty)| (name.clone(), ty.clone()))
+        .collect::<HashMap<_, _>>();
+    mapping.insert("Self".to_string(), substitute(&impl_block.target, &mapping));
+    instantiate_method_signature(
+        env,
+        subst,
+        method,
+        mapping,
+        bindings.lifetimes.clone(),
+        generics,
+        source,
+        types,
+        d,
+    )
+}
+
+fn instantiate_method_signature(
+    env: &TypeEnv,
+    subst: &mut Subst,
+    method: &FnDecl,
+    mut mapping: HashMap<String, Type>,
+    mut lifetime_mapping: BTreeMap<Lifetime, Lifetime>,
     generics: &GenericArgs,
     source: SourceInfo,
     types: &mut TypeCheckResults,
@@ -1653,18 +1975,19 @@ fn instantiate_method(
         }
         generics.types.clone()
     };
-    let mut mapping = bindings
-        .types
-        .iter()
-        .map(|(name, ty)| (name.clone(), ty.clone()))
-        .collect::<HashMap<_, _>>();
-    mapping.insert("Self".to_string(), substitute(&impl_block.target, &mapping));
     mapping.extend(
         method
             .type_params
             .iter()
             .map(|parameter| parameter.name.clone())
             .zip(method_type_args.iter().cloned()),
+    );
+    lifetime_mapping.extend(
+        method
+            .lifetime_params
+            .iter()
+            .map(|parameter| parameter.lifetime.clone())
+            .zip(generics.lifetimes.iter().cloned()),
     );
     let params = method
         .params
@@ -1679,6 +2002,8 @@ fn instantiate_method(
         caller_type_params: env.current_type_params.clone(),
         type_params: method.type_params.clone(),
         type_args: method_type_args.clone(),
+        type_mapping: mapping,
+        lifetime_mapping,
     });
     Some((
         fn_ty(params, ret),

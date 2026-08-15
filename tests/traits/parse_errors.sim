@@ -167,3 +167,8 @@ impl<T> ShadowM for R {
       return
   }
 }
+
+trait DuplicateBound {}
+
+# The same direct trait bound cannot be declared twice.
+extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T);

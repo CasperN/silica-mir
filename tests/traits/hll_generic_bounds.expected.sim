@@ -1,0 +1,373 @@
+struct Good: Copy + Drop {
+  value: i64
+}
+
+struct Other: Copy + Drop {
+  value: i64
+}
+
+trait Label {
+}
+
+impl Label for Good {
+}
+
+trait<T: Label> RequiresLabel {
+}
+
+impl RequiresLabel<Good> for Good {
+}
+
+trait<T> Related {
+}
+
+impl Related<i64> for Good {
+}
+
+trait<'a> LifetimeLabel {
+}
+
+impl LifetimeLabel<'static> for Good {
+}
+
+struct<T: Label> Holder {
+  value: T
+}
+
+enum<T: Label> Maybe {
+  None: unit
+  Some: T
+}
+
+struct<T> Wrapper {
+  value: T
+}
+
+struct<'held, T: LifetimeLabel<'held>> LifetimeHolder {
+  value: & 'held T
+}
+
+extern fn<'s0, T: Label> accept(value: & 's0 T);
+
+extern fn<'s0, T: AutoClone> accept_auto_clone(value: & 's0 T);
+
+extern fn<'s0, T: AutoDestroy> accept_auto_destroy(value: & 's0 T);
+
+extern fn<'bound, 's0, T: LifetimeLabel<'bound>> accept_lifetime_bound(value: & 's0 T);
+
+fn<'s0> accept_concrete(value: & 's0 Good) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call accept<Good>(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: Label> accept_generic(value: & 's0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call accept<T>(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: AutoClone + AutoDestroy> accept_auto_bounds(value: & 's0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  entry:
+    call accept_auto_clone<T>(copy value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    call accept_auto_destroy<T>(move value);
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0> accept_static_lifetime_bound(value: & 's0 Good) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call accept_lifetime_bound<'static, Good>(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1, T: Label> use_bounded_types(holder: & 's0 Holder<T>, maybe: & 's1 Maybe<T>) {
+  $tmp_0: unit;
+  $tmp_1: & Holder<T>;
+  $tmp_2: & Maybe<T>;
+  entry:
+    $tmp_1 = move holder;
+    unborrow $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_2 = move maybe;
+    unborrow $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit maybe;
+    require_uninit holder;
+    return
+}
+
+fn<'s0, T: RequiresLabel<Good>> use_bounded_trait_argument(value: & 's0 T) {
+  $tmp_0: unit;
+  $tmp_1: & T;
+  entry:
+    $tmp_1 = move value;
+    unborrow $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: Related<i64>> use_parameterized_bound(value: & 's0 T) {
+  $tmp_0: unit;
+  $tmp_1: & T;
+  entry:
+    $tmp_1 = move value;
+    unborrow $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1, T: Related<U>, U> use_later_bound_parameter(value: & 's0 T, other: & 's1 U) {
+  $tmp_0: unit;
+  $tmp_1: & T;
+  $tmp_2: & U;
+  entry:
+    $tmp_1 = move value;
+    unborrow $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_2 = move other;
+    unborrow $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit other;
+    require_uninit value;
+    return
+}
+
+fn<'s0> use_static_lifetime_holder(value: & 's0 LifetimeHolder<'static, Good>) {
+  $tmp_0: unit;
+  $tmp_1: & LifetimeHolder<'static, Good>;
+  entry:
+    $tmp_1 = move value;
+    unborrow $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+impl<T: Label> Wrapper<T> {
+  fn<'s0> inspect(recv: & 's0 Wrapper<T>) {
+    $tmp_0: unit;
+    $tmp_1: & Wrapper<T>;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'s0> inspect_good(value: & 's0 Wrapper<Good>) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Wrapper<Good>>::inspect(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+trait Inspect {
+  fn<'s0> inspect_trait(recv: & 's0 Self);
+  fn<'s0, 's1, U: Label> inspect_trait_argument(recv: & 's0 Self, value: & 's1 U);
+}
+
+impl<T: Label> Inspect for Wrapper<T> {
+  fn<'s0> inspect_trait(recv: & 's0 Wrapper<T>) {
+    $tmp_0: unit;
+    $tmp_1: & Wrapper<T>;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0, 's1, U: Label> inspect_trait_argument(recv: & 's0 Wrapper<T>, value: & 's1 U) {
+    $tmp_0: unit;
+    $tmp_1: & Wrapper<T>;
+    $tmp_2: & U;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      unborrow $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'s0> inspect_trait_good(value: & 's0 Wrapper<Good>) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Wrapper<Good> as Inspect>::inspect_trait(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1> inspect_trait_argument_good(value: & 's0 Wrapper<Good>, argument: & 's1 Good) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Wrapper<Good> as Inspect>::inspect_trait_argument<Good>(move value, move argument);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit argument;
+    require_uninit value;
+    return
+}
+
+impl Good {
+  fn<'s0, 's1, U: Label> inspect_argument(recv: & 's0 Good, value: & 's1 U) {
+    $tmp_0: unit;
+    $tmp_1: & Good;
+    $tmp_2: & U;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      unborrow $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+  fn<'bound, 's0, 's1, U: LifetimeLabel<'bound>> inspect_lifetime_argument(recv: & 's0 Good, value: & 's1 U) {
+    $tmp_0: unit;
+    $tmp_1: & Good;
+    $tmp_2: & U;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      unborrow $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'s0, 's1> inspect_argument_good(recv: & 's0 Good, value: & 's1 Good) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Good>::inspect_argument<Good>(move recv, move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    require_uninit recv;
+    return
+}
+
+fn<'s0, 's1> inspect_lifetime_argument_good(recv: & 's0 Good, value: & 's1 Good) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Good>::inspect_lifetime_argument<'static, Good>(move recv, move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    require_uninit recv;
+    return
+}

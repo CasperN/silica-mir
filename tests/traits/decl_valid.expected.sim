@@ -220,3 +220,32 @@ impl<T: Copy + Drop> Bag<T> {
       return
   }
 }
+
+trait DirectBound {
+}
+
+trait<'a> LifetimeDirectBound {
+}
+
+trait<'a, 'b: 'a> OrderedDirectBound {
+}
+
+impl DirectBound for Foo {
+}
+
+struct<T: DirectBound> DirectBox {
+  value: T
+}
+
+extern fn<'s0, T: DirectBound> accept_direct(value: & 's0 T);
+
+fn<'s0, T: DirectBound> forward_direct(value: & 's0 T) {
+  entry:
+    call accept_direct<T>(copy value);
+    unborrow value;
+    return
+}
+
+extern fn<'a, T: LifetimeDirectBound<'a>> accept_lifetime_direct(value: & 'a T);
+
+extern fn<'a, 'b: 'a, T: OrderedDirectBound<'a, 'b>> accept_ordered_direct(value: & 'b T);

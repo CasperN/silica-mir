@@ -12,6 +12,34 @@ error: at 193:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' f
      |      ^^^^
  194 |   fn next(recv: &mut DupTarget, $return: &out i64) {
      |
+error: at 325:14: [TC-TraitBoundUnknownTrait] In function 'unknown_direct_bound' type parameter 'T': trait bound references undeclared trait 'MissingBound'
+     |
+ 324 | # covers: MIR bounds must name a declared trait
+ 325 | extern fn<T: MissingBound> unknown_direct_bound(value: & T);
+     |              ^^^^^^^^^^^^
+ 326 | 
+     |
+error: at 328:14: [TC-TraitBoundArgArity] In function 'wrong_direct_bound_arity' type parameter 'T': trait 'GenericBound' expects 0 lifetime and 1 type argument(s), got 0 lifetime and 0 type argument(s)
+     |
+ 327 | # covers: MIR bounds must supply the trait's declared generic arity
+ 328 | extern fn<T: GenericBound> wrong_direct_bound_arity(value: & T);
+     |              ^^^^^^^^^^^^
+ 329 | 
+     |
+error: at 331:14: [TC-UndeclaredLifetime] In function 'unknown_direct_bound_lifetime' type parameter 'T': undeclared lifetime 'missing
+     |
+ 330 | # covers: MIR trait bounds reject undeclared lifetime arguments
+ 331 | extern fn<T: LifetimeDirectBound<'missing>> unknown_direct_bound_lifetime(value: & T);
+     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 332 | 
+     |
+error: at 341:5: [TC-TypeArgBoundNotSatisfied] In function 'reject_direct_bound', block 'entry': Type argument Other for function 'accept_direct::T' does not satisfy trait bound 'DirectBound'
+     |
+ 340 |   entry:
+ 341 |     call accept_direct<Other>(copy value);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 342 |     return
+     |
 error: at 45:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next' param 'out': Use of undeclared type 'Missing'
     |
  44 | trait IterMissingT {
@@ -161,3 +189,11 @@ error: at 255:7: [SUB-CopyOfNonCopy] In function '<Box<T>>::inherent_duplicate',
  256 |       call consume<T>(move value);
      |
   hint: since the type is not Copy, try moving it instead using 'move'
+error: at 334:22: [LT-LifetimeMismatch] trait bound 'OrderedDirectBound<'a, 'b>' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'missing_direct_bound_outlives'
+     |
+ 333 | # covers: a direct bound's trait lifetime requirements must be declared by its owner
+ 334 | extern fn<'a, 'b, T: OrderedDirectBound<'a, 'b>> missing_direct_bound_outlives(value: &'b T);
+     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 335 | 
+     |
+  hint: declare bound 'b: 'a on function 'missing_direct_bound_outlives'

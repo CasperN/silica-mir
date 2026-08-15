@@ -26,7 +26,7 @@ error: at 62:5: [TC-TraitFnNoMethod] In function 'no_method', block 'entry': Imp
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  63 |     return
     |
-error: at 70:5: [TC-TraitFnParamReceiver] In function 'param_receiver', block 'entry': Trait-method call on generic parameter 'T' requires a trait bound (deferred pending trait-bound syntax)
+error: at 70:5: [TC-TraitFnParamReceiver] In function 'param_receiver', block 'entry': Cannot resolve trait-method call on generic parameter 'T'
     |
  69 |     out_ref = &out $return.*;
  70 |     call <T as Iter<i64>>::next(move t, move out_ref);

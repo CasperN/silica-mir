@@ -29,6 +29,7 @@ pub enum ConstraintCause {
     Assignment,
     Call { callee: String },
     TypeRequirement { type_name: String },
+    TraitRequirement { trait_name: String },
 }
 
 impl ConstraintCause {
@@ -37,6 +38,9 @@ impl ConstraintCause {
             Self::Assignment => "this assignment".to_string(),
             Self::Call { callee } => format!("the call to '{}'", callee),
             Self::TypeRequirement { type_name } => format!("type '{}'", type_name),
+            Self::TraitRequirement { trait_name } => {
+                format!("trait bound '{}'", trait_name)
+            }
         }
     }
 }
