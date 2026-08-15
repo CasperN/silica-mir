@@ -7,11 +7,16 @@ impl Label for Good {}
 trait<T: Label> RequiresLabel {}
 trait<T> Related {}
 impl Related<i64> for Good {}
+trait<'a> LifetimeLabel {}
+impl LifetimeLabel<'static> for Good {}
 
 struct<T: Label> Holder { value: T }
 struct<T> Wrapper { value: T }
 
 extern fn<T: Label> accept(value: &T);
+extern fn<'bound, T: LifetimeLabel<'bound>> accept_inferred_lifetime_bound(
+  value: &'bound T,
+);
 
 # covers: a bound must name a declared trait
 fn<T: Missing> unknown_bound(value: &T) {
@@ -31,6 +36,13 @@ fn reject_concrete(value: &Other) {
 # covers: a generic caller cannot forward an obligation it did not declare
 fn<T> reject_unbounded_generic(value: &T) {
   accept<T>(value);
+}
+
+# covers: an inferred lifetime-dependent bound rejects a different caller bound
+fn<'actual, T: LifetimeLabel<'static>> reject_inferred_lifetime_bound(
+  value: &'actual T,
+) {
+  accept_inferred_lifetime_bound<T>(value);
 }
 
 # covers: direct bounds are enforced on custom type arguments
@@ -87,9 +99,24 @@ impl Good {
     recv;
     value;
   }
+  fn<'bound, U: LifetimeLabel<'bound>> inspect_inferred_lifetime_argument(
+    recv: &Good,
+    value: &'bound U,
+  ) {
+    recv;
+    value;
+  }
 }
 
 # covers: method type arguments must satisfy their direct bounds
 fn reject_method_argument(recv: &Good, value: &Other) {
   recv.inspect_argument<Other>(value);
+}
+
+# covers: inferred method lifetimes reject a different dependent caller bound
+fn<'actual, T: LifetimeLabel<'static>> reject_inferred_method_lifetime_bound(
+  recv: &Good,
+  value: &'actual T,
+) {
+  recv.inspect_inferred_lifetime_argument<T>(value);
 }

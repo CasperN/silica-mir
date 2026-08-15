@@ -488,11 +488,73 @@ fn<'a, 's0> call_inferred_lifetime_explicit_type(x: &'a i64, $return: &out 's0 &
   $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
-    call borrow_generic_identity<i64>(move x, move $tmp_0);
+    call borrow_generic_identity<'a, i64>(move x, move $tmp_0);
     unborrow $return;
     require_uninit $tmp_0;
     require_uninit $return;
     require_uninit x;
+    return
+}
+
+struct<'view> BorrowedI64: Copy + Drop {
+  value: &'view i64
+}
+
+fn<'callee, 's0> make_borrowed_i64(value: &'callee i64, $return: &out 's0 BorrowedI64<'callee>) {
+  entry:
+    $return.*.value = move value;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'caller, 's0> forward_borrowed_i64(value: &'caller i64, $return: &out 's0 BorrowedI64<'caller>) {
+  $tmp_0: &out BorrowedI64<'caller>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call make_borrowed_i64<'caller>(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'caller, 's0> infer_borrowed_i64(value: &'caller i64, $return: &out 's0 BorrowedI64<'caller>) {
+  $tmp_0: &out BorrowedI64<'caller>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call make_borrowed_i64<'caller>(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+extern fn<'callee, 's0> make_borrowed_i64_default($return: &out 's0 BorrowedI64<'callee>);
+
+fn<'caller, 's0> infer_borrowed_i64_from_result($return: &out 's0 BorrowedI64<'caller>) {
+  $tmp_0: &out BorrowedI64<'caller>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call make_borrowed_i64_default<'caller>(move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn<'caller, 's0> infer_borrowed_i64_receiver(value: &'caller i64, $return: &out 's0 BorrowedI64<'caller>) {
+  $tmp_0: &out BorrowedI64<'caller>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call make_borrowed_i64<'caller>(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
     return
 }
 

@@ -1541,6 +1541,7 @@ fn lower_function(
     program: &hll::Program,
     types: &TypeCheckResults,
     bodyless_is_extern: bool,
+    context: &str,
 ) -> Result<mir::Function, Diagnostic> {
     let mut params: Vec<mir::Param> = f
         .params
@@ -1563,11 +1564,13 @@ fn lower_function(
         });
     }
 
+    let mut lifetime_params = f.lifetime_params.clone();
+    lifetime_params.extend_from_slice(types.synthesized_lifetimes(context));
     let meta = DeclMeta {
         name: f.name.clone(),
         name_source: f.source,
         params: GenericParams {
-            lifetime_params: f.lifetime_params.clone(),
+            lifetime_params,
             outlives: f.outlives.clone(),
             type_params: lower_type_params(&f.type_params),
             source: f.source,
@@ -1682,7 +1685,7 @@ pub fn lower_program(
             }
             hll::Declaration::Fn(f) => {
                 declarations.push(mir::Declaration::Fn(
-                    lower_function(f, program, types, true)
+                    lower_function(f, program, types, true, &f.name)
                         .map_err(|diagnostic| diagnostic.in_function(&f.name))?,
                 ));
             }
@@ -1705,7 +1708,7 @@ pub fn lower_program(
                         .iter()
                         .map(|method| {
                             let context = hll::trait_method_context(&t.name, &method.name);
-                            lower_function(method, program, types, false)
+                            lower_function(method, program, types, false, &context)
                                 .map_err(|diagnostic| diagnostic.in_function(context))
                         })
                         .collect::<Result<Vec<_>, _>>()?,
@@ -1730,7 +1733,7 @@ pub fn lower_program(
                                 i.trait_path.as_ref(),
                                 &method.name,
                             );
-                            lower_function(method, program, types, false)
+                            lower_function(method, program, types, false, &context)
                                 .map_err(|diagnostic| diagnostic.in_function(context))
                         })
                         .collect::<Result<Vec<_>, _>>()?,

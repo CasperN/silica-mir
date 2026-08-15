@@ -18,6 +18,12 @@ fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
   first_ref<'b, 'a>(x, y)
 }
 
+fn<'same> same_ref(x: &'same i64, y: &'same i64) -> &'same i64 { x }
+
+# covers: an omitted lifetime cannot equate unrelated caller lifetimes
+fn<'a, 'b> inferred_lifetime_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+  same_ref(x, y)
+}
 
 fn<T: Copy + Drop> identity(x: T) -> T { x }
 # covers: substituted reference type argument requires missing caller bounds

@@ -123,6 +123,11 @@ fn<'a> call_inferred_method_lifetime(value: &'a Shared) -> i64 {
   value.inferred_method_lifetime()
 }
 
+# covers: qualified inherent calls infer omitted method lifetimes
+fn<'a> call_qualified_inferred_method_lifetime(value: &'a Shared) -> i64 {
+  <Shared>::inferred_method_lifetime(value)
+}
+
 trait<'a> LifetimeTrait {
   fn lifetime_method(recv: &'a Shared) -> i64;
 }

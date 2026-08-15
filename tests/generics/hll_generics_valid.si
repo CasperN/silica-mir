@@ -247,6 +247,28 @@ fn<'a> call_inferred_lifetime_explicit_type(x: &'a i64) -> &'a i64 {
   borrow_generic_identity<i64>(x)
 }
 
+struct<'view> BorrowedI64: Copy + Drop { value: &'view i64 }
+fn<'callee> make_borrowed_i64(value: &'callee i64) -> BorrowedI64<'callee> {
+  BorrowedI64 { value: value }
+}
+# covers: lifetime substitution inside a nominal result is independent of binder spelling
+fn<'caller> forward_borrowed_i64(value: &'caller i64) -> BorrowedI64<'caller> {
+  make_borrowed_i64<'caller>(value)
+}
+# covers: an omitted call lifetime is inferred through a nominal argument and result
+fn<'caller> infer_borrowed_i64(value: &'caller i64) -> BorrowedI64<'caller> {
+  make_borrowed_i64(value)
+}
+# covers: an omitted call lifetime can be inferred solely from a nominal result
+extern fn<'callee> make_borrowed_i64_default() -> BorrowedI64<'callee>;
+fn<'caller> infer_borrowed_i64_from_result() -> BorrowedI64<'caller> {
+  make_borrowed_i64_default()
+}
+# covers: free-function receiver syntax preserves an inferred nominal result lifetime
+fn<'caller> infer_borrowed_i64_receiver(value: &'caller i64) -> BorrowedI64<'caller> {
+  value.make_borrowed_i64()
+}
+
 # Explicit arguments also resolve a parameter absent from the signature.
 fn<T: Copy + Drop> generic_side_effect() { unit }
 # covers: explicit type argument absent from all parameter and return types

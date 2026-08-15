@@ -1,77 +1,91 @@
-error: at 17:7: [HTC-UndeclaredTrait] type parameter 'T' has undeclared trait bound 'Missing'
+error: at 22:7: [HTC-UndeclaredTrait] type parameter 'T' has undeclared trait bound 'Missing'
     |
- 16 | # covers: a bound must name a declared trait
- 17 | fn<T: Missing> unknown_bound(value: &T) {
-    |       ^^^^^^^
- 18 |   value;
-    |
-error: at 22:7: [HTC-TraitArgArityMismatch] trait bound 'Related' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
-    |
- 21 | # covers: a trait bound must provide the declared generic arity
- 22 | fn<T: Related> wrong_bound_arity(value: &T) {
+ 21 | # covers: a bound must name a declared trait
+ 22 | fn<T: Missing> unknown_bound(value: &T) {
     |       ^^^^^^^
  23 |   value;
     |
-error: at 37:39: [HTC-BoundNotSatisfied] In function 'reject_bounded_type': type argument 'Other' for 'Holder::T' does not satisfy trait bound 'Label'
+error: at 27:7: [HTC-TraitArgArityMismatch] trait bound 'Related' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
     |
- 36 | # covers: direct bounds are enforced on custom type arguments
- 37 | fn reject_bounded_type(value: &Holder<Other>) {
+ 26 | # covers: a trait bound must provide the declared generic arity
+ 27 | fn<T: Related> wrong_bound_arity(value: &T) {
+    |       ^^^^^^^
+ 28 |   value;
+    |
+error: at 49:39: [HTC-BoundNotSatisfied] In function 'reject_bounded_type': type argument 'Other' for 'Holder::T' does not satisfy trait bound 'Label'
+    |
+ 48 | # covers: direct bounds are enforced on custom type arguments
+ 49 | fn reject_bounded_type(value: &Holder<Other>) {
     |                                       ^^^^^
- 38 |   value;
+ 50 |   value;
     |
-error: at 42:7: [HTC-BoundNotSatisfied] type argument 'Other' for trait bound 'RequiresLabel::T' does not satisfy its declared bounds
+error: at 54:7: [HTC-BoundNotSatisfied] type argument 'Other' for trait bound 'RequiresLabel::T' does not satisfy its declared bounds
     |
- 41 | # covers: a trait bound's own type arguments must satisfy the trait declaration
- 42 | fn<T: RequiresLabel<Other>> reject_bound_argument(value: &T) {
+ 53 | # covers: a trait bound's own type arguments must satisfy the trait declaration
+ 54 | fn<T: RequiresLabel<Other>> reject_bound_argument(value: &T) {
     |       ^^^^^^^^^^^^^^^^^^^^
- 43 |   value;
+ 55 |   value;
     |
-error: at 28:3: [HTC-BoundNotSatisfied] In function 'reject_concrete': type argument 'Other' for 'accept::T' does not satisfy trait bound 'Label'
+error: at 33:3: [HTC-BoundNotSatisfied] In function 'reject_concrete': type argument 'Other' for 'accept::T' does not satisfy trait bound 'Label'
     |
- 27 | fn reject_concrete(value: &Other) {
- 28 |   accept<Other>(value);
-    |   ^^^^^^
- 29 | }
-    |
-error: at 33:3: [HTC-BoundNotSatisfied] In function 'reject_unbounded_generic': type argument 'T' for 'accept::T' does not satisfy trait bound 'Label'
-    |
- 32 | fn<T> reject_unbounded_generic(value: &T) {
- 33 |   accept<T>(value);
+ 32 | fn reject_concrete(value: &Other) {
+ 33 |   accept<Other>(value);
     |   ^^^^^^
  34 | }
     |
-error: at 48:3: [HTC-BoundNotSatisfied] In function 'reject_different_bound_argument': type argument 'T' for 'require_related_i64::T' does not satisfy trait bound 'Related<i64>'
+error: at 38:3: [HTC-BoundNotSatisfied] In function 'reject_unbounded_generic': type argument 'T' for 'accept::T' does not satisfy trait bound 'Label'
     |
- 47 | fn<T: Related<bool>> reject_different_bound_argument(value: &T) {
- 48 |   require_related_i64<T>(value);
+ 37 | fn<T> reject_unbounded_generic(value: &T) {
+ 38 |   accept<T>(value);
+    |   ^^^^^^
+ 39 | }
+    |
+error: at 45:3: [HTC-BoundNotSatisfied] In function 'reject_inferred_lifetime_bound': type argument 'T' for 'accept_inferred_lifetime_bound::T' does not satisfy trait bound 'LifetimeLabel<'actual>'
+    |
+ 44 | ) {
+ 45 |   accept_inferred_lifetime_bound<T>(value);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 46 | }
+    |
+error: at 60:3: [HTC-BoundNotSatisfied] In function 'reject_different_bound_argument': type argument 'T' for 'require_related_i64::T' does not satisfy trait bound 'Related<i64>'
+    |
+ 59 | fn<T: Related<bool>> reject_different_bound_argument(value: &T) {
+ 60 |   require_related_i64<T>(value);
     |   ^^^^^^^^^^^^^^^^^^^
- 49 | }
+ 61 | }
     |
-error: at 59:9: [HTC-UnresolvedReceiverCall] In function 'reject_inherent_impl': no method, callable field, or free function 'inspect' applies to receiver type &Wrapper<Other>
+error: at 71:9: [HTC-UnresolvedReceiverCall] In function 'reject_inherent_impl': no method, callable field, or free function 'inspect' applies to receiver type &Wrapper<Other>
     |
- 58 | fn reject_inherent_impl(value: &Wrapper<Other>) {
- 59 |   value.inspect();
+ 70 | fn reject_inherent_impl(value: &Wrapper<Other>) {
+ 71 |   value.inspect();
     |         ^^^^^^^
- 60 | }
+ 72 | }
     |
-error: at 77:9: [HTC-UnresolvedReceiverCall] In function 'reject_trait_impl': no method, callable field, or free function 'inspect_trait' applies to receiver type &Wrapper<Other>
+error: at 89:9: [HTC-UnresolvedReceiverCall] In function 'reject_trait_impl': no method, callable field, or free function 'inspect_trait' applies to receiver type &Wrapper<Other>
     |
- 76 | fn reject_trait_impl(value: &Wrapper<Other>) {
- 77 |   value.inspect_trait();
+ 88 | fn reject_trait_impl(value: &Wrapper<Other>) {
+ 89 |   value.inspect_trait();
     |         ^^^^^^^^^^^^^
- 78 | }
+ 90 | }
     |
-error: at 82:9: [HTC-BoundNotSatisfied] In function 'reject_trait_method_argument': type argument 'Other' for 'inspect_trait_argument::U' does not satisfy trait bound 'Label'
+error: at 94:9: [HTC-BoundNotSatisfied] In function 'reject_trait_method_argument': type argument 'Other' for 'inspect_trait_argument::U' does not satisfy trait bound 'Label'
     |
- 81 | fn reject_trait_method_argument(value: &Wrapper<Good>, argument: &Other) {
- 82 |   value.inspect_trait_argument<Other>(argument);
+ 93 | fn reject_trait_method_argument(value: &Wrapper<Good>, argument: &Other) {
+ 94 |   value.inspect_trait_argument<Other>(argument);
     |         ^^^^^^^^^^^^^^^^^^^^^^
- 83 | }
-    |
-error: at 94:8: [HTC-BoundNotSatisfied] In function 'reject_method_argument': type argument 'Other' for 'inspect_argument::U' does not satisfy trait bound 'Label'
-    |
- 93 | fn reject_method_argument(recv: &Good, value: &Other) {
- 94 |   recv.inspect_argument<Other>(value);
-    |        ^^^^^^^^^^^^^^^^
  95 | }
     |
+error: at 113:8: [HTC-BoundNotSatisfied] In function 'reject_method_argument': type argument 'Other' for 'inspect_argument::U' does not satisfy trait bound 'Label'
+     |
+ 112 | fn reject_method_argument(recv: &Good, value: &Other) {
+ 113 |   recv.inspect_argument<Other>(value);
+     |        ^^^^^^^^^^^^^^^^
+ 114 | }
+     |
+error: at 121:8: [HTC-BoundNotSatisfied] In function 'reject_inferred_method_lifetime_bound': type argument 'T' for 'inspect_inferred_lifetime_argument::U' does not satisfy trait bound 'LifetimeLabel<'actual>'
+     |
+ 120 | ) {
+ 121 |   recv.inspect_inferred_lifetime_argument<T>(value);
+     |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 122 | }
+     |

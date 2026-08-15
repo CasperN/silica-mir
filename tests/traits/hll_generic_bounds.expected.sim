@@ -55,6 +55,8 @@ extern fn<'s0, T: AutoDestroy> accept_auto_destroy(value: &'s0 T);
 
 extern fn<'bound, 's0, T: LifetimeLabel<'bound>> accept_lifetime_bound(value: &'s0 T);
 
+extern fn<'bound, T: LifetimeLabel<'bound>> accept_inferred_lifetime_bound(value: &'bound T);
+
 fn<'s0> accept_concrete(value: &'s0 Good) {
   $tmp_0: unit;
   $tmp_1: unit;
@@ -110,6 +112,21 @@ fn<'s0> accept_static_lifetime_bound(value: &'s0 Good) {
   $tmp_1: unit;
   entry:
     call accept_lifetime_bound<'static, Good>(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'bound, T: LifetimeLabel<'bound>> forward_inferred_lifetime_bound(value: &'bound T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call accept_inferred_lifetime_bound<'bound, T>(move value);
     $tmp_1 = unit;
     drop $tmp_1;
     require_uninit $tmp_1;
@@ -320,6 +337,24 @@ impl Good {
       require_uninit recv;
       return
   }
+  fn<'bound, 's0, U: LifetimeLabel<'bound>> inspect_inferred_lifetime_argument(recv: &'s0 Good, value: &'bound U) {
+    $tmp_0: unit;
+    $tmp_1: &Good;
+    $tmp_2: &'bound U;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      unborrow $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
   fn<'bound, 's0, 's1, U: LifetimeLabel<'bound>> inspect_lifetime_argument(recv: &'s0 Good, value: &'s1 U) {
     $tmp_0: unit;
     $tmp_1: &Good;
@@ -345,6 +380,22 @@ fn<'s0, 's1> inspect_argument_good(recv: &'s0 Good, value: &'s1 Good) {
   $tmp_1: unit;
   entry:
     call <Good>::inspect_argument<Good>(move recv, move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    require_uninit recv;
+    return
+}
+
+fn<'bound, 's0, T: LifetimeLabel<'bound>> inspect_inferred_lifetime_argument_good(recv: &'s0 Good, value: &'bound T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <Good>::inspect_inferred_lifetime_argument<'bound, T>(move recv, move value);
     $tmp_1 = unit;
     drop $tmp_1;
     require_uninit $tmp_1;

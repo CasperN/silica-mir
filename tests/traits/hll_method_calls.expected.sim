@@ -344,7 +344,19 @@ fn<'a, 's0> call_inferred_method_lifetime(value: &'a Shared, $return: &out 's0 i
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
-    call <Shared>::inferred_method_lifetime(move value, move $tmp_0);
+    call <Shared>::inferred_method_lifetime<'a>(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'a, 's0> call_qualified_inferred_method_lifetime(value: &'a Shared, $return: &out 's0 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <Shared>::inferred_method_lifetime<'a>(move value, move $tmp_0);
     unborrow $return;
     require_uninit $tmp_0;
     require_uninit $return;

@@ -284,6 +284,8 @@ impl From<HllTypeCheckCode> for DiagCode {
 pub struct Subst {
     map: HashMap<usize, Type>,
     next_id: usize,
+    lifetime_map: BTreeMap<Lifetime, Lifetime>,
+    lifetime_variables: HashSet<Lifetime>,
 }
 
 #[derive(Clone, Copy)]
@@ -337,6 +339,10 @@ impl TypeFolder for ResolveFolder<'_> {
             (ResolveMode::DefaultUnresolved, SolverVariable::Float(_)) => Some(f64_ty()),
         }
     }
+
+    fn fold_lifetime(&mut self, lifetime: &Lifetime) -> Lifetime {
+        self.subst.resolve_lifetime(lifetime)
+    }
 }
 
 impl Subst {
@@ -344,6 +350,36 @@ impl Subst {
         Self {
             map: HashMap::new(),
             next_id: 0,
+            lifetime_map: BTreeMap::new(),
+            lifetime_variables: HashSet::new(),
+        }
+    }
+
+    fn register_lifetime_variable(&mut self, lifetime: Lifetime) {
+        self.lifetime_variables.insert(lifetime);
+    }
+
+    fn resolve_lifetime(&self, lifetime: &Lifetime) -> Lifetime {
+        let mut resolved = lifetime.clone();
+        while let Some(next) = self.lifetime_map.get(&resolved) {
+            if next == &resolved {
+                break;
+            }
+            resolved = next.clone();
+        }
+        resolved
+    }
+
+    fn unify_lifetimes(&mut self, left: &Lifetime, right: &Lifetime) {
+        let left = self.resolve_lifetime(left);
+        let right = self.resolve_lifetime(right);
+        if left == right {
+            return;
+        }
+        if self.lifetime_variables.contains(&left) {
+            self.lifetime_map.insert(left, right);
+        } else if self.lifetime_variables.contains(&right) {
+            self.lifetime_map.insert(right, left);
         }
     }
 
@@ -443,24 +479,37 @@ impl Subst {
             (
                 TypeKind::Custom(Instance {
                     name: n1,
+                    lifetime_args: l1,
                     type_args: a1,
-                    ..
                 }),
                 TypeKind::Custom(Instance {
                     name: n2,
+                    lifetime_args: l2,
                     type_args: a2,
-                    ..
                 }),
-            ) if n1 == n2 && a1.len() == a2.len() => {
+                // Struct and enum constructors infer type arguments but currently
+                // represent their lifetime arguments as an empty, elided list.
+            ) if n1 == n2
+                && (l1.is_empty() || l2.is_empty() || l1.len() == l2.len())
+                && a1.len() == a2.len() =>
+            {
+                let l1 = l1.clone();
+                let l2 = l2.clone();
                 let a1 = a1.clone();
                 let a2 = a2.clone();
+                for (left, right) in l1.iter().zip(l2.iter()) {
+                    self.unify_lifetimes(left, right);
+                }
                 for (x, y) in a1.iter().zip(a2.iter()) {
                     self.unify(x, y)?;
                 }
                 Ok(())
             }
             (TypeKind::Param(p1), TypeKind::Param(p2)) if p1 == p2 => Ok(()),
-            (TypeKind::Ref(k1, _, inner1), TypeKind::Ref(k2, _, inner2)) if k1 == k2 => {
+            (TypeKind::Ref(k1, l1, inner1), TypeKind::Ref(k2, l2, inner2)) if k1 == k2 => {
+                if let (Some(left), Some(right)) = (l1, l2) {
+                    self.unify_lifetimes(left, right);
+                }
                 self.unify(inner1, inner2)
             }
             (TypeKind::RawPtr(inner1), TypeKind::RawPtr(inner2)) => self.unify(inner1, inner2),
@@ -487,6 +536,8 @@ impl Subst {
         let mut probe = Self {
             map: self.map.clone(),
             next_id: self.next_id,
+            lifetime_map: self.lifetime_map.clone(),
+            lifetime_variables: self.lifetime_variables.clone(),
         };
         probe.unify(t1, t2).is_ok()
     }
@@ -794,6 +845,9 @@ pub struct TypeCheckResults {
     pub qualified_calls: IndexMap<SourceInfo, ResolvedMethodTarget>,
     expression_contexts: IndexMap<SourceInfo, String>,
     pending_instantiations: Vec<PendingInstantiation>,
+    synthesized_lifetime_params: IndexMap<String, Vec<LifetimeParam>>,
+    reserved_lifetime_names: HashSet<String>,
+    next_inferred_lifetime: usize,
 }
 
 impl std::ops::Deref for TypeCheckResults {
@@ -807,6 +861,42 @@ impl std::ops::Deref for TypeCheckResults {
 impl std::ops::DerefMut for TypeCheckResults {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.expression_types
+    }
+}
+
+impl TypeCheckResults {
+    fn fresh_inferred_lifetime(
+        &mut self,
+        env: &TypeEnv,
+        subst: &mut Subst,
+        source: SourceInfo,
+    ) -> Option<Lifetime> {
+        let context = env.current_function.as_ref()?;
+        let params = self
+            .synthesized_lifetime_params
+            .entry(context.clone())
+            .or_default();
+        loop {
+            let name = format!("s{}", self.next_inferred_lifetime);
+            self.next_inferred_lifetime += 1;
+            if self.reserved_lifetime_names.insert(name.clone()) {
+                let lifetime = Lifetime(name);
+                params.push(LifetimeParam::generated(
+                    lifetime.clone(),
+                    crate::common::GeneratedKind::LifetimeElision,
+                    source.span(),
+                ));
+                subst.register_lifetime_variable(lifetime.clone());
+                return Some(lifetime);
+            }
+        }
+    }
+
+    pub(crate) fn synthesized_lifetimes(&self, context: &str) -> &[LifetimeParam] {
+        self.synthesized_lifetime_params
+            .get(context)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
     }
 }
 
@@ -839,7 +929,67 @@ pub(super) fn typecheck_program_collect(
 ) -> TypeCheckResults {
     let mut env = TypeEnv::new();
     let mut subst = Subst::new();
-    let mut types = TypeCheckResults::default();
+    let mut reserved_lifetime_names = HashSet::new();
+    for declaration in &program.declarations {
+        match declaration {
+            Declaration::Struct(declaration) => {
+                reserved_lifetime_names.extend(
+                    declaration
+                        .lifetime_params
+                        .iter()
+                        .map(|parameter| parameter.lifetime.0.clone()),
+                );
+            }
+            Declaration::Enum(declaration) => {
+                reserved_lifetime_names.extend(
+                    declaration
+                        .lifetime_params
+                        .iter()
+                        .map(|parameter| parameter.lifetime.0.clone()),
+                );
+            }
+            Declaration::Fn(declaration) => {
+                reserved_lifetime_names.extend(
+                    declaration
+                        .lifetime_params
+                        .iter()
+                        .map(|parameter| parameter.lifetime.0.clone()),
+                );
+            }
+            Declaration::Trait(declaration) => {
+                reserved_lifetime_names.extend(
+                    declaration
+                        .lifetime_params
+                        .iter()
+                        .chain(
+                            declaration
+                                .methods
+                                .iter()
+                                .flat_map(|method| method.lifetime_params.iter()),
+                        )
+                        .map(|parameter| parameter.lifetime.0.clone()),
+                );
+            }
+            Declaration::Impl(declaration) => {
+                reserved_lifetime_names.extend(
+                    declaration
+                        .lifetime_params
+                        .iter()
+                        .chain(
+                            declaration
+                                .methods
+                                .iter()
+                                .flat_map(|method| method.lifetime_params.iter()),
+                        )
+                        .map(|parameter| parameter.lifetime.0.clone()),
+                );
+            }
+        }
+    }
+    let mut types = TypeCheckResults {
+        reserved_lifetime_names,
+        ..TypeCheckResults::default()
+    };
 
     // Preload prelude wrappers (`size_of<T>`, `ptr_offset<T>`) so user
     // code can spell them by name. Bodies live at the MIR level; here
@@ -1061,17 +1211,21 @@ pub(super) fn typecheck_program_collect(
         resolved_types.insert(source, subst.resolve_default(&ty));
     }
     types.expression_types = resolved_types;
-    for instantiation in types.function_instantiations.values_mut() {
+    let resolve_instance = |instantiation: &mut Instance| {
+        for lifetime in &mut instantiation.lifetime_args {
+            *lifetime = subst.resolve_lifetime(lifetime);
+        }
         for ty in &mut instantiation.type_args {
             *ty = subst.resolve_default(ty);
         }
+    };
+    for instantiation in types.function_instantiations.values_mut() {
+        resolve_instance(instantiation);
     }
     let resolve_method_target = |target: &mut ResolvedMethodTarget| match target {
         ResolvedMethodTarget::Inherent { self_ty, method } => {
             *self_ty = subst.resolve_default(self_ty);
-            for ty in &mut method.type_args {
-                *ty = subst.resolve_default(ty);
-            }
+            resolve_instance(method);
         }
         ResolvedMethodTarget::Trait {
             trait_path,
@@ -1079,27 +1233,22 @@ pub(super) fn typecheck_program_collect(
             method,
         } => {
             *self_ty = subst.resolve_default(self_ty);
-            for ty in &mut trait_path.type_args {
-                *ty = subst.resolve_default(ty);
-            }
-            for ty in &mut method.type_args {
-                *ty = subst.resolve_default(ty);
-            }
+            resolve_instance(trait_path);
+            resolve_instance(method);
         }
     };
     for call in types.receiver_calls.values_mut() {
         match &mut call.target {
             ResolvedReceiverTarget::Method(target) => resolve_method_target(target),
-            ResolvedReceiverTarget::FreeFunction(instance) => {
-                for ty in &mut instance.type_args {
-                    *ty = subst.resolve_default(ty);
-                }
-            }
+            ResolvedReceiverTarget::FreeFunction(instance) => resolve_instance(instance),
             ResolvedReceiverTarget::Field => {}
         }
     }
     for target in types.qualified_calls.values_mut() {
         resolve_method_target(target);
+    }
+    for params in types.synthesized_lifetime_params.values_mut() {
+        params.retain(|param| subst.resolve_lifetime(&param.lifetime) == param.lifetime);
     }
     types.pending_instantiations.clear();
     types
@@ -1392,6 +1541,11 @@ fn check_instantiation_bounds(
             .iter()
             .map(|(name, argument)| (name.clone(), subst.resolve(argument)))
             .collect::<HashMap<_, _>>();
+        let lifetime_mapping = pending
+            .lifetime_mapping
+            .iter()
+            .map(|(parameter, argument)| (parameter.clone(), subst.resolve_lifetime(argument)))
+            .collect::<BTreeMap<_, _>>();
         for (parameter, argument) in pending.type_params.iter().zip(&pending.type_args) {
             let argument = subst.resolve(argument);
             for marker in parameter.bounds.markers.iter_declared() {
@@ -1410,7 +1564,7 @@ fn check_instantiation_bounds(
                 }
             }
             for bound in &parameter.bounds.traits {
-                let bound = substitute_bound(bound, &mapping, &pending.lifetime_mapping);
+                let bound = substitute_bound(bound, &mapping, &lifetime_mapping);
                 if !type_satisfies_trait(env, &argument, &bound, &pending.caller_type_params) {
                     d.push_error(source_diagnostic(
                         BoundNotSatisfied,
@@ -1600,24 +1754,29 @@ fn instantiate_function(
         .cloned()
         .zip(type_args.iter().cloned())
         .collect();
-    let params = signature
-        .params
-        .iter()
-        .map(|parameter| substitute(&parameter.ty, &mapping))
-        .collect();
-    let ret = substitute(&signature.ret_ty, &mapping);
-
-    let instance = Instance::new(
-        name.to_string(),
-        generics.lifetimes.clone(),
-        type_args.clone(),
-    );
+    let lifetime_args = if generics.lifetimes.is_empty() {
+        signature
+            .lifetime_params
+            .iter()
+            .map(|_| types.fresh_inferred_lifetime(env, subst, source))
+            .collect::<Option<Vec<_>>>()?
+    } else {
+        generics.lifetimes.clone()
+    };
     let lifetime_mapping = signature
         .lifetime_params
         .iter()
         .map(|parameter| parameter.lifetime.clone())
-        .zip(generics.lifetimes.iter().cloned())
+        .zip(lifetime_args.iter().cloned())
         .collect();
+    let params = signature
+        .params
+        .iter()
+        .map(|parameter| substitute_all(&parameter.ty, &mapping, &lifetime_mapping))
+        .collect();
+    let ret = substitute_all(&signature.ret_ty, &mapping, &lifetime_mapping);
+
+    let instance = Instance::new(name.to_string(), lifetime_args, type_args.clone());
     types.pending_instantiations.push(PendingInstantiation {
         source,
         function_name: name.to_string(),
@@ -2281,12 +2440,21 @@ fn instantiate_method_signature(
             .map(|parameter| parameter.name.clone())
             .zip(method_type_args.iter().cloned()),
     );
+    let method_lifetime_args = if generics.lifetimes.is_empty() {
+        method
+            .lifetime_params
+            .iter()
+            .map(|_| types.fresh_inferred_lifetime(env, subst, source))
+            .collect::<Option<Vec<_>>>()?
+    } else {
+        generics.lifetimes.clone()
+    };
     lifetime_mapping.extend(
         method
             .lifetime_params
             .iter()
             .map(|parameter| parameter.lifetime.clone())
-            .zip(generics.lifetimes.iter().cloned()),
+            .zip(method_lifetime_args.iter().cloned()),
     );
     let params = method
         .params
@@ -2306,11 +2474,7 @@ fn instantiate_method_signature(
     });
     Some((
         fn_ty(params, ret),
-        Instance::new(
-            method.name.clone(),
-            generics.lifetimes.clone(),
-            method_type_args,
-        ),
+        Instance::new(method.name.clone(), method_lifetime_args, method_type_args),
     ))
 }
 

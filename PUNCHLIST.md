@@ -32,13 +32,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - Decide on and standardize on whether malloc size and array index type should be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
-- **Infer omitted lifetimes before checking lifetime-dependent trait bounds.**
-  An obligation such as `T: Label<'a>` is currently checked before an omitted
-  call-site `'a` has been inferred. This conservatively rejects calls that an
-  explicit lifetime argument accepts; it does not accept an invalid impl.
-  Carry the trait obligation through lifetime inference, then select the impl
-  using the solved lifetime rather than treating an unresolved lifetime as a
-  wildcard.
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
   tracking; `copy fn_ptr(args)` doesn't. Silent hole. Prerequisite: extend
   `TypeKind::Fn` with per-slot lifetime bounds — the variance machinery
@@ -202,13 +195,12 @@ Use `tests/programs/stdlib.si` as the executable design probe. Keep library
 APIs honest about safety and ownership, and land compiler prerequisites as
 independent, fixture-backed changes in this order:
 
-1. **Substitute inferred lifetimes inside nominal generic results.** A call to
-   `fn<'a, T> as_span(&'a Vec<T>) -> Span<'a, T>` currently leaves the
-   callee-local `'a` in the concrete caller's lowered locals, producing
-   `TC-UndeclaredLifetime`. Substitute every occurrence of the inferred binder,
-   including lifetimes nested in nominal type arguments, before lowering the
-   call result. Replace the concrete `inspect_vec` workaround with the generic
-   `vec_as_span` API when this lands.
+1. **Infer and substitute lifetimes on nominal construction and projection.**
+   Struct and enum constructors currently carry an empty lifetime-argument
+   list, and field access and match payload binding substitute only type
+   parameters. Contextual typing masks this in many functions, but an inferred
+   local can expose a declaration-local lifetime. Infer constructor lifetime
+   arguments and substitute nominal lifetime arguments through projections.
 
 2. **Copy reference fields through a shared aggregate borrow.** A conventional
    `Span::get(&Span<'a, T>) -> &'a T` reports a loan conflict when it reads the
