@@ -681,6 +681,70 @@ fn call_auto_uninit_after_drop(value: BorrowTarget) {
     return
 }
 
+struct UnsafeTarget: Copy + Drop {
+  value: i64
+}
+
+trait UnsafeMethod {
+  fn<'s0, 's1> trait_dangerous(recv: & 's0 Self, $return: &out 's1 i64);
+}
+
+impl UnsafeMethod for UnsafeTarget {
+  fn<'s0, 's1> trait_dangerous(recv: & 's0 UnsafeTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+impl UnsafeTarget {
+  fn<'s0, 's1> inherent_dangerous(recv: & 's0 UnsafeTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'s0> call_unsafe_trait_method(value: UnsafeTarget, $return: &out 's0 i64) {
+  $tmp_0: & UnsafeTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <UnsafeTarget as UnsafeMethod>::trait_dangerous(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_unsafe_inherent_method(value: UnsafeTarget, $return: &out 's0 i64) {
+  $tmp_0: & UnsafeTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <UnsafeTarget>::inherent_dangerous(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
 fn receiver_effect() {
   $tmp_0: unit;
   entry:

@@ -197,6 +197,8 @@ pub enum HllTypeCheckCode {
     AmbiguousType,
     /// Dereferencing a raw pointer outside an unsafe block.
     UnsafeRequired,
+    /// An impl method's safety does not match its trait declaration.
+    ImplMethodSafetyMismatch,
     /// `extern "..."` names an ABI other than `"C"`.
     UnknownAbi,
     /// `expr as Type` where the pair isn't a supported cast.
@@ -457,6 +459,7 @@ pub struct TypeEnv {
     variables: Vec<HashMap<String, Type>>,
     structs: HashMap<String, StructDecl>,
     enums: HashMap<String, EnumDecl>,
+    traits: HashMap<String, TraitDecl>,
     functions: HashMap<String, FnDecl>,
     impls: Vec<ImplBlock>,
     current_ret_ty: Option<Type>,
@@ -474,6 +477,7 @@ impl TypeEnv {
             variables: vec![HashMap::new()],
             structs: HashMap::new(),
             enums: HashMap::new(),
+            traits: HashMap::new(),
             functions: HashMap::new(),
             impls: Vec::new(),
             current_ret_ty: None,
@@ -746,12 +750,16 @@ pub(super) fn typecheck_program_collect(
             Declaration::Fn(f) => {
                 env.functions.insert(f.name.clone(), f.clone());
             }
-            Declaration::Trait(_) => {}
+            Declaration::Trait(t) => {
+                env.traits.insert(t.name.clone(), t.clone());
+            }
             Declaration::Impl(i) => {
                 env.impls.push(i.clone());
             }
         }
     }
+
+    validate_impl_method_safety(&env, d);
 
     // Validate every decl-level type: fields, variant payloads, fn
     // params, fn returns. Every referenced `Custom` must be declared
@@ -926,6 +934,55 @@ pub(super) fn typecheck_program_collect(
     }
     types.pending_instantiations.clear();
     types
+}
+
+fn validate_impl_method_safety(env: &TypeEnv, d: &mut Diagnostics) {
+    for (impl_block, trait_path) in env.impls.iter().filter_map(|impl_block| {
+        impl_block
+            .trait_path
+            .as_ref()
+            .map(|path| (impl_block, path))
+    }) {
+        let Some(trait_decl) = env.traits.get(&trait_path.name) else {
+            // The MIR declaration checker diagnoses an undeclared trait; there
+            // is no trait safety contract to compare here.
+            continue;
+        };
+        for method in &impl_block.methods {
+            let Some(trait_method) = trait_decl
+                .methods
+                .iter()
+                .find(|trait_method| trait_method.name == method.name)
+            else {
+                // The MIR declaration checker diagnoses extra impl methods;
+                // only declared trait methods carry a safety contract.
+                continue;
+            };
+            if method.is_unsafe != trait_method.is_unsafe {
+                let expected = if trait_method.is_unsafe {
+                    "unsafe"
+                } else {
+                    "safe"
+                };
+                let found = if method.is_unsafe { "unsafe" } else { "safe" };
+                d.push_error(
+                    source_diagnostic(
+                        HllTypeCheckCode::ImplMethodSafetyMismatch,
+                        method.source,
+                        format!(
+                            "impl method '{}' is {}, but trait declaration is {}",
+                            method.name, found, expected
+                        ),
+                    )
+                    .in_function(impl_method_context(
+                        &impl_block.target,
+                        Some(trait_path),
+                        &method.name,
+                    )),
+                );
+            }
+        }
+    }
 }
 
 fn validate_fn_signature(
@@ -1823,6 +1880,12 @@ fn resolve_receiver_call(
         .iter()
         .filter_map(|impl_block| {
             let trait_path = impl_block.trait_path.as_ref()?;
+            let trait_method = env
+                .traits
+                .get(&trait_path.name)?
+                .methods
+                .iter()
+                .find(|candidate| candidate.name == method_name)?;
             let method = impl_block
                 .methods
                 .iter()
@@ -1836,22 +1899,23 @@ fn resolve_receiver_call(
                 self_ty,
                 bindings,
                 adjustment,
+                trait_method.is_unsafe,
             ))
         })
         .collect::<Vec<_>>();
     let has_exact_trait = trait_methods
         .iter()
-        .any(|(_, _, _, _, _, adjustment)| *adjustment == ReceiverAdjustment::None);
+        .any(|(_, _, _, _, _, adjustment, _)| *adjustment == ReceiverAdjustment::None);
     let trait_methods = trait_methods
         .into_iter()
-        .filter(|(_, _, _, _, _, adjustment)| {
+        .filter(|(_, _, _, _, _, adjustment, _)| {
             !has_exact_trait || *adjustment == ReceiverAdjustment::None
         })
         .collect::<Vec<_>>();
     if trait_methods.len() > 1 {
         let candidates = trait_methods
             .iter()
-            .map(|(impl_block, method, trait_path, _, _, _)| {
+            .map(|(impl_block, method, trait_path, _, _, _, _)| {
                 impl_method_context(&impl_block.target, Some(trait_path), &method.name)
             })
             .collect::<Vec<_>>()
@@ -1866,9 +1930,19 @@ fn resolve_receiver_call(
         ));
         return None;
     }
-    if let Some((impl_block, method, trait_path, self_ty, bindings, adjustment)) =
+    if let Some((impl_block, method, trait_path, self_ty, bindings, adjustment, is_unsafe)) =
         trait_methods.into_iter().next()
     {
+        if is_unsafe && !env.in_unsafe {
+            d.push_error(source_diagnostic(
+                UnsafeRequired,
+                method_source,
+                format!(
+                    "call to unsafe trait method '{}' requires unsafe block",
+                    method_name
+                ),
+            ));
+        }
         let (fn_ty, method_instance) = instantiate_method(
             env,
             subst,

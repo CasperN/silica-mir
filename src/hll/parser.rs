@@ -636,17 +636,6 @@ impl Parser {
                 );
                 continue;
             }
-            if method.is_unsafe {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        format!("trait method '{}' cannot be unsafe", method.name),
-                    )
-                    .in_function(&context),
-                );
-                continue;
-            }
             if method.body.is_some() {
                 d.push_error(
                     self.diag(
@@ -750,17 +739,6 @@ impl Parser {
                         child,
                         ParserCode::MalformedCst,
                         format!("impl method '{}' cannot be extern", method.name),
-                    )
-                    .in_function(&context),
-                );
-                continue;
-            }
-            if method.is_unsafe {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::MalformedCst,
-                        format!("impl method '{}' cannot be unsafe", method.name),
                     )
                     .in_function(&context),
                 );

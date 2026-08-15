@@ -229,6 +229,30 @@ fn call_auto_uninit_after_drop(value: BorrowTarget) {
   local.auto_uninit();
 }
 
+struct UnsafeTarget: Copy + Drop { value: i64 }
+
+trait UnsafeMethod {
+  unsafe fn trait_dangerous(recv: & Self) -> i64;
+}
+
+impl UnsafeMethod for UnsafeTarget {
+  unsafe fn trait_dangerous(recv: & Self) -> i64 { recv.*.value }
+}
+
+impl UnsafeTarget {
+  unsafe fn inherent_dangerous(recv: & Self) -> i64 { recv.*.value }
+}
+
+# covers: an unsafe block permits an unsafe trait-method call
+fn call_unsafe_trait_method(value: UnsafeTarget) -> i64 {
+  unsafe { value.trait_dangerous() }
+}
+
+# covers: an unsafe block permits an unsafe inherent-method call
+fn call_unsafe_inherent_method(value: UnsafeTarget) -> i64 {
+  unsafe { value.inherent_dangerous() }
+}
+
 fn receiver_effect() {}
 fn make_argument() -> i64 { 1 }
 

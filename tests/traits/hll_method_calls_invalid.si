@@ -112,3 +112,43 @@ fn no_receiver() {}
 fn free_without_receiver(value: Missing) {
   value.no_receiver();
 }
+
+struct UnsafeMethodTarget: Copy + Drop { value: i64 }
+
+trait UnsafeCall {
+  unsafe fn trait_dangerous(recv: & Self);
+}
+
+impl UnsafeCall for UnsafeMethodTarget {
+  unsafe fn trait_dangerous(recv: & Self) { unit }
+}
+
+impl UnsafeMethodTarget {
+  unsafe fn inherent_dangerous(recv: & Self) { unit }
+}
+
+# covers: unsafe trait methods cannot be called from a safe context
+fn unsafe_trait_call(value: UnsafeMethodTarget) {
+  value.trait_dangerous();
+}
+
+# covers: unsafe inherent methods cannot be called from a safe context
+fn unsafe_inherent_call(value: UnsafeMethodTarget) {
+  value.inherent_dangerous();
+}
+
+trait SafeContract {
+  fn safety_mismatch(recv: & Self);
+}
+
+impl SafeContract for UnsafeMethodTarget {
+  unsafe fn safety_mismatch(recv: & Self) { unit }
+}
+
+trait UnsafeContract {
+  unsafe fn other_safety_mismatch(recv: & Self);
+}
+
+impl UnsafeContract for UnsafeMethodTarget {
+  fn other_safety_mismatch(recv: & Self) { unit }
+}

@@ -1,7 +1,7 @@
 # HLL-specific trait and impl declaration shape errors.
 #
 # covers: trait bodies, bodyless impl methods, extern methods, duplicates,
-# unsafe methods, nested generic shadowing, and reserved Self positions
+# nested generic shadowing and reserved Self positions
 
 struct S: Copy + Drop { value: i64 }
 
@@ -19,10 +19,6 @@ trait ExternTrait {
 
 trait AbiTrait {
   extern "C" fn abi(recv: & Self);
-}
-
-trait UnsafeTrait {
-  unsafe fn unsafe_method(recv: & Self);
 }
 
 trait Duplicate {
@@ -44,10 +40,6 @@ impl Required for S {
 
 impl Required for S {
   extern "C" fn required(recv: & Self) { unit }
-}
-
-impl Required for S {
-  unsafe fn required(recv: & Self) { unit }
 }
 
 impl Required for S {
