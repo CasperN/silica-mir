@@ -6,8 +6,7 @@ the compiler evolves; treat entries as snapshots, not commitments.
 ## Language features
 - **Complete HLL trait and method use.** Keep this work split into independently
   reviewable changes, in dependency order:
-  1. Preserve and enforce ABI modifiers on all function forms, including free
-     functions, trait methods, impl methods, and function values.
+  1. Complete the function ABI and linkage roadmap below.
   2. Revisit which ownership traits are compiler-blessed. The trivial and auto
      tiers require compiler interaction; the higher explicit tiers may live in
      the standard library. Discuss the boundary before implementation.
@@ -128,8 +127,9 @@ covered.
    `Place` variant to update the central projection library before
    downstream passes compile.
 
-The function-type loss of ABI and lifetime-signature information remains a
-feature prerequisite under FFI/lifetime work rather than part of this cleanup.
+The function-type loss of lifetime-signature information remains a feature
+prerequisite under lifetime work rather than part of this cleanup. Function
+ABI representation is owned by the ABI and linkage roadmap below.
 Likewise, phase-specific `Program` wrappers are deliberately out of scope.
 
 ### Cross-roadmap execution order
@@ -147,8 +147,54 @@ order rather than completing either roadmap in isolation:
 Diagnostics 1 may initially retain statement-level sources; Diagnostics 4 is
 the deliberate later refinement to nested operand and projection sources.
 
-## FFI
-- **`TypeKind::Fn` erases ABI.** A `fn(T) -> R`-typed value carries no ABI info, so calling through a fn pointer can't dispatch Silica-sret vs C-ABI. Once C-ABI externs are wired through codegen (see the extern ABI item under Language features), a fn pointer taken to an extern would need either a Silica-shape wrapper or a ban at the pointer-taking site.
+## Function ABI and linkage roadmap
+
+Treat three properties independently throughout the compiler:
+
+- `extern` says that a declaration is supplied by another linkage unit rather
+  than by a Silica body.
+- An ABI modifier such as `"C"` selects a calling convention. Its absence
+  selects the native Silica convention.
+- `unsafe` controls the obligations at a call site.
+
+The ABI is part of a callable value's type. Linkage and body availability are
+properties of a declaration, not of a function type. Trait signatures have no
+body but are not external declarations; impl methods have bodies but may use a
+non-default ABI.
+
+Implement this as the following sequence of independently reviewable commits:
+
+1. **Separate and centralize declaration modifiers.** Introduce one shared ABI
+   representation for HLL and MIR declarations, and stop inferring `extern`
+   from the presence or absence of a body. Parse and pretty-print linkage, ABI,
+   and safety independently, preserve them through HLL lowering, and diagnose
+   structurally invalid declaration/body combinations. Keep the default native
+   ABI behavior unchanged. Pin round trips and both bodyful and bodyless free
+   functions in fixtures.
+
+2. **Make function types ABI-bearing and calls type-directed.** Extend HLL and
+   MIR function types with the ABI, including surface syntax, formatting,
+   inference, unification, substitution, folding, monomorphization, and
+   function-item typing. ABI mismatches must be ordinary type errors. Refactor
+   codegen so direct and indirect calls select return and argument conventions
+   from the callee type rather than recovering them from a direct declaration.
+   Cover native and C-ABI declarations, definitions, function values, indirect
+   calls, and non-unit returns end to end in the same commit.
+
+3. **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
+   inherent, and trait-impl methods; reject unsupported ABI names everywhere;
+   require an impl method's ABI to match its trait signature; and preserve the
+   selected method ABI through qualified calls, dot calls, lowering, and
+   monomorphization. Test inherent and trait dispatch, generic receivers,
+   receiver auto-borrowing, explicit qualified calls, and ambiguity/error
+   diagnostics without introducing ABI-specific method resolution paths.
+
+**Stop condition:** free functions, methods, and first-class function values
+retain their ABI through parsing, checking, lowering, monomorphization, and
+codegen; direct and indirect calls agree; and invalid or mismatched ABIs are
+diagnosed before codegen. Platform-specific C ABI classification, variadics,
+symbol visibility, dynamic linking, and target-specific LLVM parameter
+attributes remain later FFI work.
 
 ## Testing gaps
 - **Warning-only fixtures are not pinned.** A clean `.expected.sim` fixture
@@ -175,7 +221,9 @@ the deliberate later refinement to nested operand and projection sources.
   to comma-required-optional-trailing (match HLL).
 - Coroutines. Prerequisites: generics, lifetime arguments, HLL `defer`.
 - Lambdas.
-- Silica C FFI and calling conventions: Define C linkage declarations (`extern "C" fn`) and emit standard ABI parameter attributes in LLVM.
+- Complete platform C FFI beyond call-convention selection: ABI classification
+  for aggregate arguments and returns, variadics, symbol visibility, dynamic
+  linking, and target-specific LLVM parameter attributes.
 - Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
 - Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
 
