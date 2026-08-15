@@ -655,11 +655,7 @@ impl<'a> LocalEnv<'a> {
             | TypeKind::Unit
             | TypeKind::Fn(_) => all(),
             TypeKind::Never | TypeKind::RawPtr(_) => all(),
-            TypeKind::Ref(kind, _, _) => match kind {
-                RefKind::Shared => all(),
-                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
-                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
-            },
+            TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(Instance { name, .. }) => match self.program.types.get(name) {
                 Some(TypeDecl::Struct(s)) => s.meta.markers,
                 Some(TypeDecl::Enum(e)) => e.meta.markers,

@@ -376,6 +376,33 @@ pub enum RefKind {
     Uninit, // &uninit
 }
 
+impl RefKind {
+    pub fn value_markers(self) -> Markers {
+        match self {
+            Self::Shared => Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]),
+            Self::Mut | Self::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
+            Self::Out | Self::Drop => Markers::from_iter([Marker::Move]),
+        }
+    }
+
+    pub fn write_type_prefix<W, L>(self, out: &mut W, lifetime: Option<&L>) -> std::fmt::Result
+    where
+        W: std::fmt::Write + ?Sized,
+        L: std::fmt::Display + ?Sized,
+    {
+        write!(out, "{}", self)?;
+        if let Some(lifetime) = lifetime {
+            if self != Self::Shared {
+                out.write_char(' ')?;
+            }
+            write!(out, "{} ", lifetime)?;
+        } else if self != Self::Shared {
+            out.write_char(' ')?;
+        }
+        Ok(())
+    }
+}
+
 impl std::fmt::Display for RefKind {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         let s = match self {

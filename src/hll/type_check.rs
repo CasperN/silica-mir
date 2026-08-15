@@ -582,11 +582,7 @@ impl TypeEnv {
             | TypeKind::Unit
             | TypeKind::Never => all(),
             TypeKind::Fn(_, _) | TypeKind::RawPtr(_) => all(),
-            TypeKind::Ref(kind, _, _) => match kind {
-                RefKind::Shared => all(),
-                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
-                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
-            },
+            TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(Instance { name, .. }) => {
                 if let Some(s) = self.structs.get(name) {
                     s.markers

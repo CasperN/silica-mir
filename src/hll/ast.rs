@@ -132,10 +132,10 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Never => write!(f, "never"),
             TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
-            TypeKind::Ref(RefKind::Shared, Some(lt), inner) => write!(f, "&{} {}", lt, inner),
-            TypeKind::Ref(RefKind::Shared, None, inner) => write!(f, "&{}", inner),
-            TypeKind::Ref(kind, Some(lt), inner) => write!(f, "{} {} {}", kind, lt, inner),
-            TypeKind::Ref(kind, None, inner) => write!(f, "{} {}", kind, inner),
+            TypeKind::Ref(kind, lifetime, inner) => {
+                kind.write_type_prefix(f, lifetime.as_ref())?;
+                inner.fmt(f)
+            }
             TypeKind::RawPtr(inner) => write!(f, "*{}", inner),
             TypeKind::Fn(params, ret) => {
                 write!(f, "fn(")?;

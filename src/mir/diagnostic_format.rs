@@ -7,7 +7,7 @@
 //! and formats structured MIR values directly; it never rewrites completed
 //! prose.
 
-use crate::common::{GeneratedKind, Lifetime, RefKind, SourceInfo};
+use crate::common::{GeneratedKind, Lifetime, SourceInfo};
 use crate::diagnostics::Diagnostic;
 use crate::mir::ast::{DeclMeta, GenericParams, Instance, Type, TypeKind};
 use crate::mir::lifetime::Region;
@@ -170,17 +170,10 @@ impl DiagnosticFormat {
                 Ok(())
             }
             TypeKind::Ref(kind, lifetime, inner) => {
-                write!(out, "{}", kind)?;
-                match (kind, lifetime) {
-                    (RefKind::Shared, Some(lifetime)) => {
-                        write!(out, "{} ", self.lifetime(scope, lifetime))?;
-                    }
-                    (RefKind::Shared, None) => {}
-                    (_, Some(lifetime)) => {
-                        write!(out, " {} ", self.lifetime(scope, lifetime))?;
-                    }
-                    (_, None) => out.push(' '),
-                }
+                let lifetime = lifetime
+                    .as_ref()
+                    .map(|lifetime| self.lifetime(scope, lifetime));
+                kind.write_type_prefix(out, lifetime.as_ref())?;
                 self.write_type(scope, inner, out)
             }
             TypeKind::RawPtr(inner) => {

@@ -497,11 +497,7 @@ impl MonoCtx {
             | TypeKind::Never
             | TypeKind::Fn(_)
             | TypeKind::RawPtr(_) => all(),
-            TypeKind::Ref(kind, _, _) => match kind {
-                RefKind::Shared => all(),
-                RefKind::Mut | RefKind::Uninit => Markers::from_iter([Marker::Drop, Marker::Move]),
-                RefKind::Out | RefKind::Drop => Markers::from_iter([Marker::Move]),
-            },
+            TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(instance) => self
                 .type_markers
                 .get(&instance.name)
