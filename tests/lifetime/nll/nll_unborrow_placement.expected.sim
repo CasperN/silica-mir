@@ -215,11 +215,11 @@ fn mut_chained_reborrow_deepest_first(x: i64) {
 }
 
 trait ImplNllOk {
-  fn<'s0, 's1> close(recv: & 's0 Self, x: &out 's1 i64);
+  fn<'s0, 's1> close(recv: &'s0 Self, x: &out 's1 i64);
 }
 
 impl ImplNllOk for P {
-  fn<'s0, 's1> close(recv: & 's0 P, x: &out 's1 i64) {
+  fn<'s0, 's1> close(recv: &'s0 P, x: &out 's1 i64) {
     entry:
       unborrow recv;
       x.* = 42;

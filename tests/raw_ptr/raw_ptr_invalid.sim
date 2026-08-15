@@ -71,7 +71,7 @@ fn ptr_cast_target_not_pointer(x: i64) {
   r: &i64;
   y: i64;
   entry:
-    r = & x;
+    r = &x;
     y = ptr_cast(copy r, i64);
     return
 }

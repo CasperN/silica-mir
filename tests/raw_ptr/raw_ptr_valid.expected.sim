@@ -138,12 +138,12 @@ fn ptr_dup(x: i64) {
 }
 
 fn alias_raw_and_shared(x: i64) {
-  r: & i64;
+  r: &i64;
   p: *i64;
   y: i64;
   z: i64;
   entry:
-    r = & x;
+    r = &x;
     p = &raw x;
     y = copy p.*;
     z = copy r.*;
@@ -175,11 +175,11 @@ fn alias_raw_and_mut(x: i64) {
 
 fn ptr_cast_raw_to_ref(x: i64) {
   p: *i64;
-  r: & i64;
+  r: &i64;
   y: i64;
   entry:
     p = &raw x;
-    r = ptr_cast(copy p, & i64);
+    r = ptr_cast(copy p, &i64);
     y = copy r.*;
     unborrow r;
     drop y;
@@ -189,11 +189,11 @@ fn ptr_cast_raw_to_ref(x: i64) {
 }
 
 fn ptr_cast_ref_to_raw(x: i64) {
-  r: & i64;
+  r: &i64;
   p: *i64;
   y: i64;
   entry:
-    r = & x;
+    r = &x;
     p = ptr_cast(copy r, *i64);
     unborrow r;
     y = copy p.*;

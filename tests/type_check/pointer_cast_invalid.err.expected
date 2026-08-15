@@ -33,7 +33,7 @@ error: at 26:3: [HTC-InvalidCast] In function 'ptr_to_int': cast from *i64 to u6
     |   ^^^^^^^^
  27 | }
     |
-error: at 30:3: [HTC-InvalidCast] In function 'ref_to_struct': cast from & i64 to P is not supported
+error: at 30:3: [HTC-InvalidCast] In function 'ref_to_struct': cast from &i64 to P is not supported
     |
  29 | fn ref_to_struct(r: &i64) -> P {
  30 |   r as P

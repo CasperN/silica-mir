@@ -11,29 +11,29 @@ struct Dispatch: Copy + Drop {
 }
 
 trait PriorityTrait {
-  fn priority(recv: & Dispatch, value: i64) -> i64;
+  fn priority(recv: &Dispatch, value: i64) -> i64;
 }
 
 impl PriorityTrait for Dispatch {
-  fn priority(recv: & Dispatch, value: i64) -> i64 { value }
+  fn priority(recv: &Dispatch, value: i64) -> i64 { value }
 }
 
 trait FieldTrait {
-  fn trait_over_field(recv: & Dispatch, value: i64) -> i64;
+  fn trait_over_field(recv: &Dispatch, value: i64) -> i64;
 }
 
 impl FieldTrait for Dispatch {
-  fn trait_over_field(recv: & Dispatch, value: i64) -> i64 { value }
+  fn trait_over_field(recv: &Dispatch, value: i64) -> i64 { value }
 }
 
 impl Dispatch {
-  fn priority(recv: & Dispatch, value: i64) -> i64 { value }
+  fn priority(recv: &Dispatch, value: i64) -> i64 { value }
 }
 
 fn priority(recv: Dispatch, value: i64) -> i64 { value }
 fn trait_over_field(recv: Dispatch, value: i64) -> i64 { value }
-fn field_over_free(recv: & Dispatch, value: i64) -> i64 { value }
-fn free_over_noncallable(recv: & Dispatch, value: i64) -> i64 { value }
+fn field_over_free(recv: &Dispatch, value: i64) -> i64 { value }
+fn free_over_noncallable(recv: &Dispatch, value: i64) -> i64 { value }
 unsafe fn unsafe_free(recv: Dispatch) -> i64 { recv.free_over_noncallable }
 
 # covers: inherent method outranks trait method, callable field, and free UFCS
@@ -69,17 +69,17 @@ fn select_unsafe_free(value: Dispatch) -> i64 {
 struct<T: Copy + Drop> Box: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<U: Copy + Drop> inherent_generic(recv: & Box<T>, ignored: U) -> T {
+  fn<U: Copy + Drop> inherent_generic(recv: &Box<T>, ignored: U) -> T {
     recv.*.value
   }
 }
 
 trait<T: Copy + Drop> GenericTrait {
-  fn<U: Copy + Drop> trait_generic(recv: & Box<T>, ignored: U) -> T;
+  fn<U: Copy + Drop> trait_generic(recv: &Box<T>, ignored: U) -> T;
 }
 
 impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
-  fn<U: Copy + Drop> trait_generic(recv: & Box<T>, ignored: U) -> T {
+  fn<U: Copy + Drop> trait_generic(recv: &Box<T>, ignored: U) -> T {
     recv.*.value
   }
 }
@@ -106,33 +106,33 @@ fn call_generic_free(value: Box<i64>) -> i64 {
 struct Shared: Copy + Drop { value: i64 }
 
 impl Shared {
-  fn exact_shared(recv: & Shared) -> i64 { recv.*.value }
+  fn exact_shared(recv: &Shared) -> i64 { recv.*.value }
 
-  fn<'a> inferred_method_lifetime(recv: & 'a Shared) -> i64 {
+  fn<'a> inferred_method_lifetime(recv: &'a Shared) -> i64 {
     recv.*.value
   }
 }
 
 # covers: an already-borrowed receiver matches a reference receiver exactly
-fn call_exact_shared(value: & Shared) -> i64 {
+fn call_exact_shared(value: &Shared) -> i64 {
   value.exact_shared()
 }
 
 # covers: omitted method lifetime arguments are inferred
-fn<'a> call_inferred_method_lifetime(value: & 'a Shared) -> i64 {
+fn<'a> call_inferred_method_lifetime(value: &'a Shared) -> i64 {
   value.inferred_method_lifetime()
 }
 
 trait<'a> LifetimeTrait {
-  fn lifetime_method(recv: & 'a Shared) -> i64;
+  fn lifetime_method(recv: &'a Shared) -> i64;
 }
 
 impl<'a> LifetimeTrait<'a> for Shared {
-  fn lifetime_method(recv: & 'a Shared) -> i64 { recv.*.value }
+  fn lifetime_method(recv: &'a Shared) -> i64 { recv.*.value }
 }
 
 # covers: receiver lifetime instantiates a trait path
-fn<'a> call_lifetime_trait(value: & 'a Shared) -> i64 {
+fn<'a> call_lifetime_trait(value: &'a Shared) -> i64 {
   value.lifetime_method()
 }
 
@@ -157,7 +157,7 @@ trait ExactRank {
 }
 
 trait BorrowedRank {
-  fn ranked(recv: & Ranked);
+  fn ranked(recv: &Ranked);
 }
 
 impl ExactRank for Ranked {
@@ -165,7 +165,7 @@ impl ExactRank for Ranked {
 }
 
 impl BorrowedRank for Ranked {
-  fn ranked(recv: & Ranked) { unit }
+  fn ranked(recv: &Ranked) { unit }
 }
 
 # covers: an exact receiver match outranks an auto-borrow in the same tier
@@ -176,7 +176,7 @@ fn exact_outranks_auto_borrow(value: Ranked) {
 struct BorrowTarget: Copy + Drop { value: i64 }
 
 impl BorrowTarget {
-  fn inherent_auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
+  fn inherent_auto_shared(recv: &BorrowTarget) -> i64 { recv.*.value }
   fn inherent_auto_mut(recv: &mut BorrowTarget) {
     let old = recv.*.value;
     recv.*.value = 4;
@@ -190,7 +190,7 @@ impl BorrowTarget {
 }
 
 trait AutoBorrowMethods {
-  fn trait_auto_shared(recv: & BorrowTarget) -> i64;
+  fn trait_auto_shared(recv: &BorrowTarget) -> i64;
   fn trait_auto_mut(recv: &mut BorrowTarget);
   fn trait_auto_out(recv: &out BorrowTarget);
   fn trait_auto_drop(recv: &drop BorrowTarget);
@@ -198,7 +198,7 @@ trait AutoBorrowMethods {
 }
 
 impl AutoBorrowMethods for BorrowTarget {
-  fn trait_auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
+  fn trait_auto_shared(recv: &BorrowTarget) -> i64 { recv.*.value }
   fn trait_auto_mut(recv: &mut BorrowTarget) {
     let old = recv.*.value;
     recv.*.value = 6;
@@ -211,7 +211,7 @@ impl AutoBorrowMethods for BorrowTarget {
   fn trait_auto_uninit(recv: &uninit BorrowTarget) {}
 }
 
-fn auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
+fn auto_shared(recv: &BorrowTarget) -> i64 { recv.*.value }
 fn auto_mut(recv: &mut BorrowTarget) {
   let old = recv.*.value;
   recv.*.value = 2;
@@ -322,15 +322,15 @@ fn call_trait_auto_uninit() {
 struct UnsafeTarget: Copy + Drop { value: i64 }
 
 trait UnsafeMethod {
-  unsafe fn trait_dangerous(recv: & Self) -> i64;
+  unsafe fn trait_dangerous(recv: &Self) -> i64;
 }
 
 impl UnsafeMethod for UnsafeTarget {
-  unsafe fn trait_dangerous(recv: & Self) -> i64 { recv.*.value }
+  unsafe fn trait_dangerous(recv: &Self) -> i64 { recv.*.value }
 }
 
 impl UnsafeTarget {
-  unsafe fn inherent_dangerous(recv: & Self) -> i64 { recv.*.value }
+  unsafe fn inherent_dangerous(recv: &Self) -> i64 { recv.*.value }
 }
 
 # covers: an unsafe block permits an unsafe trait-method call
@@ -355,18 +355,18 @@ trait BoundArgument {}
 impl BoundArgument for BorrowTarget {}
 
 trait<X: Copy + Drop> GenericReceiver {
-  fn bound_shared(recv: & Self);
+  fn bound_shared(recv: &Self);
   fn bound_mut(recv: &mut Self);
   fn bound_out(recv: &out Self);
   fn bound_drop(recv: &drop Self);
   fn bound_uninit(recv: &uninit Self);
   fn bound_consume(recv: Self);
-  fn bound_parameter(recv: & Self, value: X);
-  fn<U: BoundArgument> bound_generic(recv: & Self, value: & U);
+  fn bound_parameter(recv: &Self, value: X);
+  fn<U: BoundArgument> bound_generic(recv: &Self, value: &U);
 }
 
 # covers: an already-borrowed generic receiver matches its direct bound exactly
-fn<T: GenericReceiver<i64>> generic_bound_exact(value: & T) {
+fn<T: GenericReceiver<i64>> generic_bound_exact(value: &T) {
   value.bound_shared();
 }
 
@@ -408,14 +408,14 @@ fn<T: GenericReceiver<i64> + Move> generic_bound_consume(value: T) {
 }
 
 # covers: trait arguments substitute into a direct-bound method signature
-fn<T: GenericReceiver<i64>> generic_bound_parameter(value: & T) {
+fn<T: GenericReceiver<i64>> generic_bound_parameter(value: &T) {
   value.bound_parameter(1);
 }
 
 # covers: direct-bound method generic obligations are enforced and inferred
 fn<T: GenericReceiver<i64>> generic_bound_method_argument(
-  value: & T,
-  argument: & BorrowTarget,
+  value: &T,
+  argument: &BorrowTarget,
 ) {
   value.bound_generic(argument);
 }
@@ -434,7 +434,7 @@ trait BoundExact {
 }
 
 trait BoundBorrowed {
-  fn bound_rank(recv: & Self);
+  fn bound_rank(recv: &Self);
 }
 
 # covers: an exact direct-bound receiver outranks an auto-borrow candidate

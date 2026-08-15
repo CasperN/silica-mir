@@ -12,39 +12,39 @@
 #   Dead for Counter                  unreachable impl method is not emitted
 
 trait Read {
-  fn read(recv: & Self, $return: &out i64);
+  fn read(recv: &Self, $return: &out i64);
 }
 
 trait Twice {
-  fn twice(recv: & Self, $return: &out i64);
+  fn twice(recv: &Self, $return: &out i64);
 }
 
 trait Identity {
-  fn<T: Copy + Drop> id(recv: & Self, value: T, $return: &out T);
+  fn<T: Copy + Drop> id(recv: &Self, value: T, $return: &out T);
 }
 
 trait<T: Copy + Drop> Get {
-  fn get(recv: & Self, $return: &out T);
+  fn get(recv: &Self, $return: &out T);
 }
 
 trait Dead {
-  fn dead(recv: & Self);
+  fn dead(recv: &Self);
 }
 
 trait<T: Copy + Drop> Tagged {
-  fn tagged(recv: & Self, $return: &out T);
+  fn tagged(recv: &Self, $return: &out T);
 }
 
 trait<'a> LifetimeRead {
-  fn lifetime_read(recv: & Self);
+  fn lifetime_read(recv: &Self);
 }
 
 struct Counter: Copy + Drop { value: i64 }
 struct<T: Copy + Drop> Box: Copy + Drop { value: T }
-struct<'a> BorrowedCounter: Copy + Drop { counter: & 'a Counter }
+struct<'a> BorrowedCounter: Copy + Drop { counter: &'a Counter }
 
 impl Read for Counter {
-  fn read(recv: & Counter, $return: &out i64) {
+  fn read(recv: &Counter, $return: &out i64) {
     entry:
       $return.* = copy recv.*.value;
       return
@@ -52,7 +52,7 @@ impl Read for Counter {
 }
 
 impl Counter {
-  fn inherent_read(recv: & Counter, $return: &out i64) {
+  fn inherent_read(recv: &Counter, $return: &out i64) {
     entry:
       $return.* = copy recv.*.value;
       return
@@ -61,7 +61,7 @@ impl Counter {
 
 # covers: generic inherent impl selected from a generic caller
 impl<T: Copy + Drop> Box<T> {
-  fn inherent_get(recv: & Box<T>, $return: &out T) {
+  fn inherent_get(recv: &Box<T>, $return: &out T) {
     entry:
       $return.* = copy recv.*.value;
       return
@@ -69,7 +69,7 @@ impl<T: Copy + Drop> Box<T> {
 }
 
 impl Twice for Counter {
-  fn twice(recv: & Counter, $return: &out i64) {
+  fn twice(recv: &Counter, $return: &out i64) {
     inner: i64;
     inner_out: &out i64;
     entry:
@@ -81,7 +81,7 @@ impl Twice for Counter {
 }
 
 impl Identity for Counter {
-  fn<T: Copy + Drop> id(recv: & Counter, value: T, $return: &out T) {
+  fn<T: Copy + Drop> id(recv: &Counter, value: T, $return: &out T) {
     entry:
       $return.* = copy value;
       return
@@ -89,7 +89,7 @@ impl Identity for Counter {
 }
 
 impl<T: Copy + Drop> Get<T> for Box<T> {
-  fn get(recv: & Box<T>, $return: &out T) {
+  fn get(recv: &Box<T>, $return: &out T) {
     entry:
       $return.* = copy recv.*.value;
       return
@@ -97,14 +97,14 @@ impl<T: Copy + Drop> Get<T> for Box<T> {
 }
 
 impl Dead for Counter {
-  fn dead(recv: & Counter) {
+  fn dead(recv: &Counter) {
     entry:
       return
   }
 }
 
 impl Tagged<i64> for Counter {
-  fn tagged(recv: & Counter, $return: &out i64) {
+  fn tagged(recv: &Counter, $return: &out i64) {
     entry:
       $return.* = copy recv.*.value;
       return
@@ -112,7 +112,7 @@ impl Tagged<i64> for Counter {
 }
 
 impl Tagged<bool> for Counter {
-  fn tagged(recv: & Counter, $return: &out bool) {
+  fn tagged(recv: &Counter, $return: &out bool) {
     entry:
       $return.* = true;
       return
@@ -120,15 +120,15 @@ impl Tagged<bool> for Counter {
 }
 
 impl<'a> LifetimeRead<'a> for BorrowedCounter<'a> {
-  fn lifetime_read(recv: & BorrowedCounter<'a>) {
+  fn lifetime_read(recv: &BorrowedCounter<'a>) {
     entry:
       return
   }
 }
 
 fn<'a, 'b> lifetime_dispatch(
-  left: & BorrowedCounter<'a>,
-  right: & BorrowedCounter<'b>,
+  left: &BorrowedCounter<'a>,
+  right: &BorrowedCounter<'b>,
 ) {
   entry:
     call <BorrowedCounter<'a> as LifetimeRead<'a>>::lifetime_read(copy left);
@@ -136,7 +136,7 @@ fn<'a, 'b> lifetime_dispatch(
     return
 }
 
-fn<T: Copy + Drop> inherent_dispatch(recv: & Box<T>, $return: &out T) {
+fn<T: Copy + Drop> inherent_dispatch(recv: &Box<T>, $return: &out T) {
   entry:
     call <Box<T>>::inherent_get(copy recv, move $return);
     return

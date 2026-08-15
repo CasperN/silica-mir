@@ -1,4 +1,4 @@
-fn<'a, 's0> plain_input_no_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a, 's0> plain_input_no_bound(x: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -6,7 +6,7 @@ fn<'a, 's0> plain_input_no_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 's0> invariant_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a, 's0> invariant_identity(x: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -14,8 +14,8 @@ fn<'a, 's0> invariant_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'p, 's0> invariant_forwarding(x: & 'p i64, $return: &out 's0 & 'p i64) {
-  ret_out: &out & 'p i64;
+fn<'p, 's0> invariant_forwarding(x: &'p i64, $return: &out 's0 &'p i64) {
+  ret_out: &out &'p i64;
   entry:
     ret_out = &out $return.*;
     call invariant_identity(copy x, move ret_out);
@@ -25,15 +25,15 @@ fn<'p, 's0> invariant_forwarding(x: & 'p i64, $return: &out 's0 & 'p i64) {
 }
 
 struct<'r> CallReceiver: Copy + Drop {
-  value: & 'r i64
+  value: &'r i64
 }
 
 trait QualifiedNeedsBound {
-  fn<'a, 'b: 'a, 's0> trait_needs(recv: & 's0 Self, x: & 'a i64, y: & 'b i64);
+  fn<'a, 'b: 'a, 's0> trait_needs(recv: &'s0 Self, x: &'a i64, y: &'b i64);
 }
 
 impl<'r> CallReceiver<'r> {
-  fn<'a, 'b: 'a, 's0> inherent_needs(recv: & 's0 CallReceiver<'r>, x: & 'a i64, y: & 'b i64) {
+  fn<'a, 'b: 'a, 's0> inherent_needs(recv: &'s0 CallReceiver<'r>, x: &'a i64, y: &'b i64) {
     entry:
       unborrow recv;
       unborrow x;
@@ -43,7 +43,7 @@ impl<'r> CallReceiver<'r> {
 }
 
 impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
-  fn<'a, 'b: 'a, 's0> trait_needs(recv: & 's0 CallReceiver<'r>, x: & 'a i64, y: & 'b i64) {
+  fn<'a, 'b: 'a, 's0> trait_needs(recv: &'s0 CallReceiver<'r>, x: &'a i64, y: &'b i64) {
     entry:
       unborrow recv;
       unborrow x;
@@ -52,7 +52,7 @@ impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
   }
 }
 
-fn<'p, 'q: 'p, 's0> inherent_caller_bound_ok(recv: & 's0 CallReceiver<'p>, x: & 'p i64, y: & 'q i64) {
+fn<'p, 'q: 'p, 's0> inherent_caller_bound_ok(recv: &'s0 CallReceiver<'p>, x: &'p i64, y: &'q i64) {
   entry:
     call <CallReceiver<'p>>::inherent_needs<'p, 'q>(copy recv, copy x, copy y);
     unborrow recv;
@@ -61,7 +61,7 @@ fn<'p, 'q: 'p, 's0> inherent_caller_bound_ok(recv: & 's0 CallReceiver<'p>, x: & 
     return
 }
 
-fn<'p, 'q: 'p, 's0> trait_caller_bound_ok(recv: & 's0 CallReceiver<'p>, x: & 'p i64, y: & 'q i64) {
+fn<'p, 'q: 'p, 's0> trait_caller_bound_ok(recv: &'s0 CallReceiver<'p>, x: &'p i64, y: &'q i64) {
   entry:
     call <CallReceiver<'p> as QualifiedNeedsBound>::trait_needs<'p, 'q>(copy recv, copy x, copy y);
     unborrow recv;
@@ -71,16 +71,16 @@ fn<'p, 'q: 'p, 's0> trait_caller_bound_ok(recv: & 's0 CallReceiver<'p>, x: & 'p 
 }
 
 trait<'a, 'b: 'a> QualifiedTraitHeaderBound {
-  fn<'s0> invoke(recv: & 's0 Self);
+  fn<'s0> invoke(recv: &'s0 Self);
 }
 
 struct<'a, 'b> HeaderReceiver: Copy + Drop {
-  first: & 'a i64
-  second: & 'b i64
+  first: &'a i64
+  second: &'b i64
 }
 
 impl<'a, 'b: 'a> HeaderReceiver<'a, 'b> {
-  fn<'s0> inherent_header(recv: & 's0 HeaderReceiver<'a, 'b>) {
+  fn<'s0> inherent_header(recv: &'s0 HeaderReceiver<'a, 'b>) {
     entry:
       unborrow recv;
       return
@@ -88,21 +88,21 @@ impl<'a, 'b: 'a> HeaderReceiver<'a, 'b> {
 }
 
 impl<'a, 'b: 'a> QualifiedTraitHeaderBound<'a, 'b> for HeaderReceiver<'a, 'b> {
-  fn<'s0> invoke(recv: & 's0 HeaderReceiver<'a, 'b>) {
+  fn<'s0> invoke(recv: &'s0 HeaderReceiver<'a, 'b>) {
     entry:
       unborrow recv;
       return
   }
 }
 
-fn<'p, 'q: 'p, 's0> trait_header_caller_bound_ok(recv: & 's0 HeaderReceiver<'p, 'q>) {
+fn<'p, 'q: 'p, 's0> trait_header_caller_bound_ok(recv: &'s0 HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q> as QualifiedTraitHeaderBound<'p, 'q>>::invoke(copy recv);
     unborrow recv;
     return
 }
 
-fn<'p, 'q: 'p, 's0> impl_header_caller_bound_ok(recv: & 's0 HeaderReceiver<'p, 'q>) {
+fn<'p, 'q: 'p, 's0> impl_header_caller_bound_ok(recv: &'s0 HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q>>::inherent_header(copy recv);
     unborrow recv;
@@ -114,15 +114,15 @@ struct<T> ImplTypeReceiver {
 }
 
 impl<T> ImplTypeReceiver<T> {
-  fn<'s0> accept_impl_type(recv: & 's0 ImplTypeReceiver<T>, value: T) {
+  fn<'s0> accept_impl_type(recv: &'s0 ImplTypeReceiver<T>, value: T) {
     entry:
       abort
   }
 }
 
-fn<'p, 'q: 'p, 's0> inherent_impl_type_bound_ok(recv: & 's0 ImplTypeReceiver<& 'p i64>, value: & 'q i64) {
+fn<'p, 'q: 'p, 's0> inherent_impl_type_bound_ok(recv: &'s0 ImplTypeReceiver<&'p i64>, value: &'q i64) {
   entry:
-    call <ImplTypeReceiver<& 'p i64>>::accept_impl_type(copy recv, copy value);
+    call <ImplTypeReceiver<&'p i64>>::accept_impl_type(copy recv, copy value);
     unborrow recv;
     unborrow value;
     return
@@ -132,25 +132,25 @@ struct MethodTypeReceiver: Copy + Drop {
 }
 
 trait GenericMethod {
-  fn<'s0, T> accept_method_type(recv: & 's0 Self, value: T);
+  fn<'s0, T> accept_method_type(recv: &'s0 Self, value: T);
 }
 
 impl GenericMethod for MethodTypeReceiver {
-  fn<'s0, T> accept_method_type(recv: & 's0 MethodTypeReceiver, value: T) {
+  fn<'s0, T> accept_method_type(recv: &'s0 MethodTypeReceiver, value: T) {
     entry:
       abort
   }
 }
 
-fn<'p, 'q: 'p, 's0> trait_method_type_bound_ok(recv: & 's0 MethodTypeReceiver, value: & 'q i64) {
+fn<'p, 'q: 'p, 's0> trait_method_type_bound_ok(recv: &'s0 MethodTypeReceiver, value: &'q i64) {
   entry:
-    call <MethodTypeReceiver as GenericMethod>::accept_method_type<& 'p i64>(copy recv, copy value);
+    call <MethodTypeReceiver as GenericMethod>::accept_method_type<&'p i64>(copy recv, copy value);
     unborrow recv;
     unborrow value;
     return
 }
 
-fn<'a, 'b: 'a, 's0> single_bound_flow(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
+fn<'a, 'b: 'a, 's0> single_bound_flow(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -159,7 +159,7 @@ fn<'a, 'b: 'a, 's0> single_bound_flow(x: & 'a i64, y: & 'b i64, $return: &out 's
     return
 }
 
-fn<'a, 'b: 'a, 'c: 'b, 's0> chain_bound_flow(x: & 'a i64, y: & 'b i64, z: & 'c i64, $return: &out 's0 & 'c i64) {
+fn<'a, 'b: 'a, 'c: 'b, 's0> chain_bound_flow(x: &'a i64, y: &'b i64, z: &'c i64, $return: &out 's0 &'c i64) {
   entry:
     $return.* = copy z;
     unborrow $return;
@@ -169,7 +169,7 @@ fn<'a, 'b: 'a, 'c: 'b, 's0> chain_bound_flow(x: & 'a i64, y: & 'b i64, z: & 'c i
     return
 }
 
-fn<'a, 's0> static_source(s: & 'static i64, $return: &out 's0 & 'a i64) {
+fn<'a, 's0> static_source(s: &'static i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy s;
     unborrow $return;
@@ -177,7 +177,7 @@ fn<'a, 's0> static_source(s: & 'static i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a: 'static, 's0> requires_static(x: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a: 'static, 's0> requires_static(x: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -185,7 +185,7 @@ fn<'a: 'static, 's0> requires_static(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd, 's0> deep_chain_forward(x: & 'e i64, $return: &out 's0 & 'a i64) {
+fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd, 's0> deep_chain_forward(x: &'e i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -193,7 +193,7 @@ fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd, 's0> deep_chain_forward(x: & 'e i64, $ret
     return
 }
 
-fn<'a: 'b, 'b: 'a, 's0> cycle_a_into_b(x: & 'a i64, $return: &out 's0 & 'b i64) {
+fn<'a: 'b, 'b: 'a, 's0> cycle_a_into_b(x: &'a i64, $return: &out 's0 &'b i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -201,7 +201,7 @@ fn<'a: 'b, 'b: 'a, 's0> cycle_a_into_b(x: & 'a i64, $return: &out 's0 & 'b i64) 
     return
 }
 
-fn<'a: 'b, 'b: 'a, 's0> cycle_b_into_a(x: & 'b i64, $return: &out 's0 & 'a i64) {
+fn<'a: 'b, 'b: 'a, 's0> cycle_b_into_a(x: &'b i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -209,7 +209,7 @@ fn<'a: 'b, 'b: 'a, 's0> cycle_b_into_a(x: & 'b i64, $return: &out 's0 & 'a i64) 
     return
 }
 
-fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd, 's0> diamond_a_into_d(x: & 'a i64, $return: &out 's0 & 'd i64) {
+fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd, 's0> diamond_a_into_d(x: &'a i64, $return: &out 's0 &'d i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -217,7 +217,7 @@ fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd, 's0> diamond_a_into_d(x: & 'a i64, $return: 
     return
 }
 
-fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_b(x: & 'a i64, $return: &out 's0 & 'b i64) {
+fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_b(x: &'a i64, $return: &out 's0 &'b i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -225,7 +225,7 @@ fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_b(x: & 'a i64, $return: &out '
     return
 }
 
-fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_c(x: & 'a i64, $return: &out 's0 & 'c i64) {
+fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_c(x: &'a i64, $return: &out 's0 &'c i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -233,7 +233,7 @@ fn<'a: 'b + 'c + 'static, 'b, 'c, 's0> multi_plus_c(x: & 'a i64, $return: &out '
     return
 }
 
-fn<'a: 'static, 's0> static_only_rhs(x: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a: 'static, 's0> static_only_rhs(x: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -241,7 +241,7 @@ fn<'a: 'static, 's0> static_only_rhs(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a: 'a, 's0> reflexive_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a: 'a, 's0> reflexive_bound(x: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -250,11 +250,11 @@ fn<'a: 'a, 's0> reflexive_bound(x: & 'a i64, $return: &out 's0 & 'a i64) {
 }
 
 struct<'a, 'b: 'a> Wrap2: Move {
-  outer: & 'a i64
-  inner: & 'b i64
+  outer: &'a i64
+  inner: &'b i64
 }
 
-fn<'a, 'b: 'a, 's0> make_wrap2(x: & 'a i64, y: & 'b i64, $return: &out 's0 Wrap2<'a, 'b>) {
+fn<'a, 'b: 'a, 's0> make_wrap2(x: &'a i64, y: &'b i64, $return: &out 's0 Wrap2<'a, 'b>) {
   entry:
     $return.*.outer = copy x;
     unborrow x;
@@ -264,7 +264,7 @@ fn<'a, 'b: 'a, 's0> make_wrap2(x: & 'a i64, y: & 'b i64, $return: &out 's0 Wrap2
     return
 }
 
-fn<'a, 'b: 'a, 's0> read_wrap2(w: Wrap2<'a, 'b>, $return: &out 's0 & 'a i64) {
+fn<'a, 'b: 'a, 's0> read_wrap2(w: Wrap2<'a, 'b>, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy w.outer;
     unborrow $return;
@@ -273,7 +273,7 @@ fn<'a, 'b: 'a, 's0> read_wrap2(w: Wrap2<'a, 'b>, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 's0> wrap2_reflexive(x: & 'a i64, $return: &out 's0 Wrap2<'a, 'a>) {
+fn<'a, 's0> wrap2_reflexive(x: &'a i64, $return: &out 's0 Wrap2<'a, 'a>) {
   entry:
     $return.*.outer = copy x;
     $return.*.inner = copy x;
@@ -282,7 +282,7 @@ fn<'a, 's0> wrap2_reflexive(x: & 'a i64, $return: &out 's0 Wrap2<'a, 'a>) {
     return
 }
 
-fn<'a, 'b: 'a, 'c: 'b, 's0> wrap2_chain(x: & 'a i64, y: & 'c i64, $return: &out 's0 Wrap2<'a, 'c>) {
+fn<'a, 'b: 'a, 'c: 'b, 's0> wrap2_chain(x: &'a i64, y: &'c i64, $return: &out 's0 Wrap2<'a, 'c>) {
   entry:
     $return.*.outer = copy x;
     unborrow x;
@@ -292,7 +292,7 @@ fn<'a, 'b: 'a, 'c: 'b, 's0> wrap2_chain(x: & 'a i64, y: & 'c i64, $return: &out 
     return
 }
 
-fn<'a, 's0> wrap2_static_subject(x: & 'a i64, s: & 'static i64, $return: &out 's0 Wrap2<'a, 'static>) {
+fn<'a, 's0> wrap2_static_subject(x: &'a i64, s: &'static i64, $return: &out 's0 Wrap2<'a, 'static>) {
   entry:
     $return.*.outer = copy x;
     unborrow x;
@@ -302,7 +302,7 @@ fn<'a, 's0> wrap2_static_subject(x: & 'a i64, s: & 'static i64, $return: &out 's
     return
 }
 
-fn<'a: 'static, 's0> wrap2_static_target(s: & 'static i64, x: & 'a i64, $return: &out 's0 Wrap2<'static, 'a>) {
+fn<'a: 'static, 's0> wrap2_static_target(s: &'static i64, x: &'a i64, $return: &out 's0 Wrap2<'static, 'a>) {
   entry:
     $return.*.outer = copy s;
     unborrow s;
@@ -316,7 +316,7 @@ struct<'a, 'b: 'a> Container: Move {
   inner: Wrap2<'a, 'b>
 }
 
-fn<'a, 'b: 'a, 's0> make_container(x: & 'a i64, y: & 'b i64, $return: &out 's0 Container<'a, 'b>) {
+fn<'a, 'b: 'a, 's0> make_container(x: &'a i64, y: &'b i64, $return: &out 's0 Container<'a, 'b>) {
   entry:
     $return.*.inner.outer = copy x;
     unborrow x;
@@ -326,7 +326,7 @@ fn<'a, 'b: 'a, 's0> make_container(x: & 'a i64, y: & 'b i64, $return: &out 's0 C
     return
 }
 
-fn<'a, 'b: 'a, 'r, 's0> ref_to_wrap2(w: & 'r Wrap2<'a, 'b>, $return: &out 's0 & 'a i64) {
+fn<'a, 'b: 'a, 'r, 's0> ref_to_wrap2(w: &'r Wrap2<'a, 'b>, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy w.*.outer;
     unborrow $return;
@@ -334,7 +334,7 @@ fn<'a, 'b: 'a, 'r, 's0> ref_to_wrap2(w: & 'r Wrap2<'a, 'b>, $return: &out 's0 & 
     return
 }
 
-fn<'a, 'b: 'a, 's0> array_of_wrap2(x: & 'a i64, y: & 'b i64, $return: &out 's0 [Wrap2<'a, 'b>; 2]) {
+fn<'a, 'b: 'a, 's0> array_of_wrap2(x: &'a i64, y: &'b i64, $return: &out 's0 [Wrap2<'a, 'b>; 2]) {
   entry:
     $return.*[0].outer = copy x;
     $return.*[0].inner = copy y;
@@ -346,7 +346,7 @@ fn<'a, 'b: 'a, 's0> array_of_wrap2(x: & 'a i64, y: & 'b i64, $return: &out 's0 [
     return
 }
 
-fn<'a, 'b: 'a, 's0> use_container(x: & 'a i64, y: & 'b i64, $return: &out 's0 Container<'a, 'b>) {
+fn<'a, 'b: 'a, 's0> use_container(x: &'a i64, y: &'b i64, $return: &out 's0 Container<'a, 'b>) {
   entry:
     $return.*.inner.outer = copy x;
     unborrow x;
@@ -357,11 +357,11 @@ fn<'a, 'b: 'a, 's0> use_container(x: & 'a i64, y: & 'b i64, $return: &out 's0 Co
 }
 
 enum<'a, 'b: 'a> Either2: Move {
-  L: & 'a i64
-  R: & 'b i64
+  L: &'a i64
+  R: &'b i64
 }
 
-fn<'a, 'b: 'a, 's0> make_either2_l(x: & 'a i64, $return: &out 's0 Either2<'a, 'b>) {
+fn<'a, 'b: 'a, 's0> make_either2_l(x: &'a i64, $return: &out 's0 Either2<'a, 'b>) {
   entry:
     $return.* = Either2::L(copy x);
     unborrow $return;
@@ -369,7 +369,7 @@ fn<'a, 'b: 'a, 's0> make_either2_l(x: & 'a i64, $return: &out 's0 Either2<'a, 'b
     return
 }
 
-fn<'a, 'b: 'a, 's0> make_either2_r(y: & 'b i64, $return: &out 's0 Either2<'a, 'b>) {
+fn<'a, 'b: 'a, 's0> make_either2_r(y: &'b i64, $return: &out 's0 Either2<'a, 'b>) {
   entry:
     $return.* = Either2::R(copy y);
     unborrow $return;
@@ -377,7 +377,7 @@ fn<'a, 'b: 'a, 's0> make_either2_r(y: & 'b i64, $return: &out 's0 Either2<'a, 'b
     return
 }
 
-fn<'a: 'static, 's0> static_arg_required(x: & 'static i64, $return: &out 's0 & 'a i64) {
+fn<'a: 'static, 's0> static_arg_required(x: &'static i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy x;
     unborrow $return;
@@ -390,11 +390,11 @@ struct ImplLifetimeHost: Copy + Drop {
 }
 
 trait<'a, 'b> ImplLifetimeFlow {
-  fn<'s0, 's1> flow(recv: & 's0 Self, x: & 'a i64, $return: &out 's1 & 'b i64);
+  fn<'s0, 's1> flow(recv: &'s0 Self, x: &'a i64, $return: &out 's1 &'b i64);
 }
 
 impl<'a: 'b, 'b> ImplLifetimeFlow<'a, 'b> for ImplLifetimeHost {
-  fn<'s0, 's1> flow(recv: & 's0 ImplLifetimeHost, x: & 'a i64, $return: &out 's1 & 'b i64) {
+  fn<'s0, 's1> flow(recv: &'s0 ImplLifetimeHost, x: &'a i64, $return: &out 's1 &'b i64) {
     entry:
       unborrow recv;
       $return.* = copy x;

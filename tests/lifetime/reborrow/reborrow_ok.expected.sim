@@ -4,12 +4,12 @@ enum E: Move {
 
 extern fn<'s0> sink_mut(r: &mut 's0 i64);
 
-extern fn<'s0> sink_shared(r: & 's0 i64);
+extern fn<'s0> sink_shared(r: &'s0 i64);
 
-fn<'s0> shared_from_shared_param(r: & 's0 i64) {
-  s: & i64;
+fn<'s0> shared_from_shared_param(r: &'s0 i64) {
+  s: &i64;
   entry:
-    s = & r.*;
+    s = &r.*;
     call sink_shared(move s);
     unborrow r;
     return
@@ -29,10 +29,10 @@ fn mut_from_mut_local(x: i64) {
 
 fn shared_from_mut_local(x: i64) {
   r: &mut i64;
-  s: & i64;
+  s: &i64;
   entry:
     r = &mut x;
-    s = & r.*;
+    s = &r.*;
     call sink_shared(move s);
     unborrow r;
     drop x;
@@ -40,9 +40,9 @@ fn shared_from_mut_local(x: i64) {
 }
 
 fn<'s0> shared_from_mut_param(r: &mut 's0 i64) {
-  s: & i64;
+  s: &i64;
   entry:
-    s = & r.*;
+    s = &r.*;
     call sink_shared(move s);
     unborrow r;
     return

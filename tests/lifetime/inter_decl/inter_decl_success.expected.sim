@@ -1,4 +1,4 @@
-fn<'a, 's0> identity(r: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a, 's0> identity(r: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy r;
     unborrow $return;
@@ -6,7 +6,7 @@ fn<'a, 's0> identity(r: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 's0> pick(x: & 'a i64, y: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a, 's0> pick(x: &'a i64, y: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     unborrow y;
     $return.* = copy x;
@@ -15,7 +15,7 @@ fn<'a, 's0> pick(x: & 'a i64, y: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 'b, 's0> first(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
+fn<'a, 'b, 's0> first(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
   entry:
     unborrow y;
     $return.* = copy x;
@@ -24,7 +24,7 @@ fn<'a, 'b, 's0> first(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 'b, 's0> second(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'b i64) {
+fn<'a, 'b, 's0> second(x: &'a i64, y: &'b i64, $return: &out 's0 &'b i64) {
   entry:
     unborrow x;
     $return.* = copy y;
@@ -33,7 +33,7 @@ fn<'a, 'b, 's0> second(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'b i64) {
     return
 }
 
-fn<'outer, 'inner, 's0> nested_identity(r: & 'outer & 'inner i64, $return: &out 's0 & 'outer & 'inner i64) {
+fn<'outer, 'inner, 's0> nested_identity(r: &'outer &'inner i64, $return: &out 's0 &'outer &'inner i64) {
   entry:
     $return.* = copy r;
     unborrow $return;
@@ -42,10 +42,10 @@ fn<'outer, 'inner, 's0> nested_identity(r: & 'outer & 'inner i64, $return: &out 
 }
 
 struct<'a> Wrap: Move {
-  r: & 'a i64
+  r: &'a i64
 }
 
-fn<'a, 's0> wrap_it(x: & 'a i64, $return: &out 's0 Wrap<'a>) {
+fn<'a, 's0> wrap_it(x: &'a i64, $return: &out 's0 Wrap<'a>) {
   entry:
     $return.*.r = copy x;
     unborrow $return;
@@ -54,11 +54,11 @@ fn<'a, 's0> wrap_it(x: & 'a i64, $return: &out 's0 Wrap<'a>) {
 }
 
 struct<'a, 'b> Both: Move {
-  l: & 'a i64
-  r: & 'b i64
+  l: &'a i64
+  r: &'b i64
 }
 
-fn<'a, 'b, 's0> make_both(x: & 'a i64, y: & 'b i64, $return: &out 's0 Both<'a, 'b>) {
+fn<'a, 'b, 's0> make_both(x: &'a i64, y: &'b i64, $return: &out 's0 Both<'a, 'b>) {
   entry:
     $return.*.l = copy x;
     unborrow x;
@@ -70,10 +70,10 @@ fn<'a, 'b, 's0> make_both(x: & 'a i64, y: & 'b i64, $return: &out 's0 Both<'a, '
 
 enum<'a> MaybeRef: Copy + Drop {
   None: unit
-  Some: & 'a i64
+  Some: &'a i64
 }
 
-fn<'a, 's0> maybe_of(r: & 'a i64, $return: &out 's0 MaybeRef<'a>) {
+fn<'a, 's0> maybe_of(r: &'a i64, $return: &out 's0 MaybeRef<'a>) {
   entry:
     $return.* = MaybeRef::Some(copy r);
     unborrow $return;
@@ -83,14 +83,14 @@ fn<'a, 's0> maybe_of(r: & 'a i64, $return: &out 's0 MaybeRef<'a>) {
 
 fn use_identity() {
   x: i64;
-  r: & i64;
-  ret_slot: & i64;
-  ret_out: &out & i64;
+  r: &i64;
+  ret_slot: &i64;
+  ret_out: &out &i64;
   first_read: i64;
   second_read: i64;
   entry:
     x = 42;
-    r = & x;
+    r = &x;
     ret_out = &out ret_slot;
     call identity(move r, move ret_out);
     first_read = copy ret_slot.*;
@@ -104,7 +104,7 @@ fn use_identity() {
 
 extern fn<'s0> use_wrap(w: Wrap<'s0>);
 
-fn<'a> local_wrap_consumed(x: & 'a i64) {
+fn<'a> local_wrap_consumed(x: &'a i64) {
   w: Wrap<'a>;
   entry:
     w.r = copy x;
@@ -113,7 +113,7 @@ fn<'a> local_wrap_consumed(x: & 'a i64) {
     return
 }
 
-fn<'a, 's0> write_through_out(dst: &out 's0 & 'a i64, src: & 'a i64) {
+fn<'a, 's0> write_through_out(dst: &out 's0 &'a i64, src: &'a i64) {
   entry:
     dst.* = copy src;
     unborrow dst;
@@ -121,7 +121,7 @@ fn<'a, 's0> write_through_out(dst: &out 's0 & 'a i64, src: & 'a i64) {
     return
 }
 
-fn<'a, 's0> wrap_ref_in_enum(r: & 'a i64, $return: &out 's0 MaybeRef<'a>) {
+fn<'a, 's0> wrap_ref_in_enum(r: &'a i64, $return: &out 's0 MaybeRef<'a>) {
   entry:
     $return.* = MaybeRef::Some(copy r);
     unborrow $return;
@@ -129,7 +129,7 @@ fn<'a, 's0> wrap_ref_in_enum(r: & 'a i64, $return: &out 's0 MaybeRef<'a>) {
     return
 }
 
-fn<'a> bare_custom_reuses_fn_lifetime(w: Wrap<'a>, x: & 'a i64) {
+fn<'a> bare_custom_reuses_fn_lifetime(w: Wrap<'a>, x: &'a i64) {
   entry:
     drop w.r;
     w.r = copy x;
@@ -147,9 +147,9 @@ fn<'a> bare_custom_local_shares_param_region(x: Wrap<'a>) {
 }
 
 struct<'a, 'b, 'c> Trip: Move {
-  p: & 'a i64
-  q: & 'b i64
-  r: & 'c i64
+  p: &'a i64
+  q: &'b i64
+  r: &'c i64
 }
 
 struct<'s0, 's1, 's2> Nest1: Move {
@@ -162,7 +162,7 @@ struct<'s0, 's1, 's2> Nest2: Move {
 
 extern fn<'s0, 's1, 's2> use_nest2(x: Nest2<'s0, 's1, 's2>);
 
-fn<'a, 'b, 'c> propagate_arity(p: & 'a i64, q: & 'b i64, r: & 'c i64) {
+fn<'a, 'b, 'c> propagate_arity(p: &'a i64, q: &'b i64, r: &'c i64) {
   n: Nest2<'a, 'b, 'c>;
   entry:
     n.n.t.p = copy p;

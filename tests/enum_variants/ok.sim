@@ -273,10 +273,10 @@ fn flow_switch_in_dead_block_is_skipped(o: Option) {
 # switch must not prevent the pass from refining `o` in the arms.
 fn flow_shared_borrow_does_not_clobber() {
   o: Option;
-  r: & Option;
+  r: &Option;
   entry:
     o = Option::None(unit);
-    r = & o;
+    r = &o;
     unborrow r;
     switchEnum(o) [None: n, Some: dead]
   n:

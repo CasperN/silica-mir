@@ -20,59 +20,59 @@
 #   enum { Self: T }                  Self as variant name
 #   fn f(Self: T)                     Self as parameter name
 #   fn f() { Self: T; ... }           Self as local name
-#   fn f(x: & Self)                   Self type ref outside trait/impl
+#   fn f(x: &Self)                   Self type ref outside trait/impl
 #   struct H { s: Self }              Self type ref outside trait/impl
 #   impl T for Self                   Self as impl target (out of scope
 #                                     at target parse time)
 #   impl T<Self> for R                Self as trait-ref type arg (out of
 #                                     scope at args parse time)
-#   trait T { fn m(recv: & Self<T>) } Self does not take type arguments
+#   trait T { fn m(recv: &Self<T>) } Self does not take type arguments
 #   impl Self for R                   Self as trait reference
 
 struct S { x: i64 }
 struct R: Copy + Drop { x: i64 }
 
 trait ExternTraitM {
-  extern fn m(recv: & Self);
+  extern fn m(recv: &Self);
 }
 
 trait BodyTraitM {
-  fn m(recv: & Self) {
+  fn m(recv: &Self) {
     entry:
       return
   }
 }
 
 trait DupTraitM {
-  fn m(recv: & Self);
+  fn m(recv: &Self);
   fn m(recv: &mut Self);
 }
 
-trait ExternM { fn m(recv: & Self); }
+trait ExternM { fn m(recv: &Self); }
 impl ExternM for S {
-  extern fn m(recv: & S);
+  extern fn m(recv: &S);
 }
 
-trait BodylessM { fn m(recv: & Self); }
+trait BodylessM { fn m(recv: &Self); }
 impl BodylessM for S {
-  fn m(recv: & S);
+  fn m(recv: &S);
 }
 
-trait DupM { fn m(recv: & Self); }
+trait DupM { fn m(recv: &Self); }
 impl DupM for S {
-  fn m(recv: & S) {
+  fn m(recv: &S) {
     entry:
       return
   }
-  fn m(recv: & S) {
+  fn m(recv: &S) {
     entry:
       return
   }
 }
 
-trait ReservedT { fn m(recv: & Self); }
+trait ReservedT { fn m(recv: &Self); }
 impl<Self> ReservedT for R {
-  fn m(recv: & R) {
+  fn m(recv: &R) {
     entry:
       return
   }
@@ -85,7 +85,7 @@ struct Self { x: i64 }
 
 enum Self { A: i64 }
 
-trait Self { fn m(recv: & S); }
+trait Self { fn m(recv: &S); }
 
 fn Self() { entry: return }
 
@@ -112,7 +112,7 @@ fn with_self_local() {
 # else it must be rejected rather than falling through to
 # `Custom("Self")` and later surfacing as an unrelated
 # `UndeclaredType`.
-fn take_self_out_of_scope(x: & Self) {
+fn take_self_out_of_scope(x: &Self) {
   entry:
     return
 }
@@ -125,7 +125,7 @@ struct HoldsSelfField {
 # into the type scope only after the target is parsed, so the
 # target reads `Self` while it is still out of scope.
 impl ReservedT for Self {
-  fn m(recv: & R) {
+  fn m(recv: &R) {
     entry:
       return
   }
@@ -133,9 +133,9 @@ impl ReservedT for Self {
 
 # `Self` at a trait-ref type argument. The trait-arg list is parsed
 # before the target, so `Self` is out of scope for the same reason.
-trait<T: Copy + Drop> GenericT { fn m(recv: & Self, arg: & T); }
+trait<T: Copy + Drop> GenericT { fn m(recv: &Self, arg: &T); }
 impl GenericT<Self> for R {
-  fn m(recv: & R, arg: & R) {
+  fn m(recv: &R, arg: &R) {
     entry:
       return
   }
@@ -144,14 +144,14 @@ impl GenericT<Self> for R {
 # `Self` in scope but written with type arguments. `Self` is a bare
 # alias for the receiver / target type, not a generic constructor,
 # so passing it type or lifetime arguments is rejected.
-trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: & Self<T>); }
+trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: &Self<T>); }
 
 # `Self` in an impl's trait-reference position. There is no trait
 # named `Self`; the token here is a stray reference to the receiver
 # alias, so parse-reject before it slips through as
 # `ImplForUnknownTrait`.
 impl Self for R {
-  fn m(recv: & R) {
+  fn m(recv: &R) {
     entry:
       return
   }
@@ -160,9 +160,9 @@ impl Self for R {
 # Impl-header type parameters remain in the parser's scope while each method
 # is parsed, so a method cannot shadow one with another parameter of the same
 # name.
-trait ShadowM { fn m(recv: & Self); }
+trait ShadowM { fn m(recv: &Self); }
 impl<T> ShadowM for R {
-  fn<T> m(recv: & R) {
+  fn<T> m(recv: &R) {
     entry:
       return
   }
@@ -171,4 +171,4 @@ impl<T> ShadowM for R {
 trait DuplicateBound {}
 
 # The same direct trait bound cannot be declared twice.
-extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T);
+extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T);

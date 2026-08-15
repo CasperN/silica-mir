@@ -59,9 +59,9 @@ fn<'s0, T: Move> box_into_inner(b: Box<T>, $return: &out 's0 T) {
     return
 }
 
-fn<'s0: 's2, 's1: 's2, 's2, T> box_borrow(b: & 's0 Box<T>, $return: &out 's1 & 's2 T) {
+fn<'s0: 's2, 's1: 's2, 's2, T> box_borrow(b: &'s0 Box<T>, $return: &out 's1 &'s2 T) {
   entry:
-    $return.* = ptr_cast(copy b.*.p, & T);
+    $return.* = ptr_cast(copy b.*.p, &T);
     unborrow $return;
     unborrow b;
     require_uninit $return;
@@ -84,9 +84,9 @@ fn<'s0> main(exit: &out 's0 i32) {
   b: Box<i64>;
   $tmp_1: &out Box<i64>;
   peek: i64;
-  $tmp_2: & i64;
-  $tmp_3: & Box<i64>;
-  $tmp_4: &out & i64;
+  $tmp_2: &i64;
+  $tmp_3: &Box<i64>;
+  $tmp_4: &out &i64;
   owned: i64;
   $tmp_5: &out i64;
   $tmp_6: unit;
@@ -100,7 +100,7 @@ fn<'s0> main(exit: &out 's0 i32) {
     $tmp_1 = &out b;
     call box_new<i64>(42, move $tmp_1);
     require_uninit $tmp_1;
-    $tmp_3 = & b;
+    $tmp_3 = &b;
     $tmp_4 = &out $tmp_2;
     call box_borrow<i64>(move $tmp_3, move $tmp_4);
     peek = copy $tmp_2.*;

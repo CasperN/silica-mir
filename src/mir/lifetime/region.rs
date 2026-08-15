@@ -391,7 +391,7 @@ mod tests {
             fn<'a> f(x: &'a i64) {
               r: &i64;
               entry:
-                r = & x.*;
+                r = &x.*;
                 return
             }
         ";

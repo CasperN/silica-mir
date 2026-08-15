@@ -11,85 +11,85 @@ impl Related<i64> for Good {}
 struct<T: Label> Holder { value: T }
 struct<T> Wrapper { value: T }
 
-extern fn<T: Label> accept(value: & T);
+extern fn<T: Label> accept(value: &T);
 
 # covers: a bound must name a declared trait
-fn<T: Missing> unknown_bound(value: & T) {
+fn<T: Missing> unknown_bound(value: &T) {
   value;
 }
 
 # covers: a trait bound must provide the declared generic arity
-fn<T: Related> wrong_bound_arity(value: & T) {
+fn<T: Related> wrong_bound_arity(value: &T) {
   value;
 }
 
 # covers: a concrete function type argument must satisfy its direct bound
-fn reject_concrete(value: & Other) {
+fn reject_concrete(value: &Other) {
   accept<Other>(value);
 }
 
 # covers: a generic caller cannot forward an obligation it did not declare
-fn<T> reject_unbounded_generic(value: & T) {
+fn<T> reject_unbounded_generic(value: &T) {
   accept<T>(value);
 }
 
 # covers: direct bounds are enforced on custom type arguments
-fn reject_bounded_type(value: & Holder<Other>) {
+fn reject_bounded_type(value: &Holder<Other>) {
   value;
 }
 
 # covers: a trait bound's own type arguments must satisfy the trait declaration
-fn<T: RequiresLabel<Other>> reject_bound_argument(value: & T) {
+fn<T: RequiresLabel<Other>> reject_bound_argument(value: &T) {
   value;
 }
 
 # covers: parameterized bounds must match exactly when forwarding an obligation
-fn<T: Related<bool>> reject_different_bound_argument(value: & T) {
+fn<T: Related<bool>> reject_different_bound_argument(value: &T) {
   require_related_i64<T>(value);
 }
 
-extern fn<T: Related<i64>> require_related_i64(value: & T);
+extern fn<T: Related<i64>> require_related_i64(value: &T);
 
 impl<T: Label> Wrapper<T> {
-  fn inspect(recv: & Wrapper<T>) { recv; }
+  fn inspect(recv: &Wrapper<T>) { recv; }
 }
 
 # covers: an inherent impl is inapplicable when its direct bound is unsatisfied
-fn reject_inherent_impl(value: & Wrapper<Other>) {
+fn reject_inherent_impl(value: &Wrapper<Other>) {
   value.inspect();
 }
 
 trait Inspect {
-  fn inspect_trait(recv: & Self);
-  fn<U: Label> inspect_trait_argument(recv: & Self, value: & U);
+  fn inspect_trait(recv: &Self);
+  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U);
 }
 
 impl<T: Label> Inspect for Wrapper<T> {
-  fn inspect_trait(recv: & Self) { recv; }
-  fn<U: Label> inspect_trait_argument(recv: & Self, value: & U) {
+  fn inspect_trait(recv: &Self) { recv; }
+  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U) {
     recv;
     value;
   }
 }
 
 # covers: a trait impl is inapplicable when its direct bound is unsatisfied
-fn reject_trait_impl(value: & Wrapper<Other>) {
+fn reject_trait_impl(value: &Wrapper<Other>) {
   value.inspect_trait();
 }
 
 # covers: trait-method type arguments must satisfy their direct bounds
-fn reject_trait_method_argument(value: & Wrapper<Good>, argument: & Other) {
+fn reject_trait_method_argument(value: &Wrapper<Good>, argument: &Other) {
   value.inspect_trait_argument<Other>(argument);
 }
 
 impl Good {
-  fn<U: Label> inspect_argument(recv: & Good, value: & U) {
+  fn<U: Label> inspect_argument(recv: &Good, value: &U) {
     recv;
     value;
   }
 }
 
 # covers: method type arguments must satisfy their direct bounds
-fn reject_method_argument(recv: & Good, value: & Other) {
+fn reject_method_argument(recv: &Good, value: &Other) {
   recv.inspect_argument<Other>(value);
 }

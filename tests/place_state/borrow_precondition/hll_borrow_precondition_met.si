@@ -15,7 +15,7 @@ fn use_shared(r: &i64) -> i64 { r.* }
 fn use_mut(r: &mut i64) -> i64 { r.* }
 fn take_scalar(y: i64) -> i64 { y }
 
-# ---------- & shared: pointee Init ----------
+# ---------- shared borrow: pointee Init ----------
 
 fn shared_of_init(x: i64) -> i64 {
   use_shared(&x)

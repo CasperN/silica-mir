@@ -37,13 +37,13 @@ fn overwrite_ref_previous_fulfilled(x: i64, y: i64) {
     return
 }
 
-fn<'s0> shared_ref_left_bound(r: & 's0 i64) {
+fn<'s0> shared_ref_left_bound(r: &'s0 i64) {
   entry:
     unborrow r;
     return
 }
 
-fn<'s0> shared_ref_read(r: & 's0 i64) {
+fn<'s0> shared_ref_read(r: &'s0 i64) {
   x: i64;
   entry:
     x = copy r.*;

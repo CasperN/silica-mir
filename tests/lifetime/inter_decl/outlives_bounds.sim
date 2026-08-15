@@ -53,12 +53,12 @@ fn<'p> invariant_forwarding(x: &'p i64, $return: &out &'p i64) {
 struct<'r> CallReceiver: Copy + Drop { value: &'r i64 }
 
 trait QualifiedNeedsBound {
-  fn<'a, 'b: 'a> trait_needs(recv: & Self, x: &'a i64, y: &'b i64);
+  fn<'a, 'b: 'a> trait_needs(recv: &Self, x: &'a i64, y: &'b i64);
 }
 
 impl<'r> CallReceiver<'r> {
   fn<'a, 'b: 'a> inherent_needs(
-    recv: & CallReceiver<'r>,
+    recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
   ) {
@@ -69,7 +69,7 @@ impl<'r> CallReceiver<'r> {
 
 impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
   fn<'a, 'b: 'a> trait_needs(
-    recv: & CallReceiver<'r>,
+    recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
   ) {
@@ -80,7 +80,7 @@ impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
 
 # covers: inherent method outlives axiom is satisfied by the caller
 fn<'p, 'q: 'p> inherent_caller_bound_ok(
-  recv: & CallReceiver<'p>,
+  recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
 ) {
@@ -91,7 +91,7 @@ fn<'p, 'q: 'p> inherent_caller_bound_ok(
 
 # covers: trait method outlives axiom is satisfied by the caller
 fn<'p, 'q: 'p> trait_caller_bound_ok(
-  recv: & CallReceiver<'p>,
+  recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
 ) {
@@ -105,7 +105,7 @@ fn<'p, 'q: 'p> trait_caller_bound_ok(
 }
 
 trait<'a, 'b: 'a> QualifiedTraitHeaderBound {
-  fn invoke(recv: & Self);
+  fn invoke(recv: &Self);
 }
 
 struct<'a, 'b> HeaderReceiver: Copy + Drop {
@@ -114,7 +114,7 @@ struct<'a, 'b> HeaderReceiver: Copy + Drop {
 }
 
 impl<'a, 'b: 'a> HeaderReceiver<'a, 'b> {
-  fn inherent_header(recv: & HeaderReceiver<'a, 'b>) {
+  fn inherent_header(recv: &HeaderReceiver<'a, 'b>) {
     entry:
       return
   }
@@ -122,21 +122,21 @@ impl<'a, 'b: 'a> HeaderReceiver<'a, 'b> {
 
 # covers: an impl header satisfies its trait path's lifetime bounds
 impl<'a, 'b: 'a> QualifiedTraitHeaderBound<'a, 'b> for HeaderReceiver<'a, 'b> {
-  fn invoke(recv: & HeaderReceiver<'a, 'b>) {
+  fn invoke(recv: &HeaderReceiver<'a, 'b>) {
     entry:
       return
   }
 }
 
 # covers: qualified trait declaration bound is satisfied by the caller
-fn<'p, 'q: 'p> trait_header_caller_bound_ok(recv: & HeaderReceiver<'p, 'q>) {
+fn<'p, 'q: 'p> trait_header_caller_bound_ok(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q> as QualifiedTraitHeaderBound<'p, 'q>>::invoke(copy recv);
     return
 }
 
 # covers: inherent impl-header bound is satisfied by the caller
-fn<'p, 'q: 'p> impl_header_caller_bound_ok(recv: & HeaderReceiver<'p, 'q>) {
+fn<'p, 'q: 'p> impl_header_caller_bound_ok(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q>>::inherent_header(copy recv);
     return
@@ -145,7 +145,7 @@ fn<'p, 'q: 'p> impl_header_caller_bound_ok(recv: & HeaderReceiver<'p, 'q>) {
 struct<T> ImplTypeReceiver { value: T }
 
 impl<T> ImplTypeReceiver<T> {
-  fn accept_impl_type(recv: & ImplTypeReceiver<T>, value: T) {
+  fn accept_impl_type(recv: &ImplTypeReceiver<T>, value: T) {
     entry:
       abort
   }
@@ -153,7 +153,7 @@ impl<T> ImplTypeReceiver<T> {
 
 # covers: inherent method parameter types substitute impl-header type arguments
 fn<'p, 'q: 'p> inherent_impl_type_bound_ok(
-  recv: & ImplTypeReceiver<&'p i64>,
+  recv: &ImplTypeReceiver<&'p i64>,
   value: &'q i64,
 ) {
   entry:
@@ -164,11 +164,11 @@ fn<'p, 'q: 'p> inherent_impl_type_bound_ok(
 struct MethodTypeReceiver: Copy + Drop {}
 
 trait GenericMethod {
-  fn<T> accept_method_type(recv: & Self, value: T);
+  fn<T> accept_method_type(recv: &Self, value: T);
 }
 
 impl GenericMethod for MethodTypeReceiver {
-  fn<T> accept_method_type(recv: & MethodTypeReceiver, value: T) {
+  fn<T> accept_method_type(recv: &MethodTypeReceiver, value: T) {
     entry:
       abort
   }
@@ -176,7 +176,7 @@ impl GenericMethod for MethodTypeReceiver {
 
 # covers: trait method parameter types substitute method type arguments
 fn<'p, 'q: 'p> trait_method_type_bound_ok(
-  recv: & MethodTypeReceiver,
+  recv: &MethodTypeReceiver,
   value: &'q i64,
 ) {
   entry:
@@ -484,11 +484,11 @@ fn<'a: 'static> static_arg_required(x: &'static i64, $return: &out &'a i64) {
 struct ImplLifetimeHost: Copy + Drop { value: i64 }
 
 trait<'a, 'b> ImplLifetimeFlow {
-  fn flow(recv: & Self, x: &'a i64, $return: &out &'b i64);
+  fn flow(recv: &Self, x: &'a i64, $return: &out &'b i64);
 }
 
 impl<'a: 'b, 'b> ImplLifetimeFlow<'a, 'b> for ImplLifetimeHost {
-  fn flow(recv: & ImplLifetimeHost, x: &'a i64, $return: &out &'b i64) {
+  fn flow(recv: &ImplLifetimeHost, x: &'a i64, $return: &out &'b i64) {
     entry:
       $return.* = copy x;
       return

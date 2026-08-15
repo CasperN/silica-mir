@@ -98,7 +98,7 @@ fn<'s0> u_to_zero(u: unit, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0, 's1> move_only_borrowed_match(ml: & 's0 MoveList, $return: &out 's1 i64) {
+fn<'s0, 's1> move_only_borrowed_match(ml: &'s0 MoveList, $return: &out 's1 i64) {
   _: unit;
   x: i64;
   entry:
@@ -427,7 +427,7 @@ fn<'s0, T: Copy + Drop> inferred_param_bound(x: T, $return: &out 's0 T) {
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<'s0, 's1> identity_from_impl(recv: & 's0 Box<T>, x: T, $return: &out 's1 T) {
+  fn<'s0, 's1> identity_from_impl(recv: &'s0 Box<T>, x: T, $return: &out 's1 T) {
     $tmp_0: &out T;
     entry:
       unborrow recv;
@@ -442,7 +442,7 @@ impl<T: Copy + Drop> Box<T> {
   }
 }
 
-fn<'a, 's0> borrow_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
+fn<'a, 's0> borrow_identity(x: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -451,8 +451,8 @@ fn<'a, 's0> borrow_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 's0> call_explicit_lifetime(x: & 'a i64, $return: &out 's0 & 'a i64) {
-  $tmp_0: &out & 'a i64;
+fn<'a, 's0> call_explicit_lifetime(x: &'a i64, $return: &out 's0 &'a i64) {
+  $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
     call borrow_identity<'a>(move x, move $tmp_0);
@@ -463,7 +463,7 @@ fn<'a, 's0> call_explicit_lifetime(x: & 'a i64, $return: &out 's0 & 'a i64) {
     return
 }
 
-fn<'a, 's0, T: Copy + Drop> borrow_generic_identity(x: & 'a T, $return: &out 's0 & 'a T) {
+fn<'a, 's0, T: Copy + Drop> borrow_generic_identity(x: &'a T, $return: &out 's0 &'a T) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -472,8 +472,8 @@ fn<'a, 's0, T: Copy + Drop> borrow_generic_identity(x: & 'a T, $return: &out 's0
     return
 }
 
-fn<'a, 's0> call_explicit_lifetime_inferred_type(x: & 'a i64, $return: &out 's0 & 'a i64) {
-  $tmp_0: &out & 'a i64;
+fn<'a, 's0> call_explicit_lifetime_inferred_type(x: &'a i64, $return: &out 's0 &'a i64) {
+  $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
     call borrow_generic_identity<'a, i64>(move x, move $tmp_0);
@@ -484,8 +484,8 @@ fn<'a, 's0> call_explicit_lifetime_inferred_type(x: & 'a i64, $return: &out 's0 
     return
 }
 
-fn<'a, 's0> call_inferred_lifetime_explicit_type(x: & 'a i64, $return: &out 's0 & 'a i64) {
-  $tmp_0: &out & 'a i64;
+fn<'a, 's0> call_inferred_lifetime_explicit_type(x: &'a i64, $return: &out 's0 &'a i64) {
+  $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
     call borrow_generic_identity<i64>(move x, move $tmp_0);

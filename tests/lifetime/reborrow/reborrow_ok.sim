@@ -47,7 +47,7 @@ fn mut_from_mut_local(x: i64) {
     return
 }
 
-# ---------- & derived from &mut local ----------
+# ---------- shared reference derived from &mut local ----------
 
 # A shared reborrow of a mutable borrow is legal; the parent is locked
 # for the duration and unborrows after the child is consumed.
@@ -61,7 +61,7 @@ fn shared_from_mut_local(x: i64) {
     return
 }
 
-# ---------- & derived from &mut param ----------
+# ---------- shared reference derived from &mut param ----------
 
 # The parent is a function parameter; the same unborrow rule applies
 # and `unborrow r` is inserted before the implicit function exit.

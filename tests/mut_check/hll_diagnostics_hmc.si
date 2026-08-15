@@ -30,18 +30,18 @@ fn defer_assign_immutable() {
 struct MutTraitTarget: Copy + Drop { value: i64 }
 
 trait MutTraitBody {
-  fn mutate(recv: & Self);
+  fn mutate(recv: &Self);
 }
 
 impl MutTraitBody for MutTraitTarget {
-  fn mutate(recv: & Self) {
+  fn mutate(recv: &Self) {
     let value = 0;
     value = 1;
   }
 }
 
 impl MutTraitTarget {
-  fn inherent_mutate(recv: & Self) {
+  fn inherent_mutate(recv: &Self) {
     let value = 0;
     value = 1;
   }

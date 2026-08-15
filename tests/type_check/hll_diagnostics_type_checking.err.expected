@@ -84,14 +84,14 @@ error: at 78:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': ex
     |
 error: at 92:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
     |
- 91 |   fn value(recv: & Self) -> i64 {
+ 91 |   fn value(recv: &Self) -> i64 {
  92 |     false
     |     ^^^^^
  93 |   }
     |
 error: at 99:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
     |
- 98 |   fn inherent_value(recv: & Self) -> i64 {
+ 98 |   fn inherent_value(recv: &Self) -> i64 {
  99 |     false
     |     ^^^^^
  100 |   }
@@ -105,7 +105,7 @@ error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type anno
    |
 error: at 104:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
      |
- 103 |   fn ambiguous_local(recv: & Self) {
+ 103 |   fn ambiguous_local(recv: &Self) {
  104 |     let values = [];
      |                  ^^
  105 |   }

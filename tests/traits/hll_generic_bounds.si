@@ -18,99 +18,99 @@ enum<T: Label> Maybe { None: unit, Some: T }
 struct<T> Wrapper { value: T }
 struct<'held, T: LifetimeLabel<'held>> LifetimeHolder { value: &'held T }
 
-extern fn<T: Label> accept(value: & T);
-extern fn<T: AutoClone> accept_auto_clone(value: & T);
-extern fn<T: AutoDestroy> accept_auto_destroy(value: & T);
-extern fn<'bound, T: LifetimeLabel<'bound>> accept_lifetime_bound(value: & T);
+extern fn<T: Label> accept(value: &T);
+extern fn<T: AutoClone> accept_auto_clone(value: &T);
+extern fn<T: AutoDestroy> accept_auto_destroy(value: &T);
+extern fn<'bound, T: LifetimeLabel<'bound>> accept_lifetime_bound(value: &T);
 
 # covers: a concrete impl satisfies a direct function bound
-fn accept_concrete(value: & Good) {
+fn accept_concrete(value: &Good) {
   accept<Good>(value);
 }
 
 # covers: an exact bound on a caller parameter forwards to another generic call
-fn<T: Label> accept_generic(value: & T) {
+fn<T: Label> accept_generic(value: &T) {
   accept<T>(value);
 }
 
 # covers: compiler-provided auto traits are available as direct HLL bounds
-fn<T: AutoClone + AutoDestroy> accept_auto_bounds(value: & T) {
+fn<T: AutoClone + AutoDestroy> accept_auto_bounds(value: &T) {
   accept_auto_clone<T>(value);
   accept_auto_destroy<T>(value);
 }
 
 # covers: function-bound lifetimes are substituted at an explicit call
-fn accept_static_lifetime_bound(value: & Good) {
+fn accept_static_lifetime_bound(value: &Good) {
   accept_lifetime_bound<'static, Good>(value);
 }
 
 # covers: direct bounds are enforced on struct and enum type arguments
-fn<T: Label> use_bounded_types(holder: & Holder<T>, maybe: & Maybe<T>) {
+fn<T: Label> use_bounded_types(holder: &Holder<T>, maybe: &Maybe<T>) {
   holder;
   maybe;
 }
 
 # covers: a trait's generic parameter may itself have a direct trait bound
-fn<T: RequiresLabel<Good>> use_bounded_trait_argument(value: & T) {
+fn<T: RequiresLabel<Good>> use_bounded_trait_argument(value: &T) {
   value;
 }
 
 # covers: a parameterized direct bound is preserved and forwarded exactly
-fn<T: Related<i64>> use_parameterized_bound(value: & T) {
+fn<T: Related<i64>> use_parameterized_bound(value: &T) {
   value;
 }
 
 # covers: bounds may refer to a type parameter declared later in the binder
-fn<T: Related<U>, U> use_later_bound_parameter(value: & T, other: & U) {
+fn<T: Related<U>, U> use_later_bound_parameter(value: &T, other: &U) {
   value;
   other;
 }
 
 # covers: custom-type bounds substitute the declaration's lifetime arguments
-fn use_static_lifetime_holder(value: & LifetimeHolder<'static, Good>) {
+fn use_static_lifetime_holder(value: &LifetimeHolder<'static, Good>) {
   value;
 }
 
 impl<T: Label> Wrapper<T> {
-  fn inspect(recv: & Wrapper<T>) { recv; }
+  fn inspect(recv: &Wrapper<T>) { recv; }
 }
 
 # covers: an inherent impl header's direct bound participates in applicability
-fn inspect_good(value: & Wrapper<Good>) {
+fn inspect_good(value: &Wrapper<Good>) {
   value.inspect();
 }
 
 trait Inspect {
-  fn inspect_trait(recv: & Self);
-  fn<U: Label> inspect_trait_argument(recv: & Self, value: & U);
+  fn inspect_trait(recv: &Self);
+  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U);
 }
 
 impl<T: Label> Inspect for Wrapper<T> {
-  fn inspect_trait(recv: & Self) { recv; }
-  fn<U: Label> inspect_trait_argument(recv: & Self, value: & U) {
+  fn inspect_trait(recv: &Self) { recv; }
+  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U) {
     recv;
     value;
   }
 }
 
 # covers: a trait impl header's direct bound participates in applicability
-fn inspect_trait_good(value: & Wrapper<Good>) {
+fn inspect_trait_good(value: &Wrapper<Good>) {
   value.inspect_trait();
 }
 
 # covers: direct bounds are enforced on trait-method generic parameters
-fn inspect_trait_argument_good(value: & Wrapper<Good>, argument: & Good) {
+fn inspect_trait_argument_good(value: &Wrapper<Good>, argument: &Good) {
   value.inspect_trait_argument<Good>(argument);
 }
 
 impl Good {
-  fn<U: Label> inspect_argument(recv: & Good, value: & U) {
+  fn<U: Label> inspect_argument(recv: &Good, value: &U) {
     recv;
     value;
   }
   fn<'bound, U: LifetimeLabel<'bound>> inspect_lifetime_argument(
-    recv: & Good,
-    value: & U,
+    recv: &Good,
+    value: &U,
   ) {
     recv;
     value;
@@ -118,10 +118,10 @@ impl Good {
 }
 
 # covers: direct bounds are enforced on method generic parameters
-fn inspect_argument_good(recv: & Good, value: & Good) {
+fn inspect_argument_good(recv: &Good, value: &Good) {
   recv.inspect_argument<Good>(value);
 }
 # covers: method-bound lifetimes are substituted at an explicit call
-fn inspect_lifetime_argument_good(recv: & Good, value: & Good) {
+fn inspect_lifetime_argument_good(recv: &Good, value: &Good) {
   recv.inspect_lifetime_argument<'static, Good>(value);
 }

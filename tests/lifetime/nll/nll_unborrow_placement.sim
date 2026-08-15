@@ -279,12 +279,12 @@ fn mut_chained_reborrow_deepest_first(x: i64) {
 }
 
 trait ImplNllOk {
-  fn close(recv: & Self, x: &out i64);
+  fn close(recv: &Self, x: &out i64);
 }
 
 impl ImplNllOk for P {
   # covers: NLL inserts unborrows in impl method bodies
-  fn close(recv: & P, x: &out i64) {
+  fn close(recv: &P, x: &out i64) {
     entry:
       x.* = 42;
       return

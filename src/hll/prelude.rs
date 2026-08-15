@@ -9,7 +9,7 @@ use crate::hll::parser::Parser;
 
 const PRELUDE_HLL: &str = r#"
 trait AutoClone {
-  fn clone(recv: & Self) -> Self;
+  fn clone(recv: &Self) -> Self;
 }
 
 trait AutoDestroy {

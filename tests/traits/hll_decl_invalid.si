@@ -7,59 +7,59 @@
 struct S: Copy + Drop { value: i64 }
 
 trait Required {
-  fn required(recv: & Self);
+  fn required(recv: &Self);
 }
 
 impl Unknown for S {
-  fn ignored(recv: & Self) { unit }
+  fn ignored(recv: &Self) { unit }
 }
 
 impl Required for S {
-  fn extra(recv: & Self) { unit }
+  fn extra(recv: &Self) { unit }
 }
 
 trait Result {
-  fn result(recv: & Self) -> i64;
+  fn result(recv: &Self) -> i64;
 }
 
 impl Result for S {
-  fn result(recv: & Self) -> bool { false }
+  fn result(recv: &Self) -> bool { false }
 }
 
 trait<'a> Lifetime {
-  fn<'b> lifetime(recv: & 'b Self);
+  fn<'b> lifetime(recv: &'b Self);
 }
 
 impl<'a> Lifetime<'a> for S {
-  fn<'a> lifetime(recv: & 'a Self) { unit }
+  fn<'a> lifetime(recv: &'a Self) { unit }
 }
 
 trait<T: Copy + Drop> GenericTrait {
-  fn generic(recv: & Self, value: T);
+  fn generic(recv: &Self, value: T);
 }
 
 impl GenericTrait for S {
-  fn generic(recv: & Self, value: i64) { unit }
+  fn generic(recv: &Self, value: i64) { unit }
 }
 
 trait MethodGeneric {
-  fn<T: Copy + Drop> method_generic(recv: & Self, value: T);
+  fn<T: Copy + Drop> method_generic(recv: &Self, value: T);
 }
 
 impl MethodGeneric for S {
-  fn method_generic(recv: & Self, value: i64) { unit }
+  fn method_generic(recv: &Self, value: i64) { unit }
 }
 
 # Inherent impl targets must be nominal types.
 impl i64 {
-  fn invalid_target(recv: & Self) { unit }
+  fn invalid_target(recv: &Self) { unit }
 }
 
 # Multiple blocks are legal, but cannot redeclare a method for the same target.
 impl S {
-  fn duplicate(recv: & Self) { unit }
+  fn duplicate(recv: &Self) { unit }
 }
 
 impl S {
-  fn duplicate(recv: & Self) { unit }
+  fn duplicate(recv: &Self) { unit }
 }

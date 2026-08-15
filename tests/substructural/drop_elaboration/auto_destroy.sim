@@ -7,7 +7,7 @@ struct Destroyable: Move { value: i64 }
 struct ImmovableDestroyable { value: i64 }
 struct DropPreferred: Drop { value: i64 }
 struct<T: Copy + Drop> GenericDestroyable: Move { value: T }
-struct<'a> BorrowedDestroyable: Move { value: & 'a i64 }
+struct<'a> BorrowedDestroyable: Move { value: &'a i64 }
 struct<'a> MutHolder: Move { r: &mut 'a i64 }
 struct PartialOwner: Move { item: Destroyable tail: i64 }
 struct PartialAutoDestroy: Move { left: i64 right: i64 }

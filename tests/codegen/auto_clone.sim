@@ -3,7 +3,7 @@
 struct Cloneable: Move { value: i64 }
 
 impl AutoClone for Cloneable {
-  fn clone(recv: & Cloneable, $return: &out Cloneable) {
+  fn clone(recv: &Cloneable, $return: &out Cloneable) {
     entry:
       $return.*.value = copy recv.*.value;
       return

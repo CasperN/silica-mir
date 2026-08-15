@@ -511,7 +511,7 @@ operand =
 
 rvalue =
     | operand
-    | & place
+    | &place
     | &mut place
     | &out place
     | &drop place

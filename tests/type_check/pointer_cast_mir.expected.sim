@@ -6,7 +6,7 @@ fn<'s0> ptr_to_ptr(p: *i64, $return: &out 's0 *u8) {
     return
 }
 
-fn<'s0, 's1> ref_to_ptr(r: & 's0 i64, $return: &out 's1 *u8) {
+fn<'s0, 's1> ref_to_ptr(r: &'s0 i64, $return: &out 's1 *u8) {
   entry:
     $return.* = ptr_cast(copy r, *u8);
     unborrow $return;
@@ -14,17 +14,17 @@ fn<'s0, 's1> ref_to_ptr(r: & 's0 i64, $return: &out 's1 *u8) {
     return
 }
 
-fn<'s0, 's1> ptr_to_ref(p: *i64, $return: &out 's0 & 's1 i64) {
+fn<'s0, 's1> ptr_to_ref(p: *i64, $return: &out 's0 &'s1 i64) {
   entry:
-    $return.* = ptr_cast(copy p, & i64);
+    $return.* = ptr_cast(copy p, &i64);
     unborrow $return;
     drop p;
     return
 }
 
-fn<'s0, 's1> ref_to_ref(r: & 's0 i64, $return: &out 's1 & 's0 u8) {
+fn<'s0, 's1> ref_to_ref(r: &'s0 i64, $return: &out 's1 &'s0 u8) {
   entry:
-    $return.* = ptr_cast(copy r, & u8);
+    $return.* = ptr_cast(copy r, &u8);
     unborrow $return;
     unborrow r;
     return

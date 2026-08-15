@@ -35,11 +35,11 @@
 
 # Trait-only shapes with no accompanying impl.
 trait<T> Combo {
-  fn<U> map(recv: & Self, other: & U, $return: &out T);
+  fn<U> map(recv: &Self, other: &U, $return: &out T);
 }
 
 trait RefMethods {
-  fn shared(recv: & Self);
+  fn shared(recv: &Self);
   fn mut_(recv: &mut Self);
   fn out_(recv: &out Self);
   fn drop_(recv: &drop Self);
@@ -47,7 +47,7 @@ trait RefMethods {
 }
 
 trait Simple {
-  fn ping(recv: & Self);
+  fn ping(recv: &Self);
 }
 
 trait<T: Copy + Drop> Iter {
@@ -61,7 +61,7 @@ struct List: Copy + Drop { xs: [i64; 4] }
 struct<T: Copy + Drop> Bag: Copy + Drop { inner: T }
 
 impl Simple for Foo {
-  fn ping(recv: & Foo) {
+  fn ping(recv: &Foo) {
     entry:
       return
   }
@@ -86,22 +86,22 @@ impl<T: Copy + Drop> Iter<T> for Bag<T> {
 # Trait method with its own type parameter: impl must preserve the
 # generic (may rename it), not specialize it away.
 trait MgTrait {
-  fn<U: Copy + Drop> ignore(recv: & Self, other: & U);
+  fn<U: Copy + Drop> ignore(recv: &Self, other: &U);
 }
 
 impl MgTrait for Foo {
-  fn<V: Copy + Drop> ignore(recv: & Self, other: & V) {
+  fn<V: Copy + Drop> ignore(recv: &Self, other: &V) {
     entry:
       return
   }
 }
 
 trait<'a> LifetimeContract {
-  fn<'b: 'a> relate(recv: & Self, earlier: &'a i64, later: &'b i64);
+  fn<'b: 'a> relate(recv: &Self, earlier: &'a i64, later: &'b i64);
 }
 
 impl<'x> LifetimeContract<'x> for Foo {
-  fn<'y: 'x> relate(recv: & Foo, earlier: &'x i64, later: &'y i64) {
+  fn<'y: 'x> relate(recv: &Foo, earlier: &'x i64, later: &'y i64) {
     entry:
       return
   }
@@ -109,14 +109,14 @@ impl<'x> LifetimeContract<'x> for Foo {
 
 # Trait with a lifetime parameter: impl must supply exact-arity
 # lifetime args in the trait ref.
-struct<'a> LtHolder: Copy + Drop { p: & 'a i64 }
+struct<'a> LtHolder: Copy + Drop { p: &'a i64 }
 
 trait<'a> LtTrait {
-  fn peek(recv: & Self);
+  fn peek(recv: &Self);
 }
 
 impl<'a> LtTrait<'a> for LtHolder<'a> {
-  fn peek(recv: & Self) {
+  fn peek(recv: &Self) {
     entry:
       return
   }
@@ -127,13 +127,13 @@ impl<'a> LtTrait<'a> for LtHolder<'a> {
 # out. Covers the three ref kinds a method receiver commonly uses,
 # against a generic target so the substitution has non-trivial content.
 trait SelfAlias {
-  fn s(recv: & Self);
+  fn s(recv: &Self);
   fn m(recv: &mut Self);
   fn d(recv: &drop Self);
 }
 
 impl<T: Copy + Drop> SelfAlias for Bag<T> {
-  fn s(recv: & Self) {
+  fn s(recv: &Self) {
     entry:
       return
   }
@@ -152,12 +152,12 @@ impl<T: Copy + Drop> SelfAlias for Bag<T> {
 # type. Covers the local-declaration position, which the parser routes
 # through the same `type_scope` as parameter types.
 trait SelfLocal {
-  fn foo(recv: & Self);
+  fn foo(recv: &Self);
 }
 
 impl SelfLocal for Foo {
-  fn foo(recv: & Self) {
-    p: & Self;
+  fn foo(recv: &Self) {
+    p: &Self;
     entry:
       p = copy recv;
       return
@@ -168,17 +168,17 @@ impl SelfLocal for Foo {
 # type args and trait-fn callee `self_ty` — also desugars to the
 # target. Uses `Simple` (declared above) as the trait dispatched
 # through, and a small generic free fn as the FnName callee.
-fn<T: Copy + Drop> visit_ref(r: & T) {
+fn<T: Copy + Drop> visit_ref(r: &T) {
   entry:
     return
 }
 
 trait SelfInBody {
-  fn dispatch(recv: & Self);
+  fn dispatch(recv: &Self);
 }
 
 impl SelfInBody for Foo {
-  fn dispatch(recv: & Self) {
+  fn dispatch(recv: &Self) {
     entry:
       call visit_ref<Self>(copy recv);
       call <Self as Simple>::ping(copy recv);
@@ -191,7 +191,7 @@ impl SelfInBody for Foo {
 # with the impl-header's own lifetime param `'s0`, elision would
 # regenerate `'s0` for the method and shadow the header.
 impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
-  fn peek(recv: & Self) {
+  fn peek(recv: &Self) {
     entry:
       return
   }
@@ -199,18 +199,18 @@ impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
 
 # Drop elaboration visits impl methods and resolves method-generic bounds.
 trait Discard {
-  fn<T: Drop> discard(recv: & Self, value: T);
+  fn<T: Drop> discard(recv: &Self, value: T);
 }
 
 impl Discard for Foo {
-  fn<T: Drop> discard(recv: & Foo, value: T) {
+  fn<T: Drop> discard(recv: &Foo, value: T) {
     entry:
       return
   }
 }
 
 impl AutoClone for Foo {
-  fn clone(recv: & Foo, $return: &out Foo) {
+  fn clone(recv: &Foo, $return: &out Foo) {
     entry:
       $return.* = copy recv.*;
       return
@@ -237,7 +237,7 @@ impl<T: Copy + Drop> Bag<T> {
 }
 
 impl<T: Copy + Drop> Bag<T> {
-  fn get(recv: & Self, $return: &out T) {
+  fn get(recv: &Self, $return: &out T) {
     entry:
       $return.* = copy recv.*.inner;
       return
@@ -253,10 +253,10 @@ impl DirectBound for Foo {}
 
 struct<T: DirectBound> DirectBox { value: T }
 
-extern fn<T: DirectBound> accept_direct(value: & T);
+extern fn<T: DirectBound> accept_direct(value: &T);
 
 # covers: an exact caller bound satisfies a direct callee obligation
-fn<T: DirectBound> forward_direct(value: & T) {
+fn<T: DirectBound> forward_direct(value: &T) {
   entry:
     call accept_direct<T>(copy value);
     return

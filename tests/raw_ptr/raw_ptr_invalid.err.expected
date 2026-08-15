@@ -21,7 +21,7 @@ error: at 61:5: [TC-PtrCastSourceNotPointer] In function 'ptr_cast_source_not_po
     |
 error: at 75:5: [TC-PtrCastTargetNotPointer] In function 'ptr_cast_target_not_pointer', block 'entry': Pointer cast target must be a raw pointer or reference type, found i64
     |
- 74 |     r = & x;
+ 74 |     r = &x;
  75 |     y = ptr_cast(copy r, i64);
     |     ^^^^^^^^^^^^^^^^^^^^^^^^^
  76 |     return

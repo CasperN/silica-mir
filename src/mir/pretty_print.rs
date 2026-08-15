@@ -403,7 +403,10 @@ fn write_rvalue(out: &mut String, rv: &RValue) {
     match rv {
         RValue::Use(op) => write_operand(out, op),
         RValue::Ref(kind, place) => {
-            write!(out, "{} ", kind).unwrap();
+            write!(out, "{}", kind).unwrap();
+            if *kind != RefKind::Shared {
+                out.push(' ');
+            }
             write_place(out, place);
         }
         RValue::RawRef(place) => {

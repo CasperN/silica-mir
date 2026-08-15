@@ -647,12 +647,12 @@ fn if_both_init_read_MatCDM(cond: bool) {
 }
 
 trait ImplClassCheckOk {
-  fn check(recv: & Self, x: i64);
+  fn check(recv: &Self, x: i64);
 }
 
 impl ImplClassCheckOk for MatCDM {
   # covers: substructural checking visits impl method bodies
-  fn check(recv: & MatCDM, x: i64) {
+  fn check(recv: &MatCDM, x: i64) {
     y: i64;
     entry:
       y = copy x;

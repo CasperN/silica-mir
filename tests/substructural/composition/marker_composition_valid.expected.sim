@@ -4,7 +4,7 @@ struct CopyDropScalars: Copy + Drop {
 }
 
 struct<'s0> CopySharedRef: Copy {
-  r: & 's0 i64
+  r: &'s0 i64
   x: i64
 }
 
@@ -18,7 +18,7 @@ struct<'s0, 's1, 's2, 's3, 's4> MoveAllRefKinds: Move {
   b: &out 's1 i64
   c: &drop 's2 i64
   d: &uninit 's3 i64
-  e: & 's4 i64
+  e: &'s4 i64
 }
 
 struct<'s0> DropMutRef: Drop {
@@ -44,7 +44,7 @@ struct CopyNested: Copy {
 
 enum<'s0> RecursiveList: Copy + Drop {
   Nil: unit
-  Cons: & 's0 RecursiveList<'s0>
+  Cons: &'s0 RecursiveList<'s0>
 }
 
 enum CopyDropScalarVariants: Copy + Drop {

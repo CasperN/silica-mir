@@ -10,58 +10,58 @@ struct Self: Copy + Drop { value: i64 }
 enum Self { Value: unit }
 
 trait Body {
-  fn body(recv: & Self) { unit }
+  fn body(recv: &Self) { unit }
 }
 
 trait ExternTrait {
-  extern fn ext(recv: & Self);
+  extern fn ext(recv: &Self);
 }
 
 trait AbiTrait {
-  extern "C" fn abi(recv: & Self);
+  extern "C" fn abi(recv: &Self);
 }
 
 trait Duplicate {
-  fn same(recv: & Self);
-  fn same(recv: & Self);
+  fn same(recv: &Self);
+  fn same(recv: &Self);
 }
 
 trait Required {
-  fn required(recv: & Self);
+  fn required(recv: &Self);
 }
 
 impl Required for S {
-  fn required(recv: & Self);
+  fn required(recv: &Self);
 }
 
 impl Required for S {
-  extern fn required(recv: & Self) { unit }
+  extern fn required(recv: &Self) { unit }
 }
 
 impl Required for S {
-  extern "C" fn required(recv: & Self) { unit }
+  extern "C" fn required(recv: &Self) { unit }
 }
 
 impl Required for S {
-  fn required(recv: & Self) { unit }
-  fn required(recv: & Self) { unit }
+  fn required(recv: &Self) { unit }
+  fn required(recv: &Self) { unit }
 }
 
 impl<T> Required for S {
-  fn<T> required(recv: & Self) { unit }
+  fn<T> required(recv: &Self) { unit }
 }
 
 trait Self {
-  fn reserved(recv: & Self);
+  fn reserved(recv: &Self);
 }
 
 impl Self for S {
-  fn reserved(recv: & Self) { unit }
+  fn reserved(recv: &Self) { unit }
 }
 
 trait DuplicateBound {}
 
 # covers: the same direct trait bound cannot be declared twice
-fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T) {
+fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T) {
   value;
 }

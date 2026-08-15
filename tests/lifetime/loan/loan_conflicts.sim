@@ -86,7 +86,7 @@ fn mut_blocks_mut_reborrow(x: i64) {
     return
 }
 
-# ---- &mut loan, direct scalar place, conflicting & reborrow ----
+# ---- &mut loan, direct scalar place, conflicting shared reborrow ----
 # Verifies that an active &mut loan blocks a shared borrow of the same place.
 fn mut_blocks_shared_reborrow(x: i64) {
   r: &mut i64;
@@ -98,7 +98,7 @@ fn mut_blocks_shared_reborrow(x: i64) {
     return
 }
 
-# ---- & loan, direct scalar place, conflicting write ----
+# ---- shared loan, direct scalar place, conflicting write ----
 # Verifies that an active shared loan blocks a write to the loanee.
 fn shared_blocks_write(x: i64) {
   r: &i64;
@@ -109,7 +109,7 @@ fn shared_blocks_write(x: i64) {
     return
 }
 
-# ---- & loan, direct scalar place, conflicting move ----
+# ---- shared loan, direct scalar place, conflicting move ----
 # Verifies that an active shared loan blocks a move of the loanee.
 fn shared_blocks_move(x: i64) {
   r: &i64;
@@ -120,7 +120,7 @@ fn shared_blocks_move(x: i64) {
     return
 }
 
-# ---- & loan, direct scalar place, conflicting &mut reborrow ----
+# ---- shared loan, direct scalar place, conflicting &mut reborrow ----
 # Verifies that a shared loan blocks a mutable reborrow of the same place.
 fn shared_blocks_mut_reborrow(x: i64) {
   r: &i64;

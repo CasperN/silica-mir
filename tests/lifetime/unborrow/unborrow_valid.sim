@@ -43,7 +43,7 @@ fn mut_unborrow_releases_loan(x: i64) {
     return
 }
 
-# ---------- & shared straight-line ----------
+# ---------- shared reference, straight-line ----------
 
 # Unborrow of a shared ref releases the immutable loan; the place
 # becomes writable immediately after.

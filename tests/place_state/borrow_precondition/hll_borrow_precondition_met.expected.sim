@@ -7,7 +7,7 @@ struct Box: Drop + Move {
   val: i64
 }
 
-fn<'s0, 's1> use_shared(r: & 's0 i64, $return: &out 's1 i64) {
+fn<'s0, 's1> use_shared(r: &'s0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -37,10 +37,10 @@ fn<'s0> take_scalar(y: i64, $return: &out 's0 i64) {
 }
 
 fn<'s0> shared_of_init(x: i64, $return: &out 's0 i64) {
-  $tmp_0: & i64;
+  $tmp_0: &i64;
   $tmp_1: &out i64;
   entry:
-    $tmp_0 = & x;
+    $tmp_0 = &x;
     $tmp_1 = &out $return.*;
     call use_shared(move $tmp_0, move $tmp_1);
     unborrow $return;

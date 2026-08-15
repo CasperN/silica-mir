@@ -131,12 +131,12 @@ fn partial_array_slot_consumed() {
 }
 
 trait ImplDropElaborationOk {
-  fn finish(recv: & Self, x: i64);
+  fn finish(recv: &Self, x: i64);
 }
 
 impl ImplDropElaborationOk for P {
   # covers: drop elaboration visits impl method bodies
-  fn finish(recv: & P, x: i64) {
+  fn finish(recv: &P, x: i64) {
     entry:
       return
   }

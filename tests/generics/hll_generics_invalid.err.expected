@@ -168,7 +168,7 @@ error: at 122:3: [HTC-UndeclaredLifetime] In function 'call_undeclared_lifetime'
      |
 error: at 128:5: [HTC-BoundNotSatisfied] In function '<DropOnly>::call_inferred_bound_failure_from_impl': type argument 'DropOnly' for 'requires_copy::T' does not satisfy bound 'Copy'
      |
- 127 |   fn call_inferred_bound_failure_from_impl(recv: & Self, x: DropOnly) -> DropOnly {
+ 127 |   fn call_inferred_bound_failure_from_impl(recv: &Self, x: DropOnly) -> DropOnly {
  128 |     requires_copy(x)
      |     ^^^^^^^^^^^^^
  129 |   }

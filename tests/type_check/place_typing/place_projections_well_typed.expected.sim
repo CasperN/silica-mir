@@ -4,7 +4,7 @@ struct P: Copy + Drop {
 }
 
 struct<'s0> Ptr: Copy + Drop {
-  r: & 's0 i64
+  r: &'s0 i64
 }
 
 enum Option: Copy + Drop {
@@ -58,7 +58,7 @@ fn downcast_on_enum(o: Option) {
     return
 }
 
-fn<'s0> deref_of_ref(r: & 's0 i64) {
+fn<'s0> deref_of_ref(r: &'s0 i64) {
   x: i64;
   entry:
     x = copy r.*;

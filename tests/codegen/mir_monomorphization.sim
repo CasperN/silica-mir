@@ -31,10 +31,10 @@ struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
 struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop { first: T, second: U }
 enum<T: Copy + Drop> Opt: Copy + Drop { None: unit, Some: T }
 struct<T: Copy + Drop> Node: Copy + Drop { value: T, next: *Node<T> }
-struct<'a, T: Copy + Drop> RefBox: Copy + Drop { value: & 'a T }
+struct<'a, T: Copy + Drop> RefBox: Copy + Drop { value: &'a T }
 struct<'a, T: Copy + Drop> Deep: Copy + Drop {
   borrowed: RefBox<'a, T>,
-  handlers: [fn(& 'a T); 2],
+  handlers: [fn(&'a T); 2],
   storage: Box<[T; 2]>,
 }
 

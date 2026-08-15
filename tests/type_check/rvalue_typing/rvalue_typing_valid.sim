@@ -7,7 +7,7 @@
 # non-trivial type resolution.
 #
 #   fn                           rvalue form
-#   shared_borrow                & place
+#   shared_borrow                &place
 #   mut_borrow                   &mut place
 #   out_borrow                   &out place  (NeverInit precondition met)
 #   drop_borrow                  &drop place (Init precondition met)
@@ -27,7 +27,7 @@ extern fn use_drop(r: &drop i64);
 extern fn use_uninit(r: &uninit i64);
 extern fn use_raw(r: *i64);
 
-# ---------- & shared: resolves to &i64 ----------
+# ---------- shared borrow: resolves to &i64 ----------
 
 fn shared_borrow(x: i64) {
   r: &i64;

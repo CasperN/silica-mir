@@ -18,7 +18,7 @@ struct Linear { r: &out i64 }
 
 struct M: Move { value: i64 }
 
-# ---------- & shared: pointee NeverInit / Moved / Partial ----------
+# ---------- shared borrow: pointee NeverInit / Moved / Partial ----------
 
 fn shared_of_never_init() {
   x: i64;

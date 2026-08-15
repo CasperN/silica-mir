@@ -30,9 +30,9 @@ fn mut_unborrow_releases_loan(x: i64) {
 }
 
 fn shared_unborrow_allows_write(x: i64) {
-  r: & i64;
+  r: &i64;
   entry:
-    r = & x;
+    r = &x;
     unborrow r;
     drop x;
     x = 42;

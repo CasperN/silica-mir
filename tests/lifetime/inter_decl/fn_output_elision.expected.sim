@@ -1,4 +1,4 @@
-fn<'s0: 's2, 's1: 's2, 's2> identity(r: & 's0 i64, $return: &out 's1 & 's2 i64) {
+fn<'s0: 's2, 's1: 's2, 's2> identity(r: &'s0 i64, $return: &out 's1 &'s2 i64) {
   entry:
     $return.* = copy r;
     unborrow $return;
@@ -6,7 +6,7 @@ fn<'s0: 's2, 's1: 's2, 's2> identity(r: & 's0 i64, $return: &out 's1 & 's2 i64) 
     return
 }
 
-fn<'s0: 's3, 's1: 's3, 's2: 's3, 's3> pick_first(x: & 's0 i64, y: & 's1 i64, $return: &out 's2 & 's3 i64) {
+fn<'s0: 's3, 's1: 's3, 's2: 's3, 's3> pick_first(x: &'s0 i64, y: &'s1 i64, $return: &out 's2 &'s3 i64) {
   entry:
     unborrow y;
     $return.* = copy x;
@@ -15,7 +15,7 @@ fn<'s0: 's3, 's1: 's3, 's2: 's3, 's3> pick_first(x: & 's0 i64, y: & 's1 i64, $re
     return
 }
 
-fn<'s0: 's3, 's1: 's3, 's2: 's3, 's3> pick_second(x: & 's0 i64, y: & 's1 i64, $return: &out 's2 & 's3 i64) {
+fn<'s0: 's3, 's1: 's3, 's2: 's3, 's3> pick_second(x: &'s0 i64, y: &'s1 i64, $return: &out 's2 &'s3 i64) {
   entry:
     unborrow x;
     $return.* = copy y;
@@ -24,7 +24,7 @@ fn<'s0: 's3, 's1: 's3, 's2: 's3, 's3> pick_second(x: & 's0 i64, y: & 's1 i64, $r
     return
 }
 
-fn<'a: 's2, 's0: 's2, 's1: 's2, 's2> mixed_elision(x: & 'a i64, y: & 's0 i64, $return: &out 's1 & 's2 i64) {
+fn<'a: 's2, 's0: 's2, 's1: 's2, 's2> mixed_elision(x: &'a i64, y: &'s0 i64, $return: &out 's1 &'s2 i64) {
   entry:
     unborrow y;
     $return.* = copy x;

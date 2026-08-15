@@ -2195,10 +2195,10 @@ mod declaration_iteration_tests {
     fn declarations_cover_indexed_namespaces_and_exclude_intrinsics() {
         let program = Parser::parse_or_panic(
             "
-            trait T { fn use_(value: & Self); }
+            trait T { fn use_(value: &Self); }
             struct S: Copy + Drop { value: i64 }
             impl T for S {
-              fn use_(value: & S) { entry: return }
+              fn use_(value: &S) { entry: return }
             }
             fn f() { entry: return }
             enum E: Copy + Drop { V: unit }
@@ -2237,10 +2237,10 @@ mod declaration_iteration_tests {
     fn function_visitors_provide_generic_context_and_reattach_mutated_bodies() {
         let program = Parser::parse_or_panic(
             "
-            trait<T> Tr { fn<U> method(value: & Self, other: U); }
+            trait<T> Tr { fn<U> method(value: &Self, other: U); }
             struct<T> S { value: T }
             impl<X> Tr<X> for S<X> {
-              fn<Y> method(value: & S<X>, other: Y) { entry: return }
+              fn<Y> method(value: &S<X>, other: Y) { entry: return }
             }
             fn<Z> free(value: Z) { entry: return }
             extern fn<Z> external(value: Z);

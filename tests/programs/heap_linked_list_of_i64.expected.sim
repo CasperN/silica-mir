@@ -82,11 +82,11 @@ fn list_free(list: List) {
     return
 }
 
-fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
+fn<'s0, 's1> list_sum(list: &'s0 List, $return: &out 's1 i64) {
   _: unit;
   p: *Node;
   $tmp_0: i64;
-  $tmp_1: & List;
+  $tmp_1: &List;
   $tmp_2: &out i64;
   $tmp_3: &out i64;
   entry:
@@ -102,7 +102,7 @@ fn<'s0, 's1> list_sum(list: & 's0 List, $return: &out 's1 i64) {
   switch_Cons_1:
     p = copy list.* as Cons;
     unborrow list;
-    $tmp_1 = & p.*.next;
+    $tmp_1 = &p.*.next;
     $tmp_2 = &out $tmp_0;
     call list_sum(move $tmp_1, move $tmp_2);
     $tmp_3 = &out $return.*;
@@ -132,7 +132,7 @@ fn<'s0> main(exit: &out 's0 i32) {
   l3: List;
   $tmp_4: &out List;
   s: i64;
-  $tmp_5: & List;
+  $tmp_5: &List;
   $tmp_6: &out i64;
   $tmp_7: unit;
   $tmp_8: unit;
@@ -151,7 +151,7 @@ fn<'s0> main(exit: &out 's0 i32) {
     $tmp_4 = &out l3;
     call list_cons(1, move l2, move $tmp_4);
     require_uninit $tmp_4;
-    $tmp_5 = & l3;
+    $tmp_5 = &l3;
     $tmp_6 = &out s;
     call list_sum(move $tmp_5, move $tmp_6);
     require_uninit $tmp_6;

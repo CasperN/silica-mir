@@ -1,20 +1,20 @@
 error: at 36:3: [PARSE-MalformedCst] trait method 'm' cannot be extern
     |
  35 | trait ExternTraitM {
- 36 |   extern fn m(recv: & Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 36 |   extern fn m(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^
  37 | }
     |
 error: at 40:3: [PARSE-MalformedCst] trait method 'm' must not have a body
     |
  39 | trait BodyTraitM {
- 40 |   fn m(recv: & Self) {
+ 40 |   fn m(recv: &Self) {
     |   ^
  41 |     entry:
     |
 error: at 48:3: [PARSE-MalformedCst] duplicate trait method 'm'
     |
- 47 |   fn m(recv: & Self);
+ 47 |   fn m(recv: &Self);
  48 |   fn m(recv: &mut Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^
  49 | }
@@ -22,30 +22,30 @@ error: at 48:3: [PARSE-MalformedCst] duplicate trait method 'm'
 error: at 53:3: [PARSE-MalformedCst] impl method 'm' cannot be extern
     |
  52 | impl ExternM for S {
- 53 |   extern fn m(recv: & S);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^
+ 53 |   extern fn m(recv: &S);
+    |   ^^^^^^^^^^^^^^^^^^^^^^
  54 | }
     |
 error: at 58:3: [PARSE-MalformedCst] impl method 'm' requires a body
     |
  57 | impl BodylessM for S {
- 58 |   fn m(recv: & S);
-    |   ^^^^^^^^^^^^^^^^
+ 58 |   fn m(recv: &S);
+    |   ^^^^^^^^^^^^^^^
  59 | }
     |
 error: at 67:3: [PARSE-MalformedCst] duplicate impl method 'm'
     |
  66 |   }
- 67 |   fn m(recv: & S) {
+ 67 |   fn m(recv: &S) {
     |   ^
  68 |     entry:
     |
 error: at 74:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a type-parameter name
     |
- 73 | trait ReservedT { fn m(recv: & Self); }
+ 73 | trait ReservedT { fn m(recv: &Self); }
  74 | impl<Self> ReservedT for R {
     |      ^^^^
- 75 |   fn m(recv: & R) {
+ 75 |   fn m(recv: &R) {
     |
 error: at 84:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a struct name
     |
@@ -64,7 +64,7 @@ error: at 86:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
 error: at 88:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
     |
  87 | 
- 88 | trait Self { fn m(recv: & S); }
+ 88 | trait Self { fn m(recv: &S); }
     |       ^^^^
  89 | 
     |
@@ -103,11 +103,11 @@ error: at 105:3: [PARSE-ReservedIdent] In function 'with_self_local': 'Self' is 
      |   ^^^^
  106 |   entry:
      |
-error: at 115:32: [PARSE-ReservedIdent] In function 'take_self_out_of_scope': 'Self' may only appear as a type reference inside a trait or impl body
+error: at 115:31: [PARSE-ReservedIdent] In function 'take_self_out_of_scope': 'Self' may only appear as a type reference inside a trait or impl body
      |
  114 | # `UndeclaredType`.
- 115 | fn take_self_out_of_scope(x: & Self) {
-     |                                ^^^^
+ 115 | fn take_self_out_of_scope(x: &Self) {
+     |                               ^^^^
  116 |   entry:
      |
 error: at 121:6: [PARSE-ReservedIdent] 'Self' may only appear as a type reference inside a trait or impl body
@@ -122,20 +122,20 @@ error: at 127:20: [PARSE-ReservedIdent] 'Self' may only appear as a type referen
  126 | # target reads `Self` while it is still out of scope.
  127 | impl ReservedT for Self {
      |                    ^^^^
- 128 |   fn m(recv: & R) {
+ 128 |   fn m(recv: &R) {
      |
 error: at 137:15: [PARSE-ReservedIdent] 'Self' may only appear as a type reference inside a trait or impl body
      |
- 136 | trait<T: Copy + Drop> GenericT { fn m(recv: & Self, arg: & T); }
+ 136 | trait<T: Copy + Drop> GenericT { fn m(recv: &Self, arg: &T); }
  137 | impl GenericT<Self> for R {
      |               ^^^^
- 138 |   fn m(recv: & R, arg: & R) {
+ 138 |   fn m(recv: &R, arg: &R) {
      |
-error: at 147:52: [PARSE-ReservedIdent] In function 'm': 'Self' does not take type or lifetime arguments
+error: at 147:51: [PARSE-ReservedIdent] In function 'm': 'Self' does not take type or lifetime arguments
      |
  146 | # so passing it type or lifetime arguments is rejected.
- 147 | trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: & Self<T>); }
-     |                                                    ^^^^
+ 147 | trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: &Self<T>); }
+     |                                                   ^^^^
  148 | 
      |
 error: at 153:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
@@ -143,18 +143,18 @@ error: at 153:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as 
  152 | # `ImplForUnknownTrait`.
  153 | impl Self for R {
      |      ^^^^
- 154 |   fn m(recv: & R) {
+ 154 |   fn m(recv: &R) {
      |
 error: at 165:6: [PARSE-MalformedCst] In function 'm': Duplicate type parameter 'T'
      |
  164 | impl<T> ShadowM for R {
- 165 |   fn<T> m(recv: & R) {
+ 165 |   fn<T> m(recv: &R) {
      |      ^
  166 |     entry:
      |
 error: at 174:31: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
      |
  173 | # The same direct trait bound cannot be declared twice.
- 174 | extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T);
+ 174 | extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T);
      |                               ^^^^^^^^^^^^^^
      |

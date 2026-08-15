@@ -2,7 +2,7 @@
 
 struct Target: Copy + Drop { value: i64 }
 
-fn shared(recv: & Target) {}
+fn shared(recv: &Target) {}
 fn mutable(recv: &mut Target) {}
 fn output(recv: &out Target) { recv.* = Target { value: 1 }; }
 fn dropping(recv: &drop Target) { recv.*; }

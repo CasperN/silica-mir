@@ -72,7 +72,7 @@ fn<T> param_receiver(t: &mut T, $return: &out i64) {
 }
 
 trait<T: Copy + Drop> Same {
-  fn same(recv: & Self);
+  fn same(recv: &Self);
 }
 
 struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop {
@@ -81,76 +81,76 @@ struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop {
 }
 
 impl<T: Copy + Drop> Same<T> for Pair<T, T> {
-  fn same(recv: & Pair<T, T>) {
+  fn same(recv: &Pair<T, T>) {
     entry:
       return
   }
 }
 
-fn inconsistent_impl_binding(pair: & Pair<i64, bool>) {
+fn inconsistent_impl_binding(pair: &Pair<i64, bool>) {
   entry:
     call <Pair<i64, bool> as Same<i64>>::same(move pair);
     return
 }
 
 trait<T: Copy + Drop> Amb {
-  fn amb(recv: & Self);
+  fn amb(recv: &Self);
 }
 
 impl<T: Copy + Drop> Amb<T> for Pair<T, i64> {
-  fn amb(recv: & Pair<T, i64>) {
+  fn amb(recv: &Pair<T, i64>) {
     entry:
       return
   }
 }
 
 impl<U: Copy + Drop> Amb<i64> for Pair<i64, U> {
-  fn amb(recv: & Pair<i64, U>) {
+  fn amb(recv: &Pair<i64, U>) {
     entry:
       return
   }
 }
 
-fn ambiguous_impl(pair: & Pair<i64, i64>) {
+fn ambiguous_impl(pair: &Pair<i64, i64>) {
   entry:
     call <Pair<i64, i64> as Amb<i64>>::amb(move pair);
     return
 }
 
 trait Bounded {
-  fn run(recv: & Self);
+  fn run(recv: &Self);
 }
 
 struct Linear {}
 struct<T> Wrapper { value: T }
 
 impl<T: Copy> Bounded for Wrapper<T> {
-  fn run(recv: & Wrapper<T>) {
+  fn run(recv: &Wrapper<T>) {
     entry:
       return
   }
 }
 
-fn impl_bound_mismatch(wrapper: & Wrapper<Linear>) {
+fn impl_bound_mismatch(wrapper: &Wrapper<Linear>) {
   entry:
     call <Wrapper<Linear> as Bounded>::run(move wrapper);
     return
 }
 
 trait<'a> LifetimeTrait {
-  fn inspect(recv: & Self);
+  fn inspect(recv: &Self);
 }
 
-struct<'a> LifetimeBox: Copy + Drop { value: & 'a i64 }
+struct<'a> LifetimeBox: Copy + Drop { value: &'a i64 }
 
 impl<'a> LifetimeTrait<'a> for LifetimeBox<'a> {
-  fn inspect(recv: & LifetimeBox<'a>) {
+  fn inspect(recv: &LifetimeBox<'a>) {
     entry:
       return
   }
 }
 
-fn<'a, 'b> lifetime_impl_mismatch(value: & LifetimeBox<'a>) {
+fn<'a, 'b> lifetime_impl_mismatch(value: &LifetimeBox<'a>) {
   entry:
     call <LifetimeBox<'a> as LifetimeTrait<'b>>::inspect(copy value);
     return

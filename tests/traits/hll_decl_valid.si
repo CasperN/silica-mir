@@ -10,7 +10,7 @@ struct<T: Copy + Drop> Box: Copy + Drop { value: T }
 enum Choice: Copy + Drop { Empty: unit }
 
 trait RefKinds {
-  fn shared(recv: & Self);
+  fn shared(recv: &Self);
   fn mutable(recv: &mut Self);
   fn output(recv: &out Self);
   fn dropping(recv: &drop Self);
@@ -18,21 +18,21 @@ trait RefKinds {
 }
 
 trait<T: Copy + Drop> Convert {
-  fn<U: Copy + Drop> convert(recv: & Self, ignored: U) -> T;
+  fn<U: Copy + Drop> convert(recv: &Self, ignored: U) -> T;
 }
 
 impl<T: Copy + Drop> Convert<T> for Box<T> {
-  fn<U: Copy + Drop> convert(recv: & Self, ignored: U) -> T {
+  fn<U: Copy + Drop> convert(recv: &Self, ignored: U) -> T {
     recv.*.value
   }
 }
 
 trait<'a> Observe {
-  fn observe(recv: & 'a Self);
+  fn observe(recv: &'a Self);
 }
 
 impl<'a, T: Copy + Drop> Observe<'a> for Box<T> {
-  fn observe(recv: & 'a Self) {
+  fn observe(recv: &'a Self) {
     let local: Self = Self { value: recv.*.value };
     unit
   }
@@ -57,7 +57,7 @@ impl<T: Copy + Drop> Box<T> {
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn get(recv: & Self) -> T {
+  fn get(recv: &Self) -> T {
     recv.*.value
   }
 }

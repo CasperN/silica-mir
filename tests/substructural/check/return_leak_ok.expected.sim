@@ -95,11 +95,11 @@ fn partial_array_slot_consumed() {
 }
 
 trait ImplDropElaborationOk {
-  fn<'s0> finish(recv: & 's0 Self, x: i64);
+  fn<'s0> finish(recv: &'s0 Self, x: i64);
 }
 
 impl ImplDropElaborationOk for P {
-  fn<'s0> finish(recv: & 's0 P, x: i64) {
+  fn<'s0> finish(recv: &'s0 P, x: i64) {
     entry:
       unborrow recv;
       drop x;

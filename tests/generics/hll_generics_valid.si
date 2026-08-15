@@ -226,7 +226,7 @@ fn<T: Copy + Drop> inferred_param_bound(x: T) -> T { requires_copy(x) }
 
 # covers: free generic call inherits an impl header's type-parameter bounds
 impl<T: Copy + Drop> Box<T> {
-  fn identity_from_impl(recv: & Self, x: T) -> T { identity(x) }
+  fn identity_from_impl(recv: &Self, x: T) -> T { identity(x) }
 }
 
 # Explicit lifetime arguments survive HLL lowering into the MIR function

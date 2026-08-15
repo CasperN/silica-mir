@@ -38,11 +38,11 @@ struct Duplicated {
 }
 
 trait Duplicated {
-  fn ping(recv: & Self);
+  fn ping(recv: &Self);
 }
 
 trait IterMissingT {
-  fn next(recv: &mut Self, out: & Missing);
+  fn next(recv: &mut Self, out: &Missing);
 }
 
 trait<'a> TraitLifetimeShadow {
@@ -54,8 +54,8 @@ trait<'a> TraitLifetimeShadow {
 struct Foo: Copy + Drop { x: i64 }
 
 trait Trait {
-  fn a(recv: & Self);
-  fn b(recv: & Self);
+  fn a(recv: &Self);
+  fn b(recv: &Self);
 }
 
 trait<T: Copy + Drop> Iter {
@@ -64,7 +64,7 @@ trait<T: Copy + Drop> Iter {
 
 # Unknown trait name.
 impl Unknown for Foo {
-  fn zap(recv: & Foo) {
+  fn zap(recv: &Foo) {
     entry:
       return
   }
@@ -82,21 +82,21 @@ impl Iter for Foo {
 # Extra method + missing method (Trait wants `a` and `b`; impl gives
 # `a` and `extra`).
 impl Trait for Foo {
-  fn a(recv: & Foo) {
+  fn a(recv: &Foo) {
     entry:
       return
   }
-  fn extra(recv: & Foo) {
+  fn extra(recv: &Foo) {
     entry:
       return
   }
 }
 
-# Signature mismatch: trait says `recv: & Self` (shared ref), impl says
+# Signature mismatch: trait says `recv: &Self` (shared ref), impl says
 # `recv: &mut Foo` (mut ref). After Self := Foo the expected shape is
-# `& Foo`, not `&mut Foo`.
+# `&Foo`, not `&mut Foo`.
 trait TraitS {
-  fn touch(recv: & Self);
+  fn touch(recv: &Self);
 }
 
 impl TraitS for Foo {
@@ -110,11 +110,11 @@ impl TraitS for Foo {
 # type checker sees this because `typecheck_impl` checks each method
 # with its impl-header and method-level generics in scope.
 trait BadBody {
-  fn go(recv: & Self);
+  fn go(recv: &Self);
 }
 
 impl BadBody for Foo {
-  fn go(recv: & Foo) {
+  fn go(recv: &Foo) {
     flag: bool;
     entry:
       flag = 0i64;
@@ -125,11 +125,11 @@ impl BadBody for Foo {
 # Method-generic mismatch: the trait's method takes a `<U>` parameter;
 # the impl drops the method generic and specializes to i64.
 trait MgTrait {
-  fn<U> pick(recv: & Self, $return: &out U);
+  fn<U> pick(recv: &Self, $return: &out U);
 }
 
 impl MgTrait for Foo {
-  fn pick(recv: & Foo, $return: &out i64) {
+  fn pick(recv: &Foo, $return: &out i64) {
     entry:
       $return.* = 0;
       return
@@ -140,22 +140,22 @@ impl MgTrait for Foo {
 # lifetime parameters, but it may neither omit a required relationship nor
 # impose an additional one.
 trait<'a> BoundedMethod {
-  fn<'b: 'a> relate(recv: & Self, earlier: &'a i64, later: &'b i64);
+  fn<'b: 'a> relate(recv: &Self, earlier: &'a i64, later: &'b i64);
 }
 
 impl<'x> BoundedMethod<'x> for Foo {
-  fn<'y> relate(recv: & Foo, earlier: &'x i64, later: &'y i64) {
+  fn<'y> relate(recv: &Foo, earlier: &'x i64, later: &'y i64) {
     entry:
       return
   }
 }
 
 trait UnboundedMethod {
-  fn<'a, 'b> accept(recv: & Self, first: &'a i64, second: &'b i64);
+  fn<'a, 'b> accept(recv: &Self, first: &'a i64, second: &'b i64);
 }
 
 impl UnboundedMethod for Foo {
-  fn<'x, 'y: 'x> accept(recv: & Foo, first: &'x i64, second: &'y i64) {
+  fn<'x, 'y: 'x> accept(recv: &Foo, first: &'x i64, second: &'y i64) {
     entry:
       return
   }
@@ -164,11 +164,11 @@ impl UnboundedMethod for Foo {
 # Trait has a lifetime parameter but the impl omits the lifetime arg.
 # Impls skip elision, so an exact-arity match is required.
 trait<'a> LtTrait {
-  fn peek(recv: & Self);
+  fn peek(recv: &Self);
 }
 
 impl LtTrait for Foo {
-  fn peek(recv: & Foo) {
+  fn peek(recv: &Foo) {
     entry:
       return
   }
@@ -233,11 +233,11 @@ extern fn<T: Move> consume(value: T);
 struct<T> Box { value: T }
 
 trait<T: Move> BadSub {
-  fn duplicate(recv: & Self, value: T);
+  fn duplicate(recv: &Self, value: T);
 }
 
 impl<T: Move> BadSub<T> for Box<T> {
-  fn duplicate(recv: & Box<T>, value: T) {
+  fn duplicate(recv: &Box<T>, value: T) {
     duplicate: T;
     entry:
       duplicate = copy value;
@@ -281,7 +281,7 @@ impl<'a> Foo {
 
 # Inherent impl targets must be declared nominal types.
 impl i64 {
-  fn invalid_target(recv: & Self) {
+  fn invalid_target(recv: &Self) {
     entry:
       return
   }
@@ -290,14 +290,14 @@ impl i64 {
 # Separate inherent blocks may add methods, but may not redeclare one for the
 # same exact target.
 impl Foo {
-  fn duplicate(recv: & Self) {
+  fn duplicate(recv: &Self) {
     entry:
       return
   }
 }
 
 impl Foo {
-  fn duplicate(recv: & Self) {
+  fn duplicate(recv: &Self) {
     entry:
       return
   }
@@ -305,7 +305,7 @@ impl Foo {
 
 # Inherent methods participate in ordinary MIR body type checking.
 impl Foo {
-  fn invalid_body(recv: & Self) {
+  fn invalid_body(recv: &Self) {
     flag: bool;
     entry:
       flag = 0i64;
@@ -322,21 +322,21 @@ trait<'a, 'b: 'a> OrderedDirectBound {}
 struct Other: Copy + Drop { value: i64 }
 
 # covers: MIR bounds must name a declared trait
-extern fn<T: MissingBound> unknown_direct_bound(value: & T);
+extern fn<T: MissingBound> unknown_direct_bound(value: &T);
 
 # covers: MIR bounds must supply the trait's declared generic arity
-extern fn<T: GenericBound> wrong_direct_bound_arity(value: & T);
+extern fn<T: GenericBound> wrong_direct_bound_arity(value: &T);
 
 # covers: MIR trait bounds reject undeclared lifetime arguments
-extern fn<T: LifetimeDirectBound<'missing>> unknown_direct_bound_lifetime(value: & T);
+extern fn<T: LifetimeDirectBound<'missing>> unknown_direct_bound_lifetime(value: &T);
 
 # covers: a direct bound's trait lifetime requirements must be declared by its owner
 extern fn<'a, 'b, T: OrderedDirectBound<'a, 'b>> missing_direct_bound_outlives(value: &'b T);
 
-extern fn<T: DirectBound> accept_direct(value: & T);
+extern fn<T: DirectBound> accept_direct(value: &T);
 
 # covers: MIR call type arguments must satisfy direct trait bounds
-fn reject_direct_bound(value: & Other) {
+fn reject_direct_bound(value: &Other) {
   entry:
     call accept_direct<Other>(copy value);
     return

@@ -15,7 +15,7 @@ struct Link: Move { next: &mut &mut CopyPair }
 struct Cloneable: Move { value: i64 }
 struct<T: Copy + Drop> GenericCloneable: Move { value: T }
 struct CloneHolder: Move { item: Cloneable tail: i64 }
-struct<'a> BorrowedCloneable: Move { value: & 'a i64 }
+struct<'a> BorrowedCloneable: Move { value: &'a i64 }
 
 extern fn take_num(x: i64);
 extern fn take_token(x: Token);

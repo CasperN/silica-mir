@@ -69,7 +69,7 @@ error: at 588:14: [LT-LifetimeMismatch] trait 'QualifiedTraitHeaderBound<'a, 'b>
  587 | # covers: an impl header must satisfy its trait path's lifetime bounds
  588 | impl<'a, 'b> QualifiedTraitHeaderBound<'a, 'b> for InvalidHeaderReceiver<'a, 'b> {
      |              ^^^^^^^^^^^^^^^^^^^^^^^^^
- 589 |   fn invoke(recv: & InvalidHeaderReceiver<'a, 'b>) {
+ 589 |   fn invoke(recv: &InvalidHeaderReceiver<'a, 'b>) {
      |
   hint: declare bound 'b: 'a on this impl
 error: at 20:5: [LT-LifetimeMismatch] In function 'no_bound_flow_fails': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'no_bound_flow_fails'
@@ -152,7 +152,7 @@ error: at 206:5: [LT-LifetimeMismatch] In function 'impl_header_caller_missing_b
  207 |     return
      |
   hint: declare bound 'q: 'p on function 'impl_header_caller_missing_bound' or change the value flow so it is not required
-error: at 225:5: [LT-LifetimeMismatch] In function 'inherent_impl_type_missing_bound': the call to '<ImplTypeReceiver<& 'p i64>>::accept_impl_type' requires lifetime bound 'q: 'p, but it is not implied by the declared bounds on function 'inherent_impl_type_missing_bound'
+error: at 225:5: [LT-LifetimeMismatch] In function 'inherent_impl_type_missing_bound': the call to '<ImplTypeReceiver<&'p i64>>::accept_impl_type' requires lifetime bound 'q: 'p, but it is not implied by the declared bounds on function 'inherent_impl_type_missing_bound'
      |
  224 |   entry:
  225 |     call <ImplTypeReceiver<&'p i64>>::accept_impl_type(copy recv, copy value);
@@ -160,7 +160,7 @@ error: at 225:5: [LT-LifetimeMismatch] In function 'inherent_impl_type_missing_b
  226 |     return
      |
   hint: declare bound 'q: 'p on function 'inherent_impl_type_missing_bound' or change the value flow so it is not required
-error: at 248:5: [LT-LifetimeMismatch] In function 'trait_method_type_missing_bound': the call to '<MethodTypeReceiver as GenericMethod>::accept_method_type<& 'p i64>' requires lifetime bound 'q: 'p, but it is not implied by the declared bounds on function 'trait_method_type_missing_bound'
+error: at 248:5: [LT-LifetimeMismatch] In function 'trait_method_type_missing_bound': the call to '<MethodTypeReceiver as GenericMethod>::accept_method_type<&'p i64>' requires lifetime bound 'q: 'p, but it is not implied by the declared bounds on function 'trait_method_type_missing_bound'
      |
  247 |   entry:
  248 |     call <MethodTypeReceiver as GenericMethod>::accept_method_type<&'p i64>(

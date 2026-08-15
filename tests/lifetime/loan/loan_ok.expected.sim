@@ -23,7 +23,7 @@ extern fn<'s0> use_mut(r: &mut 's0 i64);
 
 extern fn<'s0> use_out(r: &out 's0 i64);
 
-extern fn<'s0> read_ref(r: & 's0 i64);
+extern fn<'s0> read_ref(r: &'s0 i64);
 
 extern fn<'s0> take_wrap(w: Wrap<'s0>);
 
@@ -182,10 +182,10 @@ fn mut_multi_loan_branch_borrows_a_or_b(a: i64, b: i64, c: bool) {
 }
 
 fn shared_loan_permits_read(x: i64) {
-  r: & i64;
+  r: &i64;
   y: i64;
   entry:
-    r = & x;
+    r = &x;
     unborrow r;
     y = copy x;
     drop y;
@@ -194,12 +194,12 @@ fn shared_loan_permits_read(x: i64) {
 }
 
 fn shared_loan_permits_shared_reborrow(x: i64) {
-  r: & i64;
-  s: & i64;
+  r: &i64;
+  s: &i64;
   entry:
-    r = & x;
+    r = &x;
     unborrow r;
-    s = & x;
+    s = &x;
     unborrow s;
     drop x;
     return

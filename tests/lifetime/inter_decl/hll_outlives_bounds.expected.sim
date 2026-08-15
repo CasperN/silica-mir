@@ -1,9 +1,9 @@
 struct<'a, 'b: 'a> Wrap {
-  x: & 'a i64
-  y: & 'b i64
+  x: &'a i64
+  y: &'b i64
 }
 
-fn<'a, 'b: 'a, 's0> mk_ok(x: & 'a i64, y: & 'b i64, $return: &out 's0 Wrap<'a, 'b>) {
+fn<'a, 'b: 'a, 's0> mk_ok(x: &'a i64, y: &'b i64, $return: &out 's0 Wrap<'a, 'b>) {
   entry:
     $return.*.x = move x;
     $return.*.y = move y;
@@ -14,7 +14,7 @@ fn<'a, 'b: 'a, 's0> mk_ok(x: & 'a i64, y: & 'b i64, $return: &out 's0 Wrap<'a, '
     return
 }
 
-fn<'a, 's0> mk_same(x: & 'a i64, $return: &out 's0 Wrap<'a, 'a>) {
+fn<'a, 's0> mk_same(x: &'a i64, $return: &out 's0 Wrap<'a, 'a>) {
   entry:
     $return.*.x = copy x;
     $return.*.y = move x;
@@ -24,7 +24,7 @@ fn<'a, 's0> mk_same(x: & 'a i64, $return: &out 's0 Wrap<'a, 'a>) {
     return
 }
 
-fn<'a, 'b, 's0> first_ref(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
+fn<'a, 'b, 's0> first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
   entry:
     unborrow y;
     $return.* = move x;
@@ -35,8 +35,8 @@ fn<'a, 'b, 's0> first_ref(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) 
     return
 }
 
-fn<'a, 'b, 's0> explicit_first_ref(x: & 'a i64, y: & 'b i64, $return: &out 's0 & 'a i64) {
-  $tmp_0: &out & 'a i64;
+fn<'a, 'b, 's0> explicit_first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
+  $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
     call first_ref<'a, 'b>(move x, move y, move $tmp_0);
@@ -57,11 +57,11 @@ fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
     return
 }
 
-fn<'a, 's0> generic_ref_identity(x: & 'a i64, $return: &out 's0 & 'a i64) {
-  $tmp_0: &out & 'a i64;
+fn<'a, 's0> generic_ref_identity(x: &'a i64, $return: &out 's0 &'a i64) {
+  $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
-    call identity<& 'a i64>(move x, move $tmp_0);
+    call identity<&'a i64>(move x, move $tmp_0);
     unborrow $return;
     require_uninit $tmp_0;
     require_uninit $return;

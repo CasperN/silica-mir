@@ -119,11 +119,11 @@ fn respects_explicit_user_drop(x: i64) {
 extern fn extern_untouched(x: i64);
 
 trait ImplPlaceStateOk {
-  fn<'s0> check(recv: & 's0 Self, x: i64);
+  fn<'s0> check(recv: &'s0 Self, x: i64);
 }
 
 impl ImplPlaceStateOk for Unit0 {
-  fn<'s0> check(recv: & 's0 Unit0, x: i64) {
+  fn<'s0> check(recv: &'s0 Unit0, x: i64) {
     y: i64;
     entry:
       unborrow recv;

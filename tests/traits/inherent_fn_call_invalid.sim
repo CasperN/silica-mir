@@ -5,38 +5,38 @@ struct Bar: Copy + Drop {}
 struct Linear {}
 
 impl Foo {
-  fn present(recv: & Foo) {
+  fn present(recv: &Foo) {
     entry:
       return
   }
 
-  fn<T: Copy + Drop> generic(recv: & Foo) {
+  fn<T: Copy + Drop> generic(recv: &Foo) {
     entry:
       return
   }
 
-  fn<'a> lifetime(recv: & Foo) {
+  fn<'a> lifetime(recv: &Foo) {
     entry:
       return
   }
 }
 
 # covers: inherent method reference with no applicable impl
-fn no_impl(value: & Bar) {
+fn no_impl(value: &Bar) {
   entry:
     call <Bar>::present(copy value);
     return
 }
 
 # covers: applicable inherent impl blocks contain no requested method
-fn no_method(value: & Foo) {
+fn no_method(value: &Foo) {
   entry:
     call <Foo>::missing(copy value);
     return
 }
 
 # covers: method generic arity, bounds, lifetime scope, and omitted lifetime inference
-fn method_argument_errors(value: & Foo) {
+fn method_argument_errors(value: &Foo) {
   entry:
     call <Foo>::generic(copy value);
     call <Foo>::generic<i64, bool>(copy value);
@@ -52,21 +52,21 @@ struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop {
 }
 
 impl<T: Copy + Drop> Pair<T, i64> {
-  fn overlap(recv: & Pair<T, i64>) {
+  fn overlap(recv: &Pair<T, i64>) {
     entry:
       return
   }
 }
 
 impl<U: Copy + Drop> Pair<i64, U> {
-  fn overlap(recv: & Pair<i64, U>) {
+  fn overlap(recv: &Pair<i64, U>) {
     entry:
       return
   }
 }
 
 # covers: overlapping generic inherent impls at a concrete call
-fn ambiguous(value: & Pair<i64, i64>) {
+fn ambiguous(value: &Pair<i64, i64>) {
   entry:
     call <Pair<i64, i64>>::overlap(copy value);
     return

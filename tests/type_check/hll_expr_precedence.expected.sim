@@ -87,7 +87,7 @@ fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
     return
 }
 
-fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
+fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -99,11 +99,11 @@ fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
 
 fn<'s0> borrow_tighter_than_add(x: i64, y: i64, $return: &out 's0 i64) {
   $tmp_0: i64;
-  $tmp_1: & i64;
+  $tmp_1: &i64;
   $tmp_2: &out i64;
   $tmp_3: &out i64;
   entry:
-    $tmp_1 = & x;
+    $tmp_1 = &x;
     $tmp_2 = &out $tmp_0;
     call read(move $tmp_1, move $tmp_2);
     $tmp_3 = &out $return.*;

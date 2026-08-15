@@ -562,7 +562,7 @@ pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 /// not user-authored.
 pub const PRELUDE_MIR: &str = r#"
 trait AutoClone {
-  fn clone(recv: & Self, $return: &out Self);
+  fn clone(recv: &Self, $return: &out Self);
 }
 
 trait AutoDestroy {

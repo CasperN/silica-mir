@@ -177,7 +177,7 @@ struct NestedBoxCD: Copy + Drop {
   inner: BoxCD<BoxCD<i64>>
 }
 
-fn<'s0, T> take_ref(r: & 's0 T) {
+fn<'s0, T> take_ref(r: &'s0 T) {
   entry:
     unborrow r;
     return
@@ -224,7 +224,7 @@ fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
     return
 }
 
-fn<'s0, T: Copy + Drop> read_through_shared_ref(r: & 's0 T) {
+fn<'s0, T: Copy + Drop> read_through_shared_ref(r: &'s0 T) {
   x: T;
   entry:
     x = copy r.*;
@@ -265,7 +265,7 @@ fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
     return
 }
 
-fn<'s0, 's1, T: Move> ref_to_bag_of_mut_ref(b: & 's0 Bag<&mut 's1 T>) {
+fn<'s0, 's1, T: Move> ref_to_bag_of_mut_ref(b: &'s0 Bag<&mut 's1 T>) {
   entry:
     unborrow b;
     return
@@ -314,7 +314,7 @@ fn<'s0, 's1, T: Copy + Drop> replicate(x: T, out_a: &out 's0 T, out_b: &out 's1 
     return
 }
 
-fn<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: & 's0 CopyPair<T, U>, out_first: &out 's1 T, out_second: &out 's2 U) {
+fn<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: &'s0 CopyPair<T, U>, out_first: &out 's1 T, out_second: &out 's2 U) {
   entry:
     out_first.* = copy p.*.first;
     unborrow out_first;
@@ -351,13 +351,13 @@ fn<'s0, T: Copy + Drop> unbox(b: Box<T>, dest: &out 's0 T) {
     return
 }
 
-fn<'a, T: Copy + Drop> observe_generic(x: & 'a T) {
+fn<'a, T: Copy + Drop> observe_generic(x: &'a T) {
   entry:
     unborrow x;
     return
 }
 
-fn<'a> call_observe_generic(x: & 'a i64) {
+fn<'a> call_observe_generic(x: &'a i64) {
   entry:
     call observe_generic<'a, i64>(copy x);
     unborrow x;

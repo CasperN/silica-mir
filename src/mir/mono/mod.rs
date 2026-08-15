@@ -875,7 +875,7 @@ mod tests {
         let parsed = Parser::parse_or_panic(
             "
             struct<'a: 'static, T: Copy + Drop> Borrowed: Copy + Drop {
-              value: & 'a T
+              value: &'a T
             }
 
             fn<'caller: 'static> use_borrowed(value: Borrowed<'caller, i64>) {

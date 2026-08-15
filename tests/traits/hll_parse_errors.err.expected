@@ -15,63 +15,63 @@ error: at 10:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
 error: at 13:3: [PARSE-MalformedCst] In function 'Body::body': trait method 'body' must not have a body
     |
  12 | trait Body {
- 13 |   fn body(recv: & Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 13 |   fn body(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  14 | }
     |
 error: at 17:3: [PARSE-MalformedCst] In function 'ExternTrait::ext': trait method 'ext' cannot be extern
     |
  16 | trait ExternTrait {
- 17 |   extern fn ext(recv: & Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 17 |   extern fn ext(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
  18 | }
     |
 error: at 21:3: [PARSE-MalformedCst] In function 'AbiTrait::abi': trait method 'abi' cannot be extern
     |
  20 | trait AbiTrait {
- 21 |   extern "C" fn abi(recv: & Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 21 |   extern "C" fn abi(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  22 | }
     |
 error: at 26:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
     |
- 25 |   fn same(recv: & Self);
- 26 |   fn same(recv: & Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^
+ 25 |   fn same(recv: &Self);
+ 26 |   fn same(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^
  27 | }
     |
 error: at 34:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' requires a body
     |
  33 | impl Required for S {
- 34 |   fn required(recv: & Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 34 |   fn required(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^
  35 | }
     |
 error: at 38:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be extern
     |
  37 | impl Required for S {
- 38 |   extern fn required(recv: & Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 38 |   extern fn required(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  39 | }
     |
 error: at 42:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be extern
     |
  41 | impl Required for S {
- 42 |   extern "C" fn required(recv: & Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 42 |   extern "C" fn required(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  43 | }
     |
 error: at 47:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
     |
- 46 |   fn required(recv: & Self) { unit }
- 47 |   fn required(recv: & Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 46 |   fn required(recv: &Self) { unit }
+ 47 |   fn required(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  48 | }
     |
 error: at 51:6: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
     |
  50 | impl<T> Required for S {
- 51 |   fn<T> required(recv: & Self) { unit }
+ 51 |   fn<T> required(recv: &Self) { unit }
     |      ^
  52 | }
     |
@@ -80,19 +80,19 @@ error: at 54:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
  53 | 
  54 | trait Self {
     |       ^^^^
- 55 |   fn reserved(recv: & Self);
+ 55 |   fn reserved(recv: &Self);
     |
 error: at 58:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
     |
  57 | 
  58 | impl Self for S {
     |      ^^^^
- 59 |   fn reserved(recv: & Self) { unit }
+ 59 |   fn reserved(recv: &Self) { unit }
     |
 error: at 65:24: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
     |
  64 | # covers: the same direct trait bound cannot be declared twice
- 65 | fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: & T) {
+ 65 | fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T) {
     |                        ^^^^^^^^^^^^^^
  66 |   value;
     |

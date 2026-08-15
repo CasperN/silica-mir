@@ -19,7 +19,7 @@ error: at 55:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_arity_mismatc
     |     ^^^^^^^^^^
  56 |     return
     |
-error: at 66:5: [TC-AssignmentTypeMismatch] In function 'assign_ref_kind_mismatch', block 'entry': Type mismatch in assignment. LHS is &mut i64, RHS is & i64
+error: at 66:5: [TC-AssignmentTypeMismatch] In function 'assign_ref_kind_mismatch', block 'entry': Type mismatch in assignment. LHS is &mut i64, RHS is &i64
     |
  65 |   entry:
  66 |     r = &y;

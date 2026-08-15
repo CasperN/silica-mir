@@ -3,7 +3,7 @@ struct Pair: Copy + Drop {
   right: i64
 }
 
-fn<'s0, 's1> read_shared_field(r: & 's0 Pair, $return: &out 's1 i64) {
+fn<'s0, 's1> read_shared_field(r: &'s0 Pair, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*.left;
     unborrow $return;

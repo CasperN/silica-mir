@@ -27,7 +27,7 @@ extern fn use_drop(r: &drop i64);
 extern fn use_uninit(r: &uninit i64);
 extern fn take_scalar(y: i64);
 
-# ---------- & shared: pointee Init ----------
+# ---------- shared borrow: pointee Init ----------
 
 fn shared_of_init(x: i64) {
   r: &i64;

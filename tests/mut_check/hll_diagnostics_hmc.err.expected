@@ -27,7 +27,7 @@ error: at 24:11: [HMC-AssignToImmutable] In function 'defer_assign_immutable': c
     |
 error: at 39:5: [HMC-AssignToImmutable] In function '<MutTraitTarget as MutTraitBody>::mutate': cannot assign to immutable binding 'value'
     |
- 37 |   fn mutate(recv: & Self) {
+ 37 |   fn mutate(recv: &Self) {
  38 |     let value = 0;
     |     -------------- variable declared as immutable here
  39 |     value = 1;
@@ -36,7 +36,7 @@ error: at 39:5: [HMC-AssignToImmutable] In function '<MutTraitTarget as MutTrait
     |
 error: at 46:5: [HMC-AssignToImmutable] In function '<MutTraitTarget>::inherent_mutate': cannot assign to immutable binding 'value'
     |
- 44 |   fn inherent_mutate(recv: & Self) {
+ 44 |   fn inherent_mutate(recv: &Self) {
  45 |     let value = 0;
     |     -------------- variable declared as immutable here
  46 |     value = 1;

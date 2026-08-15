@@ -188,7 +188,7 @@ fn alias_raw_and_shared(x: i64) {
   y: i64;
   z: i64;
   entry:
-    r = & x;
+    r = &x;
     p = &raw x;
     y = copy p.*;
     z = copy r.*;
@@ -238,7 +238,7 @@ fn ptr_cast_ref_to_raw(x: i64) {
   p: *i64;
   y: i64;
   entry:
-    r = & x;
+    r = &x;
     p = ptr_cast(copy r, *i64);
     y = copy p.*;
     return

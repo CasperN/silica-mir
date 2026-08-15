@@ -548,7 +548,7 @@ fn rvalue_uses(rv: &RValue, borrowers: &BTreeSet<Place>, out: &mut Vec<Place>) {
             operand_uses(op, borrowers, out)
         }
         // For borrower-liveness purposes `&raw place` is the same as
-        // `& place`: it uses (and keeps live) any borrower mentioned
+        // `&place`: it uses (and keeps live) any borrower mentioned
         // inside `place`. The raw-vs-safe distinction only affects
         // loan tracking, not borrower liveness.
         RValue::Ref(_, place) | RValue::RawRef(place) => place_borrower_uses(place, borrowers, out),

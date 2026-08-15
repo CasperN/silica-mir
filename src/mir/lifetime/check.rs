@@ -1945,9 +1945,9 @@ mod tests {
         let mut program = Parser::parse_or_panic(
             r#"
             fn f(x: i64) {
-              _temp_0: & i64;
+              _temp_0: &i64;
               entry:
-                _temp_0 = & x;
+                _temp_0 = &x;
                 x = 1;
                 unborrow _temp_0;
                 drop x;
@@ -1989,10 +1989,10 @@ mod tests {
             r#"
             fn f() {
               _temp_0: i64;
-              r: & i64;
+              r: &i64;
               entry:
                 _temp_0 = 1;
-                r = & _temp_0;
+                r = &_temp_0;
                 _temp_0 = 2;
                 unborrow r;
                 drop _temp_0;

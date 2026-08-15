@@ -205,8 +205,8 @@ error: at 121:5: [PS-ReturnValueLeak] In function 'partial_array_in_struct_leaks
 error: at 145:7: [PS-ReturnValueLeak] In function '<P as ImplDropElaborationViolation>::finish', block 'entry': value 'value' of type P is not consumed at return
      |
  142 |   # covers: non-Drop values still leak from impl method bodies
- 143 |   fn finish(recv: & P, value: P) {
-     |                        -------- variable declared here
+ 143 |   fn finish(recv: &P, value: P) {
+     |                       -------- variable declared here
  144 |     entry:
  145 |       return
      |       ^^^^^^

@@ -84,23 +84,23 @@ fn test_non_callable_field(value: NonCallableField) {
 struct TraitBodyTarget: Copy + Drop { value: i64 }
 
 trait BadTraitBody {
-  fn value(recv: & Self) -> i64;
+  fn value(recv: &Self) -> i64;
 }
 
 impl BadTraitBody for TraitBodyTarget {
-  fn value(recv: & Self) -> i64 {
+  fn value(recv: &Self) -> i64 {
     false
   }
 }
 
 # Inherent methods pass through that same inference path.
 impl TraitBodyTarget {
-  fn inherent_value(recv: & Self) -> i64 {
+  fn inherent_value(recv: &Self) -> i64 {
     false
   }
 
   # covers: deferred ambiguity diagnostics retain inherent-method identity
-  fn ambiguous_local(recv: & Self) {
+  fn ambiguous_local(recv: &Self) {
     let values = [];
   }
 }

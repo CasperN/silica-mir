@@ -2586,8 +2586,8 @@ mod tests {
     fn syntax_errors_distinguish_trait_and_impl_methods() {
         let src = "\
             struct S: Copy + Drop {}\n\
-            trait Tr { fn broken(recv: & Self) { @@; } }\n\
-            impl Tr for S { fn broken(recv: & Self) { @@; } }\n";
+            trait Tr { fn broken(recv: &Self) { @@; } }\n\
+            impl Tr for S { fn broken(recv: &Self) { @@; } }\n";
         let mut diags = Diagnostics::default();
         assert!(Parser::new(src).parse(&mut diags).is_none());
         let rendered = diags.errors_str().join("\n");

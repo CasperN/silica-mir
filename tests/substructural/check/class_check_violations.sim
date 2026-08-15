@@ -439,12 +439,12 @@ fn if_both_drop_MatCM(x: MatCM, cond: bool) {
 }
 
 trait ImplClassCheckViolation {
-  fn check(recv: & Self, x: D);
+  fn check(recv: &Self, x: D);
 }
 
 impl ImplClassCheckViolation for D {
   # covers: substructural errors in impl method bodies
-  fn check(recv: & D, x: D) {
+  fn check(recv: &D, x: D) {
     y: D;
     entry:
       y = copy x;
@@ -457,7 +457,7 @@ impl ImplClassCheckViolation for D {
 struct AutoCloneOnly: Move { v: i64 }
 
 impl AutoClone for AutoCloneOnly {
-  fn clone(recv: & AutoCloneOnly, $return: &out AutoCloneOnly) {
+  fn clone(recv: &AutoCloneOnly, $return: &out AutoCloneOnly) {
     entry:
       abort
   }

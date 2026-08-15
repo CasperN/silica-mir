@@ -86,19 +86,19 @@ fn method_bound_failure(value: Generic<i64>, linear: Linear) {
 struct BorrowAmbiguous: Copy + Drop { value: i64 }
 
 trait BorrowFirst {
-  fn borrow_collision(recv: & BorrowAmbiguous);
+  fn borrow_collision(recv: &BorrowAmbiguous);
 }
 
 trait BorrowSecond {
-  fn borrow_collision(recv: & BorrowAmbiguous);
+  fn borrow_collision(recv: &BorrowAmbiguous);
 }
 
 impl BorrowFirst for BorrowAmbiguous {
-  fn borrow_collision(recv: & BorrowAmbiguous) { unit }
+  fn borrow_collision(recv: &BorrowAmbiguous) { unit }
 }
 
 impl BorrowSecond for BorrowAmbiguous {
-  fn borrow_collision(recv: & BorrowAmbiguous) { unit }
+  fn borrow_collision(recv: &BorrowAmbiguous) { unit }
 }
 
 # covers: multiple auto-borrow candidates in one tier are ambiguous
@@ -116,15 +116,15 @@ fn free_without_receiver(value: Missing) {
 struct UnsafeMethodTarget: Copy + Drop { value: i64 }
 
 trait UnsafeCall {
-  unsafe fn trait_dangerous(recv: & Self);
+  unsafe fn trait_dangerous(recv: &Self);
 }
 
 impl UnsafeCall for UnsafeMethodTarget {
-  unsafe fn trait_dangerous(recv: & Self) { unit }
+  unsafe fn trait_dangerous(recv: &Self) { unit }
 }
 
 impl UnsafeMethodTarget {
-  unsafe fn inherent_dangerous(recv: & Self) { unit }
+  unsafe fn inherent_dangerous(recv: &Self) { unit }
 }
 
 # covers: unsafe trait methods cannot be called from a safe context
@@ -138,73 +138,73 @@ fn unsafe_inherent_call(value: UnsafeMethodTarget) {
 }
 
 trait SafeContract {
-  fn safety_mismatch(recv: & Self);
+  fn safety_mismatch(recv: &Self);
 }
 
 impl SafeContract for UnsafeMethodTarget {
-  unsafe fn safety_mismatch(recv: & Self) { unit }
+  unsafe fn safety_mismatch(recv: &Self) { unit }
 }
 
 trait UnsafeContract {
-  unsafe fn other_safety_mismatch(recv: & Self);
+  unsafe fn other_safety_mismatch(recv: &Self);
 }
 
 impl UnsafeContract for UnsafeMethodTarget {
-  fn other_safety_mismatch(recv: & Self) { unit }
+  fn other_safety_mismatch(recv: &Self) { unit }
 }
 
 trait BoundFirst {
-  fn bound_collision(recv: & Self);
+  fn bound_collision(recv: &Self);
 }
 
 trait BoundSecond {
-  fn bound_collision(recv: & Self);
+  fn bound_collision(recv: &Self);
 }
 
 # covers: multiple direct bounds with the same applicable method are ambiguous
-fn<T: BoundFirst + BoundSecond> ambiguous_bound_method(value: & T) {
+fn<T: BoundFirst + BoundSecond> ambiguous_bound_method(value: &T) {
   value.bound_collision();
 }
 
 trait DirectCollision {
-  fn mixed_collision(recv: & Self);
+  fn mixed_collision(recv: &Self);
 }
 
 trait ReferenceCollision {
   fn mixed_collision(recv: Self);
 }
 
-impl<U> ReferenceCollision for & U {
+impl<U> ReferenceCollision for &U {
   fn mixed_collision(recv: Self) { recv; }
 }
 
 # covers: bound and concrete-reference candidates share one ambiguity tier
-fn<T: DirectCollision> ambiguous_bound_and_impl(value: & T) {
+fn<T: DirectCollision> ambiguous_bound_and_impl(value: &T) {
   value.mixed_collision();
 }
 
 trait BoundArgument {}
 trait GenericBoundMethod {
-  fn<U: BoundArgument> bound_generic(recv: & Self, value: & U);
-  unsafe fn bound_unsafe(recv: & Self);
+  fn<U: BoundArgument> bound_generic(recv: &Self, value: &U);
+  unsafe fn bound_unsafe(recv: &Self);
 }
 
 struct WrongBoundArgument: Copy + Drop { value: i64 }
 
 # covers: generic arguments on direct-bound methods retain their obligations
 fn<T: GenericBoundMethod> reject_bound_method_argument(
-  value: & T,
-  argument: & WrongBoundArgument,
+  value: &T,
+  argument: &WrongBoundArgument,
 ) {
   value.bound_generic<WrongBoundArgument>(argument);
 }
 
 # covers: unsafe direct-bound methods still require an unsafe context
-fn<T: GenericBoundMethod> reject_bound_unsafe(value: & T) {
+fn<T: GenericBoundMethod> reject_bound_unsafe(value: &T) {
   value.bound_unsafe();
 }
 
 # covers: a generic receiver without the declaring bound has no method candidate
-fn<T> reject_unbounded_receiver(value: & T) {
+fn<T> reject_unbounded_receiver(value: &T) {
   value.bound_generic<WrongBoundArgument>(value);
 }

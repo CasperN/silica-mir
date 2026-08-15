@@ -119,12 +119,12 @@ fn<'p, 'q> caller_missing_bound(x: &'p i64, y: &'q i64, $return: &out &'p i64) {
 struct<'r> CallReceiver: Copy + Drop { value: &'r i64 }
 
 trait QualifiedNeedsBound {
-  fn<'a, 'b: 'a> trait_needs(recv: & Self, x: &'a i64, y: &'b i64);
+  fn<'a, 'b: 'a> trait_needs(recv: &Self, x: &'a i64, y: &'b i64);
 }
 
 impl<'r> CallReceiver<'r> {
   fn<'a, 'b: 'a> inherent_needs(
-    recv: & CallReceiver<'r>,
+    recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
   ) {
@@ -135,7 +135,7 @@ impl<'r> CallReceiver<'r> {
 
 impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
   fn<'a, 'b: 'a> trait_needs(
-    recv: & CallReceiver<'r>,
+    recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
   ) {
@@ -146,7 +146,7 @@ impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
 
 # covers: inherent method call exposes its outlives axiom to the caller
 fn<'p, 'q> inherent_caller_missing_bound(
-  recv: & CallReceiver<'p>,
+  recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
 ) {
@@ -157,7 +157,7 @@ fn<'p, 'q> inherent_caller_missing_bound(
 
 # covers: trait method call exposes its outlives axiom to the caller
 fn<'p, 'q> trait_caller_missing_bound(
-  recv: & CallReceiver<'p>,
+  recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
 ) {
@@ -171,7 +171,7 @@ fn<'p, 'q> trait_caller_missing_bound(
 }
 
 trait<'a, 'b: 'a> QualifiedTraitHeaderBound {
-  fn invoke(recv: & Self);
+  fn invoke(recv: &Self);
 }
 
 struct<'a, 'b> HeaderReceiver: Copy + Drop {
@@ -180,28 +180,28 @@ struct<'a, 'b> HeaderReceiver: Copy + Drop {
 }
 
 impl<'a, 'b: 'a> HeaderReceiver<'a, 'b> {
-  fn inherent_header(recv: & HeaderReceiver<'a, 'b>) {
+  fn inherent_header(recv: &HeaderReceiver<'a, 'b>) {
     entry:
       return
   }
 }
 
 impl<'a, 'b: 'a> QualifiedTraitHeaderBound<'a, 'b> for HeaderReceiver<'a, 'b> {
-  fn invoke(recv: & HeaderReceiver<'a, 'b>) {
+  fn invoke(recv: &HeaderReceiver<'a, 'b>) {
     entry:
       return
   }
 }
 
 # covers: qualified trait call exposes the trait declaration's outlives bound
-fn<'p, 'q> trait_header_caller_missing_bound(recv: & HeaderReceiver<'p, 'q>) {
+fn<'p, 'q> trait_header_caller_missing_bound(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q> as QualifiedTraitHeaderBound<'p, 'q>>::invoke(copy recv);
     return
 }
 
 # covers: inherent method call exposes the impl header's outlives bound
-fn<'p, 'q> impl_header_caller_missing_bound(recv: & HeaderReceiver<'p, 'q>) {
+fn<'p, 'q> impl_header_caller_missing_bound(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q>>::inherent_header(copy recv);
     return
@@ -210,7 +210,7 @@ fn<'p, 'q> impl_header_caller_missing_bound(recv: & HeaderReceiver<'p, 'q>) {
 struct<T> ImplTypeReceiver { value: T }
 
 impl<T> ImplTypeReceiver<T> {
-  fn accept_impl_type(recv: & ImplTypeReceiver<T>, value: T) {
+  fn accept_impl_type(recv: &ImplTypeReceiver<T>, value: T) {
     entry:
       abort
   }
@@ -218,7 +218,7 @@ impl<T> ImplTypeReceiver<T> {
 
 # covers: inherent method parameter types substitute impl-header type arguments
 fn<'p, 'q> inherent_impl_type_missing_bound(
-  recv: & ImplTypeReceiver<&'p i64>,
+  recv: &ImplTypeReceiver<&'p i64>,
   value: &'q i64,
 ) {
   entry:
@@ -229,11 +229,11 @@ fn<'p, 'q> inherent_impl_type_missing_bound(
 struct MethodTypeReceiver: Copy + Drop {}
 
 trait GenericMethod {
-  fn<T> accept_method_type(recv: & Self, value: T);
+  fn<T> accept_method_type(recv: &Self, value: T);
 }
 
 impl GenericMethod for MethodTypeReceiver {
-  fn<T> accept_method_type(recv: & MethodTypeReceiver, value: T) {
+  fn<T> accept_method_type(recv: &MethodTypeReceiver, value: T) {
     entry:
       abort
   }
@@ -241,7 +241,7 @@ impl GenericMethod for MethodTypeReceiver {
 
 # covers: trait method parameter types substitute method type arguments
 fn<'p, 'q> trait_method_type_missing_bound(
-  recv: & MethodTypeReceiver,
+  recv: &MethodTypeReceiver,
   value: &'q i64,
 ) {
   entry:
@@ -568,11 +568,11 @@ fn<'outer, 'inner_src, 'inner_tgt> nested_ref_lifetime_mismatch(
 struct BadImplLifetimeHost: Copy + Drop { value: i64 }
 
 trait<'a, 'b> BadImplLifetimeFlow {
-  fn flow(recv: & Self, x: &'a i64, $return: &out &'b i64);
+  fn flow(recv: &Self, x: &'a i64, $return: &out &'b i64);
 }
 
 impl<'a, 'b> BadImplLifetimeFlow<'a, 'b> for BadImplLifetimeHost {
-  fn flow(recv: & BadImplLifetimeHost, x: &'a i64, $return: &out &'b i64) {
+  fn flow(recv: &BadImplLifetimeHost, x: &'a i64, $return: &out &'b i64) {
     entry:
       $return.* = copy x;
       return
@@ -586,7 +586,7 @@ struct<'a, 'b> InvalidHeaderReceiver: Copy + Drop {
 
 # covers: an impl header must satisfy its trait path's lifetime bounds
 impl<'a, 'b> QualifiedTraitHeaderBound<'a, 'b> for InvalidHeaderReceiver<'a, 'b> {
-  fn invoke(recv: & InvalidHeaderReceiver<'a, 'b>) {
+  fn invoke(recv: &InvalidHeaderReceiver<'a, 'b>) {
     entry:
       return
   }

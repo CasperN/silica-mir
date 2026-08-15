@@ -15,7 +15,7 @@ struct<T: Copy + Drop> GenericDestroyable: Move {
 }
 
 struct<'a> BorrowedDestroyable: Move {
-  value: & 'a i64
+  value: &'a i64
 }
 
 struct<'a> MutHolder: Move {
@@ -373,11 +373,11 @@ fn moved_value_is_not_destroyed(x: Destroyable) {
 }
 
 trait ImplAutoDestroyOk {
-  fn<'s0> finish(recv: & 's0 Self, value: Destroyable);
+  fn<'s0> finish(recv: &'s0 Self, value: Destroyable);
 }
 
 impl ImplAutoDestroyOk for DropPreferred {
-  fn<'s0> finish(recv: & 's0 DropPreferred, value: Destroyable) {
+  fn<'s0> finish(recv: &'s0 DropPreferred, value: Destroyable) {
     $destroy_0: &drop Destroyable;
     entry:
       unborrow recv;

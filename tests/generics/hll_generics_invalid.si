@@ -124,7 +124,7 @@ fn<'a> call_undeclared_lifetime(x: &'a i64) -> &'a i64 {
 
 # covers: inferred generic call inside an impl uses impl-header bounds
 impl DropOnly {
-  fn call_inferred_bound_failure_from_impl(recv: & Self, x: DropOnly) -> DropOnly {
+  fn call_inferred_bound_failure_from_impl(recv: &Self, x: DropOnly) -> DropOnly {
     requires_copy(x)
   }
 }

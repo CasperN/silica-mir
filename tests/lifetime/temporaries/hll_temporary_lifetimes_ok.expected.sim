@@ -1,4 +1,4 @@
-fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
+fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -10,11 +10,11 @@ fn<'s0, 's1> read(r: & 's0 i64, $return: &out 's1 i64) {
 
 fn<'s0> named_value_borrow($return: &out 's0 i64) {
   value: i64;
-  $tmp_0: & i64;
+  $tmp_0: &i64;
   $tmp_1: &out i64;
   entry:
     value = 41;
-    $tmp_0 = & value;
+    $tmp_0 = &value;
     $tmp_1 = &out $return.*;
     call read(move $tmp_0, move $tmp_1);
     unborrow $return;
@@ -98,13 +98,13 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
 }
 
 struct<'a, T> View: Copy + Drop {
-  data: & 'a *T
+  data: &'a *T
   len: u64
 }
 
-fn<'a, 's0, T> view_get(s: & 'a View<'a, T>, $return: &out 's0 & 'a T) {
+fn<'a, 's0, T> view_get(s: &'a View<'a, T>, $return: &out 's0 &'a T) {
   entry:
-    $return.* = ptr_cast(copy s.*.data.*, & T);
+    $return.* = ptr_cast(copy s.*.data.*, &T);
     unborrow $return;
     unborrow s;
     require_uninit $return;
