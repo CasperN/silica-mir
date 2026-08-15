@@ -32,29 +32,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - Decide on and standardize on whether malloc size and array index type should be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
-- **Substitute inferred lifetimes inside nominal generic results.** Calling a
-  function such as `fn<'a, T> as_span(&'a Vec<T>) -> Span<'a, T>` from a
-  non-lifetime-generic caller leaves the callee-local `'a` in lowered caller
-  locals instead of replacing it with the inferred call-site lifetime. This
-  produces `TC-UndeclaredLifetime` and prevents the generic `Vec::as_span` API
-  in `tests/programs/stdlib.si` from being exercised by its concrete smoke
-  test. Reference results without the nominal `Span` wrapper already work.
-- **Reborrow non-copy references passed to calls.** Passing an existing `&mut`
-  value currently transfers the reference and its pointee-state obligation.
-  Library code therefore cannot call a helper with a temporary reborrow and
-  then continue using the original mutable reference. The stdlib prototype
-  uses consuming `Vec<T> -> Vec<T>` mutation until call elaboration can create
-  and expire an explicit reborrow.
-- **Preserve initialized aggregate state through pointer-based mutation.** An
-  inline `fn push(&mut Vec<T>, T)` that copies `data` and `len`, writes through
-  the derived raw pointer, and increments `len` leaves the mutable receiver
-  spuriously `Partial`. All `Vec` fields remain initialized. The stdlib fixture
-  consumes and rebuilds `Vec<T>` as a temporary workaround.
-- **Copy reference fields through a shared aggregate borrow.** A conventional
-  `Span::get(&Span<'a, T>) -> &'a T` currently reports a loan conflict when it
-  reads the Copy `data: &'a T` field: the aggregate borrow is treated as
-  conflicting with a move from that field. The prototype takes its Copy
-  `Span` receiver by value instead.
 - **Infer omitted lifetimes before checking lifetime-dependent trait bounds.**
   An obligation such as `T: Label<'a>` is currently checked before an omitted
   call-site `'a` has been inferred. This conservatively rejects calls that an
@@ -219,6 +196,62 @@ diagnosed before codegen. Platform-specific C ABI classification, variadics,
 symbol visibility, dynamic linking, and target-specific LLVM parameter
 attributes remain later FFI work.
 
+## Standard library roadmap
+
+Use `tests/programs/stdlib.si` as the executable design probe. Keep library
+APIs honest about safety and ownership, and land compiler prerequisites as
+independent, fixture-backed changes in this order:
+
+1. **Substitute inferred lifetimes inside nominal generic results.** A call to
+   `fn<'a, T> as_span(&'a Vec<T>) -> Span<'a, T>` currently leaves the
+   callee-local `'a` in the concrete caller's lowered locals, producing
+   `TC-UndeclaredLifetime`. Substitute every occurrence of the inferred binder,
+   including lifetimes nested in nominal type arguments, before lowering the
+   call result. Replace the concrete `inspect_vec` workaround with the generic
+   `vec_as_span` API when this lands.
+
+2. **Copy reference fields through a shared aggregate borrow.** A conventional
+   `Span::get(&Span<'a, T>) -> &'a T` reports a loan conflict when it reads the
+   Copy `data: &'a T` field. The prototype takes its Copy `Span` receiver by
+   value. Make copy relaxation and lifetime checking agree that copying the
+   field does not move from the borrowed aggregate, then restore borrowed
+   receivers.
+
+3. **Elaborate temporary reborrows at calls.** Passing an existing `&mut`
+   transfers the reference and its pointee-state obligation, preventing a
+   helper call followed by further use of the original reference. Elaborate a
+   bounded reborrow whose obligation is returned to the original reference at
+   call completion.
+
+4. **Preserve aggregate state through pointer-based mutation.** An inline
+   `fn push(&mut Vec<T>, T)` that derives a raw element pointer and increments
+   `len` leaves the receiver spuriously `Partial`, although every field remains
+   initialized. Fix the place-state/copy-relaxation interaction, then replace
+   consuming `Vec<T> -> Vec<T>` mutation with an in-place API.
+
+5. **Represent lifetime-only ownership.** Add a zero-sized phantom/lifetime
+   field suitable for borrowed views. The current first-element reference
+   gives `Span` a tracked lifetime but cannot represent an empty span soundly.
+
+6. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
+   for `Box`, `Vec`, and their elements so ordinary scope exit releases owned
+   allocations. Preserve explicit consuming operations such as `into_inner`.
+
+7. **Add safe failure paths.** Use the planned `Fail` effect for allocation
+   failure, capacity overflow, and bounds errors. Until then, constructors,
+   growth, and indexing that cannot establish their preconditions remain
+   `unsafe`.
+
+8. **Build higher-level collections.** Add `String` over `Vec<u8>` with its
+   UTF-8 invariant, then borrowed/mutable/uninitialized span variants and
+   iterator APIs. Modules and multi-file compilation will eventually place
+   these declarations under `std` without changing their ownership model.
+
+**Stop condition:** the fixture uses safe, generic `Box`, `Vec`, and nonempty
+and empty `Span` APIs without concrete lifetime workarounds or manual cleanup;
+checked operations have explicit failure behavior; and `String` can enforce
+its UTF-8 invariant.
+
 ## Testing gaps
 - **Warning-only fixtures are not pinned.** A clean `.expected.sim` fixture
   compares only pretty-printed MIR, so warnings are discarded. Allow an
@@ -231,14 +264,8 @@ attributes remain later FFI work.
 - **Bazel-based build with proper cross-language infra.** Today the compiler is `cargo`, and any cross-language wiring (LLVM IR emission → `clang` link → binary → runtime → check exit) is manual. A Bazel migration would let end-to-end runtime tests, C-shim linking, and future host-language integrations (LLVM tooling, wasm, cross-compile) be first-class build actions in a hermetic graph. The immediate motivator is the End-to-end runtime fixtures item in Testing gaps.
 - **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and a Rust-shaped enum syntax (currently only newtype-with-different-syntax).
 - **No-alias raw pointer variant** (`*noalias T`) alongside the aliasing `*T`. Enables LLVM `noalias` on parameters where the checker can prove exclusivity.
-- Standard library (needs modules + multi-file support). The executable
-  `tests/programs/stdlib.si` prototype currently covers `Box`, `Span`, and
-  growing `Vec` representations and their primitive ownership operations.
-  Effects: `Fail` for exceptional control flow, `Iter` for for-loops,
-  `Async` for executors.
-- Complete the standard collection APIs: a lifetime-only/phantom field for an
-  empty `Span`, checked capacity arithmetic and indexing through `Fail`,
-  `AutoDestroy` implementations, and `String`'s UTF-8 invariant.
+- Standard library modules and multi-file packaging. The API and compiler
+  prerequisites are tracked in the standard library roadmap above.
 - Tighten MIR struct/enum decl separators from whitespace-or-comma
   to comma-required-optional-trailing (match HLL).
 - Coroutines. Prerequisites: generics, lifetime arguments, HLL `defer`.
