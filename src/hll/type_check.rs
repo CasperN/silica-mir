@@ -233,6 +233,8 @@ pub enum HllTypeCheckCode {
     UndeclaredTrait,
     /// A trait bound supplies the wrong number of generic arguments.
     TraitArgArityMismatch,
+    /// Trait self-bounds form a cycle.
+    TraitBoundCycle,
     /// Generic type instantiation has the wrong number of type arguments
     /// (e.g. `Box<i64, i64>` on a 1-parameter decl, or a bare `Box` on a
     /// generic decl).
@@ -594,13 +596,31 @@ impl TypeEnv {
             }
             TypeKind::Param(name) => scope
                 .get(name)
-                .map(|bounds| bounds.markers)
+                .map(|bounds| self.markers_from_bounds(bounds, &mut HashSet::new()))
                 .unwrap_or_else(Markers::empty),
             TypeKind::Array(elem, _) => self.class_of(elem, scope),
             TypeKind::Var(_) | TypeKind::IntVar(_) | TypeKind::FloatVar(_) | TypeKind::Error => {
                 all()
             }
         }
+    }
+
+    fn markers_from_bounds(&self, bounds: &Bounds, visiting: &mut HashSet<String>) -> Markers {
+        let mut markers = bounds.markers.iter_declared().collect::<Vec<_>>();
+        for bound in &bounds.traits {
+            let name = &bound.trait_path.name;
+            if !visiting.insert(name.clone()) {
+                continue;
+            }
+            if let Some(trait_decl) = self.traits.get(name) {
+                markers.extend(
+                    self.markers_from_bounds(&trait_decl.self_bounds, visiting)
+                        .iter_declared(),
+                );
+            }
+            visiting.remove(name);
+        }
+        Markers::from_iter(markers)
     }
 
     /// Walk `ty` and push a diagnostic per problem: an undeclared
@@ -843,6 +863,7 @@ pub(super) fn typecheck_program_collect(
         }
     }
 
+    validate_trait_bound_cycles(program, &env, d);
     validate_impl_method_safety(&env, d);
 
     // Validate every decl-level type: fields, variant payloads, fn
@@ -877,13 +898,20 @@ pub(super) fn typecheck_program_collect(
             }
             Declaration::Trait(t) => {
                 let mut trait_scope = type_params_scope(&t.type_params);
-                trait_scope.insert("Self".to_string(), Bounds::default());
+                trait_scope.insert("Self".to_string(), t.self_bounds.clone());
                 validate_type_param_bounds(&env, &t.type_params, &trait_scope, d);
+                validate_bounds(
+                    &env,
+                    &format!("trait '{}'", t.name),
+                    &t.self_bounds,
+                    &trait_scope,
+                    d,
+                );
                 for method in &t.methods {
                     let mut params = t.type_params.clone();
                     params.push(TypeParam {
                         name: "Self".to_string(),
-                        bounds: Bounds::default(),
+                        bounds: t.self_bounds.clone(),
                         source: t.source,
                     });
                     params.extend(method.type_params.clone());
@@ -900,6 +928,37 @@ pub(super) fn typecheck_program_collect(
                 if let Some(trait_path) = &i.trait_path {
                     for arg in &trait_path.type_args {
                         env.validate_type(arg, &impl_scope, d);
+                    }
+                    if let Some(trait_decl) = env.traits.get(&trait_path.name) {
+                        for marker in trait_decl.self_bounds.markers.iter_declared() {
+                            if !env.class_of(&i.target, &impl_scope).implies(marker) {
+                                d.push_error(source_diagnostic(
+                                    BoundNotSatisfied,
+                                    i.source,
+                                    format!(
+                                        "impl of '{}' for {} requires Self: {}",
+                                        trait_path,
+                                        i.target,
+                                        marker.name()
+                                    ),
+                                ));
+                            }
+                        }
+                        for bound in &trait_decl.self_bounds.traits {
+                            let required = instantiate_trait_self_bound(
+                                trait_decl, trait_path, &i.target, bound,
+                            );
+                            if !type_satisfies_trait(&env, &i.target, &required, &impl_scope) {
+                                d.push_error(source_diagnostic(
+                                    BoundNotSatisfied,
+                                    i.source,
+                                    format!(
+                                        "impl of '{}' for {} requires Self: {}",
+                                        trait_path, i.target, required
+                                    ),
+                                ));
+                            }
+                        }
                     }
                 }
                 for method in &i.methods {
@@ -1029,6 +1088,50 @@ pub(super) fn typecheck_program_collect(
     }
     types.pending_instantiations.clear();
     types
+}
+
+fn validate_trait_bound_cycles(program: &Program, env: &TypeEnv, d: &mut Diagnostics) {
+    fn visit(
+        env: &TypeEnv,
+        name: &str,
+        stack: &mut Vec<String>,
+        complete: &mut HashSet<String>,
+        d: &mut Diagnostics,
+    ) {
+        if complete.contains(name) {
+            return;
+        }
+        let Some(trait_decl) = env.traits.get(name) else {
+            return;
+        };
+        stack.push(name.to_string());
+        for bound in &trait_decl.self_bounds.traits {
+            if let Some(start) = stack
+                .iter()
+                .position(|ancestor| ancestor == &bound.trait_path.name)
+            {
+                let mut cycle = stack[start..].to_vec();
+                cycle.push(bound.trait_path.name.clone());
+                d.push_error(source_diagnostic(
+                    TraitBoundCycle,
+                    bound.source,
+                    format!("trait-bound cycle: {}", cycle.join(" -> ")),
+                ));
+                continue;
+            }
+            visit(env, &bound.trait_path.name, stack, complete, d);
+        }
+        stack.pop();
+        complete.insert(name.to_string());
+    }
+
+    let mut complete = HashSet::new();
+    for declaration in &program.declarations {
+        let Declaration::Trait(trait_decl) = declaration else {
+            continue;
+        };
+        visit(env, &trait_decl.name, &mut Vec::new(), &mut complete, d);
+    }
 }
 
 fn validate_impl_method_safety(env: &TypeEnv, d: &mut Diagnostics) {
@@ -1738,6 +1841,97 @@ fn type_satisfies_trait(
     type_satisfies_trait_inner(env, ty, trait_path, scope, &mut Vec::new())
 }
 
+fn instantiate_trait_self_bound(
+    trait_decl: &TraitDecl,
+    trait_path: &Instance,
+    self_ty: &Type,
+    bound: &TraitBound,
+) -> Instance {
+    let mut type_mapping = trait_decl
+        .type_params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .zip(trait_path.type_args.iter().cloned())
+        .collect::<HashMap<_, _>>();
+    type_mapping.insert("Self".to_string(), self_ty.clone());
+    let lifetime_mapping = trait_decl
+        .lifetime_params
+        .iter()
+        .map(|parameter| parameter.lifetime.clone())
+        .zip(trait_path.lifetime_args.iter().cloned())
+        .collect::<BTreeMap<_, _>>();
+    substitute_bound(bound, &type_mapping, &lifetime_mapping)
+}
+
+fn trait_bound_implies(
+    env: &TypeEnv,
+    available: &Instance,
+    self_ty: &Type,
+    required: &Instance,
+    visiting: &mut HashSet<String>,
+) -> bool {
+    if available == required {
+        return true;
+    }
+    if !visiting.insert(available.name.clone()) {
+        return false;
+    }
+    let Some(trait_decl) = env.traits.get(&available.name) else {
+        visiting.remove(&available.name);
+        return false;
+    };
+    let implied = trait_decl.self_bounds.traits.iter().any(|bound| {
+        let bound = instantiate_trait_self_bound(trait_decl, available, self_ty, bound);
+        trait_bound_implies(env, &bound, self_ty, required, visiting)
+    });
+    visiting.remove(&available.name);
+    implied
+}
+
+fn implied_trait_paths(env: &TypeEnv, direct: &Instance, self_ty: &Type) -> Vec<Instance> {
+    fn collect(
+        env: &TypeEnv,
+        path: Instance,
+        self_ty: &Type,
+        result: &mut Vec<Instance>,
+        visiting: &mut HashSet<String>,
+    ) {
+        if result.contains(&path) {
+            return;
+        }
+        let path_name = path.name.clone();
+        if !visiting.insert(path_name.clone()) {
+            return;
+        }
+        let Some(trait_decl) = env.traits.get(&path_name) else {
+            result.push(path);
+            visiting.remove(&path_name);
+            return;
+        };
+        let implied = trait_decl
+            .self_bounds
+            .traits
+            .iter()
+            .map(|bound| instantiate_trait_self_bound(trait_decl, &path, self_ty, bound))
+            .collect::<Vec<_>>();
+        result.push(path);
+        for bound in implied {
+            collect(env, bound, self_ty, result, visiting);
+        }
+        visiting.remove(&path_name);
+    }
+
+    let mut result = Vec::new();
+    collect(
+        env,
+        direct.clone(),
+        self_ty,
+        &mut result,
+        &mut HashSet::new(),
+    );
+    result
+}
+
 fn type_satisfies_trait_inner(
     env: &TypeEnv,
     ty: &Type,
@@ -1747,10 +1941,9 @@ fn type_satisfies_trait_inner(
 ) -> bool {
     if let TypeKind::Param(name) = &ty.kind {
         return scope.get(name).is_some_and(|bounds| {
-            bounds
-                .traits
-                .iter()
-                .any(|bound| bound.trait_path == *trait_path)
+            bounds.traits.iter().any(|bound| {
+                trait_bound_implies(env, &bound.trait_path, ty, trait_path, &mut HashSet::new())
+            })
         });
     }
     let obligation = (ty.clone(), trait_path.clone());
@@ -2286,53 +2479,60 @@ fn resolve_receiver_call(
         _ => None,
     };
     let mut trait_methods = Vec::new();
+    let mut seen_bound_methods = Vec::new();
     if let Some(self_ty) = bound_self_ty {
         if let TypeKind::Param(parameter_name) = &self_ty.kind {
             if let Some(bounds) = env.current_type_params.get(parameter_name) {
                 for bound in &bounds.traits {
-                    let Some(trait_decl) = env.traits.get(&bound.trait_path.name) else {
-                        continue;
-                    };
-                    let Some(method) = trait_decl
-                        .methods
-                        .iter()
-                        .find(|candidate| candidate.name == method_name)
-                    else {
-                        continue;
-                    };
-                    let mut mapping = trait_decl
-                        .type_params
-                        .iter()
-                        .map(|parameter| parameter.name.clone())
-                        .zip(bound.trait_path.type_args.iter().cloned())
-                        .collect::<HashMap<_, _>>();
-                    mapping.insert("Self".to_string(), self_ty.clone());
-                    let lifetime_mapping = trait_decl
-                        .lifetime_params
-                        .iter()
-                        .map(|parameter| parameter.lifetime.clone())
-                        .zip(bound.trait_path.lifetime_args.iter().cloned())
-                        .collect::<BTreeMap<_, _>>();
-                    let Some(receiver_param) = method.params.first() else {
-                        continue;
-                    };
-                    let expected_receiver =
-                        substitute_all(&receiver_param.ty, &mapping, &lifetime_mapping);
-                    let Some(adjustment) = receiver_adjustment_for_expected(
-                        subst,
-                        &expected_receiver,
-                        &resolved_receiver_ty,
-                    ) else {
-                        continue;
-                    };
-                    trait_methods.push(TraitReceiverCandidate::Bound {
-                        trait_path: bound.trait_path.clone(),
-                        self_ty: self_ty.clone(),
-                        method,
-                        mapping,
-                        lifetime_mapping,
-                        adjustment,
-                    });
+                    for trait_path in implied_trait_paths(env, &bound.trait_path, &self_ty) {
+                        let Some(trait_decl) = env.traits.get(&trait_path.name) else {
+                            continue;
+                        };
+                        let Some(method) = trait_decl
+                            .methods
+                            .iter()
+                            .find(|candidate| candidate.name == method_name)
+                        else {
+                            continue;
+                        };
+                        if seen_bound_methods.contains(&(trait_path.clone(), self_ty.clone())) {
+                            continue;
+                        }
+                        let mut mapping = trait_decl
+                            .type_params
+                            .iter()
+                            .map(|parameter| parameter.name.clone())
+                            .zip(trait_path.type_args.iter().cloned())
+                            .collect::<HashMap<_, _>>();
+                        mapping.insert("Self".to_string(), self_ty.clone());
+                        let lifetime_mapping = trait_decl
+                            .lifetime_params
+                            .iter()
+                            .map(|parameter| parameter.lifetime.clone())
+                            .zip(trait_path.lifetime_args.iter().cloned())
+                            .collect::<BTreeMap<_, _>>();
+                        let Some(receiver_param) = method.params.first() else {
+                            continue;
+                        };
+                        let expected_receiver =
+                            substitute_all(&receiver_param.ty, &mapping, &lifetime_mapping);
+                        let Some(adjustment) = receiver_adjustment_for_expected(
+                            subst,
+                            &expected_receiver,
+                            &resolved_receiver_ty,
+                        ) else {
+                            continue;
+                        };
+                        seen_bound_methods.push((trait_path.clone(), self_ty.clone()));
+                        trait_methods.push(TraitReceiverCandidate::Bound {
+                            trait_path,
+                            self_ty: self_ty.clone(),
+                            method,
+                            mapping,
+                            lifetime_mapping,
+                            adjustment,
+                        });
+                    }
                 }
             }
         }

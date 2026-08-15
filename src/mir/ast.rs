@@ -946,6 +946,7 @@ pub struct EnumDecl {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TraitDecl {
     pub meta: DeclMeta,
+    pub self_bounds: Bounds,
     pub methods: Vec<Function>,
 }
 

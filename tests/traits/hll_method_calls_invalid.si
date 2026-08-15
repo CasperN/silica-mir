@@ -208,3 +208,85 @@ fn<T: GenericBoundMethod> reject_bound_unsafe(value: &T) {
 fn<T> reject_unbounded_receiver(value: &T) {
   value.bound_generic<WrongBoundArgument>(value);
 }
+
+trait MissingSupertraitUse: MissingSupertrait {}
+
+trait<X> GenericSupertrait {}
+trait WrongSupertraitArity: GenericSupertrait {}
+
+trait CycleFirst: CycleSecond {}
+trait CycleSecond: CycleFirst {}
+
+trait<X> ExpandingCycle: ExpandingCycle<[X; 1]> {}
+
+# covers: a cycle that changes type arguments still terminates method lookup
+fn<T: ExpandingCycle<i64>> expanding_cycle_lookup(value: &T) {
+  value.missing_cycle_method();
+}
+
+trait RequiresCopySelf: Copy {}
+struct LinearSupertraitTarget {}
+
+# covers: implementing a trait requires its marker self-bounds
+impl RequiresCopySelf for LinearSupertraitTarget {}
+
+trait<X: Copy + Drop> RequiredParent {}
+trait<X: Copy + Drop> RequiresParent: RequiredParent<X> {}
+
+struct WrongSupertraitArgument: Copy + Drop { value: i64 }
+impl RequiredParent<bool> for WrongSupertraitArgument {}
+
+# covers: implementing a trait requires the correctly instantiated supertrait
+impl RequiresParent<i64> for WrongSupertraitArgument {}
+
+trait<X: Copy + Drop> InheritedCollision {
+  fn inherited_collision(recv: &Self);
+}
+
+trait CollisionLeft: InheritedCollision<i64> {}
+trait CollisionRight: InheritedCollision<bool> {}
+trait CollisionDiamond: CollisionLeft + CollisionRight {}
+
+# covers: differently instantiated inherited methods remain ambiguous
+fn<T: CollisionDiamond> ambiguous_inherited_method(value: &T) {
+  value.inherited_collision();
+}
+
+trait RedeclaredParent {
+  fn redeclared(recv: &Self);
+}
+
+trait RedeclaredChild: RedeclaredParent {
+  fn redeclared(recv: &Self);
+}
+
+# covers: a child declaration does not silently override a supertrait method
+fn<T: RedeclaredChild> ambiguous_redeclared_method(value: &T) {
+  value.redeclared();
+}
+
+trait InheritedRequirementsParent {
+  fn<U: Copy + Drop> inherited_bounded(recv: &Self, value: U);
+  unsafe fn inherited_dangerous(recv: &Self);
+}
+
+trait InheritedRequirementsChild: InheritedRequirementsParent {}
+
+# covers: inherited methods retain their method-generic obligations
+fn<T: InheritedRequirementsChild> reject_inherited_method_argument(
+  value: &T,
+  argument: LinearSupertraitTarget,
+) {
+  value.inherited_bounded<LinearSupertraitTarget>(argument);
+}
+
+# covers: inherited unsafe methods retain their safety requirement
+fn<T: InheritedRequirementsChild> reject_inherited_unsafe(value: &T) {
+  value.inherited_dangerous();
+}
+
+trait MissingGenericImplParent {}
+trait MissingGenericImplChild: MissingGenericImplParent {}
+
+# covers: a generic impl must declare evidence for its supertrait obligation
+impl<T> MissingGenericImplChild for T {}

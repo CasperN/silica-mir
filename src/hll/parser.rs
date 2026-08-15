@@ -608,6 +608,15 @@ impl Parser {
             (Vec::new(), Vec::new(), Vec::new())
         };
         scope.params.insert("Self".to_string());
+        let mut bounds_cursor = node.walk();
+        let self_bounds = if let Some(bounds) = node
+            .children(&mut bounds_cursor)
+            .find(|child| child.kind() == "trait_bounds")
+        {
+            self.map_trait_bounds(bounds, &scope, d)?
+        } else {
+            Bounds::default()
+        };
         let mut methods = Vec::new();
         let mut names = HashSet::new();
         for child in node.children(&mut cursor) {
@@ -665,6 +674,7 @@ impl Parser {
             lifetime_params,
             outlives,
             type_params,
+            self_bounds,
             methods,
             source: SourceInfo::written(span_of(node)),
         })

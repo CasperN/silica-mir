@@ -1400,3 +1400,318 @@ fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {
     require_uninit value;
     return
 }
+
+trait<X: Copy + Drop> SuperReceiver {
+  fn<'s0> inherited(recv: &'s0 Self, value: X);
+  fn<'s0, U: Copy + Drop> inherited_generic(recv: &'s0 Self, value: U);
+  fn<'s0> inherited_unsafe(recv: &'s0 Self);
+}
+
+trait<X: Copy + Drop> ChildReceiver: Copy + Drop + SuperReceiver<X> {
+  fn<'s0> child(recv: &'s0 Self);
+}
+
+trait<X: Copy + Drop> GrandReceiver: ChildReceiver<X> {
+}
+
+trait<X: Copy + Drop> LeftReceiver: SuperReceiver<X> {
+}
+
+trait<X: Copy + Drop> RightReceiver: SuperReceiver<X> {
+}
+
+trait<X: Copy + Drop> DiamondReceiver: LeftReceiver<X> + RightReceiver<X> {
+}
+
+struct SuperTarget: Copy + Drop {
+  value: i64
+}
+
+impl SuperReceiver<i64> for SuperTarget {
+  fn<'s0> inherited(recv: &'s0 SuperTarget, value: i64) {
+    $tmp_0: unit;
+    $tmp_1: &SuperTarget;
+    $tmp_2: i64;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      drop $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+  fn<'s0, U: Copy + Drop> inherited_generic(recv: &'s0 SuperTarget, value: U) {
+    $tmp_0: unit;
+    $tmp_1: &SuperTarget;
+    $tmp_2: U;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      drop $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> inherited_unsafe(recv: &'s0 SuperTarget) {
+    $tmp_0: unit;
+    $tmp_1: &SuperTarget;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+}
+
+impl ChildReceiver<i64> for SuperTarget {
+  fn<'s0> child(recv: &'s0 SuperTarget) {
+    $tmp_0: unit;
+    $tmp_1: &SuperTarget;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+}
+
+impl GrandReceiver<i64> for SuperTarget {
+}
+
+fn<'s0, T: GrandReceiver<i64>> inherited_generic_method(value: &'s0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: unit;
+  $tmp_5: unit;
+  entry:
+    call <T as SuperReceiver<i64>>::inherited(copy value, 1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    call <T as SuperReceiver<i64>>::inherited_generic<bool>(copy value, true);
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    call <T as SuperReceiver<i64>>::inherited_unsafe(copy value);
+    $tmp_4 = unit;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    call <T as ChildReceiver<i64>>::child(move value);
+    $tmp_5 = unit;
+    drop $tmp_5;
+    require_uninit $tmp_5;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<T: Move + GrandReceiver<i64>> inherited_auto_borrow(value: T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: &T;
+  entry:
+    $tmp_2 = &value;
+    call <T as SuperReceiver<i64>>::inherited(move $tmp_2, 1);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: DiamondReceiver<i64>> inherited_diamond_method(value: &'s0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as SuperReceiver<i64>>::inherited(move value, 1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: GrandReceiver<i64>> inherited_markers(value: T, $return: &out 's0 [T; 2]) {
+  entry:
+    $return.* = [copy value, move value];
+    unborrow $return;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+trait InheritedAutoClone: AutoClone {
+}
+
+trait InheritedAutoDestroy: AutoDestroy {
+}
+
+fn<'s0, T: Move + InheritedAutoClone> inherited_auto_clone(value: T, $return: &out 's0 [T; 2]) {
+  $clone_0: T;
+  $clone_1: &T;
+  $clone_2: &out T;
+  entry:
+    $clone_1 = &value;
+    $clone_2 = &out $clone_0;
+    call <T as AutoClone>::clone(move $clone_1, move $clone_2);
+    $return.* = [move $clone_0, move value];
+    unborrow $return;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<T: InheritedAutoDestroy> inherited_auto_destroy(value: T) {
+  $tmp_0: unit;
+  $destroy_0: &drop T;
+  entry:
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $destroy_0 = &drop value;
+    call <T as AutoDestroy>::destroy(move $destroy_0);
+    require_uninit value;
+    return
+}
+
+trait<'a, X: Copy + Drop> LifetimeSuperReceiver {
+  fn inherited_lifetime(recv: &'a Self, value: X);
+}
+
+trait<'a, X: Copy + Drop> LifetimeChildReceiver: LifetimeSuperReceiver<'a, X> {
+}
+
+fn<'a, T: LifetimeChildReceiver<'a, i64>> inherited_lifetime_method(value: &'a T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(move value, 1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+trait<X> SelfArgumentSuper {
+  fn<'s0, 's1> inherited_self_argument(recv: &'s0 Self, value: &'s1 X);
+}
+
+trait SelfArgumentChild: SelfArgumentSuper<Self> {
+}
+
+struct SelfArgumentTarget: Copy + Drop {
+  value: i64
+}
+
+impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
+  fn<'s0, 's1> inherited_self_argument(recv: &'s0 SelfArgumentTarget, value: &'s1 SelfArgumentTarget) {
+    $tmp_0: unit;
+    $tmp_1: &SelfArgumentTarget;
+    $tmp_2: &SelfArgumentTarget;
+    entry:
+      $tmp_1 = move recv;
+      unborrow $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move value;
+      unborrow $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+}
+
+impl SelfArgumentChild for SelfArgumentTarget {
+}
+
+fn<'s0, T: SelfArgumentChild> inherited_self_argument(value: &'s0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as SelfArgumentSuper<T>>::inherited_self_argument(copy value, move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+trait<X> GenericImplParent {
+}
+
+trait<X> GenericImplChild: GenericImplParent<X> {
+}
+
+impl<T: GenericImplParent<i64>> GenericImplChild<i64> for T {
+}
+
+trait InheritedExactRank {
+  fn inherited_rank(recv: Self);
+}
+
+trait InheritedBorrowedRank {
+  fn<'s0> inherited_rank(recv: &'s0 Self);
+}
+
+trait InheritedRank: InheritedExactRank + InheritedBorrowedRank {
+}
+
+fn<T: Move + InheritedRank> inherited_receiver_rank(value: T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as InheritedExactRank>::inherited_rank(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}

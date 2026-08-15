@@ -73,3 +73,20 @@ fn<T: Sink> drive_generic(f: &mut T) {
     call <T as Sink>::accept(move f, 7);
     return
 }
+
+trait SuperSink {
+  fn accept_super(recv: &mut Self, v: i64);
+}
+
+trait ChildSink: SuperSink {}
+
+trait<'a, 'b: 'a> OrderedSuper {}
+trait<'a, 'b: 'a> OrderedChild: OrderedSuper<'a, 'b> {}
+
+# An explicit MIR call may select a supertrait proven transitively by the
+# generic receiver's direct bound.
+fn<T: ChildSink> drive_super_generic(f: &mut T) {
+  entry:
+    call <T as SuperSink>::accept_super(move f, 7);
+    return
+}

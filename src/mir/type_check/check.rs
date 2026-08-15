@@ -13,7 +13,10 @@ use crate::common::{GeneratedKind, Lifetime, LifetimeParam};
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::diagnostic_format::{format_type_diagnostic, DiagnosticFormat};
-use crate::mir::env::{substitute_trait_bound, LocalEnv, TypeResolutionError, TypeValidationError};
+use crate::mir::env::{
+    instantiate_trait_self_bound, substitute_trait_bound, LocalEnv, TypeResolutionError,
+    TypeValidationError,
+};
 use crate::mir::helpers::*;
 use indexmap::IndexMap;
 use std::collections::{BTreeSet, HashMap, HashSet};
@@ -267,6 +270,47 @@ fn validate_generic_bounds(
     }
 }
 
+fn validate_trait_bound_cycles(program: &IndexedProgram, d: &mut Diagnostics) {
+    fn visit(
+        program: &IndexedProgram,
+        name: &str,
+        stack: &mut Vec<String>,
+        complete: &mut HashSet<String>,
+        d: &mut Diagnostics,
+    ) {
+        if complete.contains(name) {
+            return;
+        }
+        let Some(trait_decl) = program.traits.get(name) else {
+            return;
+        };
+        stack.push(name.to_string());
+        for bound in &trait_decl.self_bounds.traits {
+            if let Some(start) = stack
+                .iter()
+                .position(|ancestor| ancestor == &bound.trait_path.name)
+            {
+                let mut cycle = stack[start..].to_vec();
+                cycle.push(bound.trait_path.name.clone());
+                d.push_error(Diagnostic::new(
+                    TraitBoundCycle,
+                    bound.source,
+                    format!("Trait-bound cycle: {}", cycle.join(" -> ")),
+                ));
+                continue;
+            }
+            visit(program, &bound.trait_path.name, stack, complete, d);
+        }
+        stack.pop();
+        complete.insert(name.to_string());
+    }
+
+    let mut complete = HashSet::new();
+    for name in program.traits.keys() {
+        visit(program, name, &mut Vec::new(), &mut complete, d);
+    }
+}
+
 /// Collect all Named lifetimes referenced in `ty` that aren't in
 /// `scope`. Duplicates are preserved so each occurrence gets a
 /// diagnostic at its enclosing decl's span.
@@ -315,6 +359,7 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
 
 impl IndexedProgram {
     pub fn typecheck(&self, d: &mut Diagnostics) {
+        validate_trait_bound_cycles(self, d);
         // Validate struct fields and enum variants
         for type_decl in self.types.values() {
             let (container_kind, item_kind, duplicate_code, items) = match type_decl {
@@ -443,9 +488,15 @@ impl IndexedProgram {
         let mut trait_params = meta.params.clone();
         trait_params.type_params.push(TypeParam {
             name: "Self".to_string(),
-            bounds: Bounds::default(),
+            bounds: trait_decl.self_bounds.clone(),
             source: meta.name_source,
         });
+        validate_bound_set(
+            LocalEnv::for_decl(self, &trait_params),
+            &trait_decl.self_bounds,
+            &format!("trait '{}'", meta.name),
+            d,
+        );
 
         for method in &trait_decl.methods {
             let method_meta = &method.meta;
@@ -598,6 +649,34 @@ impl IndexedProgram {
             ));
             return;
         }
+        let impl_env = LocalEnv::for_decl(self, header);
+        for marker in trait_decl.self_bounds.markers.iter_declared() {
+            if !impl_env.class_of(&imp.target).implies(marker) {
+                d.push_error(Diagnostic::new(
+                    TraitBoundNotSatisfied,
+                    header.source,
+                    format!(
+                        "Impl of '{}' for {} requires Self: {}",
+                        trait_path,
+                        imp.target,
+                        marker.name()
+                    ),
+                ));
+            }
+        }
+        for bound in &trait_decl.self_bounds.traits {
+            let required = instantiate_trait_self_bound(trait_decl, trait_path, &imp.target, bound);
+            if !impl_env.satisfies_trait(&imp.target, &required) {
+                d.push_error(Diagnostic::new(
+                    TraitBoundNotSatisfied,
+                    header.source,
+                    format!(
+                        "Impl of '{}' for {} requires Self: {}",
+                        trait_path, imp.target, required
+                    ),
+                ));
+            }
+        }
         if d.error_count() != signature_inputs_start {
             return;
         }
@@ -611,7 +690,7 @@ impl IndexedProgram {
         );
         let mut subst_type_params: Vec<TypeParam> = vec![TypeParam {
             name: "Self".to_string(),
-            bounds: Bounds::default(),
+            bounds: trait_decl.self_bounds.clone(),
             source: self_source,
         }];
         subst_type_params.extend(trait_meta.params.type_params.iter().cloned());

@@ -68,3 +68,22 @@ fn<'s0, T: Sink> drive_generic(f: &mut 's0 T) {
     call <T as Sink>::accept(move f, 7);
     return
 }
+
+trait SuperSink {
+  fn<'s0> accept_super(recv: &mut 's0 Self, v: i64);
+}
+
+trait ChildSink: SuperSink {
+}
+
+trait<'a, 'b: 'a> OrderedSuper {
+}
+
+trait<'a, 'b: 'a> OrderedChild: OrderedSuper<'a, 'b> {
+}
+
+fn<'s0, T: ChildSink> drive_super_generic(f: &mut 's0 T) {
+  entry:
+    call <T as SuperSink>::accept_super(move f, 7);
+    return
+}

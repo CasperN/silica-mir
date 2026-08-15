@@ -18,7 +18,7 @@ use crate::mir::diagnostic_format::{DiagnosticFormat, DiagnosticScope};
 use crate::mir::helpers::*;
 use crate::mir::type_check::{TypeCheckCode, TypeCheckCode::*};
 use indexmap::IndexMap;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 #[derive(Debug, Clone)]
 pub struct TypeResolutionError {
@@ -663,10 +663,53 @@ impl<'a> LocalEnv<'a> {
             },
             TypeKind::Param(name) => self
                 .type_param(name)
-                .map(|param| param.bounds.markers)
+                .map(|param| self.markers_from_bounds(&param.bounds, &mut HashSet::new()))
                 .unwrap_or_else(Markers::empty),
             TypeKind::Array(elem, _) => self.class_of(elem),
         }
+    }
+
+    fn markers_from_bounds(&self, bounds: &Bounds, visiting: &mut HashSet<String>) -> Markers {
+        let mut markers = bounds.markers.iter_declared().collect::<Vec<_>>();
+        for bound in &bounds.traits {
+            let name = &bound.trait_path.name;
+            if !visiting.insert(name.clone()) {
+                continue;
+            }
+            if let Some(trait_decl) = self.program.traits.get(name) {
+                markers.extend(
+                    self.markers_from_bounds(&trait_decl.self_bounds, visiting)
+                        .iter_declared(),
+                );
+            }
+            visiting.remove(name);
+        }
+        Markers::from_iter(markers)
+    }
+
+    fn trait_bound_implies(
+        &self,
+        available: &Instance,
+        self_ty: &Type,
+        required: &Instance,
+        visiting: &mut HashSet<String>,
+    ) -> bool {
+        if available == required {
+            return true;
+        }
+        if !visiting.insert(available.name.clone()) {
+            return false;
+        }
+        let Some(trait_decl) = self.program.traits.get(&available.name) else {
+            visiting.remove(&available.name);
+            return false;
+        };
+        let implied = trait_decl.self_bounds.traits.iter().any(|bound| {
+            let bound = instantiate_trait_self_bound(trait_decl, available, self_ty, bound);
+            self.trait_bound_implies(&bound, self_ty, required, visiting)
+        });
+        visiting.remove(&available.name);
+        implied
     }
 
     pub(crate) fn satisfies_trait(&self, ty: &Type, trait_path: &Instance) -> bool {
@@ -696,11 +739,9 @@ impl<'a> LocalEnv<'a> {
     ) -> bool {
         if let TypeKind::Param(name) = &ty.kind {
             return self.type_param(name).is_some_and(|parameter| {
-                parameter
-                    .bounds
-                    .traits
-                    .iter()
-                    .any(|bound| bound.trait_path == *trait_path)
+                parameter.bounds.traits.iter().any(|bound| {
+                    self.trait_bound_implies(&bound.trait_path, ty, trait_path, &mut HashSet::new())
+                })
             });
         }
         let obligation = (ty.clone(), trait_path.clone());
@@ -898,6 +939,23 @@ impl ResolvedMethod<'_> {
             .map(|param| params.substitute_types(&param.ty, &type_args))
             .collect()
     }
+}
+
+pub(crate) fn instantiate_trait_self_bound(
+    trait_decl: &TraitDecl,
+    trait_path: &Instance,
+    self_ty: &Type,
+    bound: &TraitBound,
+) -> Instance {
+    let mut params = trait_decl.meta.params.clone();
+    params.type_params.push(TypeParam {
+        name: "Self".to_string(),
+        bounds: trait_decl.self_bounds.clone(),
+        source: trait_decl.meta.name_source,
+    });
+    let mut type_args = trait_path.type_args.clone();
+    type_args.push(self_ty.clone());
+    substitute_trait_bound(&params, &trait_path.lifetime_args, &type_args, bound)
 }
 
 pub(crate) fn substitute_trait_bound(
@@ -1938,17 +1996,12 @@ impl LocalEnv<'_> {
             ))
         })?;
         if let TypeKind::Param(name) = &self_ty.kind {
-            let parameter = self.type_param(name).ok_or_else(|| {
+            self.type_param(name).ok_or_else(|| {
                 TypeResolutionError::new(TypeResolutionErrorKind::TraitFnParamReceiver(
                     name.clone(),
                 ))
             })?;
-            if !parameter
-                .bounds
-                .traits
-                .iter()
-                .any(|bound| bound.trait_path == *trait_path)
-            {
+            if !self.satisfies_trait(self_ty, trait_path) {
                 return Err(TypeResolutionError::new(
                     TypeResolutionErrorKind::TraitFnParamReceiver(name.clone()),
                 ));
@@ -1967,7 +2020,7 @@ impl LocalEnv<'_> {
             let mut context_params = declaration.meta.params.clone();
             context_params.type_params.push(TypeParam {
                 name: "Self".to_string(),
-                bounds: Bounds::default(),
+                bounds: declaration.self_bounds.clone(),
                 source: declaration.meta.params.source,
             });
             let mut context_type_args = trait_path.type_args.clone();

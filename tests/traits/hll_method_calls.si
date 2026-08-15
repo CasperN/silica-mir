@@ -449,3 +449,124 @@ fn<T: AutoClone + Move> generic_bound_auto_clone(value: T) -> [T; 2] {
 
 # covers: AutoDestroy bounds support compiler-generated generic trait calls
 fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {}
+
+trait<X: Copy + Drop> SuperReceiver {
+  fn inherited(recv: &Self, value: X);
+  fn<U: Copy + Drop> inherited_generic(recv: &Self, value: U);
+  unsafe fn inherited_unsafe(recv: &Self);
+}
+
+trait<X: Copy + Drop> ChildReceiver: SuperReceiver<X> + Copy + Drop {
+  fn child(recv: &Self);
+}
+
+trait<X: Copy + Drop> GrandReceiver: ChildReceiver<X> {}
+
+trait<X: Copy + Drop> LeftReceiver: SuperReceiver<X> {}
+trait<X: Copy + Drop> RightReceiver: SuperReceiver<X> {}
+trait<X: Copy + Drop> DiamondReceiver: LeftReceiver<X> + RightReceiver<X> {}
+
+struct SuperTarget: Copy + Drop { value: i64 }
+
+impl SuperReceiver<i64> for SuperTarget {
+  fn inherited(recv: &SuperTarget, value: i64) { recv; value; }
+  fn<U: Copy + Drop> inherited_generic(recv: &SuperTarget, value: U) {
+    recv;
+    value;
+  }
+  unsafe fn inherited_unsafe(recv: &SuperTarget) { recv; }
+}
+
+impl ChildReceiver<i64> for SuperTarget {
+  fn child(recv: &SuperTarget) { recv; }
+}
+
+impl GrandReceiver<i64> for SuperTarget {}
+
+# covers: a generic receiver sees methods inherited through multiple supertrait levels
+fn<T: GrandReceiver<i64>> inherited_generic_method(value: &T) {
+  value.inherited(1);
+  value.inherited_generic(true);
+  unsafe { value.inherited_unsafe(); }
+  value.child();
+}
+
+# covers: an inherited reference receiver auto-borrows an owned generic value
+fn<T: GrandReceiver<i64> + Move> inherited_auto_borrow(value: T) {
+  value.inherited(1);
+}
+
+# covers: duplicate diamond paths to the same instantiated method are one candidate
+fn<T: DiamondReceiver<i64>> inherited_diamond_method(value: &T) {
+  value.inherited(1);
+}
+
+# covers: a supertrait's marker bounds contribute to a generic receiver's class
+fn<T: GrandReceiver<i64>> inherited_markers(value: T) -> [T; 2] {
+  [value, value]
+}
+
+trait InheritedAutoClone: AutoClone {}
+trait InheritedAutoDestroy: AutoDestroy {}
+
+# covers: compiler-generated AutoClone calls use inherited trait evidence
+fn<T: InheritedAutoClone + Move> inherited_auto_clone(value: T) -> [T; 2] {
+  [value, value]
+}
+
+# covers: compiler-generated AutoDestroy calls use inherited trait evidence
+fn<T: InheritedAutoDestroy> inherited_auto_destroy(value: T) {}
+
+trait<'a, X: Copy + Drop> LifetimeSuperReceiver {
+  fn inherited_lifetime(recv: &'a Self, value: X);
+}
+
+trait<'a, X: Copy + Drop> LifetimeChildReceiver: LifetimeSuperReceiver<'a, X> {}
+
+# covers: inherited method lookup substitutes supertrait lifetime and type arguments
+fn<'a, T: LifetimeChildReceiver<'a, i64>> inherited_lifetime_method(value: &'a T) {
+  value.inherited_lifetime(1);
+}
+
+trait<X> SelfArgumentSuper {
+  fn inherited_self_argument(recv: &Self, value: &X);
+}
+
+trait SelfArgumentChild: SelfArgumentSuper<Self> {}
+
+struct SelfArgumentTarget: Copy + Drop { value: i64 }
+
+impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
+  fn inherited_self_argument(recv: &SelfArgumentTarget, value: &SelfArgumentTarget) {
+    recv;
+    value;
+  }
+}
+
+impl SelfArgumentChild for SelfArgumentTarget {}
+
+# covers: Self in a supertrait argument substitutes to the generic receiver
+fn<T: SelfArgumentChild> inherited_self_argument(value: &T) {
+  value.inherited_self_argument(value);
+}
+
+trait<X> GenericImplParent {}
+trait<X> GenericImplChild: GenericImplParent<X> {}
+
+# covers: a generic impl header may prove its instantiated supertrait obligation
+impl<T: GenericImplParent<i64>> GenericImplChild<i64> for T {}
+
+trait InheritedExactRank {
+  fn inherited_rank(recv: Self);
+}
+
+trait InheritedBorrowedRank {
+  fn inherited_rank(recv: &Self);
+}
+
+trait InheritedRank: InheritedExactRank + InheritedBorrowedRank {}
+
+# covers: exact receiver matching outranks auto-borrow across inherited methods
+fn<T: InheritedRank + Move> inherited_receiver_rank(value: T) {
+  value.inherited_rank();
+}

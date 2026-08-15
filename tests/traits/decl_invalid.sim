@@ -341,3 +341,33 @@ fn reject_direct_bound(value: &Other) {
     call accept_direct<Other>(copy value);
     return
 }
+
+# --- Trait self-bound errors --------------------------------------------
+
+trait MirCycleFirst: MirCycleSecond {}
+trait MirCycleSecond: MirCycleFirst {}
+
+trait<X> MirExpandingCycle: MirExpandingCycle<[X; 1]> {}
+
+trait MirUnrelated {
+  fn unrelated(recv: &Self);
+}
+
+# covers: transitive MIR bound checking terminates on argument-expanding cycles
+fn<T: MirExpandingCycle<i64>> mir_expanding_cycle_lookup(value: &T) {
+  entry:
+    call <T as MirUnrelated>::unrelated(copy value);
+    return
+}
+
+trait<'a, 'b: 'a> MirOrderedSuper {}
+
+# covers: supertrait lifetime requirements must follow from the child trait
+trait<'a, 'b> MirMissingSuperOutlives: MirOrderedSuper<'a, 'b> {}
+
+trait MirParent {}
+trait MirChild: MirParent + Copy {}
+struct MirLinear {}
+
+# covers: MIR impls must satisfy marker and trait self-bounds
+impl MirChild for MirLinear {}

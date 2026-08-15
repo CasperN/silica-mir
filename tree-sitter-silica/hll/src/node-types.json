@@ -2537,6 +2537,10 @@
           "named": true
         },
         {
+          "type": "trait_bounds",
+          "named": true
+        },
+        {
           "type": "type_params",
           "named": true
         }

@@ -524,21 +524,24 @@ fn lower_type_params(params: &[hll::TypeParam]) -> Vec<mir::TypeParam> {
         .iter()
         .map(|p| mir::TypeParam {
             name: p.name.clone(),
-            bounds: mir::Bounds {
-                markers: p.bounds.markers,
-                traits: p
-                    .bounds
-                    .traits
-                    .iter()
-                    .map(|bound| mir::TraitBound {
-                        trait_path: lower_instance(&bound.trait_path),
-                        source: bound.source,
-                    })
-                    .collect(),
-            },
+            bounds: lower_bounds(&p.bounds),
             source: p.source,
         })
         .collect()
+}
+
+fn lower_bounds(bounds: &hll::Bounds) -> mir::Bounds {
+    mir::Bounds {
+        markers: bounds.markers,
+        traits: bounds
+            .traits
+            .iter()
+            .map(|bound| mir::TraitBound {
+                trait_path: lower_instance(&bound.trait_path),
+                source: bound.source,
+            })
+            .collect(),
+    }
 }
 
 fn lower_instance(instance: &hll::Instance) -> mir::Instance {
@@ -1684,6 +1687,7 @@ pub fn lower_program(
                         },
                         markers: Markers::empty(),
                     },
+                    self_bounds: lower_bounds(&t.self_bounds),
                     methods: t
                         .methods
                         .iter()

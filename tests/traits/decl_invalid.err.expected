@@ -12,6 +12,20 @@ error: at 193:6: [TC-DuplicateDeclaration] Duplicate impl of trait 'Iter<i64>' f
      |      ^^^^
  194 |   fn next(recv: &mut DupTarget, $return: &out i64) {
      |
+error: at 348:23: [TC-TraitBoundCycle] Trait-bound cycle: MirCycleFirst -> MirCycleSecond -> MirCycleFirst
+     |
+ 347 | trait MirCycleFirst: MirCycleSecond {}
+ 348 | trait MirCycleSecond: MirCycleFirst {}
+     |                       ^^^^^^^^^^^^^
+ 349 | 
+     |
+error: at 350:29: [TC-TraitBoundCycle] Trait-bound cycle: MirExpandingCycle -> MirExpandingCycle
+     |
+ 349 | 
+ 350 | trait<X> MirExpandingCycle: MirExpandingCycle<[X; 1]> {}
+     |                             ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 351 | 
+     |
 error: at 325:14: [TC-TraitBoundUnknownTrait] In function 'unknown_direct_bound' type parameter 'T': trait bound references undeclared trait 'MissingBound'
      |
  324 | # covers: MIR bounds must name a declared trait
@@ -39,6 +53,13 @@ error: at 341:5: [TC-TypeArgBoundNotSatisfied] In function 'reject_direct_bound'
  341 |     call accept_direct<Other>(copy value);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  342 |     return
+     |
+error: at 359:5: [TC-TraitFnParamReceiver] In function 'mir_expanding_cycle_lookup', block 'entry': Cannot resolve trait-method call on generic parameter 'T'
+     |
+ 358 |   entry:
+ 359 |     call <T as MirUnrelated>::unrelated(copy value);
+     |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 360 |     return
      |
 error: at 45:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next' param 'out': Use of undeclared type 'Missing'
     |
@@ -145,6 +166,18 @@ error: at 269:6: [TC-DuplicateLifetimeParam] In function '<Foo as LifetimeShadow
      |      ^^
  270 |     entry:
      |
+error: at 373:6: [TC-TraitBoundNotSatisfied] Impl of 'MirChild' for MirLinear requires Self: Copy
+     |
+ 372 | # covers: MIR impls must satisfy marker and trait self-bounds
+ 373 | impl MirChild for MirLinear {}
+     |      ^^^^^^^^
+     |
+error: at 373:6: [TC-TraitBoundNotSatisfied] Impl of 'MirChild' for MirLinear requires Self: MirParent
+     |
+ 372 | # covers: MIR impls must satisfy marker and trait self-bounds
+ 373 | impl MirChild for MirLinear {}
+     |      ^^^^^^^^
+     |
 error: at 276:6: [TC-DuplicateLifetimeParam] In function '<Foo>::inherent_borrow': lifetime parameter 'a is declared more than once
      |
  275 | impl<'a> Foo {
@@ -197,3 +230,11 @@ error: at 334:22: [LT-LifetimeMismatch] trait bound 'OrderedDirectBound<'a, 'b>'
  335 | 
      |
   hint: declare bound 'b: 'a on function 'missing_direct_bound_outlives'
+error: at 366:40: [LT-LifetimeMismatch] trait bound 'MirOrderedSuper<'a, 'b>' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on trait 'MirMissingSuperOutlives'
+     |
+ 365 | # covers: supertrait lifetime requirements must follow from the child trait
+ 366 | trait<'a, 'b> MirMissingSuperOutlives: MirOrderedSuper<'a, 'b> {}
+     |                                        ^^^^^^^^^^^^^^^^^^^^^^^
+ 367 | 
+     |
+  hint: declare bound 'b: 'a on trait 'MirMissingSuperOutlives'

@@ -161,6 +161,7 @@ fn write_trait(out: &mut String, t: &TraitDecl) {
     write_type_params(out, &t.meta.params);
     out.push(' ');
     out.push_str(&t.meta.name);
+    write_bounds(out, &t.self_bounds);
     out.push_str(" {\n");
     for m in &t.methods {
         out.push_str("  fn");

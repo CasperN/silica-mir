@@ -329,6 +329,7 @@ pub struct TraitDecl {
     pub lifetime_params: Vec<LifetimeParam>,
     pub outlives: Vec<OutlivesBound>,
     pub type_params: Vec<TypeParam>,
+    pub self_bounds: Bounds,
     pub methods: Vec<FnDecl>,
     pub source: SourceInfo,
 }

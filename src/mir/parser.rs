@@ -1711,6 +1711,15 @@ impl Parser {
         // so method signatures can reference it. Impls substitute
         // `Self` with the target type at check time.
         self.type_scope.borrow_mut().insert("Self".to_string());
+        let mut bounds_cursor = node.walk();
+        let self_bounds = if let Some(bounds) = node
+            .children(&mut bounds_cursor)
+            .find(|child| child.kind() == "trait_bounds")
+        {
+            self.map_trait_bounds(bounds, d)?
+        } else {
+            Bounds::default()
+        };
         // `map_function_decl` clears the entire type_scope when it
         // exits — appropriate for top-level fns, but for trait
         // methods we need the trait's type_params + Self to persist
@@ -1765,6 +1774,7 @@ impl Parser {
                 },
                 markers: Markers::empty(),
             },
+            self_bounds,
             methods,
         })
     }

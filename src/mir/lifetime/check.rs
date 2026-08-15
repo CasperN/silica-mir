@@ -65,16 +65,22 @@ fn check_generic_trait_bound_wf(prog: &IndexedProgram, d: &mut Diagnostics) {
         );
     }
     for trait_decl in prog.traits.values() {
+        let mut trait_scope = trait_decl.meta.params.clone();
+        trait_scope.type_params.push(TypeParam {
+            name: "Self".to_string(),
+            bounds: trait_decl.self_bounds.clone(),
+            source: trait_decl.meta.name_source,
+        });
         check_bound_sets_wf(
-            &trait_decl.meta.params.type_params,
-            &trait_decl.meta.params,
+            &trait_scope.type_params,
+            &trait_scope,
             "trait",
             &trait_decl.meta.name,
             prog,
             d,
         );
         for method in &trait_decl.methods {
-            let scope = combined_generic_params(&trait_decl.meta.params, &method.meta.params);
+            let scope = combined_generic_params(&trait_scope, &method.meta.params);
             check_bound_sets_wf(
                 &method.meta.params.type_params,
                 &scope,

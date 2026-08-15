@@ -111,6 +111,7 @@ module.exports = grammar({
       'trait',
       optional($.type_params),
       field('name', $.identifier),
+      optional($.trait_bounds),
       '{',
       repeat($.fn_decl),
       '}',

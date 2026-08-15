@@ -142,6 +142,8 @@ pub enum TypeCheckCode {
     TraitBoundUnknownTrait,
     /// A trait bound supplies the wrong number of generic arguments.
     TraitBoundArgArity,
+    /// Trait self-bounds form a cycle.
+    TraitBoundCycle,
     /// A bound argument or impl target does not satisfy a required bound.
     TraitBoundNotSatisfied,
     // ---- Impl blocks ----
@@ -173,8 +175,8 @@ pub enum TypeCheckCode {
     // ---- Trait method calls ----
     /// A `TraitFn` callee references a trait not declared in the env.
     TraitFnUnknownTrait,
-    /// A `TraitFn` callee's generic receiver does not declare the selected
-    /// trait as a direct bound.
+    /// A `TraitFn` callee's generic receiver bounds do not entail the selected
+    /// trait, directly or through supertraits.
     TraitFnParamReceiver,
     /// No impl pattern matches the callee's trait path and `self_ty`.
     TraitFnNoImpl,
