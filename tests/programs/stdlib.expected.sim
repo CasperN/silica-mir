@@ -3,7 +3,7 @@ extern fn<'s0> malloc_bytes(size: u64, $return: &out 's0 *u8);
 extern fn free_bytes(p: *u8);
 
 struct<T> Box: Move {
-  p: *T
+  data: *T
 }
 
 fn<'s0, T: Move> box_new(value: T, $return: &out 's0 Box<T>) {
@@ -11,7 +11,7 @@ fn<'s0, T: Move> box_new(value: T, $return: &out 's0 Box<T>) {
   $tmp_0: u64;
   $tmp_1: &out u64;
   $tmp_2: &out *u8;
-  typed: *T;
+  data: *T;
   $tmp_3: unit;
   $tmp_4: unit;
   entry:
@@ -22,118 +22,596 @@ fn<'s0, T: Move> box_new(value: T, $return: &out 's0 Box<T>) {
     require_uninit $tmp_2;
     require_uninit $tmp_1;
     require_uninit $tmp_0;
-    typed = ptr_cast(move bytes, *T);
-    typed.* = move value;
+    data = ptr_cast(move bytes, *T);
+    data.* = move value;
     $tmp_4 = unit;
     drop $tmp_4;
     require_uninit $tmp_4;
     $tmp_3 = unit;
     drop $tmp_3;
     require_uninit $tmp_3;
-    $return.*.p = move typed;
+    $return.*.data = move data;
     unborrow $return;
-    require_uninit typed;
+    require_uninit data;
     require_uninit bytes;
     require_uninit $return;
     require_uninit value;
     return
 }
 
-fn<'s0, T: Move> box_into_inner(b: Box<T>, $return: &out 's0 T) {
-  inner: T;
-  bytes: *u8;
-  $tmp_0: unit;
+impl<T> Box<T> {
+  fn<'s0: 's2, 's1: 's2, 's2> get(recv: &'s0 Box<T>, $return: &out 's1 &'s2 T) {
+    entry:
+      $return.* = ptr_cast(copy recv.*.data, &T);
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+  fn<'s0: 's2, 's1: 's2, 's2> get_mut(recv: &mut 's0 Box<T>, $return: &out 's1 &mut 's2 T) {
+    entry:
+      $return.* = ptr_cast(copy recv.*.data, &mut T);
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+impl<T: Move> Box<T> {
+  fn<'s0> into_inner(recv: Box<T>, $return: &out 's0 T) {
+    value: T;
+    $tmp_0: unit;
+    $tmp_1: *u8;
+    entry:
+      value = move recv.data.*;
+      $tmp_1 = ptr_cast(move recv.data, *u8);
+      call free_bytes(move $tmp_1);
+      $tmp_0 = unit;
+      require_uninit $tmp_1;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      $return.* = move value;
+      unborrow $return;
+      require_uninit value;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+struct<'a, T> Span: Copy + Drop {
+  data: &'a T
+  len: u64
+}
+
+fn<'a, 's0, T> span_from_raw_parts(data: *T, len: u64, $return: &out 's0 Span<'a, T>) {
   entry:
-    inner = move b.p.*;
-    bytes = ptr_cast(move b.p, *u8);
-    call free_bytes(move bytes);
-    $tmp_0 = unit;
-    drop $tmp_0;
+    $return.*.data = ptr_cast(move data, &'a T);
+    $return.*.len = move len;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit len;
+    require_uninit data;
+    return
+}
+
+fn<'a, 's0, T> span_len(span: Span<'a, T>, $return: &out 's0 u64) {
+  entry:
+    $return.* = move span.len;
+    unborrow $return;
+    require_uninit $return;
+    drop span.data;
+    require_uninit span;
+    return
+}
+
+fn<'a, 's0, T> span_get_unchecked(span: Span<'a, T>, index: u64, $return: &out 's0 &'a T) {
+  base: *T;
+  item: *T;
+  $tmp_0: &out *T;
+  entry:
+    base = ptr_cast(move span.data, *T);
+    $tmp_0 = &out item;
+    call ptr_offset<T>(move base, move index, move $tmp_0);
     require_uninit $tmp_0;
-    $return.* = move inner;
+    $return.* = ptr_cast(move item, &'a T);
     unborrow $return;
-    require_uninit bytes;
-    require_uninit inner;
+    require_uninit item;
+    require_uninit base;
     require_uninit $return;
-    require_uninit b;
+    require_uninit index;
+    drop span.len;
+    require_uninit span;
     return
 }
 
-fn<'s0: 's2, 's1: 's2, 's2, T> box_borrow(b: &'s0 Box<T>, $return: &out 's1 &'s2 T) {
-  entry:
-    $return.* = ptr_cast(copy b.*.p, &T);
-    unborrow $return;
-    unborrow b;
-    require_uninit $return;
-    require_uninit b;
-    return
+struct<T> Vec: Move {
+  data: *T
+  len: u64
+  cap: u64
 }
 
-fn<'s0: 's2, 's1: 's2, 's2, T> box_borrow_mut(b: &mut 's0 Box<T>, $return: &out 's1 &mut 's2 T) {
+fn<'s0, T> vec_with_capacity(cap: u64, $return: &out 's0 Vec<T>) {
+  data: *T;
+  $tmp_0: *u8;
+  $tmp_1: u64;
+  $tmp_2: u64;
+  $tmp_3: &out u64;
+  $tmp_4: &out u64;
+  $tmp_5: &out *u8;
   entry:
-    $return.* = ptr_cast(copy b.*.p, &mut T);
-    unborrow $return;
-    unborrow b;
-    require_uninit $return;
-    require_uninit b;
-    return
-}
-
-fn<'s0> main(exit: &out 's0 i32) {
-  $tmp_0: unit;
-  b: Box<i64>;
-  $tmp_1: &out Box<i64>;
-  peek: i64;
-  $tmp_2: &i64;
-  $tmp_3: &Box<i64>;
-  $tmp_4: &out &i64;
-  owned: i64;
-  $tmp_5: &out i64;
-  $tmp_6: unit;
-  $tmp_7: i32;
-  $tmp_8: i64;
-  $tmp_9: i64;
-  $tmp_10: &out i64;
-  $tmp_11: &out i64;
-  $tmp_12: &out i32;
-  entry:
-    $tmp_1 = &out b;
-    call box_new<i64>(42, move $tmp_1);
-    require_uninit $tmp_1;
-    $tmp_3 = &b;
-    $tmp_4 = &out $tmp_2;
-    call box_borrow<i64>(move $tmp_3, move $tmp_4);
-    peek = copy $tmp_2.*;
-    unborrow $tmp_2;
+    $tmp_3 = &out $tmp_2;
+    call size_of<T>(move $tmp_3);
+    $tmp_4 = &out $tmp_1;
+    call $u64_mul(move $tmp_2, copy cap, move $tmp_4);
+    $tmp_5 = &out $tmp_0;
+    call malloc_bytes(move $tmp_1, move $tmp_5);
+    data = ptr_cast(move $tmp_0, *T);
+    require_uninit $tmp_5;
     require_uninit $tmp_4;
     require_uninit $tmp_3;
     require_uninit $tmp_2;
-    $tmp_5 = &out owned;
-    call box_into_inner<i64>(move b, move $tmp_5);
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    $return.*.data = move data;
+    $return.*.len = 0u64;
+    $return.*.cap = move cap;
+    unborrow $return;
+    require_uninit data;
+    require_uninit $return;
+    require_uninit cap;
+    return
+}
+
+impl<T> Vec<T> {
+  fn<'s0, 's1> len(recv: &'s0 Vec<T>, $return: &out 's1 u64) {
+    entry:
+      $return.* = copy recv.*.len;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+impl<T: Move> Vec<T> {
+  fn<'s0> push_unchecked(recv: Vec<T>, value: T, $return: &out 's0 Vec<T>) {
+    slot: *T;
+    $tmp_0: &out *T;
+    $tmp_1: unit;
+    $tmp_2: &out u64;
+    entry:
+      $tmp_0 = &out slot;
+      call ptr_offset<T>(copy recv.data, copy recv.len, move $tmp_0);
+      require_uninit $tmp_0;
+      slot.* = move value;
+      $tmp_1 = unit;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $return.*.data = move recv.data;
+      $tmp_2 = &out $return.*.len;
+      call $u64_add(move recv.len, 1u64, move $tmp_2);
+      $return.*.cap = move recv.cap;
+      unborrow $return;
+      require_uninit $tmp_2;
+      drop slot;
+      require_uninit slot;
+      require_uninit $return;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> push(recv: Vec<T>, value: T, $return: &out 's0 Vec<T>) {
+    $tmp_0: bool;
+    $tmp_1: &out bool;
+    old_data: *T;
+    new_cap: u64;
+    $tmp_2: &out u64;
+    new_data: *T;
+    $tmp_3: *u8;
+    $tmp_4: u64;
+    $tmp_5: u64;
+    $tmp_6: &out u64;
+    $tmp_7: &out u64;
+    $tmp_8: &out *u8;
+    index: u64;
+    $tmp_9: unit;
+    $tmp_10: unit;
+    $tmp_11: unit;
+    $tmp_12: bool;
+    $tmp_13: &out bool;
+    source: *T;
+    $tmp_14: &out *T;
+    target: *T;
+    $tmp_15: &out *T;
+    $tmp_16: unit;
+    $tmp_17: unit;
+    $tmp_18: unit;
+    $tmp_19: u64;
+    $tmp_20: &out u64;
+    $tmp_21: unit;
+    $tmp_22: *u8;
+    grown: Vec<T>;
+    $tmp_23: &out Vec<T>;
+    $tmp_24: &out Vec<T>;
+    entry:
+      $tmp_1 = &out $tmp_0;
+      call $u64_ge(copy recv.len, copy recv.cap, move $tmp_1);
+      branch(move $tmp_0) [true: if_true_0, false: if_false_1]
+    if_true_0:
+      old_data = move recv.data;
+      $tmp_2 = &out new_cap;
+      call $u64_add(copy recv.cap, move recv.cap, move $tmp_2);
+      require_uninit $tmp_2;
+      $tmp_6 = &out $tmp_5;
+      call size_of<T>(move $tmp_6);
+      $tmp_7 = &out $tmp_4;
+      call $u64_mul(move $tmp_5, copy new_cap, move $tmp_7);
+      $tmp_8 = &out $tmp_3;
+      call malloc_bytes(move $tmp_4, move $tmp_8);
+      new_data = ptr_cast(move $tmp_3, *T);
+      require_uninit $tmp_8;
+      require_uninit $tmp_7;
+      require_uninit $tmp_6;
+      require_uninit $tmp_5;
+      require_uninit $tmp_4;
+      require_uninit $tmp_3;
+      index = 0u64;
+      goto loop_start_3
+    loop_start_3:
+      $tmp_13 = &out $tmp_12;
+      call $u64_ge(copy index, copy recv.len, move $tmp_13);
+      branch(move $tmp_12) [true: if_true_5, false: if_false_6]
+    if_true_5:
+      require_uninit $tmp_13;
+      require_uninit $tmp_12;
+      require_uninit $tmp_11;
+      require_uninit $tmp_10;
+      goto loop_end_4
+    if_false_6:
+      $tmp_11 = unit;
+      goto if_merge_7
+    if_merge_7:
+      require_uninit $tmp_13;
+      require_uninit $tmp_12;
+      drop $tmp_11;
+      require_uninit $tmp_11;
+      $tmp_14 = &out source;
+      call ptr_offset<T>(copy old_data, copy index, move $tmp_14);
+      require_uninit $tmp_14;
+      $tmp_15 = &out target;
+      call ptr_offset<T>(copy new_data, copy index, move $tmp_15);
+      require_uninit $tmp_15;
+      target.* = move source.*;
+      $tmp_17 = unit;
+      drop $tmp_17;
+      require_uninit $tmp_17;
+      $tmp_16 = unit;
+      drop $tmp_16;
+      require_uninit $tmp_16;
+      $tmp_20 = &out $tmp_19;
+      call $u64_add(move index, 1u64, move $tmp_20);
+      index = move $tmp_19;
+      $tmp_18 = unit;
+      require_uninit $tmp_20;
+      require_uninit $tmp_19;
+      drop $tmp_18;
+      require_uninit $tmp_18;
+      $tmp_10 = unit;
+      drop target;
+      require_uninit target;
+      drop source;
+      require_uninit source;
+      drop $tmp_10;
+      require_uninit $tmp_10;
+      goto loop_start_3
+    loop_end_4:
+      require_uninit $tmp_9;
+      $tmp_22 = ptr_cast(move old_data, *u8);
+      call free_bytes(move $tmp_22);
+      $tmp_21 = unit;
+      require_uninit $tmp_22;
+      drop $tmp_21;
+      require_uninit $tmp_21;
+      grown.data = move new_data;
+      grown.len = move recv.len;
+      grown.cap = move new_cap;
+      $tmp_23 = &out $return.*;
+      call <Vec<T>>::push_unchecked(move grown, move value, move $tmp_23);
+      unborrow $return;
+      require_uninit $tmp_23;
+      require_uninit grown;
+      drop index;
+      require_uninit index;
+      require_uninit new_data;
+      require_uninit new_cap;
+      require_uninit old_data;
+      goto if_merge_2
+    if_false_1:
+      $tmp_24 = &out $return.*;
+      call <Vec<T>>::push_unchecked(move recv, move value, move $tmp_24);
+      unborrow $return;
+      require_uninit $tmp_24;
+      goto if_merge_2
+    if_merge_2:
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      require_uninit value;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'a, 's0, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64, $return: &out 's0 &'a T) {
+  $tmp_0: *T;
+  $tmp_1: &out *T;
+  entry:
+    $tmp_1 = &out $tmp_0;
+    call ptr_offset<T>(copy vec.*.data, move index, move $tmp_1);
+    unborrow vec;
+    $return.* = ptr_cast(move $tmp_0, &'a T);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit index;
+    require_uninit vec;
+    return
+}
+
+fn<'a, 's0, T> vec_as_span(vec: &'a Vec<T>, $return: &out 's0 Span<'a, T>) {
+  $tmp_0: &out Span<'a, T>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call span_from_raw_parts<'a, T>(copy vec.*.data, copy vec.*.len, move $tmp_0);
+    unborrow $return;
+    unborrow vec;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit vec;
+    return
+}
+
+fn<'s0, 's1> inspect_vec(vec: &'s0 Vec<i64>, $return: &out 's1 i64) {
+  span: Span<'s0, i64>;
+  item: &i64;
+  $tmp_0: *i64;
+  $tmp_1: *i64;
+  $tmp_2: &out *i64;
+  $tmp_3: i64;
+  $tmp_4: &out i64;
+  $tmp_5: &out i64;
+  entry:
+    span.data = ptr_cast(copy vec.*.data, &i64);
+    span.len = copy vec.*.len;
+    $tmp_1 = ptr_cast(move span.data, *i64);
+    unborrow vec;
+    $tmp_2 = &out $tmp_0;
+    call ptr_offset<i64>(move $tmp_1, 1u64, move $tmp_2);
+    item = ptr_cast(move $tmp_0, &i64);
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    $tmp_4 = &out $tmp_3;
+    call $u64_to_i64(move span.len, move $tmp_4);
+    $tmp_5 = &out $return.*;
+    call $i64_add(copy item.*, move $tmp_3, move $tmp_5);
+    unborrow item;
+    unborrow $return;
     require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit item;
+    require_uninit span;
+    require_uninit $return;
+    require_uninit vec;
+    return
+}
+
+fn<T: Drop + Move> vec_free(vec: Vec<T>) {
+  $tmp_0: unit;
+  index: u64;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $tmp_3: unit;
+  $tmp_4: bool;
+  $tmp_5: &out bool;
+  item: *T;
+  $tmp_6: &out *T;
+  value: T;
+  $tmp_7: T;
+  $tmp_8: unit;
+  $tmp_9: u64;
+  $tmp_10: &out u64;
+  $tmp_11: unit;
+  $tmp_12: *u8;
+  entry:
+    index = 0u64;
+    goto loop_start_0
+  loop_start_0:
+    $tmp_5 = &out $tmp_4;
+    call $u64_ge(copy index, copy vec.len, move $tmp_5);
+    branch(move $tmp_4) [true: if_true_2, false: if_false_3]
+  if_true_2:
+    require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    goto loop_end_1
+  if_false_3:
+    $tmp_3 = unit;
+    goto if_merge_4
+  if_merge_4:
+    require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_6 = &out item;
+    call ptr_offset<T>(copy vec.data, copy index, move $tmp_6);
+    require_uninit $tmp_6;
+    value = move item.*;
+    $tmp_7 = move value;
+    drop $tmp_7;
+    require_uninit $tmp_7;
     $tmp_10 = &out $tmp_9;
-    call $i64_add(copy peek, move owned, move $tmp_10);
-    $tmp_11 = &out $tmp_8;
-    call $i64_sub(move $tmp_9, move peek, move $tmp_11);
-    $tmp_12 = &out $tmp_7;
-    call $i64_to_i32(move $tmp_8, move $tmp_12);
-    exit.* = move $tmp_7;
-    unborrow exit;
-    $tmp_6 = unit;
-    require_uninit $tmp_12;
-    require_uninit $tmp_11;
+    call $u64_add(move index, 1u64, move $tmp_10);
+    index = move $tmp_9;
+    $tmp_8 = unit;
     require_uninit $tmp_10;
     require_uninit $tmp_9;
+    drop $tmp_8;
     require_uninit $tmp_8;
-    require_uninit $tmp_7;
-    drop $tmp_6;
-    require_uninit $tmp_6;
+    $tmp_2 = unit;
+    require_uninit value;
+    drop item;
+    require_uninit item;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    goto loop_start_0
+  loop_end_1:
+    require_uninit $tmp_1;
+    $tmp_12 = ptr_cast(move vec.data, *u8);
+    call free_bytes(move $tmp_12);
+    $tmp_11 = unit;
+    require_uninit $tmp_12;
+    drop $tmp_11;
+    require_uninit $tmp_11;
     $tmp_0 = unit;
-    require_uninit owned;
-    require_uninit peek;
-    require_uninit b;
+    drop index;
+    require_uninit index;
     drop $tmp_0;
     require_uninit $tmp_0;
-    require_uninit exit;
+    drop vec.cap;
+    drop vec.len;
+    require_uninit vec;
+    return
+}
+
+fn<'s0> main($return: &out 's0 i32) {
+  boxed: Box<i64>;
+  $tmp_0: &out Box<i64>;
+  box_place: &mut i64;
+  $tmp_1: &mut Box<i64>;
+  $tmp_2: &out &mut i64;
+  old_box_value: i64;
+  $tmp_3: unit;
+  $tmp_4: i64;
+  from_box: i64;
+  $tmp_5: &i64;
+  $tmp_6: &Box<i64>;
+  $tmp_7: &out &i64;
+  owned: i64;
+  $tmp_8: &out i64;
+  values: Vec<i64>;
+  $tmp_9: &out Vec<i64>;
+  $tmp_10: unit;
+  $tmp_11: Vec<i64>;
+  $tmp_12: &out Vec<i64>;
+  $tmp_13: unit;
+  $tmp_14: Vec<i64>;
+  $tmp_15: &out Vec<i64>;
+  observed: i64;
+  $tmp_16: &Vec<i64>;
+  $tmp_17: &out i64;
+  $tmp_18: unit;
+  $tmp_19: i64;
+  $tmp_20: i64;
+  $tmp_21: i64;
+  $tmp_22: i64;
+  $tmp_23: &out i64;
+  $tmp_24: &out i64;
+  $tmp_25: &out i64;
+  $tmp_26: &out i64;
+  $tmp_27: &out i32;
+  entry:
+    $tmp_0 = &out boxed;
+    call box_new<i64>(40, move $tmp_0);
+    require_uninit $tmp_0;
+    $tmp_1 = &mut boxed;
+    $tmp_2 = &out box_place;
+    call <Box<i64>>::get_mut(move $tmp_1, move $tmp_2);
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    old_box_value = move box_place.*;
+    box_place.* = 42;
+    unborrow box_place;
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_4 = move old_box_value;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_6 = &boxed;
+    $tmp_7 = &out $tmp_5;
+    call <Box<i64>>::get(move $tmp_6, move $tmp_7);
+    from_box = copy $tmp_5.*;
+    unborrow $tmp_5;
+    require_uninit $tmp_7;
+    require_uninit $tmp_6;
+    require_uninit $tmp_5;
+    $tmp_8 = &out owned;
+    call <Box<i64>>::into_inner(move boxed, move $tmp_8);
+    require_uninit $tmp_8;
+    $tmp_9 = &out values;
+    call vec_with_capacity<i64>(1u64, move $tmp_9);
+    require_uninit $tmp_9;
+    $tmp_12 = &out $tmp_11;
+    call <Vec<i64>>::push(move values, 1, move $tmp_12);
+    require_uninit $tmp_12;
+    values = move $tmp_11;
+    $tmp_10 = unit;
+    require_uninit $tmp_11;
+    drop $tmp_10;
+    require_uninit $tmp_10;
+    $tmp_15 = &out $tmp_14;
+    call <Vec<i64>>::push(move values, 2, move $tmp_15);
+    require_uninit $tmp_15;
+    values = move $tmp_14;
+    $tmp_13 = unit;
+    require_uninit $tmp_14;
+    drop $tmp_13;
+    require_uninit $tmp_13;
+    $tmp_16 = &values;
+    $tmp_17 = &out observed;
+    call inspect_vec(move $tmp_16, move $tmp_17);
+    require_uninit $tmp_17;
+    require_uninit $tmp_16;
+    call vec_free<i64>(move values);
+    $tmp_18 = unit;
+    drop $tmp_18;
+    require_uninit $tmp_18;
+    $tmp_23 = &out $tmp_22;
+    call $i64_add(move owned, copy from_box, move $tmp_23);
+    $tmp_24 = &out $tmp_21;
+    call $i64_add(move $tmp_22, move observed, move $tmp_24);
+    $tmp_25 = &out $tmp_20;
+    call $i64_sub(move $tmp_21, move from_box, move $tmp_25);
+    $tmp_26 = &out $tmp_19;
+    call $i64_sub(move $tmp_20, 4, move $tmp_26);
+    $tmp_27 = &out $return.*;
+    call $i64_to_i32(move $tmp_19, move $tmp_27);
+    unborrow $return;
+    require_uninit $tmp_27;
+    require_uninit $tmp_26;
+    require_uninit $tmp_25;
+    require_uninit $tmp_24;
+    require_uninit $tmp_23;
+    require_uninit $tmp_22;
+    require_uninit $tmp_21;
+    require_uninit $tmp_20;
+    require_uninit $tmp_19;
+    require_uninit observed;
+    require_uninit values;
+    require_uninit owned;
+    require_uninit from_box;
+    require_uninit old_box_value;
+    require_uninit box_place;
+    require_uninit boxed;
+    require_uninit $return;
     return
 }

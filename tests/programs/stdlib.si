@@ -1,114 +1,162 @@
-# Silica stdlib scratchpad — hand-rolled `std::Box<T>`, `std::Span<'a, T>`,
-# and (planned) `std::Vec<T>`, `std::String`. Compiled as an end-to-end
-# fixture through the whole HLL → MIR → LLVM pipeline so every stdlib
-# addition exercises generics, raw-pointer manipulation, lifetime
-# tracking, and linearity together.
-#
-# ## What's here
-#
-#   type              status    notes
-#   ---------------   -------   ---------------------------------------------
-#   Box<T>            landed    single-value owned heap allocation
-#   Span<'a, T>       landed    borrowed read-only view over a raw buffer
-#   Vec<T>            TODO      dynamic array; needs memcpy (see below)
-#   String            TODO      Vec<u8> plus UTF-8 invariant
-#
-# ## Design notes / blockers
-#
-# **Lifetimes on Span.** Silica has no phantom-data marker yet, so we
-# use a `&'a *T` field: an ordinary shared reference to a raw pointer.
-# The `&'a` is a real ref that the borrow checker tracks, giving `'a`
-# a home in the struct without a runtime tax beyond a single load. A
-# proper `PhantomRef<'a, T>` compiler-provided zero-sized type would
-# be cleaner (Rust's `PhantomData<&'a T>` shape), but the ref trick
-# works today and unblocks the surface.
-#
-# **`T: Move` on Box/Vec constructors.** Only in-place `T` transfers
-# require Move. A `box_new_in(ctor: fn(&out T))` would work for
-# `!Move` `T` by letting the caller build the value directly in the
-# heap slot, but that needs lambdas (deferred).
-#
-# **Manual cleanup.** `drop` is bitwise-forget today, so Box/Vec are
-# Move-only-not-Drop and users MUST call `box_into_inner` / `vec_free`
-# or hit an `INIT-RequireUninitNotSatisfied` at return. Auto-cleanup
-# needs a destructor calling convention (`Destroy` trait), which in
-# turn needs MIR traits — bigger project.
-#
-# **Vec growth.** Blocked on element bulk-copy during realloc.
-# Options for the missing primitive:
-#   (a) `$memcpy` intrinsic that lowers to `llvm.memcpy.*`. Small,
-#       matches the `$sizeof` / `$ptr_offset` pattern.
-#   (b) `extern fn memcpy_bytes(dst: *u8, src: *u8, n: u64)` linked
-#       from the C runtime. No compiler work but needs linking.
-#   (c) A hand-written element-move loop in Silica. Correct but O(N)
-#       instead of a single memcpy call.
-# (a) or (c) get us a working Vec fixture without linker changes.
-
-# TODO:
-# - panic(&str) -> never; intrinsic + use it at OOB access.
-# - DropSpan, MutSpan, UninitSpan, OutSpan
-
+# A single-file sketch of core library types. Modules will eventually put
+# these under `std`; today the fixture exercises the same APIs as global names.
 
 extern fn malloc_bytes(size: u64) -> *u8;
 extern fn free_bytes(p: *u8);
 
 
-# ================================================================
 # Box<T>
-# ================================================================
-#
-# Single-value owned heap allocation. `Move` (the handle is a raw
-# pointer, bitwise-relocatable) but NOT `Drop` — leaking a Box hits
-# the init-state linearity check at return. Consume via
-# `box_into_inner`.
 
-struct<T> Box: Move { p: *T }
+struct<T> Box: Move { data: *T }
 
 fn<T: Move> box_new(value: T) -> Box<T> {
-  let bytes: *u8 = malloc_bytes(size_of<T>());
-  let typed: *T = bytes as *T;
-  unsafe { typed.* = value; }
-  Box { p: typed }
+  let bytes = malloc_bytes(size_of<T>());
+  let data = bytes as *T;
+  unsafe { data.* = value; }
+  Box { data: data }
 }
 
-fn<T: Move> box_into_inner(b: Box<T>) -> T {
-  let inner: T = unsafe { b.p.* };
-  let bytes: *u8 = b.p as *u8;
-  free_bytes(bytes);
-  inner
+impl<T> Box<T> {
+  fn get(recv: &Self) -> &T {
+    unsafe { recv.*.data as &T }
+  }
+
+  fn get_mut(recv: &mut Self) -> &mut T {
+    unsafe { recv.*.data as &mut T }
+  }
 }
 
-fn<T> box_borrow(b: &Box<T>) -> &T {
-  unsafe { b.*.p as &T }
+impl<T: Move> Box<T> {
+  fn into_inner(recv: Self) -> T {
+    let value = unsafe { recv.data.* };
+    free_bytes(recv.data as *u8);
+    value
+  }
 }
 
-fn<T> box_borrow_mut(b: &mut Box<T>) -> &mut T {
-  unsafe { b.*.p as &mut T }
-}
 
-
-# ================================================================
-# Span<'a, T> — DEFERRED
-# ================================================================
+# Span<'a, T>
 #
-# First-pass attempt: `struct<'a, T> Span: Copy+Drop+Move { data: &'a *T, len: u64 }`
-# using the `&'a *T` field to tie `'a` without phantom data. Blocked
-# by an `LT-LoanConflict` inside `span_get` when it reads through the
-# nested shared ref: the checker reports "cannot move from `s.data`"
-# even though the field is Copy-typed. See diagnostic-quality
-# punchlist item in `PUNCHLIST.md` — the error message points at a
-# compiler-internal temp and doesn't localize the actual conflict.
+# The first-element reference carries the lifetime. Constructing a span from
+# raw parts and indexing it are unsafe. This representation cannot describe an
+# empty span without a lifetime-only/phantom field.
+
+struct<'a, T> Span: Copy + Drop { data: &'a T, len: u64 }
+
+unsafe fn<'a, T> span_from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
+  Span { data: data as &'a T, len: len }
+}
+
+# Taking the Copy span by value avoids a false loan conflict when copying its
+# reference field through a shared borrow of the aggregate.
+fn<'a, T> span_len(span: Span<'a, T>) -> u64 { span.len }
+
+unsafe fn<'a, T> span_get_unchecked(span: Span<'a, T>, index: u64) -> &'a T {
+  let base = span.data as *T;
+  let item = ptr_offset<T>(base, index);
+  item as &'a T
+}
 
 
-# ================================================================
-# Smoke test
-# ================================================================
+# Vec<T>
 #
-# Exit code is 42.
+# A vector owns an allocated but partly uninitialized buffer. Capacity must be
+# nonzero because raw pointers are non-null. Allocation failure, capacity
+# overflow, and checked indexing need a standard failure effect.
 
-fn main(exit: &out i32) {
-  let b: Box<i64> = box_new(42i64);
-  let peek: i64 = box_borrow(&b).*;
-  let owned: i64 = box_into_inner(b);
-  exit.* = (peek + owned - peek) as i32;
+struct<T> Vec: Move { data: *T, len: u64, cap: u64 }
+
+unsafe fn<T> vec_with_capacity(cap: u64) -> Vec<T> {
+  let data = malloc_bytes(size_of<T>() * cap) as *T;
+  Vec { data: data, len: 0u64, cap: cap }
+}
+
+impl<T> Vec<T> {
+  fn len(recv: &Self) -> u64 { recv.*.len }
+}
+
+impl<T: Move> Vec<T> {
+  # Consuming mutation avoids both the missing temporary `&mut` reborrow and a
+  # false Partial state after pointer-based mutation through `&mut Vec<T>`.
+  unsafe fn push_unchecked(recv: Self, value: T) -> Self {
+    let slot = ptr_offset<T>(recv.data, recv.len);
+    slot.* = value;
+    Vec { data: recv.data, len: recv.len + 1u64, cap: recv.cap }
+  }
+
+  unsafe fn push(recv: Self, value: T) -> Self {
+    if recv.len >= recv.cap {
+      let old_data = recv.data;
+      let new_cap = recv.cap + recv.cap;
+      let new_data = malloc_bytes(size_of<T>() * new_cap) as *T;
+      let mut index = 0u64;
+      loop {
+        if index >= recv.len { break }
+        let source = ptr_offset<T>(old_data, index);
+        let target = ptr_offset<T>(new_data, index);
+        unsafe { target.* = source.*; }
+        index = index + 1u64;
+      }
+      free_bytes(old_data as *u8);
+      let grown = Vec { data: new_data, len: recv.len, cap: new_cap };
+      grown.push_unchecked(value)
+    } else {
+      recv.push_unchecked(value)
+    }
+  }
+}
+
+unsafe fn<'a, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64) -> &'a T {
+  ptr_offset<T>(vec.*.data, index) as &'a T
+}
+
+unsafe fn<'a, T> vec_as_span(vec: &'a Vec<T>) -> Span<'a, T> {
+  span_from_raw_parts<'a, T>(vec.*.data, vec.*.len)
+}
+
+# This concrete wrapper constructs Span directly because instantiating the
+# generic `vec_as_span` result currently leaks its declared `'a` into the
+# caller's lowered locals instead of substituting the inferred lifetime.
+fn inspect_vec(vec: &Vec<i64>) -> i64 {
+  let span = unsafe {
+    Span { data: vec.*.data as &i64, len: vec.*.len }
+  };
+  let item = unsafe { ptr_offset<i64>(span.data as *i64, 1u64) as &i64 };
+  item.* + span.len as i64
+}
+
+# Explicit cleanup is required until collection AutoDestroy implementations
+# can invoke element destruction and release their allocation.
+fn<T: Drop + Move> vec_free(vec: Vec<T>) {
+  let mut index = 0u64;
+  loop {
+    if index >= vec.len { break }
+    let item = ptr_offset<T>(vec.data, index);
+    let value = unsafe { item.* };
+    value;
+    index = index + 1u64;
+  }
+  free_bytes(vec.data as *u8);
+}
+
+
+# covers: Box ownership and borrowing; Vec growth and element destruction;
+# Span lifetime storage and indexing; inherent receiver auto-borrowing.
+fn main() -> i32 {
+  let mut boxed = box_new(40i64);
+  let box_place = boxed.get_mut();
+  # Assignment initializes, so replacement explicitly consumes the old value.
+  let old_box_value = box_place.*;
+  box_place.* = 42i64;
+  old_box_value;
+  let from_box = boxed.get().*;
+  let owned = boxed.into_inner();
+
+  let mut values = unsafe { vec_with_capacity<i64>(1u64) };
+  values = unsafe { values.push(1i64) };
+  values = unsafe { values.push(2i64) };
+  let observed = inspect_vec(&values);
+  vec_free(values);
+
+  (owned + from_box + observed - from_box - 4i64) as i32
 }

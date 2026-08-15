@@ -32,6 +32,29 @@ the compiler evolves; treat entries as snapshots, not commitments.
 - Decide on and standardize on whether malloc size and array index type should be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
+- **Substitute inferred lifetimes inside nominal generic results.** Calling a
+  function such as `fn<'a, T> as_span(&'a Vec<T>) -> Span<'a, T>` from a
+  non-lifetime-generic caller leaves the callee-local `'a` in lowered caller
+  locals instead of replacing it with the inferred call-site lifetime. This
+  produces `TC-UndeclaredLifetime` and prevents the generic `Vec::as_span` API
+  in `tests/programs/stdlib.si` from being exercised by its concrete smoke
+  test. Reference results without the nominal `Span` wrapper already work.
+- **Reborrow non-copy references passed to calls.** Passing an existing `&mut`
+  value currently transfers the reference and its pointee-state obligation.
+  Library code therefore cannot call a helper with a temporary reborrow and
+  then continue using the original mutable reference. The stdlib prototype
+  uses consuming `Vec<T> -> Vec<T>` mutation until call elaboration can create
+  and expire an explicit reborrow.
+- **Preserve initialized aggregate state through pointer-based mutation.** An
+  inline `fn push(&mut Vec<T>, T)` that copies `data` and `len`, writes through
+  the derived raw pointer, and increments `len` leaves the mutable receiver
+  spuriously `Partial`. All `Vec` fields remain initialized. The stdlib fixture
+  consumes and rebuilds `Vec<T>` as a temporary workaround.
+- **Copy reference fields through a shared aggregate borrow.** A conventional
+  `Span::get(&Span<'a, T>) -> &'a T` currently reports a loan conflict when it
+  reads the Copy `data: &'a T` field: the aggregate borrow is treated as
+  conflicting with a move from that field. The prototype takes its Copy
+  `Span` receiver by value instead.
 - **Infer omitted lifetimes before checking lifetime-dependent trait bounds.**
   An obligation such as `T: Label<'a>` is currently checked before an omitted
   call-site `'a` has been inferred. This conservatively rejects calls that an
@@ -208,15 +231,14 @@ attributes remain later FFI work.
 - **Bazel-based build with proper cross-language infra.** Today the compiler is `cargo`, and any cross-language wiring (LLVM IR emission → `clang` link → binary → runtime → check exit) is manual. A Bazel migration would let end-to-end runtime tests, C-shim linking, and future host-language integrations (LLVM tooling, wasm, cross-compile) be first-class build actions in a hermetic graph. The immediate motivator is the End-to-end runtime fixtures item in Testing gaps.
 - **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and a Rust-shaped enum syntax (currently only newtype-with-different-syntax).
 - **No-alias raw pointer variant** (`*noalias T`) alongside the aliasing `*T`. Enables LLVM `noalias` on parameters where the checker can prove exclusivity.
-- Standard library (needs generics + modules + multi-file support).
+- Standard library (needs modules + multi-file support). The executable
+  `tests/programs/stdlib.si` prototype currently covers `Box`, `Span`, and
+  growing `Vec` representations and their primitive ownership operations.
   Effects: `Fail` for exceptional control flow, `Iter` for for-loops,
   `Async` for executors.
-- `std::span<'a, T>` and `std::String`
-  - Pointer arithmetic.
-  - `impl AutoDestroy for String`
-  - HLL lifetimes.
-  - Phantom data?
-  as an anti-drift check between grammar and codebase.
+- Complete the standard collection APIs: a lifetime-only/phantom field for an
+  empty `Span`, checked capacity arithmetic and indexing through `Fail`,
+  `AutoDestroy` implementations, and `String`'s UTF-8 invariant.
 - Tighten MIR struct/enum decl separators from whitespace-or-comma
   to comma-required-optional-trailing (match HLL).
 - Coroutines. Prerequisites: generics, lifetime arguments, HLL `defer`.
