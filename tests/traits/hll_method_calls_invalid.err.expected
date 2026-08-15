@@ -96,3 +96,38 @@ error: at 137:9: [HTC-UnsafeRequired] In function 'unsafe_inherent_call': call t
      |         ^^^^^^^^^^^^^^^^^^
  138 | }
      |
+error: at 166:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_bound_method': receiver call 'T.bound_collision' is ambiguous; trait candidates: <T as BoundFirst>::bound_collision, <T as BoundSecond>::bound_collision
+     |
+ 165 | fn<T: BoundFirst + BoundSecond> ambiguous_bound_method(value: & T) {
+ 166 |   value.bound_collision();
+     |         ^^^^^^^^^^^^^^^
+ 167 | }
+     |
+error: at 183:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_bound_and_impl': receiver call '& T.mixed_collision' is ambiguous; trait candidates: <T as DirectCollision>::mixed_collision, <& U as ReferenceCollision>::mixed_collision
+     |
+ 182 | fn<T: DirectCollision> ambiguous_bound_and_impl(value: & T) {
+ 183 |   value.mixed_collision();
+     |         ^^^^^^^^^^^^^^^
+ 184 | }
+     |
+error: at 199:9: [HTC-BoundNotSatisfied] In function 'reject_bound_method_argument': type argument 'WrongBoundArgument' for 'bound_generic::U' does not satisfy trait bound 'BoundArgument'
+     |
+ 198 | ) {
+ 199 |   value.bound_generic<WrongBoundArgument>(argument);
+     |         ^^^^^^^^^^^^^
+ 200 | }
+     |
+error: at 204:9: [HTC-UnsafeRequired] In function 'reject_bound_unsafe': call to unsafe trait method 'bound_unsafe' requires unsafe block
+     |
+ 203 | fn<T: GenericBoundMethod> reject_bound_unsafe(value: & T) {
+ 204 |   value.bound_unsafe();
+     |         ^^^^^^^^^^^^
+ 205 | }
+     |
+error: at 209:9: [HTC-UnresolvedReceiverCall] In function 'reject_unbounded_receiver': no method, callable field, or free function 'bound_generic' applies to receiver type & T
+     |
+ 208 | fn<T> reject_unbounded_receiver(value: & T) {
+ 209 |   value.bound_generic<WrongBoundArgument>(value);
+     |         ^^^^^^^^^^^^^
+ 210 | }
+     |

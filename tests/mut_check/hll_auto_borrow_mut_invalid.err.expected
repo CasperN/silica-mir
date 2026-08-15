@@ -34,3 +34,12 @@ error: at 33:3: [HMC-BorrowImmutableAsMut] In function 'uninitialized_of_immutab
     |   ^^^^^
  34 | }
     |
+error: at 42:3: [HMC-BorrowImmutableAsMut] In function 'generic_mutable_of_immutable': cannot borrow immutable binding 'value' as mutable
+    |
+ 40 | # covers: direct-bound mutable auto-borrow rejects an immutable binding
+ 41 | fn<T: GenericMutable + Drop> generic_mutable_of_immutable(value: T) {
+    |                                                           -------- variable declared as immutable here
+ 42 |   value.generic_mutable();
+    |   ^^^^^
+ 43 | }
+    |

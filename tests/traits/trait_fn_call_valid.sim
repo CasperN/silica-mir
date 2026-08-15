@@ -65,3 +65,11 @@ fn drive_bytes(l: &mut List, $return: &out u8) {
     call <List as Iter<u8>>::next(move l, move out_ref);
     return
 }
+
+# An explicit trait callable on a parameter is validated from its direct bound;
+# no HLL-style candidate search occurs in MIR.
+fn<T: Sink> drive_generic(f: &mut T) {
+  entry:
+    call <T as Sink>::accept(move f, 7);
+    return
+}

@@ -62,3 +62,9 @@ fn<'s0, 's1> drive_bytes(l: &mut 's0 List, $return: &out 's1 u8) {
     unborrow $return;
     return
 }
+
+fn<'s0, T: Sink> drive_generic(f: &mut 's0 T) {
+  entry:
+    call <T as Sink>::accept(move f, 7);
+    return
+}

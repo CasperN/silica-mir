@@ -6,17 +6,14 @@ the compiler evolves; treat entries as snapshots, not commitments.
 ## Language features
 - **Complete HLL trait and method use.** Keep this work split into independently
   reviewable changes, in dependency order:
-  1. Centralize the twelve compiler-blessed trait names without changing their
-     current semantics. `Copy`, `Drop`, and `Move` remain the trivial markers;
-     only the implemented `AutoClone` and `AutoDestroy` hooks receive special
-     compiler behavior for now.
-  2. Resolve method-call receivers through direct bounds on generic parameters,
-     including receiver auto-borrowing and ambiguity diagnostics.
-  3. Add trait self-bounds/supertraits, including inherited obligations,
+  1. Add trait self-bounds/supertraits, including inherited obligations,
      implementation checking, and cycle handling.
-  4. Add qualified method syntax for explicit disambiguation.
-  5. Preserve and enforce ABI modifiers on all function forms, including free
+  2. Add qualified method syntax for explicit disambiguation.
+  3. Preserve and enforce ABI modifiers on all function forms, including free
      functions, trait methods, impl methods, and function values.
+  4. Revisit which ownership traits are compiler-blessed. The trivial and auto
+     tiers require compiler interaction; the higher explicit tiers may live in
+     the standard library. Discuss the boundary before implementation.
 - **Standardize `&drop` vs `&deinit`.** Same reference kind
   (`RefKind::Drop`) has two surface names — MIR uses `&drop`, HLL uses
   `&deinit`. Every fixture author, diagnostic reader, and agent has

@@ -1895,23 +1895,22 @@ impl<'a> Checker<'a> {
 
 fn method_call_signature(
     name: String,
-    resolved: crate::mir::env::ResolvedImplMethod<'_>,
+    resolved: crate::mir::env::ResolvedMethod<'_>,
     method_instance: &Instance,
     fixed_outlives: Vec<(Region, Region)>,
 ) -> CallSignature {
     let param_types = resolved.instantiate_param_types(method_instance);
-    let mut lifetime_params = resolved.impl_block.params.lifetime_params.clone();
+    let mut lifetime_params = resolved.context_params.lifetime_params.clone();
     lifetime_params.extend(resolved.method.meta.params.lifetime_params.clone());
-    let mut outlives = resolved.impl_block.params.outlives.clone();
+    let mut outlives = resolved.context_params.outlives.clone();
     outlives.extend(resolved.method.meta.params.outlives.clone());
 
     let mut fixed_lifetimes = IndexMap::new();
     for (parameter, argument) in resolved
-        .impl_block
-        .params
+        .context_params
         .lifetime_params
         .iter()
-        .zip(&resolved.bindings.lifetime_args)
+        .zip(&resolved.context_lifetime_args)
     {
         fixed_lifetimes.insert(parameter.lifetime.clone(), name_to_region(argument));
     }

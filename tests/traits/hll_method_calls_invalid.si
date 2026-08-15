@@ -152,3 +152,59 @@ trait UnsafeContract {
 impl UnsafeContract for UnsafeMethodTarget {
   fn other_safety_mismatch(recv: & Self) { unit }
 }
+
+trait BoundFirst {
+  fn bound_collision(recv: & Self);
+}
+
+trait BoundSecond {
+  fn bound_collision(recv: & Self);
+}
+
+# covers: multiple direct bounds with the same applicable method are ambiguous
+fn<T: BoundFirst + BoundSecond> ambiguous_bound_method(value: & T) {
+  value.bound_collision();
+}
+
+trait DirectCollision {
+  fn mixed_collision(recv: & Self);
+}
+
+trait ReferenceCollision {
+  fn mixed_collision(recv: Self);
+}
+
+impl<U> ReferenceCollision for & U {
+  fn mixed_collision(recv: Self) { recv; }
+}
+
+# covers: bound and concrete-reference candidates share one ambiguity tier
+fn<T: DirectCollision> ambiguous_bound_and_impl(value: & T) {
+  value.mixed_collision();
+}
+
+trait BoundArgument {}
+trait GenericBoundMethod {
+  fn<U: BoundArgument> bound_generic(recv: & Self, value: & U);
+  unsafe fn bound_unsafe(recv: & Self);
+}
+
+struct WrongBoundArgument: Copy + Drop { value: i64 }
+
+# covers: generic arguments on direct-bound methods retain their obligations
+fn<T: GenericBoundMethod> reject_bound_method_argument(
+  value: & T,
+  argument: & WrongBoundArgument,
+) {
+  value.bound_generic<WrongBoundArgument>(argument);
+}
+
+# covers: unsafe direct-bound methods still require an unsafe context
+fn<T: GenericBoundMethod> reject_bound_unsafe(value: & T) {
+  value.bound_unsafe();
+}
+
+# covers: a generic receiver without the declaring bound has no method candidate
+fn<T> reject_unbounded_receiver(value: & T) {
+  value.bound_generic<WrongBoundArgument>(value);
+}

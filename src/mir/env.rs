@@ -679,7 +679,7 @@ impl<'a> LocalEnv<'a> {
 
     pub(crate) fn has_applicable_trait_impl(&self, trait_path: &Instance, self_ty: &Type) -> bool {
         if matches!(self_ty.kind, TypeKind::Param(_)) {
-            return false;
+            return self.satisfies_trait(self_ty, trait_path);
         }
         let mut matches = self.matching_impls(trait_path, self_ty).into_iter();
         let found = matches.next().is_some();
@@ -877,21 +877,21 @@ pub(crate) struct ImplBindings {
     pub type_args: Vec<Type>,
 }
 
-pub(crate) struct ResolvedImplMethod<'a> {
-    pub impl_block: &'a ImplBlock,
+pub(crate) struct ResolvedMethod<'a> {
+    pub context_params: GenericParams,
+    pub context_lifetime_args: Vec<Lifetime>,
+    pub context_type_args: Vec<Type>,
     pub method: &'a Function,
-    pub bindings: ImplBindings,
 }
 
-impl ResolvedImplMethod<'_> {
+impl ResolvedMethod<'_> {
     pub(crate) fn instantiate_param_types(&self, method_args: &Instance) -> Vec<Type> {
-        let mut params = self.impl_block.params.clone();
+        let mut params = self.context_params.clone();
         params
             .type_params
             .extend(self.method.meta.params.type_params.clone());
         let type_args = self
-            .bindings
-            .type_args
+            .context_type_args
             .iter()
             .cloned()
             .chain(method_args.type_args.iter().cloned())
@@ -1852,7 +1852,7 @@ impl LocalEnv<'_> {
         &'b self,
         self_ty: &Type,
         method: &Instance,
-    ) -> Result<ResolvedImplMethod<'b>, TypeResolutionError> {
+    ) -> Result<ResolvedMethod<'b>, TypeResolutionError> {
         let applicable = self
             .program
             .inherent_impls
@@ -1905,10 +1905,11 @@ impl LocalEnv<'_> {
             impl_method,
             method,
         )?;
-        Ok(ResolvedImplMethod {
-            impl_block: imp,
+        Ok(ResolvedMethod {
+            context_params: imp.params.clone(),
+            context_lifetime_args: bindings.lifetime_args.clone(),
+            context_type_args: bindings.type_args.clone(),
             method: impl_method,
-            bindings: (**bindings).clone(),
         })
     }
 
@@ -1934,16 +1935,60 @@ impl LocalEnv<'_> {
         trait_path: &Instance,
         self_ty: &Type,
         method: &Instance,
-    ) -> Result<ResolvedImplMethod<'b>, TypeResolutionError> {
-        if !self.program.traits.contains_key(&trait_path.name) {
-            return Err(TypeResolutionError::new(
-                TypeResolutionErrorKind::TraitFnUnknownTrait(trait_path.name.clone()),
-            ));
-        }
+    ) -> Result<ResolvedMethod<'b>, TypeResolutionError> {
+        let declaration = self.program.traits.get(&trait_path.name).ok_or_else(|| {
+            TypeResolutionError::new(TypeResolutionErrorKind::TraitFnUnknownTrait(
+                trait_path.name.clone(),
+            ))
+        })?;
         if let TypeKind::Param(name) = &self_ty.kind {
-            return Err(TypeResolutionError::new(
-                TypeResolutionErrorKind::TraitFnParamReceiver(name.clone()),
-            ));
+            let parameter = self.type_param(name).ok_or_else(|| {
+                TypeResolutionError::new(TypeResolutionErrorKind::TraitFnParamReceiver(
+                    name.clone(),
+                ))
+            })?;
+            if !parameter
+                .bounds
+                .traits
+                .iter()
+                .any(|bound| bound.trait_path == *trait_path)
+            {
+                return Err(TypeResolutionError::new(
+                    TypeResolutionErrorKind::TraitFnParamReceiver(name.clone()),
+                ));
+            }
+            let method_decl = declaration
+                .methods
+                .iter()
+                .find(|candidate| candidate.meta.name == method.name)
+                .ok_or_else(|| {
+                    TypeResolutionError::new(TypeResolutionErrorKind::TraitFnNoMethod {
+                        trait_path: trait_path.clone(),
+                        self_ty: self_ty.clone(),
+                        method: method.name.clone(),
+                    })
+                })?;
+            let mut context_params = declaration.meta.params.clone();
+            context_params.type_params.push(TypeParam {
+                name: "Self".to_string(),
+                bounds: Bounds::default(),
+                source: declaration.meta.params.source,
+            });
+            let mut context_type_args = trait_path.type_args.clone();
+            context_type_args.push(self_ty.clone());
+            self.validate_method_args(
+                &context_params,
+                &trait_path.lifetime_args,
+                &context_type_args,
+                method_decl,
+                method,
+            )?;
+            return Ok(ResolvedMethod {
+                context_params,
+                context_lifetime_args: trait_path.lifetime_args.clone(),
+                context_type_args,
+                method: method_decl,
+            });
         }
         let matches = self.matching_impls(trait_path, self_ty);
         let (imp, bindings) = match matches.as_slice() {
@@ -1983,10 +2028,11 @@ impl LocalEnv<'_> {
             impl_method,
             method,
         )?;
-        Ok(ResolvedImplMethod {
-            impl_block: imp,
+        Ok(ResolvedMethod {
+            context_params: imp.params.clone(),
+            context_lifetime_args: bindings.lifetime_args.clone(),
+            context_type_args: bindings.type_args.clone(),
             method: impl_method,
-            bindings: (*bindings).clone(),
         })
     }
 

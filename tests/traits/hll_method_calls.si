@@ -350,3 +350,102 @@ fn make_argument() -> i64 { 1 }
 fn receiver_before_argument(value: Dispatch) -> i64 {
   ({ receiver_effect(); value }).priority(make_argument())
 }
+
+trait BoundArgument {}
+impl BoundArgument for BorrowTarget {}
+
+trait<X: Copy + Drop> GenericReceiver {
+  fn bound_shared(recv: & Self);
+  fn bound_mut(recv: &mut Self);
+  fn bound_out(recv: &out Self);
+  fn bound_drop(recv: &drop Self);
+  fn bound_uninit(recv: &uninit Self);
+  fn bound_consume(recv: Self);
+  fn bound_parameter(recv: & Self, value: X);
+  fn<U: BoundArgument> bound_generic(recv: & Self, value: & U);
+}
+
+# covers: an already-borrowed generic receiver matches its direct bound exactly
+fn<T: GenericReceiver<i64>> generic_bound_exact(value: & T) {
+  value.bound_shared();
+}
+
+# covers: direct-bound methods support shared receiver auto-borrowing
+fn<T: GenericReceiver<i64> + Move> generic_bound_shared(value: T) {
+  value.bound_shared();
+  value.bound_consume();
+}
+
+# covers: direct-bound methods support mutable receiver auto-borrowing
+fn<T: GenericReceiver<i64> + Move> generic_bound_mut(value: T) {
+  let mut local = value;
+  local.bound_mut();
+  local.bound_consume();
+}
+
+# covers: direct-bound methods support output receiver auto-borrowing
+fn<T: GenericReceiver<i64> + Move> generic_bound_out() {
+  let mut value: T;
+  value.bound_out();
+  value.bound_consume();
+}
+
+# covers: direct-bound methods support dropping receiver auto-borrowing
+fn<T: GenericReceiver<i64> + Move> generic_bound_drop(value: T) {
+  let mut local = value;
+  local.bound_drop();
+}
+
+# covers: direct-bound methods support uninitialized receiver auto-borrowing
+fn<T: GenericReceiver<i64>> generic_bound_uninit() {
+  let mut value: T;
+  value.bound_uninit();
+}
+
+# covers: direct-bound methods support by-value receivers
+fn<T: GenericReceiver<i64> + Move> generic_bound_consume(value: T) {
+  value.bound_consume();
+}
+
+# covers: trait arguments substitute into a direct-bound method signature
+fn<T: GenericReceiver<i64>> generic_bound_parameter(value: & T) {
+  value.bound_parameter(1);
+}
+
+# covers: direct-bound method generic obligations are enforced and inferred
+fn<T: GenericReceiver<i64>> generic_bound_method_argument(
+  value: & T,
+  argument: & BorrowTarget,
+) {
+  value.bound_generic(argument);
+}
+
+trait<'a> GenericLifetimeReceiver {
+  fn bound_lifetime(recv: &'a Self);
+}
+
+# covers: trait lifetimes substitute into a direct-bound receiver signature
+fn<'a, T: GenericLifetimeReceiver<'a>> generic_bound_lifetime(value: &'a T) {
+  value.bound_lifetime();
+}
+
+trait BoundExact {
+  fn bound_rank(recv: Self);
+}
+
+trait BoundBorrowed {
+  fn bound_rank(recv: & Self);
+}
+
+# covers: an exact direct-bound receiver outranks an auto-borrow candidate
+fn<T: BoundExact + BoundBorrowed + Move> generic_bound_exact_rank(value: T) {
+  value.bound_rank();
+}
+
+# covers: AutoClone bounds support compiler-generated generic trait calls
+fn<T: AutoClone + Move> generic_bound_auto_clone(value: T) -> [T; 2] {
+  [value, value]
+}
+
+# covers: AutoDestroy bounds support compiler-generated generic trait calls
+fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {}

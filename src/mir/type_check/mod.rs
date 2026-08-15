@@ -173,7 +173,8 @@ pub enum TypeCheckCode {
     // ---- Trait method calls ----
     /// A `TraitFn` callee references a trait not declared in the env.
     TraitFnUnknownTrait,
-    /// A `TraitFn` callee's `self_ty` is a generic type parameter.
+    /// A `TraitFn` callee's generic receiver does not declare the selected
+    /// trait as a direct bound.
     TraitFnParamReceiver,
     /// No impl pattern matches the callee's trait path and `self_ty`.
     TraitFnNoImpl,

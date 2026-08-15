@@ -7,7 +7,7 @@
 #   <List as Iter<bool>>::next(...)          right target, wrong trait args
 #                                            (List has Iter<i64>, not Iter<bool>)
 #   <List as Iter<i64>>::missing(...)        impl exists but has no such method
-#   <T as Iter<i64>>::next(...)              generic-param receiver, deferred
+#   <T as Iter<i64>>::next(...)              generic receiver lacks the bound
 #   <Pair<i64, bool> as Same<i64>>::same(...) repeated generic impl binding
 #                                               must agree across target args
 #   <Pair<i64, i64> as Amb<i64>>::amb(...)     overlapping impl patterns

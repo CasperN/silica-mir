@@ -1139,3 +1139,264 @@ fn<'s0, 's1, 's2, 's3> receiver_before_argument(value: Dispatch<'s0, 's1, 's2>, 
     require_uninit value;
     return
 }
+
+trait BoundArgument {
+}
+
+impl BoundArgument for BorrowTarget {
+}
+
+trait<X: Copy + Drop> GenericReceiver {
+  fn<'s0> bound_shared(recv: & 's0 Self);
+  fn<'s0> bound_mut(recv: &mut 's0 Self);
+  fn<'s0> bound_out(recv: &out 's0 Self);
+  fn<'s0> bound_drop(recv: &drop 's0 Self);
+  fn<'s0> bound_uninit(recv: &uninit 's0 Self);
+  fn bound_consume(recv: Self);
+  fn<'s0> bound_parameter(recv: & 's0 Self, value: X);
+  fn<'s0, 's1, U: BoundArgument> bound_generic(recv: & 's0 Self, value: & 's1 U);
+}
+
+fn<'s0, T: GenericReceiver<i64>> generic_bound_exact(value: & 's0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as GenericReceiver<i64>>::bound_shared(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<T: Move + GenericReceiver<i64>> generic_bound_shared(value: T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: & T;
+  $tmp_3: unit;
+  entry:
+    $tmp_2 = & value;
+    call <T as GenericReceiver<i64>>::bound_shared(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    call <T as GenericReceiver<i64>>::bound_consume(move value);
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<T: Move + GenericReceiver<i64>> generic_bound_mut(value: T) {
+  $tmp_0: unit;
+  local: T;
+  $tmp_1: unit;
+  $tmp_2: &mut T;
+  $tmp_3: unit;
+  entry:
+    local = move value;
+    $tmp_2 = &mut local;
+    call <T as GenericReceiver<i64>>::bound_mut(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    call <T as GenericReceiver<i64>>::bound_consume(move local);
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_0 = unit;
+    require_uninit local;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<T: Move + GenericReceiver<i64>> generic_bound_out() {
+  $tmp_0: unit;
+  value: T;
+  $tmp_1: unit;
+  $tmp_2: &out T;
+  $tmp_3: unit;
+  entry:
+    $tmp_2 = &out value;
+    call <T as GenericReceiver<i64>>::bound_out(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    call <T as GenericReceiver<i64>>::bound_consume(move value);
+    $tmp_3 = unit;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_0 = unit;
+    require_uninit value;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn<T: Move + GenericReceiver<i64>> generic_bound_drop(value: T) {
+  $tmp_0: unit;
+  local: T;
+  $tmp_1: unit;
+  $tmp_2: &drop T;
+  entry:
+    local = move value;
+    $tmp_2 = &drop local;
+    call <T as GenericReceiver<i64>>::bound_drop(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit local;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<T: GenericReceiver<i64>> generic_bound_uninit() {
+  $tmp_0: unit;
+  value: T;
+  $tmp_1: unit;
+  $tmp_2: &uninit T;
+  entry:
+    $tmp_2 = &uninit value;
+    call <T as GenericReceiver<i64>>::bound_uninit(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit value;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn<T: Move + GenericReceiver<i64>> generic_bound_consume(value: T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as GenericReceiver<i64>>::bound_consume(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: GenericReceiver<i64>> generic_bound_parameter(value: & 's0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as GenericReceiver<i64>>::bound_parameter(move value, 1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1, T: GenericReceiver<i64>> generic_bound_method_argument(value: & 's0 T, argument: & 's1 BorrowTarget) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as GenericReceiver<i64>>::bound_generic<BorrowTarget>(move value, move argument);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit argument;
+    require_uninit value;
+    return
+}
+
+trait<'a> GenericLifetimeReceiver {
+  fn bound_lifetime(recv: & 'a Self);
+}
+
+fn<'a, T: GenericLifetimeReceiver<'a>> generic_bound_lifetime(value: & 'a T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as GenericLifetimeReceiver<'a>>::bound_lifetime(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+trait BoundExact {
+  fn bound_rank(recv: Self);
+}
+
+trait BoundBorrowed {
+  fn<'s0> bound_rank(recv: & 's0 Self);
+}
+
+fn<T: Move + BoundExact + BoundBorrowed> generic_bound_exact_rank(value: T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as BoundExact>::bound_rank(move value);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: Move + AutoClone> generic_bound_auto_clone(value: T, $return: &out 's0 [T; 2]) {
+  $clone_0: T;
+  $clone_1: & T;
+  $clone_2: &out T;
+  entry:
+    $clone_1 = & value;
+    $clone_2 = &out $clone_0;
+    call <T as AutoClone>::clone(move $clone_1, move $clone_2);
+    $return.* = [move $clone_0, move value];
+    unborrow $return;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {
+  $tmp_0: unit;
+  $destroy_0: &drop T;
+  entry:
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $destroy_0 = &drop value;
+    call <T as AutoDestroy>::destroy(move $destroy_0);
+    require_uninit value;
+    return
+}

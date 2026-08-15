@@ -32,3 +32,12 @@ fn dropping_of_immutable(value: Target) {
 fn uninitialized_of_immutable(value: Target) {
   value.uninitialized();
 }
+
+trait GenericMutable {
+  fn generic_mutable(recv: &mut Self);
+}
+
+# covers: direct-bound mutable auto-borrow rejects an immutable binding
+fn<T: GenericMutable + Drop> generic_mutable_of_immutable(value: T) {
+  value.generic_mutable();
+}

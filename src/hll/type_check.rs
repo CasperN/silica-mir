@@ -1860,6 +1860,84 @@ fn receiver_adjustment_for_fn(
     }
 }
 
+fn receiver_adjustment_for_expected(
+    subst: &Subst,
+    expected: &Type,
+    actual: &Type,
+) -> Option<ReceiverAdjustment> {
+    if subst.can_unify(expected, actual) {
+        return Some(ReceiverAdjustment::None);
+    }
+    let TypeKind::Ref(kind, _, pointee) = &expected.kind else {
+        return None;
+    };
+    subst
+        .can_unify(pointee, actual)
+        .then_some(ReceiverAdjustment::Borrow(*kind))
+}
+
+enum TraitReceiverCandidate<'a> {
+    Bound {
+        trait_path: Instance,
+        self_ty: Type,
+        method: &'a FnDecl,
+        mapping: HashMap<String, Type>,
+        lifetime_mapping: BTreeMap<Lifetime, Lifetime>,
+        adjustment: ReceiverAdjustment,
+    },
+    Impl {
+        impl_block: &'a ImplBlock,
+        method: &'a FnDecl,
+        trait_path: Instance,
+        self_ty: Type,
+        bindings: ImplBindings,
+        adjustment: ReceiverAdjustment,
+        is_unsafe: bool,
+    },
+}
+
+impl TraitReceiverCandidate<'_> {
+    fn adjustment(&self) -> ReceiverAdjustment {
+        match self {
+            Self::Bound { adjustment, .. } | Self::Impl { adjustment, .. } => *adjustment,
+        }
+    }
+
+    fn identity(&self) -> (&Instance, &Type, &str) {
+        match self {
+            Self::Bound {
+                trait_path,
+                self_ty,
+                method,
+                ..
+            }
+            | Self::Impl {
+                trait_path,
+                self_ty,
+                method,
+                ..
+            } => (trait_path, self_ty, &method.name),
+        }
+    }
+
+    fn context(&self) -> String {
+        match self {
+            Self::Bound {
+                trait_path,
+                self_ty,
+                method,
+                ..
+            } => impl_method_context(self_ty, Some(trait_path), &method.name),
+            Self::Impl {
+                impl_block,
+                trait_path,
+                method,
+                ..
+            } => impl_method_context(&impl_block.target, Some(trait_path), &method.name),
+        }
+    }
+}
+
 fn substitute_impl_instance(instance: &Instance, bindings: &ImplBindings) -> Instance {
     let type_mapping = bindings
         .types
@@ -1992,9 +2070,9 @@ fn instantiate_method_signature(
     let params = method
         .params
         .iter()
-        .map(|parameter| substitute(&parameter.ty, &mapping))
+        .map(|parameter| substitute_all(&parameter.ty, &mapping, &lifetime_mapping))
         .collect();
-    let ret = substitute(&method.ret_ty, &mapping);
+    let ret = substitute_all(&method.ret_ty, &mapping, &lifetime_mapping);
     types.pending_instantiations.push(PendingInstantiation {
         source,
         function_name: method.name.clone(),
@@ -2200,49 +2278,126 @@ fn resolve_receiver_call(
         return Some((fn_ty, Some(receiver_arg_ty)));
     }
 
-    let trait_methods = env
-        .impls
-        .iter()
-        .filter_map(|impl_block| {
-            let trait_path = impl_block.trait_path.as_ref()?;
-            let trait_method = env
-                .traits
-                .get(&trait_path.name)?
-                .methods
-                .iter()
-                .find(|candidate| candidate.name == method_name)?;
-            let method = impl_block
-                .methods
-                .iter()
-                .find(|candidate| candidate.name == method_name)?;
-            let (self_ty, bindings, adjustment) =
-                match_impl_method_receiver(impl_block, method, &resolved_receiver_ty, env)?;
-            Some((
-                impl_block,
-                method,
-                substitute_impl_instance(trait_path, &bindings),
-                self_ty,
-                bindings,
-                adjustment,
-                trait_method.is_unsafe,
-            ))
+    let bound_self_ty = match &resolved_receiver_ty.kind {
+        TypeKind::Param(name) if env.current_type_params.contains_key(name) => {
+            Some(resolved_receiver_ty.clone())
+        }
+        TypeKind::Ref(_, _, pointee) => {
+            let pointee = subst.resolve(pointee);
+            matches!(&pointee.kind, TypeKind::Param(name) if env.current_type_params.contains_key(name))
+                .then_some(pointee)
+        }
+        _ => None,
+    };
+    let mut trait_methods = Vec::new();
+    if let Some(self_ty) = bound_self_ty {
+        if let TypeKind::Param(parameter_name) = &self_ty.kind {
+            if let Some(bounds) = env.current_type_params.get(parameter_name) {
+                for bound in &bounds.traits {
+                    let Some(trait_decl) = env.traits.get(&bound.trait_path.name) else {
+                        continue;
+                    };
+                    let Some(method) = trait_decl
+                        .methods
+                        .iter()
+                        .find(|candidate| candidate.name == method_name)
+                    else {
+                        continue;
+                    };
+                    let mut mapping = trait_decl
+                        .type_params
+                        .iter()
+                        .map(|parameter| parameter.name.clone())
+                        .zip(bound.trait_path.type_args.iter().cloned())
+                        .collect::<HashMap<_, _>>();
+                    mapping.insert("Self".to_string(), self_ty.clone());
+                    let lifetime_mapping = trait_decl
+                        .lifetime_params
+                        .iter()
+                        .map(|parameter| parameter.lifetime.clone())
+                        .zip(bound.trait_path.lifetime_args.iter().cloned())
+                        .collect::<BTreeMap<_, _>>();
+                    let Some(receiver_param) = method.params.first() else {
+                        continue;
+                    };
+                    let expected_receiver =
+                        substitute_all(&receiver_param.ty, &mapping, &lifetime_mapping);
+                    let Some(adjustment) = receiver_adjustment_for_expected(
+                        subst,
+                        &expected_receiver,
+                        &resolved_receiver_ty,
+                    ) else {
+                        continue;
+                    };
+                    trait_methods.push(TraitReceiverCandidate::Bound {
+                        trait_path: bound.trait_path.clone(),
+                        self_ty: self_ty.clone(),
+                        method,
+                        mapping,
+                        lifetime_mapping,
+                        adjustment,
+                    });
+                }
+            }
+        }
+    }
+    let bound_method_count = trait_methods.len();
+    let impl_methods = env.impls.iter().filter_map(|impl_block| {
+        let trait_path = impl_block.trait_path.as_ref()?;
+        let trait_method = env
+            .traits
+            .get(&trait_path.name)?
+            .methods
+            .iter()
+            .find(|candidate| candidate.name == method_name)?;
+        let method = impl_block
+            .methods
+            .iter()
+            .find(|candidate| candidate.name == method_name)?;
+        let (self_ty, bindings, adjustment) =
+            match_impl_method_receiver(impl_block, method, &resolved_receiver_ty, env)?;
+        let trait_path = substitute_impl_instance(trait_path, &bindings);
+        Some(TraitReceiverCandidate::Impl {
+            impl_block,
+            method,
+            trait_path,
+            self_ty,
+            bindings,
+            adjustment,
+            is_unsafe: trait_method.is_unsafe,
         })
-        .collect::<Vec<_>>();
+    });
+    for candidate in impl_methods {
+        let (candidate_trait, candidate_self, candidate_method) = candidate.identity();
+        let duplicates_bound = trait_methods[..bound_method_count].iter().any(|bound| {
+            let (bound_trait, bound_self, bound_method) = bound.identity();
+            bound_trait == candidate_trait
+                && bound_self == candidate_self
+                && bound_method == candidate_method
+        });
+        if !duplicates_bound {
+            trait_methods.push(candidate);
+        }
+    }
     let has_exact_trait = trait_methods
         .iter()
-        .any(|(_, _, _, _, _, adjustment, _)| *adjustment == ReceiverAdjustment::None);
+        .any(|candidate| candidate.adjustment() == ReceiverAdjustment::None);
     let trait_methods = trait_methods
         .into_iter()
-        .filter(|(_, _, _, _, _, adjustment, _)| {
-            !has_exact_trait || *adjustment == ReceiverAdjustment::None
-        })
+        .filter(|candidate| !has_exact_trait || candidate.adjustment() == ReceiverAdjustment::None)
         .collect::<Vec<_>>();
     if trait_methods.len() > 1 {
+        let only_direct_bounds = trait_methods
+            .iter()
+            .all(|candidate| matches!(candidate, TraitReceiverCandidate::Bound { .. }));
+        let ambiguity_receiver = if only_direct_bounds {
+            trait_methods[0].identity().1
+        } else {
+            &resolved_receiver_ty
+        };
         let candidates = trait_methods
             .iter()
-            .map(|(impl_block, method, trait_path, _, _, _, _)| {
-                impl_method_context(&impl_block.target, Some(trait_path), &method.name)
-            })
+            .map(TraitReceiverCandidate::context)
             .collect::<Vec<_>>()
             .join(", ");
         d.push_error(source_diagnostic(
@@ -2250,14 +2405,16 @@ fn resolve_receiver_call(
             method_source,
             format!(
                 "receiver call '{}.{}' is ambiguous; trait candidates: {}",
-                resolved_receiver_ty, method_name, candidates
+                ambiguity_receiver, method_name, candidates
             ),
         ));
         return None;
     }
-    if let Some((impl_block, method, trait_path, self_ty, bindings, adjustment, is_unsafe)) =
-        trait_methods.into_iter().next()
-    {
+    if let Some(candidate) = trait_methods.into_iter().next() {
+        let is_unsafe = match &candidate {
+            TraitReceiverCandidate::Bound { method, .. } => method.is_unsafe,
+            TraitReceiverCandidate::Impl { is_unsafe, .. } => *is_unsafe,
+        };
         if is_unsafe && !env.in_unsafe {
             d.push_error(source_diagnostic(
                 UnsafeRequired,
@@ -2268,17 +2425,51 @@ fn resolve_receiver_call(
                 ),
             ));
         }
-        let (fn_ty, method_instance) = instantiate_method(
-            env,
-            subst,
-            &impl_block,
-            &bindings,
-            &method,
-            generics,
-            method_source,
-            types,
-            d,
-        )?;
+        let (trait_path, self_ty, adjustment, fn_ty, method_instance) = match candidate {
+            TraitReceiverCandidate::Bound {
+                trait_path,
+                self_ty,
+                method,
+                mapping,
+                lifetime_mapping,
+                adjustment,
+            } => {
+                let (fn_ty, method_instance) = instantiate_method_signature(
+                    env,
+                    subst,
+                    method,
+                    mapping,
+                    lifetime_mapping,
+                    generics,
+                    method_source,
+                    types,
+                    d,
+                )?;
+                (trait_path, self_ty, adjustment, fn_ty, method_instance)
+            }
+            TraitReceiverCandidate::Impl {
+                impl_block,
+                method,
+                trait_path,
+                self_ty,
+                bindings,
+                adjustment,
+                ..
+            } => {
+                let (fn_ty, method_instance) = instantiate_method(
+                    env,
+                    subst,
+                    impl_block,
+                    &bindings,
+                    method,
+                    generics,
+                    method_source,
+                    types,
+                    d,
+                )?;
+                (trait_path, self_ty, adjustment, fn_ty, method_instance)
+            }
+        };
         types.receiver_calls.insert(
             selector_source,
             ResolvedReceiverCall {
