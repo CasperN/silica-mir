@@ -4,6 +4,21 @@ Deferred work and known gaps. Items get added, refined, and closed as
 the compiler evolves; treat entries as snapshots, not commitments.
 
 ## Language features
+- **Complete HLL trait and method use.** Keep this work split into independently
+  reviewable changes, in dependency order:
+  1. Centralize the twelve compiler-blessed trait names without changing their
+     current semantics. `Copy`, `Drop`, and `Move` remain the trivial markers;
+     only the implemented `AutoClone` and `AutoDestroy` hooks receive special
+     compiler behavior for now.
+  2. Parse, preserve, validate, and enforce direct trait bounds on generic
+     parameters everywhere those parameters can be instantiated.
+  3. Resolve method-call receivers through direct bounds on generic parameters,
+     including receiver auto-borrowing and ambiguity diagnostics.
+  4. Add trait self-bounds/supertraits, including inherited obligations,
+     implementation checking, and cycle handling.
+  5. Add qualified method syntax for explicit disambiguation.
+  6. Preserve and enforce ABI modifiers on all function forms, including free
+     functions, trait methods, impl methods, and function values.
 - **Standardize `&drop` vs `&deinit`.** Same reference kind
   (`RefKind::Drop`) has two surface names — MIR uses `&drop`, HLL uses
   `&deinit`. Every fixture author, diagnostic reader, and agent has
@@ -192,10 +207,7 @@ the deliberate later refinement to nested operand and projection sources.
 
 # Current Yak-shaving stack
 - Complete HLL trait use
-  - ABI modifiers on trait and impl methods
-  - trait bounds: `trait Foo: Copy + MyTrait {..}`
 - Standard library
 - Modules
 - Standard `Span` and `Vec` types working properly 
 - A standard `Box` type working properly
-- trait bounds on type parameters
