@@ -218,7 +218,6 @@ impl From<HllTypeCheckCode> for DiagCode {
     }
 }
 
-#[derive(Clone)]
 pub struct Subst {
     map: HashMap<usize, Type>,
     next_id: usize,
@@ -419,6 +418,14 @@ impl Subst {
                 found: r2,
             }),
         }
+    }
+
+    fn can_unify(&self, t1: &Type, t2: &Type) -> bool {
+        let mut probe = Self {
+            map: self.map.clone(),
+            next_id: self.next_id,
+        };
+        probe.unify(t1, t2).is_ok()
     }
 
     fn occurs_in(&self, id: usize, ty: &Type) -> bool {
@@ -1491,15 +1498,13 @@ fn receiver_adjustment_for_fn(
     let Some(receiver_param) = params.first() else {
         return ReceiverAdjustment::None;
     };
-    let mut exact = subst.clone();
-    if exact.unify(receiver_param, receiver_ty).is_ok() {
+    if subst.can_unify(receiver_param, receiver_ty) {
         return ReceiverAdjustment::None;
     }
     let TypeKind::Ref(kind, _, pointee) = &receiver_param.kind else {
         return ReceiverAdjustment::None;
     };
-    let mut borrowed = subst.clone();
-    if borrowed.unify(pointee, receiver_ty).is_ok() {
+    if subst.can_unify(pointee, receiver_ty) {
         ReceiverAdjustment::Borrow(*kind)
     } else {
         ReceiverAdjustment::None
@@ -2917,6 +2922,20 @@ mod tests {
         assert_eq!(lifetime, &Some(Lifetime("inner".into())));
         assert_eq!(pointee.source, leaf_source);
         assert_eq!(pointee.kind, TypeKind::Int(IntTy::I64));
+    }
+
+    #[test]
+    fn compatibility_probe_discards_successful_and_partial_bindings() {
+        let mut subst = Subst::new();
+        let variable = subst.fresh_var();
+
+        assert!(subst.can_unify(&variable, &i64_ty()));
+        assert_eq!(subst.resolve(&variable), variable);
+
+        let expected = fn_ty(vec![variable.clone(), bool_ty()], unit_ty());
+        let found = fn_ty(vec![i64_ty(), i64_ty()], unit_ty());
+        assert!(!subst.can_unify(&expected, &found));
+        assert_eq!(subst.resolve(&variable), variable);
     }
 
     #[test]
