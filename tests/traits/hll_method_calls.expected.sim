@@ -1715,3 +1715,150 @@ fn<T: Move + InheritedRank> inherited_receiver_rank(value: T) {
     require_uninit value;
     return
 }
+
+trait QualifiedFirst {
+  fn<'s0, 's1> qualified_collision(recv: &'s0 Self, $return: &out 's1 i64);
+}
+
+trait QualifiedSecond {
+  fn<'s0, 's1> qualified_collision(recv: &'s0 Self, $return: &out 's1 i64);
+}
+
+struct QualifiedTarget: Copy + Drop {
+  value: i64
+}
+
+impl QualifiedFirst for QualifiedTarget {
+  fn<'s0, 's1> qualified_collision(recv: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+impl QualifiedSecond for QualifiedTarget {
+  fn<'s0, 's1> qualified_collision(recv: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+impl QualifiedTarget {
+  fn<'s0, 's1, U: Copy + Drop> qualified_inherent(recv: &'s0 QualifiedTarget, ignored: U, $return: &out 's1 i64) {
+    $tmp_0: U;
+    entry:
+      $tmp_0 = move ignored;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit ignored;
+      require_uninit recv;
+      return
+  }
+  fn<'s0, 's1> qualified_unsafe(recv: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'s0, 's1> qualified_trait_call(value: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <QualifiedTarget as QualifiedFirst>::qualified_collision(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1> qualified_inherent_call(value: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <QualifiedTarget>::qualified_inherent<bool>(move value, true, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1> qualified_generic_impl_calls(value: &'s0 Box<i64>, $return: &out 's1 i64) {
+  $tmp_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: &out i64;
+  entry:
+    $tmp_1 = &out $tmp_0;
+    call <Box<i64>>::inherent_generic<bool>(copy value, true, move $tmp_1);
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $tmp_2 = &out $return.*;
+    call <Box<i64> as GenericTrait<i64>>::trait_generic<bool>(move value, true, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0, 's1> qualified_unsafe_call(value: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <QualifiedTarget>::qualified_unsafe(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0, T: GrandReceiver<i64>> qualified_supertrait_call(value: &'s0 T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as SuperReceiver<i64>>::inherited(move value, 1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn<'a, T: LifetimeChildReceiver<'a, i64>> qualified_lifetime_call(value: &'a T) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  entry:
+    call <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(move value, 1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}

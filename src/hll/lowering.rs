@@ -1,7 +1,9 @@
 use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
-use crate::hll::type_check::{ReceiverAdjustment, ResolvedReceiverTarget, TypeCheckResults};
+use crate::hll::type_check::{
+    ReceiverAdjustment, ResolvedMethodTarget, ResolvedReceiverTarget, TypeCheckResults,
+};
 use crate::mir::ast::{self as mir, DeclMeta, GenericParams};
 use crate::mir::helpers::*;
 use std::collections::HashMap;
@@ -850,29 +852,10 @@ fn lower_call_target_to_operand(
                         };
                     Ok((callee, None))
                 }
-                ResolvedReceiverTarget::Inherent { self_ty, method } => {
+                ResolvedReceiverTarget::Method(method_target) => {
                     let receiver =
                         lower_receiver_operand(ctx, receiver, resolution.adjustment, types)?;
-                    Ok((
-                        inherent_fn_op(lower_type(self_ty), lower_instance(method)),
-                        Some(receiver),
-                    ))
-                }
-                ResolvedReceiverTarget::Trait {
-                    trait_path,
-                    self_ty,
-                    method,
-                } => {
-                    let receiver =
-                        lower_receiver_operand(ctx, receiver, resolution.adjustment, types)?;
-                    Ok((
-                        trait_fn_op(
-                            lower_instance(trait_path),
-                            lower_type(self_ty),
-                            lower_instance(method),
-                        ),
-                        Some(receiver),
-                    ))
+                    Ok((lower_method_target(method_target), Some(receiver)))
                 }
                 ResolvedReceiverTarget::FreeFunction(instance) => {
                     let receiver =
@@ -888,6 +871,35 @@ fn lower_call_target_to_operand(
                 }
             }
         }
+        hll::CallTarget::Qualified {
+            selector_source, ..
+        } => {
+            let Some(target) = types.qualified_calls.get(selector_source) else {
+                return Err(diag(
+                    HllLoweringCode::MissingCallResolution,
+                    selector_source.span(),
+                    "missing qualified-call resolution",
+                ));
+            };
+            Ok((lower_method_target(target), None))
+        }
+    }
+}
+
+fn lower_method_target(target: &ResolvedMethodTarget) -> mir::Operand {
+    match target {
+        ResolvedMethodTarget::Inherent { self_ty, method } => {
+            inherent_fn_op(lower_type(self_ty), lower_instance(method))
+        }
+        ResolvedMethodTarget::Trait {
+            trait_path,
+            self_ty,
+            method,
+        } => trait_fn_op(
+            lower_instance(trait_path),
+            lower_type(self_ty),
+            lower_instance(method),
+        ),
     }
 }
 

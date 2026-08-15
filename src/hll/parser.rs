@@ -1594,6 +1594,43 @@ impl Parser {
                         method_source: SourceInfo::written(span_of(method)),
                         selector_source: SourceInfo::written(span_of(func_node)),
                     }
+                } else if func_node.kind() == "qualified_method" {
+                    let Some(self_ty) = func_node.child_by_field_name("self_ty") else {
+                        d.push_error(self.diag(
+                            func_node,
+                            ParserCode::MalformedCst,
+                            "qualified method missing self type",
+                        ));
+                        return None;
+                    };
+                    let Some(method) = func_node.child_by_field_name("method_name") else {
+                        d.push_error(self.diag(
+                            func_node,
+                            ParserCode::MalformedCst,
+                            "qualified method missing method name",
+                        ));
+                        return None;
+                    };
+                    let trait_path = if let Some(trait_name) =
+                        func_node.child_by_field_name("trait_name")
+                    {
+                        let (lifetimes, types) =
+                            if let Some(trait_args) = func_node.child_by_field_name("trait_args") {
+                                self.map_type_args(trait_args, scope, d)?
+                            } else {
+                                (Vec::new(), Vec::new())
+                            };
+                        Some(Instance::new(self.get_text(trait_name), lifetimes, types))
+                    } else {
+                        None
+                    };
+                    CallTarget::Qualified {
+                        self_ty: self.map_type(self_ty, scope, d)?,
+                        trait_path,
+                        method: self.get_text(method).to_string(),
+                        method_source: SourceInfo::written(span_of(method)),
+                        selector_source: SourceInfo::written(span_of(func_node)),
+                    }
                 } else {
                     CallTarget::Expr(Box::new(self.map_expr(func_node, scope, d)?))
                 };
@@ -1618,6 +1655,14 @@ impl Parser {
                     node,
                     ParserCode::UnexpectedToken,
                     "type arguments without a call are not a valid expression",
+                ));
+                None
+            }
+            "qualified_method" => {
+                d.push_error(self.diag(
+                    node,
+                    ParserCode::UnexpectedToken,
+                    "a qualified method must be called",
                 ));
                 None
             }

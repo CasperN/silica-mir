@@ -183,7 +183,9 @@ fn<T: DirectCollision> ambiguous_bound_and_impl(value: &T) {
   value.mixed_collision();
 }
 
-trait BoundArgument {}
+trait BoundArgument {
+  fn qualified_required(recv: &Self);
+}
 trait GenericBoundMethod {
   fn<U: BoundArgument> bound_generic(recv: &Self, value: &U);
   unsafe fn bound_unsafe(recv: &Self);
@@ -290,3 +292,81 @@ trait MissingGenericImplChild: MissingGenericImplParent {}
 
 # covers: a generic impl must declare evidence for its supertrait obligation
 impl<T> MissingGenericImplChild for T {}
+
+# covers: qualified trait calls require the selected implementation
+fn qualified_missing_impl(value: &WrongBoundArgument) {
+  <WrongBoundArgument as BoundArgument>::qualified_required(value);
+}
+
+trait QualifiedParent {
+  fn parent_only(recv: &Self);
+}
+
+trait QualifiedChild: QualifiedParent {}
+
+# covers: qualification names methods declared by the selected trait itself
+fn<T: QualifiedChild> qualified_child_does_not_alias_parent(value: &T) {
+  <T as QualifiedChild>::parent_only(value);
+}
+
+# covers: qualified inherent calls require an applicable named method
+fn qualified_missing_inherent(value: &WrongBoundArgument) {
+  <WrongBoundArgument>::missing(value);
+}
+
+# covers: qualified trait paths retain generic arity checking
+fn<T: GenericSupertrait<i64>> qualified_wrong_trait_arity(value: &T) {
+  <T as GenericSupertrait>::missing(value);
+}
+
+# covers: qualified unsafe trait calls require an unsafe context
+fn qualified_unsafe_trait(value: &UnsafeMethodTarget) {
+  <UnsafeMethodTarget as UnsafeCall>::trait_dangerous(value);
+}
+
+# covers: qualified unsafe inherent calls require an unsafe context
+fn qualified_unsafe_inherent(value: &UnsafeMethodTarget) {
+  <UnsafeMethodTarget>::inherent_dangerous(value);
+}
+
+trait QualifiedExplicitBorrow {
+  fn needs_explicit_borrow(recv: &Self);
+}
+
+impl QualifiedExplicitBorrow for WrongBoundArgument {
+  fn needs_explicit_borrow(recv: &Self) { recv; }
+}
+
+# covers: qualified calls do not apply receiver-syntax auto-borrowing
+fn qualified_does_not_auto_borrow(value: WrongBoundArgument) {
+  <WrongBoundArgument as QualifiedExplicitBorrow>::needs_explicit_borrow(value);
+}
+
+# covers: qualified trait calls reject undeclared traits
+fn qualified_unknown_trait(value: &WrongBoundArgument) {
+  <WrongBoundArgument as MissingQualifiedTrait>::missing(value);
+}
+
+trait<'a> QualifiedLifetime {}
+
+# covers: qualified trait paths reject undeclared lifetime arguments
+fn<T> qualified_unknown_lifetime(value: &T) {
+  <T as QualifiedLifetime<'missing>>::missing(value);
+}
+
+trait<X: Copy + Drop> QualifiedBoundedArgument {}
+
+# covers: qualified trait paths retain trait-argument bounds
+fn qualified_bad_trait_argument(value: &WrongBoundArgument) {
+  <WrongBoundArgument as QualifiedBoundedArgument<LinearSupertraitTarget>>::missing(value);
+}
+
+# covers: explicit inherent qualification does not hide overlapping impls
+fn ambiguous_qualified_inherent(value: Overlap<i64>) {
+  <Overlap<i64>>::duplicate(value);
+}
+
+# covers: qualified methods retain method-generic obligations
+fn qualified_method_bound_failure(value: Generic<i64>, linear: Linear) {
+  <Generic<i64>>::bounded<Linear>(value, linear);
+}

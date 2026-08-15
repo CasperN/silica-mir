@@ -115,6 +115,10 @@
             "named": true
           },
           {
+            "type": "qualified_method",
+            "named": true
+          },
+          {
             "type": "raw_borrow_expr",
             "named": true
           },
@@ -234,6 +238,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -358,6 +366,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -526,6 +538,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -710,6 +726,10 @@
             "named": true
           },
           {
+            "type": "qualified_method",
+            "named": true
+          },
+          {
             "type": "raw_borrow_expr",
             "named": true
           },
@@ -841,6 +861,10 @@
             "named": true
           },
           {
+            "type": "qualified_method",
+            "named": true
+          },
+          {
             "type": "return_expr",
             "named": true
           },
@@ -956,6 +980,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -1121,6 +1149,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -1340,6 +1372,10 @@
           "named": true
         },
         {
+          "type": "qualified_method",
+          "named": true
+        },
+        {
           "type": "raw_borrow_expr",
           "named": true
         },
@@ -1462,6 +1498,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -1749,6 +1789,10 @@
             "named": true
           },
           {
+            "type": "qualified_method",
+            "named": true
+          },
+          {
             "type": "return_expr",
             "named": true
           },
@@ -1854,6 +1898,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -2099,6 +2147,10 @@
             "named": true
           },
           {
+            "type": "qualified_method",
+            "named": true
+          },
+          {
             "type": "return_expr",
             "named": true
           },
@@ -2208,6 +2260,52 @@
     }
   },
   {
+    "type": "qualified_method",
+    "named": true,
+    "fields": {
+      "method_name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "self_ty": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      },
+      "trait_args": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type_args",
+            "named": true
+          }
+        ]
+      },
+      "trait_name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "raw_borrow_expr",
     "named": true,
     "fields": {
@@ -2305,6 +2403,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {
@@ -2777,6 +2879,10 @@
           },
           {
             "type": "paren_expr",
+            "named": true
+          },
+          {
+            "type": "qualified_method",
             "named": true
           },
           {

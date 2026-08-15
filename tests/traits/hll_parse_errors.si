@@ -65,3 +65,8 @@ trait DuplicateBound {}
 fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T) {
   value;
 }
+
+# covers: qualified methods are selectors, not standalone function values
+fn bare_qualified_method() {
+  <S>::missing;
+}

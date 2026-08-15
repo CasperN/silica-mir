@@ -6,10 +6,9 @@ the compiler evolves; treat entries as snapshots, not commitments.
 ## Language features
 - **Complete HLL trait and method use.** Keep this work split into independently
   reviewable changes, in dependency order:
-  1. Add qualified method syntax for explicit disambiguation.
-  2. Preserve and enforce ABI modifiers on all function forms, including free
+  1. Preserve and enforce ABI modifiers on all function forms, including free
      functions, trait methods, impl methods, and function values.
-  3. Revisit which ownership traits are compiler-blessed. The trivial and auto
+  2. Revisit which ownership traits are compiler-blessed. The trivial and auto
      tiers require compiler interaction; the higher explicit tiers may live in
      the standard library. Discuss the boundary before implementation.
 - **Standardize `&drop` vs `&deinit`.** Same reference kind

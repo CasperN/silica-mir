@@ -349,8 +349,25 @@ module.exports = grammar({
       $.struct_constr,
       $.enum_constr,
       $.array_lit,
+      $.qualified_method,
       // Plain identifier reference (variable or function name).
       $.identifier,
+    ),
+
+    // Explicit method selection. The call syntax supplies the receiver as
+    // argument zero: `<S as Trait<X>>::method(receiver, args)` or
+    // `<S>::method(receiver, args)` for an inherent method.
+    qualified_method: $ => seq(
+      '<',
+      field('self_ty', $.type),
+      optional(seq(
+        'as',
+        field('trait_name', $.identifier),
+        optional(field('trait_args', $.type_args)),
+      )),
+      '>',
+      '::',
+      field('method_name', $.identifier),
     ),
 
     bool_lit: $ => choice('true', 'false'),

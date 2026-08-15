@@ -570,3 +570,61 @@ trait InheritedRank: InheritedExactRank + InheritedBorrowedRank {}
 fn<T: InheritedRank + Move> inherited_receiver_rank(value: T) {
   value.inherited_rank();
 }
+
+trait QualifiedFirst {
+  fn qualified_collision(recv: &Self) -> i64;
+}
+
+trait QualifiedSecond {
+  fn qualified_collision(recv: &Self) -> i64;
+}
+
+struct QualifiedTarget: Copy + Drop { value: i64 }
+
+impl QualifiedFirst for QualifiedTarget {
+  fn qualified_collision(recv: &Self) -> i64 { recv.*.value }
+}
+
+impl QualifiedSecond for QualifiedTarget {
+  fn qualified_collision(recv: &Self) -> i64 { recv.*.value }
+}
+
+impl QualifiedTarget {
+  fn<U: Copy + Drop> qualified_inherent(recv: &Self, ignored: U) -> i64 {
+    ignored;
+    recv.*.value
+  }
+
+  unsafe fn qualified_unsafe(recv: &Self) -> i64 { recv.*.value }
+}
+
+# covers: trait qualification selects one otherwise ambiguous method
+fn qualified_trait_call(value: &QualifiedTarget) -> i64 {
+  <QualifiedTarget as QualifiedFirst>::qualified_collision(value)
+}
+
+# covers: inherent qualification and explicit method arguments lower directly
+fn qualified_inherent_call(value: &QualifiedTarget) -> i64 {
+  <QualifiedTarget>::qualified_inherent<bool>(value, true)
+}
+
+# covers: qualification matches generic inherent and trait impl headers
+fn qualified_generic_impl_calls(value: &Box<i64>) -> i64 {
+  <Box<i64>>::inherent_generic<bool>(value, true);
+  <Box<i64> as GenericTrait<i64>>::trait_generic<bool>(value, true)
+}
+
+# covers: qualified unsafe methods retain ordinary unsafe checking
+fn qualified_unsafe_call(value: &QualifiedTarget) -> i64 {
+  unsafe { <QualifiedTarget>::qualified_unsafe(value) }
+}
+
+# covers: qualification may select a supertrait proven by a generic bound
+fn<T: GrandReceiver<i64>> qualified_supertrait_call(value: &T) {
+  <T as SuperReceiver<i64>>::inherited(value, 1);
+}
+
+# covers: qualified trait and method lifetime arguments remain explicit
+fn<'a, T: LifetimeChildReceiver<'a, i64>> qualified_lifetime_call(value: &'a T) {
+  <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(value, 1);
+}

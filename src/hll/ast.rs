@@ -401,6 +401,15 @@ pub enum CallTarget {
         method_source: SourceInfo,
         selector_source: SourceInfo,
     },
+    /// Explicit method selection. Unlike receiver syntax, argument zero is
+    /// written in the call's ordinary argument list.
+    Qualified {
+        self_ty: Type,
+        trait_path: Option<Instance>,
+        method: String,
+        method_source: SourceInfo,
+        selector_source: SourceInfo,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]

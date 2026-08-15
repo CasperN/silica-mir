@@ -270,6 +270,9 @@ pub enum HllTypeCheckCode {
     /// Receiver syntax found no applicable method, callable field, or free
     /// function.
     UnresolvedReceiverCall,
+    /// An explicitly qualified inherent or trait method does not exist for the
+    /// selected type and qualification.
+    UnresolvedQualifiedMethod,
 }
 
 impl From<HllTypeCheckCode> for DiagCode {
@@ -747,7 +750,7 @@ pub enum ReceiverAdjustment {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum ResolvedReceiverTarget {
+pub enum ResolvedMethodTarget {
     Inherent {
         self_ty: Type,
         method: Instance,
@@ -757,6 +760,11 @@ pub enum ResolvedReceiverTarget {
         self_ty: Type,
         method: Instance,
     },
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResolvedReceiverTarget {
+    Method(ResolvedMethodTarget),
     Field,
     FreeFunction(Instance),
 }
@@ -783,6 +791,7 @@ pub struct TypeCheckResults {
     pub expression_types: ExpressionTypes,
     pub function_instantiations: IndexMap<SourceInfo, Instance>,
     pub receiver_calls: IndexMap<SourceInfo, ResolvedReceiverCall>,
+    pub qualified_calls: IndexMap<SourceInfo, ResolvedMethodTarget>,
     expression_contexts: IndexMap<SourceInfo, String>,
     pending_instantiations: Vec<PendingInstantiation>,
 }
@@ -1057,27 +1066,30 @@ pub(super) fn typecheck_program_collect(
             *ty = subst.resolve_default(ty);
         }
     }
+    let resolve_method_target = |target: &mut ResolvedMethodTarget| match target {
+        ResolvedMethodTarget::Inherent { self_ty, method } => {
+            *self_ty = subst.resolve_default(self_ty);
+            for ty in &mut method.type_args {
+                *ty = subst.resolve_default(ty);
+            }
+        }
+        ResolvedMethodTarget::Trait {
+            trait_path,
+            self_ty,
+            method,
+        } => {
+            *self_ty = subst.resolve_default(self_ty);
+            for ty in &mut trait_path.type_args {
+                *ty = subst.resolve_default(ty);
+            }
+            for ty in &mut method.type_args {
+                *ty = subst.resolve_default(ty);
+            }
+        }
+    };
     for call in types.receiver_calls.values_mut() {
         match &mut call.target {
-            ResolvedReceiverTarget::Inherent { self_ty, method } => {
-                *self_ty = subst.resolve_default(self_ty);
-                for ty in &mut method.type_args {
-                    *ty = subst.resolve_default(ty);
-                }
-            }
-            ResolvedReceiverTarget::Trait {
-                trait_path,
-                self_ty,
-                method,
-            } => {
-                *self_ty = subst.resolve_default(self_ty);
-                for ty in &mut trait_path.type_args {
-                    *ty = subst.resolve_default(ty);
-                }
-                for ty in &mut method.type_args {
-                    *ty = subst.resolve_default(ty);
-                }
-            }
+            ResolvedReceiverTarget::Method(target) => resolve_method_target(target),
             ResolvedReceiverTarget::FreeFunction(instance) => {
                 for ty in &mut instance.type_args {
                     *ty = subst.resolve_default(ty);
@@ -1085,6 +1097,9 @@ pub(super) fn typecheck_program_collect(
             }
             ResolvedReceiverTarget::Field => {}
         }
+    }
+    for target in types.qualified_calls.values_mut() {
+        resolve_method_target(target);
     }
     types.pending_instantiations.clear();
     types
@@ -1224,73 +1239,90 @@ fn validate_bounds(
     d: &mut Diagnostics,
 ) {
     for bound in &bounds.traits {
-        for argument in &bound.trait_path.type_args {
-            env.validate_type(argument, scope, d);
-        }
-        let Some(trait_decl) = env.traits.get(&bound.trait_path.name) else {
+        validate_trait_instance(
+            env,
+            owner,
+            "trait bound",
+            &bound.trait_path,
+            bound.source,
+            scope,
+            d,
+        );
+    }
+}
+
+fn validate_trait_instance(
+    env: &TypeEnv,
+    owner: &str,
+    reference_kind: &str,
+    trait_path: &Instance,
+    source: SourceInfo,
+    scope: &HashMap<String, Bounds>,
+    d: &mut Diagnostics,
+) {
+    for argument in &trait_path.type_args {
+        env.validate_type(argument, scope, d);
+    }
+    let Some(trait_decl) = env.traits.get(&trait_path.name) else {
+        d.push_error(source_diagnostic(
+            UndeclaredTrait,
+            source,
+            format!(
+                "{} has undeclared {} '{}'",
+                owner, reference_kind, trait_path.name
+            ),
+        ));
+        return;
+    };
+    if trait_path.lifetime_args.len() != trait_decl.lifetime_params.len()
+        || trait_path.type_args.len() != trait_decl.type_params.len()
+    {
+        d.push_error(source_diagnostic(
+            TraitArgArityMismatch,
+            source,
+            format!(
+                "{} '{}' expects {} lifetime and {} type argument(s), found {} lifetime and {} type argument(s)",
+                reference_kind,
+                trait_path.name,
+                trait_decl.lifetime_params.len(),
+                trait_decl.type_params.len(),
+                trait_path.lifetime_args.len(),
+                trait_path.type_args.len()
+            ),
+        ));
+        return;
+    }
+    let mapping = trait_decl
+        .type_params
+        .iter()
+        .map(|parameter| parameter.name.clone())
+        .zip(trait_path.type_args.iter().cloned())
+        .collect::<HashMap<_, _>>();
+    let lifetime_mapping = trait_decl
+        .lifetime_params
+        .iter()
+        .map(|parameter| parameter.lifetime.clone())
+        .zip(trait_path.lifetime_args.iter().cloned())
+        .collect::<BTreeMap<_, _>>();
+    for (trait_parameter, argument) in trait_decl.type_params.iter().zip(&trait_path.type_args) {
+        let markers_satisfied = trait_parameter
+            .bounds
+            .markers
+            .iter_declared()
+            .all(|marker| env.class_of(argument, scope).implies(marker));
+        let traits_satisfied = trait_parameter.bounds.traits.iter().all(|required| {
+            let required = substitute_bound(required, &mapping, &lifetime_mapping);
+            type_satisfies_trait(env, argument, &required, scope)
+        });
+        if !markers_satisfied || !traits_satisfied {
             d.push_error(source_diagnostic(
-                UndeclaredTrait,
-                bound.source,
+                BoundNotSatisfied,
+                source,
                 format!(
-                    "{} has undeclared trait bound '{}'",
-                    owner, bound.trait_path.name
+                    "type argument '{}' for {} '{}::{}' does not satisfy its declared bounds",
+                    argument, reference_kind, trait_path.name, trait_parameter.name
                 ),
             ));
-            continue;
-        };
-        if bound.trait_path.lifetime_args.len() != trait_decl.lifetime_params.len()
-            || bound.trait_path.type_args.len() != trait_decl.type_params.len()
-        {
-            d.push_error(source_diagnostic(
-                    TraitArgArityMismatch,
-                    bound.source,
-                    format!(
-                        "trait bound '{}' expects {} lifetime and {} type argument(s), found {} lifetime and {} type argument(s)",
-                        bound.trait_path.name,
-                        trait_decl.lifetime_params.len(),
-                        trait_decl.type_params.len(),
-                        bound.trait_path.lifetime_args.len(),
-                        bound.trait_path.type_args.len()
-                    ),
-                ));
-            continue;
-        }
-        let mapping = trait_decl
-            .type_params
-            .iter()
-            .map(|parameter| parameter.name.clone())
-            .zip(bound.trait_path.type_args.iter().cloned())
-            .collect::<HashMap<_, _>>();
-        let lifetime_mapping = trait_decl
-            .lifetime_params
-            .iter()
-            .map(|parameter| parameter.lifetime.clone())
-            .zip(bound.trait_path.lifetime_args.iter().cloned())
-            .collect::<BTreeMap<_, _>>();
-        for (trait_parameter, argument) in trait_decl
-            .type_params
-            .iter()
-            .zip(&bound.trait_path.type_args)
-        {
-            let markers_satisfied = trait_parameter
-                .bounds
-                .markers
-                .iter_declared()
-                .all(|marker| env.class_of(argument, scope).implies(marker));
-            let traits_satisfied = trait_parameter.bounds.traits.iter().all(|required| {
-                let required = substitute_bound(required, &mapping, &lifetime_mapping);
-                type_satisfies_trait(env, argument, &required, scope)
-            });
-            if !markers_satisfied || !traits_satisfied {
-                d.push_error(source_diagnostic(
-                        BoundNotSatisfied,
-                        bound.source,
-                        format!(
-                            "type argument '{}' for trait bound '{}::{}' does not satisfy its declared bounds",
-                            argument, bound.trait_path.name, trait_parameter.name
-                        ),
-                    ));
-            }
         }
     }
 }
@@ -2369,6 +2401,183 @@ fn receiver_field_type(
     Some(substitute(&field.ty, &mapping))
 }
 
+fn resolve_qualified_call(
+    env: &TypeEnv,
+    subst: &mut Subst,
+    self_ty: &Type,
+    trait_path: Option<&Instance>,
+    method_name: &str,
+    generics: &GenericArgs,
+    method_source: SourceInfo,
+    selector_source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Option<Type> {
+    let errors_before = d.error_count();
+    env.validate_type(self_ty, &env.current_type_params, d);
+    let self_ty = subst.resolve(self_ty);
+
+    let (fn_ty, target) = if let Some(trait_path) = trait_path {
+        for lifetime in &trait_path.lifetime_args {
+            if !env.current_lifetimes.contains(lifetime) {
+                d.push_error(source_diagnostic(
+                    UndeclaredLifetime,
+                    selector_source,
+                    format!("undeclared lifetime {}", lifetime),
+                ));
+            }
+        }
+        validate_trait_instance(
+            env,
+            "qualified method",
+            "trait",
+            trait_path,
+            selector_source,
+            &env.current_type_params,
+            d,
+        );
+        if d.error_count() != errors_before {
+            return None;
+        }
+        let trait_decl = env.traits.get(&trait_path.name)?;
+        let Some(method) = trait_decl
+            .methods
+            .iter()
+            .find(|candidate| candidate.name == method_name)
+        else {
+            d.push_error(source_diagnostic(
+                UnresolvedQualifiedMethod,
+                method_source,
+                format!("trait '{}' has no method '{}'", trait_path, method_name),
+            ));
+            return None;
+        };
+        if !type_satisfies_trait(env, &self_ty, trait_path, &env.current_type_params) {
+            d.push_error(source_diagnostic(
+                BoundNotSatisfied,
+                selector_source,
+                format!(
+                    "type '{}' does not satisfy trait '{}' required by qualified method",
+                    self_ty, trait_path
+                ),
+            ));
+            return None;
+        }
+        if method.is_unsafe && !env.in_unsafe {
+            d.push_error(source_diagnostic(
+                UnsafeRequired,
+                method_source,
+                format!(
+                    "call to unsafe trait method '{}' requires unsafe block",
+                    method_name
+                ),
+            ));
+        }
+        let mut mapping = trait_decl
+            .type_params
+            .iter()
+            .map(|parameter| parameter.name.clone())
+            .zip(trait_path.type_args.iter().cloned())
+            .collect::<HashMap<_, _>>();
+        mapping.insert("Self".to_string(), self_ty.clone());
+        let lifetime_mapping = trait_decl
+            .lifetime_params
+            .iter()
+            .map(|parameter| parameter.lifetime.clone())
+            .zip(trait_path.lifetime_args.iter().cloned())
+            .collect::<BTreeMap<_, _>>();
+        let (fn_ty, method) = instantiate_method_signature(
+            env,
+            subst,
+            method,
+            mapping,
+            lifetime_mapping,
+            generics,
+            method_source,
+            types,
+            d,
+        )?;
+        (
+            fn_ty,
+            ResolvedMethodTarget::Trait {
+                trait_path: trait_path.clone(),
+                self_ty,
+                method,
+            },
+        )
+    } else {
+        if d.error_count() != errors_before {
+            return None;
+        }
+        let candidates = env
+            .impls
+            .iter()
+            .filter(|impl_block| impl_block.trait_path.is_none())
+            .filter_map(|impl_block| {
+                let bindings = impl_bindings(impl_block, &self_ty, env)?;
+                let method = impl_block
+                    .methods
+                    .iter()
+                    .find(|candidate| candidate.name == method_name)?;
+                Some((impl_block, method, bindings))
+            })
+            .collect::<Vec<_>>();
+        if candidates.len() > 1 {
+            let candidates = candidates
+                .iter()
+                .map(|(impl_block, method, _)| {
+                    impl_method_context(&impl_block.target, None, &method.name)
+                })
+                .collect::<Vec<_>>()
+                .join(", ");
+            d.push_error(source_diagnostic(
+                AmbiguousReceiverCall,
+                method_source,
+                format!(
+                    "qualified call '<{}>::{}' is ambiguous; inherent candidates: {}",
+                    self_ty, method_name, candidates
+                ),
+            ));
+            return None;
+        }
+        let Some((impl_block, method, bindings)) = candidates.into_iter().next() else {
+            d.push_error(source_diagnostic(
+                UnresolvedQualifiedMethod,
+                method_source,
+                format!(
+                    "type '{}' has no inherent method '{}'",
+                    self_ty, method_name
+                ),
+            ));
+            return None;
+        };
+        if method.is_unsafe && !env.in_unsafe {
+            d.push_error(source_diagnostic(
+                UnsafeRequired,
+                method_source,
+                format!(
+                    "call to unsafe method '{}' requires unsafe block",
+                    method_name
+                ),
+            ));
+        }
+        let (fn_ty, method) = instantiate_method(
+            env,
+            subst,
+            impl_block,
+            &bindings,
+            method,
+            generics,
+            method_source,
+            types,
+            d,
+        )?;
+        (fn_ty, ResolvedMethodTarget::Inherent { self_ty, method })
+    };
+    types.qualified_calls.insert(selector_source, target);
+    Some(fn_ty)
+}
+
 fn resolve_receiver_call(
     env: &mut TypeEnv,
     subst: &mut Subst,
@@ -2453,10 +2662,10 @@ fn resolve_receiver_call(
         types.receiver_calls.insert(
             selector_source,
             ResolvedReceiverCall {
-                target: ResolvedReceiverTarget::Inherent {
+                target: ResolvedReceiverTarget::Method(ResolvedMethodTarget::Inherent {
                     self_ty,
                     method: method_instance,
-                },
+                }),
                 adjustment,
             },
         );
@@ -2669,11 +2878,11 @@ fn resolve_receiver_call(
         types.receiver_calls.insert(
             selector_source,
             ResolvedReceiverCall {
-                target: ResolvedReceiverTarget::Trait {
+                target: ResolvedReceiverTarget::Method(ResolvedMethodTarget::Trait {
                     trait_path,
                     self_ty,
                     method: method_instance,
-                },
+                }),
                 adjustment,
             },
         );
@@ -3006,6 +3215,29 @@ fn infer_inner(
                     };
                     (fn_ty, receiver_ty)
                 }
+                CallTarget::Qualified {
+                    self_ty,
+                    trait_path,
+                    method,
+                    method_source,
+                    selector_source,
+                } => {
+                    let Some(fn_ty) = resolve_qualified_call(
+                        env,
+                        subst,
+                        self_ty,
+                        trait_path.as_ref(),
+                        method,
+                        generics,
+                        *method_source,
+                        *selector_source,
+                        types,
+                        d,
+                    ) else {
+                        return error_ty();
+                    };
+                    (fn_ty, None)
+                }
             };
             let resolved = subst.resolve(&fn_ty);
             if resolved.kind == TypeKind::Error {
@@ -3030,7 +3262,7 @@ fn infer_inner(
                     if let Err(error) = subst.unify(&param_tys[0], &receiver_ty) {
                         d.push_error(error.to_diag(match target {
                             CallTarget::Receiver { receiver, .. } => receiver.source,
-                            CallTarget::Expr(_) => expr.source,
+                            CallTarget::Expr(_) | CallTarget::Qualified { .. } => expr.source,
                         }));
                     }
                     &param_tys[1..]
@@ -3620,6 +3852,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
                 CallTarget::Receiver { receiver, .. } => {
                     check_no_control_flow(receiver, loop_depth, d)
                 }
+                CallTarget::Qualified { .. } => {}
             }
             for arg in args {
                 check_no_control_flow(arg, loop_depth, d);

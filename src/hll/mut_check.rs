@@ -269,6 +269,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostic
                         check_borrow_mutability(kind, receiver, scope, func, d);
                     }
                 }
+                CallTarget::Qualified { .. } => {}
             }
             for arg in args {
                 check_expr(arg, scope, func, d);

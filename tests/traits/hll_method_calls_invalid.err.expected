@@ -1,16 +1,16 @@
-error: at 218:20: [HTC-TraitBoundCycle] trait-bound cycle: CycleFirst -> CycleSecond -> CycleFirst
+error: at 220:20: [HTC-TraitBoundCycle] trait-bound cycle: CycleFirst -> CycleSecond -> CycleFirst
      |
- 217 | trait CycleFirst: CycleSecond {}
- 218 | trait CycleSecond: CycleFirst {}
+ 219 | trait CycleFirst: CycleSecond {}
+ 220 | trait CycleSecond: CycleFirst {}
      |                    ^^^^^^^^^^
- 219 | 
-     |
-error: at 220:26: [HTC-TraitBoundCycle] trait-bound cycle: ExpandingCycle -> ExpandingCycle
-     |
- 219 | 
- 220 | trait<X> ExpandingCycle: ExpandingCycle<[X; 1]> {}
-     |                          ^^^^^^^^^^^^^^^^^^^^^^
  221 | 
+     |
+error: at 222:26: [HTC-TraitBoundCycle] trait-bound cycle: ExpandingCycle -> ExpandingCycle
+     |
+ 221 | 
+ 222 | trait<X> ExpandingCycle: ExpandingCycle<[X; 1]> {}
+     |                          ^^^^^^^^^^^^^^^^^^^^^^
+ 223 | 
      |
 error: at 145:3: [HTC-ImplMethodSafetyMismatch] In function '<UnsafeMethodTarget as SafeContract>::safety_mismatch': impl method 'safety_mismatch' is unsafe, but trait declaration is safe
      |
@@ -26,39 +26,40 @@ error: at 153:3: [HTC-ImplMethodSafetyMismatch] In function '<UnsafeMethodTarget
      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  154 | }
      |
-error: at 212:29: [HTC-UndeclaredTrait] trait 'MissingSupertraitUse' has undeclared trait bound 'MissingSupertrait'
+error: at 214:29: [HTC-UndeclaredTrait] trait 'MissingSupertraitUse' has undeclared trait bound 'MissingSupertrait'
      |
- 211 | 
- 212 | trait MissingSupertraitUse: MissingSupertrait {}
-     |                             ^^^^^^^^^^^^^^^^^
  213 | 
-     |
-error: at 215:29: [HTC-TraitArgArityMismatch] trait bound 'GenericSupertrait' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
-     |
- 214 | trait<X> GenericSupertrait {}
- 215 | trait WrongSupertraitArity: GenericSupertrait {}
+ 214 | trait MissingSupertraitUse: MissingSupertrait {}
      |                             ^^^^^^^^^^^^^^^^^
- 216 | 
+ 215 | 
      |
-error: at 231:1: [HTC-BoundNotSatisfied] impl of 'RequiresCopySelf' for LinearSupertraitTarget requires Self: Copy
+error: at 217:29: [HTC-TraitArgArityMismatch] trait bound 'GenericSupertrait' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
      |
- 230 | # covers: implementing a trait requires its marker self-bounds
- 231 | impl RequiresCopySelf for LinearSupertraitTarget {}
+ 216 | trait<X> GenericSupertrait {}
+ 217 | trait WrongSupertraitArity: GenericSupertrait {}
+     |                             ^^^^^^^^^^^^^^^^^
+ 218 | 
+     |
+error: at 233:1: [HTC-BoundNotSatisfied] impl of 'RequiresCopySelf' for LinearSupertraitTarget requires Self: Copy
+     |
+ 232 | # covers: implementing a trait requires its marker self-bounds
+ 233 | impl RequiresCopySelf for LinearSupertraitTarget {}
      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 232 | 
+ 234 | 
      |
-error: at 240:1: [HTC-BoundNotSatisfied] impl of 'RequiresParent<i64>' for WrongSupertraitArgument requires Self: RequiredParent<i64>
+error: at 242:1: [HTC-BoundNotSatisfied] impl of 'RequiresParent<i64>' for WrongSupertraitArgument requires Self: RequiredParent<i64>
      |
- 239 | # covers: implementing a trait requires the correctly instantiated supertrait
- 240 | impl RequiresParent<i64> for WrongSupertraitArgument {}
+ 241 | # covers: implementing a trait requires the correctly instantiated supertrait
+ 242 | impl RequiresParent<i64> for WrongSupertraitArgument {}
      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 241 | 
+ 243 | 
      |
-error: at 292:1: [HTC-BoundNotSatisfied] impl of 'MissingGenericImplChild' for T requires Self: MissingGenericImplParent
+error: at 294:1: [HTC-BoundNotSatisfied] impl of 'MissingGenericImplChild' for T requires Self: MissingGenericImplParent
      |
- 291 | # covers: a generic impl must declare evidence for its supertrait obligation
- 292 | impl<T> MissingGenericImplChild for T {}
+ 293 | # covers: a generic impl must declare evidence for its supertrait obligation
+ 294 | impl<T> MissingGenericImplChild for T {}
      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 295 | 
      |
 error: at 24:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_trait': receiver call 'AmbiguousTraitTarget.collide' is ambiguous; trait candidates: <AmbiguousTraitTarget as First>::collide, <AmbiguousTraitTarget as Second>::collide
     |
@@ -158,66 +159,157 @@ error: at 183:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_bound_and_im
      |         ^^^^^^^^^^^^^^^
  184 | }
      |
-error: at 199:9: [HTC-BoundNotSatisfied] In function 'reject_bound_method_argument': type argument 'WrongBoundArgument' for 'bound_generic::U' does not satisfy trait bound 'BoundArgument'
+error: at 201:9: [HTC-BoundNotSatisfied] In function 'reject_bound_method_argument': type argument 'WrongBoundArgument' for 'bound_generic::U' does not satisfy trait bound 'BoundArgument'
      |
- 198 | ) {
- 199 |   value.bound_generic<WrongBoundArgument>(argument);
+ 200 | ) {
+ 201 |   value.bound_generic<WrongBoundArgument>(argument);
      |         ^^^^^^^^^^^^^
- 200 | }
+ 202 | }
      |
-error: at 204:9: [HTC-UnsafeRequired] In function 'reject_bound_unsafe': call to unsafe trait method 'bound_unsafe' requires unsafe block
+error: at 206:9: [HTC-UnsafeRequired] In function 'reject_bound_unsafe': call to unsafe trait method 'bound_unsafe' requires unsafe block
      |
- 203 | fn<T: GenericBoundMethod> reject_bound_unsafe(value: &T) {
- 204 |   value.bound_unsafe();
+ 205 | fn<T: GenericBoundMethod> reject_bound_unsafe(value: &T) {
+ 206 |   value.bound_unsafe();
      |         ^^^^^^^^^^^^
- 205 | }
+ 207 | }
      |
-error: at 209:9: [HTC-UnresolvedReceiverCall] In function 'reject_unbounded_receiver': no method, callable field, or free function 'bound_generic' applies to receiver type &T
+error: at 211:9: [HTC-UnresolvedReceiverCall] In function 'reject_unbounded_receiver': no method, callable field, or free function 'bound_generic' applies to receiver type &T
      |
- 208 | fn<T> reject_unbounded_receiver(value: &T) {
- 209 |   value.bound_generic<WrongBoundArgument>(value);
+ 210 | fn<T> reject_unbounded_receiver(value: &T) {
+ 211 |   value.bound_generic<WrongBoundArgument>(value);
      |         ^^^^^^^^^^^^^
- 210 | }
+ 212 | }
      |
-error: at 224:9: [HTC-UnresolvedReceiverCall] In function 'expanding_cycle_lookup': no method, callable field, or free function 'missing_cycle_method' applies to receiver type &T
+error: at 226:9: [HTC-UnresolvedReceiverCall] In function 'expanding_cycle_lookup': no method, callable field, or free function 'missing_cycle_method' applies to receiver type &T
      |
- 223 | fn<T: ExpandingCycle<i64>> expanding_cycle_lookup(value: &T) {
- 224 |   value.missing_cycle_method();
+ 225 | fn<T: ExpandingCycle<i64>> expanding_cycle_lookup(value: &T) {
+ 226 |   value.missing_cycle_method();
      |         ^^^^^^^^^^^^^^^^^^^^
- 225 | }
+ 227 | }
      |
-error: at 252:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_inherited_method': receiver call 'T.inherited_collision' is ambiguous; trait candidates: <T as InheritedCollision<i64>>::inherited_collision, <T as InheritedCollision<bool>>::inherited_collision
+error: at 254:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_inherited_method': receiver call 'T.inherited_collision' is ambiguous; trait candidates: <T as InheritedCollision<i64>>::inherited_collision, <T as InheritedCollision<bool>>::inherited_collision
      |
- 251 | fn<T: CollisionDiamond> ambiguous_inherited_method(value: &T) {
- 252 |   value.inherited_collision();
+ 253 | fn<T: CollisionDiamond> ambiguous_inherited_method(value: &T) {
+ 254 |   value.inherited_collision();
      |         ^^^^^^^^^^^^^^^^^^^
- 253 | }
+ 255 | }
      |
-error: at 265:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_redeclared_method': receiver call 'T.redeclared' is ambiguous; trait candidates: <T as RedeclaredChild>::redeclared, <T as RedeclaredParent>::redeclared
+error: at 267:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_redeclared_method': receiver call 'T.redeclared' is ambiguous; trait candidates: <T as RedeclaredChild>::redeclared, <T as RedeclaredParent>::redeclared
      |
- 264 | fn<T: RedeclaredChild> ambiguous_redeclared_method(value: &T) {
- 265 |   value.redeclared();
+ 266 | fn<T: RedeclaredChild> ambiguous_redeclared_method(value: &T) {
+ 267 |   value.redeclared();
      |         ^^^^^^^^^^
- 266 | }
+ 268 | }
      |
-error: at 280:9: [HTC-BoundNotSatisfied] In function 'reject_inherited_method_argument': type argument 'LinearSupertraitTarget' for 'inherited_bounded::U' does not satisfy bound 'Copy'
+error: at 282:9: [HTC-BoundNotSatisfied] In function 'reject_inherited_method_argument': type argument 'LinearSupertraitTarget' for 'inherited_bounded::U' does not satisfy bound 'Copy'
      |
- 279 | ) {
- 280 |   value.inherited_bounded<LinearSupertraitTarget>(argument);
+ 281 | ) {
+ 282 |   value.inherited_bounded<LinearSupertraitTarget>(argument);
      |         ^^^^^^^^^^^^^^^^^
- 281 | }
+ 283 | }
      |
-error: at 280:9: [HTC-BoundNotSatisfied] In function 'reject_inherited_method_argument': type argument 'LinearSupertraitTarget' for 'inherited_bounded::U' does not satisfy bound 'Drop'
+error: at 282:9: [HTC-BoundNotSatisfied] In function 'reject_inherited_method_argument': type argument 'LinearSupertraitTarget' for 'inherited_bounded::U' does not satisfy bound 'Drop'
      |
- 279 | ) {
- 280 |   value.inherited_bounded<LinearSupertraitTarget>(argument);
+ 281 | ) {
+ 282 |   value.inherited_bounded<LinearSupertraitTarget>(argument);
      |         ^^^^^^^^^^^^^^^^^
- 281 | }
+ 283 | }
      |
-error: at 285:9: [HTC-UnsafeRequired] In function 'reject_inherited_unsafe': call to unsafe trait method 'inherited_dangerous' requires unsafe block
+error: at 287:9: [HTC-UnsafeRequired] In function 'reject_inherited_unsafe': call to unsafe trait method 'inherited_dangerous' requires unsafe block
      |
- 284 | fn<T: InheritedRequirementsChild> reject_inherited_unsafe(value: &T) {
- 285 |   value.inherited_dangerous();
+ 286 | fn<T: InheritedRequirementsChild> reject_inherited_unsafe(value: &T) {
+ 287 |   value.inherited_dangerous();
      |         ^^^^^^^^^^^^^^^^^^^
- 286 | }
+ 288 | }
+     |
+error: at 298:3: [HTC-BoundNotSatisfied] In function 'qualified_missing_impl': type 'WrongBoundArgument' does not satisfy trait 'BoundArgument' required by qualified method
+     |
+ 297 | fn qualified_missing_impl(value: &WrongBoundArgument) {
+ 298 |   <WrongBoundArgument as BoundArgument>::qualified_required(value);
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 299 | }
+     |
+error: at 309:26: [HTC-UnresolvedQualifiedMethod] In function 'qualified_child_does_not_alias_parent': trait 'QualifiedChild' has no method 'parent_only'
+     |
+ 308 | fn<T: QualifiedChild> qualified_child_does_not_alias_parent(value: &T) {
+ 309 |   <T as QualifiedChild>::parent_only(value);
+     |                          ^^^^^^^^^^^
+ 310 | }
+     |
+error: at 314:25: [HTC-UnresolvedQualifiedMethod] In function 'qualified_missing_inherent': type 'WrongBoundArgument' has no inherent method 'missing'
+     |
+ 313 | fn qualified_missing_inherent(value: &WrongBoundArgument) {
+ 314 |   <WrongBoundArgument>::missing(value);
+     |                         ^^^^^^^
+ 315 | }
+     |
+error: at 319:3: [HTC-TraitArgArityMismatch] In function 'qualified_wrong_trait_arity': trait 'GenericSupertrait' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
+     |
+ 318 | fn<T: GenericSupertrait<i64>> qualified_wrong_trait_arity(value: &T) {
+ 319 |   <T as GenericSupertrait>::missing(value);
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 320 | }
+     |
+error: at 324:39: [HTC-UnsafeRequired] In function 'qualified_unsafe_trait': call to unsafe trait method 'trait_dangerous' requires unsafe block
+     |
+ 323 | fn qualified_unsafe_trait(value: &UnsafeMethodTarget) {
+ 324 |   <UnsafeMethodTarget as UnsafeCall>::trait_dangerous(value);
+     |                                       ^^^^^^^^^^^^^^^
+ 325 | }
+     |
+error: at 329:25: [HTC-UnsafeRequired] In function 'qualified_unsafe_inherent': call to unsafe method 'inherent_dangerous' requires unsafe block
+     |
+ 328 | fn qualified_unsafe_inherent(value: &UnsafeMethodTarget) {
+ 329 |   <UnsafeMethodTarget>::inherent_dangerous(value);
+     |                         ^^^^^^^^^^^^^^^^^^
+ 330 | }
+     |
+error: at 342:74: [HTC-TypeMismatch] In function 'qualified_does_not_auto_borrow': type mismatch: expected WrongBoundArgument, found &WrongBoundArgument
+     |
+ 341 | fn qualified_does_not_auto_borrow(value: WrongBoundArgument) {
+ 342 |   <WrongBoundArgument as QualifiedExplicitBorrow>::needs_explicit_borrow(value);
+     |                                                                          ^^^^^
+ 343 | }
+     |
+error: at 347:3: [HTC-UndeclaredTrait] In function 'qualified_unknown_trait': qualified method has undeclared trait 'MissingQualifiedTrait'
+     |
+ 346 | fn qualified_unknown_trait(value: &WrongBoundArgument) {
+ 347 |   <WrongBoundArgument as MissingQualifiedTrait>::missing(value);
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 348 | }
+     |
+error: at 354:3: [HTC-UndeclaredLifetime] In function 'qualified_unknown_lifetime': undeclared lifetime 'missing
+     |
+ 353 | fn<T> qualified_unknown_lifetime(value: &T) {
+ 354 |   <T as QualifiedLifetime<'missing>>::missing(value);
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 355 | }
+     |
+error: at 361:3: [HTC-BoundNotSatisfied] In function 'qualified_bad_trait_argument': type argument 'LinearSupertraitTarget' for trait 'QualifiedBoundedArgument::X' does not satisfy its declared bounds
+     |
+ 360 | fn qualified_bad_trait_argument(value: &WrongBoundArgument) {
+ 361 |   <WrongBoundArgument as QualifiedBoundedArgument<LinearSupertraitTarget>>::missing(value);
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 362 | }
+     |
+error: at 366:19: [HTC-AmbiguousReceiverCall] In function 'ambiguous_qualified_inherent': qualified call '<Overlap<i64>>::duplicate' is ambiguous; inherent candidates: <Overlap<T>>::duplicate, <Overlap<i64>>::duplicate
+     |
+ 365 | fn ambiguous_qualified_inherent(value: Overlap<i64>) {
+ 366 |   <Overlap<i64>>::duplicate(value);
+     |                   ^^^^^^^^^
+ 367 | }
+     |
+error: at 371:19: [HTC-BoundNotSatisfied] In function 'qualified_method_bound_failure': type argument 'Linear' for 'bounded::U' does not satisfy bound 'Copy'
+     |
+ 370 | fn qualified_method_bound_failure(value: Generic<i64>, linear: Linear) {
+ 371 |   <Generic<i64>>::bounded<Linear>(value, linear);
+     |                   ^^^^^^^
+ 372 | }
+     |
+error: at 371:19: [HTC-BoundNotSatisfied] In function 'qualified_method_bound_failure': type argument 'Linear' for 'bounded::U' does not satisfy bound 'Drop'
+     |
+ 370 | fn qualified_method_bound_failure(value: Generic<i64>, linear: Linear) {
+ 371 |   <Generic<i64>>::bounded<Linear>(value, linear);
+     |                   ^^^^^^^
+ 372 | }
      |

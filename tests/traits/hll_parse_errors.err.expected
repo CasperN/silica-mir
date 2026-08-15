@@ -96,3 +96,10 @@ error: at 65:24: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Dupl
     |                        ^^^^^^^^^^^^^^
  66 |   value;
     |
+error: at 71:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called
+    |
+ 70 | fn bare_qualified_method() {
+ 71 |   <S>::missing;
+    |   ^^^^^^^^^^^^
+ 72 | }
+    |
