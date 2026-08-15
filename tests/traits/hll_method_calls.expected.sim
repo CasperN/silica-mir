@@ -466,6 +466,166 @@ struct BorrowTarget: Copy + Drop {
   value: i64
 }
 
+impl BorrowTarget {
+  fn<'s0, 's1> inherent_auto_shared(recv: & 's0 BorrowTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> inherent_auto_mut(recv: &mut 's0 BorrowTarget) {
+    $tmp_0: unit;
+    old: i64;
+    $tmp_1: unit;
+    $tmp_2: i64;
+    entry:
+      old = move recv.*.value;
+      recv.*.value = 4;
+      unborrow recv;
+      $tmp_1 = unit;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move old;
+      drop $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      require_uninit old;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> inherent_auto_out(recv: &out 's0 BorrowTarget) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    $tmp_2: BorrowTarget;
+    entry:
+      $tmp_2.value = 5;
+      recv.* = move $tmp_2;
+      unborrow recv;
+      $tmp_1 = unit;
+      require_uninit $tmp_2;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> inherent_auto_drop(recv: &drop 's0 BorrowTarget) {
+    $tmp_0: unit;
+    $tmp_1: BorrowTarget;
+    entry:
+      $tmp_1 = move recv.*;
+      unborrow recv;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> inherent_auto_uninit(recv: &uninit 's0 BorrowTarget) {
+    $tmp_0: unit;
+    entry:
+      unborrow recv;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+}
+
+trait AutoBorrowMethods {
+  fn<'s0, 's1> trait_auto_shared(recv: & 's0 BorrowTarget, $return: &out 's1 i64);
+  fn<'s0> trait_auto_mut(recv: &mut 's0 BorrowTarget);
+  fn<'s0> trait_auto_out(recv: &out 's0 BorrowTarget);
+  fn<'s0> trait_auto_drop(recv: &drop 's0 BorrowTarget);
+  fn<'s0> trait_auto_uninit(recv: &uninit 's0 BorrowTarget);
+}
+
+impl AutoBorrowMethods for BorrowTarget {
+  fn<'s0, 's1> trait_auto_shared(recv: & 's0 BorrowTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      unborrow recv;
+      require_uninit $return;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> trait_auto_mut(recv: &mut 's0 BorrowTarget) {
+    $tmp_0: unit;
+    old: i64;
+    $tmp_1: unit;
+    $tmp_2: i64;
+    entry:
+      old = move recv.*.value;
+      recv.*.value = 6;
+      unborrow recv;
+      $tmp_1 = unit;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_2 = move old;
+      drop $tmp_2;
+      require_uninit $tmp_2;
+      $tmp_0 = unit;
+      require_uninit old;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> trait_auto_out(recv: &out 's0 BorrowTarget) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    $tmp_2: BorrowTarget;
+    entry:
+      $tmp_2.value = 7;
+      recv.* = move $tmp_2;
+      unborrow recv;
+      $tmp_1 = unit;
+      require_uninit $tmp_2;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> trait_auto_drop(recv: &drop 's0 BorrowTarget) {
+    $tmp_0: unit;
+    $tmp_1: BorrowTarget;
+    entry:
+      $tmp_1 = move recv.*;
+      unborrow recv;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+  fn<'s0> trait_auto_uninit(recv: &uninit 's0 BorrowTarget) {
+    $tmp_0: unit;
+    entry:
+      unborrow recv;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit recv;
+      return
+  }
+}
+
 fn<'s0, 's1> auto_shared(recv: & 's0 BorrowTarget, $return: &out 's1 i64) {
   entry:
     $return.* = copy recv.*.value;
@@ -678,6 +838,194 @@ fn call_auto_uninit_after_drop(value: BorrowTarget) {
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
+    return
+}
+
+fn<'s0> call_inherent_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
+  $tmp_0: & BorrowTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <BorrowTarget>::inherent_auto_shared(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_inherent_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+  local: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &mut BorrowTarget;
+  entry:
+    local = move value;
+    $tmp_1 = &mut local;
+    call <BorrowTarget>::inherent_auto_mut(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move local;
+    unborrow $return;
+    require_uninit local;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_inherent_auto_out($return: &out 's0 BorrowTarget) {
+  value: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &out BorrowTarget;
+  entry:
+    $tmp_1 = &out value;
+    call <BorrowTarget>::inherent_auto_out(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move value;
+    unborrow $return;
+    require_uninit value;
+    require_uninit $return;
+    return
+}
+
+fn call_inherent_auto_drop(value: BorrowTarget) {
+  $tmp_0: unit;
+  local: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &drop BorrowTarget;
+  entry:
+    local = move value;
+    $tmp_2 = &drop local;
+    call <BorrowTarget>::inherent_auto_drop(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit local;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn call_inherent_auto_uninit() {
+  $tmp_0: unit;
+  value: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &uninit BorrowTarget;
+  entry:
+    $tmp_2 = &uninit value;
+    call <BorrowTarget>::inherent_auto_uninit(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit value;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn<'s0> call_trait_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
+  $tmp_0: & BorrowTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = & value;
+    $tmp_1 = &out $return.*;
+    call <BorrowTarget as AutoBorrowMethods>::trait_auto_shared(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_trait_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+  local: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &mut BorrowTarget;
+  entry:
+    local = move value;
+    $tmp_1 = &mut local;
+    call <BorrowTarget as AutoBorrowMethods>::trait_auto_mut(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move local;
+    unborrow $return;
+    require_uninit local;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+fn<'s0> call_trait_auto_out($return: &out 's0 BorrowTarget) {
+  value: BorrowTarget;
+  $tmp_0: unit;
+  $tmp_1: &out BorrowTarget;
+  entry:
+    $tmp_1 = &out value;
+    call <BorrowTarget as AutoBorrowMethods>::trait_auto_out(move $tmp_1);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move value;
+    unborrow $return;
+    require_uninit value;
+    require_uninit $return;
+    return
+}
+
+fn call_trait_auto_drop(value: BorrowTarget) {
+  $tmp_0: unit;
+  local: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &drop BorrowTarget;
+  entry:
+    local = move value;
+    $tmp_2 = &drop local;
+    call <BorrowTarget as AutoBorrowMethods>::trait_auto_drop(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit local;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    require_uninit value;
+    return
+}
+
+fn call_trait_auto_uninit() {
+  $tmp_0: unit;
+  value: BorrowTarget;
+  $tmp_1: unit;
+  $tmp_2: &uninit BorrowTarget;
+  entry:
+    $tmp_2 = &uninit value;
+    call <BorrowTarget as AutoBorrowMethods>::trait_auto_uninit(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit value;
+    drop $tmp_0;
+    require_uninit $tmp_0;
     return
 }
 

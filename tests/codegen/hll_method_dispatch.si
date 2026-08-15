@@ -1,0 +1,23 @@
+struct Counter: Copy + Drop { value: i32 }
+
+impl Counter {
+  fn inherent_value(recv: & Counter) -> i32 { recv.*.value }
+}
+
+trait CounterValue {
+  fn trait_value(recv: & Counter) -> i32;
+}
+
+impl CounterValue for Counter {
+  fn trait_value(recv: & Counter) -> i32 { recv.*.value }
+}
+
+fn free_value(recv: & Counter) -> i32 { recv.*.value }
+
+# covers: HLL receiver calls lower, elaborate, monomorphize, and codegen
+fn main() -> i32 {
+  let counter = Counter { value: 14 };
+  counter.inherent_value()
+    + counter.trait_value()
+    + counter.free_value()
+}

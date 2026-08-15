@@ -83,16 +83,14 @@ fn match_as_stmt(t: Tag, r: &out i64) {
   }
 }
 
-# Postfix chain on a match result — `x match { ... } .foo` should still
-# parse as a chain, not treat the match as a terminal statement. Uses
-# a field-access placeholder since UFCS method calls aren't in yet.
+# A receiver call on a match result remains part of the postfix chain.
 struct Wrap: Copy + Drop { inner: i64 }
+fn unwrap(recv: Wrap) -> i64 { recv.inner }
 fn postfix_chain_on_match(t: Tag) -> i64 {
-  let w = t match {
+  (t match {
     A(x) => Wrap { inner: x },
     B(y) => Wrap { inner: y },
-  };
-  w.inner
+  }).unwrap()
 }
 
 # ---------- Call evaluation order ----------

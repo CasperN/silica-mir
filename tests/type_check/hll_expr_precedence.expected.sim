@@ -232,26 +232,38 @@ struct Wrap: Copy + Drop {
   inner: i64
 }
 
+fn<'s0> unwrap(recv: Wrap, $return: &out 's0 i64) {
+  entry:
+    $return.* = move recv.inner;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit recv;
+    return
+}
+
 fn<'s0> postfix_chain_on_match(t: Tag, $return: &out 's0 i64) {
-  w: Wrap;
+  $tmp_0: Wrap;
   x: i64;
   y: i64;
+  $tmp_1: &out i64;
   entry:
     switchEnum(t) [A: switch_A_0, B: switch_B_1]
   switch_A_0:
     x = copy t as A;
-    w.inner = move x;
+    $tmp_0.inner = move x;
     require_uninit x;
     goto switch_merge_2
   switch_B_1:
     y = copy t as B;
-    w.inner = move y;
+    $tmp_0.inner = move y;
     require_uninit y;
     goto switch_merge_2
   switch_merge_2:
-    $return.* = move w.inner;
+    $tmp_1 = &out $return.*;
+    call unwrap(move $tmp_0, move $tmp_1);
     unborrow $return;
-    require_uninit w;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
     require_uninit $return;
     drop t;
     require_uninit t;

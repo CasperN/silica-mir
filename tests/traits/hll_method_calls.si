@@ -175,6 +175,42 @@ fn exact_outranks_auto_borrow(value: Ranked) {
 
 struct BorrowTarget: Copy + Drop { value: i64 }
 
+impl BorrowTarget {
+  fn inherent_auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
+  fn inherent_auto_mut(recv: &mut BorrowTarget) {
+    let old = recv.*.value;
+    recv.*.value = 4;
+    old;
+  }
+  fn inherent_auto_out(recv: &out BorrowTarget) {
+    recv.* = BorrowTarget { value: 5 };
+  }
+  fn inherent_auto_drop(recv: &drop BorrowTarget) { recv.*; }
+  fn inherent_auto_uninit(recv: &uninit BorrowTarget) {}
+}
+
+trait AutoBorrowMethods {
+  fn trait_auto_shared(recv: & BorrowTarget) -> i64;
+  fn trait_auto_mut(recv: &mut BorrowTarget);
+  fn trait_auto_out(recv: &out BorrowTarget);
+  fn trait_auto_drop(recv: &drop BorrowTarget);
+  fn trait_auto_uninit(recv: &uninit BorrowTarget);
+}
+
+impl AutoBorrowMethods for BorrowTarget {
+  fn trait_auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
+  fn trait_auto_mut(recv: &mut BorrowTarget) {
+    let old = recv.*.value;
+    recv.*.value = 6;
+    old;
+  }
+  fn trait_auto_out(recv: &out BorrowTarget) {
+    recv.* = BorrowTarget { value: 7 };
+  }
+  fn trait_auto_drop(recv: &drop BorrowTarget) { recv.*; }
+  fn trait_auto_uninit(recv: &uninit BorrowTarget) {}
+}
+
 fn auto_shared(recv: & BorrowTarget) -> i64 { recv.*.value }
 fn auto_mut(recv: &mut BorrowTarget) {
   let old = recv.*.value;
@@ -227,6 +263,60 @@ fn call_auto_uninit() {
 fn call_auto_uninit_after_drop(value: BorrowTarget) {
   let mut local = value;
   local.auto_uninit();
+}
+
+# covers: inherent methods support every receiver auto-borrow kind
+fn call_inherent_auto_shared(value: BorrowTarget) -> i64 {
+  value.inherent_auto_shared()
+}
+
+fn call_inherent_auto_mut(value: BorrowTarget) -> BorrowTarget {
+  let mut local = value;
+  local.inherent_auto_mut();
+  local
+}
+
+fn call_inherent_auto_out() -> BorrowTarget {
+  let mut value: BorrowTarget;
+  value.inherent_auto_out();
+  value
+}
+
+fn call_inherent_auto_drop(value: BorrowTarget) {
+  let mut local = value;
+  local.inherent_auto_drop();
+}
+
+fn call_inherent_auto_uninit() {
+  let mut value: BorrowTarget;
+  value.inherent_auto_uninit();
+}
+
+# covers: trait methods support every receiver auto-borrow kind
+fn call_trait_auto_shared(value: BorrowTarget) -> i64 {
+  value.trait_auto_shared()
+}
+
+fn call_trait_auto_mut(value: BorrowTarget) -> BorrowTarget {
+  let mut local = value;
+  local.trait_auto_mut();
+  local
+}
+
+fn call_trait_auto_out() -> BorrowTarget {
+  let mut value: BorrowTarget;
+  value.trait_auto_out();
+  value
+}
+
+fn call_trait_auto_drop(value: BorrowTarget) {
+  let mut local = value;
+  local.trait_auto_drop();
+}
+
+fn call_trait_auto_uninit() {
+  let mut value: BorrowTarget;
+  value.trait_auto_uninit();
 }
 
 struct UnsafeTarget: Copy + Drop { value: i64 }
