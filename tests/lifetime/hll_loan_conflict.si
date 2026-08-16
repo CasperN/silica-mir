@@ -20,3 +20,20 @@ fn defer_loan_conflict() {
     defer { let y = r.*; };
     x = 2;
 }
+
+# ---------- LT-LoanConflict: write while a phantom lifetime view is live ----------
+
+struct<'a, T> PhantomData: Copy + Drop {}
+struct<'a, T> SpanView: Copy + Drop { ptr: *T, len: u64, marker: PhantomData<'a, T> }
+
+fn<'a, T: Copy + Drop> make_span(r: &'a T) -> SpanView<'a, T> {
+    let ptr = r as *T;
+    SpanView { ptr: ptr, len: 1u64, marker: PhantomData {} }
+}
+
+fn phantom_loan_conflict() {
+    let mut x: i64 = 42;
+    let span = make_span(&x);
+    x = 100;
+    let _s = span;
+}

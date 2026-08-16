@@ -195,15 +195,11 @@ Use `tests/programs/stdlib.si` as the executable design probe. Keep library
 APIs honest about safety and ownership, and land compiler prerequisites as
 independent, fixture-backed changes in this order:
 
-1. **Represent lifetime-only ownership.** Add a zero-sized phantom/lifetime
-   field suitable for borrowed views. The current first-element reference
-   gives `Span` a tracked lifetime but cannot represent an empty span soundly.
-
-2. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
+1. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
    for `Box`, `Vec`, and their elements so ordinary scope exit releases owned
    allocations. Preserve explicit consuming operations such as `into_inner`.
 
-3. **Support static methods.** `Box::new(x)` should interpreted as a static
+2. **Support static methods.** `Box::new(x)` should interpreted as a static
    method on `Box<T>` however, it is parsed as an enum variant constructor. 
 
 **Stop condition:** the fixture uses safe, generic `Box`, `Vec`, and nonempty

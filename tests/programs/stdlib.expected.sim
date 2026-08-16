@@ -82,14 +82,18 @@ impl<T: Move> Box<T> {
   }
 }
 
+struct<'a, T> PhantomData: Copy + Drop {
+}
+
 struct<'a, T> Span: Copy + Drop {
-  data: &'a T
+  data: *T
   len: u64
+  _marker: PhantomData<'a, T>
 }
 
 fn<'a, 's0, T> span_from_raw_parts(data: *T, len: u64, $return: &out 's0 Span<'a, T>) {
   entry:
-    $return.*.data = ptr_cast(move data, &'a T);
+    $return.*.data = move data;
     $return.*.len = move len;
     unborrow $return;
     require_uninit $return;
@@ -109,18 +113,15 @@ impl<'a, T> Span<'a, T> {
       return
   }
   fn<'s0, 's1> get_unchecked(recv: &'s0 Span<'a, T>, index: u64, $return: &out 's1 &'a T) {
-    base: *T;
     item: *T;
     $tmp_0: &out *T;
     entry:
-      base = ptr_cast(copy recv.*.data, *T);
       $tmp_0 = &out item;
-      call ptr_offset<T>(move base, move index, move $tmp_0);
+      call ptr_offset<T>(copy recv.*.data, move index, move $tmp_0);
       require_uninit $tmp_0;
       $return.* = ptr_cast(move item, &'a T);
       unborrow $return;
       require_uninit item;
-      require_uninit base;
       require_uninit $return;
       require_uninit index;
       drop recv;
@@ -520,7 +521,7 @@ fn<T: Drop + Move> vec_free(vec: Vec<T>) {
     return
 }
 
-fn<'s3, 's0> main($return: &out 's0 i32) {
+fn<'s4, 's0> main($return: &out 's0 i32) {
   boxed: Box<i64>;
   $tmp_0: &out Box<i64>;
   box_place: &mut i64;
@@ -544,7 +545,7 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
   $tmp_14: unit;
   $tmp_15: &mut Vec<i64>;
   observed: i64;
-  $tmp_16: &'s3 Vec<i64>;
+  $tmp_16: &'s4 Vec<i64>;
   $tmp_17: &out i64;
   $tmp_18: unit;
   $tmp_19: i64;
@@ -608,7 +609,7 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
     require_uninit $tmp_13;
     $tmp_16 = &values;
     $tmp_17 = &out observed;
-    call inspect_vec<'s3>(move $tmp_16, move $tmp_17);
+    call inspect_vec<'s4>(move $tmp_16, move $tmp_17);
     require_uninit $tmp_17;
     require_uninit $tmp_16;
     call vec_free<i64>(move values);

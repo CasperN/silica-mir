@@ -19,3 +19,24 @@ error: at 21:5: [LT-LoanConflict] In function 'defer_loan_conflict': cannot writ
  22 | }
     |
   hint: the borrow of 'r' is active until its last use or explicit unborrow.
+error: at 37:5: [LT-LoanConflict] In function 'phantom_loan_conflict': cannot write to 'x': already borrowed by 'span'
+    |
+ 35 |     let mut x: i64 = 42;
+ 36 |     let span = make_span(&x);
+    |                ------------- borrow of 'x' occurs here
+ 37 |     x = 100;
+    |     ^^^^^^^
+ 38 |     let _s = span;
+    |
+  hint: the borrow of 'span' is active until its last use or explicit unborrow.
+error: at 39:2: [LT-LoanConflict] In function 'phantom_loan_conflict': cannot move from 'x': already borrowed by '_s'
+    |
+ 35 |     let mut x: i64 = 42;
+ 36 |     let span = make_span(&x);
+    |                ------------- borrow of 'x' occurs here
+ 37 |     x = 100;
+ 38 |     let _s = span;
+ 39 | }
+    |  ^
+    |
+  hint: the borrow of '_s' is active until its last use or explicit unborrow.

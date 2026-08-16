@@ -291,3 +291,15 @@ fn call_generic_unsafe() -> i64 { unsafe { unsafe_identity<i64>(11) } }
 fn test_unsafe_deref(ptr: *i64) -> i64 {
   unsafe { ptr.* }
 }
+
+# covers: zero-sized phantom struct carrying a lifetime and type parameter
+struct<'a, T> PhantomData: Copy + Drop {}
+struct<'a, T> SpanView: Copy + Drop { ptr: *T, len: u64, marker: PhantomData<'a, T> }
+
+fn<'a, T> make_empty_span(p: *T) -> SpanView<'a, T> {
+  SpanView { ptr: p, len: 0u64, marker: PhantomData {} }
+}
+
+fn<'a> use_empty_span(x: &'a i64) -> SpanView<'a, i64> {
+  make_empty_span<'a, i64>(x as *i64)
+}

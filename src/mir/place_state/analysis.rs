@@ -310,10 +310,18 @@ pub(super) fn is_state_fully_init(state: &InitState) -> bool {
 pub(super) fn expand_uniform(
     state: &InitState,
     fields: &[StructField],
+    prog: &IndexedProgram,
 ) -> BTreeMap<InitSlot, InitState> {
     fields
         .iter()
-        .map(|f| (InitSlot::Field(f.name.clone()), state.clone()))
+        .map(|f| {
+            let field_state = if is_trivially_init(&f.ty, prog) {
+                InitState::Init
+            } else {
+                state.clone()
+            };
+            (InitSlot::Field(f.name.clone()), field_state)
+        })
         .collect()
 }
 
@@ -504,7 +512,7 @@ pub(super) fn write_at(
                 return;
             };
             if !matches!(state, InitState::Partial(_)) {
-                *state = InitState::Partial(expand_uniform(state, &fields));
+                *state = InitState::Partial(expand_uniform(state, &fields, prog));
             }
             let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {

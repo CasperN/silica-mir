@@ -270,19 +270,25 @@ pub(super) fn walk_ref_places(
             }
             match prog.types.get(name) {
                 Some(TypeDecl::Struct(s)) => {
-                    let fields: Option<Vec<_>> = s
-                        .fields
-                        .iter()
-                        .map(|f| {
-                            s.meta
-                                .try_substitute(&f.ty, lifetime_args, args)
-                                .map(|ty| (f.name.clone(), ty))
-                        })
-                        .collect();
-                    if let Some(fields) = fields {
-                        for (fname, fty) in fields {
-                            let sub = field_place(place.clone(), fname);
-                            walk_ref_places(&sub, &fty, prog, visited, on_ref);
+                    if s.fields.is_empty() {
+                        for lt in lifetime_args {
+                            on_ref(place, RefKind::Shared, &Some(lt.clone()));
+                        }
+                    } else {
+                        let fields: Option<Vec<_>> = s
+                            .fields
+                            .iter()
+                            .map(|f| {
+                                s.meta
+                                    .try_substitute(&f.ty, lifetime_args, args)
+                                    .map(|ty| (f.name.clone(), ty))
+                            })
+                            .collect();
+                        if let Some(fields) = fields {
+                            for (fname, fty) in fields {
+                                let sub = field_place(place.clone(), fname);
+                                walk_ref_places(&sub, &fty, prog, visited, on_ref);
+                            }
                         }
                     }
                     // Arity-mismatched Instance: skip the walk. typecheck

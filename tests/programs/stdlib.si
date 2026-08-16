@@ -38,24 +38,29 @@ impl<T: Move> Box<T> {
 }
 
 
+# PhantomData<'a, T>
+#
+# A zero-sized phantom marker representing lifetime and type ownership.
+
+struct<'a, T> PhantomData: Copy + Drop {}
+
+
 # Span<'a, T>
 #
-# The first-element reference carries the lifetime. Constructing a span from
-# raw parts and indexing it are unsafe. This representation cannot describe an
-# empty span without a lifetime-only/phantom field.
+# A borrowed view of a contiguous slice of elements. Constructing a span from
+# raw parts and indexing it are unsafe.
 
-struct<'a, T> Span: Copy + Drop { data: &'a T, len: u64 }
+struct<'a, T> Span: Copy + Drop { data: *T, len: u64, _marker: PhantomData<'a, T> }
 
 unsafe fn<'a, T> span_from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
-  Span { data: data as &'a T, len: len }
+  Span { data: data, len: len, _marker: PhantomData {} }
 }
 
 impl<'a, T> Span<'a, T> {
   fn len(recv: &Self) -> u64 { recv.*.len }
 
   unsafe fn get_unchecked(recv: &Self, index: u64) -> &'a T {
-    let base = recv.*.data as *T;
-    let item = ptr_offset(base, index);
+    let item = ptr_offset(recv.*.data, index);
     item as &'a T
   }
 }

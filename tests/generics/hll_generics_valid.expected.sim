@@ -646,3 +646,37 @@ fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
     require_uninit ptr;
     return
 }
+
+struct<'a, T> PhantomData: Copy + Drop {
+}
+
+struct<'a, T> SpanView: Copy + Drop {
+  ptr: *T
+  len: u64
+  marker: PhantomData<'a, T>
+}
+
+fn<'a, 's0, T> make_empty_span(p: *T, $return: &out 's0 SpanView<'a, T>) {
+  entry:
+    $return.*.ptr = move p;
+    $return.*.len = 0u64;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit p;
+    return
+}
+
+fn<'a, 's0> use_empty_span(x: &'a i64, $return: &out 's0 SpanView<'a, i64>) {
+  $tmp_0: *i64;
+  $tmp_1: &out SpanView<'a, i64>;
+  entry:
+    $tmp_0 = ptr_cast(move x, *i64);
+    $tmp_1 = &out $return.*;
+    call make_empty_span<'a, i64>(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
