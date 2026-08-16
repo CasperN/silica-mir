@@ -68,3 +68,71 @@ fn<'a, 's0> generic_ref_identity(x: &'a i64, $return: &out 's0 &'a i64) {
     require_uninit x;
     return
 }
+
+struct<'x> Ref: Copy + Drop {
+  p: &'x i64
+}
+
+fn<'a, 's0> mk_ref_via_let(p: &'a i64, $return: &out 's0 Ref<'a>) {
+  r: Ref<'a>;
+  entry:
+    r.p = move p;
+    $return.* = move r;
+    unborrow $return;
+    require_uninit r;
+    require_uninit $return;
+    require_uninit p;
+    return
+}
+
+fn<'a, 's0> project_ref(r: Ref<'a>, $return: &out 's0 &'a i64) {
+  entry:
+    $return.* = move r.p;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit r;
+    return
+}
+
+fn<'a, 's0, 's1> project_ref_through_borrow(r: &'s0 Ref<'a>, $return: &out 's1 &'a i64) {
+  entry:
+    $return.* = copy r.*.p;
+    unborrow $return;
+    unborrow r;
+    require_uninit $return;
+    require_uninit r;
+    return
+}
+
+enum<'y, T> Held: Copy + Drop {
+  One: &'y T
+}
+
+fn<'a, 's0, T> unwrap_held(h: Held<'a, T>, $return: &out 's0 &'a T) {
+  inner: &'a T;
+  entry:
+    switchEnum(h) [One: switch_One_0]
+  switch_One_0:
+    inner = copy h as One;
+    unborrow h as One;
+    $return.* = move inner;
+    unborrow $return;
+    require_uninit inner;
+    goto switch_merge_1
+  switch_merge_1:
+    require_uninit $return;
+    require_uninit h;
+    return
+}
+
+fn<'a, 's0, T: Copy + Drop> mk_held_via_let(p: &'a T, $return: &out 's0 Held<'a, T>) {
+  h: Held<'a, T>;
+  entry:
+    h = Held<T>::One(move p);
+    $return.* = move h;
+    unborrow $return;
+    require_uninit h;
+    require_uninit $return;
+    require_uninit p;
+    return
+}

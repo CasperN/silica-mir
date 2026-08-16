@@ -122,6 +122,13 @@ fn<'a> call_undeclared_lifetime(x: &'a i64) -> &'a i64 {
   borrow_identity<'missing>(x)
 }
 
+struct<'a> RefWrap: Copy + Drop { p: &'a i64 }
+
+# covers: a bare nominal reference omits a required lifetime argument
+fn nominal_lifetime_args_too_few(r: RefWrap) -> unit { unit }
+# covers: a nominal reference supplies too many lifetime arguments
+fn<'a> nominal_lifetime_args_too_many(r: RefWrap<'a, 'a>) -> unit { unit }
+
 # covers: inferred generic call inside an impl uses impl-header bounds
 impl DropOnly {
   fn call_inferred_bound_failure_from_impl(recv: &Self, x: DropOnly) -> DropOnly {

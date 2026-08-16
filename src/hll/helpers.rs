@@ -68,11 +68,6 @@ pub fn custom_ty(name: impl Into<String>) -> Type {
     Type::synthesized(TypeKind::Custom(Instance::bare(name)))
 }
 
-/// A generic struct/enum instantiation: `Foo<T, U>`.
-pub fn custom_ty_with_args(name: impl Into<String>, args: Vec<Type>) -> Type {
-    Type::synthesized(TypeKind::Custom(Instance::new(name, Vec::new(), args)))
-}
-
 /// A reference to an in-scope type parameter.
 pub fn param_ty(name: impl Into<String>) -> Type {
     Type::synthesized(TypeKind::Param(name.into()))

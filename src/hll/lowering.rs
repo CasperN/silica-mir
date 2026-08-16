@@ -1408,8 +1408,8 @@ fn lower_expr_into(
                     let (enum_is_copy, bound_var_mir_ty) =
                         if let hll::TypeKind::Custom(hll::Instance {
                             name: enum_name,
+                            lifetime_args,
                             type_args: args,
-                            ..
                         }) = &target_hll_ty.kind
                         {
                             let enum_decl = ctx.enums.get(enum_name).ok_or_else(|| {
@@ -1433,15 +1433,21 @@ fn lower_expr_into(
                                         ),
                                     )
                                 })?;
-                            // Substitute the enum's type params with the args
-                            // at this use site (e.g. `Option<i64>` binds T := i64).
                             let mir_variant_ty = lower_type(&variant_decl.ty);
                             let mir_type_params = lower_type_params(&enum_decl.type_params);
-                            let mir_args: Vec<mir::Type> = args.iter().map(lower_type).collect();
-                            let payload_ty = crate::mir::type_util::substitute_params(
+                            let mir_type_args: Vec<mir::Type> =
+                                args.iter().map(lower_type).collect();
+                            let mir_lifetime_params: Vec<mir::Lifetime> = enum_decl
+                                .lifetime_params
+                                .iter()
+                                .map(|param| param.lifetime.clone())
+                                .collect();
+                            let payload_ty = crate::mir::type_util::substitute_all(
                                 &mir_variant_ty,
+                                &mir_lifetime_params,
+                                lifetime_args,
                                 &mir_type_params,
-                                &mir_args,
+                                &mir_type_args,
                             );
                             let is_copy = enum_decl.markers.implies(mir::Marker::Copy);
                             (is_copy, payload_ty)

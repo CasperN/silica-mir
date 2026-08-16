@@ -132,6 +132,26 @@ fn build_subst_map(
     Some(mapping)
 }
 
+/// Zip a decl's lifetime parameters with the concrete lifetimes at a use
+/// site. Returns `None` when the arities disagree so callers can bail out
+/// on a type that [`TypeEnv::validate_type`] has already flagged, rather
+/// than substituting a truncated mapping.
+fn build_lifetime_mapping(
+    lifetime_params: &[LifetimeParam],
+    lifetime_args: &[Lifetime],
+) -> Option<BTreeMap<Lifetime, Lifetime>> {
+    if lifetime_params.len() != lifetime_args.len() {
+        return None;
+    }
+    Some(
+        lifetime_params
+            .iter()
+            .map(|parameter| parameter.lifetime.clone())
+            .zip(lifetime_args.iter().cloned())
+            .collect(),
+    )
+}
+
 use HllTypeCheckCode::*;
 
 fn array_len(len: usize) -> u64 {
@@ -243,8 +263,8 @@ pub enum HllTypeCheckCode {
     /// the declared marker bound on the corresponding type parameter
     /// (e.g. `Box<Linear>` where the decl is `struct<T: Copy> Box`).
     BoundNotSatisfied,
-    /// A function call supplies the wrong number of explicit lifetime
-    /// arguments.
+    /// A function call or a nominal type mention supplies the wrong
+    /// number of explicit lifetime arguments.
     LifetimeArgArityMismatch,
     /// An explicit lifetime argument is not visible at the call site.
     UndeclaredLifetime,
@@ -487,12 +507,7 @@ impl Subst {
                     lifetime_args: l2,
                     type_args: a2,
                 }),
-                // Struct and enum constructors infer type arguments but currently
-                // represent their lifetime arguments as an empty, elided list.
-            ) if n1 == n2
-                && (l1.is_empty() || l2.is_empty() || l1.len() == l2.len())
-                && a1.len() == a2.len() =>
-            {
+            ) if n1 == n2 && l1.len() == l2.len() && a1.len() == a2.len() => {
                 let l1 = l1.clone();
                 let l2 = l2.clone();
                 let a1 = a1.clone();
@@ -742,6 +757,19 @@ impl TypeEnv {
                             name,
                             type_params.len(),
                             args.len()
+                        ),
+                    ));
+                    return;
+                }
+                if lifetime_args.len() != lifetime_params.len() {
+                    d.push_error(Diagnostic::new(
+                        LifetimeArgArityMismatch,
+                        ty.source,
+                        format!(
+                            "'{}' takes {} lifetime argument(s), found {}",
+                            name,
+                            lifetime_params.len(),
+                            lifetime_args.len()
                         ),
                     ));
                     return;
@@ -2498,16 +2526,23 @@ fn infer_field_access(
     };
     if let TypeKind::Custom(Instance {
         name: struct_name,
+        lifetime_args,
         type_args: args,
-        ..
     }) = &struct_ty.kind
     {
         if let Some(s_decl) = env.structs.get(struct_name).cloned() {
             if let Some(field_decl) = s_decl.fields.iter().find(|decl| decl.name == field) {
-                match build_subst_map(struct_name, &s_decl.type_params, args, source, d) {
-                    Some(mapping) => substitute(&field_decl.ty, &mapping),
-                    None => error_ty(),
-                }
+                let Some(mapping) =
+                    build_subst_map(struct_name, &s_decl.type_params, args, source, d)
+                else {
+                    return error_ty();
+                };
+                let Some(lifetime_mapping) =
+                    build_lifetime_mapping(&s_decl.lifetime_params, lifetime_args)
+                else {
+                    return error_ty();
+                };
+                substitute_all(&field_decl.ty, &mapping, &lifetime_mapping)
             } else {
                 d.push_error(source_diagnostic(
                     NoSuchField,
@@ -2546,7 +2581,9 @@ fn receiver_field_type(
         _ => resolved,
     };
     let TypeKind::Custom(Instance {
-        name, type_args, ..
+        name,
+        lifetime_args,
+        type_args,
     }) = &struct_ty.kind
     else {
         return None;
@@ -2562,7 +2599,8 @@ fn receiver_field_type(
         .map(|parameter| parameter.name.clone())
         .zip(type_args.iter().cloned())
         .collect();
-    Some(substitute(&field.ty, &mapping))
+    let lifetime_mapping = build_lifetime_mapping(&declaration.lifetime_params, lifetime_args)?;
+    Some(substitute_all(&field.ty, &mapping, &lifetime_mapping))
 }
 
 fn resolve_qualified_call(
@@ -3506,8 +3544,8 @@ fn infer_inner(
             }
             if let TypeKind::Custom(Instance {
                 name: enum_name,
+                lifetime_args,
                 type_args: args,
-                ..
             }) = resolved.kind
             {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
@@ -3526,6 +3564,11 @@ fn infer_inner(
                         Some(m) => m,
                         None => return error_ty(),
                     };
+                let Some(lifetime_mapping) =
+                    build_lifetime_mapping(&e_decl.lifetime_params, &lifetime_args)
+                else {
+                    return error_ty();
+                };
                 let mut arm_tys = Vec::new();
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
@@ -3536,7 +3579,10 @@ fn infer_inner(
                     {
                         env.push_scope();
                         if let Some(var_name) = bound_var {
-                            env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
+                            env.insert_var(
+                                var_name.clone(),
+                                substitute_all(&v.ty, &mapping, &lifetime_mapping),
+                            );
                         }
                         let body_ty = infer_inner(env, subst, body, types, d);
                         env.pop_scope();
@@ -3602,17 +3648,32 @@ fn infer_inner(
                 return error_ty();
             }
 
-            // Fresh type variable per declared type parameter, so
-            // field-value inference can pin them from constructor args.
             let type_args: Vec<Type> = s_decl
                 .type_params
                 .iter()
                 .map(|_| subst.fresh_var())
                 .collect();
-            let mut mapping: HashMap<String, Type> = HashMap::new();
-            for (tp, arg) in s_decl.type_params.iter().zip(type_args.iter()) {
-                mapping.insert(tp.name.clone(), arg.clone());
-            }
+            let lifetime_args = s_decl
+                .lifetime_params
+                .iter()
+                .map(|_| {
+                    types
+                        .fresh_inferred_lifetime(env, subst, expr.source)
+                        .expect("constructor expression outside a function body")
+                })
+                .collect::<Vec<_>>();
+            let mapping: HashMap<String, Type> = s_decl
+                .type_params
+                .iter()
+                .map(|tp| tp.name.clone())
+                .zip(type_args.iter().cloned())
+                .collect();
+            let lifetime_mapping: BTreeMap<Lifetime, Lifetime> = s_decl
+                .lifetime_params
+                .iter()
+                .map(|lp| lp.lifetime.clone())
+                .zip(lifetime_args.iter().cloned())
+                .collect();
 
             for f_decl in &s_decl.fields {
                 let mut matches = fields.iter().filter(|(fname, _)| fname == &f_decl.name);
@@ -3638,11 +3699,15 @@ fn infer_inner(
                     ));
                     return error_ty();
                 }
-                let expected = substitute(&f_decl.ty, &mapping);
+                let expected = substitute_all(&f_decl.ty, &mapping, &lifetime_mapping);
                 check_inner(env, subst, val_expr, &expected, types, d);
             }
 
-            custom_ty_with_args(name.clone(), type_args)
+            Type::synthesized(TypeKind::Custom(Instance::new(
+                name.clone(),
+                lifetime_args,
+                type_args,
+            )))
         }
         ExprKind::EnumConstr(enum_name, variant_name, payload) => {
             let e_decl = match env.enums.get(enum_name).cloned() {
@@ -3669,20 +3734,39 @@ fn infer_inner(
                 }
             };
 
-            // Fresh var per declared type parameter — payload inference
-            // pins them via the substituted variant type.
             let type_args: Vec<Type> = e_decl
                 .type_params
                 .iter()
                 .map(|_| subst.fresh_var())
                 .collect();
-            let mut mapping: HashMap<String, Type> = HashMap::new();
-            for (tp, arg) in e_decl.type_params.iter().zip(type_args.iter()) {
-                mapping.insert(tp.name.clone(), arg.clone());
-            }
-            let expected_payload = substitute(&variant_decl.ty, &mapping);
+            let lifetime_args = e_decl
+                .lifetime_params
+                .iter()
+                .map(|_| {
+                    types
+                        .fresh_inferred_lifetime(env, subst, expr.source)
+                        .expect("constructor expression outside a function body")
+                })
+                .collect::<Vec<_>>();
+            let mapping: HashMap<String, Type> = e_decl
+                .type_params
+                .iter()
+                .map(|tp| tp.name.clone())
+                .zip(type_args.iter().cloned())
+                .collect();
+            let lifetime_mapping: BTreeMap<Lifetime, Lifetime> = e_decl
+                .lifetime_params
+                .iter()
+                .map(|lp| lp.lifetime.clone())
+                .zip(lifetime_args.iter().cloned())
+                .collect();
+            let expected_payload = substitute_all(&variant_decl.ty, &mapping, &lifetime_mapping);
             check_inner(env, subst, payload, &expected_payload, types, d);
-            custom_ty_with_args(enum_name.clone(), type_args)
+            Type::synthesized(TypeKind::Custom(Instance::new(
+                enum_name.clone(),
+                lifetime_args,
+                type_args,
+            )))
         }
         ExprKind::Array(elements) => {
             if elements.is_empty() {
@@ -3793,8 +3877,8 @@ fn check_inner(
             }
             if let TypeKind::Custom(Instance {
                 name: enum_name,
+                lifetime_args,
                 type_args: args,
-                ..
             }) = resolved.kind
             {
                 let e_decl = match env.enums.get(&enum_name).cloned() {
@@ -3813,6 +3897,11 @@ fn check_inner(
                         Some(m) => m,
                         None => return,
                     };
+                let Some(lifetime_mapping) =
+                    build_lifetime_mapping(&e_decl.lifetime_params, &lifetime_args)
+                else {
+                    return;
+                };
                 for (pattern, body) in arms {
                     let Pattern::Variant(variant, bound_var) = pattern;
                     if let Some(v) = e_decl
@@ -3822,7 +3911,10 @@ fn check_inner(
                     {
                         env.push_scope();
                         if let Some(var_name) = bound_var {
-                            env.insert_var(var_name.clone(), substitute(&v.ty, &mapping));
+                            env.insert_var(
+                                var_name.clone(),
+                                substitute_all(&v.ty, &mapping, &lifetime_mapping),
+                            );
                         }
                         check_inner(env, subst, body, &resolved_expected, types, d);
                         env.pop_scope();

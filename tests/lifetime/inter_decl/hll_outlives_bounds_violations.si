@@ -30,3 +30,21 @@ fn<T: Copy + Drop> identity(x: T) -> T { x }
 fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
   identity<&'a i64>(x)
 }
+
+# `Ref` uses struct-local `'x`; field access substitutes to the caller
+# lifetime, so returning `r.p` where a different caller lifetime is expected
+# fires the MIR lifetime pass.
+struct<'x> Ref: Copy + Drop { p: &'x i64 }
+
+# covers: projected field carries the substituted caller lifetime rather
+# than leaking the struct's declaration-local name
+fn<'a, 'b> project_wrong_lifetime(r: Ref<'a>) -> &'b i64 { r.p }
+
+enum<'y, T> Held: Copy + Drop { One: &'y T }
+
+# covers: match arm binding substitutes the caller lifetime through the
+# variant payload; assigning it to a slot with a different caller lifetime
+# fires the MIR lifetime pass
+fn<'a, 'b, T> unwrap_held_wrong(h: Held<'a, T>) -> &'b T {
+  h match { One(inner) => inner }
+}

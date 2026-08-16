@@ -27,3 +27,36 @@ fn<T: Copy + Drop> identity(x: T) -> T { x }
 fn<'a> generic_ref_identity(x: &'a i64) -> &'a i64 {
   identity<&'a i64>(x)
 }
+
+# `Ref` uses struct-local `'x`, distinct from any caller lifetime, so
+# constructor inference and field/match substitution must thread the caller
+# lifetime through the nominal rather than leaking the declaration-local name.
+struct<'x> Ref: Copy + Drop { p: &'x i64 }
+
+# covers: inferred constructor lifetime routed to the caller through an
+# inferred `let`, without contextual typing at the constructor site
+fn<'a> mk_ref_via_let(p: &'a i64) -> Ref<'a> {
+  let r = Ref { p: p };
+  r
+}
+
+# covers: field access substitutes the struct's `'x` with the caller's `'a`
+fn<'a> project_ref(r: Ref<'a>) -> &'a i64 { r.p }
+
+# covers: field access through a shared borrow of a lifetime-parameterized
+# aggregate substitutes the caller lifetime through the field type
+fn<'a> project_ref_through_borrow(r: &Ref<'a>) -> &'a i64 { r.*.p }
+
+enum<'y, T> Held: Copy + Drop { One: &'y T }
+
+# covers: match arm binding substitutes both the type and lifetime parameters
+fn<'a, T> unwrap_held(h: Held<'a, T>) -> &'a T {
+  h match { One(inner) => inner }
+}
+
+# covers: enum construction infers lifetime and type args and pins them via
+# an inferred `let` before the outer return-position unifies them
+fn<'a, T: Copy + Drop> mk_held_via_let(p: &'a T) -> Held<'a, T> {
+  let h = Held::One(p);
+  h
+}

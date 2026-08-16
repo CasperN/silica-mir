@@ -46,3 +46,19 @@ error: at 31:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict':
  32 | }
     |
   hint: declare bound 'a: 'b on function 'generic_ref_result_conflict' or change the value flow so it is not required
+error: at 41:60: [LT-LifetimeMismatch] In function 'project_wrong_lifetime': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'project_wrong_lifetime'
+    |
+ 40 | # than leaking the struct's declaration-local name
+ 41 | fn<'a, 'b> project_wrong_lifetime(r: Ref<'a>) -> &'b i64 { r.p }
+    |                                                            ^^^
+ 42 | 
+    |
+  hint: declare bound 'a: 'b on function 'project_wrong_lifetime' or change the value flow so it is not required
+error: at 49:27: [LT-LifetimeMismatch] In function 'unwrap_held_wrong': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'unwrap_held_wrong'
+    |
+ 48 | fn<'a, 'b, T> unwrap_held_wrong(h: Held<'a, T>) -> &'b T {
+ 49 |   h match { One(inner) => inner }
+    |                           ^^^^^
+ 50 | }
+    |
+  hint: declare bound 'a: 'b on function 'unwrap_held_wrong' or change the value flow so it is not required

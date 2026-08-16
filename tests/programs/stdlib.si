@@ -53,7 +53,7 @@ fn<'a, T> span_len(span: Span<'a, T>) -> u64 { span.len }
 
 unsafe fn<'a, T> span_get_unchecked(span: Span<'a, T>, index: u64) -> &'a T {
   let base = span.data as *T;
-  let item = ptr_offset<T>(base, index);
+  let item = ptr_offset(base, index);
   item as &'a T
 }
 
@@ -79,7 +79,7 @@ impl<T: Move> Vec<T> {
   # Consuming mutation avoids both the missing temporary `&mut` reborrow and a
   # false Partial state after pointer-based mutation through `&mut Vec<T>`.
   unsafe fn push_unchecked(recv: Self, value: T) -> Self {
-    let slot = ptr_offset<T>(recv.data, recv.len);
+    let slot = ptr_offset(recv.data, recv.len);
     slot.* = value;
     Vec { data: recv.data, len: recv.len + 1u64, cap: recv.cap }
   }
@@ -92,8 +92,8 @@ impl<T: Move> Vec<T> {
       let mut index = 0u64;
       loop {
         if index >= recv.len { break }
-        let source = ptr_offset<T>(old_data, index);
-        let target = ptr_offset<T>(new_data, index);
+        let source = ptr_offset(old_data, index);
+        let target = ptr_offset(new_data, index);
         unsafe { target.* = source.*; }
         index = index + 1u64;
       }
@@ -107,17 +107,17 @@ impl<T: Move> Vec<T> {
 }
 
 unsafe fn<'a, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64) -> &'a T {
-  ptr_offset<T>(vec.*.data, index) as &'a T
+  ptr_offset(vec.*.data, index) as &'a T
 }
 
 unsafe fn<'a, T> vec_as_span(vec: &'a Vec<T>) -> Span<'a, T> {
-  span_from_raw_parts<'a, T>(vec.*.data, vec.*.len)
+  span_from_raw_parts(vec.*.data, vec.*.len)
 }
 
 fn<'inspect> inspect_vec(vec: &'inspect Vec<i64>) -> i64 {
-  let span = unsafe { vec_as_span<'inspect, i64>(vec) };
-  let length = span_len<'inspect, i64>(span);
-  let item = unsafe { span_get_unchecked<'inspect, i64>(span, 1u64) };
+  let span = unsafe { vec_as_span(vec) };
+  let length = span_len(span);
+  let item = unsafe { span_get_unchecked(span, 1u64) };
   item.* + length as i64
 }
 
@@ -127,7 +127,7 @@ fn<T: Drop + Move> vec_free(vec: Vec<T>) {
   let mut index = 0u64;
   loop {
     if index >= vec.len { break }
-    let item = ptr_offset<T>(vec.data, index);
+    let item = ptr_offset(vec.data, index);
     let value = unsafe { item.* };
     value;
     index = index + 1u64;

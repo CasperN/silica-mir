@@ -493,7 +493,7 @@ fn<T: Drop + Move> vec_free(vec: Vec<T>) {
     return
 }
 
-fn<'s0, 's1> main($return: &out 's1 i32) {
+fn<'s5, 's0> main($return: &out 's0 i32) {
   boxed: Box<i64>;
   $tmp_0: &out Box<i64>;
   box_place: &mut i64;
@@ -517,7 +517,7 @@ fn<'s0, 's1> main($return: &out 's1 i32) {
   $tmp_14: Vec<i64>;
   $tmp_15: &out Vec<i64>;
   observed: i64;
-  $tmp_16: &'s0 Vec<i64>;
+  $tmp_16: &'s5 Vec<i64>;
   $tmp_17: &out i64;
   $tmp_18: unit;
   $tmp_19: i64;
@@ -579,7 +579,7 @@ fn<'s0, 's1> main($return: &out 's1 i32) {
     require_uninit $tmp_13;
     $tmp_16 = &values;
     $tmp_17 = &out observed;
-    call inspect_vec<'s0>(move $tmp_16, move $tmp_17);
+    call inspect_vec<'s5>(move $tmp_16, move $tmp_17);
     require_uninit $tmp_17;
     require_uninit $tmp_16;
     call vec_free<i64>(move values);

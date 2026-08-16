@@ -195,46 +195,39 @@ Use `tests/programs/stdlib.si` as the executable design probe. Keep library
 APIs honest about safety and ownership, and land compiler prerequisites as
 independent, fixture-backed changes in this order:
 
-1. **Infer and substitute lifetimes on nominal construction and projection.**
-   Struct and enum constructors currently carry an empty lifetime-argument
-   list, and field access and match payload binding substitute only type
-   parameters. Contextual typing masks this in many functions, but an inferred
-   local can expose a declaration-local lifetime. Infer constructor lifetime
-   arguments and substitute nominal lifetime arguments through projections.
-
-2. **Copy reference fields through a shared aggregate borrow.** A conventional
+1. **Copy reference fields through a shared aggregate borrow.** A conventional
    `Span::get(&Span<'a, T>) -> &'a T` reports a loan conflict when it reads the
    Copy `data: &'a T` field. The prototype takes its Copy `Span` receiver by
    value. Make copy relaxation and lifetime checking agree that copying the
    field does not move from the borrowed aggregate, then restore borrowed
    receivers.
 
-3. **Elaborate temporary reborrows at calls.** Passing an existing `&mut`
+2. **Elaborate temporary reborrows at calls.** Passing an existing `&mut`
    transfers the reference and its pointee-state obligation, preventing a
    helper call followed by further use of the original reference. Elaborate a
    bounded reborrow whose obligation is returned to the original reference at
    call completion.
 
-4. **Preserve aggregate state through pointer-based mutation.** An inline
+3. **Preserve aggregate state through pointer-based mutation.** An inline
    `fn push(&mut Vec<T>, T)` that derives a raw element pointer and increments
    `len` leaves the receiver spuriously `Partial`, although every field remains
    initialized. Fix the place-state/copy-relaxation interaction, then replace
    consuming `Vec<T> -> Vec<T>` mutation with an in-place API.
 
-5. **Represent lifetime-only ownership.** Add a zero-sized phantom/lifetime
+4. **Represent lifetime-only ownership.** Add a zero-sized phantom/lifetime
    field suitable for borrowed views. The current first-element reference
    gives `Span` a tracked lifetime but cannot represent an empty span soundly.
 
-6. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
+5. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
    for `Box`, `Vec`, and their elements so ordinary scope exit releases owned
    allocations. Preserve explicit consuming operations such as `into_inner`.
 
-7. **Add safe failure paths.** Use the planned `Fail` effect for allocation
+6. **Add safe failure paths.** Use the planned `Fail` effect for allocation
    failure, capacity overflow, and bounds errors. Until then, constructors,
    growth, and indexing that cannot establish their preconditions remain
    `unsafe`.
 
-8. **Build higher-level collections.** Add `String` over `Vec<u8>` with its
+7. **Build higher-level collections.** Add `String` over `Vec<u8>` with its
    UTF-8 invariant, then borrowed/mutable/uninitialized span variants and
    iterator APIs. Modules and multi-file compilation will eventually place
    these declarations under `std` without changing their ownership model.
