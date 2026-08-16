@@ -195,17 +195,20 @@ Use `tests/programs/stdlib.si` as the executable design probe. Keep library
 APIs honest about safety and ownership, and land compiler prerequisites as
 independent, fixture-backed changes in this order:
 
-1. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
-   for `Box`, `Vec`, and their elements so ordinary scope exit releases owned
-   allocations. Preserve explicit consuming operations such as `into_inner`.
-
+1. **Blanket impl AutoDestroy/AutoClone/AutoTransfer if Drop/Copy/Move.**
+   Without this `Vec<i32>` is not `AutoDestroy` even if we have implemented
+   `impl<T: AutoDestroy> AutoDestroy for Vec<T>`.
 2. **Support static methods.** `Box::new(x)` should interpreted as a static
    method on `Box<T>` however, it is parsed as an enum variant constructor. 
+3. **`self` argument sugar**, `&self -> self: &Self` in argument position, and
+  analogously for other ref kinds and account for lifetime params too.
 
-**Stop condition:** the fixture uses safe, generic `Box`, `Vec`, and nonempty
-and empty `Span` APIs without concrete lifetime workarounds or manual cleanup;
-checked operations have explicit failure behavior; and `String` can enforce
-its UTF-8 invariant.
+### Other clarity issues
+- **`&deinit`**: We should delete all references to `deinit` and standardize on `&drop`.
+- **Reference lifetime token ordering (`&'a drop T`)**: Reference keyword precedes lifetime (`&drop 'a T`). We should standardize on the Rust way.
+- **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.
+- **Field access on references**: When projecting `self.field` on reference types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.
+
 
 ## Testing gaps
 - **Warning-only fixtures are not pinned.** A clean `.expected.sim` fixture

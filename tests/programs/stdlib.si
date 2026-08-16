@@ -29,6 +29,13 @@ impl<T> Box<T> {
   }
 }
 
+impl<T: AutoDestroy> AutoDestroy for Box<T> {
+  fn destroy(self: &drop Self) {
+    unsafe { self.*.data.*.destroy() };
+    free_bytes(self.*.data as *u8);
+  }
+}
+
 impl<T: Move> Box<T> {
   fn into_inner(recv: Self) -> T {
     let value = unsafe { recv.data.* };
@@ -81,6 +88,27 @@ unsafe fn<T> vec_with_capacity(cap: u64) -> Vec<T> {
 
 impl<T> Vec<T> {
   fn len(recv: &Self) -> u64 { recv.*.len }
+}
+
+impl<T: AutoDestroy> AutoDestroy for Vec<T> {
+  fn destroy(self: &drop Self) {
+    let mut index = 0;
+    loop {
+      if index >= self.*.len {
+        break;
+      }
+      let element = unsafe {
+        ptr_offset(self.*.data, index) as &drop T
+      };
+      element.*.destroy();
+      index = index + 1;
+    }
+    free_bytes(self.*.data as *u8);
+    # Consume remaining fields to fulfill the &drop deinitialization obligation.
+    # TODO: Destructure self.
+    self.*.len;
+    self.*.cap;
+  }
 }
 
 impl<T: Move> Vec<T> {
@@ -158,6 +186,7 @@ fn main() -> i32 {
   unsafe { values.push(1i64); }
   unsafe { values.push(2i64); }
   let observed = inspect_vec(&values);
+  # TODO: We need i64: AutoDestroy to get rid of vec_free.
   vec_free(values);
 
   (owned + from_box + observed - from_box - 4i64) as i32

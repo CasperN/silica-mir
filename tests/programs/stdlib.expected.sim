@@ -60,6 +60,35 @@ impl<T> Box<T> {
   }
 }
 
+impl<T: AutoDestroy> AutoDestroy for Box<T> {
+  fn<'s0> destroy(self: &drop 's0 Box<T>) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    $tmp_2: &drop T;
+    $tmp_3: unit;
+    $tmp_4: *u8;
+    entry:
+      $tmp_2 = &drop self.*.data.*;
+      call <T as AutoDestroy>::destroy(move $tmp_2);
+      $tmp_1 = unit;
+      require_uninit $tmp_2;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_4 = ptr_cast(move self.*.data, *u8);
+      unborrow self;
+      call free_bytes(move $tmp_4);
+      $tmp_3 = unit;
+      require_uninit $tmp_4;
+      drop $tmp_3;
+      require_uninit $tmp_3;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit self;
+      return
+  }
+}
+
 impl<T: Move> Box<T> {
   fn<'s0> into_inner(recv: Box<T>, $return: &out 's0 T) {
     value: T;
@@ -176,6 +205,100 @@ impl<T> Vec<T> {
       require_uninit $return;
       drop recv;
       require_uninit recv;
+      return
+  }
+}
+
+impl<T: AutoDestroy> AutoDestroy for Vec<T> {
+  fn<'s0> destroy(self: &drop 's0 Vec<T>) {
+    $tmp_0: unit;
+    index: u64;
+    $tmp_1: unit;
+    $tmp_2: unit;
+    $tmp_3: unit;
+    $tmp_4: bool;
+    $tmp_5: &out bool;
+    $tmp_6: unit;
+    element: &drop T;
+    $tmp_7: *T;
+    $tmp_8: &out *T;
+    $tmp_9: unit;
+    $tmp_10: &drop T;
+    $tmp_11: unit;
+    $tmp_12: u64;
+    $tmp_13: &out u64;
+    $tmp_14: unit;
+    $tmp_15: *u8;
+    $tmp_16: u64;
+    $tmp_17: u64;
+    entry:
+      index = 0u64;
+      goto loop_start_0
+    loop_start_0:
+      $tmp_5 = &out $tmp_4;
+      call $u64_ge(copy index, copy self.*.len, move $tmp_5);
+      branch(move $tmp_4) [true: if_true_2, false: if_false_3]
+    if_true_2:
+      require_uninit $tmp_6;
+      require_uninit $tmp_5;
+      require_uninit $tmp_4;
+      require_uninit $tmp_3;
+      require_uninit $tmp_2;
+      goto loop_end_1
+    if_false_3:
+      $tmp_3 = unit;
+      goto if_merge_4
+    if_merge_4:
+      require_uninit $tmp_5;
+      require_uninit $tmp_4;
+      drop $tmp_3;
+      require_uninit $tmp_3;
+      $tmp_8 = &out $tmp_7;
+      call ptr_offset<T>(copy self.*.data, copy index, move $tmp_8);
+      element = ptr_cast(move $tmp_7, &drop T);
+      require_uninit $tmp_8;
+      require_uninit $tmp_7;
+      $tmp_10 = &drop element.*;
+      call <T as AutoDestroy>::destroy(move $tmp_10);
+      unborrow element;
+      $tmp_9 = unit;
+      require_uninit $tmp_10;
+      drop $tmp_9;
+      require_uninit $tmp_9;
+      $tmp_13 = &out $tmp_12;
+      call $u64_add(move index, 1u64, move $tmp_13);
+      index = move $tmp_12;
+      $tmp_11 = unit;
+      require_uninit $tmp_13;
+      require_uninit $tmp_12;
+      drop $tmp_11;
+      require_uninit $tmp_11;
+      $tmp_2 = unit;
+      require_uninit element;
+      drop $tmp_2;
+      require_uninit $tmp_2;
+      goto loop_start_0
+    loop_end_1:
+      require_uninit $tmp_1;
+      $tmp_15 = ptr_cast(move self.*.data, *u8);
+      call free_bytes(move $tmp_15);
+      $tmp_14 = unit;
+      require_uninit $tmp_15;
+      drop $tmp_14;
+      require_uninit $tmp_14;
+      $tmp_16 = move self.*.len;
+      drop $tmp_16;
+      require_uninit $tmp_16;
+      $tmp_17 = move self.*.cap;
+      unborrow self;
+      drop $tmp_17;
+      require_uninit $tmp_17;
+      $tmp_0 = unit;
+      drop index;
+      require_uninit index;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit self;
       return
   }
 }
