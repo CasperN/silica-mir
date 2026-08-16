@@ -126,10 +126,10 @@ impl ImplPlaceStateOk for Unit0 {
   fn<'s0> check(recv: &'s0 Unit0, x: i64) {
     y: i64;
     entry:
-      unborrow recv;
       y = copy x;
       drop y;
       drop x;
+      drop recv;
       return
   }
 }

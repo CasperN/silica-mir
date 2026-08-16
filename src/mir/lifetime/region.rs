@@ -206,7 +206,7 @@ pub fn build_region_ctx(
             ty,
             prog,
             &mut visited,
-            &mut |place, lt_opt| {
+            &mut |place, _kind, lt_opt| {
                 let key = index_erased_key(place);
                 let region = position_regions
                     .entry(key)
@@ -254,12 +254,12 @@ pub(super) fn walk_ref_places(
     ty: &Type,
     prog: &crate::mir::type_check::IndexedProgram,
     visited: &mut std::collections::BTreeSet<String>,
-    on_ref: &mut dyn FnMut(&Place, &Option<Lifetime>),
+    on_ref: &mut dyn FnMut(&Place, RefKind, &Option<Lifetime>),
 ) {
     use crate::mir::ast::TypeDecl;
     use crate::mir::helpers::{downcast_place, field_place};
     match &ty.kind {
-        TypeKind::Ref(_, lt_opt, _) => on_ref(place, lt_opt),
+        TypeKind::Ref(kind, lt_opt, _) => on_ref(place, kind.clone(), lt_opt),
         TypeKind::Custom(Instance {
             name,
             lifetime_args,

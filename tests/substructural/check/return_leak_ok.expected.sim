@@ -101,8 +101,8 @@ trait ImplDropElaborationOk {
 impl ImplDropElaborationOk for P {
   fn<'s0> finish(recv: &'s0 P, x: i64) {
     entry:
-      unborrow recv;
       drop x;
+      drop recv;
       return
   }
 }

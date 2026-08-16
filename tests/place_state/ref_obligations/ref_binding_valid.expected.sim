@@ -39,7 +39,7 @@ fn overwrite_ref_previous_fulfilled(x: i64, y: i64) {
 
 fn<'s0> shared_ref_left_bound(r: &'s0 i64) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
@@ -47,8 +47,8 @@ fn<'s0> shared_ref_read(r: &'s0 i64) {
   x: i64;
   entry:
     x = copy r.*;
-    unborrow r;
     drop x;
+    drop r;
     return
 }
 
@@ -57,7 +57,7 @@ fn<'s0> uninit_write_then_move(r: &uninit 's0 i64) {
   entry:
     r.* = 42;
     x = move r.*;
-    unborrow r;
     drop x;
+    drop r;
     return
 }

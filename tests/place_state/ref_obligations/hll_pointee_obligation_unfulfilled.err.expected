@@ -21,30 +21,35 @@ error: at 19:33: [PS-RefObligationUnfulfilled] In function 'drop_untouched': ref
     |                   ------------  ^ reference declared here
  20 | }
     |
-error: at 23:40: [PS-RefObligationUnfulfilled] In function 'mut_moved_no_writeback': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 25:2: [PS-RefObligationUnfulfilled] In function 'mut_moved_no_writeback': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  22 | # &mut moved-out with no writeback; pointee ends Uninit.
  23 | fn mut_moved_no_writeback(r: &mut Box) {
-    |                           -----------  ^ reference declared here
+    |                           ----------- reference declared here
  24 |   let x = r.*;
+ 25 | }
+    |  ^
+ 26 | 
     |
-error: at 29:3: [PS-RefObligationUnfulfilled] In function 'uninit_written': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 30:2: [PS-RefObligationUnfulfilled] In function 'uninit_written': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
     |
  27 | # &uninit written into as a whole.
  28 | fn uninit_written(r: &uninit i64) {
     |                   -------------- reference declared here
  29 |   r.* = 42;
-    |   ^^^^^^^^
  30 | }
+    |  ^
+ 31 | 
     |
-error: at 34:3: [PS-RefObligationUnfulfilled] In function 'uninit_struct_partial': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
+error: at 35:2: [PS-RefObligationUnfulfilled] In function 'uninit_struct_partial': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
     |
  32 | # &uninit struct with one field written; pointee ends Partial.
  33 | fn uninit_struct_partial(r: &uninit P) {
     |                          ------------ reference declared here
  34 |   r.*.x = 1;
-    |   ^^^^^^^^^
  35 | }
+    |  ^
+ 36 | 
     |
 error: at 42:15: [PS-RefObligationUnfulfilled] In function 'loop_out_never_writes': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |

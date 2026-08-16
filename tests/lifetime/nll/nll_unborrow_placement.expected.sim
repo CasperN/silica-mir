@@ -47,8 +47,8 @@ fn<'s0> mut_param_read_last_use(x: &mut 's0 i64) {
   y: i64;
   entry:
     y = copy x.*;
-    unborrow x;
     drop y;
+    drop x;
     return
 }
 
@@ -221,9 +221,62 @@ trait ImplNllOk {
 impl ImplNllOk for P {
   fn<'s0, 's1> close(recv: &'s0 P, x: &out 's1 i64) {
     entry:
-      unborrow recv;
       x.* = 42;
       unborrow x;
+      drop recv;
       return
   }
+}
+
+struct<'a> RefBag: Copy + Drop {
+  r: &'a i64
+  n: i64
+}
+
+fn<'a> read_scalar_through_borrow(bag: RefBag<'a>) {
+  b: &RefBag<'a>;
+  x: i64;
+  entry:
+    b = &bag;
+    x = copy b.*.n;
+    unborrow b;
+    call use_num(move x);
+    drop bag;
+    return
+}
+
+fn<'a, 's0> read_ref_through_borrow(bag: RefBag<'a>, $return: &out 's0 &'a i64) {
+  b: &RefBag<'a>;
+  entry:
+    b = &bag;
+    $return.* = copy b.*.r;
+    unborrow $return;
+    unborrow b;
+    drop bag;
+    return
+}
+
+struct<'a> LinearRefBag: Move {
+  r: &'a i64
+}
+
+fn<'a> linear_bag_needs_field_unborrow(bag: LinearRefBag<'a>) {
+  x: i64;
+  entry:
+    x = copy bag.r.*;
+    unborrow bag.r;
+    call use_num(move x);
+    return
+}
+
+fn shared_loan_closes_via_unborrow(x: i64) {
+  s: &i64;
+  y: i64;
+  entry:
+    s = &x;
+    y = copy s.*;
+    unborrow s;
+    call use_num(move y);
+    call use_num(move x);
+    return
 }

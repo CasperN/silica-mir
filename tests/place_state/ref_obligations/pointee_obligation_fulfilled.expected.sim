@@ -151,54 +151,54 @@ fn<'s0, T: Copy + Drop> drop_generic_struct(r: &drop 's0 Box<T>) {
 
 fn<'s0> mut_scalar(r: &mut 's0 i64) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0> mut_struct(r: &mut 's0 P) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0> mut_array(r: &mut 's0 [i64; 3]) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0, T: Copy + Drop> mut_param(r: &mut 's0 T) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0, T: Copy + Drop> mut_generic_struct(r: &mut 's0 Box<T>) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0> uninit_struct(r: &uninit 's0 P) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0> uninit_array(r: &uninit 's0 [i64; 3]) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
 fn<'s0, T: Copy + Drop> uninit_param(r: &uninit 's0 T) {
   entry:
-    unborrow r;
+    drop r;
     return
 }

@@ -2,7 +2,7 @@ fn<'a, 's0> identity(r: &'a i64, $return: &out 's0 &'a i64) {
   entry:
     $return.* = copy r;
     unborrow $return;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -24,9 +24,9 @@ fn bypass() {
     drop x;
     x = 100;
     read = copy ret_slot.*;
-    unborrow ret_slot;
     drop read;
     drop g;
+    drop ret_slot;
     drop y;
     drop x;
     return

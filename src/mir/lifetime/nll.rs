@@ -94,6 +94,15 @@ fn plan_for_function(
     }
 
     let borrowers = collect_borrowers(func, body, env.program());
+    let assign_targets = collect_assign_targets(body);
+    let locals = body.locals_map(&func.params);
+    let borrowers: BTreeSet<Place> = borrowers
+        .into_iter()
+        .filter(|(place, kind)| {
+            borrower_needs_nll_unborrow(place, kind, &assign_targets, &locals, env)
+        })
+        .map(|(place, _)| place)
+        .collect();
     if borrowers.is_empty() {
         return None;
     }
@@ -445,8 +454,8 @@ fn collect_borrowers(
     func: &Function,
     body: &FunctionBody,
     prog: &IndexedProgram,
-) -> BTreeSet<Place> {
-    let mut out = BTreeSet::new();
+) -> IndexMap<Place, RefKind> {
+    let mut out = IndexMap::new();
     let locals = body.locals_map(&func.params);
     for (name, ty) in &locals {
         let mut visited = BTreeSet::new();
@@ -455,12 +464,76 @@ fn collect_borrowers(
             ty,
             prog,
             &mut visited,
-            &mut |place, _lt_opt| {
-                out.insert(place.clone());
+            &mut |place, kind, _lt_opt| {
+                out.insert(place.clone(), kind);
             },
         );
     }
     out
+}
+
+/// Every owned-path target of an `Assign` statement in `body`. NLL uses
+/// this to distinguish borrower places that *could* receive a loan in this
+/// function from param-derived ref subplaces that only carry loans opened
+/// at the caller.
+fn collect_assign_targets(body: &FunctionBody) -> BTreeSet<Place> {
+    let mut targets = BTreeSet::new();
+    for block in &body.blocks {
+        for stmt in &block.statements {
+            if let StatementKind::Assign(target, _) = &stmt.kind {
+                if let Some(owned) = as_owned_path(target) {
+                    targets.insert(owned);
+                }
+            }
+        }
+    }
+    targets
+}
+
+/// A droppable borrower (`&`, `&mut`, `&uninit`) needs an in-function
+/// `unborrow` only if it *could* hold a loan opened here or its storage
+/// will not be cleaned up by drop-elab at return.
+///
+/// - `&out` and `&drop` borrowers always retain NLL insertion: their
+///   post-obligation is enforced at last use regardless of loan origin,
+///   and drop-elab won't consume them because they aren't droppable.
+/// - Droppable borrowers assigned somewhere in the body may hold an
+///   in-function loan that needs closing.
+/// - Droppable borrower subfields whose root local is not implicitly
+///   destructible (e.g. a linear aggregate param) also need `unborrow`
+///   — drop-elab skips the aggregate, so the subfield's storage must
+///   be individually consumed to satisfy the return leak check.
+///
+/// Otherwise, drop-elab drops the enclosing aggregate as one operation
+/// after the borrower's last use, and a spurious `unborrow` on the
+/// subfield only creates false loan-conflict positives against unrelated
+/// loans on the aggregate.
+fn borrower_needs_nll_unborrow(
+    borrower: &Place,
+    kind: &RefKind,
+    assign_targets: &BTreeSet<Place>,
+    locals: &IndexMap<String, Type>,
+    env: LocalEnv<'_>,
+) -> bool {
+    if !kind.value_markers().implies(Marker::Drop) {
+        return true;
+    }
+    let Some(owned) = as_owned_path(borrower) else {
+        return true;
+    };
+    if assign_targets
+        .iter()
+        .any(|target| is_ancestor_or_self(target, &owned))
+    {
+        return true;
+    }
+    let root_name = extract_path(&owned)
+        .expect("owned path has a root Var")
+        .0;
+    let Some(root_ty) = locals.get(&root_name) else {
+        return true;
+    };
+    !crate::mir::place_state::drop_elaboration::is_implicitly_destructible(env, root_ty)
 }
 
 /// Enumerate borrower places used by referencing `place`. Yields any

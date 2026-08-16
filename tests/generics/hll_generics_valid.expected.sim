@@ -105,7 +105,6 @@ fn<'s0, 's1> move_only_borrowed_match(ml: &'s0 MoveList, $return: &out 's1 i64) 
     switchEnum(ml.*) [EmptyM: switch_EmptyM_0, ConsM: switch_ConsM_1]
   switch_EmptyM_0:
     _ = copy ml.* as EmptyM;
-    unborrow ml;
     $return.* = 0;
     unborrow $return;
     drop _;
@@ -113,13 +112,13 @@ fn<'s0, 's1> move_only_borrowed_match(ml: &'s0 MoveList, $return: &out 's1 i64) 
     goto switch_merge_2
   switch_ConsM_1:
     x = copy ml.* as ConsM;
-    unborrow ml;
     $return.* = move x;
     unborrow $return;
     require_uninit x;
     goto switch_merge_2
   switch_merge_2:
     require_uninit $return;
+    drop ml;
     require_uninit ml;
     return
 }
@@ -430,13 +429,13 @@ impl<T: Copy + Drop> Box<T> {
   fn<'s0, 's1> identity_from_impl(recv: &'s0 Box<T>, x: T, $return: &out 's1 T) {
     $tmp_0: &out T;
     entry:
-      unborrow recv;
       $tmp_0 = &out $return.*;
       call identity<T>(move x, move $tmp_0);
       unborrow $return;
       require_uninit $tmp_0;
       require_uninit $return;
       require_uninit x;
+      drop recv;
       require_uninit recv;
       return
   }

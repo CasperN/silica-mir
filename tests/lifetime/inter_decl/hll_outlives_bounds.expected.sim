@@ -26,10 +26,10 @@ fn<'a, 's0> mk_same(x: &'a i64, $return: &out 's0 Wrap<'a, 'a>) {
 
 fn<'a, 'b, 's0> first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
   entry:
-    unborrow y;
     $return.* = move x;
     unborrow $return;
     require_uninit $return;
+    drop y;
     require_uninit y;
     require_uninit x;
     return
@@ -98,8 +98,8 @@ fn<'a, 's0, 's1> project_ref_through_borrow(r: &'s0 Ref<'a>, $return: &out 's1 &
   entry:
     $return.* = copy r.*.p;
     unborrow $return;
-    unborrow r;
     require_uninit $return;
+    drop r;
     require_uninit r;
     return
 }
@@ -114,13 +114,13 @@ fn<'a, 's0, T> unwrap_held(h: Held<'a, T>, $return: &out 's0 &'a T) {
     switchEnum(h) [One: switch_One_0]
   switch_One_0:
     inner = copy h as One;
-    unborrow h as One;
     $return.* = move inner;
     unborrow $return;
     require_uninit inner;
     goto switch_merge_1
   switch_merge_1:
     require_uninit $return;
+    drop h;
     require_uninit h;
     return
 }

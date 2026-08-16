@@ -38,11 +38,11 @@ fn<'s0, 's1> mut_ref_to_mut_ptr(r: &mut 's0 i64, $return: &out 's1 *u8) {
   $tmp_0: *i64;
   entry:
     $tmp_0 = &raw r.*;
-    unborrow r;
     $return.* = ptr_cast(move $tmp_0, *u8);
     unborrow $return;
     require_uninit $tmp_0;
     require_uninit $return;
+    drop r;
     require_uninit r;
     return
 }
@@ -61,13 +61,13 @@ fn<'s0: 's2, 's1: 's2, 's2> mut_ref_to_mut_ref(r: &mut 's0 i64, $return: &out 's
   $tmp_1: *i64;
   entry:
     $tmp_1 = &raw r.*;
-    unborrow r;
     $tmp_0 = ptr_cast(move $tmp_1, *u8);
     $return.* = ptr_cast(move $tmp_0, &mut u8);
     unborrow $return;
     require_uninit $tmp_1;
     require_uninit $tmp_0;
     require_uninit $return;
+    drop r;
     require_uninit r;
     return
 }

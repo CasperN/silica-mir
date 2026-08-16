@@ -66,7 +66,7 @@ impl AutoClone for Token {
     entry:
       $return.* = copy recv.*;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -76,7 +76,7 @@ impl AutoClone for Cloneable {
     entry:
       $return.*.value = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -86,7 +86,7 @@ impl<T: Copy + Drop> AutoClone for GenericCloneable<T> {
     entry:
       $return.*.value = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -96,7 +96,7 @@ impl<'a> AutoClone for BorrowedCloneable<'a> {
     entry:
       $return.*.value = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -137,8 +137,8 @@ fn<'s0> autoclone_through_shared(r: &'s0 Cloneable) {
     $clone_1 = &r.*;
     $clone_2 = &out $clone_0;
     call <Cloneable as AutoClone>::clone(move $clone_1, move $clone_2);
-    unborrow r;
     call take_cloneable(move $clone_0);
+    drop r;
     return
 }
 
@@ -150,9 +150,9 @@ fn<'s0> autoclone_dynamic_index(r: &'s0 [Cloneable; 2], i: i64) {
     $clone_1 = &r.*[copy i];
     $clone_2 = &out $clone_0;
     call <Cloneable as AutoClone>::clone(move $clone_1, move $clone_2);
-    unborrow r;
     call take_cloneable(move $clone_0);
     drop i;
+    drop r;
     return
 }
 
@@ -266,7 +266,7 @@ fn<'s0> repeated_mut_pointee(r: &mut 's0 i64) {
     call take_num(copy r.*);
     call take_num(move r.*);
     r.* = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -281,7 +281,7 @@ fn<'s0> autoclone_through_mut(r: &mut 's0 Cloneable) {
     call take_cloneable(move $clone_0);
     call take_cloneable(move r.*);
     r.*.value = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -290,7 +290,7 @@ fn<'s0> repeated_mut_field(r: &mut 's0 CopyPair) {
     call take_num(copy r.*.left);
     call take_num(move r.*.left);
     r.*.left = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -299,7 +299,7 @@ fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
     call take_num(copy r.*[0]);
     call take_num(move r.*[0]);
     r.*[0] = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -308,7 +308,7 @@ fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &m
     call take_num(copy r.*.*.*.left);
     call take_num(move r.*.*.*.left);
     r.*.*.*.left = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -326,7 +326,7 @@ fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice<'s0>) {
     call take_num(copy r.* as HasRef.*.left);
     call take_num(move r.* as HasRef.*.left);
     r.* as HasRef.*.left = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -343,7 +343,7 @@ fn<'s0: 's1, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
   entry:
     call take_num(copy r.*.*);
     call take_num(move r.*.*);
-    unborrow r;
+    drop r;
     return
 }
 
@@ -353,7 +353,7 @@ fn<'s0: 's1, 's1> repeated_nested_out(r: &mut 's0 &out 's1 i64) {
     call take_num(copy r.*.*);
     call take_num(move r.*.*);
     r.*.* = 0;
-    unborrow r;
+    drop r;
     return
 }
 
@@ -380,7 +380,7 @@ fn<'s0> repeated_uninit_pointee(r: &uninit 's0 i64) {
     r.* = 1;
     call take_num(copy r.*);
     call take_num(move r.*);
-    unborrow r;
+    drop r;
     return
 }
 
@@ -394,7 +394,6 @@ impl ImplCopyRelaxationOk for Token {
     $clone_1: &Cloneable;
     $clone_2: &out Cloneable;
     entry:
-      unborrow recv;
       call take_num(copy x);
       call take_num(move x);
       $clone_1 = &y;
@@ -402,6 +401,7 @@ impl ImplCopyRelaxationOk for Token {
       call <Cloneable as AutoClone>::clone(move $clone_1, move $clone_2);
       call take_cloneable(move $clone_0);
       call take_cloneable(move y);
+      drop recv;
       return
   }
 }

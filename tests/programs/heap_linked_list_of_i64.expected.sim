@@ -93,7 +93,6 @@ fn<'s0, 's1> list_sum(list: &'s0 List, $return: &out 's1 i64) {
     switchEnum(list.*) [Empty: switch_Empty_0, Cons: switch_Cons_1]
   switch_Empty_0:
     _ = copy list.* as Empty;
-    unborrow list;
     $return.* = 0;
     unborrow $return;
     drop _;
@@ -101,7 +100,6 @@ fn<'s0, 's1> list_sum(list: &'s0 List, $return: &out 's1 i64) {
     goto switch_merge_2
   switch_Cons_1:
     p = copy list.* as Cons;
-    unborrow list;
     $tmp_1 = &p.*.next;
     $tmp_2 = &out $tmp_0;
     call list_sum(move $tmp_1, move $tmp_2);
@@ -117,6 +115,7 @@ fn<'s0, 's1> list_sum(list: &'s0 List, $return: &out 's1 i64) {
     goto switch_merge_2
   switch_merge_2:
     require_uninit $return;
+    drop list;
     require_uninit list;
     return
 }

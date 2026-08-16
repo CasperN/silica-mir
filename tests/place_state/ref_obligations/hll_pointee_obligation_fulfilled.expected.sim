@@ -105,10 +105,10 @@ fn<'s0> drop_box(r: &drop 's0 Box) {
 fn<'s0> mut_scalar(r: &mut 's0 i64) {
   $tmp_0: unit;
   entry:
-    unborrow r;
     $tmp_0 = unit;
     drop $tmp_0;
     require_uninit $tmp_0;
+    drop r;
     require_uninit r;
     return
 }
@@ -116,10 +116,10 @@ fn<'s0> mut_scalar(r: &mut 's0 i64) {
 fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
   $tmp_0: unit;
   entry:
-    unborrow r;
     $tmp_0 = unit;
     drop $tmp_0;
     require_uninit $tmp_0;
+    drop r;
     require_uninit r;
     return
 }

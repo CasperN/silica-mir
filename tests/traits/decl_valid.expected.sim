@@ -33,7 +33,7 @@ struct<T: Copy + Drop> Bag: Copy + Drop {
 impl Simple for Foo {
   fn<'s0> ping(recv: &'s0 Foo) {
     entry:
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -41,9 +41,9 @@ impl Simple for Foo {
 impl Iter<i64> for List {
   fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 i64) {
     entry:
-      unborrow recv;
       $return.* = 0;
       unborrow $return;
+      drop recv;
       return
   }
 }
@@ -53,7 +53,7 @@ impl<T: Copy + Drop> Iter<T> for Bag<T> {
     entry:
       $return.* = copy recv.*.inner;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -65,8 +65,8 @@ trait MgTrait {
 impl MgTrait for Foo {
   fn<'s0, 's1, V: Copy + Drop> ignore(recv: &'s0 Foo, other: &'s1 V) {
     entry:
-      unborrow other;
-      unborrow recv;
+      drop other;
+      drop recv;
       return
   }
 }
@@ -78,9 +78,9 @@ trait<'a> LifetimeContract {
 impl<'x> LifetimeContract<'x> for Foo {
   fn<'y: 'x, 's0> relate(recv: &'s0 Foo, earlier: &'x i64, later: &'y i64) {
     entry:
-      unborrow earlier;
-      unborrow later;
-      unborrow recv;
+      drop later;
+      drop earlier;
+      drop recv;
       return
   }
 }
@@ -96,7 +96,7 @@ trait<'a> LtTrait {
 impl<'a> LtTrait<'a> for LtHolder<'a> {
   fn<'s0> peek(recv: &'s0 LtHolder<'a>) {
     entry:
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -110,12 +110,12 @@ trait SelfAlias {
 impl<T: Copy + Drop> SelfAlias for Bag<T> {
   fn<'s0> s(recv: &'s0 Bag<T>) {
     entry:
-      unborrow recv;
+      drop recv;
       return
   }
   fn<'s0> m(recv: &mut 's0 Bag<T>) {
     entry:
-      unborrow recv;
+      drop recv;
       return
   }
   fn<'s0> d(recv: &drop 's0 Bag<T>) {
@@ -136,14 +136,14 @@ impl SelfLocal for Foo {
     entry:
       p = copy recv;
       unborrow p;
-      unborrow recv;
+      drop recv;
       return
   }
 }
 
 fn<'s0, T: Copy + Drop> visit_ref(r: &'s0 T) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
@@ -156,7 +156,7 @@ impl SelfInBody for Foo {
     entry:
       call visit_ref<Foo>(copy recv);
       call <Foo as Simple>::ping(copy recv);
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -164,7 +164,7 @@ impl SelfInBody for Foo {
 impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
   fn<'s1> peek(recv: &'s1 LtHolder<'s0>) {
     entry:
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -176,8 +176,8 @@ trait Discard {
 impl Discard for Foo {
   fn<'s0, T: Drop> discard(recv: &'s0 Foo, value: T) {
     entry:
-      unborrow recv;
       drop value;
+      drop recv;
       return
   }
 }
@@ -187,7 +187,7 @@ impl AutoClone for Foo {
     entry:
       $return.* = copy recv.*;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -216,7 +216,7 @@ impl<T: Copy + Drop> Bag<T> {
     entry:
       $return.* = copy recv.*.inner;
       unborrow $return;
-      unborrow recv;
+      drop recv;
       return
   }
 }
@@ -242,7 +242,7 @@ extern fn<'s0, T: DirectBound> accept_direct(value: &'s0 T);
 fn<'s0, T: DirectBound> forward_direct(value: &'s0 T) {
   entry:
     call accept_direct<T>(copy value);
-    unborrow value;
+    drop value;
     return
 }
 

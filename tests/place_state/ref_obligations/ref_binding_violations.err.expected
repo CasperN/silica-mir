@@ -12,17 +12,6 @@ error: at 23:5: [PS-RefObligationUnfulfilled] In function 'drop_mut_ref_after_mo
     |     ^^^^^^
  24 |     return
     |
-error: at 33:5: [PS-RefObligationUnfulfilled] In function 'drop_deref_leaves_mut_pointee_uninit', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
-    |
- 29 | # obligation is unmet at return.
- 30 | fn drop_deref_leaves_mut_pointee_uninit(r: &mut i64) {
-    |                                         ----------- reference declared here
- 31 |   entry:
- 32 |     drop r.*;
- 33 |     return
-    |     ^^^^^^
- 34 | }
-    |
 error: at 44:5: [PS-RefObligationUnfulfilled] In function 'overwrite_ref_previous_unfulfilled', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
     |
  39 | # forgets the pending re-init obligation on the pointee.
@@ -36,4 +25,15 @@ error: at 44:5: [PS-RefObligationUnfulfilled] In function 'overwrite_ref_previou
  44 |     r = &mut z;
     |     ^^^^^^^^^^
  45 |     return
+    |
+error: at 33:5: [PS-RefObligationUnfulfilled] In function 'drop_deref_leaves_mut_pointee_uninit', block 'entry': reference 'r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
+    |
+ 29 | # obligation is unmet at return.
+ 30 | fn drop_deref_leaves_mut_pointee_uninit(r: &mut i64) {
+    |                                         ----------- reference declared here
+ 31 |   entry:
+ 32 |     drop r.*;
+ 33 |     return
+    |     ^^^^^^
+ 34 | }
     |

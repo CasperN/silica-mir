@@ -380,9 +380,9 @@ impl ImplAutoDestroyOk for DropPreferred {
   fn<'s0> finish(recv: &'s0 DropPreferred, value: Destroyable) {
     $destroy_0: &drop Destroyable;
     entry:
-      unborrow recv;
       $destroy_0 = &drop value;
       call <Destroyable as AutoDestroy>::destroy(move $destroy_0);
+      drop recv;
       return
   }
 }

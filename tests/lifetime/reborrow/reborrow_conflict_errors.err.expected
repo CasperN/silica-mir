@@ -1,10 +1,3 @@
-error: at 62:5: [PS-UseAfterMove] In function 'move_parent_while_child_live', block 'entry': variable 'r' is used after move
-    |
- 61 |     call sink(move s);
- 62 |     return
-    |     ^^^^^^
- 63 | }
-    |
 error: at 31:5: [LT-LoanConflict] In function 'read_parent_while_child_live', block 'entry': cannot read 'r.*': already borrowed by 's'
     |
  29 |     r = &mut x;

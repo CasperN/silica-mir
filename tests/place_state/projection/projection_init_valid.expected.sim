@@ -13,8 +13,8 @@ fn<'s0> deref_read_of_ref_param(r: &'s0 i64) {
   a: i64;
   entry:
     a = copy r.*;
-    unborrow r;
     drop a;
+    drop r;
     return
 }
 

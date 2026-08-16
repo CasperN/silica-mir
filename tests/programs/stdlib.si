@@ -50,14 +50,14 @@ unsafe fn<'a, T> span_from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
   Span { data: data as &'a T, len: len }
 }
 
-# Taking the Copy span by value avoids a false loan conflict when copying its
-# reference field through a shared borrow of the aggregate.
-fn<'a, T> span_len(span: Span<'a, T>) -> u64 { span.len }
+impl<'a, T> Span<'a, T> {
+  fn len(recv: &Self) -> u64 { recv.*.len }
 
-unsafe fn<'a, T> span_get_unchecked(span: Span<'a, T>, index: u64) -> &'a T {
-  let base = span.data as *T;
-  let item = ptr_offset(base, index);
-  item as &'a T
+  unsafe fn get_unchecked(recv: &Self, index: u64) -> &'a T {
+    let base = recv.*.data as *T;
+    let item = ptr_offset(base, index);
+    item as &'a T
+  }
 }
 
 
@@ -119,8 +119,9 @@ unsafe fn<'a, T> vec_as_span(vec: &'a Vec<T>) -> Span<'a, T> {
 
 fn<'inspect> inspect_vec(vec: &'inspect Vec<i64>) -> i64 {
   let span = unsafe { vec_as_span(vec) };
-  let length = span_len(span);
-  let item = unsafe { span_get_unchecked(span, 1u64) };
+  let borrow = &span;
+  let length = borrow.len();
+  let item = unsafe { borrow.get_unchecked(1u64) };
   item.* + length as i64
 }
 

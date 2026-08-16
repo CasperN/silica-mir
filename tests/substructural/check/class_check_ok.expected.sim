@@ -91,8 +91,8 @@ fn<'s0> copy_shared_ref_as_rvalue(r: &'s0 i64) {
   s: &i64;
   entry:
     s = copy r;
-    unborrow r;
     unborrow s;
+    drop r;
     return
 }
 
@@ -641,10 +641,10 @@ impl ImplClassCheckOk for MatCDM {
   fn<'s0> check(recv: &'s0 MatCDM, x: i64) {
     y: i64;
     entry:
-      unborrow recv;
       y = copy x;
       drop y;
       drop x;
+      drop recv;
       return
   }
 }

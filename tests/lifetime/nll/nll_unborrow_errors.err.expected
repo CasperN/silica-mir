@@ -28,3 +28,13 @@ error: at 49:7: [PS-RefObligationUnfulfilled] In function '<ImplNllHost as ImplN
     |       ^^^^^^
  50 |   }
     |
+error: at 65:5: [LT-LoanConflict] In function 'move_aggregate_while_borrowed', block 'entry': cannot move from 'bag': already borrowed by 'b'
+    |
+ 63 |   entry:
+ 64 |     b = &bag;
+    |     -------- borrow of 'bag' occurs here
+ 65 |     call take_bag<'a>(move bag);
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 66 |     call take_bag<'a>(copy b.*);
+    |
+  hint: the borrow of 'b' is active until its last use or explicit unborrow.

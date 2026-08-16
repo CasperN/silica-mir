@@ -61,10 +61,3 @@ error: at 67:5: [PS-ReferenceStateUnknown] In function 'reborrow_through_unbound
     |     ^^^^^^^^^^^^
  68 |     return
     |
-error: at 68:5: [PS-UseBeforeInit] In function 'reborrow_through_unbound_ref', block 'entry': variable 'r' is used before initialization
-    |
- 67 |     s = &mut r.*;
- 68 |     return
-    |     ^^^^^^
- 69 | }
-    |

@@ -62,8 +62,8 @@ fn<'s0> deref_of_ref(r: &'s0 i64) {
   x: i64;
   entry:
     x = copy r.*;
-    unborrow r;
     drop x;
+    drop r;
     return
 }
 
@@ -71,8 +71,8 @@ fn<'s0: 's1, 's1> deref_of_nested_ref(r: &mut 's0 &mut 's1 i64) {
   a: i64;
   entry:
     a = copy r.*.*;
-    unborrow r;
     drop a;
+    drop r;
     return
 }
 
@@ -80,7 +80,7 @@ fn<'s0> deref_through_field(p: Ptr<'s0>) {
   a: i64;
   entry:
     a = copy p.r.*;
-    unborrow p.r;
     drop a;
+    drop p;
     return
 }

@@ -23,10 +23,10 @@ impl<T: Copy + Drop> Convert<T> for Box<T> {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
       drop ignored;
       require_uninit ignored;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -42,12 +42,12 @@ impl<'a, T: Copy + Drop> Observe<'a> for Box<T> {
     local: Box<T>;
     entry:
       local.value = copy recv.*.value;
-      unborrow recv;
       $tmp_0 = unit;
       drop local;
       require_uninit local;
       drop $tmp_0;
       require_uninit $tmp_0;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -83,8 +83,8 @@ impl<T: Copy + Drop> Box<T> {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }

@@ -447,7 +447,7 @@ fn is_init_and_destructible(
     is_implicitly_destructible(env, &leaf_ty)
 }
 
-fn is_implicitly_destructible(env: LocalEnv<'_>, ty: &Type) -> bool {
+pub(crate) fn is_implicitly_destructible(env: LocalEnv<'_>, ty: &Type) -> bool {
     env.class_of(ty).implies(Marker::Drop)
         || env.has_applicable_trait_impl(&Instance::bare("AutoDestroy"), ty)
 }

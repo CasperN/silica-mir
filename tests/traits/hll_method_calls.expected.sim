@@ -21,11 +21,11 @@ trait PriorityTrait {
 impl PriorityTrait for Dispatch {
   fn<'s0, 's1, 's2, 's3> priority(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
     entry:
-      unborrow recv;
       $return.* = move value;
       unborrow $return;
       require_uninit $return;
       require_uninit value;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -38,11 +38,11 @@ trait FieldTrait {
 impl FieldTrait for Dispatch {
   fn<'s0, 's1, 's2, 's3> trait_over_field(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
     entry:
-      unborrow recv;
       $return.* = move value;
       unborrow $return;
       require_uninit $return;
       require_uninit value;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -51,11 +51,11 @@ impl FieldTrait for Dispatch {
 impl Dispatch {
   fn<'s0, 's1, 's2, 's3> priority(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
     entry:
-      unborrow recv;
       $return.* = move value;
       unborrow $return;
       require_uninit $return;
       require_uninit value;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -85,22 +85,22 @@ fn<'s0, 's1, 's2, 's3> trait_over_field(recv: Dispatch<'s0, 's1, 's2>, value: i6
 
 fn<'s0, 's1, 's2, 's3> field_over_free(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
   entry:
-    unborrow recv;
     $return.* = move value;
     unborrow $return;
     require_uninit $return;
     require_uninit value;
+    drop recv;
     require_uninit recv;
     return
 }
 
 fn<'s0, 's1, 's2, 's3> free_over_noncallable(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
   entry:
-    unborrow recv;
     $return.* = move value;
     unborrow $return;
     require_uninit $return;
     require_uninit value;
+    drop recv;
     require_uninit recv;
     return
 }
@@ -221,10 +221,10 @@ impl<T: Copy + Drop> Box<T> {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
       drop ignored;
       require_uninit ignored;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -239,10 +239,10 @@ impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
       drop ignored;
       require_uninit ignored;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -312,8 +312,8 @@ impl Shared {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -321,8 +321,8 @@ impl Shared {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -373,8 +373,8 @@ impl<'a> LifetimeTrait<'a> for Shared {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -450,10 +450,10 @@ impl BorrowedRank for Ranked {
   fn<'s0> ranked(recv: &'s0 Ranked) {
     $tmp_0: unit;
     entry:
-      unborrow recv;
       $tmp_0 = unit;
       drop $tmp_0;
       require_uninit $tmp_0;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -483,8 +483,8 @@ impl BorrowTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -496,7 +496,6 @@ impl BorrowTarget {
     entry:
       old = move recv.*.value;
       recv.*.value = 4;
-      unborrow recv;
       $tmp_1 = unit;
       drop $tmp_1;
       require_uninit $tmp_1;
@@ -507,6 +506,7 @@ impl BorrowTarget {
       require_uninit old;
       drop $tmp_0;
       require_uninit $tmp_0;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -545,10 +545,10 @@ impl BorrowTarget {
   fn<'s0> inherent_auto_uninit(recv: &uninit 's0 BorrowTarget) {
     $tmp_0: unit;
     entry:
-      unborrow recv;
       $tmp_0 = unit;
       drop $tmp_0;
       require_uninit $tmp_0;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -567,8 +567,8 @@ impl AutoBorrowMethods for BorrowTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -580,7 +580,6 @@ impl AutoBorrowMethods for BorrowTarget {
     entry:
       old = move recv.*.value;
       recv.*.value = 6;
-      unborrow recv;
       $tmp_1 = unit;
       drop $tmp_1;
       require_uninit $tmp_1;
@@ -591,6 +590,7 @@ impl AutoBorrowMethods for BorrowTarget {
       require_uninit old;
       drop $tmp_0;
       require_uninit $tmp_0;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -629,10 +629,10 @@ impl AutoBorrowMethods for BorrowTarget {
   fn<'s0> trait_auto_uninit(recv: &uninit 's0 BorrowTarget) {
     $tmp_0: unit;
     entry:
-      unborrow recv;
       $tmp_0 = unit;
       drop $tmp_0;
       require_uninit $tmp_0;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -642,8 +642,8 @@ fn<'s0, 's1> auto_shared(recv: &'s0 BorrowTarget, $return: &out 's1 i64) {
   entry:
     $return.* = copy recv.*.value;
     unborrow $return;
-    unborrow recv;
     require_uninit $return;
+    drop recv;
     require_uninit recv;
     return
 }
@@ -656,7 +656,6 @@ fn<'s0> auto_mut(recv: &mut 's0 BorrowTarget) {
   entry:
     old = move recv.*.value;
     recv.*.value = 2;
-    unborrow recv;
     $tmp_1 = unit;
     drop $tmp_1;
     require_uninit $tmp_1;
@@ -667,6 +666,7 @@ fn<'s0> auto_mut(recv: &mut 's0 BorrowTarget) {
     require_uninit old;
     drop $tmp_0;
     require_uninit $tmp_0;
+    drop recv;
     require_uninit recv;
     return
 }
@@ -708,10 +708,10 @@ fn<'s0> auto_drop(recv: &drop 's0 BorrowTarget) {
 fn<'s0> auto_uninit(recv: &uninit 's0 BorrowTarget) {
   $tmp_0: unit;
   entry:
-    unborrow recv;
     $tmp_0 = unit;
     drop $tmp_0;
     require_uninit $tmp_0;
+    drop recv;
     require_uninit recv;
     return
 }
@@ -1054,8 +1054,8 @@ impl UnsafeMethod for UnsafeTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -1066,8 +1066,8 @@ impl UnsafeTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -1745,8 +1745,8 @@ impl QualifiedFirst for QualifiedTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -1757,8 +1757,8 @@ impl QualifiedSecond for QualifiedTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -1773,9 +1773,9 @@ impl QualifiedTarget {
       require_uninit $tmp_0;
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
       require_uninit ignored;
+      drop recv;
       require_uninit recv;
       return
   }
@@ -1783,8 +1783,8 @@ impl QualifiedTarget {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
-      unborrow recv;
       require_uninit $return;
+      drop recv;
       require_uninit recv;
       return
   }

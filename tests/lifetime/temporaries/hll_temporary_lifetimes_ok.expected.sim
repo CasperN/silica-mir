@@ -2,8 +2,8 @@ fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
-    unborrow r;
     require_uninit $return;
+    drop r;
     require_uninit r;
     return
 }
@@ -106,8 +106,8 @@ fn<'a, 's0, T> view_get(s: &'a View<'a, T>, $return: &out 's0 &'a T) {
   entry:
     $return.* = ptr_cast(copy s.*.data.*, &T);
     unborrow $return;
-    unborrow s;
     require_uninit $return;
+    drop s;
     require_uninit s;
     return
 }

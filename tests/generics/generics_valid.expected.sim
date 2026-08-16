@@ -179,7 +179,7 @@ struct NestedBoxCD: Copy + Drop {
 
 fn<'s0, T> take_ref(r: &'s0 T) {
   entry:
-    unborrow r;
+    drop r;
     return
 }
 
@@ -228,14 +228,14 @@ fn<'s0, T: Copy + Drop> read_through_shared_ref(r: &'s0 T) {
   x: T;
   entry:
     x = copy r.*;
-    unborrow r;
     drop x;
+    drop r;
     return
 }
 
 fn<'s0, T: Copy + Drop> mut_ref_param(m: &mut 's0 T) {
   entry:
-    unborrow m;
+    drop m;
     return
 }
 
@@ -249,7 +249,7 @@ fn<'s0, T: Copy + Drop> out_ref_param(src: T, dest: &out 's0 T) {
 
 fn<'s0, T: Copy + Drop> uninit_ref_param(u: &uninit 's0 T) {
   entry:
-    unborrow u;
+    drop u;
     return
 }
 
@@ -267,13 +267,13 @@ fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
 
 fn<'s0, 's1, T: Move> ref_to_bag_of_mut_ref(b: &'s0 Bag<&mut 's1 T>) {
   entry:
-    unborrow b;
+    drop b;
     return
 }
 
 fn<'s0: 's1 + 's2, 's1, 's2, T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut 's0 MovePair<&drop 's1 T, &out 's2 U>) {
   entry:
-    unborrow p;
+    drop p;
     return
 }
 
@@ -298,9 +298,9 @@ fn<'s0, 's1, T: Move> swap(a: &mut 's0 T, b: &mut 's1 T) {
   entry:
     tmp = move a.*;
     a.* = move b.*;
-    unborrow a;
     b.* = move tmp;
-    unborrow b;
+    drop b;
+    drop a;
     return
 }
 
@@ -320,7 +320,7 @@ fn<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: &'s0 CopyPair
     unborrow out_first;
     out_second.* = copy p.*.second;
     unborrow out_second;
-    unborrow p;
+    drop p;
     return
 }
 
@@ -353,13 +353,13 @@ fn<'s0, T: Copy + Drop> unbox(b: Box<T>, dest: &out 's0 T) {
 
 fn<'a, T: Copy + Drop> observe_generic(x: &'a T) {
   entry:
-    unborrow x;
+    drop x;
     return
 }
 
 fn<'a> call_observe_generic(x: &'a i64) {
   entry:
     call observe_generic<'a, i64>(copy x);
-    unborrow x;
+    drop x;
     return
 }

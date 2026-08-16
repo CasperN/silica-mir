@@ -290,3 +290,63 @@ impl ImplNllOk for P {
       return
   }
 }
+
+struct<'a> RefBag: Copy + Drop { r: &'a i64  n: i64 }
+
+# ---------- Borrow of a droppable aggregate: subfield refs skip NLL ----------
+
+# Aggregate is Copy+Drop, so drop-elab handles cleanup as a single drop of
+# `bag`. Its Copy `&'a i64` subfield has no in-function loan and needs no
+# NLL unborrow; a spurious one would fire loan-conflict against `b`.
+# covers: reading a scalar field through a shared borrow of a droppable aggregate
+fn<'a> read_scalar_through_borrow(bag: RefBag<'a>) {
+  b: &RefBag<'a>;
+  x: i64;
+  entry:
+    b = &bag;
+    x = copy b.*.n;
+    call use_num(move x);
+    return
+}
+
+# covers: copying a ref subfield through a shared borrow of a droppable aggregate
+fn<'a> read_ref_through_borrow(bag: RefBag<'a>, $return: &out &'a i64) {
+  b: &RefBag<'a>;
+  entry:
+    b = &bag;
+    $return.* = copy b.*.r;
+    return
+}
+
+struct<'a> LinearRefBag: Move { r: &'a i64 }
+
+# ---------- Linear aggregate: subfield refs still need NLL unborrow ----------
+
+# The aggregate is not droppable — drop-elab won't clean `bag` as a whole,
+# so the `&'a i64` subfield's storage must transition to Moved via NLL for
+# the enclosing aggregate to be fully Moved at return.
+# covers: droppable subfield of a linear aggregate retains its NLL unborrow
+fn<'a> linear_bag_needs_field_unborrow(bag: LinearRefBag<'a>) {
+  x: i64;
+  entry:
+    x = copy bag.r.*;
+    call use_num(move x);
+    return
+}
+
+# ---------- Locally-assigned shared ref: loan must close ----------
+
+# `s` is a fresh shared borrow of `x`; the loan tracker keys it under `s`.
+# NLL still inserts `unborrow s` at last use so downstream owned-path use
+# of `x` isn't blocked by the loan.
+# covers: shared reference to an owned local closes its loan via NLL
+fn shared_loan_closes_via_unborrow(x: i64) {
+  s: &i64;
+  y: i64;
+  entry:
+    s = &x;
+    y = copy s.*;
+    call use_num(move y);
+    call use_num(move x);
+    return
+}

@@ -91,8 +91,8 @@ fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
-    unborrow r;
     require_uninit $return;
+    drop r;
     require_uninit r;
     return
 }

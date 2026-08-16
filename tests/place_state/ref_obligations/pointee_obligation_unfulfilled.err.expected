@@ -144,7 +144,7 @@ error: at 107:5: [PS-RefObligationUnfulfilled] In function 'drop_generic_struct_
      |     ^^^^^^
  108 | }
      |
-error: at 116:5: [PS-RefObligationUnfulfilled] In function 'mut_scalar_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 117:5: [PS-RefObligationUnfulfilled] In function 'mut_scalar_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
      |
  111 | 
  112 | fn mut_scalar_moved_no_writeback(r: &mut L) {
@@ -153,12 +153,12 @@ error: at 116:5: [PS-RefObligationUnfulfilled] In function 'mut_scalar_moved_no_
      |
      | ...
      |
- 115 |     x = move r.*;
  116 |     drop x;
-     |     ^^^^^^
  117 |     return
+     |     ^^^^^^
+ 118 | }
      |
-error: at 124:5: [PS-RefObligationUnfulfilled] In function 'mut_struct_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation: pointee is uninitialized, but must be initialized before the reference expires
+error: at 125:5: [PS-RefObligationUnfulfilled] In function 'mut_struct_moved_no_writeback', block 'entry': reference 'r' has unfulfilled obligation at return: pointee is uninitialized, but must be initialized before the reference expires
      |
  119 | 
  120 | fn mut_struct_moved_no_writeback(r: &mut Q) {
@@ -167,12 +167,12 @@ error: at 124:5: [PS-RefObligationUnfulfilled] In function 'mut_struct_moved_no_
      |
      | ...
      |
- 123 |     q = move r.*;
  124 |     drop q;
-     |     ^^^^^^
  125 |     return
+     |     ^^^^^^
+ 126 | }
      |
-error: at 135:5: [PS-RefObligationUnfulfilled] In function 'mut_struct_field_moved', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
+error: at 136:5: [PS-RefObligationUnfulfilled] In function 'mut_struct_field_moved', block 'entry': reference 'r' has unfulfilled obligation at return: pointee is partially initialized, but must be initialized before the reference expires
      |
  130 | # the `&mut` (Init, Init) obligation.
  131 | fn mut_struct_field_moved(r: &mut Q) {
@@ -181,12 +181,12 @@ error: at 135:5: [PS-RefObligationUnfulfilled] In function 'mut_struct_field_mov
      |
      | ...
      |
- 134 |     x = move r.*.x;
  135 |     drop x;
-     |     ^^^^^^
  136 |     return
+     |     ^^^^^^
+ 137 | }
      |
-error: at 144:5: [PS-RefObligationUnfulfilled] In function 'uninit_scalar_written', block 'entry': reference 'r' has unfulfilled obligation: pointee is initialized, but must be consumed before the reference expires
+error: at 144:5: [PS-RefObligationUnfulfilled] In function 'uninit_scalar_written', block 'entry': reference 'r' has unfulfilled obligation at return: pointee is initialized, but must be consumed before the reference expires
      |
  140 | 
  141 | fn uninit_scalar_written(r: &uninit i64) {
@@ -197,7 +197,7 @@ error: at 144:5: [PS-RefObligationUnfulfilled] In function 'uninit_scalar_writte
      |     ^^^^^^
  145 | }
      |
-error: at 153:5: [PS-RefObligationUnfulfilled] In function 'uninit_struct_field_written', block 'entry': reference 'r' has unfulfilled obligation: pointee is partially initialized, but must be consumed before the reference expires
+error: at 153:5: [PS-RefObligationUnfulfilled] In function 'uninit_struct_field_written', block 'entry': reference 'r' has unfulfilled obligation at return: pointee is partially initialized, but must be consumed before the reference expires
      |
  149 | # Uninit) obligation.
  150 | fn uninit_struct_field_written(r: &uninit P) {
