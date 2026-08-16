@@ -14,13 +14,14 @@ Deferred work and known gaps live in [PUNCHLIST.md](./PUNCHLIST.md).
 
 ## What Silica is
 
-Silica is Rust-inspired, with three central differences:
+Silica is heavily Rust-inspired, with three central differences:
 
 1. Substructural types are first-class: linear, affine, relevant, and
-   unrestricted usage are selected through `Copy` and `Drop`.
-2. Values are immovable by default. Bitwise relocation requires `Move`.
-3. Effects are intended to build on first-class coroutines rather than
-   compiler-specific iterator, async, exception, and generator machinery.
+   unrestricted types are supported and selected through special traits.
+2. Values are immovable by default and opt-in via a `Move` trait.
+3. Effects are (planned to be) built on first-class coroutines rather than
+   compiler-specific iterator, result, option, async, exception, and generator
+   machinery.
 
 The compiler accepts the surface HLL (`.si`) and MIR (`.sim`). HLL is parsed,
 checked, and lowered to MIR; both inputs then use the MIR pipeline. The backend
@@ -76,16 +77,17 @@ When documentation and implementation disagree, use these authorities:
 Do not infer current behavior from stale prose when the relevant code or
 fixture can answer directly.
 
-## Substructural type classes
+## Substructural types
 
-Values in Silica are linear. Relaxations will be provided by the `AutoDrop` and
+Values in Silica are linear. Relaxations are provided by the `AutoDrop` and
 `AutoClone` traits, which tell the compiler that the type may be used fewer
 than 1 and greater than 1 times respectively. Scalar types are both `AutoDrop`
 and `AutoClone` so they can be used freely.
 
-Substructural class comes from the declaration markers:
+The substructural system applied to a given value comes from the traits on the
+value's type:
 
-| markers                 | class        | may use twice | may be forgotten |
+| Trait                   | substructure | may use twice | may be forgotten |
 |-------------------------|--------------|---------------|------------------|
 | (none)                  | linear       | no            | no               |
 | `AutoDrop`              | affine       | no            | yes              |
@@ -125,10 +127,8 @@ asynchronous object destruction.
   * Because the last two rules can be applied repeatedly, `T: Copy + Destroy`
     imply `T: CoTransfer`.
 
-The trivial tier is implemented. Copy relaxation and drop elaboration also
-insert calls to applicable user-provided `AutoClone` and `AutoDestroy`
-implementations. The remaining tiers and blanket/derived implementations are
-deferred.
+The trivial and auto-tier traits require compiler support, as they are implicit.
+The explict versions are (planned to be) implemented in the standard library.
 
 
 ## Reference obligations
@@ -136,41 +136,43 @@ deferred.
 A reference kind specifies both a pointee-state obligation and the markers of
 the reference value itself:
 
-| Kind | Required at creation | Required at expiry | Reference markers |
-|---|---|---|---|
-| `&T` | initialized | initialized | `Copy + Drop + Move` |
-| `&mut T` | initialized | initialized | `Drop + Move` |
-| `&out T` | uninitialized | initialized | `Move` |
-| `&drop T` | initialized | uninitialized | `Move` |
-| `&uninit T` | uninitialized | uninitialized | `Drop + Move` |
+| Kind        | At creation   | At expiry     | Structural Traits    |
+|-------------|---------------|---------------|----------------------|
+| `&T`        | initialized   | initialized   | `Copy + Drop + Move` |
+| `&mut T`    | initialized   | initialized   | `Drop + Move`        |
+| `&out T`    | uninitialized | initialized   | `Move`               |
+| `&drop T`   | initialized   | uninitialized | `Move`               |
+| `&uninit T` | uninitialized | uninitialized | `Drop + Move`        |
 
-`&mut` and `&uninit` preserve pointee state. `&out` and `&drop` change it and
-therefore carry an obligation that cannot be forgotten. The obligation moves
-with the reference value.
+The initialization state of `&mut` and `&uninit` are preserved at the start and
+end of the borrow. `&out` and `&drop` are obliged to change the state and
+therefore cannot be forgotten (`!Drop`). As with Rust, `&T` is `Copy` because
+multiple immutable references are okay.
 
 HLL borrow expressions spell the `&drop` operation as `&deinit expr`; MIR uses
 `&drop place`. The reference type remains `&drop T`.
 
 ## Initialization state
 
-Every tracked owned place has one of these states:
+The MIR analyzes the initialization state of every place in the program. Every
+tracked owned place has one of these states:
 
-| State | Meaning |
-|---|---|
-| `NeverInit` | Declared but never written |
-| `Init` | Fully initialized and readable |
-| `Moved` | Previously initialized, then consumed |
-| `Partial` | Aggregate descendants have different states |
-| `Diverged` | CFG predecessors disagree about the state |
+| State       | Meaning                                     |
+|-------------|---------------------------------------------|
+| `NeverInit` | Declared but never written                  |
+| `Init`      | Fully initialized and readable              |
+| `Moved`     | Previously initialized, then consumed       |
+| `Partial`   | Aggregate descendants have different states |
+| `Diverged`  | CFG predecessors disagree about the state   |
 
 Important consequences:
 
 - Reads require `Init`.
 - Writing every aggregate leaf folds `Partial` to `Init`.
-- Consuming every aggregate leaf leaves the aggregate uninitialized.
+- Consuming every aggregate leaf folds it to `Uninit`.
 - `NeverInit` and `Moved` both satisfy an “uninitialized” precondition.
-- `Diverged` is not silently accepted by later checks.
-- Returning normally requires every owned value to have been consumed.
+- `Diverged` states are not statically known is rejected by checks that require an initialization state precondition.
+- Returning from a function requires every owned value to be uninitialized - though drop_elaboration may insert those.
 - `abort` and `unreachable` do not trigger exit cleanup. Cleanup required at
   an earlier semantic program point still occurs.
 
@@ -271,7 +273,7 @@ MIR syntax traps:
 - The first basic block is the entry block.
 - Local declarations precede all basic blocks.
 - MIR functions and function types have no return arrow.
-- Return values use an `&out` parameter, conventionally `$return`.
+- To return `R` add a `$return: &out R` final call parameter.
 - `call` is a statement, not an rvalue.
 - `switchEnum` takes a place because each outgoing edge refines that place.
 - `take` is resolved during elaboration; downstream MIR must contain only
@@ -430,29 +432,32 @@ only when introducing a new diagnostic family.
 This repository uses Jujutsu (jj) for working-copy operations. Do not use
 Git commands to rewrite or discard work.
 Common commands:
+```bash
 jj status
 jj diff
 jj log
 jj describe -m "description"
 jj new
 jj split PATHS...
+```
 Preserve unrelated working-copy changes. Do not regenerate all golden files
 while another agent is modifying fixtures. Prior to starting work, use
 `jj status` to confirm existing changes.
 
-## Rejecting work as not-yet-ready.
+## Rejecting feature work as not-yet-ready.
 Often a new feature requires a dependent feature or cleanup to be implemented
 cleanly and without hacks. Reject feature work if prerequisite maintainability
 passes are required to implement the new feature correctly and without
-compromises to long term quality. Reject the feature work even if the
-prerequisite was discovered in the middle of a change. Escalate for direction or
+compromises to long term quality. Reject feature work even if the prerequisite
+was discovered in the middle of a change. Escalate for direction or
 use `jj` to land the maintainability pass upstream of the feature change.
 
-If a feature or cleanup is nice-to-have but should not block the current
-feature work, mark it with a TODO.
+If a desired feature or cleanup is nice-to-have but should not block the current
+feature work, mark it with a TODO or add it to the punchlist.
 
 ## Pre-commit check
-Before commiting, please execute the following steps, step by step, one at a time. If changes have to be made, redo the steps.
+Before commiting, please execute the following steps, step by step, one at a time. If changes have to be made, redo the entire pre-commit check. If feeling lazy, delegate these checks to a subagent.
+
 1. Review the current change for correctness, maintainability, and simplicity. Be skeptical of incomplete matches, `expect`, `unwrap`, and other code that smells of partial implementations.
 2. Reject work as incomplete if they are hacky or contain shortcuts. Sacrifices to long term correctness and rigor has cost the project more time than any shortcut has saved. 
 3. Reject work as incomplete if a feature is not fully implemented, e.g. if there are missing cases, unhandled interactions, or caveats to completeness.
@@ -460,7 +465,7 @@ Before commiting, please execute the following steps, step by step, one at a tim
 5. Review changes to test fixtures for totality of test coverage. Every new feature needs to be tested against every existing feature it may interact with. Every feature interaction requires a success case (that passes compilation) and at least one error case.
 6. Remove any unit-tests that are redundant with end-to-end tests under `tests/`, or if they may be implemented as end-to-end tests, rewrite them as such.
 7. Combine any small end-to-end test fixtures into an existing large test fixture or a new large test fixture if there are sufficient related cases. See the Testing Discipline rules.
-8. Remove any references to session-specific enumerations, so they do not
-get stored in the durable commit history. E.g. "arc-1", "task-1", "pass-1", etc. Future work may be marked with TODO comments.
-9. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.
-10. Remove or relocate any comments that are irrelevant to the surrounding code, e.g. referencing how a different system works when the current file does not otherwise mention that system.
+8. Remove any references to session-specific enumerations, so they do not get stored in the durable commit history. E.g. "arc-1", "task-1", "pass-1", etc. Future work may be marked with TODO comments
+9. Discuss any newly introduced jargon, vocabulary, or terms-of-art. All words used in code or comments must be either common words that are seen in every compiler and obvious from context, or are defined in the Silica README. Prefer to use existing terminology where possible, even if reusing existing terms would be more verbose. New jargon that is visible across multiple files, e.g. both tests and feature code, is especially dangerous.
+10. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.
+11. Remove or relocate any comments that are irrelevant to the surrounding code, e.g. referencing how a different system works when the current file does not otherwise mention that system.

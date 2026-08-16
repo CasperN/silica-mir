@@ -123,11 +123,11 @@ Example syntax and definitions
 
 Note
 ```
-co foo() -> T ! E
+co foo() -> T ! E : Move + Drop
 ```
 is sugar for
 ```
-fn foo() -> impl Co<() -> T ! E>;
+fn foo() -> impl Co<() -> T ! E> + Move + Drop;
 ```
 
 for common and useful effects include the following:
