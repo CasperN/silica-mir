@@ -1636,7 +1636,6 @@ impl LocalEnv<'_> {
     /// Compute the type of a place. Failures remain structured; the checker
     /// that owns the enclosing statement or terminator supplies source and
     /// declaration context when turning them into diagnostics.
-    // TODO: Should we consolidate place type pattern queries and factor out a shared function fn place_type_matches(&self, place: &Place, locals: &IndexMap<String, Type>, pred: impl FnOnce(&Type) -> bool) -> bool?
     pub fn type_of_place(
         &self,
         place: &Place,

@@ -120,7 +120,6 @@ pub fn verify_no_take(program: &IndexedProgram, d: &mut crate::diagnostics::Diag
     ));
 }
 
-// TODO: Should we consolidate scan_statement_for_take, transfer_statement_demand, and relax_statement and factor out a shared function fn walk_statement_operands(stmt: &Statement, f: impl FnMut(&Operand)) -> ()?
 fn scan_statement_for_take(stmt: &Statement, first: &mut Option<SourceInfo>, count: &mut usize) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
@@ -477,7 +476,6 @@ fn transfer_terminator_demand(term: &Terminator, demand: &mut Demand) {
     }
 }
 
-// TODO: Should we consolidate scan_rvalue_for_take, transfer_rvalue_demand, and relax_rvalue and factor out a shared function fn walk_rvalue_operands(rvalue: &RValue, f: impl FnMut(&Operand)) -> ()?
 fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut Demand) {
     match rvalue {
         RValue::Use(operand)
