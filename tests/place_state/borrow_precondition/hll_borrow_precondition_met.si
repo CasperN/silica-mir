@@ -83,3 +83,40 @@ fn uninit_of_never_init() {
   let mut x: i64;
   let r: &uninit i64 = &uninit x;
 }
+
+# ---------- Reborrow at call sites ----------
+
+struct Cell: Move { val: i64 }
+
+fn cell_bump(r: &mut Cell) {
+  r.*.val = r.*.val + 1;
+}
+
+# covers: passing an existing &mut variable to a call elaborates a
+# bounded reborrow via take-resolution; the original ref remains usable
+# for a second call.
+fn reborrow_mut_twice(r: &mut Cell) {
+  cell_bump(r);
+  cell_bump(r);
+}
+
+# covers: reborrow through a nested field projection preserves the
+# outer aggregate's usability across the call.
+struct Pair: Move { first: Cell, second: Cell }
+
+fn reborrow_field(p: &mut Pair) {
+  cell_bump(&mut p.*.first);
+  cell_bump(&mut p.*.second);
+  cell_bump(&mut p.*.first);
+}
+
+impl Cell {
+  fn bump(recv: &mut Self) { recv.*.val = recv.*.val + 1; }
+}
+
+# covers: method-receiver reborrow — successive dot-calls on an
+# existing &mut Cell each get a fresh bounded reborrow.
+fn reborrow_method_receiver(r: &mut Cell) {
+  r.bump();
+  r.bump();
+}

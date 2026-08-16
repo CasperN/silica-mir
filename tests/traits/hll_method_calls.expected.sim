@@ -494,7 +494,8 @@ impl BorrowTarget {
     $tmp_1: unit;
     $tmp_2: i64;
     entry:
-      old = move recv.*.value;
+      old = copy recv.*.value;
+      drop recv.*.value;
       recv.*.value = 4;
       $tmp_1 = unit;
       drop $tmp_1;
@@ -578,7 +579,8 @@ impl AutoBorrowMethods for BorrowTarget {
     $tmp_1: unit;
     $tmp_2: i64;
     entry:
-      old = move recv.*.value;
+      old = copy recv.*.value;
+      drop recv.*.value;
       recv.*.value = 6;
       $tmp_1 = unit;
       drop $tmp_1;
@@ -654,7 +656,8 @@ fn<'s0> auto_mut(recv: &mut 's0 BorrowTarget) {
   $tmp_1: unit;
   $tmp_2: i64;
   entry:
-    old = move recv.*.value;
+    old = copy recv.*.value;
+    drop recv.*.value;
     recv.*.value = 2;
     $tmp_1 = unit;
     drop $tmp_1;

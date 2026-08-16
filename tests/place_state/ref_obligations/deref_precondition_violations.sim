@@ -28,11 +28,17 @@ fn read_out_ref_before_write(r: &out i64) {
     return
 }
 
-# Write through `&mut` without moving out first: would silently
-# forget the Init pointee.
-fn write_mut_ref_without_move(r: &mut i64) {
+# Overwriting a field of an initialized `&mut` pointee that isn't
+# implicitly destructible: drop-elab covers the Copy+Drop case
+# automatically, but a Move-only field with no AutoDestroy still fires
+# the "pointee must be uninitialized" precondition. Pins the negative
+# for the non-destructible tier alongside the Copy+Drop positive in
+# `hll_borrow_precondition_met`.
+struct MoveOnly: Move { inner: i64 }
+struct HoldsMoveOnly: Move { field: MoveOnly }
+fn write_mut_ref_field_without_move(r: &mut HoldsMoveOnly, replacement: MoveOnly) {
   entry:
-    r.* = 42;
+    r.*.field = move replacement;
     return
 }
 

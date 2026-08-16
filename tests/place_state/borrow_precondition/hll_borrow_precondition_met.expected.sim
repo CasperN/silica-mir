@@ -173,3 +173,145 @@ fn uninit_of_never_init() {
     require_uninit $tmp_0;
     return
 }
+
+struct Cell: Move {
+  val: i64
+}
+
+fn<'s0> cell_bump(r: &mut 's0 Cell) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: i64;
+  $tmp_3: &out i64;
+  entry:
+    $tmp_3 = &out $tmp_2;
+    call $i64_add(copy r.*.val, 1, move $tmp_3);
+    drop r.*.val;
+    r.*.val = move $tmp_2;
+    $tmp_1 = unit;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop r;
+    require_uninit r;
+    return
+}
+
+fn<'s0> reborrow_mut_twice(r: &mut 's0 Cell) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $clone_0: &mut 's0 Cell;
+  $clone_1: &mut 's0 Cell;
+  entry:
+    $clone_1 = &mut r.*;
+    call cell_bump(move $clone_1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $clone_0 = &mut r.*;
+    call cell_bump(move $clone_0);
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop r;
+    require_uninit r;
+    return
+}
+
+struct Pair: Move {
+  first: Cell
+  second: Cell
+}
+
+fn<'s0> reborrow_field(p: &mut 's0 Pair) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: &mut Cell;
+  $tmp_3: unit;
+  $tmp_4: &mut Cell;
+  $tmp_5: unit;
+  $tmp_6: &mut Cell;
+  entry:
+    $tmp_2 = &mut p.*.first;
+    call cell_bump(move $tmp_2);
+    $tmp_1 = unit;
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_4 = &mut p.*.second;
+    call cell_bump(move $tmp_4);
+    $tmp_3 = unit;
+    require_uninit $tmp_4;
+    drop $tmp_3;
+    require_uninit $tmp_3;
+    $tmp_6 = &mut p.*.first;
+    call cell_bump(move $tmp_6);
+    $tmp_5 = unit;
+    require_uninit $tmp_6;
+    drop $tmp_5;
+    require_uninit $tmp_5;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop p;
+    require_uninit p;
+    return
+}
+
+impl Cell {
+  fn<'s0> bump(recv: &mut 's0 Cell) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    $tmp_2: i64;
+    $tmp_3: &out i64;
+    entry:
+      $tmp_3 = &out $tmp_2;
+      call $i64_add(copy recv.*.val, 1, move $tmp_3);
+      drop recv.*.val;
+      recv.*.val = move $tmp_2;
+      $tmp_1 = unit;
+      require_uninit $tmp_3;
+      require_uninit $tmp_2;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      drop recv;
+      require_uninit recv;
+      return
+  }
+}
+
+fn<'s0> reborrow_method_receiver(r: &mut 's0 Cell) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $clone_0: &mut 's0 Cell;
+  $clone_1: &mut 's0 Cell;
+  entry:
+    $clone_1 = &mut r.*;
+    call <Cell>::bump(move $clone_1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $clone_0 = &mut r.*;
+    call <Cell>::bump(move $clone_0);
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop r;
+    require_uninit r;
+    return
+}

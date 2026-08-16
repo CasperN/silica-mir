@@ -35,3 +35,28 @@ fn<'s0> reborrow_ok(r: &mut 's0 i64) {
     require_uninit r;
     return
 }
+
+fn<'s0> implicit_reborrow_at_call(r: &mut 's0 i64) {
+  $tmp_0: unit;
+  $tmp_1: unit;
+  $tmp_2: unit;
+  $clone_0: &mut 's0 i64;
+  $clone_1: &mut 's0 i64;
+  entry:
+    $clone_1 = &mut r.*;
+    call use_val(move $clone_1);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $clone_0 = &mut r.*;
+    call use_val(move $clone_0);
+    $tmp_2 = unit;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop r;
+    require_uninit r;
+    return
+}

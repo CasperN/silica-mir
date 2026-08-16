@@ -5,7 +5,15 @@ fn use_val(x: &mut i64) {}
 fn reborrow_ok(r: &mut i64) {
   # 1. Borrowing r.* (explicit reborrow)
   use_val(&mut r.*);
-  
+
   # 2. r is reusable here after the first borrow expires
   use_val(&mut r.*);
+}
+
+# covers: passing `r` directly to a call resolves through take-elaboration
+# to a bounded reborrow, so the original `r` remains usable for subsequent
+# operations rather than being consumed by the first call.
+fn implicit_reborrow_at_call(r: &mut i64) {
+  use_val(r);
+  use_val(r);
 }

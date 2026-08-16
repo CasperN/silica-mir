@@ -79,33 +79,30 @@ impl<T> Vec<T> {
 }
 
 impl<T: Move> Vec<T> {
-  # Consuming mutation avoids both the missing temporary `&mut` reborrow and a
-  # false Partial state after pointer-based mutation through `&mut Vec<T>`.
-  unsafe fn push_unchecked(recv: Self, value: T) -> Self {
-    let slot = ptr_offset(recv.data, recv.len);
+  unsafe fn push_unchecked(recv: &mut Self, value: T) {
+    let slot = ptr_offset(recv.*.data, recv.*.len);
     slot.* = value;
-    Vec { data: recv.data, len: recv.len + 1u64, cap: recv.cap }
+    recv.*.len = recv.*.len + 1u64;
   }
 
-  unsafe fn push(recv: Self, value: T) -> Self {
-    if recv.len >= recv.cap {
-      let old_data = recv.data;
-      let new_cap = recv.cap + recv.cap;
+  unsafe fn push(recv: &mut Self, value: T) {
+    if recv.*.len >= recv.*.cap {
+      let old_data = recv.*.data;
+      let new_cap = recv.*.cap + recv.*.cap;
       let new_data = malloc_bytes(size_of<T>() * new_cap) as *T;
       let mut index = 0u64;
       loop {
-        if index >= recv.len { break }
+        if index >= recv.*.len { break }
         let source = ptr_offset(old_data, index);
         let target = ptr_offset(new_data, index);
         unsafe { target.* = source.*; }
         index = index + 1u64;
       }
       free_bytes(old_data as *u8);
-      let grown = Vec { data: new_data, len: recv.len, cap: new_cap };
-      grown.push_unchecked(value)
-    } else {
-      recv.push_unchecked(value)
+      recv.*.data = new_data;
+      recv.*.cap = new_cap;
     }
+    recv.push_unchecked(value);
   }
 }
 
@@ -153,8 +150,8 @@ fn main() -> i32 {
   let owned = boxed.into_inner();
 
   let mut values = unsafe { vec_with_capacity<i64>(1u64) };
-  values = unsafe { values.push(1i64) };
-  values = unsafe { values.push(2i64) };
+  unsafe { values.push(1i64); }
+  unsafe { values.push(2i64); }
   let observed = inspect_vec(&values);
   vec_free(values);
 

@@ -1,7 +1,19 @@
-error: at 7:13: [PS-UseAfterMove] In function 'copy_of_non_copy': variable 'r' is used after move
-   |
- 6 |     let y = r;
- 7 |     let z = r;
-   |             ^
- 8 | }
-   |
+error: at 11:13: [PS-UseAfterMove] In function 'copy_of_non_copy': variable 'b' is used after move
+    |
+ 10 |     let y = b;
+ 11 |     let z = b;
+    |             ^
+ 12 | }
+    |
+error: at 12:2: [PS-RequireUninitNotSatisfied] In function 'copy_of_non_copy': value 'z' must be fully uninitialized by this point, but it is still initialized
+    |
+ 11 |     let z = b;
+ 12 | }
+    |  ^
+    |
+error: at 12:2: [PS-RequireUninitNotSatisfied] In function 'copy_of_non_copy': value 'y' must be fully uninitialized by this point, but it is still initialized
+    |
+ 11 |     let z = b;
+ 12 | }
+    |  ^
+    |

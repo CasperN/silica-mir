@@ -6,9 +6,18 @@ fn reborrow_invalid() {
   let mut x = 5;
   let mut r = &mut x;
   let y = &mut r.*;
-  
+
   # Trying to reassign r while y is still active (must fail with LoanConflict)
   r = &mut x;
-  
+
   use_val(&mut y.*);
+}
+
+# covers: an implicit call-site reborrow of `r` still conflicts with an
+# outstanding exclusive borrow of `r.*` — take-elaboration does not relax
+# aliasing, it only closes at call completion.
+fn call_reborrow_conflict(r: &mut i64) {
+  let s = &mut r.*;
+  use_val(r);
+  use_val(s);
 }

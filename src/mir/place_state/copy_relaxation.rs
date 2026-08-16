@@ -1,39 +1,43 @@
-//! Copy relaxation: resolve `take` operands to `move`, `copy`, or `AutoClone`.
+//! Copy relaxation: resolve each `take` operand to `move`, `copy`, an
+//! `AutoClone::clone` call, or a bounded reborrow.
 //!
-//! HLL lowers ordinary value reads as `Operand::Take`. This pass rewrites
-//! each `take place` to `move place` (last-use consumption), `copy place`
-//! (trivial preservation), or an `AutoClone::clone` call followed by a move
-//! from the generated result (nontrivial preservation). Explicit `move` and
-//! `copy` in the input are authoritative and never rewritten, so hand-written
-//! `.sim` fixtures can pin exact operand kinds.
+//! HLL lowers ordinary value reads as `Operand::Take`. This pass picks a
+//! concrete resolution per operand from the four modes:
+//! - `move place` — last-use consumption.
+//! - `copy place` — trivial preservation for `Copy` types.
+//! - `AutoClone` — call `AutoClone::clone(&place)` into a fresh local for
+//!   types that opt into non-trivial preservation.
+//! - Reborrow — mint `$tmp = &kind place.*` and pass `move $tmp`, so an
+//!   exclusive reference (`&mut`, `&out`, `&drop`, `&uninit`) can be
+//!   preserved without a trivial copy.
 //!
-//! It deliberately runs before NLL elaboration. Specializing `take` to
-//! `move` versus `copy` changes whether the read closes a borrower loan,
-//! so NLL must compute liveness from the resolved program.
+//! Explicit `move` and `copy` in the input are authoritative and never
+//! rewritten, so hand-written `.sim` fixtures can pin exact operand kinds.
+//!
+//! The pass runs before NLL elaboration. Specializing `take` changes whether
+//! the read closes a borrower loan, so NLL must compute liveness from the
+//! resolved program.
 //!
 //! The analysis is backward, with separate may-demand sets for values and
-//! the owned bases needed to access them. At a CFG join the sets union:
-//! an operand must be preserved if either successor can still use it.
+//! the owned bases needed to access them. At a CFG join the sets union: an
+//! operand must be preserved if either successor can still use it.
 //!
-//! Path classification (all `Field` / `Downcast` / const-`Index` steps
-//! are transparent):
-//! - **Mandatory preservation** — the path crosses a shared reference (`&T`) or
-//!   contains a dynamic index. Moving through `&T` is illegal; a dynamic
-//!   index has no stable identity, so consuming it would silently lose
-//!   the storage. `take` on such a path uses `copy` when possible and an
-//!   `AutoClone` call otherwise; if neither is available, relaxation emits
-//!   `RELAX-MandatoryPreservationUnavailable`.
-//! - **Stable candidates** — owned paths, chains of exclusive-ref
-//!   dereferences, and paths crossing raw pointers. Raw pointers already
-//!   sit inside `unsafe`, so the pass demand-relaxes them like ordinary
-//!   candidates rather than mandating preservation. Live demand resolves to
-//!   `copy` for Copy types or an `AutoClone` call for eligible Move types;
-//!   otherwise resolution consumes the place with `move` (falling back to
-//!   `copy` for Copy-only types).
-//! - **`Index` operand position** — a non-consuming read. `take` there
-//!   is forced to `copy`; `move` is `RELAX-IndexOperandNotReading`. This
-//!   keeps downstream analyses (place-state, NLL, lifetime) from having
-//!   to recurse into `Index` projections.
+//! Preservation is required whenever the place is inside a borrow (any ref
+//! kind) or a dynamic index — borrowed storage can't have holes, and a
+//! dynamic index has no stable identity to track partial consumption against.
+//! When preservation is required and every non-`move` resolution fails,
+//! resolution falls through to `move` UNLESS the path crosses a shared
+//! reference or dynamic index (`crosses_shared_boundary`), where `move` is
+//! semantically illegal and relaxation instead emits
+//! `RELAX-MandatoryPreservationUnavailable`.
+//!
+//! Raw-pointer dereferences are deliberately not preservation-triggering:
+//! they carry no ownership tracking and the author is already in `unsafe`
+//! territory, so `take *p` resolves via the ordinary flexible rule.
+//!
+//! `Index` operand position is a non-consuming read: `take` there is forced
+//! to `copy` and `move` is `RELAX-IndexOperandNotReading`. This keeps
+//! downstream analyses from having to recurse into `Index` projections.
 
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
@@ -855,47 +859,48 @@ fn relax_operand(
         return;
     }
 
-    // Now resolve `Take`. Extract place, classify, decide.
+    // Now resolve `Take`. Extract place, decide, apply.
     let place = match operand {
         Operand::Take(p) => p.clone(),
         _ => unreachable!(),
     };
 
-    let mandatory_preservation = requires_preservation(&place, ctx.env, ctx.locals);
-    let ty = ctx.env.type_of_place(&place, ctx.locals).ok();
-    let class = ty.as_ref().map(|t| ctx.env.class_of(t)).unwrap_or_default();
-    let is_copy = class.implies(Marker::Copy);
-    let is_move = class.implies(Marker::Move);
-
-    let has_demand = mandatory_preservation
-        || demand
-            .values
-            .iter()
-            .any(|needed| demand_preserves(&place, needed))
-        || demand
-            .accesses
-            .iter()
-            .any(|needed| demand_preserves(&place, needed));
-    if has_demand && !is_copy && is_move {
-        if let Some(ty) = &ty {
-            if ctx
-                .env
-                .has_applicable_trait_impl(&Instance::bare("AutoClone"), ty)
-            {
-                let expansion = ctx.auto_clone(&place, ty, source);
-                prefix.splice(0..0, expansion.statements);
-                *operand = expansion.operand;
-                add_value_demand(demand, &place);
-                return;
-            }
+    match analyze_take(&place, demand, ctx.env, ctx.locals) {
+        Ok(TakeResolution::Move) => {
+            *operand = move_op(place.clone());
+            kill_future_demand(demand, &place);
         }
-    }
-
-    let resolved = if mandatory_preservation {
-        // Move is semantically invalid here (shared-ref crossing or dynamic
-        // index). AutoClone was attempted above; diagnose if trivial Copy is
-        // unavailable too.
-        if !is_copy {
+        Ok(TakeResolution::Copy) => {
+            *operand = copy_op(place.clone());
+        }
+        Ok(TakeResolution::AutoClone) => {
+            let ty = ctx
+                .env
+                .type_of_place(&place, ctx.locals)
+                .expect("AutoClone resolution implies a known type");
+            let expansion = ctx.auto_clone(&place, &ty, source);
+            prefix.splice(0..0, expansion.statements);
+            *operand = expansion.operand;
+        }
+        Ok(TakeResolution::Reborrow) => {
+            let ty = ctx
+                .env
+                .type_of_place(&place, ctx.locals)
+                .expect("Reborrow resolution implies a known reference type");
+            let TypeKind::Ref(kind, _, _) = ty.kind else {
+                unreachable!("Reborrow resolution implies a reference type at `place`");
+            };
+            let generated =
+                SourceInfo::generated(GeneratedKind::CopyRelaxation, source.span());
+            let temp = ctx.add_local(ty.clone(), generated);
+            prefix.push(assign_stmt(
+                temp.clone(),
+                ref_rv(kind, deref_place(place.clone())),
+                generated,
+            ));
+            *operand = move_op(temp);
+        }
+        Err(NoPreservationPath) => {
             push_relax_error(
                 ctx,
                 source,
@@ -906,50 +911,128 @@ fn relax_operand(
                     format_place(&place)
                 ),
             );
+            *operand = copy_op(place.clone());
         }
-        Operand::Copy(place.clone())
-    } else {
-        // AutoClone was attempted above when later demand requires preserving
-        // a stable owned or all-exclusive-deref path.
-        if has_demand && is_copy {
-            Operand::Copy(place.clone())
-        } else if is_move {
-            Operand::Move(place.clone())
-        } else if is_copy {
-            Operand::Copy(place.clone())
-        } else {
-            // Silent recovery. The pre-elaboration substructural check
-            // owns the "neither Copy nor Move" diagnostic (its
-            // `ClassMarker::CopyOrMove` case fires on the same
-            // condition), so emitting again here would just duplicate.
-            // Type-query failures also land here and are already
-            // reported by earlier passes.
-            Operand::Copy(place.clone())
-        }
-    };
-
-    let is_now_move = matches!(resolved, Operand::Move(_));
-    *operand = resolved;
-    if is_now_move {
-        kill_future_demand(demand, &place);
     }
     add_value_demand(demand, &place);
 }
 
-/// True when the path can only be read (not consumed) at this point:
-/// - crosses a shared reference (`&T`) anywhere, or
-/// - contains a dynamic index (identity not stable across program
-///   points, so a `move` here would silently lose track of which slot
-///   was consumed).
+/// A concrete resolution of a `take` operand. Every variant is a valid
+/// consumption strategy: transfer it (`Move`), duplicate it trivially
+/// (`Copy`), call an `AutoClone` implementation, or mint a bounded
+/// reborrow. The consumer builds the reborrow's kind from the place's
+/// type — the analyzer doesn't carry it.
+enum TakeResolution {
+    Move,
+    Copy,
+    AutoClone,
+    Reborrow,
+}
+
+/// `analyze_take` failure. Fires when the place must survive the take,
+/// no preservation-compatible resolution is available (not `Copy`, not an
+/// exclusive reference, no `AutoClone`), and the path crosses a boundary
+/// that also forbids `move` (shared reference or dynamic index). The
+/// consumer emits the `MandatoryPreservationUnavailable` diagnostic and
+/// falls back to `copy` for recovery.
+struct NoPreservationPath;
+
+/// Decide how a `take place` should be elaborated. Pure over its inputs.
 ///
-/// In either case `move` is either semantically illegal (shared-ref)
-/// or would silently lose track of the storage (dynamic index).
-/// Resolution must emit `copy`.
+/// Preservation is required when the place is inside a borrow whose
+/// pointee-Init obligation demands the aggregate stay whole
+/// ([`requires_preservation`]) or when a later program point still reads
+/// it. Both triggers funnel to the same resolution table because the
+/// choice depends on the type at hand, not on why preservation was
+/// required.
+fn analyze_take(
+    place: &Place,
+    demand: &Demand,
+    env: LocalEnv<'_>,
+    locals: &IndexMap<String, Type>,
+) -> Result<TakeResolution, NoPreservationPath> {
+    let ty = env.type_of_place(place, locals).ok();
+    let class = ty.as_ref().map(|t| env.class_of(t)).unwrap_or_default();
+    let is_copy = class.implies(Marker::Copy);
+    let is_move = class.implies(Marker::Move);
+    let future_demand = demand
+        .values
+        .iter()
+        .any(|needed| demand_preserves(place, needed))
+        || demand
+            .accesses
+            .iter()
+            .any(|needed| demand_preserves(place, needed));
+    let must_preserve = requires_preservation(place, env, locals) || future_demand;
+
+    if must_preserve {
+        if is_copy {
+            return Ok(TakeResolution::Copy);
+        }
+        if ty.as_ref().is_some_and(is_exclusive_ref) {
+            return Ok(TakeResolution::Reborrow);
+        }
+        if let Some(ty) = &ty {
+            if env.has_applicable_trait_impl(&Instance::bare("AutoClone"), ty) {
+                return Ok(TakeResolution::AutoClone);
+            }
+        }
+        if crosses_shared_boundary(place, env, locals) {
+            return Err(NoPreservationPath);
+        }
+        // Preservation demanded but nothing above worked; the path allows
+        // move, so fall through and let the later leak/obligation check
+        // surface any real hole.
+    }
+
+    if is_move {
+        Ok(TakeResolution::Move)
+    } else if is_copy {
+        Ok(TakeResolution::Copy)
+    } else {
+        // Silent recovery. The pre-elaboration substructural check owns the
+        // "neither Copy nor Move" diagnostic; emitting again here would just
+        // duplicate. Type-query failures land here and were already reported
+        // by earlier passes.
+        Ok(TakeResolution::Copy)
+    }
+}
+
+/// True when `ty` is an exclusive reference (`&mut`, `&out`, `&drop`,
+/// `&uninit`). Shared references are already `Copy` and don't need
+/// reborrow elaboration.
+fn is_exclusive_ref(ty: &Type) -> bool {
+    matches!(
+        &ty.kind,
+        TypeKind::Ref(RefKind::Mut | RefKind::Out | RefKind::Drop | RefKind::Uninit, _, _),
+    )
+}
+
+
+/// True when the enclosing storage of `place` obligates its contents to
+/// remain intact across the `take`. Preservation is governed by the
+/// innermost enclosing reference — the first `Deref` encountered walking
+/// from the leaf outward — because that reference's contract is the
+/// nearest one a leaf move can violate. If that reference is `&T` or
+/// `&mut T`, its pointee must stay `Init` at expiry, so consuming a
+/// field creates a hole the obligation check would reject. `&out`,
+/// `&drop`, and `&uninit` are excluded: their obligations are satisfied
+/// by the pointee ending `Uninit` (or by moving out to enable that), so
+/// `take` there must stay flexible enough to resolve to `move`.
 ///
-/// Raw-pointer dereferences are deliberately NOT mandatory-copy: they
-/// carry no ownership tracking and the author is already in `unsafe`
-/// territory, so `take *p` resolves via the ordinary flexible rule
-/// (prefer `move` when the type supports it).
+/// Outer references above the innermost `Deref` don't add a constraint
+/// on the leaf: they govern their own immediate pointee (a reference
+/// value at that layer), whose Init-ness isn't affected by moves at a
+/// deeper layer.
+///
+/// A dynamic index anywhere between the leaf and the innermost `Deref`
+/// (or, for an owned path, anywhere in the path) also triggers
+/// preservation — the index has no stable identity to track partial
+/// consumption against.
+///
+/// Raw-pointer dereferences are deliberately not preservation-triggering:
+/// they carry no ownership tracking and the author is already in `unsafe`
+/// territory, so `take *p` resolves via the ordinary flexible rule.
 fn requires_preservation(
     place: &Place,
     env: LocalEnv<'_>,
@@ -961,16 +1044,45 @@ fn requires_preservation(
             requires_preservation(inner, env, locals)
         }
         Place::Index(inner, op) => {
-            if !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. })) {
-                return true;
-            }
-            requires_preservation(inner, env, locals)
+            !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. }))
+                || requires_preservation(inner, env, locals)
+        }
+        Place::Deref(inner) => env.type_of_place(inner, locals).is_ok_and(|ty| {
+            matches!(
+                &ty.kind,
+                TypeKind::Ref(RefKind::Shared | RefKind::Mut, _, _)
+            )
+        }),
+    }
+}
+
+/// True when the path crosses a boundary where `move` is not a legal
+/// operation — a shared reference (`&T`) or a dynamic index.
+// TODO: `requires_preservation` and `crosses_shared_boundary` share the
+// same walk-down-the-place skeleton, differing only in what they check
+// at each Deref (kind test) and whether they recurse past the first
+// Deref. Is there a "walk projections applying a Deref-boundary
+// predicate" scaffold worth extracting, or is the duplication small
+// enough to leave?
+fn crosses_shared_boundary(
+    place: &Place,
+    env: LocalEnv<'_>,
+    locals: &IndexMap<String, Type>,
+) -> bool {
+    match place {
+        Place::Var(_) => false,
+        Place::Field(inner, _) | Place::Downcast(inner, _) => {
+            crosses_shared_boundary(inner, env, locals)
+        }
+        Place::Index(inner, op) => {
+            !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. }))
+                || crosses_shared_boundary(inner, env, locals)
         }
         Place::Deref(inner) => {
-            let boundary_requires_copy = env
+            let shared = env
                 .type_of_place(inner, locals)
                 .is_ok_and(|ty| matches!(&ty.kind, TypeKind::Ref(RefKind::Shared, _, _)));
-            boundary_requires_copy || requires_preservation(inner, env, locals)
+            shared || crosses_shared_boundary(inner, env, locals)
         }
     }
 }
@@ -1051,7 +1163,10 @@ mod tests {
     }
 
     #[test]
-    fn relaxes_an_earlier_move_through_an_exclusive_reference() {
+    fn preserves_every_take_through_an_exclusive_reference() {
+        // `r.*` under a `&mut` deref forces preservation on every take,
+        // even the last one before an in-place write. Drop-elab handles
+        // the subsequent `r.* = 0` by inserting a drop.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
@@ -1068,7 +1183,7 @@ mod tests {
             matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*")
         );
         assert!(
-            matches!(call_arg(&program, "f", 1), Operand::Move(place) if format_place(place) == "r.*")
+            matches!(call_arg(&program, "f", 1), Operand::Copy(place) if format_place(place) == "r.*")
         );
     }
 
@@ -1095,7 +1210,10 @@ mod tests {
     }
 
     #[test]
-    fn relaxes_through_arbitrarily_nested_exclusive_references() {
+    fn preserves_takes_through_arbitrarily_nested_exclusive_references() {
+        // The innermost `&mut` deref (closest to the leaf) governs
+        // preservation. Every `take r.*.*.*` resolves to `copy` because
+        // the deepest boundary is a `&mut` and the leaf type is `Copy`.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
@@ -1112,7 +1230,7 @@ mod tests {
             matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*.*.*")
         );
         assert!(
-            matches!(call_arg(&program, "f", 1), Operand::Move(place) if format_place(place) == "r.*.*.*")
+            matches!(call_arg(&program, "f", 1), Operand::Copy(place) if format_place(place) == "r.*.*.*")
         );
     }
 
@@ -1149,7 +1267,11 @@ mod tests {
     }
 
     #[test]
-    fn replacing_an_intermediate_reference_kills_nested_demand() {
+    fn preservation_holds_across_reference_replacement() {
+        // Even though the intermediate `r.* = take replacement` kills
+        // future demand on the old pointee, `r.*.*` sits under a `&mut`
+        // deref boundary and the leaf is `Copy`, so both reads resolve
+        // to `copy`.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
@@ -1162,7 +1284,7 @@ mod tests {
             }
             ",
         );
-        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(_)));
+        assert!(matches!(call_arg(&program, "f", 0), Operand::Copy(_)));
     }
 
     #[test]
@@ -1208,7 +1330,12 @@ mod tests {
     }
 
     #[test]
-    fn shallower_borrower_use_does_not_preserve_a_deeper_pointee() {
+    fn deeper_pointee_preserved_via_innermost_boundary() {
+        // `r.*.*` sits under the innermost `&mut` deref, so preservation
+        // applies to it independently of any shallower use of `r.*`.
+        // The consume of `r.*` at statement 1 does not remove the
+        // preservation demand on `r.*.*` — that demand comes from the
+        // boundary, not from a future read.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
@@ -1221,7 +1348,7 @@ mod tests {
             }
             ",
         );
-        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(_)));
+        assert!(matches!(call_arg(&program, "f", 0), Operand::Copy(_)));
     }
 
     #[test]
@@ -1268,13 +1395,11 @@ mod tests {
     }
 
     #[test]
-    fn dereference_write_kills_old_pointee_demand() {
-        // The write at index 1 kills demand for `r.*` backward from the
-        // second call and from `r`'s post-Init obligation at Return, so
-        // the earlier `take r.*` at index 0 sees no demand and stays as
-        // move. The final `take r.*` at index 2 still relaxes to `copy`
-        // — otherwise `r.*` would be Uninit at Return, violating the
-        // &mut obligation.
+    fn deref_of_mut_ref_pointee_preserves_across_calls() {
+        // `r.*` is inside a `&mut` deref, so preservation is required
+        // for both reads. The pointee is `Copy`, so both `take r.*`
+        // resolve to `copy`. Drop-elab inserts a `drop r.*` before the
+        // intermediate `r.* = 1` to satisfy the write precondition.
         let program = elaborate_source(
             "
             extern fn consume(x: i64);
@@ -1288,7 +1413,7 @@ mod tests {
             ",
         );
         assert!(
-            matches!(call_arg(&program, "f", 0), Operand::Move(place) if format_place(place) == "r.*")
+            matches!(call_arg(&program, "f", 0), Operand::Copy(place) if format_place(place) == "r.*")
         );
         assert!(
             matches!(call_arg(&program, "f", 2), Operand::Copy(place) if format_place(place) == "r.*")
@@ -1296,7 +1421,10 @@ mod tests {
     }
 
     #[test]
-    fn relaxes_the_same_projected_pointee_but_not_a_sibling() {
+    fn preserves_projected_pointee_fields_uniformly() {
+        // Both `r.*.left` and `r.*.right` sit under the `&mut Pair`
+        // boundary and are `Copy`, so every take resolves to `copy`
+        // whether the field pattern repeats or diverges.
         let program = elaborate_source(
             "
             struct Pair: Copy + Drop { left: i64 right: i64 }
@@ -1322,7 +1450,7 @@ mod tests {
             matches!(call_arg(&program, "same", 0), Operand::Copy(place) if format_place(place) == "r.*.left")
         );
         assert!(
-            matches!(call_arg(&program, "sibling", 0), Operand::Move(place) if format_place(place) == "r.*.left")
+            matches!(call_arg(&program, "sibling", 0), Operand::Copy(place) if format_place(place) == "r.*.left")
         );
     }
 
@@ -1503,7 +1631,10 @@ mod tests {
     }
 
     #[test]
-    fn does_not_copy_an_exclusive_reference() {
+    fn reborrows_an_exclusive_reference_with_future_demand() {
+        // `&mut i64` is not `Copy`, so preserving `r` across two calls
+        // resolves via reborrow: each call gets a fresh bounded borrow
+        // sourced from `*r`, and `r` itself remains bound between them.
         let program = elaborate_source(
             "
             extern fn consume(r: &mut i64);
@@ -1515,7 +1646,11 @@ mod tests {
             }
             ",
         );
-        assert!(matches!(call_arg(&program, "f", 0), Operand::Move(Place::Var(r)) if r == "r"));
+        // The reborrow prefix pushes the first call to statement index 1.
+        assert!(matches!(
+            call_arg(&program, "f", 1),
+            Operand::Move(Place::Var(name)) if name.starts_with('$')
+        ));
     }
 
     #[test]
@@ -1558,8 +1693,13 @@ mod tests {
             }
             ",
         );
+        // The reborrow prefix for `take r` inserts an Assign at
+        // statement 1, pushing the `call consume(take x)` from index 2
+        // to index 3. `x` has demand carried through the loop back-edge
+        // but the `&out x` reinitialization on each iteration kills it,
+        // so the take resolves to `move` on the copy-only `i64` path.
         assert!(matches!(
-            call_arg_in_block(&program, "f", "loop", 2),
+            call_arg_in_block(&program, "f", "loop", 3),
             Operand::Move(Place::Var(x)) if x == "x"
         ));
     }

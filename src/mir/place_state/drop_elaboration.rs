@@ -355,12 +355,18 @@ fn pre_stmt_transitions(
         }
     }
 
-    // Case A: overwriting an initialized, destructible owned path. Skip
-    // Downcast-containing paths.
-    if let Some(owned) = as_owned_path(target) {
-        if !path_has_downcast(&owned) && is_init_and_destructible(&owned, state, env, locals) {
-            drops.push(owned);
-        }
+    // Case A: overwriting an initialized, destructible target. For owned
+    // paths this is the ordinary reassignment case; for Deref-containing
+    // targets it also covers writes like `recv.*.len = ...` after a
+    // `copy`-relaxed read left the pointee slot `Init`. Downcast-in-owned
+    // paths are skipped — enum-payload writes need their own treatment.
+    let is_bare_owned_path = as_owned_path(target)
+        .is_some_and(|owned| !path_has_downcast(&owned));
+    let is_pointee_slot = as_owned_path(target).is_none();
+    if (is_bare_owned_path || is_pointee_slot)
+        && is_init_and_destructible(target, state, env, locals)
+    {
+        drops.push(target.clone());
     }
 
     // Case B: `&out` / `&uninit` on an initialized destructible place.
@@ -425,19 +431,46 @@ fn path_has_downcast(place: &Place) -> bool {
 }
 
 /// True iff `place` is fully initialized and supports implicit destruction.
+/// True when `place` is currently `Init` and its type is implicitly
+/// destructible. State lookup dispatches on the place shape: owned paths
+/// resolve through `state.locals`; Deref-containing paths resolve
+/// through the borrower's tracked pointee state via `state.refs`.
+/// Untracked borrowers, shared-ref pointees, raw pointers, and dynamic
+/// indices don't participate — they return `false`.
 fn is_init_and_destructible(
     place: &Place,
     state: &PointState,
     env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
 ) -> bool {
-    let Some((root, path)) = extract_path(place) else {
-        return false;
+    let leaf_state = match extract_path(place) {
+        Some((root, path)) => {
+            let (Some(root_state), Some(root_ty)) = (state.locals.get(&root), locals.get(&root))
+            else {
+                return false;
+            };
+            super::analysis::read_at(root_state, root_ty, &path, env.program())
+        }
+        None => {
+            let Some((ref_place, sub_path)) = super::analysis::split_at_outermost_deref(place)
+            else {
+                return false;
+            };
+            let Ok(ref_ty) = env.type_of_place(&ref_place, locals) else {
+                return false;
+            };
+            let TypeKind::Ref(kind, _, pointee_ty) = &ref_ty.kind else {
+                return false;
+            };
+            if matches!(kind, RefKind::Shared) {
+                return false;
+            }
+            let Some(rs) = state.refs.get(&ref_place) else {
+                return false;
+            };
+            super::analysis::read_at(&rs.pointee, pointee_ty, &sub_path, env.program())
+        }
     };
-    let Some(root_state) = state.locals.get(&root) else {
-        return false;
-    };
-    let leaf_state = read_state_at_path(root_state, &path);
     if !is_state_fully_init(&leaf_state) {
         return false;
     }
@@ -565,12 +598,21 @@ fn walk_diverged(
 
 /// Return the init state at `place` within `state.locals`. Returns None
 /// if the root Var isn't tracked.
+// TODO: `state_at` here + the owned-path branch of `is_init_and_destructible`
+// + `read_static_place_state` in analysis.rs all walk a place to its
+// `InitState`. Would a single "state at place" method on `PointState` (or
+// on `LocalEnv`) that dispatches owned vs Deref subsume the three?
 fn state_at(state: &PointState, place: &Place) -> Option<InitState> {
     let (root, path) = extract_path(place)?;
     let root_state = state.locals.get(&root)?;
     Some(read_state_at_path(root_state, &path))
 }
 
+// TODO: `read_state_at_path` and `analysis::read_at` both walk `InitState`
+// down a path. The typed `read_at` handles opaque-Init variant descent and
+// takes `ty` + `prog`; this untyped version doesn't. Callers here either
+// have type info handy already or could be plumbed to. Should the untyped
+// helper collapse into `read_at`?
 fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
     if path.is_empty() {
         return state.clone();

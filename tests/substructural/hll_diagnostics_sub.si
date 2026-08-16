@@ -1,8 +1,12 @@
 # ---------- SUB-CopyOfNonCopy: implicit copy of a non-Copy type ----------
 
-# `&mut i64` is not Copy, so each bare use of `r` attempts an implicit
-# copy and is rejected by the substructural checker.
-fn copy_of_non_copy(r: &mut i64) {
-    let y = r;
-    let z = r;
+# `Bag` is Move but not Copy, so each bare use of `b` attempts an implicit
+# copy and is rejected by the substructural checker. Reference types would
+# reborrow at each use, so exclusive-ref parameters can't exercise this
+# invariant.
+struct Bag: Move { value: i64 }
+
+fn copy_of_non_copy(b: Bag) {
+    let y = b;
+    let z = b;
 }

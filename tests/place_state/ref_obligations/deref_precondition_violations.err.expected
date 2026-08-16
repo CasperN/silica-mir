@@ -5,66 +5,66 @@ error: at 26:5: [PS-DerefPointeeStateMismatch] In function 'read_out_ref_before_
     |     ^^^^^^^^^^^^
  27 |     r.* = 42;
     |
-error: at 35:5: [PS-DerefPointeeStateMismatch] In function 'write_mut_ref_without_move', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
+error: at 41:5: [PS-DerefPointeeStateMismatch] In function 'write_mut_ref_field_without_move', block 'entry': cannot write into pointee of 'r': pointee must be uninitialized here, but is initialized
     |
- 34 |   entry:
- 35 |     r.* = 42;
-    |     ^^^^^^^^
- 36 |     return
+ 40 |   entry:
+ 41 |     r.*.field = move replacement;
+    |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 42 |     return
     |
-error: at 44:5: [PS-WriteThroughSharedRef] In function 'write_through_shared_ref', block 'entry': cannot write through shared reference 'r'
+error: at 50:5: [PS-WriteThroughSharedRef] In function 'write_through_shared_ref', block 'entry': cannot write through shared reference 'r'
     |
- 43 |   entry:
- 44 |     r.* = 1;
+ 49 |   entry:
+ 50 |     r.* = 1;
     |     ^^^^^^^
- 45 |     return
+ 51 |     return
     |
-error: at 53:5: [PS-WriteThroughSharedRef] In function 'move_out_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+error: at 59:5: [PS-WriteThroughSharedRef] In function 'move_out_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
     |
- 52 |   entry:
- 53 |     x = move r.*;
+ 58 |   entry:
+ 59 |     x = move r.*;
     |     ^^^^^^^^^^^^
- 54 |     drop x;
+ 60 |     drop x;
     |
-error: at 64:5: [PS-WriteThroughSharedRef] In function 'move_copy_pointee_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+error: at 70:5: [PS-WriteThroughSharedRef] In function 'move_copy_pointee_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
     |
- 63 |   entry:
- 64 |     x = move r.*;
+ 69 |   entry:
+ 70 |     x = move r.*;
     |     ^^^^^^^^^^^^
- 65 |     y = copy r.*;
+ 71 |     y = copy r.*;
     |
-error: at 75:5: [PS-WriteThroughSharedRef] In function 'move_field_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
+error: at 81:5: [PS-WriteThroughSharedRef] In function 'move_field_through_shared_ref', block 'entry': cannot move out through shared reference 'r'
     |
- 74 |   entry:
- 75 |     x = move r.*.val;
+ 80 |   entry:
+ 81 |     x = move r.*.val;
     |     ^^^^^^^^^^^^^^^^
- 76 |     drop x;
+ 82 |     drop x;
     |
-error: at 83:5: [PS-DerefPointeeStateMismatch] In function 'read_out_ref_field_before_write', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
+error: at 89:5: [PS-DerefPointeeStateMismatch] In function 'read_out_ref_field_before_write', block 'entry': cannot read from pointee of 'r': pointee must be initialized here, but is uninitialized
     |
- 82 |   entry:
- 83 |     x = copy r.*.val;
+ 88 |   entry:
+ 89 |     x = copy r.*.val;
     |     ^^^^^^^^^^^^^^^^
- 84 |     r.*.val = 42;
+ 90 |     r.*.val = 42;
     |
-error: at 91:5: [PS-WriteThroughSharedRef] In function 'move_through_nested_shared_ref', block 'entry': cannot move out through shared reference 'r.*'
+error: at 97:5: [PS-WriteThroughSharedRef] In function 'move_through_nested_shared_ref', block 'entry': cannot move out through shared reference 'r.*'
     |
- 90 |   entry:
- 91 |     x = move r.*.*;
+ 96 |   entry:
+ 97 |     x = move r.*.*;
     |     ^^^^^^^^^^^^^^
- 92 |     drop x;
+ 98 |     drop x;
     |
-error: at 101:5: [PS-WriteThroughSharedRef] In function 'move_complex_through_shared_middle', block 'entry': cannot move out through shared reference 'foo.field.*[2]'
+error: at 107:5: [PS-WriteThroughSharedRef] In function 'move_complex_through_shared_middle', block 'entry': cannot move out through shared reference 'foo.field.*[2]'
      |
- 100 |   entry:
- 101 |     x = move foo.field.*[2].* as Variant;
+ 106 |   entry:
+ 107 |     x = move foo.field.*[2].* as Variant;
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 102 |     drop x;
+ 108 |     drop x;
      |
-error: at 109:5: [PS-WriteThroughSharedRef] In function 'move_complex_through_shared_outer', block 'entry': cannot move out through shared reference 'foo.field'
+error: at 115:5: [PS-WriteThroughSharedRef] In function 'move_complex_through_shared_outer', block 'entry': cannot move out through shared reference 'foo.field'
      |
- 108 |   entry:
- 109 |     x = move foo.field.*[2].* as Variant;
+ 114 |   entry:
+ 115 |     x = move foo.field.*[2].* as Variant;
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 110 |     drop x;
+ 116 |     drop x;
      |

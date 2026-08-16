@@ -195,27 +195,15 @@ Use `tests/programs/stdlib.si` as the executable design probe. Keep library
 APIs honest about safety and ownership, and land compiler prerequisites as
 independent, fixture-backed changes in this order:
 
-1. **Elaborate temporary reborrows at calls.** Passing an existing `&mut`
-   transfers the reference and its pointee-state obligation, preventing a
-   helper call followed by further use of the original reference. Elaborate a
-   bounded reborrow whose obligation is returned to the original reference at
-   call completion.
-
-2. **Preserve aggregate state through pointer-based mutation.** An inline
-   `fn push(&mut Vec<T>, T)` that derives a raw element pointer and increments
-   `len` leaves the receiver spuriously `Partial`, although every field remains
-   initialized. Fix the place-state/copy-relaxation interaction, then replace
-   consuming `Vec<T> -> Vec<T>` mutation with an in-place API.
-
-3. **Represent lifetime-only ownership.** Add a zero-sized phantom/lifetime
+1. **Represent lifetime-only ownership.** Add a zero-sized phantom/lifetime
    field suitable for borrowed views. The current first-element reference
    gives `Span` a tracked lifetime but cannot represent an empty span soundly.
 
-4. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
+2. **Integrate automatic destruction.** Implement and exercise `AutoDestroy`
    for `Box`, `Vec`, and their elements so ordinary scope exit releases owned
    allocations. Preserve explicit consuming operations such as `into_inner`.
 
-5. **Support static methods.** `Box::new(x)` should interpreted as a static
+3. **Support static methods.** `Box::new(x)` should interpreted as a static
    method on `Box<T>` however, it is parsed as an enum variant constructor. 
 
 **Stop condition:** the fixture uses safe, generic `Box`, `Vec`, and nonempty

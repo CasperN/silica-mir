@@ -264,7 +264,8 @@ fn sibling_fields(p: Pair) {
 fn<'s0> repeated_mut_pointee(r: &mut 's0 i64) {
   entry:
     call take_num(copy r.*);
-    call take_num(move r.*);
+    call take_num(copy r.*);
+    drop r.*;
     r.* = 0;
     drop r;
     return
@@ -274,12 +275,19 @@ fn<'s0> autoclone_through_mut(r: &mut 's0 Cloneable) {
   $clone_0: Cloneable;
   $clone_1: &Cloneable;
   $clone_2: &out Cloneable;
+  $clone_3: Cloneable;
+  $clone_4: &Cloneable;
+  $clone_5: &out Cloneable;
   entry:
+    $clone_4 = &r.*;
+    $clone_5 = &out $clone_3;
+    call <Cloneable as AutoClone>::clone(move $clone_4, move $clone_5);
+    call take_cloneable(move $clone_3);
     $clone_1 = &r.*;
     $clone_2 = &out $clone_0;
     call <Cloneable as AutoClone>::clone(move $clone_1, move $clone_2);
     call take_cloneable(move $clone_0);
-    call take_cloneable(move r.*);
+    drop r.*.value;
     r.*.value = 0;
     drop r;
     return
@@ -288,7 +296,8 @@ fn<'s0> autoclone_through_mut(r: &mut 's0 Cloneable) {
 fn<'s0> repeated_mut_field(r: &mut 's0 CopyPair) {
   entry:
     call take_num(copy r.*.left);
-    call take_num(move r.*.left);
+    call take_num(copy r.*.left);
+    drop r.*.left;
     r.*.left = 0;
     drop r;
     return
@@ -297,7 +306,8 @@ fn<'s0> repeated_mut_field(r: &mut 's0 CopyPair) {
 fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
   entry:
     call take_num(copy r.*[0]);
-    call take_num(move r.*[0]);
+    call take_num(copy r.*[0]);
+    drop r.*[0];
     r.*[0] = 0;
     drop r;
     return
@@ -306,7 +316,8 @@ fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
 fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &mut 's2 CopyPair) {
   entry:
     call take_num(copy r.*.*.*.left);
-    call take_num(move r.*.*.*.left);
+    call take_num(copy r.*.*.*.left);
+    drop r.*.*.*.left;
     r.*.*.*.left = 0;
     drop r;
     return
@@ -315,7 +326,8 @@ fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &m
 fn<'s0, 's1> repeated_field_between_derefs(link: Link<'s0, 's1>) {
   entry:
     call take_num(copy link.next.*.*.right);
-    call take_num(move link.next.*.*.right);
+    call take_num(copy link.next.*.*.right);
+    drop link.next.*.*.right;
     link.next.*.*.right = 0;
     unborrow link.next;
     return
@@ -324,7 +336,8 @@ fn<'s0, 's1> repeated_field_between_derefs(link: Link<'s0, 's1>) {
 fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice<'s0>) {
   entry:
     call take_num(copy r.* as HasRef.*.left);
-    call take_num(move r.* as HasRef.*.left);
+    call take_num(copy r.* as HasRef.*.left);
+    drop r.* as HasRef.*.left;
     r.* as HasRef.*.left = 0;
     drop r;
     return
@@ -333,7 +346,8 @@ fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice<'s0>) {
 fn<'s0, 's1> repeated_complex_projection(foo: ProjectionRoot<'s0, 's1>) {
   entry:
     call take_num(copy foo.field.*[2].* as Variant);
-    call take_num(move foo.field.*[2].* as Variant);
+    call take_num(copy foo.field.*[2].* as Variant);
+    drop foo.field.*[2].*;
     foo.field.*[2].* = DeepChoice::Variant(0);
     unborrow foo.field;
     return

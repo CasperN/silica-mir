@@ -18,7 +18,8 @@ fn<'s0> consume_and_replace(r: &mut 's0 i64) {
   x: i64;
   $tmp_1: unit;
   entry:
-    x = move r.*;
+    x = copy r.*;
+    drop r.*;
     r.* = 42;
     $tmp_1 = unit;
     drop $tmp_1;
@@ -42,9 +43,10 @@ fn<'s0> repeated_pointee_reads_then_reinit(r: &mut 's0 i64) {
   $tmp_3: &out i64;
   entry:
     a = copy r.*;
-    b = move r.*;
+    b = copy r.*;
     $tmp_3 = &out $tmp_2;
     call $i64_add(move a, move b, move $tmp_3);
+    drop r.*;
     r.* = move $tmp_2;
     $tmp_1 = unit;
     require_uninit $tmp_3;
