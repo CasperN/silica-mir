@@ -47,6 +47,7 @@ use crate::mir::helpers::*;
 use crate::mir::place_state::analysis::RefState;
 use indexmap::IndexMap;
 use std::collections::BTreeSet;
+use std::ops::ControlFlow;
 
 /// User-facing errors emitted by the `take` resolver. Distinct from
 /// the pre-elaboration substructural check (which flags places whose
@@ -1038,52 +1039,55 @@ fn requires_preservation(
     env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
 ) -> bool {
-    match place {
-        Place::Var(_) => false,
-        Place::Field(inner, _) | Place::Downcast(inner, _) => {
-            requires_preservation(inner, env, locals)
-        }
-        Place::Index(inner, op) => {
-            !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. }))
-                || requires_preservation(inner, env, locals)
-        }
-        Place::Deref(inner) => env.type_of_place(inner, locals).is_ok_and(|ty| {
+    walk_projection(place, &|receiver| {
+        ControlFlow::Break(env.type_of_place(receiver, locals).is_ok_and(|ty| {
             matches!(
                 &ty.kind,
                 TypeKind::Ref(RefKind::Shared | RefKind::Mut, _, _)
             )
-        }),
-    }
+        }))
+    })
 }
 
 /// True when the path crosses a boundary where `move` is not a legal
 /// operation — a shared reference (`&T`) or a dynamic index.
-// TODO: `requires_preservation` and `crosses_shared_boundary` share the
-// same walk-down-the-place skeleton, differing only in what they check
-// at each Deref (kind test) and whether they recurse past the first
-// Deref. Is there a "walk projections applying a Deref-boundary
-// predicate" scaffold worth extracting, or is the duplication small
-// enough to leave?
 fn crosses_shared_boundary(
     place: &Place,
     env: LocalEnv<'_>,
     locals: &IndexMap<String, Type>,
 ) -> bool {
+    walk_projection(place, &|receiver| {
+        let is_shared = env
+            .type_of_place(receiver, locals)
+            .is_ok_and(|ty| matches!(&ty.kind, TypeKind::Ref(RefKind::Shared, _, _)));
+        if is_shared {
+            ControlFlow::Break(true)
+        } else {
+            ControlFlow::Continue(())
+        }
+    })
+}
+
+/// Walk a place bottom-up (leaf to root), returning `true` when the
+/// path crosses a boundary of interest. Var reaches root with no hit;
+/// Field/Downcast recurse; a dynamic Index short-circuits to true and a
+/// constant Index recurses. At each `Deref`, `at_deref(receiver)` decides:
+/// `Break(v)` stops with that verdict, `Continue(())` recurses past.
+fn walk_projection<F>(place: &Place, at_deref: &F) -> bool
+where
+    F: Fn(&Place) -> ControlFlow<bool>,
+{
     match place {
         Place::Var(_) => false,
-        Place::Field(inner, _) | Place::Downcast(inner, _) => {
-            crosses_shared_boundary(inner, env, locals)
-        }
+        Place::Field(inner, _) | Place::Downcast(inner, _) => walk_projection(inner, at_deref),
         Place::Index(inner, op) => {
             !matches!(op.as_ref(), Operand::Const(ConstVal::Int { .. }))
-                || crosses_shared_boundary(inner, env, locals)
+                || walk_projection(inner, at_deref)
         }
-        Place::Deref(inner) => {
-            let shared = env
-                .type_of_place(inner, locals)
-                .is_ok_and(|ty| matches!(&ty.kind, TypeKind::Ref(RefKind::Shared, _, _)));
-            shared || crosses_shared_boundary(inner, env, locals)
-        }
+        Place::Deref(inner) => match at_deref(inner) {
+            ControlFlow::Break(v) => v,
+            ControlFlow::Continue(()) => walk_projection(inner, at_deref),
+        },
     }
 }
 
