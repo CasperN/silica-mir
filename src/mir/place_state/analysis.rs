@@ -492,6 +492,7 @@ pub(super) fn join_point(
 /// `InitSlot::Variant` slot when the state tracks per-variant payload;
 /// on an opaque enum state it is a no-op, matching the original model
 /// where enum construction goes via `Name::V(...)`.
+// TODO: Should we consolidate write_at, move_at, and read_at and factor out a shared function fn walk_init_state_path(state: &mut InitState, ty: &Type, path: &[PathStep], prog: &IndexedProgram, action: impl FnMut(&mut InitState)) -> ()?
 pub(super) fn write_at(
     state: &mut InitState,
     ty: &Type,

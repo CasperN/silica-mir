@@ -120,6 +120,7 @@ pub fn verify_no_take(program: &IndexedProgram, d: &mut crate::diagnostics::Diag
     ));
 }
 
+// TODO: Should we consolidate scan_statement_for_take, transfer_statement_demand, and relax_statement and factor out a shared function fn walk_statement_operands(stmt: &Statement, f: impl FnMut(&Operand)) -> ()?
 fn scan_statement_for_take(stmt: &Statement, first: &mut Option<SourceInfo>, count: &mut usize) {
     match &stmt.kind {
         StatementKind::Assign(target, rvalue) => {
@@ -197,6 +198,34 @@ fn scan_operand_for_take(
     }
 }
 
+/// Recurse into a place, visiting any operand nested inside an `Index` projection.
+fn walk_place_index_operands(place: &Place, visit: &mut dyn FnMut(&Operand)) {
+    match place {
+        Place::Var(_) => {}
+        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
+            walk_place_index_operands(inner, visit);
+        }
+        Place::Index(inner, op) => {
+            walk_place_index_operands(inner, visit);
+            visit(op);
+        }
+    }
+}
+
+/// Recurse into a place, visiting and potentially mutating any operand nested inside an `Index` projection.
+fn walk_place_index_operands_mut(place: &mut Place, visit: &mut dyn FnMut(&mut Operand)) {
+    match place {
+        Place::Var(_) => {}
+        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
+            walk_place_index_operands_mut(inner, visit);
+        }
+        Place::Index(inner, op) => {
+            walk_place_index_operands_mut(inner, visit);
+            visit(op);
+        }
+    }
+}
+
 /// Recurse into a place, visiting any operand that appears inside an
 /// `Index` projection. Without this, a `Take` nested inside a dynamic
 /// index would slip past both `verify_no_take` and the resolver.
@@ -206,16 +235,7 @@ fn scan_place_for_take(
     first: &mut Option<SourceInfo>,
     count: &mut usize,
 ) {
-    match place {
-        Place::Var(_) => {}
-        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
-            scan_place_for_take(inner, source, first, count);
-        }
-        Place::Index(inner, op) => {
-            scan_place_for_take(inner, source, first, count);
-            scan_operand_for_take(op, source, first, count);
-        }
-    }
+    walk_place_index_operands(place, &mut |op| scan_operand_for_take(op, source, first, count));
 }
 
 fn elaborate_function(
@@ -457,6 +477,7 @@ fn transfer_terminator_demand(term: &Terminator, demand: &mut Demand) {
     }
 }
 
+// TODO: Should we consolidate scan_rvalue_for_take, transfer_rvalue_demand, and relax_rvalue and factor out a shared function fn walk_rvalue_operands(rvalue: &RValue, f: impl FnMut(&Operand)) -> ()?
 fn transfer_rvalue_demand(rvalue: &RValue, demand: &mut Demand) {
     match rvalue {
         RValue::Use(operand)
@@ -508,16 +529,7 @@ fn transfer_operand_demand(operand: &Operand, demand: &mut Demand) {
 /// The outer place demands the index value at the same point it demands
 /// its own value.
 fn transfer_place_index_operands(place: &Place, demand: &mut Demand) {
-    match place {
-        Place::Var(_) => {}
-        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
-            transfer_place_index_operands(inner, demand);
-        }
-        Place::Index(inner, op) => {
-            transfer_place_index_operands(inner, demand);
-            transfer_operand_demand(op, demand);
-        }
-    }
+    walk_place_index_operands(place, &mut |op| transfer_operand_demand(op, demand));
 }
 
 /// An operation that establishes a new state for `place` makes any future
@@ -762,16 +774,7 @@ fn relax_place_index_operands(
     ctx: &mut RelaxCtx,
     source: SourceInfo,
 ) {
-    match place {
-        Place::Var(_) => {}
-        Place::Field(inner, _) | Place::Downcast(inner, _) | Place::Deref(inner) => {
-            relax_place_index_operands(inner, demand, ctx, source);
-        }
-        Place::Index(inner, op) => {
-            relax_place_index_operands(inner, demand, ctx, source);
-            resolve_index_operand(op, demand, ctx, source);
-        }
-    }
+    walk_place_index_operands_mut(place, &mut |op| resolve_index_operand(op, demand, ctx, source));
 }
 
 fn resolve_index_operand(
