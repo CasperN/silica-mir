@@ -222,15 +222,8 @@ independent, fixture-backed changes in this order:
    for `Box`, `Vec`, and their elements so ordinary scope exit releases owned
    allocations. Preserve explicit consuming operations such as `into_inner`.
 
-6. **Add safe failure paths.** Use the planned `Fail` effect for allocation
-   failure, capacity overflow, and bounds errors. Until then, constructors,
-   growth, and indexing that cannot establish their preconditions remain
-   `unsafe`.
-
-7. **Build higher-level collections.** Add `String` over `Vec<u8>` with its
-   UTF-8 invariant, then borrowed/mutable/uninitialized span variants and
-   iterator APIs. Modules and multi-file compilation will eventually place
-   these declarations under `std` without changing their ownership model.
+6. **Support static methods.** `Box::new(x)` should interpreted as a static
+   method on `Box<T>` however, it is parsed as an enum variant constructor. 
 
 **Stop condition:** the fixture uses safe, generic `Box`, `Vec`, and nonempty
 and empty `Span` APIs without concrete lifetime workarounds or manual cleanup;

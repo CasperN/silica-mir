@@ -9,6 +9,9 @@ extern fn free_bytes(p: *u8);
 
 struct<T> Box: Move { data: *T }
 
+# TODO: Box::new(42i64) is interpreted as an enum Box::new.
+# Once we can disambiguate static fns from enum literals we should move
+# this method into an impl block.
 fn<T: Move> box_new(value: T) -> Box<T> {
   let bytes = malloc_bytes(size_of<T>());
   let data = bytes as *T;
