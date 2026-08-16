@@ -680,3 +680,61 @@ fn<'a, 's0> use_empty_span(x: &'a i64, $return: &out 's0 SpanView<'a, i64>) {
     require_uninit x;
     return
 }
+
+struct<A: Copy + Drop, B: Copy + Drop> Pair: Copy + Drop {
+  first: A
+  second: B
+}
+
+struct<T: Copy + Drop> Buffer: Copy + Drop {
+  ptr: *T
+  len: u64
+}
+
+impl<T: Copy + Drop> Buffer<T> {
+  fn<'a, 's0> as_slice(self: &'a Buffer<T>, $return: &out 's0 SpanView<'a, T>) {
+    entry:
+      $return.*.ptr = copy self.*.ptr;
+      $return.*.len = copy self.*.len;
+      unborrow $return;
+      require_uninit $return;
+      drop self;
+      require_uninit self;
+      return
+  }
+  fn<'s0, 's1, U: Copy + Drop> pair_with(self: &'s0 Buffer<T>, other: U, $return: &out 's1 Pair<T, U>) {
+    entry:
+      $return.*.first = move self.*.ptr.*;
+      $return.*.second = move other;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit other;
+      drop self;
+      require_uninit self;
+      return
+  }
+}
+
+fn<'a, 's0> test_method_lifetime_receiver(buf: &'a Buffer<i64>, $return: &out 's0 SpanView<'a, i64>) {
+  $tmp_0: &out SpanView<'a, i64>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <Buffer<i64>>::as_slice<'a>(move buf, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit buf;
+    return
+}
+
+fn<'s0, 's1> test_method_type_param_receiver(buf: &'s0 Buffer<i64>, $return: &out 's1 Pair<i64, bool>) {
+  $tmp_0: &out Pair<i64, bool>;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <Buffer<i64>>::pair_with<bool>(move buf, true, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit buf;
+    return
+}

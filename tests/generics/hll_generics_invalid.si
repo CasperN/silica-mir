@@ -139,3 +139,14 @@ impl DropOnly {
 unsafe fn<T> unsafe_identity(x: T) -> T { x }
 # covers: generic unsafe call still requires an unsafe context
 fn call_generic_unsafe_without_block() -> i64 { unsafe_identity<i64>(1) }
+
+# covers: method-level generic type parameter bound violation
+struct<T: Copy + Drop> MethodBuffer: Copy + Drop { ptr: *T }
+impl<T: Copy + Drop> MethodBuffer<T> {
+  fn<U: Copy + Drop> take_copy(self: &Self, item: U) -> unit { unit }
+}
+
+fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
+  buf.take_copy(lin)
+}
+

@@ -303,3 +303,29 @@ fn<'a, T> make_empty_span(p: *T) -> SpanView<'a, T> {
 fn<'a> use_empty_span(x: &'a i64) -> SpanView<'a, i64> {
   make_empty_span<'a, i64>(x as *i64)
 }
+
+struct<A: Copy + Drop, B: Copy + Drop> Pair: Copy + Drop { first: A, second: B }
+
+# covers: inherent method with method-level lifetime and type parameters on receiver
+struct<T: Copy + Drop> Buffer: Copy + Drop { ptr: *T, len: u64 }
+
+impl<T: Copy + Drop> Buffer<T> {
+  fn<'a> as_slice(self: &'a Self) -> SpanView<'a, T> {
+    SpanView { ptr: self.*.ptr, len: self.*.len, marker: PhantomData {} }
+  }
+
+  fn<U: Copy + Drop> pair_with(self: &Self, other: U) -> Pair<T, U> {
+    Pair { first: unsafe { self.*.ptr.* }, second: other }
+  }
+}
+
+# covers: calling inherent method with method-level lifetime parameter via dot syntax
+fn<'a> test_method_lifetime_receiver(buf: &'a Buffer<i64>) -> SpanView<'a, i64> {
+  buf.as_slice()
+}
+
+# covers: calling inherent method with method-level type parameter via dot syntax
+fn test_method_type_param_receiver(buf: &Buffer<i64>) -> Pair<i64, bool> {
+  buf.pair_with(true)
+}
+

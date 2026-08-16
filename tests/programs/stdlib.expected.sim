@@ -207,6 +207,18 @@ impl<T> Vec<T> {
       require_uninit recv;
       return
   }
+  fn<'a, 's0> as_span(self: &'a Vec<T>, $return: &out 's0 Span<'a, T>) {
+    $tmp_0: &out Span<'a, T>;
+    entry:
+      $tmp_0 = &out $return.*;
+      call span_from_raw_parts<'a, T>(copy self.*.data, copy self.*.len, move $tmp_0);
+      unborrow $return;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      drop self;
+      require_uninit self;
+      return
+  }
 }
 
 impl<T: AutoDestroy> AutoDestroy for Vec<T> {
@@ -511,19 +523,6 @@ fn<'a, 's0, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64, $return: &out 's0 
     return
 }
 
-fn<'a, 's0, T> vec_as_span(vec: &'a Vec<T>, $return: &out 's0 Span<'a, T>) {
-  $tmp_0: &out Span<'a, T>;
-  entry:
-    $tmp_0 = &out $return.*;
-    call span_from_raw_parts<'a, T>(copy vec.*.data, copy vec.*.len, move $tmp_0);
-    unborrow $return;
-    require_uninit $tmp_0;
-    require_uninit $return;
-    drop vec;
-    require_uninit vec;
-    return
-}
-
 fn<'inspect, 's0> inspect_vec(vec: &'inspect Vec<i64>, $return: &out 's0 i64) {
   span: Span<'inspect, i64>;
   $tmp_0: &out Span<'inspect, i64>;
@@ -537,7 +536,7 @@ fn<'inspect, 's0> inspect_vec(vec: &'inspect Vec<i64>, $return: &out 's0 i64) {
   $tmp_5: &out i64;
   entry:
     $tmp_0 = &out span;
-    call vec_as_span<'inspect, i64>(move vec, move $tmp_0);
+    call <Vec<i64>>::as_span<'inspect>(move vec, move $tmp_0);
     require_uninit $tmp_0;
     borrow = &span;
     $tmp_1 = &out length;
@@ -644,7 +643,7 @@ fn<T: Drop + Move> vec_free(vec: Vec<T>) {
     return
 }
 
-fn<'s4, 's0> main($return: &out 's0 i32) {
+fn<'s3, 's0> main($return: &out 's0 i32) {
   boxed: Box<i64>;
   $tmp_0: &out Box<i64>;
   box_place: &mut i64;
@@ -668,7 +667,7 @@ fn<'s4, 's0> main($return: &out 's0 i32) {
   $tmp_14: unit;
   $tmp_15: &mut Vec<i64>;
   observed: i64;
-  $tmp_16: &'s4 Vec<i64>;
+  $tmp_16: &'s3 Vec<i64>;
   $tmp_17: &out i64;
   $tmp_18: unit;
   $tmp_19: i64;
@@ -732,7 +731,7 @@ fn<'s4, 's0> main($return: &out 's0 i32) {
     require_uninit $tmp_13;
     $tmp_16 = &values;
     $tmp_17 = &out observed;
-    call inspect_vec<'s4>(move $tmp_16, move $tmp_17);
+    call inspect_vec<'s3>(move $tmp_16, move $tmp_17);
     require_uninit $tmp_17;
     require_uninit $tmp_16;
     call vec_free<i64>(move values);

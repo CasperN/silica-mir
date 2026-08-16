@@ -192,6 +192,21 @@ error: at 141:49: [HTC-UnsafeRequired] In function 'call_generic_unsafe_without_
  140 | # covers: generic unsafe call still requires an unsafe context
  141 | fn call_generic_unsafe_without_block() -> i64 { unsafe_identity<i64>(1) }
      |                                                 ^^^^^^^^^^^^^^^
+ 142 | 
+     |
+error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_satisfied': type argument 'Linear' for 'take_copy::U' does not satisfy bound 'Copy'
+     |
+ 149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
+ 150 |   buf.take_copy(lin)
+     |       ^^^^^^^^^
+ 151 | }
+     |
+error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_satisfied': type argument 'Linear' for 'take_copy::U' does not satisfy bound 'Drop'
+     |
+ 149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
+ 150 |   buf.take_copy(lin)
+     |       ^^^^^^^^^
+ 151 | }
      |
 error: at 105:38: [HTC-AmbiguousType] In function 'call_unresolved_type_argument': type annotations needed: cannot infer all type arguments for function 'generic_side_effect'
      |

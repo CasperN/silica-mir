@@ -2193,16 +2193,18 @@ fn match_impl_method_receiver(
         }
     }
 
-    let type_parameters = impl_block
+    let mut type_parameters = impl_block
         .type_params
         .iter()
         .map(|parameter| parameter.name.clone())
         .collect::<HashSet<_>>();
-    let lifetime_parameters = impl_block
+    type_parameters.extend(method.type_params.iter().map(|p| p.name.clone()));
+    let mut lifetime_parameters = impl_block
         .lifetime_params
         .iter()
         .map(|parameter| parameter.lifetime.clone())
         .collect::<HashSet<_>>();
+    lifetime_parameters.extend(method.lifetime_params.iter().map(|p| p.lifetime.clone()));
     let matches = possible_self_types
         .into_iter()
         .filter_map(|self_ty| {
