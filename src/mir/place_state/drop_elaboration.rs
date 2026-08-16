@@ -7,7 +7,8 @@
 //! the place to `Moved`, making the pass idempotent.
 
 use super::analysis::{
-    block_entry_states, is_state_fully_init, transfer_stmt_silent, InitSlot, InitState, PointState,
+    block_entry_states, is_state_fully_init, read_owned_place_state, transfer_stmt_silent,
+    InitSlot, InitState, PointState,
 };
 use crate::mir::ast::*;
 use crate::mir::cfg_edit;
@@ -277,7 +278,8 @@ fn plan_for_function(env: LocalEnv<'_>, func: &Function, body: &FunctionBody) ->
                 continue;
             };
             for (path_place, ty) in &diverged_paths {
-                if state_at(pred_exit, path_place) == Some(InitState::Init)
+                if read_owned_place_state(path_place, pred_exit, &locals, env.program())
+                    == Some(InitState::Init)
                     && is_implicitly_destructible(env, ty)
                 {
                     plan.cross_edge
@@ -401,19 +403,15 @@ fn plan_drops_for_requirement(
     let Some(owned) = as_owned_path(place) else {
         return Vec::new();
     };
-    let Some((root, path)) = extract_path(&owned) else {
-        return Vec::new();
-    };
-    let Some(root_state) = state.locals.get(&root) else {
+    let Some(leaf_state) = read_owned_place_state(&owned, state, locals, env.program()) else {
         return Vec::new();
     };
     let Ok(ty) = env.type_of_place(&owned, locals) else {
         return Vec::new();
     };
 
-    let state = read_state_at_path(root_state, &path);
     let mut drops = Vec::new();
-    plan_drops_for_place(owned, &ty, &state, env, &mut drops);
+    plan_drops_for_place(owned, &ty, &leaf_state, env, &mut drops);
     drops
 }
 
@@ -444,13 +442,10 @@ fn is_init_and_destructible(
     locals: &IndexMap<String, Type>,
 ) -> bool {
     let leaf_state = match extract_path(place) {
-        Some((root, path)) => {
-            let (Some(root_state), Some(root_ty)) = (state.locals.get(&root), locals.get(&root))
-            else {
-                return false;
-            };
-            super::analysis::read_at(root_state, root_ty, &path, env.program())
-        }
+        Some(_) => match read_owned_place_state(place, state, locals, env.program()) {
+            Some(s) => s,
+            None => return false,
+        },
         None => {
             let Some((ref_place, sub_path)) = super::analysis::split_at_outermost_deref(place)
             else {
@@ -468,7 +463,7 @@ fn is_init_and_destructible(
             let Some(rs) = state.refs.get(&ref_place) else {
                 return false;
             };
-            super::analysis::read_at(&rs.pointee, pointee_ty, &sub_path, env.program())
+            rs.pointee.read_at(pointee_ty, &sub_path, env.program())
         }
     };
     if !is_state_fully_init(&leaf_state) {
@@ -533,8 +528,9 @@ fn walk_diverged(
             // `{x: Init, y: Diverged, z: Diverged}`) drops each
             // diverged field on the arm that Init'd it. Without this
             // recursion the caller sees a whole-aggregate `Partial`
-            // whose `state_at` at any pred exit reads back as `Partial`
-            // rather than `Init`, and no per-field drop is planned.
+            // whose `read_owned_place_state` at any pred exit reads back
+            // as `Partial` rather than `Init`, and no per-field drop is
+            // planned.
             match &ty.kind {
                 TypeKind::Custom(Instance {
                     name,
@@ -593,63 +589,6 @@ fn walk_diverged(
                 _ => {}
             }
         }
-    }
-}
-
-/// Return the init state at `place` within `state.locals`. Returns None
-/// if the root Var isn't tracked.
-// TODO: `state_at` here + the owned-path branch of `is_init_and_destructible`
-// + `read_static_place_state` in analysis.rs all walk a place to its
-// `InitState`. Would a single "state at place" method on `PointState` (or
-// on `LocalEnv`) that dispatches owned vs Deref subsume the three?
-fn state_at(state: &PointState, place: &Place) -> Option<InitState> {
-    let (root, path) = extract_path(place)?;
-    let root_state = state.locals.get(&root)?;
-    Some(read_state_at_path(root_state, &path))
-}
-
-// TODO: `read_state_at_path` and `analysis::read_at` both walk `InitState`
-// down a path. The typed `read_at` handles opaque-Init variant descent and
-// takes `ty` + `prog`; this untyped version doesn't. Callers here either
-// have type info handy already or could be plumbed to. Should the untyped
-// helper collapse into `read_at`?
-fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
-    if path.is_empty() {
-        return state.clone();
-    }
-    match &path[0] {
-        PathStep::Field(f) => match state {
-            InitState::Partial(map) => {
-                let sub = map
-                    .get(&InitSlot::Field(f.clone()))
-                    .cloned()
-                    .unwrap_or(InitState::NeverInit);
-                read_state_at_path(&sub, &path[1..])
-            }
-            other => other.clone(),
-        },
-        PathStep::Index(Some(k)) => match state {
-            InitState::Partial(map) => {
-                let sub = map
-                    .get(&InitSlot::Index(*k))
-                    .cloned()
-                    .unwrap_or(InitState::NeverInit);
-                read_state_at_path(&sub, &path[1..])
-            }
-            other => other.clone(),
-        },
-        PathStep::Downcast(v) => match state {
-            InitState::NeverInit | InitState::Moved | InitState::Diverged => state.clone(),
-            InitState::Partial(map) => {
-                let sub = map
-                    .get(&InitSlot::Variant(v.clone()))
-                    .cloned()
-                    .unwrap_or(InitState::Init);
-                read_state_at_path(&sub, &path[1..])
-            }
-            InitState::Init => read_state_at_path(&InitState::Init, &path[1..]),
-        },
-        PathStep::Deref | PathStep::Index(None) => state.clone(),
     }
 }
 

@@ -629,81 +629,101 @@ pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], prog:
     *state = canonicalize(taken);
 }
 
-/// Return the effective state at the given path (for a read check).
-pub(super) fn read_at(
-    state: &InitState,
-    ty: &Type,
-    path: &[PathStep],
-    prog: &IndexedProgram,
-) -> InitState {
-    if path.is_empty() {
-        return state.clone();
-    }
-    match &path[0] {
-        PathStep::Field(f) => match state {
-            InitState::Init | InitState::NeverInit | InitState::Moved | InitState::Diverged => {
-                state.clone()
-            }
-            InitState::Partial(map) => {
-                let field_ty = prog.field_type(ty, f);
-                let field_state = map
-                    .get(&InitSlot::Field(f.clone()))
-                    .cloned()
-                    .unwrap_or(InitState::NeverInit);
-                match field_ty {
-                    Some(ft) => read_at(&field_state, &ft, &path[1..], prog),
-                    None => field_state,
+impl InitState {
+    /// Return the effective state at the given path (for a read check).
+    pub(super) fn read_at(
+        &self,
+        ty: &Type,
+        path: &[PathStep],
+        prog: &IndexedProgram,
+    ) -> InitState {
+        if path.is_empty() {
+            return self.clone();
+        }
+        match &path[0] {
+            PathStep::Field(f) => match self {
+                InitState::Init | InitState::NeverInit | InitState::Moved | InitState::Diverged => {
+                    self.clone()
                 }
-            }
-        },
-        PathStep::Downcast(v) => match state {
-            InitState::NeverInit | InitState::Moved | InitState::Diverged => state.clone(),
-            InitState::Init => {
-                // Opaque enum: assume the payload is Init.
-                let payload_ty = prog.variant_payload_type(ty, v);
-                match payload_ty {
-                    Some(pt) => read_at(&InitState::Init, &pt, &path[1..], prog),
-                    None => InitState::Init,
+                InitState::Partial(map) => {
+                    let field_ty = prog.field_type(ty, f);
+                    let field_state = map
+                        .get(&InitSlot::Field(f.clone()))
+                        .cloned()
+                        .unwrap_or(InitState::NeverInit);
+                    match field_ty {
+                        Some(ft) => field_state.read_at(&ft, &path[1..], prog),
+                        None => field_state,
+                    }
                 }
-            }
-            InitState::Partial(map) => {
-                let payload_ty = prog.variant_payload_type(ty, v);
-                let slot_state = map.get(&InitSlot::Variant(v.clone()));
-                // When the map tracks per-variant payload, descend into
-                // the requested variant's slot. Otherwise fall back to
-                // the opaque-Init behavior — the checker's place walker
-                // emits DowncastVariantNotRefined for that case.
-                let payload_state = match slot_state {
-                    Some(s) => s.clone(),
-                    None => InitState::Init,
-                };
-                match payload_ty {
-                    Some(pt) => read_at(&payload_state, &pt, &path[1..], prog),
-                    None => payload_state,
+            },
+            PathStep::Downcast(v) => match self {
+                InitState::NeverInit | InitState::Moved | InitState::Diverged => self.clone(),
+                InitState::Init => {
+                    // Opaque enum: assume the payload is Init.
+                    let payload_ty = prog.variant_payload_type(ty, v);
+                    match payload_ty {
+                        Some(pt) => InitState::Init.read_at(&pt, &path[1..], prog),
+                        None => InitState::Init,
+                    }
                 }
-            }
-        },
-        PathStep::Index(Some(k)) => match state {
-            InitState::Init | InitState::NeverInit | InitState::Moved | InitState::Diverged => {
-                state.clone()
-            }
-            InitState::Partial(map) => {
-                let elem_ty = array_info(ty).map(|(e, _)| e);
-                let slot_state = map
-                    .get(&InitSlot::Index(*k))
-                    .cloned()
-                    .unwrap_or(InitState::NeverInit);
-                match elem_ty {
-                    Some(et) => read_at(&slot_state, &et, &path[1..], prog),
-                    None => slot_state,
+                InitState::Partial(map) => {
+                    let payload_ty = prog.variant_payload_type(ty, v);
+                    let slot_state = map.get(&InitSlot::Variant(v.clone()));
+                    // When the map tracks per-variant payload, descend into
+                    // the requested variant's slot. Otherwise fall back to
+                    // the opaque-Init behavior — the checker's place walker
+                    // emits DowncastVariantNotRefined for that case.
+                    let payload_state = match slot_state {
+                        Some(s) => s.clone(),
+                        None => InitState::Init,
+                    };
+                    match payload_ty {
+                        Some(pt) => payload_state.read_at(&pt, &path[1..], prog),
+                        None => payload_state,
+                    }
                 }
+            },
+            PathStep::Index(Some(k)) => match self {
+                InitState::Init | InitState::NeverInit | InitState::Moved | InitState::Diverged => {
+                    self.clone()
+                }
+                InitState::Partial(map) => {
+                    let elem_ty = array_info(ty).map(|(e, _)| e);
+                    let slot_state = map
+                        .get(&InitSlot::Index(*k))
+                        .cloned()
+                        .unwrap_or(InitState::NeverInit);
+                    match elem_ty {
+                        Some(et) => slot_state.read_at(&et, &path[1..], prog),
+                        None => slot_state,
+                    }
+                }
+            },
+            PathStep::Deref => {
+                unreachable!("init_state uses extract_path which never yields Deref")
             }
-        },
-        PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
-        PathStep::Index(None) => {
-            unreachable!("init_state uses extract_path which rejects dynamic indices")
+            PathStep::Index(None) => {
+                unreachable!("init_state uses extract_path which rejects dynamic indices")
+            }
         }
     }
+}
+
+/// Read the initialization state at a statically-owned place. Returns
+/// `None` if the root local isn't tracked or `place` contains a
+/// dereference (Deref-rooted reads go through `read_static_place_state`
+/// so they can consult the reference's tracked pointee state).
+pub fn read_owned_place_state(
+    place: &Place,
+    state: &PointState,
+    locals: &IndexMap<String, Type>,
+    prog: &IndexedProgram,
+) -> Option<InitState> {
+    let (root, path) = extract_path(place)?;
+    let root_ty = locals.get(&root)?;
+    let root_state = state.locals.get(&root)?;
+    Some(root_state.read_at(root_ty, &path, prog))
 }
 
 // ---------- Top-level public analysis API ----------
@@ -923,7 +943,7 @@ impl<'a> dataflow::Analysis for InitAnalysis<'a> {
         let Some(root_state) = state.locals.get(&root).cloned() else {
             return;
         };
-        let leaf_state = read_at(&root_state, &root_ty, &path, self.ctx.env.program());
+        let leaf_state = root_state.read_at(&root_ty, &path, self.ctx.env.program());
         // Leave the state untouched when the arm's variant isn't in the
         // pre-switch tracked set — that arm is dead code and refining
         // would strand the place in a NeverInit variant slot that fires
@@ -1459,7 +1479,7 @@ impl<'a> PlaceStateContext<'a> {
             DerefOp::Read | DerefOp::Move => true,
             DerefOp::Write => false,
         };
-        let current = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env.program());
+        let current = rs.pointee.read_at(&pointee_ty, &sub_path, self.env.program());
         let precondition_met = if required_init {
             matches!(current, InitState::Init)
         } else {
@@ -1560,10 +1580,8 @@ impl<'a> PlaceStateContext<'a> {
         place: &Place,
         state: &mut PointState,
     ) -> Option<InitState> {
-        if let Some((root, path)) = extract_path(place) {
-            let root_ty = self.locals.get(&root)?;
-            let root_state = state.locals.get(&root)?;
-            return Some(read_at(root_state, root_ty, &path, self.env.program()));
+        if extract_path(place).is_some() {
+            return read_owned_place_state(place, state, self.locals, self.env.program());
         }
         if !is_static_place(place) {
             return None;
@@ -1578,12 +1596,7 @@ impl<'a> PlaceStateContext<'a> {
         } else {
             self.ensure_ref_state(&receiver, state)?.pointee
         };
-        Some(read_at(
-            &pointee_state,
-            &pointee_ty,
-            &sub_path,
-            self.env.program(),
-        ))
+        Some(pointee_state.read_at(&pointee_ty, &sub_path, self.env.program()))
     }
 
     /// Infer the type of a place, including arbitrary dereference depth.
@@ -1619,7 +1632,7 @@ impl<'a> PlaceStateContext<'a> {
             let TypeKind::Ref(_, _, pointee_ty) = inner_ty.kind else {
                 return;
             };
-            let mut leaf = read_at(&rs.pointee, &pointee_ty, &sub_path, self.env.program());
+            let mut leaf = rs.pointee.read_at(&pointee_ty, &sub_path, self.env.program());
             clear_variant_refinement(&mut leaf);
             write_at(
                 &mut rs.pointee,
@@ -1638,7 +1651,7 @@ impl<'a> PlaceStateContext<'a> {
             return;
         };
         let root_state = state.locals.entry(root).or_insert(InitState::NeverInit);
-        let mut leaf = read_at(root_state, &root_ty, &path, self.env.program());
+        let mut leaf = root_state.read_at(&root_ty, &path, self.env.program());
         clear_variant_refinement(&mut leaf);
         write_at(root_state, &root_ty, &path, self.env.program(), leaf);
     }

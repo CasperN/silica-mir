@@ -8,9 +8,9 @@ use indexmap::IndexMap;
 use super::analysis::{
     advance_ty, capture_carried_refs, describe_obligation_mismatch, describe_pointee_state,
     describe_state, extract_init_path, format_path, is_state_fully_init, partial_is_uninit,
-    read_at, run_fixpoint, split_at_outermost_deref, state_refines_to_variant,
-    states_before_returns, InitSlot, InitState, PlaceStateCode, PlaceStateCode::*,
-    PlaceStateContext, PointState, RefState,
+    run_fixpoint, split_at_outermost_deref, state_refines_to_variant, states_before_returns,
+    InitSlot, InitState, PlaceStateCode, PlaceStateCode::*, PlaceStateContext, PointState,
+    RefState,
 };
 
 pub fn check_program(program: &IndexedProgram, d: &mut Diagnostics) {
@@ -374,7 +374,7 @@ impl<'a> PlaceStateContext<'a> {
                 {
                     return;
                 }
-                let prefix_state = read_at(root_state, &root_ty, &path[..i], self.env.program());
+                let prefix_state = root_state.read_at(&root_ty, &path[..i], self.env.program());
                 if !state_refines_to_variant(&prefix_state, v) {
                     let prefix = format_path(&root, &path[..i]);
                     d.push_error(diag(
@@ -678,7 +678,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let target_state = read_at(root_state, &root_ty, &path, self.env.program());
+        let target_state = root_state.read_at(&root_ty, &path, self.env.program());
         let Some(target_ty) = self.infer_ref_place_type(target) else {
             return;
         };
@@ -861,7 +861,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let prefix_state = read_at(root_state, &root_ty, &path[..idx], self.env.program());
+        let prefix_state = root_state.read_at(&root_ty, &path[..idx], self.env.program());
         if !is_state_fully_init(&prefix_state) {
             d.push_error(diag(
                 WriteThroughUninitEnumProjection,
@@ -895,7 +895,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let leaf = read_at(root_state, &root_ty, &path, self.env.program());
+        let leaf = root_state.read_at(&root_ty, &path, self.env.program());
         if is_state_fully_init(&leaf) {
             return;
         }
@@ -968,8 +968,8 @@ impl<'a> PlaceStateContext<'a> {
     ///   * `&out`, `&uninit` require the pointee to be uninitialized
     ///     (NeverInit or Moved).
     ///
-    /// The check inspects the leaf state via [`read_at`]; partial and
-    /// diverged states at the leaf never match either precondition, so
+    /// The check inspects the leaf state via [`InitState::read_at`]; partial
+    /// and diverged states at the leaf never match either precondition, so
     /// they're rejected with a clear "not fully X" message.
     fn check_borrow_precondition(
         &self,
@@ -1051,12 +1051,9 @@ impl<'a> PlaceStateContext<'a> {
             {
                 return;
             }
-            let current = read_at(
-                &parent_rs.pointee,
-                &pointee_ty,
-                &sub_path,
-                self.env.program(),
-            );
+            let current = parent_rs
+                .pointee
+                .read_at(&pointee_ty, &sub_path, self.env.program());
             let precondition_met = if requires_init {
                 is_state_fully_init(&current)
             } else {
@@ -1109,12 +1106,7 @@ impl<'a> PlaceStateContext<'a> {
             let Some(root_state) = state.locals.get(&root_widen) else {
                 return;
             };
-            let leaf = read_at(
-                root_state,
-                &root_ty,
-                &path_widen[..dyn_pos],
-                self.env.program(),
-            );
+            let leaf = root_state.read_at(&root_ty, &path_widen[..dyn_pos], self.env.program());
             let ok = if requires_init {
                 is_state_fully_init(&leaf)
             } else {
@@ -1152,7 +1144,7 @@ impl<'a> PlaceStateContext<'a> {
         let Some(root_state) = state.locals.get(&root) else {
             return;
         };
-        let leaf = read_at(root_state, &root_ty, &path, self.env.program());
+        let leaf = root_state.read_at(&root_ty, &path, self.env.program());
 
         let ok = if requires_init {
             is_state_fully_init(&leaf)
@@ -1250,7 +1242,7 @@ impl<'a> PlaceStateContext<'a> {
             return;
         };
 
-        let observed = read_at(root_state, root_ty, &path, self.env.program());
+        let observed = root_state.read_at(root_ty, &path, self.env.program());
         let reason = match observed {
             InitState::NeverInit | InitState::Moved => None,
             // Partial records the history of independently tracked fields or

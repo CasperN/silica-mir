@@ -19,7 +19,10 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::mir::ast::*;
 use crate::mir::env::{IndexedProgram, LocalEnv};
 use crate::mir::helpers::diag;
-use crate::mir::place_state::analysis::{block_entry_states, InitSlot, InitState, PointState};
+use crate::mir::place_state::analysis::{
+    block_entry_states, read_owned_place_state, InitSlot, InitState, PointState,
+};
+use indexmap::IndexMap;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 /// Machine-readable codes emitted by the reachability pass.
@@ -132,7 +135,8 @@ fn check_switch_structure(
             "switchEnum requires at least one arm".to_string(),
         ));
     }
-    let Some(enum_decl) = resolve_enum_of_place(env, func, body, place) else {
+    let locals = body.locals_map(&func.params);
+    let Some(enum_decl) = resolve_enum_of_place(env, &locals, place) else {
         return;
     };
     let handled: BTreeSet<&str> = cases.iter().map(|(v, _)| v.as_str()).collect();
@@ -221,12 +225,13 @@ fn check_switch_arms(
     d: &mut Diagnostics,
 ) {
     let terminator_source = block.terminator.source;
-    let Some(enum_decl) = resolve_enum_of_place(env, func, body, place) else {
+    let locals = body.locals_map(&func.params);
+    let Some(enum_decl) = resolve_enum_of_place(env, &locals, place) else {
         return;
     };
     let declared: BTreeSet<&str> = enum_decl.variants.iter().map(|v| v.name.as_str()).collect();
     let blocks_by_label = body.blocks_by_label();
-    let known_variants = tracked_variants(state, place);
+    let known_variants = tracked_variants(env, &locals, state, place);
 
     for (variant, label) in cases {
         if !declared.contains(variant.as_str()) {
@@ -286,10 +291,13 @@ fn check_switch_arms(
 /// The set of variants that `place`'s state proves the enum might
 /// currently hold, or `None` when the state carries no refinement
 /// (opaque `Init`, or `place` isn't tracked).
-fn tracked_variants(state: &PointState, place: &Place) -> Option<BTreeSet<String>> {
-    let (root, path) = crate::mir::ast::extract_path(place)?;
-    let root_state = state.locals.get(&root)?;
-    let leaf = read_state_at_path(root_state, &path);
+fn tracked_variants(
+    env: LocalEnv<'_>,
+    locals: &IndexMap<String, Type>,
+    state: &PointState,
+    place: &Place,
+) -> Option<BTreeSet<String>> {
+    let leaf = read_owned_place_state(place, state, locals, env.program())?;
     match leaf {
         InitState::Partial(map) => {
             let variants: BTreeSet<String> = map
@@ -305,50 +313,12 @@ fn tracked_variants(state: &PointState, place: &Place) -> Option<BTreeSet<String
     }
 }
 
-fn read_state_at_path(state: &InitState, path: &[PathStep]) -> InitState {
-    if path.is_empty() {
-        return state.clone();
-    }
-    match &path[0] {
-        PathStep::Field(f) => match state {
-            InitState::Partial(map) => {
-                let sub = map
-                    .get(&InitSlot::Field(f.clone()))
-                    .cloned()
-                    .unwrap_or(InitState::NeverInit);
-                read_state_at_path(&sub, &path[1..])
-            }
-            other => other.clone(),
-        },
-        PathStep::Index(Some(k)) => match state {
-            InitState::Partial(map) => {
-                let sub = map
-                    .get(&InitSlot::Index(*k))
-                    .cloned()
-                    .unwrap_or(InitState::NeverInit);
-                read_state_at_path(&sub, &path[1..])
-            }
-            other => other.clone(),
-        },
-        PathStep::Downcast(v) => match state {
-            InitState::Partial(map) => map
-                .get(&InitSlot::Variant(v.clone()))
-                .cloned()
-                .unwrap_or(InitState::Init),
-            other => other.clone(),
-        },
-        PathStep::Deref | PathStep::Index(None) => state.clone(),
-    }
-}
-
 fn resolve_enum_of_place<'a>(
     env: LocalEnv<'a>,
-    func: &Function,
-    body: &FunctionBody,
+    locals: &IndexMap<String, Type>,
     place: &Place,
 ) -> Option<&'a EnumDecl> {
-    let locals = body.locals_map(&func.params);
-    let ty = env.type_of_place(place, &locals).ok()?;
+    let ty = env.type_of_place(place, locals).ok()?;
     let TypeKind::Custom(inst) = ty.kind else {
         return None;
     };
