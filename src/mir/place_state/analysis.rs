@@ -484,15 +484,9 @@ pub(super) fn join_point(
     PointState { locals, refs }
 }
 
-// ---------- Path walks ----------
-
-/// Apply a write of `leaf_state` at the given path from `state` (which is
-/// the current state of the root Var). Promotes intermediate states to
-/// Partial as needed. A Downcast step descends into the matching
-/// `InitSlot::Variant` slot when the state tracks per-variant payload;
-/// on an opaque enum state it is a no-op, matching the original model
-/// where enum construction goes via `Name::V(...)`.
-// TODO: Should we consolidate write_at, move_at, and read_at and factor out a shared function fn walk_init_state_path(state: &mut InitState, ty: &Type, path: &[PathStep], prog: &IndexedProgram, action: impl FnMut(&mut InitState)) -> ()?
+/// Apply a write of `leaf_state` at the given path from `state` (the state of the root place).
+/// Promotes intermediate uniform states to `InitState::Partial` maps when descending
+/// struct fields, array indices, or enum variant payloads.
 pub(super) fn write_at(
     state: &mut InitState,
     ty: &Type,
@@ -549,6 +543,19 @@ pub(super) fn write_at(
     *state = canonicalize(taken);
 }
 
+/// Apply a move at the given path. Enum-typed places move atomically:
+/// any Downcast step in the path collapses the whole enum to `Moved`
+/// regardless of which variant the state currently tracks. Per-variant
+/// partial moves would otherwise strand the enum in a disjunctive
+/// `Partial` state that no subsequent CFG join can resolve.
+pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], prog: &IndexedProgram) {
+    let effective_path = match path.iter().position(|s| matches!(s, PathStep::Downcast(_))) {
+        Some(idx) => &path[..idx],
+        None => path,
+    };
+    write_at(state, ty, effective_path, prog, InitState::Moved);
+}
+
 /// Array info helpers for init tracking. `TypeKind::Array(elem, n)` →
 /// `(elem, n)`; otherwise `None`.
 pub(super) fn array_info(ty: &Type) -> Option<(Type, u64)> {
@@ -578,56 +585,6 @@ pub(super) fn expand_uniform_array(state: &InitState, n: u64) -> BTreeMap<InitSl
     (0..n)
         .map(|i| (InitSlot::Index(i), state.clone()))
         .collect()
-}
-
-/// Apply a move at the given path. Enum-typed places move atomically:
-/// any Downcast step in the path collapses the whole enum to `Moved`
-/// regardless of which variant the state currently tracks. Per-variant
-/// partial moves would otherwise strand the enum in a disjunctive
-/// `Partial` state that no subsequent CFG join can resolve.
-pub(super) fn move_at(state: &mut InitState, ty: &Type, path: &[PathStep], prog: &IndexedProgram) {
-    if path.is_empty() {
-        *state = InitState::Moved;
-        return;
-    }
-    match &path[0] {
-        PathStep::Field(f) => {
-            let Some(fields) = prog.struct_fields(ty) else {
-                return;
-            };
-            if !matches!(state, InitState::Partial(_)) {
-                *state = InitState::Partial(expand_uniform(state, &fields));
-            }
-            let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
-            if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
-                if let Some(field_state) = map.get_mut(&InitSlot::Field(f.clone())) {
-                    move_at(field_state, &field_ty, &path[1..], prog);
-                }
-            }
-        }
-        PathStep::Index(Some(k)) => {
-            let Some((elem_ty, n)) = array_info(ty) else {
-                return;
-            };
-            if !matches!(state, InitState::Partial(_)) {
-                *state = InitState::Partial(expand_uniform_array(state, n));
-            }
-            if let InitState::Partial(map) = &mut *state {
-                if let Some(slot_state) = map.get_mut(&InitSlot::Index(*k)) {
-                    move_at(slot_state, &elem_ty, &path[1..], prog);
-                }
-            }
-        }
-        PathStep::Downcast(_) => {
-            *state = InitState::Moved;
-        }
-        PathStep::Deref => unreachable!("init_state uses extract_path which never yields Deref"),
-        PathStep::Index(None) => {
-            unreachable!("init_state uses extract_path which rejects dynamic indices")
-        }
-    }
-    let taken = std::mem::replace(state, InitState::NeverInit);
-    *state = canonicalize(taken);
 }
 
 impl InitState {
