@@ -20,26 +20,26 @@ fn<T: Move> box_new(value: T) -> Box<T> {
 }
 
 impl<T> Box<T> {
-  fn get(recv: &Self) -> &T {
-    unsafe { recv.*.data as &T }
+  fn get(&self) -> &T {
+    unsafe { self.*.data as &T }
   }
 
-  fn get_mut(recv: &mut Self) -> &mut T {
-    unsafe { recv.*.data as &mut T }
+  fn get_mut(&mut self) -> &mut T {
+    unsafe { self.*.data as &mut T }
   }
 }
 
 impl<T: AutoDestroy> AutoDestroy for Box<T> {
-  fn destroy(self: &drop Self) {
+  fn destroy(&drop self) {
     unsafe { self.*.data.*.destroy() };
     free_bytes(self.*.data as *u8);
   }
 }
 
 impl<T: Move> Box<T> {
-  fn into_inner(recv: Self) -> T {
-    let value = unsafe { recv.data.* };
-    free_bytes(recv.data as *u8);
+  fn into_inner(self) -> T {
+    let value = unsafe { self.data.* };
+    free_bytes(self.data as *u8);
     value
   }
 }
@@ -64,10 +64,10 @@ unsafe fn<'a, T> span_from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
 }
 
 impl<'a, T> Span<'a, T> {
-  fn len(recv: &Self) -> u64 { recv.*.len }
+  fn len(&self) -> u64 { self.*.len }
 
-  unsafe fn get_unchecked(recv: &Self, index: u64) -> &'a T {
-    let item = ptr_offset(recv.*.data, index);
+  unsafe fn get_unchecked(&self, index: u64) -> &'a T {
+    let item = ptr_offset(self.*.data, index);
     item as &'a T
   }
 }
@@ -87,9 +87,9 @@ unsafe fn<T> vec_with_capacity(cap: u64) -> Vec<T> {
 }
 
 impl<T> Vec<T> {
-  fn len(recv: &Self) -> u64 { recv.*.len }
+  fn len(&self) -> u64 { self.*.len }
 
-  fn<'a> as_span(self: &'a Self) -> Span<'a, T> {
+  fn<'a> as_span(&'a self) -> Span<'a, T> {
     unsafe {
       span_from_raw_parts<'a, T>(self.*.data, self.*.len)
     }
@@ -97,7 +97,7 @@ impl<T> Vec<T> {
 }
 
 impl<T: AutoDestroy> AutoDestroy for Vec<T> {
-  fn destroy(self: &drop Self) {
+  fn destroy(&drop self) {
     let mut index = 0;
     loop {
       if index >= self.*.len {
@@ -118,30 +118,30 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
 }
 
 impl<T: Move> Vec<T> {
-  unsafe fn push_unchecked(recv: &mut Self, value: T) {
-    let slot = ptr_offset(recv.*.data, recv.*.len);
+  unsafe fn push_unchecked(&mut self, value: T) {
+    let slot = ptr_offset(self.*.data, self.*.len);
     slot.* = value;
-    recv.*.len = recv.*.len + 1u64;
+    self.*.len = self.*.len + 1u64;
   }
 
-  unsafe fn push(recv: &mut Self, value: T) {
-    if recv.*.len >= recv.*.cap {
-      let old_data = recv.*.data;
-      let new_cap = recv.*.cap + recv.*.cap;
+  unsafe fn push(&mut self, value: T) {
+    if self.*.len >= self.*.cap {
+      let old_data = self.*.data;
+      let new_cap = self.*.cap + self.*.cap;
       let new_data = malloc_bytes(size_of<T>() * new_cap) as *T;
       let mut index = 0u64;
       loop {
-        if index >= recv.*.len { break }
+        if index >= self.*.len { break }
         let source = ptr_offset(old_data, index);
         let target = ptr_offset(new_data, index);
         unsafe { target.* = source.*; }
         index = index + 1u64;
       }
       free_bytes(old_data as *u8);
-      recv.*.data = new_data;
-      recv.*.cap = new_cap;
+      self.*.data = new_data;
+      self.*.cap = new_cap;
     }
-    recv.push_unchecked(value);
+    self.push_unchecked(value);
   }
 }
 

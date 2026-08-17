@@ -197,9 +197,7 @@ independent, fixture-backed changes in this order:
 
 1. **Support static methods.** `Box::new(x)` should be interpreted as a static
    method on `Box<T>`; however, it is currently parsed as an enum variant constructor. 
-2. **`self` argument sugar**, `&self -> self: &Self` in argument position, and
-   analogously for other ref kinds and account for lifetime params too.
-3. **Transfer family blanket priority**: In the Transfer column (`AutoTransfer`,
+2. **Transfer family blanket priority**: In the Transfer column (`AutoTransfer`,
    `Transfer`, `CoTransfer`), resolve competing implementations by:
    (1) User-defined specialized implementation (e.g. buffer swap override),
    (2) Vertical forwarding implementation (`AutoTransfer => Transfer => CoTransfer`),

@@ -9,19 +9,19 @@ use crate::hll::parser::Parser;
 
 const PRELUDE_HLL: &str = r#"
 trait AutoClone {
-  fn clone(recv: &Self) -> Self;
+  fn clone(&self) -> Self;
 }
 
 trait AutoDestroy {
-  fn destroy(recv: &drop Self);
+  fn destroy(&drop self);
 }
 
 impl<T: Drop> AutoDestroy for T {
-  fn destroy(recv: &drop Self) {}
+  fn destroy(&drop self) {}
 }
 
 impl<T: Copy> AutoClone for T {
-  fn clone(recv: &Self) -> Self { recv.* }
+  fn clone(&self) -> Self { self.* }
 }
 
 extern fn<T> size_of() -> u64;

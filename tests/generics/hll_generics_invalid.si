@@ -150,3 +150,11 @@ fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit
   buf.take_copy(lin)
 }
 
+# covers: self receiver sugar in free function declaration
+fn free_fn_with_self_sugar(&self) -> unit { unit }
+fn free_fn_with_out_self(&out self) -> unit { unit }
+fn free_fn_with_drop_self(&drop self) -> unit { unit }
+fn<'a> free_fn_with_named_drop_self(&'a drop self) -> unit { unit }
+
+
+

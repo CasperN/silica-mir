@@ -82,6 +82,34 @@ error: at 130:42: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_a
      |                                          ^^^^^^^^^^^^^^^
  131 | 
      |
+error: at 154:28: [HTC-UndeclaredType] In function 'free_fn_with_self_sugar': undeclared type 'Self'
+     |
+ 153 | # covers: self receiver sugar in free function declaration
+ 154 | fn free_fn_with_self_sugar(&self) -> unit { unit }
+     |                            ^^^^^
+ 155 | fn free_fn_with_out_self(&out self) -> unit { unit }
+     |
+error: at 155:26: [HTC-UndeclaredType] In function 'free_fn_with_out_self': undeclared type 'Self'
+     |
+ 154 | fn free_fn_with_self_sugar(&self) -> unit { unit }
+ 155 | fn free_fn_with_out_self(&out self) -> unit { unit }
+     |                          ^^^^^^^^^
+ 156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
+     |
+error: at 156:27: [HTC-UndeclaredType] In function 'free_fn_with_drop_self': undeclared type 'Self'
+     |
+ 155 | fn free_fn_with_out_self(&out self) -> unit { unit }
+ 156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
+     |                           ^^^^^^^^^^
+ 157 | fn<'a> free_fn_with_named_drop_self(&'a drop self) -> unit { unit }
+     |
+error: at 157:37: [HTC-UndeclaredType] In function 'free_fn_with_named_drop_self': undeclared type 'Self'
+     |
+ 156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
+ 157 | fn<'a> free_fn_with_named_drop_self(&'a drop self) -> unit { unit }
+     |                                     ^^^^^^^^^^^^^
+ 158 | 
+     |
 error: at 74:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
     |
  73 | fn return_type_bad_arity() -> Box<i64, i64> {

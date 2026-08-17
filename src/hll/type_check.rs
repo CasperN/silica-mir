@@ -1844,6 +1844,7 @@ fn match_impl_lifetime(
             }
         }
         (Some(pattern), Some(actual)) => pattern == actual,
+        (Some(pattern), None) if parameters.contains(pattern) => true,
         (None, _) => true,
         _ => false,
     }

@@ -40,22 +40,22 @@ fn<'s0, T: Move> box_new(value: T, $return: &out 's0 Box<T>) {
 }
 
 impl<T> Box<T> {
-  fn<'s0: 's2, 's1: 's2, 's2> get(recv: &'s0 Box<T>, $return: &out 's1 &'s2 T) {
+  fn<'s0: 's2, 's1: 's2, 's2> get(self: &'s0 Box<T>, $return: &out 's1 &'s2 T) {
     entry:
-      $return.* = ptr_cast(copy recv.*.data, &T);
+      $return.* = ptr_cast(copy self.*.data, &T);
       unborrow $return;
       require_uninit $return;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
-  fn<'s0: 's2, 's1: 's2, 's2> get_mut(recv: &mut 's0 Box<T>, $return: &out 's1 &mut 's2 T) {
+  fn<'s0: 's2, 's1: 's2, 's2> get_mut(self: &mut 's0 Box<T>, $return: &out 's1 &mut 's2 T) {
     entry:
-      $return.* = ptr_cast(copy recv.*.data, &mut T);
+      $return.* = ptr_cast(copy self.*.data, &mut T);
       unborrow $return;
       require_uninit $return;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
 }
@@ -90,13 +90,13 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
 }
 
 impl<T: Move> Box<T> {
-  fn<'s0> into_inner(recv: Box<T>, $return: &out 's0 T) {
+  fn<'s0> into_inner(self: Box<T>, $return: &out 's0 T) {
     value: T;
     $tmp_0: unit;
     $tmp_1: *u8;
     entry:
-      value = move recv.data.*;
-      $tmp_1 = ptr_cast(move recv.data, *u8);
+      value = move self.data.*;
+      $tmp_1 = ptr_cast(move self.data, *u8);
       call free_bytes(move $tmp_1);
       $tmp_0 = unit;
       require_uninit $tmp_1;
@@ -106,7 +106,7 @@ impl<T: Move> Box<T> {
       unborrow $return;
       require_uninit value;
       require_uninit $return;
-      require_uninit recv;
+      require_uninit self;
       return
   }
 }
@@ -132,29 +132,29 @@ fn<'a, 's0, T> span_from_raw_parts(data: *T, len: u64, $return: &out 's0 Span<'a
 }
 
 impl<'a, T> Span<'a, T> {
-  fn<'s0, 's1> len(recv: &'s0 Span<'a, T>, $return: &out 's1 u64) {
+  fn<'s0, 's1> len(self: &'s0 Span<'a, T>, $return: &out 's1 u64) {
     entry:
-      $return.* = copy recv.*.len;
+      $return.* = copy self.*.len;
       unborrow $return;
       require_uninit $return;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
-  fn<'s0, 's1> get_unchecked(recv: &'s0 Span<'a, T>, index: u64, $return: &out 's1 &'a T) {
+  fn<'s0, 's1> get_unchecked(self: &'s0 Span<'a, T>, index: u64, $return: &out 's1 &'a T) {
     item: *T;
     $tmp_0: &out *T;
     entry:
       $tmp_0 = &out item;
-      call ptr_offset<T>(copy recv.*.data, move index, move $tmp_0);
+      call ptr_offset<T>(copy self.*.data, move index, move $tmp_0);
       require_uninit $tmp_0;
       $return.* = ptr_cast(move item, &'a T);
       unborrow $return;
       require_uninit item;
       require_uninit $return;
       require_uninit index;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
 }
@@ -198,13 +198,13 @@ fn<'s0, T> vec_with_capacity(cap: u64, $return: &out 's0 Vec<T>) {
 }
 
 impl<T> Vec<T> {
-  fn<'s0, 's1> len(recv: &'s0 Vec<T>, $return: &out 's1 u64) {
+  fn<'s0, 's1> len(self: &'s0 Vec<T>, $return: &out 's1 u64) {
     entry:
-      $return.* = copy recv.*.len;
+      $return.* = copy self.*.len;
       unborrow $return;
       require_uninit $return;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
   fn<'a, 's0> as_span(self: &'a Vec<T>, $return: &out 's0 Span<'a, T>) {
@@ -316,7 +316,7 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
 }
 
 impl<T: Move> Vec<T> {
-  fn<'s0> push_unchecked(recv: &mut 's0 Vec<T>, value: T) {
+  fn<'s0> push_unchecked(self: &mut 's0 Vec<T>, value: T) {
     $tmp_0: unit;
     slot: *T;
     $tmp_1: &out *T;
@@ -326,16 +326,16 @@ impl<T: Move> Vec<T> {
     $tmp_5: &out u64;
     entry:
       $tmp_1 = &out slot;
-      call ptr_offset<T>(copy recv.*.data, copy recv.*.len, move $tmp_1);
+      call ptr_offset<T>(copy self.*.data, copy self.*.len, move $tmp_1);
       require_uninit $tmp_1;
       slot.* = move value;
       $tmp_2 = unit;
       drop $tmp_2;
       require_uninit $tmp_2;
       $tmp_5 = &out $tmp_4;
-      call $u64_add(copy recv.*.len, 1u64, move $tmp_5);
-      drop recv.*.len;
-      recv.*.len = move $tmp_4;
+      call $u64_add(copy self.*.len, 1u64, move $tmp_5);
+      drop self.*.len;
+      self.*.len = move $tmp_4;
       $tmp_3 = unit;
       require_uninit $tmp_5;
       require_uninit $tmp_4;
@@ -347,11 +347,11 @@ impl<T: Move> Vec<T> {
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
-  fn<'s0> push(recv: &mut 's0 Vec<T>, value: T) {
+  fn<'s0> push(self: &mut 's0 Vec<T>, value: T) {
     $tmp_0: unit;
     $tmp_1: unit;
     $tmp_2: bool;
@@ -389,12 +389,12 @@ impl<T: Move> Vec<T> {
     $clone_0: &mut 's0 Vec<T>;
     entry:
       $tmp_3 = &out $tmp_2;
-      call $u64_ge(copy recv.*.len, copy recv.*.cap, move $tmp_3);
+      call $u64_ge(copy self.*.len, copy self.*.cap, move $tmp_3);
       branch(move $tmp_2) [true: if_true_0, false: if_false_1]
     if_true_0:
-      old_data = copy recv.*.data;
+      old_data = copy self.*.data;
       $tmp_4 = &out new_cap;
-      call $u64_add(copy recv.*.cap, copy recv.*.cap, move $tmp_4);
+      call $u64_add(copy self.*.cap, copy self.*.cap, move $tmp_4);
       require_uninit $tmp_4;
       $tmp_8 = &out $tmp_7;
       call size_of<T>(move $tmp_8);
@@ -413,7 +413,7 @@ impl<T: Move> Vec<T> {
       goto loop_start_3
     loop_start_3:
       $tmp_15 = &out $tmp_14;
-      call $u64_ge(copy index, copy recv.*.len, move $tmp_15);
+      call $u64_ge(copy index, copy self.*.len, move $tmp_15);
       branch(move $tmp_14) [true: if_true_5, false: if_false_6]
     if_true_5:
       require_uninit $tmp_15;
@@ -466,13 +466,13 @@ impl<T: Move> Vec<T> {
       require_uninit $tmp_24;
       drop $tmp_23;
       require_uninit $tmp_23;
-      drop recv.*.data;
-      recv.*.data = move new_data;
+      drop self.*.data;
+      self.*.data = move new_data;
       $tmp_25 = unit;
       drop $tmp_25;
       require_uninit $tmp_25;
-      drop recv.*.cap;
-      recv.*.cap = move new_cap;
+      drop self.*.cap;
+      self.*.cap = move new_cap;
       $tmp_26 = unit;
       drop $tmp_26;
       require_uninit $tmp_26;
@@ -491,7 +491,7 @@ impl<T: Move> Vec<T> {
       require_uninit $tmp_2;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $clone_0 = &mut recv.*;
+      $clone_0 = &mut self.*;
       call <Vec<T>>::push_unchecked(move $clone_0, move value);
       $tmp_27 = unit;
       drop $tmp_27;
@@ -500,8 +500,8 @@ impl<T: Move> Vec<T> {
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
-      drop recv;
-      require_uninit recv;
+      drop self;
+      require_uninit self;
       return
   }
 }

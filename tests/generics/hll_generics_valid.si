@@ -329,3 +329,58 @@ fn test_method_type_param_receiver(buf: &Buffer<i64>) -> Pair<i64, bool> {
   buf.pair_with(true)
 }
 
+# covers: self argument sugar (&self, &mut self, &'a self, self)
+struct<T: Copy + Drop> Counter: Copy + Drop { count: T }
+
+impl<T: Copy + Drop> Counter<T> {
+  fn get_val(&self) -> T { self.*.count }
+  fn set_val(&mut self, new_val: T) -> unit { self.*.count = new_val; }
+  fn<'a> get_ref(&'a self) -> &'a T { &self.*.count }
+  fn into_count(self) -> T { self.count }
+}
+
+fn test_self_sugar(c: Counter<i64>) -> i64 {
+  let mut c = c;
+  let v = c.get_val();
+  c.set_val(v + 1);
+  let direct = {
+    let r = c.get_ref();
+    r.*
+  };
+  direct + c.into_count()
+}
+
+# covers: self argument sugar with &out self and &drop self
+struct<T: Move> Slot: Move { val: T }
+
+impl<T: Move> Slot<T> {
+  fn init(&out self, val: T) {
+    self.*.val = val;
+  }
+
+  fn close(&drop self) -> T {
+    let v = self.*.val;
+    v
+  }
+
+  fn<'a> init_lifetime(&'a out self, val: T) {
+    self.*.val = val;
+  }
+
+  fn<'a> close_lifetime(&'a drop self) -> T {
+    let v = self.*.val;
+    v
+  }
+}
+
+fn test_out_and_drop_self_sugar() -> i64 {
+  let mut s: Slot<i64>;
+  s.init(42);
+  let v = s.close();
+  let mut s2: Slot<i64>;
+  s2.init_lifetime(v);
+  let final_val = s2.close_lifetime();
+  final_val
+}
+
+

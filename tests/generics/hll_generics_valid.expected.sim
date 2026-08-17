@@ -738,3 +738,219 @@ fn<'s0, 's1> test_method_type_param_receiver(buf: &'s0 Buffer<i64>, $return: &ou
     require_uninit buf;
     return
 }
+
+struct<T: Copy + Drop> Counter: Copy + Drop {
+  count: T
+}
+
+impl<T: Copy + Drop> Counter<T> {
+  fn<'s0, 's1> get_val(self: &'s0 Counter<T>, $return: &out 's1 T) {
+    entry:
+      $return.* = copy self.*.count;
+      unborrow $return;
+      require_uninit $return;
+      drop self;
+      require_uninit self;
+      return
+  }
+  fn<'s0> set_val(self: &mut 's0 Counter<T>, new_val: T) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    entry:
+      drop self.*.count;
+      self.*.count = move new_val;
+      $tmp_1 = unit;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit new_val;
+      drop self;
+      require_uninit self;
+      return
+  }
+  fn<'a, 's0> get_ref(self: &'a Counter<T>, $return: &out 's0 &'a T) {
+    entry:
+      $return.* = &self.*.count;
+      unborrow $return;
+      require_uninit $return;
+      drop self;
+      require_uninit self;
+      return
+  }
+  fn<'s0> into_count(self: Counter<T>, $return: &out 's0 T) {
+    entry:
+      $return.* = move self.count;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit self;
+      return
+  }
+}
+
+fn<'s10, 's0> test_self_sugar(c: Counter<i64>, $return: &out 's0 i64) {
+  $c_0: Counter<i64>;
+  v: i64;
+  $tmp_0: &Counter<i64>;
+  $tmp_1: &out i64;
+  $tmp_2: unit;
+  $tmp_3: &mut Counter<i64>;
+  $tmp_4: i64;
+  $tmp_5: &out i64;
+  direct: i64;
+  r: &'s10 i64;
+  $tmp_6: &Counter<i64>;
+  $tmp_7: &out &'s10 i64;
+  $tmp_8: i64;
+  $tmp_9: &out i64;
+  $tmp_10: &out i64;
+  entry:
+    $c_0 = move c;
+    $tmp_0 = &$c_0;
+    $tmp_1 = &out v;
+    call <Counter<i64>>::get_val(move $tmp_0, move $tmp_1);
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    $tmp_3 = &mut $c_0;
+    $tmp_5 = &out $tmp_4;
+    call $i64_add(move v, 1, move $tmp_5);
+    call <Counter<i64>>::set_val(move $tmp_3, move $tmp_4);
+    $tmp_2 = unit;
+    require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_6 = &$c_0;
+    $tmp_7 = &out r;
+    call <Counter<i64>>::get_ref<'s10>(move $tmp_6, move $tmp_7);
+    require_uninit $tmp_7;
+    require_uninit $tmp_6;
+    direct = copy r.*;
+    drop r;
+    require_uninit r;
+    $tmp_9 = &out $tmp_8;
+    call <Counter<i64>>::into_count(move $c_0, move $tmp_9);
+    $tmp_10 = &out $return.*;
+    call $i64_add(move direct, move $tmp_8, move $tmp_10);
+    unborrow $return;
+    require_uninit $tmp_10;
+    require_uninit $tmp_9;
+    require_uninit $tmp_8;
+    require_uninit direct;
+    require_uninit v;
+    require_uninit $c_0;
+    require_uninit $return;
+    require_uninit c;
+    return
+}
+
+struct<T: Move> Slot: Move {
+  val: T
+}
+
+impl<T: Move> Slot<T> {
+  fn<'s0> init(self: &out 's0 Slot<T>, val: T) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    entry:
+      self.*.val = move val;
+      unborrow self;
+      $tmp_1 = unit;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit val;
+      require_uninit self;
+      return
+  }
+  fn<'s0, 's1> close(self: &drop 's0 Slot<T>, $return: &out 's1 T) {
+    v: T;
+    entry:
+      v = move self.*.val;
+      unborrow self;
+      $return.* = move v;
+      unborrow $return;
+      require_uninit v;
+      require_uninit $return;
+      require_uninit self;
+      return
+  }
+  fn<'a> init_lifetime(self: &out 'a Slot<T>, val: T) {
+    $tmp_0: unit;
+    $tmp_1: unit;
+    entry:
+      self.*.val = move val;
+      unborrow self;
+      $tmp_1 = unit;
+      drop $tmp_1;
+      require_uninit $tmp_1;
+      $tmp_0 = unit;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      require_uninit val;
+      require_uninit self;
+      return
+  }
+  fn<'a, 's0> close_lifetime(self: &drop 'a Slot<T>, $return: &out 's0 T) {
+    v: T;
+    entry:
+      v = move self.*.val;
+      unborrow self;
+      $return.* = move v;
+      unborrow $return;
+      require_uninit v;
+      require_uninit $return;
+      require_uninit self;
+      return
+  }
+}
+
+fn<'s11, 's12, 's0> test_out_and_drop_self_sugar($return: &out 's0 i64) {
+  s: Slot<i64>;
+  $tmp_0: unit;
+  $tmp_1: &out Slot<i64>;
+  v: i64;
+  $tmp_2: &drop Slot<i64>;
+  $tmp_3: &out i64;
+  s2: Slot<i64>;
+  $tmp_4: unit;
+  $tmp_5: &out Slot<i64>;
+  final_val: i64;
+  $tmp_6: &drop Slot<i64>;
+  $tmp_7: &out i64;
+  entry:
+    $tmp_1 = &out s;
+    call <Slot<i64>>::init(move $tmp_1, 42);
+    $tmp_0 = unit;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $tmp_2 = &drop s;
+    $tmp_3 = &out v;
+    call <Slot<i64>>::close(move $tmp_2, move $tmp_3);
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    $tmp_5 = &out s2;
+    call <Slot<i64>>::init_lifetime<'s11>(move $tmp_5, move v);
+    $tmp_4 = unit;
+    require_uninit $tmp_5;
+    drop $tmp_4;
+    require_uninit $tmp_4;
+    $tmp_6 = &drop s2;
+    $tmp_7 = &out final_val;
+    call <Slot<i64>>::close_lifetime<'s12>(move $tmp_6, move $tmp_7);
+    require_uninit $tmp_7;
+    require_uninit $tmp_6;
+    $return.* = move final_val;
+    unborrow $return;
+    require_uninit final_val;
+    require_uninit s2;
+    require_uninit v;
+    require_uninit s;
+    require_uninit $return;
+    return
+}

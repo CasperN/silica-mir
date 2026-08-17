@@ -549,6 +549,10 @@ impl Parser {
                     ty,
                     source: SourceInfo::written(span_of(child)),
                 });
+            } else if child.kind() == "self_param" {
+                if let Some(param) = self.map_self_param(child, &scope, d) {
+                    params.push(param);
+                }
             }
         }
 
@@ -584,6 +588,60 @@ impl Parser {
             params,
             ret_ty,
             body,
+            source: SourceInfo::written(span),
+        })
+    }
+
+    fn map_self_param(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        _d: &mut Diagnostics,
+    ) -> Option<Param> {
+        let span = span_of(node);
+        let self_target = if let Some(st) = &scope.self_ty {
+            st.clone()
+        } else if scope.params.contains("Self") {
+            Type::new(
+                TypeKind::Param("Self".to_string()),
+                SourceInfo::written(span),
+            )
+        } else {
+            Type::new(
+                TypeKind::Custom(Instance::new("Self", Vec::new(), Vec::new())),
+                SourceInfo::written(span),
+            )
+        };
+
+        let mut cursor = node.walk();
+        let has_amp = node.children(&mut cursor).any(|c| c.kind() == "&");
+        let ty = if has_amp {
+            let mut ref_kind = RefKind::Shared;
+            let mut lifetime = None;
+            for child in node.children(&mut cursor) {
+                match child.kind() {
+                    "mut" => ref_kind = RefKind::Mut,
+                    "drop" | "deinit" => ref_kind = RefKind::Drop,
+                    "out" => ref_kind = RefKind::Out,
+                    "uninit" => ref_kind = RefKind::Uninit,
+                    "lifetime" => {
+                        let text = self.get_text(child);
+                        lifetime = Some(Lifetime(text.trim_start_matches('\'').to_string()));
+                    }
+                    _ => {}
+                }
+            }
+            Type::new(
+                TypeKind::Ref(ref_kind, lifetime, Box::new(self_target)),
+                SourceInfo::written(span),
+            )
+        } else {
+            self_target
+        };
+
+        Some(Param {
+            name: "self".to_string(),
+            ty,
             source: SourceInfo::written(span),
         })
     }

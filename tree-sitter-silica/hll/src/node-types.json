@@ -1600,6 +1600,10 @@
           "named": true
         },
         {
+          "type": "self_param",
+          "named": true
+        },
+        {
           "type": "type_params",
           "named": true
         }
@@ -2187,6 +2191,10 @@
           {
             "type": "identifier",
             "named": true
+          },
+          {
+            "type": "self",
+            "named": false
           }
         ]
       },
@@ -2443,6 +2451,21 @@
       "types": [
         {
           "type": "expr",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "self_param",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "lifetime",
           "named": true
         }
       ]
@@ -3080,6 +3103,14 @@
     "named": false
   },
   {
+    "type": "deinit",
+    "named": false
+  },
+  {
+    "type": "drop",
+    "named": false
+  },
+  {
     "type": "else",
     "named": false
   },
@@ -3172,7 +3203,15 @@
     "named": false
   },
   {
+    "type": "out",
+    "named": false
+  },
+  {
     "type": "return",
+    "named": false
+  },
+  {
+    "type": "self",
     "named": false
   },
   {
@@ -3205,6 +3244,10 @@
   },
   {
     "type": "u8",
+    "named": false
+  },
+  {
+    "type": "uninit",
     "named": false
   },
   {

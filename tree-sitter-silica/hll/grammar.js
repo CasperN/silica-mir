@@ -99,7 +99,7 @@ module.exports = grammar({
       'fn',
       optional($.type_params),
       field('name', $.identifier),
-      '(', common.commaSep($.param_decl), ')',
+      '(', common.commaSep(choice($.self_param, $.param_decl)), ')',
       optional(seq('->', field('return_type', $.type))),
       choice(
         ';',
@@ -134,11 +134,25 @@ module.exports = grammar({
       '}',
     ),
 
-    param_decl: $ => seq(
-      field('name', $.identifier),
+    self_param: $ => choice(
+      seq(
+        '&',
+        choice(
+          seq(optional(choice('mut', 'drop', 'deinit', 'out', 'uninit')), optional($.lifetime)),
+          seq(optional($.lifetime), optional(choice('mut', 'drop', 'deinit', 'out', 'uninit'))),
+        ),
+        'self',
+      ),
+      'self',
+      seq('mut', 'self'),
+    ),
+
+    param_decl: $ => prec.dynamic(1, seq(
+      optional('mut'),
+      field('name', choice($.identifier, 'self')),
       ':',
       field('type', $.type),
-    ),
+    )),
 
     // Statement: `let`, `defer`, an expression followed by `;`, or
     // a block-like expression on its own (Rust's rule — anything
