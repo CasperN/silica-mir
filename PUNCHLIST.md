@@ -204,7 +204,6 @@ independent, fixture-backed changes in this order:
    (3) Horizontal synthesized fallback (`Clone + Destroy => Transfer`).
 
 ### Other clarity issues
-- **`&deinit`**: We should delete all references to `deinit` and standardize on `&drop`.
 - **Reference lifetime token ordering (`&'a drop T`)**: Reference keyword precedes lifetime (`&drop 'a T`). We should standardize on the Rust way.
 - **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.
 - **Field access on references**: When projecting `self.field` on reference types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.

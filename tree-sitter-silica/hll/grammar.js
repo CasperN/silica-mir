@@ -138,8 +138,8 @@ module.exports = grammar({
       seq(
         '&',
         choice(
-          seq(optional(choice('mut', 'drop', 'deinit', 'out', 'uninit')), optional($.lifetime)),
-          seq(optional($.lifetime), optional(choice('mut', 'drop', 'deinit', 'out', 'uninit'))),
+          seq(optional(choice('mut', 'drop', 'out', 'uninit')), optional($.lifetime)),
+          seq(optional($.lifetime), optional(choice('mut', 'drop', 'out', 'uninit'))),
         ),
         'self',
       ),
@@ -233,7 +233,7 @@ module.exports = grammar({
     // `(&x) + y`, not `&(x + y)`. prec 15 sits above the tightest
     // binary_expr tier (13).
     borrow_expr: $ => prec(15, seq(
-      field('kind', choice('&', '&mut', '&out', '&deinit', '&uninit')),
+      field('kind', choice('&', '&mut', '&out', '&drop', '&uninit')),
       field('target', $._expr_prefix),
     )),
 

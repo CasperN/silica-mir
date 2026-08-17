@@ -621,7 +621,7 @@ impl Parser {
             for child in node.children(&mut cursor) {
                 match child.kind() {
                     "mut" => ref_kind = RefKind::Mut,
-                    "drop" | "deinit" => ref_kind = RefKind::Drop,
+                    "drop" => ref_kind = RefKind::Drop,
                     "out" => ref_kind = RefKind::Out,
                     "uninit" => ref_kind = RefKind::Uninit,
                     "lifetime" => {
@@ -1421,7 +1421,7 @@ impl Parser {
                     "&" => RefKind::Shared,
                     "&mut" => RefKind::Mut,
                     "&out" => RefKind::Out,
-                    "&deinit" => RefKind::Drop,
+                    "&drop" => RefKind::Drop,
                     "&uninit" => RefKind::Uninit,
                     other => {
                         d.push_error(self.diag(
@@ -2181,7 +2181,7 @@ mod tests {
                 let a = ptr.*;
                 let b = &raw a;
                 let c = &out a;
-                let d = &deinit a;
+                let d = &drop a;
                 let e = &uninit a;
             }
         ";

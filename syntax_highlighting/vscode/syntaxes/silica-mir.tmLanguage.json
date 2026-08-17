@@ -46,7 +46,7 @@
     },
     {
       "name": "keyword.control.silica-mir",
-      "match": "\\b(fn|struct|enum|unsafe|extern|goto|return|switchEnum|drop|unborrow|abort|unreachable|copy|move|call|branch|as|mut|out|deinit|uninit|raw)\\b"
+      "match": "\\b(fn|struct|enum|unsafe|extern|goto|return|switchEnum|drop|unborrow|abort|unreachable|copy|move|call|branch|as|mut|out|uninit|raw)\\b"
     },
     {
       "name": "storage.type.primitive.silica-mir",

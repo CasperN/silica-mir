@@ -612,7 +612,7 @@
             "named": false
           },
           {
-            "type": "&deinit",
+            "type": "&drop",
             "named": false
           },
           {
@@ -2950,10 +2950,6 @@
     "named": false
   },
   {
-    "type": "&deinit",
-    "named": false
-  },
-  {
     "type": "&drop",
     "named": false
   },
@@ -3100,10 +3096,6 @@
   },
   {
     "type": "defer",
-    "named": false
-  },
-  {
-    "type": "deinit",
     "named": false
   },
   {

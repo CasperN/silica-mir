@@ -149,8 +149,8 @@ end of the borrow. `&out` and `&drop` are obliged to change the state and
 therefore cannot be forgotten (`!Drop`). As with Rust, `&T` is `Copy` because
 multiple immutable references are okay.
 
-HLL borrow expressions spell the `&drop` operation as `&deinit expr`; MIR uses
-`&drop place`. The reference type remains `&drop T`.
+Both HLL and MIR spell the drop borrow operation as `&drop expr` / `&drop place`.
+The reference type is `&drop T`.
 
 ## Initialization state
 

@@ -1328,10 +1328,6 @@
                             },
                             {
                               "type": "STRING",
-                              "value": "deinit"
-                            },
-                            {
-                              "type": "STRING",
                               "value": "out"
                             },
                             {
@@ -1387,10 +1383,6 @@
                             {
                               "type": "STRING",
                               "value": "drop"
-                            },
-                            {
-                              "type": "STRING",
-                              "value": "deinit"
                             },
                             {
                               "type": "STRING",
@@ -1742,7 +1734,7 @@
                 },
                 {
                   "type": "STRING",
-                  "value": "&deinit"
+                  "value": "&drop"
                 },
                 {
                   "type": "STRING",

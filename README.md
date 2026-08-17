@@ -411,7 +411,7 @@ expr        = assign_expr | prefix
 assign_expr = prefix = expr                          # right-associative
 
 prefix = postfix
-       | (& | &mut | &out | &deinit | &uninit) prefix   # borrows
+       | (& | &mut | &out | &drop | &uninit) prefix    # borrows
        | &raw prefix                                    # raw borrow
 
 postfix = primary
@@ -448,9 +448,6 @@ pattern = identifier [ ( identifier ) ]                  # Variant [ (bind) ]
 - **`match` is postfix** (`expr match { ... }`), reading subject-first
   and chaining naturally with method-style calls.
 - **`.*` is the postfix deref** operator (borrowed from Zig).
-- **HLL spells `&deinit T` where MIR spells `&drop T`.** Same
-  reference kind (`RefKind::Drop`); the surface uses a name that
-  reads as "de-initialize the referent."
 - **Struct constructor vs identifier + block ambiguity.** `Name { ... }`
   parses as a struct constructor only when the brace contents look
   like `field: value` fields (or the braces are empty). Otherwise

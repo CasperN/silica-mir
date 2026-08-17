@@ -61,16 +61,15 @@ fn out_of_init_drop_type(x: i64) -> i64 {
   y
 }
 
-# ---------- &deinit (type spelled `&drop T`): pointee Init ----------
+# ---------- &drop: pointee Init ----------
 
-# The borrow operator is `&deinit place`, but the reference *type*
-# still spells as `&drop T` in HLL (the type grammar is shared with
-# MIR). The (Init, Uninit) obligation is discharged by moving the
+# The borrow operator is `&drop place`, matching the reference type `&drop T`.
+# The (Init, Uninit) obligation is discharged by moving the
 # pointee out. `Box` is Drop+Move (not Copy), so `r.*` lowers as
 # `move r.*` — invalidating the pointee and satisfying the obligation.
 fn deinit_of_init(b: Box) -> Box {
   let mut owned = b;
-  let r: &drop Box = &deinit owned;
+  let r = &drop owned;
   let taken = r.*;
   taken
 }

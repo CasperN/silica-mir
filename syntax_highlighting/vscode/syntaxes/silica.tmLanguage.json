@@ -19,7 +19,7 @@
     },
     {
       "name": "keyword.control.silica",
-      "match": "\\b(let|mut|fn|struct|enum|unsafe|defer|if|else|loop|break|continue|return|copy|move|match|as|out|deinit|uninit|raw)\\b"
+      "match": "\\b(let|mut|fn|struct|enum|unsafe|defer|if|else|loop|break|continue|return|copy|move|match|as|drop|out|uninit|raw)\\b"
     },
     {
       "name": "storage.type.primitive.silica",
