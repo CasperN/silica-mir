@@ -1379,7 +1379,7 @@ impl Parser {
                 })
             }
             "struct_constr" => self.map_struct_constr(node, scope, d),
-            "enum_constr" => self.map_enum_constr(node, scope, d),
+            "scoped_identifier" => self.map_scoped_identifier(node, scope, d),
             "array_lit" => {
                 let mut cursor = node.walk();
                 let mut elems = Vec::new();
@@ -1689,6 +1689,35 @@ impl Parser {
                         method_source: SourceInfo::written(span_of(method)),
                         selector_source: SourceInfo::written(span_of(func_node)),
                     }
+                } else if func_node.kind() == "scoped_identifier" {
+                    let Some(target_name) = func_node.child_by_field_name("target_name") else {
+                        d.push_error(self.diag(
+                            func_node,
+                            ParserCode::MalformedCst,
+                            "scoped identifier missing target name",
+                        ));
+                        return None;
+                    };
+                    let target_text = self.get_text(target_name);
+                    let resolved_target_name = self.resolve_constructor_name(target_text, scope);
+                    let target_ty = Type::new(
+                        TypeKind::Custom(Instance::new(resolved_target_name, Vec::new(), Vec::new())),
+                        SourceInfo::written(span_of(target_name)),
+                    );
+                    let Some(member) = func_node.child_by_field_name("name") else {
+                        d.push_error(self.diag(
+                            func_node,
+                            ParserCode::MalformedCst,
+                            "scoped identifier missing member name",
+                        ));
+                        return None;
+                    };
+                    CallTarget::Path {
+                        target: target_ty,
+                        member: self.get_text(member).to_string(),
+                        member_source: SourceInfo::written(span_of(member)),
+                        selector_source: SourceInfo::written(span_of(func_node)),
+                    }
                 } else {
                     CallTarget::Expr(Box::new(self.map_expr(func_node, scope, d)?))
                 };
@@ -1981,34 +2010,37 @@ impl Parser {
         })
     }
 
-    fn map_enum_constr(&self, node: Node, scope: &TypeScope, d: &mut Diagnostics) -> Option<Expr> {
+    fn map_scoped_identifier(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<Expr> {
         let span = span_of(node);
-        let Some(name_node) = node.child_by_field_name("name") else {
-            d.push_error(self.diag(node, ParserCode::MalformedCst, "enum constr missing name"));
-            return None;
-        };
-        let Some(variant_node) = node.child_by_field_name("variant") else {
+        let Some(target_name) = node.child_by_field_name("target_name") else {
             d.push_error(self.diag(
                 node,
                 ParserCode::MalformedCst,
-                "enum constr missing variant",
+                "scoped identifier missing target name",
             ));
             return None;
         };
-        let Some(payload_node) = node.child_by_field_name("payload") else {
+        let target_text = self.get_text(target_name);
+        let resolved_target_name = self.resolve_constructor_name(target_text, scope);
+        let target_ty = Type::new(
+            TypeKind::Custom(Instance::new(resolved_target_name, Vec::new(), Vec::new())),
+            SourceInfo::written(span_of(target_name)),
+        );
+        let Some(member) = node.child_by_field_name("name") else {
             d.push_error(self.diag(
                 node,
                 ParserCode::MalformedCst,
-                "enum constr missing payload",
+                "scoped identifier missing member name",
             ));
             return None;
         };
         Some(Expr {
-            kind: ExprKind::EnumConstr(
-                self.resolve_constructor_name(self.get_text(name_node), scope),
-                self.get_text(variant_node).to_string(),
-                Box::new(self.map_expr(payload_node, scope, d)?),
-            ),
+            kind: ExprKind::Path(target_ty, self.get_text(member).to_string()),
             source: SourceInfo::written(span),
         })
     }

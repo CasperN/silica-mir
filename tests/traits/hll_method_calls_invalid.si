@@ -370,3 +370,87 @@ fn ambiguous_qualified_inherent(value: Overlap<i64>) {
 fn qualified_method_bound_failure(value: Generic<i64>, linear: Linear) {
   <Generic<i64>>::bounded<Linear>(value, linear);
 }
+
+struct StaticTarget: Copy + Drop {
+  value: i64,
+}
+
+impl StaticTarget {
+  fn create(value: i64) -> StaticTarget {
+    StaticTarget { value: value }
+  }
+}
+
+# covers: static call to nonexistent inherent method on known type
+fn static_nonexistent_method() {
+  StaticTarget::nonexistent();
+}
+
+# covers: static method call arity mismatch
+fn static_arity_mismatch() {
+  StaticTarget::create(1, 2);
+}
+
+# covers: static method call argument type mismatch
+fn static_type_mismatch() {
+  StaticTarget::create(true);
+}
+
+# covers: scoped path on undeclared type
+fn static_undeclared_type() {
+  UndeclaredType::new();
+}
+
+enum CollidingEnum: Copy + Drop {
+  Duplicate: i64,
+}
+
+impl CollidingEnum {
+  fn Duplicate(value: i64) -> CollidingEnum {
+    CollidingEnum::Duplicate(value)
+  }
+}
+
+# covers: collision between enum variant and inherent method on the same type
+fn static_variant_method_collision() {
+  CollidingEnum::Duplicate(42);
+}
+
+struct<T: Copy + Drop> OnlyCopyTarget: Copy + Drop {
+  val: T,
+}
+
+impl<T: Copy + Drop> OnlyCopyTarget<T> {
+  fn new(val: T) -> OnlyCopyTarget<T> {
+    OnlyCopyTarget { val: val }
+  }
+}
+
+# covers: static call bound not satisfied on inferred generic parameter
+fn static_bound_not_satisfied(linear: Linear) {
+  OnlyCopyTarget::new(linear);
+}
+
+struct ReceiverTarget: Copy + Drop {
+  value: i64,
+}
+
+impl ReceiverTarget {
+  fn get_val(&self) -> i64 {
+    self.*.value
+  }
+}
+
+# covers: calling receiver method statically without arguments
+fn static_call_missing_receiver() {
+  ReceiverTarget::get_val();
+}
+
+# covers: calling nonexistent variant on known enum
+fn static_nonexistent_enum_variant() {
+  CollidingEnum::Nonexistent(10);
+}
+
+
+
+

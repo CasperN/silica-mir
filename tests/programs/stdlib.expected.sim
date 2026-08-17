@@ -6,37 +6,58 @@ struct<T> Box: Move {
   data: *T
 }
 
-fn<'s0, T: Move> box_new(value: T, $return: &out 's0 Box<T>) {
-  bytes: *u8;
-  $tmp_0: u64;
-  $tmp_1: &out u64;
-  $tmp_2: &out *u8;
-  data: *T;
-  $tmp_3: unit;
-  $tmp_4: unit;
-  entry:
-    $tmp_1 = &out $tmp_0;
-    call size_of<T>(move $tmp_1);
-    $tmp_2 = &out bytes;
-    call malloc_bytes(move $tmp_0, move $tmp_2);
-    require_uninit $tmp_2;
-    require_uninit $tmp_1;
-    require_uninit $tmp_0;
-    data = ptr_cast(move bytes, *T);
-    data.* = move value;
-    $tmp_4 = unit;
-    drop $tmp_4;
-    require_uninit $tmp_4;
-    $tmp_3 = unit;
-    drop $tmp_3;
-    require_uninit $tmp_3;
-    $return.*.data = move data;
-    unborrow $return;
-    require_uninit data;
-    require_uninit bytes;
-    require_uninit $return;
-    require_uninit value;
-    return
+impl<T: Move> Box<T> {
+  fn<'s0> new(value: T, $return: &out 's0 Box<T>) {
+    bytes: *u8;
+    $tmp_0: u64;
+    $tmp_1: &out u64;
+    $tmp_2: &out *u8;
+    data: *T;
+    $tmp_3: unit;
+    $tmp_4: unit;
+    entry:
+      $tmp_1 = &out $tmp_0;
+      call size_of<T>(move $tmp_1);
+      $tmp_2 = &out bytes;
+      call malloc_bytes(move $tmp_0, move $tmp_2);
+      require_uninit $tmp_2;
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      data = ptr_cast(move bytes, *T);
+      data.* = move value;
+      $tmp_4 = unit;
+      drop $tmp_4;
+      require_uninit $tmp_4;
+      $tmp_3 = unit;
+      drop $tmp_3;
+      require_uninit $tmp_3;
+      $return.*.data = move data;
+      unborrow $return;
+      require_uninit data;
+      require_uninit bytes;
+      require_uninit $return;
+      require_uninit value;
+      return
+  }
+  fn<'s0> into_inner(self: Box<T>, $return: &out 's0 T) {
+    value: T;
+    $tmp_0: unit;
+    $tmp_1: *u8;
+    entry:
+      value = move self.data.*;
+      $tmp_1 = ptr_cast(move self.data, *u8);
+      call free_bytes(move $tmp_1);
+      $tmp_0 = unit;
+      require_uninit $tmp_1;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      $return.* = move value;
+      unborrow $return;
+      require_uninit value;
+      require_uninit $return;
+      require_uninit self;
+      return
+  }
 }
 
 impl<T> Box<T> {
@@ -89,28 +110,6 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
   }
 }
 
-impl<T: Move> Box<T> {
-  fn<'s0> into_inner(self: Box<T>, $return: &out 's0 T) {
-    value: T;
-    $tmp_0: unit;
-    $tmp_1: *u8;
-    entry:
-      value = move self.data.*;
-      $tmp_1 = ptr_cast(move self.data, *u8);
-      call free_bytes(move $tmp_1);
-      $tmp_0 = unit;
-      require_uninit $tmp_1;
-      drop $tmp_0;
-      require_uninit $tmp_0;
-      $return.* = move value;
-      unborrow $return;
-      require_uninit value;
-      require_uninit $return;
-      require_uninit self;
-      return
-  }
-}
-
 struct<'a, T> PhantomData: Copy + Drop {
 }
 
@@ -120,18 +119,17 @@ struct<'a, T> Span: Copy + Drop {
   _marker: PhantomData<'a, T>
 }
 
-fn<'a, 's0, T> span_from_raw_parts(data: *T, len: u64, $return: &out 's0 Span<'a, T>) {
-  entry:
-    $return.*.data = move data;
-    $return.*.len = move len;
-    unborrow $return;
-    require_uninit $return;
-    require_uninit len;
-    require_uninit data;
-    return
-}
-
 impl<'a, T> Span<'a, T> {
+  fn<'s0> from_raw_parts(data: *T, len: u64, $return: &out 's0 Span<'a, T>) {
+    entry:
+      $return.*.data = move data;
+      $return.*.len = move len;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit len;
+      require_uninit data;
+      return
+  }
   fn<'s0, 's1> len(self: &'s0 Span<'a, T>, $return: &out 's1 u64) {
     entry:
       $return.* = copy self.*.len;
@@ -165,39 +163,38 @@ struct<T> Vec: Move {
   cap: u64
 }
 
-fn<'s0, T> vec_with_capacity(cap: u64, $return: &out 's0 Vec<T>) {
-  data: *T;
-  $tmp_0: *u8;
-  $tmp_1: u64;
-  $tmp_2: u64;
-  $tmp_3: &out u64;
-  $tmp_4: &out u64;
-  $tmp_5: &out *u8;
-  entry:
-    $tmp_3 = &out $tmp_2;
-    call size_of<T>(move $tmp_3);
-    $tmp_4 = &out $tmp_1;
-    call $u64_mul(move $tmp_2, copy cap, move $tmp_4);
-    $tmp_5 = &out $tmp_0;
-    call malloc_bytes(move $tmp_1, move $tmp_5);
-    data = ptr_cast(move $tmp_0, *T);
-    require_uninit $tmp_5;
-    require_uninit $tmp_4;
-    require_uninit $tmp_3;
-    require_uninit $tmp_2;
-    require_uninit $tmp_1;
-    require_uninit $tmp_0;
-    $return.*.data = move data;
-    $return.*.len = 0u64;
-    $return.*.cap = move cap;
-    unborrow $return;
-    require_uninit data;
-    require_uninit $return;
-    require_uninit cap;
-    return
-}
-
 impl<T> Vec<T> {
+  fn<'s0> with_capacity(cap: u64, $return: &out 's0 Vec<T>) {
+    data: *T;
+    $tmp_0: *u8;
+    $tmp_1: u64;
+    $tmp_2: u64;
+    $tmp_3: &out u64;
+    $tmp_4: &out u64;
+    $tmp_5: &out *u8;
+    entry:
+      $tmp_3 = &out $tmp_2;
+      call size_of<T>(move $tmp_3);
+      $tmp_4 = &out $tmp_1;
+      call $u64_mul(move $tmp_2, copy cap, move $tmp_4);
+      $tmp_5 = &out $tmp_0;
+      call malloc_bytes(move $tmp_1, move $tmp_5);
+      data = ptr_cast(move $tmp_0, *T);
+      require_uninit $tmp_5;
+      require_uninit $tmp_4;
+      require_uninit $tmp_3;
+      require_uninit $tmp_2;
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      $return.*.data = move data;
+      $return.*.len = 0u64;
+      $return.*.cap = move cap;
+      unborrow $return;
+      require_uninit data;
+      require_uninit $return;
+      require_uninit cap;
+      return
+  }
   fn<'s0, 's1> len(self: &'s0 Vec<T>, $return: &out 's1 u64) {
     entry:
       $return.* = copy self.*.len;
@@ -211,7 +208,7 @@ impl<T> Vec<T> {
     $tmp_0: &out Span<'a, T>;
     entry:
       $tmp_0 = &out $return.*;
-      call span_from_raw_parts<'a, T>(copy self.*.data, copy self.*.len, move $tmp_0);
+      call <Span<'a, T>>::from_raw_parts(copy self.*.data, copy self.*.len, move $tmp_0);
       unborrow $return;
       require_uninit $tmp_0;
       require_uninit $return;
@@ -564,7 +561,7 @@ fn<'inspect, 's0> inspect_vec(vec: &'inspect Vec<i64>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s3, 's0> main($return: &out 's0 i32) {
+fn<'s4, 's0> main($return: &out 's0 i32) {
   boxed: Box<i64>;
   $tmp_0: &out Box<i64>;
   box_place: &mut i64;
@@ -588,7 +585,7 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
   $tmp_14: unit;
   $tmp_15: &mut Vec<i64>;
   observed: i64;
-  $tmp_16: &'s3 Vec<i64>;
+  $tmp_16: &'s4 Vec<i64>;
   $tmp_17: &out i64;
   $tmp_18: i64;
   $tmp_19: i64;
@@ -602,7 +599,7 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
   $destroy_0: &drop Vec<i64>;
   entry:
     $tmp_0 = &out boxed;
-    call box_new<i64>(40, move $tmp_0);
+    call <Box<i64>>::new(40, move $tmp_0);
     require_uninit $tmp_0;
     $tmp_1 = &mut boxed;
     $tmp_2 = &out box_place;
@@ -630,7 +627,7 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
     call <Box<i64>>::into_inner(move boxed, move $tmp_8);
     require_uninit $tmp_8;
     $tmp_9 = &out values;
-    call vec_with_capacity<i64>(1u64, move $tmp_9);
+    call <Vec<i64>>::with_capacity(1u64, move $tmp_9);
     require_uninit $tmp_9;
     $tmp_12 = &mut values;
     call <Vec<i64>>::push(move $tmp_12, 1);
@@ -652,7 +649,7 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
     require_uninit $tmp_13;
     $tmp_16 = &values;
     $tmp_17 = &out observed;
-    call inspect_vec<'s3>(move $tmp_16, move $tmp_17);
+    call inspect_vec<'s4>(move $tmp_16, move $tmp_17);
     require_uninit $tmp_17;
     require_uninit $tmp_16;
     $tmp_22 = &out $tmp_21;

@@ -269,12 +269,14 @@ fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostic
                         check_borrow_mutability(kind, receiver, scope, func, d);
                     }
                 }
-                CallTarget::Qualified { .. } => {}
+                CallTarget::Qualified { .. } | CallTarget::Path { .. } => {}
             }
             for arg in args {
                 check_expr(arg, scope, func, d);
             }
         }
+
+        ExprKind::Path(_, _) => {}
 
         // ── match ────────────────────────────────────────────────
         ExprKind::Match(target, arms) => {

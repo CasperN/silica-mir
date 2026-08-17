@@ -410,6 +410,14 @@ pub enum CallTarget {
         method_source: SourceInfo,
         selector_source: SourceInfo,
     },
+    /// Scoped path call: `Target::member(args...)` or `Target<T>::member(args...)`.
+    /// May resolve to an enum constructor, inherent static method, or trait static method.
+    Path {
+        target: Type,
+        member: String,
+        member_source: SourceInfo,
+        selector_source: SourceInfo,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -425,6 +433,7 @@ pub enum ExprKind {
     Borrow(RefKind, Box<Expr>),
     RawBorrow(Box<Expr>),
     Call(CallTarget, GenericArgs, Vec<Expr>),
+    Path(Type, String),
     Block(Vec<Stmt>, Option<Box<Expr>>, bool), // true if it is an `unsafe { ... }` block
     If(Box<Expr>, Box<Expr>, Box<Expr>),
     Loop(Box<Expr>),

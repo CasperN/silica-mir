@@ -10,11 +10,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   2. Revisit which ownership traits are compiler-blessed. The trivial and auto
      tiers require compiler interaction; the higher explicit tiers may live in
      the standard library. Discuss the boundary before implementation.
-- **Standardize `&drop` vs `&deinit`.** Same reference kind
-  (`RefKind::Drop`) has two surface names — MIR uses `&drop`, HLL uses
-  `&deinit`. Every fixture author, diagnostic reader, and agent has
-  to remember the mapping. Pick one across both surfaces (or make one
-  a strict alias) and delete the other.
 - **Conditional traits and markers**
 - **Generic parameter position on decls.** MIR puts generics between the
   keyword and the name (`fn<T> foo`, `struct<T> Box`, `trait<T> Iter`).

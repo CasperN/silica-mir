@@ -1877,3 +1877,257 @@ fn<'a, T: LifetimeChildReceiver<'a, i64>> qualified_lifetime_call(value: &'a T) 
     require_uninit value;
     return
 }
+
+struct StaticContainer: Copy + Drop {
+  val: i64
+  flag: bool
+}
+
+impl StaticContainer {
+  fn<'s0> zero_arg($return: &out 's0 StaticContainer) {
+    entry:
+      $return.*.val = 0;
+      $return.*.flag = false;
+      unborrow $return;
+      require_uninit $return;
+      return
+  }
+  fn<'s0> one_arg(val: i64, $return: &out 's0 StaticContainer) {
+    entry:
+      $return.*.val = move val;
+      $return.*.flag = true;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit val;
+      return
+  }
+  fn<'s0> multi_arg(val: i64, flag: bool, $return: &out 's0 StaticContainer) {
+    entry:
+      $return.*.val = move val;
+      $return.*.flag = move flag;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit flag;
+      require_uninit val;
+      return
+  }
+}
+
+enum ShapeKind: Copy + Drop {
+  None: unit
+  Point: i64
+}
+
+struct Shape: Copy + Drop {
+  kind: ShapeKind
+}
+
+impl Shape {
+  fn<'s0> Point(val: i64, $return: &out 's0 Shape) {
+    entry:
+      $return.*.kind = ShapeKind::Point(move val);
+      unborrow $return;
+      require_uninit $return;
+      require_uninit val;
+      return
+  }
+}
+
+fn<'s0> test_static_methods($return: &out 's0 StaticContainer) {
+  a: StaticContainer;
+  $tmp_0: &out StaticContainer;
+  b: StaticContainer;
+  $tmp_1: &out StaticContainer;
+  c: StaticContainer;
+  $tmp_2: &out StaticContainer;
+  entry:
+    $tmp_0 = &out a;
+    call <StaticContainer>::zero_arg(move $tmp_0);
+    require_uninit $tmp_0;
+    $tmp_1 = &out b;
+    call <StaticContainer>::one_arg(42, move $tmp_1);
+    require_uninit $tmp_1;
+    $tmp_2 = &out c;
+    call <StaticContainer>::multi_arg(10, true, move $tmp_2);
+    require_uninit $tmp_2;
+    $return.* = move b;
+    unborrow $return;
+    drop c;
+    require_uninit c;
+    require_uninit b;
+    drop a;
+    require_uninit a;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> test_enum_path_and_coexistence($return: &out 's0 Shape) {
+  k: ShapeKind;
+  u: ShapeKind;
+  s: Shape;
+  $tmp_0: &out Shape;
+  entry:
+    k = ShapeKind::Point(5);
+    u = ShapeKind::None(unit);
+    $tmp_0 = &out s;
+    call <Shape>::Point(5, move $tmp_0);
+    require_uninit $tmp_0;
+    $return.* = move s;
+    unborrow $return;
+    require_uninit s;
+    drop u;
+    require_uninit u;
+    drop k;
+    require_uninit k;
+    require_uninit $return;
+    return
+}
+
+enum Status: Copy + Drop {
+  Active: i64
+  Inactive: unit
+}
+
+impl Status {
+  fn<'s0> default_active($return: &out 's0 Status) {
+    entry:
+      $return.* = Status::Active(1);
+      unborrow $return;
+      require_uninit $return;
+      return
+  }
+  fn<'s0> custom_active(val: i64, $return: &out 's0 Status) {
+    entry:
+      $return.* = Status::Active(move val);
+      unborrow $return;
+      require_uninit $return;
+      require_uninit val;
+      return
+  }
+}
+
+impl StaticContainer {
+  fn<'s0> duplicate_with_self($return: &out 's0 StaticContainer) {
+    $tmp_0: &out StaticContainer;
+    entry:
+      $tmp_0 = &out $return.*;
+      call <StaticContainer>::zero_arg(move $tmp_0);
+      unborrow $return;
+      require_uninit $tmp_0;
+      require_uninit $return;
+      return
+  }
+  fn<'s0, U: Copy + Drop> with_generic_payload(val: i64, extra: U, $return: &out 's0 StaticContainer) {
+    $tmp_0: U;
+    entry:
+      $tmp_0 = move extra;
+      drop $tmp_0;
+      require_uninit $tmp_0;
+      $return.*.val = move val;
+      $return.*.flag = true;
+      unborrow $return;
+      require_uninit $return;
+      require_uninit extra;
+      require_uninit val;
+      return
+  }
+}
+
+struct ReceiverTarget: Copy + Drop {
+  value: i64
+}
+
+impl ReceiverTarget {
+  fn<'s0, 's1> get_val(self: &'s0 ReceiverTarget, $return: &out 's1 i64) {
+    entry:
+      $return.* = copy self.*.value;
+      unborrow $return;
+      require_uninit $return;
+      drop self;
+      require_uninit self;
+      return
+  }
+}
+
+fn<'s0> test_enum_inherent_static_methods($return: &out 's0 Status) {
+  s1: Status;
+  $tmp_0: &out Status;
+  s2: Status;
+  $tmp_1: &out Status;
+  entry:
+    $tmp_0 = &out s1;
+    call <Status>::default_active(move $tmp_0);
+    require_uninit $tmp_0;
+    $tmp_1 = &out s2;
+    call <Status>::custom_active(100, move $tmp_1);
+    require_uninit $tmp_1;
+    $return.* = move s2;
+    unborrow $return;
+    require_uninit s2;
+    drop s1;
+    require_uninit s1;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> test_self_scoped_call($return: &out 's0 StaticContainer) {
+  $tmp_0: &out StaticContainer;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <StaticContainer>::duplicate_with_self(move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn<'s0> test_static_method_generic_param($return: &out 's0 StaticContainer) {
+  s1: StaticContainer;
+  $tmp_0: &out StaticContainer;
+  s2: StaticContainer;
+  $tmp_1: &out StaticContainer;
+  entry:
+    $tmp_0 = &out s1;
+    call <StaticContainer>::with_generic_payload<bool>(42, true, move $tmp_0);
+    require_uninit $tmp_0;
+    $tmp_1 = &out s2;
+    call <StaticContainer>::with_generic_payload<i64>(10, 20, move $tmp_1);
+    require_uninit $tmp_1;
+    $return.* = move s1;
+    unborrow $return;
+    drop s2;
+    require_uninit s2;
+    require_uninit s1;
+    require_uninit $return;
+    return
+}
+
+fn<'s0, 's1> test_call_receiver_method_via_path(target: &'s0 ReceiverTarget, $return: &out 's1 i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <ReceiverTarget>::get_val(move target, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit target;
+    return
+}
+
+fn<'s0> test_shadowing_does_not_break_static_path($return: &out 's0 StaticContainer) {
+  StaticContainer: i64;
+  $tmp_0: i64;
+  $tmp_1: &out StaticContainer;
+  entry:
+    StaticContainer = 999;
+    $tmp_0 = move StaticContainer;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $tmp_1 = &out $return.*;
+    call <StaticContainer>::zero_arg(move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit StaticContainer;
+    require_uninit $return;
+    return
+}

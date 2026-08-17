@@ -633,3 +633,123 @@ fn<T: GrandReceiver<i64>> qualified_supertrait_call(value: &T) {
 fn<'a, T: LifetimeChildReceiver<'a, i64>> qualified_lifetime_call(value: &'a T) {
   <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(value, 1);
 }
+
+struct StaticContainer: Copy + Drop {
+  val: i64,
+  flag: bool,
+}
+
+impl StaticContainer {
+  fn zero_arg() -> StaticContainer {
+    StaticContainer { val: 0, flag: false }
+  }
+
+  fn one_arg(val: i64) -> StaticContainer {
+    StaticContainer { val: val, flag: true }
+  }
+
+  fn multi_arg(val: i64, flag: bool) -> StaticContainer {
+    StaticContainer { val: val, flag: flag }
+  }
+}
+
+enum ShapeKind: Copy + Drop {
+  None: unit,
+  Point: i64,
+}
+
+struct Shape: Copy + Drop {
+  kind: ShapeKind,
+}
+
+impl Shape {
+  fn Point(val: i64) -> Shape {
+    Shape { kind: ShapeKind::Point(val) }
+  }
+}
+
+# covers: 0-arg, 1-arg, and multi-arg static inherent methods
+fn test_static_methods() -> StaticContainer {
+  let a = StaticContainer::zero_arg();
+  let b = StaticContainer::one_arg(42);
+  let c = StaticContainer::multi_arg(10, true);
+  b
+}
+
+# covers: enum constructor via path and coexistence with same-named static method
+fn test_enum_path_and_coexistence() -> Shape {
+  let k = ShapeKind::Point(5);
+  let u = ShapeKind::None(unit);
+  let s = Shape::Point(5);
+  s
+}
+
+enum Status: Copy + Drop {
+  Active: i64,
+  Inactive: unit,
+}
+
+impl Status {
+  fn default_active() -> Status {
+    Status::Active(1)
+  }
+
+  fn custom_active(val: i64) -> Status {
+    Status::Active(val)
+  }
+}
+
+impl StaticContainer {
+  fn duplicate_with_self() -> StaticContainer {
+    Self::zero_arg()
+  }
+
+  fn<U: Copy + Drop> with_generic_payload(val: i64, extra: U) -> StaticContainer {
+    extra;
+    StaticContainer { val: val, flag: true }
+  }
+}
+
+struct ReceiverTarget: Copy + Drop {
+  value: i64,
+}
+
+impl ReceiverTarget {
+  fn get_val(&self) -> i64 {
+    self.*.value
+  }
+}
+
+# covers: inherent static methods on enums
+fn test_enum_inherent_static_methods() -> Status {
+  let s1 = Status::default_active();
+  let s2 = Status::custom_active(100);
+  s2
+}
+
+# covers: Self::method from within an impl block
+fn test_self_scoped_call() -> StaticContainer {
+  StaticContainer::duplicate_with_self()
+}
+
+# covers: static method with generic type parameter on the method itself
+fn test_static_method_generic_param() -> StaticContainer {
+  let s1 = StaticContainer::with_generic_payload<bool>(42, true);
+  let s2 = StaticContainer::with_generic_payload(10, 20);
+  s1
+}
+
+# covers: calling receiver method through static path syntax with explicit receiver
+fn test_call_receiver_method_via_path(target: &ReceiverTarget) -> i64 {
+  ReceiverTarget::get_val(target)
+}
+
+# covers: local variable shadowing struct name does not shadow static path call
+fn test_shadowing_does_not_break_static_path() -> StaticContainer {
+  let StaticContainer = 999;
+  StaticContainer;
+  StaticContainer::zero_arg()
+}
+
+
+

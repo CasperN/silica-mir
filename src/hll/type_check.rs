@@ -839,6 +839,10 @@ pub enum ResolvedMethodTarget {
         self_ty: Type,
         method: Instance,
     },
+    EnumConstructor {
+        enum_instance: Instance,
+        variant_name: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1266,6 +1270,9 @@ pub(super) fn typecheck_program_collect(
             *self_ty = subst.resolve_default(self_ty);
             resolve_instance(trait_path);
             resolve_instance(method);
+        }
+        ResolvedMethodTarget::EnumConstructor { enum_instance, .. } => {
+            resolve_instance(enum_instance);
         }
     };
     for call in types.receiver_calls.values_mut() {
@@ -2390,12 +2397,34 @@ fn instantiate_method(
     types: &mut TypeCheckResults,
     d: &mut Diagnostics,
 ) -> Option<(Type, Instance)> {
-    let mut mapping = bindings
+    let mapping = bindings
         .types
         .iter()
         .map(|(name, ty)| (name.clone(), ty.clone()))
         .collect::<HashMap<_, _>>();
-    mapping.insert("Self".to_string(), substitute(&impl_block.target, &mapping));
+    if !impl_block.type_params.is_empty() {
+        let impl_type_args = impl_block
+            .type_params
+            .iter()
+            .map(|tp| {
+                bindings
+                    .types
+                    .get(&tp.name)
+                    .cloned()
+                    .unwrap_or_else(|| Type::synthesized(TypeKind::Error))
+            })
+            .collect::<Vec<_>>();
+        types.pending_instantiations.push(PendingInstantiation {
+            source,
+            function_name: format!("<{}>", impl_block.target),
+            caller_name: env.current_function.clone(),
+            caller_type_params: env.current_type_params.clone(),
+            type_params: impl_block.type_params.clone(),
+            type_args: impl_type_args,
+            type_mapping: mapping.clone(),
+            lifetime_mapping: bindings.lifetimes.clone(),
+        });
+    }
     instantiate_method_signature(
         env,
         subst,
@@ -2784,6 +2813,200 @@ fn resolve_qualified_call(
     };
     types.qualified_calls.insert(selector_source, target);
     Some(fn_ty)
+}
+
+fn resolve_path_call(
+    env: &TypeEnv,
+    subst: &mut Subst,
+    target_ty: &Type,
+    member_name: &str,
+    generics: &GenericArgs,
+    member_source: SourceInfo,
+    selector_source: SourceInfo,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Option<Type> {
+    let errors_before = d.error_count();
+    let target_ty = subst.resolve(target_ty);
+
+    // 1. Check for Enum variant constructor
+    if let TypeKind::Custom(instance) = &target_ty.kind {
+        if let Some(enum_decl) = env.enums.get(&instance.name).cloned() {
+            if let Some(variant) = enum_decl.variants.iter().find(|v| v.name == member_name).cloned() {
+                // Check if an inherent method with the same name collides on this enum
+                let inherent_collision = env
+                    .impls
+                    .iter()
+                    .filter(|impl_block| impl_block.trait_path.is_none())
+                    .any(|impl_block| {
+                        impl_bindings(impl_block, &target_ty, env).is_some()
+                            && impl_block.methods.iter().any(|m| m.name == member_name)
+                    });
+                if inherent_collision {
+                    d.push_error(source_diagnostic(
+                        AmbiguousReceiverCall,
+                        member_source,
+                        format!(
+                            "scoped path '{}::{}' is ambiguous between enum variant and inherent method; use '<{}>::{}' to select the method",
+                            target_ty, member_name, target_ty, member_name
+                        ),
+                    ));
+                    return None;
+                }
+
+                let type_args: Vec<Type> = if instance.type_args.is_empty() {
+                    enum_decl.type_params.iter().map(|_| subst.fresh_var()).collect()
+                } else {
+                    if instance.type_args.len() != enum_decl.type_params.len() {
+                        d.push_error(source_diagnostic(
+                            TypeArgArityMismatch,
+                            selector_source,
+                            format!(
+                                "enum '{}' takes {} type arguments, found {}",
+                                instance.name,
+                                enum_decl.type_params.len(),
+                                instance.type_args.len()
+                            ),
+                        ));
+                        return None;
+                    }
+                    instance.type_args.clone()
+                };
+                let lifetime_args: Vec<Lifetime> = if instance.lifetime_args.is_empty() {
+                    enum_decl
+                        .lifetime_params
+                        .iter()
+                        .map(|_| {
+                            types
+                                .fresh_inferred_lifetime(env, subst, selector_source)
+                                .expect("constructor expression outside a function body")
+                        })
+                        .collect()
+                } else {
+                    instance.lifetime_args.clone()
+                };
+
+                let mapping: HashMap<String, Type> = enum_decl
+                    .type_params
+                    .iter()
+                    .map(|tp| tp.name.clone())
+                    .zip(type_args.iter().cloned())
+                    .collect();
+                let lifetime_mapping: BTreeMap<Lifetime, Lifetime> = enum_decl
+                    .lifetime_params
+                    .iter()
+                    .map(|lp| lp.lifetime.clone())
+                    .zip(lifetime_args.iter().cloned())
+                    .collect();
+
+                let enum_res_ty = Type::new(
+                    TypeKind::Custom(Instance::new(
+                        instance.name.clone(),
+                        lifetime_args.clone(),
+                        type_args.clone(),
+                    )),
+                    SourceInfo::written(selector_source.span()),
+                );
+
+                let subst_payload = substitute_all(&variant.ty, &mapping, &lifetime_mapping);
+                let fn_ty = Type::new(
+                    TypeKind::Fn(vec![subst_payload], Box::new(enum_res_ty)),
+                    SourceInfo::written(selector_source.span()),
+                );
+
+                types.qualified_calls.insert(
+                    selector_source,
+                    ResolvedMethodTarget::EnumConstructor {
+                        enum_instance: Instance::new(instance.name.clone(), lifetime_args, type_args),
+                        variant_name: member_name.to_string(),
+                    },
+                );
+                return Some(fn_ty);
+            }
+        }
+    }
+
+    // 2. Expand unspecialized nominal type args if target_ty is a struct
+    let resolved_target = if let TypeKind::Custom(instance) = &target_ty.kind {
+        if let Some(struct_decl) = env.structs.get(&instance.name) {
+            let type_args: Vec<Type> = if instance.type_args.is_empty() {
+                struct_decl.type_params.iter().map(|_| subst.fresh_var()).collect()
+            } else {
+                instance.type_args.clone()
+            };
+            let lifetime_args: Vec<Lifetime> = if instance.lifetime_args.is_empty() {
+                struct_decl
+                    .lifetime_params
+                    .iter()
+                    .map(|_| {
+                        types
+                            .fresh_inferred_lifetime(env, subst, selector_source)
+                            .expect("static method call outside a function body")
+                    })
+                    .collect()
+            } else {
+                instance.lifetime_args.clone()
+            };
+            Type::new(
+                TypeKind::Custom(Instance::new(instance.name.clone(), lifetime_args, type_args)),
+                target_ty.source,
+            )
+        } else {
+            target_ty.clone()
+        }
+    } else {
+        target_ty.clone()
+    };
+
+    // 3. Try Inherent / Trait Static Method via resolve_qualified_call
+    if let Some(fn_ty) = resolve_qualified_call(
+        env,
+        subst,
+        &resolved_target,
+        None,
+        member_name,
+        generics,
+        member_source,
+        selector_source,
+        types,
+        d,
+    ) {
+        return Some(fn_ty);
+    }
+
+    if d.error_count() != errors_before {
+        return None;
+    }
+
+    // 4. Report error
+    if let TypeKind::Custom(instance) = &target_ty.kind {
+        if env.enums.contains_key(&instance.name) {
+            d.push_error(source_diagnostic(
+                NoSuchVariant,
+                member_source,
+                format!("enum '{}' has no variant '{}'", instance.name, member_name),
+            ));
+        } else if env.structs.contains_key(&instance.name) {
+            d.push_error(source_diagnostic(
+                UnresolvedQualifiedMethod,
+                member_source,
+                format!("type '{}' has no inherent method '{}'", instance.name, member_name),
+            ));
+        } else {
+            d.push_error(source_diagnostic(
+                UndeclaredType,
+                selector_source,
+                format!("undeclared type '{}'", instance.name),
+            ));
+        }
+    } else {
+        d.push_error(source_diagnostic(
+            UnresolvedQualifiedMethod,
+            member_source,
+            format!("type '{}' has no inherent method '{}'", target_ty, member_name),
+        ));
+    }
+    None
 }
 
 fn resolve_receiver_call(
@@ -3446,6 +3669,27 @@ fn infer_inner(
                     };
                     (fn_ty, None)
                 }
+                CallTarget::Path {
+                    target: target_ty,
+                    member,
+                    member_source,
+                    selector_source,
+                } => {
+                    let Some(fn_ty) = resolve_path_call(
+                        env,
+                        subst,
+                        target_ty,
+                        member,
+                        generics,
+                        *member_source,
+                        *selector_source,
+                        types,
+                        d,
+                    ) else {
+                        return error_ty();
+                    };
+                    (fn_ty, None)
+                }
             };
             let resolved = subst.resolve(&fn_ty);
             if resolved.kind == TypeKind::Error {
@@ -3470,7 +3714,9 @@ fn infer_inner(
                     if let Err(error) = subst.unify(&param_tys[0], &receiver_ty) {
                         d.push_error(error.to_diag(match target {
                             CallTarget::Receiver { receiver, .. } => receiver.source,
-                            CallTarget::Expr(_) | CallTarget::Qualified { .. } => expr.source,
+                            CallTarget::Expr(_)
+                            | CallTarget::Qualified { .. }
+                            | CallTarget::Path { .. } => expr.source,
                         }));
                     }
                     &param_tys[1..]
@@ -3773,6 +4019,34 @@ fn infer_inner(
                 lifetime_args,
                 type_args,
             )))
+        }
+        ExprKind::Path(target_ty, member) => {
+            let Some(fn_ty) = resolve_path_call(
+                env,
+                subst,
+                target_ty,
+                member,
+                &GenericArgs::empty(),
+                expr.source,
+                expr.source,
+                types,
+                d,
+            ) else {
+                return error_ty();
+            };
+            if let TypeKind::Fn(params, ret_ty) = subst.resolve(&fn_ty).kind {
+                if !params.is_empty() {
+                    d.push_error(source_diagnostic(
+                        ArityMismatch,
+                        expr.source,
+                        format!("constructor '{}::{}' requires payload argument", target_ty, member),
+                    ));
+                    return error_ty();
+                }
+                *ret_ty
+            } else {
+                error_ty()
+            }
         }
         ExprKind::Array(elements) => {
             if elements.is_empty() {
@@ -4114,12 +4388,13 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
                 CallTarget::Receiver { receiver, .. } => {
                     check_no_control_flow(receiver, loop_depth, d)
                 }
-                CallTarget::Qualified { .. } => {}
+                CallTarget::Qualified { .. } | CallTarget::Path { .. } => {}
             }
             for arg in args {
                 check_no_control_flow(arg, loop_depth, d);
             }
         }
+        ExprKind::Path(_, _) => {}
         ExprKind::StructConstr(_, fields) => {
             for (_, f_init) in fields {
                 check_no_control_flow(f_init, loop_depth, d);

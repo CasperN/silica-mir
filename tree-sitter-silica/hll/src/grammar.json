@@ -2364,7 +2364,7 @@
         },
         {
           "type": "SYMBOL",
-          "name": "enum_constr"
+          "name": "scoped_identifier"
         },
         {
           "type": "SYMBOL",
@@ -2774,12 +2774,12 @@
         }
       ]
     },
-    "enum_constr": {
+    "scoped_identifier": {
       "type": "SEQ",
       "members": [
         {
           "type": "FIELD",
-          "name": "name",
+          "name": "target_name",
           "content": {
             "type": "SYMBOL",
             "name": "identifier"
@@ -2791,27 +2791,11 @@
         },
         {
           "type": "FIELD",
-          "name": "variant",
+          "name": "name",
           "content": {
             "type": "SYMBOL",
             "name": "identifier"
           }
-        },
-        {
-          "type": "STRING",
-          "value": "("
-        },
-        {
-          "type": "FIELD",
-          "name": "payload",
-          "content": {
-            "type": "SYMBOL",
-            "name": "expr"
-          }
-        },
-        {
-          "type": "STRING",
-          "value": ")"
         }
       ]
     },

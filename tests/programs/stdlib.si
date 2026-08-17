@@ -9,14 +9,19 @@ extern fn free_bytes(p: *u8);
 
 struct<T> Box: Move { data: *T }
 
-# TODO: Box::new(42i64) is interpreted as an enum Box::new.
-# Once we can disambiguate static fns from enum literals we should move
-# this method into an impl block.
-fn<T: Move> box_new(value: T) -> Box<T> {
-  let bytes = malloc_bytes(size_of<T>());
-  let data = bytes as *T;
-  unsafe { data.* = value; }
-  Box { data: data }
+impl<T: Move> Box<T> {
+  fn new(value: T) -> Box<T> {
+    let bytes = malloc_bytes(size_of<T>());
+    let data = bytes as *T;
+    unsafe { data.* = value; }
+    Box { data: data }
+  }
+
+  fn into_inner(self) -> T {
+    let value = unsafe { self.data.* };
+    free_bytes(self.data as *u8);
+    value
+  }
 }
 
 impl<T> Box<T> {
@@ -36,14 +41,6 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
   }
 }
 
-impl<T: Move> Box<T> {
-  fn into_inner(self) -> T {
-    let value = unsafe { self.data.* };
-    free_bytes(self.data as *u8);
-    value
-  }
-}
-
 
 # PhantomData<'a, T>
 #
@@ -59,11 +56,11 @@ struct<'a, T> PhantomData: Copy + Drop {}
 
 struct<'a, T> Span: Copy + Drop { data: *T, len: u64, _marker: PhantomData<'a, T> }
 
-unsafe fn<'a, T> span_from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
-  Span { data: data, len: len, _marker: PhantomData {} }
-}
-
 impl<'a, T> Span<'a, T> {
+  unsafe fn from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
+    Span { data: data, len: len, _marker: PhantomData {} }
+  }
+
   fn len(&self) -> u64 { self.*.len }
 
   unsafe fn get_unchecked(&self, index: u64) -> &'a T {
@@ -81,17 +78,17 @@ impl<'a, T> Span<'a, T> {
 
 struct<T> Vec: Move { data: *T, len: u64, cap: u64 }
 
-unsafe fn<T> vec_with_capacity(cap: u64) -> Vec<T> {
-  let data = malloc_bytes(size_of<T>() * cap) as *T;
-  Vec { data: data, len: 0u64, cap: cap }
-}
-
 impl<T> Vec<T> {
+  unsafe fn with_capacity(cap: u64) -> Vec<T> {
+    let data = malloc_bytes(size_of<T>() * cap) as *T;
+    Vec { data: data, len: 0u64, cap: cap }
+  }
+
   fn len(&self) -> u64 { self.*.len }
 
   fn<'a> as_span(&'a self) -> Span<'a, T> {
     unsafe {
-      span_from_raw_parts<'a, T>(self.*.data, self.*.len)
+      Span::from_raw_parts(self.*.data, self.*.len)
     }
   }
 }
@@ -160,7 +157,7 @@ fn<'inspect> inspect_vec(vec: &'inspect Vec<i64>) -> i64 {
 # covers: Box ownership and borrowing; Vec growth and element destruction;
 # Span lifetime storage and indexing; inherent receiver auto-borrowing.
 fn main() -> i32 {
-  let mut boxed = box_new(40i64);
+  let mut boxed = Box::new(40i64);
   let box_place = boxed.get_mut();
   # Assignment initializes, so replacement explicitly consumes the old value.
   let old_box_value = box_place.*;
@@ -169,7 +166,7 @@ fn main() -> i32 {
   let from_box = boxed.get().*;
   let owned = boxed.into_inner();
 
-  let mut values = unsafe { vec_with_capacity<i64>(1u64) };
+  let mut values = unsafe { Vec::with_capacity(1u64) };
   unsafe { values.push(1i64); }
   unsafe { values.push(2i64); }
   let observed = inspect_vec(&values);

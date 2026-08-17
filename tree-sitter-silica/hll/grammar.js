@@ -361,7 +361,7 @@ module.exports = grammar({
       $.continue_expr,
       $.return_expr,
       $.struct_constr,
-      $.enum_constr,
+      $.scoped_identifier,
       $.array_lit,
       $.qualified_method,
       // Plain identifier reference (variable or function name).
@@ -437,13 +437,10 @@ module.exports = grammar({
       field('value', $.expr),
     ),
 
-    enum_constr: $ => seq(
-      field('name', $.identifier),
+    scoped_identifier: $ => seq(
+      field('target_name', $.identifier),
       '::',
-      field('variant', $.identifier),
-      '(',
-      field('payload', $.expr),
-      ')',
+      field('name', $.identifier),
     ),
 
     array_lit: $ => seq('[', common.commaSep($.expr), ']'),

@@ -313,3 +313,73 @@ error: at 371:19: [HTC-BoundNotSatisfied] In function 'qualified_method_bound_fa
      |                   ^^^^^^^
  372 | }
      |
+error: at 386:17: [HTC-UnresolvedQualifiedMethod] In function 'static_nonexistent_method': type 'StaticTarget' has no inherent method 'nonexistent'
+     |
+ 385 | fn static_nonexistent_method() {
+ 386 |   StaticTarget::nonexistent();
+     |                 ^^^^^^^^^^^
+ 387 | }
+     |
+error: at 391:3: [HTC-ArityMismatch] In function 'static_arity_mismatch': function expected 1 arguments, found 2
+     |
+ 390 | fn static_arity_mismatch() {
+ 391 |   StaticTarget::create(1, 2);
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 392 | }
+     |
+error: at 396:24: [HTC-TypeMismatch] In function 'static_type_mismatch': type mismatch: expected bool, found i64
+     |
+ 395 | fn static_type_mismatch() {
+ 396 |   StaticTarget::create(true);
+     |                        ^^^^
+ 397 | }
+     |
+error: at 401:3: [HTC-UndeclaredType] In function 'static_undeclared_type': undeclared type 'UndeclaredType'
+     |
+ 400 | fn static_undeclared_type() {
+ 401 |   UndeclaredType::new();
+     |   ^^^^^^^^^^^^^^
+ 402 | }
+     |
+error: at 410:20: [HTC-AmbiguousReceiverCall] In function '<CollidingEnum>::Duplicate': scoped path 'CollidingEnum::Duplicate' is ambiguous between enum variant and inherent method; use '<CollidingEnum>::Duplicate' to select the method
+     |
+ 409 |   fn Duplicate(value: i64) -> CollidingEnum {
+ 410 |     CollidingEnum::Duplicate(value)
+     |                    ^^^^^^^^^
+ 411 |   }
+     |
+error: at 416:18: [HTC-AmbiguousReceiverCall] In function 'static_variant_method_collision': scoped path 'CollidingEnum::Duplicate' is ambiguous between enum variant and inherent method; use '<CollidingEnum>::Duplicate' to select the method
+     |
+ 415 | fn static_variant_method_collision() {
+ 416 |   CollidingEnum::Duplicate(42);
+     |                  ^^^^^^^^^
+ 417 | }
+     |
+error: at 431:19: [HTC-BoundNotSatisfied] In function 'static_bound_not_satisfied': type argument 'Linear' for '<OnlyCopyTarget<T>>::T' does not satisfy bound 'Copy'
+     |
+ 430 | fn static_bound_not_satisfied(linear: Linear) {
+ 431 |   OnlyCopyTarget::new(linear);
+     |                   ^^^
+ 432 | }
+     |
+error: at 431:19: [HTC-BoundNotSatisfied] In function 'static_bound_not_satisfied': type argument 'Linear' for '<OnlyCopyTarget<T>>::T' does not satisfy bound 'Drop'
+     |
+ 430 | fn static_bound_not_satisfied(linear: Linear) {
+ 431 |   OnlyCopyTarget::new(linear);
+     |                   ^^^
+ 432 | }
+     |
+error: at 446:3: [HTC-ArityMismatch] In function 'static_call_missing_receiver': function expected 1 arguments, found 0
+     |
+ 445 | fn static_call_missing_receiver() {
+ 446 |   ReceiverTarget::get_val();
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 447 | }
+     |
+error: at 451:18: [HTC-UnresolvedQualifiedMethod] In function 'static_nonexistent_enum_variant': type 'CollidingEnum' has no inherent method 'Nonexistent'
+     |
+ 450 | fn static_nonexistent_enum_variant() {
+ 451 |   CollidingEnum::Nonexistent(10);
+     |                  ^^^^^^^^^^^
+ 452 | }
+     |

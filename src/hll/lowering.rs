@@ -873,12 +873,15 @@ fn lower_call_target_to_operand(
         }
         hll::CallTarget::Qualified {
             selector_source, ..
+        }
+        | hll::CallTarget::Path {
+            selector_source, ..
         } => {
             let Some(target) = types.qualified_calls.get(selector_source) else {
                 return Err(diag(
                     HllLoweringCode::MissingCallResolution,
                     selector_source.span(),
-                    "missing qualified-call resolution",
+                    "missing call resolution",
                 ));
             };
             Ok((lower_method_target(target), None))
@@ -900,6 +903,9 @@ fn lower_method_target(target: &ResolvedMethodTarget) -> mir::Operand {
             lower_type(self_ty),
             lower_instance(method),
         ),
+        ResolvedMethodTarget::EnumConstructor { .. } => {
+            unreachable!("enum constructors are handled in lower_expr_into")
+        }
     }
 }
 
@@ -1133,6 +1139,32 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Call(target, _generics, args) => {
+            if let hll::CallTarget::Path { selector_source, .. } = target {
+                if let Some(ResolvedMethodTarget::EnumConstructor {
+                    enum_instance,
+                    variant_name,
+                }) = types.qualified_calls.get(selector_source)
+                {
+                    let payload_op = if let Some(arg) = args.first() {
+                        lower_expr_to_operand(ctx, arg, types)?
+                    } else {
+                        const_op(unit_const())
+                    };
+                    let type_args = enum_instance.type_args.iter().map(lower_type).collect();
+                    ctx.emit_statement(assign_stmt(
+                        dest.clone(),
+                        enum_constr_rv_with_args(
+                            enum_instance.name.clone(),
+                            type_args,
+                            variant_name.clone(),
+                            payload_op,
+                        ),
+                        expr.span(),
+                    ));
+                    return Ok(());
+                }
+            }
+
             // The call target evaluates before the argument list. For
             // receiver syntax, evaluating the target starts with the receiver.
             let (fn_op, receiver_op) = lower_call_target_to_operand(ctx, target, types)?;
@@ -1530,6 +1562,32 @@ fn lower_expr_into(
                 expr.span(),
             ));
             Ok(())
+        }
+        hll::ExprKind::Path(_, _) => {
+            if let Some(ResolvedMethodTarget::EnumConstructor {
+                enum_instance,
+                variant_name,
+            }) = types.qualified_calls.get(&expr.source)
+            {
+                let type_args = enum_instance.type_args.iter().map(lower_type).collect();
+                ctx.emit_statement(assign_stmt(
+                    dest.clone(),
+                    enum_constr_rv_with_args(
+                        enum_instance.name.clone(),
+                        type_args,
+                        variant_name.clone(),
+                        const_op(unit_const()),
+                    ),
+                    expr.span(),
+                ));
+                Ok(())
+            } else {
+                Err(diag(
+                    HllLoweringCode::MissingCallResolution,
+                    expr.span(),
+                    "missing path resolution",
+                ))
+            }
         }
         hll::ExprKind::Array(elements) => {
             let mut ops = Vec::new();
