@@ -178,20 +178,6 @@ diagnosed before codegen. Platform-specific C ABI classification, variadics,
 symbol visibility, dynamic linking, and target-specific LLVM parameter
 attributes remain later FFI work.
 
-## Standard library roadmap
-
-Use `tests/programs/stdlib.si` as the executable design probe. Keep library
-APIs honest about safety and ownership, and land compiler prerequisites as
-independent, fixture-backed changes in this order:
-
-1. **Support static methods.** `Box::new(x)` should be interpreted as a static
-   method on `Box<T>`; however, it is currently parsed as an enum variant constructor. 
-2. **Transfer family blanket priority**: In the Transfer column (`AutoTransfer`,
-   `Transfer`, `CoTransfer`), resolve competing implementations by:
-   (1) User-defined specialized implementation (e.g. buffer swap override),
-   (2) Vertical forwarding implementation (`AutoTransfer => Transfer => CoTransfer`),
-   (3) Horizontal synthesized fallback (`Clone + Destroy => Transfer`).
-
 ### Other clarity issues
 - **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.
 - **Field access on references**: When projecting `self.field` on reference types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.
