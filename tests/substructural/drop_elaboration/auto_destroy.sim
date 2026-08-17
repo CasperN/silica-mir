@@ -6,9 +6,9 @@
 struct Destroyable: Move { value: i64 }
 struct ImmovableDestroyable { value: i64 }
 struct DropPreferred: Drop { value: i64 }
-struct<T: Copy + Drop> GenericDestroyable: Move { value: T }
-struct<'a> BorrowedDestroyable: Move { value: &'a i64 }
-struct<'a> MutHolder: Move { r: &mut 'a i64 }
+struct GenericDestroyable<T: Copy + Drop>: Move { value: T }
+struct BorrowedDestroyable<'a>: Move { value: &'a i64 }
+struct MutHolder<'a>: Move { r: &'a mut i64 }
 struct PartialOwner: Move { item: Destroyable tail: i64 }
 struct PartialAutoDestroy: Move { left: i64 right: i64 }
 enum DestroyChoice: Move { Item: Destroyable Empty: unit }
@@ -278,13 +278,13 @@ fn destroy_generic(x: GenericDestroyable<i64>) {
 # Impl-header marker bounds remain available before monomorphization
 # substitutes a concrete argument.
 # covers: generic AutoDestroy selection in a generic function body
-fn<T: Copy + Drop> destroy_in_generic_context(x: GenericDestroyable<T>) {
+fn destroy_in_generic_context<T: Copy + Drop>(x: GenericDestroyable<T>) {
   entry:
     return
 }
 
 # covers: lifetime-parameterized AutoDestroy impl selection
-fn<'a> destroy_lifetime_value(x: BorrowedDestroyable<'a>) {
+fn destroy_lifetime_value<'a>(x: BorrowedDestroyable<'a>) {
   entry:
     return
 }
@@ -292,7 +292,7 @@ fn<'a> destroy_lifetime_value(x: BorrowedDestroyable<'a>) {
 # The caller transfers responsibility for the aggregate's nested exclusive
 # reference to the destructor implementation.
 # covers: AutoDestroy of an aggregate containing a reference obligation
-fn<'a> destroy_nested_reference(x: MutHolder<'a>) {
+fn destroy_nested_reference<'a>(x: MutHolder<'a>) {
   entry:
     return
 }

@@ -1,4 +1,4 @@
-fn<'s0> field_value(value: i64, $return: &out 's0 i64) {
+fn field_value<'s0>(value: i64, $return: &'s0 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -7,19 +7,19 @@ fn<'s0> field_value(value: i64, $return: &out 's0 i64) {
     return
 }
 
-struct<'s0, 's1, 's2> Dispatch: Copy + Drop {
-  priority: fn(i64, &out 's0 i64)
-  trait_over_field: fn(i64, &out 's1 i64)
-  field_over_free: fn(i64, &out 's2 i64)
+struct Dispatch<'s0, 's1, 's2>: Copy + Drop {
+  priority: fn(i64, &'s0 out i64)
+  trait_over_field: fn(i64, &'s1 out i64)
+  field_over_free: fn(i64, &'s2 out i64)
   free_over_noncallable: i64
 }
 
 trait PriorityTrait {
-  fn<'s0, 's1, 's2, 's3> priority(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64);
+  fn priority<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64);
 }
 
 impl PriorityTrait for Dispatch {
-  fn<'s0, 's1, 's2, 's3> priority(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+  fn priority<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
     entry:
       $return.* = move value;
       unborrow $return;
@@ -32,11 +32,11 @@ impl PriorityTrait for Dispatch {
 }
 
 trait FieldTrait {
-  fn<'s0, 's1, 's2, 's3> trait_over_field(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64);
+  fn trait_over_field<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64);
 }
 
 impl FieldTrait for Dispatch {
-  fn<'s0, 's1, 's2, 's3> trait_over_field(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+  fn trait_over_field<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
     entry:
       $return.* = move value;
       unborrow $return;
@@ -49,7 +49,7 @@ impl FieldTrait for Dispatch {
 }
 
 impl Dispatch {
-  fn<'s0, 's1, 's2, 's3> priority(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+  fn priority<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
     entry:
       $return.* = move value;
       unborrow $return;
@@ -61,7 +61,7 @@ impl Dispatch {
   }
 }
 
-fn<'s0, 's1, 's2, 's3> priority(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+fn priority<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -72,7 +72,7 @@ fn<'s0, 's1, 's2, 's3> priority(recv: Dispatch<'s0, 's1, 's2>, value: i64, $retu
     return
 }
 
-fn<'s0, 's1, 's2, 's3> trait_over_field(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+fn trait_over_field<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -83,7 +83,7 @@ fn<'s0, 's1, 's2, 's3> trait_over_field(recv: Dispatch<'s0, 's1, 's2>, value: i6
     return
 }
 
-fn<'s0, 's1, 's2, 's3> field_over_free(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+fn field_over_free<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -94,7 +94,7 @@ fn<'s0, 's1, 's2, 's3> field_over_free(recv: &'s0 Dispatch<'s0, 's1, 's2>, value
     return
 }
 
-fn<'s0, 's1, 's2, 's3> free_over_noncallable(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &out 's3 i64) {
+fn free_over_noncallable<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -105,7 +105,7 @@ fn<'s0, 's1, 's2, 's3> free_over_noncallable(recv: &'s0 Dispatch<'s0, 's1, 's2>,
     return
 }
 
-fn<'s0, 's1, 's2, 's3> unsafe_free(recv: Dispatch<'s0, 's1, 's2>, $return: &out 's3 i64) {
+fn unsafe_free<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, $return: &'s3 out i64) {
   entry:
     $return.* = move recv.free_over_noncallable;
     unborrow $return;
@@ -117,7 +117,7 @@ fn<'s0, 's1, 's2, 's3> unsafe_free(recv: Dispatch<'s0, 's1, 's2>, $return: &out 
     return
 }
 
-fn<'s0, 's1, 's2, 's3> select_inherent(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
+fn select_inherent<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
   $tmp_0: &Dispatch<'s0, 's1, 's2>;
   $tmp_1: &out i64;
   entry:
@@ -134,7 +134,7 @@ fn<'s0, 's1, 's2, 's3> select_inherent(value: Dispatch<'s0, 's1, 's2>, argument:
     return
 }
 
-fn<'s0, 's1, 's2, 's3> force_field(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
+fn force_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -150,7 +150,7 @@ fn<'s0, 's1, 's2, 's3> force_field(value: Dispatch<'s0, 's1, 's2>, argument: i64
     return
 }
 
-fn<'s0, 's1, 's2, 's3> select_trait(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
+fn select_trait<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
   $tmp_0: &Dispatch<'s0, 's1, 's2>;
   $tmp_1: &out i64;
   entry:
@@ -167,7 +167,7 @@ fn<'s0, 's1, 's2, 's3> select_trait(value: Dispatch<'s0, 's1, 's2>, argument: i6
     return
 }
 
-fn<'s0, 's1, 's2, 's3> select_field(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
+fn select_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -183,7 +183,7 @@ fn<'s0, 's1, 's2, 's3> select_field(value: Dispatch<'s0, 's1, 's2>, argument: i6
     return
 }
 
-fn<'s0, 's1, 's2, 's3> select_free_behind_noncallable_field(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &out 's3 i64) {
+fn select_free_behind_noncallable_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
   $tmp_0: &Dispatch<'s0, 's1, 's2>;
   $tmp_1: &out i64;
   entry:
@@ -200,7 +200,7 @@ fn<'s0, 's1, 's2, 's3> select_free_behind_noncallable_field(value: Dispatch<'s0,
     return
 }
 
-fn<'s0, 's1, 's2, 's3> select_unsafe_free(value: Dispatch<'s0, 's1, 's2>, $return: &out 's3 i64) {
+fn select_unsafe_free<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, $return: &'s3 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -212,12 +212,12 @@ fn<'s0, 's1, 's2, 's3> select_unsafe_free(value: Dispatch<'s0, 's1, 's2>, $retur
     return
 }
 
-struct<T: Copy + Drop> Box: Copy + Drop {
+struct Box<T: Copy + Drop>: Copy + Drop {
   value: T
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<'s0, 's1, U: Copy + Drop> inherent_generic(recv: &'s0 Box<T>, ignored: U, $return: &out 's1 T) {
+  fn inherent_generic<'s0, 's1, U: Copy + Drop>(recv: &'s0 Box<T>, ignored: U, $return: &'s1 out T) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -230,12 +230,12 @@ impl<T: Copy + Drop> Box<T> {
   }
 }
 
-trait<T: Copy + Drop> GenericTrait {
-  fn<'s0, 's1, U: Copy + Drop> trait_generic(recv: &'s0 Box<T>, ignored: U, $return: &out 's1 T);
+trait GenericTrait<T: Copy + Drop> {
+  fn trait_generic<'s0, 's1, U: Copy + Drop>(recv: &'s0 Box<T>, ignored: U, $return: &'s1 out T);
 }
 
 impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
-  fn<'s0, 's1, U: Copy + Drop> trait_generic(recv: &'s0 Box<T>, ignored: U, $return: &out 's1 T) {
+  fn trait_generic<'s0, 's1, U: Copy + Drop>(recv: &'s0 Box<T>, ignored: U, $return: &'s1 out T) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -248,7 +248,7 @@ impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
   }
 }
 
-fn<'s0> call_generic_inherent(value: Box<i64>, $return: &out 's0 i64) {
+fn call_generic_inherent<'s0>(value: Box<i64>, $return: &'s0 out i64) {
   $tmp_0: &Box<i64>;
   $tmp_1: &out i64;
   entry:
@@ -264,7 +264,7 @@ fn<'s0> call_generic_inherent(value: Box<i64>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_generic_trait(value: Box<i64>, $return: &out 's0 i64) {
+fn call_generic_trait<'s0>(value: Box<i64>, $return: &'s0 out i64) {
   $tmp_0: &Box<i64>;
   $tmp_1: &out i64;
   entry:
@@ -280,7 +280,7 @@ fn<'s0> call_generic_trait(value: Box<i64>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0, T: Copy + Drop, U: Copy + Drop> free_generic(recv: Box<T>, ignored: U, $return: &out 's0 T) {
+fn free_generic<'s0, T: Copy + Drop, U: Copy + Drop>(recv: Box<T>, ignored: U, $return: &'s0 out T) {
   entry:
     $return.* = move recv.value;
     unborrow $return;
@@ -291,7 +291,7 @@ fn<'s0, T: Copy + Drop, U: Copy + Drop> free_generic(recv: Box<T>, ignored: U, $
     return
 }
 
-fn<'s0> call_generic_free(value: Box<i64>, $return: &out 's0 i64) {
+fn call_generic_free<'s0>(value: Box<i64>, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -308,7 +308,7 @@ struct Shared: Copy + Drop {
 }
 
 impl Shared {
-  fn<'s0, 's1> exact_shared(recv: &'s0 Shared, $return: &out 's1 i64) {
+  fn exact_shared<'s0, 's1>(recv: &'s0 Shared, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -317,7 +317,7 @@ impl Shared {
       require_uninit recv;
       return
   }
-  fn<'a, 's0> inferred_method_lifetime(recv: &'a Shared, $return: &out 's0 i64) {
+  fn inferred_method_lifetime<'a, 's0>(recv: &'a Shared, $return: &'s0 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -328,7 +328,7 @@ impl Shared {
   }
 }
 
-fn<'s0, 's1> call_exact_shared(value: &'s0 Shared, $return: &out 's1 i64) {
+fn call_exact_shared<'s0, 's1>(value: &'s0 Shared, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -340,7 +340,7 @@ fn<'s0, 's1> call_exact_shared(value: &'s0 Shared, $return: &out 's1 i64) {
     return
 }
 
-fn<'a, 's0> call_inferred_method_lifetime(value: &'a Shared, $return: &out 's0 i64) {
+fn call_inferred_method_lifetime<'a, 's0>(value: &'a Shared, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -352,7 +352,7 @@ fn<'a, 's0> call_inferred_method_lifetime(value: &'a Shared, $return: &out 's0 i
     return
 }
 
-fn<'a, 's0> call_qualified_inferred_method_lifetime(value: &'a Shared, $return: &out 's0 i64) {
+fn call_qualified_inferred_method_lifetime<'a, 's0>(value: &'a Shared, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -364,12 +364,12 @@ fn<'a, 's0> call_qualified_inferred_method_lifetime(value: &'a Shared, $return: 
     return
 }
 
-trait<'a> LifetimeTrait {
-  fn<'s0> lifetime_method(recv: &'a Shared, $return: &out 's0 i64);
+trait LifetimeTrait<'a> {
+  fn lifetime_method<'s0>(recv: &'a Shared, $return: &'s0 out i64);
 }
 
 impl<'a> LifetimeTrait<'a> for Shared {
-  fn<'s0> lifetime_method(recv: &'a Shared, $return: &out 's0 i64) {
+  fn lifetime_method<'s0>(recv: &'a Shared, $return: &'s0 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -380,7 +380,7 @@ impl<'a> LifetimeTrait<'a> for Shared {
   }
 }
 
-fn<'a, 's0> call_lifetime_trait(value: &'a Shared, $return: &out 's0 i64) {
+fn call_lifetime_trait<'a, 's0>(value: &'a Shared, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -393,11 +393,11 @@ fn<'a, 's0> call_lifetime_trait(value: &'a Shared, $return: &out 's0 i64) {
 }
 
 trait NumericTrait {
-  fn<'s0> infer_receiver(recv: i64, $return: &out 's0 i64);
+  fn infer_receiver<'s0>(recv: i64, $return: &'s0 out i64);
 }
 
 impl NumericTrait for i64 {
-  fn<'s0> infer_receiver(recv: i64, $return: &out 's0 i64) {
+  fn infer_receiver<'s0>(recv: i64, $return: &'s0 out i64) {
     entry:
       $return.* = move recv;
       unborrow $return;
@@ -407,7 +407,7 @@ impl NumericTrait for i64 {
   }
 }
 
-fn<'s0> infer_receiver_type($return: &out 's0 i64) {
+fn infer_receiver_type<'s0>($return: &'s0 out i64) {
   value: i64;
   $tmp_0: &out i64;
   entry:
@@ -430,7 +430,7 @@ trait ExactRank {
 }
 
 trait BorrowedRank {
-  fn<'s0> ranked(recv: &'s0 Ranked);
+  fn ranked<'s0>(recv: &'s0 Ranked);
 }
 
 impl ExactRank for Ranked {
@@ -447,7 +447,7 @@ impl ExactRank for Ranked {
 }
 
 impl BorrowedRank for Ranked {
-  fn<'s0> ranked(recv: &'s0 Ranked) {
+  fn ranked<'s0>(recv: &'s0 Ranked) {
     $tmp_0: unit;
     entry:
       $tmp_0 = unit;
@@ -479,7 +479,7 @@ struct BorrowTarget: Copy + Drop {
 }
 
 impl BorrowTarget {
-  fn<'s0, 's1> inherent_auto_shared(recv: &'s0 BorrowTarget, $return: &out 's1 i64) {
+  fn inherent_auto_shared<'s0, 's1>(recv: &'s0 BorrowTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -488,7 +488,7 @@ impl BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> inherent_auto_mut(recv: &mut 's0 BorrowTarget) {
+  fn inherent_auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
     $tmp_0: unit;
     old: i64;
     $tmp_1: unit;
@@ -511,7 +511,7 @@ impl BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> inherent_auto_out(recv: &out 's0 BorrowTarget) {
+  fn inherent_auto_out<'s0>(recv: &'s0 out BorrowTarget) {
     $tmp_0: unit;
     $tmp_1: unit;
     $tmp_2: BorrowTarget;
@@ -529,7 +529,7 @@ impl BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> inherent_auto_drop(recv: &drop 's0 BorrowTarget) {
+  fn inherent_auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
     $tmp_0: unit;
     $tmp_1: BorrowTarget;
     entry:
@@ -543,7 +543,7 @@ impl BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> inherent_auto_uninit(recv: &uninit 's0 BorrowTarget) {
+  fn inherent_auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget) {
     $tmp_0: unit;
     entry:
       $tmp_0 = unit;
@@ -556,15 +556,15 @@ impl BorrowTarget {
 }
 
 trait AutoBorrowMethods {
-  fn<'s0, 's1> trait_auto_shared(recv: &'s0 BorrowTarget, $return: &out 's1 i64);
-  fn<'s0> trait_auto_mut(recv: &mut 's0 BorrowTarget);
-  fn<'s0> trait_auto_out(recv: &out 's0 BorrowTarget);
-  fn<'s0> trait_auto_drop(recv: &drop 's0 BorrowTarget);
-  fn<'s0> trait_auto_uninit(recv: &uninit 's0 BorrowTarget);
+  fn trait_auto_shared<'s0, 's1>(recv: &'s0 BorrowTarget, $return: &'s1 out i64);
+  fn trait_auto_mut<'s0>(recv: &'s0 mut BorrowTarget);
+  fn trait_auto_out<'s0>(recv: &'s0 out BorrowTarget);
+  fn trait_auto_drop<'s0>(recv: &'s0 drop BorrowTarget);
+  fn trait_auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget);
 }
 
 impl AutoBorrowMethods for BorrowTarget {
-  fn<'s0, 's1> trait_auto_shared(recv: &'s0 BorrowTarget, $return: &out 's1 i64) {
+  fn trait_auto_shared<'s0, 's1>(recv: &'s0 BorrowTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -573,7 +573,7 @@ impl AutoBorrowMethods for BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> trait_auto_mut(recv: &mut 's0 BorrowTarget) {
+  fn trait_auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
     $tmp_0: unit;
     old: i64;
     $tmp_1: unit;
@@ -596,7 +596,7 @@ impl AutoBorrowMethods for BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> trait_auto_out(recv: &out 's0 BorrowTarget) {
+  fn trait_auto_out<'s0>(recv: &'s0 out BorrowTarget) {
     $tmp_0: unit;
     $tmp_1: unit;
     $tmp_2: BorrowTarget;
@@ -614,7 +614,7 @@ impl AutoBorrowMethods for BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> trait_auto_drop(recv: &drop 's0 BorrowTarget) {
+  fn trait_auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
     $tmp_0: unit;
     $tmp_1: BorrowTarget;
     entry:
@@ -628,7 +628,7 @@ impl AutoBorrowMethods for BorrowTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> trait_auto_uninit(recv: &uninit 's0 BorrowTarget) {
+  fn trait_auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget) {
     $tmp_0: unit;
     entry:
       $tmp_0 = unit;
@@ -640,7 +640,7 @@ impl AutoBorrowMethods for BorrowTarget {
   }
 }
 
-fn<'s0, 's1> auto_shared(recv: &'s0 BorrowTarget, $return: &out 's1 i64) {
+fn auto_shared<'s0, 's1>(recv: &'s0 BorrowTarget, $return: &'s1 out i64) {
   entry:
     $return.* = copy recv.*.value;
     unborrow $return;
@@ -650,7 +650,7 @@ fn<'s0, 's1> auto_shared(recv: &'s0 BorrowTarget, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> auto_mut(recv: &mut 's0 BorrowTarget) {
+fn auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
   $tmp_0: unit;
   old: i64;
   $tmp_1: unit;
@@ -674,7 +674,7 @@ fn<'s0> auto_mut(recv: &mut 's0 BorrowTarget) {
     return
 }
 
-fn<'s0> auto_out(recv: &out 's0 BorrowTarget) {
+fn auto_out<'s0>(recv: &'s0 out BorrowTarget) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: BorrowTarget;
@@ -693,7 +693,7 @@ fn<'s0> auto_out(recv: &out 's0 BorrowTarget) {
     return
 }
 
-fn<'s0> auto_drop(recv: &drop 's0 BorrowTarget) {
+fn auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
   $tmp_0: unit;
   $tmp_1: BorrowTarget;
   entry:
@@ -708,7 +708,7 @@ fn<'s0> auto_drop(recv: &drop 's0 BorrowTarget) {
     return
 }
 
-fn<'s0> auto_uninit(recv: &uninit 's0 BorrowTarget) {
+fn auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget) {
   $tmp_0: unit;
   entry:
     $tmp_0 = unit;
@@ -719,7 +719,7 @@ fn<'s0> auto_uninit(recv: &uninit 's0 BorrowTarget) {
     return
 }
 
-fn<'s0> call_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
+fn call_auto_shared<'s0>(value: BorrowTarget, $return: &'s0 out i64) {
   $tmp_0: &BorrowTarget;
   $tmp_1: &out i64;
   entry:
@@ -735,7 +735,7 @@ fn<'s0> call_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+fn call_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &mut BorrowTarget;
@@ -755,7 +755,7 @@ fn<'s0> call_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
     return
 }
 
-fn<'s0> call_auto_out($return: &out 's0 BorrowTarget) {
+fn call_auto_out<'s0>($return: &'s0 out BorrowTarget) {
   value: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &out BorrowTarget;
@@ -773,7 +773,7 @@ fn<'s0> call_auto_out($return: &out 's0 BorrowTarget) {
     return
 }
 
-fn<'s0> call_auto_out_replaces(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+fn call_auto_out_replaces<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &out BorrowTarget;
@@ -856,7 +856,7 @@ fn call_auto_uninit_after_drop(value: BorrowTarget) {
     return
 }
 
-fn<'s0> call_inherent_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
+fn call_inherent_auto_shared<'s0>(value: BorrowTarget, $return: &'s0 out i64) {
   $tmp_0: &BorrowTarget;
   $tmp_1: &out i64;
   entry:
@@ -872,7 +872,7 @@ fn<'s0> call_inherent_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_inherent_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+fn call_inherent_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &mut BorrowTarget;
@@ -892,7 +892,7 @@ fn<'s0> call_inherent_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarg
     return
 }
 
-fn<'s0> call_inherent_auto_out($return: &out 's0 BorrowTarget) {
+fn call_inherent_auto_out<'s0>($return: &'s0 out BorrowTarget) {
   value: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &out BorrowTarget;
@@ -950,7 +950,7 @@ fn call_inherent_auto_uninit() {
     return
 }
 
-fn<'s0> call_trait_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
+fn call_trait_auto_shared<'s0>(value: BorrowTarget, $return: &'s0 out i64) {
   $tmp_0: &BorrowTarget;
   $tmp_1: &out i64;
   entry:
@@ -966,7 +966,7 @@ fn<'s0> call_trait_auto_shared(value: BorrowTarget, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_trait_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget) {
+fn call_trait_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &mut BorrowTarget;
@@ -986,7 +986,7 @@ fn<'s0> call_trait_auto_mut(value: BorrowTarget, $return: &out 's0 BorrowTarget)
     return
 }
 
-fn<'s0> call_trait_auto_out($return: &out 's0 BorrowTarget) {
+fn call_trait_auto_out<'s0>($return: &'s0 out BorrowTarget) {
   value: BorrowTarget;
   $tmp_0: unit;
   $tmp_1: &out BorrowTarget;
@@ -1049,11 +1049,11 @@ struct UnsafeTarget: Copy + Drop {
 }
 
 trait UnsafeMethod {
-  fn<'s0, 's1> trait_dangerous(recv: &'s0 Self, $return: &out 's1 i64);
+  fn trait_dangerous<'s0, 's1>(recv: &'s0 Self, $return: &'s1 out i64);
 }
 
 impl UnsafeMethod for UnsafeTarget {
-  fn<'s0, 's1> trait_dangerous(recv: &'s0 UnsafeTarget, $return: &out 's1 i64) {
+  fn trait_dangerous<'s0, 's1>(recv: &'s0 UnsafeTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -1065,7 +1065,7 @@ impl UnsafeMethod for UnsafeTarget {
 }
 
 impl UnsafeTarget {
-  fn<'s0, 's1> inherent_dangerous(recv: &'s0 UnsafeTarget, $return: &out 's1 i64) {
+  fn inherent_dangerous<'s0, 's1>(recv: &'s0 UnsafeTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -1076,7 +1076,7 @@ impl UnsafeTarget {
   }
 }
 
-fn<'s0> call_unsafe_trait_method(value: UnsafeTarget, $return: &out 's0 i64) {
+fn call_unsafe_trait_method<'s0>(value: UnsafeTarget, $return: &'s0 out i64) {
   $tmp_0: &UnsafeTarget;
   $tmp_1: &out i64;
   entry:
@@ -1092,7 +1092,7 @@ fn<'s0> call_unsafe_trait_method(value: UnsafeTarget, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_unsafe_inherent_method(value: UnsafeTarget, $return: &out 's0 i64) {
+fn call_unsafe_inherent_method<'s0>(value: UnsafeTarget, $return: &'s0 out i64) {
   $tmp_0: &UnsafeTarget;
   $tmp_1: &out i64;
   entry:
@@ -1117,7 +1117,7 @@ fn receiver_effect() {
     return
 }
 
-fn<'s0> make_argument($return: &out 's0 i64) {
+fn make_argument<'s0>($return: &'s0 out i64) {
   entry:
     $return.* = 1;
     unborrow $return;
@@ -1125,7 +1125,7 @@ fn<'s0> make_argument($return: &out 's0 i64) {
     return
 }
 
-fn<'s0, 's1, 's2, 's3> receiver_before_argument(value: Dispatch<'s0, 's1, 's2>, $return: &out 's3 i64) {
+fn receiver_before_argument<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, $return: &'s3 out i64) {
   $tmp_0: Dispatch<'s0, 's1, 's2>;
   $tmp_1: unit;
   $tmp_2: &Dispatch<'s0, 's1, 's2>;
@@ -1161,18 +1161,18 @@ trait BoundArgument {
 impl BoundArgument for BorrowTarget {
 }
 
-trait<X: Copy + Drop> GenericReceiver {
-  fn<'s0> bound_shared(recv: &'s0 Self);
-  fn<'s0> bound_mut(recv: &mut 's0 Self);
-  fn<'s0> bound_out(recv: &out 's0 Self);
-  fn<'s0> bound_drop(recv: &drop 's0 Self);
-  fn<'s0> bound_uninit(recv: &uninit 's0 Self);
+trait GenericReceiver<X: Copy + Drop> {
+  fn bound_shared<'s0>(recv: &'s0 Self);
+  fn bound_mut<'s0>(recv: &'s0 mut Self);
+  fn bound_out<'s0>(recv: &'s0 out Self);
+  fn bound_drop<'s0>(recv: &'s0 drop Self);
+  fn bound_uninit<'s0>(recv: &'s0 uninit Self);
   fn bound_consume(recv: Self);
-  fn<'s0> bound_parameter(recv: &'s0 Self, value: X);
-  fn<'s0, 's1, U: BoundArgument> bound_generic(recv: &'s0 Self, value: &'s1 U);
+  fn bound_parameter<'s0>(recv: &'s0 Self, value: X);
+  fn bound_generic<'s0, 's1, U: BoundArgument>(recv: &'s0 Self, value: &'s1 U);
 }
 
-fn<'s0, T: GenericReceiver<i64>> generic_bound_exact(value: &'s0 T) {
+fn generic_bound_exact<'s0, T: GenericReceiver<i64>>(value: &'s0 T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1187,7 +1187,7 @@ fn<'s0, T: GenericReceiver<i64>> generic_bound_exact(value: &'s0 T) {
     return
 }
 
-fn<T: Move + GenericReceiver<i64>> generic_bound_shared(value: T) {
+fn generic_bound_shared<T: Move + GenericReceiver<i64>>(value: T) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: &T;
@@ -1210,7 +1210,7 @@ fn<T: Move + GenericReceiver<i64>> generic_bound_shared(value: T) {
     return
 }
 
-fn<T: Move + GenericReceiver<i64>> generic_bound_mut(value: T) {
+fn generic_bound_mut<T: Move + GenericReceiver<i64>>(value: T) {
   $tmp_0: unit;
   local: T;
   $tmp_1: unit;
@@ -1236,7 +1236,7 @@ fn<T: Move + GenericReceiver<i64>> generic_bound_mut(value: T) {
     return
 }
 
-fn<T: Move + GenericReceiver<i64>> generic_bound_out() {
+fn generic_bound_out<T: Move + GenericReceiver<i64>>() {
   $tmp_0: unit;
   value: T;
   $tmp_1: unit;
@@ -1260,7 +1260,7 @@ fn<T: Move + GenericReceiver<i64>> generic_bound_out() {
     return
 }
 
-fn<T: Move + GenericReceiver<i64>> generic_bound_drop(value: T) {
+fn generic_bound_drop<T: Move + GenericReceiver<i64>>(value: T) {
   $tmp_0: unit;
   local: T;
   $tmp_1: unit;
@@ -1281,7 +1281,7 @@ fn<T: Move + GenericReceiver<i64>> generic_bound_drop(value: T) {
     return
 }
 
-fn<T: GenericReceiver<i64>> generic_bound_uninit() {
+fn generic_bound_uninit<T: GenericReceiver<i64>>() {
   $tmp_0: unit;
   value: T;
   $tmp_1: unit;
@@ -1300,7 +1300,7 @@ fn<T: GenericReceiver<i64>> generic_bound_uninit() {
     return
 }
 
-fn<T: Move + GenericReceiver<i64>> generic_bound_consume(value: T) {
+fn generic_bound_consume<T: Move + GenericReceiver<i64>>(value: T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1315,7 +1315,7 @@ fn<T: Move + GenericReceiver<i64>> generic_bound_consume(value: T) {
     return
 }
 
-fn<'s0, T: GenericReceiver<i64>> generic_bound_parameter(value: &'s0 T) {
+fn generic_bound_parameter<'s0, T: GenericReceiver<i64>>(value: &'s0 T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1330,7 +1330,7 @@ fn<'s0, T: GenericReceiver<i64>> generic_bound_parameter(value: &'s0 T) {
     return
 }
 
-fn<'s0, 's1, T: GenericReceiver<i64>> generic_bound_method_argument(value: &'s0 T, argument: &'s1 BorrowTarget) {
+fn generic_bound_method_argument<'s0, 's1, T: GenericReceiver<i64>>(value: &'s0 T, argument: &'s1 BorrowTarget) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1346,11 +1346,11 @@ fn<'s0, 's1, T: GenericReceiver<i64>> generic_bound_method_argument(value: &'s0 
     return
 }
 
-trait<'a> GenericLifetimeReceiver {
+trait GenericLifetimeReceiver<'a> {
   fn bound_lifetime(recv: &'a Self);
 }
 
-fn<'a, T: GenericLifetimeReceiver<'a>> generic_bound_lifetime(value: &'a T) {
+fn generic_bound_lifetime<'a, T: GenericLifetimeReceiver<'a>>(value: &'a T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1370,10 +1370,10 @@ trait BoundExact {
 }
 
 trait BoundBorrowed {
-  fn<'s0> bound_rank(recv: &'s0 Self);
+  fn bound_rank<'s0>(recv: &'s0 Self);
 }
 
-fn<T: Move + BoundExact + BoundBorrowed> generic_bound_exact_rank(value: T) {
+fn generic_bound_exact_rank<T: Move + BoundExact + BoundBorrowed>(value: T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1388,7 +1388,7 @@ fn<T: Move + BoundExact + BoundBorrowed> generic_bound_exact_rank(value: T) {
     return
 }
 
-fn<'s0, T: Move + AutoClone> generic_bound_auto_clone(value: T, $return: &out 's0 [T; 2]) {
+fn generic_bound_auto_clone<'s0, T: Move + AutoClone>(value: T, $return: &'s0 out [T; 2]) {
   $clone_0: T;
   $clone_1: &T;
   $clone_2: &out T;
@@ -1403,7 +1403,7 @@ fn<'s0, T: Move + AutoClone> generic_bound_auto_clone(value: T, $return: &out 's
     return
 }
 
-fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {
+fn generic_bound_auto_destroy<T: AutoDestroy>(value: T) {
   $tmp_0: unit;
   $destroy_0: &drop T;
   entry:
@@ -1416,26 +1416,26 @@ fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {
     return
 }
 
-trait<X: Copy + Drop> SuperReceiver {
-  fn<'s0> inherited(recv: &'s0 Self, value: X);
-  fn<'s0, U: Copy + Drop> inherited_generic(recv: &'s0 Self, value: U);
-  fn<'s0> inherited_unsafe(recv: &'s0 Self);
+trait SuperReceiver<X: Copy + Drop> {
+  fn inherited<'s0>(recv: &'s0 Self, value: X);
+  fn inherited_generic<'s0, U: Copy + Drop>(recv: &'s0 Self, value: U);
+  fn inherited_unsafe<'s0>(recv: &'s0 Self);
 }
 
-trait<X: Copy + Drop> ChildReceiver: Copy + Drop + SuperReceiver<X> {
-  fn<'s0> child(recv: &'s0 Self);
+trait ChildReceiver<X: Copy + Drop>: Copy + Drop + SuperReceiver<X> {
+  fn child<'s0>(recv: &'s0 Self);
 }
 
-trait<X: Copy + Drop> GrandReceiver: ChildReceiver<X> {
+trait GrandReceiver<X: Copy + Drop>: ChildReceiver<X> {
 }
 
-trait<X: Copy + Drop> LeftReceiver: SuperReceiver<X> {
+trait LeftReceiver<X: Copy + Drop>: SuperReceiver<X> {
 }
 
-trait<X: Copy + Drop> RightReceiver: SuperReceiver<X> {
+trait RightReceiver<X: Copy + Drop>: SuperReceiver<X> {
 }
 
-trait<X: Copy + Drop> DiamondReceiver: LeftReceiver<X> + RightReceiver<X> {
+trait DiamondReceiver<X: Copy + Drop>: LeftReceiver<X> + RightReceiver<X> {
 }
 
 struct SuperTarget: Copy + Drop {
@@ -1443,7 +1443,7 @@ struct SuperTarget: Copy + Drop {
 }
 
 impl SuperReceiver<i64> for SuperTarget {
-  fn<'s0> inherited(recv: &'s0 SuperTarget, value: i64) {
+  fn inherited<'s0>(recv: &'s0 SuperTarget, value: i64) {
     $tmp_0: unit;
     $tmp_1: &SuperTarget;
     $tmp_2: i64;
@@ -1461,7 +1461,7 @@ impl SuperReceiver<i64> for SuperTarget {
       require_uninit recv;
       return
   }
-  fn<'s0, U: Copy + Drop> inherited_generic(recv: &'s0 SuperTarget, value: U) {
+  fn inherited_generic<'s0, U: Copy + Drop>(recv: &'s0 SuperTarget, value: U) {
     $tmp_0: unit;
     $tmp_1: &SuperTarget;
     $tmp_2: U;
@@ -1479,7 +1479,7 @@ impl SuperReceiver<i64> for SuperTarget {
       require_uninit recv;
       return
   }
-  fn<'s0> inherited_unsafe(recv: &'s0 SuperTarget) {
+  fn inherited_unsafe<'s0>(recv: &'s0 SuperTarget) {
     $tmp_0: unit;
     $tmp_1: &SuperTarget;
     entry:
@@ -1495,7 +1495,7 @@ impl SuperReceiver<i64> for SuperTarget {
 }
 
 impl ChildReceiver<i64> for SuperTarget {
-  fn<'s0> child(recv: &'s0 SuperTarget) {
+  fn child<'s0>(recv: &'s0 SuperTarget) {
     $tmp_0: unit;
     $tmp_1: &SuperTarget;
     entry:
@@ -1513,7 +1513,7 @@ impl ChildReceiver<i64> for SuperTarget {
 impl GrandReceiver<i64> for SuperTarget {
 }
 
-fn<'s0, T: GrandReceiver<i64>> inherited_generic_method(value: &'s0 T) {
+fn inherited_generic_method<'s0, T: GrandReceiver<i64>>(value: &'s0 T) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: unit;
@@ -1547,7 +1547,7 @@ fn<'s0, T: GrandReceiver<i64>> inherited_generic_method(value: &'s0 T) {
     return
 }
 
-fn<T: Move + GrandReceiver<i64>> inherited_auto_borrow(value: T) {
+fn inherited_auto_borrow<T: Move + GrandReceiver<i64>>(value: T) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: &T;
@@ -1566,7 +1566,7 @@ fn<T: Move + GrandReceiver<i64>> inherited_auto_borrow(value: T) {
     return
 }
 
-fn<'s0, T: DiamondReceiver<i64>> inherited_diamond_method(value: &'s0 T) {
+fn inherited_diamond_method<'s0, T: DiamondReceiver<i64>>(value: &'s0 T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1581,7 +1581,7 @@ fn<'s0, T: DiamondReceiver<i64>> inherited_diamond_method(value: &'s0 T) {
     return
 }
 
-fn<'s0, T: GrandReceiver<i64>> inherited_markers(value: T, $return: &out 's0 [T; 2]) {
+fn inherited_markers<'s0, T: GrandReceiver<i64>>(value: T, $return: &'s0 out [T; 2]) {
   entry:
     $return.* = [copy value, move value];
     unborrow $return;
@@ -1596,7 +1596,7 @@ trait InheritedAutoClone: AutoClone {
 trait InheritedAutoDestroy: AutoDestroy {
 }
 
-fn<'s0, T: Move + InheritedAutoClone> inherited_auto_clone(value: T, $return: &out 's0 [T; 2]) {
+fn inherited_auto_clone<'s0, T: Move + InheritedAutoClone>(value: T, $return: &'s0 out [T; 2]) {
   $clone_0: T;
   $clone_1: &T;
   $clone_2: &out T;
@@ -1611,7 +1611,7 @@ fn<'s0, T: Move + InheritedAutoClone> inherited_auto_clone(value: T, $return: &o
     return
 }
 
-fn<T: InheritedAutoDestroy> inherited_auto_destroy(value: T) {
+fn inherited_auto_destroy<T: InheritedAutoDestroy>(value: T) {
   $tmp_0: unit;
   $destroy_0: &drop T;
   entry:
@@ -1624,14 +1624,14 @@ fn<T: InheritedAutoDestroy> inherited_auto_destroy(value: T) {
     return
 }
 
-trait<'a, X: Copy + Drop> LifetimeSuperReceiver {
+trait LifetimeSuperReceiver<'a, X: Copy + Drop> {
   fn inherited_lifetime(recv: &'a Self, value: X);
 }
 
-trait<'a, X: Copy + Drop> LifetimeChildReceiver: LifetimeSuperReceiver<'a, X> {
+trait LifetimeChildReceiver<'a, X: Copy + Drop>: LifetimeSuperReceiver<'a, X> {
 }
 
-fn<'a, T: LifetimeChildReceiver<'a, i64>> inherited_lifetime_method(value: &'a T) {
+fn inherited_lifetime_method<'a, T: LifetimeChildReceiver<'a, i64>>(value: &'a T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1646,8 +1646,8 @@ fn<'a, T: LifetimeChildReceiver<'a, i64>> inherited_lifetime_method(value: &'a T
     return
 }
 
-trait<X> SelfArgumentSuper {
-  fn<'s0, 's1> inherited_self_argument(recv: &'s0 Self, value: &'s1 X);
+trait SelfArgumentSuper<X> {
+  fn inherited_self_argument<'s0, 's1>(recv: &'s0 Self, value: &'s1 X);
 }
 
 trait SelfArgumentChild: SelfArgumentSuper<Self> {
@@ -1658,7 +1658,7 @@ struct SelfArgumentTarget: Copy + Drop {
 }
 
 impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
-  fn<'s0, 's1> inherited_self_argument(recv: &'s0 SelfArgumentTarget, value: &'s1 SelfArgumentTarget) {
+  fn inherited_self_argument<'s0, 's1>(recv: &'s0 SelfArgumentTarget, value: &'s1 SelfArgumentTarget) {
     $tmp_0: unit;
     $tmp_1: &SelfArgumentTarget;
     $tmp_2: &SelfArgumentTarget;
@@ -1681,7 +1681,7 @@ impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
 impl SelfArgumentChild for SelfArgumentTarget {
 }
 
-fn<'s0, T: SelfArgumentChild> inherited_self_argument(value: &'s0 T) {
+fn inherited_self_argument<'s0, T: SelfArgumentChild>(value: &'s0 T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1696,10 +1696,10 @@ fn<'s0, T: SelfArgumentChild> inherited_self_argument(value: &'s0 T) {
     return
 }
 
-trait<X> GenericImplParent {
+trait GenericImplParent<X> {
 }
 
-trait<X> GenericImplChild: GenericImplParent<X> {
+trait GenericImplChild<X>: GenericImplParent<X> {
 }
 
 impl<T: GenericImplParent<i64>> GenericImplChild<i64> for T {
@@ -1710,13 +1710,13 @@ trait InheritedExactRank {
 }
 
 trait InheritedBorrowedRank {
-  fn<'s0> inherited_rank(recv: &'s0 Self);
+  fn inherited_rank<'s0>(recv: &'s0 Self);
 }
 
 trait InheritedRank: InheritedExactRank + InheritedBorrowedRank {
 }
 
-fn<T: Move + InheritedRank> inherited_receiver_rank(value: T) {
+fn inherited_receiver_rank<T: Move + InheritedRank>(value: T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1732,11 +1732,11 @@ fn<T: Move + InheritedRank> inherited_receiver_rank(value: T) {
 }
 
 trait QualifiedFirst {
-  fn<'s0, 's1> qualified_collision(recv: &'s0 Self, $return: &out 's1 i64);
+  fn qualified_collision<'s0, 's1>(recv: &'s0 Self, $return: &'s1 out i64);
 }
 
 trait QualifiedSecond {
-  fn<'s0, 's1> qualified_collision(recv: &'s0 Self, $return: &out 's1 i64);
+  fn qualified_collision<'s0, 's1>(recv: &'s0 Self, $return: &'s1 out i64);
 }
 
 struct QualifiedTarget: Copy + Drop {
@@ -1744,7 +1744,7 @@ struct QualifiedTarget: Copy + Drop {
 }
 
 impl QualifiedFirst for QualifiedTarget {
-  fn<'s0, 's1> qualified_collision(recv: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+  fn qualified_collision<'s0, 's1>(recv: &'s0 QualifiedTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -1756,7 +1756,7 @@ impl QualifiedFirst for QualifiedTarget {
 }
 
 impl QualifiedSecond for QualifiedTarget {
-  fn<'s0, 's1> qualified_collision(recv: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+  fn qualified_collision<'s0, 's1>(recv: &'s0 QualifiedTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -1768,7 +1768,7 @@ impl QualifiedSecond for QualifiedTarget {
 }
 
 impl QualifiedTarget {
-  fn<'s0, 's1, U: Copy + Drop> qualified_inherent(recv: &'s0 QualifiedTarget, ignored: U, $return: &out 's1 i64) {
+  fn qualified_inherent<'s0, 's1, U: Copy + Drop>(recv: &'s0 QualifiedTarget, ignored: U, $return: &'s1 out i64) {
     $tmp_0: U;
     entry:
       $tmp_0 = move ignored;
@@ -1782,7 +1782,7 @@ impl QualifiedTarget {
       require_uninit recv;
       return
   }
-  fn<'s0, 's1> qualified_unsafe(recv: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+  fn qualified_unsafe<'s0, 's1>(recv: &'s0 QualifiedTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -1793,7 +1793,7 @@ impl QualifiedTarget {
   }
 }
 
-fn<'s0, 's1> qualified_trait_call(value: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+fn qualified_trait_call<'s0, 's1>(value: &'s0 QualifiedTarget, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -1805,7 +1805,7 @@ fn<'s0, 's1> qualified_trait_call(value: &'s0 QualifiedTarget, $return: &out 's1
     return
 }
 
-fn<'s0, 's1> qualified_inherent_call(value: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+fn qualified_inherent_call<'s0, 's1>(value: &'s0 QualifiedTarget, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -1817,7 +1817,7 @@ fn<'s0, 's1> qualified_inherent_call(value: &'s0 QualifiedTarget, $return: &out 
     return
 }
 
-fn<'s0, 's1> qualified_generic_impl_calls(value: &'s0 Box<i64>, $return: &out 's1 i64) {
+fn qualified_generic_impl_calls<'s0, 's1>(value: &'s0 Box<i64>, $return: &'s1 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i64;
@@ -1836,7 +1836,7 @@ fn<'s0, 's1> qualified_generic_impl_calls(value: &'s0 Box<i64>, $return: &out 's
     return
 }
 
-fn<'s0, 's1> qualified_unsafe_call(value: &'s0 QualifiedTarget, $return: &out 's1 i64) {
+fn qualified_unsafe_call<'s0, 's1>(value: &'s0 QualifiedTarget, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -1848,7 +1848,7 @@ fn<'s0, 's1> qualified_unsafe_call(value: &'s0 QualifiedTarget, $return: &out 's
     return
 }
 
-fn<'s0, T: GrandReceiver<i64>> qualified_supertrait_call(value: &'s0 T) {
+fn qualified_supertrait_call<'s0, T: GrandReceiver<i64>>(value: &'s0 T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1863,7 +1863,7 @@ fn<'s0, T: GrandReceiver<i64>> qualified_supertrait_call(value: &'s0 T) {
     return
 }
 
-fn<'a, T: LifetimeChildReceiver<'a, i64>> qualified_lifetime_call(value: &'a T) {
+fn qualified_lifetime_call<'a, T: LifetimeChildReceiver<'a, i64>>(value: &'a T) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -1884,7 +1884,7 @@ struct StaticContainer: Copy + Drop {
 }
 
 impl StaticContainer {
-  fn<'s0> zero_arg($return: &out 's0 StaticContainer) {
+  fn zero_arg<'s0>($return: &'s0 out StaticContainer) {
     entry:
       $return.*.val = 0;
       $return.*.flag = false;
@@ -1892,7 +1892,7 @@ impl StaticContainer {
       require_uninit $return;
       return
   }
-  fn<'s0> one_arg(val: i64, $return: &out 's0 StaticContainer) {
+  fn one_arg<'s0>(val: i64, $return: &'s0 out StaticContainer) {
     entry:
       $return.*.val = move val;
       $return.*.flag = true;
@@ -1901,7 +1901,7 @@ impl StaticContainer {
       require_uninit val;
       return
   }
-  fn<'s0> multi_arg(val: i64, flag: bool, $return: &out 's0 StaticContainer) {
+  fn multi_arg<'s0>(val: i64, flag: bool, $return: &'s0 out StaticContainer) {
     entry:
       $return.*.val = move val;
       $return.*.flag = move flag;
@@ -1923,7 +1923,7 @@ struct Shape: Copy + Drop {
 }
 
 impl Shape {
-  fn<'s0> Point(val: i64, $return: &out 's0 Shape) {
+  fn Point<'s0>(val: i64, $return: &'s0 out Shape) {
     entry:
       $return.*.kind = ShapeKind::Point(move val);
       unborrow $return;
@@ -1933,7 +1933,7 @@ impl Shape {
   }
 }
 
-fn<'s0> test_static_methods($return: &out 's0 StaticContainer) {
+fn test_static_methods<'s0>($return: &'s0 out StaticContainer) {
   a: StaticContainer;
   $tmp_0: &out StaticContainer;
   b: StaticContainer;
@@ -1961,7 +1961,7 @@ fn<'s0> test_static_methods($return: &out 's0 StaticContainer) {
     return
 }
 
-fn<'s0> test_enum_path_and_coexistence($return: &out 's0 Shape) {
+fn test_enum_path_and_coexistence<'s0>($return: &'s0 out Shape) {
   k: ShapeKind;
   u: ShapeKind;
   s: Shape;
@@ -1989,14 +1989,14 @@ enum Status: Copy + Drop {
 }
 
 impl Status {
-  fn<'s0> default_active($return: &out 's0 Status) {
+  fn default_active<'s0>($return: &'s0 out Status) {
     entry:
       $return.* = Status::Active(1);
       unborrow $return;
       require_uninit $return;
       return
   }
-  fn<'s0> custom_active(val: i64, $return: &out 's0 Status) {
+  fn custom_active<'s0>(val: i64, $return: &'s0 out Status) {
     entry:
       $return.* = Status::Active(move val);
       unborrow $return;
@@ -2007,7 +2007,7 @@ impl Status {
 }
 
 impl StaticContainer {
-  fn<'s0> duplicate_with_self($return: &out 's0 StaticContainer) {
+  fn duplicate_with_self<'s0>($return: &'s0 out StaticContainer) {
     $tmp_0: &out StaticContainer;
     entry:
       $tmp_0 = &out $return.*;
@@ -2017,7 +2017,7 @@ impl StaticContainer {
       require_uninit $return;
       return
   }
-  fn<'s0, U: Copy + Drop> with_generic_payload(val: i64, extra: U, $return: &out 's0 StaticContainer) {
+  fn with_generic_payload<'s0, U: Copy + Drop>(val: i64, extra: U, $return: &'s0 out StaticContainer) {
     $tmp_0: U;
     entry:
       $tmp_0 = move extra;
@@ -2038,7 +2038,7 @@ struct ReceiverTarget: Copy + Drop {
 }
 
 impl ReceiverTarget {
-  fn<'s0, 's1> get_val(self: &'s0 ReceiverTarget, $return: &out 's1 i64) {
+  fn get_val<'s0, 's1>(self: &'s0 ReceiverTarget, $return: &'s1 out i64) {
     entry:
       $return.* = copy self.*.value;
       unborrow $return;
@@ -2049,7 +2049,7 @@ impl ReceiverTarget {
   }
 }
 
-fn<'s0> test_enum_inherent_static_methods($return: &out 's0 Status) {
+fn test_enum_inherent_static_methods<'s0>($return: &'s0 out Status) {
   s1: Status;
   $tmp_0: &out Status;
   s2: Status;
@@ -2070,7 +2070,7 @@ fn<'s0> test_enum_inherent_static_methods($return: &out 's0 Status) {
     return
 }
 
-fn<'s0> test_self_scoped_call($return: &out 's0 StaticContainer) {
+fn test_self_scoped_call<'s0>($return: &'s0 out StaticContainer) {
   $tmp_0: &out StaticContainer;
   entry:
     $tmp_0 = &out $return.*;
@@ -2081,7 +2081,7 @@ fn<'s0> test_self_scoped_call($return: &out 's0 StaticContainer) {
     return
 }
 
-fn<'s0> test_static_method_generic_param($return: &out 's0 StaticContainer) {
+fn test_static_method_generic_param<'s0>($return: &'s0 out StaticContainer) {
   s1: StaticContainer;
   $tmp_0: &out StaticContainer;
   s2: StaticContainer;
@@ -2102,7 +2102,7 @@ fn<'s0> test_static_method_generic_param($return: &out 's0 StaticContainer) {
     return
 }
 
-fn<'s0, 's1> test_call_receiver_method_via_path(target: &'s0 ReceiverTarget, $return: &out 's1 i64) {
+fn test_call_receiver_method_via_path<'s0, 's1>(target: &'s0 ReceiverTarget, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -2114,7 +2114,7 @@ fn<'s0, 's1> test_call_receiver_method_via_path(target: &'s0 ReceiverTarget, $re
     return
 }
 
-fn<'s0> test_shadowing_does_not_break_static_path($return: &out 's0 StaticContainer) {
+fn test_shadowing_does_not_break_static_path<'s0>($return: &'s0 out StaticContainer) {
   StaticContainer: i64;
   $tmp_0: i64;
   $tmp_1: &out StaticContainer;

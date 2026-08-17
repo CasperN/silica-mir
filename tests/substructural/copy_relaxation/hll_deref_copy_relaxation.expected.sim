@@ -3,7 +3,7 @@ struct Pair: Copy + Drop {
   right: i64
 }
 
-fn<'s0, 's1> read_shared_field(r: &'s0 Pair, $return: &out 's1 i64) {
+fn read_shared_field<'s0, 's1>(r: &'s0 Pair, $return: &'s1 out i64) {
   entry:
     $return.* = copy r.*.left;
     unborrow $return;
@@ -13,7 +13,7 @@ fn<'s0, 's1> read_shared_field(r: &'s0 Pair, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> consume_and_replace(r: &mut 's0 i64) {
+fn consume_and_replace<'s0>(r: &'s0 mut i64) {
   $tmp_0: unit;
   x: i64;
   $tmp_1: unit;
@@ -34,7 +34,7 @@ fn<'s0> consume_and_replace(r: &mut 's0 i64) {
     return
 }
 
-fn<'s0> repeated_pointee_reads_then_reinit(r: &mut 's0 i64) {
+fn repeated_pointee_reads_then_reinit<'s0>(r: &'s0 mut i64) {
   $tmp_0: unit;
   a: i64;
   b: i64;
@@ -63,7 +63,7 @@ fn<'s0> repeated_pointee_reads_then_reinit(r: &mut 's0 i64) {
     return
 }
 
-fn<'s0, 's1> single_read_preserves_obligation(r: &mut 's0 i64, $return: &out 's1 i64) {
+fn single_read_preserves_obligation<'s0, 's1>(r: &'s0 mut i64, $return: &'s1 out i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;

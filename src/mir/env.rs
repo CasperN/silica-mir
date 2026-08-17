@@ -2286,13 +2286,13 @@ mod declaration_iteration_tests {
     fn function_visitors_provide_generic_context_and_reattach_mutated_bodies() {
         let program = Parser::parse_or_panic(
             "
-            trait<T> Tr { fn<U> method(value: &Self, other: U); }
-            struct<T> S { value: T }
+            trait Tr<T> { fn method<U>(value: &Self, other: U); }
+            struct S<T> { value: T }
             impl<X> Tr<X> for S<X> {
-              fn<Y> method(value: &S<X>, other: Y) { entry: return }
+              fn method<Y>(value: &S<X>, other: Y) { entry: return }
             }
-            fn<Z> free(value: Z) { entry: return }
-            extern fn<Z> external(value: Z);
+            fn free<Z>(value: Z) { entry: return }
+            extern fn external<Z>(value: Z);
             ",
         );
         let (mut program, errors) = IndexedProgram::build(&program);

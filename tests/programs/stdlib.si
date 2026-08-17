@@ -7,7 +7,7 @@ extern fn free_bytes(p: *u8);
 
 # Box<T>
 
-struct<T> Box: Move { data: *T }
+struct Box<T>: Move { data: *T }
 
 impl<T: Move> Box<T> {
   fn new(value: T) -> Box<T> {
@@ -46,7 +46,7 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
 #
 # A zero-sized phantom marker representing lifetime and type ownership.
 
-struct<'a, T> PhantomData: Copy + Drop {}
+struct PhantomData<'a, T>: Copy + Drop {}
 
 
 # Span<'a, T>
@@ -54,7 +54,7 @@ struct<'a, T> PhantomData: Copy + Drop {}
 # A borrowed view of a contiguous slice of elements. Constructing a span from
 # raw parts and indexing it are unsafe.
 
-struct<'a, T> Span: Copy + Drop { data: *T, len: u64, _marker: PhantomData<'a, T> }
+struct Span<'a, T>: Copy + Drop { data: *T, len: u64, _marker: PhantomData<'a, T> }
 
 impl<'a, T> Span<'a, T> {
   unsafe fn from_raw_parts(data: *T, len: u64) -> Span<'a, T> {
@@ -76,7 +76,7 @@ impl<'a, T> Span<'a, T> {
 # nonzero because raw pointers are non-null. Allocation failure, capacity
 # overflow, and checked indexing need a standard failure effect.
 
-struct<T> Vec: Move { data: *T, len: u64, cap: u64 }
+struct Vec<T>: Move { data: *T, len: u64, cap: u64 }
 
 impl<T> Vec<T> {
   unsafe fn with_capacity(cap: u64) -> Vec<T> {
@@ -86,7 +86,7 @@ impl<T> Vec<T> {
 
   fn len(&self) -> u64 { self.*.len }
 
-  fn<'a> as_span(&'a self) -> Span<'a, T> {
+  fn as_span<'a>(&'a self) -> Span<'a, T> {
     unsafe {
       Span::from_raw_parts(self.*.data, self.*.len)
     }
@@ -142,11 +142,11 @@ impl<T: Move> Vec<T> {
   }
 }
 
-unsafe fn<'a, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64) -> &'a T {
+unsafe fn vec_get_unchecked<'a, T>(vec: &'a Vec<T>, index: u64) -> &'a T {
   ptr_offset(vec.*.data, index) as &'a T
 }
 
-fn<'inspect> inspect_vec(vec: &'inspect Vec<i64>) -> i64 {
+fn inspect_vec<'inspect>(vec: &'inspect Vec<i64>) -> i64 {
   let span = vec.as_span();
   let borrow = &span;
   let length = borrow.len();

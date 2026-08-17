@@ -38,6 +38,6 @@ trait GenericMutable {
 }
 
 # covers: direct-bound mutable auto-borrow rejects an immutable binding
-fn<T: GenericMutable + Drop> generic_mutable_of_immutable(value: T) {
+fn generic_mutable_of_immutable<T: GenericMutable + Drop>(value: T) {
   value.generic_mutable();
 }

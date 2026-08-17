@@ -1,8 +1,8 @@
 struct Unit0: Copy + Drop {
 }
 
-struct<'s0> Linear: Move {
-  r: &out 's0 i64
+struct Linear<'s0>: Move {
+  r: &'s0 out i64
 }
 
 enum Option: Copy + Drop {
@@ -14,7 +14,7 @@ extern fn take_two(a: i64, b: i64);
 
 extern fn consume(a: i64);
 
-extern fn<'s0> sink_linear(x: Linear<'s0>);
+extern fn sink_linear<'s0>(x: Linear<'s0>);
 
 fn param_starts_init(x: i64) {
   y: i64;
@@ -86,7 +86,7 @@ fn reverse_decl_order_drops(a: i64, b: i64, c: i64) {
     return
 }
 
-fn<'s0> linear_param_not_dropped(x: Linear<'s0>) {
+fn linear_param_not_dropped<'s0>(x: Linear<'s0>) {
   entry:
     call sink_linear(move x);
     return
@@ -119,11 +119,11 @@ fn respects_explicit_user_drop(x: i64) {
 extern fn extern_untouched(x: i64);
 
 trait ImplPlaceStateOk {
-  fn<'s0> check(recv: &'s0 Self, x: i64);
+  fn check<'s0>(recv: &'s0 Self, x: i64);
 }
 
 impl ImplPlaceStateOk for Unit0 {
-  fn<'s0> check(recv: &'s0 Unit0, x: i64) {
+  fn check<'s0>(recv: &'s0 Unit0, x: i64) {
     y: i64;
     entry:
       y = copy x;

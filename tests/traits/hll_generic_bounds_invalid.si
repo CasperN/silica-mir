@@ -4,27 +4,27 @@ struct Other: Copy + Drop { value: i64 }
 trait Label {}
 impl Label for Good {}
 
-trait<T: Label> RequiresLabel {}
-trait<T> Related {}
+trait RequiresLabel<T: Label> {}
+trait Related<T> {}
 impl Related<i64> for Good {}
-trait<'a> LifetimeLabel {}
+trait LifetimeLabel<'a> {}
 impl LifetimeLabel<'static> for Good {}
 
-struct<T: Label> Holder { value: T }
-struct<T> Wrapper { value: T }
+struct Holder<T: Label> { value: T }
+struct Wrapper<T> { value: T }
 
-extern fn<T: Label> accept(value: &T);
-extern fn<'bound, T: LifetimeLabel<'bound>> accept_inferred_lifetime_bound(
+extern fn accept<T: Label>(value: &T);
+extern fn accept_inferred_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(
   value: &'bound T,
 );
 
 # covers: a bound must name a declared trait
-fn<T: Missing> unknown_bound(value: &T) {
+fn unknown_bound<T: Missing>(value: &T) {
   value;
 }
 
 # covers: a trait bound must provide the declared generic arity
-fn<T: Related> wrong_bound_arity(value: &T) {
+fn wrong_bound_arity<T: Related>(value: &T) {
   value;
 }
 
@@ -34,12 +34,12 @@ fn reject_concrete(value: &Other) {
 }
 
 # covers: a generic caller cannot forward an obligation it did not declare
-fn<T> reject_unbounded_generic(value: &T) {
+fn reject_unbounded_generic<T>(value: &T) {
   accept<T>(value);
 }
 
 # covers: an inferred lifetime-dependent bound rejects a different caller bound
-fn<'actual, T: LifetimeLabel<'static>> reject_inferred_lifetime_bound(
+fn reject_inferred_lifetime_bound<'actual, T: LifetimeLabel<'static>>(
   value: &'actual T,
 ) {
   accept_inferred_lifetime_bound<T>(value);
@@ -51,16 +51,16 @@ fn reject_bounded_type(value: &Holder<Other>) {
 }
 
 # covers: a trait bound's own type arguments must satisfy the trait declaration
-fn<T: RequiresLabel<Other>> reject_bound_argument(value: &T) {
+fn reject_bound_argument<T: RequiresLabel<Other>>(value: &T) {
   value;
 }
 
 # covers: parameterized bounds must match exactly when forwarding an obligation
-fn<T: Related<bool>> reject_different_bound_argument(value: &T) {
+fn reject_different_bound_argument<T: Related<bool>>(value: &T) {
   require_related_i64<T>(value);
 }
 
-extern fn<T: Related<i64>> require_related_i64(value: &T);
+extern fn require_related_i64<T: Related<i64>>(value: &T);
 
 impl<T: Label> Wrapper<T> {
   fn inspect(recv: &Wrapper<T>) { recv; }
@@ -73,12 +73,12 @@ fn reject_inherent_impl(value: &Wrapper<Other>) {
 
 trait Inspect {
   fn inspect_trait(recv: &Self);
-  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U);
+  fn inspect_trait_argument<U: Label>(recv: &Self, value: &U);
 }
 
 impl<T: Label> Inspect for Wrapper<T> {
   fn inspect_trait(recv: &Self) { recv; }
-  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U) {
+  fn inspect_trait_argument<U: Label>(recv: &Self, value: &U) {
     recv;
     value;
   }
@@ -95,11 +95,11 @@ fn reject_trait_method_argument(value: &Wrapper<Good>, argument: &Other) {
 }
 
 impl Good {
-  fn<U: Label> inspect_argument(recv: &Good, value: &U) {
+  fn inspect_argument<U: Label>(recv: &Good, value: &U) {
     recv;
     value;
   }
-  fn<'bound, U: LifetimeLabel<'bound>> inspect_inferred_lifetime_argument(
+  fn inspect_inferred_lifetime_argument<'bound, U: LifetimeLabel<'bound>>(
     recv: &Good,
     value: &'bound U,
   ) {
@@ -114,7 +114,7 @@ fn reject_method_argument(recv: &Good, value: &Other) {
 }
 
 # covers: inferred method lifetimes reject a different dependent caller bound
-fn<'actual, T: LifetimeLabel<'static>> reject_inferred_method_lifetime_bound(
+fn reject_inferred_method_lifetime_bound<'actual, T: LifetimeLabel<'static>>(
   recv: &Good,
   value: &'actual T,
 ) {

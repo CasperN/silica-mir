@@ -39,11 +39,7 @@ function typeChoices($) {
     'bool',
     'unit',
     'never',
-    prec(2, seq('&', optional($.lifetime), $.type)),
-    prec(2, seq('&mut', optional($.lifetime), $.type)),
-    prec(2, seq('&out', optional($.lifetime), $.type)),
-    prec(2, seq('&drop', optional($.lifetime), $.type)),
-    prec(2, seq('&uninit', optional($.lifetime), $.type)),
+    prec(2, seq('&', optional($.lifetime), optional(choice('mut', 'out', 'drop', 'uninit')), $.type)),
     prec(2, seq('*', $.type)),
     seq('[', field('element', $.type), ';', field('length', $.int_lit), ']'),
     seq($.identifier, optional($.type_args)), // struct/enum name or type var; optional args

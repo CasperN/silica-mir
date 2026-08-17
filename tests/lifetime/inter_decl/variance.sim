@@ -13,7 +13,7 @@
 
 # ---------- shared: one direction constraint → one mismatch ----------
 
-fn<'a, 'b> shorten_shared(x: &'a i64, dst: &out &'b i64) {
+fn shorten_shared<'a, 'b>(x: &'a i64, dst: &out &'b i64) {
   entry:
     dst.* = copy x;
     return
@@ -21,7 +21,7 @@ fn<'a, 'b> shorten_shared(x: &'a i64, dst: &out &'b i64) {
 
 # ---------- &mut: invariant → two mismatches ----------
 
-fn<'a, 'b> narrow_mut(src: &mut 'a i64, dst: &out &mut 'b i64) {
+fn narrow_mut<'a, 'b>(src: &'a mut i64, dst: &out &'b mut i64) {
   entry:
     dst.* = move src;
     return
@@ -34,7 +34,7 @@ fn<'a, 'b> narrow_mut(src: &mut 'a i64, dst: &out &mut 'b i64) {
 # propagation), the closure would chain input regions through.
 # For now: same-region assignment through elision axioms lands.
 # Direct assignment `dst.* = copy x` with matching 'a passes.
-fn<'a> tautology(x: &'a i64, dst: &out &'a i64) {
+fn tautology<'a>(x: &'a i64, dst: &out &'a i64) {
   entry:
     dst.* = copy x;
     return

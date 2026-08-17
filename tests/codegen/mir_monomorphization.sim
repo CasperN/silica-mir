@@ -27,12 +27,12 @@
 # emitted the wrong mangled name, codegen didn't quote a name, or the
 # reachability filter accidentally kept an uninstantiated generic.
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
-struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop { first: T, second: U }
-enum<T: Copy + Drop> Opt: Copy + Drop { None: unit, Some: T }
-struct<T: Copy + Drop> Node: Copy + Drop { value: T, next: *Node<T> }
-struct<'a, T: Copy + Drop> RefBox: Copy + Drop { value: &'a T }
-struct<'a, T: Copy + Drop> Deep: Copy + Drop {
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
+struct Pair<T: Copy + Drop, U: Copy + Drop>: Copy + Drop { first: T, second: U }
+enum Opt<T: Copy + Drop>: Copy + Drop { None: unit, Some: T }
+struct Node<T: Copy + Drop>: Copy + Drop { value: T, next: *Node<T> }
+struct RefBox<'a, T: Copy + Drop>: Copy + Drop { value: &'a T }
+struct Deep<'a, T: Copy + Drop>: Copy + Drop {
   borrowed: RefBox<'a, T>,
   handlers: [fn(&'a T); 2],
   storage: Box<[T; 2]>,
@@ -41,29 +41,29 @@ struct<'a, T: Copy + Drop> Deep: Copy + Drop {
 # Declared but never referenced from any non-generic fn body. Mono's
 # reachability walk never enters this decl; the pinned LLVM contains
 # no `%"Unused<i32>"` / `%Unused` type.
-struct<T: Copy + Drop> Unused: Copy + Drop { x: T }
+struct Unused<T: Copy + Drop>: Copy + Drop { x: T }
 
-fn<T: Copy + Drop> identity(x: T, $return: &out T) {
+fn identity<T: Copy + Drop>(x: T, $return: &out T) {
   entry:
     $return.* = copy x;
     return
 }
 
 # covers: mono substitutes a caller type parameter in a generic function constant
-fn<T: Copy + Drop> wrapped_identity(x: T, $return: &out T) {
+fn wrapped_identity<T: Copy + Drop>(x: T, $return: &out T) {
   entry:
     call identity<T>(copy x, move $return);
     return
 }
 
-fn<'a, T: Copy + Drop> borrow_identity(x: &'a T, $return: &out &'a T) {
+fn borrow_identity<'a, T: Copy + Drop>(x: &'a T, $return: &out &'a T) {
   entry:
     $return.* = copy x;
     return
 }
 
 # covers: explicit lifetime and type arguments survive through mono and codegen
-fn<'a> call_borrow_identity(x: &'a i32, $return: &out &'a i32) {
+fn call_borrow_identity<'a>(x: &'a i32, $return: &out &'a i32) {
   entry:
     call borrow_identity<'a, i32>(copy x, move $return);
     return
@@ -72,7 +72,7 @@ fn<'a> call_borrow_identity(x: &'a i32, $return: &out &'a i32) {
 # The extern signature makes Deep<i32> reachable without adding irrelevant
 # value construction. Its fields force mono's type fold through every nested
 # structural form covered by this fixture.
-extern fn<'a> consume_deep(value: Deep<'a, i32>);
+extern fn consume_deep<'a>(value: Deep<'a, i32>);
 
 fn make_box(x: i32, $return: &out Box<i32>) {
   entry:

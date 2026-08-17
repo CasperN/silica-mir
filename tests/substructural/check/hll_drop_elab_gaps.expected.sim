@@ -8,7 +8,7 @@ enum Level: Copy + Drop {
   Low: i64
 }
 
-fn<'s0> chained_matches(s: State, $return: &out 's0 i64) {
+fn chained_matches<'s0>(s: State, $return: &'s0 out i64) {
   $tmp_0: Level;
   a: i64;
   b: i64;
@@ -88,7 +88,7 @@ struct P: Copy + Drop {
   z: i64
 }
 
-fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
+fn struct_field_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   p: P;
   $tmp_0: unit;
   $tmp_1: unit;
@@ -137,7 +137,7 @@ fn<'s0> struct_field_diverged(c: bool, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> array_slot_diverged(c: bool, $return: &out 's0 i64) {
+fn array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   a: [i64; 3];
   $tmp_0: unit;
   $tmp_1: unit;
@@ -186,7 +186,7 @@ fn<'s0> array_slot_diverged(c: bool, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> nested_array_slot_diverged(c: bool, $return: &out 's0 i64) {
+fn nested_array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   m: [[i64; 2]; 2];
   $tmp_0: unit;
   $tmp_1: unit;
@@ -239,7 +239,7 @@ struct Bag: Copy + Drop {
   a: [i64; 3]
 }
 
-fn<'s0> struct_field_array_slot_diverged(c: bool, $return: &out 's0 i64) {
+fn struct_field_array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   s: Bag;
   $tmp_0: unit;
   $tmp_1: unit;

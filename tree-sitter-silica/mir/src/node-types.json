@@ -1294,7 +1294,15 @@
     "named": false
   },
   {
+    "type": "mut",
+    "named": false
+  },
+  {
     "type": "never",
+    "named": false
+  },
+  {
+    "type": "out",
     "named": false
   },
   {
@@ -1351,6 +1359,10 @@
   },
   {
     "type": "unborrow",
+    "named": false
+  },
+  {
+    "type": "uninit",
     "named": false
   },
   {

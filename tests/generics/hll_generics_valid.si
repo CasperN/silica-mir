@@ -21,9 +21,9 @@
 #   call_generic_fn       generic fn HM infers T := i64 from arg
 #   call_generic_fn_via_ret generic fn HM infers T := i64 from return context
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum<T: Copy + Drop> Option: Copy + Drop { None: unit, Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: unit, Some: T }
 
 # ---------- Struct: constructor + return the wrapped value ----------
 
@@ -132,7 +132,7 @@ fn write_nested_pointee(r: &out Box<Box<i64>>, x: i64) {
 # an empty scope and silently skips the drop. This then trips
 # `INIT-ReturnValueLeak`.
 struct DropCell: Drop + Move { v: i64 }
-struct<T: Drop + Move> DropPair: Drop + Move { a: T, b: T }
+struct DropPair<T: Drop + Move>: Drop + Move { a: T, b: T }
 
 fn partial_move_generic_drop() -> DropCell {
   let p = DropPair { a: DropCell { v: 1 }, b: DropCell { v: 2 } };
@@ -144,7 +144,7 @@ fn partial_move_generic_drop() -> DropCell {
 # Each call site to `identity` freshens `T` into a new inference var,
 # then unifies with the argument type. Two calls with different
 # concrete args each pick their own T without interference.
-fn<T: Copy + Drop> identity(x: T) -> T {
+fn identity<T: Copy + Drop>(x: T) -> T {
   x
 }
 
@@ -197,7 +197,7 @@ fn call_generic_explicit_nested_type(x: Box<i64>) -> Box<i64> {
 }
 
 # A type parameter may be inferred solely from the expected return type.
-extern fn<T: Copy + Drop> make_default() -> T;
+extern fn make_default<T: Copy + Drop>() -> T;
 # covers: direct generic call inferred solely from return context
 fn infer_generic_from_return_only() -> i64 {
   make_default()
@@ -218,11 +218,11 @@ fn delayed_generic_function_value(x: i64) -> i64 {
 }
 
 # Bounds are checked both after inference and against a caller's own bounds.
-fn<T: Copy + Drop> requires_copy(x: T) -> T { x }
+fn requires_copy<T: Copy + Drop>(x: T) -> T { x }
 # covers: inferred concrete type argument satisfies marker bounds
 fn inferred_concrete_bound() -> i64 { requires_copy(5) }
 # covers: inferred caller type parameter satisfies bounds through its scope
-fn<T: Copy + Drop> inferred_param_bound(x: T) -> T { requires_copy(x) }
+fn inferred_param_bound<T: Copy + Drop>(x: T) -> T { requires_copy(x) }
 
 # covers: free generic call inherits an impl header's type-parameter bounds
 impl<T: Copy + Drop> Box<T> {
@@ -231,46 +231,46 @@ impl<T: Copy + Drop> Box<T> {
 
 # Explicit lifetime arguments survive HLL lowering into the MIR function
 # constant instead of being discarded.
-fn<'a> borrow_identity(x: &'a i64) -> &'a i64 { x }
+fn borrow_identity<'a>(x: &'a i64) -> &'a i64 { x }
 # covers: explicit lifetime argument on a direct call
-fn<'a> call_explicit_lifetime(x: &'a i64) -> &'a i64 {
+fn call_explicit_lifetime<'a>(x: &'a i64) -> &'a i64 {
   borrow_identity<'a>(x)
 }
 
-fn<'a, T: Copy + Drop> borrow_generic_identity(x: &'a T) -> &'a T { x }
+fn borrow_generic_identity<'a, T: Copy + Drop>(x: &'a T) -> &'a T { x }
 # covers: explicit lifetime argument combined with inferred type argument
-fn<'a> call_explicit_lifetime_inferred_type(x: &'a i64) -> &'a i64 {
+fn call_explicit_lifetime_inferred_type<'a>(x: &'a i64) -> &'a i64 {
   borrow_generic_identity<'a>(x)
 }
 # covers: inferred lifetime argument combined with explicit type argument
-fn<'a> call_inferred_lifetime_explicit_type(x: &'a i64) -> &'a i64 {
+fn call_inferred_lifetime_explicit_type<'a>(x: &'a i64) -> &'a i64 {
   borrow_generic_identity<i64>(x)
 }
 
-struct<'view> BorrowedI64: Copy + Drop { value: &'view i64 }
-fn<'callee> make_borrowed_i64(value: &'callee i64) -> BorrowedI64<'callee> {
+struct BorrowedI64<'view>: Copy + Drop { value: &'view i64 }
+fn make_borrowed_i64<'callee>(value: &'callee i64) -> BorrowedI64<'callee> {
   BorrowedI64 { value: value }
 }
 # covers: lifetime substitution inside a nominal result is independent of binder spelling
-fn<'caller> forward_borrowed_i64(value: &'caller i64) -> BorrowedI64<'caller> {
+fn forward_borrowed_i64<'caller>(value: &'caller i64) -> BorrowedI64<'caller> {
   make_borrowed_i64<'caller>(value)
 }
 # covers: an omitted call lifetime is inferred through a nominal argument and result
-fn<'caller> infer_borrowed_i64(value: &'caller i64) -> BorrowedI64<'caller> {
+fn infer_borrowed_i64<'caller>(value: &'caller i64) -> BorrowedI64<'caller> {
   make_borrowed_i64(value)
 }
 # covers: an omitted call lifetime can be inferred solely from a nominal result
-extern fn<'callee> make_borrowed_i64_default() -> BorrowedI64<'callee>;
-fn<'caller> infer_borrowed_i64_from_result() -> BorrowedI64<'caller> {
+extern fn make_borrowed_i64_default<'callee>() -> BorrowedI64<'callee>;
+fn infer_borrowed_i64_from_result<'caller>() -> BorrowedI64<'caller> {
   make_borrowed_i64_default()
 }
 # covers: free-function receiver syntax preserves an inferred nominal result lifetime
-fn<'caller> infer_borrowed_i64_receiver(value: &'caller i64) -> BorrowedI64<'caller> {
+fn infer_borrowed_i64_receiver<'caller>(value: &'caller i64) -> BorrowedI64<'caller> {
   value.make_borrowed_i64()
 }
 
 # Explicit arguments also resolve a parameter absent from the signature.
-fn<T: Copy + Drop> generic_side_effect() { unit }
+fn generic_side_effect<T: Copy + Drop>() { unit }
 # covers: explicit type argument absent from all parameter and return types
 fn explicit_unmentioned_type_param() { generic_side_effect<i64>(); }
 
@@ -279,11 +279,11 @@ fn deferred_generic_call() {
   defer generic_side_effect<i64>();
 }
 
-fn<'a> lifetime_side_effect() { unit }
+fn lifetime_side_effect<'a>() { unit }
 # covers: reserved static lifetime explicitly instantiates an unmentioned parameter
 fn explicit_static_lifetime() { lifetime_side_effect<'static>(); }
 
-unsafe fn<T: Copy + Drop> unsafe_identity(x: T) -> T { x }
+unsafe fn unsafe_identity<T: Copy + Drop>(x: T) -> T { x }
 # covers: generic unsafe call inside an unsafe block
 fn call_generic_unsafe() -> i64 { unsafe { unsafe_identity<i64>(11) } }
 
@@ -293,34 +293,34 @@ fn test_unsafe_deref(ptr: *i64) -> i64 {
 }
 
 # covers: zero-sized phantom struct carrying a lifetime and type parameter
-struct<'a, T> PhantomData: Copy + Drop {}
-struct<'a, T> SpanView: Copy + Drop { ptr: *T, len: u64, marker: PhantomData<'a, T> }
+struct PhantomData<'a, T>: Copy + Drop {}
+struct SpanView<'a, T>: Copy + Drop { ptr: *T, len: u64, marker: PhantomData<'a, T> }
 
-fn<'a, T> make_empty_span(p: *T) -> SpanView<'a, T> {
+fn make_empty_span<'a, T>(p: *T) -> SpanView<'a, T> {
   SpanView { ptr: p, len: 0u64, marker: PhantomData {} }
 }
 
-fn<'a> use_empty_span(x: &'a i64) -> SpanView<'a, i64> {
+fn use_empty_span<'a>(x: &'a i64) -> SpanView<'a, i64> {
   make_empty_span<'a, i64>(x as *i64)
 }
 
-struct<A: Copy + Drop, B: Copy + Drop> Pair: Copy + Drop { first: A, second: B }
+struct Pair<A: Copy + Drop, B: Copy + Drop>: Copy + Drop { first: A, second: B }
 
 # covers: inherent method with method-level lifetime and type parameters on receiver
-struct<T: Copy + Drop> Buffer: Copy + Drop { ptr: *T, len: u64 }
+struct Buffer<T: Copy + Drop>: Copy + Drop { ptr: *T, len: u64 }
 
 impl<T: Copy + Drop> Buffer<T> {
-  fn<'a> as_slice(self: &'a Self) -> SpanView<'a, T> {
+  fn as_slice<'a>(self: &'a Self) -> SpanView<'a, T> {
     SpanView { ptr: self.*.ptr, len: self.*.len, marker: PhantomData {} }
   }
 
-  fn<U: Copy + Drop> pair_with(self: &Self, other: U) -> Pair<T, U> {
+  fn pair_with<U: Copy + Drop>(self: &Self, other: U) -> Pair<T, U> {
     Pair { first: unsafe { self.*.ptr.* }, second: other }
   }
 }
 
 # covers: calling inherent method with method-level lifetime parameter via dot syntax
-fn<'a> test_method_lifetime_receiver(buf: &'a Buffer<i64>) -> SpanView<'a, i64> {
+fn test_method_lifetime_receiver<'a>(buf: &'a Buffer<i64>) -> SpanView<'a, i64> {
   buf.as_slice()
 }
 
@@ -330,12 +330,12 @@ fn test_method_type_param_receiver(buf: &Buffer<i64>) -> Pair<i64, bool> {
 }
 
 # covers: self argument sugar (&self, &mut self, &'a self, self)
-struct<T: Copy + Drop> Counter: Copy + Drop { count: T }
+struct Counter<T: Copy + Drop>: Copy + Drop { count: T }
 
 impl<T: Copy + Drop> Counter<T> {
   fn get_val(&self) -> T { self.*.count }
   fn set_val(&mut self, new_val: T) -> unit { self.*.count = new_val; }
-  fn<'a> get_ref(&'a self) -> &'a T { &self.*.count }
+  fn get_ref<'a>(&'a self) -> &'a T { &self.*.count }
   fn into_count(self) -> T { self.count }
 }
 
@@ -351,7 +351,7 @@ fn test_self_sugar(c: Counter<i64>) -> i64 {
 }
 
 # covers: self argument sugar with &out self and &drop self
-struct<T: Move> Slot: Move { val: T }
+struct Slot<T: Move>: Move { val: T }
 
 impl<T: Move> Slot<T> {
   fn init(&out self, val: T) {
@@ -363,11 +363,11 @@ impl<T: Move> Slot<T> {
     v
   }
 
-  fn<'a> init_lifetime(&'a out self, val: T) {
+  fn init_lifetime<'a>(&'a out self, val: T) {
     self.*.val = val;
   }
 
-  fn<'a> close_lifetime(&'a drop self) -> T {
+  fn close_lifetime<'a>(&'a drop self) -> T {
     let v = self.*.val;
     v
   }

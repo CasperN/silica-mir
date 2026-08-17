@@ -10,16 +10,16 @@ struct DropPreferred: Drop {
   value: i64
 }
 
-struct<T: Copy + Drop> GenericDestroyable: Move {
+struct GenericDestroyable<T: Copy + Drop>: Move {
   value: T
 }
 
-struct<'a> BorrowedDestroyable: Move {
+struct BorrowedDestroyable<'a>: Move {
   value: &'a i64
 }
 
-struct<'a> MutHolder: Move {
-  r: &mut 'a i64
+struct MutHolder<'a>: Move {
+  r: &'a mut i64
 }
 
 struct PartialOwner: Move {
@@ -37,12 +37,12 @@ enum DestroyChoice: Move {
   Empty: unit
 }
 
-extern fn<'s0> init_destroyable(out: &out 's0 Destroyable);
+extern fn init_destroyable<'s0>(out: &'s0 out Destroyable);
 
 extern fn take_destroyable(value: Destroyable);
 
 impl AutoDestroy for Destroyable {
-  fn<'s0> destroy(recv: &drop 's0 Destroyable) {
+  fn destroy<'s0>(recv: &'s0 drop Destroyable) {
     entry:
       drop recv.*.value;
       unborrow recv;
@@ -51,7 +51,7 @@ impl AutoDestroy for Destroyable {
 }
 
 impl AutoDestroy for ImmovableDestroyable {
-  fn<'s0> destroy(recv: &drop 's0 ImmovableDestroyable) {
+  fn destroy<'s0>(recv: &'s0 drop ImmovableDestroyable) {
     entry:
       drop recv.*.value;
       unborrow recv;
@@ -60,7 +60,7 @@ impl AutoDestroy for ImmovableDestroyable {
 }
 
 impl AutoDestroy for DropPreferred {
-  fn<'s0> destroy(recv: &drop 's0 DropPreferred) {
+  fn destroy<'s0>(recv: &'s0 drop DropPreferred) {
     entry:
       drop recv.*.value;
       unborrow recv;
@@ -69,7 +69,7 @@ impl AutoDestroy for DropPreferred {
 }
 
 impl<T: Copy + Drop> AutoDestroy for GenericDestroyable<T> {
-  fn<'s0> destroy(recv: &drop 's0 GenericDestroyable<T>) {
+  fn destroy<'s0>(recv: &'s0 drop GenericDestroyable<T>) {
     entry:
       drop recv.*.value;
       unborrow recv;
@@ -78,7 +78,7 @@ impl<T: Copy + Drop> AutoDestroy for GenericDestroyable<T> {
 }
 
 impl<'a> AutoDestroy for BorrowedDestroyable<'a> {
-  fn<'s0> destroy(recv: &drop 's0 BorrowedDestroyable<'a>) {
+  fn destroy<'s0>(recv: &'s0 drop BorrowedDestroyable<'a>) {
     entry:
       drop recv.*.value;
       unborrow recv;
@@ -87,7 +87,7 @@ impl<'a> AutoDestroy for BorrowedDestroyable<'a> {
 }
 
 impl<'a> AutoDestroy for MutHolder<'a> {
-  fn<'s0> destroy(recv: &drop 's0 MutHolder<'a>) {
+  fn destroy<'s0>(recv: &'s0 drop MutHolder<'a>) {
     entry:
       drop recv.*.r;
       unborrow recv;
@@ -96,7 +96,7 @@ impl<'a> AutoDestroy for MutHolder<'a> {
 }
 
 impl AutoDestroy for PartialAutoDestroy {
-  fn<'s0> destroy(recv: &drop 's0 PartialAutoDestroy) {
+  fn destroy<'s0>(recv: &'s0 drop PartialAutoDestroy) {
     entry:
       drop recv.*.right;
       drop recv.*.left;
@@ -106,7 +106,7 @@ impl AutoDestroy for PartialAutoDestroy {
 }
 
 impl AutoDestroy for DestroyChoice {
-  fn<'s0> destroy(recv: &drop 's0 DestroyChoice) {
+  fn destroy<'s0>(recv: &'s0 drop DestroyChoice) {
     entry:
       switchEnum(recv.*) [Item: item, Empty: empty]
     item:
@@ -342,7 +342,7 @@ fn destroy_generic(x: GenericDestroyable<i64>) {
     return
 }
 
-fn<T: Copy + Drop> destroy_in_generic_context(x: GenericDestroyable<T>) {
+fn destroy_in_generic_context<T: Copy + Drop>(x: GenericDestroyable<T>) {
   $destroy_0: &drop GenericDestroyable<T>;
   entry:
     $destroy_0 = &drop x;
@@ -350,7 +350,7 @@ fn<T: Copy + Drop> destroy_in_generic_context(x: GenericDestroyable<T>) {
     return
 }
 
-fn<'a> destroy_lifetime_value(x: BorrowedDestroyable<'a>) {
+fn destroy_lifetime_value<'a>(x: BorrowedDestroyable<'a>) {
   $destroy_0: &drop BorrowedDestroyable<'a>;
   entry:
     $destroy_0 = &drop x;
@@ -358,7 +358,7 @@ fn<'a> destroy_lifetime_value(x: BorrowedDestroyable<'a>) {
     return
 }
 
-fn<'a> destroy_nested_reference(x: MutHolder<'a>) {
+fn destroy_nested_reference<'a>(x: MutHolder<'a>) {
   $destroy_0: &drop MutHolder<'a>;
   entry:
     $destroy_0 = &drop x;
@@ -373,11 +373,11 @@ fn moved_value_is_not_destroyed(x: Destroyable) {
 }
 
 trait ImplAutoDestroyOk {
-  fn<'s0> finish(recv: &'s0 Self, value: Destroyable);
+  fn finish<'s0>(recv: &'s0 Self, value: Destroyable);
 }
 
 impl ImplAutoDestroyOk for DropPreferred {
-  fn<'s0> finish(recv: &'s0 DropPreferred, value: Destroyable) {
+  fn finish<'s0>(recv: &'s0 DropPreferred, value: Destroyable) {
     $destroy_0: &drop Destroyable;
     entry:
       $destroy_0 = &drop value;

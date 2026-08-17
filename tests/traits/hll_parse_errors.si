@@ -48,7 +48,7 @@ impl Required for S {
 }
 
 impl<T> Required for S {
-  fn<T> required(recv: &Self) { unit }
+  fn required<T>(recv: &Self) { unit }
 }
 
 trait Self {
@@ -62,7 +62,7 @@ impl Self for S {
 trait DuplicateBound {}
 
 # covers: the same direct trait bound cannot be declared twice
-fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T) {
+fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
   value;
 }
 

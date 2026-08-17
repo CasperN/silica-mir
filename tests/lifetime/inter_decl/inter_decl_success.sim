@@ -20,7 +20,7 @@
 # elision synthesizes a distinct fresh lifetime per unannotated ref
 # (no Rust-style rule-2 unification), so the caller must write 'a
 # whenever they want two refs to share a region.
-fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
+fn identity<'a>(r: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy r;
     return
@@ -30,7 +30,7 @@ fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
 
 # Both inputs share 'a; result borrows from either. Classic Rust
 # max-style shape.
-fn<'a> pick(x: &'a i64, y: &'a i64, $return: &out &'a i64) {
+fn pick<'a>(x: &'a i64, y: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -39,14 +39,14 @@ fn<'a> pick(x: &'a i64, y: &'a i64, $return: &out &'a i64) {
 # ---------- explicit multi-lifetime: distinct 'a and 'b ----------
 
 # Two independent lifetimes; return tied to 'a only.
-fn<'a, 'b> first(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+fn first<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
 }
 
 # Same shape, returning the 'b side.
-fn<'a, 'b> second(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
+fn second<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
   entry:
     $return.* = copy y;
     return
@@ -58,7 +58,7 @@ fn<'a, 'b> second(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
 # are semantically significant. Returning the same nested reference is
 # valid when both are preserved.
 # covers: nested shared-reference lifetime propagation
-fn<'outer, 'inner> nested_identity(
+fn nested_identity<'outer, 'inner>(
   r: &'outer &'inner i64,
   $return: &out &'outer &'inner i64,
 ) {
@@ -71,9 +71,9 @@ fn<'outer, 'inner> nested_identity(
 
 # 'a threads through the field. The struct is Move (linear over the
 # ref); passing it forward is the only discharge.
-struct<'a> Wrap: Move { r: &'a i64 }
+struct Wrap<'a>: Move { r: &'a i64 }
 
-fn<'a> wrap_it(x: &'a i64, $return: &out Wrap<'a>) {
+fn wrap_it<'a>(x: &'a i64, $return: &out Wrap<'a>) {
   entry:
     $return.*.r = copy x;
     return
@@ -81,9 +81,9 @@ fn<'a> wrap_it(x: &'a i64, $return: &out Wrap<'a>) {
 
 # ---------- struct with two independent ref lifetimes ----------
 
-struct<'a, 'b> Both: Move { l: &'a i64, r: &'b i64 }
+struct Both<'a, 'b>: Move { l: &'a i64, r: &'b i64 }
 
-fn<'a, 'b> make_both(x: &'a i64, y: &'b i64, $return: &out Both<'a, 'b>) {
+fn make_both<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out Both<'a, 'b>) {
   entry:
     $return.*.l = copy x;
     $return.*.r = copy y;
@@ -92,9 +92,9 @@ fn<'a, 'b> make_both(x: &'a i64, y: &'b i64, $return: &out Both<'a, 'b>) {
 
 # ---------- enum with ref-carrying variant ----------
 
-enum<'a> MaybeRef: Copy + Drop { None: unit, Some: &'a i64 }
+enum MaybeRef<'a>: Copy + Drop { None: unit, Some: &'a i64 }
 
-fn<'a> maybe_of(r: &'a i64, $return: &out MaybeRef<'a>) {
+fn maybe_of<'a>(r: &'a i64, $return: &out MaybeRef<'a>) {
   entry:
     $return.* = MaybeRef::Some(copy r);
     return
@@ -129,7 +129,7 @@ fn use_identity() {
 # consume the Wrap via extern. Nothing escapes past return.
 extern fn use_wrap(w: Wrap);
 
-fn<'a> local_wrap_consumed(x: &'a i64) {
+fn local_wrap_consumed<'a>(x: &'a i64) {
   w: Wrap<'a>;
   entry:
     w.r = copy x;
@@ -142,7 +142,7 @@ fn<'a> local_wrap_consumed(x: &'a i64) {
 # Writing a caller-provided ref through a caller-provided &out slot.
 # Source region 'a matches destination region 'a; escape check
 # permits it because the source is signature-visible.
-fn<'a> write_through_out(dst: &out &'a i64, src: &'a i64) {
+fn write_through_out<'a>(dst: &out &'a i64, src: &'a i64) {
   entry:
     dst.* = copy src;
     return
@@ -150,7 +150,7 @@ fn<'a> write_through_out(dst: &out &'a i64, src: &'a i64) {
 
 # ---------- enum with ref variant, wrapped and returned ----------
 
-fn<'a> wrap_ref_in_enum(r: &'a i64, $return: &out MaybeRef<'a>) {
+fn wrap_ref_in_enum<'a>(r: &'a i64, $return: &out MaybeRef<'a>) {
   entry:
     $return.* = MaybeRef::Some(copy r);
     return
@@ -171,7 +171,7 @@ fn<'a> wrap_ref_in_enum(r: &'a i64, $return: &out MaybeRef<'a>) {
 # would have surfaced a confusing "declare bound 'a: 'b" diagnostic
 # referring to a name not in the fn's scope. Reuse-first makes
 # the acceptance intentional and name-agnostic.
-fn<'a> bare_custom_reuses_fn_lifetime(w: Wrap, x: &'a i64) {
+fn bare_custom_reuses_fn_lifetime<'a>(w: Wrap, x: &'a i64) {
   entry:
     w.r = copy x;
     call use_wrap(move w);
@@ -185,7 +185,7 @@ fn<'a> bare_custom_reuses_fn_lifetime(w: Wrap, x: &'a i64) {
 # needing an outlives bound. Guards against a regression where body-
 # local Custom elision would synthesize a distinct region and force
 # a spurious `'a: 's0` mismatch on the move.
-fn<'a> bare_custom_local_shares_param_region(x: Wrap) {
+fn bare_custom_local_shares_param_region<'a>(x: Wrap) {
   y: Wrap;
   entry:
     y = move x;
@@ -204,11 +204,11 @@ fn<'a> bare_custom_local_shares_param_region(x: Wrap) {
 # loop is what makes this converge — a single second pass would
 # leave Nest2 at arity 0. Regression guard: removing the fixpoint
 # loop breaks Nest2's elided form.
-struct<'a, 'b, 'c> Trip: Move { p: &'a i64, q: &'b i64, r: &'c i64 }
+struct Trip<'a, 'b, 'c>: Move { p: &'a i64, q: &'b i64, r: &'c i64 }
 struct Nest1: Move { t: Trip }
 struct Nest2: Move { n: Nest1 }
 extern fn use_nest2(x: Nest2);
-fn<'a, 'b, 'c> propagate_arity(p: &'a i64, q: &'b i64, r: &'c i64) {
+fn propagate_arity<'a, 'b, 'c>(p: &'a i64, q: &'b i64, r: &'c i64) {
   n: Nest2;
   entry:
     n.n.t.p = copy p;

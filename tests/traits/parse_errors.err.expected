@@ -126,7 +126,7 @@ error: at 127:20: [PARSE-ReservedIdent] 'Self' may only appear as a type referen
      |
 error: at 137:15: [PARSE-ReservedIdent] 'Self' may only appear as a type reference inside a trait or impl body
      |
- 136 | trait<T: Copy + Drop> GenericT { fn m(recv: &Self, arg: &T); }
+ 136 | trait GenericT<T: Copy + Drop> { fn m(recv: &Self, arg: &T); }
  137 | impl GenericT<Self> for R {
      |               ^^^^
  138 |   fn m(recv: &R, arg: &R) {
@@ -134,7 +134,7 @@ error: at 137:15: [PARSE-ReservedIdent] 'Self' may only appear as a type referen
 error: at 147:51: [PARSE-ReservedIdent] In function 'm': 'Self' does not take type or lifetime arguments
      |
  146 | # so passing it type or lifetime arguments is rejected.
- 147 | trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: &Self<T>); }
+ 147 | trait SelfWithArgsT<T: Copy + Drop> { fn m(recv: &Self<T>); }
      |                                                   ^^^^
  148 | 
      |
@@ -145,16 +145,16 @@ error: at 153:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as 
      |      ^^^^
  154 |   fn m(recv: &R) {
      |
-error: at 165:6: [PARSE-MalformedCst] In function 'm': Duplicate type parameter 'T'
+error: at 165:8: [PARSE-MalformedCst] In function 'm': Duplicate type parameter 'T'
      |
  164 | impl<T> ShadowM for R {
- 165 |   fn<T> m(recv: &R) {
-     |      ^
+ 165 |   fn m<T>(recv: &R) {
+     |        ^
  166 |     entry:
      |
-error: at 174:31: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+error: at 174:54: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
      |
  173 | # The same direct trait bound cannot be declared twice.
- 174 | extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T);
-     |                               ^^^^^^^^^^^^^^
+ 174 | extern fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T);
+     |                                                      ^^^^^^^^^^^^^^
      |

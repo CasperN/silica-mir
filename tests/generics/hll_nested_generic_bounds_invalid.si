@@ -2,7 +2,7 @@
 # has the declared Drop marker, but the inner instantiation is invalid because
 # `Linear` does not satisfy its own `T: Drop` requirement.
 
-struct<T: Drop> Sink: Drop { inner: T }
+struct Sink<T: Drop>: Drop { inner: T }
 struct Linear { value: i64 }
 
 # covers: recursive HLL bound validation attributes failure to the nested arg

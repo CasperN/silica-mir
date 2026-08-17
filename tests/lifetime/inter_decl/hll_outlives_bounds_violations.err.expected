@@ -1,14 +1,14 @@
 error: at 8:50: [LT-LifetimeMismatch] In function 'mk_missing': type 'Wrap' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'mk_missing'
    |
  7 | # Fn declares no bound; Wrap<'a, 'b> requires 'b: 'a.
- 8 | fn<'a, 'b> mk_missing(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
+ 8 | fn mk_missing<'a, 'b>(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
    |                                                  ^^^^^^^^^^^^
  9 |   Wrap { x: x, y: y }
    |
   hint: declare bound 'b: 'a on function 'mk_missing' or change the value flow so it is not required
 error: at 18:3: [LT-LifetimeMismatch] In function 'explicit_lifetimes_conflict': the call to 'first_ref' requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'explicit_lifetimes_conflict'
     |
- 17 | fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+ 17 | fn explicit_lifetimes_conflict<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 {
  18 |   first_ref<'b, 'a>(x, y)
     |   ^^^^^^^^^^^^^^^^^^^^^^^
  19 | }
@@ -16,7 +16,7 @@ error: at 18:3: [LT-LifetimeMismatch] In function 'explicit_lifetimes_conflict':
   hint: declare bound 'a: 'b on function 'explicit_lifetimes_conflict' or change the value flow so it is not required
 error: at 18:3: [LT-LifetimeMismatch] In function 'explicit_lifetimes_conflict': the call to 'first_ref' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'explicit_lifetimes_conflict'
     |
- 17 | fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+ 17 | fn explicit_lifetimes_conflict<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 {
  18 |   first_ref<'b, 'a>(x, y)
     |   ^^^^^^^^^^^^^^^^^^^^^^^
  19 | }
@@ -24,7 +24,7 @@ error: at 18:3: [LT-LifetimeMismatch] In function 'explicit_lifetimes_conflict':
   hint: declare bound 'b: 'a on function 'explicit_lifetimes_conflict' or change the value flow so it is not required
 error: at 25:3: [LT-LifetimeMismatch] In function 'inferred_lifetime_conflict': the call to 'same_ref' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'inferred_lifetime_conflict'
     |
- 24 | fn<'a, 'b> inferred_lifetime_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+ 24 | fn inferred_lifetime_conflict<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 {
  25 |   same_ref(x, y)
     |   ^^^^^^^^^^^^^^
  26 | }
@@ -32,7 +32,7 @@ error: at 25:3: [LT-LifetimeMismatch] In function 'inferred_lifetime_conflict': 
   hint: declare bound 'b: 'a on function 'inferred_lifetime_conflict' or change the value flow so it is not required
 error: at 31:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict': the call to 'identity' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'generic_ref_result_conflict'
     |
- 30 | fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
+ 30 | fn generic_ref_result_conflict<'a, 'b>(x: &'a i64) -> &'b i64 {
  31 |   identity<&'a i64>(x)
     |   ^^^^^^^^^^^^^^^^^^^^
  32 | }
@@ -40,7 +40,7 @@ error: at 31:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict':
   hint: declare bound 'b: 'a on function 'generic_ref_result_conflict' or change the value flow so it is not required
 error: at 31:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict': the call to 'identity' requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'generic_ref_result_conflict'
     |
- 30 | fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
+ 30 | fn generic_ref_result_conflict<'a, 'b>(x: &'a i64) -> &'b i64 {
  31 |   identity<&'a i64>(x)
     |   ^^^^^^^^^^^^^^^^^^^^
  32 | }
@@ -49,14 +49,14 @@ error: at 31:3: [LT-LifetimeMismatch] In function 'generic_ref_result_conflict':
 error: at 41:60: [LT-LifetimeMismatch] In function 'project_wrong_lifetime': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'project_wrong_lifetime'
     |
  40 | # than leaking the struct's declaration-local name
- 41 | fn<'a, 'b> project_wrong_lifetime(r: Ref<'a>) -> &'b i64 { r.p }
+ 41 | fn project_wrong_lifetime<'a, 'b>(r: Ref<'a>) -> &'b i64 { r.p }
     |                                                            ^^^
  42 | 
     |
   hint: declare bound 'a: 'b on function 'project_wrong_lifetime' or change the value flow so it is not required
 error: at 49:27: [LT-LifetimeMismatch] In function 'unwrap_held_wrong': this assignment requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'unwrap_held_wrong'
     |
- 48 | fn<'a, 'b, T> unwrap_held_wrong(h: Held<'a, T>) -> &'b T {
+ 48 | fn unwrap_held_wrong<'a, 'b, T>(h: Held<'a, T>) -> &'b T {
  49 |   h match { One(inner) => inner }
     |                           ^^^^^
  50 | }

@@ -19,18 +19,18 @@ error: at 17:1: [TC-ImplMissingTraitMethod] Impl of 'Required' is missing method
     | ^
  18 |   fn extra(recv: &Self) { unit }
     |
-error: at 26:29: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 has type &out 's1 bool, trait declares &out 's1 i64 (after Self := S)
+error: at 26:29: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 has type &'s1 out bool, trait declares &'s1 out i64 (after Self := S)
     |
  25 | impl Result for S {
  26 |   fn result(recv: &Self) -> bool { false }
     |                             ^^^^
  27 | }
     |
-error: at 34:6: [TC-DuplicateLifetimeParam] In function '<S as Lifetime<'a>>::lifetime': lifetime parameter 'a is declared more than once
+error: at 34:15: [TC-DuplicateLifetimeParam] In function '<S as Lifetime<'a>>::lifetime': lifetime parameter 'a is declared more than once
     |
  33 | impl<'a> Lifetime<'a> for S {
- 34 |   fn<'a> lifetime(recv: &'a Self) { unit }
-    |      ^^
+ 34 |   fn lifetime<'a>(recv: &'a Self) { unit }
+    |               ^^
  35 | }
     |
 error: at 41:1: [TC-ImplTraitArgArity] Trait 'GenericTrait' expects 1 type argument(s), got 0

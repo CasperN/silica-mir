@@ -29,7 +29,7 @@ fn pick_second(x: &i64, y: &i64, $return: &out &i64) {
 
 # Rule: elided output constrained by every input, whether declared
 # or synthesized. `'a outlives out` AND `'s0 outlives out`.
-fn<'a> mixed_elision(x: &'a i64, y: &i64, $return: &out &i64) {
+fn mixed_elision<'a>(x: &'a i64, y: &i64, $return: &out &i64) {
   entry:
     $return.* = copy x;
     return

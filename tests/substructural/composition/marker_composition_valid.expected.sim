@@ -3,7 +3,7 @@ struct CopyDropScalars: Copy + Drop {
   y: bool
 }
 
-struct<'s0> CopySharedRef: Copy {
+struct CopySharedRef<'s0>: Copy {
   r: &'s0 i64
   x: i64
 }
@@ -13,24 +13,24 @@ struct MoveScalars: Move {
   y: bool
 }
 
-struct<'s0, 's1, 's2, 's3, 's4> MoveAllRefKinds: Move {
-  a: &mut 's0 i64
-  b: &out 's1 i64
-  c: &drop 's2 i64
-  d: &uninit 's3 i64
+struct MoveAllRefKinds<'s0, 's1, 's2, 's3, 's4>: Move {
+  a: &'s0 mut i64
+  b: &'s1 out i64
+  c: &'s2 drop i64
+  d: &'s3 uninit i64
   e: &'s4 i64
 }
 
-struct<'s0> DropMutRef: Drop {
-  r: &mut 's0 i64
+struct DropMutRef<'s0>: Drop {
+  r: &'s0 mut i64
 }
 
-struct<'s0> DropUninitRef: Drop {
-  r: &uninit 's0 i64
+struct DropUninitRef<'s0>: Drop {
+  r: &'s0 uninit i64
 }
 
-struct<'s0> NoMarkersLinearField {
-  r: &out 's0 i64
+struct NoMarkersLinearField<'s0> {
+  r: &'s0 out i64
 }
 
 struct CopyInner: Copy {
@@ -42,7 +42,7 @@ struct CopyNested: Copy {
   y: i64
 }
 
-enum<'s0> RecursiveList: Copy + Drop {
+enum RecursiveList<'s0>: Copy + Drop {
   Nil: unit
   Cons: &'s0 RecursiveList<'s0>
 }

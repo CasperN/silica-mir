@@ -211,10 +211,10 @@ type_args     = "<" (type | lifetime) ("," (type | lifetime))* [","] ">"
 type          = integer_type | float_type | "bool" | "unit" | "never"
               | identifier [type_args]
               | "&" [lifetime] type
-              | "&mut" [lifetime] type
-              | "&out" [lifetime] type
-              | "&drop" [lifetime] type
-              | "&uninit" [lifetime] type
+              | "&" [lifetime] "mut" type
+              | "&" [lifetime] "out" type
+              | "&" [lifetime] "drop" type
+              | "&" [lifetime] "uninit" type
               | "*" type
               | "[" type ";" integer_literal "]"
 ```
@@ -222,13 +222,13 @@ type          = integer_type | float_type | "bool" | "unit" | "never"
 ### MIR
 
 ```text
-struct_decl   = "struct" [type_params] identifier [markers]
+struct_decl   = "struct" identifier [type_params] [markers]
                 "{" (field [","])* "}"
 
-enum_decl     = "enum" [type_params] identifier [markers]
+enum_decl     = "enum" identifier [type_params] [markers]
                 "{" (variant [","])* "}"
 
-function_decl = ["extern" [abi_string]] "fn" [type_params] identifier
+function_decl = ["extern" [abi_string]] "fn" identifier [type_params]
                 "(" params ")"
                 (";" | "{" local* basic_block* "}")
 
@@ -284,8 +284,8 @@ MIR syntax traps:
 ### HLL
 
 ```text
-function_decl = ["extern" [abi_string]] ["unsafe"] "fn" [type_params]
-                identifier "(" params ")" ["->" type]
+function_decl = ["extern" [abi_string]] ["unsafe"] "fn" identifier [type_params]
+                "(" params ")" ["->" type]
                 (";" | block)
 
 statement     = "let" ["mut"] identifier [":" type] ["=" expression] ";"

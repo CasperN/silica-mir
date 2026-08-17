@@ -10,12 +10,12 @@ impl Foo {
       return
   }
 
-  fn<T: Copy + Drop> generic(recv: &Foo) {
+  fn generic<T: Copy + Drop>(recv: &Foo) {
     entry:
       return
   }
 
-  fn<'a> lifetime(recv: &Foo) {
+  fn lifetime<'a>(recv: &Foo) {
     entry:
       return
   }
@@ -46,7 +46,7 @@ fn method_argument_errors(value: &Foo) {
     return
 }
 
-struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop {
+struct Pair<T: Copy + Drop, U: Copy + Drop>: Copy + Drop {
   first: T,
   second: U,
 }

@@ -1,9 +1,9 @@
-struct<'a, 'b: 'a> Wrap {
+struct Wrap<'a, 'b: 'a> {
   x: &'a i64
   y: &'b i64
 }
 
-fn<'a, 'b: 'a, 's0> mk_ok(x: &'a i64, y: &'b i64, $return: &out 's0 Wrap<'a, 'b>) {
+fn mk_ok<'a, 'b: 'a, 's0>(x: &'a i64, y: &'b i64, $return: &'s0 out Wrap<'a, 'b>) {
   entry:
     $return.*.x = move x;
     $return.*.y = move y;
@@ -14,7 +14,7 @@ fn<'a, 'b: 'a, 's0> mk_ok(x: &'a i64, y: &'b i64, $return: &out 's0 Wrap<'a, 'b>
     return
 }
 
-fn<'a, 's0> mk_same(x: &'a i64, $return: &out 's0 Wrap<'a, 'a>) {
+fn mk_same<'a, 's0>(x: &'a i64, $return: &'s0 out Wrap<'a, 'a>) {
   entry:
     $return.*.x = copy x;
     $return.*.y = move x;
@@ -24,7 +24,7 @@ fn<'a, 's0> mk_same(x: &'a i64, $return: &out 's0 Wrap<'a, 'a>) {
     return
 }
 
-fn<'a, 'b, 's0> first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
+fn first_ref<'a, 'b, 's0>(x: &'a i64, y: &'b i64, $return: &'s0 out &'a i64) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -35,7 +35,7 @@ fn<'a, 'b, 's0> first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
     return
 }
 
-fn<'a, 'b, 's0> explicit_first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a i64) {
+fn explicit_first_ref<'a, 'b, 's0>(x: &'a i64, y: &'b i64, $return: &'s0 out &'a i64) {
   $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -48,7 +48,7 @@ fn<'a, 'b, 's0> explicit_first_ref(x: &'a i64, y: &'b i64, $return: &out 's0 &'a
     return
 }
 
-fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
+fn identity<'s0, T: Copy + Drop>(x: T, $return: &'s0 out T) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -57,7 +57,7 @@ fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
     return
 }
 
-fn<'a, 's0> generic_ref_identity(x: &'a i64, $return: &out 's0 &'a i64) {
+fn generic_ref_identity<'a, 's0>(x: &'a i64, $return: &'s0 out &'a i64) {
   $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -69,11 +69,11 @@ fn<'a, 's0> generic_ref_identity(x: &'a i64, $return: &out 's0 &'a i64) {
     return
 }
 
-struct<'x> Ref: Copy + Drop {
+struct Ref<'x>: Copy + Drop {
   p: &'x i64
 }
 
-fn<'a, 's0> mk_ref_via_let(p: &'a i64, $return: &out 's0 Ref<'a>) {
+fn mk_ref_via_let<'a, 's0>(p: &'a i64, $return: &'s0 out Ref<'a>) {
   r: Ref<'a>;
   entry:
     r.p = move p;
@@ -85,7 +85,7 @@ fn<'a, 's0> mk_ref_via_let(p: &'a i64, $return: &out 's0 Ref<'a>) {
     return
 }
 
-fn<'a, 's0> project_ref(r: Ref<'a>, $return: &out 's0 &'a i64) {
+fn project_ref<'a, 's0>(r: Ref<'a>, $return: &'s0 out &'a i64) {
   entry:
     $return.* = move r.p;
     unborrow $return;
@@ -94,7 +94,7 @@ fn<'a, 's0> project_ref(r: Ref<'a>, $return: &out 's0 &'a i64) {
     return
 }
 
-fn<'a, 's0, 's1> project_ref_through_borrow(r: &'s0 Ref<'a>, $return: &out 's1 &'a i64) {
+fn project_ref_through_borrow<'a, 's0, 's1>(r: &'s0 Ref<'a>, $return: &'s1 out &'a i64) {
   entry:
     $return.* = copy r.*.p;
     unborrow $return;
@@ -104,11 +104,11 @@ fn<'a, 's0, 's1> project_ref_through_borrow(r: &'s0 Ref<'a>, $return: &out 's1 &
     return
 }
 
-enum<'y, T> Held: Copy + Drop {
+enum Held<'y, T>: Copy + Drop {
   One: &'y T
 }
 
-fn<'a, 's0, T> unwrap_held(h: Held<'a, T>, $return: &out 's0 &'a T) {
+fn unwrap_held<'a, 's0, T>(h: Held<'a, T>, $return: &'s0 out &'a T) {
   inner: &'a T;
   entry:
     switchEnum(h) [One: switch_One_0]
@@ -125,7 +125,7 @@ fn<'a, 's0, T> unwrap_held(h: Held<'a, T>, $return: &out 's0 &'a T) {
     return
 }
 
-fn<'a, 's0, T: Copy + Drop> mk_held_via_let(p: &'a T, $return: &out 's0 Held<'a, T>) {
+fn mk_held_via_let<'a, 's0, T: Copy + Drop>(p: &'a T, $return: &'s0 out Held<'a, T>) {
   h: Held<'a, T>;
   entry:
     h = Held<T>::One(move p);

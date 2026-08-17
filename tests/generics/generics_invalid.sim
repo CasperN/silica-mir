@@ -24,20 +24,20 @@
 
 # ── Shared type declarations ─────────────────────────────────────────
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
 
 # Linear carries no markers; it satisfies neither Copy, Drop, nor Move.
 # Any instantiation of Box<Linear> or Option<Linear> fails the bound check.
 struct Linear { x: i64 }
 
 # ── Generic shells for marker × param coverage (invalid side) ────────
-struct<T: Copy> BoxC: Copy { inner: T }
-struct<T: Drop> BoxD: Drop { inner: T }
-struct<T: Move> BoxM: Move { inner: T }
-struct<T: Copy + Drop> BoxCD: Copy + Drop { inner: T }
-struct<T: Copy + Drop> OuterBox: Copy + Drop { inner: BoxCD<T> }
+struct BoxC<T: Copy>: Copy { inner: T }
+struct BoxD<T: Drop>: Drop { inner: T }
+struct BoxM<T: Move>: Move { inner: T }
+struct BoxCD<T: Copy + Drop>: Copy + Drop { inner: T }
+struct OuterBox<T: Copy + Drop>: Copy + Drop { inner: BoxCD<T> }
 
 # ── Material types for use-site violations ───────────────────────────
 struct MatL { x: i64 }
@@ -48,47 +48,47 @@ struct MatM: Move { x: i64 }
 # ── Decl-side composition violations (COMP-*) ────────────────────────
 
 # T has no bounds, so class_of(T) is empty. Claiming Copy fails.
-struct<T> ClaimsCopy: Copy { inner: T }
+struct ClaimsCopy<T>: Copy { inner: T }
 
 # T is Copy but not Drop, so claiming Drop fails.
-struct<T: Copy> ClaimsDrop: Drop { inner: T }
+struct ClaimsDrop<T: Copy>: Drop { inner: T }
 
 # T is only Move; Move does not imply Copy. Claiming Copy fails.
-struct<T: Move> ClaimsCopyFromMove: Copy { inner: T }
+struct ClaimsCopyFromMove<T: Move>: Copy { inner: T }
 
 # Generic enum: same rule as struct fields. T has no bounds, so the
 # Copy claim on the enum is unsatisfied by variant A's payload type T.
-enum<T> ClaimsCopyEnum: Copy { A: T  B: unit }
+enum ClaimsCopyEnum<T>: Copy { A: T  B: unit }
 
 # covers: type_kind=struct class=Drop op=composition bound=T:Drop (missing Copy)
 # T:Drop only; claiming Copy+Drop — COMP-CopyMarkerNotSatisfied.
-struct<T: Drop> BoxBad_DropClaimsCopy: Copy + Drop { inner: T }
+struct BoxBad_DropClaimsCopy<T: Drop>: Copy + Drop { inner: T }
 
 # covers: type_kind=struct class=Copy op=composition bound=T:Copy (missing Drop)
 # T:Copy only; claiming Copy+Drop — COMP-DropMarkerNotSatisfied.
-struct<T: Copy> BoxBad_CopyClaimsDrop: Copy + Drop { inner: T }
+struct BoxBad_CopyClaimsDrop<T: Copy>: Copy + Drop { inner: T }
 
 # covers: type_kind=struct class=Move op=composition bound=T:Move (missing Copy)
 # T:Move; claiming Copy — COMP-CopyMarkerNotSatisfied.
-struct<T: Move> BoxBad_MoveClaimsCopy: Copy { inner: T }
+struct BoxBad_MoveClaimsCopy<T: Move>: Copy { inner: T }
 
 # covers: type_kind=struct class=Move op=composition bound=T:Move (missing Drop)
 # T:Move; claiming Drop — COMP-DropMarkerNotSatisfied.
-struct<T: Move> BoxBad_MoveClaimsDrop: Drop { inner: T }
+struct BoxBad_MoveClaimsDrop<T: Move>: Drop { inner: T }
 
 # covers: type_kind=struct class=Copy op=composition bound=none
 # No bound; claiming Copy — COMP-CopyMarkerNotSatisfied.
-struct<T> UnboundedBox_ClaimsCopy: Copy { inner: T }
+struct UnboundedBox_ClaimsCopy<T>: Copy { inner: T }
 
 # covers: type_kind=struct class=Drop op=composition bound=none
-struct<T> UnboundedBox_ClaimsDrop: Drop { inner: T }
+struct UnboundedBox_ClaimsDrop<T>: Drop { inner: T }
 
 # covers: type_kind=struct class=Move op=composition bound=none
-struct<T> UnboundedBox_ClaimsMove: Move { inner: T }
+struct UnboundedBox_ClaimsMove<T>: Move { inner: T }
 
 # covers: type_kind=struct class=Copy op=composition bound=T:Copy (no Move)
 # Copy alone does not imply Move — COMP-MoveMarkerNotSatisfied.
-struct<T: Copy> BoxBad_CopyClaimsMove: Move { inner: T }
+struct BoxBad_CopyClaimsMove<T: Copy>: Move { inner: T }
 
 # ── Use-site bound violations (TC-InvalidDeclaredType) ───────────────
 
@@ -101,8 +101,8 @@ struct WrongArity2 { field: Box }
 # expected count. Guards against a regression where elision would
 # silently pad the missing arg, or downstream `substitute` would panic
 # on the mismatched Instance.
-struct<'a, 'b> Both: Move { l: &'a i64, r: &'b i64 }
-struct<'a> WrongLifetimeArity { field: Both<'a> }
+struct Both<'a, 'b>: Move { l: &'a i64, r: &'b i64 }
+struct WrongLifetimeArity<'a> { field: Both<'a> }
 
 # Wrong-arity Custom used past typecheck exercises the elaboration
 # walkers' fallible substitute path. The primary TC-InvalidDeclaredType
@@ -110,7 +110,7 @@ struct<'a> WrongLifetimeArity { field: Both<'a> }
 # extract from the partially-typed program without panicking. Guards
 # against a regression that would either silently mask the arity error
 # via decl-lifetime leak, or crash the pipeline on the invalid Instance.
-fn<'a> arity_error_no_panic(x: Both<'a>) {
+fn arity_error_no_panic<'a>(x: Both<'a>) {
   y: i64;
   entry:
     y = copy x.l.*;
@@ -129,7 +129,7 @@ fn consume(b: Box<Linear>) {
 # Nested violation: &out U is Move only, not Copy+Drop. Option's T:
 # Copy+Drop bound is not satisfied. The scope for U: Move is consulted
 # and still does not grant Copy or Drop.
-fn<U: Move> option_of_out(x: Option<&out U>) {
+fn option_of_out<U: Move>(x: Option<&out U>) {
   entry:
     return
 }
@@ -169,13 +169,13 @@ struct UseOuter_MutRef { b: OuterBox<&mut i64> }
 
 # ── Free-function generic arguments ──────────────────────────────────
 
-fn<'a, T: Copy + Drop> generic_call_target() {
+fn generic_call_target<'a, T: Copy + Drop>() {
   entry:
     return
 }
 
 # covers: MIR free-function constant omits a required type argument
-fn<'a> free_call_missing_type_arg() {
+fn free_call_missing_type_arg<'a>() {
   entry:
     call generic_call_target<'a>();
     return
@@ -196,7 +196,7 @@ fn free_call_bound_failure() {
 }
 
 # covers: MIR free-function constant supplies the wrong lifetime arity
-fn<'a> free_call_lifetime_arity() {
+fn free_call_lifetime_arity<'a>() {
   entry:
     call generic_call_target<'a, 'a, i64>();
     return

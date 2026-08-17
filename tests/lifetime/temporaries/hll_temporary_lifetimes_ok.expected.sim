@@ -1,4 +1,4 @@
-fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
+fn read<'s0, 's1>(r: &'s0 i64, $return: &'s1 out i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -8,7 +8,7 @@ fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> named_value_borrow($return: &out 's0 i64) {
+fn named_value_borrow<'s0>($return: &'s0 out i64) {
   value: i64;
   $tmp_0: &i64;
   $tmp_1: &out i64;
@@ -26,7 +26,7 @@ fn<'s0> named_value_borrow($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
+fn continue_cleans_loop_body<'s0>($return: &'s0 out i64) {
   i: i64;
   $tmp_0: unit;
   value: i64;
@@ -97,12 +97,12 @@ fn<'s0> continue_cleans_loop_body($return: &out 's0 i64) {
     return
 }
 
-struct<'a, T> View: Copy + Drop {
+struct View<'a, T>: Copy + Drop {
   data: &'a *T
   len: u64
 }
 
-fn<'a, 's0, T> view_get(s: &'a View<'a, T>, $return: &out 's0 &'a T) {
+fn view_get<'a, 's0, T>(s: &'a View<'a, T>, $return: &'s0 out &'a T) {
   entry:
     $return.* = ptr_cast(copy s.*.data.*, &T);
     unborrow $return;

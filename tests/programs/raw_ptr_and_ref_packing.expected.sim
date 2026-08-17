@@ -3,7 +3,7 @@ struct Point: Copy + Drop {
   y: i64
 }
 
-fn<'s0> read_field_via_raw_ptr(pt: Point, $return: &out 's0 i64) {
+fn read_field_via_raw_ptr<'s0>(pt: Point, $return: &'s0 out i64) {
   p: *Point;
   entry:
     p = &raw pt;
@@ -17,14 +17,14 @@ fn<'s0> read_field_via_raw_ptr(pt: Point, $return: &out 's0 i64) {
     return
 }
 
-struct<'s0, 's1> Pair: Move {
-  a: &mut 's0 i64
-  b: &mut 's1 i64
+struct Pair<'s0, 's1>: Move {
+  a: &'s0 mut i64
+  b: &'s1 mut i64
 }
 
-extern fn<'s0, 's1> use_pair(p: Pair<'s0, 's1>);
+extern fn use_pair<'s0, 's1>(p: Pair<'s0, 's1>);
 
-fn<'s0, 's1> pack_and_pass(x: i64, y: i64) {
+fn pack_and_pass<'s0, 's1>(x: i64, y: i64) {
   $tmp_0: unit;
   xm: i64;
   ym: i64;

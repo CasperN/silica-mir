@@ -78,7 +78,7 @@ error: at 128:37: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_a
 error: at 130:42: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_args_too_many': 'RefWrap' takes 1 lifetime argument(s), found 2
      |
  129 | # covers: a nominal reference supplies too many lifetime arguments
- 130 | fn<'a> nominal_lifetime_args_too_many(r: RefWrap<'a, 'a>) -> unit { unit }
+ 130 | fn nominal_lifetime_args_too_many<'a>(r: RefWrap<'a, 'a>) -> unit { unit }
      |                                          ^^^^^^^^^^^^^^^
  131 | 
      |
@@ -101,12 +101,12 @@ error: at 156:27: [HTC-UndeclaredType] In function 'free_fn_with_drop_self': und
  155 | fn free_fn_with_out_self(&out self) -> unit { unit }
  156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
      |                           ^^^^^^^^^^
- 157 | fn<'a> free_fn_with_named_drop_self(&'a drop self) -> unit { unit }
+ 157 | fn free_fn_with_named_drop_self<'a>(&'a drop self) -> unit { unit }
      |
 error: at 157:37: [HTC-UndeclaredType] In function 'free_fn_with_named_drop_self': undeclared type 'Self'
      |
  156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
- 157 | fn<'a> free_fn_with_named_drop_self(&'a drop self) -> unit { unit }
+ 157 | fn free_fn_with_named_drop_self<'a>(&'a drop self) -> unit { unit }
      |                                     ^^^^^^^^^^^^^
  158 | 
      |
@@ -189,21 +189,21 @@ error: at 110:67: [HTC-GenericArgsOnFunctionValue] In function 'call_generic_arg
      |
 error: at 114:3: [HTC-LifetimeArgArityMismatch] In function 'call_lifetime_args_too_few': function 'choose_first' takes 2 lifetime argument(s), found 1
      |
- 113 | fn<'a> call_lifetime_args_too_few(x: &'a i64) -> &'a i64 {
+ 113 | fn call_lifetime_args_too_few<'a>(x: &'a i64) -> &'a i64 {
  114 |   choose_first<'a>(x, x)
      |   ^^^^^^^^^^^^
  115 | }
      |
 error: at 118:3: [HTC-LifetimeArgArityMismatch] In function 'call_lifetime_args_too_many': function 'borrow_identity' takes 1 lifetime argument(s), found 2
      |
- 117 | fn<'a> call_lifetime_args_too_many(x: &'a i64) -> &'a i64 {
+ 117 | fn call_lifetime_args_too_many<'a>(x: &'a i64) -> &'a i64 {
  118 |   borrow_identity<'a, 'a>(x)
      |   ^^^^^^^^^^^^^^^
  119 | }
      |
 error: at 122:3: [HTC-UndeclaredLifetime] In function 'call_undeclared_lifetime': undeclared lifetime 'missing
      |
- 121 | fn<'a> call_undeclared_lifetime(x: &'a i64) -> &'a i64 {
+ 121 | fn call_undeclared_lifetime<'a>(x: &'a i64) -> &'a i64 {
  122 |   borrow_identity<'missing>(x)
      |   ^^^^^^^^^^^^^^^
  123 | }

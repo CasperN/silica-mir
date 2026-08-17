@@ -8,7 +8,7 @@ error: at 220:20: [HTC-TraitBoundCycle] trait-bound cycle: CycleFirst -> CycleSe
 error: at 222:26: [HTC-TraitBoundCycle] trait-bound cycle: ExpandingCycle -> ExpandingCycle
      |
  221 | 
- 222 | trait<X> ExpandingCycle: ExpandingCycle<[X; 1]> {}
+ 222 | trait ExpandingCycle<X>: ExpandingCycle<[X; 1]> {}
      |                          ^^^^^^^^^^^^^^^^^^^^^^
  223 | 
      |
@@ -35,7 +35,7 @@ error: at 214:29: [HTC-UndeclaredTrait] trait 'MissingSupertraitUse' has undecla
      |
 error: at 217:29: [HTC-TraitArgArityMismatch] trait bound 'GenericSupertrait' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
      |
- 216 | trait<X> GenericSupertrait {}
+ 216 | trait GenericSupertrait<X> {}
  217 | trait WrongSupertraitArity: GenericSupertrait {}
      |                             ^^^^^^^^^^^^^^^^^
  218 | 
@@ -147,14 +147,14 @@ error: at 137:9: [HTC-UnsafeRequired] In function 'unsafe_inherent_call': call t
      |
 error: at 166:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_bound_method': receiver call 'T.bound_collision' is ambiguous; trait candidates: <T as BoundFirst>::bound_collision, <T as BoundSecond>::bound_collision
      |
- 165 | fn<T: BoundFirst + BoundSecond> ambiguous_bound_method(value: &T) {
+ 165 | fn ambiguous_bound_method<T: BoundFirst + BoundSecond>(value: &T) {
  166 |   value.bound_collision();
      |         ^^^^^^^^^^^^^^^
  167 | }
      |
 error: at 183:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_bound_and_impl': receiver call '&T.mixed_collision' is ambiguous; trait candidates: <T as DirectCollision>::mixed_collision, <&U as ReferenceCollision>::mixed_collision
      |
- 182 | fn<T: DirectCollision> ambiguous_bound_and_impl(value: &T) {
+ 182 | fn ambiguous_bound_and_impl<T: DirectCollision>(value: &T) {
  183 |   value.mixed_collision();
      |         ^^^^^^^^^^^^^^^
  184 | }
@@ -168,35 +168,35 @@ error: at 201:9: [HTC-BoundNotSatisfied] In function 'reject_bound_method_argume
      |
 error: at 206:9: [HTC-UnsafeRequired] In function 'reject_bound_unsafe': call to unsafe trait method 'bound_unsafe' requires unsafe block
      |
- 205 | fn<T: GenericBoundMethod> reject_bound_unsafe(value: &T) {
+ 205 | fn reject_bound_unsafe<T: GenericBoundMethod>(value: &T) {
  206 |   value.bound_unsafe();
      |         ^^^^^^^^^^^^
  207 | }
      |
 error: at 211:9: [HTC-UnresolvedReceiverCall] In function 'reject_unbounded_receiver': no method, callable field, or free function 'bound_generic' applies to receiver type &T
      |
- 210 | fn<T> reject_unbounded_receiver(value: &T) {
+ 210 | fn reject_unbounded_receiver<T>(value: &T) {
  211 |   value.bound_generic<WrongBoundArgument>(value);
      |         ^^^^^^^^^^^^^
  212 | }
      |
 error: at 226:9: [HTC-UnresolvedReceiverCall] In function 'expanding_cycle_lookup': no method, callable field, or free function 'missing_cycle_method' applies to receiver type &T
      |
- 225 | fn<T: ExpandingCycle<i64>> expanding_cycle_lookup(value: &T) {
+ 225 | fn expanding_cycle_lookup<T: ExpandingCycle<i64>>(value: &T) {
  226 |   value.missing_cycle_method();
      |         ^^^^^^^^^^^^^^^^^^^^
  227 | }
      |
 error: at 254:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_inherited_method': receiver call 'T.inherited_collision' is ambiguous; trait candidates: <T as InheritedCollision<i64>>::inherited_collision, <T as InheritedCollision<bool>>::inherited_collision
      |
- 253 | fn<T: CollisionDiamond> ambiguous_inherited_method(value: &T) {
+ 253 | fn ambiguous_inherited_method<T: CollisionDiamond>(value: &T) {
  254 |   value.inherited_collision();
      |         ^^^^^^^^^^^^^^^^^^^
  255 | }
      |
 error: at 267:9: [HTC-AmbiguousReceiverCall] In function 'ambiguous_redeclared_method': receiver call 'T.redeclared' is ambiguous; trait candidates: <T as RedeclaredChild>::redeclared, <T as RedeclaredParent>::redeclared
      |
- 266 | fn<T: RedeclaredChild> ambiguous_redeclared_method(value: &T) {
+ 266 | fn ambiguous_redeclared_method<T: RedeclaredChild>(value: &T) {
  267 |   value.redeclared();
      |         ^^^^^^^^^^
  268 | }
@@ -217,7 +217,7 @@ error: at 282:9: [HTC-BoundNotSatisfied] In function 'reject_inherited_method_ar
      |
 error: at 287:9: [HTC-UnsafeRequired] In function 'reject_inherited_unsafe': call to unsafe trait method 'inherited_dangerous' requires unsafe block
      |
- 286 | fn<T: InheritedRequirementsChild> reject_inherited_unsafe(value: &T) {
+ 286 | fn reject_inherited_unsafe<T: InheritedRequirementsChild>(value: &T) {
  287 |   value.inherited_dangerous();
      |         ^^^^^^^^^^^^^^^^^^^
  288 | }
@@ -231,7 +231,7 @@ error: at 298:3: [HTC-BoundNotSatisfied] In function 'qualified_missing_impl': t
      |
 error: at 309:26: [HTC-UnresolvedQualifiedMethod] In function 'qualified_child_does_not_alias_parent': trait 'QualifiedChild' has no method 'parent_only'
      |
- 308 | fn<T: QualifiedChild> qualified_child_does_not_alias_parent(value: &T) {
+ 308 | fn qualified_child_does_not_alias_parent<T: QualifiedChild>(value: &T) {
  309 |   <T as QualifiedChild>::parent_only(value);
      |                          ^^^^^^^^^^^
  310 | }
@@ -245,7 +245,7 @@ error: at 314:25: [HTC-UnresolvedQualifiedMethod] In function 'qualified_missing
      |
 error: at 319:3: [HTC-TraitArgArityMismatch] In function 'qualified_wrong_trait_arity': trait 'GenericSupertrait' expects 0 lifetime and 1 type argument(s), found 0 lifetime and 0 type argument(s)
      |
- 318 | fn<T: GenericSupertrait<i64>> qualified_wrong_trait_arity(value: &T) {
+ 318 | fn qualified_wrong_trait_arity<T: GenericSupertrait<i64>>(value: &T) {
  319 |   <T as GenericSupertrait>::missing(value);
      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  320 | }
@@ -280,7 +280,7 @@ error: at 347:3: [HTC-UndeclaredTrait] In function 'qualified_unknown_trait': qu
      |
 error: at 354:3: [HTC-UndeclaredLifetime] In function 'qualified_unknown_lifetime': undeclared lifetime 'missing
      |
- 353 | fn<T> qualified_unknown_lifetime(value: &T) {
+ 353 | fn qualified_unknown_lifetime<T>(value: &T) {
  354 |   <T as QualifiedLifetime<'missing>>::missing(value);
      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  355 | }

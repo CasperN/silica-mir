@@ -15,7 +15,7 @@
 # covers: type_kind=fn lifetime_bound=none op=deref_write
 # The direct counterpart of `single_bound_flow` in the ok fixture,
 # but without the `'b: 'a` bound. LT-LifetimeMismatch fires.
-fn<'a, 'b> no_bound_flow_fails(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
+fn no_bound_flow_fails<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
   entry:
     $return.* = copy x;
     drop y;
@@ -28,7 +28,7 @@ fn<'a, 'b> no_bound_flow_fails(x: &'a i64, y: &'b i64, $return: &out &'b i64) {
 # `'b: 'a, 'c: 'b` gives 'c outlives 'b outlives 'a — so 'a is the
 # SHORTEST. Returning 'a into a slot expecting 'c would require
 # 'a: 'c, which isn't in the closure. LT-LifetimeMismatch.
-fn<'a, 'b: 'a, 'c: 'b> reversed_chain_fails(
+fn reversed_chain_fails<'a, 'b: 'a, 'c: 'b>(
   x: &'a i64,
   y: &'b i64,
   z: &'c i64,
@@ -45,7 +45,7 @@ fn<'a, 'b: 'a, 'c: 'b> reversed_chain_fails(
 
 # covers: type_kind=fn lifetime_bound=undeclared_bound
 # TC-UndeclaredLifetime points at the invalid bound itself.
-fn<'a: 'z> undeclared_bound_lt(x: &'a i64, $return: &out &'a i64) {
+fn undeclared_bound_lt<'a: 'z>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -56,7 +56,7 @@ fn<'a: 'z> undeclared_bound_lt(x: &'a i64, $return: &out &'a i64) {
 # covers: type_kind=fn lifetime_bound=named_into_static op=deref_write
 # The return slot demands 'static; the input is 'a with no bound.
 # LT-LifetimeMismatch fires because no 'a: 'static axiom is declared.
-fn<'a> named_into_static(x: &'a i64, $return: &out &'static i64) {
+fn named_into_static<'a>(x: &'a i64, $return: &out &'static i64) {
   entry:
     $return.* = copy x;
     return
@@ -67,7 +67,7 @@ fn<'a> named_into_static(x: &'a i64, $return: &out &'static i64) {
 # covers: type_kind=fn lifetime_bound=deep_chain_reversed
 # 'e: 'd: 'c: 'b: 'a means 'a is shortest. Flowing 'a into 'e slot
 # requires 'a: 'e which isn't in the closure. LT-LifetimeMismatch.
-fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd> deep_chain_reversed(
+fn deep_chain_reversed<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd>(
   x: &'a i64,
   $return: &out &'e i64
 ) {
@@ -81,7 +81,7 @@ fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd> deep_chain_reversed(
 # covers: type_kind=fn lifetime_bound=diamond_reversed
 # 'a: 'b, 'a: 'c, 'b: 'd, 'c: 'd — 'a is the longest, 'd is shortest.
 # Flowing 'd into 'a slot requires 'd: 'a; that's not in the closure.
-fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_d_into_a(
+fn diamond_d_into_a<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd>(
   x: &'d i64,
   $return: &out &'a i64
 ) {
@@ -99,14 +99,14 @@ fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_d_into_a(
 # caller requirement 'q: 'p. The caller's axiom set does not justify it, so
 # LT-LifetimeMismatch fires rather than misclassifying the callee variable as
 # an escaping body-local borrow.
-fn<'a, 'b: 'a> callee_needs_bound(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+fn callee_needs_bound<'a, 'b: 'a>(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     drop y;
     return
 }
 
-fn<'p, 'q> caller_missing_bound(x: &'p i64, y: &'q i64, $return: &out &'p i64) {
+fn caller_missing_bound<'p, 'q>(x: &'p i64, y: &'q i64, $return: &out &'p i64) {
   ret_out: &out &'p i64;
   entry:
     ret_out = &out $return.*;
@@ -116,14 +116,14 @@ fn<'p, 'q> caller_missing_bound(x: &'p i64, y: &'q i64, $return: &out &'p i64) {
 
 # ---------- missing bound at qualified method call sites ----------
 
-struct<'r> CallReceiver: Copy + Drop { value: &'r i64 }
+struct CallReceiver<'r>: Copy + Drop { value: &'r i64 }
 
 trait QualifiedNeedsBound {
-  fn<'a, 'b: 'a> trait_needs(recv: &Self, x: &'a i64, y: &'b i64);
+  fn trait_needs<'a, 'b: 'a>(recv: &Self, x: &'a i64, y: &'b i64);
 }
 
 impl<'r> CallReceiver<'r> {
-  fn<'a, 'b: 'a> inherent_needs(
+  fn inherent_needs<'a, 'b: 'a>(
     recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
@@ -134,7 +134,7 @@ impl<'r> CallReceiver<'r> {
 }
 
 impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
-  fn<'a, 'b: 'a> trait_needs(
+  fn trait_needs<'a, 'b: 'a>(
     recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
@@ -145,7 +145,7 @@ impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
 }
 
 # covers: inherent method call exposes its outlives axiom to the caller
-fn<'p, 'q> inherent_caller_missing_bound(
+fn inherent_caller_missing_bound<'p, 'q>(
   recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
@@ -156,7 +156,7 @@ fn<'p, 'q> inherent_caller_missing_bound(
 }
 
 # covers: trait method call exposes its outlives axiom to the caller
-fn<'p, 'q> trait_caller_missing_bound(
+fn trait_caller_missing_bound<'p, 'q>(
   recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
@@ -170,11 +170,11 @@ fn<'p, 'q> trait_caller_missing_bound(
     return
 }
 
-trait<'a, 'b: 'a> QualifiedTraitHeaderBound {
+trait QualifiedTraitHeaderBound<'a, 'b: 'a> {
   fn invoke(recv: &Self);
 }
 
-struct<'a, 'b> HeaderReceiver: Copy + Drop {
+struct HeaderReceiver<'a, 'b>: Copy + Drop {
   first: &'a i64,
   second: &'b i64,
 }
@@ -194,20 +194,20 @@ impl<'a, 'b: 'a> QualifiedTraitHeaderBound<'a, 'b> for HeaderReceiver<'a, 'b> {
 }
 
 # covers: qualified trait call exposes the trait declaration's outlives bound
-fn<'p, 'q> trait_header_caller_missing_bound(recv: &HeaderReceiver<'p, 'q>) {
+fn trait_header_caller_missing_bound<'p, 'q>(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q> as QualifiedTraitHeaderBound<'p, 'q>>::invoke(copy recv);
     return
 }
 
 # covers: inherent method call exposes the impl header's outlives bound
-fn<'p, 'q> impl_header_caller_missing_bound(recv: &HeaderReceiver<'p, 'q>) {
+fn impl_header_caller_missing_bound<'p, 'q>(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q>>::inherent_header(copy recv);
     return
 }
 
-struct<T> ImplTypeReceiver { value: T }
+struct ImplTypeReceiver<T> { value: T }
 
 impl<T> ImplTypeReceiver<T> {
   fn accept_impl_type(recv: &ImplTypeReceiver<T>, value: T) {
@@ -217,7 +217,7 @@ impl<T> ImplTypeReceiver<T> {
 }
 
 # covers: inherent method parameter types substitute impl-header type arguments
-fn<'p, 'q> inherent_impl_type_missing_bound(
+fn inherent_impl_type_missing_bound<'p, 'q>(
   recv: &ImplTypeReceiver<&'p i64>,
   value: &'q i64,
 ) {
@@ -229,18 +229,18 @@ fn<'p, 'q> inherent_impl_type_missing_bound(
 struct MethodTypeReceiver: Copy + Drop {}
 
 trait GenericMethod {
-  fn<T> accept_method_type(recv: &Self, value: T);
+  fn accept_method_type<T>(recv: &Self, value: T);
 }
 
 impl GenericMethod for MethodTypeReceiver {
-  fn<T> accept_method_type(recv: &MethodTypeReceiver, value: T) {
+  fn accept_method_type<T>(recv: &MethodTypeReceiver, value: T) {
     entry:
       abort
   }
 }
 
 # covers: trait method parameter types substitute method type arguments
-fn<'p, 'q> trait_method_type_missing_bound(
+fn trait_method_type_missing_bound<'p, 'q>(
   recv: &MethodTypeReceiver,
   value: &'q i64,
 ) {
@@ -274,9 +274,9 @@ fn free_into_static($return: &out &'static i64) {
 
 # covers: type_kind=struct lifetime_bound=undeclared_bound
 # 'z is not declared as a lifetime param; TC-UndeclaredLifetime fires.
-struct<'a: 'z> BadStruct: Move { r: &'a i64 }
+struct BadStruct<'a: 'z>: Move { r: &'a i64 }
 
-fn<'a> make_bad(_r: &'a i64) {
+fn make_bad<'a>(_r: &'a i64) {
   entry:
     return
 }
@@ -287,9 +287,9 @@ fn<'a> make_bad(_r: &'a i64) {
 # `Wrap2<'a, 'b>` requires `'b: 'a`. Containing fn declares no such
 # axiom. Signature well-formedness sweep emits `'b: 'a` into the fn's
 # constraint set; check_constraints fires LT-LifetimeMismatch.
-struct<'a, 'b: 'a> W2: Move { p: &'a i64, q: &'b i64 }
+struct W2<'a, 'b: 'a>: Move { p: &'a i64, q: &'b i64 }
 
-fn<'a, 'b> wrap2_missing_axiom(x: &'a i64, y: &'b i64, $return: &out W2<'a, 'b>) {
+fn wrap2_missing_axiom<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out W2<'a, 'b>) {
   entry:
     $return.*.p = copy x;
     $return.*.q = copy y;
@@ -301,7 +301,7 @@ fn<'a, 'b> wrap2_missing_axiom(x: &'a i64, y: &'b i64, $return: &out W2<'a, 'b>)
 # covers: type_kind=struct lifetime_bound=local_mention_missing_axiom
 # The type only appears in a local decl (not the signature) — still an
 # in-scope mention, still emits the substituted bound.
-fn<'a, 'b> wrap2_local_missing_axiom(x: &'a i64, y: &'b i64) {
+fn wrap2_local_missing_axiom<'a, 'b>(x: &'a i64, y: &'b i64) {
   w: W2<'a, 'b>;
   entry:
     w.p = copy x;
@@ -317,7 +317,7 @@ fn<'a, 'b> wrap2_local_missing_axiom(x: &'a i64, y: &'b i64) {
 # Fn declares 'b: 'a. Mentioning W2<'b, 'a> substitutes into the bound
 # subject/target and demands 'a: 'b — the opposite direction, not in
 # the closure. LT-LifetimeMismatch fires.
-fn<'a, 'b: 'a> wrap2_reversed(x: &'b i64, y: &'a i64, $return: &out W2<'b, 'a>) {
+fn wrap2_reversed<'a, 'b: 'a>(x: &'b i64, y: &'a i64, $return: &out W2<'b, 'a>) {
   entry:
     $return.*.p = copy x;
     $return.*.q = copy y;
@@ -330,9 +330,9 @@ fn<'a, 'b: 'a> wrap2_reversed(x: &'b i64, y: &'a i64, $return: &out W2<'b, 'a>) 
 # Field type `W2<'a, 'b>` demands `'b: 'a` on the outer decl. `Outer`
 # declares no such bound; decl well-formedness fires LT-LifetimeMismatch
 # at the field type span.
-struct<'a, 'b> OuterBad: Move { inner: W2<'a, 'b> }
+struct OuterBad<'a, 'b>: Move { inner: W2<'a, 'b> }
 
-fn<'a, 'b> use_outer_bad(_x: &'a i64, _y: &'b i64) {
+fn use_outer_bad<'a, 'b>(_x: &'a i64, _y: &'b i64) {
   entry:
     return
 }
@@ -341,9 +341,9 @@ fn<'a, 'b> use_outer_bad(_x: &'a i64, _y: &'b i64) {
 
 # covers: type_kind=enum lifetime_bound=decl_variant_missing_axiom
 # Same shape, but the mention is on an enum variant payload.
-enum<'a, 'b> EitherBad: Move { L: W2<'a, 'b>, R: &'a i64 }
+enum EitherBad<'a, 'b>: Move { L: W2<'a, 'b>, R: &'a i64 }
 
-fn<'a, 'b> use_either_bad(_x: &'a i64, _y: &'b i64) {
+fn use_either_bad<'a, 'b>(_x: &'a i64, _y: &'b i64) {
   entry:
     return
 }
@@ -353,7 +353,7 @@ fn<'a, 'b> use_either_bad(_x: &'a i64, _y: &'b i64) {
 # covers: type_kind=shared_ref lifetime_bound=ref_nested_missing_axiom
 # Wf recurses through `&'r W2<'a, 'b>` and emits the substituted bound.
 # Fn declares no 'b:'a; LT-LifetimeMismatch fires.
-fn<'a, 'b, 'r> ref_wrap2_missing(w: &'r W2<'a, 'b>, $return: &out &'a i64) {
+fn ref_wrap2_missing<'a, 'b, 'r>(w: &'r W2<'a, 'b>, $return: &out &'a i64) {
   entry:
     $return.* = copy w.*.p;
     return
@@ -363,7 +363,7 @@ fn<'a, 'b, 'r> ref_wrap2_missing(w: &'r W2<'a, 'b>, $return: &out &'a i64) {
 
 # covers: type_kind=array lifetime_bound=array_nested_missing_axiom
 # Same via `[W2<'a, 'b>; N]`.
-fn<'a, 'b> array_wrap2_missing(x: &'a i64, y: &'b i64, $return: &out [W2<'a, 'b>; 1]) {
+fn array_wrap2_missing<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out [W2<'a, 'b>; 1]) {
   entry:
     $return.*[0].p = copy x;
     $return.*[0].q = copy y;
@@ -377,7 +377,7 @@ fn<'a, 'b> array_wrap2_missing(x: &'a i64, y: &'b i64, $return: &out [W2<'a, 'b>
 # mentions still need to be well-formed against the fn's declared
 # outlives axioms. Missing 'b:'a fires LT-LifetimeMismatch at the
 # param type span even though the fn has no body.
-extern fn<'a, 'b> extern_wrap2_missing(w: W2<'a, 'b>);
+extern fn extern_wrap2_missing<'a, 'b>(w: W2<'a, 'b>);
 
 # ---------- 'static substituted as bound target, no axiom ----------
 
@@ -386,7 +386,7 @@ extern fn<'a, 'b> extern_wrap2_missing(w: W2<'a, 'b>);
 # be at least 'static. The fn declares no such axiom, so the well-
 # formedness sweep emits (Named('a), Static) and check_constraints
 # fires LT-LifetimeMismatch via the closure lookup.
-fn<'a> wrap2_static_target_missing(s: &'static i64, x: &'a i64, $return: &out W2<'static, 'a>) {
+fn wrap2_static_target_missing<'a>(s: &'static i64, x: &'a i64, $return: &out W2<'static, 'a>) {
   entry:
     $return.*.p = copy s;
     $return.*.q = copy x;
@@ -398,9 +398,9 @@ fn<'a> wrap2_static_target_missing(s: &'static i64, x: &'a i64, $return: &out W2
 # covers: type_kind=struct lifetime_bound=decl_static_target_missing
 # Field type W2<'static, 'a> in an outer struct that declares neither
 # 'a: 'static nor 'a as static-bounded. Decl wf fires.
-struct<'a> BadStaticContainer: Move { inner: W2<'static, 'a> }
+struct BadStaticContainer<'a>: Move { inner: W2<'static, 'a> }
 
-fn<'a> use_bad_static_container(_x: &'a i64) {
+fn use_bad_static_container<'a>(_x: &'a i64) {
   entry:
     return
 }
@@ -413,9 +413,9 @@ fn<'a> use_bad_static_container(_x: &'a i64) {
 # call-instantiation variable exposes the caller requirement 'p: 'static;
 # check_constraints reports the missing bound rather than treating the
 # inference variable as an escaping body-local region.
-extern fn<'a: 'static> callee_needs_static(x: &'a i64);
+extern fn callee_needs_static<'a: 'static>(x: &'a i64);
 
-fn<'p> caller_no_static_axiom(y: &'p i64) {
+fn caller_no_static_axiom<'p>(y: &'p i64) {
   entry:
     call callee_needs_static(copy y);
     return
@@ -427,9 +427,9 @@ fn<'p> caller_no_static_axiom(y: &'p i64) {
 # W2 declares 2 lifetime params. Writing `W2<'p>` supplies only one.
 # TC-InvalidDeclaredType fires from the arity check. Zero-arg bare
 # mentions like `W2` are still tolerated (pending elision backfill).
-struct<'p> WrongArity: Move { w: W2<'p> }
+struct WrongArity<'p>: Move { w: W2<'p> }
 
-fn<'p> use_wrong_arity(_x: &'p i64) {
+fn use_wrong_arity<'p>(_x: &'p i64) {
   entry:
     return
 }
@@ -441,7 +441,7 @@ fn<'p> use_wrong_arity(_x: &'p i64) {
 # declaring `'b: 'a`. Signature/local walks catch the mention at
 # param positions; the statement-level walk provides defense in
 # depth for expression-only mentions.
-fn<'a, 'b> ptr_cast_missing_axiom(x: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
+fn ptr_cast_missing_axiom<'a, 'b>(x: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
   entry:
     $return.* = ptr_cast(copy x, *W2<'a, 'b>);
     return
@@ -452,7 +452,7 @@ fn<'a, 'b> ptr_cast_missing_axiom(x: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
 # covers: type_kind=raw_ptr lifetime_bound=ptr_cast_wrong_arity
 # The cast target `*W2<'a>` gives one lifetime arg where W2 needs two.
 # TC-InvalidDeclaredType fires from the rvalue-embedded type validation.
-fn<'a, 'b: 'a> ptr_cast_wrong_arity(src: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
+fn ptr_cast_wrong_arity<'a, 'b: 'a>(src: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
   entry:
     $return.* = ptr_cast(copy src, *W2<'a>);
     return
@@ -465,11 +465,11 @@ fn<'a, 'b: 'a> ptr_cast_wrong_arity(src: *W2<'a, 'b>, $return: &out *W2<'a, 'b>)
 # Both lifetime slots must be matched positionally; the second callee
 # slot ('static) is compared against the caller's second slot ('q),
 # and 'q outliving 'static requires an axiom the caller lacks.
-struct<'a, 'b> Pair: Move { first: &'a i64, second: &'b i64 }
+struct Pair<'a, 'b>: Move { first: &'a i64, second: &'b i64 }
 
 extern fn needs_static(p: Pair<'static, 'static>);
 
-fn<'q> pair_positional_missing(p: Pair<'static, 'q>) {
+fn pair_positional_missing<'q>(p: Pair<'static, 'q>) {
   entry:
     call needs_static(move p);
     return
@@ -482,9 +482,9 @@ fn<'q> pair_positional_missing(p: Pair<'static, 'q>) {
 # The enclosing fn doesn't declare 'b: 'a; the well-formedness sweep
 # now discharges FnName type_args at every operand position, so
 # LT-LifetimeMismatch fires.
-extern fn<T: Move> sink(x: T);
+extern fn sink<T: Move>(x: T);
 
-fn<'a, 'b> fn_value_missing_axiom() {
+fn fn_value_missing_axiom<'a, 'b>() {
   g: fn(W2<'a, 'a>);
   entry:
     g = sink<W2<'a, 'b>>;
@@ -497,9 +497,9 @@ fn<'a, 'b> fn_value_missing_axiom() {
 # Container is `struct<'a, 'b: 'a>`. A caller mentioning `Container<'a, 'b>`
 # in a fn that itself doesn't declare 'b:'a picks up Container's own
 # outlives axiom and fails.
-struct<'a, 'b: 'a> Container2: Move { inner: W2<'a, 'b> }
+struct Container2<'a, 'b: 'a>: Move { inner: W2<'a, 'b> }
 
-fn<'a, 'b> use_container_missing_axiom(x: &'a i64, y: &'b i64, $return: &out Container2<'a, 'b>) {
+fn use_container_missing_axiom<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out Container2<'a, 'b>) {
   entry:
     $return.*.inner.p = copy x;
     $return.*.inner.q = copy y;
@@ -513,7 +513,7 @@ fn<'a, 'b> use_container_missing_axiom(x: &'a i64, y: &'b i64, $return: &out Con
 # always in scope. Declaring it as a user parameter is rejected with
 # TC-ReservedLifetimeName so the reserved name isn't accidentally
 # re-bound.
-fn<'static: 'a, 'a> static_declared_as_param_fails(x: &'a i64, $return: &out &'a i64) {
+fn static_declared_as_param_fails<'static: 'a, 'a>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -524,7 +524,7 @@ fn<'static: 'a, 'a> static_declared_as_param_fails(x: &'a i64, $return: &out &'a
 # covers: type_kind=fn lifetime_bound=duplicate_param
 # Two `'a` declarations in the same parameter list — the second fires
 # TC-DuplicateLifetimeParam. The bounds don't matter for the check.
-fn<'a: 'b, 'a: 'b, 'b> duplicate_lifetime_param_fails(
+fn duplicate_lifetime_param_fails<'a: 'b, 'a: 'b, 'b>(
   x: &'a i64,
   $return: &out &'b i64
 ) {
@@ -556,7 +556,7 @@ fn elided_bound_names_are_distinct(x: &i64, y: &i64) {
 # declares no bound between 'inner_src and 'inner_tgt, so the inner
 # constraint fires LT-LifetimeMismatch. Regression pin for the
 # outer-only special case in emit_stmt_constraints.
-fn<'outer, 'inner_src, 'inner_tgt> nested_ref_lifetime_mismatch(
+fn nested_ref_lifetime_mismatch<'outer, 'inner_src, 'inner_tgt>(
   x: &'outer &'inner_src i64,
   $return: &out &'outer &'inner_tgt i64,
 ) {
@@ -567,7 +567,7 @@ fn<'outer, 'inner_src, 'inner_tgt> nested_ref_lifetime_mismatch(
 # Impl methods must satisfy flow constraints from combined impl/method bounds.
 struct BadImplLifetimeHost: Copy + Drop { value: i64 }
 
-trait<'a, 'b> BadImplLifetimeFlow {
+trait BadImplLifetimeFlow<'a, 'b> {
   fn flow(recv: &Self, x: &'a i64, $return: &out &'b i64);
 }
 
@@ -579,7 +579,7 @@ impl<'a, 'b> BadImplLifetimeFlow<'a, 'b> for BadImplLifetimeHost {
   }
 }
 
-struct<'a, 'b> InvalidHeaderReceiver: Copy + Drop {
+struct InvalidHeaderReceiver<'a, 'b>: Copy + Drop {
   first: &'a i64,
   second: &'b i64,
 }

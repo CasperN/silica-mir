@@ -24,9 +24,9 @@ struct P: Copy + Drop { x: i64  y: i64 }
 
 enum E: Copy + Drop { A: i64  B: unit }
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
 
 # ---------- &out: pointee must be Init at expiry ----------
 
@@ -54,19 +54,19 @@ fn out_array(r: &out [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> out_param(src: T, r: &out T) {
+fn out_param<T: Copy + Drop>(src: T, r: &out T) {
   entry:
     r.* = move src;
     return
 }
 
-fn<T: Copy + Drop> out_generic_struct(src: Box<T>, r: &out Box<T>) {
+fn out_generic_struct<T: Copy + Drop>(src: Box<T>, r: &out Box<T>) {
   entry:
     r.* = move src;
     return
 }
 
-fn<T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out Option<T>) {
+fn out_generic_enum<T: Copy + Drop>(src: Option<T>, r: &out Option<T>) {
   entry:
     r.* = move src;
     return
@@ -140,7 +140,7 @@ fn drop_array(r: &drop [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> drop_param(r: &drop T) {
+fn drop_param<T: Copy + Drop>(r: &drop T) {
   x: T;
   entry:
     x = move r.*;
@@ -148,7 +148,7 @@ fn<T: Copy + Drop> drop_param(r: &drop T) {
     return
 }
 
-fn<T: Copy + Drop> drop_generic_struct(r: &drop Box<T>) {
+fn drop_generic_struct<T: Copy + Drop>(r: &drop Box<T>) {
   b: Box<T>;
   entry:
     b = move r.*;
@@ -173,12 +173,12 @@ fn mut_array(r: &mut [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> mut_param(r: &mut T) {
+fn mut_param<T: Copy + Drop>(r: &mut T) {
   entry:
     return
 }
 
-fn<T: Copy + Drop> mut_generic_struct(r: &mut Box<T>) {
+fn mut_generic_struct<T: Copy + Drop>(r: &mut Box<T>) {
   entry:
     return
 }
@@ -200,7 +200,7 @@ fn uninit_array(r: &uninit [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> uninit_param(r: &uninit T) {
+fn uninit_param<T: Copy + Drop>(r: &uninit T) {
   entry:
     return
 }

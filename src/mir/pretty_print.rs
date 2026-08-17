@@ -135,10 +135,9 @@ fn write_type_params(out: &mut String, params: &GenericParams) {
 }
 
 fn write_struct(out: &mut String, s: &StructDecl) {
-    out.push_str("struct");
-    write_type_params(out, &s.meta.params);
-    out.push(' ');
+    out.push_str("struct ");
     out.push_str(&s.meta.name);
+    write_type_params(out, &s.meta.params);
     write_markers(out, &s.meta.markers);
     out.push_str(" {\n");
     for f in &s.fields {
@@ -150,10 +149,9 @@ fn write_struct(out: &mut String, s: &StructDecl) {
 }
 
 fn write_enum(out: &mut String, e: &EnumDecl) {
-    out.push_str("enum");
-    write_type_params(out, &e.meta.params);
-    out.push(' ');
+    out.push_str("enum ");
     out.push_str(&e.meta.name);
+    write_type_params(out, &e.meta.params);
     write_markers(out, &e.meta.markers);
     out.push_str(" {\n");
     for v in &e.variants {
@@ -165,17 +163,15 @@ fn write_enum(out: &mut String, e: &EnumDecl) {
 }
 
 fn write_trait(out: &mut String, t: &TraitDecl) {
-    out.push_str("trait");
-    write_type_params(out, &t.meta.params);
-    out.push(' ');
+    out.push_str("trait ");
     out.push_str(&t.meta.name);
+    write_type_params(out, &t.meta.params);
     write_bounds(out, &t.self_bounds);
     out.push_str(" {\n");
     for m in &t.methods {
-        out.push_str("  fn");
-        write_type_params(out, &m.meta.params);
-        out.push(' ');
+        out.push_str("  fn ");
         out.push_str(&m.meta.name);
+        write_type_params(out, &m.meta.params);
         out.push('(');
         for (i, p) in m.params.iter().enumerate() {
             if i > 0 {
@@ -214,13 +210,12 @@ fn write_impl(out: &mut String, i: &ImplBlock) {
 
 fn write_function(out: &mut String, f: &Function) {
     if f.is_extern {
-        out.push_str("extern fn");
+        out.push_str("extern fn ");
     } else {
-        out.push_str("fn");
+        out.push_str("fn ");
     }
-    write_type_params(out, &f.meta.params);
-    out.push(' ');
     out.push_str(&f.meta.name);
+    write_type_params(out, &f.meta.params);
     out.push('(');
     for (i, p) in f.params.iter().enumerate() {
         if i > 0 {
@@ -694,9 +689,9 @@ mod tests {
     fn roundtrip_named_lifetimes_on_decls_and_refs() {
         assert_roundtrip(
             "
-            struct<'a> Pair { x: &'a i64 y: &'a i64 }
-            enum<'a> Either { L: &'a i64 R: i64 }
-            fn<'a, T> id(x: &'a T) {
+            struct Pair<'a> { x: &'a i64 y: &'a i64 }
+            enum Either<'a> { L: &'a i64 R: i64 }
+            fn id<'a, T>(x: &'a T) {
               entry:
                 return
             }
@@ -810,9 +805,9 @@ mod tests {
             trait Simple {
               fn ping(recv: &Self);
             }
-            trait<T: Copy + Drop> Iter {
+            trait Iter<T: Copy + Drop> {
               fn next(recv: &mut Self, out: &out T);
-              fn<U> map(recv: &Self, other: &U, out: &out T);
+              fn map<U>(recv: &Self, other: &U, out: &out T);
             }
             ",
         );
@@ -822,7 +817,7 @@ mod tests {
     fn roundtrip_impl_block() {
         assert_roundtrip(
             "
-            trait<T: Copy + Drop> Iter {
+            trait Iter<T: Copy + Drop> {
               fn next(recv: &mut Self, out: &out T);
             }
             struct Foo: Copy + Drop { x: i64 }

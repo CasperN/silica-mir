@@ -1,4 +1,4 @@
-fn<'s0> use_val(x: &mut 's0 i64) {
+fn use_val<'s0>(x: &'s0 mut i64) {
   $tmp_0: unit;
   entry:
     $tmp_0 = unit;
@@ -9,7 +9,7 @@ fn<'s0> use_val(x: &mut 's0 i64) {
     return
 }
 
-fn<'s0> reborrow_ok(r: &mut 's0 i64) {
+fn reborrow_ok<'s0>(r: &'s0 mut i64) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: &mut i64;
@@ -36,12 +36,12 @@ fn<'s0> reborrow_ok(r: &mut 's0 i64) {
     return
 }
 
-fn<'s0> implicit_reborrow_at_call(r: &mut 's0 i64) {
+fn implicit_reborrow_at_call<'s0>(r: &'s0 mut i64) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: unit;
-  $clone_0: &mut 's0 i64;
-  $clone_1: &mut 's0 i64;
+  $clone_0: &'s0 mut i64;
+  $clone_1: &'s0 mut i64;
   entry:
     $clone_1 = &mut r.*;
     call use_val(move $clone_1);

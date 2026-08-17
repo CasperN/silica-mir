@@ -12,7 +12,7 @@ struct MatD: Drop {
 
 extern fn noop();
 
-extern fn<'s0> sink(r: &mut 's0 i64);
+extern fn sink<'s0>(r: &'s0 mut i64);
 
 extern fn use_num(n: i64);
 

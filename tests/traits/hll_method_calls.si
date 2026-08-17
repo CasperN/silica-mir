@@ -66,20 +66,20 @@ fn select_unsafe_free(value: Dispatch) -> i64 {
   unsafe { value.unsafe_free() }
 }
 
-struct<T: Copy + Drop> Box: Copy + Drop { value: T }
+struct Box<T: Copy + Drop>: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<U: Copy + Drop> inherent_generic(recv: &Box<T>, ignored: U) -> T {
+  fn inherent_generic<U: Copy + Drop>(recv: &Box<T>, ignored: U) -> T {
     recv.*.value
   }
 }
 
-trait<T: Copy + Drop> GenericTrait {
-  fn<U: Copy + Drop> trait_generic(recv: &Box<T>, ignored: U) -> T;
+trait GenericTrait<T: Copy + Drop> {
+  fn trait_generic<U: Copy + Drop>(recv: &Box<T>, ignored: U) -> T;
 }
 
 impl<T: Copy + Drop> GenericTrait<T> for Box<T> {
-  fn<U: Copy + Drop> trait_generic(recv: &Box<T>, ignored: U) -> T {
+  fn trait_generic<U: Copy + Drop>(recv: &Box<T>, ignored: U) -> T {
     recv.*.value
   }
 }
@@ -94,7 +94,7 @@ fn call_generic_trait(value: Box<i64>) -> i64 {
   value.trait_generic(false)
 }
 
-fn<T: Copy + Drop, U: Copy + Drop> free_generic(recv: Box<T>, ignored: U) -> T {
+fn free_generic<T: Copy + Drop, U: Copy + Drop>(recv: Box<T>, ignored: U) -> T {
   recv.value
 }
 
@@ -108,7 +108,7 @@ struct Shared: Copy + Drop { value: i64 }
 impl Shared {
   fn exact_shared(recv: &Shared) -> i64 { recv.*.value }
 
-  fn<'a> inferred_method_lifetime(recv: &'a Shared) -> i64 {
+  fn inferred_method_lifetime<'a>(recv: &'a Shared) -> i64 {
     recv.*.value
   }
 }
@@ -119,16 +119,16 @@ fn call_exact_shared(value: &Shared) -> i64 {
 }
 
 # covers: omitted method lifetime arguments are inferred
-fn<'a> call_inferred_method_lifetime(value: &'a Shared) -> i64 {
+fn call_inferred_method_lifetime<'a>(value: &'a Shared) -> i64 {
   value.inferred_method_lifetime()
 }
 
 # covers: qualified inherent calls infer omitted method lifetimes
-fn<'a> call_qualified_inferred_method_lifetime(value: &'a Shared) -> i64 {
+fn call_qualified_inferred_method_lifetime<'a>(value: &'a Shared) -> i64 {
   <Shared>::inferred_method_lifetime(value)
 }
 
-trait<'a> LifetimeTrait {
+trait LifetimeTrait<'a> {
   fn lifetime_method(recv: &'a Shared) -> i64;
 }
 
@@ -137,7 +137,7 @@ impl<'a> LifetimeTrait<'a> for Shared {
 }
 
 # covers: receiver lifetime instantiates a trait path
-fn<'a> call_lifetime_trait(value: &'a Shared) -> i64 {
+fn call_lifetime_trait<'a>(value: &'a Shared) -> i64 {
   value.lifetime_method()
 }
 
@@ -359,7 +359,7 @@ fn receiver_before_argument(value: Dispatch) -> i64 {
 trait BoundArgument {}
 impl BoundArgument for BorrowTarget {}
 
-trait<X: Copy + Drop> GenericReceiver {
+trait GenericReceiver<X: Copy + Drop> {
   fn bound_shared(recv: &Self);
   fn bound_mut(recv: &mut Self);
   fn bound_out(recv: &out Self);
@@ -367,70 +367,70 @@ trait<X: Copy + Drop> GenericReceiver {
   fn bound_uninit(recv: &uninit Self);
   fn bound_consume(recv: Self);
   fn bound_parameter(recv: &Self, value: X);
-  fn<U: BoundArgument> bound_generic(recv: &Self, value: &U);
+  fn bound_generic<U: BoundArgument>(recv: &Self, value: &U);
 }
 
 # covers: an already-borrowed generic receiver matches its direct bound exactly
-fn<T: GenericReceiver<i64>> generic_bound_exact(value: &T) {
+fn generic_bound_exact<T: GenericReceiver<i64>>(value: &T) {
   value.bound_shared();
 }
 
 # covers: direct-bound methods support shared receiver auto-borrowing
-fn<T: GenericReceiver<i64> + Move> generic_bound_shared(value: T) {
+fn generic_bound_shared<T: GenericReceiver<i64> + Move>(value: T) {
   value.bound_shared();
   value.bound_consume();
 }
 
 # covers: direct-bound methods support mutable receiver auto-borrowing
-fn<T: GenericReceiver<i64> + Move> generic_bound_mut(value: T) {
+fn generic_bound_mut<T: GenericReceiver<i64> + Move>(value: T) {
   let mut local = value;
   local.bound_mut();
   local.bound_consume();
 }
 
 # covers: direct-bound methods support output receiver auto-borrowing
-fn<T: GenericReceiver<i64> + Move> generic_bound_out() {
+fn generic_bound_out<T: GenericReceiver<i64> + Move>() {
   let mut value: T;
   value.bound_out();
   value.bound_consume();
 }
 
 # covers: direct-bound methods support dropping receiver auto-borrowing
-fn<T: GenericReceiver<i64> + Move> generic_bound_drop(value: T) {
+fn generic_bound_drop<T: GenericReceiver<i64> + Move>(value: T) {
   let mut local = value;
   local.bound_drop();
 }
 
 # covers: direct-bound methods support uninitialized receiver auto-borrowing
-fn<T: GenericReceiver<i64>> generic_bound_uninit() {
+fn generic_bound_uninit<T: GenericReceiver<i64>>() {
   let mut value: T;
   value.bound_uninit();
 }
 
 # covers: direct-bound methods support by-value receivers
-fn<T: GenericReceiver<i64> + Move> generic_bound_consume(value: T) {
+fn generic_bound_consume<T: GenericReceiver<i64> + Move>(value: T) {
   value.bound_consume();
 }
 
 # covers: trait arguments substitute into a direct-bound method signature
-fn<T: GenericReceiver<i64>> generic_bound_parameter(value: &T) {
+fn generic_bound_parameter<T: GenericReceiver<i64>>(value: &T) {
   value.bound_parameter(1);
 }
 
 # covers: direct-bound method generic obligations are enforced and inferred
-fn<T: GenericReceiver<i64>> generic_bound_method_argument(
+fn generic_bound_method_argument<T: GenericReceiver<i64>>(
   value: &T,
   argument: &BorrowTarget,
 ) {
   value.bound_generic(argument);
 }
 
-trait<'a> GenericLifetimeReceiver {
+trait GenericLifetimeReceiver<'a> {
   fn bound_lifetime(recv: &'a Self);
 }
 
 # covers: trait lifetimes substitute into a direct-bound receiver signature
-fn<'a, T: GenericLifetimeReceiver<'a>> generic_bound_lifetime(value: &'a T) {
+fn generic_bound_lifetime<'a, T: GenericLifetimeReceiver<'a>>(value: &'a T) {
   value.bound_lifetime();
 }
 
@@ -443,39 +443,39 @@ trait BoundBorrowed {
 }
 
 # covers: an exact direct-bound receiver outranks an auto-borrow candidate
-fn<T: BoundExact + BoundBorrowed + Move> generic_bound_exact_rank(value: T) {
+fn generic_bound_exact_rank<T: BoundExact + BoundBorrowed + Move>(value: T) {
   value.bound_rank();
 }
 
 # covers: AutoClone bounds support compiler-generated generic trait calls
-fn<T: AutoClone + Move> generic_bound_auto_clone(value: T) -> [T; 2] {
+fn generic_bound_auto_clone<T: AutoClone + Move>(value: T) -> [T; 2] {
   [value, value]
 }
 
 # covers: AutoDestroy bounds support compiler-generated generic trait calls
-fn<T: AutoDestroy> generic_bound_auto_destroy(value: T) {}
+fn generic_bound_auto_destroy<T: AutoDestroy>(value: T) {}
 
-trait<X: Copy + Drop> SuperReceiver {
+trait SuperReceiver<X: Copy + Drop> {
   fn inherited(recv: &Self, value: X);
-  fn<U: Copy + Drop> inherited_generic(recv: &Self, value: U);
+  fn inherited_generic<U: Copy + Drop>(recv: &Self, value: U);
   unsafe fn inherited_unsafe(recv: &Self);
 }
 
-trait<X: Copy + Drop> ChildReceiver: SuperReceiver<X> + Copy + Drop {
+trait ChildReceiver<X: Copy + Drop>: SuperReceiver<X> + Copy + Drop {
   fn child(recv: &Self);
 }
 
-trait<X: Copy + Drop> GrandReceiver: ChildReceiver<X> {}
+trait GrandReceiver<X: Copy + Drop>: ChildReceiver<X> {}
 
-trait<X: Copy + Drop> LeftReceiver: SuperReceiver<X> {}
-trait<X: Copy + Drop> RightReceiver: SuperReceiver<X> {}
-trait<X: Copy + Drop> DiamondReceiver: LeftReceiver<X> + RightReceiver<X> {}
+trait LeftReceiver<X: Copy + Drop>: SuperReceiver<X> {}
+trait RightReceiver<X: Copy + Drop>: SuperReceiver<X> {}
+trait DiamondReceiver<X: Copy + Drop>: LeftReceiver<X> + RightReceiver<X> {}
 
 struct SuperTarget: Copy + Drop { value: i64 }
 
 impl SuperReceiver<i64> for SuperTarget {
   fn inherited(recv: &SuperTarget, value: i64) { recv; value; }
-  fn<U: Copy + Drop> inherited_generic(recv: &SuperTarget, value: U) {
+  fn inherited_generic<U: Copy + Drop>(recv: &SuperTarget, value: U) {
     recv;
     value;
   }
@@ -489,7 +489,7 @@ impl ChildReceiver<i64> for SuperTarget {
 impl GrandReceiver<i64> for SuperTarget {}
 
 # covers: a generic receiver sees methods inherited through multiple supertrait levels
-fn<T: GrandReceiver<i64>> inherited_generic_method(value: &T) {
+fn inherited_generic_method<T: GrandReceiver<i64>>(value: &T) {
   value.inherited(1);
   value.inherited_generic(true);
   unsafe { value.inherited_unsafe(); }
@@ -497,17 +497,17 @@ fn<T: GrandReceiver<i64>> inherited_generic_method(value: &T) {
 }
 
 # covers: an inherited reference receiver auto-borrows an owned generic value
-fn<T: GrandReceiver<i64> + Move> inherited_auto_borrow(value: T) {
+fn inherited_auto_borrow<T: GrandReceiver<i64> + Move>(value: T) {
   value.inherited(1);
 }
 
 # covers: duplicate diamond paths to the same instantiated method are one candidate
-fn<T: DiamondReceiver<i64>> inherited_diamond_method(value: &T) {
+fn inherited_diamond_method<T: DiamondReceiver<i64>>(value: &T) {
   value.inherited(1);
 }
 
 # covers: a supertrait's marker bounds contribute to a generic receiver's class
-fn<T: GrandReceiver<i64>> inherited_markers(value: T) -> [T; 2] {
+fn inherited_markers<T: GrandReceiver<i64>>(value: T) -> [T; 2] {
   [value, value]
 }
 
@@ -515,25 +515,25 @@ trait InheritedAutoClone: AutoClone {}
 trait InheritedAutoDestroy: AutoDestroy {}
 
 # covers: compiler-generated AutoClone calls use inherited trait evidence
-fn<T: InheritedAutoClone + Move> inherited_auto_clone(value: T) -> [T; 2] {
+fn inherited_auto_clone<T: InheritedAutoClone + Move>(value: T) -> [T; 2] {
   [value, value]
 }
 
 # covers: compiler-generated AutoDestroy calls use inherited trait evidence
-fn<T: InheritedAutoDestroy> inherited_auto_destroy(value: T) {}
+fn inherited_auto_destroy<T: InheritedAutoDestroy>(value: T) {}
 
-trait<'a, X: Copy + Drop> LifetimeSuperReceiver {
+trait LifetimeSuperReceiver<'a, X: Copy + Drop> {
   fn inherited_lifetime(recv: &'a Self, value: X);
 }
 
-trait<'a, X: Copy + Drop> LifetimeChildReceiver: LifetimeSuperReceiver<'a, X> {}
+trait LifetimeChildReceiver<'a, X: Copy + Drop>: LifetimeSuperReceiver<'a, X> {}
 
 # covers: inherited method lookup substitutes supertrait lifetime and type arguments
-fn<'a, T: LifetimeChildReceiver<'a, i64>> inherited_lifetime_method(value: &'a T) {
+fn inherited_lifetime_method<'a, T: LifetimeChildReceiver<'a, i64>>(value: &'a T) {
   value.inherited_lifetime(1);
 }
 
-trait<X> SelfArgumentSuper {
+trait SelfArgumentSuper<X> {
   fn inherited_self_argument(recv: &Self, value: &X);
 }
 
@@ -551,12 +551,12 @@ impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
 impl SelfArgumentChild for SelfArgumentTarget {}
 
 # covers: Self in a supertrait argument substitutes to the generic receiver
-fn<T: SelfArgumentChild> inherited_self_argument(value: &T) {
+fn inherited_self_argument<T: SelfArgumentChild>(value: &T) {
   value.inherited_self_argument(value);
 }
 
-trait<X> GenericImplParent {}
-trait<X> GenericImplChild: GenericImplParent<X> {}
+trait GenericImplParent<X> {}
+trait GenericImplChild<X>: GenericImplParent<X> {}
 
 # covers: a generic impl header may prove its instantiated supertrait obligation
 impl<T: GenericImplParent<i64>> GenericImplChild<i64> for T {}
@@ -572,7 +572,7 @@ trait InheritedBorrowedRank {
 trait InheritedRank: InheritedExactRank + InheritedBorrowedRank {}
 
 # covers: exact receiver matching outranks auto-borrow across inherited methods
-fn<T: InheritedRank + Move> inherited_receiver_rank(value: T) {
+fn inherited_receiver_rank<T: InheritedRank + Move>(value: T) {
   value.inherited_rank();
 }
 
@@ -595,7 +595,7 @@ impl QualifiedSecond for QualifiedTarget {
 }
 
 impl QualifiedTarget {
-  fn<U: Copy + Drop> qualified_inherent(recv: &Self, ignored: U) -> i64 {
+  fn qualified_inherent<U: Copy + Drop>(recv: &Self, ignored: U) -> i64 {
     ignored;
     recv.*.value
   }
@@ -625,12 +625,12 @@ fn qualified_unsafe_call(value: &QualifiedTarget) -> i64 {
 }
 
 # covers: qualification may select a supertrait proven by a generic bound
-fn<T: GrandReceiver<i64>> qualified_supertrait_call(value: &T) {
+fn qualified_supertrait_call<T: GrandReceiver<i64>>(value: &T) {
   <T as SuperReceiver<i64>>::inherited(value, 1);
 }
 
 # covers: qualified trait and method lifetime arguments remain explicit
-fn<'a, T: LifetimeChildReceiver<'a, i64>> qualified_lifetime_call(value: &'a T) {
+fn qualified_lifetime_call<'a, T: LifetimeChildReceiver<'a, i64>>(value: &'a T) {
   <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(value, 1);
 }
 
@@ -704,7 +704,7 @@ impl StaticContainer {
     Self::zero_arg()
   }
 
-  fn<U: Copy + Drop> with_generic_payload(val: i64, extra: U) -> StaticContainer {
+  fn with_generic_payload<U: Copy + Drop>(val: i64, extra: U) -> StaticContainer {
     extra;
     StaticContainer { val: val, flag: true }
   }

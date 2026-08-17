@@ -2,7 +2,7 @@
 # monomorphization resolves it to the concrete impl method, and LLVM lowering
 # emits that call.
 
-struct<T: Copy + Drop> Resource: Move { value: T }
+struct Resource<T: Copy + Drop>: Move { value: T }
 
 impl<T: Copy + Drop> AutoDestroy for Resource<T> {
   fn destroy(recv: &drop Resource<T>) {

@@ -1,4 +1,4 @@
-fn<'s0> assign_rhs_binop($return: &out 's0 i64) {
+fn assign_rhs_binop<'s0>($return: &'s0 out i64) {
   x: i64;
   $tmp_0: unit;
   $tmp_1: i64;
@@ -20,7 +20,7 @@ fn<'s0> assign_rhs_binop($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> additive_left_assoc(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
+fn additive_left_assoc<'s0>(a: i64, b: i64, c: i64, $return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i64;
@@ -40,7 +40,7 @@ fn<'s0> additive_left_assoc(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> mul_over_add(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
+fn mul_over_add<'s0>(a: i64, b: i64, c: i64, $return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i64;
@@ -60,7 +60,7 @@ fn<'s0> mul_over_add(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
+fn cmp_over_add<'s0>(a: i64, b: i64, c: i64, d: i64, $return: &'s0 out bool) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: i64;
@@ -87,7 +87,7 @@ fn<'s0> cmp_over_add(a: i64, b: i64, c: i64, d: i64, $return: &out 's0 bool) {
     return
 }
 
-fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
+fn read<'s0, 's1>(r: &'s0 i64, $return: &'s1 out i64) {
   entry:
     $return.* = copy r.*;
     unborrow $return;
@@ -97,7 +97,7 @@ fn<'s0, 's1> read(r: &'s0 i64, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> borrow_tighter_than_add(x: i64, y: i64, $return: &out 's0 i64) {
+fn borrow_tighter_than_add<'s0>(x: i64, y: i64, $return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &i64;
   $tmp_2: &out i64;
@@ -120,7 +120,7 @@ fn<'s0> borrow_tighter_than_add(x: i64, y: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> if_as_stmt(a: i64, r: &out 's0 i64) {
+fn if_as_stmt<'s0>(a: i64, r: &'s0 out i64) {
   $tmp_0: unit;
   $tmp_1: bool;
   $tmp_2: &out bool;
@@ -148,7 +148,7 @@ fn<'s0> if_as_stmt(a: i64, r: &out 's0 i64) {
     return
 }
 
-fn<'s0> if_as_tail(a: i64, $return: &out 's0 i64) {
+fn if_as_tail<'s0>(a: i64, $return: &'s0 out i64) {
   base: i64;
   $tmp_0: bool;
   $tmp_1: &out bool;
@@ -199,7 +199,7 @@ enum Tag: Copy + Drop {
   B: i64
 }
 
-fn<'s0> match_as_stmt(t: Tag, r: &out 's0 i64) {
+fn match_as_stmt<'s0>(t: Tag, r: &'s0 out i64) {
   $tmp_0: unit;
   x: i64;
   y: i64;
@@ -232,7 +232,7 @@ struct Wrap: Copy + Drop {
   inner: i64
 }
 
-fn<'s0> unwrap(recv: Wrap, $return: &out 's0 i64) {
+fn unwrap<'s0>(recv: Wrap, $return: &'s0 out i64) {
   entry:
     $return.* = move recv.inner;
     unborrow $return;
@@ -241,7 +241,7 @@ fn<'s0> unwrap(recv: Wrap, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> postfix_chain_on_match(t: Tag, $return: &out 's0 i64) {
+fn postfix_chain_on_match<'s0>(t: Tag, $return: &'s0 out i64) {
   $tmp_0: Wrap;
   x: i64;
   y: i64;
@@ -281,7 +281,7 @@ fn evaluation_sink(value: i64) {
     return
 }
 
-fn<'s0> make_callee($return: &out 's0 fn(i64)) {
+fn make_callee<'s0>($return: &'s0 out fn(i64)) {
   entry:
     $return.* = evaluation_sink;
     unborrow $return;
@@ -289,7 +289,7 @@ fn<'s0> make_callee($return: &out 's0 fn(i64)) {
     return
 }
 
-fn<'s0> make_argument($return: &out 's0 i64) {
+fn make_argument<'s0>($return: &'s0 out i64) {
   entry:
     $return.* = 1;
     unborrow $return;

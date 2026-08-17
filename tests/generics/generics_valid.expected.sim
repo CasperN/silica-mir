@@ -1,22 +1,22 @@
-struct<T: Copy + Drop> Box: Copy + Drop {
+struct Box<T: Copy + Drop>: Copy + Drop {
   inner: T
 }
 
-struct<T: Copy + Drop, U: Move> Pair {
+struct Pair<T: Copy + Drop, U: Move> {
   first: T
   second: U
 }
 
-enum<T: Copy + Drop> Option: Copy + Drop {
+enum Option<T: Copy + Drop>: Copy + Drop {
   None: unit
   Some: T
 }
 
-struct<T: Copy + Drop> Nest: Copy + Drop {
+struct Nest<T: Copy + Drop>: Copy + Drop {
   outer: Box<Box<T>>
 }
 
-struct<T: Copy + Drop> LL: Copy + Drop {
+struct LL<T: Copy + Drop>: Copy + Drop {
   head: T
   tail: *LL<T>
 }
@@ -25,41 +25,41 @@ struct Container: Copy + Drop {
   b: Box<i32>
 }
 
-struct<T: Copy + Drop> Arr3: Copy + Drop {
+struct Arr3<T: Copy + Drop>: Copy + Drop {
   xs: [T; 3]
 }
 
-struct<T: Move> Bag: Move {
+struct Bag<T: Move>: Move {
   inner: T
 }
 
-struct<T: Move, U: Move> MovePair: Move {
+struct MovePair<T: Move, U: Move>: Move {
   first: T
   second: U
 }
 
-struct<T: Copy + Drop, U: Copy + Drop> CopyPair: Copy + Drop {
+struct CopyPair<T: Copy + Drop, U: Copy + Drop>: Copy + Drop {
   first: T
   second: U
 }
 
-struct<T: Copy> BoxC: Copy {
+struct BoxC<T: Copy>: Copy {
   inner: T
 }
 
-struct<T: Drop> BoxD: Drop {
+struct BoxD<T: Drop>: Drop {
   inner: T
 }
 
-struct<T: Move> BoxM: Move {
+struct BoxM<T: Move>: Move {
   inner: T
 }
 
-struct<T: Copy + Drop> BoxCD: Copy + Drop {
+struct BoxCD<T: Copy + Drop>: Copy + Drop {
   inner: T
 }
 
-struct<T: Copy + Drop> BoxCD_Move: Move {
+struct BoxCD_Move<T: Copy + Drop>: Move {
   inner: T
 }
 
@@ -131,7 +131,7 @@ struct UseBoxM_BoxCD_i64 {
   b: BoxM<BoxCD<i64>>
 }
 
-struct<T: Copy + Drop> OuterBox: Copy + Drop {
+struct OuterBox<T: Copy + Drop>: Copy + Drop {
   inner: BoxCD<T>
 }
 
@@ -143,7 +143,7 @@ struct UseOuter_i64 {
   b: OuterBox<i64>
 }
 
-fn<'s0> copy_boxcd(src: BoxCD<i64>, dest: &out 's0 BoxCD<i64>) {
+fn copy_boxcd<'s0>(src: BoxCD<i64>, dest: &'s0 out BoxCD<i64>) {
   entry:
     dest.* = copy src;
     unborrow dest;
@@ -151,7 +151,7 @@ fn<'s0> copy_boxcd(src: BoxCD<i64>, dest: &out 's0 BoxCD<i64>) {
     return
 }
 
-fn<'s0> copy_field_boxcd(b: BoxCD<i64>, dest: &out 's0 i64) {
+fn copy_field_boxcd<'s0>(b: BoxCD<i64>, dest: &'s0 out i64) {
   entry:
     dest.* = copy b.inner;
     unborrow dest;
@@ -159,14 +159,14 @@ fn<'s0> copy_field_boxcd(b: BoxCD<i64>, dest: &out 's0 i64) {
     return
 }
 
-fn<'s0> move_boxcd_move(src: BoxCD_Move<i64>, dest: &out 's0 BoxCD_Move<i64>) {
+fn move_boxcd_move<'s0>(src: BoxCD_Move<i64>, dest: &'s0 out BoxCD_Move<i64>) {
   entry:
     dest.* = move src;
     unborrow dest;
     return
 }
 
-fn<'s0> move_boxm_i64(src: BoxM<i64>, dest: &out 's0 BoxM<i64>) {
+fn move_boxm_i64<'s0>(src: BoxM<i64>, dest: &'s0 out BoxM<i64>) {
   entry:
     dest.* = move src;
     unborrow dest;
@@ -177,13 +177,13 @@ struct NestedBoxCD: Copy + Drop {
   inner: BoxCD<BoxCD<i64>>
 }
 
-fn<'s0, T> take_ref(r: &'s0 T) {
+fn take_ref<'s0, T>(r: &'s0 T) {
   entry:
     drop r;
     return
 }
 
-fn<T> touch() {
+fn touch<T>() {
   entry:
     return
 }
@@ -195,13 +195,13 @@ fn caller() {
     return
 }
 
-fn<T: Copy + Drop> take_by_value(x: T) {
+fn take_by_value<T: Copy + Drop>(x: T) {
   entry:
     drop x;
     return
 }
 
-fn<T: Copy + Drop> access_field(b: Box<T>) {
+fn access_field<T: Copy + Drop>(b: Box<T>) {
   x: T;
   entry:
     x = copy b.inner;
@@ -210,7 +210,7 @@ fn<T: Copy + Drop> access_field(b: Box<T>) {
     return
 }
 
-fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
+fn switch_on_generic_enum<T: Copy + Drop>(o: Option<T>) {
   y: T;
   entry:
     switchEnum(o) [None: none_arm, Some: some_arm]
@@ -224,7 +224,7 @@ fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
     return
 }
 
-fn<'s0, T: Copy + Drop> read_through_shared_ref(r: &'s0 T) {
+fn read_through_shared_ref<'s0, T: Copy + Drop>(r: &'s0 T) {
   x: T;
   entry:
     x = copy r.*;
@@ -233,13 +233,13 @@ fn<'s0, T: Copy + Drop> read_through_shared_ref(r: &'s0 T) {
     return
 }
 
-fn<'s0, T: Copy + Drop> mut_ref_param(m: &mut 's0 T) {
+fn mut_ref_param<'s0, T: Copy + Drop>(m: &'s0 mut T) {
   entry:
     drop m;
     return
 }
 
-fn<'s0, T: Copy + Drop> out_ref_param(src: T, dest: &out 's0 T) {
+fn out_ref_param<'s0, T: Copy + Drop>(src: T, dest: &'s0 out T) {
   entry:
     dest.* = copy src;
     unborrow dest;
@@ -247,37 +247,37 @@ fn<'s0, T: Copy + Drop> out_ref_param(src: T, dest: &out 's0 T) {
     return
 }
 
-fn<'s0, T: Copy + Drop> uninit_ref_param(u: &uninit 's0 T) {
+fn uninit_ref_param<'s0, T: Copy + Drop>(u: &'s0 uninit T) {
   entry:
     drop u;
     return
 }
 
-fn<T: Copy + Drop> fn_type_with_param(f: fn(T)) {
+fn fn_type_with_param<T: Copy + Drop>(f: fn(T)) {
   entry:
     drop f;
     return
 }
 
-fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
+fn option_of_box<T: Copy + Drop>(x: Option<Box<T>>) {
   entry:
     drop x;
     return
 }
 
-fn<'s0, 's1, T: Move> ref_to_bag_of_mut_ref(b: &'s0 Bag<&mut 's1 T>) {
+fn ref_to_bag_of_mut_ref<'s0, 's1, T: Move>(b: &'s0 Bag<&'s1 mut T>) {
   entry:
     drop b;
     return
 }
 
-fn<'s0: 's1 + 's2, 's1, 's2, T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut 's0 MovePair<&drop 's1 T, &out 's2 U>) {
+fn mut_ref_to_pair_of_refs<'s0: 's1 + 's2, 's1, 's2, T: Move, U: Move>(p: &'s0 mut MovePair<&'s1 drop T, &'s2 out U>) {
   entry:
     drop p;
     return
 }
 
-fn<'s0, T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out 's0 T) {
+fn unwrap_or<'s0, T: Copy + Drop>(o: Option<T>, default: T, dest: &'s0 out T) {
   entry:
     switchEnum(o) [None: use_default, Some: use_some]
   use_default:
@@ -293,7 +293,7 @@ fn<'s0, T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out 's0 T) {
     return
 }
 
-fn<'s0, 's1, T: Move> swap(a: &mut 's0 T, b: &mut 's1 T) {
+fn swap<'s0, 's1, T: Move>(a: &'s0 mut T, b: &'s1 mut T) {
   tmp: T;
   entry:
     tmp = move a.*;
@@ -304,7 +304,7 @@ fn<'s0, 's1, T: Move> swap(a: &mut 's0 T, b: &mut 's1 T) {
     return
 }
 
-fn<'s0, 's1, T: Copy + Drop> replicate(x: T, out_a: &out 's0 T, out_b: &out 's1 T) {
+fn replicate<'s0, 's1, T: Copy + Drop>(x: T, out_a: &'s0 out T, out_b: &'s1 out T) {
   entry:
     out_a.* = copy x;
     unborrow out_a;
@@ -314,7 +314,7 @@ fn<'s0, 's1, T: Copy + Drop> replicate(x: T, out_a: &out 's0 T, out_b: &out 's1 
     return
 }
 
-fn<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: &'s0 CopyPair<T, U>, out_first: &out 's1 T, out_second: &out 's2 U) {
+fn pair_copy_out<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop>(p: &'s0 CopyPair<T, U>, out_first: &'s1 out T, out_second: &'s2 out U) {
   entry:
     out_first.* = copy p.*.first;
     unborrow out_first;
@@ -324,7 +324,7 @@ fn<'s0, 's1, 's2, T: Copy + Drop, U: Copy + Drop> pair_copy_out(p: &'s0 CopyPair
     return
 }
 
-fn<'s0, T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out 's0 T) {
+fn pick_by_flag<'s0, T: Copy + Drop>(flag: bool, a: T, b: T, dest: &'s0 out T) {
   entry:
     branch(copy flag) [true: pick_a, false: pick_b]
   pick_a:
@@ -343,7 +343,7 @@ fn<'s0, T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out 's0 T) {
     return
 }
 
-fn<'s0, T: Copy + Drop> unbox(b: Box<T>, dest: &out 's0 T) {
+fn unbox<'s0, T: Copy + Drop>(b: Box<T>, dest: &'s0 out T) {
   entry:
     dest.* = copy b.inner;
     unborrow dest;
@@ -351,13 +351,13 @@ fn<'s0, T: Copy + Drop> unbox(b: Box<T>, dest: &out 's0 T) {
     return
 }
 
-fn<'a, T: Copy + Drop> observe_generic(x: &'a T) {
+fn observe_generic<'a, T: Copy + Drop>(x: &'a T) {
   entry:
     drop x;
     return
 }
 
-fn<'a> call_observe_generic(x: &'a i64) {
+fn call_observe_generic<'a>(x: &'a i64) {
   entry:
     call observe_generic<'a, i64>(copy x);
     drop x;

@@ -1,13 +1,13 @@
-struct<T: Copy + Drop> Box: Copy + Drop {
+struct Box<T: Copy + Drop>: Copy + Drop {
   inner: T
 }
 
-enum<T: Copy + Drop> Option: Copy + Drop {
+enum Option<T: Copy + Drop>: Copy + Drop {
   None: unit
   Some: T
 }
 
-fn<'s0> make_box($return: &out 's0 Box<i64>) {
+fn make_box<'s0>($return: &'s0 out Box<i64>) {
   entry:
     $return.*.inner = 42;
     unborrow $return;
@@ -15,7 +15,7 @@ fn<'s0> make_box($return: &out 's0 Box<i64>) {
     return
 }
 
-fn<'s0> box_extract(b: Box<i64>, $return: &out 's0 i64) {
+fn box_extract<'s0>(b: Box<i64>, $return: &'s0 out i64) {
   entry:
     $return.* = move b.inner;
     unborrow $return;
@@ -24,7 +24,7 @@ fn<'s0> box_extract(b: Box<i64>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> make_some($return: &out 's0 Option<i64>) {
+fn make_some<'s0>($return: &'s0 out Option<i64>) {
   entry:
     $return.* = Option<i64>::Some(42);
     unborrow $return;
@@ -32,7 +32,7 @@ fn<'s0> make_some($return: &out 's0 Option<i64>) {
     return
 }
 
-fn<'s0> option_extract_match(o: Option<i64>, $return: &out 's0 i64) {
+fn option_extract_match<'s0>(o: Option<i64>, $return: &'s0 out i64) {
   _: unit;
   x: i64;
   entry:
@@ -62,7 +62,7 @@ enum MoveList: Move {
   ConsM: i64
 }
 
-fn<'s0> move_only_owned_match(ml: MoveList, $return: &out 's0 i64) {
+fn move_only_owned_match<'s0>(ml: MoveList, $return: &'s0 out i64) {
   u: unit;
   $tmp_0: &out i64;
   x: i64;
@@ -88,7 +88,7 @@ fn<'s0> move_only_owned_match(ml: MoveList, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> u_to_zero(u: unit, $return: &out 's0 i64) {
+fn u_to_zero<'s0>(u: unit, $return: &'s0 out i64) {
   entry:
     $return.* = 0;
     unborrow $return;
@@ -98,7 +98,7 @@ fn<'s0> u_to_zero(u: unit, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0, 's1> move_only_borrowed_match(ml: &'s0 MoveList, $return: &out 's1 i64) {
+fn move_only_borrowed_match<'s0, 's1>(ml: &'s0 MoveList, $return: &'s1 out i64) {
   _: unit;
   x: i64;
   entry:
@@ -123,7 +123,7 @@ fn<'s0, 's1> move_only_borrowed_match(ml: &'s0 MoveList, $return: &out 's1 i64) 
     return
 }
 
-fn<'s0> nested_container(b: Box<Option<i64>>, $return: &out 's0 i64) {
+fn nested_container<'s0>(b: Box<Option<i64>>, $return: &'s0 out i64) {
   inner: Option<i64>;
   _: unit;
   x: i64;
@@ -151,7 +151,7 @@ fn<'s0> nested_container(b: Box<Option<i64>>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> make_box_of_box(x: i64, $return: &out 's0 Box<Box<i64>>) {
+fn make_box_of_box<'s0>(x: i64, $return: &'s0 out Box<Box<i64>>) {
   entry:
     $return.*.inner.inner = move x;
     unborrow $return;
@@ -160,7 +160,7 @@ fn<'s0> make_box_of_box(x: i64, $return: &out 's0 Box<Box<i64>>) {
     return
 }
 
-fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
+fn make_box_of_option<'s0>(x: i64, $return: &'s0 out Box<Option<i64>>) {
   entry:
     $return.*.inner = Option<i64>::Some(move x);
     unborrow $return;
@@ -169,7 +169,7 @@ fn<'s0> make_box_of_option(x: i64, $return: &out 's0 Box<Option<i64>>) {
     return
 }
 
-fn<'s0> make_option_of_box(x: i64, $return: &out 's0 Option<Box<i64>>) {
+fn make_option_of_box<'s0>(x: i64, $return: &'s0 out Option<Box<i64>>) {
   $tmp_0: Box<i64>;
   entry:
     $tmp_0.inner = move x;
@@ -181,7 +181,7 @@ fn<'s0> make_option_of_box(x: i64, $return: &out 's0 Option<Box<i64>>) {
     return
 }
 
-fn<'s0> read_nested_field(b: Box<Box<i64>>, $return: &out 's0 i64) {
+fn read_nested_field<'s0>(b: Box<Box<i64>>, $return: &'s0 out i64) {
   entry:
     $return.* = move b.inner.inner;
     unborrow $return;
@@ -190,7 +190,7 @@ fn<'s0> read_nested_field(b: Box<Box<i64>>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> write_nested_pointee(r: &out 's0 Box<Box<i64>>, x: i64) {
+fn write_nested_pointee<'s0>(r: &'s0 out Box<Box<i64>>, x: i64) {
   $tmp_0: unit;
   $tmp_1: unit;
   entry:
@@ -211,12 +211,12 @@ struct DropCell: Drop + Move {
   v: i64
 }
 
-struct<T: Drop + Move> DropPair: Drop + Move {
+struct DropPair<T: Drop + Move>: Drop + Move {
   a: T
   b: T
 }
 
-fn<'s0> partial_move_generic_drop($return: &out 's0 DropCell) {
+fn partial_move_generic_drop<'s0>($return: &'s0 out DropCell) {
   p: DropPair<DropCell>;
   entry:
     p.a.v = 1;
@@ -229,7 +229,7 @@ fn<'s0> partial_move_generic_drop($return: &out 's0 DropCell) {
     return
 }
 
-fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
+fn identity<'s0, T: Copy + Drop>(x: T, $return: &'s0 out T) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -238,7 +238,7 @@ fn<'s0, T: Copy + Drop> identity(x: T, $return: &out 's0 T) {
     return
 }
 
-fn<'s0> call_generic_fn($return: &out 's0 i64) {
+fn call_generic_fn<'s0>($return: &'s0 out i64) {
   $tmp_0: f64;
   $tmp_1: &out f64;
   $tmp_2: &out i64;
@@ -256,7 +256,7 @@ fn<'s0> call_generic_fn($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_generic_fn_via_ret($return: &out 's0 i64) {
+fn call_generic_fn_via_ret<'s0>($return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i64;
@@ -273,7 +273,7 @@ fn<'s0> call_generic_fn_via_ret($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_generic_explicit($return: &out 's0 i64) {
+fn call_generic_explicit<'s0>($return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -284,7 +284,7 @@ fn<'s0> call_generic_explicit($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_generic_explicit_nested($return: &out 's0 i64) {
+fn call_generic_explicit_nested<'s0>($return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i64;
@@ -301,7 +301,7 @@ fn<'s0> call_generic_explicit_nested($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_generic_explicit_mixed($return: &out 's0 i64) {
+fn call_generic_explicit_mixed<'s0>($return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i64;
@@ -318,7 +318,7 @@ fn<'s0> call_generic_explicit_mixed($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> call_generic_explicit_float($return: &out 's0 f64) {
+fn call_generic_explicit_float<'s0>($return: &'s0 out f64) {
   $tmp_0: &out f64;
   entry:
     $tmp_0 = &out $return.*;
@@ -329,7 +329,7 @@ fn<'s0> call_generic_explicit_float($return: &out 's0 f64) {
     return
 }
 
-fn<'s0> call_generic_explicit_nested_type(x: Box<i64>, $return: &out 's0 Box<i64>) {
+fn call_generic_explicit_nested_type<'s0>(x: Box<i64>, $return: &'s0 out Box<i64>) {
   $tmp_0: &out Box<i64>;
   entry:
     $tmp_0 = &out $return.*;
@@ -341,9 +341,9 @@ fn<'s0> call_generic_explicit_nested_type(x: Box<i64>, $return: &out 's0 Box<i64
     return
 }
 
-extern fn<'s0, T: Copy + Drop> make_default($return: &out 's0 T);
+extern fn make_default<'s0, T: Copy + Drop>($return: &'s0 out T);
 
-fn<'s0> infer_generic_from_return_only($return: &out 's0 i64) {
+fn infer_generic_from_return_only<'s0>($return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -354,7 +354,7 @@ fn<'s0> infer_generic_from_return_only($return: &out 's0 i64) {
     return
 }
 
-fn<'s0, 's1> call_i64(f: fn(i64, &out 's0 i64), x: i64, $return: &out 's1 i64) {
+fn call_i64<'s0, 's1>(f: fn(i64, &'s0 out i64), x: i64, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -367,7 +367,7 @@ fn<'s0, 's1> call_i64(f: fn(i64, &out 's0 i64), x: i64, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> generic_function_value($return: &out 's0 i64) {
+fn generic_function_value<'s0>($return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -378,7 +378,7 @@ fn<'s0> generic_function_value($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> delayed_generic_function_value(x: i64, $return: &out 's0 i64) {
+fn delayed_generic_function_value<'s0>(x: i64, $return: &'s0 out i64) {
   f: fn(i64, &out i64);
   $tmp_0: &out i64;
   entry:
@@ -393,7 +393,7 @@ fn<'s0> delayed_generic_function_value(x: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0, T: Copy + Drop> requires_copy(x: T, $return: &out 's0 T) {
+fn requires_copy<'s0, T: Copy + Drop>(x: T, $return: &'s0 out T) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -402,7 +402,7 @@ fn<'s0, T: Copy + Drop> requires_copy(x: T, $return: &out 's0 T) {
     return
 }
 
-fn<'s0> inferred_concrete_bound($return: &out 's0 i64) {
+fn inferred_concrete_bound<'s0>($return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -413,7 +413,7 @@ fn<'s0> inferred_concrete_bound($return: &out 's0 i64) {
     return
 }
 
-fn<'s0, T: Copy + Drop> inferred_param_bound(x: T, $return: &out 's0 T) {
+fn inferred_param_bound<'s0, T: Copy + Drop>(x: T, $return: &'s0 out T) {
   $tmp_0: &out T;
   entry:
     $tmp_0 = &out $return.*;
@@ -426,7 +426,7 @@ fn<'s0, T: Copy + Drop> inferred_param_bound(x: T, $return: &out 's0 T) {
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<'s0, 's1> identity_from_impl(recv: &'s0 Box<T>, x: T, $return: &out 's1 T) {
+  fn identity_from_impl<'s0, 's1>(recv: &'s0 Box<T>, x: T, $return: &'s1 out T) {
     $tmp_0: &out T;
     entry:
       $tmp_0 = &out $return.*;
@@ -441,7 +441,7 @@ impl<T: Copy + Drop> Box<T> {
   }
 }
 
-fn<'a, 's0> borrow_identity(x: &'a i64, $return: &out 's0 &'a i64) {
+fn borrow_identity<'a, 's0>(x: &'a i64, $return: &'s0 out &'a i64) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -450,7 +450,7 @@ fn<'a, 's0> borrow_identity(x: &'a i64, $return: &out 's0 &'a i64) {
     return
 }
 
-fn<'a, 's0> call_explicit_lifetime(x: &'a i64, $return: &out 's0 &'a i64) {
+fn call_explicit_lifetime<'a, 's0>(x: &'a i64, $return: &'s0 out &'a i64) {
   $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -462,7 +462,7 @@ fn<'a, 's0> call_explicit_lifetime(x: &'a i64, $return: &out 's0 &'a i64) {
     return
 }
 
-fn<'a, 's0, T: Copy + Drop> borrow_generic_identity(x: &'a T, $return: &out 's0 &'a T) {
+fn borrow_generic_identity<'a, 's0, T: Copy + Drop>(x: &'a T, $return: &'s0 out &'a T) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -471,7 +471,7 @@ fn<'a, 's0, T: Copy + Drop> borrow_generic_identity(x: &'a T, $return: &out 's0 
     return
 }
 
-fn<'a, 's0> call_explicit_lifetime_inferred_type(x: &'a i64, $return: &out 's0 &'a i64) {
+fn call_explicit_lifetime_inferred_type<'a, 's0>(x: &'a i64, $return: &'s0 out &'a i64) {
   $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -483,7 +483,7 @@ fn<'a, 's0> call_explicit_lifetime_inferred_type(x: &'a i64, $return: &out 's0 &
     return
 }
 
-fn<'a, 's0> call_inferred_lifetime_explicit_type(x: &'a i64, $return: &out 's0 &'a i64) {
+fn call_inferred_lifetime_explicit_type<'a, 's0>(x: &'a i64, $return: &'s0 out &'a i64) {
   $tmp_0: &out &'a i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -495,11 +495,11 @@ fn<'a, 's0> call_inferred_lifetime_explicit_type(x: &'a i64, $return: &out 's0 &
     return
 }
 
-struct<'view> BorrowedI64: Copy + Drop {
+struct BorrowedI64<'view>: Copy + Drop {
   value: &'view i64
 }
 
-fn<'callee, 's0> make_borrowed_i64(value: &'callee i64, $return: &out 's0 BorrowedI64<'callee>) {
+fn make_borrowed_i64<'callee, 's0>(value: &'callee i64, $return: &'s0 out BorrowedI64<'callee>) {
   entry:
     $return.*.value = move value;
     unborrow $return;
@@ -508,7 +508,7 @@ fn<'callee, 's0> make_borrowed_i64(value: &'callee i64, $return: &out 's0 Borrow
     return
 }
 
-fn<'caller, 's0> forward_borrowed_i64(value: &'caller i64, $return: &out 's0 BorrowedI64<'caller>) {
+fn forward_borrowed_i64<'caller, 's0>(value: &'caller i64, $return: &'s0 out BorrowedI64<'caller>) {
   $tmp_0: &out BorrowedI64<'caller>;
   entry:
     $tmp_0 = &out $return.*;
@@ -520,7 +520,7 @@ fn<'caller, 's0> forward_borrowed_i64(value: &'caller i64, $return: &out 's0 Bor
     return
 }
 
-fn<'caller, 's0> infer_borrowed_i64(value: &'caller i64, $return: &out 's0 BorrowedI64<'caller>) {
+fn infer_borrowed_i64<'caller, 's0>(value: &'caller i64, $return: &'s0 out BorrowedI64<'caller>) {
   $tmp_0: &out BorrowedI64<'caller>;
   entry:
     $tmp_0 = &out $return.*;
@@ -532,9 +532,9 @@ fn<'caller, 's0> infer_borrowed_i64(value: &'caller i64, $return: &out 's0 Borro
     return
 }
 
-extern fn<'callee, 's0> make_borrowed_i64_default($return: &out 's0 BorrowedI64<'callee>);
+extern fn make_borrowed_i64_default<'callee, 's0>($return: &'s0 out BorrowedI64<'callee>);
 
-fn<'caller, 's0> infer_borrowed_i64_from_result($return: &out 's0 BorrowedI64<'caller>) {
+fn infer_borrowed_i64_from_result<'caller, 's0>($return: &'s0 out BorrowedI64<'caller>) {
   $tmp_0: &out BorrowedI64<'caller>;
   entry:
     $tmp_0 = &out $return.*;
@@ -545,7 +545,7 @@ fn<'caller, 's0> infer_borrowed_i64_from_result($return: &out 's0 BorrowedI64<'c
     return
 }
 
-fn<'caller, 's0> infer_borrowed_i64_receiver(value: &'caller i64, $return: &out 's0 BorrowedI64<'caller>) {
+fn infer_borrowed_i64_receiver<'caller, 's0>(value: &'caller i64, $return: &'s0 out BorrowedI64<'caller>) {
   $tmp_0: &out BorrowedI64<'caller>;
   entry:
     $tmp_0 = &out $return.*;
@@ -557,7 +557,7 @@ fn<'caller, 's0> infer_borrowed_i64_receiver(value: &'caller i64, $return: &out 
     return
 }
 
-fn<T: Copy + Drop> generic_side_effect() {
+fn generic_side_effect<T: Copy + Drop>() {
   $tmp_0: unit;
   entry:
     $tmp_0 = unit;
@@ -594,7 +594,7 @@ fn deferred_generic_call() {
     return
 }
 
-fn<'a> lifetime_side_effect() {
+fn lifetime_side_effect<'a>() {
   $tmp_0: unit;
   entry:
     $tmp_0 = unit;
@@ -617,7 +617,7 @@ fn explicit_static_lifetime() {
     return
 }
 
-fn<'s0, T: Copy + Drop> unsafe_identity(x: T, $return: &out 's0 T) {
+fn unsafe_identity<'s0, T: Copy + Drop>(x: T, $return: &'s0 out T) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -626,7 +626,7 @@ fn<'s0, T: Copy + Drop> unsafe_identity(x: T, $return: &out 's0 T) {
     return
 }
 
-fn<'s0> call_generic_unsafe($return: &out 's0 i64) {
+fn call_generic_unsafe<'s0>($return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -637,7 +637,7 @@ fn<'s0> call_generic_unsafe($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
+fn test_unsafe_deref<'s0>(ptr: *i64, $return: &'s0 out i64) {
   entry:
     $return.* = move ptr.*;
     unborrow $return;
@@ -647,16 +647,16 @@ fn<'s0> test_unsafe_deref(ptr: *i64, $return: &out 's0 i64) {
     return
 }
 
-struct<'a, T> PhantomData: Copy + Drop {
+struct PhantomData<'a, T>: Copy + Drop {
 }
 
-struct<'a, T> SpanView: Copy + Drop {
+struct SpanView<'a, T>: Copy + Drop {
   ptr: *T
   len: u64
   marker: PhantomData<'a, T>
 }
 
-fn<'a, 's0, T> make_empty_span(p: *T, $return: &out 's0 SpanView<'a, T>) {
+fn make_empty_span<'a, 's0, T>(p: *T, $return: &'s0 out SpanView<'a, T>) {
   entry:
     $return.*.ptr = move p;
     $return.*.len = 0u64;
@@ -666,7 +666,7 @@ fn<'a, 's0, T> make_empty_span(p: *T, $return: &out 's0 SpanView<'a, T>) {
     return
 }
 
-fn<'a, 's0> use_empty_span(x: &'a i64, $return: &out 's0 SpanView<'a, i64>) {
+fn use_empty_span<'a, 's0>(x: &'a i64, $return: &'s0 out SpanView<'a, i64>) {
   $tmp_0: *i64;
   $tmp_1: &out SpanView<'a, i64>;
   entry:
@@ -681,18 +681,18 @@ fn<'a, 's0> use_empty_span(x: &'a i64, $return: &out 's0 SpanView<'a, i64>) {
     return
 }
 
-struct<A: Copy + Drop, B: Copy + Drop> Pair: Copy + Drop {
+struct Pair<A: Copy + Drop, B: Copy + Drop>: Copy + Drop {
   first: A
   second: B
 }
 
-struct<T: Copy + Drop> Buffer: Copy + Drop {
+struct Buffer<T: Copy + Drop>: Copy + Drop {
   ptr: *T
   len: u64
 }
 
 impl<T: Copy + Drop> Buffer<T> {
-  fn<'a, 's0> as_slice(self: &'a Buffer<T>, $return: &out 's0 SpanView<'a, T>) {
+  fn as_slice<'a, 's0>(self: &'a Buffer<T>, $return: &'s0 out SpanView<'a, T>) {
     entry:
       $return.*.ptr = copy self.*.ptr;
       $return.*.len = copy self.*.len;
@@ -702,7 +702,7 @@ impl<T: Copy + Drop> Buffer<T> {
       require_uninit self;
       return
   }
-  fn<'s0, 's1, U: Copy + Drop> pair_with(self: &'s0 Buffer<T>, other: U, $return: &out 's1 Pair<T, U>) {
+  fn pair_with<'s0, 's1, U: Copy + Drop>(self: &'s0 Buffer<T>, other: U, $return: &'s1 out Pair<T, U>) {
     entry:
       $return.*.first = move self.*.ptr.*;
       $return.*.second = move other;
@@ -715,7 +715,7 @@ impl<T: Copy + Drop> Buffer<T> {
   }
 }
 
-fn<'a, 's0> test_method_lifetime_receiver(buf: &'a Buffer<i64>, $return: &out 's0 SpanView<'a, i64>) {
+fn test_method_lifetime_receiver<'a, 's0>(buf: &'a Buffer<i64>, $return: &'s0 out SpanView<'a, i64>) {
   $tmp_0: &out SpanView<'a, i64>;
   entry:
     $tmp_0 = &out $return.*;
@@ -727,7 +727,7 @@ fn<'a, 's0> test_method_lifetime_receiver(buf: &'a Buffer<i64>, $return: &out 's
     return
 }
 
-fn<'s0, 's1> test_method_type_param_receiver(buf: &'s0 Buffer<i64>, $return: &out 's1 Pair<i64, bool>) {
+fn test_method_type_param_receiver<'s0, 's1>(buf: &'s0 Buffer<i64>, $return: &'s1 out Pair<i64, bool>) {
   $tmp_0: &out Pair<i64, bool>;
   entry:
     $tmp_0 = &out $return.*;
@@ -739,12 +739,12 @@ fn<'s0, 's1> test_method_type_param_receiver(buf: &'s0 Buffer<i64>, $return: &ou
     return
 }
 
-struct<T: Copy + Drop> Counter: Copy + Drop {
+struct Counter<T: Copy + Drop>: Copy + Drop {
   count: T
 }
 
 impl<T: Copy + Drop> Counter<T> {
-  fn<'s0, 's1> get_val(self: &'s0 Counter<T>, $return: &out 's1 T) {
+  fn get_val<'s0, 's1>(self: &'s0 Counter<T>, $return: &'s1 out T) {
     entry:
       $return.* = copy self.*.count;
       unborrow $return;
@@ -753,7 +753,7 @@ impl<T: Copy + Drop> Counter<T> {
       require_uninit self;
       return
   }
-  fn<'s0> set_val(self: &mut 's0 Counter<T>, new_val: T) {
+  fn set_val<'s0>(self: &'s0 mut Counter<T>, new_val: T) {
     $tmp_0: unit;
     $tmp_1: unit;
     entry:
@@ -770,7 +770,7 @@ impl<T: Copy + Drop> Counter<T> {
       require_uninit self;
       return
   }
-  fn<'a, 's0> get_ref(self: &'a Counter<T>, $return: &out 's0 &'a T) {
+  fn get_ref<'a, 's0>(self: &'a Counter<T>, $return: &'s0 out &'a T) {
     entry:
       $return.* = &self.*.count;
       unborrow $return;
@@ -779,7 +779,7 @@ impl<T: Copy + Drop> Counter<T> {
       require_uninit self;
       return
   }
-  fn<'s0> into_count(self: Counter<T>, $return: &out 's0 T) {
+  fn into_count<'s0>(self: Counter<T>, $return: &'s0 out T) {
     entry:
       $return.* = move self.count;
       unborrow $return;
@@ -789,7 +789,7 @@ impl<T: Copy + Drop> Counter<T> {
   }
 }
 
-fn<'s10, 's0> test_self_sugar(c: Counter<i64>, $return: &out 's0 i64) {
+fn test_self_sugar<'s10, 's0>(c: Counter<i64>, $return: &'s0 out i64) {
   $c_0: Counter<i64>;
   v: i64;
   $tmp_0: &Counter<i64>;
@@ -846,12 +846,12 @@ fn<'s10, 's0> test_self_sugar(c: Counter<i64>, $return: &out 's0 i64) {
     return
 }
 
-struct<T: Move> Slot: Move {
+struct Slot<T: Move>: Move {
   val: T
 }
 
 impl<T: Move> Slot<T> {
-  fn<'s0> init(self: &out 's0 Slot<T>, val: T) {
+  fn init<'s0>(self: &'s0 out Slot<T>, val: T) {
     $tmp_0: unit;
     $tmp_1: unit;
     entry:
@@ -867,7 +867,7 @@ impl<T: Move> Slot<T> {
       require_uninit self;
       return
   }
-  fn<'s0, 's1> close(self: &drop 's0 Slot<T>, $return: &out 's1 T) {
+  fn close<'s0, 's1>(self: &'s0 drop Slot<T>, $return: &'s1 out T) {
     v: T;
     entry:
       v = move self.*.val;
@@ -879,7 +879,7 @@ impl<T: Move> Slot<T> {
       require_uninit self;
       return
   }
-  fn<'a> init_lifetime(self: &out 'a Slot<T>, val: T) {
+  fn init_lifetime<'a>(self: &'a out Slot<T>, val: T) {
     $tmp_0: unit;
     $tmp_1: unit;
     entry:
@@ -895,7 +895,7 @@ impl<T: Move> Slot<T> {
       require_uninit self;
       return
   }
-  fn<'a, 's0> close_lifetime(self: &drop 'a Slot<T>, $return: &out 's0 T) {
+  fn close_lifetime<'a, 's0>(self: &'a drop Slot<T>, $return: &'s0 out T) {
     v: T;
     entry:
       v = move self.*.val;
@@ -909,7 +909,7 @@ impl<T: Move> Slot<T> {
   }
 }
 
-fn<'s11, 's12, 's0> test_out_and_drop_self_sugar($return: &out 's0 i64) {
+fn test_out_and_drop_self_sugar<'s11, 's12, 's0>($return: &'s0 out i64) {
   s: Slot<i64>;
   $tmp_0: unit;
   $tmp_1: &out Slot<i64>;

@@ -1,7 +1,7 @@
 # A generic instantiation without a call has no value semantics. This parser
 # error lives separately so it does not prevent the type-checking error fixture
 # from reaching the HLL checker.
-fn<T: Copy + Drop> identity(x: T) -> T { x }
+fn identity<T: Copy + Drop>(x: T) -> T { x }
 
 # covers: generic instantiation syntax without a call expression
 fn bare_instantiation_not_a_value() -> i64 {

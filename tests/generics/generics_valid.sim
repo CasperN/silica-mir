@@ -36,37 +36,37 @@
 
 # ── Shared type declarations ─────────────────────────────────────────
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-struct<T: Copy + Drop, U: Move> Pair { first: T  second: U }
+struct Pair<T: Copy + Drop, U: Move> { first: T  second: U }
 
-enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
 
-struct<T: Copy + Drop> Nest: Copy + Drop { outer: Box<Box<T>> }
+struct Nest<T: Copy + Drop>: Copy + Drop { outer: Box<Box<T>> }
 
-struct<T: Copy + Drop> LL: Copy + Drop { head: T  tail: *LL<T> }
+struct LL<T: Copy + Drop>: Copy + Drop { head: T  tail: *LL<T> }
 
 struct Container: Copy + Drop { b: Box<i32> }
 
-struct<T: Copy + Drop> Arr3: Copy + Drop { xs: [T; 3] }
+struct Arr3<T: Copy + Drop>: Copy + Drop { xs: [T; 3] }
 
-struct<T: Move> Bag: Move { inner: T }
+struct Bag<T: Move>: Move { inner: T }
 
-struct<T: Move, U: Move> MovePair: Move { first: T  second: U }
+struct MovePair<T: Move, U: Move>: Move { first: T  second: U }
 
-struct<T: Copy + Drop, U: Copy + Drop> CopyPair: Copy + Drop { first: T  second: U }
+struct CopyPair<T: Copy + Drop, U: Copy + Drop>: Copy + Drop { first: T  second: U }
 
 # ── Generic shells for marker × param coverage ───────────────────────
 # covers: type_kind=struct class=Copy op=composition bound=T:Copy
-struct<T: Copy> BoxC: Copy { inner: T }
+struct BoxC<T: Copy>: Copy { inner: T }
 # covers: type_kind=struct class=Drop op=composition bound=T:Drop
-struct<T: Drop> BoxD: Drop { inner: T }
+struct BoxD<T: Drop>: Drop { inner: T }
 # covers: type_kind=struct class=Move op=composition bound=T:Move
-struct<T: Move> BoxM: Move { inner: T }
+struct BoxM<T: Move>: Move { inner: T }
 # covers: type_kind=struct class=Copy+Drop op=composition bound=T:Copy+Drop
-struct<T: Copy + Drop> BoxCD: Copy + Drop { inner: T }
+struct BoxCD<T: Copy + Drop>: Copy + Drop { inner: T }
 # covers: type_kind=struct class=Move op=blanket_move bound=T:Copy+Drop
-struct<T: Copy + Drop> BoxCD_Move: Move { inner: T }
+struct BoxCD_Move<T: Copy + Drop>: Move { inner: T }
 
 # ── Material types for the use-site matrix ───────────────────────────
 # covers: type_kind=struct class=Copy op=use_site_bound
@@ -106,7 +106,7 @@ struct UseBoxM_BoxCD_i64 { b: BoxM<BoxCD<i64>> }
 
 # ── Nested Param substitution ────────────────────────────────────────
 # covers: type_kind=struct op=nested_param_subst class=Copy+Drop
-struct<T: Copy + Drop> OuterBox: Copy + Drop { inner: BoxCD<T> }
+struct OuterBox<T: Copy + Drop>: Copy + Drop { inner: BoxCD<T> }
 struct TripleBox: Copy + Drop { inner: OuterBox<BoxCD<i64>> }
 struct UseOuter_i64 { b: OuterBox<i64> }
 
@@ -148,13 +148,13 @@ struct NestedBoxCD: Copy + Drop { inner: BoxCD<BoxCD<i64>> }
 # ── Generic function declarations ────────────────────────────────────
 
 # Generic fn that accepts a shared ref; exercises Param in ref position.
-fn<T> take_ref(r: &T) {
+fn take_ref<T>(r: &T) {
   entry:
     return
 }
 
 # Generic fn with no params in the signature; exercises type-arg call syntax.
-fn<T> touch() {
+fn touch<T>() {
   entry:
     return
 }
@@ -171,7 +171,7 @@ fn caller() {
 
 # T: Copy + Drop implies Drop, so elaboration inserts `drop x` before
 # return. Verifies that drop elaboration handles Param nodes correctly.
-fn<T: Copy + Drop> take_by_value(x: T) {
+fn take_by_value<T: Copy + Drop>(x: T) {
   entry:
     return
 }
@@ -180,7 +180,7 @@ fn<T: Copy + Drop> take_by_value(x: T) {
 
 # type_of_place through b.inner returns T. Confirms Param survives the
 # field-projection path in type_of_place.
-fn<T: Copy + Drop> access_field(b: Box<T>) {
+fn access_field<T: Copy + Drop>(b: Box<T>) {
   x: T;
   entry:
     x = copy b.inner;
@@ -191,7 +191,7 @@ fn<T: Copy + Drop> access_field(b: Box<T>) {
 
 # switchEnum dispatches on a Param-typed enum; `o as Some` downcasts to
 # the variant's declared payload type T. Exercises generic enum arms.
-fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
+fn switch_on_generic_enum<T: Copy + Drop>(o: Option<T>) {
   y: T;
   entry:
     switchEnum(o) [None: none_arm, Some: some_arm]
@@ -205,7 +205,7 @@ fn<T: Copy + Drop> switch_on_generic_enum(o: Option<T>) {
 # ── Shared ref to Param ──────────────────────────────────────────────
 
 # r.* has type T. Deref through &T must yield T, not an error.
-fn<T: Copy + Drop> read_through_shared_ref(r: &T) {
+fn read_through_shared_ref<T: Copy + Drop>(r: &T) {
   x: T;
   entry:
     x = copy r.*;
@@ -215,20 +215,20 @@ fn<T: Copy + Drop> read_through_shared_ref(r: &T) {
 # ── Non-shared ref kinds carrying Param inner ────────────────────────
 
 # &mut T (Init, Init): trivial — no obligation change needed.
-fn<T: Copy + Drop> mut_ref_param(m: &mut T) {
+fn mut_ref_param<T: Copy + Drop>(m: &mut T) {
   entry:
     return
 }
 
 # &out T (Uninit, Init): body must initialise the pointee.
-fn<T: Copy + Drop> out_ref_param(src: T, dest: &out T) {
+fn out_ref_param<T: Copy + Drop>(src: T, dest: &out T) {
   entry:
     dest.* = copy src;
     return
 }
 
 # &uninit T (Uninit, Uninit): trivial.
-fn<T: Copy + Drop> uninit_ref_param(u: &uninit T) {
+fn uninit_ref_param<T: Copy + Drop>(u: &uninit T) {
   entry:
     return
 }
@@ -236,7 +236,7 @@ fn<T: Copy + Drop> uninit_ref_param(u: &uninit T) {
 # ── fn(T) as parameter type ──────────────────────────────────────────
 
 # Fn type carrying a Param inner: validated by type checker, never called.
-fn<T: Copy + Drop> fn_type_with_param(f: fn(T)) {
+fn fn_type_with_param<T: Copy + Drop>(f: fn(T)) {
   entry:
     return
 }
@@ -246,7 +246,7 @@ fn<T: Copy + Drop> fn_type_with_param(f: fn(T)) {
 # Option<Box<T>>: Box<T> satisfies Option's T: Copy+Drop bound because
 # Box is Copy+Drop when T is Copy+Drop. Each layer's bound is discharged
 # independently by the composition check.
-fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
+fn option_of_box<T: Copy + Drop>(x: Option<Box<T>>) {
   entry:
     return
 }
@@ -255,7 +255,7 @@ fn<T: Copy + Drop> option_of_box(x: Option<Box<T>>) {
 
 # Bag<&mut T>: &mut T is Move, satisfying Bag's T: Move bound. Passed
 # by shared ref because Bag is itself Move (linear at the value level).
-fn<T: Move> ref_to_bag_of_mut_ref(b: &Bag<&mut T>) {
+fn ref_to_bag_of_mut_ref<T: Move>(b: &Bag<&mut T>) {
   entry:
     return
 }
@@ -263,7 +263,7 @@ fn<T: Move> ref_to_bag_of_mut_ref(b: &Bag<&mut T>) {
 # MovePair<&drop T, &out U>: both linear ref kinds are Move, satisfying
 # each param's Move bound. Every layer's bounds hold under scope-aware
 # validation.
-fn<T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut MovePair<&drop T, &out U>) {
+fn mut_ref_to_pair_of_refs<T: Move, U: Move>(p: &mut MovePair<&drop T, &out U>) {
   entry:
     return
 }
@@ -272,7 +272,7 @@ fn<T: Move, U: Move> mut_ref_to_pair_of_refs(p: &mut MovePair<&drop T, &out U>) 
 
 # switchEnum with per-arm accounting: None arm moves default into dest;
 # Some arm copies payload then drops the remaining values.
-fn<T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out T) {
+fn unwrap_or<T: Copy + Drop>(o: Option<T>, default: T, dest: &out T) {
   entry:
     switchEnum(o) [None: use_default, Some: use_some]
   use_default:
@@ -289,7 +289,7 @@ fn<T: Copy + Drop> unwrap_or(o: Option<T>, default: T, dest: &out T) {
 # Three-step move choreography via two &mut refs. T: Move only — no Copy
 # or Drop. Every intermediate state has one pointee Uninit and one Init;
 # the sequence leaves both Init.
-fn<T: Move> swap(a: &mut T, b: &mut T) {
+fn swap<T: Move>(a: &mut T, b: &mut T) {
   tmp: T;
   entry:
     tmp = move a.*;
@@ -300,7 +300,7 @@ fn<T: Move> swap(a: &mut T, b: &mut T) {
 
 # Broadcast a Copy source into two &out sinks. Both sink obligations
 # transition Uninit -> Init from the same operand read.
-fn<T: Copy + Drop> replicate(x: T, out_a: &out T, out_b: &out T) {
+fn replicate<T: Copy + Drop>(x: T, out_a: &out T, out_b: &out T) {
   entry:
     out_a.* = copy x;
     out_b.* = copy x;
@@ -310,7 +310,7 @@ fn<T: Copy + Drop> replicate(x: T, out_a: &out T, out_b: &out T) {
 # Pair projection through a shared ref: reads both fields via deref,
 # copies them into distinct &out slots of matching type. p is never
 # consumed; NLL inserts an `unborrow p` after the last field read.
-fn<T: Copy + Drop, U: Copy + Drop> pair_copy_out(
+fn pair_copy_out<T: Copy + Drop, U: Copy + Drop>(
   p: &CopyPair<T, U>,
   out_first: &out T,
   out_second: &out U,
@@ -324,7 +324,7 @@ fn<T: Copy + Drop, U: Copy + Drop> pair_copy_out(
 # Branch on a bool operand and choose between two Copy+Drop candidates.
 # Each arm clears the unused candidate with `drop`, so the net effect is
 # one write to dest plus symmetric cleanup on both branches.
-fn<T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out T) {
+fn pick_by_flag<T: Copy + Drop>(flag: bool, a: T, b: T, dest: &out T) {
   entry:
     branch (copy flag) [true: pick_a, false: pick_b]
   pick_a:
@@ -342,7 +342,7 @@ fn<T: Copy + Drop> pick_by_flag(flag: bool, a: T, b: T, dest: &out T) {
 # Copy field from an owned generic struct, then consume the struct.
 # Exercises field projection on an owned generic value across a stmt
 # boundary: the copy leaves b still Init; the explicit drop closes it out.
-fn<T: Copy + Drop> unbox(b: Box<T>, dest: &out T) {
+fn unbox<T: Copy + Drop>(b: Box<T>, dest: &out T) {
   entry:
     dest.* = copy b.inner;
     drop b;
@@ -350,13 +350,13 @@ fn<T: Copy + Drop> unbox(b: Box<T>, dest: &out T) {
 }
 
 # Ordinary function constants preserve explicit lifetime and type arguments.
-fn<'a, T: Copy + Drop> observe_generic(x: &'a T) {
+fn observe_generic<'a, T: Copy + Drop>(x: &'a T) {
   entry:
     return
 }
 
 # covers: MIR FnName preserves explicit lifetime and type arguments
-fn<'a> call_observe_generic(x: &'a i64) {
+fn call_observe_generic<'a>(x: &'a i64) {
   entry:
     call observe_generic<'a, i64>(copy x);
     return

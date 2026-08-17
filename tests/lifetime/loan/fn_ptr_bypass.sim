@@ -1,4 +1,4 @@
-fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
+fn identity<'a>(r: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy r;
     return

@@ -1,13 +1,13 @@
-extern fn<'s0> malloc_bytes(size: u64, $return: &out 's0 *u8);
+extern fn malloc_bytes<'s0>(size: u64, $return: &'s0 out *u8);
 
 extern fn free_bytes(p: *u8);
 
-struct<T> Box: Move {
+struct Box<T>: Move {
   data: *T
 }
 
 impl<T: Move> Box<T> {
-  fn<'s0> new(value: T, $return: &out 's0 Box<T>) {
+  fn new<'s0>(value: T, $return: &'s0 out Box<T>) {
     bytes: *u8;
     $tmp_0: u64;
     $tmp_1: &out u64;
@@ -39,7 +39,7 @@ impl<T: Move> Box<T> {
       require_uninit value;
       return
   }
-  fn<'s0> into_inner(self: Box<T>, $return: &out 's0 T) {
+  fn into_inner<'s0>(self: Box<T>, $return: &'s0 out T) {
     value: T;
     $tmp_0: unit;
     $tmp_1: *u8;
@@ -61,7 +61,7 @@ impl<T: Move> Box<T> {
 }
 
 impl<T> Box<T> {
-  fn<'s0: 's2, 's1: 's2, 's2> get(self: &'s0 Box<T>, $return: &out 's1 &'s2 T) {
+  fn get<'s0: 's2, 's1: 's2, 's2>(self: &'s0 Box<T>, $return: &'s1 out &'s2 T) {
     entry:
       $return.* = ptr_cast(copy self.*.data, &T);
       unborrow $return;
@@ -70,7 +70,7 @@ impl<T> Box<T> {
       require_uninit self;
       return
   }
-  fn<'s0: 's2, 's1: 's2, 's2> get_mut(self: &mut 's0 Box<T>, $return: &out 's1 &mut 's2 T) {
+  fn get_mut<'s0: 's2, 's1: 's2, 's2>(self: &'s0 mut Box<T>, $return: &'s1 out &'s2 mut T) {
     entry:
       $return.* = ptr_cast(copy self.*.data, &mut T);
       unborrow $return;
@@ -82,7 +82,7 @@ impl<T> Box<T> {
 }
 
 impl<T: AutoDestroy> AutoDestroy for Box<T> {
-  fn<'s0> destroy(self: &drop 's0 Box<T>) {
+  fn destroy<'s0>(self: &'s0 drop Box<T>) {
     $tmp_0: unit;
     $tmp_1: unit;
     $tmp_2: &drop T;
@@ -110,17 +110,17 @@ impl<T: AutoDestroy> AutoDestroy for Box<T> {
   }
 }
 
-struct<'a, T> PhantomData: Copy + Drop {
+struct PhantomData<'a, T>: Copy + Drop {
 }
 
-struct<'a, T> Span: Copy + Drop {
+struct Span<'a, T>: Copy + Drop {
   data: *T
   len: u64
   _marker: PhantomData<'a, T>
 }
 
 impl<'a, T> Span<'a, T> {
-  fn<'s0> from_raw_parts(data: *T, len: u64, $return: &out 's0 Span<'a, T>) {
+  fn from_raw_parts<'s0>(data: *T, len: u64, $return: &'s0 out Span<'a, T>) {
     entry:
       $return.*.data = move data;
       $return.*.len = move len;
@@ -130,7 +130,7 @@ impl<'a, T> Span<'a, T> {
       require_uninit data;
       return
   }
-  fn<'s0, 's1> len(self: &'s0 Span<'a, T>, $return: &out 's1 u64) {
+  fn len<'s0, 's1>(self: &'s0 Span<'a, T>, $return: &'s1 out u64) {
     entry:
       $return.* = copy self.*.len;
       unborrow $return;
@@ -139,7 +139,7 @@ impl<'a, T> Span<'a, T> {
       require_uninit self;
       return
   }
-  fn<'s0, 's1> get_unchecked(self: &'s0 Span<'a, T>, index: u64, $return: &out 's1 &'a T) {
+  fn get_unchecked<'s0, 's1>(self: &'s0 Span<'a, T>, index: u64, $return: &'s1 out &'a T) {
     item: *T;
     $tmp_0: &out *T;
     entry:
@@ -157,14 +157,14 @@ impl<'a, T> Span<'a, T> {
   }
 }
 
-struct<T> Vec: Move {
+struct Vec<T>: Move {
   data: *T
   len: u64
   cap: u64
 }
 
 impl<T> Vec<T> {
-  fn<'s0> with_capacity(cap: u64, $return: &out 's0 Vec<T>) {
+  fn with_capacity<'s0>(cap: u64, $return: &'s0 out Vec<T>) {
     data: *T;
     $tmp_0: *u8;
     $tmp_1: u64;
@@ -195,7 +195,7 @@ impl<T> Vec<T> {
       require_uninit cap;
       return
   }
-  fn<'s0, 's1> len(self: &'s0 Vec<T>, $return: &out 's1 u64) {
+  fn len<'s0, 's1>(self: &'s0 Vec<T>, $return: &'s1 out u64) {
     entry:
       $return.* = copy self.*.len;
       unborrow $return;
@@ -204,7 +204,7 @@ impl<T> Vec<T> {
       require_uninit self;
       return
   }
-  fn<'a, 's0> as_span(self: &'a Vec<T>, $return: &out 's0 Span<'a, T>) {
+  fn as_span<'a, 's0>(self: &'a Vec<T>, $return: &'s0 out Span<'a, T>) {
     $tmp_0: &out Span<'a, T>;
     entry:
       $tmp_0 = &out $return.*;
@@ -219,7 +219,7 @@ impl<T> Vec<T> {
 }
 
 impl<T: AutoDestroy> AutoDestroy for Vec<T> {
-  fn<'s0> destroy(self: &drop 's0 Vec<T>) {
+  fn destroy<'s0>(self: &'s0 drop Vec<T>) {
     $tmp_0: unit;
     index: u64;
     $tmp_1: unit;
@@ -313,7 +313,7 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
 }
 
 impl<T: Move> Vec<T> {
-  fn<'s0> push_unchecked(self: &mut 's0 Vec<T>, value: T) {
+  fn push_unchecked<'s0>(self: &'s0 mut Vec<T>, value: T) {
     $tmp_0: unit;
     slot: *T;
     $tmp_1: &out *T;
@@ -348,7 +348,7 @@ impl<T: Move> Vec<T> {
       require_uninit self;
       return
   }
-  fn<'s0> push(self: &mut 's0 Vec<T>, value: T) {
+  fn push<'s0>(self: &'s0 mut Vec<T>, value: T) {
     $tmp_0: unit;
     $tmp_1: unit;
     $tmp_2: bool;
@@ -383,7 +383,7 @@ impl<T: Move> Vec<T> {
     $tmp_25: unit;
     $tmp_26: unit;
     $tmp_27: unit;
-    $clone_0: &mut 's0 Vec<T>;
+    $clone_0: &'s0 mut Vec<T>;
     entry:
       $tmp_3 = &out $tmp_2;
       call $u64_ge(copy self.*.len, copy self.*.cap, move $tmp_3);
@@ -503,7 +503,7 @@ impl<T: Move> Vec<T> {
   }
 }
 
-fn<'a, 's0, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64, $return: &out 's0 &'a T) {
+fn vec_get_unchecked<'a, 's0, T>(vec: &'a Vec<T>, index: u64, $return: &'s0 out &'a T) {
   $tmp_0: *T;
   $tmp_1: &out *T;
   entry:
@@ -520,7 +520,7 @@ fn<'a, 's0, T> vec_get_unchecked(vec: &'a Vec<T>, index: u64, $return: &out 's0 
     return
 }
 
-fn<'inspect, 's0> inspect_vec(vec: &'inspect Vec<i64>, $return: &out 's0 i64) {
+fn inspect_vec<'inspect, 's0>(vec: &'inspect Vec<i64>, $return: &'s0 out i64) {
   span: Span<'inspect, i64>;
   $tmp_0: &out Span<'inspect, i64>;
   borrow: &Span<'inspect, i64>;
@@ -561,7 +561,7 @@ fn<'inspect, 's0> inspect_vec(vec: &'inspect Vec<i64>, $return: &out 's0 i64) {
     return
 }
 
-fn<'s4, 's0> main($return: &out 's0 i32) {
+fn main<'s4, 's0>($return: &'s0 out i32) {
   boxed: Box<i64>;
   $tmp_0: &out Box<i64>;
   box_place: &mut i64;

@@ -870,11 +870,11 @@ mod tests {
     fn monomorphization_preserves_declared_lifetime_metadata() {
         let parsed = Parser::parse_or_panic(
             "
-            struct<'a: 'static, T: Copy + Drop> Borrowed: Copy + Drop {
+            struct Borrowed<'a: 'static, T: Copy + Drop>: Copy + Drop {
               value: &'a T
             }
 
-            fn<'caller: 'static> use_borrowed(value: Borrowed<'caller, i64>) {
+            fn use_borrowed<'caller: 'static>(value: Borrowed<'caller, i64>) {
               entry:
                 drop value;
                 return

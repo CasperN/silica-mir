@@ -4,25 +4,25 @@ struct Other: Copy + Drop { value: i64 }
 trait Label {}
 impl Label for Good {}
 
-trait<T: Label> RequiresLabel {}
+trait RequiresLabel<T: Label> {}
 impl RequiresLabel<Good> for Good {}
 
-trait<T> Related {}
+trait Related<T> {}
 impl Related<i64> for Good {}
 
-trait<'a> LifetimeLabel {}
+trait LifetimeLabel<'a> {}
 impl LifetimeLabel<'static> for Good {}
 
-struct<T: Label> Holder { value: T }
-enum<T: Label> Maybe { None: unit, Some: T }
-struct<T> Wrapper { value: T }
-struct<'held, T: LifetimeLabel<'held>> LifetimeHolder { value: &'held T }
+struct Holder<T: Label> { value: T }
+enum Maybe<T: Label> { None: unit, Some: T }
+struct Wrapper<T> { value: T }
+struct LifetimeHolder<'held, T: LifetimeLabel<'held>> { value: &'held T }
 
-extern fn<T: Label> accept(value: &T);
-extern fn<T: AutoClone> accept_auto_clone(value: &T);
-extern fn<T: AutoDestroy> accept_auto_destroy(value: &T);
-extern fn<'bound, T: LifetimeLabel<'bound>> accept_lifetime_bound(value: &T);
-extern fn<'bound, T: LifetimeLabel<'bound>> accept_inferred_lifetime_bound(
+extern fn accept<T: Label>(value: &T);
+extern fn accept_auto_clone<T: AutoClone>(value: &T);
+extern fn accept_auto_destroy<T: AutoDestroy>(value: &T);
+extern fn accept_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(value: &T);
+extern fn accept_inferred_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(
   value: &'bound T,
 );
 
@@ -32,12 +32,12 @@ fn accept_concrete(value: &Good) {
 }
 
 # covers: an exact bound on a caller parameter forwards to another generic call
-fn<T: Label> accept_generic(value: &T) {
+fn accept_generic<T: Label>(value: &T) {
   accept<T>(value);
 }
 
 # covers: compiler-provided auto traits are available as direct HLL bounds
-fn<T: AutoClone + AutoDestroy> accept_auto_bounds(value: &T) {
+fn accept_auto_bounds<T: AutoClone + AutoDestroy>(value: &T) {
   accept_auto_clone<T>(value);
   accept_auto_destroy<T>(value);
 }
@@ -48,30 +48,30 @@ fn accept_static_lifetime_bound(value: &Good) {
 }
 
 # covers: an inferred lifetime is resolved before its dependent bound is checked
-fn<'bound, T: LifetimeLabel<'bound>> forward_inferred_lifetime_bound(
+fn forward_inferred_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(
   value: &'bound T,
 ) {
   accept_inferred_lifetime_bound<T>(value);
 }
 
 # covers: direct bounds are enforced on struct and enum type arguments
-fn<T: Label> use_bounded_types(holder: &Holder<T>, maybe: &Maybe<T>) {
+fn use_bounded_types<T: Label>(holder: &Holder<T>, maybe: &Maybe<T>) {
   holder;
   maybe;
 }
 
 # covers: a trait's generic parameter may itself have a direct trait bound
-fn<T: RequiresLabel<Good>> use_bounded_trait_argument(value: &T) {
+fn use_bounded_trait_argument<T: RequiresLabel<Good>>(value: &T) {
   value;
 }
 
 # covers: a parameterized direct bound is preserved and forwarded exactly
-fn<T: Related<i64>> use_parameterized_bound(value: &T) {
+fn use_parameterized_bound<T: Related<i64>>(value: &T) {
   value;
 }
 
 # covers: bounds may refer to a type parameter declared later in the binder
-fn<T: Related<U>, U> use_later_bound_parameter(value: &T, other: &U) {
+fn use_later_bound_parameter<T: Related<U>, U>(value: &T, other: &U) {
   value;
   other;
 }
@@ -92,12 +92,12 @@ fn inspect_good(value: &Wrapper<Good>) {
 
 trait Inspect {
   fn inspect_trait(recv: &Self);
-  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U);
+  fn inspect_trait_argument<U: Label>(recv: &Self, value: &U);
 }
 
 impl<T: Label> Inspect for Wrapper<T> {
   fn inspect_trait(recv: &Self) { recv; }
-  fn<U: Label> inspect_trait_argument(recv: &Self, value: &U) {
+  fn inspect_trait_argument<U: Label>(recv: &Self, value: &U) {
     recv;
     value;
   }
@@ -114,18 +114,18 @@ fn inspect_trait_argument_good(value: &Wrapper<Good>, argument: &Good) {
 }
 
 impl Good {
-  fn<U: Label> inspect_argument(recv: &Good, value: &U) {
+  fn inspect_argument<U: Label>(recv: &Good, value: &U) {
     recv;
     value;
   }
-  fn<'bound, U: LifetimeLabel<'bound>> inspect_inferred_lifetime_argument(
+  fn inspect_inferred_lifetime_argument<'bound, U: LifetimeLabel<'bound>>(
     recv: &Good,
     value: &'bound U,
   ) {
     recv;
     value;
   }
-  fn<'bound, U: LifetimeLabel<'bound>> inspect_lifetime_argument(
+  fn inspect_lifetime_argument<'bound, U: LifetimeLabel<'bound>>(
     recv: &Good,
     value: &U,
   ) {
@@ -139,7 +139,7 @@ fn inspect_argument_good(recv: &Good, value: &Good) {
   recv.inspect_argument<Good>(value);
 }
 # covers: method-bound lifetimes are inferred before checking dependent bounds
-fn<'bound, T: LifetimeLabel<'bound>> inspect_inferred_lifetime_argument_good(
+fn inspect_inferred_lifetime_argument_good<'bound, T: LifetimeLabel<'bound>>(
   recv: &Good,
   value: &'bound T,
 ) {

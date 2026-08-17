@@ -20,10 +20,10 @@ trait Twice {
 }
 
 trait Identity {
-  fn<T: Copy + Drop> id(recv: &Self, value: T, $return: &out T);
+  fn id<T: Copy + Drop>(recv: &Self, value: T, $return: &out T);
 }
 
-trait<T: Copy + Drop> Get {
+trait Get<T: Copy + Drop> {
   fn get(recv: &Self, $return: &out T);
 }
 
@@ -31,17 +31,17 @@ trait Dead {
   fn dead(recv: &Self);
 }
 
-trait<T: Copy + Drop> Tagged {
+trait Tagged<T: Copy + Drop> {
   fn tagged(recv: &Self, $return: &out T);
 }
 
-trait<'a> LifetimeRead {
+trait LifetimeRead<'a> {
   fn lifetime_read(recv: &Self);
 }
 
 struct Counter: Copy + Drop { value: i64 }
-struct<T: Copy + Drop> Box: Copy + Drop { value: T }
-struct<'a> BorrowedCounter: Copy + Drop { counter: &'a Counter }
+struct Box<T: Copy + Drop>: Copy + Drop { value: T }
+struct BorrowedCounter<'a>: Copy + Drop { counter: &'a Counter }
 
 impl Read for Counter {
   fn read(recv: &Counter, $return: &out i64) {
@@ -81,7 +81,7 @@ impl Twice for Counter {
 }
 
 impl Identity for Counter {
-  fn<T: Copy + Drop> id(recv: &Counter, value: T, $return: &out T) {
+  fn id<T: Copy + Drop>(recv: &Counter, value: T, $return: &out T) {
     entry:
       $return.* = copy value;
       return
@@ -126,7 +126,7 @@ impl<'a> LifetimeRead<'a> for BorrowedCounter<'a> {
   }
 }
 
-fn<'a, 'b> lifetime_dispatch(
+fn lifetime_dispatch<'a, 'b>(
   left: &BorrowedCounter<'a>,
   right: &BorrowedCounter<'b>,
 ) {
@@ -136,7 +136,7 @@ fn<'a, 'b> lifetime_dispatch(
     return
 }
 
-fn<T: Copy + Drop> inherent_dispatch(recv: &Box<T>, $return: &out T) {
+fn inherent_dispatch<T: Copy + Drop>(recv: &Box<T>, $return: &out T) {
   entry:
     call <Box<T>>::inherent_get(copy recv, move $return);
     return

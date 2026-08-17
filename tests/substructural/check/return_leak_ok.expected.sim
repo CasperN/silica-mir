@@ -8,8 +8,8 @@ struct MoveP: Move {
   y: i64
 }
 
-struct<'s0> L: Move {
-  r: &out 's0 i64
+struct L<'s0>: Move {
+  r: &'s0 out i64
 }
 
 struct S: Move {
@@ -20,11 +20,11 @@ extern fn take_num(a: i64);
 
 extern fn take_move_p(p: MoveP);
 
-extern fn<'s0> take_linear(x: L<'s0>);
+extern fn take_linear<'s0>(x: L<'s0>);
 
-extern fn<'s0> take_out(r: &out 's0 i64);
+extern fn take_out<'s0>(r: &'s0 out i64);
 
-extern fn<'s0> init_s(r: &out 's0 S);
+extern fn init_s<'s0>(r: &'s0 out S);
 
 extern fn take_s(s: S);
 
@@ -40,7 +40,7 @@ fn scalar_param_moved_out(x: i64) {
     return
 }
 
-fn<'s0> linear_ref_param_moved_out(r: &out 's0 i64) {
+fn linear_ref_param_moved_out<'s0>(r: &'s0 out i64) {
   entry:
     call take_out(move r);
     return
@@ -52,7 +52,7 @@ fn linear_struct_moved_whole(p: MoveP) {
     return
 }
 
-fn<'s0> linear_struct_moved_via_call(x: L<'s0>) {
+fn linear_struct_moved_via_call<'s0>(x: L<'s0>) {
   entry:
     call take_linear(move x);
     return
@@ -95,11 +95,11 @@ fn partial_array_slot_consumed() {
 }
 
 trait ImplDropElaborationOk {
-  fn<'s0> finish(recv: &'s0 Self, x: i64);
+  fn finish<'s0>(recv: &'s0 Self, x: i64);
 }
 
 impl ImplDropElaborationOk for P {
-  fn<'s0> finish(recv: &'s0 P, x: i64) {
+  fn finish<'s0>(recv: &'s0 P, x: i64) {
     entry:
       drop x;
       drop recv;

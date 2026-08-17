@@ -1,22 +1,22 @@
-error: at 277:12: [TC-UndeclaredLifetime] In struct 'BadStruct': outlives clause references undeclared lifetime 'z
+error: at 277:22: [TC-UndeclaredLifetime] In struct 'BadStruct': outlives clause references undeclared lifetime 'z
      |
  276 | # 'z is not declared as a lifetime param; TC-UndeclaredLifetime fires.
- 277 | struct<'a: 'z> BadStruct: Move { r: &'a i64 }
-     |            ^^
+ 277 | struct BadStruct<'a: 'z>: Move { r: &'a i64 }
+     |                      ^^
  278 | 
      |
 error: at 430:34: [TC-InvalidDeclaredType] In struct 'WrongArity', field 'w': Type 'W2' expects 2 lifetime argument(s), got 1
      |
  429 | # mentions like `W2` are still tolerated (pending elision backfill).
- 430 | struct<'p> WrongArity: Move { w: W2<'p> }
+ 430 | struct WrongArity<'p>: Move { w: W2<'p> }
      |                                  ^^^^^^
  431 | 
      |
-error: at 48:8: [TC-UndeclaredLifetime] In function 'undeclared_bound_lt': outlives clause references undeclared lifetime 'z
+error: at 48:28: [TC-UndeclaredLifetime] In function 'undeclared_bound_lt': outlives clause references undeclared lifetime 'z
     |
  47 | # TC-UndeclaredLifetime points at the invalid bound itself.
- 48 | fn<'a: 'z> undeclared_bound_lt(x: &'a i64, $return: &out &'a i64) {
-    |        ^^
+ 48 | fn undeclared_bound_lt<'a: 'z>(x: &'a i64, $return: &out &'a i64) {
+    |                            ^^
  49 |   entry:
     |
 error: at 457:36: [TC-InvalidDeclaredType] In function 'ptr_cast_wrong_arity': Type 'W2' expects 2 lifetime argument(s), got 1
@@ -26,24 +26,24 @@ error: at 457:36: [TC-InvalidDeclaredType] In function 'ptr_cast_wrong_arity': T
      |                                    ^^^^^^^
  458 |     return
      |
-error: at 516:4: [TC-ReservedLifetimeName] In function 'static_declared_as_param_fails': 'static is a reserved lifetime and cannot be declared as a parameter
+error: at 516:35: [TC-ReservedLifetimeName] In function 'static_declared_as_param_fails': 'static is a reserved lifetime and cannot be declared as a parameter
      |
  515 | # re-bound.
- 516 | fn<'static: 'a, 'a> static_declared_as_param_fails(x: &'a i64, $return: &out &'a i64) {
-     |    ^^^^^^^^^^^
+ 516 | fn static_declared_as_param_fails<'static: 'a, 'a>(x: &'a i64, $return: &out &'a i64) {
+     |                                   ^^^^^^^^^^^
  517 |   entry:
      |
-error: at 527:12: [TC-DuplicateLifetimeParam] In function 'duplicate_lifetime_param_fails': lifetime parameter 'a is declared more than once
+error: at 527:43: [TC-DuplicateLifetimeParam] In function 'duplicate_lifetime_param_fails': lifetime parameter 'a is declared more than once
      |
  526 | # TC-DuplicateLifetimeParam. The bounds don't matter for the check.
- 527 | fn<'a: 'b, 'a: 'b, 'b> duplicate_lifetime_param_fails(
-     |            ^^^^^^
+ 527 | fn duplicate_lifetime_param_fails<'a: 'b, 'a: 'b, 'b>(
+     |                                           ^^^^^^
  528 |   x: &'a i64,
      |
 error: at 333:40: [LT-LifetimeMismatch] type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on struct 'OuterBad'
      |
  332 | # at the field type span.
- 333 | struct<'a, 'b> OuterBad: Move { inner: W2<'a, 'b> }
+ 333 | struct OuterBad<'a, 'b>: Move { inner: W2<'a, 'b> }
      |                                        ^^^^^^^^^^
  334 | 
      |
@@ -51,7 +51,7 @@ error: at 333:40: [LT-LifetimeMismatch] type 'W2' requires lifetime bound 'b: 'a
 error: at 344:35: [LT-LifetimeMismatch] type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on enum 'EitherBad'
      |
  343 | # Same shape, but the mention is on an enum variant payload.
- 344 | enum<'a, 'b> EitherBad: Move { L: W2<'a, 'b>, R: &'a i64 }
+ 344 | enum EitherBad<'a, 'b>: Move { L: W2<'a, 'b>, R: &'a i64 }
      |                                   ^^^^^^^^^^
  345 | 
      |
@@ -59,7 +59,7 @@ error: at 344:35: [LT-LifetimeMismatch] type 'W2' requires lifetime bound 'b: 'a
 error: at 401:46: [LT-LifetimeMismatch] type 'W2' requires lifetime bound 'a: 'static, but it is not implied by the declared bounds on struct 'BadStaticContainer'
      |
  400 | # 'a: 'static nor 'a as static-bounded. Decl wf fires.
- 401 | struct<'a> BadStaticContainer: Move { inner: W2<'static, 'a> }
+ 401 | struct BadStaticContainer<'a>: Move { inner: W2<'static, 'a> }
      |                                              ^^^^^^^^^^^^^^^
  402 | 
      |
@@ -178,14 +178,14 @@ error: at 269:5: [LT-LifetimeEscape] In function 'free_into_static': borrow esca
 error: at 292:70: [LT-LifetimeMismatch] In function 'wrap2_missing_axiom': type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'wrap2_missing_axiom'
      |
  291 | 
- 292 | fn<'a, 'b> wrap2_missing_axiom(x: &'a i64, y: &'b i64, $return: &out W2<'a, 'b>) {
+ 292 | fn wrap2_missing_axiom<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out W2<'a, 'b>) {
      |                                                                      ^^^^^^^^^^
  293 |   entry:
      |
   hint: declare bound 'b: 'a on function 'wrap2_missing_axiom' or change the value flow so it is not required
 error: at 305:6: [LT-LifetimeMismatch] In function 'wrap2_local_missing_axiom': type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'wrap2_local_missing_axiom'
      |
- 304 | fn<'a, 'b> wrap2_local_missing_axiom(x: &'a i64, y: &'b i64) {
+ 304 | fn wrap2_local_missing_axiom<'a, 'b>(x: &'a i64, y: &'b i64) {
  305 |   w: W2<'a, 'b>;
      |      ^^^^^^^^^^
  306 |   entry:
@@ -194,7 +194,7 @@ error: at 305:6: [LT-LifetimeMismatch] In function 'wrap2_local_missing_axiom': 
 error: at 320:69: [LT-LifetimeMismatch] In function 'wrap2_reversed': type 'W2' requires lifetime bound 'a: 'b, but it is not implied by the declared bounds on function 'wrap2_reversed'
      |
  319 | # the closure. LT-LifetimeMismatch fires.
- 320 | fn<'a, 'b: 'a> wrap2_reversed(x: &'b i64, y: &'a i64, $return: &out W2<'b, 'a>) {
+ 320 | fn wrap2_reversed<'a, 'b: 'a>(x: &'b i64, y: &'a i64, $return: &out W2<'b, 'a>) {
      |                                                                     ^^^^^^^^^^
  321 |   entry:
      |
@@ -202,7 +202,7 @@ error: at 320:69: [LT-LifetimeMismatch] In function 'wrap2_reversed': type 'W2' 
 error: at 356:41: [LT-LifetimeMismatch] In function 'ref_wrap2_missing': type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'ref_wrap2_missing'
      |
  355 | # Fn declares no 'b:'a; LT-LifetimeMismatch fires.
- 356 | fn<'a, 'b, 'r> ref_wrap2_missing(w: &'r W2<'a, 'b>, $return: &out &'a i64) {
+ 356 | fn ref_wrap2_missing<'a, 'b, 'r>(w: &'r W2<'a, 'b>, $return: &out &'a i64) {
      |                                         ^^^^^^^^^^
  357 |   entry:
      |
@@ -210,7 +210,7 @@ error: at 356:41: [LT-LifetimeMismatch] In function 'ref_wrap2_missing': type 'W
 error: at 366:71: [LT-LifetimeMismatch] In function 'array_wrap2_missing': type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'array_wrap2_missing'
      |
  365 | # Same via `[W2<'a, 'b>; N]`.
- 366 | fn<'a, 'b> array_wrap2_missing(x: &'a i64, y: &'b i64, $return: &out [W2<'a, 'b>; 1]) {
+ 366 | fn array_wrap2_missing<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out [W2<'a, 'b>; 1]) {
      |                                                                       ^^^^^^^^^^
  367 |   entry:
      |
@@ -218,7 +218,7 @@ error: at 366:71: [LT-LifetimeMismatch] In function 'array_wrap2_missing': type 
 error: at 380:43: [LT-LifetimeMismatch] In function 'extern_wrap2_missing': type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'extern_wrap2_missing'
      |
  379 | # param type span even though the fn has no body.
- 380 | extern fn<'a, 'b> extern_wrap2_missing(w: W2<'a, 'b>);
+ 380 | extern fn extern_wrap2_missing<'a, 'b>(w: W2<'a, 'b>);
      |                                           ^^^^^^^^^^
  381 | 
      |
@@ -226,7 +226,7 @@ error: at 380:43: [LT-LifetimeMismatch] In function 'extern_wrap2_missing': type
 error: at 389:79: [LT-LifetimeMismatch] In function 'wrap2_static_target_missing': type 'W2' requires lifetime bound 'a: 'static, but it is not implied by the declared bounds on function 'wrap2_static_target_missing'
      |
  388 | # fires LT-LifetimeMismatch via the closure lookup.
- 389 | fn<'a> wrap2_static_target_missing(s: &'static i64, x: &'a i64, $return: &out W2<'static, 'a>) {
+ 389 | fn wrap2_static_target_missing<'a>(s: &'static i64, x: &'a i64, $return: &out W2<'static, 'a>) {
      |                                                                               ^^^^^^^^^^^^^^^
  390 |   entry:
      |
@@ -242,7 +242,7 @@ error: at 420:5: [LT-LifetimeMismatch] In function 'caller_no_static_axiom': the
 error: at 444:39: [LT-LifetimeMismatch] In function 'ptr_cast_missing_axiom': type 'W2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'ptr_cast_missing_axiom'
      |
  443 | # depth for expression-only mentions.
- 444 | fn<'a, 'b> ptr_cast_missing_axiom(x: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
+ 444 | fn ptr_cast_missing_axiom<'a, 'b>(x: *W2<'a, 'b>, $return: &out *W2<'a, 'b>) {
      |                                       ^^^^^^^^^^
  445 |   entry:
      |
@@ -266,7 +266,7 @@ error: at 490:14: [LT-LifetimeMismatch] In function 'fn_value_missing_axiom': ty
 error: at 502:78: [LT-LifetimeMismatch] In function 'use_container_missing_axiom': type 'Container2' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'use_container_missing_axiom'
      |
  501 | 
- 502 | fn<'a, 'b> use_container_missing_axiom(x: &'a i64, y: &'b i64, $return: &out Container2<'a, 'b>) {
+ 502 | fn use_container_missing_axiom<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out Container2<'a, 'b>) {
      |                                                                              ^^^^^^^^^^^^^^^^^^
  503 |   entry:
      |

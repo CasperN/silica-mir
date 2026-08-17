@@ -17,24 +17,24 @@ enum DeepChoice: Copy + Drop {
   Other: i64
 }
 
-enum<'s0> RefChoice: Move {
-  HasRef: &mut 's0 CopyPair
+enum RefChoice<'s0>: Move {
+  HasRef: &'s0 mut CopyPair
   Empty: unit
 }
 
-struct<'s0, 's1> ProjectionRoot: Move {
-  field: &mut 's0 [&mut 's1 DeepChoice; 3]
+struct ProjectionRoot<'s0, 's1>: Move {
+  field: &'s0 mut [&'s1 mut DeepChoice; 3]
 }
 
-struct<'s0, 's1> Link: Move {
-  next: &mut 's0 &mut 's1 CopyPair
+struct Link<'s0, 's1>: Move {
+  next: &'s0 mut &'s1 mut CopyPair
 }
 
 struct Cloneable: Move {
   value: i64
 }
 
-struct<T: Copy + Drop> GenericCloneable: Move {
+struct GenericCloneable<T: Copy + Drop>: Move {
   value: T
 }
 
@@ -43,7 +43,7 @@ struct CloneHolder: Move {
   tail: i64
 }
 
-struct<'a> BorrowedCloneable: Move {
+struct BorrowedCloneable<'a>: Move {
   value: &'a i64
 }
 
@@ -51,7 +51,7 @@ extern fn take_num(x: i64);
 
 extern fn take_token(x: Token);
 
-extern fn<'s0> observe(r: &'s0 i64);
+extern fn observe<'s0>(r: &'s0 i64);
 
 extern fn take_cloneable(x: Cloneable);
 
@@ -59,10 +59,10 @@ extern fn take_two_cloneable(x: Cloneable, y: Cloneable);
 
 extern fn take_generic_cloneable(x: GenericCloneable<i64>);
 
-extern fn<'a> take_borrowed_cloneable(x: BorrowedCloneable<'a>);
+extern fn take_borrowed_cloneable<'a>(x: BorrowedCloneable<'a>);
 
 impl AutoClone for Token {
-  fn<'s0, 's1> clone(recv: &'s0 Token, $return: &out 's1 Token) {
+  fn clone<'s0, 's1>(recv: &'s0 Token, $return: &'s1 out Token) {
     entry:
       $return.* = copy recv.*;
       unborrow $return;
@@ -72,7 +72,7 @@ impl AutoClone for Token {
 }
 
 impl AutoClone for Cloneable {
-  fn<'s0, 's1> clone(recv: &'s0 Cloneable, $return: &out 's1 Cloneable) {
+  fn clone<'s0, 's1>(recv: &'s0 Cloneable, $return: &'s1 out Cloneable) {
     entry:
       $return.*.value = copy recv.*.value;
       unborrow $return;
@@ -82,7 +82,7 @@ impl AutoClone for Cloneable {
 }
 
 impl<T: Copy + Drop> AutoClone for GenericCloneable<T> {
-  fn<'s0, 's1> clone(recv: &'s0 GenericCloneable<T>, $return: &out 's1 GenericCloneable<T>) {
+  fn clone<'s0, 's1>(recv: &'s0 GenericCloneable<T>, $return: &'s1 out GenericCloneable<T>) {
     entry:
       $return.*.value = copy recv.*.value;
       unborrow $return;
@@ -92,7 +92,7 @@ impl<T: Copy + Drop> AutoClone for GenericCloneable<T> {
 }
 
 impl<'a> AutoClone for BorrowedCloneable<'a> {
-  fn<'s0, 's1> clone(recv: &'s0 BorrowedCloneable<'a>, $return: &out 's1 BorrowedCloneable<'a>) {
+  fn clone<'s0, 's1>(recv: &'s0 BorrowedCloneable<'a>, $return: &'s1 out BorrowedCloneable<'a>) {
     entry:
       $return.*.value = copy recv.*.value;
       unborrow $return;
@@ -129,7 +129,7 @@ fn assign_autoclone(x: Cloneable) {
     return
 }
 
-fn<'s0> autoclone_through_shared(r: &'s0 Cloneable) {
+fn autoclone_through_shared<'s0>(r: &'s0 Cloneable) {
   $clone_0: Cloneable;
   $clone_1: &Cloneable;
   $clone_2: &out Cloneable;
@@ -142,7 +142,7 @@ fn<'s0> autoclone_through_shared(r: &'s0 Cloneable) {
     return
 }
 
-fn<'s0> autoclone_dynamic_index(r: &'s0 [Cloneable; 2], i: i64) {
+fn autoclone_dynamic_index<'s0>(r: &'s0 [Cloneable; 2], i: i64) {
   $clone_0: Cloneable;
   $clone_1: &Cloneable;
   $clone_2: &out Cloneable;
@@ -202,7 +202,7 @@ fn multiple_autoclone_operands(x: Cloneable, y: Cloneable) {
     return
 }
 
-fn<'a> repeated_lifetime_autoclone(x: BorrowedCloneable<'a>) {
+fn repeated_lifetime_autoclone<'a>(x: BorrowedCloneable<'a>) {
   $clone_0: BorrowedCloneable<'a>;
   $clone_1: &BorrowedCloneable<'a>;
   $clone_2: &out BorrowedCloneable<'a>;
@@ -247,7 +247,7 @@ fn repeated_custom(x: Token) {
     return
 }
 
-fn<'s0> repeated_shared_ref(r: &'s0 i64) {
+fn repeated_shared_ref<'s0>(r: &'s0 i64) {
   entry:
     call observe(copy r);
     call observe(move r);
@@ -261,7 +261,7 @@ fn sibling_fields(p: Pair) {
     return
 }
 
-fn<'s0> repeated_mut_pointee(r: &mut 's0 i64) {
+fn repeated_mut_pointee<'s0>(r: &'s0 mut i64) {
   entry:
     call take_num(copy r.*);
     call take_num(copy r.*);
@@ -271,7 +271,7 @@ fn<'s0> repeated_mut_pointee(r: &mut 's0 i64) {
     return
 }
 
-fn<'s0> autoclone_through_mut(r: &mut 's0 Cloneable) {
+fn autoclone_through_mut<'s0>(r: &'s0 mut Cloneable) {
   $clone_0: Cloneable;
   $clone_1: &Cloneable;
   $clone_2: &out Cloneable;
@@ -293,7 +293,7 @@ fn<'s0> autoclone_through_mut(r: &mut 's0 Cloneable) {
     return
 }
 
-fn<'s0> repeated_mut_field(r: &mut 's0 CopyPair) {
+fn repeated_mut_field<'s0>(r: &'s0 mut CopyPair) {
   entry:
     call take_num(copy r.*.left);
     call take_num(copy r.*.left);
@@ -303,7 +303,7 @@ fn<'s0> repeated_mut_field(r: &mut 's0 CopyPair) {
     return
 }
 
-fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
+fn repeated_mut_const_index<'s0>(r: &'s0 mut [i64; 2]) {
   entry:
     call take_num(copy r.*[0]);
     call take_num(copy r.*[0]);
@@ -313,7 +313,7 @@ fn<'s0> repeated_mut_const_index(r: &mut 's0 [i64; 2]) {
     return
 }
 
-fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &mut 's2 CopyPair) {
+fn repeated_nested_mut_pointee<'s0: 's1 + 's2, 's1, 's2>(r: &'s0 mut &'s1 mut &'s2 mut CopyPair) {
   entry:
     call take_num(copy r.*.*.*.left);
     call take_num(copy r.*.*.*.left);
@@ -323,7 +323,7 @@ fn<'s0: 's1 + 's2, 's1, 's2> repeated_nested_mut_pointee(r: &mut 's0 &mut 's1 &m
     return
 }
 
-fn<'s0, 's1> repeated_field_between_derefs(link: Link<'s0, 's1>) {
+fn repeated_field_between_derefs<'s0, 's1>(link: Link<'s0, 's1>) {
   entry:
     call take_num(copy link.next.*.*.right);
     call take_num(copy link.next.*.*.right);
@@ -333,7 +333,7 @@ fn<'s0, 's1> repeated_field_between_derefs(link: Link<'s0, 's1>) {
     return
 }
 
-fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice<'s0>) {
+fn repeated_downcast_between_derefs<'s0>(r: &'s0 mut RefChoice<'s0>) {
   entry:
     call take_num(copy r.* as HasRef.*.left);
     call take_num(copy r.* as HasRef.*.left);
@@ -343,7 +343,7 @@ fn<'s0> repeated_downcast_between_derefs(r: &mut 's0 RefChoice<'s0>) {
     return
 }
 
-fn<'s0, 's1> repeated_complex_projection(foo: ProjectionRoot<'s0, 's1>) {
+fn repeated_complex_projection<'s0, 's1>(foo: ProjectionRoot<'s0, 's1>) {
   entry:
     call take_num(copy foo.field.*[2].* as Variant);
     call take_num(copy foo.field.*[2].* as Variant);
@@ -353,7 +353,7 @@ fn<'s0, 's1> repeated_complex_projection(foo: ProjectionRoot<'s0, 's1>) {
     return
 }
 
-fn<'s0: 's1, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
+fn repeated_nested_drop<'s0: 's1, 's1>(r: &'s0 mut &'s1 drop i64) {
   entry:
     call take_num(copy r.*.*);
     call take_num(move r.*.*);
@@ -361,7 +361,7 @@ fn<'s0: 's1, 's1> repeated_nested_drop(r: &mut 's0 &drop 's1 i64) {
     return
 }
 
-fn<'s0: 's1, 's1> repeated_nested_out(r: &mut 's0 &out 's1 i64) {
+fn repeated_nested_out<'s0: 's1, 's1>(r: &'s0 mut &'s1 out i64) {
   entry:
     r.*.* = 1;
     call take_num(copy r.*.*);
@@ -371,7 +371,7 @@ fn<'s0: 's1, 's1> repeated_nested_out(r: &mut 's0 &out 's1 i64) {
     return
 }
 
-fn<'s0> repeated_drop_pointee(r: &drop 's0 i64) {
+fn repeated_drop_pointee<'s0>(r: &'s0 drop i64) {
   entry:
     call take_num(copy r.*);
     call take_num(move r.*);
@@ -379,7 +379,7 @@ fn<'s0> repeated_drop_pointee(r: &drop 's0 i64) {
     return
 }
 
-fn<'s0> repeated_out_pointee(r: &out 's0 i64) {
+fn repeated_out_pointee<'s0>(r: &'s0 out i64) {
   entry:
     r.* = 1;
     call take_num(copy r.*);
@@ -389,7 +389,7 @@ fn<'s0> repeated_out_pointee(r: &out 's0 i64) {
     return
 }
 
-fn<'s0> repeated_uninit_pointee(r: &uninit 's0 i64) {
+fn repeated_uninit_pointee<'s0>(r: &'s0 uninit i64) {
   entry:
     r.* = 1;
     call take_num(copy r.*);
@@ -399,11 +399,11 @@ fn<'s0> repeated_uninit_pointee(r: &uninit 's0 i64) {
 }
 
 trait ImplCopyRelaxationOk {
-  fn<'s0> relax(recv: &'s0 Self, x: i64, y: Cloneable);
+  fn relax<'s0>(recv: &'s0 Self, x: i64, y: Cloneable);
 }
 
 impl ImplCopyRelaxationOk for Token {
-  fn<'s0> relax(recv: &'s0 Token, x: i64, y: Cloneable) {
+  fn relax<'s0>(recv: &'s0 Token, x: i64, y: Cloneable) {
     $clone_0: Cloneable;
     $clone_1: &Cloneable;
     $clone_2: &out Cloneable;

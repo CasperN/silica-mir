@@ -67,13 +67,11 @@ module.exports = grammar({
     // HLL struct/enum decls: mandatory comma between fields.
     // `commaSep` already tolerates a trailing comma.
     //
-    // Generics: `struct<T: Copy + Drop> Box: Copy + Drop { ... }`.
-    // The optional `type_params` clause sits between the keyword and
-    // the decl name, mirroring MIR.
+    // Generics: `struct Box<T: Copy + Drop>: Copy + Drop { ... }`.
     struct_decl: $ => seq(
       'struct',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       optional($.markers),
       '{',
       common.commaSep($.struct_field),
@@ -81,15 +79,15 @@ module.exports = grammar({
     ),
     enum_decl: $ => seq(
       'enum',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       optional($.markers),
       '{',
       common.commaSep($.enum_variant),
       '}',
     ),
 
-    // `[extern [abi]] [unsafe] fn [<type_params>] name(params) [-> type] (block | ;)`.
+    // `[extern [abi]] [unsafe] fn name[<type_params>](params) [-> type] (block | ;)`.
     // Return type defaults to `unit` when the arrow is omitted. Body is either
     // a block expression or a semicolon `;` (for extern/signature declarations).
     fn_decl: $ => seq(
@@ -97,8 +95,8 @@ module.exports = grammar({
       optional(field('abi', $.string_lit)),
       optional('unsafe'),
       'fn',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       '(', common.commaSep(choice($.self_param, $.param_decl)), ')',
       optional(seq('->', field('return_type', $.type))),
       choice(
@@ -109,8 +107,8 @@ module.exports = grammar({
 
     trait_decl: $ => seq(
       'trait',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       optional($.trait_bounds),
       '{',
       repeat($.fn_decl),

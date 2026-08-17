@@ -74,13 +74,13 @@ fn fn_param_never(x: never) {
     unreachable
 }
 
-fn<'s0> fn_param_shared_ref_never(r: &'s0 never) {
+fn fn_param_shared_ref_never<'s0>(r: &'s0 never) {
   entry:
     unborrow r;
     return
 }
 
-fn<'s0> fn_param_out_ref_never(r: &out 's0 never) {
+fn fn_param_out_ref_never<'s0>(r: &'s0 out never) {
   entry:
     abort
 }

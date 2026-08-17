@@ -50,15 +50,15 @@ impl ImplNllViolation for ImplNllHost {
   }
 }
 
-struct<'a> RefBag: Copy + Drop { r: &'a i64 }
+struct RefBag<'a>: Copy + Drop { r: &'a i64 }
 
-extern fn<'a> take_bag(b: RefBag<'a>);
+extern fn take_bag<'a>(b: RefBag<'a>);
 
 # covers: shared borrow of a droppable aggregate still blocks moving the
 # aggregate itself while the borrow is live — the plan-phase filter that
 # elides `unborrow bag.r` must not also relax loan-conflict checks on the
 # aggregate.
-fn<'a> move_aggregate_while_borrowed(bag: RefBag<'a>) {
+fn move_aggregate_while_borrowed<'a>(bag: RefBag<'a>) {
   b: &RefBag<'a>;
   entry:
     b = &bag;

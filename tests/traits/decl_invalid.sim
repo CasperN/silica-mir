@@ -45,8 +45,8 @@ trait IterMissingT {
   fn next(recv: &mut Self, out: &Missing);
 }
 
-trait<'a> TraitLifetimeShadow {
-  fn<'a> borrow(recv: &'a Self);
+trait TraitLifetimeShadow<'a> {
+  fn borrow<'a>(recv: &'a Self);
 }
 
 # --- Impl declaration errors -------------------------------------------
@@ -58,7 +58,7 @@ trait Trait {
   fn b(recv: &Self);
 }
 
-trait<T: Copy + Drop> Iter {
+trait Iter<T: Copy + Drop> {
   fn next(recv: &mut Self, $return: &out T);
 }
 
@@ -125,7 +125,7 @@ impl BadBody for Foo {
 # Method-generic mismatch: the trait's method takes a `<U>` parameter;
 # the impl drops the method generic and specializes to i64.
 trait MgTrait {
-  fn<U> pick(recv: &Self, $return: &out U);
+  fn pick<U>(recv: &Self, $return: &out U);
 }
 
 impl MgTrait for Foo {
@@ -139,23 +139,23 @@ impl MgTrait for Foo {
 # Method lifetime bounds are part of the trait contract. An impl may rename
 # lifetime parameters, but it may neither omit a required relationship nor
 # impose an additional one.
-trait<'a> BoundedMethod {
-  fn<'b: 'a> relate(recv: &Self, earlier: &'a i64, later: &'b i64);
+trait BoundedMethod<'a> {
+  fn relate<'b: 'a>(recv: &Self, earlier: &'a i64, later: &'b i64);
 }
 
 impl<'x> BoundedMethod<'x> for Foo {
-  fn<'y> relate(recv: &Foo, earlier: &'x i64, later: &'y i64) {
+  fn relate<'y>(recv: &Foo, earlier: &'x i64, later: &'y i64) {
     entry:
       return
   }
 }
 
 trait UnboundedMethod {
-  fn<'a, 'b> accept(recv: &Self, first: &'a i64, second: &'b i64);
+  fn accept<'a, 'b>(recv: &Self, first: &'a i64, second: &'b i64);
 }
 
 impl UnboundedMethod for Foo {
-  fn<'x, 'y: 'x> accept(recv: &Foo, first: &'x i64, second: &'y i64) {
+  fn accept<'x, 'y: 'x>(recv: &Foo, first: &'x i64, second: &'y i64) {
     entry:
       return
   }
@@ -163,7 +163,7 @@ impl UnboundedMethod for Foo {
 
 # Trait has a lifetime parameter but the impl omits the lifetime arg.
 # Impls skip elision, so an exact-arity match is required.
-trait<'a> LtTrait {
+trait LtTrait<'a> {
   fn peek(recv: &Self);
 }
 
@@ -228,11 +228,11 @@ impl Iter<MissingArg> for Foo {
 
 # The substructural statement checker visits impl methods with their impl-header
 # generic parameters in scope. Move does not imply Copy.
-extern fn<T: Move> consume(value: T);
+extern fn consume<T: Move>(value: T);
 
-struct<T> Box { value: T }
+struct Box<T> { value: T }
 
-trait<T: Move> BadSub {
+trait BadSub<T: Move> {
   fn duplicate(recv: &Self, value: T);
 }
 
@@ -261,19 +261,19 @@ impl<T: Move> Box<T> {
 
 # An impl method cannot redeclare a lifetime from its impl header. Named
 # lifetimes are shared across the combined LocalEnv and cannot shadow.
-trait<'a> LifetimeShadow {
-  fn<'b> borrow(recv: &'b Self);
+trait LifetimeShadow<'a> {
+  fn borrow<'b>(recv: &'b Self);
 }
 
 impl<'a> LifetimeShadow<'a> for Foo {
-  fn<'a> borrow(recv: &'a Foo) {
+  fn borrow<'a>(recv: &'a Foo) {
     entry:
       return
   }
 }
 
 impl<'a> Foo {
-  fn<'a> inherent_borrow(recv: &'a Self) {
+  fn inherent_borrow<'a>(recv: &'a Self) {
     entry:
       return
   }
@@ -316,24 +316,24 @@ impl Foo {
 # --- Direct generic trait-bound errors ---------------------------------
 
 trait DirectBound {}
-trait<T> GenericBound {}
-trait<'a> LifetimeDirectBound {}
-trait<'a, 'b: 'a> OrderedDirectBound {}
+trait GenericBound<T> {}
+trait LifetimeDirectBound<'a> {}
+trait OrderedDirectBound<'a, 'b: 'a> {}
 struct Other: Copy + Drop { value: i64 }
 
 # covers: MIR bounds must name a declared trait
-extern fn<T: MissingBound> unknown_direct_bound(value: &T);
+extern fn unknown_direct_bound<T: MissingBound>(value: &T);
 
 # covers: MIR bounds must supply the trait's declared generic arity
-extern fn<T: GenericBound> wrong_direct_bound_arity(value: &T);
+extern fn wrong_direct_bound_arity<T: GenericBound>(value: &T);
 
 # covers: MIR trait bounds reject undeclared lifetime arguments
-extern fn<T: LifetimeDirectBound<'missing>> unknown_direct_bound_lifetime(value: &T);
+extern fn unknown_direct_bound_lifetime<T: LifetimeDirectBound<'missing>>(value: &T);
 
 # covers: a direct bound's trait lifetime requirements must be declared by its owner
-extern fn<'a, 'b, T: OrderedDirectBound<'a, 'b>> missing_direct_bound_outlives(value: &'b T);
+extern fn missing_direct_bound_outlives<'a, 'b, T: OrderedDirectBound<'a, 'b>>(value: &'b T);
 
-extern fn<T: DirectBound> accept_direct(value: &T);
+extern fn accept_direct<T: DirectBound>(value: &T);
 
 # covers: MIR call type arguments must satisfy direct trait bounds
 fn reject_direct_bound(value: &Other) {
@@ -347,23 +347,23 @@ fn reject_direct_bound(value: &Other) {
 trait MirCycleFirst: MirCycleSecond {}
 trait MirCycleSecond: MirCycleFirst {}
 
-trait<X> MirExpandingCycle: MirExpandingCycle<[X; 1]> {}
+trait MirExpandingCycle<X>: MirExpandingCycle<[X; 1]> {}
 
 trait MirUnrelated {
   fn unrelated(recv: &Self);
 }
 
 # covers: transitive MIR bound checking terminates on argument-expanding cycles
-fn<T: MirExpandingCycle<i64>> mir_expanding_cycle_lookup(value: &T) {
+fn mir_expanding_cycle_lookup<T: MirExpandingCycle<i64>>(value: &T) {
   entry:
     call <T as MirUnrelated>::unrelated(copy value);
     return
 }
 
-trait<'a, 'b: 'a> MirOrderedSuper {}
+trait MirOrderedSuper<'a, 'b: 'a> {}
 
 # covers: supertrait lifetime requirements must follow from the child trait
-trait<'a, 'b> MirMissingSuperOutlives: MirOrderedSuper<'a, 'b> {}
+trait MirMissingSuperOutlives<'a, 'b>: MirOrderedSuper<'a, 'b> {}
 
 trait MirParent {}
 trait MirChild: MirParent + Copy {}

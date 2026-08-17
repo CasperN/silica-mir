@@ -588,13 +588,13 @@ impl<T: Copy> AutoClone for T {
   }
 }
 
-fn<T> size_of(out: &out u64) {
+fn size_of<T>(out: &out u64) {
   entry:
     call $sizeof<T>(move out);
     return
 }
 
-fn<T> ptr_offset(p: *T, i: u64, out: &out *T) {
+fn ptr_offset<T>(p: *T, i: u64, out: &out *T) {
   entry:
     call $ptr_offset<T>(move p, move i, move out);
     return

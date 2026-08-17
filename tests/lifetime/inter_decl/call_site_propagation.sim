@@ -5,7 +5,7 @@
 # on caller-side output slots so post-call access to any input
 # aliased through a returned ref fires LT-LoanConflict.
 
-fn<'a> identity(r: &'a i64, $return: &out &'a i64) {
+fn identity<'a>(r: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy r;
     return
@@ -33,7 +33,7 @@ fn caller_writes_through_input_alias() {
     return
 }
 
-fn<'a> take_ref(r: &'a i64) {
+fn take_ref<'a>(r: &'a i64) {
   entry:
     unborrow r;
     return
@@ -58,7 +58,7 @@ fn caller_passes_through() {
 # make_ref: callee claims to produce a &'a ref with no input.
 # Impossible in real code without unsafe or 'static; used here to
 # demonstrate the checker's silence.
-fn<'a> make_ref(seed: &'a i64, $return: &out &'a i64) {
+fn make_ref<'a>(seed: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy seed;
     return
@@ -90,7 +90,7 @@ fn caller_uses_make_ref() {
 struct MethodReceiver: Copy + Drop {}
 
 trait RefIdentity {
-  fn<'a> trait_identity(
+  fn trait_identity<'a>(
     recv: &Self,
     seed: &'a i64,
     $return: &out &'a i64,
@@ -98,7 +98,7 @@ trait RefIdentity {
 }
 
 impl MethodReceiver {
-  fn<'a> inherent_identity(
+  fn inherent_identity<'a>(
     recv: &MethodReceiver,
     seed: &'a i64,
     $return: &out &'a i64,
@@ -110,7 +110,7 @@ impl MethodReceiver {
 }
 
 impl RefIdentity for MethodReceiver {
-  fn<'a> trait_identity(
+  fn trait_identity<'a>(
     recv: &MethodReceiver,
     seed: &'a i64,
     $return: &out &'a i64,
@@ -122,7 +122,7 @@ impl RefIdentity for MethodReceiver {
 }
 
 # covers: inherent method output keeps the input's synthetic loan
-fn<'p> caller_uses_inherent_identity(recv: &MethodReceiver, seed: &mut 'p i64) {
+fn caller_uses_inherent_identity<'p>(recv: &MethodReceiver, seed: &'p mut i64) {
   shared: &'p i64;
   ret_slot: &'p i64;
   ret_out: &out &'p i64;
@@ -135,7 +135,7 @@ fn<'p> caller_uses_inherent_identity(recv: &MethodReceiver, seed: &mut 'p i64) {
 }
 
 # covers: trait method output keeps the input's synthetic loan
-fn<'p> caller_uses_trait_identity(recv: &MethodReceiver, seed: &mut 'p i64) {
+fn caller_uses_trait_identity<'p>(recv: &MethodReceiver, seed: &'p mut i64) {
   shared: &'p i64;
   ret_slot: &'p i64;
   ret_out: &out &'p i64;

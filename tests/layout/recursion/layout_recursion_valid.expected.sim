@@ -3,21 +3,21 @@ struct PlainStruct {
   y: i64
 }
 
-struct<'s0> StructRefSelf {
-  next: &mut 's0 StructRefSelf<'s0>
+struct StructRefSelf<'s0> {
+  next: &'s0 mut StructRefSelf<'s0>
 }
 
-enum<'s0> EnumRefSelf {
+enum EnumRefSelf<'s0> {
   Nil: unit
-  Cons: &mut 's0 EnumRefSelf<'s0>
+  Cons: &'s0 mut EnumRefSelf<'s0>
 }
 
-struct<'s0> MutualA {
-  b: &mut 's0 MutualB<'s0>
+struct MutualA<'s0> {
+  b: &'s0 mut MutualB<'s0>
 }
 
-struct<'s0> MutualB {
-  a: &mut 's0 MutualA<'s0>
+struct MutualB<'s0> {
+  a: &'s0 mut MutualA<'s0>
 }
 
 struct StructFnSelf {

@@ -362,7 +362,7 @@ fn enum_wrap_keeps_loan_active(x: i64) {
     return
 }
 
-struct<T: Move> Bag: Move { r: T }
+struct Bag<T: Move>: Move { r: T }
 extern fn take_bag(b: Bag<&mut i64>);
 
 # ---- generic struct field carries the borrower; a write to the loanee still conflicts ----

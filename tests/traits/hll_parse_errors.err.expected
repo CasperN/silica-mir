@@ -68,11 +68,11 @@ error: at 47:3: [PARSE-MalformedCst] In function '<S as Required>::required': du
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  48 | }
     |
-error: at 51:6: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
+error: at 51:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
     |
  50 | impl<T> Required for S {
- 51 |   fn<T> required(recv: &Self) { unit }
-    |      ^
+ 51 |   fn required<T>(recv: &Self) { unit }
+    |               ^
  52 | }
     |
 error: at 54:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
@@ -89,11 +89,11 @@ error: at 58:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  59 |   fn reserved(recv: &Self) { unit }
     |
-error: at 65:24: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+error: at 65:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
     |
  64 | # covers: the same direct trait bound cannot be declared twice
- 65 | fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T) {
-    |                        ^^^^^^^^^^^^^^
+ 65 | fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
+    |                                               ^^^^^^^^^^^^^^
  66 |   value;
     |
 error: at 71:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called

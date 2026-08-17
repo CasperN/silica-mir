@@ -291,7 +291,7 @@ impl ImplNllOk for P {
   }
 }
 
-struct<'a> RefBag: Copy + Drop { r: &'a i64  n: i64 }
+struct RefBag<'a>: Copy + Drop { r: &'a i64  n: i64 }
 
 # ---------- Borrow of a droppable aggregate: subfield refs skip NLL ----------
 
@@ -299,7 +299,7 @@ struct<'a> RefBag: Copy + Drop { r: &'a i64  n: i64 }
 # `bag`. Its Copy `&'a i64` subfield has no in-function loan and needs no
 # NLL unborrow; a spurious one would fire loan-conflict against `b`.
 # covers: reading a scalar field through a shared borrow of a droppable aggregate
-fn<'a> read_scalar_through_borrow(bag: RefBag<'a>) {
+fn read_scalar_through_borrow<'a>(bag: RefBag<'a>) {
   b: &RefBag<'a>;
   x: i64;
   entry:
@@ -310,7 +310,7 @@ fn<'a> read_scalar_through_borrow(bag: RefBag<'a>) {
 }
 
 # covers: copying a ref subfield through a shared borrow of a droppable aggregate
-fn<'a> read_ref_through_borrow(bag: RefBag<'a>, $return: &out &'a i64) {
+fn read_ref_through_borrow<'a>(bag: RefBag<'a>, $return: &out &'a i64) {
   b: &RefBag<'a>;
   entry:
     b = &bag;
@@ -318,7 +318,7 @@ fn<'a> read_ref_through_borrow(bag: RefBag<'a>, $return: &out &'a i64) {
     return
 }
 
-struct<'a> LinearRefBag: Move { r: &'a i64 }
+struct LinearRefBag<'a>: Move { r: &'a i64 }
 
 # ---------- Linear aggregate: subfield refs still need NLL unborrow ----------
 
@@ -326,7 +326,7 @@ struct<'a> LinearRefBag: Move { r: &'a i64 }
 # so the `&'a i64` subfield's storage must transition to Moved via NLL for
 # the enclosing aggregate to be fully Moved at return.
 # covers: droppable subfield of a linear aggregate retains its NLL unborrow
-fn<'a> linear_bag_needs_field_unborrow(bag: LinearRefBag<'a>) {
+fn linear_bag_needs_field_unborrow<'a>(bag: LinearRefBag<'a>) {
   x: i64;
   entry:
     x = copy bag.r.*;

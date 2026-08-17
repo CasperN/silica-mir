@@ -1,30 +1,30 @@
 extern fn use_num(n: i64);
 
-extern fn<'s0> sink(r: &mut 's0 i64);
+extern fn sink<'s0>(r: &'s0 mut i64);
 
 struct P: Copy + Drop {
   a: i64
   b: i64
 }
 
-fn<'s0> out_abort_suppresses_unborrow(r: &out 's0 i64) {
+fn out_abort_suppresses_unborrow<'s0>(r: &'s0 out i64) {
   entry:
     abort
 }
 
-fn<'s0> out_unreachable_suppresses_unborrow(r: &out 's0 i64) {
+fn out_unreachable_suppresses_unborrow<'s0>(r: &'s0 out i64) {
   entry:
     unreachable
 }
 
-fn<'s0> out_param_write_inserts_unborrow(x: &out 's0 i64) {
+fn out_param_write_inserts_unborrow<'s0>(x: &'s0 out i64) {
   entry:
     x.* = 42;
     unborrow x;
     return
 }
 
-fn<'s0> out_branch_one_arm_aborts(r: &out 's0 i64, b: bool) {
+fn out_branch_one_arm_aborts<'s0>(r: &'s0 out i64, b: bool) {
   entry:
     branch(copy b) [true: init_arm, false: die_arm]
   init_arm:
@@ -36,14 +36,14 @@ fn<'s0> out_branch_one_arm_aborts(r: &out 's0 i64, b: bool) {
     abort
 }
 
-fn<'s0> mut_move_out_then_abort(r: &mut 's0 i64) {
+fn mut_move_out_then_abort<'s0>(r: &'s0 mut i64) {
   x: i64;
   entry:
     x = move r.*;
     abort
 }
 
-fn<'s0> mut_param_read_last_use(x: &mut 's0 i64) {
+fn mut_param_read_last_use<'s0>(x: &'s0 mut i64) {
   y: i64;
   entry:
     y = copy x.*;
@@ -189,7 +189,7 @@ fn mut_drop_borrow_no_unborrow(x: i64) {
     return
 }
 
-fn<'s0> out_reborrow_child_before_parent(r: &out 's0 i64) {
+fn out_reborrow_child_before_parent<'s0>(r: &'s0 out i64) {
   s: &out i64;
   entry:
     s = &out r.*;
@@ -215,11 +215,11 @@ fn mut_chained_reborrow_deepest_first(x: i64) {
 }
 
 trait ImplNllOk {
-  fn<'s0, 's1> close(recv: &'s0 Self, x: &out 's1 i64);
+  fn close<'s0, 's1>(recv: &'s0 Self, x: &'s1 out i64);
 }
 
 impl ImplNllOk for P {
-  fn<'s0, 's1> close(recv: &'s0 P, x: &out 's1 i64) {
+  fn close<'s0, 's1>(recv: &'s0 P, x: &'s1 out i64) {
     entry:
       x.* = 42;
       unborrow x;
@@ -228,12 +228,12 @@ impl ImplNllOk for P {
   }
 }
 
-struct<'a> RefBag: Copy + Drop {
+struct RefBag<'a>: Copy + Drop {
   r: &'a i64
   n: i64
 }
 
-fn<'a> read_scalar_through_borrow(bag: RefBag<'a>) {
+fn read_scalar_through_borrow<'a>(bag: RefBag<'a>) {
   b: &RefBag<'a>;
   x: i64;
   entry:
@@ -245,7 +245,7 @@ fn<'a> read_scalar_through_borrow(bag: RefBag<'a>) {
     return
 }
 
-fn<'a, 's0> read_ref_through_borrow(bag: RefBag<'a>, $return: &out 's0 &'a i64) {
+fn read_ref_through_borrow<'a, 's0>(bag: RefBag<'a>, $return: &'s0 out &'a i64) {
   b: &RefBag<'a>;
   entry:
     b = &bag;
@@ -256,11 +256,11 @@ fn<'a, 's0> read_ref_through_borrow(bag: RefBag<'a>, $return: &out 's0 &'a i64) 
     return
 }
 
-struct<'a> LinearRefBag: Move {
+struct LinearRefBag<'a>: Move {
   r: &'a i64
 }
 
-fn<'a> linear_bag_needs_field_unborrow(bag: LinearRefBag<'a>) {
+fn linear_bag_needs_field_unborrow<'a>(bag: LinearRefBag<'a>) {
   x: i64;
   entry:
     x = copy bag.r.*;

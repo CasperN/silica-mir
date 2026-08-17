@@ -1,4 +1,4 @@
-fn<'s0> i64_to_i32(x: i64, $return: &out 's0 i32) {
+fn i64_to_i32<'s0>(x: i64, $return: &'s0 out i32) {
   $tmp_0: &out i32;
   entry:
     $tmp_0 = &out $return.*;
@@ -10,7 +10,7 @@ fn<'s0> i64_to_i32(x: i64, $return: &out 's0 i32) {
     return
 }
 
-fn<'s0> i32_to_i64(x: i32, $return: &out 's0 i64) {
+fn i32_to_i64<'s0>(x: i32, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -22,7 +22,7 @@ fn<'s0> i32_to_i64(x: i32, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> u8_to_u64(x: u8, $return: &out 's0 u64) {
+fn u8_to_u64<'s0>(x: u8, $return: &'s0 out u64) {
   $tmp_0: &out u64;
   entry:
     $tmp_0 = &out $return.*;
@@ -34,7 +34,7 @@ fn<'s0> u8_to_u64(x: u8, $return: &out 's0 u64) {
     return
 }
 
-fn<'s0> u64_to_u8(x: u64, $return: &out 's0 u8) {
+fn u64_to_u8<'s0>(x: u64, $return: &'s0 out u8) {
   $tmp_0: &out u8;
   entry:
     $tmp_0 = &out $return.*;
@@ -46,7 +46,7 @@ fn<'s0> u64_to_u8(x: u64, $return: &out 's0 u8) {
     return
 }
 
-fn<'s0> i32_to_u32(x: i32, $return: &out 's0 u32) {
+fn i32_to_u32<'s0>(x: i32, $return: &'s0 out u32) {
   $tmp_0: &out u32;
   entry:
     $tmp_0 = &out $return.*;
@@ -58,7 +58,7 @@ fn<'s0> i32_to_u32(x: i32, $return: &out 's0 u32) {
     return
 }
 
-fn<'s0> u64_to_i64(x: u64, $return: &out 's0 i64) {
+fn u64_to_i64<'s0>(x: u64, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -70,7 +70,7 @@ fn<'s0> u64_to_i64(x: u64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> i64_to_f64(x: i64, $return: &out 's0 f64) {
+fn i64_to_f64<'s0>(x: i64, $return: &'s0 out f64) {
   $tmp_0: &out f64;
   entry:
     $tmp_0 = &out $return.*;
@@ -82,7 +82,7 @@ fn<'s0> i64_to_f64(x: i64, $return: &out 's0 f64) {
     return
 }
 
-fn<'s0> f64_to_i64(x: f64, $return: &out 's0 i64) {
+fn f64_to_i64<'s0>(x: f64, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -94,7 +94,7 @@ fn<'s0> f64_to_i64(x: f64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> i32_to_f32(x: i32, $return: &out 's0 f32) {
+fn i32_to_f32<'s0>(x: i32, $return: &'s0 out f32) {
   $tmp_0: &out f32;
   entry:
     $tmp_0 = &out $return.*;
@@ -106,7 +106,7 @@ fn<'s0> i32_to_f32(x: i32, $return: &out 's0 f32) {
     return
 }
 
-fn<'s0> f32_to_f64(x: f32, $return: &out 's0 f64) {
+fn f32_to_f64<'s0>(x: f32, $return: &'s0 out f64) {
   $tmp_0: &out f64;
   entry:
     $tmp_0 = &out $return.*;
@@ -118,7 +118,7 @@ fn<'s0> f32_to_f64(x: f32, $return: &out 's0 f64) {
     return
 }
 
-fn<'s0> f64_to_f32(x: f64, $return: &out 's0 f32) {
+fn f64_to_f32<'s0>(x: f64, $return: &'s0 out f32) {
   $tmp_0: &out f32;
   entry:
     $tmp_0 = &out $return.*;
@@ -130,7 +130,7 @@ fn<'s0> f64_to_f32(x: f64, $return: &out 's0 f32) {
     return
 }
 
-fn<'s0> bool_to_i32(b: bool, $return: &out 's0 i32) {
+fn bool_to_i32<'s0>(b: bool, $return: &'s0 out i32) {
   $tmp_0: &out i32;
   entry:
     $tmp_0 = &out $return.*;
@@ -142,7 +142,7 @@ fn<'s0> bool_to_i32(b: bool, $return: &out 's0 i32) {
     return
 }
 
-fn<'s0> bool_to_u64(b: bool, $return: &out 's0 u64) {
+fn bool_to_u64<'s0>(b: bool, $return: &'s0 out u64) {
   $tmp_0: &out u64;
   entry:
     $tmp_0 = &out $return.*;
@@ -154,7 +154,7 @@ fn<'s0> bool_to_u64(b: bool, $return: &out 's0 u64) {
     return
 }
 
-fn<'s0> same_type(x: i64, $return: &out 's0 i64) {
+fn same_type<'s0>(x: i64, $return: &'s0 out i64) {
   entry:
     $return.* = move x;
     unborrow $return;
@@ -163,7 +163,7 @@ fn<'s0> same_type(x: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> chained_cast(x: i64, $return: &out 's0 i64) {
+fn chained_cast<'s0>(x: i64, $return: &'s0 out i64) {
   $tmp_0: i32;
   $tmp_1: &out i32;
   $tmp_2: &out i64;
@@ -181,7 +181,7 @@ fn<'s0> chained_cast(x: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> cast_over_add(x: i64, $return: &out 's0 i32) {
+fn cast_over_add<'s0>(x: i64, $return: &'s0 out i32) {
   $tmp_0: i32;
   $tmp_1: &out i32;
   $tmp_2: &out i32;

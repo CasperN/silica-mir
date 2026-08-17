@@ -1,21 +1,21 @@
-trait<T> Combo {
-  fn<'s0, 's1, 's2, U> map(recv: &'s0 Self, other: &'s1 U, $return: &out 's2 T);
+trait Combo<T> {
+  fn map<'s0, 's1, 's2, U>(recv: &'s0 Self, other: &'s1 U, $return: &'s2 out T);
 }
 
 trait RefMethods {
-  fn<'s0> shared(recv: &'s0 Self);
-  fn<'s0> mut_(recv: &mut 's0 Self);
-  fn<'s0> out_(recv: &out 's0 Self);
-  fn<'s0> drop_(recv: &drop 's0 Self);
-  fn<'s0> uninit(recv: &uninit 's0 Self);
+  fn shared<'s0>(recv: &'s0 Self);
+  fn mut_<'s0>(recv: &'s0 mut Self);
+  fn out_<'s0>(recv: &'s0 out Self);
+  fn drop_<'s0>(recv: &'s0 drop Self);
+  fn uninit<'s0>(recv: &'s0 uninit Self);
 }
 
 trait Simple {
-  fn<'s0> ping(recv: &'s0 Self);
+  fn ping<'s0>(recv: &'s0 Self);
 }
 
-trait<T: Copy + Drop> Iter {
-  fn<'s0, 's1> next(recv: &mut 's0 Self, $return: &out 's1 T);
+trait Iter<T: Copy + Drop> {
+  fn next<'s0, 's1>(recv: &'s0 mut Self, $return: &'s1 out T);
 }
 
 struct Foo: Copy + Drop {
@@ -26,12 +26,12 @@ struct List: Copy + Drop {
   xs: [i64; 4]
 }
 
-struct<T: Copy + Drop> Bag: Copy + Drop {
+struct Bag<T: Copy + Drop>: Copy + Drop {
   inner: T
 }
 
 impl Simple for Foo {
-  fn<'s0> ping(recv: &'s0 Foo) {
+  fn ping<'s0>(recv: &'s0 Foo) {
     entry:
       drop recv;
       return
@@ -39,7 +39,7 @@ impl Simple for Foo {
 }
 
 impl Iter<i64> for List {
-  fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 i64) {
+  fn next<'s0, 's1>(recv: &'s0 mut List, $return: &'s1 out i64) {
     entry:
       $return.* = 0;
       unborrow $return;
@@ -49,7 +49,7 @@ impl Iter<i64> for List {
 }
 
 impl<T: Copy + Drop> Iter<T> for Bag<T> {
-  fn<'s0, 's1> next(recv: &mut 's0 Bag<T>, $return: &out 's1 T) {
+  fn next<'s0, 's1>(recv: &'s0 mut Bag<T>, $return: &'s1 out T) {
     entry:
       $return.* = copy recv.*.inner;
       unborrow $return;
@@ -59,11 +59,11 @@ impl<T: Copy + Drop> Iter<T> for Bag<T> {
 }
 
 trait MgTrait {
-  fn<'s0, 's1, U: Copy + Drop> ignore(recv: &'s0 Self, other: &'s1 U);
+  fn ignore<'s0, 's1, U: Copy + Drop>(recv: &'s0 Self, other: &'s1 U);
 }
 
 impl MgTrait for Foo {
-  fn<'s0, 's1, V: Copy + Drop> ignore(recv: &'s0 Foo, other: &'s1 V) {
+  fn ignore<'s0, 's1, V: Copy + Drop>(recv: &'s0 Foo, other: &'s1 V) {
     entry:
       drop other;
       drop recv;
@@ -71,12 +71,12 @@ impl MgTrait for Foo {
   }
 }
 
-trait<'a> LifetimeContract {
-  fn<'b: 'a, 's0> relate(recv: &'s0 Self, earlier: &'a i64, later: &'b i64);
+trait LifetimeContract<'a> {
+  fn relate<'b: 'a, 's0>(recv: &'s0 Self, earlier: &'a i64, later: &'b i64);
 }
 
 impl<'x> LifetimeContract<'x> for Foo {
-  fn<'y: 'x, 's0> relate(recv: &'s0 Foo, earlier: &'x i64, later: &'y i64) {
+  fn relate<'y: 'x, 's0>(recv: &'s0 Foo, earlier: &'x i64, later: &'y i64) {
     entry:
       drop later;
       drop earlier;
@@ -85,16 +85,16 @@ impl<'x> LifetimeContract<'x> for Foo {
   }
 }
 
-struct<'a> LtHolder: Copy + Drop {
+struct LtHolder<'a>: Copy + Drop {
   p: &'a i64
 }
 
-trait<'a> LtTrait {
-  fn<'s0> peek(recv: &'s0 Self);
+trait LtTrait<'a> {
+  fn peek<'s0>(recv: &'s0 Self);
 }
 
 impl<'a> LtTrait<'a> for LtHolder<'a> {
-  fn<'s0> peek(recv: &'s0 LtHolder<'a>) {
+  fn peek<'s0>(recv: &'s0 LtHolder<'a>) {
     entry:
       drop recv;
       return
@@ -102,23 +102,23 @@ impl<'a> LtTrait<'a> for LtHolder<'a> {
 }
 
 trait SelfAlias {
-  fn<'s0> s(recv: &'s0 Self);
-  fn<'s0> m(recv: &mut 's0 Self);
-  fn<'s0> d(recv: &drop 's0 Self);
+  fn s<'s0>(recv: &'s0 Self);
+  fn m<'s0>(recv: &'s0 mut Self);
+  fn d<'s0>(recv: &'s0 drop Self);
 }
 
 impl<T: Copy + Drop> SelfAlias for Bag<T> {
-  fn<'s0> s(recv: &'s0 Bag<T>) {
+  fn s<'s0>(recv: &'s0 Bag<T>) {
     entry:
       drop recv;
       return
   }
-  fn<'s0> m(recv: &mut 's0 Bag<T>) {
+  fn m<'s0>(recv: &'s0 mut Bag<T>) {
     entry:
       drop recv;
       return
   }
-  fn<'s0> d(recv: &drop 's0 Bag<T>) {
+  fn d<'s0>(recv: &'s0 drop Bag<T>) {
     entry:
       drop recv.*;
       unborrow recv;
@@ -127,11 +127,11 @@ impl<T: Copy + Drop> SelfAlias for Bag<T> {
 }
 
 trait SelfLocal {
-  fn<'s0> foo(recv: &'s0 Self);
+  fn foo<'s0>(recv: &'s0 Self);
 }
 
 impl SelfLocal for Foo {
-  fn<'s0> foo(recv: &'s0 Foo) {
+  fn foo<'s0>(recv: &'s0 Foo) {
     p: &Foo;
     entry:
       p = copy recv;
@@ -141,18 +141,18 @@ impl SelfLocal for Foo {
   }
 }
 
-fn<'s0, T: Copy + Drop> visit_ref(r: &'s0 T) {
+fn visit_ref<'s0, T: Copy + Drop>(r: &'s0 T) {
   entry:
     drop r;
     return
 }
 
 trait SelfInBody {
-  fn<'s0> dispatch(recv: &'s0 Self);
+  fn dispatch<'s0>(recv: &'s0 Self);
 }
 
 impl SelfInBody for Foo {
-  fn<'s0> dispatch(recv: &'s0 Foo) {
+  fn dispatch<'s0>(recv: &'s0 Foo) {
     entry:
       call visit_ref<Foo>(copy recv);
       call <Foo as Simple>::ping(copy recv);
@@ -162,7 +162,7 @@ impl SelfInBody for Foo {
 }
 
 impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
-  fn<'s1> peek(recv: &'s1 LtHolder<'s0>) {
+  fn peek<'s1>(recv: &'s1 LtHolder<'s0>) {
     entry:
       drop recv;
       return
@@ -170,11 +170,11 @@ impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
 }
 
 trait Discard {
-  fn<'s0, T: Drop> discard(recv: &'s0 Self, value: T);
+  fn discard<'s0, T: Drop>(recv: &'s0 Self, value: T);
 }
 
 impl Discard for Foo {
-  fn<'s0, T: Drop> discard(recv: &'s0 Foo, value: T) {
+  fn discard<'s0, T: Drop>(recv: &'s0 Foo, value: T) {
     entry:
       drop value;
       drop recv;
@@ -183,7 +183,7 @@ impl Discard for Foo {
 }
 
 impl AutoClone for Foo {
-  fn<'s0, 's1> clone(recv: &'s0 Foo, $return: &out 's1 Foo) {
+  fn clone<'s0, 's1>(recv: &'s0 Foo, $return: &'s1 out Foo) {
     entry:
       $return.* = copy recv.*;
       unborrow $return;
@@ -193,7 +193,7 @@ impl AutoClone for Foo {
 }
 
 impl AutoDestroy for Foo {
-  fn<'s0> destroy(recv: &drop 's0 Foo) {
+  fn destroy<'s0>(recv: &'s0 drop Foo) {
     entry:
       drop recv.*;
       unborrow recv;
@@ -202,7 +202,7 @@ impl AutoDestroy for Foo {
 }
 
 impl<T: Copy + Drop> Bag<T> {
-  fn<'s0> make(value: T, $return: &out 's0 Bag<T>) {
+  fn make<'s0>(value: T, $return: &'s0 out Bag<T>) {
     entry:
       $return.*.inner = copy value;
       unborrow $return;
@@ -212,7 +212,7 @@ impl<T: Copy + Drop> Bag<T> {
 }
 
 impl<T: Copy + Drop> Bag<T> {
-  fn<'s0, 's1> get(recv: &'s0 Bag<T>, $return: &out 's1 T) {
+  fn get<'s0, 's1>(recv: &'s0 Bag<T>, $return: &'s1 out T) {
     entry:
       $return.* = copy recv.*.inner;
       unborrow $return;
@@ -224,28 +224,28 @@ impl<T: Copy + Drop> Bag<T> {
 trait DirectBound {
 }
 
-trait<'a> LifetimeDirectBound {
+trait LifetimeDirectBound<'a> {
 }
 
-trait<'a, 'b: 'a> OrderedDirectBound {
+trait OrderedDirectBound<'a, 'b: 'a> {
 }
 
 impl DirectBound for Foo {
 }
 
-struct<T: DirectBound> DirectBox {
+struct DirectBox<T: DirectBound> {
   value: T
 }
 
-extern fn<'s0, T: DirectBound> accept_direct(value: &'s0 T);
+extern fn accept_direct<'s0, T: DirectBound>(value: &'s0 T);
 
-fn<'s0, T: DirectBound> forward_direct(value: &'s0 T) {
+fn forward_direct<'s0, T: DirectBound>(value: &'s0 T) {
   entry:
     call accept_direct<T>(copy value);
     drop value;
     return
 }
 
-extern fn<'a, T: LifetimeDirectBound<'a>> accept_lifetime_direct(value: &'a T);
+extern fn accept_lifetime_direct<'a, T: LifetimeDirectBound<'a>>(value: &'a T);
 
-extern fn<'a, 'b: 'a, T: OrderedDirectBound<'a, 'b>> accept_ordered_direct(value: &'b T);
+extern fn accept_ordered_direct<'a, 'b: 'a, T: OrderedDirectBound<'a, 'b>>(value: &'b T);

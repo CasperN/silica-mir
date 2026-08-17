@@ -8,65 +8,65 @@ enum E: Copy + Drop {
   B: unit
 }
 
-struct<T: Copy + Drop> Box: Copy + Drop {
+struct Box<T: Copy + Drop>: Copy + Drop {
   inner: T
 }
 
-enum<T: Copy + Drop> Option: Copy + Drop {
+enum Option<T: Copy + Drop>: Copy + Drop {
   None: unit
   Some: T
 }
 
-fn<'s0> out_scalar(r: &out 's0 i64) {
+fn out_scalar<'s0>(r: &'s0 out i64) {
   entry:
     r.* = 42;
     unborrow r;
     return
 }
 
-fn<'s0> out_struct(src: P, r: &out 's0 P) {
+fn out_struct<'s0>(src: P, r: &'s0 out P) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn<'s0> out_enum(r: &out 's0 E) {
+fn out_enum<'s0>(r: &'s0 out E) {
   entry:
     r.* = E::A(42);
     unborrow r;
     return
 }
 
-fn<'s0> out_array(r: &out 's0 [i64; 3]) {
+fn out_array<'s0>(r: &'s0 out [i64; 3]) {
   entry:
     r.* = [1, 2, 3];
     unborrow r;
     return
 }
 
-fn<'s0, T: Copy + Drop> out_param(src: T, r: &out 's0 T) {
+fn out_param<'s0, T: Copy + Drop>(src: T, r: &'s0 out T) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn<'s0, T: Copy + Drop> out_generic_struct(src: Box<T>, r: &out 's0 Box<T>) {
+fn out_generic_struct<'s0, T: Copy + Drop>(src: Box<T>, r: &'s0 out Box<T>) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn<'s0, T: Copy + Drop> out_generic_enum(src: Option<T>, r: &out 's0 Option<T>) {
+fn out_generic_enum<'s0, T: Copy + Drop>(src: Option<T>, r: &'s0 out Option<T>) {
   entry:
     r.* = move src;
     unborrow r;
     return
 }
 
-fn<'s0> out_struct_field_by_field(r: &out 's0 P) {
+fn out_struct_field_by_field<'s0>(r: &'s0 out P) {
   entry:
     r.*.x = 1;
     r.*.y = 2;
@@ -74,7 +74,7 @@ fn<'s0> out_struct_field_by_field(r: &out 's0 P) {
     return
 }
 
-fn<'s0> out_array_slot_by_slot(r: &out 's0 [i64; 3]) {
+fn out_array_slot_by_slot<'s0>(r: &'s0 out [i64; 3]) {
   entry:
     r.*[0] = 1;
     r.*[1] = 2;
@@ -83,7 +83,7 @@ fn<'s0> out_array_slot_by_slot(r: &out 's0 [i64; 3]) {
     return
 }
 
-fn<'s0> drop_struct_field_by_field(r: &drop 's0 P) {
+fn drop_struct_field_by_field<'s0>(r: &'s0 drop P) {
   x: i64;
   y: i64;
   entry:
@@ -95,7 +95,7 @@ fn<'s0> drop_struct_field_by_field(r: &drop 's0 P) {
     return
 }
 
-fn<'s0> drop_scalar(r: &drop 's0 i64) {
+fn drop_scalar<'s0>(r: &'s0 drop i64) {
   x: i64;
   entry:
     x = move r.*;
@@ -104,7 +104,7 @@ fn<'s0> drop_scalar(r: &drop 's0 i64) {
     return
 }
 
-fn<'s0> drop_struct(r: &drop 's0 P) {
+fn drop_struct<'s0>(r: &'s0 drop P) {
   p: P;
   entry:
     p = move r.*;
@@ -113,7 +113,7 @@ fn<'s0> drop_struct(r: &drop 's0 P) {
     return
 }
 
-fn<'s0> drop_enum(r: &drop 's0 E) {
+fn drop_enum<'s0>(r: &'s0 drop E) {
   e: E;
   entry:
     e = move r.*;
@@ -122,7 +122,7 @@ fn<'s0> drop_enum(r: &drop 's0 E) {
     return
 }
 
-fn<'s0> drop_array(r: &drop 's0 [i64; 3]) {
+fn drop_array<'s0>(r: &'s0 drop [i64; 3]) {
   a: [i64; 3];
   entry:
     a = move r.*;
@@ -131,7 +131,7 @@ fn<'s0> drop_array(r: &drop 's0 [i64; 3]) {
     return
 }
 
-fn<'s0, T: Copy + Drop> drop_param(r: &drop 's0 T) {
+fn drop_param<'s0, T: Copy + Drop>(r: &'s0 drop T) {
   x: T;
   entry:
     x = move r.*;
@@ -140,7 +140,7 @@ fn<'s0, T: Copy + Drop> drop_param(r: &drop 's0 T) {
     return
 }
 
-fn<'s0, T: Copy + Drop> drop_generic_struct(r: &drop 's0 Box<T>) {
+fn drop_generic_struct<'s0, T: Copy + Drop>(r: &'s0 drop Box<T>) {
   b: Box<T>;
   entry:
     b = move r.*;
@@ -149,55 +149,55 @@ fn<'s0, T: Copy + Drop> drop_generic_struct(r: &drop 's0 Box<T>) {
     return
 }
 
-fn<'s0> mut_scalar(r: &mut 's0 i64) {
+fn mut_scalar<'s0>(r: &'s0 mut i64) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> mut_struct(r: &mut 's0 P) {
+fn mut_struct<'s0>(r: &'s0 mut P) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> mut_array(r: &mut 's0 [i64; 3]) {
+fn mut_array<'s0>(r: &'s0 mut [i64; 3]) {
   entry:
     drop r;
     return
 }
 
-fn<'s0, T: Copy + Drop> mut_param(r: &mut 's0 T) {
+fn mut_param<'s0, T: Copy + Drop>(r: &'s0 mut T) {
   entry:
     drop r;
     return
 }
 
-fn<'s0, T: Copy + Drop> mut_generic_struct(r: &mut 's0 Box<T>) {
+fn mut_generic_struct<'s0, T: Copy + Drop>(r: &'s0 mut Box<T>) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> uninit_scalar(r: &uninit 's0 i64) {
+fn uninit_scalar<'s0>(r: &'s0 uninit i64) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> uninit_struct(r: &uninit 's0 P) {
+fn uninit_struct<'s0>(r: &'s0 uninit P) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> uninit_array(r: &uninit 's0 [i64; 3]) {
+fn uninit_array<'s0>(r: &'s0 uninit [i64; 3]) {
   entry:
     drop r;
     return
 }
 
-fn<'s0, T: Copy + Drop> uninit_param(r: &uninit 's0 T) {
+fn uninit_param<'s0, T: Copy + Drop>(r: &'s0 uninit T) {
   entry:
     drop r;
     return

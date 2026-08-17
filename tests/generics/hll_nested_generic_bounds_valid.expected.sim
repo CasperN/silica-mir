@@ -1,4 +1,4 @@
-struct<T: Drop> Sink: Drop {
+struct Sink<T: Drop>: Drop {
   inner: T
 }
 

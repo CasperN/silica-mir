@@ -13,7 +13,7 @@ struct Outer: Copy + Drop {
   c: i64
 }
 
-struct<T: Copy + Drop> Pair: Copy + Drop {
+struct Pair<T: Copy + Drop>: Copy + Drop {
   a: T
   b: T
 }
@@ -56,7 +56,7 @@ fn array_slot_by_slot() {
     return
 }
 
-fn<T: Copy + Drop> pair_field_by_field(a: T, b: T) {
+fn pair_field_by_field<T: Copy + Drop>(a: T, b: T) {
   p: Pair<T>;
   entry:
     p.a = move a;

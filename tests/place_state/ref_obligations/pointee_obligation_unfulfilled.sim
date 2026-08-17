@@ -19,9 +19,9 @@ struct Q: Drop + Move { x: L  y: i64 }
 
 enum E: Copy + Drop { A: i64  B: unit }
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum<T: Copy + Drop> Option: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
 
 # ---------- &out: pointee left non-Init ----------
 
@@ -61,12 +61,12 @@ fn out_array_partial(r: &out [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> out_param_never(r: &out T) {
+fn out_param_never<T: Copy + Drop>(r: &out T) {
   entry:
     return
 }
 
-fn<T: Copy + Drop> out_generic_struct_never(r: &out Box<T>) {
+fn out_generic_struct_never<T: Copy + Drop>(r: &out Box<T>) {
   entry:
     return
 }
@@ -97,12 +97,12 @@ fn drop_array_untouched(r: &drop [i64; 3]) {
     return
 }
 
-fn<T: Copy + Drop> drop_param_untouched(r: &drop T) {
+fn drop_param_untouched<T: Copy + Drop>(r: &drop T) {
   entry:
     return
 }
 
-fn<T: Copy + Drop> drop_generic_struct_untouched(r: &drop Box<T>) {
+fn drop_generic_struct_untouched<T: Copy + Drop>(r: &drop Box<T>) {
   entry:
     return
 }

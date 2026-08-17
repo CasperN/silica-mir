@@ -20,7 +20,7 @@
 # ---------- baseline: no outlives bound, single-input elision ----------
 
 # covers: type_kind=fn lifetime_bound=unbounded
-fn<'a> plain_input_no_bound(x: &'a i64, $return: &out &'a i64) {
+fn plain_input_no_bound<'a>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -34,13 +34,13 @@ fn<'a> plain_input_no_bound(x: &'a i64, $return: &out &'a i64) {
 # and caller region 'p. Normalize that equality before escape classification:
 # the fresh callee variable is not a body-local borrow and must not fire
 # LT-LifetimeEscape.
-fn<'a> invariant_identity(x: &'a i64, $return: &out &'a i64) {
+fn invariant_identity<'a>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
 }
 
-fn<'p> invariant_forwarding(x: &'p i64, $return: &out &'p i64) {
+fn invariant_forwarding<'p>(x: &'p i64, $return: &out &'p i64) {
   ret_out: &out &'p i64;
   entry:
     ret_out = &out $return.*;
@@ -50,14 +50,14 @@ fn<'p> invariant_forwarding(x: &'p i64, $return: &out &'p i64) {
 
 # ---------- qualified calls propagate satisfied method bounds ----------
 
-struct<'r> CallReceiver: Copy + Drop { value: &'r i64 }
+struct CallReceiver<'r>: Copy + Drop { value: &'r i64 }
 
 trait QualifiedNeedsBound {
-  fn<'a, 'b: 'a> trait_needs(recv: &Self, x: &'a i64, y: &'b i64);
+  fn trait_needs<'a, 'b: 'a>(recv: &Self, x: &'a i64, y: &'b i64);
 }
 
 impl<'r> CallReceiver<'r> {
-  fn<'a, 'b: 'a> inherent_needs(
+  fn inherent_needs<'a, 'b: 'a>(
     recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
@@ -68,7 +68,7 @@ impl<'r> CallReceiver<'r> {
 }
 
 impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
-  fn<'a, 'b: 'a> trait_needs(
+  fn trait_needs<'a, 'b: 'a>(
     recv: &CallReceiver<'r>,
     x: &'a i64,
     y: &'b i64,
@@ -79,7 +79,7 @@ impl<'r> QualifiedNeedsBound for CallReceiver<'r> {
 }
 
 # covers: inherent method outlives axiom is satisfied by the caller
-fn<'p, 'q: 'p> inherent_caller_bound_ok(
+fn inherent_caller_bound_ok<'p, 'q: 'p>(
   recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
@@ -90,7 +90,7 @@ fn<'p, 'q: 'p> inherent_caller_bound_ok(
 }
 
 # covers: trait method outlives axiom is satisfied by the caller
-fn<'p, 'q: 'p> trait_caller_bound_ok(
+fn trait_caller_bound_ok<'p, 'q: 'p>(
   recv: &CallReceiver<'p>,
   x: &'p i64,
   y: &'q i64,
@@ -104,11 +104,11 @@ fn<'p, 'q: 'p> trait_caller_bound_ok(
     return
 }
 
-trait<'a, 'b: 'a> QualifiedTraitHeaderBound {
+trait QualifiedTraitHeaderBound<'a, 'b: 'a> {
   fn invoke(recv: &Self);
 }
 
-struct<'a, 'b> HeaderReceiver: Copy + Drop {
+struct HeaderReceiver<'a, 'b>: Copy + Drop {
   first: &'a i64,
   second: &'b i64,
 }
@@ -129,20 +129,20 @@ impl<'a, 'b: 'a> QualifiedTraitHeaderBound<'a, 'b> for HeaderReceiver<'a, 'b> {
 }
 
 # covers: qualified trait declaration bound is satisfied by the caller
-fn<'p, 'q: 'p> trait_header_caller_bound_ok(recv: &HeaderReceiver<'p, 'q>) {
+fn trait_header_caller_bound_ok<'p, 'q: 'p>(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q> as QualifiedTraitHeaderBound<'p, 'q>>::invoke(copy recv);
     return
 }
 
 # covers: inherent impl-header bound is satisfied by the caller
-fn<'p, 'q: 'p> impl_header_caller_bound_ok(recv: &HeaderReceiver<'p, 'q>) {
+fn impl_header_caller_bound_ok<'p, 'q: 'p>(recv: &HeaderReceiver<'p, 'q>) {
   entry:
     call <HeaderReceiver<'p, 'q>>::inherent_header(copy recv);
     return
 }
 
-struct<T> ImplTypeReceiver { value: T }
+struct ImplTypeReceiver<T> { value: T }
 
 impl<T> ImplTypeReceiver<T> {
   fn accept_impl_type(recv: &ImplTypeReceiver<T>, value: T) {
@@ -152,7 +152,7 @@ impl<T> ImplTypeReceiver<T> {
 }
 
 # covers: inherent method parameter types substitute impl-header type arguments
-fn<'p, 'q: 'p> inherent_impl_type_bound_ok(
+fn inherent_impl_type_bound_ok<'p, 'q: 'p>(
   recv: &ImplTypeReceiver<&'p i64>,
   value: &'q i64,
 ) {
@@ -164,18 +164,18 @@ fn<'p, 'q: 'p> inherent_impl_type_bound_ok(
 struct MethodTypeReceiver: Copy + Drop {}
 
 trait GenericMethod {
-  fn<T> accept_method_type(recv: &Self, value: T);
+  fn accept_method_type<T>(recv: &Self, value: T);
 }
 
 impl GenericMethod for MethodTypeReceiver {
-  fn<T> accept_method_type(recv: &MethodTypeReceiver, value: T) {
+  fn accept_method_type<T>(recv: &MethodTypeReceiver, value: T) {
     entry:
       abort
   }
 }
 
 # covers: trait method parameter types substitute method type arguments
-fn<'p, 'q: 'p> trait_method_type_bound_ok(
+fn trait_method_type_bound_ok<'p, 'q: 'p>(
   recv: &MethodTypeReceiver,
   value: &'q i64,
 ) {
@@ -192,7 +192,7 @@ fn<'p, 'q: 'p> trait_method_type_bound_ok(
 # covers: type_kind=fn lifetime_bound=single_outlives op=deref_write
 # Without the bound this fires LT-LifetimeMismatch — see the mirror
 # fixture in outlives_bounds_violations.sim.
-fn<'a, 'b: 'a> single_bound_flow(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+fn single_bound_flow<'a, 'b: 'a>(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     drop y;
@@ -205,7 +205,7 @@ fn<'a, 'b: 'a> single_bound_flow(x: &'a i64, y: &'b i64, $return: &out &'a i64) 
 # Assign the 'c-region input into the 'c-region return slot — always
 # clean. The transitive closure of the axiom set contains 'a: 'c even
 # though the bound isn't written directly.
-fn<'a, 'b: 'a, 'c: 'b> chain_bound_flow(
+fn chain_bound_flow<'a, 'b: 'a, 'c: 'b>(
   x: &'a i64,
   y: &'b i64,
   z: &'c i64,
@@ -224,7 +224,7 @@ fn<'a, 'b: 'a, 'c: 'b> chain_bound_flow(
 # 'static is the top of the outlives order; the closure trivially
 # gives 'static outlives 'a for every named 'a. `copy s` (where
 # `s: &'static i64`) into a `&'a i64` slot flows clean.
-fn<'a> static_source(s: &'static i64, $return: &out &'a i64) {
+fn static_source<'a>(s: &'static i64, $return: &out &'a i64) {
   entry:
     $return.* = copy s;
     return
@@ -237,7 +237,7 @@ fn<'a> static_source(s: &'static i64, $return: &out &'a i64) {
 # A caller with an actual 'static input satisfies this; a Named-region
 # input would fail at the call site (checked in the caller). The decl
 # itself parses and type-checks clean.
-fn<'a: 'static> requires_static(x: &'a i64, $return: &out &'a i64) {
+fn requires_static<'a: 'static>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -247,7 +247,7 @@ fn<'a: 'static> requires_static(x: &'a i64, $return: &out &'a i64) {
 
 # covers: type_kind=fn lifetime_bound=deep_chain
 # 'e outlives 'a via the chain, so flowing 'e into 'a slot is clean.
-fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd> deep_chain_forward(
+fn deep_chain_forward<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd>(
   x: &'e i64,
   $return: &out &'a i64
 ) {
@@ -261,13 +261,13 @@ fn<'a, 'b: 'a, 'c: 'b, 'd: 'c, 'e: 'd> deep_chain_forward(
 # covers: type_kind=fn lifetime_bound=cyclic
 # 'a: 'b and 'b: 'a — both directions should be clean and the closure
 # must terminate (no infinite loop). Return 'a into 'b slot and vice versa.
-fn<'a: 'b, 'b: 'a> cycle_a_into_b(x: &'a i64, $return: &out &'b i64) {
+fn cycle_a_into_b<'a: 'b, 'b: 'a>(x: &'a i64, $return: &out &'b i64) {
   entry:
     $return.* = copy x;
     return
 }
 
-fn<'a: 'b, 'b: 'a> cycle_b_into_a(x: &'b i64, $return: &out &'a i64) {
+fn cycle_b_into_a<'a: 'b, 'b: 'a>(x: &'b i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -277,7 +277,7 @@ fn<'a: 'b, 'b: 'a> cycle_b_into_a(x: &'b i64, $return: &out &'a i64) {
 
 # covers: type_kind=fn lifetime_bound=diamond
 # 'a outlives 'd via either path ('a→'b→'d or 'a→'c→'d).
-fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_a_into_d(
+fn diamond_a_into_d<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd>(
   x: &'a i64,
   $return: &out &'d i64
 ) {
@@ -290,13 +290,13 @@ fn<'a: 'b + 'c, 'b: 'd, 'c: 'd, 'd> diamond_a_into_d(
 
 # covers: type_kind=fn lifetime_bound=multi_plus
 # All three axioms enter the closure: 'a:'b, 'a:'c, 'a:'static.
-fn<'a: 'b + 'c + 'static, 'b, 'c> multi_plus_b(x: &'a i64, $return: &out &'b i64) {
+fn multi_plus_b<'a: 'b + 'c + 'static, 'b, 'c>(x: &'a i64, $return: &out &'b i64) {
   entry:
     $return.* = copy x;
     return
 }
 
-fn<'a: 'b + 'c + 'static, 'b, 'c> multi_plus_c(x: &'a i64, $return: &out &'c i64) {
+fn multi_plus_c<'a: 'b + 'c + 'static, 'b, 'c>(x: &'a i64, $return: &out &'c i64) {
   entry:
     $return.* = copy x;
     return
@@ -308,7 +308,7 @@ fn<'a: 'b + 'c + 'static, 'b, 'c> multi_plus_c(x: &'a i64, $return: &out &'c i64
 # The `'static` region is reserved — it can appear as a bound target
 # but cannot be declared as a lifetime parameter (see
 # `static_declared_as_param_fails` in the violations file).
-fn<'a: 'static> static_only_rhs(x: &'a i64, $return: &out &'a i64) {
+fn static_only_rhs<'a: 'static>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -318,7 +318,7 @@ fn<'a: 'static> static_only_rhs(x: &'a i64, $return: &out &'a i64) {
 
 # covers: type_kind=fn lifetime_bound=reflexive
 # 'a outlives itself is trivial. Closure must not loop; result is clean.
-fn<'a: 'a> reflexive_bound(x: &'a i64, $return: &out &'a i64) {
+fn reflexive_bound<'a: 'a>(x: &'a i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -332,16 +332,16 @@ fn<'a: 'a> reflexive_bound(x: &'a i64, $return: &out &'a i64) {
 # emits the substituted 'y: 'x obligation into the containing scope's
 # constraint set. The containing scope must justify it via its own
 # declared axioms; a match fires no diagnostic.
-struct<'a, 'b: 'a> Wrap2: Move { outer: &'a i64, inner: &'b i64 }
+struct Wrap2<'a, 'b: 'a>: Move { outer: &'a i64, inner: &'b i64 }
 
-fn<'a, 'b: 'a> make_wrap2(x: &'a i64, y: &'b i64, $return: &out Wrap2<'a, 'b>) {
+fn make_wrap2<'a, 'b: 'a>(x: &'a i64, y: &'b i64, $return: &out Wrap2<'a, 'b>) {
   entry:
     $return.*.outer = copy x;
     $return.*.inner = copy y;
     return
 }
 
-fn<'a, 'b: 'a> read_wrap2(w: Wrap2<'a, 'b>, $return: &out &'a i64) {
+fn read_wrap2<'a, 'b: 'a>(w: Wrap2<'a, 'b>, $return: &out &'a i64) {
   entry:
     $return.* = copy w.outer;
     drop w.inner;
@@ -354,7 +354,7 @@ fn<'a, 'b: 'a> read_wrap2(w: Wrap2<'a, 'b>, $return: &out &'a i64) {
 # Substituting 'a for both params reduces the bound to 'a: 'a, which
 # is reflexive and pruned by `emit`. Well-formed under any axiom set,
 # including the empty one — the containing fn declares no bound.
-fn<'a> wrap2_reflexive(x: &'a i64, $return: &out Wrap2<'a, 'a>) {
+fn wrap2_reflexive<'a>(x: &'a i64, $return: &out Wrap2<'a, 'a>) {
   entry:
     $return.*.outer = copy x;
     $return.*.inner = copy x;
@@ -367,7 +367,7 @@ fn<'a> wrap2_reflexive(x: &'a i64, $return: &out Wrap2<'a, 'a>) {
 # Wrap2<'a, 'c> substitutes 'c into the bound RHS. The container fn
 # has 'b: 'a and 'c: 'b, whose transitive closure contains 'c: 'a — so
 # the substituted 'c: 'a is discharged.
-fn<'a, 'b: 'a, 'c: 'b> wrap2_chain(x: &'a i64, y: &'c i64, $return: &out Wrap2<'a, 'c>) {
+fn wrap2_chain<'a, 'b: 'a, 'c: 'b>(x: &'a i64, y: &'c i64, $return: &out Wrap2<'a, 'c>) {
   entry:
     $return.*.outer = copy x;
     $return.*.inner = copy y;
@@ -380,7 +380,7 @@ fn<'a, 'b: 'a, 'c: 'b> wrap2_chain(x: &'a i64, y: &'c i64, $return: &out Wrap2<'
 # Wrap2<'a, 'static>: substituted bound is 'static: 'a. `emit` prunes
 # outlives==Static — no constraint enters the check, clean under any
 # axiom set.
-fn<'a> wrap2_static_subject(x: &'a i64, s: &'static i64, $return: &out Wrap2<'a, 'static>) {
+fn wrap2_static_subject<'a>(x: &'a i64, s: &'static i64, $return: &out Wrap2<'a, 'static>) {
   entry:
     $return.*.outer = copy x;
     $return.*.inner = copy s;
@@ -392,7 +392,7 @@ fn<'a> wrap2_static_subject(x: &'a i64, s: &'static i64, $return: &out Wrap2<'a,
 # covers: type_kind=struct lifetime_bound=static_target_with_axiom
 # Wrap2<'static, 'a>: substituted bound is 'a: 'static. The fn declares
 # the axiom so the constraint is discharged via the transitive closure.
-fn<'a: 'static> wrap2_static_target(s: &'static i64, x: &'a i64, $return: &out Wrap2<'static, 'a>) {
+fn wrap2_static_target<'a: 'static>(s: &'static i64, x: &'a i64, $return: &out Wrap2<'static, 'a>) {
   entry:
     $return.*.outer = copy s;
     $return.*.inner = copy x;
@@ -406,9 +406,9 @@ fn<'a: 'static> wrap2_static_target(s: &'static i64, x: &'a i64, $return: &out W
 # 'b: 'a on itself so the field's substituted 'b: 'a is dischargeable
 # at Container's decl wf. Container's mentions in fn signatures then
 # emit its own 'b: 'a to the fn scope.
-struct<'a, 'b: 'a> Container: Move { inner: Wrap2<'a, 'b> }
+struct Container<'a, 'b: 'a>: Move { inner: Wrap2<'a, 'b> }
 
-fn<'a, 'b: 'a> make_container(x: &'a i64, y: &'b i64, $return: &out Container<'a, 'b>) {
+fn make_container<'a, 'b: 'a>(x: &'a i64, y: &'b i64, $return: &out Container<'a, 'b>) {
   entry:
     $return.*.inner.outer = copy x;
     $return.*.inner.inner = copy y;
@@ -420,7 +420,7 @@ fn<'a, 'b: 'a> make_container(x: &'a i64, y: &'b i64, $return: &out Container<'a
 # covers: type_kind=shared_ref lifetime_bound=nested_in_ref
 # The Custom mention hides inside `&Wrap2<...>`. Wf recurses through
 # Ref to find and discharge Wrap2's bound against the fn's axioms.
-fn<'a, 'b: 'a, 'r> ref_to_wrap2(w: &'r Wrap2<'a, 'b>, $return: &out &'a i64) {
+fn ref_to_wrap2<'a, 'b: 'a, 'r>(w: &'r Wrap2<'a, 'b>, $return: &out &'a i64) {
   entry:
     $return.* = copy w.*.outer;
     return
@@ -430,7 +430,7 @@ fn<'a, 'b: 'a, 'r> ref_to_wrap2(w: &'r Wrap2<'a, 'b>, $return: &out &'a i64) {
 
 # covers: type_kind=array lifetime_bound=nested_in_array
 # Same idea, hidden inside `[Wrap2<...>; N]`.
-fn<'a, 'b: 'a> array_of_wrap2(x: &'a i64, y: &'b i64, $return: &out [Wrap2<'a, 'b>; 2]) {
+fn array_of_wrap2<'a, 'b: 'a>(x: &'a i64, y: &'b i64, $return: &out [Wrap2<'a, 'b>; 2]) {
   entry:
     $return.*[0].outer = copy x;
     $return.*[0].inner = copy y;
@@ -446,7 +446,7 @@ fn<'a, 'b: 'a> array_of_wrap2(x: &'a i64, y: &'b i64, $return: &out [Wrap2<'a, '
 # well-formed at Container's decl. A fn mentioning Container<'a, 'b>
 # picks up Container's OWN declared 'b: 'a and requires the fn to
 # match — not the inner Wrap2's bound, which is already discharged.
-fn<'a, 'b: 'a> use_container(x: &'a i64, y: &'b i64, $return: &out Container<'a, 'b>) {
+fn use_container<'a, 'b: 'a>(x: &'a i64, y: &'b i64, $return: &out Container<'a, 'b>) {
   entry:
     $return.*.inner.outer = copy x;
     $return.*.inner.inner = copy y;
@@ -457,15 +457,15 @@ fn<'a, 'b: 'a> use_container(x: &'a i64, y: &'b i64, $return: &out Container<'a,
 
 # covers: type_kind=enum lifetime_bound=single_outlives
 # 'b: 'a on the enum decl; well-formedness discharges at every mention.
-enum<'a, 'b: 'a> Either2: Move { L: &'a i64, R: &'b i64 }
+enum Either2<'a, 'b: 'a>: Move { L: &'a i64, R: &'b i64 }
 
-fn<'a, 'b: 'a> make_either2_l(x: &'a i64, $return: &out Either2<'a, 'b>) {
+fn make_either2_l<'a, 'b: 'a>(x: &'a i64, $return: &out Either2<'a, 'b>) {
   entry:
     $return.* = Either2::L(copy x);
     return
 }
 
-fn<'a, 'b: 'a> make_either2_r(y: &'b i64, $return: &out Either2<'a, 'b>) {
+fn make_either2_r<'a, 'b: 'a>(y: &'b i64, $return: &out Either2<'a, 'b>) {
   entry:
     $return.* = Either2::R(copy y);
     return
@@ -475,7 +475,7 @@ fn<'a, 'b: 'a> make_either2_r(y: &'b i64, $return: &out Either2<'a, 'b>) {
 
 # covers: type_kind=fn lifetime_bound=static_source_with_bound
 # 'static source flows into 'a slot; 'a: 'static in scope is consistent.
-fn<'a: 'static> static_arg_required(x: &'static i64, $return: &out &'a i64) {
+fn static_arg_required<'a: 'static>(x: &'static i64, $return: &out &'a i64) {
   entry:
     $return.* = copy x;
     return
@@ -483,7 +483,7 @@ fn<'a: 'static> static_arg_required(x: &'static i64, $return: &out &'a i64) {
 # Impl-method checking combines impl-header lifetime bounds with method scope.
 struct ImplLifetimeHost: Copy + Drop { value: i64 }
 
-trait<'a, 'b> ImplLifetimeFlow {
+trait ImplLifetimeFlow<'a, 'b> {
   fn flow(recv: &Self, x: &'a i64, $return: &out &'b i64);
 }
 

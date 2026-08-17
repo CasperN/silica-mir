@@ -44,13 +44,10 @@ module.exports = grammar({
     // commas are also accepted so hand-written MIR can use whichever
     // reads best.
     //
-    // Generic decls put the type-parameter clause between the keyword
-    // and the name: `struct<T: Move> Foo: Move { ... }`. Non-generic
-    // decls omit the clause entirely.
     struct_decl: $ => seq(
       'struct',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       optional($.markers),
       '{',
       repeat(seq($.struct_field, optional(','))),
@@ -58,8 +55,8 @@ module.exports = grammar({
     ),
     enum_decl: $ => seq(
       'enum',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       optional($.markers),
       '{',
       repeat(seq($.enum_variant, optional(','))),
@@ -83,8 +80,8 @@ module.exports = grammar({
       optional('extern'),
       optional(field('abi', $.string_lit)),
       'fn',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       '(', common.commaSep($.param_decl), ')',
       choice(
         ';',
@@ -102,8 +99,8 @@ module.exports = grammar({
     // with the target type.
     trait_decl: $ => seq(
       'trait',
-      optional($.type_params),
       field('name', $.identifier),
+      optional($.type_params),
       optional($.trait_bounds),
       '{',
       repeat($.function_decl),

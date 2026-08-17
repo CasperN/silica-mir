@@ -9,7 +9,7 @@
 
 # ---------- helper declarations reused below ----------
 
-struct<'a> Wrap: Move { r: &'a i64 }
+struct Wrap<'a>: Move { r: &'a i64 }
 
 # ---------- E1: fn returning a ref to a local ----------
 
@@ -19,7 +19,7 @@ struct<'a> Wrap: Move { r: &'a i64 }
 # `x` is live via `$return.*` at return, but drop of `x` happens
 # after `$return`'s unborrow, so the local NLL might or might not
 # flag it — pin the actual behavior.
-fn<'a> dangling_return(dummy: &'a i64, $return: &out &'a i64) {
+fn dangling_return<'a>(dummy: &'a i64, $return: &out &'a i64) {
   x: i64;
   entry:
     x = 42;
@@ -34,7 +34,7 @@ fn<'a> dangling_return(dummy: &'a i64, $return: &out &'a i64) {
 # a type mismatch — &'b i64 doesn't unify with &'a i64. Under
 # current checker: type-check treats all refs as one kind and
 # passes; no diagnostic.
-fn<'a, 'b> wrong_lifetime_side(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+fn wrong_lifetime_side<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
   entry:
     unborrow x;
     $return.* = copy y;
@@ -46,7 +46,7 @@ fn<'a, 'b> wrong_lifetime_side(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
 # Currently detected: the field write `$return.*.r = &local` fires
 # LifetimeEscape because `local` (body-local) has a Free region and
 # the field's declared region is Wrap<'a>'s 'a (via the struct decl).
-fn<'a> escape_struct_lifetime(caller_ref: &'a i64, $return: &out Wrap<'a>) {
+fn escape_struct_lifetime<'a>(caller_ref: &'a i64, $return: &out Wrap<'a>) {
   local: i64;
   entry:
     local = 1;
@@ -59,7 +59,7 @@ fn<'a> escape_struct_lifetime(caller_ref: &'a i64, $return: &out Wrap<'a>) {
 # `w` is a body-local Wrap<'a>; its field `w.r` gets a &local
 # (Free-region). Then the whole struct is moved into $return, whose
 # region is 'a. The field-write emits Free outlives 'a → escape.
-fn<'a> reborrow_escape($return: &out Wrap<'a>) {
+fn reborrow_escape<'a>($return: &out Wrap<'a>) {
   x: i64;
   w: Wrap<'a>;
   entry:
@@ -73,7 +73,7 @@ fn<'a> reborrow_escape($return: &out Wrap<'a>) {
 
 # The output slot isn't $return but a caller-provided &out ref.
 # Should still be caught as an escape.
-fn<'a> escape_via_out_param(dst: &out &'a i64) {
+fn escape_via_out_param<'a>(dst: &out &'a i64) {
   local: i64;
   entry:
     local = 5;
@@ -83,9 +83,9 @@ fn<'a> escape_via_out_param(dst: &out &'a i64) {
 
 # ---------- E6: escape via nested enum-payload write ----------
 
-enum<'a> RefEnum: Copy + Drop { N: unit, R: &'a i64 }
+enum RefEnum<'a>: Copy + Drop { N: unit, R: &'a i64 }
 
-fn<'a> escape_via_enum_variant($return: &out RefEnum<'a>) {
+fn escape_via_enum_variant<'a>($return: &out RefEnum<'a>) {
   local: i64;
   r: &i64;
   entry:
@@ -99,7 +99,7 @@ fn<'a> escape_via_enum_variant($return: &out RefEnum<'a>) {
 
 # Sig says the returned ref is 'a. Body sneaks in a local-borrowed
 # ref instead. Region check: source is Free, dst is 'a → escape.
-fn<'a, 'b> multi_lifetime_local_leak(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
+fn multi_lifetime_local_leak<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out &'a i64) {
   local: i64;
   entry:
     unborrow x;

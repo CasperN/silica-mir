@@ -18,7 +18,7 @@ struct Inner: Copy + Drop { a: i64  b: i64 }
 
 struct Outer: Copy + Drop { i: Inner  c: i64 }
 
-struct<T: Copy + Drop> Pair: Copy + Drop { a: T  b: T }
+struct Pair<T: Copy + Drop>: Copy + Drop { a: T  b: T }
 
 # ---------- Struct: field-by-field completion ----------
 
@@ -66,7 +66,7 @@ fn array_slot_by_slot() {
 
 # `Pair<T>` fields are `Param(T)`. Piecewise init through Param-typed
 # fields participates in the same fold-up rule.
-fn<T: Copy + Drop> pair_field_by_field(a: T, b: T) {
+fn pair_field_by_field<T: Copy + Drop>(a: T, b: T) {
   p: Pair<T>;
   entry:
     p.a = move a;

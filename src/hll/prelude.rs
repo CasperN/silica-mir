@@ -24,8 +24,8 @@ impl<T: Copy> AutoClone for T {
   fn clone(&self) -> Self { self.* }
 }
 
-extern fn<T> size_of() -> u64;
-extern fn<T> ptr_offset(p: *T, i: u64) -> *T;
+extern fn size_of<T>() -> u64;
+extern fn ptr_offset<T>(p: *T, i: u64) -> *T;
 "#;
 
 fn prelude_decls() -> Vec<Declaration> {

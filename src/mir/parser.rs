@@ -602,25 +602,45 @@ impl Parser {
                 }
 
                 let text = self.get_text(first_child);
-                let ref_kind = match text {
-                    "&" => Some(RefKind::Shared),
-                    "&mut" => Some(RefKind::Mut),
-                    "&out" => Some(RefKind::Out),
-                    "&drop" => Some(RefKind::Drop),
-                    "&uninit" => Some(RefKind::Uninit),
-                    _ => None,
-                };
-                if let Some(kind) = ref_kind {
-                    let lt = node
-                        .child(1)
-                        .filter(|c| c.kind() == "lifetime")
-                        .map(|c| Lifetime(self.get_text(c).trim_start_matches('\'').to_string()));
-                    let inner_idx = if lt.is_some() { 2 } else { 1 };
-                    let Some(inner) = node.child(inner_idx) else {
+                if text == "&" {
+                    let mut cursor = node.walk();
+                    let children: Vec<Node> = node.children(&mut cursor).collect();
+                    let mut idx = 1;
+                    let lt = if idx < children.len() && children[idx].kind() == "lifetime" {
+                        let lt = Lifetime(self.get_text(children[idx]).trim_start_matches('\'').to_string());
+                        idx += 1;
+                        Some(lt)
+                    } else {
+                        None
+                    };
+                    let kind = if idx < children.len() {
+                        match self.get_text(children[idx]) {
+                            "mut" => {
+                                idx += 1;
+                                RefKind::Mut
+                            }
+                            "out" => {
+                                idx += 1;
+                                RefKind::Out
+                            }
+                            "drop" => {
+                                idx += 1;
+                                RefKind::Drop
+                            }
+                            "uninit" => {
+                                idx += 1;
+                                RefKind::Uninit
+                            }
+                            _ => RefKind::Shared,
+                        }
+                    } else {
+                        RefKind::Shared
+                    };
+                    let Some(&inner) = children.get(idx) else {
                         d.push_error(self.diag(
                             node,
                             ParserCode::MalformedCst,
-                            format!("missing inner type for {}", text),
+                            "missing inner type for reference",
                         ));
                         return None;
                     };
@@ -2187,7 +2207,7 @@ mod tests {
     #[test]
     fn test_parse_generic_extern_fn() {
         let source = "
-            extern fn<'a, T: Move> add_impl(a: &mut i64, b: T);
+            extern fn add_impl<'a, T: Move>(a: &mut i64, b: T);
         ";
         let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);

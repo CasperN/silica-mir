@@ -22,29 +22,29 @@ error: at 348:23: [TC-TraitBoundCycle] Trait-bound cycle: MirCycleFirst -> MirCy
 error: at 350:29: [TC-TraitBoundCycle] Trait-bound cycle: MirExpandingCycle -> MirExpandingCycle
      |
  349 | 
- 350 | trait<X> MirExpandingCycle: MirExpandingCycle<[X; 1]> {}
+ 350 | trait MirExpandingCycle<X>: MirExpandingCycle<[X; 1]> {}
      |                             ^^^^^^^^^^^^^^^^^^^^^^^^^
  351 | 
      |
-error: at 325:14: [TC-TraitBoundUnknownTrait] In function 'unknown_direct_bound' type parameter 'T': trait bound references undeclared trait 'MissingBound'
+error: at 325:35: [TC-TraitBoundUnknownTrait] In function 'unknown_direct_bound' type parameter 'T': trait bound references undeclared trait 'MissingBound'
      |
  324 | # covers: MIR bounds must name a declared trait
- 325 | extern fn<T: MissingBound> unknown_direct_bound(value: &T);
-     |              ^^^^^^^^^^^^
+ 325 | extern fn unknown_direct_bound<T: MissingBound>(value: &T);
+     |                                   ^^^^^^^^^^^^
  326 | 
      |
-error: at 328:14: [TC-TraitBoundArgArity] In function 'wrong_direct_bound_arity' type parameter 'T': trait 'GenericBound' expects 0 lifetime and 1 type argument(s), got 0 lifetime and 0 type argument(s)
+error: at 328:39: [TC-TraitBoundArgArity] In function 'wrong_direct_bound_arity' type parameter 'T': trait 'GenericBound' expects 0 lifetime and 1 type argument(s), got 0 lifetime and 0 type argument(s)
      |
  327 | # covers: MIR bounds must supply the trait's declared generic arity
- 328 | extern fn<T: GenericBound> wrong_direct_bound_arity(value: &T);
-     |              ^^^^^^^^^^^^
+ 328 | extern fn wrong_direct_bound_arity<T: GenericBound>(value: &T);
+     |                                       ^^^^^^^^^^^^
  329 | 
      |
-error: at 331:14: [TC-UndeclaredLifetime] In function 'unknown_direct_bound_lifetime' type parameter 'T': undeclared lifetime 'missing
+error: at 331:44: [TC-UndeclaredLifetime] In function 'unknown_direct_bound_lifetime' type parameter 'T': undeclared lifetime 'missing
      |
  330 | # covers: MIR trait bounds reject undeclared lifetime arguments
- 331 | extern fn<T: LifetimeDirectBound<'missing>> unknown_direct_bound_lifetime(value: &T);
-     |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 331 | extern fn unknown_direct_bound_lifetime<T: LifetimeDirectBound<'missing>>(value: &T);
+     |                                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  332 | 
      |
 error: at 341:5: [TC-TypeArgBoundNotSatisfied] In function 'reject_direct_bound', block 'entry': Type argument Other for function 'accept_direct::T' does not satisfy trait bound 'DirectBound'
@@ -68,11 +68,11 @@ error: at 45:33: [TC-InvalidDeclaredType] In trait 'IterMissingT', method 'next'
     |                                 ^^^^^^^^
  46 | }
     |
-error: at 49:6: [TC-DuplicateLifetimeParam] In trait method 'borrow': lifetime parameter 'a is declared more than once
+error: at 49:13: [TC-DuplicateLifetimeParam] In trait method 'borrow': lifetime parameter 'a is declared more than once
     |
- 48 | trait<'a> TraitLifetimeShadow {
- 49 |   fn<'a> borrow(recv: &'a Self);
-    |      ^^
+ 48 | trait TraitLifetimeShadow<'a> {
+ 49 |   fn borrow<'a>(recv: &'a Self);
+    |             ^^
  50 | }
     |
 error: at 66:6: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unknown'
@@ -103,7 +103,7 @@ error: at 84:6: [TC-ImplMissingTraitMethod] Impl of 'Trait' is missing method 'b
     |      ^^^^^
  85 |   fn a(recv: &Foo) {
     |
-error: at 103:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &mut 's0 Foo, trait declares &'s0 Foo (after Self := Foo)
+error: at 103:18: [TC-ImplMethodSignatureMismatch] Impl method 'touch' param 1 has type &'s0 mut Foo, trait declares &'s0 Foo (after Self := Foo)
      |
  102 | impl TraitS for Foo {
  103 |   fn touch(recv: &mut Foo) {
@@ -127,14 +127,14 @@ error: at 132:6: [TC-ImplMethodSignatureMismatch] Impl method 'pick' declares 0 
 error: at 147:3: [TC-ImplMethodSignatureMismatch] Impl method 'relate' lifetime bounds don't match trait's declaration
      |
  146 | impl<'x> BoundedMethod<'x> for Foo {
- 147 |   fn<'y> relate(recv: &Foo, earlier: &'x i64, later: &'y i64) {
+ 147 |   fn relate<'y>(recv: &Foo, earlier: &'x i64, later: &'y i64) {
      |   ^
  148 |     entry:
      |
 error: at 158:3: [TC-ImplMethodSignatureMismatch] Impl method 'accept' lifetime bounds don't match trait's declaration
      |
  157 | impl UnboundedMethod for Foo {
- 158 |   fn<'x, 'y: 'x> accept(recv: &Foo, first: &'x i64, second: &'y i64) {
+ 158 |   fn accept<'x, 'y: 'x>(recv: &Foo, first: &'x i64, second: &'y i64) {
      |   ^
  159 |     entry:
      |
@@ -159,11 +159,11 @@ error: at 220:11: [TC-InvalidDeclaredType] In impl of 'Iter', trait type argumen
      |           ^^^^^^^^^^
  221 |   fn next(recv: &mut Foo, $return: &out MissingArg) {
      |
-error: at 269:6: [TC-DuplicateLifetimeParam] In function '<Foo as LifetimeShadow<'a>>::borrow': lifetime parameter 'a is declared more than once
+error: at 269:13: [TC-DuplicateLifetimeParam] In function '<Foo as LifetimeShadow<'a>>::borrow': lifetime parameter 'a is declared more than once
      |
  268 | impl<'a> LifetimeShadow<'a> for Foo {
- 269 |   fn<'a> borrow(recv: &'a Foo) {
-     |      ^^
+ 269 |   fn borrow<'a>(recv: &'a Foo) {
+     |             ^^
  270 |     entry:
      |
 error: at 373:6: [TC-TraitBoundNotSatisfied] Impl of 'MirChild' for MirLinear requires Self: Copy
@@ -178,11 +178,11 @@ error: at 373:6: [TC-TraitBoundNotSatisfied] Impl of 'MirChild' for MirLinear re
  373 | impl MirChild for MirLinear {}
      |      ^^^^^^^^
      |
-error: at 276:6: [TC-DuplicateLifetimeParam] In function '<Foo>::inherent_borrow': lifetime parameter 'a is declared more than once
+error: at 276:22: [TC-DuplicateLifetimeParam] In function '<Foo>::inherent_borrow': lifetime parameter 'a is declared more than once
      |
  275 | impl<'a> Foo {
- 276 |   fn<'a> inherent_borrow(recv: &'a Self) {
-     |      ^^
+ 276 |   fn inherent_borrow<'a>(recv: &'a Self) {
+     |                      ^^
  277 |     entry:
      |
 error: at 283:6: [TC-InherentImplInvalidTarget] Inherent impl target must be a declared struct or enum type, found i64
@@ -222,18 +222,18 @@ error: at 255:7: [SUB-CopyOfNonCopy] In function '<Box<T>>::inherent_duplicate',
  256 |       call consume<T>(move value);
      |
   hint: since the type is not Copy, try moving it instead using 'move'
-error: at 334:22: [LT-LifetimeMismatch] trait bound 'OrderedDirectBound<'a, 'b>' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'missing_direct_bound_outlives'
+error: at 334:52: [LT-LifetimeMismatch] trait bound 'OrderedDirectBound<'a, 'b>' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on function 'missing_direct_bound_outlives'
      |
  333 | # covers: a direct bound's trait lifetime requirements must be declared by its owner
- 334 | extern fn<'a, 'b, T: OrderedDirectBound<'a, 'b>> missing_direct_bound_outlives(value: &'b T);
-     |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 334 | extern fn missing_direct_bound_outlives<'a, 'b, T: OrderedDirectBound<'a, 'b>>(value: &'b T);
+     |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
  335 | 
      |
   hint: declare bound 'b: 'a on function 'missing_direct_bound_outlives'
 error: at 366:40: [LT-LifetimeMismatch] trait bound 'MirOrderedSuper<'a, 'b>' requires lifetime bound 'b: 'a, but it is not implied by the declared bounds on trait 'MirMissingSuperOutlives'
      |
  365 | # covers: supertrait lifetime requirements must follow from the child trait
- 366 | trait<'a, 'b> MirMissingSuperOutlives: MirOrderedSuper<'a, 'b> {}
+ 366 | trait MirMissingSuperOutlives<'a, 'b>: MirOrderedSuper<'a, 'b> {}
      |                                        ^^^^^^^^^^^^^^^^^^^^^^^
  367 | 
      |

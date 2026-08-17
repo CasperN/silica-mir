@@ -8,7 +8,7 @@ enum Outer: Copy + Drop {
   B: i64
 }
 
-fn<'s0> nested_downcast(o: Outer, $return: &out 's0 i64) {
+fn nested_downcast<'s0>(o: Outer, $return: &'s0 out i64) {
   inner: Inner;
   x: i64;
   y: i64;
@@ -53,7 +53,7 @@ enum Tag: Copy + Drop {
   Neg: i64
 }
 
-fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
+fn to_i64<'s0>(t: Tag, $return: &'s0 out i64) {
   _: unit;
   p: i64;
   n: i64;
@@ -88,7 +88,7 @@ fn<'s0> to_i64(t: Tag, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> sum_two_tags(a: [Tag; 2], $return: &out 's0 i64) {
+fn sum_two_tags<'s0>(a: [Tag; 2], $return: &'s0 out i64) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: i64;
@@ -112,7 +112,7 @@ fn<'s0> sum_two_tags(a: [Tag; 2], $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> sum_two_tags_direct(a: [Tag; 2], $return: &out 's0 i64) {
+fn sum_two_tags_direct<'s0>(a: [Tag; 2], $return: &'s0 out i64) {
   first: i64;
   _: unit;
   p: i64;
@@ -182,7 +182,7 @@ struct Tagged: Copy + Drop {
   extra: i64
 }
 
-fn<'s0> decode_field(t: Tagged, $return: &out 's0 i64) {
+fn decode_field<'s0>(t: Tagged, $return: &'s0 out i64) {
   _: unit;
   p: i64;
   $tmp_0: &out i64;
@@ -225,7 +225,7 @@ enum Which: Copy + Drop {
   B: unit
 }
 
-fn<'s0> asymmetric_ref_use(r: &mut 's0 i64, w: Which) {
+fn asymmetric_ref_use<'s0>(r: &'s0 mut i64, w: Which) {
   $tmp_0: unit;
   a: unit;
   observed: i64;

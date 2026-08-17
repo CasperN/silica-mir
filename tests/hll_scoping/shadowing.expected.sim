@@ -1,8 +1,8 @@
 extern fn use_i64(x: i64);
 
-extern fn<'s0> f($return: &out 's0 i64);
+extern fn f<'s0>($return: &'s0 out i64);
 
-fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
+fn let_shadow_same_scope<'s0>($return: &'s0 out i64) {
   x: i64;
   $tmp_0: unit;
   $x_0: i64;
@@ -26,7 +26,7 @@ fn<'s0> let_shadow_same_scope($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> let_shadow_reads_outer($return: &out 's0 i64) {
+fn let_shadow_reads_outer<'s0>($return: &'s0 out i64) {
   x: i64;
   $x_0: i64;
   entry:
@@ -40,7 +40,7 @@ fn<'s0> let_shadow_reads_outer($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> let_shadow_inner_block($return: &out 's0 i64) {
+fn let_shadow_inner_block<'s0>($return: &'s0 out i64) {
   x: i64;
   $tmp_0: unit;
   $x_0: i64;
@@ -63,7 +63,7 @@ fn<'s0> let_shadow_inner_block($return: &out 's0 i64) {
     return
 }
 
-fn<'s0> let_shadows_param(x: i64, $return: &out 's0 i64) {
+fn let_shadows_param<'s0>(x: i64, $return: &'s0 out i64) {
   $tmp_0: unit;
   $x_0: i64;
   entry:
@@ -85,7 +85,7 @@ enum E: Copy + Drop {
   B: i64
 }
 
-fn<'s0> match_arm_bindings_reused(e: E, $return: &out 's0 i64) {
+fn match_arm_bindings_reused<'s0>(e: E, $return: &'s0 out i64) {
   x: i64;
   $x_0: i64;
   entry:
@@ -109,7 +109,7 @@ fn<'s0> match_arm_bindings_reused(e: E, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> fn_name_shadowed_by_let($return: &out 's0 i64) {
+fn fn_name_shadowed_by_let<'s0>($return: &'s0 out i64) {
   f: i64;
   entry:
     f = 7;

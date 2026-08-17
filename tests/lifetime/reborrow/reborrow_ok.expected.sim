@@ -2,11 +2,11 @@ enum E: Move {
   V: i64
 }
 
-extern fn<'s0> sink_mut(r: &mut 's0 i64);
+extern fn sink_mut<'s0>(r: &'s0 mut i64);
 
-extern fn<'s0> sink_shared(r: &'s0 i64);
+extern fn sink_shared<'s0>(r: &'s0 i64);
 
-fn<'s0> shared_from_shared_param(r: &'s0 i64) {
+fn shared_from_shared_param<'s0>(r: &'s0 i64) {
   s: &i64;
   entry:
     s = &r.*;
@@ -39,7 +39,7 @@ fn shared_from_mut_local(x: i64) {
     return
 }
 
-fn<'s0> shared_from_mut_param(r: &mut 's0 i64) {
+fn shared_from_mut_param<'s0>(r: &'s0 mut i64) {
   s: &i64;
   entry:
     s = &r.*;
@@ -48,7 +48,7 @@ fn<'s0> shared_from_mut_param(r: &mut 's0 i64) {
     return
 }
 
-fn<'s0> out_from_out_param(r: &out 's0 i64) {
+fn out_from_out_param<'s0>(r: &'s0 out i64) {
   s: &out i64;
   entry:
     s = &out r.*;
@@ -73,7 +73,7 @@ fn chained_mut_from_mut(x: i64) {
     return
 }
 
-fn<'s0> mut_from_mut_via_downcast(e: &mut 's0 E) {
+fn mut_from_mut_via_downcast<'s0>(e: &'s0 mut E) {
   r: &mut i64;
   entry:
     switchEnum(e.*) [V: v_arm]
@@ -105,7 +105,7 @@ fn mut_from_mut_in_loop(x: i64, b: bool) {
     return
 }
 
-fn<'s0> mut_from_mut_conditional(r: &mut 's0 i64, cond: bool) {
+fn mut_from_mut_conditional<'s0>(r: &'s0 mut i64, cond: bool) {
   s: &mut i64;
   entry:
     s = &mut r.*;
@@ -128,7 +128,7 @@ fn<'s0> mut_from_mut_conditional(r: &mut 's0 i64, cond: bool) {
     return
 }
 
-fn<'a, 's0> mut_from_mut_returned(r: &mut 'a i64, $return: &out 's0 &mut 'a i64) {
+fn mut_from_mut_returned<'a, 's0>(r: &'a mut i64, $return: &'s0 out &'a mut i64) {
   entry:
     $return.* = &mut r.*;
     unborrow $return;

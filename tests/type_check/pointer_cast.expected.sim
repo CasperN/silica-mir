@@ -1,4 +1,4 @@
-fn<'s0> ptr_to_ptr(p: *i64, $return: &out 's0 *u8) {
+fn ptr_to_ptr<'s0>(p: *i64, $return: &'s0 out *u8) {
   entry:
     $return.* = ptr_cast(move p, *u8);
     unborrow $return;
@@ -7,7 +7,7 @@ fn<'s0> ptr_to_ptr(p: *i64, $return: &out 's0 *u8) {
     return
 }
 
-fn<'s0, 's1> ref_to_ptr(r: &'s0 i64, $return: &out 's1 *u8) {
+fn ref_to_ptr<'s0, 's1>(r: &'s0 i64, $return: &'s1 out *u8) {
   entry:
     $return.* = ptr_cast(move r, *u8);
     unborrow $return;
@@ -16,7 +16,7 @@ fn<'s0, 's1> ref_to_ptr(r: &'s0 i64, $return: &out 's1 *u8) {
     return
 }
 
-fn<'s0: 's1, 's1> ptr_to_ref(p: *i64, $return: &out 's0 &'s1 i64) {
+fn ptr_to_ref<'s0: 's1, 's1>(p: *i64, $return: &'s0 out &'s1 i64) {
   entry:
     $return.* = ptr_cast(move p, &i64);
     unborrow $return;
@@ -25,7 +25,7 @@ fn<'s0: 's1, 's1> ptr_to_ref(p: *i64, $return: &out 's0 &'s1 i64) {
     return
 }
 
-fn<'s0: 's2, 's1: 's2, 's2> ref_to_ref(r: &'s0 i64, $return: &out 's1 &'s2 u8) {
+fn ref_to_ref<'s0: 's2, 's1: 's2, 's2>(r: &'s0 i64, $return: &'s1 out &'s2 u8) {
   entry:
     $return.* = ptr_cast(move r, &u8);
     unborrow $return;
@@ -34,7 +34,7 @@ fn<'s0: 's2, 's1: 's2, 's2> ref_to_ref(r: &'s0 i64, $return: &out 's1 &'s2 u8) {
     return
 }
 
-fn<'s0, 's1> mut_ref_to_mut_ptr(r: &mut 's0 i64, $return: &out 's1 *u8) {
+fn mut_ref_to_mut_ptr<'s0, 's1>(r: &'s0 mut i64, $return: &'s1 out *u8) {
   $tmp_0: *i64;
   entry:
     $tmp_0 = &raw r.*;
@@ -47,7 +47,7 @@ fn<'s0, 's1> mut_ref_to_mut_ptr(r: &mut 's0 i64, $return: &out 's1 *u8) {
     return
 }
 
-fn<'s0: 's1, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
+fn mut_ptr_to_mut_ref<'s0: 's1, 's1>(p: *i64, $return: &'s0 out &'s1 mut i64) {
   entry:
     $return.* = ptr_cast(move p, &mut i64);
     unborrow $return;
@@ -56,7 +56,7 @@ fn<'s0: 's1, 's1> mut_ptr_to_mut_ref(p: *i64, $return: &out 's0 &mut 's1 i64) {
     return
 }
 
-fn<'s0: 's2, 's1: 's2, 's2> mut_ref_to_mut_ref(r: &mut 's0 i64, $return: &out 's1 &mut 's2 u8) {
+fn mut_ref_to_mut_ref<'s0: 's2, 's1: 's2, 's2>(r: &'s0 mut i64, $return: &'s1 out &'s2 mut u8) {
   $tmp_0: *u8;
   $tmp_1: *i64;
   entry:

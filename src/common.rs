@@ -390,14 +390,22 @@ impl RefKind {
         W: std::fmt::Write + ?Sized,
         L: std::fmt::Display + ?Sized,
     {
-        write!(out, "{}", self)?;
         if let Some(lifetime) = lifetime {
-            if self != Self::Shared {
-                out.write_char(' ')?;
+            match self {
+                Self::Shared => write!(out, "&{} ", lifetime)?,
+                Self::Mut => write!(out, "&{} mut ", lifetime)?,
+                Self::Out => write!(out, "&{} out ", lifetime)?,
+                Self::Drop => write!(out, "&{} drop ", lifetime)?,
+                Self::Uninit => write!(out, "&{} uninit ", lifetime)?,
             }
-            write!(out, "{} ", lifetime)?;
-        } else if self != Self::Shared {
-            out.write_char(' ')?;
+        } else {
+            match self {
+                Self::Shared => write!(out, "&")?,
+                Self::Mut => write!(out, "&mut ")?,
+                Self::Out => write!(out, "&out ")?,
+                Self::Drop => write!(out, "&drop ")?,
+                Self::Uninit => write!(out, "&uninit ")?,
+            }
         }
         Ok(())
     }

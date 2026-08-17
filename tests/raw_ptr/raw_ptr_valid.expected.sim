@@ -270,7 +270,7 @@ fn pass_raw_ptr_to_call(x: i64) {
     return
 }
 
-fn<'s0> return_raw_ptr(x: i64, $return: &out 's0 *i64) {
+fn return_raw_ptr<'s0>(x: i64, $return: &'s0 out *i64) {
   p: *i64;
   entry:
     p = &raw x;

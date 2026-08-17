@@ -1,4 +1,4 @@
-fn<'s0> bool_to_i32(x: i64, $return: &out 's0 i32) {
+fn bool_to_i32<'s0>(x: i64, $return: &'s0 out i32) {
   $tmp_0: bool;
   $tmp_1: &out bool;
   $tmp_2: &out i32;
@@ -16,7 +16,7 @@ fn<'s0> bool_to_i32(x: i64, $return: &out 's0 i32) {
     return
 }
 
-fn<'s0> i32_round_trip(x: i32, $return: &out 's0 i32) {
+fn i32_round_trip<'s0>(x: i32, $return: &'s0 out i32) {
   $tmp_0: i64;
   $tmp_1: &out i64;
   $tmp_2: &out i32;
@@ -34,7 +34,7 @@ fn<'s0> i32_round_trip(x: i32, $return: &out 's0 i32) {
     return
 }
 
-fn<'s0> fact(n: i64, $return: &out 's0 i64) {
+fn fact<'s0>(n: i64, $return: &'s0 out i64) {
   $tmp_0: bool;
   $tmp_1: &out bool;
   $tmp_2: i64;
@@ -75,7 +75,7 @@ fn<'s0> fact(n: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> straight_line_reassign(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
+fn straight_line_reassign<'s0>(a: i64, b: i64, c: i64, $return: &'s0 out i64) {
   r: i64;
   $tmp_0: &out i64;
   $tmp_1: unit;
@@ -104,7 +104,7 @@ fn<'s0> straight_line_reassign(a: i64, b: i64, c: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0> double(x: i64, $return: &out 's0 i64) {
+fn double<'s0>(x: i64, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -116,7 +116,7 @@ fn<'s0> double(x: i64, $return: &out 's0 i64) {
     return
 }
 
-fn<'s0, 's1> call_it(f: fn(i64, &out 's0 i64), x: i64, $return: &out 's1 i64) {
+fn call_it<'s0, 's1>(f: fn(i64, &'s0 out i64), x: i64, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -129,7 +129,7 @@ fn<'s0, 's1> call_it(f: fn(i64, &out 's0 i64), x: i64, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> double_via_call_it(x: i64, $return: &out 's0 i64) {
+fn double_via_call_it<'s0>(x: i64, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;

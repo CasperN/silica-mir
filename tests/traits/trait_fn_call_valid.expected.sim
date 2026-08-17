@@ -1,9 +1,9 @@
 trait Sink {
-  fn<'s0> accept(recv: &mut 's0 Self, v: i64);
+  fn accept<'s0>(recv: &'s0 mut Self, v: i64);
 }
 
-trait<T: Copy + Drop> Iter {
-  fn<'s0, 's1> next(recv: &mut 's0 Self, $return: &out 's1 T);
+trait Iter<T: Copy + Drop> {
+  fn next<'s0, 's1>(recv: &'s0 mut Self, $return: &'s1 out T);
 }
 
 struct Foo: Copy + Drop {
@@ -15,7 +15,7 @@ struct List: Copy + Drop {
 }
 
 impl Sink for Foo {
-  fn<'s0> accept(recv: &mut 's0 Foo, v: i64) {
+  fn accept<'s0>(recv: &'s0 mut Foo, v: i64) {
     entry:
       drop recv.*.x;
       recv.*.x = move v;
@@ -25,7 +25,7 @@ impl Sink for Foo {
 }
 
 impl Iter<i64> for List {
-  fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 i64) {
+  fn next<'s0, 's1>(recv: &'s0 mut List, $return: &'s1 out i64) {
     entry:
       $return.* = 0;
       unborrow $return;
@@ -35,7 +35,7 @@ impl Iter<i64> for List {
 }
 
 impl Iter<u8> for List {
-  fn<'s0, 's1> next(recv: &mut 's0 List, $return: &out 's1 u8) {
+  fn next<'s0, 's1>(recv: &'s0 mut List, $return: &'s1 out u8) {
     entry:
       $return.* = 0u8;
       unborrow $return;
@@ -44,7 +44,7 @@ impl Iter<u8> for List {
   }
 }
 
-fn<'s0, 's1, 's2> drive(f: &mut 's0 Foo, l: &mut 's1 List, $return: &out 's2 i64) {
+fn drive<'s0, 's1, 's2>(f: &'s0 mut Foo, l: &'s1 mut List, $return: &'s2 out i64) {
   out_ref: &out i64;
   entry:
     call <Foo as Sink>::accept(move f, 7);
@@ -54,7 +54,7 @@ fn<'s0, 's1, 's2> drive(f: &mut 's0 Foo, l: &mut 's1 List, $return: &out 's2 i64
     return
 }
 
-fn<'s0, 's1> drive_bytes(l: &mut 's0 List, $return: &out 's1 u8) {
+fn drive_bytes<'s0, 's1>(l: &'s0 mut List, $return: &'s1 out u8) {
   out_ref: &out u8;
   entry:
     out_ref = &out $return.*;
@@ -63,26 +63,26 @@ fn<'s0, 's1> drive_bytes(l: &mut 's0 List, $return: &out 's1 u8) {
     return
 }
 
-fn<'s0, T: Sink> drive_generic(f: &mut 's0 T) {
+fn drive_generic<'s0, T: Sink>(f: &'s0 mut T) {
   entry:
     call <T as Sink>::accept(move f, 7);
     return
 }
 
 trait SuperSink {
-  fn<'s0> accept_super(recv: &mut 's0 Self, v: i64);
+  fn accept_super<'s0>(recv: &'s0 mut Self, v: i64);
 }
 
 trait ChildSink: SuperSink {
 }
 
-trait<'a, 'b: 'a> OrderedSuper {
+trait OrderedSuper<'a, 'b: 'a> {
 }
 
-trait<'a, 'b: 'a> OrderedChild: OrderedSuper<'a, 'b> {
+trait OrderedChild<'a, 'b: 'a>: OrderedSuper<'a, 'b> {
 }
 
-fn<'s0, T: ChildSink> drive_super_generic(f: &mut 's0 T) {
+fn drive_super_generic<'s0, T: ChildSink>(f: &'s0 mut T) {
   entry:
     call <T as SuperSink>::accept_super(move f, 7);
     return

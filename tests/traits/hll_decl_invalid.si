@@ -26,15 +26,15 @@ impl Result for S {
   fn result(recv: &Self) -> bool { false }
 }
 
-trait<'a> Lifetime {
-  fn<'b> lifetime(recv: &'b Self);
+trait Lifetime<'a> {
+  fn lifetime<'b>(recv: &'b Self);
 }
 
 impl<'a> Lifetime<'a> for S {
-  fn<'a> lifetime(recv: &'a Self) { unit }
+  fn lifetime<'a>(recv: &'a Self) { unit }
 }
 
-trait<T: Copy + Drop> GenericTrait {
+trait GenericTrait<T: Copy + Drop> {
   fn generic(recv: &Self, value: T);
 }
 
@@ -43,7 +43,7 @@ impl GenericTrait for S {
 }
 
 trait MethodGeneric {
-  fn<T: Copy + Drop> method_generic(recv: &Self, value: T);
+  fn method_generic<T: Copy + Drop>(recv: &Self, value: T);
 }
 
 impl MethodGeneric for S {

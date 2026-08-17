@@ -42,7 +42,7 @@ fn wrong_arity(value: WrongArity) {
   value.takes_argument();
 }
 
-struct<T: Copy + Drop> Overlap: Copy + Drop { value: T }
+struct Overlap<T: Copy + Drop>: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Overlap<T> {
   fn duplicate(recv: Overlap<T>) { unit }
@@ -72,10 +72,10 @@ fn unsafe_free_without_block(value: Missing) {
 }
 
 struct Linear { value: i64 }
-struct<T: Copy + Drop> Generic: Copy + Drop { value: T }
+struct Generic<T: Copy + Drop>: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Generic<T> {
-  fn<U: Copy + Drop> bounded(recv: Generic<T>, value: U) { unit }
+  fn bounded<U: Copy + Drop>(recv: Generic<T>, value: U) { unit }
 }
 
 # covers: inferred receiver impl arguments do not bypass method bounds
@@ -162,7 +162,7 @@ trait BoundSecond {
 }
 
 # covers: multiple direct bounds with the same applicable method are ambiguous
-fn<T: BoundFirst + BoundSecond> ambiguous_bound_method(value: &T) {
+fn ambiguous_bound_method<T: BoundFirst + BoundSecond>(value: &T) {
   value.bound_collision();
 }
 
@@ -179,7 +179,7 @@ impl<U> ReferenceCollision for &U {
 }
 
 # covers: bound and concrete-reference candidates share one ambiguity tier
-fn<T: DirectCollision> ambiguous_bound_and_impl(value: &T) {
+fn ambiguous_bound_and_impl<T: DirectCollision>(value: &T) {
   value.mixed_collision();
 }
 
@@ -187,14 +187,14 @@ trait BoundArgument {
   fn qualified_required(recv: &Self);
 }
 trait GenericBoundMethod {
-  fn<U: BoundArgument> bound_generic(recv: &Self, value: &U);
+  fn bound_generic<U: BoundArgument>(recv: &Self, value: &U);
   unsafe fn bound_unsafe(recv: &Self);
 }
 
 struct WrongBoundArgument: Copy + Drop { value: i64 }
 
 # covers: generic arguments on direct-bound methods retain their obligations
-fn<T: GenericBoundMethod> reject_bound_method_argument(
+fn reject_bound_method_argument<T: GenericBoundMethod>(
   value: &T,
   argument: &WrongBoundArgument,
 ) {
@@ -202,27 +202,27 @@ fn<T: GenericBoundMethod> reject_bound_method_argument(
 }
 
 # covers: unsafe direct-bound methods still require an unsafe context
-fn<T: GenericBoundMethod> reject_bound_unsafe(value: &T) {
+fn reject_bound_unsafe<T: GenericBoundMethod>(value: &T) {
   value.bound_unsafe();
 }
 
 # covers: a generic receiver without the declaring bound has no method candidate
-fn<T> reject_unbounded_receiver(value: &T) {
+fn reject_unbounded_receiver<T>(value: &T) {
   value.bound_generic<WrongBoundArgument>(value);
 }
 
 trait MissingSupertraitUse: MissingSupertrait {}
 
-trait<X> GenericSupertrait {}
+trait GenericSupertrait<X> {}
 trait WrongSupertraitArity: GenericSupertrait {}
 
 trait CycleFirst: CycleSecond {}
 trait CycleSecond: CycleFirst {}
 
-trait<X> ExpandingCycle: ExpandingCycle<[X; 1]> {}
+trait ExpandingCycle<X>: ExpandingCycle<[X; 1]> {}
 
 # covers: a cycle that changes type arguments still terminates method lookup
-fn<T: ExpandingCycle<i64>> expanding_cycle_lookup(value: &T) {
+fn expanding_cycle_lookup<T: ExpandingCycle<i64>>(value: &T) {
   value.missing_cycle_method();
 }
 
@@ -232,8 +232,8 @@ struct LinearSupertraitTarget {}
 # covers: implementing a trait requires its marker self-bounds
 impl RequiresCopySelf for LinearSupertraitTarget {}
 
-trait<X: Copy + Drop> RequiredParent {}
-trait<X: Copy + Drop> RequiresParent: RequiredParent<X> {}
+trait RequiredParent<X: Copy + Drop> {}
+trait RequiresParent<X: Copy + Drop>: RequiredParent<X> {}
 
 struct WrongSupertraitArgument: Copy + Drop { value: i64 }
 impl RequiredParent<bool> for WrongSupertraitArgument {}
@@ -241,7 +241,7 @@ impl RequiredParent<bool> for WrongSupertraitArgument {}
 # covers: implementing a trait requires the correctly instantiated supertrait
 impl RequiresParent<i64> for WrongSupertraitArgument {}
 
-trait<X: Copy + Drop> InheritedCollision {
+trait InheritedCollision<X: Copy + Drop> {
   fn inherited_collision(recv: &Self);
 }
 
@@ -250,7 +250,7 @@ trait CollisionRight: InheritedCollision<bool> {}
 trait CollisionDiamond: CollisionLeft + CollisionRight {}
 
 # covers: differently instantiated inherited methods remain ambiguous
-fn<T: CollisionDiamond> ambiguous_inherited_method(value: &T) {
+fn ambiguous_inherited_method<T: CollisionDiamond>(value: &T) {
   value.inherited_collision();
 }
 
@@ -263,19 +263,19 @@ trait RedeclaredChild: RedeclaredParent {
 }
 
 # covers: a child declaration does not silently override a supertrait method
-fn<T: RedeclaredChild> ambiguous_redeclared_method(value: &T) {
+fn ambiguous_redeclared_method<T: RedeclaredChild>(value: &T) {
   value.redeclared();
 }
 
 trait InheritedRequirementsParent {
-  fn<U: Copy + Drop> inherited_bounded(recv: &Self, value: U);
+  fn inherited_bounded<U: Copy + Drop>(recv: &Self, value: U);
   unsafe fn inherited_dangerous(recv: &Self);
 }
 
 trait InheritedRequirementsChild: InheritedRequirementsParent {}
 
 # covers: inherited methods retain their method-generic obligations
-fn<T: InheritedRequirementsChild> reject_inherited_method_argument(
+fn reject_inherited_method_argument<T: InheritedRequirementsChild>(
   value: &T,
   argument: LinearSupertraitTarget,
 ) {
@@ -283,7 +283,7 @@ fn<T: InheritedRequirementsChild> reject_inherited_method_argument(
 }
 
 # covers: inherited unsafe methods retain their safety requirement
-fn<T: InheritedRequirementsChild> reject_inherited_unsafe(value: &T) {
+fn reject_inherited_unsafe<T: InheritedRequirementsChild>(value: &T) {
   value.inherited_dangerous();
 }
 
@@ -305,7 +305,7 @@ trait QualifiedParent {
 trait QualifiedChild: QualifiedParent {}
 
 # covers: qualification names methods declared by the selected trait itself
-fn<T: QualifiedChild> qualified_child_does_not_alias_parent(value: &T) {
+fn qualified_child_does_not_alias_parent<T: QualifiedChild>(value: &T) {
   <T as QualifiedChild>::parent_only(value);
 }
 
@@ -315,7 +315,7 @@ fn qualified_missing_inherent(value: &WrongBoundArgument) {
 }
 
 # covers: qualified trait paths retain generic arity checking
-fn<T: GenericSupertrait<i64>> qualified_wrong_trait_arity(value: &T) {
+fn qualified_wrong_trait_arity<T: GenericSupertrait<i64>>(value: &T) {
   <T as GenericSupertrait>::missing(value);
 }
 
@@ -347,14 +347,14 @@ fn qualified_unknown_trait(value: &WrongBoundArgument) {
   <WrongBoundArgument as MissingQualifiedTrait>::missing(value);
 }
 
-trait<'a> QualifiedLifetime {}
+trait QualifiedLifetime<'a> {}
 
 # covers: qualified trait paths reject undeclared lifetime arguments
-fn<T> qualified_unknown_lifetime(value: &T) {
+fn qualified_unknown_lifetime<T>(value: &T) {
   <T as QualifiedLifetime<'missing>>::missing(value);
 }
 
-trait<X: Copy + Drop> QualifiedBoundedArgument {}
+trait QualifiedBoundedArgument<X: Copy + Drop> {}
 
 # covers: qualified trait paths retain trait-argument bounds
 fn qualified_bad_trait_argument(value: &WrongBoundArgument) {
@@ -416,7 +416,7 @@ fn static_variant_method_collision() {
   CollidingEnum::Duplicate(42);
 }
 
-struct<T: Copy + Drop> OnlyCopyTarget: Copy + Drop {
+struct OnlyCopyTarget<T: Copy + Drop>: Copy + Drop {
   val: T,
 }
 

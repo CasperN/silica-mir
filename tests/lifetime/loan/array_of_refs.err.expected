@@ -1,7 +1,7 @@
 error: at 55:5: [PS-RefObligationUnfulfilled] In function 'body_local_escapes_into_sig_array', block 'entry': reference '$return' has unfulfilled obligation: pointee is partially initialized, but must be initialized before the reference expires
     |
  49 | # also fires with a "partially initialized" message.
- 50 | fn<'a> body_local_escapes_into_sig_array($return: &out [&'a i64; 2]) {
+ 50 | fn body_local_escapes_into_sig_array<'a>($return: &out [&'a i64; 2]) {
     |                                          -------------------------- reference declared here
  51 |   local: i64;
     |

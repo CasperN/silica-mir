@@ -3,8 +3,8 @@ struct P: Copy + Drop {
   y: i64
 }
 
-struct<'s0> L: Move {
-  r: &out 's0 i64
+struct L<'s0>: Move {
+  r: &'s0 out i64
 }
 
 struct D: Drop {
@@ -51,9 +51,9 @@ extern fn take_num(x: i64);
 
 extern fn take_point(p: P);
 
-extern fn<'s0> take_mut(r: &mut 's0 i64);
+extern fn take_mut<'s0>(r: &'s0 mut i64);
 
-extern fn<'s0> take_out(r: &out 's0 i64);
+extern fn take_out<'s0>(r: &'s0 out i64);
 
 extern fn take_mat_c(x: MatC);
 
@@ -87,7 +87,7 @@ fn copy_copy_struct_as_rvalue(p: P) {
     return
 }
 
-fn<'s0> copy_shared_ref_as_rvalue(r: &'s0 i64) {
+fn copy_shared_ref_as_rvalue<'s0>(r: &'s0 i64) {
   s: &i64;
   entry:
     s = copy r;
@@ -118,7 +118,7 @@ fn move_copy_drop_struct_via_call(p: P) {
     return
 }
 
-fn<'s0> move_move_marker_struct_rvalue(x: L<'s0>) {
+fn move_move_marker_struct_rvalue<'s0>(x: L<'s0>) {
   y: L<'s0>;
   entry:
     y = move x;
@@ -126,13 +126,13 @@ fn<'s0> move_move_marker_struct_rvalue(x: L<'s0>) {
     return
 }
 
-fn<'s0> move_mut_ref_via_call(r: &mut 's0 i64) {
+fn move_mut_ref_via_call<'s0>(r: &'s0 mut i64) {
   entry:
     call take_mut(move r);
     return
 }
 
-fn<'s0> move_out_ref_via_call(r: &out 's0 i64) {
+fn move_out_ref_via_call<'s0>(r: &'s0 out i64) {
   entry:
     call take_out(move r);
     return
@@ -144,13 +144,13 @@ fn drop_drop_struct(d: D) {
     return
 }
 
-fn<'s0> drop_mut_ref(r: &mut 's0 i64) {
+fn drop_mut_ref<'s0>(r: &'s0 mut i64) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> drop_shared_ref(r: &'s0 i64) {
+fn drop_shared_ref<'s0>(r: &'s0 i64) {
   entry:
     drop r;
     return
@@ -634,11 +634,11 @@ fn if_both_init_read_MatCDM(cond: bool) {
 }
 
 trait ImplClassCheckOk {
-  fn<'s0> check(recv: &'s0 Self, x: i64);
+  fn check<'s0>(recv: &'s0 Self, x: i64);
 }
 
 impl ImplClassCheckOk for MatCDM {
-  fn<'s0> check(recv: &'s0 MatCDM, x: i64) {
+  fn check<'s0>(recv: &'s0 MatCDM, x: i64) {
     y: i64;
     entry:
       y = copy x;

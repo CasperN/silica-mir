@@ -3,60 +3,60 @@
 # (`&'a T`) and `Custom` (`Wrap<'a, 'b>`), so the well-formedness sweep
 # fires end-to-end on HLL sources.
 
-struct<'a, 'b: 'a> Wrap { x: &'a i64, y: &'b i64 }
+struct Wrap<'a, 'b: 'a> { x: &'a i64, y: &'b i64 }
 
 # Well-formed: fn declares the same bound the struct requires.
-fn<'a, 'b: 'a> mk_ok(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
+fn mk_ok<'a, 'b: 'a>(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
   Wrap { x: x, y: y }
 }
 
 # Reflexive substitution collapses the bound to 'a: 'a — always OK.
-fn<'a> mk_same(x: &'a i64) -> Wrap<'a, 'a> {
+fn mk_same<'a>(x: &'a i64) -> Wrap<'a, 'a> {
   Wrap { x: x, y: x }
 }
 
 # Explicit call lifetimes bind the callee's declared lifetime parameters.
-fn<'a, 'b> first_ref(x: &'a i64, y: &'b i64) -> &'a i64 { x }
+fn first_ref<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 { x }
 # covers: explicit call lifetimes satisfy argument and result constraints
-fn<'a, 'b> explicit_first_ref(x: &'a i64, y: &'b i64) -> &'a i64 {
+fn explicit_first_ref<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 {
   first_ref<'a, 'b>(x, y)
 }
 
-fn<T: Copy + Drop> identity(x: T) -> T { x }
+fn identity<T: Copy + Drop>(x: T) -> T { x }
 # covers: lifetime checker substitutes a reference-valued function type argument
-fn<'a> generic_ref_identity(x: &'a i64) -> &'a i64 {
+fn generic_ref_identity<'a>(x: &'a i64) -> &'a i64 {
   identity<&'a i64>(x)
 }
 
 # `Ref` uses struct-local `'x`, distinct from any caller lifetime, so
 # constructor inference and field/match substitution must thread the caller
 # lifetime through the nominal rather than leaking the declaration-local name.
-struct<'x> Ref: Copy + Drop { p: &'x i64 }
+struct Ref<'x>: Copy + Drop { p: &'x i64 }
 
 # covers: inferred constructor lifetime routed to the caller through an
 # inferred `let`, without contextual typing at the constructor site
-fn<'a> mk_ref_via_let(p: &'a i64) -> Ref<'a> {
+fn mk_ref_via_let<'a>(p: &'a i64) -> Ref<'a> {
   let r = Ref { p: p };
   r
 }
 
 # covers: field access substitutes the struct's `'x` with the caller's `'a`
-fn<'a> project_ref(r: Ref<'a>) -> &'a i64 { r.p }
+fn project_ref<'a>(r: Ref<'a>) -> &'a i64 { r.p }
 
 # covers: field access through a shared borrow of a lifetime-parameterized
 # aggregate substitutes the caller lifetime through the field type
-fn<'a> project_ref_through_borrow(r: &Ref<'a>) -> &'a i64 { r.*.p }
+fn project_ref_through_borrow<'a>(r: &Ref<'a>) -> &'a i64 { r.*.p }
 
-enum<'y, T> Held: Copy + Drop { One: &'y T }
+enum Held<'y, T>: Copy + Drop { One: &'y T }
 
 # covers: match arm binding substitutes both the type and lifetime parameters
-fn<'a, T> unwrap_held(h: Held<'a, T>) -> &'a T {
+fn unwrap_held<'a, T>(h: Held<'a, T>) -> &'a T {
   h match { One(inner) => inner }
 }
 
 # covers: enum construction infers lifetime and type args and pins them via
 # an inferred `let` before the outer return-position unifies them
-fn<'a, T: Copy + Drop> mk_held_via_let(p: &'a T) -> Held<'a, T> {
+fn mk_held_via_let<'a, T: Copy + Drop>(p: &'a T) -> Held<'a, T> {
   let h = Held::One(p);
   h
 }

@@ -68,7 +68,7 @@ fn move_parent_while_child_live(r: &mut i64) {
 # type demands region 'b, and 'a and 'b have no outlives relation. `&mut`
 # is invariant in its region, so both directions of the constraint are
 # checked and both fail, yielding two mirror-image mismatch diagnostics.
-fn<'a, 'b> returned_reborrow_lifetime_mismatch(r: &mut 'a i64, $return: &out 'b &mut 'b i64) {
+fn returned_reborrow_lifetime_mismatch<'a, 'b>(r: &'a mut i64, $return: &'b out &'b mut i64) {
   entry:
     $return.* = &mut r.*;
     unborrow $return;

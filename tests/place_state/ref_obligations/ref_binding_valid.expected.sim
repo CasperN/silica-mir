@@ -1,8 +1,8 @@
-extern fn<'s0> sink_mut(r: &mut 's0 i64);
+extern fn sink_mut<'s0>(r: &'s0 mut i64);
 
-extern fn<'s0> sink_drop(r: &drop 's0 i64);
+extern fn sink_drop<'s0>(r: &'s0 drop i64);
 
-fn<'s0> drop_mut_ref_untouched(r: &mut 's0 i64) {
+fn drop_mut_ref_untouched<'s0>(r: &'s0 mut i64) {
   entry:
     drop r;
     return
@@ -37,13 +37,13 @@ fn overwrite_ref_previous_fulfilled(x: i64, y: i64) {
     return
 }
 
-fn<'s0> shared_ref_left_bound(r: &'s0 i64) {
+fn shared_ref_left_bound<'s0>(r: &'s0 i64) {
   entry:
     drop r;
     return
 }
 
-fn<'s0> shared_ref_read(r: &'s0 i64) {
+fn shared_ref_read<'s0>(r: &'s0 i64) {
   x: i64;
   entry:
     x = copy r.*;
@@ -52,7 +52,7 @@ fn<'s0> shared_ref_read(r: &'s0 i64) {
     return
 }
 
-fn<'s0> uninit_write_then_move(r: &uninit 's0 i64) {
+fn uninit_write_then_move<'s0>(r: &'s0 uninit i64) {
   x: i64;
   entry:
     r.* = 42;

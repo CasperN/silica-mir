@@ -34,8 +34,8 @@
 #                                    body analyses, and split blocks
 
 # Trait-only shapes with no accompanying impl.
-trait<T> Combo {
-  fn<U> map(recv: &Self, other: &U, $return: &out T);
+trait Combo<T> {
+  fn map<U>(recv: &Self, other: &U, $return: &out T);
 }
 
 trait RefMethods {
@@ -50,7 +50,7 @@ trait Simple {
   fn ping(recv: &Self);
 }
 
-trait<T: Copy + Drop> Iter {
+trait Iter<T: Copy + Drop> {
   fn next(recv: &mut Self, $return: &out T);
 }
 
@@ -58,7 +58,7 @@ struct Foo: Copy + Drop { x: i64 }
 
 struct List: Copy + Drop { xs: [i64; 4] }
 
-struct<T: Copy + Drop> Bag: Copy + Drop { inner: T }
+struct Bag<T: Copy + Drop>: Copy + Drop { inner: T }
 
 impl Simple for Foo {
   fn ping(recv: &Foo) {
@@ -86,22 +86,22 @@ impl<T: Copy + Drop> Iter<T> for Bag<T> {
 # Trait method with its own type parameter: impl must preserve the
 # generic (may rename it), not specialize it away.
 trait MgTrait {
-  fn<U: Copy + Drop> ignore(recv: &Self, other: &U);
+  fn ignore<U: Copy + Drop>(recv: &Self, other: &U);
 }
 
 impl MgTrait for Foo {
-  fn<V: Copy + Drop> ignore(recv: &Self, other: &V) {
+  fn ignore<V: Copy + Drop>(recv: &Self, other: &V) {
     entry:
       return
   }
 }
 
-trait<'a> LifetimeContract {
-  fn<'b: 'a> relate(recv: &Self, earlier: &'a i64, later: &'b i64);
+trait LifetimeContract<'a> {
+  fn relate<'b: 'a>(recv: &Self, earlier: &'a i64, later: &'b i64);
 }
 
 impl<'x> LifetimeContract<'x> for Foo {
-  fn<'y: 'x> relate(recv: &Foo, earlier: &'x i64, later: &'y i64) {
+  fn relate<'y: 'x>(recv: &Foo, earlier: &'x i64, later: &'y i64) {
     entry:
       return
   }
@@ -109,9 +109,9 @@ impl<'x> LifetimeContract<'x> for Foo {
 
 # Trait with a lifetime parameter: impl must supply exact-arity
 # lifetime args in the trait ref.
-struct<'a> LtHolder: Copy + Drop { p: &'a i64 }
+struct LtHolder<'a>: Copy + Drop { p: &'a i64 }
 
-trait<'a> LtTrait {
+trait LtTrait<'a> {
   fn peek(recv: &Self);
 }
 
@@ -168,7 +168,7 @@ impl SelfLocal for Foo {
 # type args and trait-fn callee `self_ty` — also desugars to the
 # target. Uses `Simple` (declared above) as the trait dispatched
 # through, and a small generic free fn as the FnName callee.
-fn<T: Copy + Drop> visit_ref(r: &T) {
+fn visit_ref<T: Copy + Drop>(r: &T) {
   entry:
     return
 }
@@ -199,11 +199,11 @@ impl<'s0> LtTrait<'s0> for LtHolder<'s0> {
 
 # Drop elaboration visits impl methods and resolves method-generic bounds.
 trait Discard {
-  fn<T: Drop> discard(recv: &Self, value: T);
+  fn discard<T: Drop>(recv: &Self, value: T);
 }
 
 impl Discard for Foo {
-  fn<T: Drop> discard(recv: &Foo, value: T) {
+  fn discard<T: Drop>(recv: &Foo, value: T) {
     entry:
       return
   }
@@ -246,24 +246,24 @@ impl<T: Copy + Drop> Bag<T> {
 
 # Direct trait bounds round-trip through MIR and discharge generic obligations.
 trait DirectBound {}
-trait<'a> LifetimeDirectBound {}
-trait<'a, 'b: 'a> OrderedDirectBound {}
+trait LifetimeDirectBound<'a> {}
+trait OrderedDirectBound<'a, 'b: 'a> {}
 
 impl DirectBound for Foo {}
 
-struct<T: DirectBound> DirectBox { value: T }
+struct DirectBox<T: DirectBound> { value: T }
 
-extern fn<T: DirectBound> accept_direct(value: &T);
+extern fn accept_direct<T: DirectBound>(value: &T);
 
 # covers: an exact caller bound satisfies a direct callee obligation
-fn<T: DirectBound> forward_direct(value: &T) {
+fn forward_direct<T: DirectBound>(value: &T) {
   entry:
     call accept_direct<T>(copy value);
     return
 }
 
 # covers: declared lifetimes are available in direct trait bounds
-extern fn<'a, T: LifetimeDirectBound<'a>> accept_lifetime_direct(value: &'a T);
+extern fn accept_lifetime_direct<'a, T: LifetimeDirectBound<'a>>(value: &'a T);
 
 # covers: direct bounds inherit the bounded trait's lifetime requirements
-extern fn<'a, 'b: 'a, T: OrderedDirectBound<'a, 'b>> accept_ordered_direct(value: &'b T);
+extern fn accept_ordered_direct<'a, 'b: 'a, T: OrderedDirectBound<'a, 'b>>(value: &'b T);

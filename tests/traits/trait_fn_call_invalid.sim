@@ -15,7 +15,7 @@
 #   <LifetimeBox<'a> as LifetimeTrait<'b>>      one impl lifetime must match in
 #                                                the trait path and target
 
-trait<T: Copy + Drop> Iter {
+trait Iter<T: Copy + Drop> {
   fn next(recv: &mut Self, $return: &out T);
 }
 
@@ -63,7 +63,7 @@ fn no_method(l: &mut List, $return: &out i64) {
     return
 }
 
-fn<T> param_receiver(t: &mut T, $return: &out i64) {
+fn param_receiver<T>(t: &mut T, $return: &out i64) {
   out_ref: &out i64;
   entry:
     out_ref = &out $return.*;
@@ -71,11 +71,11 @@ fn<T> param_receiver(t: &mut T, $return: &out i64) {
     return
 }
 
-trait<T: Copy + Drop> Same {
+trait Same<T: Copy + Drop> {
   fn same(recv: &Self);
 }
 
-struct<T: Copy + Drop, U: Copy + Drop> Pair: Copy + Drop {
+struct Pair<T: Copy + Drop, U: Copy + Drop>: Copy + Drop {
   first: T,
   second: U,
 }
@@ -93,7 +93,7 @@ fn inconsistent_impl_binding(pair: &Pair<i64, bool>) {
     return
 }
 
-trait<T: Copy + Drop> Amb {
+trait Amb<T: Copy + Drop> {
   fn amb(recv: &Self);
 }
 
@@ -122,7 +122,7 @@ trait Bounded {
 }
 
 struct Linear {}
-struct<T> Wrapper { value: T }
+struct Wrapper<T> { value: T }
 
 impl<T: Copy> Bounded for Wrapper<T> {
   fn run(recv: &Wrapper<T>) {
@@ -137,11 +137,11 @@ fn impl_bound_mismatch(wrapper: &Wrapper<Linear>) {
     return
 }
 
-trait<'a> LifetimeTrait {
+trait LifetimeTrait<'a> {
   fn inspect(recv: &Self);
 }
 
-struct<'a> LifetimeBox: Copy + Drop { value: &'a i64 }
+struct LifetimeBox<'a>: Copy + Drop { value: &'a i64 }
 
 impl<'a> LifetimeTrait<'a> for LifetimeBox<'a> {
   fn inspect(recv: &LifetimeBox<'a>) {
@@ -150,7 +150,7 @@ impl<'a> LifetimeTrait<'a> for LifetimeBox<'a> {
   }
 }
 
-fn<'a, 'b> lifetime_impl_mismatch(value: &LifetimeBox<'a>) {
+fn lifetime_impl_mismatch<'a, 'b>(value: &LifetimeBox<'a>) {
   entry:
     call <LifetimeBox<'a> as LifetimeTrait<'b>>::inspect(copy value);
     return

@@ -13,7 +13,7 @@ fn local_names_undeclared_lifetime() {
 
 # ---------- local declares 'b but fn only declares 'a ----------
 
-fn<'a> local_names_different_lifetime(x: &'a i64) {
+fn local_names_different_lifetime<'a>(x: &'a i64) {
   r: &'b i64;
   entry:
     return
@@ -21,7 +21,7 @@ fn<'a> local_names_different_lifetime(x: &'a i64) {
 
 # ---------- struct type-arg references an undeclared lifetime ----------
 
-struct<'a> WrapMe: Move { r: &'a i64 }
+struct WrapMe<'a>: Move { r: &'a i64 }
 
 fn uses_wrap_with_undeclared_lifetime() {
   w: WrapMe<'nope>;

@@ -1,4 +1,4 @@
-extern fn<'s0> malloc_node(size: i64, $return: &out 's0 *Node);
+extern fn malloc_node<'s0>(size: i64, $return: &'s0 out *Node);
 
 extern fn free_node(p: *Node);
 
@@ -12,7 +12,7 @@ enum List: Move {
   Cons: *Node
 }
 
-fn<'s0> list_empty($return: &out 's0 List) {
+fn list_empty<'s0>($return: &'s0 out List) {
   entry:
     $return.* = List::Empty(unit);
     unborrow $return;
@@ -20,7 +20,7 @@ fn<'s0> list_empty($return: &out 's0 List) {
     return
 }
 
-fn<'s0> list_cons(value: i64, tail: List, $return: &out 's0 List) {
+fn list_cons<'s0>(value: i64, tail: List, $return: &'s0 out List) {
   p: *Node;
   $tmp_0: &out *Node;
   $tmp_1: unit;
@@ -82,7 +82,7 @@ fn list_free(list: List) {
     return
 }
 
-fn<'s0, 's1> list_sum(list: &'s0 List, $return: &out 's1 i64) {
+fn list_sum<'s0, 's1>(list: &'s0 List, $return: &'s1 out i64) {
   _: unit;
   p: *Node;
   $tmp_0: i64;
@@ -120,7 +120,7 @@ fn<'s0, 's1> list_sum(list: &'s0 List, $return: &out 's1 i64) {
     return
 }
 
-fn<'s0> main(exit: &out 's0 i32) {
+fn main<'s0>(exit: &'s0 out i32) {
   $tmp_0: unit;
   l0: List;
   $tmp_1: &out List;

@@ -394,7 +394,7 @@ mod tests {
         // Signature refs get Named (from elision or user); body-local
         // refs get Free (elision doesn't run on locals).
         let src = "
-            fn<'a> f(x: &'a i64) {
+            fn f<'a>(x: &'a i64) {
               r: &i64;
               entry:
                 r = &x.*;

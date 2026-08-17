@@ -11,12 +11,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
      tiers require compiler interaction; the higher explicit tiers may live in
      the standard library. Discuss the boundary before implementation.
 - **Conditional traits and markers**
-- **Generic parameter position on decls.** MIR puts generics between the
-  keyword and the name (`fn<T> foo`, `struct<T> Box`, `trait<T> Iter`).
-  Rust convention is post-name (`fn foo<T>`, `struct Box<T>`, `trait Iter<T>`).
-  Consider moving to the post-name position across both HLL and MIR
-  grammars — cheaper authoring cost, matches every other language readers
-  are used to. Grammar change + fixture regen; no semantics move.
 - **Extract a common `instance` grammar rule.** Multiple grammar sites
   ("identifier + optional type_args") already share the shape: `fn_name`'s
   free-fn form, the trait ref inside `impl_decl` (`trait_name` +
@@ -199,7 +193,6 @@ independent, fixture-backed changes in this order:
    (3) Horizontal synthesized fallback (`Clone + Destroy => Transfer`).
 
 ### Other clarity issues
-- **Reference lifetime token ordering (`&'a drop T`)**: Reference keyword precedes lifetime (`&drop 'a T`). We should standardize on the Rust way.
 - **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.
 - **Field access on references**: When projecting `self.field` on reference types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.
 

@@ -4,7 +4,7 @@
 
 struct NoDestroy: Move { value: i64 }
 struct MoveOnly: Move { value: i64 }
-struct<T: Move> MaybeDestroy: Move { value: T }
+struct MaybeDestroy<T: Move>: Move { value: T }
 struct PartialWhole: Move { child: NoDestroy tail: i64 }
 struct BrokenDestroy: Move { value: i64 }
 struct IndexedDestroy: Move { value: i64 }

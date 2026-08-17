@@ -1,4 +1,4 @@
-error: at 53:5: [TC-DowncastOfNonEnum] In function 'downcast_before_deref_parse_error', block 'v_arm': Cannot downcast non-enum type &mut '1 E
+error: at 53:5: [TC-DowncastOfNonEnum] In function 'downcast_before_deref_parse_error', block 'v_arm': Cannot downcast non-enum type &'1 mut E
     |
  47 | # short-circuits because the type has been poisoned.
  48 | fn downcast_before_deref_parse_error(e: &mut E) {

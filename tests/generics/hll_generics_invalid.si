@@ -18,9 +18,9 @@
 #   let_annotation_bad_arity    HTC-TypeArgArityMismatch       `let x: Box<i64, i64> = ...`
 #   call_*                      call-site generic validation failures
 
-struct<T: Copy + Drop> Box: Copy + Drop { inner: T }
+struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-struct<T: Drop> Sink: Drop { inner: T }
+struct Sink<T: Drop>: Drop { inner: T }
 
 # Linear: not Copy, not Drop.
 struct Linear { r: &out i64 }
@@ -82,12 +82,12 @@ fn let_annotation_bad_arity() {
 
 # ---------- Generic function calls ----------
 
-fn<T: Copy + Drop> requires_copy(x: T) -> T { x }
-fn<T, U> first(x: T, y: U) -> T { x }
-fn<T> identity(x: T) -> T { x }
-fn<T> generic_side_effect() { unit }
-fn<'a> borrow_identity(x: &'a i64) -> &'a i64 { x }
-fn<'a, 'b> choose_first(x: &'a i64, y: &'b i64) -> &'a i64 { x }
+fn requires_copy<T: Copy + Drop>(x: T) -> T { x }
+fn first<T, U>(x: T, y: U) -> T { x }
+fn identity<T>(x: T) -> T { x }
+fn generic_side_effect<T>() { unit }
+fn borrow_identity<'a>(x: &'a i64) -> &'a i64 { x }
+fn choose_first<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 { x }
 
 # covers: too few explicit type arguments on a direct call
 fn call_type_args_too_few() -> i64 { first<i64>(1, true) }
@@ -110,24 +110,24 @@ fn call_generic_args_on_value(f: fn(i64) -> i64) -> i64 { f<i64>(1) }
 fn call_generic_args_on_shadow(identity: fn(i64) -> i64) -> i64 { identity<i64>(1) }
 
 # covers: too few explicit lifetime arguments on a direct call
-fn<'a> call_lifetime_args_too_few(x: &'a i64) -> &'a i64 {
+fn call_lifetime_args_too_few<'a>(x: &'a i64) -> &'a i64 {
   choose_first<'a>(x, x)
 }
 # covers: too many explicit lifetime arguments on a direct call
-fn<'a> call_lifetime_args_too_many(x: &'a i64) -> &'a i64 {
+fn call_lifetime_args_too_many<'a>(x: &'a i64) -> &'a i64 {
   borrow_identity<'a, 'a>(x)
 }
 # covers: explicit call lifetime is not in the caller's generic scope
-fn<'a> call_undeclared_lifetime(x: &'a i64) -> &'a i64 {
+fn call_undeclared_lifetime<'a>(x: &'a i64) -> &'a i64 {
   borrow_identity<'missing>(x)
 }
 
-struct<'a> RefWrap: Copy + Drop { p: &'a i64 }
+struct RefWrap<'a>: Copy + Drop { p: &'a i64 }
 
 # covers: a bare nominal reference omits a required lifetime argument
 fn nominal_lifetime_args_too_few(r: RefWrap) -> unit { unit }
 # covers: a nominal reference supplies too many lifetime arguments
-fn<'a> nominal_lifetime_args_too_many(r: RefWrap<'a, 'a>) -> unit { unit }
+fn nominal_lifetime_args_too_many<'a>(r: RefWrap<'a, 'a>) -> unit { unit }
 
 # covers: inferred generic call inside an impl uses impl-header bounds
 impl DropOnly {
@@ -136,14 +136,14 @@ impl DropOnly {
   }
 }
 
-unsafe fn<T> unsafe_identity(x: T) -> T { x }
+unsafe fn unsafe_identity<T>(x: T) -> T { x }
 # covers: generic unsafe call still requires an unsafe context
 fn call_generic_unsafe_without_block() -> i64 { unsafe_identity<i64>(1) }
 
 # covers: method-level generic type parameter bound violation
-struct<T: Copy + Drop> MethodBuffer: Copy + Drop { ptr: *T }
+struct MethodBuffer<T: Copy + Drop>: Copy + Drop { ptr: *T }
 impl<T: Copy + Drop> MethodBuffer<T> {
-  fn<U: Copy + Drop> take_copy(self: &Self, item: U) -> unit { unit }
+  fn take_copy<U: Copy + Drop>(self: &Self, item: U) -> unit { unit }
 }
 
 fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
@@ -154,7 +154,7 @@ fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit
 fn free_fn_with_self_sugar(&self) -> unit { unit }
 fn free_fn_with_out_self(&out self) -> unit { unit }
 fn free_fn_with_drop_self(&drop self) -> unit { unit }
-fn<'a> free_fn_with_named_drop_self(&'a drop self) -> unit { unit }
+fn free_fn_with_named_drop_self<'a>(&'a drop self) -> unit { unit }
 
 
 

@@ -13,19 +13,19 @@ struct Outer: Copy + Drop {
   c: i64
 }
 
-enum<'s0> Wrap: Move {
-  W: &mut 's0 i64
+enum Wrap<'s0>: Move {
+  W: &'s0 mut i64
 }
 
-extern fn<'s0> sink(r: &mut 's0 i64);
+extern fn sink<'s0>(r: &'s0 mut i64);
 
-extern fn<'s0> use_mut(r: &mut 's0 i64);
+extern fn use_mut<'s0>(r: &'s0 mut i64);
 
-extern fn<'s0> use_out(r: &out 's0 i64);
+extern fn use_out<'s0>(r: &'s0 out i64);
 
-extern fn<'s0> read_ref(r: &'s0 i64);
+extern fn read_ref<'s0>(r: &'s0 i64);
 
-extern fn<'s0> take_wrap(w: Wrap<'s0>);
+extern fn take_wrap<'s0>(w: Wrap<'s0>);
 
 fn mut_scalar_loan_ends_at_move_to_call(x: i64) {
   r: &mut i64;
@@ -88,7 +88,7 @@ fn mut_scalar_ref_transfer_carries_obligation(a: i64) {
     return
 }
 
-fn<'s0> mut_scalar_enum_wrap_consumed_releases_loan(x: i64) {
+fn mut_scalar_enum_wrap_consumed_releases_loan<'s0>(x: i64) {
   r: &mut i64;
   w: Wrap<'s0>;
   entry:

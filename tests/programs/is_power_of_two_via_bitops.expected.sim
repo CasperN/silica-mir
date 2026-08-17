@@ -1,4 +1,4 @@
-fn<'s0> is_pow2(x: u64, out: &out 's0 bool) {
+fn is_pow2<'s0>(x: u64, out: &'s0 out bool) {
   minus_one: u64;
   masked: u64;
   sub_out: &out u64;

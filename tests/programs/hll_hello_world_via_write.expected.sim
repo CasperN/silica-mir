@@ -21,7 +21,7 @@ fn print_hi() {
     return
 }
 
-fn<'s0> main(exit: &out 's0 i32) {
+fn main<'s0>(exit: &'s0 out i32) {
   $tmp_0: unit;
   $tmp_1: unit;
   $tmp_2: unit;

@@ -301,6 +301,6 @@ mod tests {
         let mut format = DiagnosticFormat::new();
         let scope = format.scope(&meta);
 
-        assert_eq!(format.ty(&scope, &ty), "&mut 's0 i64");
+        assert_eq!(format.ty(&scope, &ty), "&'s0 mut i64");
     }
 }

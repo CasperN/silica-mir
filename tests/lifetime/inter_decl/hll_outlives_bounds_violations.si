@@ -2,49 +2,49 @@
 # mentions a Custom or ref-typed value whose declared bound isn't
 # satisfied by the enclosing fn's axioms.
 
-struct<'a, 'b: 'a> Wrap { x: &'a i64, y: &'b i64 }
+struct Wrap<'a, 'b: 'a> { x: &'a i64, y: &'b i64 }
 
 # Fn declares no bound; Wrap<'a, 'b> requires 'b: 'a.
-fn<'a, 'b> mk_missing(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
+fn mk_missing<'a, 'b>(x: &'a i64, y: &'b i64) -> Wrap<'a, 'b> {
   Wrap { x: x, y: y }
 }
 
-fn<'a, 'b> first_ref(x: &'a i64, y: &'b i64) -> &'a i64 { x }
+fn first_ref<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 { x }
 
 # Swapping the explicit arguments asks `first_ref` to treat `x: &'a` as
 # `&'b` and return `&'b` through an `&'a` result without either outlives bound.
 # covers: explicit call lifetimes conflict with caller argument and result regions
-fn<'a, 'b> explicit_lifetimes_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+fn explicit_lifetimes_conflict<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 {
   first_ref<'b, 'a>(x, y)
 }
 
-fn<'same> same_ref(x: &'same i64, y: &'same i64) -> &'same i64 { x }
+fn same_ref<'same>(x: &'same i64, y: &'same i64) -> &'same i64 { x }
 
 # covers: an omitted lifetime cannot equate unrelated caller lifetimes
-fn<'a, 'b> inferred_lifetime_conflict(x: &'a i64, y: &'b i64) -> &'a i64 {
+fn inferred_lifetime_conflict<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 {
   same_ref(x, y)
 }
 
-fn<T: Copy + Drop> identity(x: T) -> T { x }
+fn identity<T: Copy + Drop>(x: T) -> T { x }
 # covers: substituted reference type argument requires missing caller bounds
-fn<'a, 'b> generic_ref_result_conflict(x: &'a i64) -> &'b i64 {
+fn generic_ref_result_conflict<'a, 'b>(x: &'a i64) -> &'b i64 {
   identity<&'a i64>(x)
 }
 
 # `Ref` uses struct-local `'x`; field access substitutes to the caller
 # lifetime, so returning `r.p` where a different caller lifetime is expected
 # fires the MIR lifetime pass.
-struct<'x> Ref: Copy + Drop { p: &'x i64 }
+struct Ref<'x>: Copy + Drop { p: &'x i64 }
 
 # covers: projected field carries the substituted caller lifetime rather
 # than leaking the struct's declaration-local name
-fn<'a, 'b> project_wrong_lifetime(r: Ref<'a>) -> &'b i64 { r.p }
+fn project_wrong_lifetime<'a, 'b>(r: Ref<'a>) -> &'b i64 { r.p }
 
-enum<'y, T> Held: Copy + Drop { One: &'y T }
+enum Held<'y, T>: Copy + Drop { One: &'y T }
 
 # covers: match arm binding substitutes the caller lifetime through the
 # variant payload; assigning it to a slot with a different caller lifetime
 # fires the MIR lifetime pass
-fn<'a, 'b, T> unwrap_held_wrong(h: Held<'a, T>) -> &'b T {
+fn unwrap_held_wrong<'a, 'b, T>(h: Held<'a, T>) -> &'b T {
   h match { One(inner) => inner }
 }

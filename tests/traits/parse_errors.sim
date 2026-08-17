@@ -133,7 +133,7 @@ impl ReservedT for Self {
 
 # `Self` at a trait-ref type argument. The trait-arg list is parsed
 # before the target, so `Self` is out of scope for the same reason.
-trait<T: Copy + Drop> GenericT { fn m(recv: &Self, arg: &T); }
+trait GenericT<T: Copy + Drop> { fn m(recv: &Self, arg: &T); }
 impl GenericT<Self> for R {
   fn m(recv: &R, arg: &R) {
     entry:
@@ -144,7 +144,7 @@ impl GenericT<Self> for R {
 # `Self` in scope but written with type arguments. `Self` is a bare
 # alias for the receiver / target type, not a generic constructor,
 # so passing it type or lifetime arguments is rejected.
-trait<T: Copy + Drop> SelfWithArgsT { fn m(recv: &Self<T>); }
+trait SelfWithArgsT<T: Copy + Drop> { fn m(recv: &Self<T>); }
 
 # `Self` in an impl's trait-reference position. There is no trait
 # named `Self`; the token here is a stray reference to the receiver
@@ -162,7 +162,7 @@ impl Self for R {
 # name.
 trait ShadowM { fn m(recv: &Self); }
 impl<T> ShadowM for R {
-  fn<T> m(recv: &R) {
+  fn m<T>(recv: &R) {
     entry:
       return
   }
@@ -171,4 +171,4 @@ impl<T> ShadowM for R {
 trait DuplicateBound {}
 
 # The same direct trait bound cannot be declared twice.
-extern fn<T: DuplicateBound + DuplicateBound> duplicate_direct_bound(value: &T);
+extern fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T);

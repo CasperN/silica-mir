@@ -164,10 +164,10 @@ fn mut_from_mut_conditional(r: &mut i64, cond: bool) {
 # ---------- &mut derived from &mut param, returned via $return ----------
 
 # The reborrow `&mut r.*` inherits r's lifetime 'a and satisfies
-# $return's payload type `&mut 'a i64`. Both regions must be discharged
+# $return's payload type `&'a mut i64`. Both regions must be discharged
 # before return: the explicit `unborrow $return; unborrow r` chain does
 # so in outer-then-parent order.
-fn<'a> mut_from_mut_returned(r: &mut 'a i64, $return: &out &mut 'a i64) {
+fn mut_from_mut_returned<'a>(r: &'a mut i64, $return: &out &'a mut i64) {
   entry:
     $return.* = &mut r.*;
     unborrow $return;

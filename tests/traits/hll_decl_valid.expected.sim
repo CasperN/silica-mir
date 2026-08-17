@@ -1,4 +1,4 @@
-struct<T: Copy + Drop> Box: Copy + Drop {
+struct Box<T: Copy + Drop>: Copy + Drop {
   value: T
 }
 
@@ -7,19 +7,19 @@ enum Choice: Copy + Drop {
 }
 
 trait RefKinds {
-  fn<'s0> shared(recv: &'s0 Self);
-  fn<'s0> mutable(recv: &mut 's0 Self);
-  fn<'s0> output(recv: &out 's0 Self);
-  fn<'s0> dropping(recv: &drop 's0 Self);
-  fn<'s0> uninitialized(recv: &uninit 's0 Self);
+  fn shared<'s0>(recv: &'s0 Self);
+  fn mutable<'s0>(recv: &'s0 mut Self);
+  fn output<'s0>(recv: &'s0 out Self);
+  fn dropping<'s0>(recv: &'s0 drop Self);
+  fn uninitialized<'s0>(recv: &'s0 uninit Self);
 }
 
-trait<T: Copy + Drop> Convert {
-  fn<'s0, 's1, U: Copy + Drop> convert(recv: &'s0 Self, ignored: U, $return: &out 's1 T);
+trait Convert<T: Copy + Drop> {
+  fn convert<'s0, 's1, U: Copy + Drop>(recv: &'s0 Self, ignored: U, $return: &'s1 out T);
 }
 
 impl<T: Copy + Drop> Convert<T> for Box<T> {
-  fn<'s0, 's1, U: Copy + Drop> convert(recv: &'s0 Box<T>, ignored: U, $return: &out 's1 T) {
+  fn convert<'s0, 's1, U: Copy + Drop>(recv: &'s0 Box<T>, ignored: U, $return: &'s1 out T) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -32,7 +32,7 @@ impl<T: Copy + Drop> Convert<T> for Box<T> {
   }
 }
 
-trait<'a> Observe {
+trait Observe<'a> {
   fn observe(recv: &'a Self);
 }
 
@@ -54,11 +54,11 @@ impl<'a, T: Copy + Drop> Observe<'a> for Box<T> {
 }
 
 trait Make {
-  fn<'s0> make($return: &out 's0 Self);
+  fn make<'s0>($return: &'s0 out Self);
 }
 
 impl Make for Choice {
-  fn<'s0> make($return: &out 's0 Choice) {
+  fn make<'s0>($return: &'s0 out Choice) {
     entry:
       $return.* = Choice::Empty(unit);
       unborrow $return;
@@ -68,7 +68,7 @@ impl Make for Choice {
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<'s0> make(value: T, $return: &out 's0 Box<T>) {
+  fn make<'s0>(value: T, $return: &'s0 out Box<T>) {
     entry:
       $return.*.value = move value;
       unborrow $return;
@@ -79,7 +79,7 @@ impl<T: Copy + Drop> Box<T> {
 }
 
 impl<T: Copy + Drop> Box<T> {
-  fn<'s0, 's1> get(recv: &'s0 Box<T>, $return: &out 's1 T) {
+  fn get<'s0, 's1>(recv: &'s0 Box<T>, $return: &'s1 out T) {
     entry:
       $return.* = copy recv.*.value;
       unborrow $return;
@@ -91,7 +91,7 @@ impl<T: Copy + Drop> Box<T> {
 }
 
 impl Choice {
-  fn<'s0> empty($return: &out 's0 Choice) {
+  fn empty<'s0>($return: &'s0 out Choice) {
     entry:
       $return.* = Choice::Empty(unit);
       unborrow $return;
