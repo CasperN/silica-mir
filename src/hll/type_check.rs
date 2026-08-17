@@ -1028,6 +1028,9 @@ pub(super) fn typecheck_program_collect(
     for trait_decl in crate::hll::prelude::prelude_trait_decls() {
         env.traits.insert(trait_decl.name.clone(), trait_decl);
     }
+    for imp in crate::hll::prelude::prelude_impl_decls() {
+        env.impls.push(imp);
+    }
 
     // Populate top-level declarations
     for decl in &program.declarations {

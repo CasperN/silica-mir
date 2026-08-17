@@ -564,85 +564,6 @@ fn<'inspect, 's0> inspect_vec(vec: &'inspect Vec<i64>, $return: &out 's0 i64) {
     return
 }
 
-fn<T: Drop + Move> vec_free(vec: Vec<T>) {
-  $tmp_0: unit;
-  index: u64;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: bool;
-  $tmp_5: &out bool;
-  item: *T;
-  $tmp_6: &out *T;
-  value: T;
-  $tmp_7: T;
-  $tmp_8: unit;
-  $tmp_9: u64;
-  $tmp_10: &out u64;
-  $tmp_11: unit;
-  $tmp_12: *u8;
-  entry:
-    index = 0u64;
-    goto loop_start_0
-  loop_start_0:
-    $tmp_5 = &out $tmp_4;
-    call $u64_ge(copy index, copy vec.len, move $tmp_5);
-    branch(move $tmp_4) [true: if_true_2, false: if_false_3]
-  if_true_2:
-    require_uninit $tmp_5;
-    require_uninit $tmp_4;
-    require_uninit $tmp_3;
-    require_uninit $tmp_2;
-    goto loop_end_1
-  if_false_3:
-    $tmp_3 = unit;
-    goto if_merge_4
-  if_merge_4:
-    require_uninit $tmp_5;
-    require_uninit $tmp_4;
-    drop $tmp_3;
-    require_uninit $tmp_3;
-    $tmp_6 = &out item;
-    call ptr_offset<T>(copy vec.data, copy index, move $tmp_6);
-    require_uninit $tmp_6;
-    value = move item.*;
-    $tmp_7 = move value;
-    drop $tmp_7;
-    require_uninit $tmp_7;
-    $tmp_10 = &out $tmp_9;
-    call $u64_add(move index, 1u64, move $tmp_10);
-    index = move $tmp_9;
-    $tmp_8 = unit;
-    require_uninit $tmp_10;
-    require_uninit $tmp_9;
-    drop $tmp_8;
-    require_uninit $tmp_8;
-    $tmp_2 = unit;
-    require_uninit value;
-    drop item;
-    require_uninit item;
-    drop $tmp_2;
-    require_uninit $tmp_2;
-    goto loop_start_0
-  loop_end_1:
-    require_uninit $tmp_1;
-    $tmp_12 = ptr_cast(move vec.data, *u8);
-    call free_bytes(move $tmp_12);
-    $tmp_11 = unit;
-    require_uninit $tmp_12;
-    drop $tmp_11;
-    require_uninit $tmp_11;
-    $tmp_0 = unit;
-    drop index;
-    require_uninit index;
-    drop $tmp_0;
-    require_uninit $tmp_0;
-    drop vec.cap;
-    drop vec.len;
-    require_uninit vec;
-    return
-}
-
 fn<'s3, 's0> main($return: &out 's0 i32) {
   boxed: Box<i64>;
   $tmp_0: &out Box<i64>;
@@ -669,16 +590,16 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
   observed: i64;
   $tmp_16: &'s3 Vec<i64>;
   $tmp_17: &out i64;
-  $tmp_18: unit;
+  $tmp_18: i64;
   $tmp_19: i64;
   $tmp_20: i64;
   $tmp_21: i64;
-  $tmp_22: i64;
+  $tmp_22: &out i64;
   $tmp_23: &out i64;
   $tmp_24: &out i64;
   $tmp_25: &out i64;
-  $tmp_26: &out i64;
-  $tmp_27: &out i32;
+  $tmp_26: &out i32;
+  $destroy_0: &drop Vec<i64>;
   entry:
     $tmp_0 = &out boxed;
     call box_new<i64>(40, move $tmp_0);
@@ -734,22 +655,17 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
     call inspect_vec<'s3>(move $tmp_16, move $tmp_17);
     require_uninit $tmp_17;
     require_uninit $tmp_16;
-    call vec_free<i64>(move values);
-    $tmp_18 = unit;
-    drop $tmp_18;
-    require_uninit $tmp_18;
-    $tmp_23 = &out $tmp_22;
-    call $i64_add(move owned, copy from_box, move $tmp_23);
-    $tmp_24 = &out $tmp_21;
-    call $i64_add(move $tmp_22, move observed, move $tmp_24);
-    $tmp_25 = &out $tmp_20;
-    call $i64_sub(move $tmp_21, move from_box, move $tmp_25);
-    $tmp_26 = &out $tmp_19;
-    call $i64_sub(move $tmp_20, 4, move $tmp_26);
-    $tmp_27 = &out $return.*;
-    call $i64_to_i32(move $tmp_19, move $tmp_27);
+    $tmp_22 = &out $tmp_21;
+    call $i64_add(move owned, copy from_box, move $tmp_22);
+    $tmp_23 = &out $tmp_20;
+    call $i64_add(move $tmp_21, move observed, move $tmp_23);
+    $tmp_24 = &out $tmp_19;
+    call $i64_sub(move $tmp_20, move from_box, move $tmp_24);
+    $tmp_25 = &out $tmp_18;
+    call $i64_sub(move $tmp_19, 4, move $tmp_25);
+    $tmp_26 = &out $return.*;
+    call $i64_to_i32(move $tmp_18, move $tmp_26);
     unborrow $return;
-    require_uninit $tmp_27;
     require_uninit $tmp_26;
     require_uninit $tmp_25;
     require_uninit $tmp_24;
@@ -758,7 +674,10 @@ fn<'s3, 's0> main($return: &out 's0 i32) {
     require_uninit $tmp_21;
     require_uninit $tmp_20;
     require_uninit $tmp_19;
+    require_uninit $tmp_18;
     require_uninit observed;
+    $destroy_0 = &drop values;
+    call <Vec<i64> as AutoDestroy>::destroy(move $destroy_0);
     require_uninit values;
     require_uninit owned;
     require_uninit from_box;

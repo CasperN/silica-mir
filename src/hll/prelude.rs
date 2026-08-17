@@ -16,6 +16,14 @@ trait AutoDestroy {
   fn destroy(recv: &drop Self);
 }
 
+impl<T: Drop> AutoDestroy for T {
+  fn destroy(recv: &drop Self) {}
+}
+
+impl<T: Copy> AutoClone for T {
+  fn clone(recv: &Self) -> Self { recv.* }
+}
+
 extern fn<T> size_of() -> u64;
 extern fn<T> ptr_offset(p: *T, i: u64) -> *T;
 "#;
@@ -56,6 +64,17 @@ pub fn prelude_trait_decls() -> Vec<TraitDecl> {
         .into_iter()
         .filter_map(|declaration| match declaration {
             Declaration::Trait(trait_decl) => Some(trait_decl),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Return the HLL blanket impl declarations provided by the prelude.
+pub fn prelude_impl_decls() -> Vec<ImplBlock> {
+    prelude_decls()
+        .into_iter()
+        .filter_map(|declaration| match declaration {
+            Declaration::Impl(impl_decl) => Some(impl_decl),
             _ => None,
         })
         .collect()

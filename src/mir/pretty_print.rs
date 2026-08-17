@@ -36,10 +36,18 @@ pub fn pretty_print(program: &IndexedProgram) -> String {
 /// Compiler-injected prelude declarations are not user-authored and should
 /// not appear in fixture-pinned pretty-printed output.
 fn is_prelude_decl(decl: DeclarationRef<'_>) -> bool {
-    matches!(
-        decl.meta().map(|m| m.name.as_str()),
-        Some("AutoClone" | "AutoDestroy" | "size_of" | "ptr_offset")
-    )
+    match decl {
+        DeclarationRef::Impl(i) => {
+            matches!(
+                i.trait_path.as_ref().map(|t| t.name.as_str()),
+                Some("AutoClone" | "AutoDestroy")
+            ) && matches!(&i.target.kind, TypeKind::Param(_))
+        }
+        _ => matches!(
+            decl.meta().map(|m| m.name.as_str()),
+            Some("AutoClone" | "AutoDestroy" | "size_of" | "ptr_offset")
+        ),
+    }
 }
 
 fn write_declaration(out: &mut String, decl: DeclarationRef<'_>) {

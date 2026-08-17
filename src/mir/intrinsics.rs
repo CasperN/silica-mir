@@ -569,6 +569,25 @@ trait AutoDestroy {
   fn destroy(recv: &drop Self);
 }
 
+impl<T: Drop> AutoDestroy for T {
+  fn destroy(recv: &drop T) {
+    entry:
+      drop recv.*;
+      return
+  }
+}
+
+impl<T: Copy> AutoClone for T {
+  fn clone(recv: &T, $return: &out T) {
+    entry:
+      $return.* = copy recv.*;
+      unborrow $return;
+      drop recv;
+      require_uninit recv;
+      return
+  }
+}
+
 fn<T> size_of(out: &out u64) {
   entry:
     call $sizeof<T>(move out);

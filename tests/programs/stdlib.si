@@ -157,21 +157,6 @@ fn<'inspect> inspect_vec(vec: &'inspect Vec<i64>) -> i64 {
   item.* + length as i64
 }
 
-# Explicit cleanup is required until collection AutoDestroy implementations
-# can invoke element destruction and release their allocation.
-fn<T: Drop + Move> vec_free(vec: Vec<T>) {
-  let mut index = 0u64;
-  loop {
-    if index >= vec.len { break }
-    let item = ptr_offset(vec.data, index);
-    let value = unsafe { item.* };
-    value;
-    index = index + 1u64;
-  }
-  free_bytes(vec.data as *u8);
-}
-
-
 # covers: Box ownership and borrowing; Vec growth and element destruction;
 # Span lifetime storage and indexing; inherent receiver auto-borrowing.
 fn main() -> i32 {
@@ -188,8 +173,6 @@ fn main() -> i32 {
   unsafe { values.push(1i64); }
   unsafe { values.push(2i64); }
   let observed = inspect_vec(&values);
-  # TODO: We need i64: AutoDestroy to get rid of vec_free.
-  vec_free(values);
 
   (owned + from_box + observed - from_box - 4i64) as i32
 }
