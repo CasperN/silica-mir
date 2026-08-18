@@ -53,13 +53,31 @@ fn test_empty_match(value: One) -> i64 {
   value match {}
 }
 
-# ---------- HTC-UnknownAbi: extern with a non-C ABI string ----------
+# ---------- HTC-UnknownAbi: extern with an unrecognized ABI string ----------
 
-# Bare `extern` (Silica ABI) and `extern "C"` (C ABI) are accepted;
-# any other ABI string is rejected. When more ABIs are supported the
-# check widens.
+# Bare `extern` (Silica) and `extern "C" unsafe` (C) are accepted; any
+# other ABI string is rejected. Positive coverage:
+# `hll_hello_world_via_write.si` uses `extern "C" unsafe fn`.
 extern "system" fn win_api(x: i64);
 extern "fastcall" fn stdcall_thing(y: i64);
+
+# The Silica ABI is spelled by omitting the string — writing it
+# explicitly is rejected.
+extern "Silica" fn spelled_silica(x: i64);
+
+# ---------- HTC-InvalidFnModifiers: linkage/ABI/safety mismatches ----------
+
+# `extern "C"` requires `unsafe` — the signature is user-asserted and
+# calls carry FFI obligations.
+extern "C" fn c_without_unsafe(x: i64);
+
+# `extern` (Silica ABI) forbids `unsafe` — a cross-TU Silica symbol
+# is safe by import contract.
+extern unsafe fn silica_marked_unsafe(x: i64);
+
+# Local + non-Silica ABI (a Silica-defined function exposing a C-
+# compatible signature) is reserved for the ABI-in-type work.
+"C" fn c_defined() { unit }
 
 # ---------- HTC-UnaryOpInvalidOperand ----------
 

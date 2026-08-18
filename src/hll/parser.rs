@@ -308,7 +308,23 @@ impl Parser {
         match child.kind() {
             "struct_decl" => Some(Declaration::Struct(self.map_struct_decl(child, d)?)),
             "enum_decl" => Some(Declaration::Enum(self.map_enum_decl(child, d)?)),
-            "fn_decl" => Some(Declaration::Fn(self.map_fn_decl(child, d)?)),
+            "fn_decl" => {
+                let f = self.map_fn_decl(child, d)?;
+                match (f.linkage, f.body.is_some()) {
+                    (Linkage::Foreign, true) => d.push_error(self.diag(
+                        child,
+                        ParserCode::InvalidFnModifiers,
+                        format!("extern function '{}' must not have a body", f.name),
+                    )),
+                    (Linkage::Local, false) => d.push_error(self.diag(
+                        child,
+                        ParserCode::InvalidFnModifiers,
+                        format!("function '{}' has no body; add one or mark it 'extern'", f.name),
+                    )),
+                    _ => {}
+                }
+                Some(Declaration::Fn(f))
+            }
             "trait_decl" => Some(Declaration::Trait(self.map_trait_decl(child, d)?)),
             "impl_decl" => Some(Declaration::Impl(self.map_impl_decl(child, d)?)),
             _ => {
@@ -503,20 +519,18 @@ impl Parser {
         let name = self.get_text(name_node).to_string();
         let span = span_of(node);
 
-        let mut temp_cursor = node.walk();
-        let is_unsafe = node
-            .children(&mut temp_cursor)
-            .any(|c| c.kind() == "unsafe");
-
-        let (abi, abi_source) = if let Some(abi_node) = node.child_by_field_name("abi") {
-            // Strip surrounding quotes; the string_lit rule matches `"..."`.
-            let raw = self.get_text(abi_node);
-            (
-                Some(raw.trim_matches('"').to_string()),
-                Some(SourceInfo::written(span_of(abi_node))),
-            )
+        let is_unsafe = node.child_by_field_name("unsafe").is_some();
+        let linkage = if node.child_by_field_name("extern").is_some() {
+            Linkage::Foreign
         } else {
-            (None, None)
+            Linkage::Local
+        };
+        let (abi, abi_raw) = if let Some(abi_node) = node.child_by_field_name("abi") {
+            let raw = self.get_text(abi_node).to_string();
+            let abi = Abi::from_str(&raw).unwrap_or(Abi::Silica);
+            (abi, Some((raw, SourceInfo::written(span_of(abi_node)))))
+        } else {
+            (Abi::Silica, None)
         };
 
         let mut scope = enclosing_scope.clone();
@@ -579,9 +593,10 @@ impl Parser {
 
         Some(FnDecl {
             name,
-            is_unsafe,
+            linkage,
             abi,
-            abi_source,
+            abi_raw,
+            is_unsafe,
             lifetime_params,
             outlives,
             type_params,
@@ -687,15 +702,11 @@ impl Parser {
                 .unwrap_or("<missing>");
             let context = trait_method_context(&name, method_name);
             let method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
-            if method.abi.is_some()
-                || child
-                    .children(&mut child.walk())
-                    .any(|part| part.kind() == "extern")
-            {
+            if method.linkage == Linkage::Foreign {
                 d.push_error(
                     self.diag(
                         child,
-                        ParserCode::MalformedCst,
+                        ParserCode::InvalidFnModifiers,
                         format!("trait method '{}' cannot be extern", method.name),
                     )
                     .in_function(&context),
@@ -706,7 +717,7 @@ impl Parser {
                 d.push_error(
                     self.diag(
                         child,
-                        ParserCode::MalformedCst,
+                        ParserCode::InvalidFnModifiers,
                         format!("trait method '{}' must not have a body", method.name),
                     )
                     .in_function(&context),
@@ -796,15 +807,11 @@ impl Parser {
                 .unwrap_or("<missing>");
             let context = impl_method_context(&target, trait_path.as_ref(), method_name);
             let method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
-            if method.abi.is_some()
-                || child
-                    .children(&mut child.walk())
-                    .any(|part| part.kind() == "extern")
-            {
+            if method.linkage == Linkage::Foreign {
                 d.push_error(
                     self.diag(
                         child,
-                        ParserCode::MalformedCst,
+                        ParserCode::InvalidFnModifiers,
                         format!("impl method '{}' cannot be extern", method.name),
                     )
                     .in_function(&context),
@@ -815,7 +822,7 @@ impl Parser {
                 d.push_error(
                     self.diag(
                         child,
-                        ParserCode::MalformedCst,
+                        ParserCode::InvalidFnModifiers,
                         format!("impl method '{}' requires a body", method.name),
                     )
                     .in_function(&context),
@@ -2306,7 +2313,7 @@ mod tests {
     fn parse_extern_fn() {
         let source = "
             extern fn add_impl(a: i64, b: i64) -> i64;
-            extern \"C\" fn c_fn(a: f64) -> f64;
+            extern \"C\" unsafe fn c_fn(a: f64) -> f64;
         ";
         let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 2);
@@ -2315,14 +2322,18 @@ mod tests {
             panic!()
         };
         assert_eq!(f1.name, "add_impl");
-        assert_eq!(f1.abi, None);
+        assert_eq!(f1.linkage, Linkage::Foreign);
+        assert_eq!(f1.abi, Abi::Silica);
+        assert!(!f1.is_unsafe);
         assert!(f1.body.is_none());
 
         let Declaration::Fn(f2) = &program.declarations[1] else {
             panic!()
         };
         assert_eq!(f2.name, "c_fn");
-        assert_eq!(f2.abi.as_deref(), Some("C"));
+        assert_eq!(f2.linkage, Linkage::Foreign);
+        assert_eq!(f2.abi, Abi::C);
+        assert!(f2.is_unsafe);
         assert!(f2.body.is_none());
     }
 

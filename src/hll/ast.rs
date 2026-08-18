@@ -1,6 +1,6 @@
-use crate::common::{
-    FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam, Markers, OutlivesBound, RefKind,
-    SourceInfo, Span,
+pub use crate::common::{
+    Abi, FloatTy, GeneratedKind, IntTy, Lifetime, LifetimeParam, Linkage, Markers, OutlivesBound,
+    RefKind, SourceInfo, Span,
 };
 
 /// An HLL type with the source syntax or compiler operation that produced it.
@@ -222,17 +222,14 @@ impl TypeParam {
 #[derive(Debug, Clone, PartialEq)]
 pub struct FnDecl {
     pub name: String,
+    pub linkage: Linkage,
+    pub abi: Abi,
+    /// Raw ABI clause text (including quotes) when the user wrote one,
+    /// carried through parsing so type-check can emit `UnknownAbi`
+    /// without blocking downstream type errors. `None` when the clause
+    /// was omitted.
+    pub abi_raw: Option<(String, SourceInfo)>,
     pub is_unsafe: bool,
-    /// ABI string. `None` = Silica ABI (sret via `&out $return`);
-    /// `Some("C")` = C ABI (register return). Additional ABI strings
-    /// may be added later (`"system"`, `"fastcall"`, ...); the type
-    /// checker rejects unknown strings so lowering can trust it.
-    pub abi: Option<String>,
-    /// Source attribution of the ABI string literal (including the quotes),
-    /// if present.
-    /// Used by the type checker to point diagnostics at just `"..."` on
-    /// an unknown ABI rather than at the whole `extern fn` declaration.
-    pub abi_source: Option<SourceInfo>,
     pub lifetime_params: Vec<LifetimeParam>,
     /// Inline outlives axioms declared on the fn's lifetime params
     /// (`fn<'a, 'b: 'a>`). Each `(subject, must_outlive)` pair is
@@ -242,11 +239,9 @@ pub struct FnDecl {
     pub type_params: Vec<TypeParam>,
     pub params: Vec<Param>,
     pub ret_ty: Type,
-    /// `None` for extern declarations (signature only). Downstream
-    /// passes branch on this rather than on a separate ExternFn
-    /// variant; keeping extern-ness as a modifier of the same node
-    /// leaves room for other modifiers (`co`, ABI variants, ...) to
-    /// slot in without a full-item split.
+    /// Body of a Local function. `None` on a Foreign declaration
+    /// (extern) and on trait method signatures. The structural check
+    /// enforces which combinations are legal in each context.
     pub body: Option<Expr>,
     pub source: SourceInfo,
 }

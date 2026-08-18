@@ -77,7 +77,7 @@ module.exports = grammar({
     ),
 
     function_decl: $ => seq(
-      optional('extern'),
+      optional(field('extern', 'extern')),
       optional(field('abi', $.string_lit)),
       'fn',
       field('name', $.identifier),

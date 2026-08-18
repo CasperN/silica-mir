@@ -1,0 +1,30 @@
+# Parse-time rejections of ill-formed linkage/ABI combinations on free
+# function declarations. Each cell isolates one shape and pins the
+# exact PARSE-* diagnostic.
+#
+#   shape                                       error
+#   extern fn foo() { entry: return }           extern function must not have a body
+#   fn foo(x: i64);                             function has no body; add one or mark it 'extern'
+#   "C" fn foo(x: i64) { entry: return }        non-Silica ABI on defined function
+#   extern "Silica" fn foo(x: i64);             the Silica ABI is the default
+#   extern "system" fn foo(x: i64);             unknown extern ABI
+#
+# Positive coverage lives across the rest of the fixture tree:
+# - `fn foo() { ... }` — every non-error fixture with a body.
+# - `extern fn foo(...);` — e.g. `hello_world_via_write.sim`.
+
+extern fn with_body() {
+  entry:
+    return
+}
+
+fn missing_body(x: i64);
+
+"C" fn c_defined(x: i64) {
+  entry:
+    return
+}
+
+extern "Silica" fn spelled_silica(x: i64);
+
+extern "system" fn unknown_abi(x: i64);

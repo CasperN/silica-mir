@@ -499,8 +499,8 @@ fn sizeof_fn() -> Function {
     }];
     Function {
         meta,
-        is_extern: true,
-        abi: None,
+        linkage: Linkage::Foreign,
+        abi: Abi::Silica,
         params,
         body: None,
     }
@@ -541,8 +541,8 @@ fn ptr_offset_fn() -> Function {
     ];
     Function {
         meta,
-        is_extern: true,
-        abi: None,
+        linkage: Linkage::Foreign,
+        abi: Abi::Silica,
         params,
         body: None,
     }
@@ -634,8 +634,8 @@ fn spec_to_function(spec: &IntrinsicSpec) -> Function {
     });
     Function {
         meta: intrinsic_meta(spec.name.clone()),
-        is_extern: true,
-        abi: None,
+        linkage: Linkage::Foreign,
+        abi: Abi::Silica,
         params,
         body: None,
     }
@@ -1021,7 +1021,12 @@ mod tests {
         // (currently `$sizeof<T>` and `$ptr_offset<T>`).
         assert_eq!(fns.len(), all().len() + 2);
         for f in &fns {
-            assert!(f.is_extern, "intrinsic {} should be extern", f.meta.name);
+            assert_eq!(
+                f.linkage,
+                Linkage::Foreign,
+                "intrinsic {} should be extern",
+                f.meta.name
+            );
             assert!(
                 f.body.is_none(),
                 "intrinsic {} should have no body",

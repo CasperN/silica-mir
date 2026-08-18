@@ -1,11 +1,11 @@
-error: at 36:3: [PARSE-MalformedCst] trait method 'm' cannot be extern
+error: at 36:3: [PARSE-InvalidFnModifiers] trait method 'm' cannot be extern
     |
  35 | trait ExternTraitM {
  36 |   extern fn m(recv: &Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^
  37 | }
     |
-error: at 40:3: [PARSE-MalformedCst] trait method 'm' must not have a body
+error: at 40:3: [PARSE-InvalidFnModifiers] trait method 'm' must not have a body
     |
  39 | trait BodyTraitM {
  40 |   fn m(recv: &Self) {
@@ -19,14 +19,14 @@ error: at 48:3: [PARSE-MalformedCst] duplicate trait method 'm'
     |   ^^^^^^^^^^^^^^^^^^^^^^
  49 | }
     |
-error: at 53:3: [PARSE-MalformedCst] impl method 'm' cannot be extern
+error: at 53:3: [PARSE-InvalidFnModifiers] impl method 'm' cannot be extern
     |
  52 | impl ExternM for S {
  53 |   extern fn m(recv: &S);
     |   ^^^^^^^^^^^^^^^^^^^^^^
  54 | }
     |
-error: at 58:3: [PARSE-MalformedCst] impl method 'm' requires a body
+error: at 58:3: [PARSE-InvalidFnModifiers] impl method 'm' requires a body
     |
  57 | impl BodylessM for S {
  58 |   fn m(recv: &S);

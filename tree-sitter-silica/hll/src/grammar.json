@@ -892,8 +892,12 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "STRING",
-              "value": "extern"
+              "type": "FIELD",
+              "name": "extern",
+              "content": {
+                "type": "STRING",
+                "value": "extern"
+              }
             },
             {
               "type": "BLANK"
@@ -920,8 +924,12 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "STRING",
-              "value": "unsafe"
+              "type": "FIELD",
+              "name": "unsafe",
+              "content": {
+                "type": "STRING",
+                "value": "unsafe"
+              }
             },
             {
               "type": "BLANK"

@@ -339,6 +339,16 @@
           }
         ]
       },
+      "extern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern",
+            "named": false
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,

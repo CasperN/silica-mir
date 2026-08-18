@@ -708,8 +708,8 @@ impl MonoCtx {
                         },
                         markers: trivial_markers(),
                     },
-                    is_extern: f.is_extern,
-                    abi: f.abi.clone(),
+                    linkage: f.linkage,
+                    abi: f.abi,
                     params,
                     body,
                 })

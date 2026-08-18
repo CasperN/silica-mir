@@ -47,55 +47,83 @@ error: at 53:3: [HTC-EmptySwitch] In function 'test_empty_match': empty switch e
     |   ^^^^^^^^^^^^^^
  54 | }
     |
-error: at 61:8: [HTC-UnknownAbi] In function 'win_api': unknown extern ABI 'system' — expected 'C' or bare extern
+error: at 61:8: [HTC-UnknownAbi] In function 'win_api': unknown extern ABI "system" — expected "C" or bare extern
     |
- 60 | # check widens.
+ 60 | # `hll_hello_world_via_write.si` uses `extern "C" unsafe fn`.
  61 | extern "system" fn win_api(x: i64);
     |        ^^^^^^^^
  62 | extern "fastcall" fn stdcall_thing(y: i64);
     |
-error: at 62:8: [HTC-UnknownAbi] In function 'stdcall_thing': unknown extern ABI 'fastcall' — expected 'C' or bare extern
+error: at 62:8: [HTC-UnknownAbi] In function 'stdcall_thing': unknown extern ABI "fastcall" — expected "C" or bare extern
     |
  61 | extern "system" fn win_api(x: i64);
  62 | extern "fastcall" fn stdcall_thing(y: i64);
     |        ^^^^^^^^^^
  63 | 
     |
-error: at 69:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
+error: at 66:8: [HTC-UnknownAbi] In function 'spelled_silica': the Silica ABI is the default; omit the ABI string
     |
- 68 | # in the `Neg` arm of `to_i64`.
- 69 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 65 | # explicitly is rejected.
+ 66 | extern "Silica" fn spelled_silica(x: i64);
+    |        ^^^^^^^^
+ 67 | 
+    |
+error: at 72:1: [HTC-InvalidFnModifiers] In function 'c_without_unsafe': extern "C" function 'c_without_unsafe' must be unsafe
+    |
+ 71 | # calls carry FFI obligations.
+ 72 | extern "C" fn c_without_unsafe(x: i64);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 73 | 
+    |
+error: at 76:1: [HTC-InvalidFnModifiers] In function 'silica_marked_unsafe': extern Silica function 'silica_marked_unsafe' cannot be unsafe; safe by import contract
+    |
+ 75 | # is safe by import contract.
+ 76 | extern unsafe fn silica_marked_unsafe(x: i64);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 77 | 
+    |
+error: at 80:1: [HTC-InvalidFnModifiers] In function 'c_defined': non-Silica ABI on defined function 'c_defined' not yet supported
+    |
+ 79 | # compatible signature) is reserved for the ABI-in-type work.
+ 80 | "C" fn c_defined() { unit }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 81 | 
+    |
+error: at 87:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
+    |
+ 86 | # in the `Neg` arm of `to_i64`.
+ 87 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
     |                                                 ^
- 70 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+ 88 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
     |
-error: at 70:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
+error: at 88:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
     |
- 69 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
- 70 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+ 87 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 88 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
     |                                               ^
- 71 | 
+ 89 | 
     |
-error: at 78:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
+error: at 96:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
     |
- 77 | fn test_non_callable_field(value: NonCallableField) {
- 78 |   value.invoke(1);
+ 95 | fn test_non_callable_field(value: NonCallableField) {
+ 96 |   value.invoke(1);
     |   ^^^^^^^^^^^^^^^
- 79 | }
+ 97 | }
     |
-error: at 92:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
-    |
- 91 |   fn value(recv: &Self) -> i64 {
- 92 |     false
-    |     ^^^^^
- 93 |   }
-    |
-error: at 99:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
-    |
- 98 |   fn inherent_value(recv: &Self) -> i64 {
- 99 |     false
-    |     ^^^^^
- 100 |   }
-    |
+error: at 110:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+     |
+ 109 |   fn value(recv: &Self) -> i64 {
+ 110 |     false
+     |     ^^^^^
+ 111 |   }
+     |
+error: at 117:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
+     |
+ 116 |   fn inherent_value(recv: &Self) -> i64 {
+ 117 |     false
+     |     ^^^^^
+ 118 |   }
+     |
 error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
  1 | fn test_ambiguous_type() {
@@ -103,10 +131,10 @@ error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type anno
    |           ^^
  3 | }
    |
-error: at 104:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
+error: at 122:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
      |
- 103 |   fn ambiguous_local(recv: &Self) {
- 104 |     let values = [];
+ 121 |   fn ambiguous_local(recv: &Self) {
+ 122 |     let values = [];
      |                  ^^
- 105 |   }
+ 123 |   }
      |

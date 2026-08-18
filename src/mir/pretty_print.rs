@@ -209,11 +209,14 @@ fn write_impl(out: &mut String, i: &ImplBlock) {
 }
 
 fn write_function(out: &mut String, f: &Function) {
-    if f.is_extern {
-        out.push_str("extern fn ");
-    } else {
-        out.push_str("fn ");
+    if f.linkage == Linkage::Foreign {
+        out.push_str("extern ");
     }
+    let abi = f.abi.as_str();
+    if !abi.is_empty() {
+        write!(out, "{} ", abi).unwrap();
+    }
+    out.push_str("fn ");
     out.push_str(&f.meta.name);
     write_type_params(out, &f.meta.params);
     out.push('(');

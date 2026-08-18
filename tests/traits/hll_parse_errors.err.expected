@@ -12,21 +12,21 @@ error: at 10:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  11 | 
     |
-error: at 13:3: [PARSE-MalformedCst] In function 'Body::body': trait method 'body' must not have a body
+error: at 13:3: [PARSE-InvalidFnModifiers] In function 'Body::body': trait method 'body' must not have a body
     |
  12 | trait Body {
  13 |   fn body(recv: &Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  14 | }
     |
-error: at 17:3: [PARSE-MalformedCst] In function 'ExternTrait::ext': trait method 'ext' cannot be extern
+error: at 17:3: [PARSE-InvalidFnModifiers] In function 'ExternTrait::ext': trait method 'ext' cannot be extern
     |
  16 | trait ExternTrait {
  17 |   extern fn ext(recv: &Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
  18 | }
     |
-error: at 21:3: [PARSE-MalformedCst] In function 'AbiTrait::abi': trait method 'abi' cannot be extern
+error: at 21:3: [PARSE-InvalidFnModifiers] In function 'AbiTrait::abi': trait method 'abi' cannot be extern
     |
  20 | trait AbiTrait {
  21 |   extern "C" fn abi(recv: &Self);
@@ -40,21 +40,21 @@ error: at 26:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate tr
     |   ^^^^^^^^^^^^^^^^^^^^^
  27 | }
     |
-error: at 34:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' requires a body
+error: at 34:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' requires a body
     |
  33 | impl Required for S {
  34 |   fn required(recv: &Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^
  35 | }
     |
-error: at 38:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be extern
+error: at 38:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern
     |
  37 | impl Required for S {
  38 |   extern fn required(recv: &Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  39 | }
     |
-error: at 42:3: [PARSE-MalformedCst] In function '<S as Required>::required': impl method 'required' cannot be extern
+error: at 42:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern
     |
  41 | impl Required for S {
  42 |   extern "C" fn required(recv: &Self) { unit }

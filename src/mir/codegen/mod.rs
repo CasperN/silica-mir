@@ -51,7 +51,7 @@ pub fn lower_mir_to_llvm(program: IndexedProgram) -> String {
         out: String::new(),
         v_counter: 0,
         locals: IndexMap::new(),
-        current_fn_abi: None,
+        current_fn_abi: Abi::Silica,
         pending_default_blocks: Vec::new(),
     };
 
@@ -85,7 +85,7 @@ pub fn lower_mir_to_llvm(program: IndexedProgram) -> String {
 
     let mut had_extern = false;
     for f in codegen_functions(&program) {
-        if f.is_extern {
+        if f.linkage == Linkage::Foreign {
             had_extern = true;
             emit_extern_fn(&mut cx, f);
         }
@@ -95,7 +95,7 @@ pub fn lower_mir_to_llvm(program: IndexedProgram) -> String {
     }
 
     for f in codegen_functions(&program) {
-        if !f.is_extern {
+        if f.linkage == Linkage::Local {
             emit_fn_body(&mut cx, f);
         }
     }
@@ -104,7 +104,7 @@ pub fn lower_mir_to_llvm(program: IndexedProgram) -> String {
     // in emission), synthesize a C-conformant `i32 @main()` wrapper so
     // the linked binary has a proper entry point + exit code.
     for f in codegen_functions(&program) {
-        if f.meta.name == "main" && !f.is_extern {
+        if f.meta.name == "main" && f.linkage == Linkage::Local {
             emit_main_wrapper(&mut cx, f);
             break;
         }
@@ -165,14 +165,10 @@ fn get_return_param(params: &[Param]) -> Option<&Param> {
     params.last().filter(|p| p.name == "$return")
 }
 
-fn uses_register_return(abi: &Option<String>) -> bool {
-    if let Some(ref abi) = abi {
-        if abi != "C" {
-            panic!("unsupported ABI: {:?}", abi);
-        }
-        true
-    } else {
-        false
+fn uses_register_return(abi: Abi) -> bool {
+    match abi {
+        Abi::Silica => false,
+        Abi::C => true,
     }
 }
 
@@ -183,7 +179,7 @@ struct CodeGenContext<'a> {
     out: String,
     v_counter: u32,
     locals: IndexMap<String, Type>,
-    current_fn_abi: Option<String>,
+    current_fn_abi: Abi,
     /// Labels of synthetic default-arm blocks for `switch i16` terminators.
     /// Accumulated per-fn during block emission and flushed as
     /// `<label>: unreachable` blocks right before the fn's closing brace.
@@ -203,7 +199,7 @@ impl<'a> CodeGenContext<'a> {
     fn reset_for_function(&mut self, f: &Function) {
         self.v_counter = 0;
         self.locals.clear();
-        self.current_fn_abi = f.abi.clone();
+        self.current_fn_abi = f.abi;
         self.pending_default_blocks.clear();
     }
 
@@ -313,7 +309,7 @@ fn emit_enum_decl(cx: &mut CodeGenContext, e: &EnumDecl) {
 
 fn emit_extern_fn(cx: &mut CodeGenContext, f: &Function) {
     let ret_param = get_return_param(&f.params);
-    let use_reg_ret = uses_register_return(&f.abi);
+    let use_reg_ret = uses_register_return(f.abi);
     let ret_llvm = if let Some(p) = ret_param {
         if use_reg_ret {
             match &p.ty.kind {
@@ -396,7 +392,7 @@ fn emit_fn_body(cx: &mut CodeGenContext, f: &Function) {
     cx.reset_for_function(f);
 
     let ret_param = get_return_param(&f.params);
-    let use_reg_ret = uses_register_return(&f.abi);
+    let use_reg_ret = uses_register_return(f.abi);
     let ret_llvm = if let Some(p) = ret_param {
         if use_reg_ret {
             match &p.ty.kind {
@@ -572,7 +568,7 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
 
             let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(instance)) = target {
                 if let Some(callee_f) = cx.prog.functions.get(&instance.name) {
-                    uses_register_return(&callee_f.abi)
+                    uses_register_return(callee_f.abi)
                 } else {
                     false
                 }
@@ -1126,14 +1122,7 @@ fn emit_terminator(cx: &mut CodeGenContext, term: &Terminator) {
             writeln!(cx.out, "  br label %{}", label).unwrap();
         }
         TerminatorKind::Return => {
-            let use_reg_ret = if let Some(ref abi) = cx.current_fn_abi {
-                if abi != "C" {
-                    panic!("unsupported ABI: {:?}", abi);
-                }
-                true
-            } else {
-                false
-            };
+            let use_reg_ret = uses_register_return(cx.current_fn_abi);
             let ret_inner = if use_reg_ret {
                 cx.locals.get("$return").and_then(|ty| {
                     if let TypeKind::Ref(RefKind::Out, _, inner_ty) = &ty.kind {
@@ -1264,26 +1253,3 @@ fn align_up(x: u64, a: u64) -> u64 {
     (x + a - 1) & !(a - 1)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::mir::ast::Function;
-
-    #[test]
-    #[should_panic(expected = "unsupported ABI: \"system\"")]
-    fn test_unsupported_abi_panics() {
-        let f = Function {
-            meta: basic_meta("dummy"),
-            is_extern: true,
-            abi: Some("system".to_string()),
-            params: Vec::new(),
-            body: None,
-        };
-        let parsed = Program {
-            declarations: vec![crate::mir::ast::Declaration::Fn(f)],
-            source: std::sync::Arc::new("".to_string()),
-        };
-        let program = IndexedProgram::build(&parsed).0;
-        lower_mir_to_llvm(program);
-    }
-}

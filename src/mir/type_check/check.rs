@@ -1553,7 +1553,7 @@ impl IndexedProgram {
 /// Anything else is a check error. Externs (no body) are ignored;
 /// this only fires on definitions.
 fn check_main_signature(f: &Function, d: &mut Diagnostics) {
-    if f.is_extern {
+    if f.linkage == Linkage::Foreign {
         return;
     }
     let is_out_i32 = |ty: &Type| {

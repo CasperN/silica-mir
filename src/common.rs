@@ -133,6 +133,41 @@ impl Markers {
     }
 }
 
+/// Where a function's definition lives, relative to the translation unit.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Linkage {
+    Local,
+    Foreign,
+}
+
+/// Calling convention of a function, when lowered to LLVM.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Abi {
+    Silica,
+    C,
+}
+
+impl Abi {
+    /// Surface spelling as it appears after `extern`. Quoted for named
+    /// ABIs; empty for the default (spelled by omitting the clause).
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Abi::Silica => "",
+            Abi::C => "\"C\"",
+        }
+    }
+
+    /// Inverse of `as_str`. Accepts the raw ABI clause including its
+    /// quotes; empty string means the default ABI.
+    pub fn from_str(s: &str) -> Option<Abi> {
+        match s {
+            "" => Some(Abi::Silica),
+            "\"C\"" => Some(Abi::C),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod markers_tests {
     use super::*;

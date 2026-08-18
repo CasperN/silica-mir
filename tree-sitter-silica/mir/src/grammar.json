@@ -879,8 +879,12 @@
           "type": "CHOICE",
           "members": [
             {
-              "type": "STRING",
-              "value": "extern"
+              "type": "FIELD",
+              "name": "extern",
+              "content": {
+                "type": "STRING",
+                "value": "extern"
+              }
             },
             {
               "type": "BLANK"

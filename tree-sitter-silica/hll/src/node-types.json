@@ -1534,6 +1534,16 @@
           }
         ]
       },
+      "extern": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "extern",
+            "named": false
+          }
+        ]
+      },
       "name": {
         "multiple": false,
         "required": true,
@@ -1551,6 +1561,16 @@
           {
             "type": "type",
             "named": true
+          }
+        ]
+      },
+      "unsafe": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "unsafe",
+            "named": false
           }
         ]
       }

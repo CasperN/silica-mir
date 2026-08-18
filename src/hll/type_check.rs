@@ -277,8 +277,13 @@ pub enum HllTypeCheckCode {
     UnsafeRequired,
     /// An impl method's safety does not match its trait declaration.
     ImplMethodSafetyMismatch,
-    /// `extern "..."` names an ABI other than `"C"`.
+    /// `extern "..."` named an ABI other than `"C"`.
     UnknownAbi,
+    /// A function decl combines linkage, ABI, and safety in a way the
+    /// language does not accept — e.g., `extern "C"` without `unsafe`,
+    /// `extern` (Silica) with `unsafe`, or a Silica-defined function
+    /// with a non-Silica ABI clause (deferred to the ABI-in-type work).
+    InvalidFnModifiers,
     /// `expr as Type` where the pair isn't a supported cast.
     /// Today's supported cells: numeric widths & signedness, int↔float,
     /// bool→int. Casts *to* bool aren't supported (use `!= 0`); casts
@@ -1112,6 +1117,7 @@ pub(super) fn typecheck_program_collect(
                     let scope = type_params_scope(&params);
                     validate_type_param_bounds(&env, &method.type_params, &scope, d);
                     let context = trait_method_context(&t.name, &method.name);
+                    validate_fn_modifiers(method, &context, d);
                     validate_fn_signature(&env, method, &params, &context, d);
                 }
             }
@@ -1172,13 +1178,14 @@ pub(super) fn typecheck_program_collect(
     for decl in &program.declarations {
         match decl {
             Declaration::Fn(f) => {
-                validate_extern_abi(f, &f.name, d);
+                validate_fn_modifiers(f, &f.name, d);
                 check_fn_body(&mut env, &mut subst, &mut types, f, &[], &[], &f.name, d);
             }
             Declaration::Impl(i) => {
                 for method in &i.methods {
                     let context =
                         impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
+                    validate_fn_modifiers(method, &context, d);
                     check_fn_body(
                         &mut env,
                         &mut subst,
@@ -1618,21 +1625,60 @@ fn check_instantiation_bounds(
     }
 }
 
-fn validate_extern_abi(function: &FnDecl, context: &str, d: &mut Diagnostics) {
-    if function.body.is_some() {
-        return;
+/// Deferred modifier checks that would otherwise block later passes if
+/// pushed at parse time. Runs on every free fn / trait method / impl
+/// method after parsing; body-vs-linkage combinations are already
+/// rejected structurally by the parser.
+fn validate_fn_modifiers(f: &FnDecl, context: &str, d: &mut Diagnostics) {
+    if let Some((raw, source)) = &f.abi_raw {
+        if Abi::from_str(raw).is_none() {
+            let msg = if raw == "\"Silica\"" {
+                "the Silica ABI is the default; omit the ABI string".to_string()
+            } else {
+                format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
+            };
+            d.push_error(
+                source_diagnostic(HllTypeCheckCode::UnknownAbi, *source, msg)
+                    .in_function(context),
+            );
+        }
     }
-    let Some(abi) = &function.abi else { return };
-    if abi != "C" {
-        let source = function.abi_source.unwrap_or(function.source);
+    if f.linkage == Linkage::Local && f.abi != Abi::Silica {
         d.push_error(
             source_diagnostic(
-                HllTypeCheckCode::UnknownAbi,
-                source,
-                format!("unknown extern ABI '{}' — expected 'C' or bare extern", abi),
+                HllTypeCheckCode::InvalidFnModifiers,
+                f.source,
+                format!(
+                    "non-Silica ABI on defined function '{}' not yet supported",
+                    f.name
+                ),
             )
             .in_function(context),
         );
+    }
+    if f.linkage == Linkage::Foreign {
+        match (f.abi, f.is_unsafe) {
+            (Abi::Silica, true) => d.push_error(
+                source_diagnostic(
+                    HllTypeCheckCode::InvalidFnModifiers,
+                    f.source,
+                    format!(
+                        "extern Silica function '{}' cannot be unsafe; safe by import contract",
+                        f.name
+                    ),
+                )
+                .in_function(context),
+            ),
+            (Abi::C, false) => d.push_error(
+                source_diagnostic(
+                    HllTypeCheckCode::InvalidFnModifiers,
+                    f.source,
+                    format!("extern \"C\" function '{}' must be unsafe", f.name),
+                )
+                .in_function(context),
+            ),
+            _ => {}
+        }
     }
 }
 

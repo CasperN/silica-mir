@@ -146,15 +146,7 @@ non-default ABI.
 
 Implement this as the following sequence of independently reviewable commits:
 
-1. **Separate and centralize declaration modifiers.** Introduce one shared ABI
-   representation for HLL and MIR declarations, and stop inferring `extern`
-   from the presence or absence of a body. Parse and pretty-print linkage, ABI,
-   and safety independently, preserve them through HLL lowering, and diagnose
-   structurally invalid declaration/body combinations. Keep the default native
-   ABI behavior unchanged. Pin round trips and both bodyful and bodyless free
-   functions in fixtures.
-
-2. **Make function types ABI-bearing and calls type-directed.** Extend HLL and
+1. **Make function types ABI-bearing and calls type-directed.** Extend HLL and
    MIR function types with the ABI, including surface syntax, formatting,
    inference, unification, substitution, folding, monomorphization, and
    function-item typing. ABI mismatches must be ordinary type errors. Refactor
@@ -163,7 +155,7 @@ Implement this as the following sequence of independently reviewable commits:
    Cover native and C-ABI declarations, definitions, function values, indirect
    calls, and non-unit returns end to end in the same commit.
 
-3. **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
+2. **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
    inherent, and trait-impl methods; reject unsupported ABI names everywhere;
    require an impl method's ABI to match its trait signature; and preserve the
    selected method ABI through qualified calls, dot calls, lowering, and

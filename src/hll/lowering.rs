@@ -1604,9 +1604,10 @@ fn lower_function(
     f: &hll::FnDecl,
     program: &hll::Program,
     types: &TypeCheckResults,
-    bodyless_is_extern: bool,
     context: &str,
 ) -> Result<mir::Function, Diagnostic> {
+    // Safety intentionally not lowered: MIR has no unsafe semantics
+    // yet, so the bit has no downstream consumer.
     let mut params: Vec<mir::Param> = f
         .params
         .iter()
@@ -1645,8 +1646,8 @@ fn lower_function(
     let Some(body_expr) = &f.body else {
         return Ok(mir::Function {
             meta,
-            is_extern: bodyless_is_extern,
-            abi: f.abi.clone(),
+            linkage: f.linkage,
+            abi: f.abi,
             params,
             body: None,
         });
@@ -1682,8 +1683,8 @@ fn lower_function(
 
     Ok(mir::Function {
         meta,
-        is_extern: false,
-        abi: None,
+        linkage: f.linkage,
+        abi: f.abi,
         params,
         body: Some(ctx.body),
     })
@@ -1749,7 +1750,7 @@ pub fn lower_program(
             }
             hll::Declaration::Fn(f) => {
                 declarations.push(mir::Declaration::Fn(
-                    lower_function(f, program, types, true, &f.name)
+                    lower_function(f, program, types, &f.name)
                         .map_err(|diagnostic| diagnostic.in_function(&f.name))?,
                 ));
             }
@@ -1772,7 +1773,7 @@ pub fn lower_program(
                         .iter()
                         .map(|method| {
                             let context = hll::trait_method_context(&t.name, &method.name);
-                            lower_function(method, program, types, false, &context)
+                            lower_function(method, program, types, &context)
                                 .map_err(|diagnostic| diagnostic.in_function(context))
                         })
                         .collect::<Result<Vec<_>, _>>()?,
@@ -1797,7 +1798,7 @@ pub fn lower_program(
                                 i.trait_path.as_ref(),
                                 &method.name,
                             );
-                            lower_function(method, program, types, false, &context)
+                            lower_function(method, program, types, &context)
                                 .map_err(|diagnostic| diagnostic.in_function(context))
                         })
                         .collect::<Result<Vec<_>, _>>()?,

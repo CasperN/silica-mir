@@ -43,6 +43,17 @@ pub enum ParserCode {
     /// impl bodies, and prevents an out-of-scope `Self` type
     /// reference from silently resolving as a `Custom("Self")`.
     ReservedIdent,
+    /// An `extern "..."` clause named an ABI the compiler does not
+    /// recognize. Currently only `"C"` is supported; the Silica ABI
+    /// is spelled by omitting the string entirely (bare `extern`).
+    UnknownAbi,
+    /// A function declaration combined linkage, ABI, safety, and body
+    /// presence in a way the language does not accept — e.g., an
+    /// `extern` declaration with a body, a non-extern free function
+    /// without a body, or a foreign Silica-ABI declaration marked
+    /// unsafe. See the FFI roadmap in the punchlist for the full
+    /// acceptance table.
+    InvalidFnModifiers,
 }
 
 impl From<ParserCode> for DiagCode {
@@ -496,7 +507,26 @@ impl Parser {
         match child.kind() {
             "struct_decl" => Some(Declaration::Struct(self.map_struct_decl(child, d)?)),
             "enum_decl" => Some(Declaration::Enum(self.map_enum_decl(child, d)?)),
-            "function_decl" => Some(Declaration::Fn(self.map_function_decl(child, d)?)),
+            "function_decl" => {
+                let f = self.map_function_decl(child, d)?;
+                match (f.linkage, f.body.is_some()) {
+                    (Linkage::Foreign, true) => d.push_error(self.diag(
+                        child,
+                        ParserCode::InvalidFnModifiers,
+                        format!("extern function '{}' must not have a body", f.meta.name),
+                    )),
+                    (Linkage::Local, false) => d.push_error(self.diag(
+                        child,
+                        ParserCode::InvalidFnModifiers,
+                        format!(
+                            "function '{}' has no body; add one or mark it 'extern'",
+                            f.meta.name
+                        ),
+                    )),
+                    _ => {}
+                }
+                Some(Declaration::Fn(f))
+            }
             "trait_decl" => Some(Declaration::Trait(self.map_trait_decl(child, d)?)),
             "impl_decl" => Some(Declaration::Impl(self.map_impl_decl(child, d)?)),
             _ => {
@@ -1754,10 +1784,10 @@ impl Parser {
             }
             *self.type_scope.borrow_mut() = trait_scope.clone();
             let f = self.map_function_decl(child, d)?;
-            if f.is_extern {
+            if f.linkage == Linkage::Foreign {
                 d.push_error(self.diag(
                     child,
-                    ParserCode::MalformedCst,
+                    ParserCode::InvalidFnModifiers,
                     format!("trait method '{}' cannot be extern", f.meta.name),
                 ));
                 continue;
@@ -1765,7 +1795,7 @@ impl Parser {
             if f.body.is_some() {
                 d.push_error(self.diag(
                     child,
-                    ParserCode::MalformedCst,
+                    ParserCode::InvalidFnModifiers,
                     format!("trait method '{}' must not have a body", f.meta.name),
                 ));
                 continue;
@@ -1875,10 +1905,10 @@ impl Parser {
             }
             *self.type_scope.borrow_mut() = impl_scope.clone();
             let f = self.map_function_decl(child, d)?;
-            if f.is_extern {
+            if f.linkage == Linkage::Foreign {
                 d.push_error(self.diag(
                     child,
-                    ParserCode::MalformedCst,
+                    ParserCode::InvalidFnModifiers,
                     format!("impl method '{}' cannot be extern", f.meta.name),
                 ));
                 continue;
@@ -1886,7 +1916,7 @@ impl Parser {
             if f.body.is_none() {
                 d.push_error(self.diag(
                     child,
-                    ParserCode::MalformedCst,
+                    ParserCode::InvalidFnModifiers,
                     format!("impl method '{}' requires a body", f.meta.name),
                 ));
                 continue;
@@ -1926,19 +1956,31 @@ impl Parser {
         if self.reject_self_ident(&name, name_node, "a function name", d) {
             return None;
         }
-        let is_extern = self.get_text(node).starts_with("extern");
+        let linkage = if node.child_by_field_name("extern").is_some() {
+            Linkage::Foreign
+        } else {
+            Linkage::Local
+        };
         let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
             let raw = self.get_text(abi_node);
-            Some(raw.trim_matches('"').to_string())
+            Abi::from_str(raw).unwrap_or_else(|| {
+                let msg = if raw == "\"Silica\"" {
+                    "the Silica ABI is the default; omit the ABI string".to_string()
+                } else {
+                    format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
+                };
+                d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
+                Abi::Silica
+            })
         } else {
-            None
+            Abi::Silica
         };
-
         // Record diagnostics length so any errors pushed while parsing
         // this function's body can be tagged with `in_function(name)`
         // after the fact — mirrors the block-context annotation.
         let errors_before = d.error_count();
-        let result = self.map_function_decl_body(node, name.clone(), name_span, is_extern, abi, d);
+        let result =
+            self.map_function_decl_body(node, name.clone(), name_span, linkage, abi, d);
         d.annotate_errors_in_function(errors_before, &name);
         self.type_scope.borrow_mut().clear();
         result
@@ -1949,8 +1991,8 @@ impl Parser {
         node: Node,
         name: String,
         name_span: Span,
-        is_extern: bool,
-        abi: Option<String>,
+        linkage: Linkage,
+        abi: Abi,
         d: &mut Diagnostics,
     ) -> Option<Function> {
         // Populate the type-param scope before mapping any types in
@@ -2048,7 +2090,7 @@ impl Parser {
             None
         };
 
-        Some(Function {
+        let f = Function {
             meta: DeclMeta {
                 name,
                 name_source: SourceInfo::written(name_span),
@@ -2060,13 +2102,26 @@ impl Parser {
                 },
                 markers: trivial_markers(),
             },
-            is_extern,
+            linkage,
             abi,
             params,
             body,
-        })
+        };
+        // Local + non-Silica ABI is reserved for the ABI-in-type work.
+        if f.linkage == Linkage::Local && f.abi != Abi::Silica {
+            d.push_error(self.diag(
+                node,
+                ParserCode::InvalidFnModifiers,
+                format!(
+                    "non-Silica ABI on defined function '{}' not yet supported",
+                    f.meta.name
+                ),
+            ));
+        }
+        Some(f)
     }
 }
+
 
 #[cfg(test)]
 mod tests {
@@ -2136,7 +2191,7 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add");
-            assert!(!f.is_extern);
+            assert_eq!(f.linkage, Linkage::Local);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
             assert_eq!(f.params[0].ty, i64_ty());
@@ -2194,7 +2249,7 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add_impl");
-            assert!(f.is_extern);
+            assert_eq!(f.linkage, Linkage::Foreign);
             assert_eq!(f.params.len(), 2);
             assert_eq!(f.params[0].name, "a");
             assert_eq!(f.params[0].ty, i64_ty());
@@ -2213,7 +2268,7 @@ mod tests {
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Fn(f) = &program.declarations[0] {
             assert_eq!(f.meta.name, "add_impl");
-            assert!(f.is_extern);
+            assert_eq!(f.linkage, Linkage::Foreign);
             assert_eq!(f.meta.params.lifetime_params.len(), 1);
             assert_eq!(f.meta.params.lifetime_params[0].0, "a");
             assert_eq!(f.meta.params.type_params.len(), 1);

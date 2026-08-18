@@ -13,7 +13,7 @@
 #define ALIAS_COUNT 0
 #define TOKEN_COUNT 74
 #define EXTERNAL_TOKEN_COUNT 0
-#define FIELD_COUNT 26
+#define FIELD_COUNT 27
 #define MAX_ALIAS_SEQUENCE_LENGTH 14
 #define MAX_RESERVED_WORD_SET_SIZE 0
 #define PRODUCTION_ID_COUNT 39
@@ -946,27 +946,28 @@ enum ts_field_identifiers {
   field_condition = 3,
   field_element = 4,
   field_enum_name = 5,
-  field_false_label = 6,
-  field_field = 7,
-  field_function = 8,
-  field_index = 9,
-  field_label = 10,
-  field_length = 11,
-  field_lhs = 12,
-  field_method_args = 13,
-  field_method_name = 14,
-  field_name = 15,
-  field_place = 16,
-  field_rhs = 17,
-  field_self_ty = 18,
-  field_target = 19,
-  field_trait_args = 20,
-  field_trait_name = 21,
-  field_true_label = 22,
-  field_type = 23,
-  field_value = 24,
-  field_variant = 25,
-  field_variant_name = 26,
+  field_extern = 6,
+  field_false_label = 7,
+  field_field = 8,
+  field_function = 9,
+  field_index = 10,
+  field_label = 11,
+  field_length = 12,
+  field_lhs = 13,
+  field_method_args = 14,
+  field_method_name = 15,
+  field_name = 16,
+  field_place = 17,
+  field_rhs = 18,
+  field_self_ty = 19,
+  field_target = 20,
+  field_trait_args = 21,
+  field_trait_name = 22,
+  field_true_label = 23,
+  field_type = 24,
+  field_value = 25,
+  field_variant = 26,
+  field_variant_name = 27,
 };
 
 static const char * const ts_field_names[] = {
@@ -976,6 +977,7 @@ static const char * const ts_field_names[] = {
   [field_condition] = "condition",
   [field_element] = "element",
   [field_enum_name] = "enum_name",
+  [field_extern] = "extern",
   [field_false_label] = "false_label",
   [field_field] = "field",
   [field_function] = "function",
@@ -1009,35 +1011,35 @@ static const TSMapSlice ts_field_map_slices[PRODUCTION_ID_COUNT] = {
   [7] = {.index = 8, .length = 1},
   [8] = {.index = 9, .length = 2},
   [9] = {.index = 11, .length = 2},
-  [10] = {.index = 13, .length = 1},
-  [11] = {.index = 14, .length = 2},
-  [12] = {.index = 16, .length = 2},
-  [13] = {.index = 18, .length = 3},
-  [14] = {.index = 21, .length = 2},
-  [15] = {.index = 23, .length = 2},
-  [16] = {.index = 25, .length = 2},
-  [17] = {.index = 27, .length = 2},
-  [18] = {.index = 29, .length = 1},
-  [19] = {.index = 30, .length = 2},
-  [20] = {.index = 32, .length = 1},
-  [21] = {.index = 33, .length = 1},
-  [22] = {.index = 34, .length = 2},
-  [23] = {.index = 36, .length = 1},
-  [24] = {.index = 37, .length = 1},
-  [25] = {.index = 38, .length = 1},
-  [26] = {.index = 39, .length = 1},
-  [27] = {.index = 40, .length = 2},
-  [28] = {.index = 42, .length = 1},
-  [29] = {.index = 43, .length = 3},
-  [30] = {.index = 46, .length = 3},
-  [31] = {.index = 49, .length = 2},
-  [32] = {.index = 51, .length = 2},
-  [33] = {.index = 53, .length = 2},
-  [34] = {.index = 55, .length = 4},
-  [35] = {.index = 59, .length = 4},
-  [36] = {.index = 63, .length = 2},
-  [37] = {.index = 65, .length = 5},
-  [38] = {.index = 70, .length = 3},
+  [10] = {.index = 13, .length = 2},
+  [11] = {.index = 15, .length = 2},
+  [12] = {.index = 17, .length = 2},
+  [13] = {.index = 19, .length = 3},
+  [14] = {.index = 22, .length = 2},
+  [15] = {.index = 24, .length = 3},
+  [16] = {.index = 27, .length = 2},
+  [17] = {.index = 29, .length = 2},
+  [18] = {.index = 31, .length = 1},
+  [19] = {.index = 32, .length = 2},
+  [20] = {.index = 34, .length = 1},
+  [21] = {.index = 35, .length = 1},
+  [22] = {.index = 36, .length = 2},
+  [23] = {.index = 38, .length = 1},
+  [24] = {.index = 39, .length = 1},
+  [25] = {.index = 40, .length = 1},
+  [26] = {.index = 41, .length = 1},
+  [27] = {.index = 42, .length = 2},
+  [28] = {.index = 44, .length = 1},
+  [29] = {.index = 45, .length = 3},
+  [30] = {.index = 48, .length = 3},
+  [31] = {.index = 51, .length = 2},
+  [32] = {.index = 53, .length = 2},
+  [33] = {.index = 55, .length = 2},
+  [34] = {.index = 57, .length = 4},
+  [35] = {.index = 61, .length = 4},
+  [36] = {.index = 65, .length = 2},
+  [37] = {.index = 67, .length = 5},
+  [38] = {.index = 72, .length = 3},
 };
 
 static const TSFieldMapEntry ts_field_map_entries[] = {
@@ -1064,91 +1066,93 @@ static const TSFieldMapEntry ts_field_map_entries[] = {
     {field_name, 0},
     {field_type, 2},
   [13] =
+    {field_extern, 0},
     {field_name, 2},
-  [14] =
+  [15] =
     {field_bound, 0, .inherited = true},
     {field_bound, 1, .inherited = true},
-  [16] =
+  [17] =
     {field_target, 3},
     {field_trait_name, 1},
-  [18] =
+  [19] =
     {field_bound, 2},
     {field_bound, 3, .inherited = true},
     {field_name, 0},
-  [21] =
+  [22] =
     {field_element, 1},
     {field_length, 3},
-  [23] =
+  [24] =
     {field_abi, 1},
+    {field_extern, 0},
     {field_name, 3},
-  [25] =
-    {field_target, 4},
-    {field_trait_name, 1},
   [27] =
     {field_target, 4},
-    {field_trait_name, 2},
+    {field_trait_name, 1},
   [29] =
+    {field_target, 4},
+    {field_trait_name, 2},
+  [31] =
     {field_label, 0},
-  [30] =
+  [32] =
     {field_target, 5},
     {field_trait_name, 2},
-  [32] =
-    {field_place, 1},
-  [33] =
-    {field_label, 1},
   [34] =
+    {field_place, 1},
+  [35] =
+    {field_label, 1},
+  [36] =
     {field_lhs, 0},
     {field_rhs, 2},
-  [36] =
-    {field_field, 2},
-  [37] =
-    {field_variant, 2},
   [38] =
-    {field_function, 1},
+    {field_field, 2},
   [39] =
-    {field_index, 2},
+    {field_variant, 2},
   [40] =
+    {field_function, 1},
+  [41] =
+    {field_index, 2},
+  [42] =
     {field_method_name, 4},
     {field_self_ty, 1},
-  [42] =
+  [44] =
     {field_place, 2},
-  [43] =
+  [45] =
     {field_method_args, 5},
     {field_method_name, 4},
     {field_self_ty, 1},
-  [46] =
+  [48] =
     {field_method_name, 6},
     {field_self_ty, 1},
     {field_trait_name, 3},
-  [49] =
+  [51] =
     {field_label, 2},
     {field_variant, 0},
-  [51] =
+  [53] =
     {field_enum_name, 0},
     {field_variant_name, 2},
-  [53] =
+  [55] =
     {field_type, 4},
     {field_value, 2},
-  [55] =
+  [57] =
     {field_method_args, 7},
     {field_method_name, 6},
     {field_self_ty, 1},
     {field_trait_name, 3},
-  [59] =
+  [61] =
     {field_method_name, 7},
     {field_self_ty, 1},
     {field_trait_args, 4},
     {field_trait_name, 3},
-  [63] =
+  [65] =
     {field_enum_name, 0},
     {field_variant_name, 3},
-  [65] =
+  [67] =
     {field_method_args, 8},
     {field_method_name, 7},
     {field_self_ty, 1},
     {field_trait_args, 4},
     {field_trait_name, 3},
-  [70] =
+  [72] =
     {field_condition, 2},
     {field_false_label, 11},
     {field_true_label, 7},

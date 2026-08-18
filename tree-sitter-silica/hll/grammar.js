@@ -91,9 +91,9 @@ module.exports = grammar({
     // Return type defaults to `unit` when the arrow is omitted. Body is either
     // a block expression or a semicolon `;` (for extern/signature declarations).
     fn_decl: $ => seq(
-      optional('extern'),
+      optional(field('extern', 'extern')),
       optional(field('abi', $.string_lit)),
-      optional('unsafe'),
+      optional(field('unsafe', 'unsafe')),
       'fn',
       field('name', $.identifier),
       optional($.type_params),

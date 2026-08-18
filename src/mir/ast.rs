@@ -1,6 +1,6 @@
 pub use crate::common::{
-    FloatTy, GeneratedKind, HllTemporaryKind, IntTy, Lifetime, LifetimeParam, Marker, Markers,
-    OutlivesBound, RefKind, SourceInfo, Span,
+    Abi, FloatTy, GeneratedKind, HllTemporaryKind, IntTy, Lifetime, LifetimeParam, Linkage, Marker,
+    Markers, OutlivesBound, RefKind, SourceInfo, Span,
 };
 
 use indexmap::IndexMap;
@@ -869,8 +869,8 @@ impl TypeParam {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Function {
     pub meta: DeclMeta,
-    pub is_extern: bool,
-    pub abi: Option<String>,
+    pub linkage: Linkage,
+    pub abi: Abi,
     pub params: Vec<Param>,
     pub body: Option<FunctionBody>,
 }
