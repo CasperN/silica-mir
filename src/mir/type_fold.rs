@@ -64,9 +64,15 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
                 .map(|arg| folder.fold_type(arg))
                 .collect(),
         }),
-        TypeKind::Fn(params) => {
-            TypeKind::Fn(params.iter().map(|param| folder.fold_type(param)).collect())
-        }
+        TypeKind::Fn {
+            abi,
+            params,
+            has_return_param,
+        } => TypeKind::Fn {
+            abi: *abi,
+            params: params.iter().map(|param| folder.fold_type(param)).collect(),
+            has_return_param: *has_return_param,
+        },
         TypeKind::Ref(kind, lifetime, inner) => TypeKind::Ref(
             *kind,
             lifetime
@@ -85,7 +91,7 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::common::{GeneratedKind, IntTy, RefKind, SourceInfo, Span};
+    use crate::common::{Abi, GeneratedKind, IntTy, RefKind, SourceInfo, Span};
 
     struct IdentityFolder;
 
@@ -132,10 +138,11 @@ mod tests {
             source(2),
         );
         let function = Type::new(
-            TypeKind::Fn(vec![
-                reference,
-                Type::new(TypeKind::Int(IntTy::I64), source(6)),
-            ]),
+            TypeKind::Fn {
+                abi: Abi::Silica,
+                params: vec![reference, Type::new(TypeKind::Int(IntTy::I64), source(6))],
+                has_return_param: false,
+            },
             source(1),
         );
         let ty = Type::new(TypeKind::Array(Box::new(function), 3), source(0));
@@ -148,7 +155,7 @@ mod tests {
             panic!("expected outer array");
         };
         assert_eq!(function.source, source(1));
-        let TypeKind::Fn(params) = function.kind else {
+        let TypeKind::Fn { params, .. } = function.kind else {
             panic!("expected nested function type");
         };
         assert_eq!(params[0].source, source(2));

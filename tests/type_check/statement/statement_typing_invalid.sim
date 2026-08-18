@@ -9,6 +9,8 @@
 #   assign_type_mismatch     assign           scalar type mismatch         TC-AssignmentTypeMismatch
 #   assign_field_mismatch    assign           struct field type mismatch   TC-AssignmentTypeMismatch
 #   assign_fn_arity_mismatch assign           fn-pointer arity mismatch    TC-AssignmentTypeMismatch
+#   assign_fn_abi_mismatch   assign           fn-pointer abi mismatch      TC-AssignmentTypeMismatch
+#   assign_fn_ret_mismatch   assign           fn-pointer $return mismatch  TC-AssignmentTypeMismatch
 #   assign_ref_kind_mismatch assign           ref-kind mismatch            TC-AssignmentTypeMismatch
 #   call_non_function_target call             callee is not fn type        TC-CallTargetNotFunction
 #   call_wrong_arity         call             too few arguments            TC-CallWrongArity
@@ -53,6 +55,41 @@ fn assign_fn_arity_mismatch() {
   g: fn(i64, i64);
   entry:
     g = callee;
+    return
+}
+
+# ---------- assign_fn_abi_mismatch ----------
+
+# `c_helper` has C ABI; the local is declared Silica-ABI. ABI is part
+# of fn-type identity so the assignment is rejected.
+"C" fn c_helper(x: i32, $return: &out i32) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn assign_fn_abi_mismatch() {
+  f: fn(i32, $return: &out i32);
+  entry:
+    f = c_helper;
+    return
+}
+
+# ---------- assign_fn_ret_mismatch ----------
+
+# `ret_flag_helper`'s trailing `&out` is the semantic return channel;
+# the local's trailing `&out` is a genuine out-parameter. Same param
+# types but different `has_return_param`, so the fn types differ.
+fn ret_flag_helper(x: i32, $return: &out i32) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn assign_fn_ret_mismatch() {
+  f: fn(i32, &out i32);
+  entry:
+    f = ret_flag_helper;
     return
 }
 

@@ -31,12 +31,19 @@ module.exports = grammar({
 
     ...common.rules,
 
-    // MIR type grammar: shared alternatives plus `fn(T,...)` with
-    // NO return arrow. MIR returns go through `&out $return` params,
-    // so function types don't carry a return position.
     type: $ => choice(
       ...common.typeChoices($),
-      seq('fn', '(', common.commaSep($.type), ')'),
+      // MIR specific fn type: `fn [abi] (T, ..., [$return:] T)`.
+      seq(
+        'fn',
+        optional(field('abi', $.string_lit)),
+        '(',
+        common.commaSep(choice(
+          $.type,
+          seq(field('return_marker', '$return'), ':', field('return_ty', $.type)),
+        )),
+        ')',
+      ),
     ),
 
     // MIR struct/enum decls: separators between fields are either

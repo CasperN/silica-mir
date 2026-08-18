@@ -2686,6 +2686,16 @@
     "type": "type",
     "named": true,
     "fields": {
+      "abi": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string_lit",
+            "named": true
+          }
+        ]
+      },
       "element": {
         "multiple": false,
         "required": false,

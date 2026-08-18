@@ -354,7 +354,7 @@ fn infer_generic_from_return_only<'s0>($return: &'s0 out i64) {
     return
 }
 
-fn call_i64<'s0, 's1>(f: fn(i64, &'s0 out i64), x: i64, $return: &'s1 out i64) {
+fn call_i64<'s0, 's1>(f: fn(i64, $return: &'s0 out i64), x: i64, $return: &'s1 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -379,7 +379,7 @@ fn generic_function_value<'s0>($return: &'s0 out i64) {
 }
 
 fn delayed_generic_function_value<'s0>(x: i64, $return: &'s0 out i64) {
-  f: fn(i64, &out i64);
+  f: fn(i64, $return: &out i64);
   $tmp_0: &out i64;
   entry:
     f = identity<i64>;

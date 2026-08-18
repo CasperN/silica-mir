@@ -40,8 +40,11 @@ and `PUNCHLIST.md` rather than maintaining a second status list here.
 - Checkers validate MIR without silently repairing the property they check.
 - The elaborated MIR is the canonical artifact pinned by ordinary success
   fixtures.
-- MIR functions return through `&out` parameters; MIR function types have no
-  result position.
+- MIR functions return through a trailing `$return: &out R` parameter at the
+  decl level. Fn types uniformly carry a `has_return_param: bool` flag rather
+  than a separate result position; when set, the trailing `&out R` in `params`
+  is semantically the return channel, and codegen picks sret or register-return
+  based on the fn's ABI.
 - Lifetime loans and pointee initialization obligations are separate analyses:
   lifetime checking decides whether access conflicts with an active loan;
   place-state checking decides whether the pointee is in the required state.
@@ -369,7 +372,7 @@ Rules:
 - Use `.sim` for exact CFG shapes, explicit ownership operations, lifetime
   forms lost by HLL lowering, or MIR-only features.
 - Prefer extending a dense success/failure fixture pair over creating many
-  one-case files.
+  one-case files. Survey existing tests with `tree -I "*.expected*" tests/`
 - Every new diagnostic code needs a negative fixture that pins its complete
   rendered output.
 - Pair positive behavior with the corresponding negative boundary.

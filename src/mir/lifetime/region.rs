@@ -342,7 +342,7 @@ pub(super) fn walk_ref_places(
         | TypeKind::Bool
         | TypeKind::Never
         | TypeKind::Param(_)
-        | TypeKind::Fn(_)
+        | TypeKind::Fn { .. }
         | TypeKind::RawPtr(_) => {}
     }
 }

@@ -67,10 +67,11 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
             Box::new(folder.fold_type(inner)),
         ),
         TypeKind::RawPtr(inner) => TypeKind::RawPtr(Box::new(folder.fold_type(inner))),
-        TypeKind::Fn(params, ret) => TypeKind::Fn(
-            params.iter().map(|param| folder.fold_type(param)).collect(),
-            Box::new(folder.fold_type(ret)),
-        ),
+        TypeKind::Fn { abi, params, ret } => TypeKind::Fn {
+            abi: *abi,
+            params: params.iter().map(|param| folder.fold_type(param)).collect(),
+            ret: Box::new(folder.fold_type(ret)),
+        },
         TypeKind::Array(element, size) => {
             TypeKind::Array(Box::new(folder.fold_type(element)), *size)
         }

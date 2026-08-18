@@ -340,7 +340,7 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
             }
         }
         TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => walk_lifetimes(inner, scope, out),
-        TypeKind::Fn(args) => {
+        TypeKind::Fn { params: args, .. } => {
             for a in args {
                 walk_lifetimes(a, scope, out);
             }
@@ -1325,7 +1325,7 @@ impl IndexedProgram {
             StatementKind::Call(target, args) => {
                 let target_ty = env.type_of_operand(target, locals).map_err(with_context)?;
 
-                if !matches!(&target_ty.kind, TypeKind::Fn(_)) {
+                if !matches!(&target_ty.kind, TypeKind::Fn { .. }) {
                     return Err(format_type_diagnostic(&func.meta, &target_ty, |ty| {
                         stmt_diag(
                             CallTargetNotFunction,
@@ -1333,7 +1333,7 @@ impl IndexedProgram {
                         )
                     }));
                 }
-                let TypeKind::Fn(param_tys) = target_ty.kind else {
+                let TypeKind::Fn { params: param_tys, .. } = target_ty.kind else {
                     unreachable!("function type checked above")
                 };
 

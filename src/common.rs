@@ -141,7 +141,7 @@ pub enum Linkage {
 }
 
 /// Calling convention of a function, when lowered to LLVM.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Abi {
     Silica,
     C,

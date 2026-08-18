@@ -82,47 +82,54 @@ error: at 76:1: [HTC-InvalidFnModifiers] In function 'silica_marked_unsafe': ext
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  77 | 
     |
-error: at 80:1: [HTC-InvalidFnModifiers] In function 'c_defined': non-Silica ABI on defined function 'c_defined' not yet supported
+error: at 91:18: [HTC-TypeMismatch] In function 'abi_mismatch_via_arg': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
     |
- 79 | # compatible signature) is reserved for the ABI-in-type work.
- 80 | "C" fn c_defined() { unit }
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 81 | 
+ 90 | fn abi_mismatch_via_arg() -> i64 {
+ 91 |   accepts_silica(c_valued)
+    |                  ^^^^^^^^
+ 92 | }
     |
-error: at 87:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
+error: at 95:27: [HTC-TypeMismatch] In function 'abi_mismatch_via_let': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
     |
- 86 | # in the `Neg` arm of `to_i64`.
- 87 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
-    |                                                 ^
- 88 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+ 94 | fn abi_mismatch_via_let() {
+ 95 |   let f: fn(i64) -> i64 = c_valued;
+    |                           ^^^^^^^^
+ 96 |   f(1);
     |
-error: at 88:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
-    |
- 87 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
- 88 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
-    |                                               ^
- 89 | 
-    |
-error: at 96:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
-    |
- 95 | fn test_non_callable_field(value: NonCallableField) {
- 96 |   value.invoke(1);
-    |   ^^^^^^^^^^^^^^^
- 97 | }
-    |
-error: at 110:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+error: at 104:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
      |
- 109 |   fn value(recv: &Self) -> i64 {
- 110 |     false
+ 103 | # in the `Neg` arm of `to_i64`.
+ 104 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+     |                                                 ^
+ 105 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+     |
+error: at 105:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
+     |
+ 104 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 105 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+     |                                               ^
+ 106 | 
+     |
+error: at 113:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
+     |
+ 112 | fn test_non_callable_field(value: NonCallableField) {
+ 113 |   value.invoke(1);
+     |   ^^^^^^^^^^^^^^^
+ 114 | }
+     |
+error: at 127:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+     |
+ 126 |   fn value(recv: &Self) -> i64 {
+ 127 |     false
      |     ^^^^^
- 111 |   }
+ 128 |   }
      |
-error: at 117:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
+error: at 134:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
      |
- 116 |   fn inherent_value(recv: &Self) -> i64 {
- 117 |     false
+ 133 |   fn inherent_value(recv: &Self) -> i64 {
+ 134 |     false
      |     ^^^^^
- 118 |   }
+ 135 |   }
      |
 error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
@@ -131,10 +138,10 @@ error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type anno
    |           ^^
  3 | }
    |
-error: at 122:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
+error: at 139:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
      |
- 121 |   fn ambiguous_local(recv: &Self) {
- 122 |     let values = [];
+ 138 |   fn ambiguous_local(recv: &Self) {
+ 139 |     let values = [];
      |                  ^^
- 123 |   }
+ 140 |   }
      |

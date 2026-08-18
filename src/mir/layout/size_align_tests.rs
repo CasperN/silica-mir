@@ -54,10 +54,14 @@ fn all_ref_kinds_and_fn_are_pointer_sized() {
         assert_eq!(size_of(&ty, &env), 8);
         assert_eq!(align_of(&ty, &env), 8);
     }
-    let fn_ty = Type::synthesized(TypeKind::Fn(vec![
-        Type::synthesized(TypeKind::Int(IntTy::I64)),
-        Type::synthesized(TypeKind::Bool),
-    ]));
+    let fn_ty = Type::synthesized(TypeKind::Fn {
+        abi: Abi::Silica,
+        params: vec![
+            Type::synthesized(TypeKind::Int(IntTy::I64)),
+            Type::synthesized(TypeKind::Bool),
+        ],
+        has_return_param: false,
+    });
     assert_eq!(size_of(&fn_ty, &env), 8);
     assert_eq!(align_of(&fn_ty, &env), 8);
 }

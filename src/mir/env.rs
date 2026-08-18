@@ -653,7 +653,7 @@ impl<'a> LocalEnv<'a> {
             | TypeKind::Float(_)
             | TypeKind::Bool
             | TypeKind::Unit
-            | TypeKind::Fn(_) => all(),
+            | TypeKind::Fn { .. } => all(),
             TypeKind::Never | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(Instance { name, .. }) => match self.program.types.get(name) {
@@ -864,7 +864,7 @@ impl<'a> LocalEnv<'a> {
                 Ok(())
             }
             TypeKind::Param(_) => Ok(()),
-            TypeKind::Fn(fn_params) => {
+            TypeKind::Fn { params: fn_params, .. } => {
                 for param in fn_params {
                     self.validate_type(param)?;
                 }
@@ -1158,8 +1158,21 @@ fn match_type(
         (TypeKind::Custom(pattern), TypeKind::Custom(actual)) => {
             match_instance(pattern, actual, params, type_bindings, lifetime_bindings)
         }
-        (TypeKind::Fn(pattern), TypeKind::Fn(actual)) => {
-            pattern.len() == actual.len()
+        (
+            TypeKind::Fn {
+                abi: pattern_abi,
+                params: pattern,
+                has_return_param: pattern_ret,
+            },
+            TypeKind::Fn {
+                abi: actual_abi,
+                params: actual,
+                has_return_param: actual_ret,
+            },
+        ) => {
+            pattern_abi == actual_abi
+                && pattern_ret == actual_ret
+                && pattern.len() == actual.len()
                 && pattern.iter().zip(actual).all(|(pattern, actual)| {
                     match_type(pattern, actual, params, type_bindings, lifetime_bindings)
                 })
@@ -1614,11 +1627,22 @@ impl IndexedProgram {
                         .all(|(x, y)| self.types_match(x, y))
             }
             (TypeKind::Param(a), TypeKind::Param(b)) => a == b,
-            (TypeKind::Fn(a), TypeKind::Fn(b)) => {
-                if a.len() != b.len() {
-                    return false;
-                }
-                a.iter().zip(b.iter()).all(|(x, y)| self.types_match(x, y))
+            (
+                TypeKind::Fn {
+                    abi: abi_a,
+                    params: a,
+                    has_return_param: ret_a,
+                },
+                TypeKind::Fn {
+                    abi: abi_b,
+                    params: b,
+                    has_return_param: ret_b,
+                },
+            ) => {
+                abi_a == abi_b
+                    && ret_a == ret_b
+                    && a.len() == b.len()
+                    && a.iter().zip(b.iter()).all(|(x, y)| self.types_match(x, y))
             }
             (TypeKind::Ref(k1, _, i1), TypeKind::Ref(k2, _, i2)) => {
                 k1 == k2 && self.types_match(i1, i2)
@@ -1793,7 +1817,11 @@ impl LocalEnv<'_> {
                 }
             }
         }
-        Ok(fn_ty(f.instantiate_params(&instance.type_args)))
+        Ok(fn_ty(
+            f.abi,
+            f.instantiate_params(&instance.type_args),
+            f.has_return_param(),
+        ))
     }
 
     fn validate_method_args(
@@ -1899,7 +1927,11 @@ impl LocalEnv<'_> {
         method: &Instance,
     ) -> Result<Type, TypeResolutionError> {
         let resolved = self.resolve_inherent_method(self_ty, method)?;
-        Ok(fn_ty(resolved.instantiate_param_types(method)))
+        Ok(fn_ty(
+            resolved.method.abi,
+            resolved.instantiate_param_types(method),
+            resolved.method.has_return_param(),
+        ))
     }
 
     pub(crate) fn resolve_inherent_method<'b>(
@@ -1981,7 +2013,11 @@ impl LocalEnv<'_> {
         method: &Instance,
     ) -> Result<Type, TypeResolutionError> {
         let resolved = self.resolve_trait_method(trait_path, self_ty, method)?;
-        Ok(fn_ty(resolved.instantiate_param_types(method)))
+        Ok(fn_ty(
+            resolved.method.abi,
+            resolved.instantiate_param_types(method),
+            resolved.method.has_return_param(),
+        ))
     }
 
     pub(crate) fn resolve_trait_method<'b>(

@@ -108,7 +108,11 @@ pub enum TypeKind {
     Param(String),
     Ref(RefKind, Option<Lifetime>, Box<Type>),
     RawPtr(Box<Type>),
-    Fn(Vec<Type>, Box<Type>),
+    Fn {
+        abi: Abi,
+        params: Vec<Type>,
+        ret: Box<Type>,
+    },
     Var(usize),
     IntVar(usize),
     FloatVar(usize),
@@ -137,8 +141,13 @@ impl std::fmt::Display for TypeKind {
                 inner.fmt(f)
             }
             TypeKind::RawPtr(inner) => write!(f, "*{}", inner),
-            TypeKind::Fn(params, ret) => {
-                write!(f, "fn(")?;
+            TypeKind::Fn { abi, params, ret } => {
+                write!(f, "fn")?;
+                let abi_str = abi.as_str();
+                if !abi_str.is_empty() {
+                    write!(f, " {}", abi_str)?;
+                }
+                write!(f, "(")?;
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;

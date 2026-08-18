@@ -5,13 +5,14 @@
 #   shape                                       error
 #   extern fn foo() { entry: return }           extern function must not have a body
 #   fn foo(x: i64);                             function has no body; add one or mark it 'extern'
-#   "C" fn foo(x: i64) { entry: return }        non-Silica ABI on defined function
 #   extern "Silica" fn foo(x: i64);             the Silica ABI is the default
 #   extern "system" fn foo(x: i64);             unknown extern ABI
 #
 # Positive coverage lives across the rest of the fixture tree:
 # - `fn foo() { ... }` — every non-error fixture with a body.
 # - `extern fn foo(...);` — e.g. `hello_world_via_write.sim`.
+# - `"C" fn foo(...) { ... }` and `fn "C"(...)` types —
+#   `tests/declaration/c_abi_defined.sim`.
 
 extern fn with_body() {
   entry:
@@ -19,11 +20,6 @@ extern fn with_body() {
 }
 
 fn missing_body(x: i64);
-
-"C" fn c_defined(x: i64) {
-  entry:
-    return
-}
 
 extern "Silica" fn spelled_silica(x: i64);
 

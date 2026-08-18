@@ -495,7 +495,7 @@ impl MonoCtx {
             | TypeKind::Bool
             | TypeKind::Unit
             | TypeKind::Never
-            | TypeKind::Fn(_)
+            | TypeKind::Fn { .. }
             | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(instance) => self
@@ -790,7 +790,15 @@ fn erase_type_lifetimes(ty: &Type) -> Type {
         | TypeKind::Never
         | TypeKind::Param(_) => return ty.clone(),
         TypeKind::Custom(instance) => TypeKind::Custom(erase_instance_lifetimes(instance)),
-        TypeKind::Fn(params) => TypeKind::Fn(params.iter().map(erase_type_lifetimes).collect()),
+        TypeKind::Fn {
+            abi,
+            params,
+            has_return_param,
+        } => TypeKind::Fn {
+            abi: *abi,
+            params: params.iter().map(erase_type_lifetimes).collect(),
+            has_return_param: *has_return_param,
+        },
         TypeKind::Ref(kind, _, inner) => {
             TypeKind::Ref(*kind, None, Box::new(erase_type_lifetimes(inner)))
         }

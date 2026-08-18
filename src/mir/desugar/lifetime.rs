@@ -123,7 +123,7 @@ fn desugar_body_local_ty(ty: &mut Type, fn_params: &[LifetimeParam], ctx: &mut D
         TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             desugar_body_local_ty(inner, fn_params, ctx);
         }
-        TypeKind::Fn(args) => {
+        TypeKind::Fn { params: args, .. } => {
             for a in args {
                 desugar_body_local_ty(a, fn_params, ctx);
             }
@@ -274,7 +274,7 @@ fn desugar_decl_field_ty(ty: &mut Type, containing_params: &[LifetimeParam], ctx
         TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             desugar_decl_field_ty(inner, containing_params, ctx);
         }
-        TypeKind::Fn(args) => {
+        TypeKind::Fn { params: args, .. } => {
             for a in args {
                 desugar_decl_field_ty(a, containing_params, ctx);
             }
@@ -403,7 +403,7 @@ fn desugar_type_pos(ty: &mut Type, pos: Pos, ctx: &mut DesugarCtx) {
         }
         TypeKind::RawPtr(inner) => desugar_type_pos(inner, pos, ctx),
         TypeKind::Array(elem, _) => desugar_type_pos(elem, pos, ctx),
-        TypeKind::Fn(args) => {
+        TypeKind::Fn { params: args, .. } => {
             for a in args {
                 desugar_type_pos(a, pos, ctx);
             }

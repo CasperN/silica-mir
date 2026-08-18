@@ -56,7 +56,7 @@ pub fn size_of(ty: &Type, prog: &IndexedProgram) -> u64 {
         TypeKind::Float(f) => f.bytes(),
         TypeKind::Bool => 1,
         TypeKind::Unit | TypeKind::Never => 0,
-        TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
+        TypeKind::Fn { .. } | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
         TypeKind::Custom(Instance { name, .. }) => match prog.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_size(s, prog),
             Some(TypeDecl::Enum(e)) => enum_size(e, prog),
@@ -80,7 +80,7 @@ pub fn align_of(ty: &Type, prog: &IndexedProgram) -> u64 {
         TypeKind::Float(f) => f.bytes(),
         TypeKind::Bool => 1,
         TypeKind::Unit | TypeKind::Never => 1,
-        TypeKind::Fn(_) | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
+        TypeKind::Fn { .. } | TypeKind::Ref(_, _, _) | TypeKind::RawPtr(_) => 8,
         TypeKind::Custom(Instance { name, .. }) => match prog.types.get(name) {
             Some(TypeDecl::Struct(s)) => struct_align(s, prog),
             Some(TypeDecl::Enum(e)) => enum_align(e, prog),

@@ -1,0 +1,62 @@
+# Silica-defined C-ABI functions (register-return) and fn-type-in-type
+# positions that carry an ABI clause. Cells:
+#
+#   shape                                                cell
+#   "C" fn defined(x: i32, $return: &out i32) { ... }    Local + C, register return
+#   "C" fn void_return(x: i32) { ... }                   Local + C, void return
+#   extern "C" fn imported(...);                         Foreign + C
+#   f: fn(i32, $return: &out i32); call move f(...)      Silica-ABI indirect call
+#   f: fn "C"(i32, $return: &out i32); call move f(...)  C-ABI indirect call
+
+extern "C" fn imported(x: i32, $return: &out i32);
+
+"C" fn defined(x: i32, $return: &out i32) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+"C" fn void_return(x: i32) {
+  entry:
+    return
+}
+
+fn call_c_direct($return: &out i32) {
+  tmp: i32;
+  tmp_out: &out i32;
+  entry:
+    tmp_out = &out tmp;
+    call defined(7i32, move tmp_out);
+    $return.* = copy tmp;
+    return
+}
+
+fn silica_indirect(x: i32, $return: &out i32) {
+  f: fn(i32, $return: &out i32);
+  tmp: i32;
+  tmp_out: &out i32;
+  entry:
+    f = silica_helper;
+    tmp_out = &out tmp;
+    call move f(copy x, move tmp_out);
+    $return.* = copy tmp;
+    return
+}
+
+fn silica_helper(x: i32, $return: &out i32) {
+  entry:
+    $return.* = copy x;
+    return
+}
+
+fn c_indirect(x: i32, $return: &out i32) {
+  f: fn "C"(i32, $return: &out i32);
+  tmp: i32;
+  tmp_out: &out i32;
+  entry:
+    f = defined;
+    tmp_out = &out tmp;
+    call move f(copy x, move tmp_out);
+    $return.* = copy tmp;
+    return
+}

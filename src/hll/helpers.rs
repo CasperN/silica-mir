@@ -104,10 +104,12 @@ pub fn array_ty(elem: Type, n: u64) -> Type {
     Type::synthesized(TypeKind::Array(Box::new(elem), n))
 }
 
-/// HLL function type has an explicit return type (unlike MIR, whose
-/// results go through `&out $return`).
-pub fn fn_ty(params: Vec<Type>, ret: Type) -> Type {
-    Type::synthesized(TypeKind::Fn(params, Box::new(ret)))
+pub fn fn_ty(abi: Abi, params: Vec<Type>, ret: Type) -> Type {
+    Type::synthesized(TypeKind::Fn {
+        abi,
+        params,
+        ret: Box::new(ret),
+    })
 }
 
 // ---------- Inference ----------

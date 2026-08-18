@@ -974,6 +974,16 @@
     "type": "type",
     "named": true,
     "fields": {
+      "abi": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "string_lit",
+            "named": true
+          }
+        ]
+      },
       "element": {
         "multiple": false,
         "required": false,
@@ -990,6 +1000,26 @@
         "types": [
           {
             "type": "int_lit",
+            "named": true
+          }
+        ]
+      },
+      "return_marker": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "$return",
+            "named": false
+          }
+        ]
+      },
+      "return_ty": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
             "named": true
           }
         ]
@@ -1097,6 +1127,10 @@
         ]
       }
     }
+  },
+  {
+    "type": "$return",
+    "named": false
   },
   {
     "type": "&",

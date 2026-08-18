@@ -75,9 +75,26 @@ extern "C" fn c_without_unsafe(x: i64);
 # is safe by import contract.
 extern unsafe fn silica_marked_unsafe(x: i64);
 
-# Local + non-Silica ABI (a Silica-defined function exposing a C-
-# compatible signature) is reserved for the ABI-in-type work.
-"C" fn c_defined() { unit }
+# ---------- HTC-TypeMismatch: fn-value ABI mismatches ----------
+
+# ABI is part of fn-type identity; passing a C-ABI fn value where a
+# Silica-ABI fn type is expected, or vice versa, is a type error.
+# Positive coverage: `hll_hello_world_via_write.si` calls a C-ABI fn
+# directly (no fn-value round-trip).
+extern "C" unsafe fn c_valued(x: i64) -> i64;
+
+fn accepts_silica(f: fn(i64) -> i64) -> i64 {
+  f(42)
+}
+
+fn abi_mismatch_via_arg() -> i64 {
+  accepts_silica(c_valued)
+}
+
+fn abi_mismatch_via_let() {
+  let f: fn(i64) -> i64 = c_valued;
+  f(1);
+}
 
 # ---------- HTC-UnaryOpInvalidOperand ----------
 

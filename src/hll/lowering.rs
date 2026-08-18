@@ -578,15 +578,20 @@ fn lower_type(ty: &hll::Type) -> mir::Type {
             mir::TypeKind::Ref(*kind, lt.clone(), Box::new(lower_type(inner)))
         }
         hll::TypeKind::RawPtr(inner) => mir::TypeKind::RawPtr(Box::new(lower_type(inner))),
-        hll::TypeKind::Fn(params, ret) => {
+        hll::TypeKind::Fn { abi, params, ret } => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();
-            if ret.kind != hll::TypeKind::Unit {
+            let has_return_param = ret.kind != hll::TypeKind::Unit;
+            if has_return_param {
                 mir_params.push(mir::Type::new(
                     mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(ret))),
                     mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, ret.span()),
                 ));
             }
-            mir::TypeKind::Fn(mir_params)
+            mir::TypeKind::Fn {
+                abi: *abi,
+                params: mir_params,
+                has_return_param,
+            }
         }
         hll::TypeKind::Array(inner, size) => {
             mir::TypeKind::Array(Box::new(lower_type(inner)), *size)

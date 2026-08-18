@@ -158,11 +158,25 @@ impl DiagnosticFormat {
                 Ok(())
             }
             TypeKind::Param(name) => out.write_str(name),
-            TypeKind::Fn(params) => {
-                out.write_str("fn(")?;
+            TypeKind::Fn {
+                abi,
+                params,
+                has_return_param,
+            } => {
+                out.write_str("fn")?;
+                let abi_str = abi.as_str();
+                if !abi_str.is_empty() {
+                    out.push(' ');
+                    out.write_str(abi_str)?;
+                }
+                out.push('(');
+                let last = params.len().saturating_sub(1);
                 for (index, param) in params.iter().enumerate() {
                     if index > 0 {
                         out.write_str(", ")?;
+                    }
+                    if *has_return_param && index == last {
+                        out.write_str("$return: ")?;
                     }
                     self.write_type(scope, param, out)?;
                 }

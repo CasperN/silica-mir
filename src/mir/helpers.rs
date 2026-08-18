@@ -157,10 +157,12 @@ pub fn array_ty(elem: Type, n: u64) -> Type {
     Type::synthesized(TypeKind::Array(Box::new(elem), n))
 }
 
-/// Function-pointer type. MIR has no return type — results go through
-/// `&out $return`.
-pub fn fn_ty(params: Vec<Type>) -> Type {
-    Type::synthesized(TypeKind::Fn(params))
+pub fn fn_ty(abi: Abi, params: Vec<Type>, has_return_param: bool) -> Type {
+    Type::synthesized(TypeKind::Fn {
+        abi,
+        params,
+        has_return_param,
+    })
 }
 
 // ---------- Places ----------

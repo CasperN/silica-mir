@@ -8,9 +8,9 @@ fn field_value<'s0>(value: i64, $return: &'s0 out i64) {
 }
 
 struct Dispatch<'s0, 's1, 's2>: Copy + Drop {
-  priority: fn(i64, &'s0 out i64)
-  trait_over_field: fn(i64, &'s1 out i64)
-  field_over_free: fn(i64, &'s2 out i64)
+  priority: fn(i64, $return: &'s0 out i64)
+  trait_over_field: fn(i64, $return: &'s1 out i64)
+  field_over_free: fn(i64, $return: &'s2 out i64)
   free_over_noncallable: i64
 }
 

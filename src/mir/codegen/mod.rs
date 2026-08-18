@@ -214,7 +214,7 @@ impl<'a> CodeGenContext<'a> {
             TypeKind::Float(FloatTy::F64) => "double".to_string(),
             TypeKind::Bool => "i1".to_string(),
             TypeKind::Unit | TypeKind::Never => "{}".to_string(),
-            TypeKind::Ref(_, _, _) | TypeKind::Fn(_) | TypeKind::RawPtr(_) => "ptr".to_string(),
+            TypeKind::Ref(_, _, _) | TypeKind::Fn { .. } | TypeKind::RawPtr(_) => "ptr".to_string(),
             TypeKind::Custom(Instance {
                 name,
                 type_args: args,
@@ -556,7 +556,12 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 }
             }
             let (target_val, target_ty) = emit_operand(cx, target);
-            let TypeKind::Fn(param_tys) = &target_ty.kind else {
+            let TypeKind::Fn {
+                abi: callee_abi,
+                params: param_tys,
+                has_return_param,
+            } = &target_ty.kind
+            else {
                 panic!("call target is not a function type: {:?}", target_ty);
             };
             let mut arg_pairs: Vec<(String, String)> = Vec::with_capacity(args.len());
@@ -564,33 +569,12 @@ fn emit_stmt(cx: &mut CodeGenContext, stmt: &Statement) {
                 let (v, t) = emit_operand(cx, a);
                 arg_pairs.push((cx.lower_type(&t), v));
             }
-            let _ = param_tys; // types are already implicit in arg_pairs
 
-            let callee_use_reg_ret = if let Operand::Const(ConstVal::FnName(instance)) = target {
-                if let Some(callee_f) = cx.prog.functions.get(&instance.name) {
-                    uses_register_return(callee_f.abi)
-                } else {
-                    false
-                }
-            } else {
-                false
-            };
-
-            let ret_llvm = if callee_use_reg_ret {
-                if let Operand::Const(ConstVal::FnName(instance)) = target {
-                    if let Some(f) = cx.prog.functions.get(&instance.name) {
-                        if let Some(p) = get_return_param(&f.params) {
-                            if let TypeKind::Ref(_, _, inner) = &p.ty.kind {
-                                Some(cx.lower_type(inner))
-                            } else {
-                                None
-                            }
-                        } else {
-                            None
-                        }
-                    } else {
-                        None
-                    }
+            let callee_use_reg_ret = uses_register_return(*callee_abi);
+            let ret_llvm = if callee_use_reg_ret && *has_return_param {
+                let last = param_tys.last().expect("has_return_param without trailing param");
+                if let TypeKind::Ref(_, _, inner) = &last.kind {
+                    Some(cx.lower_type(inner))
                 } else {
                     None
                 }
@@ -966,7 +950,10 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
                 .get(&instance.name)
                 .unwrap_or_else(|| panic!("undeclared function '{}'", instance.name));
             let param_tys = f.params.iter().map(|p| p.ty.clone()).collect();
-            (format!("@{}", llvm_fn_symbol(&instance.name)), fn_ty(param_tys))
+            (
+                format!("@{}", llvm_fn_symbol(&instance.name)),
+                fn_ty(f.abi, param_tys, f.has_return_param()),
+            )
         }
         ConstVal::ByteStr(bytes) => (
             llvm_byte_str_literal(bytes),

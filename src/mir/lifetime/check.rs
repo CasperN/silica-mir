@@ -601,7 +601,7 @@ fn emit_type_wf_constraints(ty: &Type, prog: &IndexedProgram, cs: &mut constrain
         TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
             emit_type_wf_constraints(inner, prog, cs);
         }
-        TypeKind::Fn(inners) => {
+        TypeKind::Fn { params: inners, .. } => {
             for i in inners {
                 emit_type_wf_constraints(i, prog, cs);
             }
@@ -695,7 +695,7 @@ fn collect_named_regions(
             }
             visited.remove(name);
         }
-        TypeKind::Fn(args) => {
+        TypeKind::Fn { params: args, .. } => {
             for a in args {
                 collect_named_regions(a, prog, visited, out);
             }
@@ -1788,7 +1788,7 @@ impl<'a> Checker<'a> {
             | TypeKind::Bool
             | TypeKind::Never
             | TypeKind::Param(_)
-            | TypeKind::Fn(_) => {}
+            | TypeKind::Fn { .. } => {}
         }
     }
 

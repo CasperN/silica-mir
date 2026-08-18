@@ -616,6 +616,22 @@
               "value": "fn"
             },
             {
+              "type": "CHOICE",
+              "members": [
+                {
+                  "type": "FIELD",
+                  "name": "abi",
+                  "content": {
+                    "type": "SYMBOL",
+                    "name": "string_lit"
+                  }
+                },
+                {
+                  "type": "BLANK"
+                }
+              ]
+            },
+            {
               "type": "STRING",
               "value": "("
             },

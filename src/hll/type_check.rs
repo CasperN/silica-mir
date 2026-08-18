@@ -536,14 +536,31 @@ impl Subst {
             (TypeKind::Array(inner1, size1), TypeKind::Array(inner2, size2)) if size1 == size2 => {
                 self.unify(inner1, inner2)
             }
-            (TypeKind::Fn(p1, r1), TypeKind::Fn(p2, r2)) => {
+            (
+                TypeKind::Fn {
+                    abi: abi1,
+                    params: p1,
+                    ret: ret1,
+                },
+                TypeKind::Fn {
+                    abi: abi2,
+                    params: p2,
+                    ret: ret2,
+                },
+            ) => {
+                if abi1 != abi2 {
+                    return Err(UnifyError::Mismatch {
+                        expected: r1.clone(),
+                        found: r2.clone(),
+                    });
+                }
                 if p1.len() != p2.len() {
                     return Err(UnifyError::ArityMismatch);
                 }
                 for (a1, a2) in p1.iter().zip(p2.iter()) {
                     self.unify(a1, a2)?;
                 }
-                self.unify(r1, r2)
+                self.unify(ret1, ret2)
             }
             (_, _) => Err(UnifyError::Mismatch {
                 expected: r1,
@@ -576,7 +593,7 @@ impl Subst {
             TypeKind::Ref(_, _, inner) => self.occurs_in(id, inner),
             TypeKind::RawPtr(inner) => self.occurs_in(id, inner),
             TypeKind::Array(inner, _) => self.occurs_in(id, inner),
-            TypeKind::Fn(params, ret) => {
+            TypeKind::Fn { params, ret, .. } => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
             TypeKind::Custom(Instance {
@@ -657,7 +674,7 @@ impl TypeEnv {
             | TypeKind::Bool
             | TypeKind::Unit
             | TypeKind::Never => all(),
-            TypeKind::Fn(_, _) | TypeKind::RawPtr(_) => all(),
+            TypeKind::Fn { .. } | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(Instance { name, .. }) => {
                 if let Some(s) = self.structs.get(name) {
@@ -726,7 +743,7 @@ impl TypeEnv {
             TypeKind::Ref(_, _, inner) | TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
                 self.validate_type(inner, scope, d);
             }
-            TypeKind::Fn(params, ret) => {
+            TypeKind::Fn { params, ret, .. } => {
                 for p in params {
                     self.validate_type(p, scope, d);
                 }
@@ -1643,19 +1660,6 @@ fn validate_fn_modifiers(f: &FnDecl, context: &str, d: &mut Diagnostics) {
             );
         }
     }
-    if f.linkage == Linkage::Local && f.abi != Abi::Silica {
-        d.push_error(
-            source_diagnostic(
-                HllTypeCheckCode::InvalidFnModifiers,
-                f.source,
-                format!(
-                    "non-Silica ABI on defined function '{}' not yet supported",
-                    f.name
-                ),
-            )
-            .in_function(context),
-        );
-    }
     if f.linkage == Linkage::Foreign {
         match (f.abi, f.is_unsafe) {
             (Abi::Silica, true) => d.push_error(
@@ -1699,7 +1703,7 @@ fn collect_unresolved_vars(ty: &Type, subst: &Subst, vars: &mut HashSet<usize>) 
         TypeKind::Ref(_, _, inner) => collect_unresolved_vars(inner, subst, vars),
         TypeKind::RawPtr(inner) => collect_unresolved_vars(inner, subst, vars),
         TypeKind::Array(inner, _) => collect_unresolved_vars(inner, subst, vars),
-        TypeKind::Fn(params, ret) => {
+        TypeKind::Fn { params, ret, .. } => {
             for p in params {
                 collect_unresolved_vars(p, subst, vars);
             }
@@ -1871,7 +1875,7 @@ fn instantiate_function(
         type_mapping: mapping,
         lifetime_mapping,
     });
-    Some((fn_ty(params, ret), instance))
+    Some((fn_ty(signature.abi, params, ret), instance))
 }
 
 #[derive(Clone, Default)]
@@ -1976,8 +1980,20 @@ fn match_impl_type(
             lifetime_parameters,
             bindings,
         ),
-        (TypeKind::Fn(pattern_params, pattern_ret), TypeKind::Fn(actual_params, actual_ret)) => {
-            pattern_params.len() == actual_params.len()
+        (
+            TypeKind::Fn {
+                abi: pattern_abi,
+                params: pattern_params,
+                ret: pattern_ret,
+            },
+            TypeKind::Fn {
+                abi: actual_abi,
+                params: actual_params,
+                ret: actual_ret,
+            },
+        ) => {
+            pattern_abi == actual_abi
+                && pattern_params.len() == actual_params.len()
                 && pattern_params
                     .iter()
                     .zip(actual_params)
@@ -2308,7 +2324,7 @@ fn receiver_adjustment_for_fn(
     function_ty: &Type,
     receiver_ty: &Type,
 ) -> ReceiverAdjustment {
-    let TypeKind::Fn(params, _) = &subst.resolve(function_ty).kind else {
+    let TypeKind::Fn { params, ret: _, .. } = &subst.resolve(function_ty).kind else {
         return ReceiverAdjustment::None;
     };
     let Some(receiver_param) = params.first() else {
@@ -2582,7 +2598,7 @@ fn instantiate_method_signature(
         lifetime_mapping,
     });
     Some((
-        fn_ty(params, ret),
+        fn_ty(method.abi, params, ret),
         Instance::new(method.name.clone(), method_lifetime_args, method_type_args),
     ))
 }
@@ -2956,7 +2972,11 @@ fn resolve_path_call(
 
                 let subst_payload = substitute_all(&variant.ty, &mapping, &lifetime_mapping);
                 let fn_ty = Type::new(
-                    TypeKind::Fn(vec![subst_payload], Box::new(enum_res_ty)),
+                    TypeKind::Fn {
+                        abi: Abi::Silica,
+                        params: vec![subst_payload],
+                        ret: Box::new(enum_res_ty),
+                    },
                     SourceInfo::written(selector_source.span()),
                 );
 
@@ -3373,7 +3393,7 @@ fn resolve_receiver_call(
     let field_ty = receiver_field_type(env, subst, &receiver_ty, method_name);
     let callable_field = matches!(
         field_ty.as_ref().map(|ty| &ty.kind),
-        Some(TypeKind::Fn(_, _))
+        Some(TypeKind::Fn { .. })
     );
     if callable_field && generics.is_empty() {
         types.receiver_calls.insert(
@@ -3741,7 +3761,7 @@ fn infer_inner(
             if resolved.kind == TypeKind::Error {
                 return error_ty();
             }
-            if let TypeKind::Fn(param_tys, ret_ty) = resolved.kind {
+            if let TypeKind::Fn { params: param_tys, ret: ret_ty, .. } = resolved.kind {
                 let implicit_count = usize::from(receiver_ty.is_some());
                 if param_tys.len() != args.len() + implicit_count {
                     let (expected, found) = if param_tys.len() < implicit_count {
@@ -4080,7 +4100,7 @@ fn infer_inner(
             ) else {
                 return error_ty();
             };
-            if let TypeKind::Fn(params, ret_ty) = subst.resolve(&fn_ty).kind {
+            if let TypeKind::Fn { params, ret: ret_ty, .. } = subst.resolve(&fn_ty).kind {
                 if !params.is_empty() {
                     d.push_error(source_diagnostic(
                         ArityMismatch,
@@ -4534,8 +4554,8 @@ mod tests {
         assert!(subst.can_unify(&variable, &i64_ty()));
         assert_eq!(subst.resolve(&variable), variable);
 
-        let expected = fn_ty(vec![variable.clone(), bool_ty()], unit_ty());
-        let found = fn_ty(vec![i64_ty(), i64_ty()], unit_ty());
+        let expected = fn_ty(Abi::Silica, vec![variable.clone(), bool_ty()], unit_ty());
+        let found = fn_ty(Abi::Silica, vec![i64_ty(), i64_ty()], unit_ty());
         assert!(!subst.can_unify(&expected, &found));
         assert_eq!(subst.resolve(&variable), variable);
     }

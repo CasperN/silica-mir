@@ -1,0 +1,65 @@
+extern "C" fn imported<'s0>(x: i32, $return: &'s0 out i32);
+
+"C" fn defined<'s0>(x: i32, $return: &'s0 out i32) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    drop x;
+    return
+}
+
+"C" fn void_return(x: i32) {
+  entry:
+    drop x;
+    return
+}
+
+fn call_c_direct<'s0>($return: &'s0 out i32) {
+  tmp: i32;
+  tmp_out: &out i32;
+  entry:
+    tmp_out = &out tmp;
+    call defined(7i32, move tmp_out);
+    $return.* = copy tmp;
+    unborrow $return;
+    drop tmp;
+    return
+}
+
+fn silica_indirect<'s0>(x: i32, $return: &'s0 out i32) {
+  f: fn(i32, $return: &out i32);
+  tmp: i32;
+  tmp_out: &out i32;
+  entry:
+    f = silica_helper;
+    tmp_out = &out tmp;
+    call move f(copy x, move tmp_out);
+    $return.* = copy tmp;
+    unborrow $return;
+    drop tmp;
+    drop x;
+    return
+}
+
+fn silica_helper<'s0>(x: i32, $return: &'s0 out i32) {
+  entry:
+    $return.* = copy x;
+    unborrow $return;
+    drop x;
+    return
+}
+
+fn c_indirect<'s0>(x: i32, $return: &'s0 out i32) {
+  f: fn "C"(i32, $return: &out i32);
+  tmp: i32;
+  tmp_out: &out i32;
+  entry:
+    f = defined;
+    tmp_out = &out tmp;
+    call move f(copy x, move tmp_out);
+    $return.* = copy tmp;
+    unborrow $return;
+    drop tmp;
+    drop x;
+    return
+}

@@ -12,7 +12,7 @@ fn bypass() {
   r: &i64;
   ret_slot: &i64;
   ret_out: &out &i64;
-  g: fn(&i64, &out &i64);
+  g: fn(&i64, $return: &out &i64);
   read: i64;
   entry:
     x = 42;

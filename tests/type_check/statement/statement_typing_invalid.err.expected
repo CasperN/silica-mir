@@ -1,89 +1,103 @@
-error: at 34:5: [TC-AssignmentTypeMismatch] In function 'assign_type_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+error: at 36:5: [TC-AssignmentTypeMismatch] In function 'assign_type_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
     |
- 33 |   entry:
- 34 |     x = true;
+ 35 |   entry:
+ 36 |     x = true;
     |     ^^^^^^^^
- 35 |     return
+ 37 |     return
     |
-error: at 44:5: [TC-AssignmentTypeMismatch] In function 'assign_field_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
+error: at 46:5: [TC-AssignmentTypeMismatch] In function 'assign_field_mismatch', block 'entry': Type mismatch in assignment. LHS is i64, RHS is bool
     |
- 43 |   entry:
- 44 |     s.f = true;
+ 45 |   entry:
+ 46 |     s.f = true;
     |     ^^^^^^^^^^
- 45 |     return
+ 47 |     return
     |
-error: at 55:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_arity_mismatch', block 'entry': Type mismatch in assignment. LHS is fn(i64, i64), RHS is fn(i64)
+error: at 57:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_arity_mismatch', block 'entry': Type mismatch in assignment. LHS is fn(i64, i64), RHS is fn(i64)
     |
- 54 |   entry:
- 55 |     g = callee;
+ 56 |   entry:
+ 57 |     g = callee;
     |     ^^^^^^^^^^
- 56 |     return
+ 58 |     return
     |
-error: at 66:5: [TC-AssignmentTypeMismatch] In function 'assign_ref_kind_mismatch', block 'entry': Type mismatch in assignment. LHS is &mut i64, RHS is &i64
+error: at 74:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_abi_mismatch', block 'entry': Type mismatch in assignment. LHS is fn(i32, $return: &out i32), RHS is fn "C"(i32, $return: &'s0 out i32)
     |
- 65 |   entry:
- 66 |     r = &y;
-    |     ^^^^^^
- 67 |     return
+ 73 |   entry:
+ 74 |     f = c_helper;
+    |     ^^^^^^^^^^^^
+ 75 |     return
     |
-error: at 78:5: [TC-CallTargetNotFunction] In function 'call_non_function_target', block 'entry': Call target is not a function type: i64
+error: at 92:5: [TC-AssignmentTypeMismatch] In function 'assign_fn_ret_mismatch', block 'entry': Type mismatch in assignment. LHS is fn(i32, &out i32), RHS is fn(i32, $return: &'s0 out i32)
     |
- 77 |     x = 42;
- 78 |     call copy x();
-    |     ^^^^^^^^^^^^^
- 79 |     return
+ 91 |   entry:
+ 92 |     f = ret_flag_helper;
+    |     ^^^^^^^^^^^^^^^^^^^
+ 93 |     return
     |
-error: at 88:5: [TC-CallWrongArity] In function 'call_wrong_arity', block 'entry': Wrong number of arguments for call. Expected 2, found 1
-    |
- 87 |   entry:
- 88 |     call add(1);
-    |     ^^^^^^^^^^^
- 89 |     return
-    |
-error: at 98:5: [TC-CallArgTypeMismatch] In function 'call_wrong_arg_type', block 'entry': Call argument 0 type mismatch. Expected i64, found bool
-    |
- 97 |   entry:
- 98 |     call takes_num(true);
-    |     ^^^^^^^^^^^^^^^^^^^^
- 99 |     return
-    |
-error: at 110:5: [TC-CallArgTypeMismatch] In function 'call_ref_kind_mismatch', block 'entry': Call argument 0 type mismatch. Expected &'1 drop i64, found &mut i64
+error: at 103:5: [TC-AssignmentTypeMismatch] In function 'assign_ref_kind_mismatch', block 'entry': Type mismatch in assignment. LHS is &mut i64, RHS is &i64
      |
-  22 | extern fn takes_num(a: i64);
-  23 | extern fn takes_drop_ref(r: &drop i64);
+ 102 |   entry:
+ 103 |     r = &y;
+     |     ^^^^^^
+ 104 |     return
+     |
+error: at 115:5: [TC-CallTargetNotFunction] In function 'call_non_function_target', block 'entry': Call target is not a function type: i64
+     |
+ 114 |     x = 42;
+ 115 |     call copy x();
+     |     ^^^^^^^^^^^^^
+ 116 |     return
+     |
+error: at 125:5: [TC-CallWrongArity] In function 'call_wrong_arity', block 'entry': Wrong number of arguments for call. Expected 2, found 1
+     |
+ 124 |   entry:
+ 125 |     call add(1);
+     |     ^^^^^^^^^^^
+ 126 |     return
+     |
+error: at 135:5: [TC-CallArgTypeMismatch] In function 'call_wrong_arg_type', block 'entry': Call argument 0 type mismatch. Expected i64, found bool
+     |
+ 134 |   entry:
+ 135 |     call takes_num(true);
+     |     ^^^^^^^^^^^^^^^^^^^^
+ 136 |     return
+     |
+error: at 147:5: [TC-CallArgTypeMismatch] In function 'call_ref_kind_mismatch', block 'entry': Call argument 0 type mismatch. Expected &'1 drop i64, found &mut i64
+     |
+  24 | extern fn takes_num(a: i64);
+  25 | extern fn takes_drop_ref(r: &drop i64);
      |                             --------- the lifetime of this reference is called '1 in this diagnostic
-  24 | extern fn add(a: i64, b: i64);
+  26 | extern fn add(a: i64, b: i64);
      |
      | ...
      |
- 109 |     r = &mut y;
- 110 |     call takes_drop_ref(move r);
+ 146 |     r = &mut y;
+ 147 |     call takes_drop_ref(move r);
      |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 111 |     return
+ 148 |     return
      |
-error: at 120:5: [TC-UndeclaredVariable] In function 'drop_undeclared_var', block 'entry': Use of undeclared variable 'x'
+error: at 157:5: [TC-UndeclaredVariable] In function 'drop_undeclared_var', block 'entry': Use of undeclared variable 'x'
      |
- 119 |   entry:
- 120 |     drop x;
+ 156 |   entry:
+ 157 |     drop x;
      |     ^^^^^^
- 121 |     return
+ 158 |     return
      |
-error: at 132:5: [TC-UnborrowNonReference] In function 'unborrow_non_reference', block 'entry': unborrow requires a reference-typed place, found i64
+error: at 169:5: [TC-UnborrowNonReference] In function 'unborrow_non_reference', block 'entry': unborrow requires a reference-typed place, found i64
      |
- 131 |     x = 0;
- 132 |     unborrow x;
+ 168 |     x = 0;
+ 169 |     unborrow x;
      |     ^^^^^^^^^^
- 133 |     return
+ 170 |     return
      |
-error: at 45:5: [PS-ReturnValueLeak] In function 'assign_field_mismatch', block 'entry': value 's' of type S is not consumed at return
+error: at 47:5: [PS-ReturnValueLeak] In function 'assign_field_mismatch', block 'entry': value 's' of type S is not consumed at return
     |
- 41 | # mismatch on the field projection lhs.
- 42 | fn assign_field_mismatch(s: S) {
+ 43 | # mismatch on the field projection lhs.
+ 44 | fn assign_field_mismatch(s: S) {
     |                          ---- variable declared here
- 43 |   entry:
- 44 |     s.f = true;
- 45 |     return
+ 45 |   entry:
+ 46 |     s.f = true;
+ 47 |     return
     |     ^^^^^^
- 46 | }
+ 48 | }
     |
   hint: linear values must be consumed or returned before function exit. Try moving or dropping it.

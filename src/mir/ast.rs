@@ -133,12 +133,19 @@ pub enum TypeKind {
     /// enclosing decl (struct/enum/fn). Written as a bare identifier
     /// in source; the parser emits this variant when the name is in
     /// the current decl's type-parameter scope. This is a *named*
-    /// parameter, not a solver metavariable — the checker never
-    /// substitutes or unifies it. Substructural markers come from the
-    /// param's declared bounds. Codegen internal-errors on this
-    /// variant; concretization happens at monomorphization time.
+    /// parameter, not a solver metavariable.
     Param(String),
-    Fn(Vec<Type>),
+    /// `has_return_param` distinguishes a trailing `&out R` that is the
+    /// return channel from a genuine out-parameter — a distinction that
+    /// matters for register-return ABIs, where
+    /// `extern "C" fn foo(a: i32, $return: &out i32)` lowers to
+    /// `int32_t foo(int32_t)` but `extern "C" fn foo(a: i32, b: &out i32)`
+    /// lowers to `void foo(int32_t, int32_t*)`.
+    Fn {
+        abi: Abi,
+        params: Vec<Type>,
+        has_return_param: bool,
+    },
     Ref(RefKind, Option<Lifetime>, Box<Type>),
     /// Raw pointer. Aliasing is unrestricted; no loan tracking, no
     /// `(cur, post)` obligation. Deref is unchecked — the caller is
@@ -171,11 +178,24 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Never => write!(f, "never"),
             TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
-            TypeKind::Fn(params) => {
-                write!(f, "fn(")?;
+            TypeKind::Fn {
+                abi,
+                params,
+                has_return_param,
+            } => {
+                write!(f, "fn")?;
+                let abi_str = abi.as_str();
+                if !abi_str.is_empty() {
+                    write!(f, " {}", abi_str)?;
+                }
+                write!(f, "(")?;
+                let last = params.len().saturating_sub(1);
                 for (i, p) in params.iter().enumerate() {
                     if i > 0 {
                         write!(f, ", ")?;
+                    }
+                    if *has_return_param && i == last {
+                        write!(f, "$return: ")?;
                     }
                     write!(f, "{}", p)?;
                 }
@@ -886,6 +906,10 @@ impl Function {
                     .unwrap_or_else(|| p.ty.clone())
             })
             .collect()
+    }
+
+    pub fn has_return_param(&self) -> bool {
+        self.params.last().is_some_and(|p| p.name == "$return")
     }
 }
 

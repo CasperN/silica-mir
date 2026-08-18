@@ -146,16 +146,7 @@ non-default ABI.
 
 Implement this as the following sequence of independently reviewable commits:
 
-1. **Make function types ABI-bearing and calls type-directed.** Extend HLL and
-   MIR function types with the ABI, including surface syntax, formatting,
-   inference, unification, substitution, folding, monomorphization, and
-   function-item typing. ABI mismatches must be ordinary type errors. Refactor
-   codegen so direct and indirect calls select return and argument conventions
-   from the callee type rather than recovering them from a direct declaration.
-   Cover native and C-ABI declarations, definitions, function values, indirect
-   calls, and non-unit returns end to end in the same commit.
-
-2. **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
+1. **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
    inherent, and trait-impl methods; reject unsupported ABI names everywhere;
    require an impl method's ABI to match its trait signature; and preserve the
    selected method ABI through qualified calls, dot calls, lowering, and

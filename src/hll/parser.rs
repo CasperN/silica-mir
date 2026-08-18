@@ -1034,7 +1034,25 @@ impl Parser {
                     SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
                 )
             };
-            return Some(TypeKind::Fn(params, Box::new(ret)));
+            let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
+                let raw = self.get_text(abi_node);
+                Abi::from_str(raw).unwrap_or_else(|| {
+                    let msg = if raw == "\"Silica\"" {
+                        "the Silica ABI is the default; omit the ABI string".to_string()
+                    } else {
+                        format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
+                    };
+                    d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
+                    Abi::Silica
+                })
+            } else {
+                Abi::Silica
+            };
+            return Some(TypeKind::Fn {
+                abi,
+                params,
+                ret: Box::new(ret),
+            });
         }
         d.push_error(self.diag(
             first,
@@ -2634,9 +2652,9 @@ mod tests {
 
     #[test]
     fn fn_type_with_return_arrow() {
-        // `fn(i64) -> i64` → TypeKind::Fn([i64], i64).
+        // `fn(i64) -> i64` → TypeKind::Fn { params: [i64], ret: i64, .. }.
         let params = first_fn_params("fn caller(f: fn(i64) -> i64) {}");
-        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {
             panic!("expected Fn type, got {:?}", params[0].ty);
         };
         assert_eq!(p.as_slice(), &[i64_ty()]);
@@ -2645,10 +2663,10 @@ mod tests {
 
     #[test]
     fn fn_type_without_arrow_defaults_to_unit() {
-        // `fn(i64)` → TypeKind::Fn([i64], unit). The arrow is optional;
+        // `fn(i64)` → TypeKind::Fn { params: [i64], ret: unit, .. }. The arrow is optional;
         // absence means the callee returns `unit`.
         let params = first_fn_params("fn caller(f: fn(i64)) {}");
-        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {
             panic!("expected Fn type, got {:?}", params[0].ty);
         };
         assert_eq!(p.as_slice(), &[i64_ty()]);
@@ -2659,7 +2677,7 @@ mod tests {
     fn fn_type_zero_params_no_arrow() {
         // `fn()` — nullary, no arrow → Fn([], unit).
         let params = first_fn_params("fn caller(f: fn()) {}");
-        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {
             panic!()
         };
         assert!(p.is_empty(), "expected empty param list, got {:?}", p);
@@ -2670,7 +2688,7 @@ mod tests {
     fn fn_type_zero_params_with_arrow() {
         // `fn() -> i64` — nullary with arrow → Fn([], i64).
         let params = first_fn_params("fn caller(f: fn() -> i64) {}");
-        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {
             panic!()
         };
         assert!(p.is_empty());
@@ -2684,7 +2702,7 @@ mod tests {
         // isn't accidentally included in the param list (my earlier
         // walker bug would have added it as a param).
         let params = first_fn_params("fn caller(f: fn(i64, bool) -> bool) {}");
-        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(p.as_slice(), &[i64_ty(), bool_ty()]);
@@ -2696,11 +2714,11 @@ mod tests {
         // `fn(fn(i64)) -> bool` — the fn-typed param is itself a
         // fn type. Exercises the walker's recursion.
         let params = first_fn_params("fn caller(f: fn(fn(i64)) -> bool) {}");
-        let TypeKind::Fn(outer_p, outer_r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: outer_p, ret: outer_r, .. } = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(outer_p.len(), 1);
-        let TypeKind::Fn(inner_p, inner_r) = &outer_p[0].kind else {
+        let TypeKind::Fn { params: inner_p, ret: inner_r, .. } = &outer_p[0].kind else {
             panic!("expected nested Fn type, got {:?}", outer_p[0]);
         };
         assert_eq!(inner_p.as_slice(), &[i64_ty()]);
@@ -2714,11 +2732,11 @@ mod tests {
         // fn type. Verifies the walker doesn't confuse where the
         // return type ends.
         let params = first_fn_params("fn caller(f: fn(i64) -> fn()) {}");
-        let TypeKind::Fn(p, r) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(p.as_slice(), &[i64_ty()]);
-        let TypeKind::Fn(ret_p, ret_r) = &r.kind else {
+        let TypeKind::Fn { params: ret_p, ret: ret_r, .. } = &r.kind else {
             panic!("expected Fn as return, got {:?}", r);
         };
         assert!(ret_p.is_empty());
@@ -2727,12 +2745,31 @@ mod tests {
 
     #[test]
     fn fn_type_trailing_comma_in_params() {
-        // `fn(i64, bool,)` — trailing comma tolerated by commaSep.
         let params = first_fn_params("fn caller(f: fn(i64, bool,) -> bool) {}");
-        let TypeKind::Fn(p, _) = &params[0].ty.kind else {
+        let TypeKind::Fn { params: p, ret: _, .. } = &params[0].ty.kind else {
             panic!()
         };
         assert_eq!(p.len(), 2);
+    }
+
+    #[test]
+    fn fn_type_default_abi_is_silica() {
+        let params = first_fn_params("fn caller(f: fn(i64) -> i64) {}");
+        let TypeKind::Fn { abi, .. } = &params[0].ty.kind else {
+            panic!()
+        };
+        assert_eq!(*abi, Abi::Silica);
+    }
+
+    #[test]
+    fn fn_type_with_c_abi() {
+        let params = first_fn_params("fn caller(f: fn \"C\"(i64) -> i64) {}");
+        let TypeKind::Fn { abi, params: p, ret } = &params[0].ty.kind else {
+            panic!("expected Fn type")
+        };
+        assert_eq!(*abi, Abi::C);
+        assert_eq!(p.as_slice(), &[i64_ty()]);
+        assert_eq!(**ret, i64_ty());
     }
 
     #[test]

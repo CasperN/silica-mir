@@ -1,34 +1,27 @@
-error: at 16:1: [PARSE-InvalidFnModifiers] extern function 'with_body' must not have a body
+error: at 17:1: [PARSE-InvalidFnModifiers] extern function 'with_body' must not have a body
     |
- 15 | 
- 16 | extern fn with_body() {
+ 16 | 
+ 17 | extern fn with_body() {
     | ^
- 17 |   entry:
+ 18 |   entry:
     |
-error: at 21:1: [PARSE-InvalidFnModifiers] function 'missing_body' has no body; add one or mark it 'extern'
+error: at 22:1: [PARSE-InvalidFnModifiers] function 'missing_body' has no body; add one or mark it 'extern'
     |
- 20 | 
- 21 | fn missing_body(x: i64);
+ 21 | 
+ 22 | fn missing_body(x: i64);
     | ^^^^^^^^^^^^^^^^^^^^^^^^
- 22 | 
+ 23 | 
     |
-error: at 23:1: [PARSE-InvalidFnModifiers] In function 'c_defined': non-Silica ABI on defined function 'c_defined' not yet supported
+error: at 24:8: [PARSE-UnknownAbi] the Silica ABI is the default; omit the ABI string
     |
- 22 | 
- 23 | "C" fn c_defined(x: i64) {
-    | ^
- 24 |   entry:
-    |
-error: at 28:8: [PARSE-UnknownAbi] the Silica ABI is the default; omit the ABI string
-    |
- 27 | 
- 28 | extern "Silica" fn spelled_silica(x: i64);
+ 23 | 
+ 24 | extern "Silica" fn spelled_silica(x: i64);
     |        ^^^^^^^^
- 29 | 
+ 25 | 
     |
-error: at 30:8: [PARSE-UnknownAbi] unknown extern ABI "system" — expected "C" or bare extern
+error: at 26:8: [PARSE-UnknownAbi] unknown extern ABI "system" — expected "C" or bare extern
     |
- 29 | 
- 30 | extern "system" fn unknown_abi(x: i64);
+ 25 | 
+ 26 | extern "system" fn unknown_abi(x: i64);
     |        ^^^^^^^^
     |

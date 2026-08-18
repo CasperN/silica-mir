@@ -741,7 +741,7 @@ fn plan_drops_for_place(
                 | TypeKind::Param(_)
                 | TypeKind::Ref(_, _, _)
                 | TypeKind::RawPtr(_)
-                | TypeKind::Fn(_) => {}
+                | TypeKind::Fn { .. } => {}
             }
         }
     }

@@ -379,6 +379,22 @@ impl Parser {
         Diagnostic::new(code, SourceInfo::written(span_of(node)), message)
     }
 
+    fn parse_fn_type_abi(&self, node: Node, d: &mut Diagnostics) -> Abi {
+        let Some(abi_node) = node.child_by_field_name("abi") else {
+            return Abi::Silica;
+        };
+        let raw = self.get_text(abi_node);
+        Abi::from_str(raw).unwrap_or_else(|| {
+            let msg = if raw == "\"Silica\"" {
+                "the Silica ABI is the default; omit the ABI string".to_string()
+            } else {
+                format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
+            };
+            d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
+            Abi::Silica
+        })
+    }
+
     /// Emit `ReservedIdent` if `name` is the reserved word `Self` and
     /// return whether it was rejected. `context` fills the diagnostic
     /// message ("a type-parameter name", "a struct name", etc.).
@@ -733,14 +749,26 @@ impl Parser {
 
                 match text {
                     "fn" => {
+                        let abi = self.parse_fn_type_abi(node, d);
+                        let return_ty_node = node.child_by_field_name("return_ty");
                         let mut params = Vec::new();
                         let mut cursor = node.walk();
                         for child in node.children(&mut cursor) {
-                            if child.kind() == "type" {
+                            if child.kind() == "type" && Some(child) != return_ty_node {
                                 params.push(self.map_type(child, d)?);
                             }
                         }
-                        Some(fn_ty(params))
+                        let has_return_param = if let Some(ret_ty_node) = return_ty_node {
+                            params.push(self.map_type(ret_ty_node, d)?);
+                            true
+                        } else {
+                            false
+                        };
+                        Some(Type::synthesized(TypeKind::Fn {
+                            abi,
+                            params,
+                            has_return_param,
+                        }))
                     }
                     _ => {
                         d.push_error(self.diag(
@@ -1961,20 +1989,7 @@ impl Parser {
         } else {
             Linkage::Local
         };
-        let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
-            let raw = self.get_text(abi_node);
-            Abi::from_str(raw).unwrap_or_else(|| {
-                let msg = if raw == "\"Silica\"" {
-                    "the Silica ABI is the default; omit the ABI string".to_string()
-                } else {
-                    format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
-                };
-                d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
-                Abi::Silica
-            })
-        } else {
-            Abi::Silica
-        };
+        let abi = self.parse_fn_type_abi(node, d);
         // Record diagnostics length so any errors pushed while parsing
         // this function's body can be tagged with `in_function(name)`
         // after the fact — mirrors the block-context annotation.
@@ -2107,17 +2122,6 @@ impl Parser {
             params,
             body,
         };
-        // Local + non-Silica ABI is reserved for the ABI-in-type work.
-        if f.linkage == Linkage::Local && f.abi != Abi::Silica {
-            d.push_error(self.diag(
-                node,
-                ParserCode::InvalidFnModifiers,
-                format!(
-                    "non-Silica ABI on defined function '{}' not yet supported",
-                    f.meta.name
-                ),
-            ));
-        }
         Some(f)
     }
 }

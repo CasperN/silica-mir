@@ -52,13 +52,13 @@ module.exports = grammar({
 
     ...common.rules,
 
-    // HLL type grammar: shared alternatives plus `fn(T,...)` with
-    // an optional `-> R` return arrow. Return type defaults to
-    // `unit` when the arrow is omitted.
+    // HLL type grammar: shared alternatives plus
+    // `fn [abi] (T, ...) [-> R]`. Return defaults to `unit`.
     type: $ => choice(
       ...common.typeChoices($),
       seq(
         'fn',
+        optional(field('abi', $.string_lit)),
         '(', common.commaSep($.type), ')',
         optional(seq('->', field('return_type', $.type))),
       ),
