@@ -1,9 +1,9 @@
-error: at 83:10: [HTC-UnknownAbi] In function 'UnknownAbiOnTraitMethod::u': unknown extern ABI "system" — expected "C" or bare extern
+error: at 81:3: [HTC-InvalidFnModifiers] In function 'TraitBodyDefault::with_body': trait method 'with_body' must not have a body
     |
- 82 | trait UnknownAbiOnTraitMethod {
- 83 |   extern "system" unsafe fn u(recv: &Self);
-    |          ^^^^^^^^
- 84 | }
+ 80 | trait TraitBodyDefault {
+ 81 |   fn with_body(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 82 | }
     |
 error: at 92:3: [HTC-InvalidFnModifiers] In function 'MissingUnsafeTrait::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
     |
@@ -61,51 +61,44 @@ error: at 53:3: [HTC-EmptySwitch] In function 'test_empty_match': empty switch e
     |   ^^^^^^^^^^^^^^
  54 | }
     |
-error: at 61:8: [HTC-UnknownAbi] In function 'win_api': unknown extern ABI "system" — expected "C" or bare extern
+error: at 66:1: [HTC-InvalidFnModifiers] In function 'c_without_unsafe': extern "C" function 'c_without_unsafe' must be unsafe
     |
- 60 | # `hll_hello_world_via_write.si` uses `extern "C" unsafe fn`.
- 61 | extern "system" fn win_api(x: i64);
-    |        ^^^^^^^^
- 62 | extern "fastcall" fn stdcall_thing(y: i64);
-    |
-error: at 62:8: [HTC-UnknownAbi] In function 'stdcall_thing': unknown extern ABI "fastcall" — expected "C" or bare extern
-    |
- 61 | extern "system" fn win_api(x: i64);
- 62 | extern "fastcall" fn stdcall_thing(y: i64);
-    |        ^^^^^^^^^^
- 63 | 
-    |
-error: at 66:8: [HTC-UnknownAbi] In function 'spelled_silica': the Silica ABI is the default; omit the ABI string
-    |
- 65 | # explicitly is rejected.
- 66 | extern "Silica" fn spelled_silica(x: i64);
-    |        ^^^^^^^^
+ 65 | # `hll_hello_world_via_write.si` uses `extern "C" unsafe fn`.
+ 66 | extern "C" fn c_without_unsafe(x: i64);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  67 | 
     |
-error: at 72:1: [HTC-InvalidFnModifiers] In function 'c_without_unsafe': extern "C" function 'c_without_unsafe' must be unsafe
+error: at 70:1: [HTC-InvalidFnModifiers] In function 'silica_marked_unsafe': extern Silica function 'silica_marked_unsafe' cannot be unsafe; safe by import contract
     |
- 71 | # calls carry FFI obligations.
- 72 | extern "C" fn c_without_unsafe(x: i64);
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 73 | 
-    |
-error: at 76:1: [HTC-InvalidFnModifiers] In function 'silica_marked_unsafe': extern Silica function 'silica_marked_unsafe' cannot be unsafe; safe by import contract
-    |
- 75 | # is safe by import contract.
- 76 | extern unsafe fn silica_marked_unsafe(x: i64);
+ 69 | # is safe by import contract.
+ 70 | extern unsafe fn silica_marked_unsafe(x: i64);
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 77 | 
+ 71 | 
     |
-error: at 88:10: [HTC-UnknownAbi] In function '<AbiHost as UnknownAbiHost>::h': unknown extern ABI "fastcall" — expected "C" or bare extern
+error: at 74:1: [HTC-InvalidFnModifiers] In function 'extern_with_body': extern function 'extern_with_body' must not have a body
     |
- 87 | impl UnknownAbiHost for AbiHost {
- 88 |   extern "fastcall" unsafe fn h(recv: &Self) { unit }
-    |          ^^^^^^^^^^
- 89 | }
+ 73 | # an error.
+ 74 | extern fn extern_with_body() { unit }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 75 | fn missing_body(x: i64);
     |
-error: at 96:3: [HTC-InvalidFnModifiers] In function '<AbiHost as MissingUnsafeTrait>::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
+error: at 75:1: [HTC-InvalidFnModifiers] In function 'missing_body': function 'missing_body' has no body; add one or mark it 'extern'
     |
- 95 | impl MissingUnsafeTrait for AbiHost {
+ 74 | extern fn extern_with_body() { unit }
+ 75 | fn missing_body(x: i64);
+    | ^^^^^^^^^^^^^^^^^^^^^^^^
+ 76 | 
+    |
+error: at 87:3: [HTC-InvalidFnModifiers] In function '<FnModifierHost as ImplBodyRequired>::slot': impl method 'slot' requires a body
+    |
+ 86 | impl ImplBodyRequired for FnModifierHost {
+ 87 |   fn slot(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^
+ 88 | }
+    |
+error: at 96:3: [HTC-InvalidFnModifiers] In function '<FnModifierHost as MissingUnsafeTrait>::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
+    |
+ 95 | impl MissingUnsafeTrait for FnModifierHost {
  96 |   extern "C" fn missing_unsafe(recv: &Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  97 | }

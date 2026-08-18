@@ -233,11 +233,6 @@ pub struct FnDecl {
     pub name: String,
     pub linkage: Linkage,
     pub abi: Abi,
-    /// Raw ABI clause text (including quotes) when the user wrote one,
-    /// carried through parsing so type-check can emit `UnknownAbi`
-    /// without blocking downstream type errors. `None` when the clause
-    /// was omitted.
-    pub abi_raw: Option<(String, SourceInfo)>,
     pub is_unsafe: bool,
     pub lifetime_params: Vec<LifetimeParam>,
     /// Inline outlives axioms declared on the fn's lifetime params

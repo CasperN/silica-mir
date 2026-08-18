@@ -1,7 +1,9 @@
-# HLL-specific trait and impl declaration shape errors.
+# HLL parse-time rejections of declaration shape errors. Fires before the
+# pipeline reaches typecheck, so mixed with typecheck cases would hide them.
 #
-# covers: trait bodies, bodyless impl methods, extern methods, duplicates,
-# nested generic shadowing and reserved Self positions
+# covers: bare extern on trait/impl methods, unknown ABI on free fns and
+# methods, duplicate method names, nested generic shadowing, reserved Self
+# positions, and qualified-method-as-value
 
 struct S: Copy + Drop { value: i64 }
 
@@ -9,12 +11,16 @@ struct Self: Copy + Drop { value: i64 }
 
 enum Self { Value: unit }
 
-trait Body {
-  fn body(recv: &Self) { unit }
-}
-
 trait ExternTrait {
   extern fn ext(recv: &Self);
+}
+
+trait UnknownAbiTrait {
+  extern "system" unsafe fn u(recv: &Self);
+}
+
+impl UnknownAbiTrait for S {
+  extern "fastcall" unsafe fn u(recv: &Self) { unit }
 }
 
 trait Duplicate {
@@ -23,10 +29,6 @@ trait Duplicate {
 }
 
 trait Required {
-  fn required(recv: &Self);
-}
-
-impl Required for S {
   fn required(recv: &Self);
 }
 
@@ -62,3 +64,9 @@ fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
 fn bare_qualified_method() {
   <S>::missing;
 }
+
+# Unrecognized ABI names on free fns. `Silica` is a redundant spelling of
+# the default ABI.
+extern "system" fn win_api(x: i64);
+extern "fastcall" fn stdcall_thing(y: i64);
+extern "Silica" fn spelled_silica(x: i64);

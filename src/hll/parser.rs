@@ -308,23 +308,7 @@ impl Parser {
         match child.kind() {
             "struct_decl" => Some(Declaration::Struct(self.map_struct_decl(child, d)?)),
             "enum_decl" => Some(Declaration::Enum(self.map_enum_decl(child, d)?)),
-            "fn_decl" => {
-                let f = self.map_fn_decl(child, d)?;
-                match (f.linkage, f.body.is_some()) {
-                    (Linkage::Foreign, true) => d.push_error(self.diag(
-                        child,
-                        ParserCode::InvalidFnModifiers,
-                        format!("extern function '{}' must not have a body", f.name),
-                    )),
-                    (Linkage::Local, false) => d.push_error(self.diag(
-                        child,
-                        ParserCode::InvalidFnModifiers,
-                        format!("function '{}' has no body; add one or mark it 'extern'", f.name),
-                    )),
-                    _ => {}
-                }
-                Some(Declaration::Fn(f))
-            }
+            "fn_decl" => Some(Declaration::Fn(self.map_fn_decl(child, d)?)),
             "trait_decl" => Some(Declaration::Trait(self.map_trait_decl(child, d)?)),
             "impl_decl" => Some(Declaration::Impl(self.map_impl_decl(child, d)?)),
             _ => {
@@ -504,6 +488,26 @@ impl Parser {
         self.map_fn_decl_in_scope(node, &TypeScope::default(), None, d)
     }
 
+    /// Resolve the optional `abi` clause on a fn decl or fn type. Emits
+    /// `PARSE-UnknownAbi` and recovers as `Abi::Silica` when the clause
+    /// text isn't a supported ABI or spells the default redundantly.
+    fn parse_abi_clause(&self, node: Node, d: &mut Diagnostics) -> Abi {
+        let Some(abi_node) = node.child_by_field_name("abi") else {
+            return Abi::Silica;
+        };
+        let raw = self.get_text(abi_node);
+        if let Some(abi) = Abi::from_str(raw) {
+            return abi;
+        }
+        let msg = if raw == "\"Silica\"" {
+            "the Silica ABI is the default; omit the ABI string".to_string()
+        } else {
+            format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
+        };
+        d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
+        Abi::Silica
+    }
+
     fn map_fn_decl_in_scope(
         &self,
         node: Node,
@@ -525,13 +529,7 @@ impl Parser {
         } else {
             Linkage::Local
         };
-        let (abi, abi_raw) = if let Some(abi_node) = node.child_by_field_name("abi") {
-            let raw = self.get_text(abi_node).to_string();
-            let abi = Abi::from_str(&raw).unwrap_or(Abi::Silica);
-            (abi, Some((raw, SourceInfo::written(span_of(abi_node)))))
-        } else {
-            (Abi::Silica, None)
-        };
+        let abi = self.parse_abi_clause(node, d);
 
         let mut scope = enclosing_scope.clone();
         let mut cursor = node.walk();
@@ -595,7 +593,6 @@ impl Parser {
             name,
             linkage,
             abi,
-            abi_raw,
             is_unsafe,
             lifetime_params,
             outlives,
@@ -703,7 +700,7 @@ impl Parser {
             let context = trait_method_context(&name, method_name);
             let mut method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
             if method.linkage == Linkage::Foreign {
-                if method.abi_raw.is_none() {
+                if child.child_by_field_name("abi").is_none() {
                     d.push_error(
                         self.diag(
                             child,
@@ -715,17 +712,6 @@ impl Parser {
                     continue;
                 }
                 method.linkage = Linkage::Local;
-            }
-            if method.body.is_some() {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::InvalidFnModifiers,
-                        format!("trait method '{}' must not have a body", method.name),
-                    )
-                    .in_function(&context),
-                );
-                continue;
             }
             if !names.insert(method.name.clone()) {
                 d.push_error(
@@ -811,7 +797,7 @@ impl Parser {
             let context = impl_method_context(&target, trait_path.as_ref(), method_name);
             let mut method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
             if method.linkage == Linkage::Foreign {
-                if method.abi_raw.is_none() {
+                if child.child_by_field_name("abi").is_none() {
                     d.push_error(
                         self.diag(
                             child,
@@ -823,17 +809,6 @@ impl Parser {
                     continue;
                 }
                 method.linkage = Linkage::Local;
-            }
-            if method.body.is_none() {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::InvalidFnModifiers,
-                        format!("impl method '{}' requires a body", method.name),
-                    )
-                    .in_function(&context),
-                );
-                continue;
             }
             if !names.insert(method.name.clone()) {
                 d.push_error(
@@ -1040,20 +1015,7 @@ impl Parser {
                     SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
                 )
             };
-            let abi = if let Some(abi_node) = node.child_by_field_name("abi") {
-                let raw = self.get_text(abi_node);
-                Abi::from_str(raw).unwrap_or_else(|| {
-                    let msg = if raw == "\"Silica\"" {
-                        "the Silica ABI is the default; omit the ABI string".to_string()
-                    } else {
-                        format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
-                    };
-                    d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
-                    Abi::Silica
-                })
-            } else {
-                Abi::Silica
-            };
+            let abi = self.parse_abi_clause(node, d);
             return Some(TypeKind::Fn {
                 abi,
                 params,

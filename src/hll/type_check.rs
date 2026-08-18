@@ -277,8 +277,6 @@ pub enum HllTypeCheckCode {
     UnsafeRequired,
     /// An impl method's safety does not match its trait declaration.
     ImplMethodSafetyMismatch,
-    /// `extern "..."` named an ABI other than `"C"`.
-    UnknownAbi,
     /// A function decl combines linkage, ABI, and safety in a way the
     /// language does not accept — e.g., `extern "C"` without `unsafe`,
     /// `extern` (Silica) with `unsafe`, or a Silica-defined function
@@ -1134,7 +1132,7 @@ pub(super) fn typecheck_program_collect(
                     let scope = type_params_scope(&params);
                     validate_type_param_bounds(&env, &method.type_params, &scope, d);
                     let context = trait_method_context(&t.name, &method.name);
-                    validate_fn_modifiers(method, &context, d);
+                    validate_fn_modifiers(method, FnDeclSite::TraitMethod, &context, d);
                     validate_fn_signature(&env, method, &params, &context, d);
                 }
             }
@@ -1195,14 +1193,14 @@ pub(super) fn typecheck_program_collect(
     for decl in &program.declarations {
         match decl {
             Declaration::Fn(f) => {
-                validate_fn_modifiers(f, &f.name, d);
+                validate_fn_modifiers(f, FnDeclSite::Free, &f.name, d);
                 check_fn_body(&mut env, &mut subst, &mut types, f, &[], &[], &f.name, d);
             }
             Declaration::Impl(i) => {
                 for method in &i.methods {
                     let context =
                         impl_method_context(&i.target, i.trait_path.as_ref(), &method.name);
-                    validate_fn_modifiers(method, &context, d);
+                    validate_fn_modifiers(method, FnDeclSite::ImplMethod, &context, d);
                     check_fn_body(
                         &mut env,
                         &mut subst,
@@ -1642,24 +1640,17 @@ fn check_instantiation_bounds(
     }
 }
 
-/// Deferred modifier checks that would otherwise block later passes if
-/// pushed at parse time. Runs on every free fn / trait method / impl
-/// method after parsing; body-vs-linkage combinations are already
-/// rejected structurally by the parser.
-fn validate_fn_modifiers(f: &FnDecl, context: &str, d: &mut Diagnostics) {
-    if let Some((raw, source)) = &f.abi_raw {
-        if Abi::from_str(raw).is_none() {
-            let msg = if raw == "\"Silica\"" {
-                "the Silica ABI is the default; omit the ABI string".to_string()
-            } else {
-                format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
-            };
-            d.push_error(
-                source_diagnostic(HllTypeCheckCode::UnknownAbi, *source, msg)
-                    .in_function(context),
-            );
-        }
-    }
+/// Where an FnDecl appears syntactically. Body-vs-linkage rules only
+/// apply at the free-fn site; trait and impl methods have context-
+/// specific body rules handled here too.
+#[derive(Debug, Clone, Copy)]
+pub enum FnDeclSite {
+    Free,
+    TraitMethod,
+    ImplMethod,
+}
+
+fn validate_fn_modifiers(f: &FnDecl, site: FnDeclSite, context: &str, d: &mut Diagnostics) {
     if f.abi == Abi::C && !f.is_unsafe {
         d.push_error(
             source_diagnostic(
@@ -1682,6 +1673,54 @@ fn validate_fn_modifiers(f: &FnDecl, context: &str, d: &mut Diagnostics) {
             )
             .in_function(context),
         );
+    }
+    match site {
+        FnDeclSite::Free => match (f.linkage, f.body.is_some()) {
+            (Linkage::Foreign, true) => d.push_error(
+                source_diagnostic(
+                    HllTypeCheckCode::InvalidFnModifiers,
+                    f.source,
+                    format!("extern function '{}' must not have a body", f.name),
+                )
+                .in_function(context),
+            ),
+            (Linkage::Local, false) => d.push_error(
+                source_diagnostic(
+                    HllTypeCheckCode::InvalidFnModifiers,
+                    f.source,
+                    format!(
+                        "function '{}' has no body; add one or mark it 'extern'",
+                        f.name
+                    ),
+                )
+                .in_function(context),
+            ),
+            _ => {}
+        },
+        FnDeclSite::TraitMethod => {
+            if f.body.is_some() {
+                d.push_error(
+                    source_diagnostic(
+                        HllTypeCheckCode::InvalidFnModifiers,
+                        f.source,
+                        format!("trait method '{}' must not have a body", f.name),
+                    )
+                    .in_function(context),
+                );
+            }
+        }
+        FnDeclSite::ImplMethod => {
+            if f.body.is_none() {
+                d.push_error(
+                    source_diagnostic(
+                        HllTypeCheckCode::InvalidFnModifiers,
+                        f.source,
+                        format!("impl method '{}' requires a body", f.name),
+                    )
+                    .in_function(context),
+                );
+            }
+        }
     }
 }
 

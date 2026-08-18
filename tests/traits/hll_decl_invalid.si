@@ -1,9 +1,11 @@
 # HLL declarations reach the MIR trait checker for cross-declaration rules.
+# These fixtures need to pass HLL parse and typecheck; body/linkage/ABI
+# rules that fire at typecheck live in `hll_diagnostics_type_checking.si`.
 #
 # covers: unknown traits, trait-argument arity, missing and extra methods,
 # signature and method-generic mismatch, impl-method lifetime shadowing,
-# invalid inherent targets, duplicate inherent methods across blocks, and
-# ABI-on-method rules (unknown ABI, unsafe requirement, trait/impl ABI parity)
+# invalid inherent targets, duplicate inherent methods across blocks,
+# and trait/impl ABI parity mismatches
 
 struct S: Copy + Drop { value: i64 }
 

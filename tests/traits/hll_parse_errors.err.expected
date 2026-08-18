@@ -1,91 +1,111 @@
-error: at 8:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a struct name
-   |
- 7 | 
- 8 | struct Self: Copy + Drop { value: i64 }
-   |        ^^^^
- 9 | 
-   |
-error: at 10:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as an enum name
+error: at 10:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a struct name
     |
   9 | 
- 10 | enum Self { Value: unit }
-    |      ^^^^
+ 10 | struct Self: Copy + Drop { value: i64 }
+    |        ^^^^
  11 | 
     |
-error: at 13:3: [PARSE-InvalidFnModifiers] In function 'Body::body': trait method 'body' must not have a body
+error: at 12:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as an enum name
     |
- 12 | trait Body {
- 13 |   fn body(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 14 | }
-    |
-error: at 17:3: [PARSE-InvalidFnModifiers] In function 'ExternTrait::ext': trait method 'ext' cannot be extern without an ABI clause; trait methods have no foreign symbol
-    |
- 16 | trait ExternTrait {
- 17 |   extern fn ext(recv: &Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 18 | }
-    |
-error: at 22:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
-    |
- 21 |   fn same(recv: &Self);
- 22 |   fn same(recv: &Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^
- 23 | }
-    |
-error: at 30:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' requires a body
-    |
- 29 | impl Required for S {
- 30 |   fn required(recv: &Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^
- 31 | }
-    |
-error: at 34:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern without an ABI clause; impl methods have no foreign symbol
-    |
- 33 | impl Required for S {
- 34 |   extern fn required(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 35 | }
-    |
-error: at 39:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
-    |
- 38 |   fn required(recv: &Self) { unit }
- 39 |   fn required(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 40 | }
-    |
-error: at 43:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
-    |
- 42 | impl<T> Required for S {
- 43 |   fn required<T>(recv: &Self) { unit }
-    |               ^
- 44 | }
-    |
-error: at 46:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
-    |
- 45 | 
- 46 | trait Self {
-    |       ^^^^
- 47 |   fn reserved(recv: &Self);
-    |
-error: at 50:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
-    |
- 49 | 
- 50 | impl Self for S {
+ 11 | 
+ 12 | enum Self { Value: unit }
     |      ^^^^
- 51 |   fn reserved(recv: &Self) { unit }
+ 13 | 
     |
-error: at 57:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+error: at 15:3: [PARSE-InvalidFnModifiers] In function 'ExternTrait::ext': trait method 'ext' cannot be extern without an ABI clause; trait methods have no foreign symbol
     |
- 56 | # covers: the same direct trait bound cannot be declared twice
- 57 | fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
+ 14 | trait ExternTrait {
+ 15 |   extern fn ext(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 16 | }
+    |
+error: at 19:10: [PARSE-UnknownAbi] In function 'UnknownAbiTrait::u': unknown extern ABI "system" — expected "C" or bare extern
+    |
+ 18 | trait UnknownAbiTrait {
+ 19 |   extern "system" unsafe fn u(recv: &Self);
+    |          ^^^^^^^^
+ 20 | }
+    |
+error: at 23:10: [PARSE-UnknownAbi] In function '<S as UnknownAbiTrait>::u': unknown extern ABI "fastcall" — expected "C" or bare extern
+    |
+ 22 | impl UnknownAbiTrait for S {
+ 23 |   extern "fastcall" unsafe fn u(recv: &Self) { unit }
+    |          ^^^^^^^^^^
+ 24 | }
+    |
+error: at 28:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
+    |
+ 27 |   fn same(recv: &Self);
+ 28 |   fn same(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^
+ 29 | }
+    |
+error: at 36:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern without an ABI clause; impl methods have no foreign symbol
+    |
+ 35 | impl Required for S {
+ 36 |   extern fn required(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 37 | }
+    |
+error: at 41:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
+    |
+ 40 |   fn required(recv: &Self) { unit }
+ 41 |   fn required(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 42 | }
+    |
+error: at 45:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
+    |
+ 44 | impl<T> Required for S {
+ 45 |   fn required<T>(recv: &Self) { unit }
+    |               ^
+ 46 | }
+    |
+error: at 48:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
+    |
+ 47 | 
+ 48 | trait Self {
+    |       ^^^^
+ 49 |   fn reserved(recv: &Self);
+    |
+error: at 52:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
+    |
+ 51 | 
+ 52 | impl Self for S {
+    |      ^^^^
+ 53 |   fn reserved(recv: &Self) { unit }
+    |
+error: at 59:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+    |
+ 58 | # covers: the same direct trait bound cannot be declared twice
+ 59 | fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
     |                                               ^^^^^^^^^^^^^^
- 58 |   value;
+ 60 |   value;
     |
-error: at 63:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called
+error: at 65:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called
     |
- 62 | fn bare_qualified_method() {
- 63 |   <S>::missing;
+ 64 | fn bare_qualified_method() {
+ 65 |   <S>::missing;
     |   ^^^^^^^^^^^^
- 64 | }
+ 66 | }
+    |
+error: at 70:8: [PARSE-UnknownAbi] In function 'win_api': unknown extern ABI "system" — expected "C" or bare extern
+    |
+ 69 | # the default ABI.
+ 70 | extern "system" fn win_api(x: i64);
+    |        ^^^^^^^^
+ 71 | extern "fastcall" fn stdcall_thing(y: i64);
+    |
+error: at 71:8: [PARSE-UnknownAbi] In function 'stdcall_thing': unknown extern ABI "fastcall" — expected "C" or bare extern
+    |
+ 70 | extern "system" fn win_api(x: i64);
+ 71 | extern "fastcall" fn stdcall_thing(y: i64);
+    |        ^^^^^^^^^^
+ 72 | extern "Silica" fn spelled_silica(x: i64);
+    |
+error: at 72:8: [PARSE-UnknownAbi] In function 'spelled_silica': the Silica ABI is the default; omit the ABI string
+    |
+ 71 | extern "fastcall" fn stdcall_thing(y: i64);
+ 72 | extern "Silica" fn spelled_silica(x: i64);
+    |        ^^^^^^^^
     |
