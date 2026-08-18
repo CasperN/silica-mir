@@ -130,23 +130,13 @@ Diagnostics 1 may initially retain statement-level sources; Diagnostics 4 is
 the deliberate later refinement to nested operand and projection sources.
 
 ## Function ABI and linkage roadmap
-
-Treat three properties independently throughout the compiler:
-
-- `extern` says that a declaration is supplied by another linkage unit rather
-  than by a Silica body.
-- An ABI modifier such as `"C"` selects a calling convention. Its absence
-  selects the native Silica convention.
-- `unsafe` controls the obligations at a call site.
-
-The ABI is part of a callable value's type. Linkage and body availability are
-properties of a declaration, not of a function type. Trait signatures have no
-body but are not external declarations; impl methods have bodies but may use a
-non-default ABI.
-
-Implement this as the following sequence of independently reviewable commits:
-
-1. **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
+- **Move the ABI clause from before `extern` to after `fn`.** Today ABI is
+   spelled `extern "C" fn foo(...)`, which overloads `extern` with both
+   "foreign linkage" and "select ABI". Reparse ABI as a clause attached to
+   `fn` itself — `fn "C" foo(...)` for free fns, methods, and fn types —
+   leaving `extern` free to mean only foreign linkage. Update the grammar,
+   parser, pretty-printer, AST field placement, and all fixtures.
+- **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
    inherent, and trait-impl methods; reject unsupported ABI names everywhere;
    require an impl method's ABI to match its trait signature; and preserve the
    selected method ABI through qualified calls, dot calls, lowering, and
@@ -154,12 +144,6 @@ Implement this as the following sequence of independently reviewable commits:
    receiver auto-borrowing, explicit qualified calls, and ambiguity/error
    diagnostics without introducing ABI-specific method resolution paths.
 
-**Stop condition:** free functions, methods, and first-class function values
-retain their ABI through parsing, checking, lowering, monomorphization, and
-codegen; direct and indirect calls agree; and invalid or mismatched ABIs are
-diagnosed before codegen. Platform-specific C ABI classification, variadics,
-symbol visibility, dynamic linking, and target-specific LLVM parameter
-attributes remain later FFI work.
 
 ### Other clarity issues
 - **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.
@@ -214,10 +198,5 @@ attributes remain later FFI work.
   - MIR fn bodies are CFGs with no temporaries.
   - MIR has `move x` and `copy x` operands.
 
-
-# Current Yak-shaving stack
-- Complete HLL trait use
-- Standard library
+## Standard Library
 - Modules
-- Standard `Span` and `Vec` types working properly 
-- A standard `Box` type working properly
