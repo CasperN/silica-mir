@@ -348,6 +348,48 @@ fn call_unsafe_inherent_method(value: UnsafeTarget) -> i64 {
   unsafe { value.inherent_dangerous() }
 }
 
+struct AbiTarget: Copy + Drop { value: i64 }
+
+trait AbiTrait {
+  extern "C" unsafe fn trait_c(recv: &Self) -> i64;
+}
+
+impl AbiTrait for AbiTarget {
+  extern "C" unsafe fn trait_c(recv: &Self) -> i64 { recv.*.value }
+}
+
+impl AbiTarget {
+  extern "C" unsafe fn inherent_c(recv: &Self) -> i64 { recv.*.value }
+}
+
+# covers: dot-call to a C-ABI trait method preserves ABI through resolution
+fn call_c_trait_method_dot(value: AbiTarget) -> i64 {
+  unsafe { value.trait_c() }
+}
+
+# covers: dot-call to a C-ABI inherent method preserves ABI
+fn call_c_inherent_method_dot(value: AbiTarget) -> i64 {
+  unsafe { value.inherent_c() }
+}
+
+# covers: qualified-path call to a C-ABI trait method preserves ABI
+fn call_c_trait_method_qualified(value: &AbiTarget) -> i64 {
+  unsafe { <AbiTarget as AbiTrait>::trait_c(value) }
+}
+
+trait AbiGenericTrait<T: Copy + Drop> {
+  extern "C" unsafe fn generic_c(recv: &Box<T>) -> T;
+}
+
+impl<T: Copy + Drop> AbiGenericTrait<T> for Box<T> {
+  extern "C" unsafe fn generic_c(recv: &Box<T>) -> T { recv.*.value }
+}
+
+# covers: generic receiver dispatch to a C-ABI trait method preserves ABI
+fn call_c_generic_receiver(value: Box<i64>) -> i64 {
+  unsafe { value.generic_c() }
+}
+
 fn receiver_effect() {}
 fn make_argument() -> i64 { 1 }
 

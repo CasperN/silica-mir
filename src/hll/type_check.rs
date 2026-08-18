@@ -1660,29 +1660,28 @@ fn validate_fn_modifiers(f: &FnDecl, context: &str, d: &mut Diagnostics) {
             );
         }
     }
-    if f.linkage == Linkage::Foreign {
-        match (f.abi, f.is_unsafe) {
-            (Abi::Silica, true) => d.push_error(
-                source_diagnostic(
-                    HllTypeCheckCode::InvalidFnModifiers,
-                    f.source,
-                    format!(
-                        "extern Silica function '{}' cannot be unsafe; safe by import contract",
-                        f.name
-                    ),
-                )
-                .in_function(context),
-            ),
-            (Abi::C, false) => d.push_error(
-                source_diagnostic(
-                    HllTypeCheckCode::InvalidFnModifiers,
-                    f.source,
-                    format!("extern \"C\" function '{}' must be unsafe", f.name),
-                )
-                .in_function(context),
-            ),
-            _ => {}
-        }
+    if f.abi == Abi::C && !f.is_unsafe {
+        d.push_error(
+            source_diagnostic(
+                HllTypeCheckCode::InvalidFnModifiers,
+                f.source,
+                format!("extern \"C\" function '{}' must be unsafe", f.name),
+            )
+            .in_function(context),
+        );
+    }
+    if f.linkage == Linkage::Foreign && f.abi == Abi::Silica && f.is_unsafe {
+        d.push_error(
+            source_diagnostic(
+                HllTypeCheckCode::InvalidFnModifiers,
+                f.source,
+                format!(
+                    "extern Silica function '{}' cannot be unsafe; safe by import contract",
+                    f.name
+                ),
+            )
+            .in_function(context),
+        );
     }
 }
 

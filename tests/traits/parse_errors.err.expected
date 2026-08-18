@@ -1,4 +1,4 @@
-error: at 36:3: [PARSE-InvalidFnModifiers] trait method 'm' cannot be extern
+error: at 36:3: [PARSE-InvalidFnModifiers] trait method 'm' cannot be extern without an ABI clause; trait methods have no foreign symbol
     |
  35 | trait ExternTraitM {
  36 |   extern fn m(recv: &Self);
@@ -19,7 +19,7 @@ error: at 48:3: [PARSE-MalformedCst] duplicate trait method 'm'
     |   ^^^^^^^^^^^^^^^^^^^^^^
  49 | }
     |
-error: at 53:3: [PARSE-InvalidFnModifiers] impl method 'm' cannot be extern
+error: at 53:3: [PARSE-InvalidFnModifiers] impl method 'm' cannot be extern without an ABI clause; impl methods have no foreign symbol
     |
  52 | impl ExternM for S {
  53 |   extern fn m(recv: &S);

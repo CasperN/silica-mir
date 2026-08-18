@@ -2,7 +2,8 @@
 #
 # covers: unknown traits, trait-argument arity, missing and extra methods,
 # signature and method-generic mismatch, impl-method lifetime shadowing,
-# invalid inherent targets, and duplicate inherent methods across blocks
+# invalid inherent targets, duplicate inherent methods across blocks, and
+# ABI-on-method rules (unknown ABI, unsafe requirement, trait/impl ABI parity)
 
 struct S: Copy + Drop { value: i64 }
 
@@ -62,4 +63,22 @@ impl S {
 
 impl S {
   fn duplicate(recv: &Self) { unit }
+}
+
+# Trait declares a C-ABI method; impl provides a Silica-ABI body.
+trait AbiParityCTrait {
+  extern "C" unsafe fn c_method(recv: &Self);
+}
+
+impl AbiParityCTrait for S {
+  unsafe fn c_method(recv: &Self) { unit }
+}
+
+# Trait declares a Silica-ABI method; impl provides a C-ABI body.
+trait AbiParitySilicaTrait {
+  unsafe fn silica_method(recv: &Self);
+}
+
+impl AbiParitySilicaTrait for S {
+  extern "C" unsafe fn silica_method(recv: &Self) { unit }
 }

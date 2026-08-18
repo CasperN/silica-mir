@@ -701,17 +701,20 @@ impl Parser {
                 .map(|node| self.get_text(node))
                 .unwrap_or("<missing>");
             let context = trait_method_context(&name, method_name);
-            let method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
+            let mut method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
             if method.linkage == Linkage::Foreign {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::InvalidFnModifiers,
-                        format!("trait method '{}' cannot be extern", method.name),
-                    )
-                    .in_function(&context),
-                );
-                continue;
+                if method.abi_raw.is_none() {
+                    d.push_error(
+                        self.diag(
+                            child,
+                            ParserCode::InvalidFnModifiers,
+                            format!("trait method '{}' cannot be extern without an ABI clause; trait methods have no foreign symbol", method.name),
+                        )
+                        .in_function(&context),
+                    );
+                    continue;
+                }
+                method.linkage = Linkage::Local;
             }
             if method.body.is_some() {
                 d.push_error(
@@ -806,17 +809,20 @@ impl Parser {
                 .map(|node| self.get_text(node))
                 .unwrap_or("<missing>");
             let context = impl_method_context(&target, trait_path.as_ref(), method_name);
-            let method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
+            let mut method = self.map_fn_decl_in_scope(child, &scope, Some(&context), d)?;
             if method.linkage == Linkage::Foreign {
-                d.push_error(
-                    self.diag(
-                        child,
-                        ParserCode::InvalidFnModifiers,
-                        format!("impl method '{}' cannot be extern", method.name),
-                    )
-                    .in_function(&context),
-                );
-                continue;
+                if method.abi_raw.is_none() {
+                    d.push_error(
+                        self.diag(
+                            child,
+                            ParserCode::InvalidFnModifiers,
+                            format!("impl method '{}' cannot be extern without an ABI clause; impl methods have no foreign symbol", method.name),
+                        )
+                        .in_function(&context),
+                    );
+                    continue;
+                }
+                method.linkage = Linkage::Local;
             }
             if method.body.is_none() {
                 d.push_error(

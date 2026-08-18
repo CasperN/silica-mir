@@ -75,6 +75,27 @@ extern "C" fn c_without_unsafe(x: i64);
 # is safe by import contract.
 extern unsafe fn silica_marked_unsafe(x: i64);
 
+# The same rules apply to trait and impl methods: methods with `extern "C"`
+# require `unsafe`, and unknown ABI names are rejected wherever they appear.
+struct AbiHost: Copy + Drop { value: i64 }
+
+trait UnknownAbiOnTraitMethod {
+  extern "system" unsafe fn u(recv: &Self);
+}
+
+trait UnknownAbiHost { extern "C" unsafe fn h(recv: &Self); }
+impl UnknownAbiHost for AbiHost {
+  extern "fastcall" unsafe fn h(recv: &Self) { unit }
+}
+
+trait MissingUnsafeTrait {
+  extern "C" fn missing_unsafe(recv: &Self);
+}
+
+impl MissingUnsafeTrait for AbiHost {
+  extern "C" fn missing_unsafe(recv: &Self) { unit }
+}
+
 # ---------- HTC-TypeMismatch: fn-value ABI mismatches ----------
 
 # ABI is part of fn-type identity; passing a C-ABI fn value where a

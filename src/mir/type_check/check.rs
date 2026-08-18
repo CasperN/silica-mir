@@ -738,6 +738,23 @@ impl IndexedProgram {
             // same shape of type_params and lifetime_params as the
             // trait method. Param NAMES may differ (impl may rename
             // them); positions and marker bounds must match.
+            if trait_method.abi != impl_method.abi {
+                let show = |abi: crate::common::Abi| match abi.as_str() {
+                    "" => "Silica".to_string(),
+                    quoted => quoted.to_string(),
+                };
+                d.push_error(Diagnostic::new(
+                    ImplMethodSignatureMismatch,
+                    impl_method.meta.name_source,
+                    format!(
+                        "Impl method '{}' has ABI {}, trait declares {}",
+                        impl_method.meta.name,
+                        show(impl_method.abi),
+                        show(trait_method.abi),
+                    ),
+                ));
+                continue;
+            }
             if trait_method.meta.params.lifetime_params.len()
                 != impl_method.meta.params.lifetime_params.len()
             {

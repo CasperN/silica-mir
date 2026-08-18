@@ -17,10 +17,6 @@ trait ExternTrait {
   extern fn ext(recv: &Self);
 }
 
-trait AbiTrait {
-  extern "C" fn abi(recv: &Self);
-}
-
 trait Duplicate {
   fn same(recv: &Self);
   fn same(recv: &Self);
@@ -36,10 +32,6 @@ impl Required for S {
 
 impl Required for S {
   extern fn required(recv: &Self) { unit }
-}
-
-impl Required for S {
-  extern "C" fn required(recv: &Self) { unit }
 }
 
 impl Required for S {

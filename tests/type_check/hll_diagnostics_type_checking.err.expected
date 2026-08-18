@@ -1,3 +1,17 @@
+error: at 83:10: [HTC-UnknownAbi] In function 'UnknownAbiOnTraitMethod::u': unknown extern ABI "system" — expected "C" or bare extern
+    |
+ 82 | trait UnknownAbiOnTraitMethod {
+ 83 |   extern "system" unsafe fn u(recv: &Self);
+    |          ^^^^^^^^
+ 84 | }
+    |
+error: at 92:3: [HTC-InvalidFnModifiers] In function 'MissingUnsafeTrait::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
+    |
+ 91 | trait MissingUnsafeTrait {
+ 92 |   extern "C" fn missing_unsafe(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 93 | }
+    |
 error: at 8:11: [HTC-UndeclaredVariable] In function 'test_silenced_error': undeclared variable 'undeclared_var'
    |
  7 |   # This infers 'x' as TypeKind::Error to poison the local variable.
@@ -82,54 +96,68 @@ error: at 76:1: [HTC-InvalidFnModifiers] In function 'silica_marked_unsafe': ext
     | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  77 | 
     |
-error: at 91:18: [HTC-TypeMismatch] In function 'abi_mismatch_via_arg': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
+error: at 88:10: [HTC-UnknownAbi] In function '<AbiHost as UnknownAbiHost>::h': unknown extern ABI "fastcall" — expected "C" or bare extern
     |
- 90 | fn abi_mismatch_via_arg() -> i64 {
- 91 |   accepts_silica(c_valued)
-    |                  ^^^^^^^^
- 92 | }
+ 87 | impl UnknownAbiHost for AbiHost {
+ 88 |   extern "fastcall" unsafe fn h(recv: &Self) { unit }
+    |          ^^^^^^^^^^
+ 89 | }
     |
-error: at 95:27: [HTC-TypeMismatch] In function 'abi_mismatch_via_let': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
+error: at 96:3: [HTC-InvalidFnModifiers] In function '<AbiHost as MissingUnsafeTrait>::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
     |
- 94 | fn abi_mismatch_via_let() {
- 95 |   let f: fn(i64) -> i64 = c_valued;
-    |                           ^^^^^^^^
- 96 |   f(1);
+ 95 | impl MissingUnsafeTrait for AbiHost {
+ 96 |   extern "C" fn missing_unsafe(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 97 | }
     |
-error: at 104:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
+error: at 112:18: [HTC-TypeMismatch] In function 'abi_mismatch_via_arg': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
      |
- 103 | # in the `Neg` arm of `to_i64`.
- 104 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 111 | fn abi_mismatch_via_arg() -> i64 {
+ 112 |   accepts_silica(c_valued)
+     |                  ^^^^^^^^
+ 113 | }
+     |
+error: at 116:27: [HTC-TypeMismatch] In function 'abi_mismatch_via_let': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
+     |
+ 115 | fn abi_mismatch_via_let() {
+ 116 |   let f: fn(i64) -> i64 = c_valued;
+     |                           ^^^^^^^^
+ 117 |   f(1);
+     |
+error: at 125:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
+     |
+ 124 | # in the `Neg` arm of `to_i64`.
+ 125 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
      |                                                 ^
- 105 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+ 126 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
      |
-error: at 105:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
+error: at 126:47: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_bool': unary '-' requires a signed integer or float operand, found bool
      |
- 104 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
- 105 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
+ 125 | fn test_unary_neg_on_unsigned(x: u64) -> u64 { -x }
+ 126 | fn test_unary_neg_on_bool(b: bool) -> bool { -b }
      |                                               ^
- 106 | 
+ 127 | 
      |
-error: at 113:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
+error: at 134:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': expected function type, found i64
      |
- 112 | fn test_non_callable_field(value: NonCallableField) {
- 113 |   value.invoke(1);
+ 133 | fn test_non_callable_field(value: NonCallableField) {
+ 134 |   value.invoke(1);
      |   ^^^^^^^^^^^^^^^
- 114 | }
+ 135 | }
      |
-error: at 127:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+error: at 148:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
      |
- 126 |   fn value(recv: &Self) -> i64 {
- 127 |     false
+ 147 |   fn value(recv: &Self) -> i64 {
+ 148 |     false
      |     ^^^^^
- 128 |   }
+ 149 |   }
      |
-error: at 134:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
+error: at 155:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
      |
- 133 |   fn inherent_value(recv: &Self) -> i64 {
- 134 |     false
+ 154 |   fn inherent_value(recv: &Self) -> i64 {
+ 155 |     false
      |     ^^^^^
- 135 |   }
+ 156 |   }
      |
 error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
    |
@@ -138,10 +166,10 @@ error: at 2:11: [HTC-AmbiguousType] In function 'test_ambiguous_type': type anno
    |           ^^
  3 | }
    |
-error: at 139:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
+error: at 160:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?6; 0])
      |
- 138 |   fn ambiguous_local(recv: &Self) {
- 139 |     let values = [];
+ 159 |   fn ambiguous_local(recv: &Self) {
+ 160 |     let values = [];
      |                  ^^
- 140 |   }
+ 161 |   }
      |

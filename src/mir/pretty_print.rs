@@ -169,7 +169,12 @@ fn write_trait(out: &mut String, t: &TraitDecl) {
     write_bounds(out, &t.self_bounds);
     out.push_str(" {\n");
     for m in &t.methods {
-        out.push_str("  fn ");
+        out.push_str("  ");
+        let abi = m.abi.as_str();
+        if !abi.is_empty() {
+            write!(out, "{} ", abi).unwrap();
+        }
+        out.push_str("fn ");
         out.push_str(&m.meta.name);
         write_type_params(out, &m.meta.params);
         out.push('(');
@@ -829,6 +834,22 @@ mod tests {
                 entry:
                   return
               }
+            }
+            ",
+        );
+    }
+
+    #[test]
+    fn roundtrip_method_abi() {
+        assert_roundtrip(
+            "
+            struct Bar: Copy + Drop { x: i64 }
+            trait Called { \"C\" fn call(recv: &Self, out: &out i64); }
+            impl Called for Bar {
+              \"C\" fn call(recv: &Bar, out: &out i64) { entry: return }
+            }
+            impl Bar {
+              \"C\" fn inherent(recv: &Bar, out: &out i64) { entry: return }
             }
             ",
         );

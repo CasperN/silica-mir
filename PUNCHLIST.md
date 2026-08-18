@@ -136,14 +136,6 @@ the deliberate later refinement to nested operand and projection sources.
    `fn` itself — `fn "C" foo(...)` for free fns, methods, and fn types —
    leaving `extern` free to mean only foreign linkage. Update the grammar,
    parser, pretty-printer, AST field placement, and all fixtures.
-- **Apply ABI rules uniformly to methods.** Accept ABI modifiers on trait,
-   inherent, and trait-impl methods; reject unsupported ABI names everywhere;
-   require an impl method's ABI to match its trait signature; and preserve the
-   selected method ABI through qualified calls, dot calls, lowering, and
-   monomorphization. Test inherent and trait dispatch, generic receivers,
-   receiver auto-borrowing, explicit qualified calls, and ambiguity/error
-   diagnostics without introducing ABI-specific method resolution paths.
-
 
 ### Other clarity issues
 - **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.

@@ -19,87 +19,73 @@ error: at 13:3: [PARSE-InvalidFnModifiers] In function 'Body::body': trait metho
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  14 | }
     |
-error: at 17:3: [PARSE-InvalidFnModifiers] In function 'ExternTrait::ext': trait method 'ext' cannot be extern
+error: at 17:3: [PARSE-InvalidFnModifiers] In function 'ExternTrait::ext': trait method 'ext' cannot be extern without an ABI clause; trait methods have no foreign symbol
     |
  16 | trait ExternTrait {
  17 |   extern fn ext(recv: &Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^
  18 | }
     |
-error: at 21:3: [PARSE-InvalidFnModifiers] In function 'AbiTrait::abi': trait method 'abi' cannot be extern
+error: at 22:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
     |
- 20 | trait AbiTrait {
- 21 |   extern "C" fn abi(recv: &Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 22 | }
-    |
-error: at 26:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
-    |
- 25 |   fn same(recv: &Self);
- 26 |   fn same(recv: &Self);
+ 21 |   fn same(recv: &Self);
+ 22 |   fn same(recv: &Self);
     |   ^^^^^^^^^^^^^^^^^^^^^
- 27 | }
+ 23 | }
     |
-error: at 34:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' requires a body
+error: at 30:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' requires a body
+    |
+ 29 | impl Required for S {
+ 30 |   fn required(recv: &Self);
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 31 | }
+    |
+error: at 34:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern without an ABI clause; impl methods have no foreign symbol
     |
  33 | impl Required for S {
- 34 |   fn required(recv: &Self);
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 34 |   extern fn required(recv: &Self) { unit }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  35 | }
     |
-error: at 38:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern
+error: at 39:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
     |
- 37 | impl Required for S {
- 38 |   extern fn required(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 39 | }
-    |
-error: at 42:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern
-    |
- 41 | impl Required for S {
- 42 |   extern "C" fn required(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 43 | }
-    |
-error: at 47:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
-    |
- 46 |   fn required(recv: &Self) { unit }
- 47 |   fn required(recv: &Self) { unit }
+ 38 |   fn required(recv: &Self) { unit }
+ 39 |   fn required(recv: &Self) { unit }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 48 | }
+ 40 | }
     |
-error: at 51:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
+error: at 43:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
     |
- 50 | impl<T> Required for S {
- 51 |   fn required<T>(recv: &Self) { unit }
+ 42 | impl<T> Required for S {
+ 43 |   fn required<T>(recv: &Self) { unit }
     |               ^
- 52 | }
+ 44 | }
     |
-error: at 54:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
+error: at 46:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
     |
- 53 | 
- 54 | trait Self {
+ 45 | 
+ 46 | trait Self {
     |       ^^^^
- 55 |   fn reserved(recv: &Self);
+ 47 |   fn reserved(recv: &Self);
     |
-error: at 58:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
+error: at 50:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
     |
- 57 | 
- 58 | impl Self for S {
+ 49 | 
+ 50 | impl Self for S {
     |      ^^^^
- 59 |   fn reserved(recv: &Self) { unit }
+ 51 |   fn reserved(recv: &Self) { unit }
     |
-error: at 65:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+error: at 57:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
     |
- 64 | # covers: the same direct trait bound cannot be declared twice
- 65 | fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
+ 56 | # covers: the same direct trait bound cannot be declared twice
+ 57 | fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
     |                                               ^^^^^^^^^^^^^^
- 66 |   value;
+ 58 |   value;
     |
-error: at 71:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called
+error: at 63:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called
     |
- 70 | fn bare_qualified_method() {
- 71 |   <S>::missing;
+ 62 | fn bare_qualified_method() {
+ 63 |   <S>::missing;
     |   ^^^^^^^^^^^^
- 72 | }
+ 64 | }
     |

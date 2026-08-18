@@ -1108,6 +1108,114 @@ fn call_unsafe_inherent_method<'s0>(value: UnsafeTarget, $return: &'s0 out i64) 
     return
 }
 
+struct AbiTarget: Copy + Drop {
+  value: i64
+}
+
+trait AbiTrait {
+  "C" fn trait_c<'s0, 's1>(recv: &'s0 Self, $return: &'s1 out i64);
+}
+
+impl AbiTrait for AbiTarget {
+  "C" fn trait_c<'s0, 's1>(recv: &'s0 AbiTarget, $return: &'s1 out i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      require_uninit $return;
+      drop recv;
+      require_uninit recv;
+      return
+  }
+}
+
+impl AbiTarget {
+  "C" fn inherent_c<'s0, 's1>(recv: &'s0 AbiTarget, $return: &'s1 out i64) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      require_uninit $return;
+      drop recv;
+      require_uninit recv;
+      return
+  }
+}
+
+fn call_c_trait_method_dot<'s0>(value: AbiTarget, $return: &'s0 out i64) {
+  $tmp_0: &AbiTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = &value;
+    $tmp_1 = &out $return.*;
+    call <AbiTarget as AbiTrait>::trait_c(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn call_c_inherent_method_dot<'s0>(value: AbiTarget, $return: &'s0 out i64) {
+  $tmp_0: &AbiTarget;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = &value;
+    $tmp_1 = &out $return.*;
+    call <AbiTarget>::inherent_c(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
+fn call_c_trait_method_qualified<'s0, 's1>(value: &'s0 AbiTarget, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call <AbiTarget as AbiTrait>::trait_c(move value, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit value;
+    return
+}
+
+trait AbiGenericTrait<T: Copy + Drop> {
+  "C" fn generic_c<'s0, 's1>(recv: &'s0 Box<T>, $return: &'s1 out T);
+}
+
+impl<T: Copy + Drop> AbiGenericTrait<T> for Box<T> {
+  "C" fn generic_c<'s0, 's1>(recv: &'s0 Box<T>, $return: &'s1 out T) {
+    entry:
+      $return.* = copy recv.*.value;
+      unborrow $return;
+      require_uninit $return;
+      drop recv;
+      require_uninit recv;
+      return
+  }
+}
+
+fn call_c_generic_receiver<'s0>(value: Box<i64>, $return: &'s0 out i64) {
+  $tmp_0: &Box<i64>;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0 = &value;
+    $tmp_1 = &out $return.*;
+    call <Box<i64> as AbiGenericTrait<i64>>::generic_c(move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop value;
+    require_uninit value;
+    return
+}
+
 fn receiver_effect() {
   $tmp_0: unit;
   entry:

@@ -1811,14 +1811,17 @@ impl Parser {
                 continue;
             }
             *self.type_scope.borrow_mut() = trait_scope.clone();
-            let f = self.map_function_decl(child, d)?;
+            let mut f = self.map_function_decl(child, d)?;
             if f.linkage == Linkage::Foreign {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::InvalidFnModifiers,
-                    format!("trait method '{}' cannot be extern", f.meta.name),
-                ));
-                continue;
+                if f.abi == Abi::Silica {
+                    d.push_error(self.diag(
+                        child,
+                        ParserCode::InvalidFnModifiers,
+                        format!("trait method '{}' cannot be extern without an ABI clause; trait methods have no foreign symbol", f.meta.name),
+                    ));
+                    continue;
+                }
+                f.linkage = Linkage::Local;
             }
             if f.body.is_some() {
                 d.push_error(self.diag(
@@ -1932,14 +1935,17 @@ impl Parser {
                 continue;
             }
             *self.type_scope.borrow_mut() = impl_scope.clone();
-            let f = self.map_function_decl(child, d)?;
+            let mut f = self.map_function_decl(child, d)?;
             if f.linkage == Linkage::Foreign {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::InvalidFnModifiers,
-                    format!("impl method '{}' cannot be extern", f.meta.name),
-                ));
-                continue;
+                if f.abi == Abi::Silica {
+                    d.push_error(self.diag(
+                        child,
+                        ParserCode::InvalidFnModifiers,
+                        format!("impl method '{}' cannot be extern without an ABI clause; impl methods have no foreign symbol", f.meta.name),
+                    ));
+                    continue;
+                }
+                f.linkage = Linkage::Local;
             }
             if f.body.is_none() {
                 d.push_error(self.diag(
