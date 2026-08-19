@@ -26,3 +26,13 @@ fn defer_use_after_move(b: Box, out: &out Box) {
     defer out.* = b;
     let c = b;
 }
+
+# ---------- INIT-UseAfterMove: non-AutoClone closure used after move ----------
+
+# A closure capturing a non-AutoClone type cannot be used twice.
+fn closure_use_after_move(b: Box) -> i64 {
+    let f = || b.val;
+    let g = f;
+    f() + g()
+}
+

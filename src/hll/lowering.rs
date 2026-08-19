@@ -556,7 +556,7 @@ fn lower_instance(instance: &hll::Instance) -> mir::Instance {
     )
 }
 
-fn lower_type(ty: &hll::Type) -> mir::Type {
+pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
     let kind = match &ty.kind {
         hll::TypeKind::Int(t) => mir::TypeKind::Int(*t),
         hll::TypeKind::Float(t) => mir::TypeKind::Float(*t),
@@ -1833,29 +1833,7 @@ pub fn lower_program(
                 }));
             }
             hll::Declaration::Impl(i) => {
-                declarations.push(mir::Declaration::Impl(mir::ImplBlock {
-                    params: GenericParams {
-                        lifetime_params: i.lifetime_params.clone(),
-                        outlives: i.outlives.clone(),
-                        type_params: lower_type_params(&i.type_params),
-                        source: i.source,
-                    },
-                    trait_path: i.trait_path.as_ref().map(lower_instance),
-                    target: lower_type(&i.target),
-                    methods: i
-                        .methods
-                        .iter()
-                        .map(|method| {
-                            let context = hll::impl_method_context(
-                                &i.target,
-                                i.trait_path.as_ref(),
-                                &method.name,
-                            );
-                            lower_function(method, program, types, &context)
-                                .map_err(|diagnostic| diagnostic.in_function(context))
-                        })
-                        .collect::<Result<Vec<_>, _>>()?,
-                }));
+                declarations.push(lower_impl_block(i, program, types)?);
             }
         }
     }
@@ -1863,12 +1841,48 @@ pub fn lower_program(
     for closure in types.closures.values() {
         declarations.push(lower_closure_struct(closure));
         declarations.push(lower_closure_function(closure, program, types)?);
+        if closure.is_auto_clone && !closure.markers.declared(mir::Marker::Copy) {
+            declarations.push(crate::hll::derive::derive_auto_clone_mir(closure));
+        }
+        if closure.is_auto_destroy && !closure.markers.declared(mir::Marker::Drop) {
+            declarations.push(crate::hll::derive::derive_auto_destroy_mir(closure));
+        }
     }
 
     Ok(mir::Program {
         declarations,
         source: program.source.clone(),
     })
+}
+
+fn lower_impl_block(
+    i: &hll::ImplBlock,
+    program: &hll::Program,
+    types: &TypeCheckResults,
+) -> Result<mir::Declaration, Diagnostic> {
+    Ok(mir::Declaration::Impl(mir::ImplBlock {
+        params: GenericParams {
+            lifetime_params: i.lifetime_params.clone(),
+            outlives: i.outlives.clone(),
+            type_params: lower_type_params(&i.type_params),
+            source: i.source,
+        },
+        trait_path: i.trait_path.as_ref().map(lower_instance),
+        target: lower_type(&i.target),
+        methods: i
+            .methods
+            .iter()
+            .map(|method| {
+                let context = hll::impl_method_context(
+                    &i.target,
+                    i.trait_path.as_ref(),
+                    &method.name,
+                );
+                lower_function(method, program, types, &context)
+                    .map_err(|diagnostic| diagnostic.in_function(context))
+            })
+            .collect::<Result<Vec<_>, _>>()?,
+    }))
 }
 
 fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {

@@ -19,3 +19,17 @@ error: at 26:11: [PS-UseAfterMove] In function 'defer_use_after_move': variable 
     |           ^^^^^^^^^
  27 |     let c = b;
     |
+error: at 36:5: [PS-UseAfterMove] In function 'closure_use_after_move': variable 'f' is used after move
+    |
+ 35 |     let g = f;
+ 36 |     f() + g()
+    |     ^^^
+ 37 | }
+    |
+error: at 36:5: [PS-UseAfterMove] In function 'closure_use_after_move': variable 'f' is used after move
+    |
+ 35 |     let g = f;
+ 36 |     f() + g()
+    |     ^^^
+ 37 | }
+    |

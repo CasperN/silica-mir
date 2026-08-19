@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod derive;
 pub mod helpers;
 pub mod lowering;
 pub mod mut_check;

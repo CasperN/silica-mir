@@ -658,13 +658,17 @@ impl TypeEnv {
         None
     }
 
+    pub(crate) fn type_satisfies_trait(&self, ty: &Type, trait_path: &Instance) -> bool {
+        type_satisfies_trait_inner(self, ty, trait_path, &HashMap::new(), &mut Vec::new())
+    }
+
     /// Substructural class of a type in this environment. Scalars,
     /// references, raw pointers, fn-ptr types are all `Copy + Drop +
     /// Move`. A `Custom` name resolves to the decl's declared markers
     /// (or empty if the name is undeclared — validation catches that
     /// separately). A `Param` uses the bounds attached to it in
     /// `scope`. See MIR's `class_of` for the same rules.
-    fn class_of(&self, ty: &Type, scope: &HashMap<String, Bounds>) -> Markers {
+    pub(crate) fn class_of(&self, ty: &Type, scope: &HashMap<String, Bounds>) -> Markers {
         let all = || Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
         match &ty.kind {
             TypeKind::Int(_)
@@ -893,6 +897,8 @@ struct PendingInstantiation {
 pub struct ClosureCapture {
     pub name: String,
     pub ty: Type,
+    pub is_copy: bool,
+    pub is_drop: bool,
     pub source: SourceInfo,
 }
 
@@ -908,6 +914,50 @@ pub struct ClosureInfo {
     pub lifetime_params: Vec<LifetimeParam>,
     pub lifetime_args: Vec<Lifetime>,
     pub markers: Markers,
+    pub is_auto_clone: bool,
+    pub is_auto_destroy: bool,
+}
+
+impl ClosureInfo {
+    pub fn to_struct_decl(&self) -> StructDecl {
+        let mut fields = Vec::new();
+        let fn_ty = Type::synthesized(TypeKind::Fn {
+            abi: Abi::Silica,
+            params: {
+                let mut p = vec![Type::synthesized(TypeKind::Custom(Instance::new(
+                    self.struct_name.clone(),
+                    self.lifetime_args.clone(),
+                    Vec::new(),
+                )))];
+                for param in &self.params {
+                    p.push(param.ty.clone());
+                }
+                p
+            },
+            ret: Box::new(self.ret_ty.clone()),
+        });
+        fields.push(StructField {
+            name: "$call".to_string(),
+            ty: fn_ty,
+            source: self.source,
+        });
+        for c in &self.captures {
+            fields.push(StructField {
+                name: format!("$cap_{}", c.name),
+                ty: c.ty.clone(),
+                source: c.source,
+            });
+        }
+        StructDecl {
+            name: self.struct_name.clone(),
+            lifetime_params: self.lifetime_params.clone(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            markers: self.markers,
+            fields,
+            source: self.source,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -1337,6 +1387,9 @@ pub(super) fn typecheck_program_collect(
         closure.ret_ty = subst.resolve_default(&closure.ret_ty);
         for c in &mut closure.captures {
             c.ty = subst.resolve_default(&c.ty);
+            let field_markers = env.class_of(&c.ty, &HashMap::new());
+            c.is_copy = field_markers.declared(Marker::Copy);
+            c.is_drop = field_markers.declared(Marker::Drop);
         }
         let mut lts = IndexSet::new();
         for c in &closure.captures {
@@ -1381,6 +1434,46 @@ pub(super) fn typecheck_program_collect(
             derived.push(Marker::Move);
         }
         closure.markers = Markers::from_iter(derived);
+        let struct_decl = closure.to_struct_decl();
+        env.structs.insert(struct_decl.name.clone(), struct_decl.clone());
+        if !closure.markers.declared(Marker::Copy)
+            && crate::hll::derive::can_derive_auto_clone(&struct_decl, &env)
+        {
+            closure.is_auto_clone = true;
+            let target_ty = Type::synthesized(TypeKind::Custom(Instance::new(
+                closure.struct_name.clone(),
+                closure.lifetime_args.clone(),
+                Vec::new(),
+            )));
+            env.impls.push(ImplBlock {
+                lifetime_params: closure.lifetime_params.clone(),
+                outlives: Vec::new(),
+                type_params: Vec::new(),
+                trait_path: Some(Instance::bare("AutoClone")),
+                target: target_ty,
+                methods: Vec::new(),
+                source: closure.source,
+            });
+        }
+        if !closure.markers.declared(Marker::Drop)
+            && crate::hll::derive::can_derive_auto_destroy(&struct_decl, &env)
+        {
+            closure.is_auto_destroy = true;
+            let target_ty = Type::synthesized(TypeKind::Custom(Instance::new(
+                closure.struct_name.clone(),
+                closure.lifetime_args.clone(),
+                Vec::new(),
+            )));
+            env.impls.push(ImplBlock {
+                lifetime_params: closure.lifetime_params.clone(),
+                outlives: Vec::new(),
+                type_params: Vec::new(),
+                trait_path: Some(Instance::bare("AutoDestroy")),
+                target: target_ty,
+                methods: Vec::new(),
+                source: closure.source,
+            });
+        }
     }
     types.closures_by_struct.clear();
     for closure in types.closures.values() {
@@ -3768,8 +3861,11 @@ fn infer_lambda(
     let mut captures = Vec::new();
     for (name, source) in free_vars {
         if let Some(ty) = env.lookup_var(&name) {
+            let field_markers = env.class_of(&ty, &HashMap::new());
             captures.push(ClosureCapture {
                 name,
+                is_copy: field_markers.declared(Marker::Copy),
+                is_drop: field_markers.declared(Marker::Drop),
                 ty,
                 source,
             });
@@ -3863,6 +3959,8 @@ fn infer_lambda(
         lifetime_params,
         lifetime_args: lifetime_args.clone(),
         markers,
+        is_auto_clone: false,
+        is_auto_destroy: false,
     };
 
     types.closures.insert(lambda_expr.source, closure_info.clone());

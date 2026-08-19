@@ -191,10 +191,6 @@ the deliberate later refinement to nested operand and projection sources.
   - MIR has `move x` and `copy x` operands.
 
 ## Lambdas/Closures
-* Implement lambdas with similar syntax to Rust, `|x| x + 1`. This should
-typecheck in the HLL and lower to a `struct $ClosureN { .. }` and a
-`fn $CallClosureN(...)` in the MIR.
-* Derive `Move/Copy/Drop/.../Transfer/Clone/Destroy` from the captured items.
 * Define and derive `FnOnce`, `FnMut`, and `Fn` traits for closures.
 * Implement calling of closures
 

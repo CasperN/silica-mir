@@ -58,9 +58,32 @@ fn test_capture_mut_ref(x: i64) -> i64 {
 fn test_capture_out_ref() -> i64 {
   let mut x: i64;
   {
-    let x = &out x;
-    let f = || x.* = 42i64;
+    let r = &out x;
+    let f = || r.* = 42i64;
     f();
   }
   x
+}
+
+struct Handle: Move {
+  id: i64,
+}
+
+impl AutoClone for Handle {
+  fn clone(&self) -> Handle {
+    Handle { id: self.*.id }
+  }
+}
+
+impl AutoDestroy for Handle {
+  fn destroy(&drop self) {
+    self.*.id;
+  }
+}
+
+# covers: closure capturing an AutoClone + AutoDestroy type derives AutoClone + AutoDestroy
+fn test_capture_autoclone_and_autodestroy(h: Handle) -> i64 {
+  let f = || h.id;
+  let g = f;
+  f() + g()
 }
