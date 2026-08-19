@@ -1,4 +1,4 @@
-use crate::common::{Marker, Markers, RefKind};
+use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
 use crate::hll::type_check::{
@@ -1579,7 +1579,12 @@ fn lower_expr_into(
                     kind: hll::ExprKind::Variable(c.name.clone()),
                     source: c.source,
                 };
-                let cap_op = lower_expr_to_operand(ctx, &var_expr, types)?;
+                let cap_place = lower_expr_to_place(ctx, &var_expr, types)?;
+                let cap_op = if matches!(c.ty.kind, hll::TypeKind::Ref(RefKind::Shared, _, _)) {
+                    copy_op(cap_place)
+                } else {
+                    move_op(cap_place)
+                };
                 ctx.emit_statement(assign_stmt(cap_dest, use_rv(cap_op), expr.span()));
             }
             Ok(())
@@ -1868,7 +1873,11 @@ pub fn lower_program(
 
 fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
     let mut fields = Vec::new();
-    let mut fn_params = vec![hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::bare(closure.struct_name.clone())))];
+    let mut fn_params = vec![hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
+        closure.struct_name.clone(),
+        closure.lifetime_args.clone(),
+        Vec::new(),
+    )))];
     for p in &closure.params {
         fn_params.push(p.ty.clone());
     }
@@ -1894,12 +1903,12 @@ fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::D
             name: closure.struct_name.clone(),
             name_source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
             params: GenericParams {
-                lifetime_params: Vec::new(),
+                lifetime_params: closure.lifetime_params.clone(),
                 outlives: Vec::new(),
                 type_params: Vec::new(),
                 source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
             },
-            markers: Markers::from_iter([Marker::Drop, Marker::Move]),
+            markers: closure.markers,
         },
         fields,
     })
@@ -1913,7 +1922,11 @@ fn lower_closure_function(
     let mut params = Vec::new();
     params.push(mir::Param {
         name: "$self".to_string(),
-        ty: lower_type(&hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::bare(closure.struct_name.clone())))),
+        ty: lower_type(&hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
+            closure.struct_name.clone(),
+            closure.lifetime_args.clone(),
+            Vec::new(),
+        )))),
         source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
     });
     for p in &closure.params {
@@ -1938,7 +1951,7 @@ fn lower_closure_function(
         name: closure.fn_name.clone(),
         name_source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
         params: GenericParams {
-            lifetime_params: Vec::new(),
+            lifetime_params: closure.lifetime_params.clone(),
             outlives: Vec::new(),
             type_params: Vec::new(),
             source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),

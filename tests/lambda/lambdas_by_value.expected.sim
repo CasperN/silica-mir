@@ -12,7 +12,7 @@ fn test_nullary<'s0>($return: &'s0 out i64) {
     return
 }
 
-struct $closure_0<'s0>: Drop + Move {
+struct $closure_0<'s0>: Copy + Drop {
   $call: fn($closure_0<'s0>, $return: &'s0 out i64)
 }
 
@@ -42,7 +42,7 @@ fn test_explicit_args<'s0>(a: i64, b: i64, $return: &'s0 out i64) {
     return
 }
 
-struct $closure_1<'s0>: Drop + Move {
+struct $closure_1<'s0>: Copy + Drop {
   $call: fn($closure_1<'s0>, i64, i64, $return: &'s0 out i64)
 }
 
@@ -80,7 +80,7 @@ fn test_single_capture<'s0>(x: i64, $return: &'s0 out i64) {
     return
 }
 
-struct $closure_2<'s0>: Drop + Move {
+struct $closure_2<'s0>: Copy + Drop {
   $call: fn($closure_2<'s0>, i64, $return: &'s0 out i64)
   $cap_factor: i64
 }
@@ -122,7 +122,7 @@ fn test_multi_capture<'s0>(x: i64, $return: &'s0 out i64) {
     return
 }
 
-struct $closure_3<'s0>: Drop + Move {
+struct $closure_3<'s0>: Copy + Drop {
   $call: fn($closure_3<'s0>, i64, $return: &'s0 out i64)
   $cap_a: i64
   $cap_b: i64
@@ -162,7 +162,7 @@ fn test_immediate_call<'s0>($return: &'s0 out i64) {
     return
 }
 
-struct $closure_4<'s0>: Drop + Move {
+struct $closure_4<'s0>: Copy + Drop {
   $call: fn($closure_4<'s0>, i64, $return: &'s0 out i64)
 }
 
@@ -195,7 +195,7 @@ fn test_inferred<'s0>(x: i64, $return: &'s0 out i64) {
     return
 }
 
-struct $closure_5<'s0>: Drop + Move {
+struct $closure_5<'s0>: Copy + Drop {
   $call: fn($closure_5<'s0>, i64, $return: &'s0 out i64)
 }
 
@@ -209,6 +209,138 @@ fn $closure_5_call<'s0, 's1>($self: $closure_5<'s0>, n: i64, $return: &'s1 out i
     require_uninit $return;
     require_uninit n;
     drop $self;
+    require_uninit $self;
+    return
+}
+
+fn test_capture_shared_ref<'s0, 's1>(x: i64, $return: &'s0 out i64) {
+  r: &i64;
+  f: $closure_6<'s0, 's1>;
+  $tmp_0: &out i64;
+  entry:
+    r = &x;
+    f.$call = $closure_6_call;
+    f.$cap_r = copy r;
+    unborrow r;
+    $tmp_0 = &out $return.*;
+    call copy f.$call(move f, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit f;
+    require_uninit r;
+    require_uninit $return;
+    drop x;
+    require_uninit x;
+    return
+}
+
+struct $closure_6<'s0, 's1>: Copy + Drop {
+  $call: fn($closure_6<'s0, 's1>, $return: &'s0 out i64)
+  $cap_r: &'s1 i64
+}
+
+fn $closure_6_call<'s0, 's1, 's2>($self: $closure_6<'s0, 's1>, $return: &'s2 out i64) {
+  entry:
+    $return.* = copy $self.$cap_r.*;
+    unborrow $return;
+    require_uninit $return;
+    drop $self;
+    require_uninit $self;
+    return
+}
+
+fn test_capture_mut_ref<'s0>(x: i64, $return: &'s0 out i64) {
+  $x_0: i64;
+  $tmp_0: unit;
+  r: &mut i64;
+  f: $closure_7<'s0>;
+  $tmp_1: unit;
+  entry:
+    $x_0 = move x;
+    r = &mut $x_0;
+    f.$call = $closure_7_call;
+    f.$cap_r = move r;
+    call copy f.$call(move f);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit f;
+    require_uninit r;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move $x_0;
+    unborrow $return;
+    require_uninit $x_0;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_7<'s0>: Drop + Move {
+  $call: fn($closure_7<'s0>)
+  $cap_r: &'s0 mut i64
+}
+
+fn $closure_7_call<'s0>($self: $closure_7<'s0>) {
+  $tmp_0: unit;
+  $tmp_1: i64;
+  $tmp_2: &out i64;
+  entry:
+    $tmp_2 = &out $tmp_1;
+    call $i64_add(copy $self.$cap_r.*, 1, move $tmp_2);
+    drop $self.$cap_r.*;
+    $self.$cap_r.* = move $tmp_1;
+    $tmp_0 = unit;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop $self;
+    require_uninit $self;
+    return
+}
+
+fn test_capture_out_ref<'s0>($return: &'s0 out i64) {
+  x: i64;
+  $tmp_0: unit;
+  $x_0: &out i64;
+  f: $closure_8<'s0>;
+  $tmp_1: unit;
+  entry:
+    $x_0 = &out x;
+    f.$call = $closure_8_call;
+    f.$cap_x = move $x_0;
+    call copy f.$call(move f);
+    $tmp_1 = unit;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = unit;
+    require_uninit f;
+    require_uninit $x_0;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move x;
+    unborrow $return;
+    require_uninit x;
+    require_uninit $return;
+    return
+}
+
+struct $closure_8<'s0>: Move {
+  $call: fn($closure_8<'s0>)
+  $cap_x: &'s0 out i64
+}
+
+fn $closure_8_call<'s0>($self: $closure_8<'s0>) {
+  $tmp_0: unit;
+  entry:
+    $self.$cap_x.* = 42;
+    unborrow $self.$cap_x;
+    $tmp_0 = unit;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop $self.$call;
     require_uninit $self;
     return
 }

@@ -3,7 +3,7 @@ use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::hll::helpers::*;
 use crate::hll::type_fold::TypeFolder;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 /// Construct an HLL type-check diagnostic without discarding whether its
@@ -905,6 +905,9 @@ pub struct ClosureInfo {
     pub captures: Vec<ClosureCapture>,
     pub source: SourceInfo,
     pub body: Expr,
+    pub lifetime_params: Vec<LifetimeParam>,
+    pub lifetime_args: Vec<Lifetime>,
+    pub markers: Markers,
 }
 
 #[derive(Default)]
@@ -1335,6 +1338,49 @@ pub(super) fn typecheck_program_collect(
         for c in &mut closure.captures {
             c.ty = subst.resolve_default(&c.ty);
         }
+        let mut lts = IndexSet::new();
+        for c in &closure.captures {
+            collect_type_lifetimes(&c.ty, &mut lts);
+        }
+        closure.lifetime_args = lts.into_iter().collect();
+        closure.lifetime_params = closure
+            .lifetime_args
+            .iter()
+            .map(|lt| {
+                LifetimeParam::generated(
+                    lt.clone(),
+                    crate::common::GeneratedKind::HllDesugaring,
+                    closure.source.span(),
+                )
+            })
+            .collect();
+
+        let mut is_copy = true;
+        let mut is_drop = true;
+        let mut is_move = true;
+        for c in &closure.captures {
+            let field_markers = env.class_of(&c.ty, &HashMap::new());
+            if !field_markers.declared(Marker::Copy) {
+                is_copy = false;
+            }
+            if !field_markers.declared(Marker::Drop) {
+                is_drop = false;
+            }
+            if !field_markers.declared(Marker::Move) {
+                is_move = false;
+            }
+        }
+        let mut derived = Vec::new();
+        if is_copy {
+            derived.push(Marker::Copy);
+        }
+        if is_drop {
+            derived.push(Marker::Drop);
+        }
+        if is_move {
+            derived.push(Marker::Move);
+        }
+        closure.markers = Markers::from_iter(derived);
     }
     types.closures_by_struct.clear();
     for closure in types.closures.values() {
@@ -3652,6 +3698,52 @@ fn collect_free_vars(
     }
 }
 
+fn collect_type_lifetimes(ty: &Type, out: &mut IndexSet<Lifetime>) {
+    match &ty.kind {
+        TypeKind::Ref(_, Some(lt), inner) => {
+            out.insert(lt.clone());
+            collect_type_lifetimes(inner, out);
+        }
+        TypeKind::Ref(_, None, inner) => {
+            collect_type_lifetimes(inner, out);
+        }
+        TypeKind::Custom(Instance {
+            lifetime_args,
+            type_args,
+            ..
+        }) => {
+            for lt in lifetime_args {
+                out.insert(lt.clone());
+            }
+            for t in type_args {
+                collect_type_lifetimes(t, out);
+            }
+        }
+        TypeKind::Array(elem, _) => {
+            collect_type_lifetimes(elem, out);
+        }
+        TypeKind::Fn { params, ret, .. } => {
+            for p in params {
+                collect_type_lifetimes(p, out);
+            }
+            collect_type_lifetimes(ret, out);
+        }
+        TypeKind::RawPtr(inner) => {
+            collect_type_lifetimes(inner, out);
+        }
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Never
+        | TypeKind::Var(_)
+        | TypeKind::IntVar(_)
+        | TypeKind::FloatVar(_)
+        | TypeKind::Param(_)
+        | TypeKind::Error => {}
+    }
+}
+
 fn infer_lambda(
     env: &mut TypeEnv,
     subst: &mut Subst,
@@ -3717,6 +3809,49 @@ fn infer_lambda(
     env.pop_scope();
     env.current_ret_ty = old_ret_ty;
 
+    let mut lts = IndexSet::new();
+    for c in &captures {
+        collect_type_lifetimes(&c.ty, &mut lts);
+    }
+    let lifetime_args: Vec<Lifetime> = lts.into_iter().collect();
+    let lifetime_params: Vec<LifetimeParam> = lifetime_args
+        .iter()
+        .map(|lt| {
+            LifetimeParam::generated(
+                lt.clone(),
+                crate::common::GeneratedKind::HllDesugaring,
+                lambda_expr.source.span(),
+            )
+        })
+        .collect();
+
+    let mut is_copy = true;
+    let mut is_drop = true;
+    let mut is_move = true;
+    for c in &captures {
+        let field_markers = env.class_of(&c.ty, &HashMap::new());
+        if !field_markers.declared(Marker::Copy) {
+            is_copy = false;
+        }
+        if !field_markers.declared(Marker::Drop) {
+            is_drop = false;
+        }
+        if !field_markers.declared(Marker::Move) {
+            is_move = false;
+        }
+    }
+    let mut derived = Vec::new();
+    if is_copy {
+        derived.push(Marker::Copy);
+    }
+    if is_drop {
+        derived.push(Marker::Drop);
+    }
+    if is_move {
+        derived.push(Marker::Move);
+    }
+    let markers = Markers::from_iter(derived);
+
     let closure_info = ClosureInfo {
         struct_name: struct_name.clone(),
         fn_name,
@@ -3725,12 +3860,19 @@ fn infer_lambda(
         captures,
         source: lambda_expr.source,
         body: body.clone(),
+        lifetime_params,
+        lifetime_args: lifetime_args.clone(),
+        markers,
     };
 
     types.closures.insert(lambda_expr.source, closure_info.clone());
     types.closures_by_struct.insert(struct_name.clone(), closure_info);
 
-    Type::synthesized(TypeKind::Custom(Instance::bare(struct_name)))
+    Type::synthesized(TypeKind::Custom(Instance::new(
+        struct_name,
+        lifetime_args,
+        Vec::new(),
+    )))
 }
 
 fn infer_inner(
