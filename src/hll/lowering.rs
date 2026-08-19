@@ -1,4 +1,4 @@
-use crate::common::{Markers, RefKind};
+use crate::common::{Marker, Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
 use crate::hll::type_check::{
@@ -198,6 +198,7 @@ struct LowerCtx {
     /// `${hll_name}_{N}` MIR name so the flat MIR local namespace stays
     /// unique while the HLL surface allows the usual scope shadowing.
     binding_scopes: Vec<HashMap<String, String>>,
+    captured_vars: HashMap<String, String>,
     /// Parameter and binding names already claimed in this function.
     /// Generated temporaries use the function body's local allocator.
     taken_names: std::collections::HashSet<String>,
@@ -238,6 +239,7 @@ impl LowerCtx {
             scopes: Vec::new(),
             temp_regions: Vec::new(),
             binding_scopes: Vec::new(),
+            captured_vars: HashMap::new(),
             taken_names: std::collections::HashSet::new(),
             functions,
             enums,
@@ -626,7 +628,15 @@ fn lower_expr_to_place(
     types: &TypeCheckResults,
 ) -> Result<mir::Place, Diagnostic> {
     match &expr.kind {
-        hll::ExprKind::Variable(name) => Ok(mir::Place::Var(ctx.resolve_binding(name))),
+        hll::ExprKind::Variable(name) => {
+            if ctx.is_scoped_binding(name) {
+                Ok(mir::Place::Var(ctx.resolve_binding(name)))
+            } else if let Some(field) = ctx.captured_vars.get(name) {
+                Ok(field_place(var_place("$self"), field.clone()))
+            } else {
+                Ok(mir::Place::Var(ctx.resolve_binding(name)))
+            }
+        }
         hll::ExprKind::FieldAccess(target, field) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
             Ok(field_place(target_place, field.clone()))
@@ -830,6 +840,19 @@ fn lower_call_target_to_operand(
 ) -> Result<(mir::Operand, Option<mir::Operand>), Diagnostic> {
     match target {
         hll::CallTarget::Expr(callee) => {
+            if let Some(hll::Type {
+                kind: hll::TypeKind::Custom(hll::Instance { name, .. }),
+                ..
+            }) = lookup_type(callee, types)
+            {
+                if types.closures_by_struct.contains_key(name) {
+                    let callee_place = lower_expr_to_place(ctx, callee, types)?;
+                    let call_field = field_place(callee_place.clone(), "$call");
+                    let fn_op = copy_op(call_field);
+                    let self_op = mir::Operand::Take(callee_place);
+                    return Ok((fn_op, Some(self_op)));
+                }
+            }
             lower_expr_to_operand(ctx, callee, types).map(|callee| (callee, None))
         }
         hll::CallTarget::Receiver {
@@ -1541,6 +1564,26 @@ fn lower_expr_into(
             }
             Ok(())
         }
+        hll::ExprKind::Lambda { .. } => {
+            let closure = types
+                .closures
+                .get(&expr.source)
+                .expect("closure expression missing from typecheck closure map");
+            let call_dest = field_place(dest.clone(), "$call");
+            let fn_op = const_op(fn_name_const(closure.fn_name.clone()));
+            ctx.emit_statement(assign_stmt(call_dest, use_rv(fn_op), expr.span()));
+
+            for c in &closure.captures {
+                let cap_dest = field_place(dest.clone(), format!("$cap_{}", c.name));
+                let var_expr = hll::Expr {
+                    kind: hll::ExprKind::Variable(c.name.clone()),
+                    source: c.source,
+                };
+                let cap_op = lower_expr_to_operand(ctx, &var_expr, types)?;
+                ctx.emit_statement(assign_stmt(cap_dest, use_rv(cap_op), expr.span()));
+            }
+            Ok(())
+        }
         hll::ExprKind::EnumConstr(enum_name, variant_name, payload) => {
             let payload_op = lower_expr_to_operand(ctx, payload, types)?;
             // Extract inferred type args from the constructor's own
@@ -1812,10 +1855,137 @@ pub fn lower_program(
         }
     }
 
+    for closure in types.closures.values() {
+        declarations.push(lower_closure_struct(closure));
+        declarations.push(lower_closure_function(closure, program, types)?);
+    }
+
     Ok(mir::Program {
         declarations,
         source: program.source.clone(),
     })
+}
+
+fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
+    let mut fields = Vec::new();
+    let mut fn_params = vec![hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::bare(closure.struct_name.clone())))];
+    for p in &closure.params {
+        fn_params.push(p.ty.clone());
+    }
+    let hll_fn_ty = hll::Type::synthesized(hll::TypeKind::Fn {
+        abi: hll::Abi::Silica,
+        params: fn_params,
+        ret: Box::new(closure.ret_ty.clone()),
+    });
+    fields.push(mir::StructField {
+        name: "$call".to_string(),
+        ty: lower_type(&hll_fn_ty),
+        source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+    });
+    for c in &closure.captures {
+        fields.push(mir::StructField {
+            name: format!("$cap_{}", c.name),
+            ty: lower_type(&c.ty),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, c.source.span()),
+        });
+    }
+    mir::Declaration::Struct(mir::StructDecl {
+        meta: DeclMeta {
+            name: closure.struct_name.clone(),
+            name_source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+            params: GenericParams {
+                lifetime_params: Vec::new(),
+                outlives: Vec::new(),
+                type_params: Vec::new(),
+                source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+            },
+            markers: Markers::from_iter([Marker::Drop, Marker::Move]),
+        },
+        fields,
+    })
+}
+
+fn lower_closure_function(
+    closure: &crate::hll::type_check::ClosureInfo,
+    program: &hll::Program,
+    types: &TypeCheckResults,
+) -> Result<mir::Declaration, Diagnostic> {
+    let mut params = Vec::new();
+    params.push(mir::Param {
+        name: "$self".to_string(),
+        ty: lower_type(&hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::bare(closure.struct_name.clone())))),
+        source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+    });
+    for p in &closure.params {
+        params.push(mir::Param {
+            name: p.name.clone(),
+            ty: lower_type(&p.ty),
+            source: p.source,
+        });
+    }
+    if closure.ret_ty.kind != hll::TypeKind::Unit {
+        params.push(mir::Param {
+            name: "$return".to_string(),
+            ty: mir::Type::new(
+                mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(&closure.ret_ty))),
+                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.ret_ty.span()),
+            ),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+        });
+    }
+
+    let meta = DeclMeta {
+        name: closure.fn_name.clone(),
+        name_source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+        params: GenericParams {
+            lifetime_params: Vec::new(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+        },
+        markers: trivial_markers(),
+    };
+
+    let mut ctx = LowerCtx::new(program);
+    for c in &closure.captures {
+        ctx.captured_vars.insert(c.name.clone(), format!("$cap_{}", c.name));
+    }
+    ctx.push_scope(false, scope_exit_span(closure.body.span()));
+    ctx.push_binding_scope();
+    for p in &params {
+        ctx.taken_names.insert(p.name.clone());
+        ctx.bind_in_scope(&p.name, p.name.clone());
+        ctx.register_scope_cleanup(var_place(p.name.clone()), p.span());
+    }
+    ctx.start_block("entry".to_string());
+
+    ctx.begin_temp_region();
+    if closure.ret_ty.kind != hll::TypeKind::Unit {
+        lower_expr_into(
+            &mut ctx,
+            &closure.body,
+            &deref_place(var_place("$return")),
+            types,
+        )?;
+    } else {
+        let dummy = ctx.fresh_scope_temp(unit_ty(), closure.body.span());
+        lower_expr_into(&mut ctx, &closure.body, &dummy, types)?;
+    }
+    ctx.end_temp_region();
+
+    if ctx.current_block_label.is_some() {
+        ctx.pop_and_emit_scope_exit(types)?;
+        ctx.pop_binding_scope();
+        ctx.terminate_block(return_term(closure.body.span()));
+    }
+
+    Ok(mir::Declaration::Fn(mir::Function {
+        meta,
+        linkage: hll::Linkage::Local,
+        abi: hll::Abi::Silica,
+        params,
+        body: Some(ctx.body),
+    }))
 }
 
 #[cfg(test)]

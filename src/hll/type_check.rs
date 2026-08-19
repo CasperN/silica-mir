@@ -889,12 +889,32 @@ struct PendingInstantiation {
     lifetime_mapping: BTreeMap<Lifetime, Lifetime>,
 }
 
+#[derive(Debug, Clone)]
+pub struct ClosureCapture {
+    pub name: String,
+    pub ty: Type,
+    pub source: SourceInfo,
+}
+
+#[derive(Debug, Clone)]
+pub struct ClosureInfo {
+    pub struct_name: String,
+    pub fn_name: String,
+    pub params: Vec<Param>,
+    pub ret_ty: Type,
+    pub captures: Vec<ClosureCapture>,
+    pub source: SourceInfo,
+    pub body: Expr,
+}
+
 #[derive(Default)]
 pub struct TypeCheckResults {
     pub expression_types: ExpressionTypes,
     pub function_instantiations: IndexMap<SourceInfo, Instance>,
     pub receiver_calls: IndexMap<SourceInfo, ResolvedReceiverCall>,
     pub qualified_calls: IndexMap<SourceInfo, ResolvedMethodTarget>,
+    pub closures: IndexMap<SourceInfo, ClosureInfo>,
+    pub closures_by_struct: HashMap<String, ClosureInfo>,
     expression_contexts: IndexMap<SourceInfo, String>,
     pending_instantiations: Vec<PendingInstantiation>,
     synthesized_lifetime_params: IndexMap<String, Vec<LifetimeParam>>,
@@ -1306,6 +1326,19 @@ pub(super) fn typecheck_program_collect(
     }
     for target in types.qualified_calls.values_mut() {
         resolve_method_target(target);
+    }
+    for closure in types.closures.values_mut() {
+        for p in &mut closure.params {
+            p.ty = subst.resolve_default(&p.ty);
+        }
+        closure.ret_ty = subst.resolve_default(&closure.ret_ty);
+        for c in &mut closure.captures {
+            c.ty = subst.resolve_default(&c.ty);
+        }
+    }
+    types.closures_by_struct.clear();
+    for closure in types.closures.values() {
+        types.closures_by_struct.insert(closure.struct_name.clone(), closure.clone());
     }
     for params in types.synthesized_lifetime_params.values_mut() {
         params.retain(|param| subst.resolve_lifetime(&param.lifetime) == param.lifetime);
@@ -3502,6 +3535,204 @@ fn resolve_receiver_call(
     None
 }
 
+fn collect_free_vars(
+    expr: &Expr,
+    bound: &mut HashSet<String>,
+    free: &mut IndexMap<String, SourceInfo>,
+) {
+    match &expr.kind {
+        ExprKind::Literal(_) => {}
+        ExprKind::Variable(name) => {
+            if !bound.contains(name) {
+                free.entry(name.clone()).or_insert(expr.source);
+            }
+        }
+        ExprKind::FieldAccess(target, _)
+        | ExprKind::Cast(target, _)
+        | ExprKind::Deref(target)
+        | ExprKind::Borrow(_, target)
+        | ExprKind::RawBorrow(target) => {
+            collect_free_vars(target, bound, free);
+        }
+        ExprKind::Call(target, _, args) => {
+            match target {
+                CallTarget::Expr(e) => collect_free_vars(e, bound, free),
+                CallTarget::Receiver { receiver, .. } => collect_free_vars(receiver, bound, free),
+                CallTarget::Qualified { .. } | CallTarget::Path { .. } => {}
+            }
+            for arg in args {
+                collect_free_vars(arg, bound, free);
+            }
+        }
+        ExprKind::Path(_, _) => {}
+        ExprKind::Block(stmts, last_expr, _) => {
+            let initial_bound = bound.clone();
+            for stmt in stmts {
+                match stmt {
+                    Stmt::Let { name, init, .. } => {
+                        if let Some(init) = init {
+                            collect_free_vars(init, bound, free);
+                        }
+                        bound.insert(name.clone());
+                    }
+                    Stmt::Defer { body, .. } => {
+                        collect_free_vars(body, bound, free);
+                    }
+                    Stmt::Expr(e) => {
+                        collect_free_vars(e, bound, free);
+                    }
+                }
+            }
+            if let Some(last) = last_expr {
+                collect_free_vars(last, bound, free);
+            }
+            *bound = initial_bound;
+        }
+        ExprKind::If(cond, thn, els) => {
+            collect_free_vars(cond, bound, free);
+            collect_free_vars(thn, bound, free);
+            collect_free_vars(els, bound, free);
+        }
+        ExprKind::Loop(body) => {
+            collect_free_vars(body, bound, free);
+        }
+        ExprKind::Break(val) | ExprKind::Return(val) => {
+            if let Some(val) = val {
+                collect_free_vars(val, bound, free);
+            }
+        }
+        ExprKind::Continue => {}
+        ExprKind::Assign(lhs, rhs) => {
+            collect_free_vars(lhs, bound, free);
+            collect_free_vars(rhs, bound, free);
+        }
+        ExprKind::Match(target, arms) => {
+            collect_free_vars(target, bound, free);
+            for (pat, arm_expr) in arms {
+                let initial_bound = bound.clone();
+                if let Pattern::Variant(_, Some(var_name)) = pat {
+                    bound.insert(var_name.clone());
+                }
+                collect_free_vars(arm_expr, bound, free);
+                *bound = initial_bound;
+            }
+        }
+        ExprKind::StructConstr(_, fields) => {
+            for (_, field_expr) in fields {
+                collect_free_vars(field_expr, bound, free);
+            }
+        }
+        ExprKind::EnumConstr(_, _, payload) => {
+            collect_free_vars(payload, bound, free);
+        }
+        ExprKind::Array(elems) => {
+            for elem in elems {
+                collect_free_vars(elem, bound, free);
+            }
+        }
+        ExprKind::ArrayIndex(target, idx) => {
+            collect_free_vars(target, bound, free);
+            collect_free_vars(idx, bound, free);
+        }
+        ExprKind::Binary(lhs, _, rhs) => {
+            collect_free_vars(lhs, bound, free);
+            collect_free_vars(rhs, bound, free);
+        }
+        ExprKind::Unary(_, operand) => {
+            collect_free_vars(operand, bound, free);
+        }
+        ExprKind::Lambda { params, body, .. } => {
+            let initial_bound = bound.clone();
+            for p in params {
+                bound.insert(p.name.clone());
+            }
+            collect_free_vars(body, bound, free);
+            *bound = initial_bound;
+        }
+    }
+}
+
+fn infer_lambda(
+    env: &mut TypeEnv,
+    subst: &mut Subst,
+    lambda_expr: &Expr,
+    params: &[LambdaParam],
+    ret_ty: Option<&Type>,
+    body: &Expr,
+    types: &mut TypeCheckResults,
+    d: &mut Diagnostics,
+) -> Type {
+    let closure_id = types.closures.len();
+    let struct_name = format!("$closure_{}", closure_id);
+    let fn_name = format!("$closure_{}_call", closure_id);
+
+    let mut bound = HashSet::new();
+    for p in params {
+        bound.insert(p.name.clone());
+    }
+    let mut free_vars = IndexMap::new();
+    collect_free_vars(body, &mut bound, &mut free_vars);
+
+    let mut captures = Vec::new();
+    for (name, source) in free_vars {
+        if let Some(ty) = env.lookup_var(&name) {
+            captures.push(ClosureCapture {
+                name,
+                ty,
+                source,
+            });
+        }
+    }
+
+    let mut typed_params = Vec::new();
+    for p in params {
+        let ty = if let Some(annotated_ty) = &p.ty {
+            let scope = env.current_type_params.clone();
+            env.validate_type(annotated_ty, &scope, d);
+            annotated_ty.clone()
+        } else {
+            subst.fresh_var()
+        };
+        typed_params.push(Param {
+            name: p.name.clone(),
+            ty,
+            source: p.source,
+        });
+    }
+
+    let expected_ret_ty = if let Some(annotated_ret) = ret_ty {
+        let scope = env.current_type_params.clone();
+        env.validate_type(annotated_ret, &scope, d);
+        annotated_ret.clone()
+    } else {
+        subst.fresh_var()
+    };
+
+    env.push_scope();
+    let old_ret_ty = env.current_ret_ty.replace(expected_ret_ty.clone());
+    for p in &typed_params {
+        env.insert_var(p.name.clone(), p.ty.clone());
+    }
+    check_inner(env, subst, body, &expected_ret_ty, types, d);
+    env.pop_scope();
+    env.current_ret_ty = old_ret_ty;
+
+    let closure_info = ClosureInfo {
+        struct_name: struct_name.clone(),
+        fn_name,
+        params: typed_params,
+        ret_ty: expected_ret_ty,
+        captures,
+        source: lambda_expr.source,
+        body: body.clone(),
+    };
+
+    types.closures.insert(lambda_expr.source, closure_info.clone());
+    types.closures_by_struct.insert(struct_name.clone(), closure_info);
+
+    Type::synthesized(TypeKind::Custom(Instance::bare(struct_name)))
+}
+
 fn infer_inner(
     env: &mut TypeEnv,
     subst: &mut Subst,
@@ -3831,6 +4062,32 @@ fn infer_inner(
                     check_inner(env, subst, arg, param_ty, types, d);
                 }
                 *ret_ty
+            } else if let TypeKind::Custom(Instance { name, .. }) = &resolved.kind {
+                if let Some(closure) = types.closures_by_struct.get(name).cloned() {
+                    if closure.params.len() != args.len() {
+                        d.push_error(source_diagnostic(
+                            ArityMismatch,
+                            expr.source,
+                            format!(
+                                "closure expected {} arguments, found {}",
+                                closure.params.len(),
+                                args.len()
+                            ),
+                        ));
+                        return error_ty();
+                    }
+                    for (arg, param) in args.iter().zip(&closure.params) {
+                        check_inner(env, subst, arg, &param.ty, types, d);
+                    }
+                    closure.ret_ty
+                } else {
+                    d.push_error(source_diagnostic(
+                        ExpectedFunction,
+                        expr.source,
+                        format!("expected function type, found {}", resolved),
+                    ));
+                    return error_ty();
+                }
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedFunction,
@@ -3839,6 +4096,9 @@ fn infer_inner(
                 ));
                 return error_ty();
             }
+        }
+        ExprKind::Lambda { params, ret_ty, body } => {
+            infer_lambda(env, subst, expr, params, ret_ty.as_ref(), body, types, d)
         }
         ExprKind::Block(stmts, last_expr, is_unsafe) => {
             let old_unsafe = env.in_unsafe;
@@ -4518,6 +4778,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
                 check_no_control_flow(el, loop_depth, d);
             }
         }
+        ExprKind::Lambda { .. } => {}
         ExprKind::Literal(_) | ExprKind::Variable(_) => {}
     }
 }

@@ -1,0 +1,23 @@
+# covers: calling a lambda with too few arguments is rejected
+fn arity_mismatch_too_few() -> i64 {
+  let f = |x: i64, y: i64| x + y;
+  f(1i64)
+}
+
+# covers: calling a lambda with too many arguments is rejected
+fn arity_mismatch_too_many() -> i64 {
+  let f = |x: i64| x + 1i64;
+  f(1i64, 2i64)
+}
+
+# covers: calling a lambda with wrong argument type is rejected
+fn argument_type_mismatch() -> i64 {
+  let f = |x: i64| x + 1i64;
+  f(true)
+}
+
+# covers: lambda return type annotation mismatch is rejected
+fn return_type_mismatch() -> bool {
+  let f = |x: i64| -> bool x + 1i64;
+  f(10i64)
+}

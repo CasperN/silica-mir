@@ -310,6 +310,15 @@ fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostic
                 check_expr(e, scope, func, d);
             }
         }
+
+        ExprKind::Lambda { params, body, .. } => {
+            scope.push();
+            for p in params {
+                scope.declare(&p.name, p.is_mut, p.source);
+            }
+            check_expr(body, scope, func, d);
+            scope.pop();
+        }
     }
 }
 

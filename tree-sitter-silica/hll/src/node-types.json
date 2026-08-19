@@ -99,6 +99,10 @@
             "named": true
           },
           {
+            "type": "lambda_expr",
+            "named": true
+          },
+          {
             "type": "loop_expr",
             "named": true
           },
@@ -222,6 +226,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -350,6 +358,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -522,6 +534,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -710,6 +726,10 @@
             "named": true
           },
           {
+            "type": "lambda_expr",
+            "named": true
+          },
+          {
             "type": "loop_expr",
             "named": true
           },
@@ -845,6 +865,10 @@
             "named": true
           },
           {
+            "type": "lambda_expr",
+            "named": true
+          },
+          {
             "type": "loop_expr",
             "named": true
           },
@@ -964,6 +988,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -1133,6 +1161,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -1320,6 +1352,10 @@
           "named": true
         },
         {
+          "type": "lambda_expr",
+          "named": true
+        },
+        {
           "type": "loop_expr",
           "named": true
         },
@@ -1446,6 +1482,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -1761,6 +1801,10 @@
             "named": true
           },
           {
+            "type": "lambda_expr",
+            "named": true
+          },
+          {
             "type": "loop_expr",
             "named": true
           },
@@ -1873,6 +1917,10 @@
             "named": true
           },
           {
+            "type": "lambda_expr",
+            "named": true
+          },
+          {
             "type": "loop_expr",
             "named": true
           },
@@ -1912,6 +1960,68 @@
         "types": [
           {
             "type": "type_args",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "lambda_expr",
+    "named": true,
+    "fields": {
+      "body": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "expr",
+            "named": true
+          }
+        ]
+      },
+      "return_type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "lambda_param",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "lambda_param",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "identifier",
+            "named": true
+          }
+        ]
+      },
+      "type": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "type",
             "named": true
           }
         ]
@@ -2116,6 +2226,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -2379,6 +2493,10 @@
           },
           {
             "type": "int_lit",
+            "named": true
+          },
+          {
+            "type": "lambda_expr",
             "named": true
           },
           {
@@ -2909,6 +3027,10 @@
             "named": true
           },
           {
+            "type": "lambda_expr",
+            "named": true
+          },
+          {
             "type": "loop_expr",
             "named": true
           },
@@ -3272,6 +3394,14 @@
   },
   {
     "type": "{",
+    "named": false
+  },
+  {
+    "type": "|",
+    "named": false
+  },
+  {
+    "type": "||",
     "named": false
   },
   {

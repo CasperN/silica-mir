@@ -443,10 +443,29 @@ pub enum ExprKind {
     Match(Box<Expr>, Vec<(Pattern, Expr)>),
     StructConstr(String, Vec<(String, Expr)>),
     EnumConstr(String, String, Box<Expr>),
+    Lambda {
+        params: Vec<LambdaParam>,
+        ret_ty: Option<Type>,
+        body: Box<Expr>,
+    },
     Array(Vec<Expr>),
     ArrayIndex(Box<Expr>, Box<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LambdaParam {
+    pub is_mut: bool,
+    pub name: String,
+    pub ty: Option<Type>,
+    pub source: SourceInfo,
+}
+
+impl LambdaParam {
+    pub fn span(&self) -> Span {
+        self.source.span()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

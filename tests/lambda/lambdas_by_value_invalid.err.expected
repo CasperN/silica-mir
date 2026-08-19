@@ -1,0 +1,28 @@
+error: at 4:3: [HTC-ArityMismatch] In function 'arity_mismatch_too_few': closure expected 2 arguments, found 1
+   |
+ 3 |   let f = |x: i64, y: i64| x + y;
+ 4 |   f(1i64)
+   |   ^^^^^^^
+ 5 | }
+   |
+error: at 10:3: [HTC-ArityMismatch] In function 'arity_mismatch_too_many': closure expected 1 arguments, found 2
+    |
+  9 |   let f = |x: i64| x + 1i64;
+ 10 |   f(1i64, 2i64)
+    |   ^^^^^^^^^^^^^
+ 11 | }
+    |
+error: at 16:5: [HTC-TypeMismatch] In function 'argument_type_mismatch': type mismatch: expected bool, found i64
+    |
+ 15 |   let f = |x: i64| x + 1i64;
+ 16 |   f(true)
+    |     ^^^^
+ 17 | }
+    |
+error: at 21:28: [HTC-TypeMismatch] In function 'return_type_mismatch': type mismatch: expected i64, found bool
+    |
+ 20 | fn return_type_mismatch() -> bool {
+ 21 |   let f = |x: i64| -> bool x + 1i64;
+    |                            ^^^^^^^^
+ 22 |   f(10i64)
+    |

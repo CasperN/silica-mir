@@ -1794,6 +1794,39 @@ impl Parser {
                 };
                 self.map_match(node, scrut, scope, d)
             }
+            "lambda_expr" => {
+                let mut params = Vec::new();
+                let mut cursor = node.walk();
+                for child in node.children(&mut cursor) {
+                    if child.kind() == "lambda_param" {
+                        if let Some(param) = self.map_lambda_param(child, scope, d) {
+                            params.push(param);
+                        }
+                    }
+                }
+                let ret_ty = if let Some(ret_node) = node.child_by_field_name("return_type") {
+                    self.map_type(ret_node, scope, d)
+                } else {
+                    None
+                };
+                let Some(body_node) = node.child_by_field_name("body") else {
+                    d.push_error(self.diag(
+                        node,
+                        ParserCode::MalformedCst,
+                        "lambda missing body expression",
+                    ));
+                    return None;
+                };
+                let body = self.map_expr(body_node, scope, d)?;
+                Some(Expr {
+                    kind: ExprKind::Lambda {
+                        params,
+                        ret_ty,
+                        body: Box::new(body),
+                    },
+                    source: SourceInfo::written(span),
+                })
+            }
 
             other => {
                 d.push_error(self.diag(
@@ -2055,6 +2088,30 @@ impl Parser {
         Some(Expr {
             kind: ExprKind::Path(target_ty, self.get_text(member).to_string()),
             source: SourceInfo::written(span),
+        })
+    }
+
+    fn map_lambda_param(
+        &self,
+        node: Node,
+        scope: &TypeScope,
+        d: &mut Diagnostics,
+    ) -> Option<LambdaParam> {
+        let name_node = node.child_by_field_name("name")?;
+        let name = self.get_text(name_node).to_string();
+        let is_mut = node
+            .children(&mut node.walk())
+            .any(|c| self.get_text(c) == "mut");
+        let ty = if let Some(ty_node) = node.child_by_field_name("type") {
+            self.map_type(ty_node, scope, d)
+        } else {
+            None
+        };
+        Some(LambdaParam {
+            is_mut,
+            name,
+            ty,
+            source: SourceInfo::written(span_of(node)),
         })
     }
 

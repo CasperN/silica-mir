@@ -358,12 +358,28 @@ module.exports = grammar({
       $.break_expr,
       $.continue_expr,
       $.return_expr,
+      $.lambda_expr,
       $.struct_constr,
       $.scoped_identifier,
       $.array_lit,
       $.qualified_method,
       // Plain identifier reference (variable or function name).
       $.identifier,
+    ),
+
+    lambda_expr: $ => prec.right(seq(
+      choice(
+        seq('|', common.commaSep($.lambda_param), '|'),
+        '||',
+      ),
+      optional(seq('->', field('return_type', $.type))),
+      field('body', $.expr),
+    )),
+
+    lambda_param: $ => seq(
+      optional('mut'),
+      field('name', $.identifier),
+      optional(seq(':', field('type', $.type))),
     ),
 
     // Explicit method selection. The call syntax supplies the receiver as

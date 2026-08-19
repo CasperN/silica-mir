@@ -1,0 +1,37 @@
+# covers: 0-arg lambda with no captures
+fn test_nullary() -> i64 {
+  let f = || 42i64;
+  f()
+}
+
+# covers: multi-arg lambda with explicit types
+fn test_explicit_args(a: i64, b: i64) -> i64 {
+  let add = |x: i64, y: i64| -> i64 x + y;
+  add(a, b)
+}
+
+# covers: lambda capturing local variable by value
+fn test_single_capture(x: i64) -> i64 {
+  let factor = 3i64;
+  let mul = |val: i64| val * factor;
+  mul(x)
+}
+
+# covers: lambda capturing multiple variables by value
+fn test_multi_capture(x: i64) -> i64 {
+  let a = 10i64;
+  let b = 20i64;
+  let f = |n: i64| n + a + b;
+  f(x)
+}
+
+# covers: immediate lambda invocation
+fn test_immediate_call() -> i64 {
+  (|x: i64| x * 2i64)(21i64)
+}
+
+# covers: lambda parameter and return type inference
+fn test_inferred(x: i64) -> i64 {
+  let inc = |n| n + 1i64;
+  inc(x)
+}
