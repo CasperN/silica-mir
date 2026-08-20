@@ -48,7 +48,7 @@ fn test_capture_mut_ref(x: i64) -> i64 {
   let mut x = x;
   {
     let r = &mut x;
-    let f = || r.* = r.* + 1i64;
+    let mut f = || r.* = r.* + 1i64;
     f();
   }
   x
@@ -87,3 +87,80 @@ fn test_capture_autoclone_and_autodestroy(h: Handle) -> i64 {
   let g = f;
   f() + g()
 }
+
+# covers: calling an immutable Fn closure multiple times
+fn test_fn_multi_call(x: i64) -> i64 {
+  let f = |n: i64| n + x;
+  f(10i64) + f(20i64)
+}
+
+# covers: calling a mutable FnMut closure multiple times
+fn test_fn_mut_multi_call() -> i64 {
+  let mut counter = 0i64;
+  {
+    let r = &mut counter;
+    let mut inc = || {
+      r.* = r.* + 1i64;
+      r.*
+    };
+    inc();
+    inc();
+    inc();
+  }
+  counter
+}
+
+struct LinearVal: Move {
+  v: i64,
+}
+
+extern fn consume_linear(lv: LinearVal) -> i64;
+
+# covers: calling a FnOnce closure that consumes a linear capture
+fn test_fn_once_call(lv: LinearVal) -> i64 {
+  let f = || consume_linear(lv);
+  f()
+}
+
+# covers: nested closure capturing an outer captured variable
+fn test_nested_closures(x: i64) -> i64 {
+  let outer = |a: i64| {
+    let inner = |b: i64| a + b + x;
+    inner(1i64) + inner(2i64)
+  };
+  outer(10i64) + outer(20i64)
+}
+
+# covers: invoking an immutable Fn closure in a loop
+fn test_closure_in_loop(limit: i64) -> i64 {
+  let mut sum = 0i64;
+  let mut i = 0i64;
+  let add_const = |v: i64| v + 5i64;
+  loop {
+    if i >= limit {
+      break;
+    }
+    sum = add_const(sum);
+    i = i + 1i64;
+  }
+  sum
+}
+
+struct Pair: Copy + Drop {
+  first: i64,
+  second: i64,
+}
+
+# covers: closure capturing a struct and accessing multiple fields
+fn test_capture_struct_fields(p: Pair) -> i64 {
+  let f = || p.first + p.second;
+  f() + f()
+}
+
+# covers: closure constructing and returning a struct
+fn test_closure_return_struct(x: i64, y: i64) -> Pair {
+  let make_pair = || Pair { first: x, second: y };
+  make_pair()
+}
+
+

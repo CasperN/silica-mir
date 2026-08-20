@@ -658,6 +658,36 @@ impl TypeEnv {
         None
     }
 
+    pub(crate) fn lookup_struct(&self, name: &str) -> Option<&StructDecl> {
+        self.structs.get(name)
+    }
+
+    pub(crate) fn field_type(&self, ty: &Type, field_name: &str) -> Option<Type> {
+        let TypeKind::Custom(Instance {
+            name,
+            type_args,
+            lifetime_args,
+        }) = &ty.kind
+        else {
+            return None;
+        };
+        let s = self.lookup_struct(name)?;
+        let f = s.fields.iter().find(|f| f.name == field_name)?;
+        let type_mapping: HashMap<String, Type> = s
+            .type_params
+            .iter()
+            .zip(type_args)
+            .map(|(p, a)| (p.name.clone(), a.clone()))
+            .collect();
+        let lifetime_mapping: std::collections::BTreeMap<Lifetime, Lifetime> = s
+            .lifetime_params
+            .iter()
+            .zip(lifetime_args)
+            .map(|(p, a)| (p.lifetime.clone(), a.clone()))
+            .collect();
+        Some(substitute_all(&f.ty, &type_mapping, &lifetime_mapping))
+    }
+
     pub(crate) fn type_satisfies_trait(&self, ty: &Type, trait_path: &Instance) -> bool {
         type_satisfies_trait_inner(self, ty, trait_path, &HashMap::new(), &mut Vec::new())
     }
@@ -916,19 +946,30 @@ pub struct ClosureInfo {
     pub markers: Markers,
     pub is_auto_clone: bool,
     pub is_auto_destroy: bool,
+    pub fn_kind: crate::hll::derive::FnKind,
 }
 
 impl ClosureInfo {
     pub fn to_struct_decl(&self) -> StructDecl {
         let mut fields = Vec::new();
+        let self_custom = Type::synthesized(TypeKind::Custom(Instance::new(
+            self.struct_name.clone(),
+            self.lifetime_args.clone(),
+            Vec::new(),
+        )));
+        let self_param_ty = match self.fn_kind {
+            crate::hll::derive::FnKind::Fn => {
+                Type::synthesized(TypeKind::Ref(RefKind::Shared, None, Box::new(self_custom)))
+            }
+            crate::hll::derive::FnKind::FnMut => {
+                Type::synthesized(TypeKind::Ref(RefKind::Mut, None, Box::new(self_custom)))
+            }
+            crate::hll::derive::FnKind::FnOnce => self_custom,
+        };
         let fn_ty = Type::synthesized(TypeKind::Fn {
             abi: Abi::Silica,
             params: {
-                let mut p = vec![Type::synthesized(TypeKind::Custom(Instance::new(
-                    self.struct_name.clone(),
-                    self.lifetime_args.clone(),
-                    Vec::new(),
-                )))];
+                let mut p = vec![self_param_ty];
                 for param in &self.params {
                     p.push(param.ty.clone());
                 }
@@ -973,6 +1014,7 @@ pub struct TypeCheckResults {
     synthesized_lifetime_params: IndexMap<String, Vec<LifetimeParam>>,
     reserved_lifetime_names: HashSet<String>,
     next_inferred_lifetime: usize,
+    pub next_closure_id: usize,
 }
 
 impl std::ops::Deref for TypeCheckResults {
@@ -1434,6 +1476,8 @@ pub(super) fn typecheck_program_collect(
             derived.push(Marker::Move);
         }
         closure.markers = Markers::from_iter(derived);
+        closure.fn_kind =
+            crate::hll::derive::infer_closure_fn_kind(&closure.captures, &closure.body, &env);
         let struct_decl = closure.to_struct_decl();
         env.structs.insert(struct_decl.name.clone(), struct_decl.clone());
         if !closure.markers.declared(Marker::Copy)
@@ -3847,7 +3891,8 @@ fn infer_lambda(
     types: &mut TypeCheckResults,
     d: &mut Diagnostics,
 ) -> Type {
-    let closure_id = types.closures.len();
+    let closure_id = types.next_closure_id;
+    types.next_closure_id += 1;
     let struct_name = format!("$closure_{}", closure_id);
     let fn_name = format!("$closure_{}_call", closure_id);
 
@@ -3961,6 +4006,7 @@ fn infer_lambda(
         markers,
         is_auto_clone: false,
         is_auto_destroy: false,
+        fn_kind: crate::hll::derive::FnKind::FnOnce,
     };
 
     types.closures.insert(lambda_expr.source, closure_info.clone());

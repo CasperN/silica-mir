@@ -1,0 +1,20 @@
+struct LinearToken: Move {
+  v: i64,
+}
+
+# covers: calling a FnOnce closure twice is rejected because it was moved by the first call
+fn test_fn_once_called_twice(token: LinearToken) -> i64 {
+  let f = || token.v;
+  f() + f()
+}
+
+# covers: calling a FnOnce closure in a loop is rejected because the loop body moves the closure
+fn test_fn_once_in_loop(token: LinearToken) {
+  let f = || token.v;
+  loop {
+    f();
+  }
+}
+
+
+

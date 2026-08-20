@@ -199,6 +199,7 @@ struct LowerCtx {
     /// unique while the HLL surface allows the usual scope shadowing.
     binding_scopes: Vec<HashMap<String, String>>,
     captured_vars: HashMap<String, String>,
+    is_ref_receiver_closure: bool,
     /// Parameter and binding names already claimed in this function.
     /// Generated temporaries use the function body's local allocator.
     taken_names: std::collections::HashSet<String>,
@@ -240,6 +241,7 @@ impl LowerCtx {
             temp_regions: Vec::new(),
             binding_scopes: Vec::new(),
             captured_vars: HashMap::new(),
+            is_ref_receiver_closure: false,
             taken_names: std::collections::HashSet::new(),
             functions,
             enums,
@@ -632,7 +634,11 @@ fn lower_expr_to_place(
             if ctx.is_scoped_binding(name) {
                 Ok(mir::Place::Var(ctx.resolve_binding(name)))
             } else if let Some(field) = ctx.captured_vars.get(name) {
-                Ok(field_place(var_place("$self"), field.clone()))
+                if ctx.is_ref_receiver_closure {
+                    Ok(field_place(deref_place(var_place("recv")), field.clone()))
+                } else {
+                    Ok(field_place(var_place("$self"), field.clone()))
+                }
             } else {
                 Ok(mir::Place::Var(ctx.resolve_binding(name)))
             }
@@ -845,11 +851,80 @@ fn lower_call_target_to_operand(
                 ..
             }) = lookup_type(callee, types)
             {
-                if types.closures_by_struct.contains_key(name) {
+                if let Some(closure) = types.closures_by_struct.get(name) {
                     let callee_place = lower_expr_to_place(ctx, callee, types)?;
+                    let callee_hll_ty = lookup_type(callee, types).unwrap().clone();
                     let call_field = field_place(callee_place.clone(), "$call");
-                    let fn_op = copy_op(call_field);
-                    let self_op = mir::Operand::Take(callee_place);
+                    let self_param_ty = match closure.fn_kind {
+                        crate::hll::derive::FnKind::Fn => {
+                            hll::Type::synthesized(hll::TypeKind::Ref(RefKind::Shared, None, Box::new(callee_hll_ty.clone())))
+                        }
+                        crate::hll::derive::FnKind::FnMut => {
+                            hll::Type::synthesized(hll::TypeKind::Ref(RefKind::Mut, None, Box::new(callee_hll_ty.clone())))
+                        }
+                        crate::hll::derive::FnKind::FnOnce => callee_hll_ty.clone(),
+                    };
+                    let mut fn_params = vec![self_param_ty];
+                    for p in &closure.params {
+                        fn_params.push(p.ty.clone());
+                    }
+                    let hll_fn_ty = hll::Type::synthesized(hll::TypeKind::Fn {
+                        abi: hll::Abi::Silica,
+                        params: fn_params,
+                        ret: Box::new(closure.ret_ty.clone()),
+                    });
+                    let mir_fn_ty = lower_type(&hll_fn_ty);
+                    let fn_temp = ctx.fresh_expression_temp(mir_fn_ty, callee.span());
+                    ctx.emit_statement(assign_stmt(
+                        fn_temp.clone(),
+                        use_rv(copy_op(call_field)),
+                        callee.span(),
+                    ));
+                    let fn_op = move_op(fn_temp);
+
+                    let self_op = match closure.fn_kind {
+                        crate::hll::derive::FnKind::Fn => {
+                            let recv_ty = mir::Type::new(
+                                mir::TypeKind::Ref(
+                                    RefKind::Shared,
+                                    None,
+                                    Box::new(lower_type(&callee_hll_ty)),
+                                ),
+                                mir::SourceInfo::generated(
+                                    mir::GeneratedKind::HllDesugaring,
+                                    callee.span(),
+                                ),
+                            );
+                            let recv_ref = ctx.fresh_expression_temp(recv_ty, callee.span());
+                            ctx.emit_statement(assign_stmt(
+                                recv_ref.clone(),
+                                ref_rv(RefKind::Shared, callee_place),
+                                callee.span(),
+                            ));
+                            mir::Operand::Move(recv_ref)
+                        }
+                        crate::hll::derive::FnKind::FnMut => {
+                            let recv_ty = mir::Type::new(
+                                mir::TypeKind::Ref(
+                                    RefKind::Mut,
+                                    None,
+                                    Box::new(lower_type(&callee_hll_ty)),
+                                ),
+                                mir::SourceInfo::generated(
+                                    mir::GeneratedKind::HllDesugaring,
+                                    callee.span(),
+                                ),
+                            );
+                            let recv_ref = ctx.fresh_expression_temp(recv_ty, callee.span());
+                            ctx.emit_statement(assign_stmt(
+                                recv_ref.clone(),
+                                ref_rv(RefKind::Mut, callee_place),
+                                callee.span(),
+                            ));
+                            mir::Operand::Move(recv_ref)
+                        }
+                        crate::hll::derive::FnKind::FnOnce => mir::Operand::Take(callee_place),
+                    };
                     return Ok((fn_op, Some(self_op)));
                 }
             }
@@ -1580,8 +1655,10 @@ fn lower_expr_into(
                     source: c.source,
                 };
                 let cap_place = lower_expr_to_place(ctx, &var_expr, types)?;
-                let cap_op = if matches!(c.ty.kind, hll::TypeKind::Ref(RefKind::Shared, _, _)) {
-                    copy_op(cap_place)
+                let cap_op = if c.is_copy
+                    || matches!(c.ty.kind, hll::TypeKind::Ref(RefKind::Shared, _, _))
+                {
+                    mir::Operand::Take(cap_place)
                 } else {
                     move_op(cap_place)
                 };
@@ -1887,11 +1964,21 @@ fn lower_impl_block(
 
 fn lower_closure_struct(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
     let mut fields = Vec::new();
-    let mut fn_params = vec![hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
+    let closure_custom = hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
         closure.struct_name.clone(),
         closure.lifetime_args.clone(),
         Vec::new(),
-    )))];
+    )));
+    let self_param_ty = match closure.fn_kind {
+        crate::hll::derive::FnKind::Fn => {
+            hll::Type::synthesized(hll::TypeKind::Ref(RefKind::Shared, None, Box::new(closure_custom)))
+        }
+        crate::hll::derive::FnKind::FnMut => {
+            hll::Type::synthesized(hll::TypeKind::Ref(RefKind::Mut, None, Box::new(closure_custom)))
+        }
+        crate::hll::derive::FnKind::FnOnce => closure_custom,
+    };
+    let mut fn_params = vec![self_param_ty];
     for p in &closure.params {
         fn_params.push(p.ty.clone());
     }
@@ -1934,15 +2021,43 @@ fn lower_closure_function(
     types: &TypeCheckResults,
 ) -> Result<mir::Declaration, Diagnostic> {
     let mut params = Vec::new();
-    params.push(mir::Param {
-        name: "$self".to_string(),
-        ty: lower_type(&hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
-            closure.struct_name.clone(),
-            closure.lifetime_args.clone(),
-            Vec::new(),
-        )))),
-        source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
-    });
+    let closure_custom = hll::Type::synthesized(hll::TypeKind::Custom(hll::Instance::new(
+        closure.struct_name.clone(),
+        closure.lifetime_args.clone(),
+        Vec::new(),
+    )));
+    let self_param = match closure.fn_kind {
+        crate::hll::derive::FnKind::Fn => mir::Param {
+            name: "recv".to_string(),
+            ty: mir::Type::new(
+                mir::TypeKind::Ref(
+                    RefKind::Shared,
+                    None,
+                    Box::new(lower_type(&closure_custom)),
+                ),
+                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+            ),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+        },
+        crate::hll::derive::FnKind::FnMut => mir::Param {
+            name: "recv".to_string(),
+            ty: mir::Type::new(
+                mir::TypeKind::Ref(
+                    RefKind::Mut,
+                    None,
+                    Box::new(lower_type(&closure_custom)),
+                ),
+                mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+            ),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+        },
+        crate::hll::derive::FnKind::FnOnce => mir::Param {
+            name: "$self".to_string(),
+            ty: lower_type(&closure_custom),
+            source: mir::SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span()),
+        },
+    };
+    params.push(self_param);
     for p in &closure.params {
         params.push(mir::Param {
             name: p.name.clone(),
@@ -1974,6 +2089,7 @@ fn lower_closure_function(
     };
 
     let mut ctx = LowerCtx::new(program);
+    ctx.is_ref_receiver_closure = closure.fn_kind != crate::hll::derive::FnKind::FnOnce;
     for c in &closure.captures {
         ctx.captured_vars.insert(c.name.clone(), format!("$cap_{}", c.name));
     }

@@ -113,7 +113,7 @@ fn plan_for_function(
     // could observe missing initialization" and skip elaboration.
     let return_reachable = body.return_reachable();
 
-    let reborrow_parent = collect_reborrow_parents(body);
+    let reborrow_parent = collect_reborrow_parents(body, &borrowers);
     let analysis = BorrowerLiveness {
         borrowers: &borrowers,
         reborrow_parent: &reborrow_parent,
@@ -241,7 +241,7 @@ fn plan_for_function(
 
 /// Sort borrower places in place so that reborrow children (higher
 /// parent-chain depth) come first. Ties broken by Ord for determinism.
-fn sort_by_reborrow_depth_desc(names: &mut [Place], parents: &IndexMap<Place, Place>) {
+fn sort_by_reborrow_depth_desc(names: &mut [Place], parents: &IndexMap<Place, Vec<Place>>) {
     names.sort_by(|a, b| {
         let da = reborrow_depth(a, parents);
         let db = reborrow_depth(b, parents);
@@ -249,16 +249,20 @@ fn sort_by_reborrow_depth_desc(names: &mut [Place], parents: &IndexMap<Place, Pl
     });
 }
 
-fn reborrow_depth(name: &Place, parents: &IndexMap<Place, Place>) -> usize {
+fn reborrow_depth(name: &Place, parents: &IndexMap<Place, Vec<Place>>) -> usize {
     let mut depth = 0;
-    let mut cur = name.clone();
+    let mut stack = vec![(name.clone(), 0)];
     let limit = parents.len() + 1;
-    while let Some(p) = parents.get(&cur) {
-        depth += 1;
-        if depth > limit {
+    while let Some((cur, d)) = stack.pop() {
+        depth = depth.max(d);
+        if d > limit {
             break;
         }
-        cur = p.clone();
+        if let Some(ps) = parents.get(&cur) {
+            for p in ps {
+                stack.push((p.clone(), d + 1));
+            }
+        }
     }
     depth
 }
@@ -317,17 +321,11 @@ fn apply_plan(body: &mut FunctionBody, plan: &ElaborationPlan) {
 }
 
 // ---------- Backward liveness ----------
-
-/// Backward liveness with reborrow-parent expansion. When a borrower
-/// place is added to the live set, we also add its reborrow parent
-/// transitively. Both borrowers and their parents are owned paths
-/// (Var, struct field, or enum-variant downcast); nothing here works
-/// at the Var-name level.
 struct BorrowerLiveness<'a> {
     borrowers: &'a BTreeSet<Place>,
-    /// `s -> r` when `s = &kind *r` (both owned paths). Chased
-    /// transitively when expanding uses.
-    reborrow_parent: &'a IndexMap<Place, Place>,
+    /// `s -> parents` when `s = &kind *r` (both owned paths) or `s = &kind aggregate`
+    /// containing borrower fields. Chased transitively when expanding uses.
+    reborrow_parent: &'a IndexMap<Place, Vec<Place>>,
 }
 
 impl<'a> BorrowerLiveness<'a> {
@@ -339,12 +337,15 @@ impl<'a> BorrowerLiveness<'a> {
             return;
         }
         // Chase reborrow parents.
-        let mut cur = u.clone();
-        while let Some(parent) = self.reborrow_parent.get(&cur) {
-            if !state.insert(parent.clone()) {
-                break;
+        let mut stack = vec![u.clone()];
+        while let Some(cur) = stack.pop() {
+            if let Some(parents) = self.reborrow_parent.get(&cur) {
+                for parent in parents {
+                    if state.insert(parent.clone()) {
+                        stack.push(parent.clone());
+                    }
+                }
             }
-            cur = parent.clone();
         }
     }
 }
@@ -371,6 +372,7 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
             // etc.).
             state.retain(|b| !is_ancestor_or_self(&def, b));
         }
+        // Generate uses.
         for u in stmt_uses(stmt, self.borrowers) {
             self.add_use(state, &u);
         }
@@ -384,11 +386,13 @@ impl<'a> Analysis for BorrowerLiveness<'a> {
 
 // ---------- Use / def / consume helpers ----------
 
-/// Scan `body` for reborrow patterns `s = &kind *r` where both `s` and
-/// `r` are owned paths, and build the `s -> r` relation. `r` may be
-/// any owned path (Var, field, downcast) — not just Var.
-fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
-    let mut map = IndexMap::new();
+/// Scan `body` for reborrow patterns `s = &kind *r` or `s = &kind aggregate`
+/// (where aggregate contains borrower fields), and build the `s -> parents` relation.
+fn collect_reborrow_parents(
+    body: &FunctionBody,
+    borrowers: &BTreeSet<Place>,
+) -> IndexMap<Place, Vec<Place>> {
+    let mut map: IndexMap<Place, Vec<Place>> = IndexMap::new();
     for block in &body.blocks {
         for stmt in &block.statements {
             match &stmt.kind {
@@ -397,7 +401,14 @@ fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
                         continue;
                     };
                     if let Some(parent) = deref_ancestor(place) {
-                        map.insert(s, parent);
+                        map.entry(s.clone()).or_default().push(parent);
+                    }
+                    if let Some(owned) = as_owned_path(place) {
+                        for b in borrowers {
+                            if b != &owned && is_ancestor_or_self(&owned, b) {
+                                map.entry(s.clone()).or_default().push(b.clone());
+                            }
+                        }
                     }
                 }
                 StatementKind::Assign(target, RValue::PtrCast(op, to_ty)) => {
@@ -408,9 +419,9 @@ fn collect_reborrow_parents(body: &FunctionBody) -> IndexMap<Place, Place> {
                         };
                         if let Some(op_place) = operand_place(op) {
                             if let Some(parent) = deref_ancestor(op_place) {
-                                map.insert(s, parent);
+                                map.entry(s.clone()).or_default().push(parent);
                             } else if let Some(parent) = as_owned_path(op_place) {
-                                map.insert(s, parent);
+                                map.entry(s.clone()).or_default().push(parent);
                             }
                         }
                     }

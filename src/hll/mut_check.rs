@@ -253,7 +253,18 @@ fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostic
         // ── calls ────────────────────────────────────────────────
         ExprKind::Call(target, _generics, args) => {
             match target {
-                CallTarget::Expr(callee) => check_expr(callee, scope, func, d),
+                CallTarget::Expr(callee) => {
+                    check_expr(callee, scope, func, d);
+                    if let Some(ty) = scope.types.expression_types.get(&callee.source) {
+                        if let TypeKind::Custom(Instance { name, .. }) = &ty.kind {
+                            if let Some(closure) = scope.types.closures_by_struct.get(name) {
+                                if closure.fn_kind == crate::hll::derive::FnKind::FnMut {
+                                    check_borrow_mutability(RefKind::Mut, callee, scope, func, d);
+                                }
+                            }
+                        }
+                    }
+                }
                 CallTarget::Receiver {
                     receiver,
                     selector_source,

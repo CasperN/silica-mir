@@ -883,8 +883,22 @@ struct CallSignature {
 
 impl<'a> Checker<'a> {
     fn call_signature(&self, target: &Operand) -> Option<CallSignature> {
-        let Operand::Const(constant) = target else {
-            return None;
+        let constant = match target {
+            Operand::Const(constant) => constant,
+            _ => {
+                let target_ty = self.env.type_of_operand(target, &self.locals).ok()?;
+                if let TypeKind::Fn { params, .. } = target_ty.kind {
+                    return Some(CallSignature {
+                        name: "<fn_ptr>".to_string(),
+                        param_types: params,
+                        lifetime_params: Vec::new(),
+                        outlives: Vec::new(),
+                        fixed_lifetimes: IndexMap::new(),
+                        fixed_outlives: Vec::new(),
+                    });
+                }
+                return None;
+            }
         };
         match constant {
             ConstVal::FnName(instance) => {
@@ -1628,8 +1642,11 @@ impl<'a> Checker<'a> {
         source: SourceInfo,
     ) {
         match &callee_ty.kind {
-            TypeKind::Ref(kind, Some(lt), inner) => {
-                let inst_region = inst.get(lt).cloned().unwrap_or_else(|| name_to_region(lt));
+            TypeKind::Ref(kind, slot, inner) => {
+                let inst_region = slot
+                    .as_ref()
+                    .and_then(|lt| inst.get(lt).cloned().or_else(|| Some(name_to_region(lt))))
+                    .unwrap_or_else(|| self.region_ctx.fresh_inference());
                 if let Some(caller_r) =
                     self.region_ctx
                         .region_of_place(caller_place, &self.locals, self.env.program())
@@ -1775,13 +1792,7 @@ impl<'a> Checker<'a> {
             // to a ref-returning fn silently bypasses lifetime tracking
             // on that call path — the escape check and the standard
             // ref-flow constraints still fire on direct call sites.
-            // `Ref` with `None` lifetime: elision assigns Free regions
-            // for these before check runs, but a hand-written or
-            // partially-elided signature can still reach here. No
-            // named lifetime to constrain; the caller-side ref still
-            // participates in the standard `region_of_place` path
-            // driven from the direct-call handler above.
-            TypeKind::Ref(_, None, _) => {}
+
             TypeKind::Unit
             | TypeKind::Int(_)
             | TypeKind::Float(_)

@@ -21,3 +21,4 @@ fn return_type_mismatch() -> bool {
   let f = |x: i64| -> bool x + 1i64;
   f(10i64)
 }
+

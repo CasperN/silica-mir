@@ -23,13 +23,13 @@ error: at 36:5: [PS-UseAfterMove] In function 'closure_use_after_move': variable
     |
  35 |     let g = f;
  36 |     f() + g()
-    |     ^^^
+    |     ^
  37 | }
     |
-error: at 36:5: [PS-UseAfterMove] In function 'closure_use_after_move': variable 'f' is used after move
+error: at 36:5: [PS-BorrowStateMismatch] In function 'closure_use_after_move': cannot create & of 'f': place must be initialized at borrow, but is moved-from
     |
  35 |     let g = f;
  36 |     f() + g()
-    |     ^^^
+    |     ^
  37 | }
     |

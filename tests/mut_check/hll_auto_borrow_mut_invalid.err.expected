@@ -43,3 +43,12 @@ error: at 42:3: [HMC-BorrowImmutableAsMut] In function 'generic_mutable_of_immut
     |   ^^^^^
  43 | }
     |
+error: at 48:3: [HMC-BorrowImmutableAsMut] In function 'fn_mut_closure_of_immutable': cannot borrow immutable binding 'inc' as mutable
+    |
+ 46 | fn fn_mut_closure_of_immutable(r: &mut i64) {
+ 47 |   let inc = || r.* = r.* + 1i64;
+    |   ------------------------------ variable declared as immutable here
+ 48 |   inc();
+    |   ^^^
+ 49 | }
+    |

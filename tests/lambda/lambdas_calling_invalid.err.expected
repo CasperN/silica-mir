@@ -1,0 +1,14 @@
+error: at 9:2: [PS-RequireUninitNotSatisfied] In function 'test_fn_once_called_twice': value 'f' must be fully uninitialized by this point, but it is still initialized
+   |
+ 8 |   f() + f()
+ 9 | }
+   |  ^
+ 10 | 
+   |
+warning: at 12:45: [REACH-BlockUnreachable] In function 'test_fn_once_in_loop': block 'loop_end_1' is unreachable from entry
+    |
+ 11 | # covers: calling a FnOnce closure in a loop is rejected because the loop body moves the closure
+ 12 | fn test_fn_once_in_loop(token: LinearToken) {
+    |                                             ^
+ 13 |   let f = || token.v;
+    |

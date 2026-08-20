@@ -41,3 +41,10 @@ trait GenericMutable {
 fn generic_mutable_of_immutable<T: GenericMutable + Drop>(value: T) {
   value.generic_mutable();
 }
+
+# covers: calling a FnMut closure rejects an immutable binding
+fn fn_mut_closure_of_immutable(r: &mut i64) {
+  let inc = || r.* = r.* + 1i64;
+  inc();
+}
+
