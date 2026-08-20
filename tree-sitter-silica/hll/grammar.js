@@ -52,9 +52,11 @@ module.exports = grammar({
 
     ...common.rules,
 
-    // HLL type grammar: shared alternatives plus
-    // `fn [abi] (T, ...) [-> R]`. Return defaults to `unit`.
+    // HLL type grammar: shared alternatives plus the empty-tuple type `()`
+    // (a placeholder for future tuple arities) and
+    // `fn [abi] (T, ...) [-> R]`. Return defaults to `()`.
     type: $ => choice(
+      $.unit_type,
       ...common.typeChoices($),
       seq(
         'fn',
@@ -63,6 +65,8 @@ module.exports = grammar({
         optional(seq('->', field('return_type', $.type))),
       ),
     ),
+
+    unit_type: $ => prec(1, seq('(', ')')),
 
     // HLL struct/enum decls: mandatory comma between fields.
     // `commaSep` already tolerates a trailing comma.
@@ -399,13 +403,10 @@ module.exports = grammar({
     ),
 
     bool_lit: $ => choice('true', 'false'),
-    unit_lit: $ => 'unit',
+    unit_lit: $ => prec(1, seq('(', ')')),
 
-    // Parenthesized expression, also serves as unit `()`.
-    paren_expr: $ => choice(
-      seq('(', ')'),
-      seq('(', $.expr, ')'),
-    ),
+    // Parenthesized expression `(expr)`. The empty form `()` is `unit_lit`.
+    paren_expr: $ => seq('(', $.expr, ')'),
 
     // Block expression: `unsafe? { stmt* trailing_expr? }`. The trailing
     // expression (an `expr` not followed by `;`) is the block's

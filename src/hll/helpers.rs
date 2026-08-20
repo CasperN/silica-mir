@@ -48,7 +48,7 @@ pub fn bool_ty() -> Type {
     Type::synthesized(TypeKind::Bool)
 }
 pub fn unit_ty() -> Type {
-    Type::synthesized(TypeKind::Unit)
+    Type::synthesized(TypeKind::Tuple)
 }
 pub fn never_ty() -> Type {
     Type::synthesized(TypeKind::Never)

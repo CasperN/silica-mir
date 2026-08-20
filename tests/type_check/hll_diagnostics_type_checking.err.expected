@@ -1,8 +1,8 @@
 error: at 81:3: [HTC-InvalidFnModifiers] In function 'TraitBodyDefault::with_body': trait method 'with_body' must not have a body
     |
  80 | trait TraitBodyDefault {
- 81 |   fn with_body(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 81 |   fn with_body(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  82 | }
     |
 error: at 92:3: [HTC-InvalidFnModifiers] In function 'MissingUnsafeTrait::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
@@ -47,7 +47,7 @@ error: at 39:3: [HTC-TypeMismatch] In function 'test_return_type_mismatch': type
     |   ^^^^
  40 | }
     |
-error: at 45:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type mismatch: expected integer type, found unit
+error: at 45:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type mismatch: expected integer type, found ()
     |
  44 | fn test_defer_type_mismatch() {
  45 |   defer 42;
@@ -78,13 +78,13 @@ error: at 70:1: [HTC-InvalidFnModifiers] In function 'silica_marked_unsafe': ext
 error: at 74:1: [HTC-InvalidFnModifiers] In function 'extern_with_body': extern function 'extern_with_body' must not have a body
     |
  73 | # an error.
- 74 | extern fn extern_with_body() { unit }
-    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 74 | extern fn extern_with_body() { () }
+    | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  75 | fn missing_body(x: i64);
     |
 error: at 75:1: [HTC-InvalidFnModifiers] In function 'missing_body': function 'missing_body' has no body; add one or mark it 'extern'
     |
- 74 | extern fn extern_with_body() { unit }
+ 74 | extern fn extern_with_body() { () }
  75 | fn missing_body(x: i64);
     | ^^^^^^^^^^^^^^^^^^^^^^^^
  76 | 
@@ -99,8 +99,8 @@ error: at 87:3: [HTC-InvalidFnModifiers] In function '<FnModifierHost as ImplBod
 error: at 96:3: [HTC-InvalidFnModifiers] In function '<FnModifierHost as MissingUnsafeTrait>::missing_unsafe': extern "C" function 'missing_unsafe' must be unsafe
     |
  95 | impl MissingUnsafeTrait for FnModifierHost {
- 96 |   extern "C" fn missing_unsafe(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 96 |   extern "C" fn missing_unsafe(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  97 | }
     |
 error: at 112:18: [HTC-TypeMismatch] In function 'abi_mismatch_via_arg': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64

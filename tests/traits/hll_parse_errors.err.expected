@@ -8,7 +8,7 @@ error: at 10:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
 error: at 12:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as an enum name
     |
  11 | 
- 12 | enum Self { Value: unit }
+ 12 | enum Self { Value: () }
     |      ^^^^
  13 | 
     |
@@ -29,7 +29,7 @@ error: at 19:10: [PARSE-UnknownAbi] In function 'UnknownAbiTrait::u': unknown ex
 error: at 23:10: [PARSE-UnknownAbi] In function '<S as UnknownAbiTrait>::u': unknown extern ABI "fastcall" — expected "C" or bare extern
     |
  22 | impl UnknownAbiTrait for S {
- 23 |   extern "fastcall" unsafe fn u(recv: &Self) { unit }
+ 23 |   extern "fastcall" unsafe fn u(recv: &Self) { () }
     |          ^^^^^^^^^^
  24 | }
     |
@@ -43,21 +43,21 @@ error: at 28:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate tr
 error: at 36:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern without an ABI clause; impl methods have no foreign symbol
     |
  35 | impl Required for S {
- 36 |   extern fn required(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 36 |   extern fn required(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  37 | }
     |
 error: at 41:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
     |
- 40 |   fn required(recv: &Self) { unit }
- 41 |   fn required(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 40 |   fn required(recv: &Self) { () }
+ 41 |   fn required(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  42 | }
     |
 error: at 45:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
     |
  44 | impl<T> Required for S {
- 45 |   fn required<T>(recv: &Self) { unit }
+ 45 |   fn required<T>(recv: &Self) { () }
     |               ^
  46 | }
     |
@@ -73,7 +73,7 @@ error: at 52:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
  51 | 
  52 | impl Self for S {
     |      ^^^^
- 53 |   fn reserved(recv: &Self) { unit }
+ 53 |   fn reserved(recv: &Self) { () }
     |
 error: at 59:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
     |

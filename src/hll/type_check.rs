@@ -498,7 +498,7 @@ impl Subst {
             (TypeKind::Int(i1), TypeKind::Int(i2)) if i1 == i2 => Ok(()),
             (TypeKind::Float(f1), TypeKind::Float(f2)) if f1 == f2 => Ok(()),
             (TypeKind::Bool, TypeKind::Bool) => Ok(()),
-            (TypeKind::Unit, TypeKind::Unit) => Ok(()),
+            (TypeKind::Tuple, TypeKind::Tuple) => Ok(()),
             (
                 TypeKind::Custom(Instance {
                     name: n1,
@@ -704,7 +704,7 @@ impl TypeEnv {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Unit
+            | TypeKind::Tuple
             | TypeKind::Never => all(),
             TypeKind::Fn { .. } | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
@@ -757,7 +757,7 @@ impl TypeEnv {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Unit
+            | TypeKind::Tuple
             | TypeKind::Never
             | TypeKind::Var(_)
             | TypeKind::IntVar(_)
@@ -2224,7 +2224,7 @@ fn match_impl_type(
         (TypeKind::Int(pattern), TypeKind::Int(actual)) => pattern == actual,
         (TypeKind::Float(pattern), TypeKind::Float(actual)) => pattern == actual,
         (TypeKind::Bool, TypeKind::Bool)
-        | (TypeKind::Unit, TypeKind::Unit)
+        | (TypeKind::Tuple, TypeKind::Tuple)
         | (TypeKind::Never, TypeKind::Never) => true,
         (TypeKind::Param(pattern), TypeKind::Param(actual)) => pattern == actual,
         (TypeKind::Custom(pattern), TypeKind::Custom(actual)) => match_impl_instance(
@@ -3871,7 +3871,7 @@ fn collect_type_lifetimes(ty: &Type, out: &mut IndexSet<Lifetime>) {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
+        | TypeKind::Tuple
         | TypeKind::Never
         | TypeKind::Var(_)
         | TypeKind::IntVar(_)
@@ -4033,7 +4033,7 @@ fn infer_inner(
             Literal::Float(_, Some(ty)) => float_ty(*ty),
             Literal::Float(_, None) => subst.fresh_float_var(),
             Literal::Bool(_) => bool_ty(),
-            Literal::Unit => unit_ty(),
+            Literal::Tuple => unit_ty(),
             Literal::ByteStr(bytes) => array_ty(int_ty(IntTy::U8), array_len(bytes.len())),
         },
         ExprKind::Binary(lhs, op, rhs) => {
@@ -5410,7 +5410,7 @@ mod tests {
     fn test_typecheck_constructors_and_arrays() {
         let source = "
             struct Point { x: i64, y: i64 }
-            enum Option { None: unit, Some: i64 }
+            enum Option { None: (), Some: i64 }
             fn check(arr: [i64; 3]) -> i64 {
                 let p = Point { x: 1, y: 2 };
                 let o = Option::Some(42);

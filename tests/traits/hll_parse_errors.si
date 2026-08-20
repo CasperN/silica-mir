@@ -9,7 +9,7 @@ struct S: Copy + Drop { value: i64 }
 
 struct Self: Copy + Drop { value: i64 }
 
-enum Self { Value: unit }
+enum Self { Value: () }
 
 trait ExternTrait {
   extern fn ext(recv: &Self);
@@ -20,7 +20,7 @@ trait UnknownAbiTrait {
 }
 
 impl UnknownAbiTrait for S {
-  extern "fastcall" unsafe fn u(recv: &Self) { unit }
+  extern "fastcall" unsafe fn u(recv: &Self) { () }
 }
 
 trait Duplicate {
@@ -33,16 +33,16 @@ trait Required {
 }
 
 impl Required for S {
-  extern fn required(recv: &Self) { unit }
+  extern fn required(recv: &Self) { () }
 }
 
 impl Required for S {
-  fn required(recv: &Self) { unit }
-  fn required(recv: &Self) { unit }
+  fn required(recv: &Self) { () }
+  fn required(recv: &Self) { () }
 }
 
 impl<T> Required for S {
-  fn required<T>(recv: &Self) { unit }
+  fn required<T>(recv: &Self) { () }
 }
 
 trait Self {
@@ -50,7 +50,7 @@ trait Self {
 }
 
 impl Self for S {
-  fn reserved(recv: &Self) { unit }
+  fn reserved(recv: &Self) { () }
 }
 
 trait DuplicateBound {}

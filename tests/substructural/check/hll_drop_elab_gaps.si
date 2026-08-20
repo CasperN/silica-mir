@@ -6,7 +6,7 @@
 #
 #   fn                              pattern                                    cross-edge drop
 #   chained_matches                 two postfix matches in a row               arm-bound `a`, `b`
-#   loop_if_break                   `if c { break }` inside `loop`             block-local unit temps
+#   loop_if_break                   `if c { break }` inside `loop`             block-local () temps
 #   struct_field_diverged           heterogeneous per-field init across arms   `p.y` / `p.z` per arm
 #   array_slot_diverged             heterogeneous per-slot init across arms    `a[1]` / `a[2]` per arm
 #   nested_array_slot_diverged      heterogeneous inner-slot init across arms  `m[0][1]` / `m[1][0]`
@@ -31,12 +31,12 @@ fn chained_matches(s: State) -> i64 {
   }
 }
 
-# ---------- `if c { break }` inside `loop`: unit temps dropped on the back edge ----------
+# ---------- `if c { break }` inside `loop`: () temps dropped on the back edge ----------
 
 # Inside the loop body, HLL lowering materializes the `if`'s value into
-# a unit temp on each arm. The `if_merge → loop_start` back-edge is a
+# a () temp on each arm. The `if_merge → loop_start` back-edge is a
 # non-return join; drop-elab splits it and drops the loop-body's Init
-# unit temps there so successive iterations don't accumulate them.
+# () temps there so successive iterations don't accumulate them.
 fn loop_if_break() {
   loop {
     if true { break; };

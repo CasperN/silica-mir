@@ -71,14 +71,14 @@ extern unsafe fn silica_marked_unsafe(x: i64);
 
 # `extern` (no body) or a body without `extern` is required — mixing is
 # an error.
-extern fn extern_with_body() { unit }
+extern fn extern_with_body() { () }
 fn missing_body(x: i64);
 
 # Trait methods must not have a body; impl methods require one.
 struct FnModifierHost: Copy + Drop { value: i64 }
 
 trait TraitBodyDefault {
-  fn with_body(recv: &Self) { unit }
+  fn with_body(recv: &Self) { () }
 }
 
 trait ImplBodyRequired { fn slot(recv: &Self); }
@@ -93,7 +93,7 @@ trait MissingUnsafeTrait {
 }
 
 impl MissingUnsafeTrait for FnModifierHost {
-  extern "C" fn missing_unsafe(recv: &Self) { unit }
+  extern "C" fn missing_unsafe(recv: &Self) { () }
 }
 
 # ---------- HTC-TypeMismatch: fn-value ABI mismatches ----------

@@ -572,7 +572,7 @@ impl Parser {
             self.map_type(rt_node, &scope, d)
         } else {
             Some(Type::new(
-                TypeKind::Unit,
+                TypeKind::Tuple,
                 SourceInfo::generated(GeneratedKind::HllDesugaring, span),
             ))
         };
@@ -859,7 +859,7 @@ impl Parser {
         }
         match node.kind() {
             "bool" => return Some(TypeKind::Bool),
-            "unit" => return Some(TypeKind::Unit),
+            "unit_type" => return Some(TypeKind::Tuple),
             "never" => return Some(TypeKind::Never),
             "identifier" => {
                 return Some(self.identifier_to_type_kind(
@@ -889,7 +889,7 @@ impl Parser {
         }
         match first.kind() {
             "bool" => return Some(TypeKind::Bool),
-            "unit" => return Some(TypeKind::Unit),
+            "unit_type" => return Some(TypeKind::Tuple),
             "never" => return Some(TypeKind::Never),
             "identifier" => {
                 // Identifier alt with optional `type_args` as sibling:
@@ -1011,7 +1011,7 @@ impl Parser {
                 self.map_type(rt, scope, d)?
             } else {
                 Type::new(
-                    TypeKind::Unit,
+                    TypeKind::Tuple,
                     SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
                 )
             };
@@ -1288,7 +1288,7 @@ impl Parser {
                 source: SourceInfo::written(span),
             }),
             "unit_lit" => Some(Expr {
-                kind: ExprKind::Literal(Literal::Unit),
+                kind: ExprKind::Literal(Literal::Tuple),
                 source: SourceInfo::written(span),
             }),
             "byte_str_lit" => {
@@ -1346,7 +1346,7 @@ impl Parser {
                     self.map_expr(e, scope, d)
                 } else {
                     Some(Expr {
-                        kind: ExprKind::Literal(Literal::Unit),
+                        kind: ExprKind::Literal(Literal::Tuple),
                         source: SourceInfo::written(span),
                     })
                 }
@@ -2202,7 +2202,7 @@ mod tests {
 
     #[test]
     fn parse_enum_decl_test() {
-        let source = "enum Option { None: unit, Some: i64 }";
+        let source = "enum Option { None: (), Some: i64 }";
         let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(ref e) = program.declarations[0] {
@@ -2237,7 +2237,7 @@ mod tests {
 
     #[test]
     fn parse_enum_decl_with_markers() {
-        let source = "enum Option: Move + Drop { None: unit, Some: i64 }";
+        let source = "enum Option: Move + Drop { None: (), Some: i64 }";
         let program = Parser::parse_or_panic(source);
         assert_eq!(program.declarations.len(), 1);
         if let Declaration::Enum(ref e) = program.declarations[0] {
@@ -2577,7 +2577,7 @@ mod tests {
 
     #[test]
     fn trailing_comma_in_enum_decl() {
-        let src = "enum E { A: unit, B: i64, }";
+        let src = "enum E { A: (), B: i64, }";
         let program = Parser::parse_or_panic(src);
         let Declaration::Enum(e) = &program.declarations[0] else {
             panic!()
@@ -2688,7 +2688,7 @@ mod tests {
 
     #[test]
     fn fn_type_without_arrow_defaults_to_unit() {
-        // `fn(i64)` → TypeKind::Fn { params: [i64], ret: unit, .. }. The arrow is optional;
+        // `fn(i64)` → TypeKind::Fn { params: [i64], ret: (), .. }. The arrow is optional;
         // absence means the callee returns `unit`.
         let params = first_fn_params("fn caller(f: fn(i64)) {}");
         let TypeKind::Fn { params: p, ret: r, .. } = &params[0].ty.kind else {

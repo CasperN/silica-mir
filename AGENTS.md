@@ -211,7 +211,8 @@ generic_param = identifier [markers]
 
 type_args     = "<" (type | lifetime) ("," (type | lifetime))* [","] ">"
 
-type          = integer_type | float_type | "bool" | "unit" | "never"
+type          = integer_type | float_type | "bool" | unit_type | "never"
+              # unit_type is "()" in HLL and "unit" in MIR
               | identifier [type_args]
               | "&" [lifetime] type
               | "&" [lifetime] "mut" type
@@ -322,7 +323,7 @@ postfix       = expression "." identifier
 HLL syntax traps:
 
 - Blocks evaluate to their trailing expression; no trailing expression means
-  `unit`.
+  `()`.
 - `if`, `loop`, `match`, and blocks are expressions.
 - `match` is postfix: `value match { ... }`.
 - Dereference is postfix: `value.*`.

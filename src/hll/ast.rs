@@ -98,7 +98,9 @@ pub enum TypeKind {
     Int(IntTy),
     Float(FloatTy),
     Bool,
-    Unit,
+    /// The empty tuple `()`. Placeholder for future tuple arities; today it
+    /// carries no payload.
+    Tuple,
     Never,
     /// Struct or enum reference. See [`Instance`] for the shape.
     Custom(Instance),
@@ -132,7 +134,7 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Int(t) => write!(f, "{}", t.name()),
             TypeKind::Float(t) => write!(f, "{}", t.name()),
             TypeKind::Bool => write!(f, "bool"),
-            TypeKind::Unit => write!(f, "unit"),
+            TypeKind::Tuple => write!(f, "()"),
             TypeKind::Never => write!(f, "never"),
             TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
@@ -155,7 +157,7 @@ impl std::fmt::Display for TypeKind {
                     write!(f, "{}", p)?;
                 }
                 write!(f, ")")?;
-                if ret.kind != TypeKind::Unit {
+                if ret.kind != TypeKind::Tuple {
                     write!(f, " -> {}", ret)?;
                 }
                 Ok(())
@@ -383,7 +385,8 @@ pub enum Literal {
     Int(u64, Option<IntTy>),
     Float(f64, Option<FloatTy>),
     Bool(bool),
-    Unit,
+    /// The empty tuple `()`.
+    Tuple,
     ByteStr(Vec<u8>),
 }
 

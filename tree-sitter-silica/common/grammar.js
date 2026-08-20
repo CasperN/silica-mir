@@ -37,7 +37,6 @@ function typeChoices($) {
     'u8', 'u16', 'u32', 'u64',
     'f32', 'f64',
     'bool',
-    'unit',
     'never',
     prec(2, seq('&', optional($.lifetime), optional(choice('mut', 'out', 'drop', 'uninit')), $.type)),
     prec(2, seq('*', $.type)),

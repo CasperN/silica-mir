@@ -1,13 +1,13 @@
 # HLL trait and impl declarations lower into the existing MIR representation.
 #
-# covers: trait generics, method generics, Self, non-unit method returns,
+# covers: trait generics, method generics, Self, non-() method returns,
 # generic impl headers, lifetime-parameterized traits, reference kinds,
 # Self-qualified struct/enum constructors, HLL impl bodies, and generic and
 # concrete inherent impls split across multiple blocks
 
 struct Box<T: Copy + Drop>: Copy + Drop { value: T }
 
-enum Choice: Copy + Drop { Empty: unit }
+enum Choice: Copy + Drop { Empty: () }
 
 trait RefKinds {
   fn shared(recv: &Self);
@@ -34,7 +34,7 @@ trait Observe<'a> {
 impl<'a, T: Copy + Drop> Observe<'a> for Box<T> {
   fn observe(recv: &'a Self) {
     let local: Self = Self { value: recv.*.value };
-    unit
+    ()
   }
 }
 
@@ -44,7 +44,7 @@ trait Make {
 
 impl Make for Choice {
   fn make() -> Self {
-    Self::Empty(unit)
+    Self::Empty(())
   }
 }
 
@@ -64,6 +64,6 @@ impl<T: Copy + Drop> Box<T> {
 
 impl Choice {
   fn empty() -> Self {
-    Self::Empty(unit)
+    Self::Empty(())
   }
 }

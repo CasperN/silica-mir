@@ -563,7 +563,7 @@ pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::Int(t) => mir::TypeKind::Int(*t),
         hll::TypeKind::Float(t) => mir::TypeKind::Float(*t),
         hll::TypeKind::Bool => mir::TypeKind::Bool,
-        hll::TypeKind::Unit => mir::TypeKind::Unit,
+        hll::TypeKind::Tuple => mir::TypeKind::Unit,
         hll::TypeKind::Never => mir::TypeKind::Never,
         hll::TypeKind::Custom(hll::Instance {
             name,
@@ -584,7 +584,7 @@ pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::RawPtr(inner) => mir::TypeKind::RawPtr(Box::new(lower_type(inner))),
         hll::TypeKind::Fn { abi, params, ret } => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();
-            let has_return_param = ret.kind != hll::TypeKind::Unit;
+            let has_return_param = ret.kind != hll::TypeKind::Tuple;
             if has_return_param {
                 mir_params.push(mir::Type::new(
                     mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(ret))),
@@ -792,7 +792,7 @@ fn lower_expr_to_operand(
                     float_const(val.to_bits(), ty)
                 }
                 hll::Literal::Bool(val) => bool_const(*val),
-                hll::Literal::Unit => unit_const(),
+                hll::Literal::Tuple => unit_const(),
                 hll::Literal::ByteStr(bytes) => byte_str_const(bytes.clone()),
             };
             Ok(const_op(const_val))
@@ -1288,7 +1288,7 @@ fn lower_expr_into(
                 )
             })?;
 
-            if hll_ret_ty.kind != hll::TypeKind::Unit {
+            if hll_ret_ty.kind != hll::TypeKind::Tuple {
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
                 let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
                 ctx.emit_statement(assign_stmt(
@@ -1748,7 +1748,7 @@ fn lower_function(
         })
         .collect();
 
-    if f.ret_ty.kind != hll::TypeKind::Unit {
+    if f.ret_ty.kind != hll::TypeKind::Tuple {
         params.push(mir::Param {
             name: "$return".to_string(),
             ty: mir::Type::new(
@@ -1793,7 +1793,7 @@ fn lower_function(
     }
     ctx.start_block("entry".to_string());
 
-    if f.ret_ty.kind != hll::TypeKind::Unit {
+    if f.ret_ty.kind != hll::TypeKind::Tuple {
         lower_expr_into(
             &mut ctx,
             body_expr,
@@ -2065,7 +2065,7 @@ fn lower_closure_function(
             source: p.source,
         });
     }
-    if closure.ret_ty.kind != hll::TypeKind::Unit {
+    if closure.ret_ty.kind != hll::TypeKind::Tuple {
         params.push(mir::Param {
             name: "$return".to_string(),
             ty: mir::Type::new(
@@ -2103,7 +2103,7 @@ fn lower_closure_function(
     ctx.start_block("entry".to_string());
 
     ctx.begin_temp_region();
-    if closure.ret_ty.kind != hll::TypeKind::Unit {
+    if closure.ret_ty.kind != hll::TypeKind::Tuple {
         lower_expr_into(
             &mut ctx,
             &closure.body,
@@ -2271,7 +2271,7 @@ mod tests {
     #[test]
     fn test_lower_match() {
         let source = "
-            enum Option: Copy + Drop { None: unit, Some: i64 }
+            enum Option: Copy + Drop { None: (), Some: i64 }
             fn match_val(v: Option) -> i64 {
                 v match {
                     Some(val) => val,
@@ -2418,7 +2418,7 @@ mod tests {
     fn test_lower_constructors_and_arrays() {
         let source = "
             struct Point: Copy + Drop { x: i64, y: i64 }
-            enum Option: Copy + Drop { None: unit, Some: i64 }
+            enum Option: Copy + Drop { None: (), Some: i64 }
             fn check(arr: [i64; 3]) -> i64 {
                 let p = Point { x: 1, y: 2 };
                 let o = Option::Some(42);
@@ -2523,7 +2523,7 @@ mod tests {
                 right: Tree
             }
             enum Tree: Copy + Drop {
-                Empty: unit,
+                Empty: (),
                 Node: *Node
             }
             fn search_tree(tree: Tree, target: i64) -> bool {

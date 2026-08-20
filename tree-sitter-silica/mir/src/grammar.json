@@ -429,6 +429,10 @@
       "members": [
         {
           "type": "STRING",
+          "value": "unit"
+        },
+        {
+          "type": "STRING",
           "value": "i8"
         },
         {
@@ -470,10 +474,6 @@
         {
           "type": "STRING",
           "value": "bool"
-        },
-        {
-          "type": "STRING",
-          "value": "unit"
         },
         {
           "type": "STRING",

@@ -2,7 +2,7 @@
 # per-slot decode of an array of enums (both via a helper AND
 # directly as `a[k] match { ... }`), match on a struct field
 # projection, and asymmetric arm use of an &mut borrow with a
-# unit-payload enum.
+# ()-payload enum.
 
 # ---------- Nested enum: downcast, then downcast again ----------
 
@@ -28,7 +28,7 @@ fn nested_downcast(o: Outer) -> i64 {
 # Two shapes are legal today. `sum_two_tags` extracts each slot into
 # `to_i64`'s owned parameter — the historical helper pattern. The
 # `Neg` arm in `to_i64` uses HLL unary `-`, lowered to `$i64_neg`.
-enum Tag: Copy + Drop { Zero: unit, Pos: i64, Neg: i64 }
+enum Tag: Copy + Drop { Zero: (), Pos: i64, Neg: i64 }
 
 fn to_i64(t: Tag) -> i64 {
   t match {
@@ -82,7 +82,7 @@ fn decode_field(t: Tagged) -> i64 {
 # (The MIR sibling used `move r.*; r.* = 99i64;` to exercise
 # reinitialization; HLL can't move a Copy value or spell an
 # explicit drop, so the HLL shape is asymmetric read-vs-no-op.)
-enum Which: Copy + Drop { A: unit, B: unit }
+enum Which: Copy + Drop { A: (), B: () }
 
 fn asymmetric_ref_use(r: &mut i64, w: Which) {
   w match {

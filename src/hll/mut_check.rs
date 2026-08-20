@@ -567,7 +567,7 @@ mod tests {
     #[test]
     fn match_binding_reassign_errors() {
         let src = "
-            enum Opt { None: unit, Some: i64 }
+            enum Opt { None: (), Some: i64 }
             fn f(o: Opt) -> i64 {
                 o match {
                     Some(v) => {

@@ -14,7 +14,7 @@ trait LifetimeLabel<'a> {}
 impl LifetimeLabel<'static> for Good {}
 
 struct Holder<T: Label> { value: T }
-enum Maybe<T: Label> { None: unit, Some: T }
+enum Maybe<T: Label> { None: (), Some: T }
 struct Wrapper<T> { value: T }
 struct LifetimeHolder<'held, T: LifetimeLabel<'held>> { value: &'held T }
 

@@ -1,7 +1,7 @@
 # HLL iterative loops — end-to-end programs that only compile once
 # drop-elab's cross-edge insertion runs at every join (not just at
 # return-block predecessors). Before that fix, every `if c { break }`
-# inside `loop` leaked the block-local unit temps at return.
+# inside `loop` leaked the block-local () temps at return.
 #
 # The elaborated MIR pinned below is the drop-elab witness — each
 # back-edge splits into an `if_merge__to__loop_start` block that

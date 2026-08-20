@@ -15,15 +15,15 @@ error: at 222:26: [HTC-TraitBoundCycle] trait-bound cycle: ExpandingCycle -> Exp
 error: at 145:3: [HTC-ImplMethodSafetyMismatch] In function '<UnsafeMethodTarget as SafeContract>::safety_mismatch': impl method 'safety_mismatch' is unsafe, but trait declaration is safe
      |
  144 | impl SafeContract for UnsafeMethodTarget {
- 145 |   unsafe fn safety_mismatch(recv: &Self) { unit }
-     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 145 |   unsafe fn safety_mismatch(recv: &Self) { () }
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  146 | }
      |
 error: at 153:3: [HTC-ImplMethodSafetyMismatch] In function '<UnsafeMethodTarget as UnsafeContract>::other_safety_mismatch': impl method 'other_safety_mismatch' is safe, but trait declaration is unsafe
      |
  152 | impl UnsafeContract for UnsafeMethodTarget {
- 153 |   fn other_safety_mismatch(recv: &Self) { unit }
-     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 153 |   fn other_safety_mismatch(recv: &Self) { () }
+     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  154 | }
      |
 error: at 214:29: [HTC-UndeclaredTrait] trait 'MissingSupertraitUse' has undeclared trait bound 'MissingSupertrait'

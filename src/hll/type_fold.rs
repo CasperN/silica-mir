@@ -41,7 +41,7 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
+        | TypeKind::Tuple
         | TypeKind::Never
         | TypeKind::Param(_)
         | TypeKind::Var(_)

@@ -23,7 +23,7 @@
 
 struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum Option<T: Copy + Drop>: Copy + Drop { None: unit, Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: (), Some: T }
 
 # ---------- Struct: constructor + return the wrapped value ----------
 
@@ -61,14 +61,14 @@ fn option_extract_match(o: Option<i64>) -> i64 {
 # so enum-atomicity marks `ml` Moved after the extract. Without that
 # the scrutinee would stay Init at the merge and (since Move-only is
 # not Drop) trip INIT-ReturnValueLeak.
-enum MoveList: Move { EmptyM: unit, ConsM: i64 }
+enum MoveList: Move { EmptyM: (), ConsM: i64 }
 fn move_only_owned_match(ml: MoveList) -> i64 {
   ml match {
     EmptyM(u) => u_to_zero(u),
     ConsM(x) => x,
   }
 }
-fn u_to_zero(u: unit) -> i64 { 0 }
+fn u_to_zero(u: ()) -> i64 { 0 }
 
 # Move-only enum through a shared borrow: dispatch falls back to
 # `copy ml.* as V` because moving out through a shared ref would
@@ -270,7 +270,7 @@ fn infer_borrowed_i64_receiver<'caller>(value: &'caller i64) -> BorrowedI64<'cal
 }
 
 # Explicit arguments also resolve a parameter absent from the signature.
-fn generic_side_effect<T: Copy + Drop>() { unit }
+fn generic_side_effect<T: Copy + Drop>() { () }
 # covers: explicit type argument absent from all parameter and return types
 fn explicit_unmentioned_type_param() { generic_side_effect<i64>(); }
 
@@ -279,7 +279,7 @@ fn deferred_generic_call() {
   defer generic_side_effect<i64>();
 }
 
-fn lifetime_side_effect<'a>() { unit }
+fn lifetime_side_effect<'a>() { () }
 # covers: reserved static lifetime explicitly instantiates an unmentioned parameter
 fn explicit_static_lifetime() { lifetime_side_effect<'static>(); }
 
@@ -334,7 +334,7 @@ struct Counter<T: Copy + Drop>: Copy + Drop { count: T }
 
 impl<T: Copy + Drop> Counter<T> {
   fn get_val(&self) -> T { self.*.count }
-  fn set_val(&mut self, new_val: T) -> unit { self.*.count = new_val; }
+  fn set_val(&mut self, new_val: T) -> () { self.*.count = new_val; }
   fn get_ref<'a>(&'a self) -> &'a T { &self.*.count }
   fn into_count(self) -> T { self.count }
 }

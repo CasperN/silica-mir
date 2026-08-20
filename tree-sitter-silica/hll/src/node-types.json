@@ -2314,7 +2314,7 @@
     "fields": {},
     "children": {
       "multiple": false,
-      "required": false,
+      "required": true,
       "types": [
         {
           "type": "expr",
@@ -2864,6 +2864,10 @@
         {
           "type": "type_args",
           "named": true
+        },
+        {
+          "type": "unit_type",
+          "named": true
         }
       ]
     }
@@ -3076,6 +3080,11 @@
   },
   {
     "type": "unit_lit",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "unit_type",
     "named": true,
     "fields": {}
   },
@@ -3382,10 +3391,6 @@
   },
   {
     "type": "uninit",
-    "named": false
-  },
-  {
-    "type": "unit",
     "named": false
   },
   {

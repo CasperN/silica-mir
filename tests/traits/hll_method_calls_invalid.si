@@ -12,11 +12,11 @@ trait Second {
 }
 
 impl First for AmbiguousTraitTarget {
-  fn collide(recv: AmbiguousTraitTarget) { unit }
+  fn collide(recv: AmbiguousTraitTarget) { () }
 }
 
 impl Second for AmbiguousTraitTarget {
-  fn collide(recv: AmbiguousTraitTarget) { unit }
+  fn collide(recv: AmbiguousTraitTarget) { () }
 }
 
 # covers: multiple applicable trait methods in one tier are ambiguous
@@ -34,7 +34,7 @@ fn unresolved(value: Missing) {
 struct WrongArity: Copy + Drop { value: i64 }
 
 impl WrongArity {
-  fn takes_argument(recv: WrongArity, value: i64) { unit }
+  fn takes_argument(recv: WrongArity, value: i64) { () }
 }
 
 # covers: receiver is included in method-call arity checking
@@ -45,11 +45,11 @@ fn wrong_arity(value: WrongArity) {
 struct Overlap<T: Copy + Drop>: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Overlap<T> {
-  fn duplicate(recv: Overlap<T>) { unit }
+  fn duplicate(recv: Overlap<T>) { () }
 }
 
 impl Overlap<i64> {
-  fn duplicate(recv: Overlap<i64>) { unit }
+  fn duplicate(recv: Overlap<i64>) { () }
 }
 
 # covers: multiple applicable inherent methods in one tier are ambiguous
@@ -75,7 +75,7 @@ struct Linear { value: i64 }
 struct Generic<T: Copy + Drop>: Copy + Drop { value: T }
 
 impl<T: Copy + Drop> Generic<T> {
-  fn bounded<U: Copy + Drop>(recv: Generic<T>, value: U) { unit }
+  fn bounded<U: Copy + Drop>(recv: Generic<T>, value: U) { () }
 }
 
 # covers: inferred receiver impl arguments do not bypass method bounds
@@ -94,11 +94,11 @@ trait BorrowSecond {
 }
 
 impl BorrowFirst for BorrowAmbiguous {
-  fn borrow_collision(recv: &BorrowAmbiguous) { unit }
+  fn borrow_collision(recv: &BorrowAmbiguous) { () }
 }
 
 impl BorrowSecond for BorrowAmbiguous {
-  fn borrow_collision(recv: &BorrowAmbiguous) { unit }
+  fn borrow_collision(recv: &BorrowAmbiguous) { () }
 }
 
 # covers: multiple auto-borrow candidates in one tier are ambiguous
@@ -120,11 +120,11 @@ trait UnsafeCall {
 }
 
 impl UnsafeCall for UnsafeMethodTarget {
-  unsafe fn trait_dangerous(recv: &Self) { unit }
+  unsafe fn trait_dangerous(recv: &Self) { () }
 }
 
 impl UnsafeMethodTarget {
-  unsafe fn inherent_dangerous(recv: &Self) { unit }
+  unsafe fn inherent_dangerous(recv: &Self) { () }
 }
 
 # covers: unsafe trait methods cannot be called from a safe context
@@ -142,7 +142,7 @@ trait SafeContract {
 }
 
 impl SafeContract for UnsafeMethodTarget {
-  unsafe fn safety_mismatch(recv: &Self) { unit }
+  unsafe fn safety_mismatch(recv: &Self) { () }
 }
 
 trait UnsafeContract {
@@ -150,7 +150,7 @@ trait UnsafeContract {
 }
 
 impl UnsafeContract for UnsafeMethodTarget {
-  fn other_safety_mismatch(recv: &Self) { unit }
+  fn other_safety_mismatch(recv: &Self) { () }
 }
 
 trait BoundFirst {

@@ -71,42 +71,42 @@ error: at 73:31: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity':
 error: at 128:37: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_args_too_few': 'RefWrap' takes 1 lifetime argument(s), found 0
      |
  127 | # covers: a bare nominal reference omits a required lifetime argument
- 128 | fn nominal_lifetime_args_too_few(r: RefWrap) -> unit { unit }
+ 128 | fn nominal_lifetime_args_too_few(r: RefWrap) -> () { () }
      |                                     ^^^^^^^
  129 | # covers: a nominal reference supplies too many lifetime arguments
      |
 error: at 130:42: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_args_too_many': 'RefWrap' takes 1 lifetime argument(s), found 2
      |
  129 | # covers: a nominal reference supplies too many lifetime arguments
- 130 | fn nominal_lifetime_args_too_many<'a>(r: RefWrap<'a, 'a>) -> unit { unit }
+ 130 | fn nominal_lifetime_args_too_many<'a>(r: RefWrap<'a, 'a>) -> () { () }
      |                                          ^^^^^^^^^^^^^^^
  131 | 
      |
 error: at 154:28: [HTC-UndeclaredType] In function 'free_fn_with_self_sugar': undeclared type 'Self'
      |
  153 | # covers: self receiver sugar in free function declaration
- 154 | fn free_fn_with_self_sugar(&self) -> unit { unit }
+ 154 | fn free_fn_with_self_sugar(&self) -> () { () }
      |                            ^^^^^
- 155 | fn free_fn_with_out_self(&out self) -> unit { unit }
+ 155 | fn free_fn_with_out_self(&out self) -> () { () }
      |
 error: at 155:26: [HTC-UndeclaredType] In function 'free_fn_with_out_self': undeclared type 'Self'
      |
- 154 | fn free_fn_with_self_sugar(&self) -> unit { unit }
- 155 | fn free_fn_with_out_self(&out self) -> unit { unit }
+ 154 | fn free_fn_with_self_sugar(&self) -> () { () }
+ 155 | fn free_fn_with_out_self(&out self) -> () { () }
      |                          ^^^^^^^^^
- 156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
+ 156 | fn free_fn_with_drop_self(&drop self) -> () { () }
      |
 error: at 156:27: [HTC-UndeclaredType] In function 'free_fn_with_drop_self': undeclared type 'Self'
      |
- 155 | fn free_fn_with_out_self(&out self) -> unit { unit }
- 156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
+ 155 | fn free_fn_with_out_self(&out self) -> () { () }
+ 156 | fn free_fn_with_drop_self(&drop self) -> () { () }
      |                           ^^^^^^^^^^
- 157 | fn free_fn_with_named_drop_self<'a>(&'a drop self) -> unit { unit }
+ 157 | fn free_fn_with_named_drop_self<'a>(&'a drop self) -> () { () }
      |
 error: at 157:37: [HTC-UndeclaredType] In function 'free_fn_with_named_drop_self': undeclared type 'Self'
      |
- 156 | fn free_fn_with_drop_self(&drop self) -> unit { unit }
- 157 | fn free_fn_with_named_drop_self<'a>(&'a drop self) -> unit { unit }
+ 156 | fn free_fn_with_drop_self(&drop self) -> () { () }
+ 157 | fn free_fn_with_named_drop_self<'a>(&'a drop self) -> () { () }
      |                                     ^^^^^^^^^^^^^
  158 | 
      |
@@ -224,14 +224,14 @@ error: at 141:49: [HTC-UnsafeRequired] In function 'call_generic_unsafe_without_
      |
 error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_satisfied': type argument 'Linear' for 'take_copy::U' does not satisfy bound 'Copy'
      |
- 149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
+ 149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> () {
  150 |   buf.take_copy(lin)
      |       ^^^^^^^^^
  151 | }
      |
 error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_satisfied': type argument 'Linear' for 'take_copy::U' does not satisfy bound 'Drop'
      |
- 149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
+ 149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> () {
  150 |   buf.take_copy(lin)
      |       ^^^^^^^^^
  151 | }

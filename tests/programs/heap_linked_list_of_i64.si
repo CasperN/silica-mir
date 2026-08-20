@@ -8,10 +8,10 @@ extern fn malloc_node(size: i64) -> *Node;
 extern fn free_node(p: *Node);
 
 struct Node: Move { value: i64, next: List }
-enum List: Move { Empty: unit, Cons: *Node }
+enum List: Move { Empty: (), Cons: *Node }
 
 fn list_empty() -> List {
-  List::Empty(unit)
+  List::Empty(())
 }
 
 # Consumes `tail` (Move-only) into the newly-heap-allocated node.
@@ -24,7 +24,7 @@ fn list_cons(value: i64, tail: List) -> List {
   List::Cons(p)
 }
 
-# Recursive free. The `Empty` arm binds the payload (unit) into a
+# Recursive free. The `Empty` arm binds the payload `()` into a
 # local — `move list as Empty` consumes the whole scrutinee via
 # enum-atomicity. The `Cons` arm extracts the raw pointer with `move`
 # too, reads the tail through unsafe deref, frees the node, and

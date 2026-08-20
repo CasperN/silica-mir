@@ -14,11 +14,11 @@ trait Required {
 }
 
 impl Unknown for S {
-  fn ignored(recv: &Self) { unit }
+  fn ignored(recv: &Self) { () }
 }
 
 impl Required for S {
-  fn extra(recv: &Self) { unit }
+  fn extra(recv: &Self) { () }
 }
 
 trait Result {
@@ -34,7 +34,7 @@ trait Lifetime<'a> {
 }
 
 impl<'a> Lifetime<'a> for S {
-  fn lifetime<'a>(recv: &'a Self) { unit }
+  fn lifetime<'a>(recv: &'a Self) { () }
 }
 
 trait GenericTrait<T: Copy + Drop> {
@@ -42,7 +42,7 @@ trait GenericTrait<T: Copy + Drop> {
 }
 
 impl GenericTrait for S {
-  fn generic(recv: &Self, value: i64) { unit }
+  fn generic(recv: &Self, value: i64) { () }
 }
 
 trait MethodGeneric {
@@ -50,21 +50,21 @@ trait MethodGeneric {
 }
 
 impl MethodGeneric for S {
-  fn method_generic(recv: &Self, value: i64) { unit }
+  fn method_generic(recv: &Self, value: i64) { () }
 }
 
 # Inherent impl targets must be nominal types.
 impl i64 {
-  fn invalid_target(recv: &Self) { unit }
+  fn invalid_target(recv: &Self) { () }
 }
 
 # Multiple blocks are legal, but cannot redeclare a method for the same target.
 impl S {
-  fn duplicate(recv: &Self) { unit }
+  fn duplicate(recv: &Self) { () }
 }
 
 impl S {
-  fn duplicate(recv: &Self) { unit }
+  fn duplicate(recv: &Self) { () }
 }
 
 # Trait declares a C-ABI method; impl provides a Silica-ABI body.
@@ -73,7 +73,7 @@ trait AbiParityCTrait {
 }
 
 impl AbiParityCTrait for S {
-  unsafe fn c_method(recv: &Self) { unit }
+  unsafe fn c_method(recv: &Self) { () }
 }
 
 # Trait declares a Silica-ABI method; impl provides a C-ABI body.
@@ -82,5 +82,5 @@ trait AbiParitySilicaTrait {
 }
 
 impl AbiParitySilicaTrait for S {
-  extern "C" unsafe fn silica_method(recv: &Self) { unit }
+  extern "C" unsafe fn silica_method(recv: &Self) { () }
 }

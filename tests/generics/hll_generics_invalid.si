@@ -85,7 +85,7 @@ fn let_annotation_bad_arity() {
 fn requires_copy<T: Copy + Drop>(x: T) -> T { x }
 fn first<T, U>(x: T, y: U) -> T { x }
 fn identity<T>(x: T) -> T { x }
-fn generic_side_effect<T>() { unit }
+fn generic_side_effect<T>() { () }
 fn borrow_identity<'a>(x: &'a i64) -> &'a i64 { x }
 fn choose_first<'a, 'b>(x: &'a i64, y: &'b i64) -> &'a i64 { x }
 
@@ -125,9 +125,9 @@ fn call_undeclared_lifetime<'a>(x: &'a i64) -> &'a i64 {
 struct RefWrap<'a>: Copy + Drop { p: &'a i64 }
 
 # covers: a bare nominal reference omits a required lifetime argument
-fn nominal_lifetime_args_too_few(r: RefWrap) -> unit { unit }
+fn nominal_lifetime_args_too_few(r: RefWrap) -> () { () }
 # covers: a nominal reference supplies too many lifetime arguments
-fn nominal_lifetime_args_too_many<'a>(r: RefWrap<'a, 'a>) -> unit { unit }
+fn nominal_lifetime_args_too_many<'a>(r: RefWrap<'a, 'a>) -> () { () }
 
 # covers: inferred generic call inside an impl uses impl-header bounds
 impl DropOnly {
@@ -143,18 +143,18 @@ fn call_generic_unsafe_without_block() -> i64 { unsafe_identity<i64>(1) }
 # covers: method-level generic type parameter bound violation
 struct MethodBuffer<T: Copy + Drop>: Copy + Drop { ptr: *T }
 impl<T: Copy + Drop> MethodBuffer<T> {
-  fn take_copy<U: Copy + Drop>(self: &Self, item: U) -> unit { unit }
+  fn take_copy<U: Copy + Drop>(self: &Self, item: U) -> () { () }
 }
 
-fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> unit {
+fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> () {
   buf.take_copy(lin)
 }
 
 # covers: self receiver sugar in free function declaration
-fn free_fn_with_self_sugar(&self) -> unit { unit }
-fn free_fn_with_out_self(&out self) -> unit { unit }
-fn free_fn_with_drop_self(&drop self) -> unit { unit }
-fn free_fn_with_named_drop_self<'a>(&'a drop self) -> unit { unit }
+fn free_fn_with_self_sugar(&self) -> () { () }
+fn free_fn_with_out_self(&out self) -> () { () }
+fn free_fn_with_drop_self(&drop self) -> () { () }
+fn free_fn_with_named_drop_self<'a>(&'a drop self) -> () { () }
 
 
 

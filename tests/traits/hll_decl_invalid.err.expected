@@ -3,13 +3,13 @@ error: at 16:1: [TC-ImplForUnknownTrait] Impl references undeclared trait 'Unkno
  15 | 
  16 | impl Unknown for S {
     | ^
- 17 |   fn ignored(recv: &Self) { unit }
+ 17 |   fn ignored(recv: &Self) { () }
     |
 error: at 21:3: [TC-ImplMethodNotInTrait] Impl of 'Required' has method 'extra' not declared on the trait
     |
  20 | impl Required for S {
- 21 |   fn extra(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 21 |   fn extra(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  22 | }
     |
 error: at 20:1: [TC-ImplMissingTraitMethod] Impl of 'Required' is missing method 'required'
@@ -17,7 +17,7 @@ error: at 20:1: [TC-ImplMissingTraitMethod] Impl of 'Required' is missing method
  19 | 
  20 | impl Required for S {
     | ^
- 21 |   fn extra(recv: &Self) { unit }
+ 21 |   fn extra(recv: &Self) { () }
     |
 error: at 29:29: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 has type &'s1 out bool, trait declares &'s1 out i64 (after Self := S)
     |
@@ -29,7 +29,7 @@ error: at 29:29: [TC-ImplMethodSignatureMismatch] Impl method 'result' param 2 h
 error: at 37:15: [TC-DuplicateLifetimeParam] In function '<S as Lifetime<'a>>::lifetime': lifetime parameter 'a is declared more than once
     |
  36 | impl<'a> Lifetime<'a> for S {
- 37 |   fn lifetime<'a>(recv: &'a Self) { unit }
+ 37 |   fn lifetime<'a>(recv: &'a Self) { () }
     |               ^^
  38 | }
     |
@@ -38,27 +38,27 @@ error: at 44:1: [TC-ImplTraitArgArity] Trait 'GenericTrait' expects 1 type argum
  43 | 
  44 | impl GenericTrait for S {
     | ^
- 45 |   fn generic(recv: &Self, value: i64) { unit }
+ 45 |   fn generic(recv: &Self, value: i64) { () }
     |
 error: at 53:3: [TC-ImplMethodSignatureMismatch] Impl method 'method_generic' declares 0 type parameter(s), trait declares 1
     |
  52 | impl MethodGeneric for S {
- 53 |   fn method_generic(recv: &Self, value: i64) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 53 |   fn method_generic(recv: &Self, value: i64) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  54 | }
     |
 error: at 76:3: [TC-ImplMethodSignatureMismatch] Impl method 'c_method' has ABI Silica, trait declares "C"
     |
  75 | impl AbiParityCTrait for S {
- 76 |   unsafe fn c_method(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 76 |   unsafe fn c_method(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  77 | }
     |
 error: at 85:3: [TC-ImplMethodSignatureMismatch] Impl method 'silica_method' has ABI "C", trait declares Silica
     |
  84 | impl AbiParitySilicaTrait for S {
- 85 |   extern "C" unsafe fn silica_method(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 85 |   extern "C" unsafe fn silica_method(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  86 | }
     |
 error: at 57:6: [TC-InherentImplInvalidTarget] Inherent impl target must be a declared struct or enum type, found i64
@@ -66,12 +66,12 @@ error: at 57:6: [TC-InherentImplInvalidTarget] Inherent impl target must be a de
  56 | # Inherent impl targets must be nominal types.
  57 | impl i64 {
     |      ^^^
- 58 |   fn invalid_target(recv: &Self) { unit }
+ 58 |   fn invalid_target(recv: &Self) { () }
     |
 error: at 67:3: [TC-DuplicateInherentMethod] Inherent method 'duplicate' is declared more than once for S
     |
  66 | impl S {
- 67 |   fn duplicate(recv: &Self) { unit }
-    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 67 |   fn duplicate(recv: &Self) { () }
+    |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  68 | }
     |

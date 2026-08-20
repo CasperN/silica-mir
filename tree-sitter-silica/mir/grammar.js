@@ -32,6 +32,7 @@ module.exports = grammar({
     ...common.rules,
 
     type: $ => choice(
+      'unit',
       ...common.typeChoices($),
       // MIR specific fn type: `fn [abi] (T, ..., [$return:] T)`.
       seq(

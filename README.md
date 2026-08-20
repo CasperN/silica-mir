@@ -370,7 +370,7 @@ enum_decl   = enum   [type_params] identifier [markers] { variant , ..., }
 field       = identifier : type
 variant     = identifier : type
 
-# Functions: optional `-> ret_ty` (defaults to `unit`); body is a block.
+# Functions: optional `-> ret_ty` (defaults to `()`); body is a block.
 # Generics: `fn<T: Copy>(x: T) -> T { ... }`.
 fn_decl = fn [type_params] identifier ( param , ..., ) [ -> type ] block_expr
 param   = identifier : type
@@ -392,7 +392,7 @@ type_args   = < type (, type)* [,] >
 # Types — same as MIR for the shared alternatives (scalars, refs,
 # raw pointers, arrays, custom names with optional type args, in-scope
 # type-param references) plus HLL's function-type variant
-# `fn(T,...) [-> R]` with an optional return arrow (defaults to `unit`
+# `fn(T,...) [-> R]` with an optional return arrow (defaults to `()`
 # when omitted). MIR's function type has no arrow because MIR returns
 # go through `&out $return` parameters.
 type = ...   # see MIR Types, plus `fn(T,...) [-> R]`
@@ -402,7 +402,7 @@ stmt = let [mut] identifier [: type] = expr ;
      | expr ;
 
 # Blocks: any number of statements, followed by an optional trailing
-# expression that is the block's value. Missing → unit.
+# expression that is the block's value. Missing → ().
 block_expr = { stmt* [expr] }
 
 # Expressions, loose → tight: assignment → prefix → postfix → primary.
@@ -422,7 +422,7 @@ postfix = primary
         | postfix [ expr ]                           # array index
         | postfix match { arm , ..., }               # postfix match
 
-primary = int_lit | float_lit | true | false | unit
+primary = int_lit | float_lit | true | false | ()
         | identifier                                     # variable
         | ( expr )                                       # grouping / ()
         | block_expr
@@ -441,7 +441,7 @@ pattern = identifier [ ( identifier ) ]                  # Variant [ (bind) ]
 
 - **Expression-oriented.** `if`, `match`, `loop`, and blocks all
   evaluate to a value. A block's value is its trailing expression
-  (an `expr` with no `;`) or `unit` if there isn't one.
+  (an `expr` with no `;`) or `()` if there isn't one.
 - **No arithmetic or comparison operators.** They go through
   intrinsic function calls (see MIR Intrinsics), so the HLL doesn't
   need to reserve `+ - * /` or comparison tokens.

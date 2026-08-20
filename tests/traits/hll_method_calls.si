@@ -166,11 +166,11 @@ trait BorrowedRank {
 }
 
 impl ExactRank for Ranked {
-  fn ranked(recv: Ranked) { unit }
+  fn ranked(recv: Ranked) { () }
 }
 
 impl BorrowedRank for Ranked {
-  fn ranked(recv: &Ranked) { unit }
+  fn ranked(recv: &Ranked) { () }
 }
 
 # covers: an exact receiver match outranks an auto-borrow in the same tier
@@ -696,7 +696,7 @@ impl StaticContainer {
 }
 
 enum ShapeKind: Copy + Drop {
-  None: unit,
+  None: (),
   Point: i64,
 }
 
@@ -721,14 +721,14 @@ fn test_static_methods() -> StaticContainer {
 # covers: enum constructor via path and coexistence with same-named static method
 fn test_enum_path_and_coexistence() -> Shape {
   let k = ShapeKind::Point(5);
-  let u = ShapeKind::None(unit);
+  let u = ShapeKind::None(());
   let s = Shape::Point(5);
   s
 }
 
 enum Status: Copy + Drop {
   Active: i64,
-  Inactive: unit,
+  Inactive: (),
 }
 
 impl Status {
