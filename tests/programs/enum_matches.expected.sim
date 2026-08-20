@@ -48,13 +48,13 @@ fn nested_downcast<'s0>(o: Outer, $return: &'s0 out i64) {
 }
 
 enum Tag: Copy + Drop {
-  Zero: unit
+  Zero: $Tuple0
   Pos: i64
   Neg: i64
 }
 
 fn to_i64<'s0>(t: Tag, $return: &'s0 out i64) {
-  _: unit;
+  _: $Tuple0;
   p: i64;
   n: i64;
   $tmp_0: &out i64;
@@ -114,12 +114,12 @@ fn sum_two_tags<'s0>(a: [Tag; 2], $return: &'s0 out i64) {
 
 fn sum_two_tags_direct<'s0>(a: [Tag; 2], $return: &'s0 out i64) {
   first: i64;
-  _: unit;
+  _: $Tuple0;
   p: i64;
   n: i64;
   $tmp_0: &out i64;
   second: i64;
-  $__0: unit;
+  $__0: $Tuple0;
   $p_0: i64;
   $n_0: i64;
   $tmp_1: &out i64;
@@ -183,7 +183,7 @@ struct Tagged: Copy + Drop {
 }
 
 fn decode_field<'s0>(t: Tagged, $return: &'s0 out i64) {
-  _: unit;
+  _: $Tuple0;
   p: i64;
   $tmp_0: &out i64;
   n: i64;
@@ -221,21 +221,21 @@ fn decode_field<'s0>(t: Tagged, $return: &'s0 out i64) {
 }
 
 enum Which: Copy + Drop {
-  A: unit
-  B: unit
+  A: $Tuple0
+  B: $Tuple0
 }
 
 fn asymmetric_ref_use<'s0>(r: &'s0 mut i64, w: Which) {
-  $tmp_0: unit;
-  a: unit;
+  $tmp_0: $Tuple0;
+  a: $Tuple0;
   observed: i64;
-  b: unit;
+  b: $Tuple0;
   entry:
     switchEnum(w) [A: switch_A_0, B: switch_B_1]
   switch_A_0:
     a = copy w as A;
     observed = copy r.*;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop observed;
     require_uninit observed;
     drop a;
@@ -243,7 +243,7 @@ fn asymmetric_ref_use<'s0>(r: &'s0 mut i64, w: Which) {
     goto switch_merge_2
   switch_B_1:
     b = copy w as B;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop b;
     require_uninit b;
     goto switch_merge_2

@@ -300,10 +300,10 @@ fn $closure_6_call<'s0, 's1>(recv: &'s0 $closure_6<'s0>, $return: &'s1 out i64) 
 
 fn test_capture_mut_ref<'s0>(x: i64, $return: &'s0 out i64) {
   $x_0: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   r: &mut i64;
   f: $closure_7<'s0>;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: fn(&mut $closure_7<'s0>);
   $tmp_3: &mut $closure_7<'s0>;
   entry:
@@ -315,12 +315,12 @@ fn test_capture_mut_ref<'s0>(x: i64, $return: &'s0 out i64) {
     $tmp_3 = &mut f;
     call move $tmp_2(move $tmp_3);
     unborrow f.$cap_r;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_3;
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop f.$call;
     require_uninit f;
     require_uninit r;
@@ -340,7 +340,7 @@ struct $closure_7<'s0>: Drop + Move {
 }
 
 fn $closure_7_call<'s0>(recv: &'s0 mut $closure_7<'s0>) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: i64;
   $tmp_2: &out i64;
   entry:
@@ -348,7 +348,7 @@ fn $closure_7_call<'s0>(recv: &'s0 mut $closure_7<'s0>) {
     call $i64_add(copy recv.*.$cap_r.*, 1, move $tmp_2);
     drop recv.*.$cap_r.*;
     recv.*.$cap_r.* = move $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_2;
     require_uninit $tmp_1;
     drop $tmp_0;
@@ -360,10 +360,10 @@ fn $closure_7_call<'s0>(recv: &'s0 mut $closure_7<'s0>) {
 
 fn test_capture_out_ref<'s0>($return: &'s0 out i64) {
   x: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   r: &out i64;
   f: $closure_8<'s0>;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: fn($closure_8<'s0>);
   entry:
     r = &out x;
@@ -371,11 +371,11 @@ fn test_capture_out_ref<'s0>($return: &'s0 out i64) {
     f.$cap_r = move r;
     $tmp_2 = copy f.$call;
     call move $tmp_2(move f);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit f;
     require_uninit r;
     drop $tmp_0;
@@ -393,11 +393,11 @@ struct $closure_8<'s0>: Move {
 }
 
 fn $closure_8_call<'s0>($self: $closure_8<'s0>) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
     $self.$cap_r.* = 42;
     unborrow $self.$cap_r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop $self.$call;
@@ -423,14 +423,14 @@ impl AutoClone for Handle {
 
 impl AutoDestroy for Handle {
   fn destroy<'s0>(self: &'s0 drop Handle) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: i64;
     entry:
       $tmp_1 = move self.*.id;
       unborrow self;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit self;
@@ -598,7 +598,7 @@ fn $closure_10_call<'s0, 's1>(recv: &'s0 $closure_10, n: i64, $return: &'s1 out 
 
 fn test_fn_mut_multi_call<'s0>($return: &'s0 out i64) {
   counter: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   r: &mut i64;
   inc: $closure_11<'s0>;
   $tmp_1: i64;
@@ -646,7 +646,7 @@ fn test_fn_mut_multi_call<'s0>($return: &'s0 out i64) {
     require_uninit $tmp_10;
     drop $tmp_9;
     require_uninit $tmp_9;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop inc.$call;
     require_uninit inc;
     require_uninit r;
@@ -665,7 +665,7 @@ struct $closure_11<'s0>: Drop + Move {
 }
 
 fn $closure_11_call<'s0, 's1>(recv: &'s0 mut $closure_11<'s0>, $return: &'s1 out i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: i64;
   $tmp_2: &out i64;
   entry:
@@ -673,7 +673,7 @@ fn $closure_11_call<'s0, 's1>(recv: &'s0 mut $closure_11<'s0>, $return: &'s1 out
     call $i64_add(copy recv.*.$cap_r.*, 1, move $tmp_2);
     drop recv.*.$cap_r.*;
     recv.*.$cap_r.* = move $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_2;
     require_uninit $tmp_1;
     drop $tmp_0;
@@ -849,18 +849,18 @@ fn test_closure_in_loop<'s0>(limit: i64, $return: &'s0 out i64) {
   sum: i64;
   i: i64;
   add_const: $closure_15;
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   $tmp_3: bool;
   $tmp_4: &out bool;
-  $tmp_5: unit;
-  $tmp_6: unit;
+  $tmp_5: $Tuple0;
+  $tmp_6: $Tuple0;
   $tmp_7: i64;
   $tmp_8: fn(&$closure_15, i64, $return: &out i64);
   $tmp_9: &$closure_15;
   $tmp_10: &out i64;
-  $tmp_11: unit;
+  $tmp_11: $Tuple0;
   $tmp_12: i64;
   $tmp_13: &out i64;
   entry:
@@ -880,7 +880,7 @@ fn test_closure_in_loop<'s0>(limit: i64, $return: &'s0 out i64) {
     require_uninit $tmp_1;
     goto loop_end_1
   if_false_3:
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     goto if_merge_4
   if_merge_4:
     require_uninit $tmp_4;
@@ -892,7 +892,7 @@ fn test_closure_in_loop<'s0>(limit: i64, $return: &'s0 out i64) {
     $tmp_10 = &out $tmp_7;
     call move $tmp_8(move $tmp_9, move sum, move $tmp_10);
     sum = move $tmp_7;
-    $tmp_6 = unit;
+    $tmp_6 = $Tuple0 {};
     require_uninit $tmp_10;
     require_uninit $tmp_9;
     require_uninit $tmp_8;
@@ -902,12 +902,12 @@ fn test_closure_in_loop<'s0>(limit: i64, $return: &'s0 out i64) {
     $tmp_13 = &out $tmp_12;
     call $i64_add(move i, 1, move $tmp_13);
     i = move $tmp_12;
-    $tmp_11 = unit;
+    $tmp_11 = $Tuple0 {};
     require_uninit $tmp_13;
     require_uninit $tmp_12;
     drop $tmp_11;
     require_uninit $tmp_11;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     goto loop_start_0

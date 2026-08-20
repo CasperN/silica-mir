@@ -17,7 +17,7 @@
 # A regression here means the checker is silently accepting one of these
 # illegal forms or is emitting the wrong diagnostic for it.
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 # ---------- Branch on uninit bool: reads the operand, fires UseBeforeInit ----------
 

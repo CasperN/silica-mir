@@ -8,7 +8,7 @@ struct StructRefSelf<'s0> {
 }
 
 enum EnumRefSelf<'s0> {
-  Nil: unit
+  Nil: $Tuple0
   Cons: &'s0 mut EnumRefSelf<'s0>
 }
 

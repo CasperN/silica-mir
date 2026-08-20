@@ -22,9 +22,9 @@
 #   switch_downcast_borrow_unreachable_sibling          switchEnum (unreachable sib)            downcast borrow on the reachable arm; other arm is unreachable
 #   out_ref_unfulfilled_on_abort_arm_waived             switchEnum (abort sib)                  `&out` post-obligation waived on the aborting arm
 
-enum Sel: Copy + Drop { A: unit  B: unit }
+enum Sel: Copy + Drop { A: $Tuple0  B: $Tuple0 }
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 extern fn noop();
 extern fn sink(r: &mut i64);

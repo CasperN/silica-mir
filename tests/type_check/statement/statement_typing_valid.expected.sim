@@ -3,7 +3,7 @@ struct S: Copy + Drop {
 }
 
 enum Choice: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 

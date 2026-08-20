@@ -3,9 +3,12 @@
 # Each function exercises one cell of the (operand kind x failure mode)
 # matrix and fires exactly one TC-* diagnostic.
 #
-#   fn                    operand kind    failure mode          DiagCode
-#   unit_to_int           const unit      type mismatch lhs     TC-AssignmentTypeMismatch
-#   undeclared_fnname     const fnName    name not declared      TC-UndeclaredFunction
+#   fn                              operand kind    failure mode              DiagCode
+#   unit_to_int                     const unit      type mismatch lhs         TC-AssignmentTypeMismatch
+#   undeclared_fnname               const fnName    name not declared         TC-UndeclaredFunction
+#   empty_struct_const_of_struct    const empty     struct has fields         TC-EmptyStructConstOnNonEmptyStruct
+#   empty_struct_const_of_enum      const empty     name resolves to enum     TC-EmptyStructConstOnNonEmptyStruct
+#   empty_struct_const_undeclared   const empty     name not declared         TC-UndeclaredType
 
 # ---------- unit literal assigned to an integer target ----------
 
@@ -14,7 +17,7 @@
 fn unit_to_int() {
   n: i64;
   entry:
-    n = unit;
+    n = $Tuple0 {};
     return
 }
 
@@ -26,5 +29,43 @@ fn undeclared_fnname() {
   g: fn(i64);
   entry:
     g = missing;
+    return
+}
+
+# ---------- empty-struct const naming a struct with fields ----------
+
+# `Point {}` is only valid when Point has zero fields. Here Point has
+# `x` and `y`, so the const would zero-init unrelated fields — reject.
+struct Point: Copy + Drop { x: i64 y: i64 }
+
+fn empty_struct_const_of_struct() {
+  p: Point;
+  entry:
+    p = Point {};
+    return
+}
+
+# ---------- empty-struct const naming an enum ----------
+
+# `Color {}` names an enum, not a struct. Enums must be constructed
+# with a variant; the empty-struct const shape is rejected.
+enum Color: Copy + Drop { Red: i64 Blue: i64 }
+
+fn empty_struct_const_of_enum() {
+  c: Color;
+  entry:
+    c = Color {};
+    return
+}
+
+# ---------- empty-struct const naming an undeclared type ----------
+
+# `Missing` is not declared anywhere. Falls through to the standard
+# UndeclaredType diagnostic rather than an empty-struct-specific one —
+# the shape-mismatch codes are for declared-but-wrong-shape cases.
+fn empty_struct_const_undeclared() {
+  m: i64;
+  entry:
+    m = Missing {};
     return
 }

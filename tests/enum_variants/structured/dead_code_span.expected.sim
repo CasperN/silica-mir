@@ -1,12 +1,12 @@
 enum Option: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 
 fn vf_dead_code_span() {
   o: Option;
   entry:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     switchEnum(o) [None: n, Some: s]
   n:
     drop o;

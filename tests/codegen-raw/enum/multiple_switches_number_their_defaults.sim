@@ -1,5 +1,6 @@
+struct Empty {}
 
-        enum E { A: unit B: unit }
+        enum E { A: Empty B: Empty }
         fn f(e: E, e2: E) {
           entry:
             switchEnum(e) [A: a1, B: b1]

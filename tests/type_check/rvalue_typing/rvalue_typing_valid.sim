@@ -16,9 +16,9 @@
 #   enum_constr_basic            Name::Variant(operand) — scalar payload
 #   enum_constr_recursive_ref    Name::Variant(operand) — payload is &Self
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
-enum List: Copy + Drop { Nil: unit  Cons: &List }
+enum List: Copy + Drop { Nil: $Tuple0  Cons: &List }
 
 extern fn use_shared(r: &i64);
 extern fn use_mut(r: &mut i64);

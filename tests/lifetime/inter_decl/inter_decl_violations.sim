@@ -83,7 +83,7 @@ fn escape_via_out_param<'a>(dst: &out &'a i64) {
 
 # ---------- E6: escape via nested enum-payload write ----------
 
-enum RefEnum<'a>: Copy + Drop { N: unit, R: &'a i64 }
+enum RefEnum<'a>: Copy + Drop { N: $Tuple0, R: &'a i64 }
 
 fn escape_via_enum_variant<'a>($return: &out RefEnum<'a>) {
   local: i64;

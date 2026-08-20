@@ -50,11 +50,11 @@ fn chained_matches<'s0>(s: State, $return: &'s0 out i64) {
 }
 
 fn loop_if_break() {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
+  $tmp_4: $Tuple0;
   entry:
     goto loop_start_0
   loop_start_0:
@@ -65,18 +65,18 @@ fn loop_if_break() {
     require_uninit $tmp_2;
     goto loop_end_1
   if_false_3:
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     goto if_merge_4
   if_merge_4:
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
     goto loop_start_0
   loop_end_1:
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
@@ -90,37 +90,37 @@ struct P: Copy + Drop {
 
 fn struct_field_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   p: P;
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
+  $tmp_4: $Tuple0;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     p.x = 1;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     p.z = 3;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge0
   $edge0:
     drop p.z;
     goto if_merge_2
   if_false_1:
     p.x = 1;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
     p.y = 2;
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     drop $tmp_4;
     require_uninit $tmp_4;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge1
   $edge1:
     drop p.y;
@@ -139,37 +139,37 @@ fn struct_field_diverged<'s0>(c: bool, $return: &'s0 out i64) {
 
 fn array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   a: [i64; 3];
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
+  $tmp_4: $Tuple0;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     a[0] = 1;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     a[2] = 3;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge0
   $edge0:
     drop a[2];
     goto if_merge_2
   if_false_1:
     a[0] = 1;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
     a[1] = 2;
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     drop $tmp_4;
     require_uninit $tmp_4;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge1
   $edge1:
     drop a[1];
@@ -188,37 +188,37 @@ fn array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
 
 fn nested_array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   m: [[i64; 2]; 2];
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
+  $tmp_4: $Tuple0;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     m[0][0] = 1;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     m[0][1] = 2;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge0
   $edge0:
     drop m[0][1];
     goto if_merge_2
   if_false_1:
     m[0][0] = 1;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
     m[1][0] = 3;
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     drop $tmp_4;
     require_uninit $tmp_4;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge1
   $edge1:
     drop m[1][0];
@@ -241,37 +241,37 @@ struct Bag: Copy + Drop {
 
 fn struct_field_array_slot_diverged<'s0>(c: bool, $return: &'s0 out i64) {
   s: Bag;
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
+  $tmp_4: $Tuple0;
   entry:
     branch(copy c) [true: if_true_0, false: if_false_1]
   if_true_0:
     s.a[0] = 1;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     s.a[2] = 3;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge0
   $edge0:
     drop s.a[2];
     goto if_merge_2
   if_false_1:
     s.a[0] = 1;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
     s.a[1] = 2;
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     drop $tmp_4;
     require_uninit $tmp_4;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto $edge1
   $edge1:
     drop s.a[1];

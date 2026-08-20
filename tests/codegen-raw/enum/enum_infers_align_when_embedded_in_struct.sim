@@ -1,5 +1,6 @@
+struct Empty {}
 
-        enum E { A: i64 B: unit }
+        enum E { A: i64 B: Empty }
         struct S { b: bool e: E }
         fn f() { entry: return }
         

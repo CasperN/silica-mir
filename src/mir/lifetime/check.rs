@@ -523,7 +523,7 @@ fn emit_operand_wf_constraints(
 ) {
     let Operand::Const(constant) = op else { return };
     match constant {
-        ConstVal::FnName(instance) => {
+        ConstVal::FnName(instance) | ConstVal::EmptyStruct(instance) => {
             for ty in &instance.type_args {
                 emit_type_wf_constraints(ty, prog, cs);
             }
@@ -547,7 +547,6 @@ fn emit_operand_wf_constraints(
         ConstVal::Int { .. }
         | ConstVal::Float { .. }
         | ConstVal::Bool(_)
-        | ConstVal::Unit
         | ConstVal::ByteStr(_) => {}
     }
 }
@@ -606,7 +605,6 @@ fn emit_type_wf_constraints(ty: &Type, prog: &IndexedProgram, cs: &mut constrain
                 emit_type_wf_constraints(i, prog, cs);
             }
         }
-        TypeKind::Unit
         | TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
@@ -703,7 +701,6 @@ fn collect_named_regions(
         // Scalars carry no lifetimes. `TypeKind::Param` is an in-scope
         // parameter binder; its lifetime dependency (if any) is
         // introduced at the instantiation site, not this walk.
-        TypeKind::Unit
         | TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
@@ -983,8 +980,8 @@ impl<'a> Checker<'a> {
             ConstVal::Int { .. }
             | ConstVal::Float { .. }
             | ConstVal::Bool(_)
-            | ConstVal::Unit
-            | ConstVal::ByteStr(_) => None,
+            | ConstVal::ByteStr(_)
+            | ConstVal::EmptyStruct(_) => None,
         }
     }
 
@@ -1793,7 +1790,6 @@ impl<'a> Checker<'a> {
             // on that call path — the escape check and the standard
             // ref-flow constraints still fire on direct call sites.
 
-            TypeKind::Unit
             | TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool

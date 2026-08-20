@@ -129,7 +129,7 @@ fn duplicate_fn_declaration_at_name_span() { entry: return }
 # once: SwitchArmUnknownVariant, TerminatorUndefinedTarget (for the undefined
 # block), and VF-SwitchNotExhaustive (missing 'Some'). All three carets must
 # land on the same switchEnum terminator line.
-enum SwitchOption: Copy + Drop { None: unit Some: i64 }
+enum SwitchOption: Copy + Drop { None: $Tuple0 Some: i64 }
 fn switch_enum_multi_errors(o: SwitchOption) {
   entry:
     switchEnum(o) [Wat: nowhere, None: end]

@@ -78,7 +78,7 @@ pub fn bool_ty() -> Type {
     Type::synthesized(TypeKind::Bool)
 }
 pub fn unit_ty() -> Type {
-    Type::synthesized(TypeKind::Unit)
+    Type::synthesized(TypeKind::Custom(Instance::bare("$Tuple0")))
 }
 pub fn never_ty() -> Type {
     Type::synthesized(TypeKind::Never)
@@ -195,7 +195,7 @@ pub fn bool_const(b: bool) -> ConstVal {
     ConstVal::Bool(b)
 }
 pub fn unit_const() -> ConstVal {
-    ConstVal::Unit
+    ConstVal::EmptyStruct(Instance::bare("$Tuple0"))
 }
 /// Bare function-name const (non-generic).
 pub fn fn_name_const(name: impl Into<String>) -> ConstVal {

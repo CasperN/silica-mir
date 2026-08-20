@@ -1,6 +1,7 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%Empty = type {  }
 %E = type { i16, [0 x i8], [1 x i16] }
 
 define void @f() {

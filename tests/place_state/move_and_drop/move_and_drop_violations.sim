@@ -34,6 +34,19 @@ fn read_of_uninit_local() {
     return
 }
 
+# covers: an empty struct is not auto-initialized; reading a
+# declared-but-unwritten local of a zero-field type also fires
+# UseBeforeInit.
+struct Unit0: Copy + Drop {}
+
+fn read_of_uninit_empty_struct() {
+  u: Unit0;
+  v: Unit0;
+  entry:
+    v = copy u;
+    return
+}
+
 # ---------- [B] NeverInit local: explicit drop fires UseBeforeInit ----------
 
 # `drop` is a consuming operation. Dropping a NeverInit local is the

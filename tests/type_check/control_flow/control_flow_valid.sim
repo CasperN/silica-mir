@@ -20,7 +20,7 @@
 #   switch_enum_separate_arms       switchEnum    each variant to a distinct target block
 #   cross_function_labels           goto          labels in two fns do not leak across
 
-enum Color: Copy + Drop { Red: unit  Green: unit  Blue: unit }
+enum Color: Copy + Drop { Red: $Tuple0  Green: $Tuple0  Blue: $Tuple0 }
 
 # ---------- goto: target defined in the same function ----------
 

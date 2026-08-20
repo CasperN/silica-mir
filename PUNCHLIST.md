@@ -145,6 +145,13 @@ the deliberate later refinement to nested operand and projection sources.
   silently during receiver matching.
 - **Field access on references**: When projecting `self.field` on reference
   types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.
+- **Surface-origin registry for synthesized MIR types**: Compiler-generated
+  MIR types (`$TupleN`, closure structs, future impl-Trait / coroutine state
+  machines) render as their raw MIR spelling in MIR-internal diagnostics.
+  Introduce a registry populated at lowering time (origin: tuple with element
+  types, closure with source span, etc.) that MIR's diagnostic formatter
+  consults to render surface-shaped names. Removes the temptation to
+  special-case `Display` per synthesized-type prefix.
 
 ## Testing gaps
 - **Warning-only fixtures are not pinned.** A clean `.expected.sim` fixture

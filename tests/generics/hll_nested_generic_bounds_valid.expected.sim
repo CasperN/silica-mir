@@ -3,9 +3,9 @@ struct Sink<T: Drop>: Drop {
 }
 
 fn nested_bound_valid(x: Sink<Sink<i64>>) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop x;

@@ -1,6 +1,7 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
 %"Deep<i32>" = type { %"RefBox<i32>", [2 x ptr], %"Box<[i32; 2]>" }
 %"Box<i32>" = type { i32 }
 %"Box<Box<i32>>" = type { %"Box<i32>" }

@@ -11,7 +11,7 @@ struct BorrowedDestroyable<'a>: Move { value: &'a i64 }
 struct MutHolder<'a>: Move { r: &'a mut i64 }
 struct PartialOwner: Move { item: Destroyable tail: i64 }
 struct PartialAutoDestroy: Move { left: i64 right: i64 }
-enum DestroyChoice: Move { Item: Destroyable Empty: unit }
+enum DestroyChoice: Move { Item: Destroyable Empty: $Tuple0 }
 
 extern fn init_destroyable(out: &out Destroyable);
 extern fn take_destroyable(value: Destroyable);

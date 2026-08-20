@@ -1,18 +1,18 @@
 extern "C" fn write(fd: i32, buf: *u8, count: u64);
 
 fn print_hi() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 4];
   p: *u8;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     s = b"hi!\n";
     p = &raw s[0u64];
     call write(1i32, move p, 4u64);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit p;
     drop s;
     require_uninit s;
@@ -22,20 +22,20 @@ fn print_hi() {
 }
 
 fn main<'s0>(exit: &'s0 out i32) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   entry:
     call print_hi();
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     exit.* = 0i32;
     unborrow exit;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit exit;

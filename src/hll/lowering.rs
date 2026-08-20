@@ -563,7 +563,7 @@ pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::Int(t) => mir::TypeKind::Int(*t),
         hll::TypeKind::Float(t) => mir::TypeKind::Float(*t),
         hll::TypeKind::Bool => mir::TypeKind::Bool,
-        hll::TypeKind::Tuple => mir::TypeKind::Unit,
+        hll::TypeKind::Tuple => mir::TypeKind::Custom(mir::Instance::bare("$Tuple0")),
         hll::TypeKind::Never => mir::TypeKind::Never,
         hll::TypeKind::Custom(hll::Instance {
             name,
@@ -1632,7 +1632,30 @@ fn lower_expr_into(
             ctx.start_block(merge_label);
             Ok(())
         }
-        hll::ExprKind::StructConstr(_, fields) => {
+        hll::ExprKind::StructConstr(name, fields) => {
+            if fields.is_empty() {
+                let (lifetime_args, type_args) = match types.get(&expr.source) {
+                    Some(hll::Type {
+                        kind: hll::TypeKind::Custom(hll::Instance {
+                            lifetime_args,
+                            type_args,
+                            ..
+                        }),
+                        ..
+                    }) => (
+                        lifetime_args.clone(),
+                        type_args.iter().map(lower_type).collect(),
+                    ),
+                    _ => (Vec::new(), Vec::new()),
+                };
+                let instance = mir::Instance::new(name.clone(), lifetime_args, type_args);
+                ctx.emit_statement(assign_stmt(
+                    dest.clone(),
+                    use_rv(const_op(mir::ConstVal::EmptyStruct(instance))),
+                    expr.span(),
+                ));
+                return Ok(());
+            }
             for (field_name, value_expr) in fields {
                 let field_dest = field_place(dest.clone(), field_name.clone());
                 lower_expr_into(ctx, value_expr, &field_dest, types)?;
@@ -2151,7 +2174,10 @@ mod tests {
                 source
             );
         }
-        let mir_prog = lower_program(&hll_prog, &types).unwrap();
+        let mut mir_prog = lower_program(&hll_prog, &types).unwrap();
+        mir_prog
+            .declarations
+            .extend(crate::mir::intrinsics::prelude_decls());
 
         let (env, env_errs) = crate::mir::type_check::IndexedProgram::build(&mir_prog);
         if !env_errs.is_empty() {
@@ -2220,11 +2246,11 @@ mod tests {
             "
             fn add(a: i64, b: i64, $return: &out i64) {
               sum: i64;
-              $tmp_0: unit;
+              $tmp_0: $Tuple0;
               entry:
                 sum = take a;
                 sum = take b;
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 require_uninit $tmp_0;
                 $return.* = take sum;
                 require_uninit sum;
@@ -2283,7 +2309,7 @@ mod tests {
             source,
             "
             enum Option: Copy + Drop {
-              None: unit
+              None: $Tuple0
               Some: i64
             }
 
@@ -2324,15 +2350,15 @@ mod tests {
             "
             fn check($return: &out i64) {
               x: i64;
-              $tmp_0: unit;
-              $tmp_1: unit;
-              $tmp_2: unit;
+              $tmp_0: $Tuple0;
+              $tmp_1: $Tuple0;
+              $tmp_2: $Tuple0;
               entry:
                 x = 0;
                 goto loop_start_0
               loop_start_0:
                 x = 42;
-                $tmp_1 = unit;
+                $tmp_1 = $Tuple0 {};
                 require_uninit $tmp_1;
                 $return.* = take x;
                 require_uninit $tmp_2;
@@ -2360,17 +2386,17 @@ mod tests {
             source,
             "
             fn check(cond: bool) {
-              $tmp_0: unit;
+              $tmp_0: $Tuple0;
               a: i64;
               entry:
                 branch(take cond) [true: if_true_0, false: if_false_1]
               if_true_0:
                 a = 1;
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 require_uninit a;
                 goto if_merge_2
               if_false_1:
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 goto if_merge_2
               if_merge_2:
                 require_uninit $tmp_0;
@@ -2436,7 +2462,7 @@ mod tests {
             }
 
             enum Option: Copy + Drop {
-              None: unit
+              None: $Tuple0
               Some: i64
             }
 
@@ -2560,12 +2586,12 @@ mod tests {
             }
 
             enum Tree: Copy + Drop {
-              Empty: unit
+              Empty: $Tuple0
               Node: *Node
             }
 
             fn search_tree(tree: Tree, target: i64, $return: &out bool) {
-              u: unit;
+              u: $Tuple0;
               n: *Node;
               val: i64;
               $tmp_0: bool;
@@ -2821,26 +2847,26 @@ mod tests {
             source,
             "
             fn f(res: &out i64) {
-              $tmp_0: unit;
+              $tmp_0: $Tuple0;
               x: i64;
-              $tmp_1: unit;
-              $tmp_2: unit;
-              $tmp_3: unit;
-              $tmp_4: unit;
+              $tmp_1: $Tuple0;
+              $tmp_2: $Tuple0;
+              $tmp_3: $Tuple0;
+              $tmp_4: $Tuple0;
               entry:
                 x = 1;
-                $tmp_1 = unit;
+                $tmp_1 = $Tuple0 {};
                 x = 20;
-                $tmp_2 = unit;
+                $tmp_2 = $Tuple0 {};
                 require_uninit $tmp_2;
                 x = 10;
-                $tmp_3 = unit;
+                $tmp_3 = $Tuple0 {};
                 require_uninit $tmp_3;
                 require_uninit $tmp_1;
                 res.* = take x;
-                $tmp_4 = unit;
+                $tmp_4 = $Tuple0 {};
                 require_uninit $tmp_4;
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 require_uninit x;
                 require_uninit $tmp_0;
                 require_uninit res;
@@ -2862,11 +2888,11 @@ mod tests {
             source,
             "
             fn f(x: &mut i64, $return: &out i64) {
-              $tmp_0: unit;
+              $tmp_0: $Tuple0;
               entry:
                 $return.* = take x.*;
                 x.* = 100;
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 require_uninit $tmp_0;
                 require_uninit $return;
                 require_uninit x;
@@ -2893,28 +2919,28 @@ mod tests {
             source,
             "
             fn f(res: &out i64) {
-              $tmp_0: unit;
+              $tmp_0: $Tuple0;
               x: i64;
-              $tmp_1: unit;
-              $tmp_2: unit;
-              $tmp_3: unit;
-              $tmp_4: unit;
-              $tmp_5: unit;
+              $tmp_1: $Tuple0;
+              $tmp_2: $Tuple0;
+              $tmp_3: $Tuple0;
+              $tmp_4: $Tuple0;
+              $tmp_5: $Tuple0;
               entry:
                 x = 1;
                 res.* = take x;
-                $tmp_1 = unit;
+                $tmp_1 = $Tuple0 {};
                 require_uninit $tmp_1;
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 x = 10;
-                $tmp_3 = unit;
+                $tmp_3 = $Tuple0 {};
                 require_uninit $tmp_3;
                 x = 30;
-                $tmp_4 = unit;
+                $tmp_4 = $Tuple0 {};
                 require_uninit $tmp_4;
-                $tmp_2 = unit;
+                $tmp_2 = $Tuple0 {};
                 x = 20;
-                $tmp_5 = unit;
+                $tmp_5 = $Tuple0 {};
                 require_uninit $tmp_5;
                 require_uninit $tmp_2;
                 require_uninit x;
@@ -2944,18 +2970,18 @@ mod tests {
             source,
             "
             fn f(res: &out i64) {
-              $tmp_0: unit;
+              $tmp_0: $Tuple0;
               x: i64;
-              $tmp_1: unit;
-              $tmp_2: unit;
-              $tmp_3: unit;
-              $tmp_4: unit;
+              $tmp_1: $Tuple0;
+              $tmp_2: $Tuple0;
+              $tmp_3: $Tuple0;
+              $tmp_4: $Tuple0;
               $tmp_5: i64;
               $tmp_6: &out i64;
-              $tmp_7: unit;
+              $tmp_7: $Tuple0;
               $tmp_8: i64;
               $tmp_9: &out i64;
-              $tmp_10: unit;
+              $tmp_10: $Tuple0;
               entry:
                 x = 0;
                 goto loop_start_0
@@ -2967,19 +2993,19 @@ mod tests {
                 $tmp_6 = &out $tmp_5;
                 call $i64_add(take x, 1, move $tmp_6);
                 x = move $tmp_5;
-                $tmp_4 = unit;
+                $tmp_4 = $Tuple0 {};
                 require_uninit $tmp_6;
                 require_uninit $tmp_5;
                 require_uninit $tmp_4;
                 goto loop_end_1
               if_false_3:
-                $tmp_2 = unit;
+                $tmp_2 = $Tuple0 {};
                 goto if_merge_4
               if_merge_4:
                 $tmp_9 = &out $tmp_8;
                 call $i64_add(take x, 1, move $tmp_9);
                 x = move $tmp_8;
-                $tmp_7 = unit;
+                $tmp_7 = $Tuple0 {};
                 require_uninit $tmp_9;
                 require_uninit $tmp_8;
                 require_uninit $tmp_7;
@@ -2988,9 +3014,9 @@ mod tests {
               loop_end_1:
                 require_uninit $tmp_1;
                 res.* = take x;
-                $tmp_10 = unit;
+                $tmp_10 = $Tuple0 {};
                 require_uninit $tmp_10;
-                $tmp_0 = unit;
+                $tmp_0 = $Tuple0 {};
                 require_uninit x;
                 require_uninit $tmp_0;
                 require_uninit res;

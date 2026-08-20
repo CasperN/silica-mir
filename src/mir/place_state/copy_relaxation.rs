@@ -1301,7 +1301,7 @@ mod tests {
             "
             struct Pair: Copy + Drop { left: i64 right: i64 }
             struct Link: Move { next: &mut Pair }
-            enum Choice: Move { A: &mut i64 B: unit }
+            enum Choice: Move { A: &mut i64 B: $Tuple0 }
             extern fn consume(x: i64);
             fn field(r: &mut Link) {
               entry:

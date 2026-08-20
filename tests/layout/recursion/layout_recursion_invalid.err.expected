@@ -8,7 +8,7 @@ error: at 23:8: [LAY-RecursiveTypeByValue] type 'StructSelf' is recursive by val
 error: at 29:6: [LAY-RecursiveTypeByValue] type 'EnumSelf' is recursive by value (cycle: EnumSelf). Break the cycle by wrapping a field/variant payload in a reference.
     |
  28 | # infinite size; the checker names the single-member cycle.
- 29 | enum EnumSelf { A: unit  B: EnumSelf }
+ 29 | enum EnumSelf { A: $Tuple0  B: EnumSelf }
     |      ^^^^^^^^
  30 | 
     |

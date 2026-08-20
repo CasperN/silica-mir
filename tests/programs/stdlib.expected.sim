@@ -13,8 +13,8 @@ impl<T: Move> Box<T> {
     $tmp_1: &out u64;
     $tmp_2: &out *u8;
     data: *T;
-    $tmp_3: unit;
-    $tmp_4: unit;
+    $tmp_3: $Tuple0;
+    $tmp_4: $Tuple0;
     entry:
       $tmp_1 = &out $tmp_0;
       call size_of<T>(move $tmp_1);
@@ -25,10 +25,10 @@ impl<T: Move> Box<T> {
       require_uninit $tmp_0;
       data = ptr_cast(move bytes, *T);
       data.* = move value;
-      $tmp_4 = unit;
+      $tmp_4 = $Tuple0 {};
       drop $tmp_4;
       require_uninit $tmp_4;
-      $tmp_3 = unit;
+      $tmp_3 = $Tuple0 {};
       drop $tmp_3;
       require_uninit $tmp_3;
       $return.*.data = move data;
@@ -41,13 +41,13 @@ impl<T: Move> Box<T> {
   }
   fn into_inner<'s0>(self: Box<T>, $return: &'s0 out T) {
     value: T;
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: *u8;
     entry:
       value = move self.data.*;
       $tmp_1 = ptr_cast(move self.data, *u8);
       call free_bytes(move $tmp_1);
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       require_uninit $tmp_1;
       drop $tmp_0;
       require_uninit $tmp_0;
@@ -83,26 +83,26 @@ impl<T> Box<T> {
 
 impl<T: AutoDestroy> AutoDestroy for Box<T> {
   fn destroy<'s0>(self: &'s0 drop Box<T>) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     $tmp_2: &drop T;
-    $tmp_3: unit;
+    $tmp_3: $Tuple0;
     $tmp_4: *u8;
     entry:
       $tmp_2 = &drop self.*.data.*;
       call <T as AutoDestroy>::destroy(move $tmp_2);
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       require_uninit $tmp_2;
       drop $tmp_1;
       require_uninit $tmp_1;
       $tmp_4 = ptr_cast(move self.*.data, *u8);
       unborrow self;
       call free_bytes(move $tmp_4);
-      $tmp_3 = unit;
+      $tmp_3 = $Tuple0 {};
       require_uninit $tmp_4;
       drop $tmp_3;
       require_uninit $tmp_3;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit self;
@@ -124,6 +124,7 @@ impl<'a, T> Span<'a, T> {
     entry:
       $return.*.data = move data;
       $return.*.len = move len;
+      $return.*._marker = PhantomData<'a, T> {};
       unborrow $return;
       require_uninit $return;
       require_uninit len;
@@ -220,23 +221,23 @@ impl<T> Vec<T> {
 
 impl<T: AutoDestroy> AutoDestroy for Vec<T> {
   fn destroy<'s0>(self: &'s0 drop Vec<T>) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     index: u64;
-    $tmp_1: unit;
-    $tmp_2: unit;
-    $tmp_3: unit;
+    $tmp_1: $Tuple0;
+    $tmp_2: $Tuple0;
+    $tmp_3: $Tuple0;
     $tmp_4: bool;
     $tmp_5: &out bool;
-    $tmp_6: unit;
+    $tmp_6: $Tuple0;
     element: &drop T;
     $tmp_7: *T;
     $tmp_8: &out *T;
-    $tmp_9: unit;
+    $tmp_9: $Tuple0;
     $tmp_10: &drop T;
-    $tmp_11: unit;
+    $tmp_11: $Tuple0;
     $tmp_12: u64;
     $tmp_13: &out u64;
-    $tmp_14: unit;
+    $tmp_14: $Tuple0;
     $tmp_15: *u8;
     $tmp_16: u64;
     $tmp_17: u64;
@@ -255,7 +256,7 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
       require_uninit $tmp_2;
       goto loop_end_1
     if_false_3:
-      $tmp_3 = unit;
+      $tmp_3 = $Tuple0 {};
       goto if_merge_4
     if_merge_4:
       require_uninit $tmp_5;
@@ -270,19 +271,19 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
       $tmp_10 = &drop element.*;
       call <T as AutoDestroy>::destroy(move $tmp_10);
       unborrow element;
-      $tmp_9 = unit;
+      $tmp_9 = $Tuple0 {};
       require_uninit $tmp_10;
       drop $tmp_9;
       require_uninit $tmp_9;
       $tmp_13 = &out $tmp_12;
       call $u64_add(move index, 1u64, move $tmp_13);
       index = move $tmp_12;
-      $tmp_11 = unit;
+      $tmp_11 = $Tuple0 {};
       require_uninit $tmp_13;
       require_uninit $tmp_12;
       drop $tmp_11;
       require_uninit $tmp_11;
-      $tmp_2 = unit;
+      $tmp_2 = $Tuple0 {};
       require_uninit element;
       drop $tmp_2;
       require_uninit $tmp_2;
@@ -291,7 +292,7 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
       require_uninit $tmp_1;
       $tmp_15 = ptr_cast(move self.*.data, *u8);
       call free_bytes(move $tmp_15);
-      $tmp_14 = unit;
+      $tmp_14 = $Tuple0 {};
       require_uninit $tmp_15;
       drop $tmp_14;
       require_uninit $tmp_14;
@@ -302,7 +303,7 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
       unborrow self;
       drop $tmp_17;
       require_uninit $tmp_17;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop index;
       require_uninit index;
       drop $tmp_0;
@@ -314,11 +315,11 @@ impl<T: AutoDestroy> AutoDestroy for Vec<T> {
 
 impl<T: Move> Vec<T> {
   fn push_unchecked<'s0>(self: &'s0 mut Vec<T>, value: T) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     slot: *T;
     $tmp_1: &out *T;
-    $tmp_2: unit;
-    $tmp_3: unit;
+    $tmp_2: $Tuple0;
+    $tmp_3: $Tuple0;
     $tmp_4: u64;
     $tmp_5: &out u64;
     entry:
@@ -326,19 +327,19 @@ impl<T: Move> Vec<T> {
       call ptr_offset<T>(copy self.*.data, copy self.*.len, move $tmp_1);
       require_uninit $tmp_1;
       slot.* = move value;
-      $tmp_2 = unit;
+      $tmp_2 = $Tuple0 {};
       drop $tmp_2;
       require_uninit $tmp_2;
       $tmp_5 = &out $tmp_4;
       call $u64_add(copy self.*.len, 1u64, move $tmp_5);
       drop self.*.len;
       self.*.len = move $tmp_4;
-      $tmp_3 = unit;
+      $tmp_3 = $Tuple0 {};
       require_uninit $tmp_5;
       require_uninit $tmp_4;
       drop $tmp_3;
       require_uninit $tmp_3;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop slot;
       require_uninit slot;
       drop $tmp_0;
@@ -349,8 +350,8 @@ impl<T: Move> Vec<T> {
       return
   }
   fn push<'s0>(self: &'s0 mut Vec<T>, value: T) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     $tmp_2: bool;
     $tmp_3: &out bool;
     old_data: *T;
@@ -364,25 +365,25 @@ impl<T: Move> Vec<T> {
     $tmp_9: &out u64;
     $tmp_10: &out *u8;
     index: u64;
-    $tmp_11: unit;
-    $tmp_12: unit;
-    $tmp_13: unit;
+    $tmp_11: $Tuple0;
+    $tmp_12: $Tuple0;
+    $tmp_13: $Tuple0;
     $tmp_14: bool;
     $tmp_15: &out bool;
     source: *T;
     $tmp_16: &out *T;
     target: *T;
     $tmp_17: &out *T;
-    $tmp_18: unit;
-    $tmp_19: unit;
-    $tmp_20: unit;
+    $tmp_18: $Tuple0;
+    $tmp_19: $Tuple0;
+    $tmp_20: $Tuple0;
     $tmp_21: u64;
     $tmp_22: &out u64;
-    $tmp_23: unit;
+    $tmp_23: $Tuple0;
     $tmp_24: *u8;
-    $tmp_25: unit;
-    $tmp_26: unit;
-    $tmp_27: unit;
+    $tmp_25: $Tuple0;
+    $tmp_26: $Tuple0;
+    $tmp_27: $Tuple0;
     $clone_0: &'s0 mut Vec<T>;
     entry:
       $tmp_3 = &out $tmp_2;
@@ -419,7 +420,7 @@ impl<T: Move> Vec<T> {
       require_uninit $tmp_12;
       goto loop_end_4
     if_false_6:
-      $tmp_13 = unit;
+      $tmp_13 = $Tuple0 {};
       goto if_merge_7
     if_merge_7:
       require_uninit $tmp_15;
@@ -433,21 +434,21 @@ impl<T: Move> Vec<T> {
       call ptr_offset<T>(copy new_data, copy index, move $tmp_17);
       require_uninit $tmp_17;
       target.* = move source.*;
-      $tmp_19 = unit;
+      $tmp_19 = $Tuple0 {};
       drop $tmp_19;
       require_uninit $tmp_19;
-      $tmp_18 = unit;
+      $tmp_18 = $Tuple0 {};
       drop $tmp_18;
       require_uninit $tmp_18;
       $tmp_22 = &out $tmp_21;
       call $u64_add(move index, 1u64, move $tmp_22);
       index = move $tmp_21;
-      $tmp_20 = unit;
+      $tmp_20 = $Tuple0 {};
       require_uninit $tmp_22;
       require_uninit $tmp_21;
       drop $tmp_20;
       require_uninit $tmp_20;
-      $tmp_12 = unit;
+      $tmp_12 = $Tuple0 {};
       drop target;
       require_uninit target;
       drop source;
@@ -459,21 +460,21 @@ impl<T: Move> Vec<T> {
       require_uninit $tmp_11;
       $tmp_24 = ptr_cast(move old_data, *u8);
       call free_bytes(move $tmp_24);
-      $tmp_23 = unit;
+      $tmp_23 = $Tuple0 {};
       require_uninit $tmp_24;
       drop $tmp_23;
       require_uninit $tmp_23;
       drop self.*.data;
       self.*.data = move new_data;
-      $tmp_25 = unit;
+      $tmp_25 = $Tuple0 {};
       drop $tmp_25;
       require_uninit $tmp_25;
       drop self.*.cap;
       self.*.cap = move new_cap;
-      $tmp_26 = unit;
+      $tmp_26 = $Tuple0 {};
       drop $tmp_26;
       require_uninit $tmp_26;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       drop index;
       require_uninit index;
       require_uninit new_data;
@@ -481,7 +482,7 @@ impl<T: Move> Vec<T> {
       require_uninit old_data;
       goto if_merge_2
     if_false_1:
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       goto if_merge_2
     if_merge_2:
       require_uninit $tmp_3;
@@ -490,10 +491,10 @@ impl<T: Move> Vec<T> {
       require_uninit $tmp_1;
       $clone_0 = &mut self.*;
       call <Vec<T>>::push_unchecked(move $clone_0, move value);
-      $tmp_27 = unit;
+      $tmp_27 = $Tuple0 {};
       drop $tmp_27;
       require_uninit $tmp_27;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -568,7 +569,7 @@ fn main<'s4, 's0>($return: &'s0 out i32) {
   $tmp_1: &mut Box<i64>;
   $tmp_2: &out &mut i64;
   old_box_value: i64;
-  $tmp_3: unit;
+  $tmp_3: $Tuple0;
   $tmp_4: i64;
   from_box: i64;
   $tmp_5: &i64;
@@ -578,11 +579,11 @@ fn main<'s4, 's0>($return: &'s0 out i32) {
   $tmp_8: &out i64;
   values: Vec<i64>;
   $tmp_9: &out Vec<i64>;
-  $tmp_10: unit;
-  $tmp_11: unit;
+  $tmp_10: $Tuple0;
+  $tmp_11: $Tuple0;
   $tmp_12: &mut Vec<i64>;
-  $tmp_13: unit;
-  $tmp_14: unit;
+  $tmp_13: $Tuple0;
+  $tmp_14: $Tuple0;
   $tmp_15: &mut Vec<i64>;
   observed: i64;
   $tmp_16: &'s4 Vec<i64>;
@@ -609,7 +610,7 @@ fn main<'s4, 's0>($return: &'s0 out i32) {
     old_box_value = copy box_place.*;
     drop box_place.*;
     box_place.* = 42;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
     $tmp_4 = move old_box_value;
@@ -631,20 +632,20 @@ fn main<'s4, 's0>($return: &'s0 out i32) {
     require_uninit $tmp_9;
     $tmp_12 = &mut values;
     call <Vec<i64>>::push(move $tmp_12, 1);
-    $tmp_11 = unit;
+    $tmp_11 = $Tuple0 {};
     require_uninit $tmp_12;
     drop $tmp_11;
     require_uninit $tmp_11;
-    $tmp_10 = unit;
+    $tmp_10 = $Tuple0 {};
     drop $tmp_10;
     require_uninit $tmp_10;
     $tmp_15 = &mut values;
     call <Vec<i64>>::push(move $tmp_15, 2);
-    $tmp_14 = unit;
+    $tmp_14 = $Tuple0 {};
     require_uninit $tmp_15;
     drop $tmp_14;
     require_uninit $tmp_14;
-    $tmp_13 = unit;
+    $tmp_13 = $Tuple0 {};
     drop $tmp_13;
     require_uninit $tmp_13;
     $tmp_16 = &values;

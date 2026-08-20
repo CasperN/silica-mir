@@ -16,7 +16,7 @@
 #   const_fnname_extern         const             name of an extern fn
 #   const_unit_as_enum_payload  const             unit literal in enum constructor
 
-enum Tag: Copy + Drop { A: unit  B: i64 }
+enum Tag: Copy + Drop { A: $Tuple0  B: i64 }
 
 fn callee(x: i64) { entry: return }
 
@@ -64,14 +64,24 @@ fn const_bool() {
     return
 }
 
-# ---------- const: unit literal ----------
+# ---------- const: $Tuple0 literal ----------
 
-# The unit literal `unit` has type unit; assigning it to a unit local
-# succeeds without a type mismatch.
+# The empty-struct const `$Tuple0 {}` has type $Tuple0; assigning it
+# to a matching local succeeds without a type mismatch.
 fn const_unit() {
-  u: unit;
+  u: $Tuple0;
   entry:
-    u = unit;
+    u = $Tuple0 {};
+    return
+}
+
+# covers: empty-struct const on a user-declared zero-field struct
+struct Marker: Copy + Drop {}
+
+fn const_empty_user_struct() {
+  m: Marker;
+  entry:
+    m = Marker {};
     return
 }
 
@@ -96,13 +106,13 @@ fn const_fnname_extern() {
     return
 }
 
-# ---------- const: unit literal as enum constructor payload ----------
+# ---------- const: $Tuple0 literal as enum constructor payload ----------
 
 # The unit-payload variant A accepts `unit` as its constructor argument.
 # The resulting value has type Tag, matching the lhs.
 fn const_unit_as_enum_payload() {
   t: Tag;
   entry:
-    t = Tag::A(unit);
+    t = Tag::A($Tuple0 {});
     return
 }

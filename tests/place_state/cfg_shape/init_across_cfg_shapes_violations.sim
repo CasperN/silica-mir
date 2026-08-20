@@ -30,7 +30,7 @@ struct M: Drop + Move { value: i64 }
 struct MatL { v: i64 }
 struct MatM: Move { v: i64 }
 struct WithMut: Move { r: &mut i64  n: i64 }
-enum Tri: Copy + Drop { A: unit  B: unit  C: unit }
+enum Tri: Copy + Drop { A: $Tuple0  B: $Tuple0  C: $Tuple0 }
 
 extern fn consume(y: M);
 extern fn use_num(n: M);

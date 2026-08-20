@@ -125,7 +125,6 @@ pub enum TypeKind {
     Int(IntTy),
     Float(FloatTy),
     Bool,
-    Unit,
     Never,
     /// Struct or enum type reference. See [`Instance`] for the shape.
     Custom(Instance),
@@ -174,7 +173,6 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Int(i) => write!(f, "{}", i.name()),
             TypeKind::Float(fl) => write!(f, "{}", fl.name()),
             TypeKind::Bool => write!(f, "bool"),
-            TypeKind::Unit => write!(f, "unit"),
             TypeKind::Never => write!(f, "never"),
             TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
@@ -536,7 +534,11 @@ pub enum ConstVal {
         ty: FloatTy,
     },
     Bool(bool),
-    Unit,
+    /// A zero-field struct value (any user-declared empty struct, plus the
+    /// prelude's `$Tuple0`). Codegen emits `zeroinitializer`. The `Instance`
+    /// carries the type name and type args so type checking can name the
+    /// exact struct.
+    EmptyStruct(Instance),
     /// Function-name const, used as the target of `call`.
     FnName(Instance),
     /// Inherent-method callee, spelled `<SelfTy>::method<MethodArgs>`.

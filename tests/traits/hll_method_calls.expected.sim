@@ -435,9 +435,9 @@ trait BorrowedRank {
 
 impl ExactRank for Ranked {
   fn ranked(recv: Ranked) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     entry:
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       drop recv;
@@ -448,9 +448,9 @@ impl ExactRank for Ranked {
 
 impl BorrowedRank for Ranked {
   fn ranked<'s0>(recv: &'s0 Ranked) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     entry:
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       drop recv;
@@ -460,14 +460,14 @@ impl BorrowedRank for Ranked {
 }
 
 fn exact_outranks_auto_borrow(value: Ranked) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Ranked as ExactRank>::ranked(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -489,21 +489,21 @@ impl BorrowTarget {
       return
   }
   fn inherent_auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     old: i64;
-    $tmp_1: unit;
+    $tmp_1: $Tuple0;
     $tmp_2: i64;
     entry:
       old = copy recv.*.value;
       drop recv.*.value;
       recv.*.value = 4;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       drop $tmp_1;
       require_uninit $tmp_1;
       $tmp_2 = move old;
       drop $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       require_uninit old;
       drop $tmp_0;
       require_uninit $tmp_0;
@@ -512,41 +512,41 @@ impl BorrowTarget {
       return
   }
   fn inherent_auto_out<'s0>(recv: &'s0 out BorrowTarget) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     $tmp_2: BorrowTarget;
     entry:
       $tmp_2.value = 5;
       recv.* = move $tmp_2;
       unborrow recv;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       require_uninit $tmp_2;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
       return
   }
   fn inherent_auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: BorrowTarget;
     entry:
       $tmp_1 = move recv.*;
       unborrow recv;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
       return
   }
   fn inherent_auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     entry:
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       drop recv;
@@ -574,21 +574,21 @@ impl AutoBorrowMethods for BorrowTarget {
       return
   }
   fn trait_auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     old: i64;
-    $tmp_1: unit;
+    $tmp_1: $Tuple0;
     $tmp_2: i64;
     entry:
       old = copy recv.*.value;
       drop recv.*.value;
       recv.*.value = 6;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       drop $tmp_1;
       require_uninit $tmp_1;
       $tmp_2 = move old;
       drop $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       require_uninit old;
       drop $tmp_0;
       require_uninit $tmp_0;
@@ -597,41 +597,41 @@ impl AutoBorrowMethods for BorrowTarget {
       return
   }
   fn trait_auto_out<'s0>(recv: &'s0 out BorrowTarget) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     $tmp_2: BorrowTarget;
     entry:
       $tmp_2.value = 7;
       recv.* = move $tmp_2;
       unborrow recv;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       require_uninit $tmp_2;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
       return
   }
   fn trait_auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: BorrowTarget;
     entry:
       $tmp_1 = move recv.*;
       unborrow recv;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
       return
   }
   fn trait_auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     entry:
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       drop recv;
@@ -651,21 +651,21 @@ fn auto_shared<'s0, 's1>(recv: &'s0 BorrowTarget, $return: &'s1 out i64) {
 }
 
 fn auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   old: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: i64;
   entry:
     old = copy recv.*.value;
     drop recv.*.value;
     recv.*.value = 2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $tmp_2 = move old;
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit old;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -675,18 +675,18 @@ fn auto_mut<'s0>(recv: &'s0 mut BorrowTarget) {
 }
 
 fn auto_out<'s0>(recv: &'s0 out BorrowTarget) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: BorrowTarget;
   entry:
     $tmp_2.value = 3;
     recv.* = move $tmp_2;
     unborrow recv;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit recv;
@@ -694,14 +694,14 @@ fn auto_out<'s0>(recv: &'s0 out BorrowTarget) {
 }
 
 fn auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: BorrowTarget;
   entry:
     $tmp_1 = move recv.*;
     unborrow recv;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit recv;
@@ -709,9 +709,9 @@ fn auto_drop<'s0>(recv: &'s0 drop BorrowTarget) {
 }
 
 fn auto_uninit<'s0>(recv: &'s0 uninit BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop recv;
@@ -737,13 +737,13 @@ fn call_auto_shared<'s0>(value: BorrowTarget, $return: &'s0 out i64) {
 
 fn call_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &mut BorrowTarget;
   entry:
     local = move value;
     $tmp_1 = &mut local;
     call auto_mut(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -757,12 +757,12 @@ fn call_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
 
 fn call_auto_out<'s0>($return: &'s0 out BorrowTarget) {
   value: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &out BorrowTarget;
   entry:
     $tmp_1 = &out value;
     call auto_out(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -775,14 +775,14 @@ fn call_auto_out<'s0>($return: &'s0 out BorrowTarget) {
 
 fn call_auto_out_replaces<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &out BorrowTarget;
   entry:
     local = move value;
     drop local;
     $tmp_1 = &out local;
     call auto_out(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -795,19 +795,19 @@ fn call_auto_out_replaces<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarg
 }
 
 fn call_auto_drop(value: BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   local: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &drop BorrowTarget;
   entry:
     local = move value;
     $tmp_2 = &drop local;
     call auto_drop(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit local;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -816,18 +816,18 @@ fn call_auto_drop(value: BorrowTarget) {
 }
 
 fn call_auto_uninit() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   value: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &uninit BorrowTarget;
   entry:
     $tmp_2 = &uninit value;
     call auto_uninit(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit value;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -835,20 +835,20 @@ fn call_auto_uninit() {
 }
 
 fn call_auto_uninit_after_drop(value: BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   local: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &uninit BorrowTarget;
   entry:
     local = move value;
     drop local;
     $tmp_2 = &uninit local;
     call auto_uninit(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit local;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -874,13 +874,13 @@ fn call_inherent_auto_shared<'s0>(value: BorrowTarget, $return: &'s0 out i64) {
 
 fn call_inherent_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &mut BorrowTarget;
   entry:
     local = move value;
     $tmp_1 = &mut local;
     call <BorrowTarget>::inherent_auto_mut(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -894,12 +894,12 @@ fn call_inherent_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarg
 
 fn call_inherent_auto_out<'s0>($return: &'s0 out BorrowTarget) {
   value: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &out BorrowTarget;
   entry:
     $tmp_1 = &out value;
     call <BorrowTarget>::inherent_auto_out(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -911,19 +911,19 @@ fn call_inherent_auto_out<'s0>($return: &'s0 out BorrowTarget) {
 }
 
 fn call_inherent_auto_drop(value: BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   local: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &drop BorrowTarget;
   entry:
     local = move value;
     $tmp_2 = &drop local;
     call <BorrowTarget>::inherent_auto_drop(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit local;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -932,18 +932,18 @@ fn call_inherent_auto_drop(value: BorrowTarget) {
 }
 
 fn call_inherent_auto_uninit() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   value: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &uninit BorrowTarget;
   entry:
     $tmp_2 = &uninit value;
     call <BorrowTarget>::inherent_auto_uninit(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit value;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -968,13 +968,13 @@ fn call_trait_auto_shared<'s0>(value: BorrowTarget, $return: &'s0 out i64) {
 
 fn call_trait_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget) {
   local: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &mut BorrowTarget;
   entry:
     local = move value;
     $tmp_1 = &mut local;
     call <BorrowTarget as AutoBorrowMethods>::trait_auto_mut(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -988,12 +988,12 @@ fn call_trait_auto_mut<'s0>(value: BorrowTarget, $return: &'s0 out BorrowTarget)
 
 fn call_trait_auto_out<'s0>($return: &'s0 out BorrowTarget) {
   value: BorrowTarget;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &out BorrowTarget;
   entry:
     $tmp_1 = &out value;
     call <BorrowTarget as AutoBorrowMethods>::trait_auto_out(move $tmp_1);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1005,19 +1005,19 @@ fn call_trait_auto_out<'s0>($return: &'s0 out BorrowTarget) {
 }
 
 fn call_trait_auto_drop(value: BorrowTarget) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   local: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &drop BorrowTarget;
   entry:
     local = move value;
     $tmp_2 = &drop local;
     call <BorrowTarget as AutoBorrowMethods>::trait_auto_drop(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit local;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1026,18 +1026,18 @@ fn call_trait_auto_drop(value: BorrowTarget) {
 }
 
 fn call_trait_auto_uninit() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   value: BorrowTarget;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &uninit BorrowTarget;
   entry:
     $tmp_2 = &uninit value;
     call <BorrowTarget as AutoBorrowMethods>::trait_auto_uninit(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit value;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1217,9 +1217,9 @@ fn call_c_generic_receiver<'s0>(value: Box<i64>, $return: &'s0 out i64) {
 }
 
 fn receiver_effect() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
@@ -1235,14 +1235,14 @@ fn make_argument<'s0>($return: &'s0 out i64) {
 
 fn receiver_before_argument<'s0>(value: Dispatch, $return: &'s0 out i64) {
   $tmp_0: Dispatch;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &Dispatch;
   $tmp_3: i64;
   $tmp_4: &out i64;
   $tmp_5: &out i64;
   entry:
     call receiver_effect();
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $tmp_0 = move value;
@@ -1281,14 +1281,14 @@ trait GenericReceiver<X: Copy + Drop> {
 }
 
 fn generic_bound_exact<'s0, T: GenericReceiver<i64>>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as GenericReceiver<i64>>::bound_shared(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1296,22 +1296,22 @@ fn generic_bound_exact<'s0, T: GenericReceiver<i64>>(value: &'s0 T) {
 }
 
 fn generic_bound_shared<T: Move + GenericReceiver<i64>>(value: T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: &T;
-  $tmp_3: unit;
+  $tmp_3: $Tuple0;
   entry:
     $tmp_2 = &value;
     call <T as GenericReceiver<i64>>::bound_shared(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
     call <T as GenericReceiver<i64>>::bound_consume(move value);
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1319,24 +1319,24 @@ fn generic_bound_shared<T: Move + GenericReceiver<i64>>(value: T) {
 }
 
 fn generic_bound_mut<T: Move + GenericReceiver<i64>>(value: T) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   local: T;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &mut T;
-  $tmp_3: unit;
+  $tmp_3: $Tuple0;
   entry:
     local = move value;
     $tmp_2 = &mut local;
     call <T as GenericReceiver<i64>>::bound_mut(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
     call <T as GenericReceiver<i64>>::bound_consume(move local);
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit local;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1345,23 +1345,23 @@ fn generic_bound_mut<T: Move + GenericReceiver<i64>>(value: T) {
 }
 
 fn generic_bound_out<T: Move + GenericReceiver<i64>>() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   value: T;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &out T;
-  $tmp_3: unit;
+  $tmp_3: $Tuple0;
   entry:
     $tmp_2 = &out value;
     call <T as GenericReceiver<i64>>::bound_out(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
     call <T as GenericReceiver<i64>>::bound_consume(move value);
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit value;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1369,19 +1369,19 @@ fn generic_bound_out<T: Move + GenericReceiver<i64>>() {
 }
 
 fn generic_bound_drop<T: Move + GenericReceiver<i64>>(value: T) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   local: T;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &drop T;
   entry:
     local = move value;
     $tmp_2 = &drop local;
     call <T as GenericReceiver<i64>>::bound_drop(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit local;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1390,18 +1390,18 @@ fn generic_bound_drop<T: Move + GenericReceiver<i64>>(value: T) {
 }
 
 fn generic_bound_uninit<T: GenericReceiver<i64>>() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   value: T;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: &uninit T;
   entry:
     $tmp_2 = &uninit value;
     call <T as GenericReceiver<i64>>::bound_uninit(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit value;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -1409,14 +1409,14 @@ fn generic_bound_uninit<T: GenericReceiver<i64>>() {
 }
 
 fn generic_bound_consume<T: Move + GenericReceiver<i64>>(value: T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as GenericReceiver<i64>>::bound_consume(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1424,14 +1424,14 @@ fn generic_bound_consume<T: Move + GenericReceiver<i64>>(value: T) {
 }
 
 fn generic_bound_parameter<'s0, T: GenericReceiver<i64>>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as GenericReceiver<i64>>::bound_parameter(move value, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1439,14 +1439,14 @@ fn generic_bound_parameter<'s0, T: GenericReceiver<i64>>(value: &'s0 T) {
 }
 
 fn generic_bound_method_argument<'s0, 's1, T: GenericReceiver<i64>>(value: &'s0 T, argument: &'s1 BorrowTarget) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as GenericReceiver<i64>>::bound_generic<BorrowTarget>(move value, move argument);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit argument;
@@ -1459,14 +1459,14 @@ trait GenericLifetimeReceiver<'a> {
 }
 
 fn generic_bound_lifetime<'a, T: GenericLifetimeReceiver<'a>>(value: &'a T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as GenericLifetimeReceiver<'a>>::bound_lifetime(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1482,14 +1482,14 @@ trait BoundBorrowed {
 }
 
 fn generic_bound_exact_rank<T: Move + BoundExact + BoundBorrowed>(value: T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as BoundExact>::bound_rank(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1512,10 +1512,10 @@ fn generic_bound_auto_clone<'s0, T: Move + AutoClone>(value: T, $return: &'s0 ou
 }
 
 fn generic_bound_auto_destroy<T: AutoDestroy>(value: T) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $destroy_0: &drop T;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     $destroy_0 = &drop value;
@@ -1552,7 +1552,7 @@ struct SuperTarget: Copy + Drop {
 
 impl SuperReceiver<i64> for SuperTarget {
   fn inherited<'s0>(recv: &'s0 SuperTarget, value: i64) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &SuperTarget;
     $tmp_2: i64;
     entry:
@@ -1562,7 +1562,7 @@ impl SuperReceiver<i64> for SuperTarget {
       $tmp_2 = move value;
       drop $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -1570,7 +1570,7 @@ impl SuperReceiver<i64> for SuperTarget {
       return
   }
   fn inherited_generic<'s0, U: Copy + Drop>(recv: &'s0 SuperTarget, value: U) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &SuperTarget;
     $tmp_2: U;
     entry:
@@ -1580,7 +1580,7 @@ impl SuperReceiver<i64> for SuperTarget {
       $tmp_2 = move value;
       drop $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -1588,13 +1588,13 @@ impl SuperReceiver<i64> for SuperTarget {
       return
   }
   fn inherited_unsafe<'s0>(recv: &'s0 SuperTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &SuperTarget;
     entry:
       $tmp_1 = move recv;
       unborrow $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
@@ -1604,13 +1604,13 @@ impl SuperReceiver<i64> for SuperTarget {
 
 impl ChildReceiver<i64> for SuperTarget {
   fn child<'s0>(recv: &'s0 SuperTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &SuperTarget;
     entry:
       $tmp_1 = move recv;
       unborrow $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
@@ -1622,33 +1622,33 @@ impl GrandReceiver<i64> for SuperTarget {
 }
 
 fn inherited_generic_method<'s0, T: GrandReceiver<i64>>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
-  $tmp_4: unit;
-  $tmp_5: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
+  $tmp_4: $Tuple0;
+  $tmp_5: $Tuple0;
   entry:
     call <T as SuperReceiver<i64>>::inherited(copy value, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     call <T as SuperReceiver<i64>>::inherited_generic<bool>(copy value, true);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
     call <T as SuperReceiver<i64>>::inherited_unsafe(copy value);
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     drop $tmp_4;
     require_uninit $tmp_4;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
     call <T as ChildReceiver<i64>>::child(move value);
-    $tmp_5 = unit;
+    $tmp_5 = $Tuple0 {};
     drop $tmp_5;
     require_uninit $tmp_5;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1656,17 +1656,17 @@ fn inherited_generic_method<'s0, T: GrandReceiver<i64>>(value: &'s0 T) {
 }
 
 fn inherited_auto_borrow<T: Move + GrandReceiver<i64>>(value: T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: &T;
   entry:
     $tmp_2 = &value;
     call <T as SuperReceiver<i64>>::inherited(move $tmp_2, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop value;
@@ -1675,14 +1675,14 @@ fn inherited_auto_borrow<T: Move + GrandReceiver<i64>>(value: T) {
 }
 
 fn inherited_diamond_method<'s0, T: DiamondReceiver<i64>>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as SuperReceiver<i64>>::inherited(move value, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1720,10 +1720,10 @@ fn inherited_auto_clone<'s0, T: Move + InheritedAutoClone>(value: T, $return: &'
 }
 
 fn inherited_auto_destroy<T: InheritedAutoDestroy>(value: T) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $destroy_0: &drop T;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     $destroy_0 = &drop value;
@@ -1740,14 +1740,14 @@ trait LifetimeChildReceiver<'a, X: Copy + Drop>: LifetimeSuperReceiver<'a, X> {
 }
 
 fn inherited_lifetime_method<'a, T: LifetimeChildReceiver<'a, i64>>(value: &'a T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(move value, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1767,7 +1767,7 @@ struct SelfArgumentTarget: Copy + Drop {
 
 impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
   fn inherited_self_argument<'s0, 's1>(recv: &'s0 SelfArgumentTarget, value: &'s1 SelfArgumentTarget) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &SelfArgumentTarget;
     $tmp_2: &SelfArgumentTarget;
     entry:
@@ -1777,7 +1777,7 @@ impl SelfArgumentSuper<SelfArgumentTarget> for SelfArgumentTarget {
       $tmp_2 = move value;
       unborrow $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -1790,14 +1790,14 @@ impl SelfArgumentChild for SelfArgumentTarget {
 }
 
 fn inherited_self_argument<'s0, T: SelfArgumentChild>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as SelfArgumentSuper<T>>::inherited_self_argument(copy value, move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1825,14 +1825,14 @@ trait InheritedRank: InheritedExactRank + InheritedBorrowedRank {
 }
 
 fn inherited_receiver_rank<T: Move + InheritedRank>(value: T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as InheritedExactRank>::inherited_rank(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1957,14 +1957,14 @@ fn qualified_unsafe_call<'s0, 's1>(value: &'s0 QualifiedTarget, $return: &'s1 ou
 }
 
 fn qualified_supertrait_call<'s0, T: GrandReceiver<i64>>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as SuperReceiver<i64>>::inherited(move value, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -1972,14 +1972,14 @@ fn qualified_supertrait_call<'s0, T: GrandReceiver<i64>>(value: &'s0 T) {
 }
 
 fn qualified_lifetime_call<'a, T: LifetimeChildReceiver<'a, i64>>(value: &'a T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <T as LifetimeSuperReceiver<'a, i64>>::inherited_lifetime(move value, 1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -2022,7 +2022,7 @@ impl StaticContainer {
 }
 
 enum ShapeKind: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Point: i64
 }
 
@@ -2076,7 +2076,7 @@ fn test_enum_path_and_coexistence<'s0>($return: &'s0 out Shape) {
   $tmp_0: &out Shape;
   entry:
     k = ShapeKind::Point(5);
-    u = ShapeKind::None(unit);
+    u = ShapeKind::None($Tuple0 {});
     $tmp_0 = &out s;
     call <Shape>::Point(5, move $tmp_0);
     require_uninit $tmp_0;
@@ -2093,7 +2093,7 @@ fn test_enum_path_and_coexistence<'s0>($return: &'s0 out Shape) {
 
 enum Status: Copy + Drop {
   Active: i64
-  Inactive: unit
+  Inactive: $Tuple0
 }
 
 impl Status {

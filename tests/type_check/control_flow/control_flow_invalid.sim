@@ -13,7 +13,7 @@
 #   switch_enum_unknown_variant          switchEnum    arm names absent variant         TC-SwitchArmUnknownVariant + VF-SwitchNotExhaustive
 #   switch_enum_undefined_target         switchEnum    arm target block missing         TC-TerminatorUndefinedTarget + VF-SwitchNotExhaustive
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 # ---------- goto: target not declared in the same function ----------
 

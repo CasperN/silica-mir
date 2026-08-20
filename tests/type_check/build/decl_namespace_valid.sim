@@ -25,7 +25,7 @@ fn mixed_distinct_names() {
 
 struct Point { x: i64  y: i64 }
 
-enum Color: Copy + Drop { Red: unit  Green: unit  Blue: unit }
+enum Color: Copy + Drop { Red: $Tuple0  Green: $Tuple0  Blue: $Tuple0 }
 
 extern fn sink(n: i64);
 

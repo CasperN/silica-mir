@@ -215,6 +215,14 @@ enum TypeResolutionErrorKind {
         argument: Type,
         bound: Instance,
     },
+    /// `ConstVal::EmptyStruct(Instance)` names a struct that has one or
+    /// more declared fields.
+    EmptyStructConstOnStructWithFields {
+        type_name: String,
+        field_count: usize,
+    },
+    /// `ConstVal::EmptyStruct(Instance)` names a declared enum.
+    EmptyStructConstOnEnum { type_name: String },
     /// `TraitFn` callee names a trait not in the env.
     TraitFnUnknownTrait(String),
     TraitFnParamReceiver(String),
@@ -278,6 +286,10 @@ impl TypeResolutionError {
             | TypeResolutionErrorKind::QualifiedFnTypeArgBoundNotSatisfied { .. }
             | TypeResolutionErrorKind::QualifiedFnTypeArgTraitBoundNotSatisfied { .. } => {
                 TypeArgBoundNotSatisfied
+            }
+            TypeResolutionErrorKind::EmptyStructConstOnStructWithFields { .. }
+            | TypeResolutionErrorKind::EmptyStructConstOnEnum { .. } => {
+                EmptyStructConstOnNonEmptyStruct
             }
             TypeResolutionErrorKind::TraitFnUnknownTrait(_) => TraitFnUnknownTrait,
             TypeResolutionErrorKind::TraitFnParamReceiver(_) => TraitFnParamReceiver,
@@ -493,6 +505,17 @@ impl TypeResolutionError {
                 parameter,
                 bound,
             ),
+            TypeResolutionErrorKind::EmptyStructConstOnStructWithFields {
+                type_name,
+                field_count,
+            } => format!(
+                "Empty-struct const '{} {{}}' requires a zero-field struct: '{}' has {} field(s)",
+                type_name, type_name, field_count,
+            ),
+            TypeResolutionErrorKind::EmptyStructConstOnEnum { type_name } => format!(
+                "Empty-struct const '{} {{}}' requires a zero-field struct: '{}' is an enum; use a variant constructor",
+                type_name, type_name,
+            ),
             TypeResolutionErrorKind::TraitFnUnknownTrait(name) => {
                 format!("Trait-method call references undeclared trait '{}'", name)
             }
@@ -652,7 +675,6 @@ impl<'a> LocalEnv<'a> {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Unit
             | TypeKind::Fn { .. } => all(),
             TypeKind::Never | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
@@ -797,7 +819,6 @@ impl<'a> LocalEnv<'a> {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Unit
             | TypeKind::Never => Ok(()),
             TypeKind::Custom(Instance {
                 name,
@@ -1152,7 +1173,6 @@ fn match_type(
         (TypeKind::Int(pattern), TypeKind::Int(actual)) => pattern == actual,
         (TypeKind::Float(pattern), TypeKind::Float(actual)) => pattern == actual,
         (TypeKind::Bool, TypeKind::Bool)
-        | (TypeKind::Unit, TypeKind::Unit)
         | (TypeKind::Never, TypeKind::Never) => true,
         (TypeKind::Param(pattern), TypeKind::Param(actual)) => pattern == actual,
         (TypeKind::Custom(pattern), TypeKind::Custom(actual)) => {
@@ -1605,7 +1625,6 @@ impl IndexedProgram {
             (TypeKind::Int(a), TypeKind::Int(b)) => a == b,
             (TypeKind::Float(a), TypeKind::Float(b)) => a == b,
             (TypeKind::Bool, TypeKind::Bool) => true,
-            (TypeKind::Unit, TypeKind::Unit) => true,
             (TypeKind::Never, TypeKind::Never) => true,
             (
                 TypeKind::Custom(Instance {
@@ -1750,6 +1769,28 @@ impl LocalEnv<'_> {
                 Ok(*elem)
             }
         }
+    }
+
+    /// Type of a `ConstVal::EmptyStruct(instance)` operand. Succeeds when
+    /// `instance.name` names a zero-field struct; otherwise reports which
+    /// shape mismatch was hit.
+    fn type_of_empty_struct_const(
+        &self,
+        instance: &Instance,
+    ) -> Result<Type, TypeResolutionError> {
+        let type_name = instance.name.clone();
+        let kind = match self.program.types.get(&type_name) {
+            Some(TypeDecl::Struct(s)) if s.fields.is_empty() => {
+                return Ok(Type::synthesized(TypeKind::Custom(instance.clone())));
+            }
+            Some(TypeDecl::Struct(s)) => TypeResolutionErrorKind::EmptyStructConstOnStructWithFields {
+                type_name,
+                field_count: s.fields.len(),
+            },
+            Some(TypeDecl::Enum(_)) => TypeResolutionErrorKind::EmptyStructConstOnEnum { type_name },
+            None => TypeResolutionErrorKind::UndeclaredType(type_name),
+        };
+        Err(TypeResolutionError::new(kind))
     }
 
     /// Look up a free function and instantiate its signature.
@@ -2150,7 +2191,7 @@ impl LocalEnv<'_> {
                 ConstVal::Int { ty, .. } => Ok(int_ty(*ty)),
                 ConstVal::Float { ty, .. } => Ok(float_ty(*ty)),
                 ConstVal::Bool(_) => Ok(bool_ty()),
-                ConstVal::Unit => Ok(unit_ty()),
+                ConstVal::EmptyStruct(instance) => self.type_of_empty_struct_const(instance),
                 ConstVal::FnName(instance) => self.fn_type(instance),
                 ConstVal::InherentFn { self_ty, method } => {
                     self.resolve_inherent_fn(self_ty, method)
@@ -2286,7 +2327,7 @@ mod declaration_iteration_tests {
               fn use_(value: &S) { entry: return }
             }
             fn f() { entry: return }
-            enum E: Copy + Drop { V: unit }
+            enum E: Copy + Drop { V: $Tuple0 }
             ",
         );
         let (program, errors) = IndexedProgram::build(&program);

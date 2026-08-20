@@ -488,7 +488,7 @@ mod tests {
     fn switch_enum_arms_reachable() {
         assert_no_diagnostics(
             "
-            enum Option: Copy + Drop { None: unit Some: i64 }
+            enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
             fn f(o: Option) {
               entry:
                 switchEnum(o) [None: n, Some: s]

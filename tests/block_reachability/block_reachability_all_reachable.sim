@@ -13,7 +13,7 @@
 #   unreachable_terminator_reachable_block  block with `unreachable` terminator, reached by goto
 #   switch_enum_all_arms                    switchEnum: each arm target reached
 
-enum Color: Copy + Drop { Red: unit  Green: unit  Blue: unit }
+enum Color: Copy + Drop { Red: $Tuple0  Green: $Tuple0  Blue: $Tuple0 }
 
 # ---------- trivial single-block function ----------
 

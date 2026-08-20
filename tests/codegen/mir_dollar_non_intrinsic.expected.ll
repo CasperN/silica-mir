@@ -1,6 +1,8 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
+
 define void @$runtime_hook() {
 .init:
   br label %entry

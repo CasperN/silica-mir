@@ -357,10 +357,21 @@ impl MonoCtx {
                 let mangled = self.need_named(&template_name, &args, symbol);
                 ConstVal::FnName(Instance::new(mangled, Vec::new(), Vec::new()))
             }
+            ConstVal::EmptyStruct(instance) => {
+                let new_args: Vec<Type> = instance
+                    .type_args
+                    .iter()
+                    .map(|a| self.fold_type(a))
+                    .collect();
+                ConstVal::EmptyStruct(Instance::new(
+                    instance.name.clone(),
+                    instance.lifetime_args.clone(),
+                    new_args,
+                ))
+            }
             ConstVal::Int { .. }
             | ConstVal::Float { .. }
             | ConstVal::Bool(_)
-            | ConstVal::Unit
             | ConstVal::ByteStr(_) => c.clone(),
         }
     }
@@ -493,7 +504,6 @@ impl MonoCtx {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Unit
             | TypeKind::Never
             | TypeKind::Fn { .. }
             | TypeKind::RawPtr(_) => all(),
@@ -786,7 +796,6 @@ fn erase_type_lifetimes(ty: &Type) -> Type {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => return ty.clone(),
         TypeKind::Custom(instance) => TypeKind::Custom(erase_instance_lifetimes(instance)),

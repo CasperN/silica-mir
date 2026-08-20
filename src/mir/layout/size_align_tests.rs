@@ -23,7 +23,6 @@ fn scalar_sizes() {
         8
     );
     assert_eq!(size_of(&Type::synthesized(TypeKind::Bool), &env), 1);
-    assert_eq!(size_of(&Type::synthesized(TypeKind::Unit), &env), 0);
     assert_eq!(size_of(&Type::synthesized(TypeKind::Never), &env), 0);
 }
 
@@ -35,7 +34,6 @@ fn scalar_alignments() {
         8
     );
     assert_eq!(align_of(&Type::synthesized(TypeKind::Bool), &env), 1);
-    assert_eq!(align_of(&Type::synthesized(TypeKind::Unit), &env), 1);
     assert_eq!(align_of(&Type::synthesized(TypeKind::Never), &env), 1);
 }
 
@@ -141,7 +139,7 @@ fn struct_with_reference_field_uses_pointer_size() {
 
 #[test]
 fn enum_with_unit_only_variants_is_discriminant_only() {
-    let env = env_of("enum E { A: unit B: unit } fn f() { entry: return }");
+    let env = env_of("struct U {} enum E { A: U B: U } fn f() { entry: return }");
     let ty = Type::synthesized(TypeKind::Custom(Instance::bare("E")));
     // {i16, [0 x i8]} align 2 → size 2.
     assert_eq!(size_of(&ty, &env), 2);
@@ -150,7 +148,7 @@ fn enum_with_unit_only_variants_is_discriminant_only() {
 
 #[test]
 fn enum_with_number_payload_pads_disc_to_8() {
-    let env = env_of("enum E { A: i64 B: unit } fn f() { entry: return }");
+    let env = env_of("struct U {} enum E { A: i64 B: U } fn f() { entry: return }");
     let ty = Type::synthesized(TypeKind::Custom(Instance::bare("E")));
     // disc:i16 at 0..2, padded to 8 for i64-aligned payload; payload 8;
     // total 16, align 8.
@@ -175,7 +173,7 @@ fn enum_size_is_dominated_by_largest_variant_payload() {
 
 #[test]
 fn enum_with_only_bool_payloads_is_align_2() {
-    let env = env_of("enum E { A: bool B: unit } fn f() { entry: return }");
+    let env = env_of("struct U {} enum E { A: bool B: U } fn f() { entry: return }");
     let ty = Type::synthesized(TypeKind::Custom(Instance::bare("E")));
     // disc:i16 at 0..2, bool at offset 2 (align 1) size 1, total 3,
     // rounded to align 2 = 4.
@@ -185,7 +183,7 @@ fn enum_with_only_bool_payloads_is_align_2() {
 
 #[test]
 fn enum_with_ref_payload_is_pointer_aligned() {
-    let env = env_of("enum E { A: &mut i64 B: unit } fn f() { entry: return }");
+    let env = env_of("struct U {} enum E { A: &mut i64 B: U } fn f() { entry: return }");
     let ty = Type::synthesized(TypeKind::Custom(Instance::bare("E")));
     // disc padded to 8, +8 pointer = 16, align 8.
     assert_eq!(size_of(&ty, &env), 16);

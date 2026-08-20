@@ -29,7 +29,7 @@
 
 struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 struct Pair<T: Copy + Drop, U: Copy + Drop>: Copy + Drop { first: T, second: U }
-enum Opt<T: Copy + Drop>: Copy + Drop { None: unit, Some: T }
+enum Opt<T: Copy + Drop>: Copy + Drop { None: $Tuple0, Some: T }
 struct Node<T: Copy + Drop>: Copy + Drop { value: T, next: *Node<T> }
 struct RefBox<'a, T: Copy + Drop>: Copy + Drop { value: &'a T }
 struct Deep<'a, T: Copy + Drop>: Copy + Drop {

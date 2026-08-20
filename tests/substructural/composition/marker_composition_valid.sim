@@ -76,12 +76,12 @@ struct CopyNested: Copy { a: CopyInner  y: i64 }
 # A shared reference breaks infinite size; &List is Copy and Drop.
 # The enum declared Copy+Drop holds only Copy+Drop payloads (unit and
 # &List), so the constraint is satisfied at every variant.
-enum RecursiveList: Copy + Drop { Nil: unit  Cons: &RecursiveList }
+enum RecursiveList: Copy + Drop { Nil: $Tuple0  Cons: &RecursiveList }
 
 # ---------- Copy+Drop: enum with scalar-typed variants ----------
 
 # All of i64, bool, and unit are Copy and Drop, satisfying both markers.
-enum CopyDropScalarVariants: Copy + Drop { N: i64  B: bool  U: unit }
+enum CopyDropScalarVariants: Copy + Drop { N: i64  B: bool  U: $Tuple0 }
 
 # ---------- Move: field whose type is Copy+Drop ----------
 

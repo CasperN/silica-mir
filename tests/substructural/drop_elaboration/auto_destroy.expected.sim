@@ -34,7 +34,7 @@ struct PartialAutoDestroy: Move {
 
 enum DestroyChoice: Move {
   Item: Destroyable
-  Empty: unit
+  Empty: $Tuple0
 }
 
 extern fn init_destroyable<'s0>(out: &'s0 out Destroyable);

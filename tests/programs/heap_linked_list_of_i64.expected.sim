@@ -8,13 +8,13 @@ struct Node: Move {
 }
 
 enum List: Move {
-  Empty: unit
+  Empty: $Tuple0
   Cons: *Node
 }
 
 fn list_empty<'s0>($return: &'s0 out List) {
   entry:
-    $return.* = List::Empty(unit);
+    $return.* = List::Empty($Tuple0 {});
     unborrow $return;
     require_uninit $return;
     return
@@ -23,22 +23,22 @@ fn list_empty<'s0>($return: &'s0 out List) {
 fn list_cons<'s0>(value: i64, tail: List, $return: &'s0 out List) {
   p: *Node;
   $tmp_0: &out *Node;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
   entry:
     $tmp_0 = &out p;
     call malloc_node(24, move $tmp_0);
     require_uninit $tmp_0;
     p.*.value = move value;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
     p.*.next = move tail;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $return.* = List::Cons(move p);
@@ -51,11 +51,11 @@ fn list_cons<'s0>(value: i64, tail: List, $return: &'s0 out List) {
 }
 
 fn list_free(list: List) {
-  $tmp_0: unit;
-  u: unit;
+  $tmp_0: $Tuple0;
+  u: $Tuple0;
   p: *Node;
   tail: List;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     switchEnum(list) [Empty: switch_Empty_0, Cons: switch_Cons_1]
   switch_Empty_0:
@@ -67,11 +67,11 @@ fn list_free(list: List) {
     p = move list as Cons;
     tail = move p.*.next;
     call free_node(move p);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     call list_free(move tail);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit tail;
     require_uninit p;
     goto switch_merge_2
@@ -83,7 +83,7 @@ fn list_free(list: List) {
 }
 
 fn list_sum<'s0, 's1>(list: &'s0 List, $return: &'s1 out i64) {
-  _: unit;
+  _: $Tuple0;
   p: *Node;
   $tmp_0: i64;
   $tmp_1: &List;
@@ -121,7 +121,7 @@ fn list_sum<'s0, 's1>(list: &'s0 List, $return: &'s1 out i64) {
 }
 
 fn main<'s0>(exit: &'s0 out i32) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   l0: List;
   $tmp_1: &out List;
   l1: List;
@@ -133,8 +133,8 @@ fn main<'s0>(exit: &'s0 out i32) {
   s: i64;
   $tmp_5: &List;
   $tmp_6: &out i64;
-  $tmp_7: unit;
-  $tmp_8: unit;
+  $tmp_7: $Tuple0;
+  $tmp_8: $Tuple0;
   $tmp_9: i32;
   $tmp_10: &out i32;
   entry:
@@ -156,19 +156,19 @@ fn main<'s0>(exit: &'s0 out i32) {
     require_uninit $tmp_6;
     require_uninit $tmp_5;
     call list_free(move l3);
-    $tmp_7 = unit;
+    $tmp_7 = $Tuple0 {};
     drop $tmp_7;
     require_uninit $tmp_7;
     $tmp_10 = &out $tmp_9;
     call $i64_to_i32(move s, move $tmp_10);
     exit.* = move $tmp_9;
     unborrow exit;
-    $tmp_8 = unit;
+    $tmp_8 = $Tuple0 {};
     require_uninit $tmp_10;
     require_uninit $tmp_9;
     drop $tmp_8;
     require_uninit $tmp_8;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit s;
     require_uninit l3;
     require_uninit l2;

@@ -21,7 +21,7 @@
 
 struct Inner: Copy + Drop { v: i64 }
 
-enum Tag: Copy + Drop { A: unit  B: i64 }
+enum Tag: Copy + Drop { A: $Tuple0  B: i64 }
 
 # ---------- struct field: declared type ----------
 

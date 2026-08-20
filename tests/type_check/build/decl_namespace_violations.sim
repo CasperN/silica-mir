@@ -46,6 +46,6 @@ struct S {
 # duplicate_enum_variant: variant uniqueness is checked inside each
 # enum; declaring A twice in enum V fires TC-DuplicateEnumVariant.
 enum V {
-  A: unit
+  A: $Tuple0
   A: i64
 }

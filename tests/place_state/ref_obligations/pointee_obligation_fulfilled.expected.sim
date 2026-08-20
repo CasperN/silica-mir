@@ -5,7 +5,7 @@ struct P: Copy + Drop {
 
 enum E: Copy + Drop {
   A: i64
-  B: unit
+  B: $Tuple0
 }
 
 struct Box<T: Copy + Drop>: Copy + Drop {
@@ -13,7 +13,7 @@ struct Box<T: Copy + Drop>: Copy + Drop {
 }
 
 enum Option<T: Copy + Drop>: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: T
 }
 

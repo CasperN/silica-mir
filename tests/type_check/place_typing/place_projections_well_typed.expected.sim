@@ -8,7 +8,7 @@ struct Ptr<'s0>: Copy + Drop {
 }
 
 enum Option: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 

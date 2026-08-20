@@ -29,15 +29,15 @@ struct BigOuter: Drop + Move {
 
 fn struct_field_by_field<'s0>($return: &'s0 out i64) {
   p: P;
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     p.x = 1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     p.y = 2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $return.* = move p.x;
@@ -50,20 +50,20 @@ fn struct_field_by_field<'s0>($return: &'s0 out i64) {
 
 fn nested_struct_leaf_by_leaf<'s0>($return: &'s0 out i64) {
   o: Outer;
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   entry:
     o.i.a = 1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     o.i.b = 2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     o.c = 3;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
     $return.* = move o.i.a;
@@ -77,20 +77,20 @@ fn nested_struct_leaf_by_leaf<'s0>($return: &'s0 out i64) {
 
 fn array_slot_by_slot<'s0>($return: &'s0 out i64) {
   a: [i64; 3];
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   entry:
     a[0] = 1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     a[1] = 2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     a[2] = 3;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
     $return.* = move a[1];
@@ -104,15 +104,15 @@ fn array_slot_by_slot<'s0>($return: &'s0 out i64) {
 
 fn whole_struct_overwrite_from_partial<'s0>(src: P, $return: &'s0 out i64) {
   p: P;
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     p.x = 1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     p = move src;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $return.* = move p.y;
@@ -125,13 +125,13 @@ fn whole_struct_overwrite_from_partial<'s0>(src: P, $return: &'s0 out i64) {
 }
 
 fn move_one_field_leaves_other_init(p: Pair) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   taken: Box;
   remaining: Box;
   entry:
     taken = move p.b;
     remaining = move p.c;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop remaining;
     require_uninit remaining;
     drop taken;
@@ -143,7 +143,7 @@ fn move_one_field_leaves_other_init(p: Pair) {
 }
 
 fn nested_move_inner_leaf(o: BigOuter) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   inner_taken: Box;
   inner_kept: Box;
   tag: i64;
@@ -151,7 +151,7 @@ fn nested_move_inner_leaf(o: BigOuter) {
     inner_taken = move o.p.b;
     inner_kept = move o.p.c;
     tag = move o.tag;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop tag;
     require_uninit tag;
     drop inner_kept;

@@ -35,7 +35,7 @@ struct Holder<T: Label> {
 }
 
 enum Maybe<T: Label> {
-  None: unit
+  None: $Tuple0
   Some: T
 }
 
@@ -58,14 +58,14 @@ extern fn accept_lifetime_bound<'bound, 's0, T: LifetimeLabel<'bound>>(value: &'
 extern fn accept_inferred_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(value: &'bound T);
 
 fn accept_concrete<'s0>(value: &'s0 Good) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call accept<Good>(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -73,14 +73,14 @@ fn accept_concrete<'s0>(value: &'s0 Good) {
 }
 
 fn accept_generic<'s0, T: Label>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call accept<T>(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -88,19 +88,19 @@ fn accept_generic<'s0, T: Label>(value: &'s0 T) {
 }
 
 fn accept_auto_bounds<'s0, T: AutoClone + AutoDestroy>(value: &'s0 T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   entry:
     call accept_auto_clone<T>(copy value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     call accept_auto_destroy<T>(move value);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -108,14 +108,14 @@ fn accept_auto_bounds<'s0, T: AutoClone + AutoDestroy>(value: &'s0 T) {
 }
 
 fn accept_static_lifetime_bound<'s0>(value: &'s0 Good) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call accept_lifetime_bound<'static, Good>(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -123,14 +123,14 @@ fn accept_static_lifetime_bound<'s0>(value: &'s0 Good) {
 }
 
 fn forward_inferred_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(value: &'bound T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call accept_inferred_lifetime_bound<'bound, T>(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -138,7 +138,7 @@ fn forward_inferred_lifetime_bound<'bound, T: LifetimeLabel<'bound>>(value: &'bo
 }
 
 fn use_bounded_types<'s0, 's1, T: Label>(holder: &'s0 Holder<T>, maybe: &'s1 Maybe<T>) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &Holder<T>;
   $tmp_2: &Maybe<T>;
   entry:
@@ -148,7 +148,7 @@ fn use_bounded_types<'s0, 's1, T: Label>(holder: &'s0 Holder<T>, maybe: &'s1 May
     $tmp_2 = move maybe;
     unborrow $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit maybe;
@@ -157,13 +157,13 @@ fn use_bounded_types<'s0, 's1, T: Label>(holder: &'s0 Holder<T>, maybe: &'s1 May
 }
 
 fn use_bounded_trait_argument<'s0, T: RequiresLabel<Good>>(value: &'s0 T) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &T;
   entry:
     $tmp_1 = move value;
     unborrow $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -171,13 +171,13 @@ fn use_bounded_trait_argument<'s0, T: RequiresLabel<Good>>(value: &'s0 T) {
 }
 
 fn use_parameterized_bound<'s0, T: Related<i64>>(value: &'s0 T) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &T;
   entry:
     $tmp_1 = move value;
     unborrow $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -185,7 +185,7 @@ fn use_parameterized_bound<'s0, T: Related<i64>>(value: &'s0 T) {
 }
 
 fn use_later_bound_parameter<'s0, 's1, T: Related<U>, U>(value: &'s0 T, other: &'s1 U) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &T;
   $tmp_2: &U;
   entry:
@@ -195,7 +195,7 @@ fn use_later_bound_parameter<'s0, 's1, T: Related<U>, U>(value: &'s0 T, other: &
     $tmp_2 = move other;
     unborrow $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit other;
@@ -204,13 +204,13 @@ fn use_later_bound_parameter<'s0, 's1, T: Related<U>, U>(value: &'s0 T, other: &
 }
 
 fn use_static_lifetime_holder<'s0>(value: &'s0 LifetimeHolder<'static, Good>) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &LifetimeHolder<'static, Good>;
   entry:
     $tmp_1 = move value;
     unborrow $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -219,13 +219,13 @@ fn use_static_lifetime_holder<'s0>(value: &'s0 LifetimeHolder<'static, Good>) {
 
 impl<T: Label> Wrapper<T> {
   fn inspect<'s0>(recv: &'s0 Wrapper<T>) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &Wrapper<T>;
     entry:
       $tmp_1 = move recv;
       unborrow $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
@@ -234,14 +234,14 @@ impl<T: Label> Wrapper<T> {
 }
 
 fn inspect_good<'s0>(value: &'s0 Wrapper<Good>) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Wrapper<Good>>::inspect(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -255,20 +255,20 @@ trait Inspect {
 
 impl<T: Label> Inspect for Wrapper<T> {
   fn inspect_trait<'s0>(recv: &'s0 Wrapper<T>) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &Wrapper<T>;
     entry:
       $tmp_1 = move recv;
       unborrow $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit recv;
       return
   }
   fn inspect_trait_argument<'s0, 's1, U: Label>(recv: &'s0 Wrapper<T>, value: &'s1 U) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &Wrapper<T>;
     $tmp_2: &U;
     entry:
@@ -278,7 +278,7 @@ impl<T: Label> Inspect for Wrapper<T> {
       $tmp_2 = move value;
       unborrow $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -288,14 +288,14 @@ impl<T: Label> Inspect for Wrapper<T> {
 }
 
 fn inspect_trait_good<'s0>(value: &'s0 Wrapper<Good>) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Wrapper<Good> as Inspect>::inspect_trait(move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -303,14 +303,14 @@ fn inspect_trait_good<'s0>(value: &'s0 Wrapper<Good>) {
 }
 
 fn inspect_trait_argument_good<'s0, 's1>(value: &'s0 Wrapper<Good>, argument: &'s1 Good) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Wrapper<Good> as Inspect>::inspect_trait_argument<Good>(move value, move argument);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit argument;
@@ -320,7 +320,7 @@ fn inspect_trait_argument_good<'s0, 's1>(value: &'s0 Wrapper<Good>, argument: &'
 
 impl Good {
   fn inspect_argument<'s0, 's1, U: Label>(recv: &'s0 Good, value: &'s1 U) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &Good;
     $tmp_2: &U;
     entry:
@@ -330,7 +330,7 @@ impl Good {
       $tmp_2 = move value;
       unborrow $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -338,7 +338,7 @@ impl Good {
       return
   }
   fn inspect_inferred_lifetime_argument<'bound, 's0, U: LifetimeLabel<'bound>>(recv: &'s0 Good, value: &'bound U) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &Good;
     $tmp_2: &'bound U;
     entry:
@@ -348,7 +348,7 @@ impl Good {
       $tmp_2 = move value;
       unborrow $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -356,7 +356,7 @@ impl Good {
       return
   }
   fn inspect_lifetime_argument<'bound, 's0, 's1, U: LifetimeLabel<'bound>>(recv: &'s0 Good, value: &'s1 U) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     $tmp_1: &Good;
     $tmp_2: &U;
     entry:
@@ -366,7 +366,7 @@ impl Good {
       $tmp_2 = move value;
       unborrow $tmp_2;
       require_uninit $tmp_2;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit value;
@@ -376,14 +376,14 @@ impl Good {
 }
 
 fn inspect_argument_good<'s0, 's1>(recv: &'s0 Good, value: &'s1 Good) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Good>::inspect_argument<Good>(move recv, move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -392,14 +392,14 @@ fn inspect_argument_good<'s0, 's1>(recv: &'s0 Good, value: &'s1 Good) {
 }
 
 fn inspect_inferred_lifetime_argument_good<'bound, 's0, T: LifetimeLabel<'bound>>(recv: &'s0 Good, value: &'bound T) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Good>::inspect_inferred_lifetime_argument<'bound, T>(move recv, move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;
@@ -408,14 +408,14 @@ fn inspect_inferred_lifetime_argument_good<'bound, 's0, T: LifetimeLabel<'bound>
 }
 
 fn inspect_lifetime_argument_good<'s0, 's1>(recv: &'s0 Good, value: &'s1 Good) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call <Good>::inspect_lifetime_argument<'static, Good>(move recv, move value);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit value;

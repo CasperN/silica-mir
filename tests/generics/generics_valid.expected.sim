@@ -8,7 +8,7 @@ struct Pair<T: Copy + Drop, U: Move> {
 }
 
 enum Option<T: Copy + Drop>: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: T
 }
 

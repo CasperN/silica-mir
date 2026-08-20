@@ -36,18 +36,17 @@ pub fn pretty_print(program: &IndexedProgram) -> String {
 /// Compiler-injected prelude declarations are not user-authored and should
 /// not appear in fixture-pinned pretty-printed output.
 fn is_prelude_decl(decl: DeclarationRef<'_>) -> bool {
-    match decl {
-        DeclarationRef::Impl(i) => {
-            matches!(
-                i.trait_path.as_ref().map(|t| t.name.as_str()),
-                Some("AutoClone" | "AutoDestroy")
-            ) && matches!(&i.target.kind, TypeKind::Param(_))
-        }
-        _ => matches!(
-            decl.meta().map(|m| m.name.as_str()),
-            Some("AutoClone" | "AutoDestroy" | "size_of" | "ptr_offset")
-        ),
-    }
+    let source = match decl {
+        DeclarationRef::Impl(i) => i.methods.first().map(|m| m.meta.name_source),
+        _ => decl.meta().map(|m| m.name_source),
+    };
+    matches!(
+        source,
+        Some(SourceInfo::Generated {
+            kind: GeneratedKind::Prelude,
+            ..
+        }),
+    )
 }
 
 fn write_declaration(out: &mut String, decl: DeclarationRef<'_>) {
@@ -263,6 +262,30 @@ fn write_type(out: &mut String, ty: &Type) {
     write!(out, "{}", ty).unwrap();
 }
 
+fn write_instance_head(out: &mut String, instance: &Instance) {
+    out.push_str(&instance.name);
+    if !instance.lifetime_args.is_empty() || !instance.type_args.is_empty() {
+        out.push('<');
+        let mut first = true;
+        for lifetime in &instance.lifetime_args {
+            if !first {
+                out.push_str(", ");
+            }
+            first = false;
+            use std::fmt::Write;
+            write!(out, "{}", lifetime).unwrap();
+        }
+        for a in &instance.type_args {
+            if !first {
+                out.push_str(", ");
+            }
+            first = false;
+            write_type(out, a);
+        }
+        out.push('>');
+    }
+}
+
 fn write_place(out: &mut String, place: &Place) {
     match place {
         Place::Var(name) => out.push_str(name),
@@ -365,28 +388,12 @@ fn write_const(out: &mut String, c: &ConstVal) {
         }
         ConstVal::Bool(true) => out.push_str("true"),
         ConstVal::Bool(false) => out.push_str("false"),
-        ConstVal::Unit => out.push_str("unit"),
+        ConstVal::EmptyStruct(instance) => {
+            write_instance_head(out, instance);
+            out.push_str(" {}");
+        }
         ConstVal::FnName(instance) => {
-            out.push_str(&instance.name);
-            if !instance.lifetime_args.is_empty() || !instance.type_args.is_empty() {
-                out.push('<');
-                let mut first = true;
-                for lifetime in &instance.lifetime_args {
-                    if !first {
-                        out.push_str(", ");
-                    }
-                    first = false;
-                    write!(out, "{}", lifetime).unwrap();
-                }
-                for a in &instance.type_args {
-                    if !first {
-                        out.push_str(", ");
-                    }
-                    first = false;
-                    write_type(out, a);
-                }
-                out.push('>');
-            }
+            write_instance_head(out, instance);
         }
         ConstVal::InherentFn { self_ty, method } => {
             out.push('<');
@@ -661,7 +668,7 @@ mod tests {
         assert_roundtrip(
             "
             struct P: Copy + Drop { x: i64 y: i64 }
-            enum Option: Copy + Drop { None: unit Some: i64 }
+            enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
             fn f(p: P, o: Option) {
               n: i64;
               entry:

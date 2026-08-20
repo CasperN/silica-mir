@@ -3,7 +3,7 @@ struct Inner: Copy + Drop {
 }
 
 enum Tag: Copy + Drop {
-  A: unit
+  A: $Tuple0
   B: i64
 }
 

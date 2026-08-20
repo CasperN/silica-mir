@@ -46,28 +46,28 @@ fn struct_field_and_nested_array<'s0>($return: &'s0 out i32) {
 
 fn constant_slot_initialization<'s0>($return: &'s0 out i64) {
   a: [i64; 3];
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &out i64;
-  $tmp_2: unit;
+  $tmp_2: $Tuple0;
   $tmp_3: &out i64;
-  $tmp_4: unit;
+  $tmp_4: $Tuple0;
   $tmp_5: &out i64;
   entry:
     $tmp_1 = &out a[0];
     call set_i64(move $tmp_1, 10);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
     $tmp_3 = &out a[1];
     call set_i64(move $tmp_3, 20);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     require_uninit $tmp_3;
     drop $tmp_2;
     require_uninit $tmp_2;
     $tmp_5 = &out a[2];
     call set_i64(move $tmp_5, 30);
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     require_uninit $tmp_5;
     drop $tmp_4;
     require_uninit $tmp_4;

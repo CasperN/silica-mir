@@ -1,6 +1,8 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
+
 define void @silica.main(ptr %arg.exit) {
 .init:
   %local.exit = alloca ptr, align 8

@@ -26,7 +26,7 @@ struct StructSelf { s: StructSelf }
 
 # An enum variant that carries the enum type directly by value has
 # infinite size; the checker names the single-member cycle.
-enum EnumSelf { A: unit  B: EnumSelf }
+enum EnumSelf { A: $Tuple0  B: EnumSelf }
 
 # ---------- mutually recursive structs by value ----------
 

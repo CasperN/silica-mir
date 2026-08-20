@@ -310,18 +310,10 @@ pub(super) fn is_state_fully_init(state: &InitState) -> bool {
 pub(super) fn expand_uniform(
     state: &InitState,
     fields: &[StructField],
-    prog: &IndexedProgram,
 ) -> BTreeMap<InitSlot, InitState> {
     fields
         .iter()
-        .map(|f| {
-            let field_state = if is_trivially_init(&f.ty, prog) {
-                InitState::Init
-            } else {
-                state.clone()
-            };
-            (InitSlot::Field(f.name.clone()), field_state)
-        })
+        .map(|f| (InitSlot::Field(f.name.clone()), state.clone()))
         .collect()
 }
 
@@ -512,7 +504,7 @@ pub(super) fn write_at(
                 return;
             };
             if !matches!(state, InitState::Partial(_)) {
-                *state = InitState::Partial(expand_uniform(state, &fields, prog));
+                *state = InitState::Partial(expand_uniform(state, &fields));
             }
             let field_ty = fields.into_iter().find(|fd| fd.name == *f).map(|fd| fd.ty);
             if let (Some(field_ty), InitState::Partial(map)) = (field_ty, &mut *state) {
@@ -794,14 +786,7 @@ pub(super) fn boundary_state(
         );
     }
     for l in &body.locals {
-        // A struct with zero declared fields is trivially initialized —
-        // there's nothing to write. Same for any type reducing to one.
-        let init = if is_trivially_init(&l.ty, prog) {
-            InitState::Init
-        } else {
-            InitState::NeverInit
-        };
-        s.locals.insert(l.name.clone(), init);
+        s.locals.insert(l.name.clone(), InitState::NeverInit);
     }
     s
 }
@@ -854,16 +839,6 @@ pub(super) fn seed_parameter_ref_states(
         }
     }
     visited.remove(name);
-}
-
-pub(super) fn is_trivially_init(ty: &Type, prog: &IndexedProgram) -> bool {
-    match &ty.kind {
-        TypeKind::Custom(Instance { name, .. }) => match prog.types.get(name) {
-            Some(TypeDecl::Struct(s)) => s.fields.is_empty(),
-            _ => false,
-        },
-        _ => false,
-    }
 }
 
 /// Bridge between init_state's per-function context and the generic

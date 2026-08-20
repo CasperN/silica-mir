@@ -176,7 +176,7 @@ error: at 57:51: [COMP-CopyMarkerNotSatisfied] In struct 'ClaimsCopyFromMove' (m
 error: at 61:35: [COMP-CopyMarkerNotSatisfied] In enum 'ClaimsCopyEnum' (marked Copy), variant 'A' payload type T is not Copy
     |
  60 | # Copy claim on the enum is unsatisfied by variant A's payload type T.
- 61 | enum ClaimsCopyEnum<T>: Copy { A: T  B: unit }
+ 61 | enum ClaimsCopyEnum<T>: Copy { A: T  B: $Tuple0 }
     |                                   ^
  62 | 
     |

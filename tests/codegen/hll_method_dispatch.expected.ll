@@ -1,6 +1,7 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
 %Counter = type { i32 }
 
 define void @free_value(ptr %arg.recv, ptr %arg.$return) {

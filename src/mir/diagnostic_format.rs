@@ -127,7 +127,6 @@ impl DiagnosticFormat {
             TypeKind::Int(int) => out.write_str(int.name()),
             TypeKind::Float(float) => out.write_str(float.name()),
             TypeKind::Bool => out.write_str("bool"),
-            TypeKind::Unit => out.write_str("unit"),
             TypeKind::Never => out.write_str("never"),
             TypeKind::Custom(Instance {
                 name,

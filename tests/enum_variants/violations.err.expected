@@ -42,7 +42,7 @@ error: at 171:5: [PS-DowncastVariantNotRefined] In function 'downcast_on_field_o
      |
 error: at 188:5: [PS-DowncastVariantNotRefined] In function 'downcast_on_array_slot_errors', block 'entry': cannot downcast 'a[0] as Some' here: 'a[0]' is not refined to variant 'Some'
      |
- 187 |     a[1] = Option::None(unit);
+ 187 |     a[1] = Option::None($Tuple0 {});
  188 |     x = copy a[0] as Some;
      |     ^^^^^^^^^^^^^^^^^^^^^
  189 |     drop x;

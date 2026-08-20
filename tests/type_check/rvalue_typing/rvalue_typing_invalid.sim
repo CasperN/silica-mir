@@ -10,7 +10,7 @@
 #   unknown_variant          Option::Wat(42)              TC-NoSuchVariant
 #   payload_type_mismatch    Option::Some(true)           TC-EnumConstrPayloadTypeMismatch
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 # ---------- EnumConstr: enum name not declared ----------
 

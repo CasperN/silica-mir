@@ -213,7 +213,7 @@ impl<'a> CodeGenContext<'a> {
             TypeKind::Float(FloatTy::F32) => "float".to_string(),
             TypeKind::Float(FloatTy::F64) => "double".to_string(),
             TypeKind::Bool => "i1".to_string(),
-            TypeKind::Unit | TypeKind::Never => "{}".to_string(),
+            TypeKind::Never => "{}".to_string(),
             TypeKind::Ref(_, _, _) | TypeKind::Fn { .. } | TypeKind::RawPtr(_) => "ptr".to_string(),
             TypeKind::Custom(Instance {
                 name,
@@ -937,7 +937,10 @@ fn emit_const(cx: &mut CodeGenContext, c: &ConstVal) -> (String, Type) {
         }
         ConstVal::Bool(true) => ("true".to_string(), bool_ty()),
         ConstVal::Bool(false) => ("false".to_string(), bool_ty()),
-        ConstVal::Unit => ("zeroinitializer".to_string(), unit_ty()),
+        ConstVal::EmptyStruct(instance) => (
+            "zeroinitializer".to_string(),
+            Type::synthesized(TypeKind::Custom(instance.clone())),
+        ),
         ConstVal::FnName(instance) => {
             assert!(
                 instance.type_args.is_empty(),

@@ -9,9 +9,9 @@ struct Point {
 }
 
 enum Color: Copy + Drop {
-  Red: unit
-  Green: unit
-  Blue: unit
+  Red: $Tuple0
+  Green: $Tuple0
+  Blue: $Tuple0
 }
 
 extern fn sink(n: i64);

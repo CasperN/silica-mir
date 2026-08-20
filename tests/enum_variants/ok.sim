@@ -37,14 +37,14 @@
 #   loop_reassigns_variant_across_backedge                two-variant               widened across backedge  loop         unit      none
 #   nested_downcast_field_switch                          two-variant (mixed proj)  none                     nested       unit      none
 
-enum Option: Copy + Drop { None: unit Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
 enum One: Copy + Drop { Only: i64 }
 enum Void: Copy + Drop {}
 enum VoidPayload: Copy + Drop { A: i64 N: Void }
 enum NeverPayload: Copy + Drop { A: i64 N: never }
-enum Sub: Copy + Drop { S1: unit S2: unit }
+enum Sub: Copy + Drop { S1: $Tuple0 S2: $Tuple0 }
 struct Wrap: Copy + Drop { inner: Sub }
-enum Outer: Copy + Drop { X: Wrap Y: unit }
+enum Outer: Copy + Drop { X: Wrap Y: $Tuple0 }
 struct Voidish: Copy + Drop + Move { real: i64 fake: never }
 enum TransitivelyNever: Copy + Drop { A: i64 N: Voidish }
 
@@ -93,7 +93,7 @@ fn empty_enum_via_unreachable_terminator(v: Void) {
 fn flow_arm_target_with_abort_is_not_an_impossibility_marker() {
   o: Option;
   entry:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     switchEnum(o) [None: n, Some: trap]
   n:
     drop o;
@@ -151,7 +151,7 @@ fn nested_downcast_after_refinement(o: Outer) {
 fn flow_unreachable_after_construction() {
   o: Option;
   entry:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     switchEnum(o) [None: n, Some: dead]
   n:
     drop o;
@@ -187,7 +187,7 @@ fn flow_unreachable_after_prior_switch(o: Option) {
 fn flow_unreachable_field_projection_after_construction() {
   w: Wrap;
   entry:
-    w.inner = Sub::S1(unit);
+    w.inner = Sub::S1($Tuple0 {});
     switchEnum(w.inner) [S1: s, S2: dead]
   s:
     drop w;
@@ -206,7 +206,7 @@ fn flow_unreachable_after_abort_join(b: bool) {
   entry:
     branch(copy b) [true: t, false: fbr]
   t:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     goto join
   fbr:
     abort
@@ -228,7 +228,7 @@ fn flow_unreachable_target_may_contain_statements() {
   o: Option;
   x: i64;
   entry:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     switchEnum(o) [None: n, Some: dead]
   n:
     drop o;
@@ -245,7 +245,7 @@ fn flow_unreachable_target_may_contain_statements() {
 fn flow_dead_code_variant_real_target_warning() {
   o: Option;
   entry:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     switchEnum(o) [None: n, Some: s]
   n:
     drop o;
@@ -275,7 +275,7 @@ fn flow_shared_borrow_does_not_clobber() {
   o: Option;
   r: &Option;
   entry:
-    o = Option::None(unit);
+    o = Option::None($Tuple0 {});
     r = &o;
     unborrow r;
     switchEnum(o) [None: n, Some: dead]
@@ -363,17 +363,17 @@ fn chained_projection_switch(s: S) {
 # `{S2: Init}` — the state doesn't leak `{S1}` across the backedge. On
 # subsequent iterations, `e` is `{S1, S2}` and both arms are live; the
 # downcast in each arm sees a clean singleton refinement.
-enum Se: Move + Drop { S1: unit, S2: unit }
-fn loop_reassigns_variant_across_backedge(u: unit) {
+enum Se: Move + Drop { S1: $Tuple0, S2: $Tuple0 }
+fn loop_reassigns_variant_across_backedge(u: $Tuple0) {
   e: Se;
   entry:
-    e = Se::S1(unit);
+    e = Se::S1($Tuple0 {});
     goto head
   head:
     switchEnum(e) [S1: s1, S2: s2]
   s1:
     drop e as S1;
-    e = Se::S2(unit);
+    e = Se::S2($Tuple0 {});
     goto head
   s2:
     drop e as S2;
@@ -387,9 +387,9 @@ fn loop_reassigns_variant_across_backedge(u: unit) {
 # a struct-field projection. Refinement propagates through both steps:
 # the outer switch pins `we` to `W`, the inner switch pins the field
 # `we as W .e` to a specific variant.
-enum WrapEnum: Copy + Drop { W: S, N: unit }
+enum WrapEnum: Copy + Drop { W: S, N: $Tuple0 }
 fn nested_downcast_field_switch(we: WrapEnum) {
-  x: unit;
+  x: $Tuple0;
   entry:
     switchEnum(we) [W: w_arm, N: n_arm]
   w_arm:

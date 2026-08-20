@@ -1,6 +1,7 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
 %"Resource<i64>" = type { i64 }
 
 define void @silica.main() {

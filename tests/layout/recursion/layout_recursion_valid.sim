@@ -33,7 +33,7 @@ struct StructRefSelf { next: &mut StructRefSelf }
 
 # An enum variant that carries the enum type through a reference is
 # finite-sized; the reference breaks the by-value cycle.
-enum EnumRefSelf { Nil: unit  Cons: &mut EnumRefSelf }
+enum EnumRefSelf { Nil: $Tuple0  Cons: &mut EnumRefSelf }
 
 # ---------- mutually recursive structs: indirection via &mut ----------
 

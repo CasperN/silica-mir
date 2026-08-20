@@ -322,7 +322,7 @@ fn strict_check_passes_after_elaboration_with_copy_drop_struct() {
 fn strict_check_passes_after_elaboration_with_copy_drop_enum() {
     assert_strict_clean_after_elaboration(
         "
-            enum Option: Copy + Drop { None: unit Some: i64 }
+            enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
             fn f(o: Option) { entry: return }
             ",
     );

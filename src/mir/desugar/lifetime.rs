@@ -141,7 +141,6 @@ fn desugar_body_local_ty(ty: &mut Type, fn_params: &[LifetimeParam], ctx: &mut D
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => {}
     }
@@ -292,7 +291,6 @@ fn desugar_decl_field_ty(ty: &mut Type, containing_params: &[LifetimeParam], ctx
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => {}
     }
@@ -329,7 +327,6 @@ fn desugar_decl_field_fn_param(
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => {}
     }
@@ -499,7 +496,6 @@ fn desugar_type_pos(ty: &mut Type, pos: Pos, ctx: &mut DesugarCtx) {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => {}
     }

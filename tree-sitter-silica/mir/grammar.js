@@ -32,7 +32,6 @@ module.exports = grammar({
     ...common.rules,
 
     type: $ => choice(
-      'unit',
       ...common.typeChoices($),
       // MIR specific fn type: `fn [abi] (T, ..., [$return:] T)`.
       seq(
@@ -259,9 +258,18 @@ module.exports = grammar({
       $.byte_char_lit,
       'true',
       'false',
-      'unit',
+      $.empty_struct_const,
       $.fn_name,
     ),
+
+    // Zero-field struct value: `Name<'a, T> {}`. The `{}` disambiguates
+    // from `fn_name`. Non-empty struct construction is not (yet) a MIR
+    // rvalue — structs are built field-by-field.
+    empty_struct_const: $ => prec(1, seq(
+      field('name', $.identifier),
+      optional($.type_args),
+      '{', '}',
+    )),
 
     // Function name const. Two shapes:
     //

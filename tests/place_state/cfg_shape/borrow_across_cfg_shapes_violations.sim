@@ -13,7 +13,7 @@
 #   fn                                       shape       failure
 #   out_ref_unfulfilled_on_return_arm        switchEnum  one arm returns without writing through &out
 
-enum E: Copy + Drop { A: unit  B: unit }
+enum E: Copy + Drop { A: $Tuple0  B: $Tuple0 }
 
 # ---------- switchEnum: obligation not waived on any returning arm ----------
 

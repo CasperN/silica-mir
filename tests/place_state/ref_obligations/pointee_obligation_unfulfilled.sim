@@ -17,11 +17,11 @@ struct L: Drop + Move { value: i64 }
 
 struct Q: Drop + Move { x: L  y: i64 }
 
-enum E: Copy + Drop { A: i64  B: unit }
+enum E: Copy + Drop { A: i64  B: $Tuple0 }
 
 struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: $Tuple0  Some: T }
 
 # ---------- &out: pointee left non-Init ----------
 

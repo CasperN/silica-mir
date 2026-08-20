@@ -9,20 +9,20 @@
 #   fn                             entry state → operation → end state
 #   param_starts_init              Init (param)     copy      Init
 #   write_then_read                NeverInit        write     Init, then copy
-#   empty_struct_local_starts_init Init (empty)     copy      Init
+#   empty_struct_write_then_copy   NeverInit        write     Init, then copy
 #   reassign_after_move            Init             move      Moved, write, Init
 #   call_args_copy_then_move       Init             copy;move Moved (call-arg order)
 #
-# Params are Init at function entry. Uninitialized locals of empty
-# structs are also Init because they carry no data. Copy evaluates
-# the operand without consuming it; move transfers ownership. A
-# reassignment after move restores the place to Init.
+# Params are Init at function entry. Every local — including empty
+# structs — starts NeverInit and needs an explicit write. Copy
+# evaluates the operand without consuming it; move transfers
+# ownership. A reassignment after move restores the place to Init.
 
 struct Unit0: Copy + Drop { }
 
 struct Linear: Move { r: &out i64 }
 
-enum Option: Copy + Drop { None: unit Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
 
 extern fn take_two(a: i64, b: i64);
 
@@ -54,15 +54,16 @@ fn write_then_read() {
     return
 }
 
-# ---------- Local empty struct: starts Init, copy is valid immediately ----------
+# ---------- Local empty struct: NeverInit until written, then copy is valid ----------
 
-# An empty struct carries no data; the checker treats a declared-but-
-# unwritten local of such a type as already Init. Copying it without
-# any prior write must succeed.
-fn empty_struct_local_starts_init() {
+# Even a zero-sized empty struct starts NeverInit at declaration. A
+# whole-value const write (`u = Unit0 {}`) transitions the local to
+# Init; the following copy is then valid.
+fn empty_struct_write_then_copy() {
   u: Unit0;
   v: Unit0;
   entry:
+    u = Unit0 {};
     v = copy u;
     return
 }

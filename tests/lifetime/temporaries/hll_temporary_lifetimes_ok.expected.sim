@@ -28,20 +28,20 @@ fn named_value_borrow<'s0>($return: &'s0 out i64) {
 
 fn continue_cleans_loop_body<'s0>($return: &'s0 out i64) {
   i: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   value: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: bool;
   $tmp_3: &out bool;
-  $tmp_4: unit;
-  $tmp_5: unit;
+  $tmp_4: $Tuple0;
+  $tmp_5: $Tuple0;
   $tmp_6: i64;
   $tmp_7: &out i64;
-  $tmp_8: unit;
-  $tmp_9: unit;
+  $tmp_8: $Tuple0;
+  $tmp_9: $Tuple0;
   $tmp_10: i64;
   $tmp_11: &out i64;
-  $tmp_12: unit;
+  $tmp_12: $Tuple0;
   $tmp_13: i64;
   $tmp_14: &out i64;
   entry:
@@ -60,7 +60,7 @@ fn continue_cleans_loop_body<'s0>($return: &'s0 out i64) {
     $tmp_7 = &out $tmp_6;
     call $i64_add(move i, 1, move $tmp_7);
     i = move $tmp_6;
-    $tmp_5 = unit;
+    $tmp_5 = $Tuple0 {};
     require_uninit $tmp_7;
     require_uninit $tmp_6;
     drop $tmp_5;
@@ -69,7 +69,7 @@ fn continue_cleans_loop_body<'s0>($return: &'s0 out i64) {
     require_uninit value;
     goto loop_start_0
   if_false_3:
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     goto if_merge_4
   if_merge_4:
     require_uninit $tmp_3;
@@ -83,7 +83,7 @@ fn continue_cleans_loop_body<'s0>($return: &'s0 out i64) {
     $tmp_11 = &out $tmp_10;
     call $i64_add(move i, 1, move $tmp_11);
     i = move $tmp_10;
-    $tmp_9 = unit;
+    $tmp_9 = $Tuple0 {};
     require_uninit $tmp_11;
     require_uninit $tmp_10;
     drop $tmp_9;

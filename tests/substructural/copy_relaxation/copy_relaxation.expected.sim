@@ -19,7 +19,7 @@ enum DeepChoice: Copy + Drop {
 
 enum RefChoice<'s0>: Move {
   HasRef: &'s0 mut CopyPair
-  Empty: unit
+  Empty: $Tuple0
 }
 
 struct ProjectionRoot<'s0, 's1>: Move {

@@ -19,7 +19,7 @@
 
 struct S: Copy + Drop { f: i64 }
 
-enum Choice: Copy + Drop { None: unit  Some: i64 }
+enum Choice: Copy + Drop { None: $Tuple0  Some: i64 }
 
 extern fn add(a: i64, b: i64);
 

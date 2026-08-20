@@ -9,7 +9,7 @@ struct PtrStruct: Copy + Drop {
 
 enum PtrEnum: Copy + Drop {
   PtrV: *i64
-  NullV: unit
+  NullV: $Tuple0
 }
 
 extern fn consume_raw_ptr(p: *i64);

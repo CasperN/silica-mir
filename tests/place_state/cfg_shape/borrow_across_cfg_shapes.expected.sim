@@ -1,10 +1,10 @@
 enum Sel: Copy + Drop {
-  A: unit
-  B: unit
+  A: $Tuple0
+  B: $Tuple0
 }
 
 enum Option: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 

@@ -40,7 +40,7 @@ struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
 struct Pair<T: Copy + Drop, U: Move> { first: T  second: U }
 
-enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: $Tuple0  Some: T }
 
 struct Nest<T: Copy + Drop>: Copy + Drop { outer: Box<Box<T>> }
 

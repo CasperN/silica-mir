@@ -92,7 +92,7 @@ fn make_both<'a, 'b>(x: &'a i64, y: &'b i64, $return: &out Both<'a, 'b>) {
 
 # ---------- enum with ref-carrying variant ----------
 
-enum MaybeRef<'a>: Copy + Drop { None: unit, Some: &'a i64 }
+enum MaybeRef<'a>: Copy + Drop { None: $Tuple0, Some: &'a i64 }
 
 fn maybe_of<'a>(r: &'a i64, $return: &out MaybeRef<'a>) {
   entry:

@@ -11,7 +11,7 @@
 #   SwitchDuplicateArm, caret on terminator            | [C] switch_duplicate_arm_at_terminator_span
 #   SwitchNotExhaustive, caret on terminator           | [D] switch_not_exhaustive_at_terminator_span
 
-enum Option: Copy + Drop { None: unit Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
 
 # ---------- [A] DowncastVariantNotRefined: caret on the copy statement ----------
 

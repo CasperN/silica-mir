@@ -1,5 +1,5 @@
 enum Tag: Copy + Drop {
-  A: unit
+  A: $Tuple0
   B: i64
 }
 
@@ -45,10 +45,21 @@ fn const_bool() {
 }
 
 fn const_unit() {
-  u: unit;
+  u: $Tuple0;
   entry:
-    u = unit;
+    u = $Tuple0 {};
     drop u;
+    return
+}
+
+struct Marker: Copy + Drop {
+}
+
+fn const_empty_user_struct() {
+  m: Marker;
+  entry:
+    m = Marker {};
+    drop m;
     return
 }
 
@@ -71,7 +82,7 @@ fn const_fnname_extern() {
 fn const_unit_as_enum_payload() {
   t: Tag;
   entry:
-    t = Tag::A(unit);
+    t = Tag::A($Tuple0 {});
     drop t;
     return
 }

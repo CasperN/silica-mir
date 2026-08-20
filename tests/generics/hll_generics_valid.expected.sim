@@ -3,7 +3,7 @@ struct Box<T: Copy + Drop>: Copy + Drop {
 }
 
 enum Option<T: Copy + Drop>: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: T
 }
 
@@ -33,7 +33,7 @@ fn make_some<'s0>($return: &'s0 out Option<i64>) {
 }
 
 fn option_extract_match<'s0>(o: Option<i64>, $return: &'s0 out i64) {
-  _: unit;
+  _: $Tuple0;
   x: i64;
   entry:
     switchEnum(o) [None: switch_None_0, Some: switch_Some_1]
@@ -58,12 +58,12 @@ fn option_extract_match<'s0>(o: Option<i64>, $return: &'s0 out i64) {
 }
 
 enum MoveList: Move {
-  EmptyM: unit
+  EmptyM: $Tuple0
   ConsM: i64
 }
 
 fn move_only_owned_match<'s0>(ml: MoveList, $return: &'s0 out i64) {
-  u: unit;
+  u: $Tuple0;
   $tmp_0: &out i64;
   x: i64;
   entry:
@@ -88,7 +88,7 @@ fn move_only_owned_match<'s0>(ml: MoveList, $return: &'s0 out i64) {
     return
 }
 
-fn u_to_zero<'s0>(u: unit, $return: &'s0 out i64) {
+fn u_to_zero<'s0>(u: $Tuple0, $return: &'s0 out i64) {
   entry:
     $return.* = 0;
     unborrow $return;
@@ -99,7 +99,7 @@ fn u_to_zero<'s0>(u: unit, $return: &'s0 out i64) {
 }
 
 fn move_only_borrowed_match<'s0, 's1>(ml: &'s0 MoveList, $return: &'s1 out i64) {
-  _: unit;
+  _: $Tuple0;
   x: i64;
   entry:
     switchEnum(ml.*) [EmptyM: switch_EmptyM_0, ConsM: switch_ConsM_1]
@@ -125,7 +125,7 @@ fn move_only_borrowed_match<'s0, 's1>(ml: &'s0 MoveList, $return: &'s1 out i64) 
 
 fn nested_container<'s0>(b: Box<Option<i64>>, $return: &'s0 out i64) {
   inner: Option<i64>;
-  _: unit;
+  _: $Tuple0;
   x: i64;
   entry:
     inner = move b.inner;
@@ -191,15 +191,15 @@ fn read_nested_field<'s0>(b: Box<Box<i64>>, $return: &'s0 out i64) {
 }
 
 fn write_nested_pointee<'s0>(r: &'s0 out Box<Box<i64>>, x: i64) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     r.*.inner.inner = move x;
     unborrow r;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit x;
@@ -558,35 +558,35 @@ fn infer_borrowed_i64_receiver<'caller, 's0>(value: &'caller i64, $return: &'s0 
 }
 
 fn generic_side_effect<T: Copy + Drop>() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
 }
 
 fn explicit_unmentioned_type_param() {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call generic_side_effect<i64>();
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
 }
 
 fn deferred_generic_call() {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     call generic_side_effect<i64>();
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     drop $tmp_0;
@@ -595,23 +595,23 @@ fn deferred_generic_call() {
 }
 
 fn lifetime_side_effect<'a>() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
 }
 
 fn explicit_static_lifetime() {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call lifetime_side_effect<'static>();
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
@@ -660,6 +660,7 @@ fn make_empty_span<'a, 's0, T>(p: *T, $return: &'s0 out SpanView<'a, T>) {
   entry:
     $return.*.ptr = move p;
     $return.*.len = 0u64;
+    $return.*.marker = PhantomData<'a, T> {};
     unborrow $return;
     require_uninit $return;
     require_uninit p;
@@ -696,6 +697,7 @@ impl<T: Copy + Drop> Buffer<T> {
     entry:
       $return.*.ptr = copy self.*.ptr;
       $return.*.len = copy self.*.len;
+      $return.*.marker = PhantomData<'a, T> {};
       unborrow $return;
       require_uninit $return;
       drop self;
@@ -754,15 +756,15 @@ impl<T: Copy + Drop> Counter<T> {
       return
   }
   fn set_val<'s0>(self: &'s0 mut Counter<T>, new_val: T) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     entry:
       drop self.*.count;
       self.*.count = move new_val;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit new_val;
@@ -794,7 +796,7 @@ fn test_self_sugar<'s10, 's0>(c: Counter<i64>, $return: &'s0 out i64) {
   v: i64;
   $tmp_0: &Counter<i64>;
   $tmp_1: &out i64;
-  $tmp_2: unit;
+  $tmp_2: $Tuple0;
   $tmp_3: &mut Counter<i64>;
   $tmp_4: i64;
   $tmp_5: &out i64;
@@ -816,7 +818,7 @@ fn test_self_sugar<'s10, 's0>(c: Counter<i64>, $return: &'s0 out i64) {
     $tmp_5 = &out $tmp_4;
     call $i64_add(move v, 1, move $tmp_5);
     call <Counter<i64>>::set_val(move $tmp_3, move $tmp_4);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     require_uninit $tmp_5;
     require_uninit $tmp_4;
     require_uninit $tmp_3;
@@ -852,15 +854,15 @@ struct Slot<T: Move>: Move {
 
 impl<T: Move> Slot<T> {
   fn init<'s0>(self: &'s0 out Slot<T>, val: T) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     entry:
       self.*.val = move val;
       unborrow self;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit val;
@@ -880,15 +882,15 @@ impl<T: Move> Slot<T> {
       return
   }
   fn init_lifetime<'a>(self: &'a out Slot<T>, val: T) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     entry:
       self.*.val = move val;
       unborrow self;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       require_uninit val;
@@ -911,13 +913,13 @@ impl<T: Move> Slot<T> {
 
 fn test_out_and_drop_self_sugar<'s11, 's12, 's0>($return: &'s0 out i64) {
   s: Slot<i64>;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: &out Slot<i64>;
   v: i64;
   $tmp_2: &drop Slot<i64>;
   $tmp_3: &out i64;
   s2: Slot<i64>;
-  $tmp_4: unit;
+  $tmp_4: $Tuple0;
   $tmp_5: &out Slot<i64>;
   final_val: i64;
   $tmp_6: &drop Slot<i64>;
@@ -925,7 +927,7 @@ fn test_out_and_drop_self_sugar<'s11, 's12, 's0>($return: &'s0 out i64) {
   entry:
     $tmp_1 = &out s;
     call <Slot<i64>>::init(move $tmp_1, 42);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_1;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -936,7 +938,7 @@ fn test_out_and_drop_self_sugar<'s11, 's12, 's0>($return: &'s0 out i64) {
     require_uninit $tmp_2;
     $tmp_5 = &out s2;
     call <Slot<i64>>::init_lifetime<'s11>(move $tmp_5, move v);
-    $tmp_4 = unit;
+    $tmp_4 = $Tuple0 {};
     require_uninit $tmp_5;
     drop $tmp_4;
     require_uninit $tmp_4;

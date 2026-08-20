@@ -26,7 +26,7 @@
 
 struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: $Tuple0  Some: T }
 
 # Linear carries no markers; it satisfies neither Copy, Drop, nor Move.
 # Any instantiation of Box<Linear> or Option<Linear> fails the bound check.
@@ -58,7 +58,7 @@ struct ClaimsCopyFromMove<T: Move>: Copy { inner: T }
 
 # Generic enum: same rule as struct fields. T has no bounds, so the
 # Copy claim on the enum is unsatisfied by variant A's payload type T.
-enum ClaimsCopyEnum<T>: Copy { A: T  B: unit }
+enum ClaimsCopyEnum<T>: Copy { A: T  B: $Tuple0 }
 
 # covers: type_kind=struct class=Drop op=composition bound=T:Drop (missing Copy)
 # T:Drop only; claiming Copy+Drop — COMP-CopyMarkerNotSatisfied.

@@ -1,6 +1,8 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
+
 define void @add_two(i64 %arg.a, i64 %arg.b, ptr %arg.out) {
 .init:
   %local.a = alloca i64, align 8

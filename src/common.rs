@@ -279,6 +279,7 @@ pub enum GeneratedKind {
     CopyRelaxation,
     ParserInfrastructure,
     Intrinsic,
+    Prelude,
     TestHelper,
 }
 

@@ -2,7 +2,7 @@
 # Drop-elab rewrites the whole statement to
 # `drop (o as Some); o = Option::Some(7)` so the old payload's
 # destructor eventually runs.
-enum Option: Copy + Drop { None: unit Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0 Some: i64 }
 fn f(o: Option) {
   entry:
     switchEnum(o) [None: n, Some: s]

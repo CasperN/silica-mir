@@ -1,6 +1,8 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
+
 declare void @deref_i64(ptr, ptr)
 
 define void @silica.main(ptr %arg.$return) {

@@ -1,11 +1,11 @@
 fn plain_byte_string() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   hello: [u8; 5];
   world: [u8; 5];
   entry:
     hello = b"hello";
     world = b"world";
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop world;
     require_uninit world;
     drop hello;
@@ -16,11 +16,11 @@ fn plain_byte_string() {
 }
 
 fn empty_byte_string() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   e: [u8; 0];
   entry:
     e = b"";
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop e;
     require_uninit e;
     drop $tmp_0;
@@ -29,11 +29,11 @@ fn empty_byte_string() {
 }
 
 fn null_terminator() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 3];
   entry:
     s = b"hi\0";
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop s;
     require_uninit s;
     drop $tmp_0;
@@ -42,11 +42,11 @@ fn null_terminator() {
 }
 
 fn newline_escape() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 3];
   entry:
     s = b"a\nb";
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop s;
     require_uninit s;
     drop $tmp_0;
@@ -55,11 +55,11 @@ fn newline_escape() {
 }
 
 fn all_standard_escapes() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 6];
   entry:
     s = b"\n\t\r\0\\\"";
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop s;
     require_uninit s;
     drop $tmp_0;
@@ -68,11 +68,11 @@ fn all_standard_escapes() {
 }
 
 fn hex_escape() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 3];
   entry:
     s = b"\xFF\0~";
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop s;
     require_uninit s;
     drop $tmp_0;
@@ -81,13 +81,13 @@ fn hex_escape() {
 }
 
 fn const_index_in_bounds() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 5];
   b: u8;
   entry:
     s = b"hello";
     b = move s[0u64];
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop b;
     require_uninit b;
     drop s[4];
@@ -101,7 +101,7 @@ fn const_index_in_bounds() {
 }
 
 fn const_index_multiple() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   s: [u8; 5];
   h: u8;
   o: u8;
@@ -109,7 +109,7 @@ fn const_index_multiple() {
     s = b"hello";
     h = move s[0u64];
     o = move s[4u64];
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop o;
     require_uninit o;
     drop h;
@@ -124,11 +124,11 @@ fn const_index_multiple() {
 }
 
 fn byte_char_plain() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   x: u8;
   entry:
     x = 65u8;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop x;
     require_uninit x;
     drop $tmp_0;
@@ -137,7 +137,7 @@ fn byte_char_plain() {
 }
 
 fn byte_char_all_escapes() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   nl: u8;
   nul: u8;
   bs: u8;
@@ -151,7 +151,7 @@ fn byte_char_all_escapes() {
     quote = 34u8;
     apos = 39u8;
     hex = 255u8;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop hex;
     require_uninit hex;
     drop apos;

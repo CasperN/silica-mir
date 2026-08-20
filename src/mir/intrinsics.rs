@@ -561,6 +561,8 @@ pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 /// The bodies use `$`-prefixed names because they are compiler-provided,
 /// not user-authored.
 pub const PRELUDE_MIR: &str = r#"
+struct $Tuple0: Copy + Drop + Move {}
+
 trait AutoClone {
   fn clone(recv: &Self, $return: &out Self);
 }
@@ -615,7 +617,31 @@ pub fn prelude_decls() -> Vec<Declaration> {
                 d.errors().collect::<Vec<_>>()
             )
         });
-    program.declarations
+    let mut decls = program.declarations;
+    for decl in &mut decls {
+        tag_prelude(decl);
+    }
+    decls
+}
+
+fn tag_prelude(decl: &mut Declaration) {
+    let mark = SourceInfo::generated(GeneratedKind::Prelude, SPAN);
+    match decl {
+        Declaration::Struct(s) => s.meta.name_source = mark,
+        Declaration::Enum(e) => e.meta.name_source = mark,
+        Declaration::Fn(f) => f.meta.name_source = mark,
+        Declaration::Trait(t) => {
+            t.meta.name_source = mark;
+            for m in &mut t.methods {
+                m.meta.name_source = mark;
+            }
+        }
+        Declaration::Impl(i) => {
+            for m in &mut i.methods {
+                m.meta.name_source = mark;
+            }
+        }
+    }
 }
 
 fn spec_to_function(spec: &IntrinsicSpec) -> Function {

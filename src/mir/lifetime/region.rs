@@ -336,7 +336,6 @@ pub(super) fn walk_ref_places(
         // here — they're the callee's problem). `TypeKind::Param` is
         // opaque without substitution. `TypeKind::RawPtr` deliberately
         // has no lifetime bound.
-        TypeKind::Unit
         | TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool

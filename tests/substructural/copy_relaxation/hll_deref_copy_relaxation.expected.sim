@@ -14,17 +14,17 @@ fn read_shared_field<'s0, 's1>(r: &'s0 Pair, $return: &'s1 out i64) {
 }
 
 fn consume_and_replace<'s0>(r: &'s0 mut i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   x: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     x = copy r.*;
     drop r.*;
     r.* = 42;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop x;
     require_uninit x;
     drop $tmp_0;
@@ -35,10 +35,10 @@ fn consume_and_replace<'s0>(r: &'s0 mut i64) {
 }
 
 fn repeated_pointee_reads_then_reinit<'s0>(r: &'s0 mut i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   a: i64;
   b: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: i64;
   $tmp_3: &out i64;
   entry:
@@ -48,12 +48,12 @@ fn repeated_pointee_reads_then_reinit<'s0>(r: &'s0 mut i64) {
     call $i64_add(move a, move b, move $tmp_3);
     drop r.*;
     r.* = move $tmp_2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_3;
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit b;
     require_uninit a;
     drop $tmp_0;

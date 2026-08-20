@@ -16,7 +16,7 @@
 # delegate to the init state of the leaf or root that backs them.
 # A regression here means a valid projection is being rejected.
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 struct Wrap: Copy + Drop { inner: Option }
 
@@ -102,7 +102,7 @@ fn downcast_read_on_array_slot_arm() {
   x: i64;
   entry:
     a[0] = Option::Some(7);
-    a[1] = Option::None(unit);
+    a[1] = Option::None($Tuple0 {});
     switchEnum(a[0]) [None: n, Some: s]
   s:
     x = copy a[0] as Some;

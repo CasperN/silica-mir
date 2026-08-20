@@ -345,11 +345,10 @@ fn walk_lifetimes(ty: &Type, scope: &BTreeSet<Lifetime>, out: &mut Vec<Lifetime>
                 walk_lifetimes(a, scope, out);
             }
         }
-        // Scalars (Unit, Int, Float, Bool, Never) and Param carry no
-        // lifetimes to collect. New TypeKind variants that CAN carry
-        // lifetimes must add a case above.
-        TypeKind::Unit
-        | TypeKind::Int(_)
+        // Scalars (Int, Float, Bool, Never) and Param carry no lifetimes
+        // to collect. New TypeKind variants that CAN carry lifetimes must
+        // add a case above.
+        TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
         | TypeKind::Never
@@ -1232,7 +1231,7 @@ impl IndexedProgram {
                 }
             };
             match constant {
-                ConstVal::FnName(instance) => {
+                ConstVal::FnName(instance) | ConstVal::EmptyStruct(instance) => {
                     record_lifetimes(&instance.lifetime_args, d);
                     for ty in &instance.type_args {
                         record(ty, d);
@@ -1260,7 +1259,6 @@ impl IndexedProgram {
                 ConstVal::Int { .. }
                 | ConstVal::Float { .. }
                 | ConstVal::Bool(_)
-                | ConstVal::Unit
                 | ConstVal::ByteStr(_) => {}
             }
         };

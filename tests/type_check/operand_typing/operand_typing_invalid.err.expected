@@ -1,14 +1,35 @@
-error: at 17:5: [TC-AssignmentTypeMismatch] In function 'unit_to_int', block 'entry': Type mismatch in assignment. LHS is i64, RHS is unit
+error: at 20:5: [TC-AssignmentTypeMismatch] In function 'unit_to_int', block 'entry': Type mismatch in assignment. LHS is i64, RHS is $Tuple0
     |
- 16 |   entry:
- 17 |     n = unit;
-    |     ^^^^^^^^
- 18 |     return
+ 19 |   entry:
+ 20 |     n = $Tuple0 {};
+    |     ^^^^^^^^^^^^^^
+ 21 |     return
     |
-error: at 28:5: [TC-UndeclaredFunction] In function 'undeclared_fnname', block 'entry': Undeclared function name 'missing'
+error: at 31:5: [TC-UndeclaredFunction] In function 'undeclared_fnname', block 'entry': Undeclared function name 'missing'
     |
- 27 |   entry:
- 28 |     g = missing;
+ 30 |   entry:
+ 31 |     g = missing;
     |     ^^^^^^^^^^^
- 29 |     return
+ 32 |     return
+    |
+error: at 44:5: [TC-EmptyStructConstOnNonEmptyStruct] In function 'empty_struct_const_of_struct', block 'entry': Empty-struct const 'Point {}' requires a zero-field struct: 'Point' has 2 field(s)
+    |
+ 43 |   entry:
+ 44 |     p = Point {};
+    |     ^^^^^^^^^^^^
+ 45 |     return
+    |
+error: at 57:5: [TC-EmptyStructConstOnNonEmptyStruct] In function 'empty_struct_const_of_enum', block 'entry': Empty-struct const 'Color {}' requires a zero-field struct: 'Color' is an enum; use a variant constructor
+    |
+ 56 |   entry:
+ 57 |     c = Color {};
+    |     ^^^^^^^^^^^^
+ 58 |     return
+    |
+error: at 69:5: [TC-UndeclaredType] In function 'empty_struct_const_undeclared', block 'entry': Use of undeclared type 'Missing'
+    |
+ 68 |   entry:
+ 69 |     m = Missing {};
+    |     ^^^^^^^^^^^^^^
+ 70 |     return
     |

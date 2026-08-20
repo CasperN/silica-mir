@@ -22,11 +22,11 @@
 
 struct P: Copy + Drop { x: i64  y: i64 }
 
-enum E: Copy + Drop { A: i64  B: unit }
+enum E: Copy + Drop { A: i64  B: $Tuple0 }
 
 struct Box<T: Copy + Drop>: Copy + Drop { inner: T }
 
-enum Option<T: Copy + Drop>: Copy + Drop { None: unit  Some: T }
+enum Option<T: Copy + Drop>: Copy + Drop { None: $Tuple0  Some: T }
 
 # ---------- &out: pointee must be Init at expiry ----------
 

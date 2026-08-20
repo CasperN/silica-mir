@@ -8,15 +8,15 @@ struct Box: Drop + Move {
 }
 
 fn out_scalar<'s0>(r: &'s0 out i64) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     r.* = 42;
     unborrow r;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit r;
@@ -24,15 +24,15 @@ fn out_scalar<'s0>(r: &'s0 out i64) {
 }
 
 fn out_struct_whole<'s0>(src: P, r: &'s0 out P) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     r.* = move src;
     unborrow r;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit r;
@@ -41,20 +41,20 @@ fn out_struct_whole<'s0>(src: P, r: &'s0 out P) {
 }
 
 fn out_struct_field_by_field<'s0>(r: &'s0 out P) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   entry:
     r.*.x = 1;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     r.*.y = 2;
     unborrow r;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit r;
@@ -62,25 +62,25 @@ fn out_struct_field_by_field<'s0>(r: &'s0 out P) {
 }
 
 fn out_array_slot_by_slot<'s0>(r: &'s0 out [i64; 3]) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
-  $tmp_3: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
+  $tmp_3: $Tuple0;
   entry:
     r.*[0] = 1;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     r.*[1] = 2;
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
     r.*[2] = 3;
     unborrow r;
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit r;
@@ -88,12 +88,12 @@ fn out_array_slot_by_slot<'s0>(r: &'s0 out [i64; 3]) {
 }
 
 fn drop_box<'s0>(r: &'s0 drop Box) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   x: Box;
   entry:
     x = move r.*;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop x;
     require_uninit x;
     drop $tmp_0;
@@ -103,9 +103,9 @@ fn drop_box<'s0>(r: &'s0 drop Box) {
 }
 
 fn mut_scalar<'s0>(r: &'s0 mut i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;
@@ -114,9 +114,9 @@ fn mut_scalar<'s0>(r: &'s0 mut i64) {
 }
 
 fn uninit_scalar<'s0>(r: &'s0 uninit i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;
@@ -129,17 +129,17 @@ extern fn write_into<'s0>(r: &'s0 out Box, v: i64);
 extern fn consume(b: Box);
 
 fn loop_out_write_and_consume(n: i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   buf: Box;
   i: i64;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   $tmp_3: bool;
   $tmp_4: &out bool;
-  $tmp_5: unit;
+  $tmp_5: $Tuple0;
   $tmp_6: &out Box;
-  $tmp_7: unit;
-  $tmp_8: unit;
+  $tmp_7: $Tuple0;
+  $tmp_8: $Tuple0;
   $tmp_9: i64;
   $tmp_10: &out i64;
   entry:
@@ -156,7 +156,7 @@ fn loop_out_write_and_consume(n: i64) {
     require_uninit $tmp_1;
     goto loop_end_1
   if_false_3:
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     goto if_merge_4
   if_merge_4:
     require_uninit $tmp_4;
@@ -165,23 +165,23 @@ fn loop_out_write_and_consume(n: i64) {
     require_uninit $tmp_2;
     $tmp_6 = &out buf;
     call write_into(move $tmp_6, copy i);
-    $tmp_5 = unit;
+    $tmp_5 = $Tuple0 {};
     require_uninit $tmp_6;
     drop $tmp_5;
     require_uninit $tmp_5;
     call consume(move buf);
-    $tmp_7 = unit;
+    $tmp_7 = $Tuple0 {};
     drop $tmp_7;
     require_uninit $tmp_7;
     $tmp_10 = &out $tmp_9;
     call $i64_add(move i, 1, move $tmp_10);
     i = move $tmp_9;
-    $tmp_8 = unit;
+    $tmp_8 = $Tuple0 {};
     require_uninit $tmp_10;
     require_uninit $tmp_9;
     drop $tmp_8;
     require_uninit $tmp_8;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     goto loop_start_0

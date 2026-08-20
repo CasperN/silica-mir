@@ -6,7 +6,7 @@ struct Linear<'s0>: Move {
 }
 
 enum Option: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 
@@ -36,11 +36,11 @@ fn write_then_read() {
     return
 }
 
-fn empty_struct_local_starts_init() {
+fn empty_struct_write_then_copy() {
   u: Unit0;
   v: Unit0;
   entry:
-    drop v;
+    u = Unit0 {};
     v = copy u;
     drop v;
     drop u;

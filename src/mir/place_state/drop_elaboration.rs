@@ -733,7 +733,6 @@ fn plan_drops_for_place(
                 // for drop planning. Scalar / ref / raw-ptr / fn / Param
                 // types can't be Partial by construction. Any Partial
                 // reaching here with those kinds is a bug upstream.
-                TypeKind::Unit
                 | TypeKind::Int(_)
                 | TypeKind::Float(_)
                 | TypeKind::Bool

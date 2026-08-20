@@ -3,7 +3,7 @@ struct Box<T: Copy + Drop>: Copy + Drop {
 }
 
 enum Choice: Copy + Drop {
-  Empty: unit
+  Empty: $Tuple0
 }
 
 trait RefKinds {
@@ -38,11 +38,11 @@ trait Observe<'a> {
 
 impl<'a, T: Copy + Drop> Observe<'a> for Box<T> {
   fn observe(recv: &'a Box<T>) {
-    $tmp_0: unit;
+    $tmp_0: $Tuple0;
     local: Box<T>;
     entry:
       local.value = copy recv.*.value;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop local;
       require_uninit local;
       drop $tmp_0;
@@ -60,7 +60,7 @@ trait Make {
 impl Make for Choice {
   fn make<'s0>($return: &'s0 out Choice) {
     entry:
-      $return.* = Choice::Empty(unit);
+      $return.* = Choice::Empty($Tuple0 {});
       unborrow $return;
       require_uninit $return;
       return
@@ -93,7 +93,7 @@ impl<T: Copy + Drop> Box<T> {
 impl Choice {
   fn empty<'s0>($return: &'s0 out Choice) {
     entry:
-      $return.* = Choice::Empty(unit);
+      $return.* = Choice::Empty($Tuple0 {});
       unborrow $return;
       require_uninit $return;
       return

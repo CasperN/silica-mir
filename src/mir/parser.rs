@@ -570,7 +570,6 @@ impl Parser {
         }
         match node.kind() {
             "bool" => Some(bool_ty()),
-            "unit" => Some(unit_ty()),
             "never" => Some(never_ty()),
             "identifier" => {
                 let text = self.get_text(node);
@@ -602,7 +601,7 @@ impl Parser {
                     return Some(ty);
                 }
                 let kind = first_child.kind();
-                if kind == "bool" || kind == "unit" || kind == "never" {
+                if kind == "bool" || kind == "never" {
                     return self.map_type_inner(first_child, d);
                 }
                 if kind == "identifier" {
@@ -922,6 +921,24 @@ impl Parser {
             }
             // Qualified method forms carry a `self_ty` field; the free
             // function form starts with the identifier at child(0).
+            "empty_struct_const" => {
+                let name_node = node.child_by_field_name("name")?;
+                let name = self.get_text(name_node).to_string();
+                let (lifetime_args, type_args) = if let Some(ta) = node.child(1) {
+                    if ta.kind() == "type_args" {
+                        self.map_type_args(ta, d)?
+                    } else {
+                        (Vec::new(), Vec::new())
+                    }
+                } else {
+                    (Vec::new(), Vec::new())
+                };
+                Some(ConstVal::EmptyStruct(Instance::new(
+                    name,
+                    lifetime_args,
+                    type_args,
+                )))
+            }
             "fn_name" => {
                 if let Some(self_ty_node) = node.child_by_field_name("self_ty") {
                     let self_ty = self.map_type(self_ty_node, d)?;
@@ -990,7 +1007,6 @@ impl Parser {
                 match text {
                     "true" => Some(ConstVal::Bool(true)),
                     "false" => Some(ConstVal::Bool(false)),
-                    "unit" => Some(ConstVal::Unit),
                     _ => Some(fn_name_const(text)),
                 }
             }

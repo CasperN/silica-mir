@@ -1,10 +1,10 @@
 enum Option: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 
 enum List<'s0>: Copy + Drop {
-  Nil: unit
+  Nil: $Tuple0
   Cons: &'s0 List<'s0>
 }
 

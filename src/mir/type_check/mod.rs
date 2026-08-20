@@ -124,6 +124,10 @@ pub enum TypeCheckCode {
     EnumConstrPayloadTypeMismatch,
     /// Two array-literal elements have different types.
     ArrayLitElementTypeMismatch,
+    /// `ConstVal::EmptyStruct(Instance)` names a declared type that isn't a
+    /// zero-field struct (either a struct with fields or an enum). Undeclared
+    /// names fall through to `UndeclaredType`.
+    EmptyStructConstOnNonEmptyStruct,
     /// Source of a pointer cast is not a pointer or reference.
     PtrCastSourceNotPointer,
     /// Target of a pointer cast is not a pointer or reference.

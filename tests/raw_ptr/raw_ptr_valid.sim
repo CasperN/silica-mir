@@ -33,7 +33,7 @@
 
 struct Node: Copy + Drop { p: *i64  v: i64 }
 struct PtrStruct: Copy + Drop { p: *i64 }
-enum PtrEnum: Copy + Drop { PtrV: *i64  NullV: unit }
+enum PtrEnum: Copy + Drop { PtrV: *i64  NullV: $Tuple0 }
 
 extern fn consume_raw_ptr(p: *i64);
 

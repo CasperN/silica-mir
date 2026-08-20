@@ -43,14 +43,14 @@ struct CopyNested: Copy {
 }
 
 enum RecursiveList<'s0>: Copy + Drop {
-  Nil: unit
+  Nil: $Tuple0
   Cons: &'s0 RecursiveList<'s0>
 }
 
 enum CopyDropScalarVariants: Copy + Drop {
   N: i64
   B: bool
-  U: unit
+  U: $Tuple0
 }
 
 struct CopyDropPoint: Copy + Drop {

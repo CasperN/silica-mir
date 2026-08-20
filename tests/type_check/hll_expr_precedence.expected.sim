@@ -1,6 +1,6 @@
 fn assign_rhs_binop<'s0>($return: &'s0 out i64) {
   x: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: i64;
   $tmp_2: &out i64;
   entry:
@@ -8,7 +8,7 @@ fn assign_rhs_binop<'s0>($return: &'s0 out i64) {
     $tmp_2 = &out $tmp_1;
     call $i64_add(move x, 1, move $tmp_2);
     x = move $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $tmp_2;
     require_uninit $tmp_1;
     drop $tmp_0;
@@ -121,7 +121,7 @@ fn borrow_tighter_than_add<'s0>(x: i64, y: i64, $return: &'s0 out i64) {
 }
 
 fn if_as_stmt<'s0>(a: i64, r: &'s0 out i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $tmp_1: bool;
   $tmp_2: &out bool;
   entry:
@@ -131,12 +131,12 @@ fn if_as_stmt<'s0>(a: i64, r: &'s0 out i64) {
   if_true_0:
     r.* = 1;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto if_merge_2
   if_false_1:
     r.* = 2;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     goto if_merge_2
   if_merge_2:
     require_uninit $tmp_2;
@@ -178,9 +178,9 @@ fn if_as_tail<'s0>(a: i64, $return: &'s0 out i64) {
 }
 
 fn loop_and_block_as_stmts() {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   entry:
     goto loop_start_0
   loop_start_0:
@@ -188,7 +188,7 @@ fn loop_and_block_as_stmts() {
     goto loop_end_1
   loop_end_1:
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
@@ -200,7 +200,7 @@ enum Tag: Copy + Drop {
 }
 
 fn match_as_stmt<'s0>(t: Tag, r: &'s0 out i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   x: i64;
   y: i64;
   entry:
@@ -209,14 +209,14 @@ fn match_as_stmt<'s0>(t: Tag, r: &'s0 out i64) {
     x = copy t as A;
     r.* = move x;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit x;
     goto switch_merge_2
   switch_B_1:
     y = copy t as B;
     r.* = move y;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit y;
     goto switch_merge_2
   switch_merge_2:
@@ -271,9 +271,9 @@ fn postfix_chain_on_match<'s0>(t: Tag, $return: &'s0 out i64) {
 }
 
 fn evaluation_sink(value: i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop value;
@@ -298,8 +298,8 @@ fn make_argument<'s0>($return: &'s0 out i64) {
 }
 
 fn callee_before_arguments() {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: fn(i64);
   $tmp_3: &out fn(i64);
   $tmp_4: i64;
@@ -310,14 +310,14 @@ fn callee_before_arguments() {
     $tmp_5 = &out $tmp_4;
     call make_argument(move $tmp_5);
     call move $tmp_2(move $tmp_4);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_5;
     require_uninit $tmp_4;
     require_uninit $tmp_3;
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     return
@@ -328,14 +328,14 @@ struct Callable: Copy + Drop {
 }
 
 fn direct_function_field(value: Callable, argument: i64) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call move value.invoke(move argument);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit argument;
@@ -344,14 +344,14 @@ fn direct_function_field(value: Callable, argument: i64) {
 }
 
 fn forced_function_field(value: Callable, argument: i64) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   entry:
     call move value.invoke(move argument);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     require_uninit argument;

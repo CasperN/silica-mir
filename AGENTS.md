@@ -53,6 +53,9 @@ and `PUNCHLIST.md` rather than maintaining a second status list here.
 - Monomorphization occurs after semantic checking, at the codegen boundary.
 - Raw pointers opt out of safe-reference guarantees: they create no loan and
   dereference does not prove initialization, lifetime, or alias safety.
+- MIR has no built-in unit type; HLL `()` lowers to the prelude struct
+  `$Tuple0` and its value to a `ConstVal::EmptyStruct` operand. Every value,
+  including zero-sized ones, must be explicitly initialized before use.
 
 For the exact current ordering and error-recovery behavior, read
 `src/lib.rs`; do not reproduce its pass list here.

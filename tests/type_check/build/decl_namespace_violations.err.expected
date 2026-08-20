@@ -35,7 +35,7 @@ error: at 43:3: [TC-DuplicateStructField] In struct 'S', field 'x' is declared m
     |
 error: at 50:3: [TC-DuplicateEnumVariant] In enum 'V', variant 'A' is declared more than once
     |
- 49 |   A: unit
+ 49 |   A: $Tuple0
  50 |   A: i64
     |   ^^^^^^
  51 | }

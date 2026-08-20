@@ -48,7 +48,6 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Unit
         | TypeKind::Never
         | TypeKind::Param(_) => return ty.clone(),
         TypeKind::Custom(inst) => TypeKind::Custom(Instance {

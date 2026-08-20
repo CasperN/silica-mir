@@ -229,7 +229,7 @@ fn parent_struct_move(p: P) {
     return
 }
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 # ---- &mut loan on downcast projection, same-variant read conflicts ----
 # Borrowing a variant payload blocks a copy read of the same variant projection.
@@ -378,7 +378,7 @@ fn generic_struct_wraps_mut_ref(x: i64) {
     return
 }
 
-enum Sel: Copy + Drop { A: unit  B: unit }
+enum Sel: Copy + Drop { A: $Tuple0  B: $Tuple0 }
 extern fn sink_sel(r: &mut Sel);
 
 # ---- switchEnum reads the scrutinee, conflicting with an active &mut loan ----

@@ -78,7 +78,7 @@ fn fact<'s0>(n: i64, $return: &'s0 out i64) {
 fn straight_line_reassign<'s0>(a: i64, b: i64, c: i64, $return: &'s0 out i64) {
   r: i64;
   $tmp_0: &out i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   $tmp_2: i64;
   $tmp_3: &out i64;
   entry:
@@ -89,7 +89,7 @@ fn straight_line_reassign<'s0>(a: i64, b: i64, c: i64, $return: &'s0 out i64) {
     call $i64_mul(move a, move c, move $tmp_3);
     drop r;
     r = move $tmp_2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_3;
     require_uninit $tmp_2;
     drop $tmp_1;

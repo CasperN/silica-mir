@@ -1,6 +1,7 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
 %Cloneable = type { i64 }
 
 declare void @consume(%Cloneable)

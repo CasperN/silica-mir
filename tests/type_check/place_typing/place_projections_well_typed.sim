@@ -23,7 +23,7 @@ struct P: Copy + Drop { x: i64  y: i64 }
 
 struct Ptr: Copy + Drop { r: &i64 }
 
-enum Option: Copy + Drop { None: unit  Some: i64 }
+enum Option: Copy + Drop { None: $Tuple0  Some: i64 }
 
 # ---------- Bare Var: scalar ----------
 

@@ -1,7 +1,7 @@
 fn use_val<'s0>(x: &'s0 mut i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop x;
@@ -10,25 +10,25 @@ fn use_val<'s0>(x: &'s0 mut i64) {
 }
 
 fn reborrow_ok<'s0>(r: &'s0 mut i64) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: &mut i64;
-  $tmp_3: unit;
+  $tmp_3: $Tuple0;
   $tmp_4: &mut i64;
   entry:
     $tmp_2 = &mut r.*;
     call use_val(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
     $tmp_4 = &mut r.*;
     call use_val(move $tmp_4);
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     require_uninit $tmp_4;
     drop $tmp_3;
     require_uninit $tmp_3;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;
@@ -37,23 +37,23 @@ fn reborrow_ok<'s0>(r: &'s0 mut i64) {
 }
 
 fn implicit_reborrow_at_call<'s0>(r: &'s0 mut i64) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   $clone_0: &'s0 mut i64;
   $clone_1: &'s0 mut i64;
   entry:
     $clone_1 = &mut r.*;
     call use_val(move $clone_1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $clone_0 = &mut r.*;
     call use_val(move $clone_0);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;

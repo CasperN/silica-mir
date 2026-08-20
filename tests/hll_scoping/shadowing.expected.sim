@@ -4,18 +4,18 @@ extern fn f<'s0>($return: &'s0 out i64);
 
 fn let_shadow_same_scope<'s0>($return: &'s0 out i64) {
   x: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $x_0: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     x = 1;
     call use_i64(move x);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     $x_0 = 2;
     call use_i64(copy $x_0);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $return.* = move $x_0;
@@ -42,17 +42,17 @@ fn let_shadow_reads_outer<'s0>($return: &'s0 out i64) {
 
 fn let_shadow_inner_block<'s0>($return: &'s0 out i64) {
   x: i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $x_0: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     x = 1;
     $x_0 = 2;
     call use_i64(move $x_0);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit $x_0;
     drop $tmp_0;
     require_uninit $tmp_0;
@@ -64,11 +64,11 @@ fn let_shadow_inner_block<'s0>($return: &'s0 out i64) {
 }
 
 fn let_shadows_param<'s0>(x: i64, $return: &'s0 out i64) {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   $x_0: i64;
   entry:
     call use_i64(move x);
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     $x_0 = 99;
@@ -121,17 +121,17 @@ fn fn_name_shadowed_by_let<'s0>($return: &'s0 out i64) {
 }
 
 fn shadow_and_defer() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   x: i64;
   $x_0: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     x = 1;
     $x_0 = 2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop x;
     x = 3;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     drop $x_0;

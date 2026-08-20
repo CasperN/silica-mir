@@ -1,6 +1,7 @@
 ; Generated from Silica-MIR
 declare void @abort()
 
+%$Tuple0 = type {  }
 %Counter = type { i64 }
 %BorrowedCounter = type { ptr }
 %"Box<i64>" = type { i64 }

@@ -73,20 +73,20 @@ fn mut_of_init<'s0>(x: i64, $return: &'s0 out i64) {
 
 fn mut_of_init_field_of_partial<'s0>($return: &'s0 out i64) {
   p: P;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   r: &mut i64;
   v: i64;
-  $tmp_1: unit;
+  $tmp_1: $Tuple0;
   entry:
     p.x = 1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     r = &mut p.x;
     v = copy r.*;
     unborrow r;
     p.y = 2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $return.* = move v;
@@ -102,12 +102,12 @@ fn mut_of_init_field_of_partial<'s0>($return: &'s0 out i64) {
 fn out_of_never_init<'s0>($return: &'s0 out i64) {
   x: i64;
   r: &out i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
     r = &out x;
     r.* = 42;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     $return.* = move x;
@@ -121,14 +121,14 @@ fn out_of_never_init<'s0>($return: &'s0 out i64) {
 fn out_of_init_drop_type<'s0>(x: i64, $return: &'s0 out i64) {
   y: i64;
   r: &out i64;
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   entry:
     y = move x;
     drop y;
     r = &out y;
     r.* = 2;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     $return.* = move y;
@@ -160,13 +160,13 @@ fn deinit_of_init<'s0>(b: Box, $return: &'s0 out Box) {
 }
 
 fn uninit_of_never_init() {
-  $tmp_0: unit;
+  $tmp_0: $Tuple0;
   x: i64;
   r: &uninit i64;
   entry:
     r = &uninit x;
     unborrow r;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     require_uninit r;
     require_uninit x;
     drop $tmp_0;
@@ -179,8 +179,8 @@ struct Cell: Move {
 }
 
 fn cell_bump<'s0>(r: &'s0 mut Cell) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: i64;
   $tmp_3: &out i64;
   entry:
@@ -188,12 +188,12 @@ fn cell_bump<'s0>(r: &'s0 mut Cell) {
     call $i64_add(copy r.*.val, 1, move $tmp_3);
     drop r.*.val;
     r.*.val = move $tmp_2;
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_3;
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;
@@ -202,23 +202,23 @@ fn cell_bump<'s0>(r: &'s0 mut Cell) {
 }
 
 fn reborrow_mut_twice<'s0>(r: &'s0 mut Cell) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   $clone_0: &'s0 mut Cell;
   $clone_1: &'s0 mut Cell;
   entry:
     $clone_1 = &mut r.*;
     call cell_bump(move $clone_1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $clone_0 = &mut r.*;
     call cell_bump(move $clone_0);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;
@@ -232,33 +232,33 @@ struct Pair: Move {
 }
 
 fn reborrow_field<'s0>(p: &'s0 mut Pair) {
-  $tmp_0: unit;
-  $tmp_1: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
   $tmp_2: &mut Cell;
-  $tmp_3: unit;
+  $tmp_3: $Tuple0;
   $tmp_4: &mut Cell;
-  $tmp_5: unit;
+  $tmp_5: $Tuple0;
   $tmp_6: &mut Cell;
   entry:
     $tmp_2 = &mut p.*.first;
     call cell_bump(move $tmp_2);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     require_uninit $tmp_2;
     drop $tmp_1;
     require_uninit $tmp_1;
     $tmp_4 = &mut p.*.second;
     call cell_bump(move $tmp_4);
-    $tmp_3 = unit;
+    $tmp_3 = $Tuple0 {};
     require_uninit $tmp_4;
     drop $tmp_3;
     require_uninit $tmp_3;
     $tmp_6 = &mut p.*.first;
     call cell_bump(move $tmp_6);
-    $tmp_5 = unit;
+    $tmp_5 = $Tuple0 {};
     require_uninit $tmp_6;
     drop $tmp_5;
     require_uninit $tmp_5;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop p;
@@ -268,8 +268,8 @@ fn reborrow_field<'s0>(p: &'s0 mut Pair) {
 
 impl Cell {
   fn bump<'s0>(recv: &'s0 mut Cell) {
-    $tmp_0: unit;
-    $tmp_1: unit;
+    $tmp_0: $Tuple0;
+    $tmp_1: $Tuple0;
     $tmp_2: i64;
     $tmp_3: &out i64;
     entry:
@@ -277,12 +277,12 @@ impl Cell {
       call $i64_add(copy recv.*.val, 1, move $tmp_3);
       drop recv.*.val;
       recv.*.val = move $tmp_2;
-      $tmp_1 = unit;
+      $tmp_1 = $Tuple0 {};
       require_uninit $tmp_3;
       require_uninit $tmp_2;
       drop $tmp_1;
       require_uninit $tmp_1;
-      $tmp_0 = unit;
+      $tmp_0 = $Tuple0 {};
       drop $tmp_0;
       require_uninit $tmp_0;
       drop recv;
@@ -292,23 +292,23 @@ impl Cell {
 }
 
 fn reborrow_method_receiver<'s0>(r: &'s0 mut Cell) {
-  $tmp_0: unit;
-  $tmp_1: unit;
-  $tmp_2: unit;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: $Tuple0;
   $clone_0: &'s0 mut Cell;
   $clone_1: &'s0 mut Cell;
   entry:
     $clone_1 = &mut r.*;
     call <Cell>::bump(move $clone_1);
-    $tmp_1 = unit;
+    $tmp_1 = $Tuple0 {};
     drop $tmp_1;
     require_uninit $tmp_1;
     $clone_0 = &mut r.*;
     call <Cell>::bump(move $clone_0);
-    $tmp_2 = unit;
+    $tmp_2 = $Tuple0 {};
     drop $tmp_2;
     require_uninit $tmp_2;
-    $tmp_0 = unit;
+    $tmp_0 = $Tuple0 {};
     drop $tmp_0;
     require_uninit $tmp_0;
     drop r;

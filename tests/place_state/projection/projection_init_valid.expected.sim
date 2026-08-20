@@ -1,5 +1,5 @@
 enum Option: Copy + Drop {
-  None: unit
+  None: $Tuple0
   Some: i64
 }
 
@@ -68,7 +68,7 @@ fn downcast_read_on_array_slot_arm() {
   x: i64;
   entry:
     a[0] = Option::Some(7);
-    a[1] = Option::None(unit);
+    a[1] = Option::None($Tuple0 {});
     switchEnum(a[0]) [None: n, Some: s]
   s:
     x = copy a[0] as Some;
