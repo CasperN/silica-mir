@@ -18,7 +18,8 @@ the compiler evolves; treat entries as snapshots, not commitments.
   the enum-construction rvalue. Extract to `common.grammar.js`'s shared
   rule set so all four sites route through one node kind. Parser
   wrappers collapse into a single `map_instance` helper.
-- Decide on and standardize on whether malloc size and array index type should be signed or unsigned.
+- Decide on and standardize on whether malloc size and array index type should
+  be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
@@ -137,10 +138,13 @@ the deliberate later refinement to nested operand and projection sources.
    leaving `extern` free to mean only foreign linkage. Update the grammar,
    parser, pretty-printer, AST field placement, and all fixtures.
 
-### Other clarity issues
-- **Undeclared lifetime in method signatures**: When a method signature uses a lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an `UndeclaredLifetime` error at the method declaration rather than failing silently during receiver matching.
-- **Field access on references**: When projecting `self.field` on reference types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.
-
+### Error diagnostic clarity
+- **Undeclared lifetime in method signatures**: When a method signature uses a
+  lifetime not in scope (e.g. `self: &'a Self` without `fn<'a>`), emit an
+  `UndeclaredLifetime` error at the method declaration rather than failing
+  silently during receiver matching.
+- **Field access on references**: When projecting `self.field` on reference
+  types (`&Self`, `&drop Self`), suggest explicit dereferencing `self.*.field`.
 
 ## Testing gaps
 - **Warning-only fixtures are not pinned.** A clean `.expected.sim` fixture
@@ -148,23 +152,37 @@ the deliberate later refinement to nested operand and projection sources.
   explicit diagnostics expectation for programs that emit warnings but no
   errors, and make `UPDATE_EXPECT` preserve that choice rather than switching
   solely on `has_errors()`.
-- **End-to-end runtime fixtures.** `tests/programs/*` today pins elaborated MIR, but real behavior — `sum_to_n(10) → 55`, `hello_world` prints `hi!\n`, linked-list `exit=6` — is only verified manually. Automate: compile to `.ll`, link any sibling C shim, execute, pin exit code + stdout in a `.run.expected`. Needs a new fixture-runner stage + `clang` gating. Bazel migration (see Longer term) is one path to the cross-language build infra this requires.
+- **End-to-end runtime fixtures.** `tests/programs/*` today pins elaborated MIR,
+  but real behavior — `sum_to_n(10) → 55`, `hello_world` prints `hi!\n`,
+  linked-list `exit=6` — is only verified manually. Automate: compile to `.ll`,
+  link any sibling C shim, execute, pin exit code + stdout in a `.run.expected`.
+  Needs a new fixture-runner stage + `clang` gating. Bazel migration (see Longer
+  term) is one path to the cross-language build infra this requires.
 
 ## Longer term
-- **Bazel-based build with proper cross-language infra.** Today the compiler is `cargo`, and any cross-language wiring (LLVM IR emission → `clang` link → binary → runtime → check exit) is manual. A Bazel migration would let end-to-end runtime tests, C-shim linking, and future host-language integrations (LLVM tooling, wasm, cross-compile) be first-class build actions in a hermetic graph. The immediate motivator is the End-to-end runtime fixtures item in Testing gaps.
-- **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and a Rust-shaped enum syntax (currently only newtype-with-different-syntax).
-- **No-alias raw pointer variant** (`*noalias T`) alongside the aliasing `*T`. Enables LLVM `noalias` on parameters where the checker can prove exclusivity.
+- **Bazel-based build with proper cross-language infra.** Today the compiler is
+  `cargo`, and any cross-language wiring (LLVM IR emission → `clang` link →
+  binary → runtime → check exit) is manual. A Bazel migration would let
+  end-to-end runtime tests, C-shim linking, and future host-language
+  integrations (LLVM tooling, wasm, cross-compile) be first-class build actions
+  in a hermetic graph. The immediate motivator is the End-to-end runtime
+  fixtures item in Testing gaps.
+- **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and a Rust-shaped
+  enum syntax (currently only newtype-with-different-syntax).
+- **No-alias raw pointer variant** (`*noalias T`) alongside the aliasing `*T`.
+  Enables LLVM `noalias` on parameters where the checker can prove exclusivity.
 - Standard library modules and multi-file packaging. The API and compiler
   prerequisites are tracked in the standard library roadmap above.
 - Tighten MIR struct/enum decl separators from whitespace-or-comma
   to comma-required-optional-trailing (match HLL).
 - Coroutines. Prerequisites: generics, lifetime arguments, HLL `defer`.
-- Lambdas.
 - Complete platform C FFI beyond call-convention selection: ABI classification
   for aggregate arguments and returns, variadics, symbol visibility, dynamic
   linking, and target-specific LLVM parameter attributes.
-- Translation units and multi-file compilation: Support modular compilation, imports, symbol visibility, and linking of separate Silica source files.
-- Forward-declared data structures: Support opaque/external struct declarations to safely pass un-sized external resources across FFI boundaries.
+- Translation units and multi-file compilation: Support modular compilation,
+  imports, symbol visibility, and linking of separate Silica source files.
+- Forward-declared data structures: Support opaque/external struct declarations
+  to safely pass un-sized external resources across FFI boundaries.
 
 ## Impl coherence
 - Define crate ownership/orphan rules for trait implementations.
@@ -173,12 +191,6 @@ the deliberate later refinement to nested operand and projection sources.
   across translation units.
 - Diagnose impl parameters that cannot be inferred from the trait path or target
   instead of allowing every call to fail later with `TraitFnNoImpl`.
-
-## First-class function types
-- Audit and complete function values across checking, monomorphization, and
-  codegen. This includes deciding how trait methods become function values;
-  direct trait-method calls are currently the supported dispatch form.
-
 
 ## Compiler design
 - To what exent should we unify the MIR and HLL AST?
@@ -191,9 +203,17 @@ the deliberate later refinement to nested operand and projection sources.
   - MIR has `move x` and `copy x` operands.
 
 ## Lambdas/Closures
-* Define and derive `FnOnce`, `FnMut`, and `Fn` traits for closures.
-* Implement calling of closures
+* Pass closures as arguments
+  * Tuple types in HLL
+  * `Fn<(A, B), R>`, `FnMut`, and `FnOnce`
+  * Fn traits in Prelude.
+  * Calling generic lambdas via the trait.
+  * stdlib: `Box<T>::new_in_place<F: FnOnce() -> T>(make: F) -> Self`
+* Associated types (so fn returns are associated).
+* Return position impl trait
+
+## Dynamic types
+* Support a `dyn Trait` type.
 
 ## Standard Library
 - Modules
-- Lambdas so we can write `Box<T>::new_in_place` where `T: Move` is not assumed.
