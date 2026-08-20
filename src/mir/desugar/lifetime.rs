@@ -276,7 +276,7 @@ fn desugar_decl_field_ty(ty: &mut Type, containing_params: &[LifetimeParam], ctx
         }
         TypeKind::Fn { params: args, .. } => {
             for a in args {
-                desugar_decl_field_ty(a, containing_params, ctx);
+                desugar_decl_field_fn_param(a, containing_params, ctx);
             }
         }
         TypeKind::Custom(Instance {
@@ -287,6 +287,43 @@ fn desugar_decl_field_ty(ty: &mut Type, containing_params: &[LifetimeParam], ctx
             reuse_first_lifetime_args(name, lifetime_args, ty_source, containing_params, ctx);
             for a in type_args {
                 desugar_decl_field_ty(a, containing_params, ctx);
+            }
+        }
+        TypeKind::Int(_)
+        | TypeKind::Float(_)
+        | TypeKind::Bool
+        | TypeKind::Unit
+        | TypeKind::Never
+        | TypeKind::Param(_) => {}
+    }
+}
+
+fn desugar_decl_field_fn_param(
+    ty: &mut Type,
+    containing_params: &[LifetimeParam],
+    ctx: &mut DesugarCtx,
+) {
+    let ty_source = ty.source;
+    match &mut ty.kind {
+        TypeKind::Ref(_kind, _slot, inner) => {
+            desugar_decl_field_fn_param(inner, containing_params, ctx);
+        }
+        TypeKind::RawPtr(inner) | TypeKind::Array(inner, _) => {
+            desugar_decl_field_fn_param(inner, containing_params, ctx);
+        }
+        TypeKind::Fn { params: args, .. } => {
+            for a in args {
+                desugar_decl_field_fn_param(a, containing_params, ctx);
+            }
+        }
+        TypeKind::Custom(Instance {
+            name,
+            lifetime_args,
+            type_args,
+        }) => {
+            reuse_first_lifetime_args(name, lifetime_args, ty_source, containing_params, ctx);
+            for a in type_args {
+                desugar_decl_field_fn_param(a, containing_params, ctx);
             }
         }
         TypeKind::Int(_)
@@ -467,3 +504,32 @@ fn desugar_type_pos(ty: &mut Type, pos: Pos, ctx: &mut DesugarCtx) {
         | TypeKind::Param(_) => {}
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::diagnostics::Diagnostics;
+    use crate::mir::parser::Parser;
+
+    #[test]
+    fn fn_pointer_field_does_not_synthesize_struct_lifetime_params() {
+        let source = "
+        struct Container: Copy + Drop {
+            callback: fn(i64, &out i64)
+        }
+        ";
+        let mut d = Diagnostics::default();
+        let program = Parser::new(source).parse(&mut d).unwrap();
+        let (mut indexed, _) = IndexedProgram::build(&program);
+        desugar_program(&mut indexed);
+        let TypeDecl::Struct(s) = indexed.types.get("Container").unwrap() else {
+            panic!("expected struct Container");
+        };
+        assert_eq!(
+            s.meta.params.lifetime_params.len(),
+            0,
+            "fn pointer parameter references must not synthesize struct-level lifetime params"
+        );
+    }
+}
+

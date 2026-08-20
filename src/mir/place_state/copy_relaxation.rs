@@ -871,9 +871,11 @@ fn relax_operand(
         Ok(TakeResolution::Move) => {
             *operand = move_op(place.clone());
             kill_future_demand(demand, &place);
+            add_value_demand(demand, &place);
         }
         Ok(TakeResolution::Copy) => {
             *operand = copy_op(place.clone());
+            add_value_demand(demand, &place);
         }
         Ok(TakeResolution::AutoClone) => {
             let ty = ctx
@@ -883,6 +885,7 @@ fn relax_operand(
             let expansion = ctx.auto_clone(&place, &ty, source);
             prefix.splice(0..0, expansion.statements);
             *operand = expansion.operand;
+            add_value_demand(demand, &place);
         }
         Ok(TakeResolution::Reborrow) => {
             let ty = ctx
@@ -1782,5 +1785,34 @@ mod tests {
             d.errors_str()
         );
         assert_eq!(pretty_print(&program), once);
+    }
+
+    #[test]
+    fn relaxes_earlier_take_when_later_take_resolves_to_move() {
+        let program = elaborate_source(
+            "
+            struct Value: Move { field: i64 }
+            impl AutoClone for Value {
+              fn clone(recv: &Value, out: &out Value) {
+                entry:
+                  out.*.field = copy recv.*.field;
+                  return
+              }
+            }
+            extern fn consume(x: Value);
+            fn f(x: Value) {
+              entry:
+                call consume(take x);
+                call consume(take x);
+                return
+            }
+            ",
+        );
+        let printed = pretty_print(&program);
+        assert!(
+            printed.contains("call <Value as AutoClone>::clone"),
+            "earlier take must relax to AutoClone::clone call, got:\n{}",
+            printed
+        );
     }
 }

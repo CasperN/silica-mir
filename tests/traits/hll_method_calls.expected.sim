@@ -7,19 +7,19 @@ fn field_value<'s0>(value: i64, $return: &'s0 out i64) {
     return
 }
 
-struct Dispatch<'s0, 's1, 's2>: Copy + Drop {
-  priority: fn(i64, $return: &'s0 out i64)
-  trait_over_field: fn(i64, $return: &'s1 out i64)
-  field_over_free: fn(i64, $return: &'s2 out i64)
+struct Dispatch: Copy + Drop {
+  priority: fn(i64, $return: &out i64)
+  trait_over_field: fn(i64, $return: &out i64)
+  field_over_free: fn(i64, $return: &out i64)
   free_over_noncallable: i64
 }
 
 trait PriorityTrait {
-  fn priority<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64);
+  fn priority<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64);
 }
 
 impl PriorityTrait for Dispatch {
-  fn priority<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+  fn priority<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64) {
     entry:
       $return.* = move value;
       unborrow $return;
@@ -32,11 +32,11 @@ impl PriorityTrait for Dispatch {
 }
 
 trait FieldTrait {
-  fn trait_over_field<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64);
+  fn trait_over_field<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64);
 }
 
 impl FieldTrait for Dispatch {
-  fn trait_over_field<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+  fn trait_over_field<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64) {
     entry:
       $return.* = move value;
       unborrow $return;
@@ -49,7 +49,7 @@ impl FieldTrait for Dispatch {
 }
 
 impl Dispatch {
-  fn priority<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+  fn priority<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64) {
     entry:
       $return.* = move value;
       unborrow $return;
@@ -61,7 +61,7 @@ impl Dispatch {
   }
 }
 
-fn priority<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+fn priority<'s0>(recv: Dispatch, value: i64, $return: &'s0 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -72,7 +72,7 @@ fn priority<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, value: i64, $retu
     return
 }
 
-fn trait_over_field<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+fn trait_over_field<'s0>(recv: Dispatch, value: i64, $return: &'s0 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -83,7 +83,7 @@ fn trait_over_field<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, value: i6
     return
 }
 
-fn field_over_free<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+fn field_over_free<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -94,7 +94,7 @@ fn field_over_free<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value
     return
 }
 
-fn free_over_noncallable<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>, value: i64, $return: &'s3 out i64) {
+fn free_over_noncallable<'s0, 's1>(recv: &'s0 Dispatch, value: i64, $return: &'s1 out i64) {
   entry:
     $return.* = move value;
     unborrow $return;
@@ -105,7 +105,7 @@ fn free_over_noncallable<'s0, 's1, 's2, 's3>(recv: &'s0 Dispatch<'s0, 's1, 's2>,
     return
 }
 
-fn unsafe_free<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, $return: &'s3 out i64) {
+fn unsafe_free<'s0>(recv: Dispatch, $return: &'s0 out i64) {
   entry:
     $return.* = move recv.free_over_noncallable;
     unborrow $return;
@@ -117,8 +117,8 @@ fn unsafe_free<'s0, 's1, 's2, 's3>(recv: Dispatch<'s0, 's1, 's2>, $return: &'s3 
     return
 }
 
-fn select_inherent<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
-  $tmp_0: &Dispatch<'s0, 's1, 's2>;
+fn select_inherent<'s0>(value: Dispatch, argument: i64, $return: &'s0 out i64) {
+  $tmp_0: &Dispatch;
   $tmp_1: &out i64;
   entry:
     $tmp_0 = &value;
@@ -134,7 +134,7 @@ fn select_inherent<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument:
     return
 }
 
-fn force_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
+fn force_field<'s0>(value: Dispatch, argument: i64, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -150,8 +150,8 @@ fn force_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64
     return
 }
 
-fn select_trait<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
-  $tmp_0: &Dispatch<'s0, 's1, 's2>;
+fn select_trait<'s0>(value: Dispatch, argument: i64, $return: &'s0 out i64) {
+  $tmp_0: &Dispatch;
   $tmp_1: &out i64;
   entry:
     $tmp_0 = &value;
@@ -167,7 +167,7 @@ fn select_trait<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i6
     return
 }
 
-fn select_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
+fn select_field<'s0>(value: Dispatch, argument: i64, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -183,8 +183,8 @@ fn select_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i6
     return
 }
 
-fn select_free_behind_noncallable_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, argument: i64, $return: &'s3 out i64) {
-  $tmp_0: &Dispatch<'s0, 's1, 's2>;
+fn select_free_behind_noncallable_field<'s0>(value: Dispatch, argument: i64, $return: &'s0 out i64) {
+  $tmp_0: &Dispatch;
   $tmp_1: &out i64;
   entry:
     $tmp_0 = &value;
@@ -200,7 +200,7 @@ fn select_free_behind_noncallable_field<'s0, 's1, 's2, 's3>(value: Dispatch<'s0,
     return
 }
 
-fn select_unsafe_free<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, $return: &'s3 out i64) {
+fn select_unsafe_free<'s0>(value: Dispatch, $return: &'s0 out i64) {
   $tmp_0: &out i64;
   entry:
     $tmp_0 = &out $return.*;
@@ -1233,10 +1233,10 @@ fn make_argument<'s0>($return: &'s0 out i64) {
     return
 }
 
-fn receiver_before_argument<'s0, 's1, 's2, 's3>(value: Dispatch<'s0, 's1, 's2>, $return: &'s3 out i64) {
-  $tmp_0: Dispatch<'s0, 's1, 's2>;
+fn receiver_before_argument<'s0>(value: Dispatch, $return: &'s0 out i64) {
+  $tmp_0: Dispatch;
   $tmp_1: unit;
-  $tmp_2: &Dispatch<'s0, 's1, 's2>;
+  $tmp_2: &Dispatch;
   $tmp_3: i64;
   $tmp_4: &out i64;
   $tmp_5: &out i64;
