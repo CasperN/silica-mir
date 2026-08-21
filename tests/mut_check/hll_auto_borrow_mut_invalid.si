@@ -48,3 +48,8 @@ fn fn_mut_closure_of_immutable(r: &mut i64) {
   inc();
 }
 
+# covers: calling a generic FnMut parameter rejects an immutable binding
+fn generic_fn_mut_of_immutable<F: FnMut<(i64,), i64> + Drop>(f: F, x: i64) -> i64 {
+  f(x)
+}
+

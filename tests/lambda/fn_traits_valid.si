@@ -1,0 +1,135 @@
+# Valid end-to-end test cases for FnOnce, FnMut, and Fn traits.
+
+struct Pair: Copy + Drop {
+  first: i64,
+  second: i64,
+}
+
+struct Resource: Drop + Move {
+  id: i64,
+}
+
+# Higher-order generic functions taking closures:
+
+fn apply_once<T: Move, R, F: FnOnce<(T,), R> + Move>(f: F, x: T) -> R {
+  f(x)
+}
+
+fn apply_mut<T: Move, R, F: FnMut<(T,), R> + Drop + Move>(f: F, x: T) -> R {
+  let mut f = f;
+  f(x)
+}
+
+fn apply_fn<T: Move, R, F: Fn<(T,), R> + Drop + Move>(f: F, x: T) -> R {
+  f(x)
+}
+
+fn apply_binary<A: Move, B: Move, R, F: FnOnce<(A, B), R> + Move>(f: F, a: A, b: B) -> R {
+  f(a, b)
+}
+
+fn apply_nullary<R, F: FnOnce<(), R> + Move>(f: F) -> R {
+  f()
+}
+
+# covers: higher-order function taking FnOnce
+fn test_pass_fn_once(x: i64) -> i64 {
+  let double = |n: i64| n * 2i64;
+  apply_once(double, x)
+}
+
+# covers: higher-order function taking FnMut
+fn test_pass_fn_mut(x: i64) -> i64 {
+  let mut accumulator = 10i64;
+  {
+    let mut add_to_acc = |n: i64| {
+      accumulator = accumulator + n;
+      accumulator
+    };
+    apply_mut(add_to_acc, x);
+  }
+  accumulator
+}
+
+# covers: higher-order function taking Fn
+fn test_pass_fn(x: i64) -> i64 {
+  let factor = 3i64;
+  let multiply = |n: i64| n * factor;
+  apply_fn(multiply, x)
+}
+
+# covers: supertrait satisfaction: Fn passed where FnMut or FnOnce is expected
+fn test_fn_supertrait_upcast(x: i64) -> i64 {
+  let pure_fn = |n: i64| n + 1i64;
+  let a = apply_once(pure_fn, x);
+  let b = apply_mut(pure_fn, x);
+  let c = apply_fn(pure_fn, x);
+  a + b + c
+}
+
+# covers: multi-argument generic closure call
+fn test_binary_closure_call(a: i64, b: i64) -> i64 {
+  let add = |x: i64, y: i64| x + y;
+  apply_binary(add, a, b)
+}
+
+# covers: 0-argument generic closure call
+fn test_nullary_closure_call() -> i64 {
+  let answer = || 42i64;
+  apply_nullary(answer)
+}
+
+# covers: explicit trait method calls on closure instance
+fn test_explicit_method_calls() -> i64 {
+  let f_once = |x: i64| x + 1i64;
+  let r1 = f_once.call_once((10i64,));
+
+  let mut acc = 0i64;
+  let mut f_mut = |x: i64| {
+    acc = acc + x;
+    acc
+  };
+  let r2 = f_mut.call_mut((20i64,));
+
+  let f_pure = |x: i64, y: i64| x * y;
+  let r3 = f_pure.call((3i64, 4i64));
+
+  r1 + r2 + r3
+}
+
+# covers: explicit trait method call inside generic function
+fn generic_explicit_call<F: FnOnce<(i64, i64), i64> + Move>(f: F, x: i64, y: i64) -> i64 {
+  f.call_once((x, y))
+}
+
+fn test_generic_explicit_call(a: i64, b: i64) -> i64 {
+  let f = |x: i64, y: i64| x * 10i64 + y;
+  generic_explicit_call(f, a, b)
+}
+
+# covers: closure capturing linear Move-only resource passed to FnOnce
+fn consume_resource(r: Resource) -> i64 {
+  r.id
+}
+
+fn test_linear_closure_in_generic(res: Resource) -> i64 {
+  let f = || consume_resource(res);
+  apply_nullary(f)
+}
+
+# covers: higher-order function taking multiple generic closures
+fn compose<A: Move, B: Move, C, F: FnOnce<(A,), B> + Move, G: FnOnce<(B,), C> + Move>(f: F, g: G, a: A) -> C {
+  g(f(a))
+}
+
+fn test_compose(n: i64) -> i64 {
+  let add1 = |x: i64| x + 1i64;
+  let mul2 = |x: i64| x * 2i64;
+  compose(add1, mul2, n)
+}
+
+# covers: closure capturing a shared reference passed to a higher-order function
+fn test_ref_capture_in_hof(x: &i64) -> i64 {
+  let f = || x.*;
+  apply_nullary(f)
+}

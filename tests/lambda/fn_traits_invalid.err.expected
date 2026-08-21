@@ -1,0 +1,35 @@
+error: at 23:3: [HTC-BoundNotSatisfied] In function 'reject_fn_once_as_fn': type argument '$closure_0' for 'requires_fn::F' does not satisfy trait bound 'Fn<(i64,), i64>'
+    |
+ 22 |   let f_once = |x: i64| consume_token(tok) + x;
+ 23 |   requires_fn(f_once, 42i64)
+    |   ^^^^^^^^^^^
+ 24 | }
+    |
+error: at 29:3: [HTC-BoundNotSatisfied] In function 'reject_fn_once_as_fn_mut': type argument '$closure_1' for 'requires_fn_mut::F' does not satisfy trait bound 'FnMut<(i64,), i64>'
+    |
+ 28 |   let f_once = |x: i64| consume_token(tok) + x;
+ 29 |   requires_fn_mut(f_once, 42i64)
+    |   ^^^^^^^^^^^^^^^
+ 30 | }
+    |
+error: at 39:3: [HTC-BoundNotSatisfied] In function 'reject_fn_mut_as_fn': type argument '$closure_2' for 'requires_fn::F' does not satisfy trait bound 'Fn<(i64,), i64>'
+    |
+ 38 |   };
+ 39 |   requires_fn(f_mut, 42i64)
+    |   ^^^^^^^^^^^
+ 40 | }
+    |
+error: at 44:5: [HTC-TypeMismatch] In function 'reject_arg_type_mismatch': type mismatch: expected i64, found bool
+    |
+ 43 | fn reject_arg_type_mismatch<F: FnOnce<(bool,), i64> + Move>(f: F) -> i64 {
+ 44 |   f(42i64)
+    |     ^^^^^
+ 45 | }
+    |
+error: at 49:3: [HTC-ArityMismatch] In function 'reject_arity_mismatch': function expected 1 arguments, found 2
+    |
+ 48 | fn reject_arity_mismatch<F: FnOnce<(i64,), i64> + Move>(f: F) -> i64 {
+ 49 |   f(1i64, 2i64)
+    |   ^^^^^^^^^^^^^
+ 50 | }
+    |

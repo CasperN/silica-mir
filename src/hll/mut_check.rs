@@ -264,6 +264,11 @@ fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostic
                             }
                         }
                     }
+                    if let Some(call_info) = scope.types.generic_closure_calls.get(&expr.source) {
+                        if let ReceiverAdjustment::Borrow(kind) = call_info.adjustment {
+                            check_borrow_mutability(kind, callee, scope, func, d);
+                        }
+                    }
                 }
                 CallTarget::Receiver {
                     receiver,

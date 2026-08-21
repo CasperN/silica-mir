@@ -654,6 +654,18 @@ impl<T: Copy> AutoClone for T {
   }
 }
 
+trait FnOnce<Args, Output> {
+  fn call_once(recv: Self, args: Args, $return: &out Output);
+}
+
+trait FnMut<Args, Output>: FnOnce<Args, Output> {
+  fn call_mut(recv: &mut Self, args: Args, $return: &out Output);
+}
+
+trait Fn<Args, Output>: FnMut<Args, Output> {
+  fn call(recv: &Self, args: Args, $return: &out Output);
+}
+
 fn size_of<T>(out: &out u64) {
   entry:
     call $sizeof<T>(move out);

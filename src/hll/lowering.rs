@@ -870,15 +870,12 @@ fn lower_call_target_to_operand(
 ) -> Result<(mir::Operand, Option<mir::Operand>), Diagnostic> {
     match target {
         hll::CallTarget::Expr(callee) => {
-            if let Some(hll::Type {
-                kind: hll::TypeKind::Custom(hll::Instance { name, .. }),
-                ..
-            }) = lookup_type(callee, types)
-            {
-                if let Some(closure) = types.closures_by_struct.get(name) {
-                    let callee_place = lower_expr_to_place(ctx, callee, types)?;
-                    let callee_hll_ty = lookup_type(callee, types).unwrap().clone();
-                    let call_field = field_place(callee_place.clone(), "$call");
+            if let Some(callee_hll_ty) = lookup_type(callee, types) {
+                if let hll::TypeKind::Custom(hll::Instance { name, .. }) = &callee_hll_ty.kind {
+                    if let Some(closure) = types.closures_by_struct.get(name) {
+                        let callee_place = lower_expr_to_place(ctx, callee, types)?;
+                        let callee_hll_ty = callee_hll_ty.clone();
+                        let call_field = field_place(callee_place.clone(), "$call");
                     let self_param_ty = match closure.fn_kind {
                         crate::hll::derive::FnKind::Fn => {
                             hll::Type::synthesized(hll::TypeKind::Ref(RefKind::Shared, None, Box::new(callee_hll_ty.clone())))
@@ -949,7 +946,8 @@ fn lower_call_target_to_operand(
                         }
                         crate::hll::derive::FnKind::FnOnce => mir::Operand::Take(callee_place),
                     };
-                    return Ok((fn_op, Some(self_op)));
+                        return Ok((fn_op, Some(self_op)));
+                    }
                 }
             }
             lower_expr_to_operand(ctx, callee, types).map(|callee| (callee, None))
@@ -1266,6 +1264,63 @@ fn lower_expr_into(
             Ok(())
         }
         hll::ExprKind::Call(target, _generics, args) => {
+            if let Some(call_info) = types.generic_closure_calls.get(&expr.source) {
+                let hll::CallTarget::Expr(callee) = target else {
+                    unreachable!("generic closure calls are CallTarget::Expr");
+                };
+                let callee_op = lower_receiver_operand(ctx, callee, call_info.adjustment, types)?;
+                let tuple_mir_ty = lower_type(&call_info.args_tuple_ty);
+                let tuple_temp = ctx.fresh_expression_temp(tuple_mir_ty, expr.span());
+
+                if args.is_empty() {
+                    ctx.emit_statement(assign_stmt(
+                        tuple_temp.clone(),
+                        use_rv(const_op(unit_const())),
+                        expr.span(),
+                    ));
+                } else {
+                    for (i, arg) in args.iter().enumerate() {
+                        let field = field_place(tuple_temp.clone(), format!("_{}", i));
+                        lower_expr_into(ctx, arg, &field, types)?;
+                    }
+                }
+
+                let fn_op = trait_fn_op(
+                    lower_instance(&call_info.trait_path),
+                    lower_type(&call_info.self_ty),
+                    lower_instance(&call_info.method),
+                );
+
+                let hll_ret_ty = lookup_type(expr, types).ok_or_else(|| {
+                    diag(
+                        HllLoweringCode::MissingType,
+                        expr.span(),
+                        "missing type annotation for call",
+                    )
+                })?;
+
+                let mut arg_ops = vec![callee_op, move_op(tuple_temp)];
+                if !is_unit_tuple(hll_ret_ty) {
+                    let out_ref = out_ref_ty(lower_type(hll_ret_ty));
+                    let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
+                    ctx.emit_statement(assign_stmt(
+                        out_ref_place.clone(),
+                        ref_rv(mir::RefKind::Out, dest.clone()),
+                        expr.span(),
+                    ));
+                    arg_ops.push(move_op(out_ref_place));
+                    ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
+                } else {
+                    ctx.emit_statement(call_stmt(fn_op, arg_ops, expr.span()));
+                    ctx.emit_statement(assign_stmt(
+                        dest.clone(),
+                        use_rv(const_op(unit_const())),
+                        expr.span(),
+                    ));
+                }
+                return Ok(());
+            }
+
             if let hll::CallTarget::Path { selector_source, .. } = target {
                 if let Some(ResolvedMethodTarget::EnumConstructor {
                     enum_instance,
@@ -1985,6 +2040,13 @@ pub fn lower_program(
         }
         if closure.is_auto_destroy && !closure.markers.declared(mir::Marker::Drop) {
             declarations.push(crate::hll::derive::derive_auto_destroy_mir(closure));
+        }
+        declarations.push(crate::hll::derive::derive_fn_once_mir(closure));
+        if closure.fn_kind <= crate::hll::derive::FnKind::FnMut {
+            declarations.push(crate::hll::derive::derive_fn_mut_mir(closure));
+        }
+        if closure.fn_kind == crate::hll::derive::FnKind::Fn {
+            declarations.push(crate::hll::derive::derive_fn_mir(closure));
         }
     }
 

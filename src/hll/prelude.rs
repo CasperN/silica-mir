@@ -28,6 +28,18 @@ impl<T: Copy> AutoClone for T {
   fn clone(&self) -> Self { self.* }
 }
 
+trait FnOnce<Args, Output> {
+  fn call_once(self, args: Args) -> Output;
+}
+
+trait FnMut<Args, Output>: FnOnce<Args, Output> {
+  fn call_mut(&mut self, args: Args) -> Output;
+}
+
+trait Fn<Args, Output>: FnMut<Args, Output> {
+  fn call(&self, args: Args) -> Output;
+}
+
 extern fn size_of<T>() -> u64;
 extern fn ptr_offset<T>(p: *T, i: u64) -> *T;
 "#;

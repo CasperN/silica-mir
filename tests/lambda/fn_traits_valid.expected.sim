@@ -1,0 +1,1121 @@
+struct Pair: Copy + Drop {
+  first: i64
+  second: i64
+}
+
+struct Resource: Drop + Move {
+  id: i64
+}
+
+fn apply_once<'s0, T: Move, R, F: Move + FnOnce<$Tuple1<T>, R>>(f: F, x: T, $return: &'s0 out R) {
+  $tmp_0: $Tuple1<T>;
+  $tmp_1: &out R;
+  entry:
+    $tmp_0._0 = move x;
+    $tmp_1 = &out $return.*;
+    call <F as FnOnce<$Tuple1<T>, R>>::call_once(move f, move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    require_uninit f;
+    return
+}
+
+fn apply_mut<'s0, T: Move, R, F: Drop + Move + FnMut<$Tuple1<T>, R>>(f: F, x: T, $return: &'s0 out R) {
+  $f_0: F;
+  $tmp_0: &mut F;
+  $tmp_1: $Tuple1<T>;
+  $tmp_2: &out R;
+  entry:
+    $f_0 = move f;
+    $tmp_0 = &mut $f_0;
+    $tmp_1._0 = move x;
+    $tmp_2 = &out $return.*;
+    call <F as FnMut<$Tuple1<T>, R>>::call_mut(move $tmp_0, move $tmp_1, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    drop $f_0;
+    require_uninit $f_0;
+    require_uninit $return;
+    require_uninit x;
+    require_uninit f;
+    return
+}
+
+fn apply_fn<'s0, T: Move, R, F: Drop + Move + Fn<$Tuple1<T>, R>>(f: F, x: T, $return: &'s0 out R) {
+  $tmp_0: &F;
+  $tmp_1: $Tuple1<T>;
+  $tmp_2: &out R;
+  entry:
+    $tmp_0 = &f;
+    $tmp_1._0 = move x;
+    $tmp_2 = &out $return.*;
+    call <F as Fn<$Tuple1<T>, R>>::call(move $tmp_0, move $tmp_1, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    drop f;
+    require_uninit f;
+    return
+}
+
+fn apply_binary<'s0, A: Move, B: Move, R, F: Move + FnOnce<$Tuple2<A, B>, R>>(f: F, a: A, b: B, $return: &'s0 out R) {
+  $tmp_0: $Tuple2<A, B>;
+  $tmp_1: &out R;
+  entry:
+    $tmp_0._0 = move a;
+    $tmp_0._1 = move b;
+    $tmp_1 = &out $return.*;
+    call <F as FnOnce<$Tuple2<A, B>, R>>::call_once(move f, move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit b;
+    require_uninit a;
+    require_uninit f;
+    return
+}
+
+fn apply_nullary<'s0, R, F: Move + FnOnce<$Tuple0, R>>(f: F, $return: &'s0 out R) {
+  $tmp_0: $Tuple0;
+  $tmp_1: &out R;
+  entry:
+    $tmp_0 = $Tuple0 {};
+    $tmp_1 = &out $return.*;
+    call <F as FnOnce<$Tuple0, R>>::call_once(move f, move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit f;
+    return
+}
+
+fn test_pass_fn_once<'s0>(x: i64, $return: &'s0 out i64) {
+  double: $closure_0;
+  $tmp_0: &out i64;
+  entry:
+    double.$call = $closure_0_call;
+    $tmp_0 = &out $return.*;
+    call apply_once<i64, i64, $closure_0>(move double, move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit double;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_0: Copy + Drop {
+  $call: fn(&$closure_0, i64, $return: &out i64)
+}
+
+fn $closure_0_call<'s0, 's1>(recv: &'s0 $closure_0, n: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_mul(move n, 2, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit n;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_0 {
+  fn call_once<'s0>(recv: $closure_0, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_0;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_0_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_0 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_0, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_0;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_0_call(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple1<i64>, i64> for $closure_0 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_0, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_0_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn test_pass_fn_mut<'s0>(x: i64, $return: &'s0 out i64) {
+  accumulator: i64;
+  $tmp_0: $Tuple0;
+  add_to_acc: $closure_1;
+  $tmp_1: i64;
+  $tmp_2: &out i64;
+  entry:
+    accumulator = 10;
+    add_to_acc.$call = $closure_1_call;
+    add_to_acc.$cap_accumulator = copy accumulator;
+    $tmp_2 = &out $tmp_1;
+    call apply_mut<i64, i64, $closure_1>(move add_to_acc, move x, move $tmp_2);
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = $Tuple0 {};
+    require_uninit add_to_acc;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move accumulator;
+    unborrow $return;
+    require_uninit accumulator;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_1: Copy + Drop {
+  $call: fn(&mut $closure_1, i64, $return: &out i64)
+  $cap_accumulator: i64
+}
+
+fn $closure_1_call<'s0, 's1>(recv: &'s0 mut $closure_1, n: i64, $return: &'s1 out i64) {
+  $tmp_0: $Tuple0;
+  $tmp_1: i64;
+  $tmp_2: &out i64;
+  entry:
+    $tmp_2 = &out $tmp_1;
+    call $i64_add(copy recv.*.$cap_accumulator, move n, move $tmp_2);
+    drop recv.*.$cap_accumulator;
+    recv.*.$cap_accumulator = move $tmp_1;
+    $tmp_0 = $Tuple0 {};
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = copy recv.*.$cap_accumulator;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit n;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_1 {
+  fn call_once<'s0>(recv: $closure_1, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &mut $closure_1;
+    entry:
+      $tmp_recv = &mut recv;
+      call $closure_1_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_1 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_1, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_1_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn test_pass_fn<'s0>(x: i64, $return: &'s0 out i64) {
+  factor: i64;
+  multiply: $closure_2;
+  $tmp_0: &out i64;
+  entry:
+    factor = 3;
+    multiply.$call = $closure_2_call;
+    multiply.$cap_factor = move factor;
+    $tmp_0 = &out $return.*;
+    call apply_fn<i64, i64, $closure_2>(move multiply, move x, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit multiply;
+    require_uninit factor;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_2: Copy + Drop {
+  $call: fn(&$closure_2, i64, $return: &out i64)
+  $cap_factor: i64
+}
+
+fn $closure_2_call<'s0, 's1>(recv: &'s0 $closure_2, n: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_mul(move n, copy recv.*.$cap_factor, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit n;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_2 {
+  fn call_once<'s0>(recv: $closure_2, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_2;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_2_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_2 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_2, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_2;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_2_call(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple1<i64>, i64> for $closure_2 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_2, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_2_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn test_fn_supertrait_upcast<'s0>(x: i64, $return: &'s0 out i64) {
+  pure_fn: $closure_3;
+  a: i64;
+  $tmp_0: &out i64;
+  b: i64;
+  $tmp_1: &out i64;
+  c: i64;
+  $tmp_2: &out i64;
+  $tmp_3: i64;
+  $tmp_4: &out i64;
+  $tmp_5: &out i64;
+  entry:
+    pure_fn.$call = $closure_3_call;
+    $tmp_0 = &out a;
+    call apply_once<i64, i64, $closure_3>(copy pure_fn, copy x, move $tmp_0);
+    require_uninit $tmp_0;
+    $tmp_1 = &out b;
+    call apply_mut<i64, i64, $closure_3>(copy pure_fn, copy x, move $tmp_1);
+    require_uninit $tmp_1;
+    $tmp_2 = &out c;
+    call apply_fn<i64, i64, $closure_3>(move pure_fn, move x, move $tmp_2);
+    require_uninit $tmp_2;
+    $tmp_4 = &out $tmp_3;
+    call $i64_add(move a, move b, move $tmp_4);
+    $tmp_5 = &out $return.*;
+    call $i64_add(move $tmp_3, move c, move $tmp_5);
+    unborrow $return;
+    require_uninit $tmp_5;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit c;
+    require_uninit b;
+    require_uninit a;
+    require_uninit pure_fn;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_3: Copy + Drop {
+  $call: fn(&$closure_3, i64, $return: &out i64)
+}
+
+fn $closure_3_call<'s0, 's1>(recv: &'s0 $closure_3, n: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_add(move n, 1, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit n;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_3 {
+  fn call_once<'s0>(recv: $closure_3, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_3;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_3_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_3 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_3, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_3;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_3_call(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple1<i64>, i64> for $closure_3 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_3, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_3_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn test_binary_closure_call<'s0>(a: i64, b: i64, $return: &'s0 out i64) {
+  add: $closure_4;
+  $tmp_0: &out i64;
+  entry:
+    add.$call = $closure_4_call;
+    $tmp_0 = &out $return.*;
+    call apply_binary<i64, i64, i64, $closure_4>(move add, move a, move b, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit add;
+    require_uninit $return;
+    require_uninit b;
+    require_uninit a;
+    return
+}
+
+struct $closure_4: Copy + Drop {
+  $call: fn(&$closure_4, i64, i64, $return: &out i64)
+}
+
+fn $closure_4_call<'s0, 's1>(recv: &'s0 $closure_4, x: i64, y: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_add(move x, move y, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit y;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple2<i64, i64>, i64> for $closure_4 {
+  fn call_once<'s0>(recv: $closure_4, args: $Tuple2<i64, i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_4;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_4_call(move $tmp_recv, move args._0, move args._1, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple2<i64, i64>, i64> for $closure_4 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_4, args: $Tuple2<i64, i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_4;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_4_call(move $tmp_recv, move args._0, move args._1, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple2<i64, i64>, i64> for $closure_4 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_4, args: $Tuple2<i64, i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_4_call(move recv, move args._0, move args._1, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn test_nullary_closure_call<'s0>($return: &'s0 out i64) {
+  answer: $closure_5;
+  $tmp_0: &out i64;
+  entry:
+    answer.$call = $closure_5_call;
+    $tmp_0 = &out $return.*;
+    call apply_nullary<i64, $closure_5>(move answer, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit answer;
+    require_uninit $return;
+    return
+}
+
+struct $closure_5: Copy + Drop {
+  $call: fn(&$closure_5, $return: &out i64)
+}
+
+fn $closure_5_call<'s0, 's1>(recv: &'s0 $closure_5, $return: &'s1 out i64) {
+  entry:
+    $return.* = 42;
+    unborrow $return;
+    require_uninit $return;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple0, i64> for $closure_5 {
+  fn call_once<'s0>(recv: $closure_5, args: $Tuple0, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_5;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_5_call(move $tmp_recv, move $return);
+      drop recv;
+      require_uninit recv;
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple0, i64> for $closure_5 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_5, args: $Tuple0, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_5;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_5_call(move $tmp_recv, move $return);
+      drop args;
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple0, i64> for $closure_5 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_5, args: $Tuple0, $return: &'s1 out i64) {
+    entry:
+      call $closure_5_call(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+fn test_explicit_method_calls<'s0>($return: &'s0 out i64) {
+  f_once: $closure_6;
+  r1: i64;
+  $tmp_0: $Tuple1<i64>;
+  $tmp_1: &out i64;
+  acc: i64;
+  f_mut: $closure_7;
+  r2: i64;
+  $tmp_2: &mut $closure_7;
+  $tmp_3: $Tuple1<i64>;
+  $tmp_4: &out i64;
+  f_pure: $closure_8;
+  r3: i64;
+  $tmp_5: &$closure_8;
+  $tmp_6: $Tuple2<i64, i64>;
+  $tmp_7: &out i64;
+  $tmp_8: i64;
+  $tmp_9: &out i64;
+  $tmp_10: &out i64;
+  entry:
+    f_once.$call = $closure_6_call;
+    $tmp_0._0 = 10;
+    $tmp_1 = &out r1;
+    call <$closure_6 as FnOnce<$Tuple1<i64>, i64>>::call_once(move f_once, move $tmp_0, move $tmp_1);
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    acc = 0;
+    f_mut.$call = $closure_7_call;
+    f_mut.$cap_acc = move acc;
+    $tmp_2 = &mut f_mut;
+    $tmp_3._0 = 20;
+    $tmp_4 = &out r2;
+    call <$closure_7 as FnMut<$Tuple1<i64>, i64>>::call_mut(move $tmp_2, move $tmp_3, move $tmp_4);
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    f_pure.$call = $closure_8_call;
+    $tmp_5 = &f_pure;
+    $tmp_6._0 = 3;
+    $tmp_6._1 = 4;
+    $tmp_7 = &out r3;
+    call <$closure_8 as Fn<$Tuple2<i64, i64>, i64>>::call(move $tmp_5, move $tmp_6, move $tmp_7);
+    require_uninit $tmp_7;
+    require_uninit $tmp_6;
+    require_uninit $tmp_5;
+    $tmp_9 = &out $tmp_8;
+    call $i64_add(move r1, move r2, move $tmp_9);
+    $tmp_10 = &out $return.*;
+    call $i64_add(move $tmp_8, move r3, move $tmp_10);
+    unborrow $return;
+    require_uninit $tmp_10;
+    require_uninit $tmp_9;
+    require_uninit $tmp_8;
+    require_uninit r3;
+    drop f_pure;
+    require_uninit f_pure;
+    require_uninit r2;
+    drop f_mut;
+    require_uninit f_mut;
+    require_uninit acc;
+    require_uninit r1;
+    require_uninit f_once;
+    require_uninit $return;
+    return
+}
+
+struct $closure_6: Copy + Drop {
+  $call: fn(&$closure_6, i64, $return: &out i64)
+}
+
+fn $closure_6_call<'s0, 's1>(recv: &'s0 $closure_6, x: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_add(move x, 1, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_6 {
+  fn call_once<'s0>(recv: $closure_6, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_6;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_6_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_6 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_6, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_6;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_6_call(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple1<i64>, i64> for $closure_6 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_6, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_6_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+struct $closure_7: Copy + Drop {
+  $call: fn(&mut $closure_7, i64, $return: &out i64)
+  $cap_acc: i64
+}
+
+fn $closure_7_call<'s0, 's1>(recv: &'s0 mut $closure_7, x: i64, $return: &'s1 out i64) {
+  $tmp_0: $Tuple0;
+  $tmp_1: i64;
+  $tmp_2: &out i64;
+  entry:
+    $tmp_2 = &out $tmp_1;
+    call $i64_add(copy recv.*.$cap_acc, move x, move $tmp_2);
+    drop recv.*.$cap_acc;
+    recv.*.$cap_acc = move $tmp_1;
+    $tmp_0 = $Tuple0 {};
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = copy recv.*.$cap_acc;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_7 {
+  fn call_once<'s0>(recv: $closure_7, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &mut $closure_7;
+    entry:
+      $tmp_recv = &mut recv;
+      call $closure_7_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_7 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_7, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_7_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+struct $closure_8: Copy + Drop {
+  $call: fn(&$closure_8, i64, i64, $return: &out i64)
+}
+
+fn $closure_8_call<'s0, 's1>(recv: &'s0 $closure_8, x: i64, y: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_mul(move x, move y, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit y;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple2<i64, i64>, i64> for $closure_8 {
+  fn call_once<'s0>(recv: $closure_8, args: $Tuple2<i64, i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_8;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_8_call(move $tmp_recv, move args._0, move args._1, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple2<i64, i64>, i64> for $closure_8 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_8, args: $Tuple2<i64, i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_8;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_8_call(move $tmp_recv, move args._0, move args._1, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple2<i64, i64>, i64> for $closure_8 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_8, args: $Tuple2<i64, i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_8_call(move recv, move args._0, move args._1, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn generic_explicit_call<'s0, F: Move + FnOnce<$Tuple2<i64, i64>, i64>>(f: F, x: i64, y: i64, $return: &'s0 out i64) {
+  $tmp_0: $Tuple2<i64, i64>;
+  $tmp_1: &out i64;
+  entry:
+    $tmp_0._0 = move x;
+    $tmp_0._1 = move y;
+    $tmp_1 = &out $return.*;
+    call <F as FnOnce<$Tuple2<i64, i64>, i64>>::call_once(move f, move $tmp_0, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit y;
+    require_uninit x;
+    require_uninit f;
+    return
+}
+
+fn test_generic_explicit_call<'s0>(a: i64, b: i64, $return: &'s0 out i64) {
+  f: $closure_9;
+  $tmp_0: &out i64;
+  entry:
+    f.$call = $closure_9_call;
+    $tmp_0 = &out $return.*;
+    call generic_explicit_call<$closure_9>(move f, move a, move b, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit f;
+    require_uninit $return;
+    require_uninit b;
+    require_uninit a;
+    return
+}
+
+struct $closure_9: Copy + Drop {
+  $call: fn(&$closure_9, i64, i64, $return: &out i64)
+}
+
+fn $closure_9_call<'s0, 's1>(recv: &'s0 $closure_9, x: i64, y: i64, $return: &'s1 out i64) {
+  $tmp_0: i64;
+  $tmp_1: &out i64;
+  $tmp_2: &out i64;
+  entry:
+    $tmp_1 = &out $tmp_0;
+    call $i64_mul(move x, 10, move $tmp_1);
+    $tmp_2 = &out $return.*;
+    call $i64_add(move $tmp_0, move y, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit y;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple2<i64, i64>, i64> for $closure_9 {
+  fn call_once<'s0>(recv: $closure_9, args: $Tuple2<i64, i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_9;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_9_call(move $tmp_recv, move args._0, move args._1, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple2<i64, i64>, i64> for $closure_9 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_9, args: $Tuple2<i64, i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_9;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_9_call(move $tmp_recv, move args._0, move args._1, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple2<i64, i64>, i64> for $closure_9 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_9, args: $Tuple2<i64, i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_9_call(move recv, move args._0, move args._1, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn consume_resource<'s0>(r: Resource, $return: &'s0 out i64) {
+  entry:
+    $return.* = move r.id;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit r;
+    return
+}
+
+fn test_linear_closure_in_generic<'s0>(res: Resource, $return: &'s0 out i64) {
+  f: $closure_10;
+  $tmp_0: &out i64;
+  entry:
+    f.$call = $closure_10_call;
+    f.$cap_res = move res;
+    $tmp_0 = &out $return.*;
+    call apply_nullary<i64, $closure_10>(move f, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit f;
+    require_uninit $return;
+    require_uninit res;
+    return
+}
+
+struct $closure_10: Drop + Move {
+  $call: fn($closure_10, $return: &out i64)
+  $cap_res: Resource
+}
+
+fn $closure_10_call<'s0>($self: $closure_10, $return: &'s0 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call consume_resource(move $self.$cap_res, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    drop $self.$call;
+    require_uninit $self;
+    return
+}
+
+impl FnOnce<$Tuple0, i64> for $closure_10 {
+  fn call_once<'s0>(recv: $closure_10, args: $Tuple0, $return: &'s0 out i64) {
+    entry:
+      call $closure_10_call(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+fn compose<'s0, A: Move, B: Move, C, F: Move + FnOnce<$Tuple1<A>, B>, G: Move + FnOnce<$Tuple1<B>, C>>(f: F, g: G, a: A, $return: &'s0 out C) {
+  $tmp_0: $Tuple1<B>;
+  $tmp_1: $Tuple1<A>;
+  $tmp_2: &out B;
+  $tmp_3: &out C;
+  entry:
+    $tmp_1._0 = move a;
+    $tmp_2 = &out $tmp_0._0;
+    call <F as FnOnce<$Tuple1<A>, B>>::call_once(move f, move $tmp_1, move $tmp_2);
+    $tmp_3 = &out $return.*;
+    call <G as FnOnce<$Tuple1<B>, C>>::call_once(move g, move $tmp_0, move $tmp_3);
+    unborrow $return;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit a;
+    require_uninit g;
+    require_uninit f;
+    return
+}
+
+fn test_compose<'s0>(n: i64, $return: &'s0 out i64) {
+  add1: $closure_11;
+  mul2: $closure_12;
+  $tmp_0: &out i64;
+  entry:
+    add1.$call = $closure_11_call;
+    mul2.$call = $closure_12_call;
+    $tmp_0 = &out $return.*;
+    call compose<i64, i64, i64, $closure_11, $closure_12>(move add1, move mul2, move n, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit mul2;
+    require_uninit add1;
+    require_uninit $return;
+    require_uninit n;
+    return
+}
+
+struct $closure_11: Copy + Drop {
+  $call: fn(&$closure_11, i64, $return: &out i64)
+}
+
+fn $closure_11_call<'s0, 's1>(recv: &'s0 $closure_11, x: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_add(move x, 1, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_11 {
+  fn call_once<'s0>(recv: $closure_11, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_11;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_11_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_11 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_11, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_11;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_11_call(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple1<i64>, i64> for $closure_11 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_11, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_11_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+struct $closure_12: Copy + Drop {
+  $call: fn(&$closure_12, i64, $return: &out i64)
+}
+
+fn $closure_12_call<'s0, 's1>(recv: &'s0 $closure_12, x: i64, $return: &'s1 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_mul(move x, 2, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit x;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl FnOnce<$Tuple1<i64>, i64> for $closure_12 {
+  fn call_once<'s0>(recv: $closure_12, args: $Tuple1<i64>, $return: &'s0 out i64) {
+    $tmp_recv: &$closure_12;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_12_call(move $tmp_recv, move args._0, move $return);
+      drop recv;
+      require_uninit recv;
+      require_uninit args;
+      return
+  }
+}
+
+impl FnMut<$Tuple1<i64>, i64> for $closure_12 {
+  fn call_mut<'s0, 's1>(recv: &'s0 mut $closure_12, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_12;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_12_call(move $tmp_recv, move args._0, move $return);
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl Fn<$Tuple1<i64>, i64> for $closure_12 {
+  fn call<'s0, 's1>(recv: &'s0 $closure_12, args: $Tuple1<i64>, $return: &'s1 out i64) {
+    entry:
+      call $closure_12_call(move recv, move args._0, move $return);
+      require_uninit args;
+      return
+  }
+}
+
+fn test_ref_capture_in_hof<'s0, 's1>(x: &'s0 i64, $return: &'s1 out i64) {
+  f: $closure_13<'s0>;
+  $tmp_0: &out i64;
+  entry:
+    f.$call = $closure_13_call;
+    f.$cap_x = move x;
+    $tmp_0 = &out $return.*;
+    call apply_nullary<i64, $closure_13<'s0>>(move f, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit f;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+struct $closure_13<'s0>: Copy + Drop {
+  $call: fn(&$closure_13<'s0>, $return: &out i64)
+  $cap_x: &'s0 i64
+}
+
+fn $closure_13_call<'s0, 's1, 's2>(recv: &'s1 $closure_13<'s0>, $return: &'s2 out i64) {
+  entry:
+    $return.* = copy recv.*.$cap_x.*;
+    unborrow $return;
+    require_uninit $return;
+    drop recv;
+    require_uninit recv;
+    return
+}
+
+impl<'s0> FnOnce<$Tuple0, i64> for $closure_13<'s0> {
+  fn call_once<'s1>(recv: $closure_13<'s0>, args: $Tuple0, $return: &'s1 out i64) {
+    $tmp_recv: &$closure_13<'s0>;
+    entry:
+      $tmp_recv = &recv;
+      call $closure_13_call(move $tmp_recv, move $return);
+      drop recv;
+      require_uninit recv;
+      drop args;
+      require_uninit args;
+      return
+  }
+}
+
+impl<'s0> FnMut<$Tuple0, i64> for $closure_13<'s0> {
+  fn call_mut<'s1, 's2>(recv: &'s1 mut $closure_13<'s0>, args: $Tuple0, $return: &'s2 out i64) {
+    $tmp_recv: &$closure_13<'s0>;
+    entry:
+      $tmp_recv = &recv.*;
+      call $closure_13_call(move $tmp_recv, move $return);
+      drop args;
+      require_uninit args;
+      drop recv;
+      return
+  }
+}
+
+impl<'s0> Fn<$Tuple0, i64> for $closure_13<'s0> {
+  fn call<'s1, 's2>(recv: &'s1 $closure_13<'s0>, args: $Tuple0, $return: &'s2 out i64) {
+    entry:
+      call $closure_13_call(move recv, move $return);
+      drop args;
+      require_uninit args;
+      return
+  }
+}

@@ -1,0 +1,55 @@
+# Negative boundary test cases for FnOnce, FnMut, and Fn traits.
+
+struct LinearToken: Move {
+  val: i64,
+}
+
+fn consume_token(t: LinearToken) -> i64 {
+  t.val
+}
+
+fn requires_fn<F: Fn<(i64,), i64> + Move>(f: F, x: i64) -> i64 {
+  f(x)
+}
+
+fn requires_fn_mut<F: FnMut<(i64,), i64> + Move>(f: F, x: i64) -> i64 {
+  let mut f = f;
+  f(x)
+}
+
+# covers: FnOnce closure passed where Fn is required
+fn reject_fn_once_as_fn(tok: LinearToken) -> i64 {
+  let f_once = |x: i64| consume_token(tok) + x;
+  requires_fn(f_once, 42i64)
+}
+
+# covers: FnOnce closure passed where FnMut is required
+fn reject_fn_once_as_fn_mut(tok: LinearToken) -> i64 {
+  let f_once = |x: i64| consume_token(tok) + x;
+  requires_fn_mut(f_once, 42i64)
+}
+
+# covers: FnMut closure passed where Fn is required
+fn reject_fn_mut_as_fn() -> i64 {
+  let mut count = 0i64;
+  let f_mut = |x: i64| {
+    count = count + x;
+    count
+  };
+  requires_fn(f_mut, 42i64)
+}
+
+# covers: argument type mismatch in generic closure call
+fn reject_arg_type_mismatch<F: FnOnce<(bool,), i64> + Move>(f: F) -> i64 {
+  f(42i64)
+}
+
+# covers: arity mismatch in generic closure call
+fn reject_arity_mismatch<F: FnOnce<(i64,), i64> + Move>(f: F) -> i64 {
+  f(1i64, 2i64)
+}
+
+# covers: calling a generic FnOnce parameter twice
+fn reject_fn_once_called_twice<F: FnOnce<(), i64> + Move>(f: F) -> i64 {
+  f() + f()
+}

@@ -619,6 +619,7 @@ pub struct TypeEnv {
     traits: HashMap<String, TraitDecl>,
     functions: HashMap<String, FnDecl>,
     impls: Vec<ImplBlock>,
+    pub(crate) closures: HashMap<String, ClosureInfo>,
     current_ret_ty: Option<Type>,
     /// Type-parameter names → declared bounds for the fn being checked.
     /// Empty outside a fn body.
@@ -637,6 +638,7 @@ impl TypeEnv {
             traits: HashMap::new(),
             functions: HashMap::new(),
             impls: Vec::new(),
+            closures: HashMap::new(),
             current_ret_ty: None,
             current_type_params: HashMap::new(),
             current_lifetimes: HashSet::new(),
@@ -1040,11 +1042,21 @@ impl ClosureInfo {
     }
 }
 
+#[derive(Debug, Clone)]
+pub struct GenericClosureCall {
+    pub trait_path: Instance,
+    pub self_ty: Type,
+    pub method: Instance,
+    pub adjustment: ReceiverAdjustment,
+    pub args_tuple_ty: Type,
+}
+
 #[derive(Default)]
 pub struct TypeCheckResults {
     pub expression_types: ExpressionTypes,
     pub function_instantiations: IndexMap<SourceInfo, Instance>,
     pub receiver_calls: IndexMap<SourceInfo, ResolvedReceiverCall>,
+    pub generic_closure_calls: IndexMap<SourceInfo, GenericClosureCall>,
     pub qualified_calls: IndexMap<SourceInfo, ResolvedMethodTarget>,
     pub closures: IndexMap<SourceInfo, ClosureInfo>,
     pub closures_by_struct: HashMap<String, ClosureInfo>,
@@ -1473,8 +1485,9 @@ pub(super) fn typecheck_program_collect(
             c.is_drop = field_markers.declared(Marker::Drop);
         }
         let mut lts = IndexSet::new();
-        for c in &closure.captures {
-            collect_type_lifetimes(&c.ty, &mut lts);
+        let mut counter = 0;
+        for c in &mut closure.captures {
+            assign_closure_capture_lifetimes(&mut c.ty, &mut lts, &mut counter);
         }
         closure.lifetime_args = lts.into_iter().collect();
         closure.lifetime_params = closure
@@ -1519,6 +1532,7 @@ pub(super) fn typecheck_program_collect(
             crate::hll::derive::infer_closure_fn_kind(&closure.captures, &closure.body, &env);
         let struct_decl = closure.to_struct_decl();
         env.structs.insert(struct_decl.name.clone(), struct_decl.clone());
+        env.closures.insert(closure.struct_name.clone(), closure.clone());
         if !closure.markers.declared(Marker::Copy)
             && crate::hll::derive::can_derive_auto_clone(&struct_decl, &env)
         {
@@ -2523,6 +2537,108 @@ fn implied_trait_paths(env: &TypeEnv, direct: &Instance, self_ty: &Type) -> Vec<
     result
 }
 
+fn find_fn_trait_bound(
+    env: &TypeEnv,
+    ty: &Type,
+) -> Option<(&'static str, &'static str, ReceiverAdjustment, Instance)> {
+    let TypeKind::Param(name) = &ty.kind else {
+        return None;
+    };
+    let bounds = env.current_type_params.get(name)?;
+
+    for bound in &bounds.traits {
+        if bound.trait_path.name == "Fn" && bound.trait_path.type_args.len() == 2 {
+            return Some((
+                "Fn",
+                "call",
+                ReceiverAdjustment::Borrow(RefKind::Shared),
+                bound.trait_path.clone(),
+            ));
+        }
+    }
+
+    for bound in &bounds.traits {
+        if bound.trait_path.name == "FnMut" && bound.trait_path.type_args.len() == 2 {
+            return Some((
+                "FnMut",
+                "call_mut",
+                ReceiverAdjustment::Borrow(RefKind::Mut),
+                bound.trait_path.clone(),
+            ));
+        }
+    }
+
+    for bound in &bounds.traits {
+        if bound.trait_path.name == "FnOnce" && bound.trait_path.type_args.len() == 2 {
+            return Some((
+                "FnOnce",
+                "call_once",
+                ReceiverAdjustment::None,
+                bound.trait_path.clone(),
+            ));
+        }
+    }
+
+    for direct_bound in &bounds.traits {
+        for implied in implied_trait_paths(env, &direct_bound.trait_path, ty) {
+            if implied.name == "Fn" && implied.type_args.len() == 2 {
+                return Some((
+                    "Fn",
+                    "call",
+                    ReceiverAdjustment::Borrow(RefKind::Shared),
+                    implied,
+                ));
+            }
+            if implied.name == "FnMut" && implied.type_args.len() == 2 {
+                return Some((
+                    "FnMut",
+                    "call_mut",
+                    ReceiverAdjustment::Borrow(RefKind::Mut),
+                    implied,
+                ));
+            }
+            if implied.name == "FnOnce" && implied.type_args.len() == 2 {
+                return Some((
+                    "FnOnce",
+                    "call_once",
+                    ReceiverAdjustment::None,
+                    implied,
+                ));
+            }
+        }
+    }
+
+    None
+}
+
+fn types_compatible_for_closure_trait(actual: &Type, required: &Type) -> bool {
+    match (&actual.kind, &required.kind) {
+        (TypeKind::IntVar(_), TypeKind::Int(_)) | (TypeKind::Int(_), TypeKind::IntVar(_)) => true,
+        (TypeKind::FloatVar(_), TypeKind::Float(_))
+        | (TypeKind::Float(_), TypeKind::FloatVar(_)) => true,
+        (TypeKind::Var(_), _) | (_, TypeKind::Var(_)) => true,
+        (TypeKind::Tuple(a), TypeKind::Tuple(b)) => {
+            a.len() == b.len()
+                && a.iter()
+                    .zip(b.iter())
+                    .all(|(x, y)| types_compatible_for_closure_trait(x, y))
+        }
+        (TypeKind::Ref(k1, _, in1), TypeKind::Ref(k2, _, in2)) => {
+            k1 == k2 && types_compatible_for_closure_trait(in1, in2)
+        }
+        (TypeKind::Custom(i1), TypeKind::Custom(i2)) => {
+            i1.name == i2.name
+                && i1.type_args.len() == i2.type_args.len()
+                && i1
+                    .type_args
+                    .iter()
+                    .zip(i2.type_args.iter())
+                    .all(|(x, y)| types_compatible_for_closure_trait(x, y))
+        }
+        (a, b) => a == b,
+    }
+}
+
 fn type_satisfies_trait_inner(
     env: &TypeEnv,
     ty: &Type,
@@ -2536,6 +2652,26 @@ fn type_satisfies_trait_inner(
                 trait_bound_implies(env, &bound.trait_path, ty, trait_path, &mut HashSet::new())
             })
         });
+    }
+    if let TypeKind::Custom(Instance { name, .. }) = &ty.kind {
+        if let Some(closure) = env.closures.get(name) {
+            let is_fn_trait = match trait_path.name.as_str() {
+                "FnOnce" => true,
+                "FnMut" => closure.fn_kind <= crate::hll::derive::FnKind::FnMut,
+                "Fn" => closure.fn_kind == crate::hll::derive::FnKind::Fn,
+                _ => false,
+            };
+            if is_fn_trait && trait_path.type_args.len() == 2 {
+                let actual_args = Type::synthesized(TypeKind::Tuple(
+                    closure.params.iter().map(|p| p.ty.clone()).collect(),
+                ));
+                if types_compatible_for_closure_trait(&actual_args, &trait_path.type_args[0])
+                    && types_compatible_for_closure_trait(&closure.ret_ty, &trait_path.type_args[1])
+                {
+                    return true;
+                }
+            }
+        }
     }
     let obligation = (ty.clone(), trait_path.clone());
     if obligations.contains(&obligation) {
@@ -3905,14 +4041,23 @@ fn collect_free_vars(
     }
 }
 
-fn collect_type_lifetimes(ty: &Type, out: &mut IndexSet<Lifetime>) {
-    match &ty.kind {
-        TypeKind::Ref(_, Some(lt), inner) => {
-            out.insert(lt.clone());
-            collect_type_lifetimes(inner, out);
-        }
-        TypeKind::Ref(_, None, inner) => {
-            collect_type_lifetimes(inner, out);
+
+fn assign_closure_capture_lifetimes(
+    ty: &mut Type,
+    lts: &mut IndexSet<Lifetime>,
+    counter: &mut usize,
+) {
+    match &mut ty.kind {
+        TypeKind::Ref(_, slot, inner) => {
+            if slot.is_none() {
+                let lt = Lifetime(format!("s{}", *counter));
+                *counter += 1;
+                *slot = Some(lt.clone());
+                lts.insert(lt);
+            } else if let Some(lt) = slot {
+                lts.insert(lt.clone());
+            }
+            assign_closure_capture_lifetimes(inner, lts, counter);
         }
         TypeKind::Custom(Instance {
             lifetime_args,
@@ -3920,28 +4065,25 @@ fn collect_type_lifetimes(ty: &Type, out: &mut IndexSet<Lifetime>) {
             ..
         }) => {
             for lt in lifetime_args {
-                out.insert(lt.clone());
+                lts.insert(lt.clone());
             }
             for t in type_args {
-                collect_type_lifetimes(t, out);
+                assign_closure_capture_lifetimes(t, lts, counter);
             }
         }
-        TypeKind::Array(elem, _) => {
-            collect_type_lifetimes(elem, out);
+        TypeKind::Array(elem, _) | TypeKind::RawPtr(elem) => {
+            assign_closure_capture_lifetimes(elem, lts, counter);
         }
         TypeKind::Tuple(types) => {
             for t in types {
-                collect_type_lifetimes(t, out);
+                assign_closure_capture_lifetimes(t, lts, counter);
             }
         }
         TypeKind::Fn { params, ret, .. } => {
             for p in params {
-                collect_type_lifetimes(p, out);
+                assign_closure_capture_lifetimes(p, lts, counter);
             }
-            collect_type_lifetimes(ret, out);
-        }
-        TypeKind::RawPtr(inner) => {
-            collect_type_lifetimes(inner, out);
+            assign_closure_capture_lifetimes(ret, lts, counter);
         }
         TypeKind::Int(_)
         | TypeKind::Float(_)
@@ -4025,8 +4167,9 @@ fn infer_lambda(
     env.current_ret_ty = old_ret_ty;
 
     let mut lts = IndexSet::new();
-    for c in &captures {
-        collect_type_lifetimes(&c.ty, &mut lts);
+    let mut counter = 0;
+    for c in &mut captures {
+        assign_closure_capture_lifetimes(&mut c.ty, &mut lts, &mut counter);
     }
     let lifetime_args: Vec<Lifetime> = lts.into_iter().collect();
     let lifetime_params: Vec<LifetimeParam> = lifetime_args
@@ -4067,24 +4210,173 @@ fn infer_lambda(
     }
     let markers = Markers::from_iter(derived);
 
+    let fn_kind = crate::hll::derive::infer_closure_fn_kind(&captures, &body, env);
+    let resolved_params: Vec<Param> = typed_params
+        .iter()
+        .map(|p| Param {
+            name: p.name.clone(),
+            ty: subst.resolve(&p.ty),
+            source: p.source,
+        })
+        .collect();
+    let resolved_ret = subst.resolve(&expected_ret_ty);
+
     let closure_info = ClosureInfo {
         struct_name: struct_name.clone(),
         fn_name,
-        params: typed_params,
-        ret_ty: expected_ret_ty,
+        params: resolved_params.clone(),
+        ret_ty: resolved_ret.clone(),
         captures,
         source: lambda_expr.source,
         body: body.clone(),
-        lifetime_params,
+        lifetime_params: lifetime_params.clone(),
         lifetime_args: lifetime_args.clone(),
         markers,
         is_auto_clone: false,
         is_auto_destroy: false,
-        fn_kind: crate::hll::derive::FnKind::FnOnce,
+        fn_kind,
     };
+
+    let struct_decl = closure_info.to_struct_decl();
+    env.structs.insert(struct_decl.name.clone(), struct_decl);
+    env.closures.insert(closure_info.struct_name.clone(), closure_info.clone());
 
     types.closures.insert(lambda_expr.source, closure_info.clone());
     types.closures_by_struct.insert(struct_name.clone(), closure_info);
+
+    let target_ty = Type::synthesized(TypeKind::Custom(Instance::new(
+        struct_name.clone(),
+        lifetime_args.clone(),
+        Vec::new(),
+    )));
+    let args_ty = Type::synthesized(TypeKind::Tuple(
+        resolved_params.iter().map(|p| p.ty.clone()).collect(),
+    ));
+
+    let call_once_decl = FnDecl {
+        linkage: Linkage::Local,
+        abi: Abi::Silica,
+        is_unsafe: false,
+        name: "call_once".to_string(),
+        lifetime_params: Vec::new(),
+        outlives: Vec::new(),
+        type_params: Vec::new(),
+        params: vec![
+            Param {
+                name: "recv".to_string(),
+                ty: target_ty.clone(),
+                source: lambda_expr.source,
+            },
+            Param {
+                name: "args".to_string(),
+                ty: args_ty.clone(),
+                source: lambda_expr.source,
+            },
+        ],
+        ret_ty: resolved_ret.clone(),
+        body: None,
+        source: lambda_expr.source,
+    };
+
+    env.impls.push(ImplBlock {
+        lifetime_params: lifetime_params.clone(),
+        outlives: Vec::new(),
+        type_params: Vec::new(),
+        trait_path: Some(Instance::new(
+            "FnOnce".to_string(),
+            Vec::new(),
+            vec![args_ty.clone(), resolved_ret.clone()],
+        )),
+        target: target_ty.clone(),
+        methods: vec![call_once_decl],
+        source: lambda_expr.source,
+    });
+    if fn_kind <= crate::hll::derive::FnKind::FnMut {
+        let call_mut_decl = FnDecl {
+            linkage: Linkage::Local,
+            abi: Abi::Silica,
+            is_unsafe: false,
+            name: "call_mut".to_string(),
+            lifetime_params: Vec::new(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            params: vec![
+                Param {
+                    name: "recv".to_string(),
+                    ty: Type::synthesized(TypeKind::Ref(
+                        RefKind::Mut,
+                        None,
+                        Box::new(target_ty.clone()),
+                    )),
+                    source: lambda_expr.source,
+                },
+                Param {
+                    name: "args".to_string(),
+                    ty: args_ty.clone(),
+                    source: lambda_expr.source,
+                },
+            ],
+            ret_ty: resolved_ret.clone(),
+            body: None,
+            source: lambda_expr.source,
+        };
+        env.impls.push(ImplBlock {
+            lifetime_params: lifetime_params.clone(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            trait_path: Some(Instance::new(
+                "FnMut".to_string(),
+                Vec::new(),
+                vec![args_ty.clone(), resolved_ret.clone()],
+            )),
+            target: target_ty.clone(),
+            methods: vec![call_mut_decl],
+            source: lambda_expr.source,
+        });
+    }
+    if fn_kind == crate::hll::derive::FnKind::Fn {
+        let call_decl = FnDecl {
+            linkage: Linkage::Local,
+            abi: Abi::Silica,
+            is_unsafe: false,
+            name: "call".to_string(),
+            lifetime_params: Vec::new(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            params: vec![
+                Param {
+                    name: "recv".to_string(),
+                    ty: Type::synthesized(TypeKind::Ref(
+                        RefKind::Shared,
+                        None,
+                        Box::new(target_ty.clone()),
+                    )),
+                    source: lambda_expr.source,
+                },
+                Param {
+                    name: "args".to_string(),
+                    ty: args_ty.clone(),
+                    source: lambda_expr.source,
+                },
+            ],
+            ret_ty: resolved_ret.clone(),
+            body: None,
+            source: lambda_expr.source,
+        };
+        env.impls.push(ImplBlock {
+            lifetime_params: lifetime_params.clone(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            trait_path: Some(Instance::new(
+                "Fn".to_string(),
+                Vec::new(),
+                vec![args_ty, resolved_ret],
+            )),
+            target: target_ty,
+            methods: vec![call_decl],
+            source: lambda_expr.source,
+        });
+    }
 
     Type::synthesized(TypeKind::Custom(Instance::new(
         struct_name,
@@ -4421,6 +4713,38 @@ fn infer_inner(
                 for (arg, param_ty) in args.iter().zip(explicit_params) {
                     check_inner(env, subst, arg, param_ty, types, d);
                 }
+                if let Some(pending) = types.pending_instantiations.last() {
+                    for (tp, arg_ty_slot) in pending.type_params.iter().zip(&pending.type_args) {
+                        let arg_resolved = subst.resolve(arg_ty_slot);
+                        if let TypeKind::Custom(Instance { name, .. }) = &arg_resolved.kind {
+                            if let Some(closure) = env.closures.get(name) {
+                                for bound in &tp.bounds.traits {
+                                    if (bound.trait_path.name == "FnOnce"
+                                        || bound.trait_path.name == "FnMut"
+                                        || bound.trait_path.name == "Fn")
+                                        && bound.trait_path.type_args.len() == 2
+                                    {
+                                        let bound_args = substitute_all(
+                                            &bound.trait_path.type_args[0],
+                                            &pending.type_mapping,
+                                            &pending.lifetime_mapping,
+                                        );
+                                        let bound_ret = substitute_all(
+                                            &bound.trait_path.type_args[1],
+                                            &pending.type_mapping,
+                                            &pending.lifetime_mapping,
+                                        );
+                                        let closure_args = Type::synthesized(TypeKind::Tuple(
+                                            closure.params.iter().map(|p| p.ty.clone()).collect(),
+                                        ));
+                                        let _ = subst.unify(&bound_args, &closure_args);
+                                        let _ = subst.unify(&bound_ret, &closure.ret_ty);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 *ret_ty
             } else if let TypeKind::Custom(Instance { name, .. }) = &resolved.kind {
                 if let Some(closure) = types.closures_by_struct.get(name).cloned() {
@@ -4448,6 +4772,53 @@ fn infer_inner(
                     ));
                     return error_ty();
                 }
+            } else if let Some((_trait_name, method_name, adjustment, bound_trait)) =
+                find_fn_trait_bound(env, &resolved)
+            {
+                let args_tuple_ty = subst.resolve(&bound_trait.type_args[0]);
+                let ret_ty = subst.resolve(&bound_trait.type_args[1]);
+
+                let param_tys = match &args_tuple_ty.kind {
+                    TypeKind::Tuple(elems) => elems.clone(),
+                    TypeKind::Var(_) => {
+                        let elem_tys: Vec<Type> =
+                            (0..args.len()).map(|_| subst.fresh_var()).collect();
+                        let tuple_ty = Type::synthesized(TypeKind::Tuple(elem_tys.clone()));
+                        let _ = subst.unify(&args_tuple_ty, &tuple_ty);
+                        elem_tys
+                    }
+                    _ => Vec::new(),
+                };
+
+                if param_tys.len() != args.len() {
+                    d.push_error(source_diagnostic(
+                        ArityMismatch,
+                        expr.source,
+                        format!(
+                            "function expected {} arguments, found {}",
+                            param_tys.len(),
+                            args.len()
+                        ),
+                    ));
+                    return error_ty();
+                }
+
+                for (arg, param_ty) in args.iter().zip(&param_tys) {
+                    check_inner(env, subst, arg, param_ty, types, d);
+                }
+
+                types.generic_closure_calls.insert(
+                    expr.source,
+                    GenericClosureCall {
+                        trait_path: bound_trait,
+                        self_ty: resolved.clone(),
+                        method: Instance::bare(method_name),
+                        adjustment,
+                        args_tuple_ty: Type::synthesized(TypeKind::Tuple(param_tys)),
+                    },
+                );
+
+                ret_ty
             } else {
                 d.push_error(source_diagnostic(
                     ExpectedFunction,

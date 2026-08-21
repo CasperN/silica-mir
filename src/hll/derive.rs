@@ -69,6 +69,20 @@ pub fn infer_closure_fn_kind(
         return FnKind::FnOnce;
     }
 
+    let has_undroppable_capture = captures.iter().any(|c| {
+        let is_drop = env
+            .class_of(&c.ty, &std::collections::HashMap::new())
+            .implies(Marker::Drop);
+        let is_auto_destroy = env.type_satisfies_trait(
+            &c.ty,
+            &crate::hll::ast::Instance::bare("AutoDestroy"),
+        );
+        !is_drop && !is_auto_destroy
+    });
+    if has_undroppable_capture {
+        return FnKind::FnOnce;
+    }
+
     let has_mut_ref = captures.iter().any(|c| {
         matches!(c.ty.kind, TypeKind::Ref(RefKind::Mut, _, _))
     });
@@ -388,12 +402,10 @@ pub fn derive_auto_clone_mir(closure: &crate::hll::type_check::ClosureInfo) -> m
     let recv_place = Place::Var("recv".to_string());
     let return_place = Place::Var("$return".to_string());
 
-    // 1. $call field is always Copy:
     let call_dest = field_place(deref_place(return_place.clone()), "$call".to_string());
     let call_src = field_place(deref_place(recv_place.clone()), "$call".to_string());
     stmts.push(assign_stmt(call_dest, use_rv(copy_op(call_src)), source));
 
-    // 2. Capture fields:
     for c in &closure.captures {
         let field_name = format!("$cap_{}", c.name);
         let field_dest = field_place(deref_place(return_place.clone()), field_name.clone());
@@ -515,11 +527,9 @@ pub fn derive_auto_destroy_mir(closure: &crate::hll::type_check::ClosureInfo) ->
 
     let recv_place = Place::Var("recv".to_string());
 
-    // 1. $call field is always Drop:
     let call_src = field_place(deref_place(recv_place.clone()), "$call".to_string());
     stmts.push(drop_stmt(call_src, source));
 
-    // 2. Capture fields:
     for c in &closure.captures {
         let field_name = format!("$cap_{}", c.name);
         let field_src = field_place(deref_place(recv_place.clone()), field_name.clone());
@@ -590,4 +600,219 @@ pub fn derive_auto_destroy_mir(closure: &crate::hll::type_check::ClosureInfo) ->
         target: target_ty,
         methods: vec![destroy_fn],
     })
+}
+
+fn derive_fn_trait_method_mir(
+    closure: &crate::hll::type_check::ClosureInfo,
+    trait_name: &str,
+    method_name: &str,
+    recv_kind: Option<RefKind>,
+) -> mir::Declaration {
+    let source = SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span());
+    let target_ty = mir::Type::new(
+        mir::TypeKind::Custom(mir::Instance::new(
+            closure.struct_name.clone(),
+            closure.lifetime_args.clone(),
+            Vec::new(),
+        )),
+        source,
+    );
+
+    let args_hll_ty = crate::hll::ast::Type::synthesized(crate::hll::ast::TypeKind::Tuple(
+        closure.params.iter().map(|p| p.ty.clone()).collect(),
+    ));
+    let mir_args_ty = lower_type(&args_hll_ty);
+    let mir_ret_ty = lower_type(&closure.ret_ty);
+
+    let recv_ty = match recv_kind {
+        None => target_ty.clone(),
+        Some(kind) => mir::Type::new(
+            mir::TypeKind::Ref(kind, None, Box::new(target_ty.clone())),
+            source,
+        ),
+    };
+
+    let recv_param = mir::Param {
+        name: "recv".to_string(),
+        ty: recv_ty,
+        source,
+    };
+    let args_param = mir::Param {
+        name: "args".to_string(),
+        ty: mir_args_ty.clone(),
+        source,
+    };
+    let return_param = mir::Param {
+        name: "$return".to_string(),
+        ty: mir::Type::new(
+            mir::TypeKind::Ref(RefKind::Out, None, Box::new(mir_ret_ty.clone())),
+            source,
+        ),
+        source,
+    };
+
+    let mut stmts = Vec::new();
+    let mut locals = Vec::new();
+
+    let recv_place = Place::Var("recv".to_string());
+    let args_place = Place::Var("args".to_string());
+    let return_place = Place::Var("$return".to_string());
+
+    let is_unit_ret = crate::hll::helpers::is_unit_tuple(&closure.ret_ty);
+
+    let callee = const_op(mir::ConstVal::FnName(mir::Instance::new(
+        closure.fn_name.clone(),
+        Vec::new(),
+        Vec::new(),
+    )));
+
+    let mut call_args = Vec::new();
+
+    match (recv_kind, closure.fn_kind) {
+        (None, crate::hll::derive::FnKind::FnOnce) => {
+            call_args.push(move_op(recv_place.clone()));
+        }
+        (None, crate::hll::derive::FnKind::FnMut) => {
+            let tmp_recv_name = "$tmp_recv".to_string();
+            let tmp_recv_place = Place::Var(tmp_recv_name.clone());
+            let tmp_recv_ty = mut_ref_ty(target_ty.clone());
+            locals.push(mir::Local {
+                name: tmp_recv_name,
+                ty: tmp_recv_ty,
+                source,
+            });
+            stmts.push(assign_stmt(
+                tmp_recv_place.clone(),
+                ref_rv(RefKind::Mut, recv_place.clone()),
+                source,
+            ));
+            call_args.push(move_op(tmp_recv_place));
+        }
+        (None, crate::hll::derive::FnKind::Fn) => {
+            let tmp_recv_name = "$tmp_recv".to_string();
+            let tmp_recv_place = Place::Var(tmp_recv_name.clone());
+            let tmp_recv_ty = shared_ref_ty(target_ty.clone());
+            locals.push(mir::Local {
+                name: tmp_recv_name,
+                ty: tmp_recv_ty,
+                source,
+            });
+            stmts.push(assign_stmt(
+                tmp_recv_place.clone(),
+                ref_rv(RefKind::Shared, recv_place.clone()),
+                source,
+            ));
+            call_args.push(move_op(tmp_recv_place));
+        }
+        (Some(RefKind::Mut), crate::hll::derive::FnKind::FnMut) => {
+            call_args.push(move_op(recv_place.clone()));
+        }
+        (Some(RefKind::Mut), crate::hll::derive::FnKind::Fn) => {
+            let tmp_recv_name = "$tmp_recv".to_string();
+            let tmp_recv_place = Place::Var(tmp_recv_name.clone());
+            let tmp_recv_ty = shared_ref_ty(target_ty.clone());
+            locals.push(mir::Local {
+                name: tmp_recv_name,
+                ty: tmp_recv_ty,
+                source,
+            });
+            stmts.push(assign_stmt(
+                tmp_recv_place.clone(),
+                ref_rv(RefKind::Shared, deref_place(recv_place.clone())),
+                source,
+            ));
+            call_args.push(move_op(tmp_recv_place));
+        }
+        (Some(RefKind::Shared), crate::hll::derive::FnKind::Fn) => {
+            call_args.push(move_op(recv_place.clone()));
+        }
+        _ => unreachable!("incompatible closure invocation"),
+    }
+
+    for i in 0..closure.params.len() {
+        let field = field_place(args_place.clone(), format!("_{}", i));
+        call_args.push(mir::Operand::Take(field));
+    }
+
+    if !is_unit_ret {
+        call_args.push(move_op(return_place.clone()));
+    }
+
+    stmts.push(call_stmt(callee, call_args, source));
+
+    if recv_kind.is_none() && closure.fn_kind != crate::hll::derive::FnKind::FnOnce {
+        if closure.markers.declared(Marker::Drop) {
+            stmts.push(drop_stmt(recv_place.clone(), source));
+            stmts.push(require_uninit_stmt(recv_place, source));
+        }
+    }
+    if closure.params.is_empty() {
+        stmts.push(drop_stmt(args_place.clone(), source));
+    }
+    stmts.push(require_uninit_stmt(args_place, source));
+
+    if is_unit_ret {
+        let ret_dest = deref_place(return_place.clone());
+        stmts.push(assign_stmt(ret_dest, use_rv(const_op(unit_const())), source));
+        stmts.push(unborrow_stmt(return_place, source));
+    }
+
+    let entry_block = BasicBlock {
+        label: "entry".to_string(),
+        label_source: source,
+        statements: stmts,
+        terminator: return_term(source),
+    };
+
+    let method_fn = mir::Function {
+        meta: DeclMeta {
+            name: method_name.to_string(),
+            name_source: source,
+            params: GenericParams {
+                lifetime_params: Vec::new(),
+                outlives: Vec::new(),
+                type_params: Vec::new(),
+                source,
+            },
+            markers: Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]),
+        },
+        linkage: Linkage::Local,
+        abi: Abi::Silica,
+        params: vec![recv_param, args_param, return_param],
+        body: Some(mir::FunctionBody {
+            locals,
+            blocks: vec![entry_block],
+        }),
+    };
+
+    mir::Declaration::Impl(mir::ImplBlock {
+        params: GenericParams {
+            lifetime_params: closure.lifetime_params.clone(),
+            outlives: Vec::new(),
+            type_params: Vec::new(),
+            source,
+        },
+        trait_path: Some(mir::Instance::new(
+            trait_name.to_string(),
+            Vec::new(),
+            vec![mir_args_ty, mir_ret_ty],
+        )),
+        target: target_ty,
+        methods: vec![method_fn],
+    })
+}
+
+/// Synthesize `impl<'s0, ...> FnOnce<Args, Output> for $closure_N<'s0, ...>`.
+pub fn derive_fn_once_mir(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
+    derive_fn_trait_method_mir(closure, "FnOnce", "call_once", None)
+}
+
+/// Synthesize `impl<'s0, ...> FnMut<Args, Output> for $closure_N<'s0, ...>`.
+pub fn derive_fn_mut_mir(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
+    derive_fn_trait_method_mir(closure, "FnMut", "call_mut", Some(RefKind::Mut))
+}
+
+/// Synthesize `impl<'s0, ...> Fn<Args, Output> for $closure_N<'s0, ...>`.
+pub fn derive_fn_mir(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
+    derive_fn_trait_method_mir(closure, "Fn", "call", Some(RefKind::Shared))
 }

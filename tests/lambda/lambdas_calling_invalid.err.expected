@@ -1,10 +1,34 @@
-error: at 9:2: [PS-RequireUninitNotSatisfied] In function 'test_fn_once_called_twice': value 'f' must be fully uninitialized by this point, but it is still initialized
+error: at 8:9: [PS-UseAfterMove] In function 'test_fn_once_called_twice': variable 'f' is used after move
    |
+ 7 |   let f = || token.v;
  8 |   f() + f()
+   |         ^
  9 | }
-   |  ^
- 10 | 
    |
+error: at 8:9: [PS-UseAfterMove] In function 'test_fn_once_called_twice': variable 'f' is used after move
+   |
+ 7 |   let f = || token.v;
+ 8 |   f() + f()
+   |         ^^^
+ 9 | }
+   |
+error: at 15:5: [PS-UseInconsistent] In function 'test_fn_once_in_loop': 'f.$call' may be used before initialization or after move (state inconsistent across paths)
+    |
+ 12 | fn test_fn_once_in_loop(token: LinearToken) {
+ 13 |   let f = || token.v;
+    |           ---------- initialized here on some path
+ 14 |   loop {
+ 15 |     f();
+    |     ^
+ 16 |   }
+    |
+error: at 15:5: [PS-UseInconsistent] In function 'test_fn_once_in_loop': 'f' may be used before initialization or after move (state inconsistent across paths)
+    |
+ 14 |   loop {
+ 15 |     f();
+    |     ^^^
+ 16 |   }
+    |
 warning: at 12:45: [REACH-BlockUnreachable] In function 'test_fn_once_in_loop': block 'loop_end_1' is unreachable from entry
     |
  11 | # covers: calling a FnOnce closure in a loop is rejected because the loop body moves the closure

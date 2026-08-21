@@ -996,10 +996,15 @@ pub(crate) fn substitute_trait_bound(
     type_args: &[Type],
     bound: &TraitBound,
 ) -> Instance {
-    let lifetime_mapping = params
+    let explicit_lifetime_params: Vec<Lifetime> = params
         .lifetime_params
         .iter()
-        .map(|parameter| parameter.lifetime.clone())
+        .filter(|p| p.source.generated_kind().is_none())
+        .map(|p| p.lifetime.clone())
+        .collect();
+    let lifetime_mapping = explicit_lifetime_params
+        .iter()
+        .cloned()
         .zip(lifetime_args.iter().cloned())
         .collect::<BTreeMap<_, _>>();
     Instance::new(
@@ -1019,7 +1024,15 @@ pub(crate) fn substitute_trait_bound(
             .trait_path
             .type_args
             .iter()
-            .map(|argument| params.substitute(argument, lifetime_args, type_args))
+            .map(|argument| {
+                crate::mir::type_util::substitute_all(
+                    argument,
+                    &explicit_lifetime_params,
+                    lifetime_args,
+                    &params.type_params,
+                    type_args,
+                )
+            })
             .collect(),
     )
 }

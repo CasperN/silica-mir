@@ -52,3 +52,12 @@ error: at 48:3: [HMC-BorrowImmutableAsMut] In function 'fn_mut_closure_of_immuta
     |   ^^^
  49 | }
     |
+error: at 53:3: [HMC-BorrowImmutableAsMut] In function 'generic_fn_mut_of_immutable': cannot borrow immutable binding 'f' as mutable
+    |
+ 51 | # covers: calling a generic FnMut parameter rejects an immutable binding
+ 52 | fn generic_fn_mut_of_immutable<F: FnMut<(i64,), i64> + Drop>(f: F, x: i64) -> i64 {
+    |                                                              ---- variable declared as immutable here
+ 53 |   f(x)
+    |   ^
+ 54 | }
+    |

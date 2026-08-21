@@ -21,6 +21,15 @@ the compiler evolves; treat entries as snapshots, not commitments.
   be signed or unsigned.
 
 ## Lifetime checker gaps (semantic)
+- **Bare custom type lifetime elision inside references (`&StructWithLifetimes`).**
+  When a struct with lifetime parameters is written bare inside a reference type
+  in MIR (e.g. `recv: &Holder`), `desugar_type_pos` in `src/mir/desugar/lifetime.rs`
+  reuses the reference's newly synthesized lifetime (`'s0`) to fill the struct's
+  lifetime argument (`&'s0 Holder<'s0>`). This incorrectly equates the temporary
+  borrow of the struct with the lifetime of the referent data inside the struct,
+  demanding `'borrow == 'data` during call-site lifetime checking.
+  `desugar_type_pos` should materialize a separate lifetime parameter for bare
+  custom types while preserving positional reuse across multiple bare mentions.
 - **Fn-pointer lifetime tracking.** `Const::FnName` calls have lifetime
   tracking; `copy fn_ptr(args)` doesn't. Silent hole. Prerequisite: extend
   `TypeKind::Fn` with per-slot lifetime bounds — the variance machinery
@@ -208,16 +217,9 @@ the deliberate later refinement to nested operand and projection sources.
   - MIR fn bodies are CFGs with no temporaries.
   - MIR has `move x` and `copy x` operands.
 
-## Lambdas/Closures
-* Pass closures as arguments
-  * `Fn<(A, B), R>`, `FnMut`, and `FnOnce`
-  * Fn traits in Prelude.
-  * Calling generic lambdas via the trait.
-  * stdlib: `Box<T>::new_in_place<F: FnOnce() -> T>(make: F) -> Self`
+## Advanced Traits/types
 * Associated types (so fn returns are associated).
 * Return position impl trait
-
-## Dynamic types
 * Support a `dyn Trait` type.
 
 ## Standard Library
