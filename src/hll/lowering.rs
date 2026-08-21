@@ -2042,7 +2042,7 @@ pub fn lower_program(
             declarations.push(crate::hll::derive::derive_auto_destroy_mir(closure));
         }
         declarations.push(crate::hll::derive::derive_fn_once_mir(closure));
-        if closure.fn_kind <= crate::hll::derive::FnKind::FnMut {
+        if matches!(closure.fn_kind, crate::hll::derive::FnKind::Fn | crate::hll::derive::FnKind::FnMut) {
             declarations.push(crate::hll::derive::derive_fn_mut_mir(closure));
         }
         if closure.fn_kind == crate::hll::derive::FnKind::Fn {

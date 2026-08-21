@@ -46,7 +46,7 @@ pub fn can_derive_auto_destroy_enum(e: &EnumDecl, env: &TypeEnv) -> bool {
 
 // ---------------- Closure Calling Capability (Fn / FnMut / FnOnce) ----------------
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FnKind {
     /// Read-only access to captures: callable via `&self`.
     Fn,
@@ -602,12 +602,32 @@ pub fn derive_auto_destroy_mir(closure: &crate::hll::type_check::ClosureInfo) ->
     })
 }
 
+/// Which of the three Fn traits is being synthesized. Every variant already
+/// witnesses that the closure supports the trait, so the match on it inside
+/// `derive_fn_trait_method_mir` is exhaustive without escape hatches.
+enum FnTraitDispatch {
+    /// `FnOnce::call_once(self, ...)`. Always synthesizable; the inner
+    /// `FnKind` selects how to marshal the owned `recv` into the underlying
+    /// closure call (owned / `&mut` / `&`).
+    Once(FnKind),
+    /// `FnMut::call_mut(&mut self, ...)`. `upcast_from_fn` is true when the
+    /// closure body itself only needs `&self` and must be re-borrowed shared.
+    Mut { upcast_from_fn: bool },
+    /// `Fn::call(&self, ...)`. Only synthesized for closures whose body is Fn.
+    Shared,
+}
+
 fn derive_fn_trait_method_mir(
     closure: &crate::hll::type_check::ClosureInfo,
     trait_name: &str,
     method_name: &str,
-    recv_kind: Option<RefKind>,
+    dispatch: FnTraitDispatch,
 ) -> mir::Declaration {
+    let recv_kind: Option<RefKind> = match dispatch {
+        FnTraitDispatch::Once(_) => None,
+        FnTraitDispatch::Mut { .. } => Some(RefKind::Mut),
+        FnTraitDispatch::Shared => Some(RefKind::Shared),
+    };
     let source = SourceInfo::generated(mir::GeneratedKind::HllDesugaring, closure.source.span());
     let target_ty = mir::Type::new(
         mir::TypeKind::Custom(mir::Instance::new(
@@ -668,66 +688,44 @@ fn derive_fn_trait_method_mir(
 
     let mut call_args = Vec::new();
 
-    match (recv_kind, closure.fn_kind) {
-        (None, crate::hll::derive::FnKind::FnOnce) => {
-            call_args.push(move_op(recv_place.clone()));
+    // Emit a fresh `$tmp_recv: &[mut] target_ty = &[mut] source` local and
+    // return the operand that takes ownership of it for the underlying call.
+    let mut reborrow_into_tmp = |kind: RefKind, source_place: Place| -> mir::Operand {
+        let tmp_recv_name = "$tmp_recv".to_string();
+        let tmp_recv_place = Place::Var(tmp_recv_name.clone());
+        let tmp_recv_ty = match kind {
+            RefKind::Mut => mut_ref_ty(target_ty.clone()),
+            RefKind::Shared => shared_ref_ty(target_ty.clone()),
+            _ => unreachable!("reborrow_into_tmp only produces & or &mut"),
+        };
+        locals.push(mir::Local {
+            name: tmp_recv_name,
+            ty: tmp_recv_ty,
+            source,
+        });
+        stmts.push(assign_stmt(
+            tmp_recv_place.clone(),
+            ref_rv(kind, source_place),
+            source,
+        ));
+        move_op(tmp_recv_place)
+    };
+
+    let call_recv = match dispatch {
+        FnTraitDispatch::Once(FnKind::FnOnce) => move_op(recv_place.clone()),
+        FnTraitDispatch::Once(FnKind::FnMut) => {
+            reborrow_into_tmp(RefKind::Mut, recv_place.clone())
         }
-        (None, crate::hll::derive::FnKind::FnMut) => {
-            let tmp_recv_name = "$tmp_recv".to_string();
-            let tmp_recv_place = Place::Var(tmp_recv_name.clone());
-            let tmp_recv_ty = mut_ref_ty(target_ty.clone());
-            locals.push(mir::Local {
-                name: tmp_recv_name,
-                ty: tmp_recv_ty,
-                source,
-            });
-            stmts.push(assign_stmt(
-                tmp_recv_place.clone(),
-                ref_rv(RefKind::Mut, recv_place.clone()),
-                source,
-            ));
-            call_args.push(move_op(tmp_recv_place));
+        FnTraitDispatch::Once(FnKind::Fn) => {
+            reborrow_into_tmp(RefKind::Shared, recv_place.clone())
         }
-        (None, crate::hll::derive::FnKind::Fn) => {
-            let tmp_recv_name = "$tmp_recv".to_string();
-            let tmp_recv_place = Place::Var(tmp_recv_name.clone());
-            let tmp_recv_ty = shared_ref_ty(target_ty.clone());
-            locals.push(mir::Local {
-                name: tmp_recv_name,
-                ty: tmp_recv_ty,
-                source,
-            });
-            stmts.push(assign_stmt(
-                tmp_recv_place.clone(),
-                ref_rv(RefKind::Shared, recv_place.clone()),
-                source,
-            ));
-            call_args.push(move_op(tmp_recv_place));
+        FnTraitDispatch::Mut { upcast_from_fn: false } => move_op(recv_place.clone()),
+        FnTraitDispatch::Mut { upcast_from_fn: true } => {
+            reborrow_into_tmp(RefKind::Shared, deref_place(recv_place.clone()))
         }
-        (Some(RefKind::Mut), crate::hll::derive::FnKind::FnMut) => {
-            call_args.push(move_op(recv_place.clone()));
-        }
-        (Some(RefKind::Mut), crate::hll::derive::FnKind::Fn) => {
-            let tmp_recv_name = "$tmp_recv".to_string();
-            let tmp_recv_place = Place::Var(tmp_recv_name.clone());
-            let tmp_recv_ty = shared_ref_ty(target_ty.clone());
-            locals.push(mir::Local {
-                name: tmp_recv_name,
-                ty: tmp_recv_ty,
-                source,
-            });
-            stmts.push(assign_stmt(
-                tmp_recv_place.clone(),
-                ref_rv(RefKind::Shared, deref_place(recv_place.clone())),
-                source,
-            ));
-            call_args.push(move_op(tmp_recv_place));
-        }
-        (Some(RefKind::Shared), crate::hll::derive::FnKind::Fn) => {
-            call_args.push(move_op(recv_place.clone()));
-        }
-        _ => unreachable!("incompatible closure invocation"),
-    }
+        FnTraitDispatch::Shared => move_op(recv_place.clone()),
+    };
+    call_args.push(call_recv);
 
     for i in 0..closure.params.len() {
         let field = field_place(args_place.clone(), format!("_{}", i));
@@ -804,15 +802,29 @@ fn derive_fn_trait_method_mir(
 
 /// Synthesize `impl<'s0, ...> FnOnce<Args, Output> for $closure_N<'s0, ...>`.
 pub fn derive_fn_once_mir(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
-    derive_fn_trait_method_mir(closure, "FnOnce", "call_once", None)
+    derive_fn_trait_method_mir(
+        closure,
+        "FnOnce",
+        "call_once",
+        FnTraitDispatch::Once(closure.fn_kind),
+    )
 }
 
 /// Synthesize `impl<'s0, ...> FnMut<Args, Output> for $closure_N<'s0, ...>`.
+/// Requires `closure.fn_kind <= FnMut`.
 pub fn derive_fn_mut_mir(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
-    derive_fn_trait_method_mir(closure, "FnMut", "call_mut", Some(RefKind::Mut))
+    assert!(matches!(closure.fn_kind, FnKind::Fn | FnKind::FnMut));
+    derive_fn_trait_method_mir(
+        closure,
+        "FnMut",
+        "call_mut",
+        FnTraitDispatch::Mut { upcast_from_fn: closure.fn_kind == FnKind::Fn },
+    )
 }
 
 /// Synthesize `impl<'s0, ...> Fn<Args, Output> for $closure_N<'s0, ...>`.
+/// Requires `closure.fn_kind == Fn`.
 pub fn derive_fn_mir(closure: &crate::hll::type_check::ClosureInfo) -> mir::Declaration {
-    derive_fn_trait_method_mir(closure, "Fn", "call", Some(RefKind::Shared))
+    assert_eq!(closure.fn_kind, FnKind::Fn);
+    derive_fn_trait_method_mir(closure, "Fn", "call", FnTraitDispatch::Shared)
 }

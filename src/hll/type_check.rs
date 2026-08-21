@@ -2657,7 +2657,7 @@ fn type_satisfies_trait_inner(
         if let Some(closure) = env.closures.get(name) {
             let is_fn_trait = match trait_path.name.as_str() {
                 "FnOnce" => true,
-                "FnMut" => closure.fn_kind <= crate::hll::derive::FnKind::FnMut,
+                "FnMut" => matches!(closure.fn_kind, crate::hll::derive::FnKind::Fn | crate::hll::derive::FnKind::FnMut),
                 "Fn" => closure.fn_kind == crate::hll::derive::FnKind::Fn,
                 _ => false,
             };
@@ -4291,7 +4291,7 @@ fn infer_lambda(
         methods: vec![call_once_decl],
         source: lambda_expr.source,
     });
-    if fn_kind <= crate::hll::derive::FnKind::FnMut {
+    if matches!(fn_kind, crate::hll::derive::FnKind::Fn | crate::hll::derive::FnKind::FnMut) {
         let call_mut_decl = FnDecl {
             linkage: Linkage::Local,
             abi: Abi::Silica,
