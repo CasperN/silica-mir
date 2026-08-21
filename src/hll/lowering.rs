@@ -1,4 +1,4 @@
-use crate::common::{Markers, RefKind};
+use crate::common::{Marker, Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
 use crate::hll::helpers::is_unit_tuple;
@@ -206,6 +206,8 @@ struct LowerCtx {
     taken_names: std::collections::HashSet<String>,
     functions: HashMap<String, hll::FnDecl>,
     enums: HashMap<String, hll::EnumDecl>,
+    /// Bounds on each generic parameter of the function being lowered.
+    current_generic_bounds: HashMap<String, hll::Bounds>,
 }
 
 impl LowerCtx {
@@ -246,7 +248,15 @@ impl LowerCtx {
             taken_names: std::collections::HashSet::new(),
             functions,
             enums,
+            current_generic_bounds: HashMap::new(),
         }
+    }
+
+    fn type_satisfies_move(&self, ty: &hll::Type, types: &TypeCheckResults) -> bool {
+        types
+            .env
+            .class_of(ty, &self.current_generic_bounds)
+            .implies(Marker::Move)
     }
 
     /// Push a fresh lexical scope for HLL bindings.
@@ -1100,8 +1110,19 @@ fn lower_expr_into(
 
         hll::ExprKind::Assign(lhs, rhs) => {
             let lhs_place = lower_expr_to_place(ctx, lhs, types)?;
-            let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
-            ctx.emit_statement(assign_stmt(lhs_place, use_rv(rhs_op), expr.span()));
+            let lhs_ty = lookup_type(lhs, types).ok_or_else(|| {
+                diag(
+                    HllLoweringCode::MissingType,
+                    lhs.span(),
+                    "missing type annotation for assignment lhs",
+                )
+            })?;
+            if ctx.type_satisfies_move(lhs_ty, types) {
+                let rhs_op = lower_expr_to_operand(ctx, rhs, types)?;
+                ctx.emit_statement(assign_stmt(lhs_place, use_rv(rhs_op), expr.span()));
+            } else {
+                lower_expr_into(ctx, rhs, &lhs_place, types)?;
+            }
             ctx.emit_statement(assign_stmt(
                 dest.clone(),
                 use_rv(const_op(unit_const())),
@@ -1901,6 +1922,11 @@ fn lower_function(
     };
 
     let mut ctx = LowerCtx::new(program);
+    ctx.current_generic_bounds = f
+        .type_params
+        .iter()
+        .map(|p| (p.name.clone(), p.bounds.clone()))
+        .collect();
     ctx.push_scope(false, scope_exit_span(body_expr.span()));
     ctx.push_binding_scope();
     for p in &params {

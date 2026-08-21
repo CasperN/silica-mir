@@ -1,0 +1,148 @@
+struct Immovable: Drop {
+  val: i64
+}
+
+struct Wrap: Drop {
+  inner: Immovable
+  tag: i64
+}
+
+fn make_immovable<'s0>($return: &'s0 out Immovable) {
+  entry:
+    $return.*.val = 42;
+    unborrow $return;
+    require_uninit $return;
+    return
+}
+
+fn make_wrap<'s0>($return: &'s0 out Wrap) {
+  $tmp_0: &out Immovable;
+  entry:
+    $tmp_0 = &out $return.*.inner;
+    call make_immovable(move $tmp_0);
+    $return.*.tag = 7;
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    return
+}
+
+fn make_i64<'s0>($return: &'s0 out i64) {
+  entry:
+    $return.* = 42;
+    unborrow $return;
+    require_uninit $return;
+    return
+}
+
+fn move_reassign_uses_temp<'s0>($return: &'s0 out i64) {
+  x: i64;
+  $tmp_0: $Tuple0;
+  $tmp_1: i64;
+  $tmp_2: &out i64;
+  entry:
+    x = 1;
+    $tmp_2 = &out $tmp_1;
+    call make_i64(move $tmp_2);
+    drop x;
+    x = move $tmp_1;
+    $tmp_0 = $Tuple0 {};
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    $return.* = move x;
+    unborrow $return;
+    require_uninit x;
+    require_uninit $return;
+    return
+}
+
+fn immovable_fresh_local_uses_out() {
+  $tmp_0: $Tuple0;
+  x: Immovable;
+  $tmp_1: $Tuple0;
+  $tmp_2: &out Immovable;
+  entry:
+    $tmp_2 = &out x;
+    call make_immovable(move $tmp_2);
+    $tmp_1 = $Tuple0 {};
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = $Tuple0 {};
+    drop x;
+    require_uninit x;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn immovable_overwrite_drops_first() {
+  $tmp_0: $Tuple0;
+  x: Immovable;
+  $tmp_1: &out Immovable;
+  $tmp_2: $Tuple0;
+  $tmp_3: &out Immovable;
+  entry:
+    $tmp_1 = &out x;
+    call make_immovable(move $tmp_1);
+    require_uninit $tmp_1;
+    drop x;
+    $tmp_3 = &out x;
+    call make_immovable(move $tmp_3);
+    $tmp_2 = $Tuple0 {};
+    require_uninit $tmp_3;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = $Tuple0 {};
+    drop x;
+    require_uninit x;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn immovable_field_uses_out() {
+  $tmp_0: $Tuple0;
+  w: Wrap;
+  $tmp_1: &out Wrap;
+  $tmp_2: $Tuple0;
+  $tmp_3: &out Immovable;
+  entry:
+    $tmp_1 = &out w;
+    call make_wrap(move $tmp_1);
+    require_uninit $tmp_1;
+    drop w.inner;
+    $tmp_3 = &out w.inner;
+    call make_immovable(move $tmp_3);
+    $tmp_2 = $Tuple0 {};
+    require_uninit $tmp_3;
+    drop $tmp_2;
+    require_uninit $tmp_2;
+    $tmp_0 = $Tuple0 {};
+    drop w;
+    require_uninit w;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn immovable_via_raw_ptr(data: *Immovable) {
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: &out Immovable;
+  entry:
+    $tmp_2 = &out data.*;
+    call make_immovable(move $tmp_2);
+    $tmp_1 = $Tuple0 {};
+    require_uninit $tmp_2;
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_0 = $Tuple0 {};
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop data;
+    require_uninit data;
+    return
+}

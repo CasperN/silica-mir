@@ -1,0 +1,39 @@
+error: at 42:9: [PS-BorrowStateMismatch] In function 'through_safe_ref_deref_init': cannot create &out of '*r': pointee must be uninitialized at borrow, but is initialized
+    |
+ 41 | fn through_safe_ref_deref_init(r: &mut Immovable) {
+ 42 |   r.* = make_immovable();
+    |         ^^^^^^^^^^^^^^^^
+ 43 | }
+    |
+error: at 29:7: [LT-LoanConflict] In function 'aliased_shared_ref': cannot move from 'x': conflicts with an active shared borrow of 'x'
+    |
+ 28 |   let mut x = make_immovable();
+ 29 |   x = from_ref(&x);
+    |       ^^^^^^^^^^^^ shared borrow of 'x' occurs here
+ 30 | }
+    |
+  hint: the borrow remains active until the surrounding expression finishes.
+error: at 29:7: [LT-LoanConflict] In function 'aliased_shared_ref': cannot borrow as &out 'x': conflicts with an active shared borrow of 'x'
+    |
+ 28 |   let mut x = make_immovable();
+ 29 |   x = from_ref(&x);
+    |       ^^^^^^^^^^^^ shared borrow of 'x' occurs here
+ 30 | }
+    |
+  hint: the borrow remains active until the surrounding expression finishes.
+error: at 35:7: [LT-LoanConflict] In function 'aliased_mut_ref': cannot move from 'x': conflicts with an active exclusive borrow of 'x'
+    |
+ 34 |   let mut x = make_immovable();
+ 35 |   x = from_mut_ref(&mut x);
+    |       ^^^^^^^^^^^^^^^^^^^^ exclusive borrow of 'x' occurs here
+ 36 | }
+    |
+  hint: the borrow remains active until the surrounding expression finishes.
+error: at 35:7: [LT-LoanConflict] In function 'aliased_mut_ref': cannot borrow as &out 'x': conflicts with an active exclusive borrow of 'x'
+    |
+ 34 |   let mut x = make_immovable();
+ 35 |   x = from_mut_ref(&mut x);
+    |       ^^^^^^^^^^^^^^^^^^^^ exclusive borrow of 'x' occurs here
+ 36 | }
+    |
+  hint: the borrow remains active until the surrounding expression finishes.

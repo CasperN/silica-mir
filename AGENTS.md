@@ -473,5 +473,6 @@ Before commiting, please execute the following steps, step by step, one at a tim
 7. Combine any small end-to-end test fixtures into an existing large test fixture or a new large test fixture if there are sufficient related cases. See the Testing Discipline rules.
 8. Remove any references to session-specific enumerations, so they do not get stored in the durable commit history. E.g. "arc-1", "task-1", "pass-1", etc. Future work may be marked with TODO comments
 9. Discuss any newly introduced jargon, vocabulary, or terms-of-art. All words used in code or comments must be either common words that are seen in every compiler and obvious from context, or are defined in the Silica README. Prefer to use existing terminology where possible, even if reusing existing terms would be more verbose. New jargon that is visible across multiple files, e.g. both tests and feature code, is especially dangerous.
-10. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.
-11. Remove or relocate any comments that are irrelevant to the surrounding code, e.g. referencing how a different system works when the current file does not otherwise mention that system.
+10. Reject any code and comments that are aware of how it is called. Code should be correct and understandable in isolation and must not be aware of its callers.
+11. Remove any comments that are obvious from the surrounding code. Only facts that are NOT inferrable from the code should be recorded in comments.
+12. Remove or relocate any comments that are irrelevant to the surrounding code, e.g. referencing how a different system works when the current file does not otherwise mention that system.

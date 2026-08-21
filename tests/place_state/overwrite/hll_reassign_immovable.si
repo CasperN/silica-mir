@@ -1,0 +1,64 @@
+# HLL assignment lowering: `x = f(args)` picks between two shapes based
+# on the LHS type's `Move` status.
+#
+# For `T: Move`, the caller materializes `f`'s return into a fresh temp
+# and then moves it into `x`. For `T: !Move`, that move is impossible,
+# so the caller opens `&out x` and passes it as the callee's `$return`
+# slot — the value is written into `x` in place, without ever existing
+# as a movable value.
+#
+#   fn                                   T           shape
+#   move_reassign_uses_temp              i64         temp + move
+#   immovable_fresh_local_uses_out       Immovable   direct &out
+#   immovable_overwrite_drops_first      Immovable   direct &out; drop-elab inserts cleanup
+#   immovable_field_uses_out             Wrap<Imm>   direct &out on owned field
+
+struct Immovable: Drop { val: i64 }
+
+struct Wrap: Drop { inner: Immovable, tag: i64 }
+
+fn make_immovable() -> Immovable {
+  Immovable { val: 42 }
+}
+
+fn make_wrap() -> Wrap {
+  Wrap { inner: make_immovable(), tag: 7 }
+}
+
+# covers: `T: Move` — the call return materializes into a fresh temp
+# and then `x = move $tmp` writes it into place. The final `move`
+# operand is where the `Move` requirement lives.
+fn make_i64() -> i64 { 42 }
+fn move_reassign_uses_temp() -> i64 {
+  let mut x: i64 = 1;
+  x = make_i64();
+  x
+}
+
+# covers: `T: !Move` fresh local — caller passes `&out x` as `$return`,
+# no intermediate value ever exists.
+fn immovable_fresh_local_uses_out() {
+  let mut x: Immovable;
+  x = make_immovable();
+}
+
+# covers: `T: !Move` overwrite of an initialized place — drop-elab
+# inserts a `drop x` immediately before the `&out x` so the pointee is
+# uninitialized at the borrow.
+fn immovable_overwrite_drops_first() {
+  let mut x = make_immovable();
+  x = make_immovable();
+}
+
+# covers: `T: !Move` at a struct field — same shape, `&out w.inner`.
+fn immovable_field_uses_out() {
+  let mut w = make_wrap();
+  w.inner = make_immovable();
+}
+
+# covers: `T: !Move` at a raw-pointer dereference — the LHS still
+# resolves to a place expression, `&out data.*` is legal without a
+# pointee-state check because raw derefs opt out of place-state.
+fn immovable_via_raw_ptr(data: *Immovable) {
+  unsafe { data.* = make_immovable() };
+}

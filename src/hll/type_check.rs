@@ -612,6 +612,9 @@ impl Subst {
     }
 }
 
+// TODO: Split out a LocalTypeEnv struct that's aware of the current type environment,
+// versus the global symbol table.
+#[derive(Default)]
 pub struct TypeEnv {
     variables: Vec<HashMap<String, Type>>,
     structs: HashMap<String, StructDecl>,
@@ -1053,6 +1056,7 @@ pub struct GenericClosureCall {
 
 #[derive(Default)]
 pub struct TypeCheckResults {
+    pub env: TypeEnv,
     pub expression_types: ExpressionTypes,
     pub function_instantiations: IndexMap<SourceInfo, Instance>,
     pub receiver_calls: IndexMap<SourceInfo, ResolvedReceiverCall>,
@@ -1580,6 +1584,12 @@ pub(super) fn typecheck_program_collect(
         params.retain(|param| subst.resolve_lifetime(&param.lifetime) == param.lifetime);
     }
     types.pending_instantiations.clear();
+    env.current_type_params.clear();
+    env.current_lifetimes.clear();
+    env.current_function = None;
+    env.current_ret_ty = None;
+    env.in_unsafe = false;
+    types.env = env;
     types
 }
 

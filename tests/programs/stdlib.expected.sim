@@ -61,6 +61,40 @@ impl<T: Move> Box<T> {
 }
 
 impl<T> Box<T> {
+  fn new_in_place<'s0, F: Move + FnOnce<$Tuple0, T>>(make: F, $return: &'s0 out Box<T>) {
+    bytes: *u8;
+    $tmp_0: u64;
+    $tmp_1: &out u64;
+    $tmp_2: &out *u8;
+    data: *T;
+    $tmp_3: $Tuple0;
+    $tmp_4: $Tuple0;
+    $tmp_5: &out T;
+    entry:
+      $tmp_1 = &out $tmp_0;
+      call size_of<T>(move $tmp_1);
+      $tmp_2 = &out bytes;
+      call malloc_bytes(move $tmp_0, move $tmp_2);
+      require_uninit $tmp_2;
+      require_uninit $tmp_1;
+      require_uninit $tmp_0;
+      data = ptr_cast(move bytes, *T);
+      $tmp_4 = $Tuple0 {};
+      $tmp_5 = &out data.*;
+      call <F as FnOnce<$Tuple0, T>>::call_once(move make, move $tmp_4, move $tmp_5);
+      $tmp_3 = $Tuple0 {};
+      require_uninit $tmp_5;
+      require_uninit $tmp_4;
+      drop $tmp_3;
+      require_uninit $tmp_3;
+      $return.*.data = move data;
+      unborrow $return;
+      require_uninit data;
+      require_uninit bytes;
+      require_uninit $return;
+      require_uninit make;
+      return
+  }
   fn get<'s0: 's2, 's1: 's2, 's2>(self: &'s0 Box<T>, $return: &'s1 out &'s2 T) {
     entry:
       $return.* = ptr_cast(copy self.*.data, &T);

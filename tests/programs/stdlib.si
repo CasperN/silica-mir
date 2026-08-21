@@ -25,6 +25,13 @@ impl<T: Move> Box<T> {
 }
 
 impl<T> Box<T> {
+  fn new_in_place<F: FnOnce<(), T> + Move>(make: F) -> Self {
+    let bytes = malloc_bytes(size_of<T>());
+    let data = bytes as *T;
+    unsafe { data.* = make() };
+    Box { data: data }
+  }
+
   fn get(&self) -> &T {
     unsafe { self.*.data as &T }
   }

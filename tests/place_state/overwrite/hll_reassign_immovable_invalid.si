@@ -1,0 +1,43 @@
+# Negative boundary for the direct-`&out` assignment shape used when
+# the LHS type is `!Move`. Because there is no caller-side temp to break
+# the dependency, any argument that borrows or projects through the
+# LHS conflicts with the `&out lhs` that carries the return value.
+#
+#   fn                              rejected shape                       diagnostic
+#   aliased_shared_ref              `x = f(&x)`      (Immovable)         LT-LoanConflict
+#   aliased_mut_ref                 `x = f(&mut x)`  (Immovable)         LT-LoanConflict
+#   through_safe_ref_deref_init     `r.* = f()`      (r: &mut Immovable) PS-BorrowStateMismatch
+
+struct Immovable: Drop { val: i64 }
+
+fn make_immovable() -> Immovable {
+  Immovable { val: 42 }
+}
+
+fn from_ref(r: &Immovable) -> Immovable {
+  Immovable { val: r.*.val + 1 }
+}
+
+fn from_mut_ref(r: &mut Immovable) -> Immovable {
+  Immovable { val: r.*.val + 1 }
+}
+
+# covers: aliased shared borrow — the arg's `&x` loan is still live
+# when `&out x` is opened for the return slot.
+fn aliased_shared_ref() {
+  let mut x = make_immovable();
+  x = from_ref(&x);
+}
+
+# covers: aliased exclusive borrow — same conflict against `&out x`.
+fn aliased_mut_ref() {
+  let mut x = make_immovable();
+  x = from_mut_ref(&mut x);
+}
+
+# covers: LHS through a safe reference whose pointee is initialized —
+# drop-elaboration deliberately does not deinitialize through `&mut`,
+# so the `&out r.*` sees the pre-existing Init state.
+fn through_safe_ref_deref_init(r: &mut Immovable) {
+  r.* = make_immovable();
+}
