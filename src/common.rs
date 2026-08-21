@@ -87,6 +87,23 @@ impl Markers {
         }
     }
 
+    /// Intersection of two marker sets. A marker is satisfied in the result
+    /// iff it is implied by both inputs.
+    pub fn intersection(self, other: Self) -> Self {
+        let mut out = Self::empty();
+        if self.implies(Marker::Copy) && other.implies(Marker::Copy) {
+            out.copy = Some(Tier::Trivial);
+        }
+        if self.implies(Marker::Drop) && other.implies(Marker::Drop) {
+            out.drop = Some(Tier::Trivial);
+        }
+        if self.implies(Marker::Move) && other.implies(Marker::Move) {
+            out.mov = Some(Tier::Trivial);
+        }
+        out.canonicalize();
+        out
+    }
+
     /// True iff this marker is present in the canonical set (post-
     /// canonicalization). Composition uses this to avoid emitting
     /// redundant errors on closure-derived markers.
@@ -248,6 +265,18 @@ mod markers_tests {
         let m = Markers::from_iter([Marker::Move]);
         assert!(m.declared(Marker::Move));
         assert!(m.implies(Marker::Move));
+    }
+
+    #[test]
+    fn intersection_combines_shared_markers() {
+        let all = Markers::from_iter([Marker::Copy, Marker::Drop, Marker::Move]);
+        let move_only = Markers::from_iter([Marker::Move]);
+        let copy_drop = Markers::from_iter([Marker::Copy, Marker::Drop]);
+        let drop_move = Markers::from_iter([Marker::Drop, Marker::Move]);
+
+        assert_eq!(all.intersection(move_only), move_only);
+        assert_eq!(copy_drop.intersection(drop_move), Markers::from_iter([Marker::Drop, Marker::Move]));
+        assert_eq!(move_only.intersection(copy_drop), move_only);
     }
 }
 

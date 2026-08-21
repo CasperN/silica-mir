@@ -173,7 +173,7 @@ the deliberate later refinement to nested operand and projection sources.
   integrations (LLVM tooling, wasm, cross-compile) be first-class build actions
   in a hermetic graph. The immediate motivator is the End-to-end runtime
   fixtures item in Testing gaps.
-- **HLL tuples, anonymous enums** (`(left: T | right: U)`?), and a Rust-shaped
+- **Anonymous enums** (`(left: T | right: U)`?), and a Rust-shaped
   enum syntax (currently only newtype-with-different-syntax).
 - **No-alias raw pointer variant** (`*noalias T`) alongside the aliasing `*T`.
   Enables LLVM `noalias` on parameters where the checker can prove exclusivity.
@@ -210,7 +210,6 @@ the deliberate later refinement to nested operand and projection sources.
 
 ## Lambdas/Closures
 * Pass closures as arguments
-  * Tuple types in HLL
   * `Fn<(A, B), R>`, `FnMut`, and `FnOnce`
   * Fn traits in Prelude.
   * Calling generic lambdas via the trait.

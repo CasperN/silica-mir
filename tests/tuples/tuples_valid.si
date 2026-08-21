@@ -1,0 +1,102 @@
+# covers: 0-tuple (unit)
+fn test_unit() -> () {
+  let u: () = ();
+  u
+}
+
+# covers: 1-tuple construction, type annotation, and indexing
+fn test_1_tuple(x: i64) -> i64 {
+  let t: (i64,) = (x,);
+  t.0
+}
+
+# covers: 2-tuple construction, type annotation, and indexing
+fn test_2_tuple(a: i64, b: bool) -> i64 {
+  let pair: (i64, bool) = (a, b);
+  if pair.1 {
+    pair.0
+  } else {
+    0
+  }
+}
+
+# covers: returning a tuple and taking tuple parameters
+fn make_pair(a: i64, b: i64) -> (i64, i64) {
+  (a, b)
+}
+
+fn sum_pair(p: (i64, i64)) -> i64 {
+  p.0 + p.1
+}
+
+# covers: nested tuple indexing
+fn test_nested_tuple() -> i64 {
+  let nested: ((i64, i64), (i64, i64)) = ((1, 2), (3, 4));
+  nested.0.0 + nested.0.1 + nested.1.0 + nested.1.1
+}
+
+# covers: mutating tuple fields
+fn test_tuple_mutation() -> i64 {
+  let mut t = (10, 20);
+  t.0 = 42;
+  t.1 = 100;
+  t.0 + t.1
+}
+
+# covers: substructural copy capability of tuples with Copy elements
+fn test_tuple_copy(t: (i64, i64)) -> i64 {
+  let a = t;
+  let b = t;
+  a.0 + b.1
+}
+
+# covers: 12-tuple (maximum arity)
+fn test_12_tuple() -> i64 {
+  let t12 = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12);
+  t12.0 + t12.11
+}
+
+# covers: struct containing tuple field
+struct Container: Copy + Drop {
+  data: (i64, bool),
+}
+
+fn test_struct_with_tuple() -> i64 {
+  let c = Container { data: (99, true) };
+  if c.data.1 {
+    c.data.0
+  } else {
+    0
+  }
+}
+
+# covers: enum variant with tuple payload
+enum Message: Copy + Drop {
+  Point: (i64, i64),
+  Quit: (),
+}
+
+fn test_enum_with_tuple() -> i64 {
+  let msg = Message::Point((15, 25));
+  msg match {
+    Point(p) => p.0 + p.1,
+    Quit(u) => 0,
+  }
+}
+
+# covers: array of tuples
+fn test_array_of_tuples() -> i64 {
+  let arr: [(i64, i64); 2] = [(1, 2), (3, 4)];
+  arr[0].0 + arr[1].1
+}
+
+# covers: linear move-only tuple containing move-only struct
+struct Resource: Drop + Move {
+  id: i64,
+}
+
+fn test_move_only_tuple() -> i64 {
+  let t = (Resource { id: 7 }, 8);
+  let moved = t;
+  moved.0.id + moved.1
+}

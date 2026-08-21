@@ -1,0 +1,35 @@
+error: at 25:24: [HTC-TupleArityExceeded] In function 'test_13_tuple_ty': tuple arity 13 exceeds maximum of 12
+    |
+ 24 | # Tuple type annotation arity exceeded (> 12):
+ 25 | fn test_13_tuple_ty(t: (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64)) {
+    |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 26 | }
+    |
+error: at 4:3: [HTC-NoSuchField] In function 'test_oob_2_tuple': tuple of length 2 has no field '2'
+   |
+ 3 |   let t = (1, 2);
+ 4 |   t.2
+   |   ^
+ 5 | }
+   |
+error: at 10:3: [HTC-NoSuchField] In function 'test_named_field_on_tuple': tuple type (?i2, ?i3) has no field 'foo'
+    |
+  9 |   let t = (1, 2);
+ 10 |   t.foo
+    |   ^
+ 11 | }
+    |
+error: at 15:24: [HTC-TypeMismatch] In function 'test_tuple_type_mismatch': type mismatch: expected integer type, found bool
+    |
+ 14 | fn test_tuple_type_mismatch() -> (i64, bool) {
+ 15 |   let t: (i64, bool) = (1, 2);
+    |                        ^^^^^^
+ 16 |   t
+    |
+error: at 21:13: [HTC-TupleArityExceeded] In function 'test_13_tuple': tuple arity 13 exceeds maximum of 12
+    |
+ 20 | fn test_13_tuple() {
+ 21 |   let t13 = (1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13);
+    |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 22 | }
+    |

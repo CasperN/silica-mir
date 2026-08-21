@@ -572,7 +572,7 @@ impl Parser {
             self.map_type(rt_node, &scope, d)
         } else {
             Some(Type::new(
-                TypeKind::Tuple,
+                TypeKind::Tuple(Vec::new()),
                 SourceInfo::generated(GeneratedKind::HllDesugaring, span),
             ))
         };
@@ -859,7 +859,15 @@ impl Parser {
         }
         match node.kind() {
             "bool" => return Some(TypeKind::Bool),
-            "unit_type" => return Some(TypeKind::Tuple),
+            "tuple_type" => {
+                let mut elem_types = Vec::new();
+                for i in 0..node.named_child_count() {
+                    if let Some(child) = node.named_child(i as u32) {
+                        elem_types.push(self.map_type(child, scope, d)?);
+                    }
+                }
+                return Some(TypeKind::Tuple(elem_types));
+            }
             "never" => return Some(TypeKind::Never),
             "identifier" => {
                 return Some(self.identifier_to_type_kind(
@@ -889,7 +897,15 @@ impl Parser {
         }
         match first.kind() {
             "bool" => return Some(TypeKind::Bool),
-            "unit_type" => return Some(TypeKind::Tuple),
+            "tuple_type" => {
+                let mut elem_types = Vec::new();
+                for i in 0..first.named_child_count() {
+                    if let Some(child) = first.named_child(i as u32) {
+                        elem_types.push(self.map_type(child, scope, d)?);
+                    }
+                }
+                return Some(TypeKind::Tuple(elem_types));
+            }
             "never" => return Some(TypeKind::Never),
             "identifier" => {
                 // Identifier alt with optional `type_args` as sibling:
@@ -1011,7 +1027,7 @@ impl Parser {
                 self.map_type(rt, scope, d)?
             } else {
                 Type::new(
-                    TypeKind::Tuple,
+                    TypeKind::Tuple(Vec::new()),
                     SourceInfo::generated(GeneratedKind::HllDesugaring, span_of(node)),
                 )
             };
@@ -1287,10 +1303,18 @@ impl Parser {
                 kind: ExprKind::Literal(Literal::Bool(self.get_text(node) == "true")),
                 source: SourceInfo::written(span),
             }),
-            "unit_lit" => Some(Expr {
-                kind: ExprKind::Literal(Literal::Tuple),
-                source: SourceInfo::written(span),
-            }),
+            "tuple_expr" => {
+                let mut elems = Vec::new();
+                for i in 0..node.named_child_count() {
+                    if let Some(child) = node.named_child(i as u32) {
+                        elems.push(self.map_expr(child, scope, d)?);
+                    }
+                }
+                Some(Expr {
+                    kind: ExprKind::Tuple(elems),
+                    source: SourceInfo::written(span),
+                })
+            }
             "byte_str_lit" => {
                 let raw = self.get_text(node);
                 let Some(inner) = raw.strip_prefix("b\"").and_then(|s| s.strip_suffix('"')) else {
@@ -1346,7 +1370,7 @@ impl Parser {
                     self.map_expr(e, scope, d)
                 } else {
                     Some(Expr {
-                        kind: ExprKind::Literal(Literal::Tuple),
+                        kind: ExprKind::Tuple(Vec::new()),
                         source: SourceInfo::written(span),
                     })
                 }

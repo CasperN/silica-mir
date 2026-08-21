@@ -1,0 +1,296 @@
+fn test_unit() {
+  $tmp_0: $Tuple0;
+  u: $Tuple0;
+  entry:
+    u = $Tuple0 {};
+    $tmp_0 = move u;
+    require_uninit u;
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    return
+}
+
+fn test_1_tuple<'s0>(x: i64, $return: &'s0 out i64) {
+  t: $Tuple1<i64>;
+  entry:
+    t._0 = move x;
+    $return.* = move t._0;
+    unborrow $return;
+    require_uninit t;
+    require_uninit $return;
+    require_uninit x;
+    return
+}
+
+fn test_2_tuple<'s0>(a: i64, b: bool, $return: &'s0 out i64) {
+  pair: $Tuple2<i64, bool>;
+  entry:
+    pair._0 = move a;
+    pair._1 = move b;
+    branch(copy pair._1) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    $return.* = move pair._0;
+    unborrow $return;
+    goto if_merge_2
+  if_false_1:
+    $return.* = 0;
+    unborrow $return;
+    goto $edge0
+  $edge0:
+    drop pair._0;
+    goto if_merge_2
+  if_merge_2:
+    drop pair._1;
+    require_uninit pair;
+    require_uninit $return;
+    require_uninit b;
+    require_uninit a;
+    return
+}
+
+fn make_pair<'s0>(a: i64, b: i64, $return: &'s0 out $Tuple2<i64, i64>) {
+  entry:
+    $return.*._0 = move a;
+    $return.*._1 = move b;
+    unborrow $return;
+    require_uninit $return;
+    require_uninit b;
+    require_uninit a;
+    return
+}
+
+fn sum_pair<'s0>(p: $Tuple2<i64, i64>, $return: &'s0 out i64) {
+  $tmp_0: &out i64;
+  entry:
+    $tmp_0 = &out $return.*;
+    call $i64_add(move p._0, move p._1, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit $return;
+    require_uninit p;
+    return
+}
+
+fn test_nested_tuple<'s0>($return: &'s0 out i64) {
+  nested: $Tuple2<$Tuple2<i64, i64>, $Tuple2<i64, i64>>;
+  $tmp_0: i64;
+  $tmp_1: i64;
+  $tmp_2: &out i64;
+  $tmp_3: &out i64;
+  $tmp_4: &out i64;
+  entry:
+    nested._0._0 = 1;
+    nested._0._1 = 2;
+    nested._1._0 = 3;
+    nested._1._1 = 4;
+    $tmp_2 = &out $tmp_1;
+    call $i64_add(move nested._0._0, move nested._0._1, move $tmp_2);
+    $tmp_3 = &out $tmp_0;
+    call $i64_add(move $tmp_1, move nested._1._0, move $tmp_3);
+    $tmp_4 = &out $return.*;
+    call $i64_add(move $tmp_0, move nested._1._1, move $tmp_4);
+    unborrow $return;
+    require_uninit $tmp_4;
+    require_uninit $tmp_3;
+    require_uninit $tmp_2;
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    require_uninit nested;
+    require_uninit $return;
+    return
+}
+
+fn test_tuple_mutation<'s0>($return: &'s0 out i64) {
+  t: $Tuple2<i64, i64>;
+  $tmp_0: $Tuple0;
+  $tmp_1: $Tuple0;
+  $tmp_2: &out i64;
+  entry:
+    t._0 = 10;
+    t._1 = 20;
+    drop t._0;
+    t._0 = 42;
+    $tmp_0 = $Tuple0 {};
+    drop $tmp_0;
+    require_uninit $tmp_0;
+    drop t._1;
+    t._1 = 100;
+    $tmp_1 = $Tuple0 {};
+    drop $tmp_1;
+    require_uninit $tmp_1;
+    $tmp_2 = &out $return.*;
+    call $i64_add(move t._0, move t._1, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    require_uninit t;
+    require_uninit $return;
+    return
+}
+
+fn test_tuple_copy<'s0>(t: $Tuple2<i64, i64>, $return: &'s0 out i64) {
+  a: $Tuple2<i64, i64>;
+  b: $Tuple2<i64, i64>;
+  $tmp_0: &out i64;
+  entry:
+    a = copy t;
+    b = move t;
+    $tmp_0 = &out $return.*;
+    call $i64_add(move a._0, move b._1, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    drop b._0;
+    require_uninit b;
+    drop a._1;
+    require_uninit a;
+    require_uninit $return;
+    require_uninit t;
+    return
+}
+
+fn test_12_tuple<'s0>($return: &'s0 out i64) {
+  t12: $Tuple12<i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64>;
+  $tmp_0: &out i64;
+  entry:
+    t12._0 = 1;
+    t12._1 = 2;
+    t12._2 = 3;
+    t12._3 = 4;
+    t12._4 = 5;
+    t12._5 = 6;
+    t12._6 = 7;
+    t12._7 = 8;
+    t12._8 = 9;
+    t12._9 = 10;
+    t12._10 = 11;
+    t12._11 = 12;
+    $tmp_0 = &out $return.*;
+    call $i64_add(move t12._0, move t12._11, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    drop t12._10;
+    drop t12._9;
+    drop t12._8;
+    drop t12._7;
+    drop t12._6;
+    drop t12._5;
+    drop t12._4;
+    drop t12._3;
+    drop t12._2;
+    drop t12._1;
+    require_uninit t12;
+    require_uninit $return;
+    return
+}
+
+struct Container: Copy + Drop {
+  data: $Tuple2<i64, bool>
+}
+
+fn test_struct_with_tuple<'s0>($return: &'s0 out i64) {
+  c: Container;
+  entry:
+    c.data._0 = 99;
+    c.data._1 = true;
+    branch(copy c.data._1) [true: if_true_0, false: if_false_1]
+  if_true_0:
+    $return.* = move c.data._0;
+    unborrow $return;
+    goto if_merge_2
+  if_false_1:
+    $return.* = 0;
+    unborrow $return;
+    goto $edge0
+  $edge0:
+    drop c.data._0;
+    goto if_merge_2
+  if_merge_2:
+    drop c.data._1;
+    require_uninit c;
+    require_uninit $return;
+    return
+}
+
+enum Message: Copy + Drop {
+  Point: $Tuple2<i64, i64>
+  Quit: $Tuple0
+}
+
+fn test_enum_with_tuple<'s0>($return: &'s0 out i64) {
+  msg: Message;
+  $tmp_0: $Tuple2<i64, i64>;
+  p: $Tuple2<i64, i64>;
+  $tmp_1: &out i64;
+  u: $Tuple0;
+  entry:
+    $tmp_0._0 = 15;
+    $tmp_0._1 = 25;
+    msg = Message::Point(move $tmp_0);
+    require_uninit $tmp_0;
+    switchEnum(msg) [Point: switch_Point_0, Quit: switch_Quit_1]
+  switch_Point_0:
+    p = copy msg as Point;
+    $tmp_1 = &out $return.*;
+    call $i64_add(move p._0, move p._1, move $tmp_1);
+    unborrow $return;
+    require_uninit $tmp_1;
+    require_uninit p;
+    goto switch_merge_2
+  switch_Quit_1:
+    u = copy msg as Quit;
+    $return.* = 0;
+    unborrow $return;
+    drop u;
+    require_uninit u;
+    goto switch_merge_2
+  switch_merge_2:
+    drop msg;
+    require_uninit msg;
+    require_uninit $return;
+    return
+}
+
+fn test_array_of_tuples<'s0>($return: &'s0 out i64) {
+  arr: [$Tuple2<i64, i64>; 2];
+  $tmp_0: $Tuple2<i64, i64>;
+  $tmp_1: $Tuple2<i64, i64>;
+  $tmp_2: &out i64;
+  entry:
+    $tmp_0._0 = 1;
+    $tmp_0._1 = 2;
+    $tmp_1._0 = 3;
+    $tmp_1._1 = 4;
+    arr = [move $tmp_0, move $tmp_1];
+    require_uninit $tmp_1;
+    require_uninit $tmp_0;
+    $tmp_2 = &out $return.*;
+    call $i64_add(move arr[0]._0, move arr[1]._1, move $tmp_2);
+    unborrow $return;
+    require_uninit $tmp_2;
+    drop arr[1]._0;
+    drop arr[0]._1;
+    require_uninit arr;
+    require_uninit $return;
+    return
+}
+
+struct Resource: Drop + Move {
+  id: i64
+}
+
+fn test_move_only_tuple<'s0>($return: &'s0 out i64) {
+  t: $Tuple2<Resource, i64>;
+  moved: $Tuple2<Resource, i64>;
+  $tmp_0: &out i64;
+  entry:
+    t._0.id = 7;
+    t._1 = 8;
+    moved = move t;
+    $tmp_0 = &out $return.*;
+    call $i64_add(move moved._0.id, move moved._1, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit moved;
+    require_uninit t;
+    require_uninit $return;
+    return
+}

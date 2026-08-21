@@ -1,6 +1,7 @@
 use crate::common::{Markers, RefKind};
 use crate::diagnostics::{DiagCode, Diagnostic, Diagnostics};
 use crate::hll::ast as hll;
+use crate::hll::helpers::is_unit_tuple;
 use crate::hll::type_check::{
     ReceiverAdjustment, ResolvedMethodTarget, ResolvedReceiverTarget, TypeCheckResults,
 };
@@ -563,7 +564,15 @@ pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::Int(t) => mir::TypeKind::Int(*t),
         hll::TypeKind::Float(t) => mir::TypeKind::Float(*t),
         hll::TypeKind::Bool => mir::TypeKind::Bool,
-        hll::TypeKind::Tuple => mir::TypeKind::Custom(mir::Instance::bare("$Tuple0")),
+        hll::TypeKind::Tuple(elements) => {
+            if elements.is_empty() {
+                mir::TypeKind::Custom(mir::Instance::bare("$Tuple0"))
+            } else {
+                let name = format!("$Tuple{}", elements.len());
+                let lowered_args: Vec<mir::Type> = elements.iter().map(lower_type).collect();
+                mir::TypeKind::Custom(mir::Instance::new(name, Vec::new(), lowered_args))
+            }
+        }
         hll::TypeKind::Never => mir::TypeKind::Never,
         hll::TypeKind::Custom(hll::Instance {
             name,
@@ -584,7 +593,7 @@ pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::RawPtr(inner) => mir::TypeKind::RawPtr(Box::new(lower_type(inner))),
         hll::TypeKind::Fn { abi, params, ret } => {
             let mut mir_params: Vec<mir::Type> = params.iter().map(lower_type).collect();
-            let has_return_param = ret.kind != hll::TypeKind::Tuple;
+            let has_return_param = !is_unit_tuple(ret);
             if has_return_param {
                 mir_params.push(mir::Type::new(
                     mir::TypeKind::Ref(RefKind::Out, None, Box::new(lower_type(ret))),
@@ -600,10 +609,9 @@ pub(crate) fn lower_type(ty: &hll::Type) -> mir::Type {
         hll::TypeKind::Array(inner, size) => {
             mir::TypeKind::Array(Box::new(lower_type(inner)), *size)
         }
-        hll::TypeKind::Var(_) | hll::TypeKind::IntVar(_) | hll::TypeKind::FloatVar(_) => {
-            unreachable!("type variables must be resolved before lowering")
+        hll::TypeKind::Var(_) | hll::TypeKind::IntVar(_) | hll::TypeKind::FloatVar(_) | hll::TypeKind::Error => {
+            unreachable!("type inference variable reached lowering")
         }
-        hll::TypeKind::Error => unreachable!("cannot lower program with type errors"),
     };
     mir::Type::new(kind, ty.source)
 }
@@ -645,7 +653,23 @@ fn lower_expr_to_place(
         }
         hll::ExprKind::FieldAccess(target, field) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
-            Ok(field_place(target_place, field.clone()))
+            let target_ty = lookup_type(target, types);
+            let mir_field = if let Some(target_ty) = target_ty {
+                let resolved = match &target_ty.kind {
+                    hll::TypeKind::Ref(_, _, inner) => inner.as_ref(),
+                    _ => target_ty,
+                };
+                if matches!(&resolved.kind, hll::TypeKind::Tuple(_)) {
+                    format!("_{}", field)
+                } else {
+                    field.clone()
+                }
+            } else if field.chars().all(|c| c.is_ascii_digit()) {
+                format!("_{}", field)
+            } else {
+                field.clone()
+            };
+            Ok(field_place(target_place, mir_field))
         }
         hll::ExprKind::Deref(target) => {
             let target_place = lower_expr_to_place(ctx, target, types)?;
@@ -1288,7 +1312,7 @@ fn lower_expr_into(
                 )
             })?;
 
-            if hll_ret_ty.kind != hll::TypeKind::Tuple {
+            if !is_unit_tuple(hll_ret_ty) {
                 let out_ref = out_ref_ty(lower_type(hll_ret_ty));
                 let out_ref_place = ctx.fresh_lowering_temp(out_ref, expr.span());
                 ctx.emit_statement(assign_stmt(
@@ -1750,6 +1774,21 @@ fn lower_expr_into(
             ctx.emit_statement(assign_stmt(dest.clone(), array_lit_rv(ops), expr.span()));
             Ok(())
         }
+        hll::ExprKind::Tuple(elements) => {
+            if elements.is_empty() {
+                ctx.emit_statement(assign_stmt(
+                    dest.clone(),
+                    use_rv(const_op(unit_const())),
+                    expr.span(),
+                ));
+            } else {
+                for (i, elem) in elements.iter().enumerate() {
+                    let field_dest = field_place(dest.clone(), format!("_{}", i));
+                    lower_expr_into(ctx, elem, &field_dest, types)?;
+                }
+            }
+            Ok(())
+        }
     }
 }
 
@@ -1771,7 +1810,7 @@ fn lower_function(
         })
         .collect();
 
-    if f.ret_ty.kind != hll::TypeKind::Tuple {
+    if !is_unit_tuple(&f.ret_ty) {
         params.push(mir::Param {
             name: "$return".to_string(),
             ty: mir::Type::new(
@@ -1816,7 +1855,7 @@ fn lower_function(
     }
     ctx.start_block("entry".to_string());
 
-    if f.ret_ty.kind != hll::TypeKind::Tuple {
+    if !is_unit_tuple(&f.ret_ty) {
         lower_expr_into(
             &mut ctx,
             body_expr,
@@ -2088,7 +2127,7 @@ fn lower_closure_function(
             source: p.source,
         });
     }
-    if closure.ret_ty.kind != hll::TypeKind::Tuple {
+    if !is_unit_tuple(&closure.ret_ty) {
         params.push(mir::Param {
             name: "$return".to_string(),
             ty: mir::Type::new(
@@ -2126,7 +2165,7 @@ fn lower_closure_function(
     ctx.start_block("entry".to_string());
 
     ctx.begin_temp_region();
-    if closure.ret_ty.kind != hll::TypeKind::Tuple {
+    if !is_unit_tuple(&closure.ret_ty) {
         lower_expr_into(
             &mut ctx,
             &closure.body,

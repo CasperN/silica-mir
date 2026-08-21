@@ -316,7 +316,7 @@ fn check_expr(expr: &Expr, scope: &mut Scope<'_>, func: &str, d: &mut Diagnostic
 
         ExprKind::EnumConstr(_, _, payload) => check_expr(payload, scope, func, d),
 
-        ExprKind::Array(elems) => {
+        ExprKind::Array(elems) | ExprKind::Tuple(elems) => {
             for e in elems {
                 check_expr(e, scope, func, d);
             }

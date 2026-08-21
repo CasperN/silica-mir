@@ -52,11 +52,10 @@ module.exports = grammar({
 
     ...common.rules,
 
-    // HLL type grammar: shared alternatives plus the empty-tuple type `()`
-    // (a placeholder for future tuple arities) and
-    // `fn [abi] (T, ...) [-> R]`. Return defaults to `()`.
+    // HLL type grammar: shared alternatives plus the tuple type `(T, ...)`
+    // (with `()` for empty tuple) and `fn [abi] (T, ...) [-> R]`.
     type: $ => choice(
-      $.unit_type,
+      $.tuple_type,
       ...common.typeChoices($),
       seq(
         'fn',
@@ -66,7 +65,11 @@ module.exports = grammar({
       ),
     ),
 
-    unit_type: $ => prec(1, seq('(', ')')),
+    tuple_type: $ => prec(1, choice(
+      seq('(', ')'),
+      seq('(', $.type, ',', ')'),
+      seq('(', $.type, ',', $.type, repeat(seq(',', $.type)), optional(','), ')'),
+    )),
 
     // HLL struct/enum decls: mandatory comma between fields.
     // `commaSep` already tolerates a trailing comma.
@@ -278,7 +281,7 @@ module.exports = grammar({
     field_access: $ => prec.left(20, seq(
       field('target', $._expr_postfix),
       '.',
-      field('field', $.identifier),
+      field('field', choice($.identifier, $.int_lit)),
     )),
 
     deref_expr: $ => prec.left(20, seq(
@@ -352,7 +355,7 @@ module.exports = grammar({
       $.int_lit,
       $.float_lit,
       $.bool_lit,
-      $.unit_lit,
+      $.tuple_expr,
       $.byte_str_lit,
       $.byte_char_lit,
       $.paren_expr,
@@ -403,9 +406,14 @@ module.exports = grammar({
     ),
 
     bool_lit: $ => choice('true', 'false'),
-    unit_lit: $ => prec(1, seq('(', ')')),
 
-    // Parenthesized expression `(expr)`. The empty form `()` is `unit_lit`.
+    tuple_expr: $ => prec(1, choice(
+      seq('(', ')'),
+      seq('(', $.expr, ',', ')'),
+      seq('(', $.expr, ',', $.expr, repeat(seq(',', $.expr)), optional(','), ')'),
+    )),
+
+    // Parenthesized expression `(expr)`.
     paren_expr: $ => seq('(', $.expr, ')'),
 
     // Block expression: `unsafe? { stmt* trailing_expr? }`. The trailing

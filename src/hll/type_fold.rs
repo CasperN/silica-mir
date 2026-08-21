@@ -41,13 +41,15 @@ fn fold_type_children<F: TypeFolder>(folder: &mut F, ty: &Type) -> Type {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Tuple
         | TypeKind::Never
         | TypeKind::Param(_)
         | TypeKind::Var(_)
         | TypeKind::IntVar(_)
         | TypeKind::FloatVar(_)
         | TypeKind::Error => return ty.clone(),
+        TypeKind::Tuple(types) => {
+            TypeKind::Tuple(types.iter().map(|arg| folder.fold_type(arg)).collect())
+        }
         TypeKind::Custom(inst) => TypeKind::Custom(crate::hll::ast::Instance::new(
             inst.name.clone(),
             inst.lifetime_args

@@ -59,9 +59,12 @@ trait Make {
 
 impl Make for Choice {
   fn make<'s0>($return: &'s0 out Choice) {
+    $tmp_0: $Tuple0;
     entry:
-      $return.* = Choice::Empty($Tuple0 {});
+      $tmp_0 = $Tuple0 {};
+      $return.* = Choice::Empty(move $tmp_0);
       unborrow $return;
+      require_uninit $tmp_0;
       require_uninit $return;
       return
   }
@@ -92,9 +95,12 @@ impl<T: Copy + Drop> Box<T> {
 
 impl Choice {
   fn empty<'s0>($return: &'s0 out Choice) {
+    $tmp_0: $Tuple0;
     entry:
-      $return.* = Choice::Empty($Tuple0 {});
+      $tmp_0 = $Tuple0 {};
+      $return.* = Choice::Empty(move $tmp_0);
       unborrow $return;
+      require_uninit $tmp_0;
       require_uninit $return;
       return
   }

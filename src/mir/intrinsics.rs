@@ -563,6 +563,66 @@ pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 pub const PRELUDE_MIR: &str = r#"
 struct $Tuple0: Copy + Drop + Move {}
 
+struct $Tuple1<T0> { _0: T0 }
+impl<T0: Move> Move for $Tuple1<T0> {}
+impl<T0: Drop> Drop for $Tuple1<T0> {}
+impl<T0: Copy> Copy for $Tuple1<T0> {}
+
+struct $Tuple2<T0, T1> { _0: T0, _1: T1 }
+impl<T0: Move, T1: Move> Move for $Tuple2<T0, T1> {}
+impl<T0: Drop, T1: Drop> Drop for $Tuple2<T0, T1> {}
+impl<T0: Copy, T1: Copy> Copy for $Tuple2<T0, T1> {}
+
+struct $Tuple3<T0, T1, T2> { _0: T0, _1: T1, _2: T2 }
+impl<T0: Move, T1: Move, T2: Move> Move for $Tuple3<T0, T1, T2> {}
+impl<T0: Drop, T1: Drop, T2: Drop> Drop for $Tuple3<T0, T1, T2> {}
+impl<T0: Copy, T1: Copy, T2: Copy> Copy for $Tuple3<T0, T1, T2> {}
+
+struct $Tuple4<T0, T1, T2, T3> { _0: T0, _1: T1, _2: T2, _3: T3 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move> Move for $Tuple4<T0, T1, T2, T3> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop> Drop for $Tuple4<T0, T1, T2, T3> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy> Copy for $Tuple4<T0, T1, T2, T3> {}
+
+struct $Tuple5<T0, T1, T2, T3, T4> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move> Move for $Tuple5<T0, T1, T2, T3, T4> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop> Drop for $Tuple5<T0, T1, T2, T3, T4> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy> Copy for $Tuple5<T0, T1, T2, T3, T4> {}
+
+struct $Tuple6<T0, T1, T2, T3, T4, T5> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move> Move for $Tuple6<T0, T1, T2, T3, T4, T5> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop> Drop for $Tuple6<T0, T1, T2, T3, T4, T5> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy> Copy for $Tuple6<T0, T1, T2, T3, T4, T5> {}
+
+struct $Tuple7<T0, T1, T2, T3, T4, T5, T6> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move, T6: Move> Move for $Tuple7<T0, T1, T2, T3, T4, T5, T6> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop, T6: Drop> Drop for $Tuple7<T0, T1, T2, T3, T4, T5, T6> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy, T6: Copy> Copy for $Tuple7<T0, T1, T2, T3, T4, T5, T6> {}
+
+struct $Tuple8<T0, T1, T2, T3, T4, T5, T6, T7> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6, _7: T7 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move, T6: Move, T7: Move> Move for $Tuple8<T0, T1, T2, T3, T4, T5, T6, T7> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop, T6: Drop, T7: Drop> Drop for $Tuple8<T0, T1, T2, T3, T4, T5, T6, T7> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy, T6: Copy, T7: Copy> Copy for $Tuple8<T0, T1, T2, T3, T4, T5, T6, T7> {}
+
+struct $Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6, _7: T7, _8: T8 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move, T6: Move, T7: Move, T8: Move> Move for $Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop, T6: Drop, T7: Drop, T8: Drop> Drop for $Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy, T6: Copy, T7: Copy, T8: Copy> Copy for $Tuple9<T0, T1, T2, T3, T4, T5, T6, T7, T8> {}
+
+struct $Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6, _7: T7, _8: T8, _9: T9 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move, T6: Move, T7: Move, T8: Move, T9: Move> Move for $Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop, T6: Drop, T7: Drop, T8: Drop, T9: Drop> Drop for $Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy, T6: Copy, T7: Copy, T8: Copy, T9: Copy> Copy for $Tuple10<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9> {}
+
+struct $Tuple11<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6, _7: T7, _8: T8, _9: T9, _10: T10 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move, T6: Move, T7: Move, T8: Move, T9: Move, T10: Move> Move for $Tuple11<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop, T6: Drop, T7: Drop, T8: Drop, T9: Drop, T10: Drop> Drop for $Tuple11<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy, T6: Copy, T7: Copy, T8: Copy, T9: Copy, T10: Copy> Copy for $Tuple11<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10> {}
+
+struct $Tuple12<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> { _0: T0, _1: T1, _2: T2, _3: T3, _4: T4, _5: T5, _6: T6, _7: T7, _8: T8, _9: T9, _10: T10, _11: T11 }
+impl<T0: Move, T1: Move, T2: Move, T3: Move, T4: Move, T5: Move, T6: Move, T7: Move, T8: Move, T9: Move, T10: Move, T11: Move> Move for $Tuple12<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> {}
+impl<T0: Drop, T1: Drop, T2: Drop, T3: Drop, T4: Drop, T5: Drop, T6: Drop, T7: Drop, T8: Drop, T9: Drop, T10: Drop, T11: Drop> Drop for $Tuple12<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> {}
+impl<T0: Copy, T1: Copy, T2: Copy, T3: Copy, T4: Copy, T5: Copy, T6: Copy, T7: Copy, T8: Copy, T9: Copy, T10: Copy, T11: Copy> Copy for $Tuple12<T0, T1, T2, T3, T4, T5, T6, T7, T8, T9, T10, T11> {}
+
 trait Move {}
 trait Drop {}
 trait Copy {}

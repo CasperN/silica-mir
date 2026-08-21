@@ -98,9 +98,8 @@ pub enum TypeKind {
     Int(IntTy),
     Float(FloatTy),
     Bool,
-    /// The empty tuple `()`. Placeholder for future tuple arities; today it
-    /// carries no payload.
-    Tuple,
+    /// Tuple type: `()` (0-tuple), `(T,)` (1-tuple), `(T1, T2)` (N-tuple).
+    Tuple(Vec<Type>),
     Never,
     /// Struct or enum reference. See [`Instance`] for the shape.
     Custom(Instance),
@@ -134,7 +133,19 @@ impl std::fmt::Display for TypeKind {
             TypeKind::Int(t) => write!(f, "{}", t.name()),
             TypeKind::Float(t) => write!(f, "{}", t.name()),
             TypeKind::Bool => write!(f, "bool"),
-            TypeKind::Tuple => write!(f, "()"),
+            TypeKind::Tuple(types) => {
+                write!(f, "(")?;
+                for (i, t) in types.iter().enumerate() {
+                    if i > 0 {
+                        write!(f, ", ")?;
+                    }
+                    write!(f, "{}", t)?;
+                }
+                if types.len() == 1 {
+                    write!(f, ",")?;
+                }
+                write!(f, ")")
+            }
             TypeKind::Never => write!(f, "never"),
             TypeKind::Custom(inst) => inst.fmt(f),
             TypeKind::Param(name) => write!(f, "{}", name),
@@ -157,7 +168,7 @@ impl std::fmt::Display for TypeKind {
                     write!(f, "{}", p)?;
                 }
                 write!(f, ")")?;
-                if ret.kind != TypeKind::Tuple {
+                if !matches!(&ret.kind, TypeKind::Tuple(elems) if elems.is_empty()) {
                     write!(f, " -> {}", ret)?;
                 }
                 Ok(())
@@ -453,6 +464,7 @@ pub enum ExprKind {
     },
     Array(Vec<Expr>),
     ArrayIndex(Box<Expr>, Box<Expr>),
+    Tuple(Vec<Expr>),
     Binary(Box<Expr>, BinOp, Box<Expr>),
     Unary(UnOp, Box<Expr>),
 }

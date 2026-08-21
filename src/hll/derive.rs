@@ -330,7 +330,7 @@ impl ClosureUsageTracker {
             ExprKind::EnumConstr(_, _, payload) => {
                 self.walk_expr(payload, env);
             }
-            ExprKind::Array(elements) => {
+            ExprKind::Array(elements) | ExprKind::Tuple(elements) => {
                 for el in elements {
                     self.walk_expr(el, env);
                 }

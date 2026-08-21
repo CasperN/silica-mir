@@ -2072,14 +2072,17 @@ fn test_static_methods<'s0>($return: &'s0 out StaticContainer) {
 fn test_enum_path_and_coexistence<'s0>($return: &'s0 out Shape) {
   k: ShapeKind;
   u: ShapeKind;
+  $tmp_0: $Tuple0;
   s: Shape;
-  $tmp_0: &out Shape;
+  $tmp_1: &out Shape;
   entry:
     k = ShapeKind::Point(5);
-    u = ShapeKind::None($Tuple0 {});
-    $tmp_0 = &out s;
-    call <Shape>::Point(5, move $tmp_0);
+    $tmp_0 = $Tuple0 {};
+    u = ShapeKind::None(move $tmp_0);
     require_uninit $tmp_0;
+    $tmp_1 = &out s;
+    call <Shape>::Point(5, move $tmp_1);
+    require_uninit $tmp_1;
     $return.* = move s;
     unborrow $return;
     require_uninit s;

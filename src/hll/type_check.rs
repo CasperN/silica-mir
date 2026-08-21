@@ -245,6 +245,8 @@ pub enum HllTypeCheckCode {
     ArrayIndexNotInt,
     /// Array literal doesn't match the expected length.
     ArrayLengthMismatch,
+    /// Tuple arity exceeds maximum supported by the compiler (12).
+    TupleArityExceeded,
     /// Control flow statement (break, continue, return) inside a defer block.
     ControlFlowInDefer,
     /// Type annotation references a struct/enum name that isn't declared.
@@ -498,7 +500,14 @@ impl Subst {
             (TypeKind::Int(i1), TypeKind::Int(i2)) if i1 == i2 => Ok(()),
             (TypeKind::Float(f1), TypeKind::Float(f2)) if f1 == f2 => Ok(()),
             (TypeKind::Bool, TypeKind::Bool) => Ok(()),
-            (TypeKind::Tuple, TypeKind::Tuple) => Ok(()),
+            (TypeKind::Tuple(t1), TypeKind::Tuple(t2)) if t1.len() == t2.len() => {
+                let t1 = t1.clone();
+                let t2 = t2.clone();
+                for (x, y) in t1.iter().zip(t2.iter()) {
+                    self.unify(x, y)?;
+                }
+                Ok(())
+            }
             (
                 TypeKind::Custom(Instance {
                     name: n1,
@@ -591,6 +600,7 @@ impl Subst {
             TypeKind::Ref(_, _, inner) => self.occurs_in(id, inner),
             TypeKind::RawPtr(inner) => self.occurs_in(id, inner),
             TypeKind::Array(inner, _) => self.occurs_in(id, inner),
+            TypeKind::Tuple(types) => types.iter().any(|t| self.occurs_in(id, t)),
             TypeKind::Fn { params, ret, .. } => {
                 params.iter().any(|p| self.occurs_in(id, p)) || self.occurs_in(id, ret)
             }
@@ -704,8 +714,17 @@ impl TypeEnv {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Tuple
             | TypeKind::Never => all(),
+            TypeKind::Tuple(types) => {
+                if types.is_empty() {
+                    all()
+                } else {
+                    types
+                        .iter()
+                        .map(|elem| self.class_of(elem, scope))
+                        .fold(all(), |acc, m| acc.intersection(m))
+                }
+            }
             TypeKind::Fn { .. } | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(Instance { name, .. }) => {
@@ -766,12 +785,23 @@ impl TypeEnv {
             TypeKind::Int(_)
             | TypeKind::Float(_)
             | TypeKind::Bool
-            | TypeKind::Tuple
             | TypeKind::Never
             | TypeKind::Var(_)
             | TypeKind::IntVar(_)
             | TypeKind::FloatVar(_)
             | TypeKind::Error => {}
+            TypeKind::Tuple(types) => {
+                if types.len() > 12 {
+                    d.push_error(Diagnostic::new(
+                        HllTypeCheckCode::TupleArityExceeded,
+                        ty.source,
+                        format!("tuple arity {} exceeds maximum of 12", types.len()),
+                    ));
+                }
+                for t in types {
+                    self.validate_type(t, scope, d);
+                }
+            }
             TypeKind::Param(name) => {
                 if !scope.contains_key(name) {
                     d.push_error(Diagnostic::new(
@@ -2233,8 +2263,14 @@ fn match_impl_type(
         (TypeKind::Int(pattern), TypeKind::Int(actual)) => pattern == actual,
         (TypeKind::Float(pattern), TypeKind::Float(actual)) => pattern == actual,
         (TypeKind::Bool, TypeKind::Bool)
-        | (TypeKind::Tuple, TypeKind::Tuple)
         | (TypeKind::Never, TypeKind::Never) => true,
+        (TypeKind::Tuple(pattern_types), TypeKind::Tuple(actual_types)) => {
+            pattern_types.len() == actual_types.len()
+                && pattern_types
+                    .iter()
+                    .zip(actual_types)
+                    .all(|(p, a)| match_impl_type(p, a, type_parameters, lifetime_parameters, bindings))
+        }
         (TypeKind::Param(pattern), TypeKind::Param(actual)) => pattern == actual,
         (TypeKind::Custom(pattern), TypeKind::Custom(actual)) => match_impl_instance(
             pattern,
@@ -2884,6 +2920,27 @@ fn infer_field_access(
         TypeKind::Ref(_, _, inner) => subst.resolve(inner),
         _ => resolved.clone(),
     };
+    if let TypeKind::Tuple(elems) = &struct_ty.kind {
+        if let Ok(idx) = field.parse::<usize>() {
+            if idx < elems.len() {
+                return elems[idx].clone();
+            } else {
+                d.push_error(source_diagnostic(
+                    NoSuchField,
+                    target.source,
+                    format!("tuple of length {} has no field '{}'", elems.len(), field),
+                ));
+                return error_ty();
+            }
+        } else {
+            d.push_error(source_diagnostic(
+                NoSuchField,
+                target.source,
+                format!("tuple type {} has no field '{}'", struct_ty, field),
+            ));
+            return error_ty();
+        }
+    }
     if let TypeKind::Custom(Instance {
         name: struct_name,
         lifetime_args,
@@ -2940,6 +2997,10 @@ fn receiver_field_type(
         TypeKind::Ref(_, _, inner) => subst.resolve(inner),
         _ => resolved,
     };
+    if let TypeKind::Tuple(elems) = &struct_ty.kind {
+        let idx = field.parse::<usize>().ok()?;
+        return elems.get(idx).cloned();
+    }
     let TypeKind::Custom(Instance {
         name,
         lifetime_args,
@@ -3817,7 +3878,7 @@ fn collect_free_vars(
         ExprKind::EnumConstr(_, _, payload) => {
             collect_free_vars(payload, bound, free);
         }
-        ExprKind::Array(elems) => {
+        ExprKind::Array(elems) | ExprKind::Tuple(elems) => {
             for elem in elems {
                 collect_free_vars(elem, bound, free);
             }
@@ -3868,6 +3929,11 @@ fn collect_type_lifetimes(ty: &Type, out: &mut IndexSet<Lifetime>) {
         TypeKind::Array(elem, _) => {
             collect_type_lifetimes(elem, out);
         }
+        TypeKind::Tuple(types) => {
+            for t in types {
+                collect_type_lifetimes(t, out);
+            }
+        }
         TypeKind::Fn { params, ret, .. } => {
             for p in params {
                 collect_type_lifetimes(p, out);
@@ -3880,7 +3946,6 @@ fn collect_type_lifetimes(ty: &Type, out: &mut IndexSet<Lifetime>) {
         TypeKind::Int(_)
         | TypeKind::Float(_)
         | TypeKind::Bool
-        | TypeKind::Tuple
         | TypeKind::Never
         | TypeKind::Var(_)
         | TypeKind::IntVar(_)
@@ -4719,6 +4784,20 @@ fn infer_inner(
                 array_ty(first_ty, array_len(elements.len()))
             }
         }
+        ExprKind::Tuple(elements) => {
+            if elements.len() > 12 {
+                d.push_error(source_diagnostic(
+                    HllTypeCheckCode::TupleArityExceeded,
+                    expr.source,
+                    format!("tuple arity {} exceeds maximum of 12", elements.len()),
+                ));
+            }
+            let elem_types = elements
+                .iter()
+                .map(|el| infer_inner(env, subst, el, types, d))
+                .collect::<Vec<_>>();
+            Type::synthesized(TypeKind::Tuple(elem_types))
+        }
         ExprKind::ArrayIndex(arr, idx) => {
             let arr_ty = infer_inner(env, subst, arr, types, d);
             let resolved = subst.resolve(&arr_ty);
@@ -5068,7 +5147,7 @@ fn check_no_control_flow(expr: &Expr, loop_depth: usize, d: &mut Diagnostics) {
                 check_no_control_flow(body_expr, loop_depth, d);
             }
         }
-        ExprKind::Array(elements) => {
+        ExprKind::Array(elements) | ExprKind::Tuple(elements) => {
             for el in elements {
                 check_no_control_flow(el, loop_depth, d);
             }

@@ -13,9 +13,12 @@ enum List: Move {
 }
 
 fn list_empty<'s0>($return: &'s0 out List) {
+  $tmp_0: $Tuple0;
   entry:
-    $return.* = List::Empty($Tuple0 {});
+    $tmp_0 = $Tuple0 {};
+    $return.* = List::Empty(move $tmp_0);
     unborrow $return;
+    require_uninit $tmp_0;
     require_uninit $return;
     return
 }

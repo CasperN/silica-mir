@@ -48,7 +48,13 @@ pub fn bool_ty() -> Type {
     Type::synthesized(TypeKind::Bool)
 }
 pub fn unit_ty() -> Type {
-    Type::synthesized(TypeKind::Tuple)
+    Type::synthesized(TypeKind::Tuple(Vec::new()))
+}
+pub fn tuple_ty(elems: Vec<Type>) -> Type {
+    Type::synthesized(TypeKind::Tuple(elems))
+}
+pub fn is_unit_tuple(ty: &Type) -> bool {
+    matches!(&ty.kind, TypeKind::Tuple(elems) if elems.is_empty())
 }
 pub fn never_ty() -> Type {
     Type::synthesized(TypeKind::Never)
