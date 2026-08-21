@@ -73,6 +73,123 @@ pub fn check_program(prog: &IndexedProgram, d: &mut Diagnostics) {
             TypeDecl::Enum(e) => check_enum(e, prog, d),
         }
     }
+    for ((trait_path, _), imp) in &prog.impls {
+        if let Some(marker) = Marker::from_name(&trait_path.name) {
+            check_marker_impl(imp, trait_path, marker, prog, d);
+        }
+    }
+}
+
+fn marker_composition_code(m: Marker) -> SubstructuralCompositionCode {
+    match m {
+        Marker::Copy => CopyMarkerNotSatisfied,
+        Marker::Drop => DropMarkerNotSatisfied,
+        Marker::Move => MoveMarkerNotSatisfied,
+    }
+}
+
+fn check_marker_impl(
+    imp: &ImplBlock,
+    _trait_path: &Instance,
+    marker: Marker,
+    prog: &IndexedProgram,
+    d: &mut Diagnostics,
+) {
+    let env = LocalEnv::for_decl(prog, &imp.params);
+    let code = marker_composition_code(marker);
+    match &imp.target.kind {
+        TypeKind::Custom(instance) => {
+            if let Some(TypeDecl::Struct(s)) = prog.types.get(&instance.name) {
+                for f in &s.fields {
+                    let field_ty = s
+                        .meta
+                        .try_substitute_types(&f.ty, &instance.type_args)
+                        .unwrap_or_else(|| f.ty.clone());
+                    let c = env.class_of(&field_ty);
+                    if !c.implies(marker) {
+                        d.push_error(diag(
+                            code,
+                            f.ty.source,
+                            format!(
+                                "In 'impl {} for {}', field '{}' has type {} which is not {}",
+                                marker.name(),
+                                imp.target,
+                                f.name,
+                                field_ty,
+                                marker.name(),
+                            ),
+                        ));
+                    }
+                }
+            } else if let Some(TypeDecl::Enum(e)) = prog.types.get(&instance.name) {
+                for v in &e.variants {
+                    let v_ty = e
+                        .meta
+                        .try_substitute_types(&v.ty, &instance.type_args)
+                        .unwrap_or_else(|| v.ty.clone());
+                    let c = env.class_of(&v_ty);
+                    if !c.implies(marker) {
+                        d.push_error(diag(
+                            code,
+                            v.ty.source,
+                            format!(
+                                "In 'impl {} for {}', variant '{}' payload type {} is not {}",
+                                marker.name(),
+                                imp.target,
+                                v.name,
+                                v_ty,
+                                marker.name(),
+                            ),
+                        ));
+                    }
+                }
+            }
+        }
+        TypeKind::Array(elem, _) => {
+            let c = env.class_of(elem);
+            if !c.implies(marker) {
+                d.push_error(diag(
+                    code,
+                    elem.source,
+                    format!(
+                        "In 'impl {} for {}', element type {} is not {}",
+                        marker.name(),
+                        imp.target,
+                        elem,
+                        marker.name(),
+                    ),
+                ));
+            }
+        }
+        TypeKind::Ref(kind, _, _) => {
+            if !kind.value_markers().implies(marker) {
+                d.push_error(diag(
+                    code,
+                    imp.params.source,
+                    format!(
+                        "Cannot implement {} for reference type {}",
+                        marker.name(),
+                        imp.target,
+                    ),
+                ));
+            }
+        }
+        TypeKind::Param(_) => {
+            let c = env.class_of(&imp.target);
+            if !c.implies(marker) {
+                d.push_error(diag(
+                    code,
+                    imp.params.source,
+                    format!(
+                        "Cannot implement {} for unconstrained type parameter {}",
+                        marker.name(),
+                        imp.target,
+                    ),
+                ));
+            }
+        }
+        _ => {}
+    }
 }
 
 /// For each marker declared on `decl_meta`, if `class` doesn't imply it,

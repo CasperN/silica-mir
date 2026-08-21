@@ -1,0 +1,35 @@
+error: at 3:8: [COMP-CopyMarkerNotSatisfied] In 'impl Copy for BadBoxCopy<T>', field 'val' has type T which is not Copy
+   |
+ 2 | struct BadBoxCopy<T> {
+ 3 |   val: T,
+   |        ^
+ 4 | }
+   |
+error: at 10:8: [COMP-DropMarkerNotSatisfied] In 'impl Drop for BadBoxDrop<T>', field 'val' has type T which is not Drop
+    |
+  9 | struct BadBoxDrop<T> {
+ 10 |   val: T,
+    |        ^
+ 11 | }
+    |
+error: at 17:8: [COMP-MoveMarkerNotSatisfied] In 'impl Move for BadBoxMove<T>', field 'val' has type T which is not Move
+    |
+ 16 | struct BadBoxMove<T> {
+ 17 |   val: T,
+    |        ^
+ 18 | }
+    |
+error: at 25:9: [COMP-CopyMarkerNotSatisfied] In 'impl Copy for BadOptionCopy<T>', variant 'Some' payload type T is not Copy
+    |
+ 24 |   None: (),
+ 25 |   Some: T,
+    |         ^
+ 26 | }
+    |
+error: at 32:8: [COMP-CopyMarkerNotSatisfied] In 'impl Copy for BadArrayBox<T>', field 'arr' has type [T; 4] which is not Copy
+    |
+ 31 | struct BadArrayBox<T> {
+ 32 |   arr: [T; 4],
+    |        ^^^^^^
+ 33 | }
+    |

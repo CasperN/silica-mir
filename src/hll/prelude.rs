@@ -8,6 +8,10 @@ use crate::hll::ast::*;
 use crate::hll::parser::Parser;
 
 const PRELUDE_HLL: &str = r#"
+trait Move {}
+trait Drop {}
+trait Copy {}
+
 trait AutoClone {
   fn clone(&self) -> Self;
 }

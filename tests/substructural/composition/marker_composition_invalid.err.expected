@@ -75,6 +75,69 @@ error: at 81:35: [COMP-MoveMarkerNotSatisfied] In enum 'MoveLinearVariant' (mark
     |                                   ^^^^^^ the lifetime of this reference is called '1 in this diagnostic
  82 | 
     |
+error: at 94:35: [COMP-CopyMarkerNotSatisfied] In 'impl Copy for BadWrapperCopy<T>', field 'inner' has type T which is not Copy
+    |
+ 93 | # Unbounded T is not Copy:
+ 94 | struct BadWrapperCopy<T> { inner: T }
+    |                                   ^
+ 95 | impl<T> Copy for BadWrapperCopy<T> {}
+    |
+error: at 98:35: [COMP-DropMarkerNotSatisfied] In 'impl Drop for BadWrapperDrop<T>', field 'inner' has type T which is not Drop
+    |
+ 97 | # Unbounded T is not Drop:
+ 98 | struct BadWrapperDrop<T> { inner: T }
+    |                                   ^
+ 99 | impl<T> Drop for BadWrapperDrop<T> {}
+    |
+error: at 102:35: [COMP-MoveMarkerNotSatisfied] In 'impl Move for BadWrapperMove<T>', field 'inner' has type T which is not Move
+     |
+ 101 | # Unbounded T is not Move:
+ 102 | struct BadWrapperMove<T> { inner: T }
+     |                                   ^
+ 103 | impl<T> Move for BadWrapperMove<T> {}
+     |
+error: at 106:39: [COMP-DropMarkerNotSatisfied] In 'impl Drop for BadCopyImpliesDrop<T>', field 'inner' has type T which is not Drop
+     |
+ 105 | # Copy does not imply Drop:
+ 106 | struct BadCopyImpliesDrop<T> { inner: T }
+     |                                       ^
+ 107 | impl<T: Copy> Drop for BadCopyImpliesDrop<T> {}
+     |
+error: at 112:44: [COMP-CopyMarkerNotSatisfied] In 'impl Copy for BadEnumCopy<T>', variant 'Some' payload type T is not Copy
+     |
+ 111 | # Unbounded T in variant payload is not Copy:
+ 112 | enum BadEnumCopy<T> { None: $Tuple0, Some: T }
+     |                                            ^
+ 113 | impl<T> Copy for BadEnumCopy<T> {}
+     |
+error: at 116:44: [COMP-DropMarkerNotSatisfied] In 'impl Drop for BadEnumDrop<T>', variant 'Some' payload type T is not Drop
+     |
+ 115 | # Unbounded T in variant payload is not Drop:
+ 116 | enum BadEnumDrop<T> { None: $Tuple0, Some: T }
+     |                                            ^
+ 117 | impl<T> Drop for BadEnumDrop<T> {}
+     |
+error: at 122:36: [COMP-CopyMarkerNotSatisfied] In 'impl Copy for BadArrayWrapper<T>', field 'items' has type [T; 4] which is not Copy
+     |
+ 121 | # Unbounded T in array field is not Copy:
+ 122 | struct BadArrayWrapper<T> { items: [T; 4] }
+     |                                    ^^^^^^
+ 123 | impl<T> Copy for BadArrayWrapper<T> {}
+     |
+error: at 127:6: [COMP-CopyMarkerNotSatisfied] Cannot implement Copy for reference type &mut i64
+     |
+ 126 | 
+ 127 | impl Copy for &mut i64 {}
+     |      ^^^^
+ 128 | impl Drop for &out i64 {}
+     |
+error: at 128:6: [COMP-DropMarkerNotSatisfied] Cannot implement Drop for reference type &out i64
+     |
+ 127 | impl Copy for &mut i64 {}
+ 128 | impl Drop for &out i64 {}
+     |      ^^^^
+ 129 | 
+     |
 note: at 86:8: [PARSE-MoveMarkerRedundant] Move marker is redundant on 'RedundantStruct' because both Copy and Drop are present
     |
  85 | # Move is implied by Copy + Drop. Declaring it is redundant.
@@ -87,4 +150,5 @@ note: at 89:6: [PARSE-MoveMarkerRedundant] Move marker is redundant on 'Redundan
  88 | # Move is implied by Copy + Drop. Declaring it is redundant on an enum.
  89 | enum RedundantEnum: Copy + Drop + Move { A: i64 }
     |      ^^^^^^^^^^^^^
+ 90 | 
     |

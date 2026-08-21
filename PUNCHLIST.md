@@ -10,7 +10,6 @@ the compiler evolves; treat entries as snapshots, not commitments.
   2. Revisit which ownership traits are compiler-blessed. The trivial and auto
      tiers require compiler interaction; the higher explicit tiers may live in
      the standard library. Discuss the boundary before implementation.
-- **Conditional traits and markers**
 - **Extract a common `instance` grammar rule.** Multiple grammar sites
   ("identifier + optional type_args") already share the shape: `fn_name`'s
   free-fn form, the trait ref inside `impl_decl` (`trait_name` +

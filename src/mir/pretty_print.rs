@@ -37,15 +37,17 @@ pub fn pretty_print(program: &IndexedProgram) -> String {
 /// not appear in fixture-pinned pretty-printed output.
 fn is_prelude_decl(decl: DeclarationRef<'_>) -> bool {
     let source = match decl {
-        DeclarationRef::Impl(i) => i.methods.first().map(|m| m.meta.name_source),
-        _ => decl.meta().map(|m| m.name_source),
+        DeclarationRef::Impl(i) => {
+            i.methods.first().map(|m| m.meta.name_source).unwrap_or(i.params.source)
+        }
+        _ => decl.meta().map(|m| m.name_source).unwrap_or(decl.source()),
     };
     matches!(
         source,
-        Some(SourceInfo::Generated {
+        SourceInfo::Generated {
             kind: GeneratedKind::Prelude,
             ..
-        }),
+        },
     )
 }
 

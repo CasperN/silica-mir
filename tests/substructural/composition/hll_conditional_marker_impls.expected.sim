@@ -1,0 +1,94 @@
+struct Box<T> {
+  val: T
+}
+
+impl<T: Move> Move for Box<T> {
+}
+
+impl<T: Drop> Drop for Box<T> {
+}
+
+impl<T: Copy> Copy for Box<T> {
+}
+
+enum Option<T> {
+  None: $Tuple0
+  Some: T
+}
+
+impl<T: Move> Move for Option<T> {
+}
+
+impl<T: Drop> Drop for Option<T> {
+}
+
+impl<T: Copy> Copy for Option<T> {
+}
+
+struct ArrayHolder<T> {
+  arr: [T; 2]
+}
+
+impl<T: Move> Move for ArrayHolder<T> {
+}
+
+impl<T: Drop> Drop for ArrayHolder<T> {
+}
+
+impl<T: Copy> Copy for ArrayHolder<T> {
+}
+
+fn test_box_copy<'s0>(b: Box<i64>, $return: &'s0 out i64) {
+  b_copy: Box<i64>;
+  b_copy2: Box<i64>;
+  $tmp_0: &out i64;
+  entry:
+    b_copy = copy b;
+    b_copy2 = move b;
+    $tmp_0 = &out $return.*;
+    call $i64_add(move b_copy.val, move b_copy2.val, move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    require_uninit b_copy2;
+    require_uninit b_copy;
+    require_uninit $return;
+    require_uninit b;
+    return
+}
+
+fn test_option_copy<'s0>(opt: Option<i64>, $return: &'s0 out bool) {
+  opt1: Option<i64>;
+  opt2: Option<i64>;
+  entry:
+    opt1 = copy opt;
+    opt2 = move opt;
+    $return.* = true;
+    unborrow $return;
+    drop opt2;
+    require_uninit opt2;
+    drop opt1;
+    require_uninit opt1;
+    require_uninit $return;
+    require_uninit opt;
+    return
+}
+
+fn test_array_holder_copy<'s0>(h: ArrayHolder<i64>, $return: &'s0 out i64) {
+  h1: ArrayHolder<i64>;
+  h2: ArrayHolder<i64>;
+  $tmp_0: &out i64;
+  entry:
+    h1 = copy h;
+    h2 = move h;
+    $tmp_0 = &out $return.*;
+    call $i64_add(move h1.arr[0], move h2.arr[1], move $tmp_0);
+    unborrow $return;
+    require_uninit $tmp_0;
+    drop h2.arr[0];
+    require_uninit h2;
+    drop h1.arr[1];
+    require_uninit h1;
+    require_uninit $return;
+    require_uninit h;
+    return
+}

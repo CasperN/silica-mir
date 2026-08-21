@@ -709,13 +709,22 @@ impl TypeEnv {
             TypeKind::Fn { .. } | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
             TypeKind::Custom(Instance { name, .. }) => {
-                if let Some(s) = self.structs.get(name) {
+                let declared = if let Some(s) = self.structs.get(name) {
                     s.markers
                 } else if let Some(e) = self.enums.get(name) {
                     e.markers
                 } else {
                     Markers::empty()
+                };
+                let mut markers = declared.iter_declared().collect::<Vec<_>>();
+                for m in [Marker::Copy, Marker::Drop, Marker::Move] {
+                    if !declared.declared(m)
+                        && type_satisfies_trait(self, ty, &Instance::bare(m.name()), scope)
+                    {
+                        markers.push(m);
+                    }
                 }
+                Markers::from_iter(markers)
             }
             TypeKind::Param(name) => scope
                 .get(name)

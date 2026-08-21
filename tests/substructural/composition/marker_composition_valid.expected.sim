@@ -61,3 +61,102 @@ struct CopyDropPoint: Copy + Drop {
 struct MoveCopyDropField: Move {
   p: CopyDropPoint
 }
+
+struct GenericWrapper<T> {
+  inner: T
+}
+
+impl<T: Move> Move for GenericWrapper<T> {
+}
+
+impl<T: Drop> Drop for GenericWrapper<T> {
+}
+
+impl<T: Copy> Copy for GenericWrapper<T> {
+}
+
+struct GenericPair<T, U> {
+  first: T
+  second: U
+}
+
+impl<T: Move, U: Move> Move for GenericPair<T, U> {
+}
+
+impl<T: Drop, U: Drop> Drop for GenericPair<T, U> {
+}
+
+impl<T: Copy, U: Copy> Copy for GenericPair<T, U> {
+}
+
+enum GenericOption<T> {
+  None: $Tuple0
+  Some: T
+}
+
+impl<T: Move> Move for GenericOption<T> {
+}
+
+impl<T: Drop> Drop for GenericOption<T> {
+}
+
+impl<T: Copy> Copy for GenericOption<T> {
+}
+
+struct GenericArrayWrapper<T> {
+  items: [T; 4]
+}
+
+impl<T: Move> Move for GenericArrayWrapper<T> {
+}
+
+impl<T: Drop> Drop for GenericArrayWrapper<T> {
+}
+
+impl<T: Copy> Copy for GenericArrayWrapper<T> {
+}
+
+enum GenericArrayOption<T> {
+  None: $Tuple0
+  Some: [T; 2]
+}
+
+impl<T: Copy> Copy for GenericArrayOption<T> {
+}
+
+impl<T: Drop> Drop for GenericArrayOption<T> {
+}
+
+impl<T: Move> Move for GenericArrayOption<T> {
+}
+
+fn test_struct_copy_drop<'s0>(w: GenericWrapper<i64>, $return: &'s0 out GenericWrapper<i64>) {
+  copy1: GenericWrapper<i64>;
+  entry:
+    copy1 = copy w;
+    $return.* = copy copy1;
+    unborrow $return;
+    drop w;
+    drop copy1;
+    return
+}
+
+fn test_enum_copy_drop<'s0>(opt: GenericOption<i64>, $return: &'s0 out GenericOption<i64>) {
+  opt_copy: GenericOption<i64>;
+  entry:
+    opt_copy = copy opt;
+    $return.* = move opt_copy;
+    unborrow $return;
+    drop opt;
+    return
+}
+
+fn test_array_wrapper_copy_drop<'s0>(arr: GenericArrayWrapper<i64>, $return: &'s0 out GenericArrayWrapper<i64>) {
+  arr_copy: GenericArrayWrapper<i64>;
+  entry:
+    arr_copy = copy arr;
+    $return.* = move arr_copy;
+    unborrow $return;
+    drop arr;
+    return
+}

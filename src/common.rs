@@ -17,6 +17,16 @@ impl Marker {
             Marker::Move => "Move",
         }
     }
+
+    /// Parse a marker from its canonical name.
+    pub fn from_name(name: &str) -> Option<Marker> {
+        match name {
+            "Copy" => Some(Marker::Copy),
+            "Drop" => Some(Marker::Drop),
+            "Move" => Some(Marker::Move),
+            _ => None,
+        }
+    }
 }
 
 /// Per-column implementation tier. Only Trivial exists today;

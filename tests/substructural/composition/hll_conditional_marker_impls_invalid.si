@@ -1,0 +1,35 @@
+# Unbounded T is not Copy:
+struct BadBoxCopy<T> {
+  val: T,
+}
+
+impl<T> Copy for BadBoxCopy<T> {}
+
+# Unbounded T is not Drop:
+struct BadBoxDrop<T> {
+  val: T,
+}
+
+impl<T> Drop for BadBoxDrop<T> {}
+
+# Unbounded T is not Move:
+struct BadBoxMove<T> {
+  val: T,
+}
+
+impl<T> Move for BadBoxMove<T> {}
+
+# Unbounded T in enum variant is not Copy:
+enum BadOptionCopy<T> {
+  None: (),
+  Some: T,
+}
+
+impl<T> Copy for BadOptionCopy<T> {}
+
+# Unbounded T in struct with array is not Copy:
+struct BadArrayBox<T> {
+  arr: [T; 4],
+}
+
+impl<T> Copy for BadArrayBox<T> {}

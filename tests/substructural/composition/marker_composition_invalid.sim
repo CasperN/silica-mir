@@ -87,3 +87,43 @@ struct RedundantStruct: Copy + Drop + Move { x: i64 }
 
 # Move is implied by Copy + Drop. Declaring it is redundant on an enum.
 enum RedundantEnum: Copy + Drop + Move { A: i64 }
+
+# ---------- Invalid conditional marker impls for structs ----------
+
+# Unbounded T is not Copy:
+struct BadWrapperCopy<T> { inner: T }
+impl<T> Copy for BadWrapperCopy<T> {}
+
+# Unbounded T is not Drop:
+struct BadWrapperDrop<T> { inner: T }
+impl<T> Drop for BadWrapperDrop<T> {}
+
+# Unbounded T is not Move:
+struct BadWrapperMove<T> { inner: T }
+impl<T> Move for BadWrapperMove<T> {}
+
+# Copy does not imply Drop:
+struct BadCopyImpliesDrop<T> { inner: T }
+impl<T: Copy> Drop for BadCopyImpliesDrop<T> {}
+
+# ---------- Invalid conditional marker impls for enums ----------
+
+# Unbounded T in variant payload is not Copy:
+enum BadEnumCopy<T> { None: $Tuple0, Some: T }
+impl<T> Copy for BadEnumCopy<T> {}
+
+# Unbounded T in variant payload is not Drop:
+enum BadEnumDrop<T> { None: $Tuple0, Some: T }
+impl<T> Drop for BadEnumDrop<T> {}
+
+# ---------- Invalid conditional marker impls for arrays ----------
+
+# Unbounded T in array field is not Copy:
+struct BadArrayWrapper<T> { items: [T; 4] }
+impl<T> Copy for BadArrayWrapper<T> {}
+
+# ---------- Invalid marker impls for references ----------
+
+impl Copy for &mut i64 {}
+impl Drop for &out i64 {}
+

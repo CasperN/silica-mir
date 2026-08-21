@@ -89,3 +89,71 @@ enum CopyDropScalarVariants: Copy + Drop { N: i64  B: bool  U: $Tuple0 }
 # Move struct may hold a Copy+Drop-typed field.
 struct CopyDropPoint: Copy + Drop { x: i64  y: i64 }
 struct MoveCopyDropField: Move { p: CopyDropPoint }
+
+# ---------- Conditional marker impls for generic structs ----------
+
+# covers: conditional Move, Drop, and Copy impls on generic structs
+struct GenericWrapper<T> { inner: T }
+impl<T: Move> Move for GenericWrapper<T> {}
+impl<T: Drop> Drop for GenericWrapper<T> {}
+impl<T: Copy> Copy for GenericWrapper<T> {}
+
+# covers: conditional marker impls on multi-parameter generic structs
+struct GenericPair<T, U> { first: T, second: U }
+impl<T: Move, U: Move> Move for GenericPair<T, U> {}
+impl<T: Drop, U: Drop> Drop for GenericPair<T, U> {}
+impl<T: Copy, U: Copy> Copy for GenericPair<T, U> {}
+
+# ---------- Conditional marker impls for generic enums ----------
+
+# covers: conditional Move, Drop, and Copy impls on generic enums
+enum GenericOption<T> { None: $Tuple0, Some: T }
+impl<T: Move> Move for GenericOption<T> {}
+impl<T: Drop> Drop for GenericOption<T> {}
+impl<T: Copy> Copy for GenericOption<T> {}
+
+# ---------- Conditional marker impls for structs and enums containing arrays ----------
+
+# covers: conditional marker impls on structs containing arrays of type parameters
+struct GenericArrayWrapper<T> { items: [T; 4] }
+impl<T: Move> Move for GenericArrayWrapper<T> {}
+impl<T: Drop> Drop for GenericArrayWrapper<T> {}
+impl<T: Copy> Copy for GenericArrayWrapper<T> {}
+
+# covers: conditional marker impls on enums with array payloads
+enum GenericArrayOption<T> { None: $Tuple0, Some: [T; 2] }
+impl<T: Copy> Copy for GenericArrayOption<T> {}
+impl<T: Drop> Drop for GenericArrayOption<T> {}
+impl<T: Move> Move for GenericArrayOption<T> {}
+
+# ---------- Functions verifying that conditional impls enable Copy / Drop / Move ----------
+
+fn test_struct_copy_drop(w: GenericWrapper<i64>, $return: &out GenericWrapper<i64>) {
+  copy1: GenericWrapper<i64>;
+  entry:
+    # Since i64 is Copy, GenericWrapper<i64> satisfies Copy
+    copy1 = copy w;
+    $return.* = copy copy1;
+    drop w;
+    drop copy1;
+    return
+}
+
+fn test_enum_copy_drop(opt: GenericOption<i64>, $return: &out GenericOption<i64>) {
+  opt_copy: GenericOption<i64>;
+  entry:
+    opt_copy = copy opt;
+    $return.* = move opt_copy;
+    drop opt;
+    return
+}
+
+fn test_array_wrapper_copy_drop(arr: GenericArrayWrapper<i64>, $return: &out GenericArrayWrapper<i64>) {
+  arr_copy: GenericArrayWrapper<i64>;
+  entry:
+    arr_copy = copy arr;
+    $return.* = move arr_copy;
+    drop arr;
+    return
+}
+

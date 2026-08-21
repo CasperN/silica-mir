@@ -563,6 +563,10 @@ pub const PTR_OFFSET_NAME: &str = "$ptr_offset";
 pub const PRELUDE_MIR: &str = r#"
 struct $Tuple0: Copy + Drop + Move {}
 
+trait Move {}
+trait Drop {}
+trait Copy {}
+
 trait AutoClone {
   fn clone(recv: &Self, $return: &out Self);
 }
@@ -637,6 +641,7 @@ fn tag_prelude(decl: &mut Declaration) {
             }
         }
         Declaration::Impl(i) => {
+            i.params.source = mark;
             for m in &mut i.methods {
                 m.meta.name_source = mark;
             }

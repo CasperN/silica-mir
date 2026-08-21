@@ -678,11 +678,22 @@ impl<'a> LocalEnv<'a> {
             | TypeKind::Fn { .. } => all(),
             TypeKind::Never | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
-            TypeKind::Custom(Instance { name, .. }) => match self.program.types.get(name) {
-                Some(TypeDecl::Struct(s)) => s.meta.markers,
-                Some(TypeDecl::Enum(e)) => e.meta.markers,
-                None => Markers::empty(),
-            },
+            TypeKind::Custom(Instance { name, .. }) => {
+                let declared = match self.program.types.get(name) {
+                    Some(TypeDecl::Struct(s)) => s.meta.markers,
+                    Some(TypeDecl::Enum(e)) => e.meta.markers,
+                    None => Markers::empty(),
+                };
+                let mut markers = declared.iter_declared().collect::<Vec<_>>();
+                for m in [Marker::Copy, Marker::Drop, Marker::Move] {
+                    if !declared.declared(m)
+                        && self.has_applicable_trait_impl(&Instance::bare(m.name()), ty)
+                    {
+                        markers.push(m);
+                    }
+                }
+                Markers::from_iter(markers)
+            }
             TypeKind::Param(name) => self
                 .type_param(name)
                 .map(|param| self.markers_from_bounds(&param.bounds, &mut HashSet::new()))

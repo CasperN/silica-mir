@@ -508,11 +508,26 @@ impl MonoCtx {
             | TypeKind::Fn { .. }
             | TypeKind::RawPtr(_) => all(),
             TypeKind::Ref(kind, _, _) => kind.value_markers(),
-            TypeKind::Custom(instance) => self
-                .type_markers
-                .get(&instance.name)
-                .copied()
-                .unwrap_or_else(Markers::empty),
+            TypeKind::Custom(instance) => {
+                let declared = self
+                    .type_markers
+                    .get(&instance.name)
+                    .copied()
+                    .unwrap_or_else(Markers::empty);
+                let mut markers = declared.iter_declared().collect::<Vec<_>>();
+                for m in [Marker::Copy, Marker::Drop, Marker::Move] {
+                    if !declared.declared(m)
+                        && self.satisfies_trait_concrete(
+                            ty,
+                            &Instance::bare(m.name()),
+                            &mut Vec::new(),
+                        )
+                    {
+                        markers.push(m);
+                    }
+                }
+                Markers::from_iter(markers)
+            }
             TypeKind::Array(element, _) => self.class_of_concrete(element),
             TypeKind::Param(name) => panic!(
                 "mono: unresolved type parameter '{}' during impl-bound checking",

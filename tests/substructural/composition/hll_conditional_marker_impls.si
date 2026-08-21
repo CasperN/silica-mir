@@ -1,0 +1,45 @@
+# covers: HLL generic structs with conditional marker impls
+struct Box<T> {
+  val: T,
+}
+
+impl<T: Move> Move for Box<T> {}
+impl<T: Drop> Drop for Box<T> {}
+impl<T: Copy> Copy for Box<T> {}
+
+# covers: HLL generic enums with conditional marker impls
+enum Option<T> {
+  None: (),
+  Some: T,
+}
+
+impl<T: Move> Move for Option<T> {}
+impl<T: Drop> Drop for Option<T> {}
+impl<T: Copy> Copy for Option<T> {}
+
+# covers: HLL generic structs with array fields and conditional marker impls
+struct ArrayHolder<T> {
+  arr: [T; 2],
+}
+
+impl<T: Move> Move for ArrayHolder<T> {}
+impl<T: Drop> Drop for ArrayHolder<T> {}
+impl<T: Copy> Copy for ArrayHolder<T> {}
+
+fn test_box_copy(b: Box<i64>) -> i64 {
+  let b_copy = b;
+  let b_copy2 = b;
+  b_copy.val + b_copy2.val
+}
+
+fn test_option_copy(opt: Option<i64>) -> bool {
+  let opt1 = opt;
+  let opt2 = opt;
+  true
+}
+
+fn test_array_holder_copy(h: ArrayHolder<i64>) -> i64 {
+  let h1 = h;
+  let h2 = h;
+  h1.arr[0] + h2.arr[1]
+}
