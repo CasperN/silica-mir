@@ -28,15 +28,21 @@ error: at 37:6: [TC-DuplicateDeclaration] Duplicate declaration of type 'N'
     |
 error: at 43:3: [TC-DuplicateStructField] In struct 'S', field 'x' is declared more than once
     |
+ 41 | struct S {
  42 |   x: i64
+    |   ------ previous declaration of field 'x' here
  43 |   x: bool
     |   ^^^^^^^
  44 | }
     |
+  hint: struct fields must have unique names
 error: at 50:3: [TC-DuplicateEnumVariant] In enum 'V', variant 'A' is declared more than once
     |
+ 48 | enum V {
  49 |   A: $Tuple0
+    |   ---------- previous declaration of variant 'A' here
  50 |   A: i64
     |   ^^^^^^
  51 | }
     |
+  hint: enum variants must have unique names

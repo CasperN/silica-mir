@@ -19,9 +19,11 @@ error: at 24:8: [PARSE-UnknownAbi] the Silica ABI is the default; omit the ABI s
     |        ^^^^^^^^
  25 | 
     |
+  hint: remove the '"Silica"' ABI string
 error: at 26:8: [PARSE-UnknownAbi] unknown extern ABI "system" — expected "C" or bare extern
     |
  25 | 
  26 | extern "system" fn unknown_abi(x: i64);
     |        ^^^^^^^^
     |
+  hint: supported ABIs are '"C"' or omit the ABI clause for Silica ABI

@@ -12,13 +12,16 @@ error: at 40:3: [PARSE-InvalidFnModifiers] trait method 'm' must not have a body
     |   ^
  41 |     entry:
     |
-error: at 48:3: [PARSE-MalformedCst] duplicate trait method 'm'
+error: at 48:3: [PARSE-DuplicateMethod] duplicate trait method 'm'
     |
+ 46 | trait DupTraitM {
  47 |   fn m(recv: &Self);
+    |   ------------------ previous declaration of 'm' here
  48 |   fn m(recv: &mut Self);
     |   ^^^^^^^^^^^^^^^^^^^^^^
  49 | }
     |
+  hint: method names within the same trait must be unique
 error: at 53:3: [PARSE-InvalidFnModifiers] impl method 'm' cannot be extern without an ABI clause; impl methods have no foreign symbol
     |
  52 | impl ExternM for S {
@@ -33,13 +36,21 @@ error: at 58:3: [PARSE-InvalidFnModifiers] impl method 'm' requires a body
     |   ^^^^^^^^^^^^^^^
  59 | }
     |
-error: at 67:3: [PARSE-MalformedCst] duplicate impl method 'm'
+error: at 67:3: [PARSE-DuplicateMethod] duplicate impl method 'm'
+    |
+ 62 | impl DupM for S {
+ 63 |   fn m(recv: &S) {
+    |   - previous definition of 'm' here
+ 64 |     entry:
+    |
+    | ...
     |
  66 |   }
  67 |   fn m(recv: &S) {
     |   ^
  68 |     entry:
     |
+  hint: method names within the same impl block must be unique
 error: at 74:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a type-parameter name
     |
  73 | trait ReservedT { fn m(recv: &Self); }
@@ -47,6 +58,7 @@ error: at 74:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  75 |   fn m(recv: &R) {
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 84:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a struct name
     |
  83 | # implicit trait/impl receiver alias.
@@ -54,6 +66,7 @@ error: at 84:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |        ^^^^
  85 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 86:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as an enum name
     |
  85 | 
@@ -61,6 +74,7 @@ error: at 86:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  87 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 88:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
     |
  87 | 
@@ -68,6 +82,7 @@ error: at 88:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |       ^^^^
  89 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 90:4: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a function name
     |
  89 | 
@@ -75,6 +90,7 @@ error: at 90:4: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |    ^^^^
  91 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 95:24: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a field name
     |
  94 | # binder position.
@@ -82,6 +98,7 @@ error: at 95:24: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as 
     |                        ^^^^
  96 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 97:24: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a variant name
     |
  96 | 
@@ -89,6 +106,7 @@ error: at 97:24: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as 
     |                        ^^^^
  98 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 99:20: [PARSE-ReservedIdent] In function 'with_self_param': 'Self' is reserved and cannot be used as a parameter name
     |
  98 | 
@@ -96,6 +114,7 @@ error: at 99:20: [PARSE-ReservedIdent] In function 'with_self_param': 'Self' is 
     |                    ^^^^
  100 |   entry:
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 105:3: [PARSE-ReservedIdent] In function 'with_self_local': 'Self' is reserved and cannot be used as a local name
      |
  104 | fn with_self_local() {
@@ -103,6 +122,7 @@ error: at 105:3: [PARSE-ReservedIdent] In function 'with_self_local': 'Self' is 
      |   ^^^^
  106 |   entry:
      |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 115:31: [PARSE-ReservedIdent] In function 'take_self_out_of_scope': 'Self' may only appear as a type reference inside a trait or impl body
      |
  114 | # `UndeclaredType`.
@@ -145,16 +165,19 @@ error: at 153:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as 
      |      ^^^^
  154 |   fn m(recv: &R) {
      |
-error: at 165:8: [PARSE-MalformedCst] In function 'm': Duplicate type parameter 'T'
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
+error: at 165:8: [PARSE-DuplicateTypeParam] In function 'm': type parameter 'T' shadows an enclosing type parameter with the same name
      |
  164 | impl<T> ShadowM for R {
  165 |   fn m<T>(recv: &R) {
      |        ^
  166 |     entry:
      |
-error: at 174:54: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+  hint: choose a different name for this type parameter
+error: at 174:54: [PARSE-DuplicateTraitBound] In function 'duplicate_direct_bound': duplicate trait bound 'DuplicateBound'
      |
  173 | # The same direct trait bound cannot be declared twice.
  174 | extern fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T);
-     |                                                      ^^^^^^^^^^^^^^
+     |                                     --------------   ^^^^^^^^^^^^^^ previous bound on 'DuplicateBound' here
      |
+  hint: remove the redundant trait bound

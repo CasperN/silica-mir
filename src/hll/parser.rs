@@ -13,7 +13,7 @@ use crate::common::{
 use crate::diagnostics::{Diagnostic, Diagnostics};
 use crate::hll::ast::*;
 use crate::mir::parser::ParserCode;
-use std::collections::{BTreeSet, HashSet};
+use std::collections::BTreeSet;
 use tree_sitter::{Node, Parser as TSParser};
 
 #[derive(Clone, Default)]
@@ -184,11 +184,14 @@ impl Parser {
         if name != "Self" {
             return false;
         }
-        d.push_error(self.diag(
-            node,
-            ParserCode::ReservedIdent,
-            format!("'Self' is reserved and cannot be used as {}", position),
-        ));
+        d.push_error(
+            self.diag(
+                node,
+                ParserCode::ReservedIdent,
+                format!("'Self' is reserved and cannot be used as {}", position),
+            )
+            .with_hint("choose a different identifier; 'Self' is reserved for referencing the implementing type"),
+        );
         true
     }
 
@@ -373,6 +376,10 @@ impl Parser {
                     ));
                     continue;
                 };
+                let f_name = self.get_text(f_name_node).to_string();
+                if self.reject_self_ident(&f_name, f_name_node, "a field name", d) {
+                    continue;
+                }
                 let Some(f_type_node) = child.child_by_field_name("type") else {
                     d.push_error(self.diag(
                         child,
@@ -385,7 +392,7 @@ impl Parser {
                     continue;
                 };
                 fields.push(StructField {
-                    name: self.get_text(f_name_node).to_string(),
+                    name: f_name,
                     ty,
                     source: SourceInfo::written(span_of(child)),
                 });
@@ -454,6 +461,10 @@ impl Parser {
                     ));
                     continue;
                 };
+                let v_name = self.get_text(v_name_node).to_string();
+                if self.reject_self_ident(&v_name, v_name_node, "a variant name", d) {
+                    continue;
+                }
                 let Some(v_type_node) = child.child_by_field_name("type") else {
                     d.push_error(self.diag(
                         child,
@@ -466,7 +477,7 @@ impl Parser {
                     continue;
                 };
                 variants.push(EnumVariant {
-                    name: self.get_text(v_name_node).to_string(),
+                    name: v_name,
                     ty,
                     source: SourceInfo::written(span_of(child)),
                 });
@@ -504,7 +515,13 @@ impl Parser {
         } else {
             format!("unknown extern ABI {} — expected \"C\" or bare extern", raw)
         };
-        d.push_error(self.diag(abi_node, ParserCode::UnknownAbi, msg));
+        let mut diag = self.diag(abi_node, ParserCode::UnknownAbi, msg);
+        if raw == "\"Silica\"" {
+            diag = diag.with_hint("remove the '\"Silica\"' ABI string");
+        } else {
+            diag = diag.with_hint("supported ABIs are '\"C\"' or omit the ABI clause for Silica ABI");
+        }
+        d.push_error(diag);
         Abi::Silica
     }
 
@@ -688,7 +705,7 @@ impl Parser {
             Bounds::default()
         };
         let mut methods = Vec::new();
-        let mut names = HashSet::new();
+        let mut names: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
         for child in node.children(&mut cursor) {
             if child.kind() != "fn_decl" {
                 continue;
@@ -713,17 +730,20 @@ impl Parser {
                 }
                 method.linkage = Linkage::Local;
             }
-            if !names.insert(method.name.clone()) {
+            if let Some(prev_span) = names.get(&method.name) {
                 d.push_error(
                     self.diag(
                         child,
-                        ParserCode::MalformedCst,
+                        ParserCode::DuplicateMethod,
                         format!("duplicate trait method '{}'", method.name),
                     )
+                    .with_secondary(SourceInfo::written(*prev_span), format!("previous declaration of '{}' here", method.name))
+                    .with_hint("method names within the same trait must be unique")
                     .in_function(&context),
                 );
                 continue;
             }
+            names.insert(method.name.clone(), span_of(child));
             methods.push(method);
         }
 
@@ -785,7 +805,7 @@ impl Parser {
         scope.self_ty = Some(target.clone());
 
         let mut methods = Vec::new();
-        let mut names = HashSet::new();
+        let mut names: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
         for child in node.children(&mut cursor) {
             if child.kind() != "fn_decl" {
                 continue;
@@ -810,17 +830,20 @@ impl Parser {
                 }
                 method.linkage = Linkage::Local;
             }
-            if !names.insert(method.name.clone()) {
+            if let Some(prev_span) = names.get(&method.name) {
                 d.push_error(
                     self.diag(
                         child,
-                        ParserCode::MalformedCst,
+                        ParserCode::DuplicateMethod,
                         format!("duplicate impl method '{}'", method.name),
                     )
+                    .with_secondary(SourceInfo::written(*prev_span), format!("previous definition of '{}' here", method.name))
+                    .with_hint("method names within the same impl block must be unique")
                     .in_function(&context),
                 );
                 continue;
             }
+            names.insert(method.name.clone(), span_of(child));
             methods.push(method);
         }
 
@@ -1086,7 +1109,7 @@ impl Parser {
         let mut lifetimes = Vec::new();
         let mut types = Vec::new();
         let mut outlives = Vec::new();
-        let mut declared_here = HashSet::new();
+        let mut declared_here: std::collections::HashMap<String, Span> = std::collections::HashMap::new();
         let mut pre_cursor = node.walk();
         for child in node
             .children(&mut pre_cursor)
@@ -1100,14 +1123,30 @@ impl Parser {
             if self.reject_self_ident(&name, name_node, "a type parameter", d) {
                 return None;
             }
-            if scope.params.contains(&name) || !declared_here.insert(name.clone()) {
-                d.push_error(self.diag(
-                    name_node,
-                    ParserCode::MalformedCst,
-                    format!("Duplicate type parameter '{}'", name),
-                ));
+            if let Some(prev_span) = declared_here.get(&name) {
+                d.push_error(
+                    self.diag(
+                        name_node,
+                        ParserCode::DuplicateTypeParam,
+                        format!("duplicate type parameter '{}'", name),
+                    )
+                    .with_secondary(SourceInfo::written(*prev_span), format!("previous declaration of '{}' here", name))
+                    .with_hint("type parameters within the same declaration must have unique names"),
+                );
                 return None;
             }
+            if scope.params.contains(&name) {
+                d.push_error(
+                    self.diag(
+                        name_node,
+                        ParserCode::DuplicateTypeParam,
+                        format!("type parameter '{}' shadows an enclosing type parameter with the same name", name),
+                    )
+                    .with_hint("choose a different name for this type parameter"),
+                );
+                return None;
+            }
+            declared_here.insert(name.clone(), span_of(name_node));
             scope.params.insert(name);
         }
         let mut cursor = node.walk();
@@ -1181,8 +1220,8 @@ impl Parser {
         scope: &TypeScope,
         d: &mut Diagnostics,
     ) -> Option<Bounds> {
-        let mut marker_bounds = Vec::new();
-        let mut trait_bounds = Vec::new();
+        let mut marker_bounds: Vec<(Marker, Span)> = Vec::new();
+        let mut trait_bounds: Vec<TraitBound> = Vec::new();
         let mut cursor = node.walk();
         for bound in node.children_by_field_name("bound", &mut cursor) {
             let Some(trait_name) = bound.child_by_field_name("name") else {
@@ -1215,33 +1254,41 @@ impl Parser {
                 })
                 .flatten();
             if let Some(marker) = marker {
-                if marker_bounds.contains(&marker) {
-                    d.push_error(self.diag(
-                        bound,
-                        ParserCode::MalformedCst,
-                        format!("Duplicate marker '{}'", name),
-                    ));
+                if let Some((_, prev_span)) = marker_bounds.iter().find(|(m, _)| *m == marker) {
+                    d.push_error(
+                        self.diag(
+                            bound,
+                            ParserCode::DuplicateMarker,
+                            format!("duplicate marker '{}'", name),
+                        )
+                        .with_secondary(SourceInfo::written(*prev_span), format!("previous '{}' marker here", name))
+                        .with_hint("remove the redundant marker"),
+                    );
                     return None;
                 }
-                marker_bounds.push(marker);
+                marker_bounds.push((marker, span_of(bound)));
                 continue;
             }
             let trait_bound = TraitBound {
                 trait_path: Instance::new(name, lifetime_args, type_args),
                 source: SourceInfo::written(span_of(bound)),
             };
-            if trait_bounds.contains(&trait_bound) {
-                d.push_error(self.diag(
-                    bound,
-                    ParserCode::MalformedCst,
-                    format!("Duplicate trait bound '{}'", trait_bound.trait_path),
-                ));
+            if let Some(prev) = trait_bounds.iter().find(|tb| tb.trait_path == trait_bound.trait_path) {
+                d.push_error(
+                    self.diag(
+                        bound,
+                        ParserCode::DuplicateTraitBound,
+                        format!("duplicate trait bound '{}'", trait_bound.trait_path),
+                    )
+                    .with_secondary(prev.source, format!("previous bound on '{}' here", trait_bound.trait_path))
+                    .with_hint("remove the redundant trait bound"),
+                );
                 return None;
             }
             trait_bounds.push(trait_bound);
         }
         Some(Bounds {
-            markers: Markers::from_iter(marker_bounds),
+            markers: Markers::from_iter(marker_bounds.into_iter().map(|(m, _)| m)),
             traits: trait_bounds,
         })
     }
@@ -1775,19 +1822,25 @@ impl Parser {
             // generator disambiguate `foo<T>(x)` from `a < b > c`. Reject
             // as ill-formed at parse time.
             "instantiation_expr" => {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::UnexpectedToken,
-                    "type arguments without a call are not a valid expression",
-                ));
+                d.push_error(
+                    self.diag(
+                        node,
+                        ParserCode::UnexpectedToken,
+                        "type arguments without a call are not a valid expression",
+                    )
+                    .with_hint("to call this generic function, provide an argument list: '(...)'"),
+                );
                 None
             }
             "qualified_method" => {
-                d.push_error(self.diag(
-                    node,
-                    ParserCode::UnexpectedToken,
-                    "a qualified method must be called",
-                ));
+                d.push_error(
+                    self.diag(
+                        node,
+                        ParserCode::UnexpectedToken,
+                        "a qualified method must be called",
+                    )
+                    .with_hint("to call this qualified method, provide an argument list: '(...)'"),
+                );
                 None
             }
             "index_expr" => {
@@ -2166,6 +2219,7 @@ impl Parser {
     /// (the latter also flags redundant Move for an info diagnostic).
     fn map_marker_tokens(&self, node: Node, d: &mut Diagnostics) -> Option<Vec<Marker>> {
         let mut seen: Vec<Marker> = Vec::new();
+        let mut marker_spans: std::collections::HashMap<Marker, Span> = std::collections::HashMap::new();
         let mut cursor = node.walk();
         for child in node.children(&mut cursor) {
             if child.kind() != "marker" {
@@ -2185,14 +2239,19 @@ impl Parser {
                     return None;
                 }
             };
-            if seen.contains(&m) {
-                d.push_error(self.diag(
-                    child,
-                    ParserCode::MalformedCst,
-                    format!("Duplicate marker '{}'", text),
-                ));
+            if let Some(prev_span) = marker_spans.get(&m) {
+                d.push_error(
+                    self.diag(
+                        child,
+                        ParserCode::DuplicateMarker,
+                        format!("duplicate marker '{}'", text),
+                    )
+                    .with_secondary(SourceInfo::written(*prev_span), format!("previous '{}' marker here", text))
+                    .with_hint("remove the redundant marker"),
+                );
                 return None;
             }
+            marker_spans.insert(m, span_of(child));
             seen.push(m);
         }
         Some(seen)

@@ -5,3 +5,4 @@ error: at 8:3: [PARSE-UnexpectedToken] In function 'bare_instantiation_not_a_val
    |   ^^^^^^^^^^^^^
  9 | }
    |
+  hint: to call this generic function, provide an argument list: '(...)'

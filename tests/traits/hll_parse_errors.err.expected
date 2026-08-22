@@ -5,6 +5,7 @@ error: at 10:8: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |        ^^^^
  11 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 12:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as an enum name
     |
  11 | 
@@ -12,6 +13,7 @@ error: at 12:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  13 | 
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 15:3: [PARSE-InvalidFnModifiers] In function 'ExternTrait::ext': trait method 'ext' cannot be extern without an ABI clause; trait methods have no foreign symbol
     |
  14 | trait ExternTrait {
@@ -26,6 +28,7 @@ error: at 19:10: [PARSE-UnknownAbi] In function 'UnknownAbiTrait::u': unknown ex
     |          ^^^^^^^^
  20 | }
     |
+  hint: supported ABIs are '"C"' or omit the ABI clause for Silica ABI
 error: at 23:10: [PARSE-UnknownAbi] In function '<S as UnknownAbiTrait>::u': unknown extern ABI "fastcall" — expected "C" or bare extern
     |
  22 | impl UnknownAbiTrait for S {
@@ -33,13 +36,17 @@ error: at 23:10: [PARSE-UnknownAbi] In function '<S as UnknownAbiTrait>::u': unk
     |          ^^^^^^^^^^
  24 | }
     |
-error: at 28:3: [PARSE-MalformedCst] In function 'Duplicate::same': duplicate trait method 'same'
+  hint: supported ABIs are '"C"' or omit the ABI clause for Silica ABI
+error: at 28:3: [PARSE-DuplicateMethod] In function 'Duplicate::same': duplicate trait method 'same'
     |
+ 26 | trait Duplicate {
  27 |   fn same(recv: &Self);
+    |   --------------------- previous declaration of 'same' here
  28 |   fn same(recv: &Self);
     |   ^^^^^^^^^^^^^^^^^^^^^
  29 | }
     |
+  hint: method names within the same trait must be unique
 error: at 36:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::required': impl method 'required' cannot be extern without an ABI clause; impl methods have no foreign symbol
     |
  35 | impl Required for S {
@@ -47,20 +54,24 @@ error: at 36:3: [PARSE-InvalidFnModifiers] In function '<S as Required>::require
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  37 | }
     |
-error: at 41:3: [PARSE-MalformedCst] In function '<S as Required>::required': duplicate impl method 'required'
+error: at 41:3: [PARSE-DuplicateMethod] In function '<S as Required>::required': duplicate impl method 'required'
     |
+ 39 | impl Required for S {
  40 |   fn required(recv: &Self) { () }
+    |   ------------------------------- previous definition of 'required' here
  41 |   fn required(recv: &Self) { () }
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  42 | }
     |
-error: at 45:15: [PARSE-MalformedCst] In function '<S as Required>::required': Duplicate type parameter 'T'
+  hint: method names within the same impl block must be unique
+error: at 45:15: [PARSE-DuplicateTypeParam] In function '<S as Required>::required': type parameter 'T' shadows an enclosing type parameter with the same name
     |
  44 | impl<T> Required for S {
  45 |   fn required<T>(recv: &Self) { () }
     |               ^
  46 | }
     |
+  hint: choose a different name for this type parameter
 error: at 48:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait name
     |
  47 | 
@@ -68,6 +79,7 @@ error: at 48:7: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |       ^^^^
  49 |   fn reserved(recv: &Self);
     |
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
 error: at 52:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a trait reference
     |
  51 | 
@@ -75,13 +87,15 @@ error: at 52:6: [PARSE-ReservedIdent] 'Self' is reserved and cannot be used as a
     |      ^^^^
  53 |   fn reserved(recv: &Self) { () }
     |
-error: at 59:47: [PARSE-MalformedCst] In function 'duplicate_direct_bound': Duplicate trait bound 'DuplicateBound'
+  hint: choose a different identifier; 'Self' is reserved for referencing the implementing type
+error: at 59:47: [PARSE-DuplicateTraitBound] In function 'duplicate_direct_bound': duplicate trait bound 'DuplicateBound'
     |
  58 | # covers: the same direct trait bound cannot be declared twice
  59 | fn duplicate_direct_bound<T: DuplicateBound + DuplicateBound>(value: &T) {
-    |                                               ^^^^^^^^^^^^^^
+    |                              --------------   ^^^^^^^^^^^^^^ previous bound on 'DuplicateBound' here
  60 |   value;
     |
+  hint: remove the redundant trait bound
 error: at 65:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a qualified method must be called
     |
  64 | fn bare_qualified_method() {
@@ -89,6 +103,7 @@ error: at 65:3: [PARSE-UnexpectedToken] In function 'bare_qualified_method': a q
     |   ^^^^^^^^^^^^
  66 | }
     |
+  hint: to call this qualified method, provide an argument list: '(...)'
 error: at 70:8: [PARSE-UnknownAbi] In function 'win_api': unknown extern ABI "system" — expected "C" or bare extern
     |
  69 | # the default ABI.
@@ -96,6 +111,7 @@ error: at 70:8: [PARSE-UnknownAbi] In function 'win_api': unknown extern ABI "sy
     |        ^^^^^^^^
  71 | extern "fastcall" fn stdcall_thing(y: i64);
     |
+  hint: supported ABIs are '"C"' or omit the ABI clause for Silica ABI
 error: at 71:8: [PARSE-UnknownAbi] In function 'stdcall_thing': unknown extern ABI "fastcall" — expected "C" or bare extern
     |
  70 | extern "system" fn win_api(x: i64);
@@ -103,9 +119,11 @@ error: at 71:8: [PARSE-UnknownAbi] In function 'stdcall_thing': unknown extern A
     |        ^^^^^^^^^^
  72 | extern "Silica" fn spelled_silica(x: i64);
     |
+  hint: supported ABIs are '"C"' or omit the ABI clause for Silica ABI
 error: at 72:8: [PARSE-UnknownAbi] In function 'spelled_silica': the Silica ABI is the default; omit the ABI string
     |
  71 | extern "fastcall" fn stdcall_thing(y: i64);
  72 | extern "Silica" fn spelled_silica(x: i64);
     |        ^^^^^^^^
     |
+  hint: remove the '"Silica"' ABI string
