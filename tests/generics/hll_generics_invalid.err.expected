@@ -33,6 +33,7 @@ error: at 55:36: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_copy':
     |                                    ^^^^^^
  56 |   0
     |
+  hint: struct 'Linear' cannot satisfy bound 'Copy' because field 'r' of type '&out i64' does not satisfy 'Copy'
 error: at 55:36: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_copy': type argument 'Linear' for 'Box::T' does not satisfy bound 'Drop'
     |
  54 | 
@@ -40,6 +41,7 @@ error: at 55:36: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_copy':
     |                                    ^^^^^^
  56 |   0
     |
+  hint: struct 'Linear' cannot satisfy bound 'Drop' because field 'r' of type '&out i64' does not satisfy 'Drop'
 error: at 61:37: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_drop': type argument 'Linear' for 'Sink::T' does not satisfy bound 'Drop'
     |
  60 | 
@@ -47,6 +49,7 @@ error: at 61:37: [HTC-BoundNotSatisfied] In function 'bound_not_satisfied_drop':
     |                                     ^^^^^^
  62 |   0
     |
+  hint: struct 'Linear' cannot satisfy bound 'Drop' because field 'r' of type '&out i64' does not satisfy 'Drop'
 error: at 67:38: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': type argument 'Linear' for 'Box::T' does not satisfy bound 'Copy'
     |
  66 | 
@@ -54,6 +57,7 @@ error: at 67:38: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': t
     |                                      ^^^^^^
  68 |   0
     |
+  hint: struct 'Linear' cannot satisfy bound 'Copy' because field 'r' of type '&out i64' does not satisfy 'Copy'
 error: at 67:38: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': type argument 'Linear' for 'Box::T' does not satisfy bound 'Drop'
     |
  66 | 
@@ -61,6 +65,7 @@ error: at 67:38: [HTC-BoundNotSatisfied] In function 'nested_bound_violation': t
     |                                      ^^^^^^
  68 |   0
     |
+  hint: struct 'Linear' cannot satisfy bound 'Drop' because field 'r' of type '&out i64' does not satisfy 'Drop'
 error: at 73:31: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity': 'Box' takes 1 type argument(s), found 2
     |
  72 | 
@@ -68,13 +73,6 @@ error: at 73:31: [HTC-TypeArgArityMismatch] In function 'return_type_bad_arity':
     |                               ^^^^^^^^^^^^^
  74 |   Box { inner: 0 }
     |
-error: at 128:37: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_args_too_few': 'RefWrap' takes 1 lifetime argument(s), found 0
-     |
- 127 | # covers: a bare nominal reference omits a required lifetime argument
- 128 | fn nominal_lifetime_args_too_few(r: RefWrap) -> () { () }
-     |                                     ^^^^^^^
- 129 | # covers: a nominal reference supplies too many lifetime arguments
-     |
 error: at 130:42: [HTC-LifetimeArgArityMismatch] In function 'nominal_lifetime_args_too_many': 'RefWrap' takes 1 lifetime argument(s), found 2
      |
  129 | # covers: a nominal reference supplies too many lifetime arguments
@@ -110,9 +108,11 @@ error: at 157:37: [HTC-UndeclaredType] In function 'free_fn_with_named_drop_self
      |                                     ^^^^^^^^^^^^^
  158 | 
      |
-error: at 74:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
+error: at 74:3: [HTC-TypeMismatch] In function 'return_type_bad_arity': type mismatch: expected Box<i64, i64>, found Box<?i1>
     |
+ 72 | 
  73 | fn return_type_bad_arity() -> Box<i64, i64> {
+    |                               ------------- expected due to this type constraint
  74 |   Box { inner: 0 }
     |   ^^^^^^^^^^^^^^^^
  75 | }
@@ -124,11 +124,11 @@ error: at 80:10: [HTC-TypeArgArityMismatch] In function 'let_annotation_bad_arit
     |          ^^^^^^^^^^^^^
  81 | }
     |
-error: at 80:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<?i1>, found Box<i64, i64>
+error: at 80:26: [HTC-TypeMismatch] In function 'let_annotation_bad_arity': type mismatch: expected Box<i64, i64>, found Box<?i1>
     |
  79 | fn let_annotation_bad_arity() {
  80 |   let x: Box<i64, i64> = Box { inner: 0 };
-    |                          ^^^^^^^^^^^^^^^^
+    |          -------------   ^^^^^^^^^^^^^^^^ expected due to this type constraint
  81 | }
     |
 error: at 93:38: [HTC-TypeArgArityMismatch] In function 'call_type_args_too_few': function 'first' takes 2 type argument(s), found 1
@@ -145,20 +145,22 @@ error: at 95:39: [HTC-TypeArgArityMismatch] In function 'call_type_args_too_many
     |                                       ^^^^^^^^
  96 | # covers: explicit type argument conflicts with value and return context
     |
-error: at 97:58: [HTC-TypeMismatch] In function 'call_explicit_type_mismatch': type mismatch: expected integer type, found bool
+error: at 97:58: [HTC-TypeMismatch] In function 'call_explicit_type_mismatch': type mismatch: expected bool, found i64
     |
  96 | # covers: explicit type argument conflicts with value and return context
  97 | fn call_explicit_type_mismatch() -> i64 { identity<bool>(1) }
-    |                                                          ^
+    |                                                    ----  ^ expected due to this type constraint
  98 | 
     |
-error: at 97:43: [HTC-TypeMismatch] In function 'call_explicit_type_mismatch': type mismatch: expected bool, found i64
+  hint: consider comparing with '!= 0'
+error: at 97:43: [HTC-TypeMismatch] In function 'call_explicit_type_mismatch': type mismatch: expected i64, found bool
     |
  96 | # covers: explicit type argument conflicts with value and return context
  97 | fn call_explicit_type_mismatch() -> i64 { identity<bool>(1) }
-    |                                           ^^^^^^^^^^^^^^^^^
+    |                                     ---   ^^^^^^^^^^^^^^^^^ expected due to this type constraint
  98 | 
     |
+  hint: consider casting with 'as i64'
 error: at 100:59: [HTC-BoundNotSatisfied] In function 'call_inferred_bound_failure': type argument 'DropOnly' for 'requires_copy::T' does not satisfy bound 'Copy'
      |
   99 | # covers: inferred type argument fails a marker bound
@@ -236,6 +238,7 @@ error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_sati
      |       ^^^^^^^^^
  151 | }
      |
+  hint: struct 'Linear' cannot satisfy bound 'Copy' because field 'r' of type '&out i64' does not satisfy 'Copy'
 error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_satisfied': type argument 'Linear' for 'take_copy::U' does not satisfy bound 'Drop'
      |
  149 | fn call_method_bound_not_satisfied(buf: &MethodBuffer<i64>, lin: Linear) -> () {
@@ -243,3 +246,4 @@ error: at 150:7: [HTC-BoundNotSatisfied] In function 'call_method_bound_not_sati
      |       ^^^^^^^^^
  151 | }
      |
+  hint: struct 'Linear' cannot satisfy bound 'Drop' because field 'r' of type '&out i64' does not satisfy 'Drop'

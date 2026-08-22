@@ -19,13 +19,14 @@ error: at 10:3: [HTC-NoSuchField] In function 'test_named_field_on_tuple': tuple
     |   ^
  11 | }
     |
-error: at 15:24: [HTC-TypeMismatch] In function 'test_tuple_type_mismatch': type mismatch: expected integer type, found bool
+error: at 15:24: [HTC-TypeMismatch] In function 'test_tuple_type_mismatch': type mismatch: expected bool, found i64
     |
  14 | fn test_tuple_type_mismatch() -> (i64, bool) {
  15 |   let t: (i64, bool) = (1, 2);
-    |                        ^^^^^^
+    |          -----------   ^^^^^^ expected due to this type constraint
  16 |   t
     |
+  hint: consider comparing with '!= 0'
 error: at 21:13: [HTC-TupleArityExceeded] In function 'test_13_tuple': tuple arity 13 exceeds maximum of 12
     |
  20 | fn test_13_tuple() {

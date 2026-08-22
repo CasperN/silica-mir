@@ -160,3 +160,84 @@ impl TraitBodyTarget {
     let values = [];
   }
 }
+
+# ---------- Actionable Hints & Typo Suggestions ----------
+
+struct PointCoord: Copy + Drop {
+  x_coord: i64,
+  y_coord: i64
+}
+
+enum ShapeColor: Copy + Drop {
+  RedColor: (),
+  BlueColor: ()
+}
+
+fn test_field_typo(p: PointCoord) -> i64 {
+  p.x_cord
+}
+
+fn test_variant_typo() -> ShapeColor {
+  ShapeColor::RedColr(())
+}
+
+fn test_borrow_hint(p: PointCoord) -> &PointCoord {
+  p
+}
+
+fn test_deref_hint(p: &PointCoord) -> PointCoord {
+  p
+}
+
+fn test_cast_hint() -> i64 {
+  let val: f64 = 42.0;
+  val
+}
+
+struct GenericWrapper<T: Copy + Drop> {
+  val: T
+}
+
+fn test_bound_explanation<T: Drop + Move>(v: T) {
+  let w = GenericWrapper { val: v };
+}
+
+fn test_semicolon_hint() -> () {
+  42
+}
+
+struct MethodHost: Copy + Drop {
+  val: i64
+}
+
+impl MethodHost {
+  fn calculate_distance(recv: &Self) -> i64 {
+    recv.val
+  }
+}
+
+fn test_method_typo(m: MethodHost) -> i64 {
+  m.calculate_distanc()
+}
+
+trait Displayable {
+  fn show(recv: &Self);
+}
+
+fn test_unimplemented_trait_method(m: MethodHost) {
+  m.show();
+}
+
+struct InnerLinear {}
+
+struct OuterContainer {
+  inner: InnerLinear
+}
+
+struct RequiresClone<T: AutoClone> {
+  elem: T
+}
+
+fn test_composite_bound_failure(c: OuterContainer) {
+  let r = RequiresClone { elem: c };
+}

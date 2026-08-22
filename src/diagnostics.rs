@@ -239,6 +239,56 @@ impl<K: std::hash::Hash + Eq + Clone> DuplicateTracker<K> {
     }
 }
 
+/// Find the candidate string closest to `target` using Levenshtein distance
+/// within an edit distance limit (defaults to 2 for short identifiers, or max len/3).
+pub fn find_best_match<'a, I, S>(target: &str, candidates: I) -> Option<&'a str>
+where
+    I: IntoIterator<Item = &'a S>,
+    S: AsRef<str> + 'a,
+{
+    let mut best_match = None;
+    let mut best_dist = usize::MAX;
+    let max_dist = std::cmp::max(2, target.chars().count() / 3);
+    for candidate in candidates {
+        let cand_str = candidate.as_ref();
+        if cand_str == target {
+            continue;
+        }
+        let dist = levenshtein_distance(target, cand_str);
+        if dist <= max_dist && dist < best_dist {
+            best_dist = dist;
+            best_match = Some(cand_str);
+        }
+    }
+    best_match
+}
+
+/// Compute the classic Levenshtein edit distance between two strings.
+pub fn levenshtein_distance(a: &str, b: &str) -> usize {
+    let a_len = a.chars().count();
+    let b_len = b.chars().count();
+    if a_len == 0 {
+        return b_len;
+    }
+    if b_len == 0 {
+        return a_len;
+    }
+    let mut prev_row: Vec<usize> = (0..=b_len).collect();
+    let mut curr_row = vec![0; b_len + 1];
+    for (i, ca) in a.chars().enumerate() {
+        curr_row[0] = i + 1;
+        for (j, cb) in b.chars().enumerate() {
+            let cost = if ca == cb { 0 } else { 1 };
+            curr_row[j + 1] = std::cmp::min(
+                std::cmp::min(curr_row[j] + 1, prev_row[j + 1] + 1),
+                prev_row[j] + cost,
+            );
+        }
+        prev_row.copy_from_slice(&curr_row);
+    }
+    prev_row[b_len]
+}
+
 /// Which surface language the diagnostics apply to. Controls
 /// user-facing rendering choices — HLL users don't know about MIR
 /// concepts like basic blocks, so those get suppressed for `Hll`.

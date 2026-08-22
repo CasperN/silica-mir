@@ -180,6 +180,7 @@ error: at 211:9: [HTC-UnresolvedReceiverCall] In function 'reject_unbounded_rece
      |         ^^^^^^^^^^^^^
  212 | }
      |
+  hint: the method 'bound_generic' exists on trait 'GenericBoundMethod', but '&T' does not implement it
 error: at 226:9: [HTC-UnresolvedReceiverCall] In function 'expanding_cycle_lookup': no method, callable field, or free function 'missing_cycle_method' applies to receiver type &T
      |
  225 | fn expanding_cycle_lookup<T: ExpandingCycle<i64>>(value: &T) {
@@ -264,13 +265,21 @@ error: at 329:25: [HTC-UnsafeRequired] In function 'qualified_unsafe_inherent': 
      |                         ^^^^^^^^^^^^^^^^^^
  330 | }
      |
-error: at 342:74: [HTC-TypeMismatch] In function 'qualified_does_not_auto_borrow': type mismatch: expected WrongBoundArgument, found &WrongBoundArgument
+error: at 342:74: [HTC-TypeMismatch] In function 'qualified_does_not_auto_borrow': type mismatch: expected &WrongBoundArgument, found WrongBoundArgument
+     |
+ 332 | trait QualifiedExplicitBorrow {
+ 333 |   fn needs_explicit_borrow(recv: &Self);
+     |                                  ----- expected due to this type constraint
+ 334 | }
+     |
+     | ...
      |
  341 | fn qualified_does_not_auto_borrow(value: WrongBoundArgument) {
  342 |   <WrongBoundArgument as QualifiedExplicitBorrow>::needs_explicit_borrow(value);
      |                                                                          ^^^^^
  343 | }
      |
+  hint: consider borrowing with '&'
 error: at 347:3: [HTC-UndeclaredTrait] In function 'qualified_unknown_trait': qualified method has undeclared trait 'MissingQualifiedTrait'
      |
  346 | fn qualified_unknown_trait(value: &WrongBoundArgument) {
@@ -327,13 +336,21 @@ error: at 391:3: [HTC-ArityMismatch] In function 'static_arity_mismatch': functi
      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^
  392 | }
      |
-error: at 396:24: [HTC-TypeMismatch] In function 'static_type_mismatch': type mismatch: expected bool, found i64
+error: at 396:24: [HTC-TypeMismatch] In function 'static_type_mismatch': type mismatch: expected i64, found bool
+     |
+ 378 | impl StaticTarget {
+ 379 |   fn create(value: i64) -> StaticTarget {
+     |                    --- expected due to this type constraint
+ 380 |     StaticTarget { value: value }
+     |
+     | ...
      |
  395 | fn static_type_mismatch() {
  396 |   StaticTarget::create(true);
      |                        ^^^^
  397 | }
      |
+  hint: consider casting with 'as i64'
 error: at 401:3: [HTC-UndeclaredType] In function 'static_undeclared_type': undeclared type 'UndeclaredType'
      |
  400 | fn static_undeclared_type() {
@@ -376,7 +393,7 @@ error: at 446:3: [HTC-ArityMismatch] In function 'static_call_missing_receiver':
      |   ^^^^^^^^^^^^^^^^^^^^^^^^^
  447 | }
      |
-error: at 451:18: [HTC-UnresolvedQualifiedMethod] In function 'static_nonexistent_enum_variant': type 'CollidingEnum' has no inherent method 'Nonexistent'
+error: at 451:18: [HTC-NoSuchVariant] In function 'static_nonexistent_enum_variant': enum 'CollidingEnum' has no variant 'Nonexistent'
      |
  450 | fn static_nonexistent_enum_variant() {
  451 |   CollidingEnum::Nonexistent(10);

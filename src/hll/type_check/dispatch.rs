@@ -436,11 +436,17 @@ pub(crate) fn resolve_field_access(
                 };
                 substitute_all(&field_decl.ty, &mapping, &lifetime_mapping)
             } else {
-                d.push_error(source_diagnostic(
+                let mut diag = source_diagnostic(
                     HllTypeCheckCode::NoSuchField,
                     target_source,
                     format!("struct '{}' has no field '{}'", struct_name, field),
-                ));
+                );
+                if let Some(suggestion) =
+                    crate::diagnostics::find_best_match(field, s_decl.fields.iter().map(|f| &f.name))
+                {
+                    diag = diag.with_hint(format!("a field with a similar name exists: '{}'", suggestion));
+                }
+                d.push_error(diag);
                 error_ty()
             }
         } else {
@@ -782,6 +788,33 @@ pub(crate) fn resolve_path_call(
                     },
                 );
                 return Some(fn_ty);
+            } else {
+                let has_inherent_method = env
+                    .impls
+                    .iter()
+                    .filter(|impl_block| impl_block.trait_path.is_none())
+                    .any(|impl_block| {
+                        impl_bindings(impl_block, &target_ty, env).is_some()
+                            && impl_block.methods.iter().any(|m| m.name == member_name)
+                    });
+                if !has_inherent_method {
+                    let mut diag = source_diagnostic(
+                        HllTypeCheckCode::NoSuchVariant,
+                        member_source,
+                        format!("enum '{}' has no variant '{}'", instance.name, member_name),
+                    );
+                    if let Some(suggestion) = crate::diagnostics::find_best_match(
+                        member_name,
+                        enum_decl.variants.iter().map(|v| &v.name),
+                    ) {
+                        diag = diag.with_hint(format!(
+                            "a variant with a similar name exists: '{}'",
+                            suggestion
+                        ));
+                    }
+                    d.push_error(diag);
+                    return None;
+                }
             }
         }
     }
@@ -840,18 +873,39 @@ pub(crate) fn resolve_path_call(
 
     // 4. Report error
     if let TypeKind::Custom(instance) = &target_ty.kind {
-        if env.enums.contains_key(&instance.name) {
-            d.push_error(source_diagnostic(
+        if let Some(e_decl) = env.enums.get(&instance.name) {
+            let mut diag = source_diagnostic(
                 HllTypeCheckCode::NoSuchVariant,
                 member_source,
                 format!("enum '{}' has no variant '{}'", instance.name, member_name),
-            ));
-        } else if env.structs.contains_key(&instance.name) {
-            d.push_error(source_diagnostic(
+            );
+            if let Some(suggestion) =
+                crate::diagnostics::find_best_match(member_name, e_decl.variants.iter().map(|v| &v.name))
+            {
+                diag = diag.with_hint(format!("a variant with a similar name exists: '{}'", suggestion));
+            }
+            d.push_error(diag);
+        } else if let Some(s_decl) = env.structs.get(&instance.name) {
+            let mut diag = source_diagnostic(
                 HllTypeCheckCode::UnresolvedQualifiedMethod,
                 member_source,
                 format!("type '{}' has no inherent method '{}'", instance.name, member_name),
-            ));
+            );
+            let inherent_methods: Vec<&String> = env
+                .impls
+                .iter()
+                .filter(|ib| {
+                    ib.trait_path.is_none()
+                        && matches!(&ib.target.kind, TypeKind::Custom(i) if i.name == s_decl.name)
+                })
+                .flat_map(|ib| ib.methods.iter().map(|m| &m.name))
+                .collect();
+            if let Some(suggestion) =
+                crate::diagnostics::find_best_match(member_name, inherent_methods)
+            {
+                diag = diag.with_hint(format!("a method with a similar name exists: '{}'", suggestion));
+            }
+            d.push_error(diag);
         } else {
             d.push_error(source_diagnostic(
                 HllTypeCheckCode::UndeclaredType,
@@ -1245,14 +1299,35 @@ pub(crate) fn resolve_receiver_call(
             format!("expected function type, found {}", field_ty),
         ));
     } else {
-        d.push_error(source_diagnostic(
+        let mut diag = source_diagnostic(
             HllTypeCheckCode::UnresolvedReceiverCall,
             method_source,
             format!(
                 "no method, callable field, or free function '{}' applies to receiver type {}",
                 method_name, resolved_receiver_ty
             ),
-        ));
+        );
+        let mut trait_candidates = Vec::new();
+        for trait_decl in env.traits.values() {
+            if trait_decl.methods.iter().any(|m| m.name == method_name) {
+                trait_candidates.push(trait_decl.name.clone());
+            }
+        }
+        if !trait_candidates.is_empty() {
+            diag = diag.with_hint(format!(
+                "the method '{}' exists on trait '{}', but '{}' does not implement it",
+                method_name,
+                trait_candidates.join(", "),
+                resolved_receiver_ty
+            ));
+        } else {
+            let all_methods: Vec<&String> =
+                env.impls.iter().flat_map(|ib| ib.methods.iter().map(|m| &m.name)).collect();
+            if let Some(suggestion) = crate::diagnostics::find_best_match(method_name, all_methods) {
+                diag = diag.with_hint(format!("a method with a similar name exists: '{}'", suggestion));
+            }
+        }
+        d.push_error(diag);
     }
     None
 }

@@ -19,13 +19,16 @@ error: at 39:3: [HTC-BoundNotSatisfied] In function 'reject_fn_mut_as_fn': type 
     |   ^^^^^^^^^^^
  40 | }
     |
-error: at 44:5: [HTC-TypeMismatch] In function 'reject_arg_type_mismatch': type mismatch: expected i64, found bool
+error: at 44:5: [HTC-TypeMismatch] In function 'reject_arg_type_mismatch': type mismatch: expected bool, found i64
     |
+ 42 | # covers: argument type mismatch in generic closure call
  43 | fn reject_arg_type_mismatch<F: FnOnce<(bool,), i64> + Move>(f: F) -> i64 {
+    |                                        ---- expected due to this type constraint
  44 |   f(42i64)
     |     ^^^^^
  45 | }
     |
+  hint: consider comparing with '!= 0'
 error: at 49:3: [HTC-ArityMismatch] In function 'reject_arity_mismatch': function expected 1 arguments, found 2
     |
  48 | fn reject_arity_mismatch<F: FnOnce<(i64,), i64> + Move>(f: F) -> i64 {

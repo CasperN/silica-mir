@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::common::{Lifetime, SourceInfo};
+use crate::common::{Lifetime, RefKind, SourceInfo};
 use crate::diagnostics::Diagnostic;
 use crate::hll::ast::{Instance, Type, TypeKind};
 use crate::hll::helpers::*;
@@ -19,21 +19,39 @@ pub enum UnifyError {
 impl UnifyError {
     pub fn to_diag(self, source: SourceInfo) -> Diagnostic {
         match self {
-            UnifyError::Mismatch { expected, found } => source_diagnostic(
-                HllTypeCheckCode::TypeMismatch,
-                source,
-                format!("type mismatch: expected {}, found {}", expected, found),
-            ),
-            UnifyError::ExpectedInteger { found } => source_diagnostic(
-                HllTypeCheckCode::TypeMismatch,
-                source,
-                format!("type mismatch: expected integer type, found {}", found),
-            ),
-            UnifyError::ExpectedFloat { found } => source_diagnostic(
-                HllTypeCheckCode::TypeMismatch,
-                source,
-                format!("type mismatch: expected float type, found {}", found),
-            ),
+            UnifyError::Mismatch { expected, found } => {
+                let mut diag = source_diagnostic(
+                    HllTypeCheckCode::TypeMismatch,
+                    source,
+                    format!("type mismatch: expected {}, found {}", expected, found),
+                );
+                if let Some(hint) = mismatch_hint(&expected, &found) {
+                    diag = diag.with_hint(hint);
+                }
+                diag
+            }
+            UnifyError::ExpectedInteger { found } => {
+                let mut diag = source_diagnostic(
+                    HllTypeCheckCode::TypeMismatch,
+                    source,
+                    format!("type mismatch: expected integer type, found {}", found),
+                );
+                if matches!(found.kind, TypeKind::Float(_)) {
+                    diag = diag.with_hint("consider casting with 'as i64'");
+                }
+                diag
+            }
+            UnifyError::ExpectedFloat { found } => {
+                let mut diag = source_diagnostic(
+                    HllTypeCheckCode::TypeMismatch,
+                    source,
+                    format!("type mismatch: expected float type, found {}", found),
+                );
+                if matches!(found.kind, TypeKind::Int(_)) {
+                    diag = diag.with_hint("consider casting with 'as f64'");
+                }
+                diag
+            }
             UnifyError::Infinite => source_diagnostic(
                 HllTypeCheckCode::InfiniteType,
                 source,
@@ -45,6 +63,46 @@ impl UnifyError {
                 "function arity mismatch",
             ),
         }
+    }
+}
+
+/// Produce actionable hints when unifying `expected` and `found` types fails.
+pub fn mismatch_hint(expected: &Type, found: &Type) -> Option<String> {
+    match (&expected.kind, &found.kind) {
+        (TypeKind::Ref(kind, _, pointee), _) if **pointee == *found => {
+            let hint = match kind {
+                RefKind::Shared => "consider borrowing with '&'",
+                RefKind::Mut => "consider mutably borrowing with '&mut'",
+                RefKind::Out => "consider borrowing with '&out'",
+                RefKind::Drop => "consider borrowing with '&drop'",
+                RefKind::Uninit => "consider borrowing with '&uninit'",
+            };
+            Some(hint.to_string())
+        }
+        (_, TypeKind::Ref(_, _, inner)) if **inner == *expected => {
+            Some("consider dereferencing with '.*'".to_string())
+        }
+        (_, TypeKind::RawPtr(inner)) if **inner == *expected => {
+            Some("consider dereferencing with '.*'".to_string())
+        }
+        (TypeKind::Int(_), TypeKind::Int(_))
+        | (TypeKind::Float(_), TypeKind::Float(_))
+        | (TypeKind::Float(_), TypeKind::Int(_))
+        | (TypeKind::Int(_), TypeKind::Float(_)) => {
+            Some(format!("consider casting with 'as {}'", expected))
+        }
+        (TypeKind::Bool, TypeKind::Int(_)) => {
+            Some("consider comparing with '!= 0'".to_string())
+        }
+        (TypeKind::Int(_), TypeKind::Bool) => {
+            Some(format!("consider casting with 'as {}'", expected))
+        }
+        (TypeKind::Tuple(types), _)
+            if types.is_empty() && !matches!(&found.kind, TypeKind::Tuple(t) if t.is_empty()) =>
+        {
+            Some("consider adding a semicolon ';' to discard the value".to_string())
+        }
+        _ => None,
     }
 }
 
@@ -219,7 +277,10 @@ impl Subst {
                     Ok(())
                 }
                 TypeKind::Error => Ok(()),
-                _ => Err(UnifyError::ExpectedInteger { found: r1.clone() }),
+                _ => Err(UnifyError::Mismatch {
+                    expected: r1.clone(),
+                    found: int_ty(crate::mir::ast::IntTy::I64),
+                }),
             },
             (TypeKind::FloatVar(id), other) => match other {
                 TypeKind::FloatVar(_) | TypeKind::Float(_) => {
@@ -235,7 +296,10 @@ impl Subst {
                     Ok(())
                 }
                 TypeKind::Error => Ok(()),
-                _ => Err(UnifyError::ExpectedFloat { found: r1.clone() }),
+                _ => Err(UnifyError::Mismatch {
+                    expected: r1.clone(),
+                    found: float_ty(crate::mir::ast::FloatTy::F64),
+                }),
             },
             (TypeKind::Int(i1), TypeKind::Int(i2)) if i1 == i2 => Ok(()),
             (TypeKind::Float(f1), TypeKind::Float(f2)) if f1 == f2 => Ok(()),

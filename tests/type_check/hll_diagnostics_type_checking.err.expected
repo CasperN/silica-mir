@@ -26,20 +26,22 @@ error: at 8:11: [HTC-UndeclaredVariable] In function 'test_silenced_error': unde
    |           ^^^^^^^^^^^^^^
  9 | 
    |
-error: at 18:16: [HTC-TypeMismatch] In function 'test_int_var_mismatch_with_float': type mismatch: expected integer type, found f64
+error: at 18:16: [HTC-TypeMismatch] In function 'test_int_var_mismatch_with_float': type mismatch: expected f64, found i64
     |
  17 |   let x = 42;
  18 |   let y: f64 = x;
-    |                ^
+    |          ---   ^ expected due to this type constraint
  19 | }
     |
-error: at 23:16: [HTC-TypeMismatch] In function 'test_float_var_mismatch_with_int': type mismatch: expected float type, found i64
+  hint: consider casting with 'as f64'
+error: at 23:16: [HTC-TypeMismatch] In function 'test_float_var_mismatch_with_int': type mismatch: expected i64, found f64
     |
  22 |   let x = 42.2;
  23 |   let y: i64 = x;
-    |                ^
+    |          ---   ^ expected due to this type constraint
  24 | }
     |
+  hint: consider casting with 'as i64'
 error: at 29:11: [HTC-UndeclaredVariable] In function 'test_undeclared_variable': undeclared variable 'y'
     |
  28 | fn test_undeclared_variable() -> i64 {
@@ -47,20 +49,24 @@ error: at 29:11: [HTC-UndeclaredVariable] In function 'test_undeclared_variable'
     |           ^
  30 |   x
     |
-error: at 39:3: [HTC-TypeMismatch] In function 'test_return_type_mismatch': type mismatch: expected bool, found i64
+error: at 39:3: [HTC-TypeMismatch] In function 'test_return_type_mismatch': type mismatch: expected i64, found bool
     |
+ 37 | # this is the fn-body unification path.
  38 | fn test_return_type_mismatch() -> i64 {
+    |                                   --- expected due to this type constraint
  39 |   true
     |   ^^^^
  40 | }
     |
-error: at 45:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type mismatch: expected integer type, found ()
+  hint: consider casting with 'as i64'
+error: at 45:9: [HTC-TypeMismatch] In function 'test_defer_type_mismatch': type mismatch: expected (), found i64
     |
  44 | fn test_defer_type_mismatch() {
  45 |   defer 42;
     |         ^^
  46 | }
     |
+  hint: consider adding a semicolon ';' to discard the value
 error: at 53:3: [HTC-EmptySwitch] In function 'test_empty_match': empty switch expression
     |
  52 | fn test_empty_match(value: One) -> i64 {
@@ -110,18 +116,25 @@ error: at 96:3: [HTC-InvalidFnModifiers] In function '<FnModifierHost as Missing
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  97 | }
     |
-error: at 112:18: [HTC-TypeMismatch] In function 'abi_mismatch_via_arg': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
+error: at 112:18: [HTC-TypeMismatch] In function 'abi_mismatch_via_arg': type mismatch: expected fn(i64) -> i64, found fn "C"(i64) -> i64
+     |
+ 106 | 
+ 107 | fn accepts_silica(f: fn(i64) -> i64) -> i64 {
+     |                      -------------- expected due to this type constraint
+ 108 |   f(42)
+     |
+     | ...
      |
  111 | fn abi_mismatch_via_arg() -> i64 {
  112 |   accepts_silica(c_valued)
      |                  ^^^^^^^^
  113 | }
      |
-error: at 116:27: [HTC-TypeMismatch] In function 'abi_mismatch_via_let': type mismatch: expected fn "C"(i64) -> i64, found fn(i64) -> i64
+error: at 116:27: [HTC-TypeMismatch] In function 'abi_mismatch_via_let': type mismatch: expected fn(i64) -> i64, found fn "C"(i64) -> i64
      |
  115 | fn abi_mismatch_via_let() {
  116 |   let f: fn(i64) -> i64 = c_valued;
-     |                           ^^^^^^^^
+     |          --------------   ^^^^^^^^ expected due to this type constraint
  117 |   f(1);
      |
 error: at 125:49: [HTC-UnaryOpInvalidOperand] In function 'test_unary_neg_on_unsigned': unary '-' requires a signed integer or float operand, found u64
@@ -145,20 +158,26 @@ error: at 134:3: [HTC-ExpectedFunction] In function 'test_non_callable_field': e
      |   ^^^^^^^^^^^^^^^
  135 | }
      |
-error: at 148:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected bool, found i64
+error: at 148:5: [HTC-TypeMismatch] In function '<TraitBodyTarget as BadTraitBody>::value': type mismatch: expected i64, found bool
      |
+ 146 | impl BadTraitBody for TraitBodyTarget {
  147 |   fn value(recv: &Self) -> i64 {
+     |                            --- expected due to this type constraint
  148 |     false
      |     ^^^^^
  149 |   }
      |
-error: at 155:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected bool, found i64
+  hint: consider casting with 'as i64'
+error: at 155:5: [HTC-TypeMismatch] In function '<TraitBodyTarget>::inherent_value': type mismatch: expected i64, found bool
      |
+ 153 | impl TraitBodyTarget {
  154 |   fn inherent_value(recv: &Self) -> i64 {
+     |                                     --- expected due to this type constraint
  155 |     false
      |     ^^^^^
  156 |   }
      |
+  hint: consider casting with 'as i64'
 error: at 160:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_local': type annotations needed: type of expression is ambiguous (could not resolve type variable in [?0; 0])
      |
  159 |   fn ambiguous_local(recv: &Self) {
@@ -166,3 +185,92 @@ error: at 160:18: [HTC-AmbiguousType] In function '<TraitBodyTarget>::ambiguous_
      |                  ^^
  161 |   }
      |
+error: at 177:3: [HTC-NoSuchField] In function 'test_field_typo': struct 'PointCoord' has no field 'x_cord'
+     |
+ 176 | fn test_field_typo(p: PointCoord) -> i64 {
+ 177 |   p.x_cord
+     |   ^
+ 178 | }
+     |
+  hint: a field with a similar name exists: 'x_coord'
+error: at 181:15: [HTC-NoSuchVariant] In function 'test_variant_typo': enum 'ShapeColor' has no variant 'RedColr'
+     |
+ 180 | fn test_variant_typo() -> ShapeColor {
+ 181 |   ShapeColor::RedColr(())
+     |               ^^^^^^^
+ 182 | }
+     |
+  hint: a variant with a similar name exists: 'RedColor'
+error: at 185:3: [HTC-TypeMismatch] In function 'test_borrow_hint': type mismatch: expected &PointCoord, found PointCoord
+     |
+ 183 | 
+ 184 | fn test_borrow_hint(p: PointCoord) -> &PointCoord {
+     |                                       ----------- expected due to this type constraint
+ 185 |   p
+     |   ^
+ 186 | }
+     |
+  hint: consider borrowing with '&'
+error: at 189:3: [HTC-TypeMismatch] In function 'test_deref_hint': type mismatch: expected PointCoord, found &PointCoord
+     |
+ 187 | 
+ 188 | fn test_deref_hint(p: &PointCoord) -> PointCoord {
+     |                                       ---------- expected due to this type constraint
+ 189 |   p
+     |   ^
+ 190 | }
+     |
+  hint: consider dereferencing with '.*'
+error: at 194:3: [HTC-TypeMismatch] In function 'test_cast_hint': type mismatch: expected i64, found f64
+     |
+ 191 | 
+ 192 | fn test_cast_hint() -> i64 {
+     |                        --- expected due to this type constraint
+ 193 |   let val: f64 = 42.0;
+ 194 |   val
+     |   ^^^
+ 195 | }
+     |
+  hint: consider casting with 'as i64'
+error: at 202:11: [HTC-BoundNotSatisfied] In function 'test_bound_explanation': type argument 'T' for 'GenericWrapper::T' does not satisfy bound 'Copy'
+     |
+ 201 | fn test_bound_explanation<T: Drop + Move>(v: T) {
+ 202 |   let w = GenericWrapper { val: v };
+     |           ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 203 | }
+     |
+  hint: consider restricting type parameter 'T: Copy'
+error: at 206:3: [HTC-TypeMismatch] In function 'test_semicolon_hint': type mismatch: expected (), found i64
+     |
+ 204 | 
+ 205 | fn test_semicolon_hint() -> () {
+     |                             -- expected due to this type constraint
+ 206 |   42
+     |   ^^
+ 207 | }
+     |
+  hint: consider adding a semicolon ';' to discard the value
+error: at 220:5: [HTC-UnresolvedReceiverCall] In function 'test_method_typo': no method, callable field, or free function 'calculate_distanc' applies to receiver type MethodHost
+     |
+ 219 | fn test_method_typo(m: MethodHost) -> i64 {
+ 220 |   m.calculate_distanc()
+     |     ^^^^^^^^^^^^^^^^^
+ 221 | }
+     |
+  hint: a method with a similar name exists: 'calculate_distance'
+error: at 228:5: [HTC-UnresolvedReceiverCall] In function 'test_unimplemented_trait_method': no method, callable field, or free function 'show' applies to receiver type MethodHost
+     |
+ 227 | fn test_unimplemented_trait_method(m: MethodHost) {
+ 228 |   m.show();
+     |     ^^^^
+ 229 | }
+     |
+  hint: the method 'show' exists on trait 'Displayable', but 'MethodHost' does not implement it
+error: at 242:11: [HTC-BoundNotSatisfied] In function 'test_composite_bound_failure': type argument 'OuterContainer' for 'RequiresClone::T' does not satisfy trait bound 'AutoClone'
+     |
+ 241 | fn test_composite_bound_failure(c: OuterContainer) {
+ 242 |   let r = RequiresClone { elem: c };
+     |           ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 243 | }
+     |
+  hint: struct 'OuterContainer' cannot satisfy trait bound 'AutoClone' because field 'inner' of type 'InnerLinear' does not implement 'AutoClone'

@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use crate::common::{Abi, LifetimeParam, Linkage, Marker, SourceInfo};
+use crate::common::{Abi, Linkage, Marker, SourceInfo};
 use crate::diagnostics::Diagnostics;
 use crate::hll::ast::{
     impl_method_context, Bounds, Declaration, FnDecl, Instance, Program, Type, TypeKind, TypeParam,
@@ -9,6 +9,111 @@ use crate::hll::type_check::env::{substitute_bound, type_params_scope, TypeCheck
 use crate::hll::type_check::mod_types::{source_diagnostic, HllTypeCheckCode};
 use crate::hll::type_check::subst::Subst;
 use crate::hll::type_check::traits;
+
+/// Explain why a type argument failed to satisfy a marker bound.
+pub(crate) fn explain_marker_failure(
+    env: &TypeEnv,
+    arg: &Type,
+    marker: Marker,
+    scope: &HashMap<String, Bounds>,
+) -> Option<String> {
+    match &arg.kind {
+        TypeKind::Param(name) => {
+            Some(format!("consider restricting type parameter '{}: {:?}'", name, marker))
+        }
+        TypeKind::Custom(instance) => {
+            if let Some(s_decl) = env.structs.get(&instance.name) {
+                if !s_decl.markers.declared(marker) {
+                    for field in &s_decl.fields {
+                        if !traits::class_of(env, &field.ty, scope).implies(marker) {
+                            return Some(format!(
+                                "struct '{}' cannot satisfy bound '{:?}' because field '{}' of type '{}' does not satisfy '{:?}'",
+                                instance.name, marker, field.name, field.ty, marker
+                            ));
+                        }
+                    }
+                }
+            } else if let Some(e_decl) = env.enums.get(&instance.name) {
+                if !e_decl.markers.declared(marker) {
+                    for variant in &e_decl.variants {
+                        if !traits::class_of(env, &variant.ty, scope).implies(marker) {
+                            return Some(format!(
+                                "enum '{}' cannot satisfy bound '{:?}' because variant '{}' with payload '{}' does not satisfy '{:?}'",
+                                instance.name, marker, variant.name, variant.ty, marker
+                            ));
+                        }
+                    }
+                }
+            }
+            None
+        }
+        TypeKind::Tuple(elems) => {
+            for (idx, elem) in elems.iter().enumerate() {
+                if !traits::class_of(env, elem, scope).implies(marker) {
+                    return Some(format!(
+                        "tuple element {} of type '{}' does not satisfy bound '{:?}'",
+                        idx, elem, marker
+                    ));
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
+
+/// Explain why a type argument failed to satisfy a trait bound.
+pub(crate) fn explain_trait_failure(
+    env: &TypeEnv,
+    arg: &Type,
+    bound: &Instance,
+    scope: &HashMap<String, Bounds>,
+) -> Option<String> {
+    let trait_name = &bound.name;
+    match &arg.kind {
+        TypeKind::Param(name) => {
+            Some(format!("consider restricting type parameter '{}: {}'", name, bound))
+        }
+        TypeKind::Custom(instance) => {
+            if trait_name == "AutoClone" || trait_name == "AutoDestroy" {
+                if let Some(s_decl) = env.structs.get(&instance.name) {
+                    for field in &s_decl.fields {
+                        if !traits::type_satisfies_trait_with_scope(env, &field.ty, bound, scope) {
+                            return Some(format!(
+                                "struct '{}' cannot satisfy trait bound '{}' because field '{}' of type '{}' does not implement '{}'",
+                                instance.name, bound, field.name, field.ty, trait_name
+                            ));
+                        }
+                    }
+                } else if let Some(e_decl) = env.enums.get(&instance.name) {
+                    for variant in &e_decl.variants {
+                        if !traits::type_satisfies_trait_with_scope(env, &variant.ty, bound, scope) {
+                            return Some(format!(
+                                "enum '{}' cannot satisfy trait bound '{}' because variant '{}' payload '{}' does not implement '{}'",
+                                instance.name, bound, variant.name, variant.ty, trait_name
+                            ));
+                        }
+                    }
+                }
+            }
+            None
+        }
+        TypeKind::Tuple(elems) => {
+            if trait_name == "AutoClone" || trait_name == "AutoDestroy" {
+                for (idx, elem) in elems.iter().enumerate() {
+                    if !traits::type_satisfies_trait_with_scope(env, elem, bound, scope) {
+                        return Some(format!(
+                            "tuple element {} of type '{}' does not implement '{}'",
+                            idx, elem, trait_name
+                        ));
+                    }
+                }
+            }
+            None
+        }
+        _ => None,
+    }
+}
 
 /// Walk `ty` and push a diagnostic per problem: an undeclared
 /// `Custom` name, a `Param` not in scope, wrong type-arg arity,
@@ -45,7 +150,7 @@ pub(crate) fn validate_type(
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::UndeclaredType,
                     ty.source,
-                    format!("undeclared type '{}'", name),
+                    format!("undeclared type parameter '{}'", name),
                 ));
             }
         }
@@ -58,27 +163,28 @@ pub(crate) fn validate_type(
             }
             validate_type(env, ret, scope, d);
         }
-        TypeKind::Custom(Instance {
-            name,
-            lifetime_args,
-            type_args: args,
-        }) => {
-            for a in args {
-                validate_type(env, a, scope, d);
+        TypeKind::Custom(instance) => {
+            let (name, args, lifetime_args) = (
+                &instance.name,
+                &instance.type_args,
+                &instance.lifetime_args,
+            );
+            for arg in args {
+                validate_type(env, arg, scope, d);
             }
-            let (lifetime_params, type_params): (&[LifetimeParam], &[TypeParam]) =
-                if let Some(s) = env.structs.get(name) {
-                    (&s.lifetime_params, &s.type_params)
-                } else if let Some(e) = env.enums.get(name) {
-                    (&e.lifetime_params, &e.type_params)
-                } else {
-                    d.push_error(source_diagnostic(
-                        HllTypeCheckCode::UndeclaredType,
-                        ty.source,
-                        format!("undeclared type '{}'", name),
-                    ));
-                    return;
-                };
+            let (type_params, lifetime_params) = if let Some(s) = env.structs.get(name) {
+                (&s.type_params, &s.lifetime_params)
+            } else if let Some(e) = env.enums.get(name) {
+                (&e.type_params, &e.lifetime_params)
+            } else {
+                d.push_error(source_diagnostic(
+                    HllTypeCheckCode::UndeclaredType,
+                    ty.source,
+                    format!("undeclared type '{}'", name),
+                ));
+                return;
+            };
+
             if args.len() != type_params.len() {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::TypeArgArityMismatch,
@@ -92,7 +198,7 @@ pub(crate) fn validate_type(
                 ));
                 return;
             }
-            if lifetime_args.len() != lifetime_params.len() {
+            if !lifetime_args.is_empty() && lifetime_args.len() != lifetime_params.len() {
                 d.push_error(source_diagnostic(
                     HllTypeCheckCode::LifetimeArgArityMismatch,
                     ty.source,
@@ -105,6 +211,7 @@ pub(crate) fn validate_type(
                 ));
                 return;
             }
+
             let mapping = type_params
                 .iter()
                 .map(|parameter| parameter.name.clone())
@@ -119,27 +226,35 @@ pub(crate) fn validate_type(
                 let arg_class = traits::class_of(env, arg, scope);
                 for m in [Marker::Copy, Marker::Drop, Marker::Move] {
                     if tp.bounds.markers.declared(m) && !arg_class.implies(m) {
-                        d.push_error(source_diagnostic(
+                        let mut diag = source_diagnostic(
                             HllTypeCheckCode::BoundNotSatisfied,
                             arg.source,
                             format!(
                                 "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
                                 arg, name, tp.name, m
                             ),
-                        ));
+                        );
+                        if let Some(hint) = explain_marker_failure(env, arg, m, scope) {
+                            diag = diag.with_hint(hint);
+                        }
+                        d.push_error(diag);
                     }
                 }
                 for bound in &tp.bounds.traits {
                     let bound = substitute_bound(bound, &mapping, &lifetime_mapping);
                     if !traits::type_satisfies_trait_with_scope(env, arg, &bound, scope) {
-                        d.push_error(source_diagnostic(
+                        let mut diag = source_diagnostic(
                             HllTypeCheckCode::BoundNotSatisfied,
                             arg.source,
                             format!(
                                 "type argument '{}' for '{}::{}' does not satisfy trait bound '{}'",
                                 arg, name, tp.name, bound
                             ),
-                        ));
+                        );
+                        if let Some(hint) = explain_trait_failure(env, arg, &bound, scope) {
+                            diag = diag.with_hint(hint);
+                        }
+                        d.push_error(diag);
                     }
                 }
             }
@@ -353,14 +468,33 @@ pub(crate) fn validate_trait_instance(
             env.type_satisfies_trait_with_scope(argument, &required, scope)
         });
         if !markers_satisfied || !traits_satisfied {
-            d.push_error(source_diagnostic(
+            let mut diag = source_diagnostic(
                 HllTypeCheckCode::BoundNotSatisfied,
                 source,
                 format!(
                     "type argument '{}' for {} '{}::{}' does not satisfy its declared bounds",
                     argument, reference_kind, trait_path.name, trait_parameter.name
                 ),
-            ));
+            );
+            if let Some(missing_marker) = trait_parameter
+                .bounds
+                .markers
+                .iter_declared()
+                .find(|m| !env.class_of(argument, scope).implies(*m))
+            {
+                if let Some(hint) = explain_marker_failure(env, argument, missing_marker, scope) {
+                    diag = diag.with_hint(hint);
+                }
+            } else if let Some(missing_trait) = trait_parameter.bounds.traits.iter().find(|t| {
+                let required = substitute_bound(t, &mapping, &lifetime_mapping);
+                !env.type_satisfies_trait_with_scope(argument, &required, scope)
+            }) {
+                let required = substitute_bound(missing_trait, &mapping, &lifetime_mapping);
+                if let Some(hint) = explain_trait_failure(env, argument, &required, scope) {
+                    diag = diag.with_hint(hint);
+                }
+            }
+            d.push_error(diag);
         }
     }
 }
@@ -390,14 +524,23 @@ pub(crate) fn check_instantiation_bounds(
                     .class_of(&argument, &pending.caller_type_params)
                     .implies(marker)
                 {
-                    d.push_error(source_diagnostic(
+                    let mut diag = source_diagnostic(
                         HllTypeCheckCode::BoundNotSatisfied,
                         pending.source,
                         format!(
                             "type argument '{}' for '{}::{}' does not satisfy bound '{:?}'",
                             argument, pending.function_name, parameter.name, marker
                         ),
-                    ));
+                    );
+                    if let Some(hint) = explain_marker_failure(
+                        env,
+                        &argument,
+                        marker,
+                        &pending.caller_type_params,
+                    ) {
+                        diag = diag.with_hint(hint);
+                    }
+                    d.push_error(diag);
                 }
             }
             for bound in &parameter.bounds.traits {
@@ -407,14 +550,23 @@ pub(crate) fn check_instantiation_bounds(
                     &bound,
                     &pending.caller_type_params,
                 ) {
-                    d.push_error(source_diagnostic(
+                    let mut diag = source_diagnostic(
                         HllTypeCheckCode::BoundNotSatisfied,
                         pending.source,
                         format!(
                             "type argument '{}' for '{}::{}' does not satisfy trait bound '{}'",
                             argument, pending.function_name, parameter.name, bound
                         ),
-                    ));
+                    );
+                    if let Some(hint) = explain_trait_failure(
+                        env,
+                        &argument,
+                        &bound,
+                        &pending.caller_type_params,
+                    ) {
+                        diag = diag.with_hint(hint);
+                    }
+                    d.push_error(diag);
                 }
             }
         }

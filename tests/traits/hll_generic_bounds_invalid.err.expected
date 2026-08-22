@@ -40,6 +40,7 @@ error: at 38:3: [HTC-BoundNotSatisfied] In function 'reject_unbounded_generic': 
     |   ^^^^^^
  39 | }
     |
+  hint: consider restricting type parameter 'T: Label'
 error: at 45:3: [HTC-BoundNotSatisfied] In function 'reject_inferred_lifetime_bound': type argument 'T' for 'accept_inferred_lifetime_bound::T' does not satisfy trait bound 'LifetimeLabel<'actual>'
     |
  44 | ) {
@@ -47,6 +48,7 @@ error: at 45:3: [HTC-BoundNotSatisfied] In function 'reject_inferred_lifetime_bo
     |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  46 | }
     |
+  hint: consider restricting type parameter 'T: LifetimeLabel<'actual>'
 error: at 60:3: [HTC-BoundNotSatisfied] In function 'reject_different_bound_argument': type argument 'T' for 'require_related_i64::T' does not satisfy trait bound 'Related<i64>'
     |
  59 | fn reject_different_bound_argument<T: Related<bool>>(value: &T) {
@@ -54,6 +56,7 @@ error: at 60:3: [HTC-BoundNotSatisfied] In function 'reject_different_bound_argu
     |   ^^^^^^^^^^^^^^^^^^^
  61 | }
     |
+  hint: consider restricting type parameter 'T: Related<i64>'
 error: at 71:9: [HTC-UnresolvedReceiverCall] In function 'reject_inherent_impl': no method, callable field, or free function 'inspect' applies to receiver type &Wrapper<Other>
     |
  70 | fn reject_inherent_impl(value: &Wrapper<Other>) {
@@ -68,6 +71,7 @@ error: at 89:9: [HTC-UnresolvedReceiverCall] In function 'reject_trait_impl': no
     |         ^^^^^^^^^^^^^
  90 | }
     |
+  hint: the method 'inspect_trait' exists on trait 'Inspect', but '&Wrapper<Other>' does not implement it
 error: at 94:9: [HTC-BoundNotSatisfied] In function 'reject_trait_method_argument': type argument 'Other' for 'inspect_trait_argument::U' does not satisfy trait bound 'Label'
     |
  93 | fn reject_trait_method_argument(value: &Wrapper<Good>, argument: &Other) {
@@ -89,3 +93,4 @@ error: at 121:8: [HTC-BoundNotSatisfied] In function 'reject_inferred_method_lif
      |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
  122 | }
      |
+  hint: consider restricting type parameter 'T: LifetimeLabel<'actual>'

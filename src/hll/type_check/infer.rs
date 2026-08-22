@@ -17,8 +17,8 @@ use crate::hll::type_check::dispatch::{
 };
 use crate::hll::type_check::env::{
     array_len, build_lifetime_mapping, build_subst_map, substitute_all, type_params_scope,
-    ClosureCapture, ClosureInfo, GenericClosureCall, ResolvedMethodTarget, ResolvedReceiverTarget,
-    TypeCheckResults, TypeEnv,
+    ClosureCapture, ClosureInfo, GenericClosureCall, PendingInstantiation, ResolvedMethodTarget,
+    ResolvedReceiverTarget, TypeCheckResults, TypeEnv,
 };
 use crate::hll::type_check::mod_types::{source_diagnostic, HllTypeCheckCode};
 use crate::hll::type_check::subst::{collect_unresolved_vars, Subst};
@@ -359,11 +359,21 @@ fn infer_variable(
         types.function_instantiations.insert(expr.source, instance);
         fn_ty
     } else {
-        d.push_error(source_diagnostic(
+        let mut diag = source_diagnostic(
             HllTypeCheckCode::UndeclaredVariable,
             expr.source,
             format!("undeclared variable '{}'", name),
-        ));
+        );
+        let in_scope_vars: Vec<&String> =
+            env.variables.iter().flat_map(|scope| scope.keys()).collect();
+        if let Some(suggestion) = crate::diagnostics::find_best_match(name, in_scope_vars) {
+            diag = diag.with_hint(format!("a variable with a similar name exists: '{}'", suggestion));
+        } else if let Some(func_name) =
+            crate::diagnostics::find_best_match(name, env.functions.keys())
+        {
+            diag = diag.with_hint(format!("a function with a similar name exists: '{}'", func_name));
+        }
+        d.push_error(diag);
         error_ty()
     }
 }
@@ -779,7 +789,10 @@ fn infer_if(
     let t1 = infer_inner(env, subst, true_block, types, d);
     let t2 = infer_inner(env, subst, false_block, types, d);
     if let Err(e) = subst.unify(&t1, &t2) {
-        d.push_error(e.to_diag(expr.source));
+        let diag = e
+            .to_diag(expr.source)
+            .with_secondary(true_block.source, "expected because of this 'then' branch");
+        d.push_error(diag);
     }
     subst.resolve(&t1)
 }
@@ -1016,6 +1029,18 @@ fn infer_struct_constr(
         check_inner(env, subst, val_expr, &expected, types, d);
     }
 
+    if !s_decl.type_params.is_empty() {
+        types.pending_instantiations.push(PendingInstantiation {
+            source: expr.source,
+            function_name: name.to_string(),
+            caller_type_params: env.current_type_params.clone(),
+            type_params: s_decl.type_params.clone(),
+            type_args: type_args.clone(),
+            type_mapping: mapping,
+            lifetime_mapping,
+        });
+    }
+
     Type::synthesized(TypeKind::Custom(Instance::new(
         name.to_string(),
         lifetime_args,
@@ -1085,6 +1110,19 @@ fn infer_enum_constr(
         .collect();
     let expected_payload = substitute_all(&variant_decl.ty, &mapping, &lifetime_mapping);
     check_inner(env, subst, payload, &expected_payload, types, d);
+
+    if !e_decl.type_params.is_empty() {
+        types.pending_instantiations.push(PendingInstantiation {
+            source: expr.source,
+            function_name: format!("{}::{}", enum_name, variant_name),
+            caller_type_params: env.current_type_params.clone(),
+            type_params: e_decl.type_params.clone(),
+            type_args: type_args.clone(),
+            type_mapping: mapping,
+            lifetime_mapping,
+        });
+    }
+
     Type::synthesized(TypeKind::Custom(Instance::new(
         enum_name.to_string(),
         lifetime_args,
@@ -1190,7 +1228,7 @@ fn infer_array_index(
         match &idx_resolved.kind {
             TypeKind::Int(_) => {}
             TypeKind::Var(_) | TypeKind::IntVar(_) => {
-                if let Err(e) = subst.unify(&idx_resolved, &int_ty(crate::mir::ast::IntTy::I64)) {
+                if let Err(e) = subst.unify(&int_ty(crate::mir::ast::IntTy::I64), &idx_resolved) {
                     d.push_error(e.to_diag(expr.source));
                 }
             }
@@ -1346,8 +1384,17 @@ pub(crate) fn check_inner(
         }
         _ => {
             let inferred = infer_inner(env, subst, expr, types, d);
-            if let Err(e) = subst.unify(&inferred, &resolved_expected) {
-                d.push_error(e.to_diag(expr.source));
+            if let Err(e) = subst.unify(&resolved_expected, &inferred) {
+                let mut diag = e.to_diag(expr.source);
+                if matches!(resolved_expected.source, SourceInfo::Written(_))
+                    && resolved_expected.source != expr.source
+                {
+                    diag = diag.with_secondary(
+                        resolved_expected.source,
+                        "expected due to this type constraint",
+                    );
+                }
+                d.push_error(diag);
             }
             record_expression_type(env, types, expr.source, resolved_expected.clone());
         }
@@ -1394,7 +1441,7 @@ pub(crate) fn check_block_statements(
             Stmt::Defer { body, .. } => {
                 check_no_control_flow(body, 0, d);
                 let body_type = infer_inner(env, subst, body, types, d);
-                if let Err(error) = subst.unify(&body_type, &unit_ty()) {
+                if let Err(error) = subst.unify(&unit_ty(), &body_type) {
                     d.push_error(error.to_diag(body.source));
                 }
             }
